@@ -1,0 +1,49 @@
+// Generated
+// Constructors
+using LinearAlgebra;
+
+namespace LinearAlgebra {
+
+    public partial struct dummyN : IArenaShortcuts
+    {
+        public unsafe {cType}(int M_rows, int N_cols, Allocator allocator, bool uninit = false)
+        {
+            _arenaPtr = null;
+
+            M_Rows = M_rows;
+            N_Cols = N_cols;
+            Length = M_Rows * N_Cols;
+            var data = new UnsafeList<{bType}>(Length, allocator, uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
+            data.Resize(Length, NativeArrayOptions.UninitializedMemory);
+            Data = data;
+        }
+
+        public unsafe {cType}(int M_rows, int N_cols, in Arena arena, bool uninit = false)
+        {
+            fixed (Arena* arenaPtr = &arena)
+                _arenaPtr = arenaPtr;
+
+            M_Rows = M_rows;
+            N_Cols = N_cols;
+            Length = M_Rows * N_Cols;
+            var data = new UnsafeList<{bType}>(Length, _arenaPtr->Allocator, uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
+            data.Resize(Length, NativeArrayOptions.UninitializedMemory);
+            Data = data;
+        }
+
+        public unsafe {cType}(in {cType} orig, Allocator allocator = Allocator.Invalid)
+        {
+            if (allocator == Allocator.Invalid)
+                allocator = orig._arenaPtr->Allocator;
+
+            _arenaPtr = orig._arenaPtr;
+            M_Rows = orig.M_Rows;
+            N_Cols = orig.N_Cols;
+            Length = orig.Length;
+            var data = new UnsafeList<bType>(Length, allocator, NativeArrayOptions.UninitializedMemory);
+            data.Resize(Length, NativeArrayOptions.UninitializedMemory);
+            data.CopyFrom(orig.Data);
+            Data = data;
+        }
+    }
+}

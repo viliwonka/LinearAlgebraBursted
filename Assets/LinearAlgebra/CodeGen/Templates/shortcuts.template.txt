@@ -1,0 +1,25 @@
+// Generated
+// Shortcuts for creating new vectors and matrices test
+using LinearAlgebra;
+
+namespace LinearAlgebra {
+
+    public partial struct <cType> : IArenaShortcuts
+    {
+        public unsafe floatN floatVec(int N, bool uninit = false) => _arenaPtr->Vector(N, uninit);
+
+        public unsafe floatN tempFloatVec(int N, bool uninit = false) => _arenaPtr->TempVector(N, uninit);
+
+        public unsafe floatMxN floatMat(int M_rows, int N_cols, bool uninit = false) => _arenaPtr->Matrix(M_rows, N_cols, uninit);
+
+        public unsafe floatMxN tempFloatMat(int M_rows, int N_cols, bool uninit = false) => _arenaPtr->TempMatrix(M_rows, N_cols, uninit);
+
+        public unsafe boolN boolVec(int n, bool uninit = false) => _arenaPtr->BoolVector(n, uninit);
+
+        public unsafe boolN tempBoolVec(int n, bool uninit = false) => _arenaPtr->TempBoolVector(n, uninit);
+
+        public unsafe boolMxN boolMat(int M_rows, int N_cols, bool uninit = false) => _arenaPtr->BoolMatrix(M_rows, N_cols, uninit);
+
+        public unsafe boolMxN tempBoolMat(int M_rows, int N_cols, bool uninit = false) => _arenaPtr->TempBoolMatrix(M_rows, N_cols, uninit);
+    }
+}

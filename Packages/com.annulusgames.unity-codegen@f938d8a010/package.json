@@ -1,0 +1,22 @@
+{
+    "name": "com.annulusgames.unity-codegen",
+    "displayName": "Unity CodeGen",
+    "version": "1.0.0",
+    "unity": "2020.1",
+    "license": "MIT",
+    "author": {
+        "name": "Annulus Games",
+        "url": "https://github.com/AnnulusGames"
+    },
+    "description": "Code Generation Library for Unity Editor",
+    "dependencies": {
+
+    },
+    "samples": [
+        {
+            "displayName": "Tags & Layers",
+            "description": "A sample that generates a class that manages Tags, Layers and Sorting Layers with constants.",
+            "path": "Samples~/Tags & Layers"
+        }
+    ]
+}
