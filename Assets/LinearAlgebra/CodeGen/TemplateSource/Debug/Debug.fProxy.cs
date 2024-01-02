@@ -3,7 +3,6 @@
 using Unity.Collections;
 using Unity.Mathematics;
 using Unity.Burst;
-using Unity.VisualScripting.YamlDotNet.Core.Tokens;
 using System.Runtime.CompilerServices;
 
 namespace LinearAlgebra

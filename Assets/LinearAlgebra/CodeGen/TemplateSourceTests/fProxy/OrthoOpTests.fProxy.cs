@@ -6,8 +6,6 @@ using Unity.Burst;
 using Unity.Collections;
 
 using Unity.Jobs;
-using Unity.VisualScripting.YamlDotNet.Serialization.NodeTypeResolvers;
-
 using UnityEngine;
 using UnityEngine.TestTools;
 
