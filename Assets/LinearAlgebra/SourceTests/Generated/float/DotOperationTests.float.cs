@@ -155,7 +155,7 @@ public class floatDotOperationTests
             }
 
             floatMxN R = arena.floatRandomMatrix(matLen, matLen);
-
+            
             C = floatOP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)

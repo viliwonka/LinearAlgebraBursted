@@ -18,6 +18,14 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy L1<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
+
+            unsafe {
+                return UnsafeOP.sumAbs(a.Data.Ptr, a.Data.Length) / a.Data.Length;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy L2Range(in fProxyN a, int start, int end)
         {
             if (start >= end)

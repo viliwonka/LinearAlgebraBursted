@@ -155,7 +155,7 @@ public class fProxyDotOperationTests
             }
 
             fProxyMxN R = arena.fProxyRandomMatrix(matLen, matLen);
-
+            
             C = fProxyOP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)

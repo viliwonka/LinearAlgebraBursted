@@ -155,7 +155,7 @@ public class doubleDotOperationTests
             }
 
             doubleMxN R = arena.doubleRandomMatrix(matLen, matLen);
-
+            
             C = doubleOP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)

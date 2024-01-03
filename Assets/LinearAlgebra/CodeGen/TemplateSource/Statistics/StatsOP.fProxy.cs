@@ -9,9 +9,9 @@ namespace LinearAlgebra.Stats
 {
 
     // just a prototype, needs matrices handling too
-    public static partial class fProxyStatsOP<T> where T : unmanaged, IUnsafefProxyArray {
+    public static partial class fProxyStatsOP  {
 
-        public static fProxy sum(in T x) {
+        public static fProxy sum<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
 
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute sum of an empty array.");
@@ -20,18 +20,17 @@ namespace LinearAlgebra.Stats
                 return x.Data[0];
 
             fProxy sum = 0f;
-            for (int i = 0; i < x.Data.Length; i++)
+            for (int i = 0; i < x.Data.Length; i++) 
                 sum += x.Data[i];
             
             return sum;
         }
 
-        public static fProxy mean(in T x) {
+        public static fProxy mean<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
             return sum(in x) / x.Data.Length;
         }
 
-        public static fProxy variance(in T x)
-        {
+        public static fProxy variance<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute variance of an empty array.");
 
@@ -48,13 +47,11 @@ namespace LinearAlgebra.Stats
             return sum / x.Data.Length;
         }
 
-        public static fProxy stdDev(in T x)
-        {
+        public static fProxy stdDev<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
             return math.sqrt(variance(x));
         }
 
-        public static fProxy min(in T x)
-        {
+        public static fProxy min<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute min of an empty array.");
 
@@ -68,8 +65,7 @@ namespace LinearAlgebra.Stats
             return min;
         }
 
-        public static fProxy max(in T x)
-        {
+        public static fProxy max<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute max of an empty array.");
 
@@ -84,8 +80,7 @@ namespace LinearAlgebra.Stats
         }
 
         // needs to handle even / odd case
-        public static fProxy median(in T x)
-        {
+        public static fProxy median<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute median of an empty array.");
             
@@ -112,13 +107,13 @@ namespace LinearAlgebra.Stats
             return res;
         }
 
-        public static fProxy range(in T x)
+        public static fProxy range<T>(in T x) where T : unmanaged, IUnsafefProxyArray
         {
             return max(x) - min(x);
         }
 
-        public static fProxyMeanMinMaxRangeStats meanMinMaxRange(in T x)
-        {
+        public static fProxyMeanMinMaxRangeStats meanMinMaxRange<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
+
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute meanMinMaxRange of an empty array.");
 
@@ -142,8 +137,7 @@ namespace LinearAlgebra.Stats
             return new fProxyMeanMinMaxRangeStats(mean, min, max, range);
         }
 
-        public static fProxyFullStats meanMinMaxRange_medianIQRstdDevVariance(in T x)
-        {
+        public static fProxyFullStats meanMinMaxRange_medianIQRstdDevVariance<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute meanMinMaxRange_medianIQRstdDevVariance of an empty array.");
 
