@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using System.Runtime.CompilerServices;
 
 using UnityEngine;
 
@@ -16,26 +17,29 @@ namespace LinearAlgebra {
         public Pivot(int size, Allocator allocator = Allocator.Temp) {
             indices = new UnsafeList<int>(size, allocator);
             indices.Resize(size);
-            Reset(0, size);
+            Reset();
         }
 
         public int this[int i] {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => indices[i];
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             set => indices[i] = value;
         }
 
-        public void Swap(int i, int j) {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Swap(int from, int to) {
 
-            if (i == j)
+            if (from == to)
                 return;
 
-            int temp = indices[i];
-            indices[i] = indices[j];
-            indices[j] = temp;
+            int temp = indices[from];
+            indices[from] = indices[to];
+            indices[to] = temp;
         }
 
-        public void Reset(int start, int end) {
-            for (int i = start; i < end; i++)
+        public void Reset() {
+            for (int i = 0; i < indices.Length; i++)
                 indices[i] = i;
         }
 
