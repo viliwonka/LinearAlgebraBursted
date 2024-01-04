@@ -126,4 +126,16 @@ Here's a simple example:
 * Basic vector-vector, vector-matrix, matrix-vector and matrix-matrix operations
 * QR decomposition & solver for well-determined and over-determined systems
 
+## TODO
+- Better arena management and standalone vec/mat management (without arena allocation)
+- Test arena/vec/mat allocated outside jobs (On normal C# thread)
+- Refactor, unify the names / simplify
+- More safety checks
+- Vec/Mat views (simple structs for easier read/write)
+- More stats functions and tests
+- More solvers (LU, Pivoted LU)
+- SVD
+- Least squares
+- Sparse matrix?
+- Documentation
 
