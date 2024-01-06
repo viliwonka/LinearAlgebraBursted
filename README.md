@@ -127,6 +127,7 @@ Here's a simple example:
 - ✅ QR decomposition & solver for well-determined and over-determined systems
 - 🔳 Pivoting
 - 🔳 LU decomposition & solver
+- 🔳 View/Slice 
 - 🔳 Select operations (e.g.: find row with biggest L2 norm)
 - 🔳 SVD decomposition
 - 🔳 Complex numbers
