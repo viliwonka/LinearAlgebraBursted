@@ -126,12 +126,13 @@ Here's a simple example:
 - ✅ Basic vector-vector, vector-matrix, matrix-vector and matrix-matrix operations
 - ✅ QR decomposition & solver for well-determined and over-determined systems
 - 🔳 Pivoting
-- 🔳 LU decomposition
+- 🔳 LU decomposition & solver
+- 🔳 Select operations (e.g.: find row with biggest L2 norm)
 - 🔳 SVD decomposition
 - 🔳 Complex numbers
 - 🔳 Eigenvalues / Eigenvectors
-- 🔳 Sparse matrices
-- 🔳 Sparse solvers (QR givens)
+- 🔳 Sparse matrices?
+- 🔳 Sparse solvers (QR givens)?
 
 ## TODO
 - Better arena management and standalone vec/mat management (without arena allocation)
