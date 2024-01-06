@@ -75,7 +75,7 @@ public class fProxyLUTests
 
             var A = U.Copy();
 
-            LU.luDecomposition(ref U, ref L);
+            LU.luDecompositionNoPivot(ref U, ref L);
 
             
             AssertLU(in A, in L, in U);
@@ -95,7 +95,7 @@ public class fProxyLUTests
 
             var A = U.Copy();
 
-            LU.luDecomposition(ref U, ref L);
+            LU.luDecompositionNoPivot(ref U, ref L);
 
 
             AssertLU(in A, in U, in L);
@@ -112,15 +112,34 @@ public class fProxyLUTests
             var U = arena.fProxyRandomMatrix(dim, dim, 1f, 10f, 314221);
             var L = arena.fProxyIdentityMatrix(dim);
             
+            // add to diagonals of U
+            for(int d = 0; d < dim; d++)
+                U[d, d] += 5f;
+            
             var A = U.Copy();
 
-            LU.luDecomposition(ref U, ref L);
+            var pivot = new Pivot(dim, Allocator.Temp);
 
-            Print.Log(A);
+            //LU.luDecompositionNoPivot(ref U, ref L);
+            LU.luDecomposition(ref U, ref L, ref pivot);
+
+            var testMat = arena.fProxyIdentityMatrix(dim);
+
+            Print.Log(testMat);
+            pivot.ApplyRow<fProxyMxN, fProxy>(ref testMat);
+            Print.Log(testMat);
+            
+            pivot.ApplyInverseRow<fProxyMxN, fProxy>(ref testMat);
+            Print.Log(testMat);
+
+            Assert.IsTrue(Analysis.IsIdentity(testMat, 1E-05f));
+
+            pivot.Dispose();
+            /*Print.Log(A);
             Print.Log(U);
             Print.Log(L);
-
-            AssertLU(in A, in U, in L, 1E-05f);
+            */
+            AssertLU(in A, in L, in U, 1E-05f);
 
             arena.Dispose();
         }
@@ -231,7 +250,7 @@ public class fProxyLUTests
             arena.Dispose();*/
         }
 
-        private void AssertLU(in fProxyMxN A, in fProxyMxN U, in fProxyMxN R) => AssertLU(in A, in U, in R, 1E-6f);
+        private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U) => AssertLU(in A, in L, in U, 1E-6f);
         private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, fProxy precision)
         {
             fProxyMxN shouldBeZero = A - fProxyOP.dot(L, U);

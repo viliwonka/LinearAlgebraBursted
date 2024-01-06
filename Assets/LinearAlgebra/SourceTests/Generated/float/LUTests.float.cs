@@ -75,7 +75,7 @@ public class floatLUTests
 
             var A = U.Copy();
 
-            LU.luDecomposition(ref U, ref L);
+            LU.luDecompositionNoPivot(ref U, ref L);
 
             
             AssertLU(in A, in L, in U);
@@ -95,7 +95,7 @@ public class floatLUTests
 
             var A = U.Copy();
 
-            LU.luDecomposition(ref U, ref L);
+            LU.luDecompositionNoPivot(ref U, ref L);
 
 
             AssertLU(in A, in U, in L);
@@ -112,15 +112,34 @@ public class floatLUTests
             var U = arena.floatRandomMatrix(dim, dim, 1f, 10f, 314221);
             var L = arena.floatIdentityMatrix(dim);
             
+            // add to diagonals of U
+            for(int d = 0; d < dim; d++)
+                U[d, d] += 5f;
+            
             var A = U.Copy();
 
-            LU.luDecomposition(ref U, ref L);
+            var pivot = new Pivot(dim, Allocator.Temp);
 
-            Print.Log(A);
+            //LU.luDecompositionNoPivot(ref U, ref L);
+            LU.luDecomposition(ref U, ref L, ref pivot);
+
+            var testMat = arena.floatIdentityMatrix(dim);
+
+            Print.Log(testMat);
+            pivot.ApplyRow<floatMxN, float>(ref testMat);
+            Print.Log(testMat);
+            
+            pivot.ApplyInverseRow<floatMxN, float>(ref testMat);
+            Print.Log(testMat);
+
+            Assert.IsTrue(Analysis.IsIdentity(testMat, 1E-05f));
+
+            pivot.Dispose();
+            /*Print.Log(A);
             Print.Log(U);
             Print.Log(L);
-
-            AssertLU(in A, in U, in L, 1E-05f);
+            */
+            AssertLU(in A, in L, in U, 1E-05f);
 
             arena.Dispose();
         }
@@ -231,7 +250,7 @@ public class floatLUTests
             arena.Dispose();*/
         }
 
-        private void AssertLU(in floatMxN A, in floatMxN U, in floatMxN R) => AssertLU(in A, in U, in R, 1E-6f);
+        private void AssertLU(in floatMxN A, in floatMxN L, in floatMxN U) => AssertLU(in A, in L, in U, 1E-6f);
         private void AssertLU(in floatMxN A, in floatMxN L, in floatMxN U, float precision)
         {
             floatMxN shouldBeZero = A - floatOP.dot(L, U);
