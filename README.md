@@ -120,12 +120,6 @@ Here's a simple example:
 
 ## Features
 
-* Similar to Unity.mathematics, all basic operations work similary.
-* float, double, int, short, long, bool vectors and matrices
-* Some basic statistics
-* Basic vector-vector, vector-matrix, matrix-vector and matrix-matrix operations
-* QR decomposition & solver for well-determined and over-determined systems
-
 - [x] Basic Unity.mathematics operations
 - [x] float, double, int, short, long, bool vectors and matrices
 - [x] Some basic statistics
