@@ -25,8 +25,6 @@ namespace LinearAlgebra {
         public int this[int i] {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => indices[i];
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            set => indices[i] = value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -49,6 +47,8 @@ namespace LinearAlgebra {
             indices.Dispose();
         }
 
+        // Applies pivot to matrix A inplace
+        // Note: it is still acting as a permutation matrix operation P, so applying twice will not yield original result!
         public void ApplyRow<M, T>(ref M A) where M : unmanaged, IMatrix<T> where T : unmanaged {
 
             Pivot tempPivot = Copy();
@@ -72,12 +72,13 @@ namespace LinearAlgebra {
                     toR = tempPivot.indices[fromR];
                 }
 
-                tempPivot.Print(); 
             }
 
             tempPivot.Dispose();
         }
 
+        // Applies operation inplace
+        // Inverse operation of 'permutation matrix', so apply ApplyRow and ApplyInverseRow to matrix A will yield original result
         public void ApplyInverseRow<M, T>(ref M A) where M : unmanaged, IMatrix<T> where T : unmanaged {
 
             Pivot tempPivot = Copy();
@@ -92,7 +93,6 @@ namespace LinearAlgebra {
                     toR = tempPivot.indices[fromR];
                 }
 
-                tempPivot.Print();
             }
             tempPivot.Dispose();
 
@@ -107,9 +107,34 @@ namespace LinearAlgebra {
             var copy = new Pivot(indices.Length, Allocator.Temp);
 
             for (int i = 0; i < indices.Length; i++)
-                copy[i] = indices[i];
+                copy.indices[i] = indices[i];
 
             return copy;
+        }
+
+        public Pivot InverseCopy() {
+
+            var copy = new Pivot(indices.Length, Allocator.Temp);
+
+            for (int i = 0; i < indices.Length; i++)
+                copy.indices[this[i]] = i;
+
+            return copy;
+        }
+
+        // Inverse operation inplace
+        public void InverseInplace() {
+
+            var tempPivot = new Pivot(indices.Length, Allocator.Temp);
+
+            // copy original into tempPivot
+            for (int i = 0; i < indices.Length; i++)
+                tempPivot.indices[i] = indices[i];
+
+            for (int i = 0; i < indices.Length; i++)
+                indices[tempPivot[i]] = i;
+
+            tempPivot.Dispose();
         }
 
         public void Print() {
