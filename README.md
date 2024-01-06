@@ -120,17 +120,18 @@ Here's a simple example:
 
 ## Features
 
-- [x] Basic Unity.mathematics operations
-- [x] float, double, int, short, long, bool vectors and matrices
-- [x] Some basic statistics
-- [x] Basic vector-vector, vector-matrix, matrix-vector and matrix-matrix operations
-- [x] QR decomposition & solver for well-determined and over-determined systems
-- [ ] Pivoting
-- [ ] LU decomposition
-- [ ] SVD decomposition
-- [ ] Eigenvalues / Eigenvectors
-- [ ] Complex numbers
-- [ ] Sparse matrices
+- ✅ Basic Unity.mathematics operations
+- ✅ float, double, int, short, long, bool vectors and matrices
+- ✅ Some basic statistics
+- ✅ Basic vector-vector, vector-matrix, matrix-vector and matrix-matrix operations
+- ✅ QR decomposition & solver for well-determined and over-determined systems
+- 🔳 Pivoting
+- 🔳 LU decomposition
+- 🔳 SVD decomposition
+- 🔳 Complex numbers
+- 🔳 Eigenvalues / Eigenvectors
+- 🔳 Sparse matrices
+- 🔳 Sparse solvers (QR givens)
 
 ## TODO
 - Better arena management and standalone vec/mat management (without arena allocation)
