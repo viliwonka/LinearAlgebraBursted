@@ -398,11 +398,14 @@ namespace LinearAlgebra
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         // Swap rows in a matrix
-        public static void swapRows([NoAlias] float* target, int rowA, int rowB, int nCols) {
+        public static void swapRows([NoAlias] float* target, int rowA, int rowB, int nCols, int start = 0, int end = -1) {
             int startA = rowA * nCols;
             int startB = rowB * nCols;
 
-            for (int i = 0; i < nCols; i++) {
+            if(end == -1)
+                end = nCols;
+
+            for (int i = start; i < end; i++) {
                 float temp = target[startA + i];
                 target[startA + i] = target[startB + i];
                 target[startB + i] = temp;
@@ -410,12 +413,16 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
+
         // Swap columns in a matrix
-        public static void swapColumns([NoAlias] float* target, int colA, int colB, int nRows, int nCols) {
+        public static void swapColumns([NoAlias] float* target, int colA, int colB, int nRows, int nCols, int start = 0, int end = -1) {
             int startA = colA;
             int startB = colB;
 
-            for (int i = 0; i < nRows; i++) {
+            if(end == -1)
+                end = nRows;
+
+            for (int i = start; i < end; i++) {
                 float temp = target[startA + i * nCols];
                 target[startA + i * nCols] = target[startB + i * nCols];
                 target[startB + i * nCols] = temp;

@@ -120,10 +120,7 @@ public class fProxyLUTests
             //LU.luDecompositionNoPivot(ref U, ref L);
             LU.luDecomposition(ref U, ref L, ref pivot);
 
-            pivot.ApplyInverseRow(ref U);
-            pivot.ApplyInverseRow(ref L);
-
-            pivot.ApplyRow(ref A);
+            pivot.ApplyInverseRow(ref A);
 
             Print.Log(U);
             Print.Log(L);

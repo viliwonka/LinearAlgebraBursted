@@ -72,11 +72,11 @@ namespace LinearAlgebra
             for (int k = 0; k < m - 1; k++) {
 
                 int pivotIndex = k;
-                float pivotValue = math.abs(U[P[k], k]);
+                float pivotValue = math.abs(U[k, k]);
 
                 // Find best pivot in rows
                 for(int r = k + 1; r < m; r++) {
-                    float absValue = math.abs(U[P[r], k]);
+                    float absValue = math.abs(U[r, k]);
                     if(absValue > pivotValue) {
                         pivotIndex = r;
                         pivotValue = absValue;
@@ -86,21 +86,28 @@ namespace LinearAlgebra
                 // Swap rows
                 P.Swap(k, pivotIndex);
 
+                // have to test all the swapping ops
+                SwapOP.Rows(ref U, k, pivotIndex, k);
+                SwapOP.Columns(ref L, k, pivotIndex, 0, k - 1);
+
                 // Calculate L and U
-                float Ukk = U[P[k], k];
+                float Ukk = U[k, k];
+
+                //L[k, k] = 1f;
 
                 for (int j = k + 1; j < m; j++) {
 
-                    float Ljk = U[P[j], k] / Ukk;
+                    float Ljk = U[j, k] / Ukk;
 
-                    L[P[j], k] = Ljk;
-
+                    L[j, k] = Ljk;
+                        
                     for (int i = k; i < m; i++) {
-                        U[P[j], i] -= Ljk * U[P[k], i];
+                        U[j, i] -= Ljk * U[k, i];
                     }
                 }
             }
 
+            //L[m - 1, m - 1] = 1f;
             //RP.Dispose();
         }
 

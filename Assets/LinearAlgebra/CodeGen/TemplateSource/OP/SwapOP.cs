@@ -29,31 +29,47 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Rows(ref fProxyMxN mat, int i, int j) {
+        public static void Rows(ref fProxyMxN mat, int i, int j, int start = 0, int end = -1) {
 
-            if(i < 0 || i >= mat.M_Rows || j < 0 || j >= mat.M_Rows) {
+            if(i < 0 || i >= mat.M_Rows || j < 0 || j >= mat.M_Rows)
                 throw new System.Exception("i and j must be bounded inside matrix rows dimensions");
-            }
+            
+            if(end != -1 && start > end)
+                throw new System.Exception("start must be less than end");
+            
+            if(start < 0)
+                throw new System.Exception("start must be greater than 0");
 
-            if(i == j) {
+            if (end > mat.N_Cols)
+                throw new System.Exception("end must be less than matrix columns");
+                
+            if (i == j) {
                 // do nothing
                 return;
             }
 
             unsafe {
 
-                UnsafeOP.swapRows(mat.Data.Ptr, i, j, mat.N_Cols);
+                UnsafeOP.swapRows(mat.Data.Ptr, i, j, mat.N_Cols, start, end);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Columns(ref fProxyMxN mat, int i, int j) {
+        public static void Columns(ref fProxyMxN mat, int i, int j, int start = 0, int end = -1) {
 
-            if(i < 0 || i >= mat.N_Cols || j < 0 || j >= mat.N_Cols) {
+            if(i < 0 || i >= mat.N_Cols || j < 0 || j >= mat.N_Cols)
                 throw new System.Exception("i and j must be bounded inside matrix columns dimensions");
-            }
-
-            if(i == j) { 
+            
+            if (end != -1 && start > end)
+                throw new System.Exception("start must be less than end");
+            
+            if(start < 0) 
+                throw new System.Exception("start must be greater than 0");
+            
+            if (end > mat.M_Rows)
+                throw new System.Exception("end must be less than matrix rows");
+            
+            if(i == j) {
                 // do nothing
                 return;
             }
