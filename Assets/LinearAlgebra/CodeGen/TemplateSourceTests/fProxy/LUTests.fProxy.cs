@@ -126,10 +126,10 @@ public class fProxyLUTests
             var testMat = arena.fProxyIdentityMatrix(dim);
 
             Print.Log(testMat);
-            pivot.ApplyRow<fProxyMxN, fProxy>(ref testMat);
+            pivot.ApplyRow(ref testMat);
             Print.Log(testMat);
             
-            pivot.ApplyInverseRow<fProxyMxN, fProxy>(ref testMat);
+            pivot.ApplyInverseRow(ref testMat);
             Print.Log(testMat);
 
             Assert.IsTrue(Analysis.IsIdentity(testMat, 1E-05f));

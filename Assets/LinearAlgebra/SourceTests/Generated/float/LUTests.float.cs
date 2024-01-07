@@ -126,10 +126,10 @@ public class floatLUTests
             var testMat = arena.floatIdentityMatrix(dim);
 
             Print.Log(testMat);
-            pivot.ApplyRow<floatMxN, float>(ref testMat);
+            pivot.ApplyRow(ref testMat);
             Print.Log(testMat);
             
-            pivot.ApplyInverseRow<floatMxN, float>(ref testMat);
+            pivot.ApplyInverseRow(ref testMat);
             Print.Log(testMat);
 
             Assert.IsTrue(Analysis.IsIdentity(testMat, 1E-05f));
