@@ -53,7 +53,7 @@ namespace LinearAlgebra
             }
         }
 
-        public static void luDecomposition(ref floatMxN U, ref floatMxN L, ref Pivot RP) {
+        public static void luDecomposition(ref floatMxN U, ref floatMxN L, ref Pivot P) {
             if (!U.IsSquare)
                 throw new System.Exception("luDecomposition: U (A) needs to be square");
 
@@ -72,11 +72,11 @@ namespace LinearAlgebra
             for (int k = 0; k < m - 1; k++) {
 
                 int pivotIndex = k;
-                float pivotValue = math.abs(U[RP[k], k]);
+                float pivotValue = math.abs(U[P[k], k]);
 
                 // Find best pivot in rows
                 for(int r = k + 1; r < m; r++) {
-                    float absValue = math.abs(U[RP[r], k]);
+                    float absValue = math.abs(U[P[r], k]);
                     if(absValue > pivotValue) {
                         pivotIndex = r;
                         pivotValue = absValue;
@@ -84,19 +84,19 @@ namespace LinearAlgebra
                 }
 
                 // Swap rows
-                RP.Swap(k, pivotIndex);
+                P.Swap(k, pivotIndex);
 
                 // Calculate L and U
-                float Ukk = U[RP[k], k];
+                float Ukk = U[P[k], k];
 
                 for (int j = k + 1; j < m; j++) {
 
-                    float Ljk = U[RP[j], k] / Ukk;
+                    float Ljk = U[P[j], k] / Ukk;
 
-                    L[RP[j], k] = Ljk;
+                    L[P[j], k] = Ljk;
 
                     for (int i = k; i < m; i++) {
-                        U[RP[j], i] -= Ljk * U[RP[k], i];
+                        U[P[j], i] -= Ljk * U[P[k], i];
                     }
                 }
             }

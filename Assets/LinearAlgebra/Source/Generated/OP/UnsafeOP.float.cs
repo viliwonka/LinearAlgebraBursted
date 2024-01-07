@@ -3,6 +3,8 @@
 using Unity.Mathematics;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Collections;
 
 namespace LinearAlgebra
 {
@@ -372,6 +374,52 @@ namespace LinearAlgebra
                 target[i] = (target[i] / sum);
 
             return sum;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void swap([NoAlias] float* target, int startA, int startB, int n) {
+            
+            for (int i = 0; i < n; i++) {
+                float temp = target[startA + i];
+                target[startA + i] = target[startB + i];
+                target[startB + i] = temp;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void swap([NoAlias] float* target, int startA, int startB, int n, int stride) {
+
+            for (int i = 0; i < n; i++) {
+                float temp = target[startA + i * stride];
+                target[startA + i * stride] = target[startB + i * stride];
+                target[startB + i * stride] = temp;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        // Swap rows in a matrix
+        public static void swapRows([NoAlias] float* target, int rowA, int rowB, int nCols) {
+            int startA = rowA * nCols;
+            int startB = rowB * nCols;
+
+            for (int i = 0; i < nCols; i++) {
+                float temp = target[startA + i];
+                target[startA + i] = target[startB + i];
+                target[startB + i] = temp;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        // Swap columns in a matrix
+        public static void swapColumns([NoAlias] float* target, int colA, int colB, int nRows, int nCols) {
+            int startA = colA;
+            int startB = colB;
+
+            for (int i = 0; i < nRows; i++) {
+                float temp = target[startA + i * nCols];
+                target[startA + i * nCols] = target[startB + i * nCols];
+                target[startB + i * nCols] = temp;
+            }
         }
     }
 }

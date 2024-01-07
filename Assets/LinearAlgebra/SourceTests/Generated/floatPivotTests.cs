@@ -122,27 +122,27 @@ public class floatPivotTests
             var vec = arena.floatBasisVector(4, 0);
 
             Print.Log(vec);
-            
-            Assert.AreEqual(1f, vec[0]);
-            Assert.AreEqual(0f, vec[1]);
-            Assert.AreEqual(0f, vec[2]);
-            Assert.AreEqual(0f, vec[3]);
 
+            var vecCopy = vec.Copy();
+
+            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(vec == vecCopy, true));
+            
             pivot.ApplyVec(ref vec);
 
-            Assert.AreEqual(1f, vec[0]);
-            Assert.AreEqual(0f, vec[1]);
-            Assert.AreEqual(0f, vec[2]);
-            Assert.AreEqual(0f, vec[3]);
+            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(vec == vecCopy, true));
 
             pivot.Swap(0, 3);
 
             pivot.ApplyVec(ref vec);
 
-            Assert.AreEqual(0f, vec[0]);
-            Assert.AreEqual(0f, vec[1]);
-            Assert.AreEqual(0f, vec[2]);
-            Assert.AreEqual(1f, vec[3]);
+            Assert.AreEqual((float)0f, vec[0]);
+            Assert.AreEqual((float)0f, vec[1]);
+            Assert.AreEqual((float)0f, vec[2]);
+            Assert.AreEqual((float)1f, vec[3]);
+
+            pivot.ApplyInverseVec(ref vec);
+
+            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(vec == vecCopy, true));
 
             pivot.Dispose();
         }

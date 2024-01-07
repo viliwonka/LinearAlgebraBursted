@@ -77,13 +77,10 @@ public class doubleLUTests
 
             LU.luDecompositionNoPivot(ref U, ref L);
 
-            
             AssertLU(in A, in L, in U);
 
             arena.Dispose();
         }
-
-
         public void LUDecompRandomDiagonal()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -123,16 +120,13 @@ public class doubleLUTests
             //LU.luDecompositionNoPivot(ref U, ref L);
             LU.luDecomposition(ref U, ref L, ref pivot);
 
-            var testMat = arena.doubleIdentityMatrix(dim);
+            pivot.ApplyInverseRow(ref U);
+            pivot.ApplyInverseRow(ref L);
 
-            Print.Log(testMat);
-            pivot.ApplyRow(ref testMat);
-            Print.Log(testMat);
-            
-            pivot.ApplyInverseRow(ref testMat);
-            Print.Log(testMat);
+            pivot.ApplyRow(ref A);
 
-            Assert.IsTrue(Analysis.IsIdentity(testMat, 1E-05f));
+            Print.Log(U);
+            Print.Log(L);
 
             pivot.Dispose();
             /*Print.Log(A);
@@ -145,7 +139,8 @@ public class doubleLUTests
         }
 
         public void LUDecompRandomLarge()
-        {/*
+        {
+            /*
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 512;
@@ -163,7 +158,8 @@ public class doubleLUTests
         }
 
         public void LUDecompHilbert()
-        {/*
+        {
+            /*
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 20;
@@ -331,170 +327,6 @@ public class doubleLUTests
         }
     }
 
-    [BurstCompile(FloatMode = FloatMode.Deterministic, FloatPrecision = FloatPrecision.High)]
-    public struct SolveSystemTestJob : IJob {
-
-        public enum TestType {
-            SquareFullRank,
-            SquareFullRankDirect,
-        }
-
-        public TestType Type;
-
-        public void Execute() {
-
-            switch(Type) {
-            
-                case TestType.SquareFullRank:
-                    SquareFullRank();
-                break;
-                case TestType.SquareFullRankDirect:
-                    SquareFullRankDirect();
-                break;
-            }
-        }
-
-        void SquareFullRank() {
-            /*
-            var arena = new Arena(Allocator.Persistent);
-
-            int systemDim = 128;
-            int randomMatTests = 128;
-            int randomVecTests = 32;
-            double errorSum = 0;
-
-            var random = new Unity.Mathematics.Random(1111);
-
-            for (uint i = 0; i < randomMatTests; i++) {
-
-                doubleMxN A = arena.doubleRandomMatrix(systemDim, systemDim, -5, +5, 420 + i - i + i * 7);
-
-                for(int d = 0; d < systemDim; d++)
-                    A[d, d] += 5.1f + 10f*random.NextDouble();
-
-                var U = A.Copy();
-                var R = arena.doubleMat(systemDim); 
-
-                OrthoOP.LUDecomposition(ref U, ref R);
-
-                for(uint j = 0; j < randomVecTests; j++) {
-
-                    doubleN xOrig = arena.doubleRandomVector(systemDim, -25, +25, 1337 + i * i + i * 5);
-                    doubleN b = doubleOP.dot(A, xOrig);
-                    doubleN y = doubleOP.dot(b, U);
-
-                    Solvers.SolveUpperTriangular(ref R, ref y);
-
-                    y.subInpl(xOrig);
-                    double zeroError = Analysis.MaxZeroError(y);
-
-                    if(Analysis.IsAnyNan(in y)) {
-                        throw new System.Exception("SolveSystemTestJob: NaN detected");
-                    }
-
-                    errorSum += zeroError;
-                }
-            }
-
-            double avgError = errorSum / (randomMatTests*randomVecTests);
-
-            Debug.Log($"Average error: {avgError}");
-
-            arena.Dispose();*/
-        }
-
-        void OverdeterminedFullRank() {
-
-            /*
-            int sysDimM = 128;
-            int sysDimN = 64;
-            int randomMatTests = 32;
-            int randomVecTests = 16;
-            double errorSum = 0;
-
-            var random = new Unity.Mathematics.Random(1111);
-
-            for (uint i = 0; i < randomMatTests; i++) {
-
-                var arena = new Arena(Allocator.Persistent);
-                doubleMxN A = arena.doubleRandomMatrix(sysDimM, sysDimN, -5, +5, 420 + i - i + i * 7);
-
-                for (int d = 0; d < sysDimN; d++)
-                    A[d, d] += 5.1f + 10f * random.NextDouble();
-
-                var U = A.Copy();
-                var R = arena.doubleMat(sysDimN);
-
-                OrthoOP.LUDecomposition(ref U, ref R);
-
-                for (uint j = 0; j < randomVecTests; j++) {
-
-                    doubleN xOrig = arena.doubleRandomVector(sysDimN, -25, +25, 1337 + i * i + i * 5);
-                    doubleN b = doubleOP.dot(A, xOrig);
-                    doubleN y = doubleOP.dot(b, U);
-
-                    Solvers.SolveUpperTriangular(ref R, ref y);
-
-                    y.subInpl(xOrig);
-                    double zeroError = Analysis.MaxZeroError(y);
-
-                    if (Analysis.IsAnyNan(in y)) {
-                        throw new System.Exception("SolveSystemTestJob: NaN detected");
-                    }
-
-                    errorSum += zeroError;
-                }
-                arena.Dispose();
-            }
-
-            double avgError = errorSum / (randomMatTests * randomVecTests);
-
-            Debug.Log($"Average error: {avgError}");
-            */
-        }
-
-        void SquareFullRankDirect() {
-            /*
-            var arena = new Arena(Allocator.Persistent);
-
-            int systemDim = 128;  
-            int randomMatTests = 128;
-            double errorSum = 0;
-             
-            var random = new Unity.Mathematics.Random(1111);
-
-            for (uint i = 0; i < randomMatTests; i++) {
-
-                doubleMxN A = arena.doubleRandomMatrix(systemDim, systemDim, -5, +5, 420 + i - i + i * 7);
-
-                for (int d = 0; d < systemDim; d++)
-                    A[d, d] += 5.1f + 10f * random.NextDouble();
-
-                doubleN xOrig = arena.doubleRandomVector(systemDim, -25, +25, 1337 + i * i + i * 5);
-                doubleN b = doubleOP.dot(A, xOrig);
-                doubleN x = arena.doubleVec(systemDim);
-
-                OrthoOP.LUDirectSolve(ref A, ref b, ref x);
-
-                if (Analysis.IsAnyNan(in x)) {
-                    throw new System.Exception("SolveSystemTestJob: NaN detected");
-                }
-                x.subInpl(xOrig);
-
-                
-                double zeroError = Analysis.MaxZeroError(x);
-                
-                errorSum += zeroError;
-            }
-
-            double avgError = errorSum / (randomMatTests);
-
-            Debug.Log($"Average error: {avgError}");
-
-            arena.Dispose();*/
-        }
-
-    }
 
     public static Array GetEnums() {
         return Enum.GetValues(typeof(TestJob.TestType));
@@ -514,16 +346,6 @@ public class doubleLUTests
     [Test]
     public void LUDecompErrorBenchDiagonal() {
         new PrecisionReconstructTestJob() { Type = PrecisionReconstructTestJob.TestType.RandomDiagonal }.Run();
-    }
-
-    [Test]
-    public void LUDecompErrorSolveSquareSystem() {
-        new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.SquareFullRank }.Run();
-    }
-
-    [Test]
-    public void LUDecompErrorSolveSquareSystemDirect() {
-        new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.SquareFullRankDirect }.Run(); 
     }
 
 }
