@@ -10,14 +10,17 @@ using Unity.Mathematics;
 
 public class fProxyPivotTests
 {
-    [BurstCompile]
+    //[BurstCompile]
     public struct TestsJob : IJob
     {
         public enum TestType
         {
             PivotSimpleTest,
-            PivotIdentityMatTest,
-            PivotPermutationMatTest,
+            RowPivotIdentityMatTest,
+            ColumnPivotIdentityMatTest,
+            RowPivotLargeIdentityMatTest,
+            ColumnPivotLargeIdentityMatTest,
+            RowPivotPermutationMatTest,
             PivotVecTest,
         }
 
@@ -33,11 +36,20 @@ public class fProxyPivotTests
                     case TestType.PivotSimpleTest:
                         Test(ref arena);
                         break;
-                    case TestType.PivotIdentityMatTest:
-                        IdentityMatTest(ref arena);
+                    case TestType.RowPivotIdentityMatTest:
+                        RowIdentityMatTest(ref arena);
                         break;
-                    case TestType.PivotPermutationMatTest:
-                        PermutationMatTest(ref arena);
+                    case TestType.ColumnPivotIdentityMatTest:
+                        ColumnIdentityMatTest(ref arena);
+                        break;
+                    case TestType.RowPivotPermutationMatTest:
+                        RowPermutationMatTest(ref arena);
+                        break;
+                    case TestType.ColumnPivotLargeIdentityMatTest:
+                        ColumnLargeIdentityMatTest(ref arena);
+                        break;
+                    case TestType.RowPivotLargeIdentityMatTest:
+                        RowLargeIdentityMatTest(ref arena);
                         break;
                     case TestType.PivotVecTest:
                         PivotVecTest(ref arena);
@@ -72,7 +84,7 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void IdentityMatTest(ref Arena arena) {
+        void RowIdentityMatTest(ref Arena arena) {
 
             Pivot pivot = new Pivot(4, Allocator.Temp);
 
@@ -98,7 +110,105 @@ public class fProxyPivotTests
             pivot.Dispose();
         }
 
-        void PermutationMatTest(ref Arena arena) {
+        void RowLargeIdentityMatTest(ref Arena arena) {
+
+            int dim = 256;
+
+            Pivot pivot = new Pivot(dim, Allocator.Temp);
+
+            Unity.Mathematics.Random rand = new Unity.Mathematics.Random(1232);
+
+            for (int i = 0; i < dim; i++) {
+                pivot.Swap(rand.NextInt(0, dim), rand.NextInt(0, dim));
+
+            }
+
+            var identity = arena.fProxyIdentityMatrix(dim);
+
+            Assert.IsTrue(Analysis.IsIdentity(identity));
+
+            pivot.ApplyRow(ref identity);
+            pivot.ApplyRow(ref identity);
+
+            Assert.IsFalse(Analysis.IsIdentity(identity));
+
+            pivot.ApplyInverseRow(ref identity);
+            pivot.ApplyInverseRow(ref identity);
+
+            Assert.IsTrue(Analysis.IsIdentity(identity));
+
+            pivot.Reset();
+
+            pivot.ApplyRow(ref identity);
+
+            Assert.IsTrue(Analysis.IsIdentity(identity));
+
+            pivot.Dispose();
+        }
+
+        void ColumnIdentityMatTest(ref Arena arena) {
+
+            Pivot pivot = new Pivot(4, Allocator.Temp);
+
+            pivot.Swap(0, 1);
+            pivot.Swap(2, 3);
+
+            var identity = arena.fProxyIdentityMatrix(4);
+
+            pivot.ApplyColumn(ref identity);
+
+            Assert.IsFalse(Analysis.IsIdentity(identity));
+
+            pivot.ApplyInverseColumn(ref identity);
+
+            Assert.IsTrue(Analysis.IsIdentity(identity));
+
+            pivot.Reset();
+
+            pivot.ApplyColumn(ref identity);
+
+            Assert.IsTrue(Analysis.IsIdentity(identity));
+
+            pivot.Dispose();
+        }
+
+        void ColumnLargeIdentityMatTest(ref Arena arena) {
+
+            int dim = 256;
+
+            Pivot pivot = new Pivot(dim, Allocator.Temp);
+
+            Unity.Mathematics.Random rand = new Unity.Mathematics.Random(1232);
+
+            for (int i = 0; i < dim; i++) {
+                pivot.Swap(rand.NextInt(0, dim), rand.NextInt(0, dim));
+
+            }
+
+            var identity = arena.fProxyIdentityMatrix(dim);
+
+            Assert.IsTrue(Analysis.IsIdentity(identity));
+
+            pivot.ApplyColumn(ref identity);
+            pivot.ApplyColumn(ref identity);
+
+            Assert.IsFalse(Analysis.IsIdentity(identity));
+
+            pivot.ApplyInverseColumn(ref identity);
+            pivot.ApplyInverseColumn(ref identity);
+
+            Assert.IsTrue(Analysis.IsIdentity(identity));
+
+            pivot.Reset();
+
+            pivot.ApplyColumn(ref identity);
+
+            Assert.IsTrue(Analysis.IsIdentity(identity));
+
+            pivot.Dispose();
+        }
+
+        void RowPermutationMatTest(ref Arena arena) {
 
             var permutationMatrix = arena.fProxyPermutationMatrix(4, 2, 3);
 

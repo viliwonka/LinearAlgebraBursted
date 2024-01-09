@@ -1,6 +1,8 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Stats;
+
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -12,7 +14,7 @@ using UnityEngine.TestTools;
 public class fProxyLUTests
 {
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    //[BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -77,7 +79,7 @@ public class fProxyLUTests
 
             LU.luDecompositionNoPivot(ref U, ref L);
 
-            AssertLU(in A, in L, in U);
+            AssertLU(in A, in L, in U, false);
 
             arena.Dispose();
         }
@@ -95,7 +97,7 @@ public class fProxyLUTests
             LU.luDecompositionNoPivot(ref U, ref L);
 
 
-            AssertLU(in A, in U, in L);
+            AssertLU(in A, in U, in L, false);
 
             arena.Dispose();
         }
@@ -104,7 +106,7 @@ public class fProxyLUTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            int dim = 8;
+            int dim = 18;
 
             var U = arena.fProxyRandomMatrix(dim, dim, 1f, 10f, 314221);
             var L = arena.fProxyIdentityMatrix(dim);
@@ -120,17 +122,14 @@ public class fProxyLUTests
             //LU.luDecompositionNoPivot(ref U, ref L);
             LU.luDecomposition(ref U, ref L, ref pivot);
 
-            pivot.ApplyInverseRow(ref A);
+            pivot.ApplyRow(ref A);
 
             Print.Log(U);
             Print.Log(L);
 
             pivot.Dispose();
-            /*Print.Log(A);
-            Print.Log(U);
-            Print.Log(L);
-            */
-            AssertLU(in A, in L, in U, 1E-05f);
+
+            AssertLU(in A, in L, in U, true, 1E-05f);
 
             arena.Dispose();
         }
@@ -243,8 +242,8 @@ public class fProxyLUTests
             arena.Dispose();*/
         }
 
-        private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U) => AssertLU(in A, in L, in U, 1E-6f);
-        private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, fProxy precision)
+        private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, bool pivoted) => AssertLU(in A, in L, in U, pivoted, 1E-6f);
+        private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, bool pivoted, fProxy precision)
         {
             fProxyMxN shouldBeZero = A - fProxyOP.dot(L, U);
 
@@ -258,6 +257,14 @@ public class fProxyLUTests
             Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
             Assert.IsTrue(Analysis.IsLowerTriangular(L, precision));
             Assert.IsTrue(Analysis.IsUpperTriangular(U, precision));
+
+            if(pivoted)
+            unsafe {
+                var maxAbs = LinearAlgebra.UnsafeOP.maxAbs(L.Data.Ptr, L.Length);
+
+                if(maxAbs > 1f)
+                    throw new System.Exception("TestJob: L has values greater than 1f");
+            }
         }
     }
 

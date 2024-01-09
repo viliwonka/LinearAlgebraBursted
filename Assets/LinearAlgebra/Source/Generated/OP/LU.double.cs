@@ -65,10 +65,6 @@ namespace LinearAlgebra
 
             int m = U.M_Rows;
 
-            // Pivot used for row swapping
-            // Initialized as array with [0, 1, 2, 3, 4,... ] indices that will be swapped
-            //RP = new Pivot(m, Allocator.Temp);
-            
             for (int k = 0; k < m - 1; k++) {
 
                 int pivotIndex = k;
@@ -88,12 +84,10 @@ namespace LinearAlgebra
 
                 // have to test all the swapping ops
                 SwapOP.Rows(ref U, k, pivotIndex, k);
-                SwapOP.Columns(ref L, k, pivotIndex, 0, k - 1);
+                SwapOP.Rows(ref L, k, pivotIndex, 0, k - 1);
 
                 // Calculate L and U
                 double Ukk = U[k, k];
-
-                //L[k, k] = 1f;
 
                 for (int j = k + 1; j < m; j++) {
 
@@ -106,9 +100,6 @@ namespace LinearAlgebra
                     }
                 }
             }
-
-            //L[m - 1, m - 1] = 1f;
-            //RP.Dispose();
         }
 
     }

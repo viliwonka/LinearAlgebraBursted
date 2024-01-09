@@ -47,14 +47,12 @@ namespace LinearAlgebra {
 
                 while (toR != fromR) {
 
-                    for (int k = 0; k < A.N_Cols; k++) {
-                        fProxy tempElement = A[toR, k];
-                        A[toR, k] = A[fromR, k];
-                        A[fromR, k] = tempElement;
-                    }
-
                     pivot.Swap(fromR, toR);
-
+                    
+                    unsafe {
+                        UnsafeOP.swapRows(A.Data.Ptr, fromR, toR, A.N_Cols);
+                    }
+                    
                     toR = pivot.indices[fromR];
                 }
             }
@@ -69,13 +67,11 @@ namespace LinearAlgebra {
 
                 while (toR != fromR) {
 
-                    for (int k = 0; k < A.M_Rows; k++) {
-                        fProxy tempElement = A[k, toR];
-                        A[k, toR] = A[k, fromR];
-                        A[k, fromR] = tempElement;
-                    }
-
                     pivot.Swap(fromR, toR);
+                    
+                    unsafe {
+                        UnsafeOP.swapColumns(A.Data.Ptr, fromR, toR, A.M_Rows, A.N_Cols);
+                    }
 
                     toR = pivot.indices[fromR];
                 }
