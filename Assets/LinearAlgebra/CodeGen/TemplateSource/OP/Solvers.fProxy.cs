@@ -49,6 +49,60 @@ namespace LinearAlgebra
             }
         }
 
+        // Solve Ly = b for, where y = Ux
+        public static void SolveLowerTriangularLU(ref fProxyMxN L, ref fProxyN x) {
+            if (L.IsSquare == false)
+                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix must be square");
+
+            if (L.M_Rows != x.N)
+                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix and vector must have same number of rows");
+
+            for (int r = 0; r < L.M_Rows; r++) {
+                fProxy sum = 0;
+
+                for (int c = 0; c < r; c++)
+                    sum += L[r, c] * x[c];
+
+                x[r] = (x[r] - sum);
+            }
+        }
+
+        // Solve Ly = b for, where y = Ux
+        // RP = Row Pivot
+        public static void SolveLowerTriangularLU(ref fProxyMxN L, ref Pivot RP, ref fProxyN x) {
+            if (L.IsSquare == false)
+                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix must be square");
+
+            if (L.M_Rows != x.N)
+                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix and vector must have same number of rows");
+
+            for (int r = 0; r < L.M_Rows; r++) {
+                fProxy sum = 0;
+
+                for (int c = 0; c < r; c++)
+                    sum += L[RP[r], c] * x[c];
+
+                x[r] = (x[r] - sum);
+            }
+        }
+
+        public static void SolveUpperTriangularLU(ref fProxyMxN U, ref Pivot RP, ref fProxyN x) {
+            //if(U.IsSquare == false)
+            //throw new System.Exception("Solvers.SolveUpperTriangular: Matrix must be square");
+
+            if (U.N_Cols != x.N)
+                throw new System.Exception("Solvers.SolveUpperTriangular: Matrix and vector must have same number of columns");
+
+            for (int r = U.N_Cols - 1; r >= 0; r--) {
+                fProxy sum = 0;
+
+                for (int c = r + 1; c < U.N_Cols; c++)
+                    sum += U[RP[r], c] * x[c];
+
+                x[r] = (x[r] - sum) / U[RP[r], r];
+            }
+        }
+
         /// <summary>
         /// Solve QRx = b for x
         /// Use if you intend to solve for multiple b vectors, you have to compute QR decomposition only once

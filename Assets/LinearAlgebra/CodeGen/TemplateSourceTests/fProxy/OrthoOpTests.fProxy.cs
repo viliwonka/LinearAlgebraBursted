@@ -508,10 +508,11 @@ public class fProxyOrthoOpTests
                 }
                 x.subInpl(xOrig);
 
-                
                 fProxy zeroError = Analysis.MaxZeroError(x);
                 
                 errorSum += zeroError;
+
+                arena.Clear();
             }
 
             fProxy avgError = errorSum / (randomMatTests);

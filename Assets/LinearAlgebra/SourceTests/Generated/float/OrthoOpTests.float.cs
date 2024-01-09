@@ -508,10 +508,11 @@ public class floatOrthoOpTests
                 }
                 x.subInpl(xOrig);
 
-                
                 float zeroError = Analysis.MaxZeroError(x);
                 
                 errorSum += zeroError;
+
+                arena.Clear();
             }
 
             float avgError = errorSum / (randomMatTests);

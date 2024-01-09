@@ -53,6 +53,10 @@ namespace LinearAlgebra
             }
         }
 
+        // PA = L * U
+        // U is originally A
+        // L is originally I
+        // P is pivot, that is reset, and is modified in place
         public static void luDecomposition(ref doubleMxN U, ref doubleMxN L, ref Pivot P) {
             if (!U.IsSquare)
                 throw new System.Exception("luDecomposition: U (A) needs to be square");
@@ -106,12 +110,125 @@ namespace LinearAlgebra
             }
         }
 
+        // A = LU
+        // LU is originally A
+        // P is pivot, that is reset, and is modified in place
+        public static void luDecompositionInplace(ref doubleMxN LU, ref Pivot P) {
+
+            if (!LU.IsSquare)
+                throw new System.Exception("luDecomposition: LU (A) needs to be square");
+
+            int m = LU.M_Rows;
+
+            for (int k = 0; k < m - 1; k++) {
+
+                int pivotIndex = k;
+                double pivotValue = math.abs(LU[P[k], k]);
+
+                // Find largest pivot in rows
+                for (int r = k + 1; r < m; r++) {
+                    double absValue = math.abs(LU[P[r], k]); 
+                    if (absValue > pivotValue) {
+                        pivotIndex = r;
+                        pivotValue = absValue;
+                    }
+                }
+
+                // Swap rows
+                P.Swap(k, pivotIndex);
+
+                int Pk = P[k];
+
+                // Calculate L and U
+                double Ukk = LU[Pk, k];
+                for (int j = k + 1; j < m; j++) {
+
+                    int Pj = P[j];
+
+                    double Ljk = LU[Pj, k] / Ukk;
+
+                    for (int i = k; i < m; i++) {
+                        LU[Pj, i] -= Ljk * LU[Pk, i];
+                    }
+
+                    LU[Pj, k] = Ljk;
+                }
+            }
+        }
+
+        public static void luDecompositionInplace2(ref doubleMxN LU, ref Pivot P) {
+
+            if (!LU.IsSquare)
+                throw new System.Exception("luDecomposition: LU (A) needs to be square");
+
+            int m = LU.M_Rows;
+
+            for (int k = 0; k < m - 1; k++) {
+
+                int pivotIndex = k;
+                double pivotValue = math.abs(LU[P[k], k]);
+
+                // Find largest pivot in rows
+                for (int r = k + 1; r < m; r++) {
+                    double absValue = math.abs(LU[P[r], k]);
+                    if (absValue > pivotValue) {
+                        pivotIndex = r;
+                        pivotValue = absValue;
+                    }
+                }
+
+                // Swap rows
+                P.Swap(k, pivotIndex);
+
+                SwapOP.Rows(ref LU, k, pivotIndex);
+
+                // Calculate L and U
+                double Ukk = LU[k, k];
+                for (int j = k + 1; j < m; j++) {
+
+                    double Ljk = LU[j, k] / Ukk;
+
+                    for (int i = k; i < m; i++) {
+                        LU[j, i] -= Ljk * LU[k, i];
+                    }
+
+                    LU[j, k] = Ljk;
+                }
+            }
+        }
+
+        // solve LUx = b for x
+        // both L and U are in single matrix LU
+        public static void LUSolve(ref doubleMxN LU, ref Pivot pivot, ref doubleN b) {
+
+            pivot.ApplyInverseVec(ref b);
+            
+            // Solve Ly = b
+            Solvers.SolveLowerTriangularLU(ref LU, ref pivot, ref b);
+            // Solve Ux = y
+            Solvers.SolveUpperTriangularLU(ref LU, ref pivot, ref b);
+
+        }
+
+        // solve LUx = b for x
+        // both L and U are in single matrix LU
+        public static void LUSolve2(ref doubleMxN LU, ref Pivot pivot, ref doubleN b) {
+
+            pivot.ApplyVec(ref b);
+
+            // Solve Ly = b
+            Solvers.SolveLowerTriangularLU(ref LU, ref b);
+            // Solve Ux = y
+            Solvers.SolveUpperTriangular(ref LU, ref b);
+
+        }
+
         // Solve LUx = Pb for x
         // b is overwritten with x
         public static void LUSolve(ref doubleMxN L, ref doubleMxN U, in Pivot pivot, ref doubleN b) {
 
             // apply pivot to b
-            pivot.ApplyVec(ref b);
+            pivot.ApplyInverseVec(ref b);
 
             // Solver linear system LUx = b, b is overwritten with x
 

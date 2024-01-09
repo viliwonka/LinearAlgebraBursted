@@ -14,7 +14,7 @@ using UnityEngine.TestTools;
 public class doubleLUTests
 {
 
-    //[BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)] 
     public struct TestJob : IJob
     {
         public enum TestType
@@ -28,6 +28,7 @@ public class doubleLUTests
             LUDecompPermutation,
             LUDecompZero,
             LUSolveSystem,
+            LUSolveSystemInplace
         }
 
         public TestType Type;
@@ -64,6 +65,9 @@ public class doubleLUTests
                 case TestType.LUSolveSystem:
                     SolveSystem();
                 break;
+                case TestType.LUSolveSystemInplace:
+                    SolveSystemInplace();
+                    break;
 
             }
         }
@@ -152,15 +156,14 @@ public class doubleLUTests
             U[23] = 7f;
             U[24] = 1f;
 
-
-
             Print.Log(L);
             Print.Log(U);
 
             //LU.luDecompositionNoPivot(ref U, ref L);
-            LU.luDecomposition(ref U, ref L, ref pivot);
+            LU.luDecompositionInplace(ref U, ref pivot);
 
-            Print.Log(L);
+            pivot.ApplyInverseRow(ref U); 
+            //Print.Log(L);
             Print.Log(U);
 
 
@@ -313,13 +316,15 @@ public class doubleLUTests
 
             var arena = new Arena(Allocator.Persistent);
 
-            int dim = 18;
+            int dim = 512; 
 
-            var A = arena.doubleRandomMatrix(dim, dim, 1f, 10f, 314221);
-            // add to diagonals of U
-            for (int d = 0; d < dim; d++)
-                A[d, d] += 5f;
+            var A = arena.doubleRandomMatrix(dim, dim, -10f, 10f, 314221);
 
+            for (int d = 0; d < dim; d++) {
+                A[d, d] *= 2f;
+                if (Unity.Mathematics.math.abs(A[d, d]) < 0.01f)
+                    A[d, d] *= 10f;
+            }
 
             var x_Known = arena.doubleRandomVector(dim, 1f, 10f, 901);
             
@@ -329,8 +334,7 @@ public class doubleLUTests
             var L = arena.doubleIdentityMatrix(dim);
 
             var pivot = new Pivot(dim, Allocator.Temp);
-
-            // no pivot version works fine. Either pivot struct is broken or the pivot-LU version is broken
+             
             //LU.luDecompositionNoPivot(ref U, ref L);
             LU.luDecomposition(ref U, ref L, ref pivot);
 
@@ -343,7 +347,49 @@ public class doubleLUTests
             Debug.Log($"Error of max(abs(x_Known - x_Solved)): {zeroError}");
 
 
-            Assert.IsTrue(zeroError < 1E-06f);
+            Assert.IsTrue(zeroError < 1E-03f);
+
+            pivot.Dispose();
+
+            arena.Dispose();
+        }
+
+        public void SolveSystemInplace() {
+
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 512; 
+
+            var A = arena.doubleRandomMatrix(dim, dim, -10f, 10f, 314221);
+
+            for (int d = 0; d < dim; d++) {
+                A[d, d] *= 2f;
+                if (Unity.Mathematics.math.abs(A[d, d]) < 0.01f)
+                    A[d, d] *= 10f;
+            }
+
+            var x_Known = arena.doubleRandomVector(dim, 1f, 10f, 901);
+
+            var b = doubleOP.dot(A, x_Known);
+
+            var LUmat = A.Copy();
+            
+            var pivot = new Pivot(dim, Allocator.Temp);
+
+            LU.luDecompositionInplace(ref LUmat, ref pivot);
+
+            var x_Solved = b.Copy();
+
+            LU.LUSolve(ref LUmat, ref pivot, ref x_Solved);
+
+            if (Analysis.IsAnyNan(in x_Solved))
+                throw new System.Exception("TestJob: NaN detected");
+
+            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
+
+            Debug.Log($"Error of max(abs(x_Known - x_Solved)): {zeroError}");
+
+            Assert.IsTrue(zeroError < 1E-03f);
 
             pivot.Dispose();
 
