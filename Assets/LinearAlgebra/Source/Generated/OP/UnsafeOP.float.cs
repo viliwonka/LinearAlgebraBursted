@@ -398,17 +398,18 @@ namespace LinearAlgebra
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         // Swap rows in a matrix
-        public static void swapRows([NoAlias] float* target, int rowA, int rowB, int nCols, int start = 0, int end = -1) {
-            int startA = rowA * nCols;
-            int startB = rowB * nCols;
+        public static void swapRows([NoAlias] float* target, int rowA, int rowB, int nCols, int colStart = 0, int colEnd = -1) {
+            
+            int rowIndexA = rowA * nCols;
+            int rowIndexB = rowB * nCols;
 
-            if(end == -1)
-                end = nCols;
+            if(colEnd == -1)
+                colEnd = nCols;
 
-            for (int i = start; i < end; i++) {
-                float temp = target[startA + i];
-                target[startA + i] = target[startB + i];
-                target[startB + i] = temp;
+            for (int i = colStart; i < colEnd; i++) {
+                float temp = target[rowIndexA + i];
+                target[rowIndexA + i] = target[rowIndexB + i];
+                target[rowIndexB + i] = temp;
             }
         }
 

@@ -70,7 +70,7 @@ namespace LinearAlgebra
                 int pivotIndex = k;
                 fProxy pivotValue = math.abs(U[k, k]);
 
-                // Find best pivot in rows
+                // Find largest pivot in rows
                 for(int r = k + 1; r < m; r++) {
                     fProxy absValue = math.abs(U[r, k]);
                     if(absValue > pivotValue) {
@@ -82,13 +82,17 @@ namespace LinearAlgebra
                 // Swap rows
                 P.Swap(k, pivotIndex);
 
-                // have to test all the swapping ops
-                SwapOP.Rows(ref U, k, pivotIndex, k);
-                SwapOP.Rows(ref L, k, pivotIndex, 0, k - 1);
+                // swap submatrix U rows
+                SwapOP.Rows(ref U, k, pivotIndex, k, m);
+                
+                // swap already calculated L rows
+                SwapOP.Rows(ref L, k, pivotIndex, 0, k);
+
+                if (L[k,k] != 1f)
+                    throw new Exception("L[k,k] must be 1");
 
                 // Calculate L and U
                 fProxy Ukk = U[k, k];
-
                 for (int j = k + 1; j < m; j++) {
 
                     fProxy Ljk = U[j, k] / Ukk;
@@ -102,6 +106,20 @@ namespace LinearAlgebra
             }
         }
 
-    }
+        // Solve LUx = Pb for x
+        // b is overwritten with x
+        public static void LUSolve(ref fProxyMxN L, ref fProxyMxN U, in Pivot pivot, ref fProxyN b) {
 
+            // apply pivot to b
+            pivot.ApplyVec(ref b);
+
+            // Solver linear system LUx = b, b is overwritten with x
+
+            // Solve Ly = b
+            Solvers.SolveLowerTriangular(ref L, ref b);
+            // Solve Ux = y
+            Solvers.SolveUpperTriangular(ref U, ref b);
+
+        }
+    }
 }

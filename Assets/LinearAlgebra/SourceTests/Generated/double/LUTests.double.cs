@@ -20,12 +20,14 @@ public class doubleLUTests
         public enum TestType
         {
             LUDecompIdentity,
+            LUDecompPredefined,
             LUDecompRandomDiagonal,
             LUDecompRandom,
             LUDecompRandomLarge,
             LUDecompHilbert,
             LUDecompPermutation,
             LUDecompZero,
+            LUSolveSystem,
         }
 
         public TestType Type;
@@ -37,6 +39,9 @@ public class doubleLUTests
             {
                 case TestType.LUDecompIdentity:
                     LUDecompIdentity();
+                break;
+                case TestType.LUDecompPredefined:
+                    LUDecompPredefined();
                 break;
                 case TestType.LUDecompRandomDiagonal:
                     LUDecompRandomDiagonal();
@@ -52,10 +57,14 @@ public class doubleLUTests
                 break;
                 case TestType.LUDecompPermutation:
                     LUDecompPermutation();
-                    break;
+                break;
                 case TestType.LUDecompZero:
                     LUDecompZero();
-                    break;
+                break;
+                case TestType.LUSolveSystem:
+                    SolveSystem();
+                break;
+
             }
         }
 
@@ -102,6 +111,64 @@ public class doubleLUTests
             arena.Dispose();
         }
 
+        public void LUDecompPredefined() {
+
+            var arena = new Arena(Allocator.Persistent);
+
+            var dim = 5;
+
+            var U = arena.doubleMat(dim);
+            var L = arena.doubleIdentityMatrix(dim);
+            
+            var pivot = new Pivot(dim, Allocator.Temp);
+
+            U[0] = -2f;
+            U[1] = 1f;
+            U[2] = -2f;
+            U[3] = 3f;
+            U[4] = 1f;
+
+            U[5] = 1f;
+            U[6] = -2f;
+            U[7] = 3f;
+            U[8] = -5f;
+            U[9] = 4f;
+
+            U[10] = 4f;
+            U[11] = 3f;
+            U[12] = -1f;
+            U[13] = 2f;
+            U[14] = -3f;
+
+            U[15] = 1f;
+            U[16] = 1f;
+            U[17] = -1f;
+            U[18] = -11f;
+            U[19] = 11f;
+
+            U[20] = -1f;
+            U[21] = -9f;
+            U[22] = -1f;
+            U[23] = 7f;
+            U[24] = 1f;
+
+
+
+            Print.Log(L);
+            Print.Log(U);
+
+            //LU.luDecompositionNoPivot(ref U, ref L);
+            LU.luDecomposition(ref U, ref L, ref pivot);
+
+            Print.Log(L);
+            Print.Log(U);
+
+
+            pivot.Dispose();
+
+            arena.Dispose();
+        }
+
         public void LUDecompRandom()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -122,7 +189,7 @@ public class doubleLUTests
             //LU.luDecompositionNoPivot(ref U, ref L);
             LU.luDecomposition(ref U, ref L, ref pivot);
 
-            pivot.ApplyRow(ref A);
+            pivot.ApplyInverseRow(ref A);
 
             Print.Log(U);
             Print.Log(L);
@@ -242,6 +309,47 @@ public class doubleLUTests
             arena.Dispose();*/
         }
 
+        public void SolveSystem() {
+
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 18;
+
+            var A = arena.doubleRandomMatrix(dim, dim, 1f, 10f, 314221);
+            // add to diagonals of U
+            for (int d = 0; d < dim; d++)
+                A[d, d] += 5f;
+
+
+            var x_Known = arena.doubleRandomVector(dim, 1f, 10f, 901);
+            
+            var b = doubleOP.dot(A, x_Known);
+
+            var U = A.Copy();
+            var L = arena.doubleIdentityMatrix(dim);
+
+            var pivot = new Pivot(dim, Allocator.Temp);
+
+            // no pivot version works fine. Either pivot struct is broken or the pivot-LU version is broken
+            //LU.luDecompositionNoPivot(ref U, ref L);
+            LU.luDecomposition(ref U, ref L, ref pivot);
+
+            var x_Solved = b.Copy();
+
+            LU.LUSolve(ref L, ref U, in pivot, ref x_Solved);
+
+            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
+
+            Debug.Log($"Error of max(abs(x_Known - x_Solved)): {zeroError}");
+
+
+            Assert.IsTrue(zeroError < 1E-06f);
+
+            pivot.Dispose();
+
+            arena.Dispose();
+        }
+
         private void AssertLU(in doubleMxN A, in doubleMxN L, in doubleMxN U, bool pivoted) => AssertLU(in A, in L, in U, pivoted, 1E-6f);
         private void AssertLU(in doubleMxN A, in doubleMxN L, in doubleMxN U, bool pivoted, double precision)
         {
@@ -266,6 +374,7 @@ public class doubleLUTests
                     throw new System.Exception("TestJob: L has values greater than 1f");
             }
         }
+
     }
 
     [BurstCompile]

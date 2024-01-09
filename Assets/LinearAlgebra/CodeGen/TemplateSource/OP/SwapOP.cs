@@ -31,9 +31,14 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Rows(ref fProxyMxN mat, int i, int j, int start = 0, int end = -1) {
 
+            if (start > end)
+                return;
+
             if(i < 0 || i >= mat.M_Rows || j < 0 || j >= mat.M_Rows)
                 throw new System.Exception("i and j must be bounded inside matrix rows dimensions");
             
+
+
             if(end != -1 && start > end)
                 throw new System.Exception("start must be less than end");
             

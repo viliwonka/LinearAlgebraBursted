@@ -39,7 +39,7 @@ namespace LinearAlgebra {
         }
 
         // Applies pivot to rows of matrix A inplace, modifying pivot (resets it)
-        public static void ApplyRowInpl(ref floatMxN A, ref Pivot pivot) {
+        private static void ApplyRowInpl(ref floatMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -59,7 +59,7 @@ namespace LinearAlgebra {
         }
 
         // Applies pivot to columns of matrix A inplace, modifying pivot (resets it)
-        public static void ApplyColumnInpl(ref floatMxN A, ref Pivot pivot) {
+        private static void ApplyColumnInpl(ref floatMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -170,7 +170,7 @@ namespace LinearAlgebra {
         }
 
         // Applies pivot to rows of matrix A inplace, modifying pivot (resets it)
-        public static void ApplyRowInpl(ref doubleMxN A, ref Pivot pivot) {
+        private static void ApplyRowInpl(ref doubleMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -190,7 +190,7 @@ namespace LinearAlgebra {
         }
 
         // Applies pivot to columns of matrix A inplace, modifying pivot (resets it)
-        public static void ApplyColumnInpl(ref doubleMxN A, ref Pivot pivot) {
+        private static void ApplyColumnInpl(ref doubleMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
