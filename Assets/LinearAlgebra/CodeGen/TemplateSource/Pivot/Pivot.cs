@@ -29,14 +29,14 @@ namespace LinearAlgebra {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Swap(int from, int to) {
+        public void Swap(int i, int j) {
 
-            if (from == to)
+            if (i == j)
                 return;
 
-            int temp = indices[from];
-            indices[from] = indices[to];
-            indices[to] = temp;
+            int temp = indices[i];
+            indices[i] = indices[j];
+            indices[j] = temp;
         }
 
         public void Reset() {
@@ -52,8 +52,7 @@ namespace LinearAlgebra {
 
             var copy = new Pivot(indices.Length, Allocator.Temp);
 
-            for (int i = 0; i < indices.Length; i++)
-                copy.indices[i] = indices[i];
+            copy.indices.CopyFrom(indices);
 
             return copy;
         }
