@@ -128,12 +128,9 @@ Here's a simple example:
 - 🔳 Pivoting
 - 🔳 LU decomposition & solver
 - 🔳 View/Slice 
-- 🔳 Select operations (e.g.: find row with biggest L2 norm)
+- 🔳 Find/Query operations (e.g.: find row with biggest L2 norm)
 - 🔳 SVD decomposition
-- 🔳 Complex numbers
-- 🔳 Eigenvalues / Eigenvectors
-- 🔳 Sparse matrices?
-- 🔳 Sparse solvers (QR givens)?
+- 🔳 Optimizers? (min/max of function, gradient descent, root finding.. )
 
 ## TODO
 - Better arena management and standalone vec/mat management (without arena allocation)
