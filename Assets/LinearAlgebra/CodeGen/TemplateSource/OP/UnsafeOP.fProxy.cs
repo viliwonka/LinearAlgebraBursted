@@ -407,17 +407,6 @@ namespace LinearAlgebra
             if(colEnd == -1)
                 colEnd = nCols;
 
-            //int n = colEnd - colStart;
-            //int size = sizeof(fProxy) * n;
-
-            /*var temp = UnsafeUtility.Malloc(size, 8, Allocator.Temp);
-            // Todo, try to use memCpy with existing memory (so no alloc-dealloc)
-            UnsafeUtility.MemCpy(temp, target + rowIndexA + colStart, size);
-            UnsafeUtility.MemCpy(target + rowIndexA + colStart, target + rowIndexB + colStart, size);
-            UnsafeUtility.MemCpy(target + rowIndexB + colStart, temp, size);
-
-            UnsafeUtility.Free(temp, Allocator.Temp);*/
-           
             for (int i = colStart; i < colEnd; i++) {
                 fProxy temp = target[rowIndexA + i];
                 target[rowIndexA + i] = target[rowIndexB + i];

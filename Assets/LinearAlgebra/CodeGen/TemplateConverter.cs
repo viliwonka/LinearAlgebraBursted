@@ -42,6 +42,7 @@ namespace LinearAlgebra.CodeGen {
 
                 var relativePath = Path.GetRelativePath(sourceFolder, sourceCodePath);
 
+                sourceCode = CopyReplaceAll(sourceCode, relativePath);
                 sourceCode = CopyReplaceFill(sourceCode, relativePath);
                 sourceCode = CopyReplace(sourceCode, relativePath);
                 sourceCode = DeleteThis(sourceCode, relativePath);
@@ -93,6 +94,7 @@ namespace LinearAlgebra.CodeGen {
 
                 var targetSource = File.ReadAllText(sourceCodePath);
 
+                targetSource = CopyReplaceAll(targetSource, relativePath);
                 targetSource = CopyReplaceFill(targetSource, relativePath);
                 targetSource = CopyReplace(targetSource, relativePath);
                 targetSource = DeleteThis(targetSource, relativePath);
@@ -139,7 +141,7 @@ namespace LinearAlgebra.CodeGen {
 
                 string subString = targetSource.Substring(subStringStart, subStringEnd - subStringStart);
                 //Debug.Log("Before:"+subString);
-                subString = GenerateForAllFloatTypes(subString, fill);
+                subString = GenerateForAllTypes(subString, false, fill);
                 //Debug.Log("After:"+subString);
 
                 targetSource = targetSource.Remove(startIndex, endIndex - startIndex);
@@ -166,7 +168,33 @@ namespace LinearAlgebra.CodeGen {
 
                 string subString = targetSource.Substring(startSubString, endSubString - startSubString);
 
-                subString = GenerateForAllFloatTypes(subString);
+                subString = GenerateForAllTypes(subString);
+
+                targetSource = targetSource.Remove(startIndex, endIndex - startIndex);
+                targetSource = targetSource.Insert(startIndex, subString);
+                --infinityGuard;
+            }
+
+            if (infinityGuard == 0)
+                Debug.LogError($"Infinity guard triggered, copyReplace syntax is bad: {filePathDebug}");
+
+            return targetSource;
+        }
+
+        string CopyReplaceAll(string targetSource, string filePathDebug) {
+
+            int infinityGuard = 40;
+
+            while (targetSource.Contains(GenUtils.copyAllMarkerStart) && infinityGuard > 0) {
+                int startIndex = targetSource.IndexOf(GenUtils.copyAllMarkerStart);
+                int endIndex = targetSource.IndexOf(GenUtils.copyAllMarkerEnd, startIndex) + GenUtils.copyAllMarkerLen;
+
+                int startSubString = startIndex + GenUtils.copyAllMarkerLen;
+                int endSubString = endIndex - GenUtils.copyAllMarkerLen;
+
+                string subString = targetSource.Substring(startSubString, endSubString - startSubString);
+
+                subString = GenerateForAllTypes(subString, true);
 
                 targetSource = targetSource.Remove(startIndex, endIndex - startIndex);
                 targetSource = targetSource.Insert(startIndex, subString);
@@ -197,23 +225,31 @@ namespace LinearAlgebra.CodeGen {
             return targetSource;
         }
 
-        string GenerateForAllFloatTypes(string subString, string fill = "") {
-            string result = "";
+        string GenerateForAllTypes(string subString, bool allTypes = false, string fill = "") {
 
+            string result = "";
 
             string[] types;
             string[] capsTypes;
             string proxy;
             string capsProxy;
-            if (subString.Contains(GenUtils.fProxy)) {
 
+            if (allTypes) {
+                
+                types = GenUtils.floatTypes.Concat(GenUtils.intTypes).Concat(GenUtils.boolTypes).ToArray();
+                capsTypes = GenUtils.capsFloatTypes.Concat(GenUtils.capsIntTypes).Concat(GenUtils.boolTypes).ToArray();
+                proxy = GenUtils.fProxy; //fProxy is used as a proxy for all types, including int :)
+                capsProxy = GenUtils.cFProxy;
+            }
+            else if (subString.Contains(GenUtils.fProxy)) {
+                // process only float types
                 types = GenUtils.floatTypes;
                 capsTypes = GenUtils.capsFloatTypes;
                 proxy = GenUtils.fProxy;
                 capsProxy = GenUtils.cFProxy;
             }
             else {
-
+                // process only int types
                 types = GenUtils.intTypes;
                 capsTypes = GenUtils.capsIntTypes;
                 proxy = GenUtils.iProxy;

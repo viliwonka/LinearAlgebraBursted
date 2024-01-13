@@ -16,7 +16,7 @@ namespace LinearAlgebra {
     // for easier use in algorithms like LU decomposition
     public partial struct Pivot {
 
-        //+copyReplace
+        //+copyReplaceAll
 
         /// <summary>
         /// Applies pivot to vector v inplace, modifying pivot (resets it)
@@ -178,7 +178,7 @@ namespace LinearAlgebra {
             
             tempPivot.Dispose();
         }
-        //-copyReplace
+        //-copyReplaceAll
 
     }
 

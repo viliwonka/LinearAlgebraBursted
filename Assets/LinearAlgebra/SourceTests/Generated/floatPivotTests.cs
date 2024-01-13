@@ -10,7 +10,7 @@ using Unity.Mathematics;
 
 public class floatPivotTests
 {
-    //[BurstCompile]
+    [BurstCompile]
     public struct TestsJob : IJob
     {
         public enum TestType
@@ -21,7 +21,8 @@ public class floatPivotTests
             RowPivotLargeIdentityMatTest,
             ColumnPivotLargeIdentityMatTest,
             RowPivotPermutationMatTest,
-            PivotVecTest,
+            ColumnPivotPermutationMatTest,
+            RowPivotVecTest,
         }
 
         public TestType Type;
@@ -41,17 +42,20 @@ public class floatPivotTests
                         break;
                     case TestType.ColumnPivotIdentityMatTest:
                         ColumnIdentityMatTest(ref arena);
-                        break;
-                    case TestType.RowPivotPermutationMatTest:
-                        RowPermutationMatTest(ref arena);
-                        break;
+                        break; 
                     case TestType.ColumnPivotLargeIdentityMatTest:
                         ColumnLargeIdentityMatTest(ref arena);
                         break;
                     case TestType.RowPivotLargeIdentityMatTest:
                         RowLargeIdentityMatTest(ref arena);
                         break;
-                    case TestType.PivotVecTest:
+                    case TestType.RowPivotPermutationMatTest:
+                        RowPermutationMatTest(ref arena);
+                        break;
+                    case TestType.ColumnPivotPermutationMatTest:
+                        ColumnPermutationMatTest(ref arena);
+                        break;
+                    case TestType.RowPivotVecTest:
                         PivotVecTest(ref arena);
                         break;
                     default:
@@ -120,7 +124,6 @@ public class floatPivotTests
 
             for (int i = 0; i < dim; i++) {
                 pivot.Swap(rand.NextInt(0, dim), rand.NextInt(0, dim));
-
             }
 
             var identity = arena.floatIdentityMatrix(dim);
@@ -182,7 +185,6 @@ public class floatPivotTests
 
             for (int i = 0; i < dim; i++) {
                 pivot.Swap(rand.NextInt(0, dim), rand.NextInt(0, dim));
-
             }
 
             var identity = arena.floatIdentityMatrix(dim);
@@ -210,16 +212,49 @@ public class floatPivotTests
 
         void RowPermutationMatTest(ref Arena arena) {
 
-            var permutationMatrix = arena.floatPermutationMatrix(4, 2, 3);
+            var permutationMatrix = arena.floatPermutationMatrix(8, 2, 3);
 
-            Pivot pivot = new Pivot(4, Allocator.Temp);
+            permutationMatrix = floatOP.dot(permutationMatrix, arena.floatPermutationMatrix(8, 3, 6));
+            permutationMatrix = floatOP.dot(permutationMatrix, arena.floatPermutationMatrix(8, 6, 7));
+            permutationMatrix = floatOP.dot(permutationMatrix, arena.floatPermutationMatrix(8, 1, 4));
+
+            Pivot pivot = new Pivot(8, Allocator.Temp);
 
             pivot.Swap(2, 3);
+            pivot.Swap(3, 6);
+            pivot.Swap(6, 7);
+            pivot.Swap(1, 4);
 
+            // applying inverse pivot operation to permutation matrix should form identity matrix
             pivot.ApplyInverseRow(ref permutationMatrix);
 
             Assert.IsTrue(Analysis.IsIdentity(permutationMatrix));
 
+            pivot.Dispose();
+        }
+
+        void ColumnPermutationMatTest(ref Arena arena) {
+
+            var permutationMatrix = arena.floatPermutationMatrix(8, 2, 3);
+
+            permutationMatrix = floatOP.dot(permutationMatrix, arena.floatPermutationMatrix(8, 3, 6));
+            permutationMatrix = floatOP.dot(permutationMatrix, arena.floatPermutationMatrix(8, 6, 7));
+            permutationMatrix = floatOP.dot(permutationMatrix, arena.floatPermutationMatrix(8, 1, 4));
+
+            permutationMatrix = floatOP.trans(permutationMatrix);
+
+            Pivot pivot = new Pivot(8, Allocator.Temp);
+
+            pivot.Swap(2, 3);
+            pivot.Swap(3, 6);
+            pivot.Swap(6, 7);
+            pivot.Swap(1, 4);
+
+            // applying inverse pivot operation to permutation matrix should form identity matrix
+            pivot.ApplyInverseColumn(ref permutationMatrix);
+
+            Assert.IsTrue(Analysis.IsIdentity(permutationMatrix));
+              
             pivot.Dispose();
         }
 
@@ -229,6 +264,7 @@ public class floatPivotTests
 
             pivot.Swap(1, 2);
 
+            // [1, 0, 0, 0]
             var vec = arena.floatBasisVector(4, 0);
 
             Print.Log(vec);
@@ -236,7 +272,8 @@ public class floatPivotTests
             var vecCopy = vec.Copy();
 
             Assert.IsTrue(BoolAnalysis.IsAllEqualTo(vec == vecCopy, true));
-            
+
+            // [1, 0, 0, 0] -> [0, 0, 0, 1]
             pivot.ApplyVec(ref vec);
 
             Assert.IsTrue(BoolAnalysis.IsAllEqualTo(vec == vecCopy, true));
@@ -256,10 +293,7 @@ public class floatPivotTests
 
             pivot.Dispose();
         }
-
-
     }
-
 
     public static Array GetEnums()
     {
@@ -271,7 +305,4 @@ public class floatPivotTests
     {
         new TestsJob() { Type = testType }.Run();
     }
-
-
-
 }

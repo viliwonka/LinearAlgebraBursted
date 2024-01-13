@@ -11,6 +11,12 @@ namespace LinearAlgebra {
     
     // TODO: Finish the struct, that can be used for pivoting in algorithms like LU decomposition
     // Arena dependency?
+
+    /// <summary>
+    /// Pivot is a more efficient replacement for permutation matrix.
+    /// Has a single vector of indices, that can be used to swap vectors elements, or rows/columns of a matrix.
+    /// Kind of like "swizzle".
+    /// </summary>
     public partial struct Pivot {
 
         private UnsafeList<int> indices;

@@ -30,6 +30,8 @@ namespace LinearAlgebra.CodeGen
         public static string[] intTypes = new[] { "int", "short", "long" };
         public static string[] capsIntTypes = new[] { "Int", "Short", "Long" };
 
+        public static string[] boolTypes = new[] { "bool" };
+        public static string[] capsBoolTypes = new[] { "Bool" };
 
         public const string sourceTemplateFolder = "Assets/LinearAlgebra/CodeGen/TemplateSource/";
         public const string sourceTestsTemplateFolder = "Assets/LinearAlgebra/CodeGen/TemplateSourceTests/";
@@ -43,6 +45,10 @@ namespace LinearAlgebra.CodeGen
         public const string copyMarkerStart = "//+copyReplace";
         public const string copyMarkerEnd   = "//-copyReplace";
         public static int copyMarkerLen = copyMarkerStart.Length;
+
+        public const string copyAllMarkerStart = "//+copyReplaceAll";
+        public const string copyAllMarkerEnd = "//-copyReplaceAll";
+        public static int copyAllMarkerLen = copyAllMarkerStart.Length;
 
         // similar to copyReplace, but it's also filling inbetween copies
         // syntax: "//+copyReplaceFill[+]"
