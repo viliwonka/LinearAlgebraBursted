@@ -125,7 +125,7 @@ Here's a simple example:
 - ✅ Some basic statistics
 - ✅ Basic vector-vector, vector-matrix, matrix-vector and matrix-matrix operations
 - ✅ QR decomposition & solver for well-determined and over-determined systems
-- 🔳 Pivoting
+- ✅ Pivoting
 - 🔳 LU decomposition & solver
 - 🔳 View/Slice 
 - 🔳 Find/Query operations (e.g.: find row with biggest L2 norm)
