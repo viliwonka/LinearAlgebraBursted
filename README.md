@@ -35,7 +35,7 @@ Here's a simple example:
     floatN vecMul = vecA * vecB;
 
     // create identity matrix
-    floatMxN matI = arena.floatIdentityMatrix(dim);
+    floatMxN matI = arena.floatIdentityMatrix(16);
     floatMxN matRand = arena.floatRandomMatrix(16, 16);
 
     // per component sum, allocates new matrix
