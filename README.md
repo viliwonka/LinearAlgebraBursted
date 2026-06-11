@@ -122,15 +122,16 @@ Here's a simple example:
 
 - ✅ Basic Unity.mathematics operations
 - ✅ float, double, int, short, long, bool vectors and matrices
-- ✅ Some basic statistics
+- ✅ Statistics (mean, variance/std, median, min/max, argmin/argmax, row/col reductions, covariance & correlation)
 - ✅ Basic vector-vector, vector-matrix, matrix-vector and matrix-matrix operations
 - ✅ QR decomposition & solver for well-determined and over-determined systems
 - ✅ Pivoting
-- 🔳 LU decomposition & solver
+- ✅ LU decomposition & solver
 - 🔳 View/Slice 
 - 🔳 Find/Query operations (e.g.: find row with biggest L2 norm)
-- 🔳 SVD decomposition
-- 🔳 Optimizers? (min/max of function, gradient descent, root finding.. )
+- ✅ SVD decomposition
+- ✅ Least squares / pseudo-inverse (SVD-based, rank-deficient tolerant)
+- ✅ Optimizers (1D root finding, 1D minimization, gradient descent)
 
 ## TODO
 - Better arena management and standalone vec/mat management (without arena allocation)
@@ -138,10 +139,6 @@ Here's a simple example:
 - Refactor, unify the names / simplify
 - More safety checks
 - Vec/Mat views (simple structs for easier read/write)
-- More stats functions and tests
-- More solvers (LU, Pivoted LU)
-- SVD
-- Least squares
 - Sparse matrix?
 - Documentation
 

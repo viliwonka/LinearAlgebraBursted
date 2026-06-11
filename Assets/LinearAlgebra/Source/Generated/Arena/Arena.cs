@@ -49,7 +49,9 @@ namespace LinearAlgebra
         private UnsafeList<boolMxN> BoolMatrices;
         private UnsafeList<boolN> TempBoolVectors;
         private UnsafeList<boolMxN> TempBoolMatrices;
-        
+
+        private UnsafeList<Pivot> Pivots;
+
         public Arena(Allocator allocator) {
 
             Initialized = true;
@@ -89,6 +91,14 @@ namespace LinearAlgebra
 
             TempBoolVectors = new UnsafeList<boolN>(2, Allocator);
             TempBoolMatrices = new UnsafeList<boolMxN>(2, Allocator);
+
+            Pivots = new UnsafeList<Pivot>(2, Allocator);
+        }
+
+        public Pivot Pivot(int size) {
+            var pivot = new Pivot(size, this.Allocator);
+            Pivots.Add(in pivot);
+            return pivot;
         }
 
         public void Clear() {
@@ -144,6 +154,10 @@ namespace LinearAlgebra
             for (int i = 0; i < BoolMatrices.Length; i++)
                 BoolMatrices[i].Dispose();
             BoolMatrices.Clear();
+
+            for (int i = 0; i < Pivots.Length; i++)
+                Pivots[i].Dispose();
+            Pivots.Clear();
 
             ClearTemp();
         }
@@ -243,6 +257,8 @@ namespace LinearAlgebra
             BoolMatrices.Dispose();
             TempBoolMatrices.Dispose();
             TempBoolVectors.Dispose();
+
+            Pivots.Dispose();
 
             Initialized = false;
             Allocator = Allocator.Invalid;

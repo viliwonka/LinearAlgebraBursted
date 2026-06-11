@@ -23,6 +23,8 @@ public class doublePivotTests
             RowPivotPermutationMatTest,
             ColumnPivotPermutationMatTest,
             RowPivotVecTest,
+            PivotSignTest,
+            PivotArenaTest,
         }
 
         public TestType Type;
@@ -57,6 +59,12 @@ public class doublePivotTests
                         break;
                     case TestType.RowPivotVecTest:
                         PivotVecTest(ref arena);
+                        break;
+                    case TestType.PivotSignTest:
+                        SignTest(ref arena);
+                        break;
+                    case TestType.PivotArenaTest:
+                        ArenaPivotTest(ref arena);
                         break;
                     default:
                         throw new NotImplementedException();
@@ -293,6 +301,69 @@ public class doublePivotTests
 
             pivot.Dispose();
         }
+
+        void SignTest(ref Arena arena) {
+
+            Pivot pivot = new Pivot(4, Allocator.Temp);
+
+            // fresh pivot is even -> +1
+            Assert.AreEqual(1, pivot.Sign);
+
+            // one effective swap -> odd -> -1
+            pivot.Swap(0, 1);
+            Assert.AreEqual(-1, pivot.Sign);
+
+            // a second distinct swap -> even -> +1
+            pivot.Swap(2, 3);
+            Assert.AreEqual(1, pivot.Sign);
+
+            // Swap(i,i) is a no-op for parity
+            pivot.Swap(2, 2);
+            Assert.AreEqual(1, pivot.Sign);
+
+            // another swap -> odd -> -1
+            pivot.Swap(1, 3);
+            Assert.AreEqual(-1, pivot.Sign);
+
+            // Copy preserves Sign
+            var copy = pivot.Copy();
+            Assert.AreEqual(pivot.Sign, copy.Sign);
+
+            // InverseCopy preserves Sign (permutation and inverse share parity)
+            var inv = pivot.InverseCopy();
+            Assert.AreEqual(pivot.Sign, inv.Sign);
+
+            // Reset -> +1
+            pivot.Reset();
+            Assert.AreEqual(1, pivot.Sign);
+
+            copy.Dispose();
+            inv.Dispose();
+            pivot.Dispose();
+        }
+
+        void ArenaPivotTest(ref Arena arena) {
+
+            // Arena-tracked pivot: do NOT dispose it manually.
+            var pivot = arena.Pivot(8);
+
+            Assert.AreEqual(8, pivot.N);
+
+            pivot.Swap(1, 5);
+            pivot.Swap(2, 7);
+
+            var identity = arena.doubleIdentityMatrix(8);
+
+            pivot.ApplyRow(ref identity);
+
+            Assert.IsFalse(Analysis.IsIdentity(identity));
+
+            pivot.ApplyInverseRow(ref identity);
+
+            Assert.IsTrue(Analysis.IsIdentity(identity));
+
+            // intentionally NOT disposing pivot - arena.Dispose() owns it (in Execute's finally).
+        }
     }
 
     public static Array GetEnums()
@@ -304,5 +375,28 @@ public class doublePivotTests
     public void Tests(TestsJob.TestType testType)
     {
         new TestsJob() { Type = testType }.Run();
+    }
+
+    // Bounds checks throw managed exceptions, so they must run on the managed
+    // thread (NOT inside a BurstCompile job).
+    [Test]
+    public void PivotBoundsTest()
+    {
+        Pivot pivot = new Pivot(4, Allocator.Temp);
+
+        // indexer getter out of range
+        Assert.Catch<ArgumentOutOfRangeException>(() => { var _ = pivot[-1]; });
+        Assert.Catch<ArgumentOutOfRangeException>(() => { var _ = pivot[4]; });
+
+        // Swap out of range on either argument
+        Assert.Catch<ArgumentOutOfRangeException>(() => pivot.Swap(-1, 0));
+        Assert.Catch<ArgumentOutOfRangeException>(() => pivot.Swap(0, 4));
+        Assert.Catch<ArgumentOutOfRangeException>(() => pivot.Swap(4, 4));
+
+        // valid index still works
+        Assert.AreEqual(0, pivot[0]);
+        Assert.AreEqual(3, pivot[3]);
+
+        pivot.Dispose();
     }
 }

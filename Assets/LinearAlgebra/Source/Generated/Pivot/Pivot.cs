@@ -8,9 +8,6 @@ using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace LinearAlgebra {
-    
-    // TODO: Finish the struct, that can be used for pivoting in algorithms like LU decomposition
-    // Arena dependency?
 
     /// <summary>
     /// Pivot is a more efficient replacement for permutation matrix.
@@ -21,24 +18,47 @@ namespace LinearAlgebra {
 
         private UnsafeList<int> indices;
 
+        /// <summary>
+        /// Tracks the number of effective swaps (calls to Swap where i != j) since construction or Reset.
+        /// </summary>
+        private int swapCount;
+
         public int N => indices.Length;
+
+        /// <summary>
+        /// Returns +1 if the number of effective swaps is even, -1 if odd.
+        /// Reflects the parity of the permutation.
+        /// </summary>
+        public int Sign => (swapCount & 1) == 0 ? 1 : -1;
 
         public Pivot(int size, Allocator allocator = Allocator.Temp) {
             indices = new UnsafeList<int>(size, allocator);
             indices.Resize(size);
+            swapCount = 0;
             Reset();
         }
 
         public int this[int i] {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => indices[i];
+            get {
+                if (i < 0 || i >= indices.Length)
+                    throw new System.ArgumentOutOfRangeException("i", "Pivot index out of range");
+                return indices[i];
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Swap(int i, int j) {
 
+            if (i < 0 || i >= indices.Length)
+                throw new System.ArgumentOutOfRangeException("i", "Pivot index out of range");
+            if (j < 0 || j >= indices.Length)
+                throw new System.ArgumentOutOfRangeException("j", "Pivot index out of range");
+
             if (i == j)
                 return;
+
+            swapCount++;
 
             int temp = indices[i];
             indices[i] = indices[j];
@@ -48,6 +68,7 @@ namespace LinearAlgebra {
         public void Reset() {
             for (int i = 0; i < indices.Length; i++)
                 indices[i] = i;
+            swapCount = 0;
         }
 
         public void Dispose() {
@@ -59,6 +80,7 @@ namespace LinearAlgebra {
             var copy = new Pivot(indices.Length, Allocator.Temp);
 
             copy.indices.CopyFrom(indices);
+            copy.swapCount = swapCount;
 
             return copy;
         }
@@ -69,6 +91,9 @@ namespace LinearAlgebra {
 
             for (int i = 0; i < indices.Length; i++)
                 copy.indices[this[i]] = i;
+
+            // A permutation and its inverse have equal parity
+            copy.swapCount = swapCount;
 
             return copy;
         }
@@ -85,6 +110,7 @@ namespace LinearAlgebra {
             for (int i = 0; i < indices.Length; i++)
                 indices[tempPivot[i]] = i;
 
+            // A permutation and its inverse have equal parity; swapCount unchanged
             tempPivot.Dispose();
         }
 

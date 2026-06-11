@@ -415,7 +415,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-
+        [BurstCompile]
         // Swap columns in a matrix
         public static void swapColumns([NoAlias] double* target, int colA, int colB, int nRows, int nCols, int start = 0, int end = -1) {
             int startA = colA;

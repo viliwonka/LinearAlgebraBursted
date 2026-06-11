@@ -14,7 +14,7 @@ using UnityEngine.TestTools;
 public class fProxyLUTests
 {
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)] 
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -23,10 +23,11 @@ public class fProxyLUTests
             LUDecompPredefined,
             LUDecompRandomDiagonal,
             LUDecompRandom,
-            LUDecompRandomLarge,
-            LUDecompHilbert,
-            LUDecompPermutation,
-            LUDecompZero,
+            LUDecompSingular,
+            LUDecompPivotRequired,
+            LUDeterminant,
+            LUReusePivot,
+            SwapOPTest,
             LUSolveSystem,
             LUSolveSystemInplace
         }
@@ -50,17 +51,20 @@ public class fProxyLUTests
                 case TestType.LUDecompRandom:
                     LUDecompRandom();
                 break;
-                case TestType.LUDecompRandomLarge:
-                    LUDecompRandomLarge();
-                    break;
-                case TestType.LUDecompHilbert:
-                    LUDecompHilbert();
+                case TestType.LUDecompSingular:
+                    LUDecompSingular();
                 break;
-                case TestType.LUDecompPermutation:
-                    LUDecompPermutation();
+                case TestType.LUDecompPivotRequired:
+                    LUDecompPivotRequired();
                 break;
-                case TestType.LUDecompZero:
-                    LUDecompZero();
+                case TestType.LUDeterminant:
+                    LUDeterminant();
+                break;
+                case TestType.LUReusePivot:
+                    LUReusePivot();
+                break;
+                case TestType.SwapOPTest:
+                    SwapOPTest();
                 break;
                 case TestType.LUSolveSystem:
                     SolveSystem();
@@ -90,7 +94,9 @@ public class fProxyLUTests
 
             var A = U.Copy();
 
-            LU.luDecompositionNoPivot(ref U, ref L);
+            bool success = LU.luDecompositionNoPivot(ref U, ref L);
+
+            Assert.IsTrue(success);
 
             AssertLU(in A, in L, in U, false);
 
@@ -107,10 +113,11 @@ public class fProxyLUTests
 
             var A = U.Copy();
 
-            LU.luDecompositionNoPivot(ref U, ref L);
+            bool success = LU.luDecompositionNoPivot(ref U, ref L);
 
+            Assert.IsTrue(success);
 
-            AssertLU(in A, in U, in L, false);
+            AssertLU(in A, in L, in U, false);
 
             arena.Dispose();
         }
@@ -123,8 +130,6 @@ public class fProxyLUTests
 
             var U = arena.fProxyMat(dim);
             var L = arena.fProxyIdentityMatrix(dim);
-            
-            var pivot = new Pivot(dim, Allocator.Temp);
 
             U[0] = -2f;
             U[1] = 1f;
@@ -156,16 +161,18 @@ public class fProxyLUTests
             U[23] = 7f;
             U[24] = 1f;
 
-            Print.Log(L);
-            Print.Log(U);
+            var A = U.Copy();
 
-            //LU.luDecompositionNoPivot(ref U, ref L);
-            LU.luDecompositionInplace(ref U, ref pivot);
+            var pivot = new Pivot(dim, Allocator.Temp);
 
-            pivot.ApplyInverseRow(ref U); 
-            //Print.Log(L);
-            Print.Log(U);
+            bool success = LU.luDecomposition(ref U, ref L, ref pivot);
 
+            Assert.IsTrue(success);
+
+            // PA = LU  =>  A = P^-1 (LU). Apply inverse pivot to A to match L*U.
+            pivot.ApplyInverseRow(ref A);
+
+            AssertLU(in A, in L, in U, true, 1E-5f);
 
             pivot.Dispose();
 
@@ -180,22 +187,20 @@ public class fProxyLUTests
 
             var U = arena.fProxyRandomMatrix(dim, dim, 1f, 10f, 314221);
             var L = arena.fProxyIdentityMatrix(dim);
-            
+
             // add to diagonals of U
             for(int d = 0; d < dim; d++)
                 U[d, d] += 5f;
-            
+
             var A = U.Copy();
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            //LU.luDecompositionNoPivot(ref U, ref L);
-            LU.luDecomposition(ref U, ref L, ref pivot);
+            bool success = LU.luDecomposition(ref U, ref L, ref pivot);
+
+            Assert.IsTrue(success);
 
             pivot.ApplyInverseRow(ref A);
-
-            Print.Log(U);
-            Print.Log(L);
 
             pivot.Dispose();
 
@@ -204,119 +209,356 @@ public class fProxyLUTests
             arena.Dispose();
         }
 
-        public void LUDecompRandomLarge()
+        public void LUDecompSingular()
         {
-            /*
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 512;
-
-            var R = arena.fProxyMat(dim);
-            var U = arena.fProxyRandomMatrix(dim * 2, dim, -5f, 5f, 9612221);
-
-            var A = U.Copy();
-
-            OrthoOP.LUDecomposition(ref U, ref R);
-
-            AssertLU(in A, in U, in R, 1E-03f);
-
-            arena.Dispose();*/
-        }
-
-        public void LUDecompHilbert()
-        {
-            /*
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 20;
-
-            var U = arena.fProxyHilbertMatrix(dim);
-            var R = arena.fProxyMat(dim);
-
-            var A = U.Copy();
-
-            OrthoOP.LUDecomposition(ref U, ref R);
-
-            //Print.Log(A);
-            //Print.Log(U);
-            //Print.Log(R);
-
-            AssertLU(in A, in U, in R);
-
-            arena.Dispose();*/
-        }
-
-        public void LUDecompPermutation() {
-            /*
-            var arena = new Arena(Allocator.Persistent);
-
-            int tests = 32;
-            int dim = 16;
-            var rand = new Unity.Mathematics.Random(24011);
-
-            for (int i = 0; i < tests; i++) {
-
-                int p0 = rand.NextInt(0, dim);
-                int p1 = rand.NextInt(0, dim);
-
-                while(p0 == p1) {
-                    p1 = rand.NextInt(0, dim);
-                }
-
-                var U = arena.fProxyPermutationMatrix(dim, p0, p1);
-
-                p0 = rand.NextInt(0, dim);
-                p1 = rand.NextInt(0, dim);
-
-                while (p0 == p1) {
-                    p1 = rand.NextInt(0, dim);
-                }
-
-                U = fProxyOP.dot(arena.fProxyPermutationMatrix(dim, p0, p1), U);
-
-                var R = arena.fProxyMat(dim);
-
-                var A = U.Copy();
-
-                OrthoOP.LUDecomposition(ref U, ref R);
-
-                //Print.Log(A);
-                //Print.Log(U);
-                //Print.Log(R);
-
-                AssertLU(in A, in U, in R);
-            }
-            arena.Dispose();*/
-        }
-
-        public void LUDecompZero() {
-
-            /*
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
 
-            var U = arena.fProxyMat(dim, dim);
-            var R = arena.fProxyMat(dim);
+            // Case 1: zero matrix is singular -> all variants must return false.
+            {
+                var U = arena.fProxyMat(dim, dim);
+                var L = arena.fProxyIdentityMatrix(dim);
 
-            var A = U.Copy();
+                bool noPivot = LU.luDecompositionNoPivot(ref U, ref L);
+                Assert.IsFalse(noPivot);
+                Assert.IsFalse(Analysis.IsAnyNan(in U));
+                Assert.IsFalse(Analysis.IsAnyNan(in L));
 
-            OrthoOP.LUDecomposition(ref U, ref R);
+                var Up = arena.fProxyMat(dim, dim);
+                var Lp = arena.fProxyIdentityMatrix(dim);
+                var pivot = new Pivot(dim, Allocator.Temp);
+                bool pivoted = LU.luDecomposition(ref Up, ref Lp, ref pivot);
+                Assert.IsFalse(pivoted);
+                Assert.IsFalse(Analysis.IsAnyNan(in Up));
+                Assert.IsFalse(Analysis.IsAnyNan(in Lp));
 
-            //Print.Log(A);
-            //Print.Log(U);
-            //Print.Log(R);
+                var LUmat = arena.fProxyMat(dim, dim);
+                bool inplace = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                Assert.IsFalse(inplace);
+                Assert.IsFalse(Analysis.IsAnyNan(in LUmat));
 
-            AssertLU(in A, in U, in R);
+                pivot.Dispose();
+            }
 
-            arena.Dispose();*/
+            // Case 2: two identical rows -> rank deficient -> all variants return false.
+            {
+                var U = arena.fProxyRandomMatrix(dim, dim, 1f, 10f, 8821);
+                // force diagonal dominance so only the duplicated rows cause singularity
+                for (int d = 0; d < dim; d++)
+                    U[d, d] += 20f;
+                // make row 5 an exact copy of row 2
+                for (int c = 0; c < dim; c++)
+                    U[5, c] = U[2, c];
+
+                var A = U.Copy();
+                var L = arena.fProxyIdentityMatrix(dim);
+
+                bool noPivot = LU.luDecompositionNoPivot(ref U, ref L);
+                Assert.IsFalse(noPivot);
+                Assert.IsFalse(Analysis.IsAnyNan(in U));
+                Assert.IsFalse(Analysis.IsAnyNan(in L));
+
+                var Up = A.Copy();
+                var Lp = arena.fProxyIdentityMatrix(dim);
+                var pivot = new Pivot(dim, Allocator.Temp);
+                bool pivoted = LU.luDecomposition(ref Up, ref Lp, ref pivot);
+                Assert.IsFalse(pivoted);
+                Assert.IsFalse(Analysis.IsAnyNan(in Up));
+                Assert.IsFalse(Analysis.IsAnyNan(in Lp));
+
+                var LUmat = A.Copy();
+                bool inplace = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                Assert.IsFalse(inplace);
+                Assert.IsFalse(Analysis.IsAnyNan(in LUmat));
+
+                pivot.Dispose();
+            }
+
+            // Case 3: [[0,1],[1,0]] : no-pivot fails on zero leading pivot,
+            // but inplace (with partial pivoting) succeeds.
+            {
+                var U = arena.fProxyMat(2, 2);
+                U[0, 0] = 0f; U[0, 1] = 1f;
+                U[1, 0] = 1f; U[1, 1] = 0f;
+
+                var L = arena.fProxyIdentityMatrix(2);
+
+                var Unp = U.Copy();
+                bool noPivot = LU.luDecompositionNoPivot(ref Unp, ref L);
+                Assert.IsFalse(noPivot);
+
+                var LUmat = U.Copy();
+                var pivot = new Pivot(2, Allocator.Temp);
+                bool inplace = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                Assert.IsTrue(inplace);
+                Assert.IsFalse(Analysis.IsAnyNan(in LUmat));
+
+                pivot.Dispose();
+            }
+
+            arena.Dispose();
+        }
+
+        public void LUDecompPivotRequired()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // Case A: 3x3 with A[0,0] == 0 but nonsingular, requires pivoting.
+            {
+                int dim = 3;
+                var A = arena.fProxyMat(dim, dim);
+                // A[0,0] == 0 forces a row swap
+                A[0, 0] = 0f; A[0, 1] = 2f; A[0, 2] = 1f;
+                A[1, 0] = 1f; A[1, 1] = 1f; A[1, 2] = 1f;
+                A[2, 0] = 2f; A[2, 1] = 1f; A[2, 2] = 0f;
+
+                var x_Known = arena.fProxyVec(dim);
+                x_Known[0] = 3f; x_Known[1] = -2f; x_Known[2] = 5f;
+
+                var b = fProxyOP.dot(A, x_Known);
+
+                var LUmat = A.Copy();
+                var pivot = new Pivot(dim, Allocator.Temp);
+
+                bool success = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                Assert.IsTrue(success);
+
+                var x_Solved = b.Copy();
+                LU.LUSolve(ref LUmat, in pivot, ref x_Solved);
+
+                Assert.IsFalse(Analysis.IsAnyNan(in x_Solved));
+
+                AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
+
+                pivot.Dispose();
+            }
+
+            // Case B: permutation contains a 3-cycle (not an involution).
+            // Construct A so partial pivoting yields a cyclic permutation. We make the
+            // sub-diagonal magnitudes strictly increasing down each column so the pivot
+            // search always selects the last remaining row -> a long cycle, not pair swaps.
+            {
+                int dim = 4;
+                var A = arena.fProxyMat(dim, dim);
+                A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 0f; A[0, 3] = 1f;
+                A[1, 0] = 2f; A[1, 1] = 1f; A[1, 2] = 3f; A[1, 3] = 0f;
+                A[2, 0] = 4f; A[2, 1] = 0f; A[2, 2] = 1f; A[2, 3] = 2f;
+                A[3, 0] = 8f; A[3, 1] = 3f; A[3, 2] = 2f; A[3, 3] = 1f;
+
+                var x_Known = arena.fProxyVec(dim);
+                x_Known[0] = 1f; x_Known[1] = -3f; x_Known[2] = 2f; x_Known[3] = 4f;
+
+                var b = fProxyOP.dot(A, x_Known);
+
+                var LUmat = A.Copy();
+                var pivot = new Pivot(dim, Allocator.Temp);
+
+                bool success = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                Assert.IsTrue(success);
+
+                // Verify the permutation is not a simple involution (P applied twice != identity),
+                // i.e. it really contains a cycle of length > 2.
+                bool isInvolution = true;
+                for (int i = 0; i < dim; i++)
+                    if (pivot[pivot[i]] != i)
+                        isInvolution = false;
+                Assert.IsFalse(isInvolution);
+
+                var x_Solved = b.Copy();
+                LU.LUSolve(ref LUmat, in pivot, ref x_Solved);
+
+                Assert.IsFalse(Analysis.IsAnyNan(in x_Solved));
+
+                AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
+
+                pivot.Dispose();
+            }
+
+            arena.Dispose();
+        }
+
+        public void LUDeterminant()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // identity -> det = 1
+            {
+                int dim = 6;
+                var I = arena.fProxyIdentityMatrix(dim);
+                var pivot = new Pivot(dim, Allocator.Temp);
+
+                bool success = LU.luDecompositionInplace(ref I, ref pivot);
+                Assert.IsTrue(success);
+
+                fProxy det = LU.determinant(in I, in pivot);
+                AssertClose(det, (fProxy)1f, 1E-4f);
+
+                pivot.Dispose();
+            }
+
+            // diagonal -> det = product of diagonal
+            {
+                int dim = 4;
+                var D = arena.fProxyMat(dim, dim);
+                D[0, 0] = 2f;
+                D[1, 1] = -3f;
+                D[2, 2] = 0.5f;
+                D[3, 3] = 4f;
+                fProxy expected = 2f * -3f * 0.5f * 4f; // -12
+
+                var pivot = new Pivot(dim, Allocator.Temp);
+                bool success = LU.luDecompositionInplace(ref D, ref pivot);
+                Assert.IsTrue(success);
+
+                fProxy det = LU.determinant(in D, in pivot);
+                AssertCloseRel(det, expected, 1E-4f);
+
+                pivot.Dispose();
+            }
+
+            // 3x3 with known determinant requiring a row swap (A[0,0]==0).
+            // A = [[0,2,1],[1,1,1],[2,1,0]]; det = 3 (hand computed, nonsingular).
+            {
+                int dim = 3;
+                var A = arena.fProxyMat(dim, dim);
+                A[0, 0] = 0f; A[0, 1] = 2f; A[0, 2] = 1f;
+                A[1, 0] = 1f; A[1, 1] = 1f; A[1, 2] = 1f;
+                A[2, 0] = 2f; A[2, 1] = 1f; A[2, 2] = 0f;
+
+                var pivot = new Pivot(dim, Allocator.Temp);
+                bool success = LU.luDecompositionInplace(ref A, ref pivot);
+                Assert.IsTrue(success);
+
+                fProxy det = LU.determinant(in A, in pivot);
+                AssertCloseRel(det, (fProxy)3f, 1E-4f);
+
+                pivot.Dispose();
+            }
+
+            // permutation matrix -> det = +-1 matching swap parity.
+            // single transposition (rows 0 and 2 swapped) -> det = -1.
+            {
+                int dim = 3;
+                var P = arena.fProxyMat(dim, dim);
+                P[0, 2] = 1f;
+                P[1, 1] = 1f;
+                P[2, 0] = 1f;
+
+                var pivot = new Pivot(dim, Allocator.Temp);
+                bool success = LU.luDecompositionInplace(ref P, ref pivot);
+                Assert.IsTrue(success);
+
+                fProxy det = LU.determinant(in P, in pivot);
+                AssertCloseRel(det, (fProxy)(-1f), 1E-4f);
+
+                pivot.Dispose();
+            }
+
+            arena.Dispose();
+        }
+
+        public void LUReusePivot()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 6;
+
+            var pivot = new Pivot(dim, Allocator.Temp);
+
+            // First decomposition with the pivot - permutes it.
+            var A1 = arena.fProxyRandomMatrix(dim, dim, -5f, 5f, 7777);
+            for (int d = 0; d < dim; d++)
+                A1[d, d] += 15f;
+            var LU1 = A1.Copy();
+            bool s1 = LU.luDecompositionInplace(ref LU1, ref pivot);
+            Assert.IsTrue(s1);
+
+            // Second decomposition reuses the SAME pivot object; Reset() must clean it.
+            var A2 = arena.fProxyRandomMatrix(dim, dim, -5f, 5f, 9999);
+            for (int d = 0; d < dim; d++)
+                A2[d, d] += 15f;
+
+            var x_Known = arena.fProxyVec(dim);
+            for (int i = 0; i < dim; i++)
+                x_Known[i] = (fProxy)(i + 1);
+
+            var b = fProxyOP.dot(A2, x_Known);
+
+            var LU2 = A2.Copy();
+            bool s2 = LU.luDecompositionInplace(ref LU2, ref pivot);
+            Assert.IsTrue(s2);
+
+            var x_Solved = b.Copy();
+            LU.LUSolve(ref LU2, in pivot, ref x_Solved);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in x_Solved));
+
+            AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
+
+            pivot.Dispose();
+
+            arena.Dispose();
+        }
+
+        public void SwapOPTest()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // SwapOP.Rows with default start/end swaps full rows.
+            {
+                int dim = 3;
+                var mat = arena.fProxyMat(dim, dim);
+                for (int r = 0; r < dim; r++)
+                    for (int c = 0; c < dim; c++)
+                        mat[r, c] = (fProxy)(r * 10 + c);
+
+                SwapOP.Rows(ref mat, 0, 1);
+
+                // row 0 and row 1 fully swapped
+                for (int c = 0; c < dim; c++) {
+                    AssertClose(mat[0, c], (fProxy)(10 + c), 1E-6f);
+                    AssertClose(mat[1, c], (fProxy)(0 + c), 1E-6f);
+                    AssertClose(mat[2, c], (fProxy)(20 + c), 1E-6f);
+                }
+            }
+
+            // SwapOP.Columns with explicit start/end swaps only that row-range.
+            {
+                int dim = 4;
+                var mat = arena.fProxyMat(dim, dim);
+                for (int r = 0; r < dim; r++)
+                    for (int c = 0; c < dim; c++)
+                        mat[r, c] = (fProxy)(r * 10 + c);
+
+                // swap columns 0 and 1 only for rows [1,3)
+                SwapOP.Columns(ref mat, 0, 1, 1, 3);
+
+                // rows 0 and 3 untouched
+                AssertClose(mat[0, 0], (fProxy)(0), 1E-6f);
+                AssertClose(mat[0, 1], (fProxy)(1), 1E-6f);
+                AssertClose(mat[3, 0], (fProxy)(30), 1E-6f);
+                AssertClose(mat[3, 1], (fProxy)(31), 1E-6f);
+
+                // rows 1 and 2 have columns 0 and 1 swapped
+                AssertClose(mat[1, 0], (fProxy)(11), 1E-6f);
+                AssertClose(mat[1, 1], (fProxy)(10), 1E-6f);
+                AssertClose(mat[2, 0], (fProxy)(21), 1E-6f);
+                AssertClose(mat[2, 1], (fProxy)(20), 1E-6f);
+
+                // other columns untouched
+                AssertClose(mat[1, 2], (fProxy)(12), 1E-6f);
+                AssertClose(mat[2, 3], (fProxy)(23), 1E-6f);
+            }
+
+            arena.Dispose();
         }
 
         public void SolveSystem() {
 
             var arena = new Arena(Allocator.Persistent);
 
-            int dim = 512; 
+            int dim = 512;
 
             var A = arena.fProxyRandomMatrix(dim, dim, -10f, 10f, 314221);
 
@@ -327,20 +569,24 @@ public class fProxyLUTests
             }
 
             var x_Known = arena.fProxyRandomVector(dim, 1f, 10f, 901);
-            
+
             var b = fProxyOP.dot(A, x_Known);
 
             var U = A.Copy();
             var L = arena.fProxyIdentityMatrix(dim);
 
             var pivot = new Pivot(dim, Allocator.Temp);
-             
-            //LU.luDecompositionNoPivot(ref U, ref L);
-            LU.luDecomposition(ref U, ref L, ref pivot);
+
+            bool success = LU.luDecomposition(ref U, ref L, ref pivot);
+
+            Assert.IsTrue(success);
 
             var x_Solved = b.Copy();
 
             LU.LUSolve(ref L, ref U, in pivot, ref x_Solved);
+
+            if (Analysis.IsAnyNan(in x_Solved))
+                throw new System.Exception("TestJob: NaN detected");
 
             var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
@@ -358,7 +604,7 @@ public class fProxyLUTests
 
             var arena = new Arena(Allocator.Persistent);
 
-            int dim = 512; 
+            int dim = 512;
 
             var A = arena.fProxyRandomMatrix(dim, dim, -10f, 10f, 314221);
 
@@ -373,14 +619,16 @@ public class fProxyLUTests
             var b = fProxyOP.dot(A, x_Known);
 
             var LUmat = A.Copy();
-            
+
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            LU.luDecompositionInplace(ref LUmat, ref pivot);
+            bool success = LU.luDecompositionInplace(ref LUmat, ref pivot);
+
+            Assert.IsTrue(success);
 
             var x_Solved = b.Copy();
 
-            LU.LUSolve(ref LUmat, ref pivot, ref x_Solved);
+            LU.LUSolve(ref LUmat, in pivot, ref x_Solved);
 
             if (Analysis.IsAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
@@ -394,6 +642,24 @@ public class fProxyLUTests
             pivot.Dispose();
 
             arena.Dispose();
+        }
+
+        private void AssertClose(fProxy a, fProxy b, fProxy precision) {
+            fProxy diff = Unity.Mathematics.math.abs(a - b);
+            Assert.IsTrue(diff <= precision, $"Expected {b} got {a} (diff {diff})");
+        }
+
+        private void AssertCloseRel(fProxy a, fProxy b, fProxy relPrecision) {
+            fProxy denom = Unity.Mathematics.math.max((fProxy)1f, Unity.Mathematics.math.abs(b));
+            fProxy diff = Unity.Mathematics.math.abs(a - b) / denom;
+            Assert.IsTrue(diff <= relPrecision, $"Expected {b} got {a} (rel diff {diff})");
+        }
+
+        private void AssertVecClose(in fProxyN expected, in fProxyN got, int dim, fProxy precision) {
+            for (int i = 0; i < dim; i++) {
+                fProxy diff = Unity.Mathematics.math.abs(expected[i] - got[i]);
+                Assert.IsTrue(diff <= precision, $"x[{i}] expected {expected[i]} got {got[i]} (diff {diff})");
+            }
         }
 
         private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, bool pivoted) => AssertLU(in A, in L, in U, pivoted, 1E-6f);
@@ -423,70 +689,6 @@ public class fProxyLUTests
 
     }
 
-    [BurstCompile]
-    public struct PrecisionReconstructTestJob : IJob {
-
-        public enum TestType {
-            Random,
-            RandomDiagonal
-        }
-
-        public TestType Type;
-
-        public void Execute() {
-
-            /*var arena = new Arena(Allocator.Persistent);
-
-            int tests = 64;
-            fProxy errorSum = 0;
-
-            for (uint i = 0; i < tests; i++) {
-
-                int dim = 32;
-
-                fProxyMxN A; 
-                
-                if(Type == TestType.RandomDiagonal)
-                    A = arena.fProxyRandomDiagonalMatrix(dim, 1f, 3f, 21410 + i*i + i*7);
-                else
-                    A = arena.fProxyRandomMatrix(dim*2, dim, -25f, +25f, 21410 + i*i + i*7);
-                
-                var U = A.Copy();
-                var R = arena.fProxyMat(dim);
-
-                OrthoOP.LUDecomposition(ref U, ref R);
-
-                //Print.Log(U);
-                //Print.Log(R);
-
-                errorSum += ErrorCheckLU(in A, in U, in R);
-
-                arena.Clear();
-            }
-
-            fProxy avgError = errorSum / tests;
-
-            Debug.Log($"Average error of max(abs(A - LU)): {avgError}");
-
-            arena.Dispose();*/
-        }
-
-        private fProxy ErrorCheckLU(in fProxyMxN A, in fProxyMxN Q, in fProxyMxN R) {
-            
-            fProxyMxN shouldBeZero = A - fProxyOP.dot(Q, R);
-
-            if(Analysis.IsAnyNan(in shouldBeZero))
-                throw new System.Exception("PrecisionReconstructTestJob: NaN detected");
-
-            //Print.Log(shouldBeZero); 
-
-            fProxy zeroError = Analysis.MaxZeroError(shouldBeZero);
-
-            return zeroError;
-        }
-    }
-
-
     public static Array GetEnums() {
         return Enum.GetValues(typeof(TestJob.TestType));
     }
@@ -495,16 +697,6 @@ public class fProxyLUTests
     public void LUDecompTests(TestJob.TestType type)
     {
         new TestJob() { Type = type }.Run();
-    }
-
-    [Test]
-    public void LUDecompErrorBenchRandom() {
-        new PrecisionReconstructTestJob() { Type = PrecisionReconstructTestJob.TestType.Random }.Run();
-    }
-
-    [Test]
-    public void LUDecompErrorBenchDiagonal() {
-        new PrecisionReconstructTestJob() { Type = PrecisionReconstructTestJob.TestType.RandomDiagonal }.Run();
     }
 
 }

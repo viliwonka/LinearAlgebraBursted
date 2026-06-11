@@ -1,10 +1,10 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using Unity.Collections;
 
 namespace LinearAlgebra
 {
-    /// <summary>           
+    /// <summary>
     /// Inpl = inplace
     /// </summary>
     public static partial class Solvers {
@@ -12,8 +12,8 @@ namespace LinearAlgebra
         // Solve Ux = b for x
         public static void SolveUpperTriangular(ref fProxyMxN U, ref fProxyN x)
         {
-            //if(U.IsSquare == false)
-                //throw new System.Exception("Solvers.SolveUpperTriangular: Matrix must be square");
+            if(U.IsSquare == false)
+                throw new System.Exception("Solvers.SolveUpperTriangular: Matrix must be square");
 
             if(U.N_Cols != x.N)
                 throw new System.Exception("Solvers.SolveUpperTriangular: Matrix and vector must have same number of columns");
@@ -24,7 +24,7 @@ namespace LinearAlgebra
 
                 for (int c = r + 1; c < U.N_Cols; c++)
                     sum += U[r, c] * x[c];
-                
+
                 x[r] = (x[r] - sum) / U[r, r];
             }
         }
@@ -50,26 +50,8 @@ namespace LinearAlgebra
         }
 
         // Solve Ly = b for, where y = Ux
-        public static void SolveLowerTriangularLU(ref fProxyMxN L, ref fProxyN x) {
-            if (L.IsSquare == false)
-                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix must be square");
-
-            if (L.M_Rows != x.N)
-                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix and vector must have same number of rows");
-
-            for (int r = 0; r < L.M_Rows; r++) {
-                fProxy sum = 0;
-
-                for (int c = 0; c < r; c++)
-                    sum += L[r, c] * x[c];
-
-                x[r] = (x[r] - sum);
-            }
-        }
-
-        // Solve Ly = b for, where y = Ux
         // RP = Row Pivot
-        public static void SolveLowerTriangularLU(ref fProxyMxN L, ref Pivot RP, ref fProxyN x) {
+        public static void SolveLowerTriangularLU(ref fProxyMxN L, in Pivot RP, ref fProxyN x) {
             if (L.IsSquare == false)
                 throw new System.Exception("Solvers.SolveLowerTriangular: Matrix must be square");
 
@@ -86,9 +68,9 @@ namespace LinearAlgebra
             }
         }
 
-        public static void SolveUpperTriangularLU(ref fProxyMxN U, ref Pivot RP, ref fProxyN x) {
-            //if(U.IsSquare == false)
-            //throw new System.Exception("Solvers.SolveUpperTriangular: Matrix must be square");
+        public static void SolveUpperTriangularLU(ref fProxyMxN U, in Pivot RP, ref fProxyN x) {
+            if(U.IsSquare == false)
+                throw new System.Exception("Solvers.SolveUpperTriangular: Matrix must be square");
 
             if (U.N_Cols != x.N)
                 throw new System.Exception("Solvers.SolveUpperTriangular: Matrix and vector must have same number of columns");
@@ -127,9 +109,9 @@ namespace LinearAlgebra
             x = y;
         }
 
-        // Solve Ax = b for x                                                                     
+        // Solve Ax = b for x
         public static void SolveQR(ref fProxyMxN A, ref fProxyN b, ref fProxyN x)
-        {            
+        {
             OrthoOP.qrDirectSolve(ref A, ref b, ref x);
 
         }

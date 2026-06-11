@@ -8,9 +8,6 @@ using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace LinearAlgebra {
-    
-    // TODO: Arena dependency?
-    // might be smart before writing more tests
 
     // Pivot is a more efficient replacement for permutation matrix,
     // for easier use in algorithms like LU decomposition
