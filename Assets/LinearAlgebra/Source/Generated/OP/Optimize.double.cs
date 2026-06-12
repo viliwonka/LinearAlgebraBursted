@@ -26,11 +26,12 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Bracketing root find. Requires f(lo) and f(hi) to have opposite signs; returns false if not bracketed (root = the better endpoint).
-        /// Converges when (hi - lo) &lt;= xTol or f(mid) == 0. root = final midpoint. Returns true on convergence.
-        /// Note: xTol is an absolute tolerance on the interval width.
+        /// Converges when (hi - lo) &lt;= xTol + rTol * |mid| or f(mid) == 0. root = final midpoint. Returns true on convergence.
+        /// xTol is absolute, rTol relative to the current midpoint; rTol &gt;= a few * Consts.doubleEpsilon
+        /// keeps the criterion reachable regardless of the root's magnitude.
         /// </summary>
         public static bool bisection<F>(ref F f, double lo, double hi, out double root,
-                                        double xTol, int maxIter)
+                                        double xTol, double rTol, int maxIter)
             where F : struct, IdoubleScalarFunction
         {
             if (maxIter < 1)
@@ -53,7 +54,7 @@ namespace LinearAlgebra
                 double fmid = f.Eval(mid);
 
                 if (fmid == (double)0) { root = mid; return true; }
-                if ((hi - lo) <= xTol) { root = mid; return true; }
+                if ((hi - lo) <= xTol + rTol * math.abs(mid)) { root = mid; return true; }
 
                 // Sign changes between lo and mid → root in [lo, mid]
                 if ((flo > (double)0) != (fmid > (double)0)) {
@@ -65,19 +66,25 @@ namespace LinearAlgebra
             }
 
             root = lo + (hi - lo) * (double)0.5;
-            return (hi - lo) <= xTol;
+            return (hi - lo) <= xTol + rTol * math.abs(root);
         }
+
+        /// <summary>bisection with absolute tolerance only (rTol = 0).</summary>
+        public static bool bisection<F>(ref F f, double lo, double hi, out double root,
+                                        double xTol, int maxIter)
+            where F : struct, IdoubleScalarFunction
+            => bisection(ref f, lo, hi, out root, xTol, (double)0, maxIter);
 
         /// <summary>bisection with default maxIter (200).</summary>
         public static bool bisection<F>(ref F f, double lo, double hi, out double root,
                                         double xTol)
             where F : struct, IdoubleScalarFunction
-            => bisection(ref f, lo, hi, out root, xTol, 200);
+            => bisection(ref f, lo, hi, out root, xTol, (double)0, 200);
 
-        /// <summary>bisection with default xTol (Consts.doubleZeroTreshold) and maxIter (200).</summary>
+        /// <summary>bisection with default xTol (Consts.doubleZeroTreshold), rTol (4 * Consts.doubleEpsilon) and maxIter (200).</summary>
         public static bool bisection<F>(ref F f, double lo, double hi, out double root)
             where F : struct, IdoubleScalarFunction
-            => bisection(ref f, lo, hi, out root, Consts.doubleZeroTreshold, 200);
+            => bisection(ref f, lo, hi, out root, Consts.doubleZeroTreshold, (double)4 * Consts.doubleEpsilon, 200);
 
         /// <summary>
         /// Newton root find. Converged when |f(x)| &lt;= fTol. Returns false if |f'(x)| &lt; Consts.doubleZeroTreshold (flat/badly-scaled, absolute guard) or maxIter exhausted; root holds last iterate.
@@ -118,10 +125,12 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Golden-section minimization of unimodal f on [a, b]. xMin = midpoint of final bracket. Returns true when (b - a) &lt;= xTol within maxIter.
-        /// Note: xTol is an absolute tolerance on the bracket width.
+        /// xTol is an absolute tolerance on the bracket width, rTol relative to the bracket midpoint.
+        /// Note: a smooth minimum can only be localized to ~|xMin| * sqrt(machine eps)
+        /// (Consts.doubleSqrtEps), no matter how small the tolerances are.
         /// </summary>
         public static bool goldenSection<F>(ref F f, double a, double b, out double xMin,
-                                            double xTol, int maxIter)
+                                            double xTol, double rTol, int maxIter)
             where F : struct, IdoubleScalarFunction
         {
             if (maxIter < 1)
@@ -141,7 +150,7 @@ namespace LinearAlgebra
             double fd = f.Eval(d);
 
             for (int i = 0; i < maxIter; i++) {
-                if ((b - a) <= xTol) break;
+                if ((b - a) <= xTol + rTol * math.abs(a + (b - a) * (double)0.5)) break;
 
                 if (fc < fd) {
                     b = d;
@@ -159,19 +168,25 @@ namespace LinearAlgebra
             }
 
             xMin = a + (b - a) * (double)0.5;
-            return (b - a) <= xTol;
+            return (b - a) <= xTol + rTol * math.abs(xMin);
         }
+
+        /// <summary>goldenSection with absolute tolerance only (rTol = 0).</summary>
+        public static bool goldenSection<F>(ref F f, double a, double b, out double xMin,
+                                            double xTol, int maxIter)
+            where F : struct, IdoubleScalarFunction
+            => goldenSection(ref f, a, b, out xMin, xTol, (double)0, maxIter);
 
         /// <summary>goldenSection with default maxIter (200).</summary>
         public static bool goldenSection<F>(ref F f, double a, double b, out double xMin,
                                             double xTol)
             where F : struct, IdoubleScalarFunction
-            => goldenSection(ref f, a, b, out xMin, xTol, 200);
+            => goldenSection(ref f, a, b, out xMin, xTol, (double)0, 200);
 
-        /// <summary>goldenSection with default xTol (Consts.doubleZeroTreshold) and maxIter (200).</summary>
+        /// <summary>goldenSection with default xTol (Consts.doubleZeroTreshold), rTol (3 * Consts.doubleSqrtEps) and maxIter (200).</summary>
         public static bool goldenSection<F>(ref F f, double a, double b, out double xMin)
             where F : struct, IdoubleScalarFunction
-            => goldenSection(ref f, a, b, out xMin, Consts.doubleZeroTreshold, 200);
+            => goldenSection(ref f, a, b, out xMin, Consts.doubleZeroTreshold, (double)3 * Consts.doubleSqrtEps, 200);
 
         // Fixed-step gradient descent, in-place on x. g is caller-provided scratch (length x.N). Does NOT allocate.
         // Iterates x -= learningRate * g until L2(g) <= gradTol or maxIter. Returns true if gradTol reached; iterations = performed count.

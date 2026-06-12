@@ -32,6 +32,8 @@ public class fProxySVDSolverTests
 
         public TestType Type;
 
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff
+        public NativeArray<fProxy> Fail;
 
         public void Execute()
         {
@@ -176,6 +178,14 @@ public class fProxySVDSolverTests
                 maxAbs = Unity.Mathematics.math.max(maxAbs, Unity.Mathematics.math.abs(Atr[k]));
 
             // looser tolerance: errors get squared through A^T A
+            // Fail layout: [1]=maxAbs, [2]=limit 1E-2, [3]=diff
+            if (!(maxAbs < (fProxy)1E-2f) && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = maxAbs;
+                Fail[2] = (fProxy)1E-2f;
+                Fail[3] = maxAbs - (fProxy)1E-2f;
+            }
             Assert.IsTrue(maxAbs < (fProxy)1E-2f);
 
             arena.Dispose();
@@ -374,9 +384,17 @@ public class fProxySVDSolverTests
             arena.Dispose();
         }
 
+        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertClose(fProxy a, fProxy b, fProxy precision)
         {
             fProxy diff = Unity.Mathematics.math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
             Assert.IsTrue(diff <= precision);
         }
 
@@ -389,7 +407,23 @@ public class fProxySVDSolverTests
     [TestCaseSource("GetEnums")]
     public void SVDSolverTests(TestJob.TestType type)
     {
-        new TestJob() { Type = type }.Run();
+        var fail = new NativeArray<fProxy>(4, Allocator.TempJob);
+        try {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (fProxy)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (fProxy)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 
     // Managed throw-tests: argument validation runs on the main thread (not in a Burst job).

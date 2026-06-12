@@ -55,10 +55,10 @@ namespace LinearAlgebra
         // RP = Row Pivot
         public static void SolveLowerTriangularLU(ref fProxyMxN L, in Pivot RP, ref fProxyN x) {
             if (L.IsSquare == false)
-                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix must be square");
+                throw new System.Exception("Solvers.SolveLowerTriangularLU: Matrix must be square");
 
             if (L.M_Rows != x.N)
-                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix and vector must have same number of rows");
+                throw new System.Exception("Solvers.SolveLowerTriangularLU: Matrix and vector must have same number of rows");
 
             for (int r = 0; r < L.M_Rows; r++) {
                 fProxy sum = 0;
@@ -72,10 +72,10 @@ namespace LinearAlgebra
 
         public static void SolveUpperTriangularLU(ref fProxyMxN U, in Pivot RP, ref fProxyN x) {
             if(U.IsSquare == false)
-                throw new System.Exception("Solvers.SolveUpperTriangular: Matrix must be square");
+                throw new System.Exception("Solvers.SolveUpperTriangularLU: Matrix must be square");
 
             if (U.N_Cols != x.N)
-                throw new System.Exception("Solvers.SolveUpperTriangular: Matrix and vector must have same number of columns");
+                throw new System.Exception("Solvers.SolveUpperTriangularLU: Matrix and vector must have same number of columns");
 
             for (int r = U.N_Cols - 1; r >= 0; r--) {
                 fProxy sum = 0;

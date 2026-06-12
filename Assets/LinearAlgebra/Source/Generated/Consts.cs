@@ -8,8 +8,12 @@ namespace LinearAlgebra {
 
         
         public const float floatZeroTreshold = 1e-6f;
+        public const float floatEpsilon = 1.1920929e-7f;   // machine epsilon, 2^-23
+        public const float floatSqrtEps = 3.4526698e-4f;   // sqrt(floatEpsilon): best localization of a smooth minimum
 
-        public const float doubleZeroTreshold = 1e-14f; // could lower this, if necessary
+        public const double doubleZeroTreshold = 1e-14; // could lower this, if necessary
+        public const double doubleEpsilon = 2.220446049250313e-16;  // machine epsilon, 2^-52
+        public const double doubleSqrtEps = 1.4901161193847656e-8;  // sqrt(doubleEpsilon): best localization of a smooth minimum
     }
 
 }

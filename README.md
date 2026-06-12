@@ -132,6 +132,8 @@ Here's a simple example:
 - ✅ SVD decomposition
 - ✅ Least squares / pseudo-inverse (SVD-based, rank-deficient tolerant)
 - ✅ Optimizers (1D root finding, 1D minimization, gradient descent)
+- ✅ Eigen: dominant eigenpair via power iteration with Rayleigh quotient (`Eigen.powerIteration`)
+- ✅ Eigen: full symmetric eigendecomposition via classical Jacobi (`Eigen.eigenDecomposition`)
 
 ## TODO
 - Better arena management and standalone vec/mat management (without arena allocation)

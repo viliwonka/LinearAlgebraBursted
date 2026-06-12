@@ -34,6 +34,8 @@ public class floatLUTests
 
         public TestType Type;
 
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff/index
+        public NativeArray<float> Fail;
 
         public void Execute()
         {
@@ -590,6 +592,14 @@ public class floatLUTests
 
             var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
+            // Fail layout: [1]=zeroError, [2]=limit 1E-3, [3]=diff
+            if (!(zeroError < (float)1E-03f) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = zeroError;
+                Fail[2] = (float)1E-03f;
+                Fail[3] = zeroError - (float)1E-03f;
+            }
             Assert.IsTrue(zeroError < 1E-03f);
 
             pivot.Dispose();
@@ -632,6 +642,14 @@ public class floatLUTests
 
             var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
+            // Fail layout: [1]=zeroError, [2]=limit 1E-3, [3]=diff
+            if (!(zeroError < (float)1E-03f) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = zeroError;
+                Fail[2] = (float)1E-03f;
+                Fail[3] = zeroError - (float)1E-03f;
+            }
             Assert.IsTrue(zeroError < 1E-03f);
 
             pivot.Dispose();
@@ -639,20 +657,44 @@ public class floatLUTests
             arena.Dispose();
         }
 
+        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertClose(float a, float b, float precision) {
             float diff = Unity.Mathematics.math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
             Assert.IsTrue(diff <= precision);
         }
 
+        // Fail layout: [0]=flag, [1]=got, [2]=expected, [3]=relative diff
         private void AssertCloseRel(float a, float b, float relPrecision) {
             float denom = Unity.Mathematics.math.max((float)1f, Unity.Mathematics.math.abs(b));
             float diff = Unity.Mathematics.math.abs(a - b) / denom;
+            if (!(diff <= relPrecision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
             Assert.IsTrue(diff <= relPrecision);
         }
 
+        // Fail layout: [0]=flag, [1]=got[i], [2]=expected[i], [3]=index cast to float
         private void AssertVecClose(in floatN expected, in floatN got, int dim, float precision) {
             for (int i = 0; i < dim; i++) {
                 float diff = Unity.Mathematics.math.abs(expected[i] - got[i]);
+                if (!(diff <= precision) && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1;
+                    Fail[1] = got[i];
+                    Fail[2] = expected[i];
+                    Fail[3] = (float)i;
+                }
                 Assert.IsTrue(diff <= precision);
             }
         }
@@ -665,6 +707,15 @@ public class floatLUTests
             if (Analysis.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
+            // Fail layout: [1]=maxZeroError, [2]=precision, [3]=diff
+            var zeroError = Analysis.MaxZeroError(shouldBeZero);
+            if (!(zeroError <= precision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = zeroError;
+                Fail[2] = precision;
+                Fail[3] = zeroError - precision;
+            }
             Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
             Assert.IsTrue(Analysis.IsLowerTriangular(L, precision));
             Assert.IsTrue(Analysis.IsUpperTriangular(U, precision));
@@ -687,7 +738,23 @@ public class floatLUTests
     [TestCaseSource("GetEnums")]
     public void LUDecompTests(TestJob.TestType type)
     {
-        new TestJob() { Type = type }.Run();
+        var fail = new NativeArray<float>(4, Allocator.TempJob);
+        try {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (float)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (float)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 
 }

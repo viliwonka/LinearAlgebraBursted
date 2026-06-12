@@ -34,6 +34,8 @@ public class fProxyLUTests
 
         public TestType Type;
 
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff/index
+        public NativeArray<fProxy> Fail;
 
         public void Execute()
         {
@@ -590,6 +592,14 @@ public class fProxyLUTests
 
             var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
+            // Fail layout: [1]=zeroError, [2]=limit 1E-3, [3]=diff
+            if (!(zeroError < (fProxy)1E-03f) && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = zeroError;
+                Fail[2] = (fProxy)1E-03f;
+                Fail[3] = zeroError - (fProxy)1E-03f;
+            }
             Assert.IsTrue(zeroError < 1E-03f);
 
             pivot.Dispose();
@@ -632,6 +642,14 @@ public class fProxyLUTests
 
             var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
+            // Fail layout: [1]=zeroError, [2]=limit 1E-3, [3]=diff
+            if (!(zeroError < (fProxy)1E-03f) && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = zeroError;
+                Fail[2] = (fProxy)1E-03f;
+                Fail[3] = zeroError - (fProxy)1E-03f;
+            }
             Assert.IsTrue(zeroError < 1E-03f);
 
             pivot.Dispose();
@@ -639,20 +657,44 @@ public class fProxyLUTests
             arena.Dispose();
         }
 
+        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertClose(fProxy a, fProxy b, fProxy precision) {
             fProxy diff = Unity.Mathematics.math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
             Assert.IsTrue(diff <= precision);
         }
 
+        // Fail layout: [0]=flag, [1]=got, [2]=expected, [3]=relative diff
         private void AssertCloseRel(fProxy a, fProxy b, fProxy relPrecision) {
             fProxy denom = Unity.Mathematics.math.max((fProxy)1f, Unity.Mathematics.math.abs(b));
             fProxy diff = Unity.Mathematics.math.abs(a - b) / denom;
+            if (!(diff <= relPrecision) && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
             Assert.IsTrue(diff <= relPrecision);
         }
 
+        // Fail layout: [0]=flag, [1]=got[i], [2]=expected[i], [3]=index cast to fProxy
         private void AssertVecClose(in fProxyN expected, in fProxyN got, int dim, fProxy precision) {
             for (int i = 0; i < dim; i++) {
                 fProxy diff = Unity.Mathematics.math.abs(expected[i] - got[i]);
+                if (!(diff <= precision) && Fail[0] == (fProxy)0)
+                {
+                    Fail[0] = (fProxy)1;
+                    Fail[1] = got[i];
+                    Fail[2] = expected[i];
+                    Fail[3] = (fProxy)i;
+                }
                 Assert.IsTrue(diff <= precision);
             }
         }
@@ -665,6 +707,15 @@ public class fProxyLUTests
             if (Analysis.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
+            // Fail layout: [1]=maxZeroError, [2]=precision, [3]=diff
+            var zeroError = Analysis.MaxZeroError(shouldBeZero);
+            if (!(zeroError <= precision) && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = zeroError;
+                Fail[2] = precision;
+                Fail[3] = zeroError - precision;
+            }
             Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
             Assert.IsTrue(Analysis.IsLowerTriangular(L, precision));
             Assert.IsTrue(Analysis.IsUpperTriangular(U, precision));
@@ -687,7 +738,23 @@ public class fProxyLUTests
     [TestCaseSource("GetEnums")]
     public void LUDecompTests(TestJob.TestType type)
     {
-        new TestJob() { Type = type }.Run();
+        var fail = new NativeArray<fProxy>(4, Allocator.TempJob);
+        try {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (fProxy)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (fProxy)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 
 }

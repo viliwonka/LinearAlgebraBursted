@@ -32,6 +32,8 @@ public class floatSVDTests
 
         public TestType Type;
 
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff/index
+        public NativeArray<float> Fail;
 
         public void Execute()
         {
@@ -380,21 +382,58 @@ public class floatSVDTests
 
             var zeroError = Analysis.MaxZeroError(shouldBeZero);
 
+            // Fail layout: [1]=zeroError, [2]=precision, [3]=diff
+            if (!(zeroError <= precision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = zeroError;
+                Fail[2] = precision;
+                Fail[3] = zeroError - precision;
+            }
             Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
         }
 
+        // Fail layout: [1]=S[i] (offending element), [2]=bound or S[i-1], [3]=index cast to float
         private void AssertDescendingNonNegative(in floatN S, int n)
         {
             for (int i = 0; i < n; i++)
-                Assert.IsTrue(S[i] >= (float)(-1E-6f));
+            {
+                bool nonNeg = S[i] >= (float)(-1E-6f);
+                if (!nonNeg && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1;
+                    Fail[1] = S[i];
+                    Fail[2] = (float)(-1E-6f);
+                    Fail[3] = (float)i;
+                }
+                Assert.IsTrue(nonNeg);
+            }
 
             for (int i = 1; i < n; i++)
-                Assert.IsTrue(S[i] <= S[i - 1] + (float)1E-6f);
+            {
+                bool descending = S[i] <= S[i - 1] + (float)1E-6f;
+                if (!descending && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1;
+                    Fail[1] = S[i];
+                    Fail[2] = S[i - 1];
+                    Fail[3] = (float)i;
+                }
+                Assert.IsTrue(descending);
+            }
         }
 
+        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertClose(float a, float b, float precision)
         {
             float diff = Unity.Mathematics.math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
             Assert.IsTrue(diff <= precision);
         }
 
@@ -407,7 +446,23 @@ public class floatSVDTests
     [TestCaseSource("GetEnums")]
     public void SVDDecompTests(TestJob.TestType type)
     {
-        new TestJob() { Type = type }.Run();
+        var fail = new NativeArray<float>(4, Allocator.TempJob);
+        try {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (float)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (float)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 
     // Managed throw-tests: argument validation runs on the main thread (not in a Burst job).

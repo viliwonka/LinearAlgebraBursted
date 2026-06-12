@@ -46,6 +46,8 @@ public class doubleOrthoOpTests
 
         public TestType Type;
 
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff
+        public NativeArray<double> Fail;
 
         public void Execute()
         {
@@ -94,7 +96,7 @@ public class doubleOrthoOpTests
             //Print.Log(A);
             //Print.Log(Q);
             //Print.Log(R);
-            
+
             AssertQR(in A, in Q, in R);
 
             arena.Dispose();
@@ -111,12 +113,12 @@ public class doubleOrthoOpTests
 
             for(int i = 0; i < dim; i++)
                 Q[i, i] = 1f;
-            
+
             var A = Q.Copy();
 
             OrthoOP.qrDecomposition(ref Q, ref R);
 
-            
+
             AssertQR(in A, in Q, in R);
 
             arena.Dispose();
@@ -152,7 +154,7 @@ public class doubleOrthoOpTests
 
             var R = arena.doubleMat(dim);
             var Q = arena.doubleRandomMatrix(dim*2, dim, -0.5f, 0.5f, 94221);
-            
+
             var A = Q.Copy();
 
             OrthoOP.qrDecomposition(ref Q, ref R);
@@ -278,6 +280,14 @@ public class doubleOrthoOpTests
             if (Analysis.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
+            // Fail layout: [1]=zeroError, [2]=precision, [3]=diff
+            if (!(zeroError <= precision) && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1;
+                Fail[1] = zeroError;
+                Fail[2] = precision;
+                Fail[3] = zeroError - precision;
+            }
             Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
             Assert.IsTrue(Analysis.IsUpperTriangular(R, precision));
             Assert.IsTrue(Analysis.IsOrthogonal(Q, precision));
@@ -305,13 +315,13 @@ public class doubleOrthoOpTests
 
                 int dim = 32;
 
-                doubleMxN A; 
-                
+                doubleMxN A;
+
                 if(Type == TestType.RandomDiagonal)
                     A = arena.doubleRandomDiagonalMatrix(dim, 1f, 3f, 21410 + i*i + i*7);
                 else
                     A = arena.doubleRandomMatrix(dim*2, dim, -25f, +25f, 21410 + i*i + i*7);
-                
+
                 var Q = A.Copy();
                 var R = arena.doubleMat(dim);
 
@@ -331,13 +341,13 @@ public class doubleOrthoOpTests
         }
 
         private double ErrorCheckQR(in doubleMxN A, in doubleMxN Q, in doubleMxN R) {
-            
+
             doubleMxN shouldBeZero = A - doubleOP.dot(Q, R);
 
             if(Analysis.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("PrecisionReconstructTestJob: NaN detected");
 
-            //Print.Log(shouldBeZero); 
+            //Print.Log(shouldBeZero);
 
             double zeroError = Analysis.MaxZeroError(shouldBeZero);
 
@@ -358,10 +368,13 @@ public class doubleOrthoOpTests
 
         public TestType Type;
 
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff
+        public NativeArray<double> Fail;
+
         public void Execute() {
 
             switch(Type) {
-            
+
                 case TestType.SquareFullRank:
                     SquareFullRank();
                 break;
@@ -390,19 +403,19 @@ public class doubleOrthoOpTests
 
             for (uint i = 0; i < randomMatTests; i++) {
 
-                doubleMxN A = arena.doubleRandomMatrix(systemDim, systemDim, -5, +5, 420 + i - i + i * 7);
+                doubleMxN A = arena.doubleRandomMatrix(systemDim, systemDim, -5, +5, 420 + i * 7);
 
                 for(int d = 0; d < systemDim; d++)
                     A[d, d] += 5.1f + 10f*random.NextDouble();
 
                 var Q = A.Copy();
-                var R = arena.doubleMat(systemDim); 
+                var R = arena.doubleMat(systemDim);
 
                 OrthoOP.qrDecomposition(ref Q, ref R);
 
                 for(uint j = 0; j < randomVecTests; j++) {
 
-                    doubleN xOrig = arena.doubleRandomVector(systemDim, -25, +25, 1337 + i * i + i * 5);
+                    doubleN xOrig = arena.doubleRandomVector(systemDim, -25, +25, 1337 + i * i + j * 5);
                     doubleN b = doubleOP.dot(A, xOrig);
                     doubleN y = doubleOP.dot(b, Q);
 
@@ -415,14 +428,18 @@ public class doubleOrthoOpTests
                         throw new System.Exception("SolveSystemTestJob: NaN detected");
                     }
 
+                    // per-solve garbage detector (~3x above the worst observed conditioning-tail
+                    // error of ~0.21 float); the avg bound below is the actual quality guard
+                    AssertBound(zeroError, (double)2000 * Consts.doubleSqrtEps);
+
                     errorSum += zeroError;
                 }
             }
 
             double avgError = errorSum / (randomMatTests*randomVecTests);
 
-            // conservative bound: well-conditioned systems, sized for the lowest precision
-            Assert.IsTrue(avgError < (double)0.05f);
+            // average bound, scaled per precision (see Consts.doubleSqrtEps)
+            AssertBound(avgError, (double)150 * Consts.doubleSqrtEps);
 
             arena.Dispose();
         }
@@ -441,7 +458,7 @@ public class doubleOrthoOpTests
             for (uint i = 0; i < randomMatTests; i++) {
 
                 var arena = new Arena(Allocator.Persistent);
-                doubleMxN A = arena.doubleRandomMatrix(sysDimM, sysDimN, -5, +5, 420 + i - i + i * 7);
+                doubleMxN A = arena.doubleRandomMatrix(sysDimM, sysDimN, -5, +5, 420 + i * 7);
 
                 for (int d = 0; d < sysDimN; d++)
                     A[d, d] += 5.1f + 10f * random.NextDouble();
@@ -453,7 +470,7 @@ public class doubleOrthoOpTests
 
                 for (uint j = 0; j < randomVecTests; j++) {
 
-                    doubleN xOrig = arena.doubleRandomVector(sysDimN, -25, +25, 1337 + i * i + i * 5);
+                    doubleN xOrig = arena.doubleRandomVector(sysDimN, -25, +25, 1337 + i * i + j * 5);
                     doubleN b = doubleOP.dot(A, xOrig);
                     doubleN y = doubleOP.dot(b, Q);
 
@@ -466,6 +483,10 @@ public class doubleOrthoOpTests
                         throw new System.Exception("SolveSystemTestJob: NaN detected");
                     }
 
+                    // per-solve garbage detector (~3x above the worst observed conditioning-tail
+                    // error of ~0.21 float); the avg bound below is the actual quality guard
+                    AssertBound(zeroError, (double)2000 * Consts.doubleSqrtEps);
+
                     errorSum += zeroError;
                 }
                 arena.Dispose();
@@ -473,23 +494,23 @@ public class doubleOrthoOpTests
 
             double avgError = errorSum / (randomMatTests * randomVecTests);
 
-            // conservative bound: well-conditioned systems, sized for the lowest precision
-            Assert.IsTrue(avgError < (double)0.05f);
+            // average bound, scaled per precision (see Consts.doubleSqrtEps)
+            AssertBound(avgError, (double)150 * Consts.doubleSqrtEps);
         }
 
         void SquareFullRankDirect() {
 
             var arena = new Arena(Allocator.Persistent);
 
-            int systemDim = 128;  
+            int systemDim = 128;
             int randomMatTests = 128;
             double errorSum = 0;
-             
+
             var random = new Unity.Mathematics.Random(1111);
 
             for (uint i = 0; i < randomMatTests; i++) {
 
-                doubleMxN A = arena.doubleRandomMatrix(systemDim, systemDim, -5, +5, 420 + i - i + i * 7);
+                doubleMxN A = arena.doubleRandomMatrix(systemDim, systemDim, -5, +5, 420 + i * 7);
 
                 for (int d = 0; d < systemDim; d++)
                     A[d, d] += 5.1f + 10f * random.NextDouble();
@@ -506,7 +527,11 @@ public class doubleOrthoOpTests
                 x.subInpl(xOrig);
 
                 double zeroError = Analysis.MaxZeroError(x);
-                
+
+                // per-solve garbage detector (~3x above the worst observed conditioning-tail
+                // error of ~0.21 float); the avg bound below is the actual quality guard
+                AssertBound(zeroError, (double)2000 * Consts.doubleSqrtEps);
+
                 errorSum += zeroError;
 
                 arena.Clear();
@@ -514,8 +539,8 @@ public class doubleOrthoOpTests
 
             double avgError = errorSum / (randomMatTests);
 
-            // conservative bound: well-conditioned systems, sized for the lowest precision
-            Assert.IsTrue(avgError < (double)0.05f);
+            // average bound, scaled per precision (see Consts.doubleSqrtEps)
+            AssertBound(avgError, (double)150 * Consts.doubleSqrtEps);
 
             arena.Dispose();
         }
@@ -533,7 +558,7 @@ public class doubleOrthoOpTests
             for (uint i = 0; i < randomMatTests; i++) {
 
                 var arena = new Arena(Allocator.Persistent);
-                doubleMxN A = arena.doubleRandomMatrix(sysDimM, sysDimN, -5, +5, 420 + i - i + i * 7);
+                doubleMxN A = arena.doubleRandomMatrix(sysDimM, sysDimN, -5, +5, 420 + i * 7);
 
                 for (int d = 0; d < sysDimN; d++)
                     A[d, d] += 5.1f + 10f * random.NextDouble();
@@ -547,10 +572,14 @@ public class doubleOrthoOpTests
                 if (Analysis.IsAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
-                
+
                 x.subInpl(xOrig);
 
                 double zeroError = Analysis.MaxZeroError(x);
+
+                // per-solve garbage detector (~3x above the worst observed conditioning-tail
+                // error of ~0.21 float); the avg bound below is the actual quality guard
+                AssertBound(zeroError, (double)2000 * Consts.doubleSqrtEps);
 
                 errorSum += zeroError;
                 arena.Dispose();
@@ -558,8 +587,21 @@ public class doubleOrthoOpTests
 
             double avgError = errorSum / (randomMatTests);
 
-            // conservative bound: well-conditioned systems, sized for the lowest precision
-            Assert.IsTrue(avgError < (double)0.05f);
+            // average bound, scaled per precision (see Consts.doubleSqrtEps)
+            AssertBound(avgError, (double)150 * Consts.doubleSqrtEps);
+        }
+
+        // Fail layout: [0]=flag, [1]=value, [2]=limit, [3]=excess (value - limit)
+        private void AssertBound(double value, double limit)
+        {
+            if (!(value < limit) && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1;
+                Fail[1] = value;
+                Fail[2] = limit;
+                Fail[3] = value - limit;
+            }
+            Assert.IsTrue(value < limit);
         }
     }
 
@@ -570,7 +612,23 @@ public class doubleOrthoOpTests
     [TestCaseSource("GetEnums")]
     public void QRDecompTests(TestJob.TestType type)
     {
-        new TestJob() { Type = type }.Run();
+        var fail = new NativeArray<double>(4, Allocator.TempJob);
+        try {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (double)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (double)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 
     [Test]
@@ -585,21 +643,85 @@ public class doubleOrthoOpTests
 
     [Test]
     public void QRDecompErrorSolveSquareSystem() {
-        new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.SquareFullRank }.Run();
+        var fail = new NativeArray<double>(4, Allocator.TempJob);
+        try {
+            new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.SquareFullRank, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (double)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (double)0)
+                Assert.Fail($"SquareFullRank: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 
     [Test]
     public void QRDecompErrorSolveOverdeterminedSystem() {
-        new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.OverdeterminedFullRank }.Run();
+        var fail = new NativeArray<double>(4, Allocator.TempJob);
+        try {
+            new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.OverdeterminedFullRank, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (double)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (double)0)
+                Assert.Fail($"OverdeterminedFullRank: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 
     [Test]
     public void QRDecompErrorSolveSquareSystemDirect() {
-        new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.SquareFullRankDirect }.Run(); 
+        var fail = new NativeArray<double>(4, Allocator.TempJob);
+        try {
+            new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.SquareFullRankDirect, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (double)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (double)0)
+                Assert.Fail($"SquareFullRankDirect: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 
     [Test]
     public void QRDecompErrorSolveOverdeterminedSystemDirect() {
-        new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.OverdeterminedFullRankDirect }.Run();
+        var fail = new NativeArray<double>(4, Allocator.TempJob);
+        try {
+            new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.OverdeterminedFullRankDirect, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (double)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (double)0)
+                Assert.Fail($"OverdeterminedFullRankDirect: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 }

@@ -99,6 +99,8 @@ public class floatOptimizeTests
 
         public TestType Type;
 
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff/extra
+        public NativeArray<float> Fail;
 
         public void Execute()
         {
@@ -135,17 +137,18 @@ public class floatOptimizeTests
         }
 
         // bisection on (x-3)^2 - 4 over [3, 10]: f(3) = -4 < 0, f(10) = 45 > 0, root = 5.
-        // xTol = 1e-6: near |x| ~ 5 the 32-bit ulp is ~4.8e-7, so a tighter interval
-        // tolerance is not reachable in the lowest precision.
+        // xTol = 10 * ZeroTreshold (1e-5 float / 1e-13 double): stays above the ulp
+        // near |x| ~ 5 in each precision, so the interval width is actually reachable.
         public void BisectionParabola()
         {
             var fn = new ShiftedParabola();
 
-            bool ok = Optimize.bisection(ref fn, (float)3, (float)10, out float root, (float)1E-6f);
+            bool ok = Optimize.bisection(ref fn, (float)3, (float)10, out float root,
+                                         (float)10 * Consts.floatZeroTreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
-            AssertClose(root, (float)5, 1E-4f);
+            AssertClose(root, (float)5, (float)100 * Consts.floatZeroTreshold);
         }
 
         // Non-bracketing interval [6, 10]: f(6) = 5 > 0, f(10) = 45 > 0, both positive -> false.
@@ -158,21 +161,25 @@ public class floatOptimizeTests
             Assert.IsFalse(ok);
             AssertFinite(root);
             // root must be the endpoint with the smaller |f|; |f(6)| = 5 < |f(10)| = 45 -> 6.
-            AssertClose(root, (float)6, 1E-6f);
+            // The endpoint is returned unchanged, so this is exact in both precisions.
+            AssertClose(root, (float)6, Consts.floatZeroTreshold);
         }
 
         // cos(x) over [0, 3]: f(0) = 1 > 0, f(3) ~ -0.99 < 0, root = pi/2.
-        // xTol = 1e-6: near pi/2 the 32-bit ulp is ~1.2e-7, so the interval can never
-        // shrink below ~2 ulp; 1e-7 is unreachable in the lowest precision.
+        // xTol = 10 * ZeroTreshold (1e-5 float / 1e-13 double): the interval can never
+        // shrink below ~2 ulp near pi/2, so xTol must stay above that in each precision.
         public void BisectionCos()
         {
             var fn = new Cos();
 
-            bool ok = Optimize.bisection(ref fn, (float)0, (float)3, out float root, (float)1E-6f);
+            bool ok = Optimize.bisection(ref fn, (float)0, (float)3, out float root,
+                                         (float)10 * Consts.floatZeroTreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
-            AssertClose(root, (float)(Unity.Mathematics.math.PI * 0.5), 1E-4f);
+            // full-precision pi/2 literal: math.PI is a float constant whose error (~4.4e-8)
+            // would dominate the double-precision tolerance (1e-12)
+            AssertClose(root, (float)1.5707963267948966, (float)100 * Consts.floatZeroTreshold);
         }
 
         // Newton on x^2 - 2 from x0 = 1: converges to sqrt(2).
@@ -184,7 +191,7 @@ public class floatOptimizeTests
 
             Assert.IsTrue(ok);
             AssertFinite(root);
-            AssertClose(root, (float)1.4142135623730951, 1E-4f);
+            AssertClose(root, (float)1.4142135623730951, (float)100 * Consts.floatZeroTreshold);
 
             // |f(root)| must be within the convergence tolerance (default fTol = ZeroTreshold).
             Assert.IsTrue(Unity.Mathematics.math.abs(fn.Eval(root)) <= Consts.floatZeroTreshold);
@@ -202,30 +209,35 @@ public class floatOptimizeTests
         }
 
         // Golden-section on (x-2)^2 + 1 over [-5, 5]: minimum at x = 2.
-        // xMin tolerance 1e-3: a smooth minimum can only be localized to ~sqrt(machine eps)
-        // (~3.5e-4 in 32-bit) because f is constant to rounding within that distance.
+        // xMin tolerance 3 * SqrtEps: a smooth minimum can only be localized to
+        // ~sqrt(machine eps) (~3.5e-4 float / ~1.5e-8 double) because f is constant
+        // to rounding within that distance.
         public void GoldenParabolaMin()
         {
             var fn = new ParabolaMin();
 
-            bool ok = Optimize.goldenSection(ref fn, (float)(-5), (float)5, out float xMin, (float)1E-6f);
+            bool ok = Optimize.goldenSection(ref fn, (float)(-5), (float)5, out float xMin,
+                                             (float)10 * Consts.floatZeroTreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(xMin);
-            AssertClose(xMin, (float)2, 1E-3f);
+            AssertClose(xMin, (float)2, (float)3 * Consts.floatSqrtEps);
         }
 
         // Golden-section on cos(x) over [2, 4]: minimum at x = pi (unimodal on this bracket).
-        // xMin tolerance 1e-3: see GoldenParabolaMin (sqrt(eps) localization limit).
+        // xMin tolerance 3 * SqrtEps: see GoldenParabolaMin (sqrt(eps) localization limit).
         public void GoldenCosMin()
         {
             var fn = new Cos();
 
-            bool ok = Optimize.goldenSection(ref fn, (float)2, (float)4, out float xMin, (float)1E-6f);
+            bool ok = Optimize.goldenSection(ref fn, (float)2, (float)4, out float xMin,
+                                             (float)10 * Consts.floatZeroTreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(xMin);
-            AssertClose(xMin, (float)Unity.Mathematics.math.PI, 1E-3f);
+            // full-precision pi literal: math.PI is a float constant whose error (~8.7e-8)
+            // would dominate the double-precision tolerance (3 * SqrtEps = 4.5e-8)
+            AssertClose(xMin, (float)3.141592653589793, (float)3 * Consts.floatSqrtEps);
         }
 
         // Gradient descent on the 4-D bowl from x = 0: converges to targets (1,2,3,4).
@@ -286,14 +298,29 @@ public class floatOptimizeTests
             arena.Dispose();
         }
 
+        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertFinite(float v)
         {
+            if (!Unity.Mathematics.math.isfinite(v) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = v;
+                Fail[2] = (float)0;
+                Fail[3] = (float)0;
+            }
             Assert.IsTrue(Unity.Mathematics.math.isfinite(v));
         }
 
         private void AssertClose(float a, float b, float precision)
         {
             float diff = Unity.Mathematics.math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
             Assert.IsTrue(diff <= precision);
         }
 
@@ -306,7 +333,23 @@ public class floatOptimizeTests
     [TestCaseSource("GetEnums")]
     public void OptimizeTests(TestJob.TestType type)
     {
-        new TestJob() { Type = type }.Run();
+        var fail = new NativeArray<float>(4, Allocator.TempJob);
+        try {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (float)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (float)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
     }
 
     // Managed throw-test: argument validation runs on the main thread (not in a Burst job).

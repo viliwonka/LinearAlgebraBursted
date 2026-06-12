@@ -1,0 +1,851 @@
+using System;
+
+using LinearAlgebra;
+using LinearAlgebra.Stats;
+
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+
+using Unity.Jobs;
+using UnityEngine;
+using UnityEngine.TestTools;
+
+public class floatEigenTests
+{
+
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            // eigenDecomposition
+            EigenIdentity,
+            EigenDiagonal,
+            EigenKnown2x2,
+            EigenRandomSymmetric,
+            EigenReconstruct,
+            EigenPSDvsSVD,
+            EigenZero,
+            EigenNonConvergence,
+            // powerIteration
+            PowerDiagonalDominant,
+            PowerNegativeDominant,
+            PowerSymmetricCrossCheck,
+            PowerComplexPair,
+            PowerZeroMatrix
+        }
+
+        public TestType Type;
+
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff/index
+        public NativeArray<float> Fail;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.EigenIdentity:
+                    EigenIdentity();
+                    break;
+                case TestType.EigenDiagonal:
+                    EigenDiagonal();
+                    break;
+                case TestType.EigenKnown2x2:
+                    EigenKnown2x2();
+                    break;
+                case TestType.EigenRandomSymmetric:
+                    EigenRandomSymmetric();
+                    break;
+                case TestType.EigenReconstruct:
+                    EigenReconstruct();
+                    break;
+                case TestType.EigenPSDvsSVD:
+                    EigenPSDvsSVD();
+                    break;
+                case TestType.EigenZero:
+                    EigenZero();
+                    break;
+                case TestType.EigenNonConvergence:
+                    EigenNonConvergence();
+                    break;
+                case TestType.PowerDiagonalDominant:
+                    PowerDiagonalDominant();
+                    break;
+                case TestType.PowerNegativeDominant:
+                    PowerNegativeDominant();
+                    break;
+                case TestType.PowerSymmetricCrossCheck:
+                    PowerSymmetricCrossCheck();
+                    break;
+                case TestType.PowerComplexPair:
+                    PowerComplexPair();
+                    break;
+                case TestType.PowerZeroMatrix:
+                    PowerZeroMatrix();
+                    break;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // eigenDecomposition tests
+        // ---------------------------------------------------------------------
+
+        // 4x4 identity: every eigenvalue == 1, V orthogonal. Exact closed form, so
+        // eigenvalue tolerance 100*ZeroTreshold is comfortably above float Jacobi noise.
+        public void EigenIdentity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 4;
+
+            var A = arena.floatIdentityMatrix(n);
+            var eig = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+
+            Assert.IsTrue(converged);
+
+            for (int i = 0; i < n; i++)
+                AssertClose(eig[i], (float)1, (float)100 * Consts.floatZeroTreshold);
+
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (float)100 * Consts.floatZeroTreshold));
+
+            arena.Dispose();
+        }
+
+        // diag(3, -2, 0.5, 5): eigenvalues are the diagonal, sorted DESCENDING BY VALUE
+        // -> (5, 3, 0.5, -2). V orthogonal. Diagonal input is exact, tolerance generous.
+        public void EigenDiagonal()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 4;
+
+            var A = arena.floatMat(n, n);
+            A[0, 0] = (float)3;
+            A[1, 1] = (float)(-2);
+            A[2, 2] = (float)0.5;
+            A[3, 3] = (float)5;
+
+            var eig = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+
+            Assert.IsTrue(converged);
+
+            AssertClose(eig[0], (float)5, (float)100 * Consts.floatZeroTreshold);
+            AssertClose(eig[1], (float)3, (float)100 * Consts.floatZeroTreshold);
+            AssertClose(eig[2], (float)0.5, (float)100 * Consts.floatZeroTreshold);
+            AssertClose(eig[3], (float)(-2), (float)100 * Consts.floatZeroTreshold);
+
+            AssertDescending(in eig, n);
+
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (float)100 * Consts.floatZeroTreshold));
+
+            arena.Dispose();
+        }
+
+        // [[2,1],[1,2]]: eigenvalues 3 (vector (1,1)/sqrt2) and 1 (vector (1,-1)/sqrt2).
+        // Sign-agnostic: assert A_orig * v_k ~= lambda_k * v_k for each column.
+        public void EigenKnown2x2()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 2;
+
+            var A = arena.floatMat(n, n);
+            A[0, 0] = (float)2; A[0, 1] = (float)1;
+            A[1, 0] = (float)1; A[1, 1] = (float)2;
+
+            var Aorig = A.Copy();
+
+            var eig = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+
+            Assert.IsTrue(converged);
+
+            AssertClose(eig[0], (float)3, (float)100 * Consts.floatZeroTreshold);
+            AssertClose(eig[1], (float)1, (float)100 * Consts.floatZeroTreshold);
+
+            AssertDescending(in eig, n);
+
+            // sign-agnostic eigenvector verification: ||A*v_k - lambda_k*v_k||_inf small
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+
+            // V orthogonal
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (float)100 * Consts.floatZeroTreshold));
+
+            arena.Dispose();
+        }
+
+        // 8x8 random symmetric (values ~ +-5). Check: converged, V orthogonal, eigenvalues
+        // descending, per-eigenpair residual small (scaled by (1+|lambda|)), trace == sum lambda.
+        // Residual/orthogonality tolerance scaled by matrix magnitude: 8x8 entries up to 5,
+        // float Jacobi residual ~ few * 1e-5 absolute -> 1000*ZeroTreshold*(1+|lambda|).
+        public void EigenRandomSymmetric()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 8;
+
+            var A = arena.floatRandomMatrix(n, n, (float)(-5), (float)5, 8123451);
+            // symmetrize in place
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    float avg = (A[i, j] + A[j, i]) * (float)0.5;
+                    A[i, j] = avg;
+                    A[j, i] = avg;
+                }
+
+            var Aorig = A.Copy();
+
+            var eig = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+
+            Assert.IsTrue(converged);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (float)1000 * Consts.floatZeroTreshold));
+
+            AssertDescending(in eig, n);
+
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+
+            // trace(A_orig) == sum eigenvalues
+            float trace = (float)0;
+            for (int i = 0; i < n; i++)
+                trace += Aorig[i, i];
+            float sumEig = (float)0;
+            for (int i = 0; i < n; i++)
+                sumEig += eig[i];
+            // trace magnitude up to ~8*5 = 40; allow magnitude-scaled tolerance.
+            AssertClose(trace, sumEig, (float)1000 * Consts.floatZeroTreshold);
+
+            arena.Dispose();
+        }
+
+        // Same setup as EigenRandomSymmetric (different seed): reconstruct V*diag(lambda)*V^T
+        // and compare to A_orig elementwise. Reconstruction error for float Jacobi on an
+        // 8x8 with entries up to ~5 lands around 1e-5..1e-4 absolute -> 1000*ZeroTreshold.
+        public void EigenReconstruct()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 8;
+
+            var A = arena.floatRandomMatrix(n, n, (float)(-5), (float)5, 5571903);
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    float avg = (A[i, j] + A[j, i]) * (float)0.5;
+                    A[i, j] = avg;
+                    A[j, i] = avg;
+                }
+
+            var Aorig = A.Copy();
+
+            var eig = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+
+            Assert.IsTrue(converged);
+
+            // Reconstruct: recon = V * diag(eig) * V^T
+            var diagE = arena.floatDiagonalMatrix(in eig);
+            var Vd = floatOP.dot(V, diagE);
+            var Vt = floatOP.trans(V);
+            var recon = floatOP.dot(Vd, Vt);
+
+            floatMxN shouldBeZero = Aorig - recon;
+
+            if (Analysis.IsAnyNan(in shouldBeZero))
+                throw new System.Exception("TestJob: NaN detected");
+
+            float precision = (float)1000 * Consts.floatZeroTreshold;
+            float zeroError = Analysis.MaxZeroError(shouldBeZero);
+            if (!(zeroError <= precision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = zeroError;
+                Fail[2] = precision;
+                Fail[3] = zeroError - precision;
+            }
+            Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
+
+            arena.Dispose();
+        }
+
+        // 6x6 PSD matrix A = B^T B. Eigenvalues must all be >= -tol and equal the singular
+        // values of A (which for symmetric PSD equal the eigenvalues) in the same descending
+        // order. Both eigenDecomposition and svdDecomposition destroy their input, so copy.
+        // A = B^T B with B entries ~ +-3 -> eigenvalues up to ~ order 100; scale tolerance.
+        public void EigenPSDvsSVD()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;
+
+            var B = arena.floatRandomMatrix(n, n, (float)(-3), (float)3, 9920017);
+
+            // A = B^T B (manual), symmetric PSD
+            var A = arena.floatMat(n, n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    float sum = (float)0;
+                    for (int k = 0; k < n; k++)
+                        sum += B[k, i] * B[k, j];
+                    A[i, j] = sum;
+                }
+            // exact symmetrize to kill any rounding asymmetry
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    float avg = (A[i, j] + A[j, i]) * (float)0.5;
+                    A[i, j] = avg;
+                    A[j, i] = avg;
+                }
+
+            var Aeig = A.Copy();   // destroyed by eigenDecomposition
+            var Asvd = A.Copy();   // destroyed by svdDecomposition
+
+            var eig = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref Aeig, ref eig, ref V);
+            Assert.IsTrue(converged);
+
+            // eigenvalues all >= -tol (PSD)
+            float negTol = (float)1000 * Consts.floatZeroTreshold;
+            for (int i = 0; i < n; i++)
+            {
+                bool nonNeg = eig[i] >= -negTol;
+                if (!nonNeg && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1;
+                    Fail[1] = eig[i];
+                    Fail[2] = -negTol;
+                    Fail[3] = (float)i;
+                }
+                Assert.IsTrue(nonNeg);
+            }
+
+            // singular values via SVD on a fresh copy
+            var S = arena.floatVec(n);
+            var Vsvd = arena.floatMat(n, n);
+            bool svdOk = SVD.svdDecomposition(ref Asvd, ref S, ref Vsvd);
+            Assert.IsTrue(svdOk);
+
+            // Compare eigenvalues to singular values, same descending order.
+            // Magnitude can reach ~ order 100, so scale tolerance by (1+|S[i]|).
+            for (int i = 0; i < n; i++)
+            {
+                float scale = (float)1 + Unity.Mathematics.math.abs(S[i]);
+                float tol = (float)1000 * Consts.floatZeroTreshold * scale;
+                float diff = Unity.Mathematics.math.abs(eig[i] - S[i]);
+                if (!(diff <= tol) && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1;
+                    Fail[1] = eig[i];
+                    Fail[2] = S[i];
+                    Fail[3] = diff;
+                }
+                Assert.IsTrue(diff <= tol);
+            }
+
+            arena.Dispose();
+        }
+
+        // 5x5 zero matrix: converged, all eigenvalues 0, V orthogonal (stays identity).
+        public void EigenZero()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var A = arena.floatMat(n, n);
+            var eig = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+
+            Assert.IsTrue(converged);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            for (int i = 0; i < n; i++)
+                AssertClose(eig[i], (float)0, (float)100 * Consts.floatZeroTreshold);
+
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (float)100 * Consts.floatZeroTreshold));
+
+            arena.Dispose();
+        }
+
+        // Hilbert-like symmetric matrix with maxSweeps = 1: regardless of returned bool,
+        // outputs must be finite (no NaN) and eigenvalues descending.
+        public void EigenNonConvergence()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 8;
+
+            var A = arena.floatHilbertMatrix(n);
+            var eig = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            // maxSweeps = 1: convergence not asserted.
+            Eigen.eigenDecomposition(ref A, ref eig, ref V, 1);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            AssertDescending(in eig, n);
+
+            arena.Dispose();
+        }
+
+        // ---------------------------------------------------------------------
+        // powerIteration tests
+        // ---------------------------------------------------------------------
+
+        // diag(5, 3, 1, 0.5) with v = 0 input (exercises deterministic seeding) -> true,
+        // lambda ~= 5 (dominant), residual property ||A*v - lambda*v||_inf <= tol*max(1,|lambda|).
+        public void PowerDiagonalDominant()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 4;
+
+            var A = arena.floatMat(n, n);
+            A[0, 0] = (float)5;
+            A[1, 1] = (float)3;
+            A[2, 2] = (float)1;
+            A[3, 3] = (float)0.5;
+
+            var v = arena.floatVec(n);   // zero vector -> deterministic seeding
+            var w = arena.floatVec(n);
+
+            float tol = (float)10 * Consts.floatZeroTreshold;
+            bool ok = Eigen.powerIteration(in A, ref v, ref w, out float lambda, tol, 1000);
+
+            Assert.IsTrue(ok);
+            AssertFinite(lambda);
+            AssertClose(lambda, (float)5, (float)100 * Consts.floatZeroTreshold);
+
+            AssertPowerResidual(in A, in v, lambda, tol, n);
+
+            arena.Dispose();
+        }
+
+        // diag(-7, 2, 1): dominant BY MAGNITUDE is -7. lambda ~= -7, |v[0]| ~= 1 (e0 dir).
+        public void PowerNegativeDominant()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 3;
+
+            var A = arena.floatMat(n, n);
+            A[0, 0] = (float)(-7);
+            A[1, 1] = (float)2;
+            A[2, 2] = (float)1;
+
+            var v = arena.floatVec(n);
+            var w = arena.floatVec(n);
+
+            float tol = (float)10 * Consts.floatZeroTreshold;
+            bool ok = Eigen.powerIteration(in A, ref v, ref w, out float lambda, tol, 1000);
+
+            Assert.IsTrue(ok);
+            AssertFinite(lambda);
+            AssertClose(lambda, (float)(-7), (float)100 * Consts.floatZeroTreshold);
+
+            // eigenvector aligned with e0: |v[0]| ~= 1
+            AssertClose(Unity.Mathematics.math.abs(v[0]), (float)1, (float)100 * Consts.floatZeroTreshold);
+
+            AssertPowerResidual(in A, in v, lambda, tol, n);
+
+            arena.Dispose();
+        }
+
+        // 6x6 random symmetric with a forced clear dominant eigenvalue (+12 boost on one
+        // diagonal). Reference lambda_max from eigenDecomposition on a copy. Power iteration
+        // finds dominant BY MAGNITUDE; the boosted positive eigenvalue dominates both in
+        // value and magnitude, so the reference is eig[0] (largest by value == largest |.|).
+        public void PowerSymmetricCrossCheck()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;
+
+            var A = arena.floatRandomMatrix(n, n, (float)(-4), (float)4, 4471123);
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    float avg = (A[i, j] + A[j, i]) * (float)0.5;
+                    A[i, j] = avg;
+                    A[j, i] = avg;
+                }
+            // Force a clearly dominant positive eigenvalue (well separated in magnitude).
+            A[0, 0] = A[0, 0] + (float)12;
+
+            var Apow = A.Copy();
+            var Aeig = A.Copy();
+
+            // reference: dominant eigenvalue by value (== by magnitude here, well separated)
+            var eig = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+            bool econv = Eigen.eigenDecomposition(ref Aeig, ref eig, ref V);
+            Assert.IsTrue(econv);
+
+            // dominant by magnitude: compare |eig[0]| vs |eig[n-1]|
+            float reference = eig[0];
+            if (Unity.Mathematics.math.abs(eig[n - 1]) > Unity.Mathematics.math.abs(eig[0]))
+                reference = eig[n - 1];
+
+            var v = arena.floatVec(n);
+            var w = arena.floatVec(n);
+
+            float tol = (float)10 * Consts.floatZeroTreshold;
+            bool ok = Eigen.powerIteration(in Apow, ref v, ref w, out float lambda, tol, 2000);
+
+            Assert.IsTrue(ok);
+            AssertFinite(lambda);
+
+            // magnitude up to ~16; scale tolerance by (1+|reference|).
+            float scale = (float)1 + Unity.Mathematics.math.abs(reference);
+            AssertClose(lambda, reference, (float)1000 * Consts.floatZeroTreshold * scale);
+
+            arena.Dispose();
+        }
+
+        // 2x2 rotation [[0,-1],[1,0]] (eigenvalues +-i): power iteration cannot converge,
+        // returns false; v finite, lambda finite (no NaN).
+        public void PowerComplexPair()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 2;
+
+            var A = arena.floatMat(n, n);
+            A[0, 0] = (float)0; A[0, 1] = (float)(-1);
+            A[1, 0] = (float)1; A[1, 1] = (float)0;
+
+            var v = arena.floatVec(n);
+            var w = arena.floatVec(n);
+
+            float tol = (float)10 * Consts.floatZeroTreshold;
+            bool ok = Eigen.powerIteration(in A, ref v, ref w, out float lambda, tol, 200);
+
+            Assert.IsFalse(ok);
+            AssertFinite(lambda);
+            for (int i = 0; i < n; i++)
+                AssertFinite(v[i]);
+
+            arena.Dispose();
+        }
+
+        // 3x3 zero matrix: A*v == 0, ||w|| == 0 path -> lambda set to 0, returns true.
+        public void PowerZeroMatrix()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 3;
+
+            var A = arena.floatMat(n, n);
+
+            var v = arena.floatVec(n);
+            var w = arena.floatVec(n);
+
+            float tol = (float)10 * Consts.floatZeroTreshold;
+            bool ok = Eigen.powerIteration(in A, ref v, ref w, out float lambda, tol, 1000);
+
+            Assert.IsTrue(ok);
+            AssertFinite(lambda);
+            AssertClose(lambda, (float)0, (float)100 * Consts.floatZeroTreshold);
+
+            arena.Dispose();
+        }
+
+        // ---------------------------------------------------------------------
+        // Helpers
+        // ---------------------------------------------------------------------
+
+        // For every eigenpair (lambda_k = eig[k], v_k = column k of V), assert
+        // ||A*v_k - lambda_k*v_k||_inf <= 1000*ZeroTreshold * (1 + |lambda_k|).
+        private void AssertEigenResidual(in floatMxN A, in floatMxN V, in floatN eig, int n)
+        {
+            for (int k = 0; k < n; k++)
+            {
+                float lambda = eig[k];
+                float maxRes = (float)0;
+                for (int i = 0; i < n; i++)
+                {
+                    float av = (float)0;
+                    for (int j = 0; j < n; j++)
+                        av += A[i, j] * V[j, k];
+                    float ri = Unity.Mathematics.math.abs(av - lambda * V[i, k]);
+                    if (ri > maxRes)
+                        maxRes = ri;
+                }
+                float tol = (float)1000 * Consts.floatZeroTreshold * ((float)1 + Unity.Mathematics.math.abs(lambda));
+                if (!(maxRes <= tol) && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1;
+                    Fail[1] = maxRes;
+                    Fail[2] = tol;
+                    Fail[3] = (float)k;
+                }
+                Assert.IsTrue(maxRes <= tol);
+            }
+        }
+
+        // Recompute residual r = A*v - lambda*v (inf-norm) and assert it satisfies the
+        // documented convergence criterion r <= tol * max(1, |lambda|).
+        private void AssertPowerResidual(in floatMxN A, in floatN v, float lambda, float tol, int n)
+        {
+            float maxRes = (float)0;
+            for (int i = 0; i < n; i++)
+            {
+                float av = (float)0;
+                for (int j = 0; j < n; j++)
+                    av += A[i, j] * v[j];
+                float ri = Unity.Mathematics.math.abs(av - lambda * v[i]);
+                if (ri > maxRes)
+                    maxRes = ri;
+            }
+            float scale = Unity.Mathematics.math.abs(lambda);
+            if (scale < (float)1)
+                scale = (float)1;
+            float limit = tol * scale;
+            if (!(maxRes <= limit) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = maxRes;
+                Fail[2] = limit;
+                Fail[3] = maxRes - limit;
+            }
+            Assert.IsTrue(maxRes <= limit);
+        }
+
+        // Eigenvalues descending by value: eig[i] <= eig[i-1] (+ slack).
+        // Fail layout: [1]=eig[i], [2]=eig[i-1], [3]=index.
+        private void AssertDescending(in floatN eig, int n)
+        {
+            for (int i = 1; i < n; i++)
+            {
+                bool descending = eig[i] <= eig[i - 1] + (float)100 * Consts.floatZeroTreshold;
+                if (!descending && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1;
+                    Fail[1] = eig[i];
+                    Fail[2] = eig[i - 1];
+                    Fail[3] = (float)i;
+                }
+                Assert.IsTrue(descending);
+            }
+        }
+
+        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
+        private void AssertClose(float a, float b, float precision)
+        {
+            float diff = Unity.Mathematics.math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
+            Assert.IsTrue(diff <= precision);
+        }
+
+        private void AssertFinite(float v)
+        {
+            if (!Unity.Mathematics.math.isfinite(v) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = v;
+                Fail[2] = (float)0;
+                Fail[3] = (float)0;
+            }
+            Assert.IsTrue(Unity.Mathematics.math.isfinite(v));
+        }
+
+    }
+
+    public static Array GetEnums() {
+        return Enum.GetValues(typeof(TestJob.TestType));
+    }
+
+    [TestCaseSource("GetEnums")]
+    public void EigenSolverTests(TestJob.TestType type)
+    {
+        var fail = new NativeArray<float>(4, Allocator.TempJob);
+        try {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (float)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (float)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Managed throw-tests: argument validation runs on the main thread (not Burst).
+    // -------------------------------------------------------------------------
+
+    [Test]
+    public void EigenThrowsOnNonSquare()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.floatMat(3, 4);
+        var eig = arena.floatVec(4);
+        var V = arena.floatMat(4, 4);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EigenThrowsOnWrongEigenvalueLength()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.floatMat(4, 4);
+        var eig = arena.floatVec(3);
+        var V = arena.floatMat(4, 4);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EigenThrowsOnWrongVShape()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.floatMat(4, 4);
+        var eig = arena.floatVec(4);
+        var V = arena.floatMat(3, 3);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EigenThrowsOnBadMaxSweeps()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.floatMat(4, 4);
+        var eig = arena.floatVec(4);
+        var V = arena.floatMat(4, 4);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V, 0));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EigenThrowsOnNonSymmetric()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.floatMat(2, 2);
+        A[0, 0] = (float)1; A[0, 1] = (float)2;
+        A[1, 0] = (float)0; A[1, 1] = (float)1;
+
+        var eig = arena.floatVec(2);
+        var V = arena.floatMat(2, 2);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void PowerThrowsOnNonSquare()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.floatMat(3, 4);
+        var v = arena.floatVec(4);
+        var w = arena.floatVec(4);
+
+        Assert.Catch<ArgumentException>(() =>
+            Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroTreshold, 1000));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void PowerThrowsOnWrongVLength()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.floatMat(4, 4);
+        var v = arena.floatVec(3);
+        var w = arena.floatVec(4);
+
+        Assert.Catch<ArgumentException>(() =>
+            Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroTreshold, 1000));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void PowerThrowsOnWrongWLength()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.floatMat(4, 4);
+        var v = arena.floatVec(4);
+        var w = arena.floatVec(3);
+
+        Assert.Catch<ArgumentException>(() =>
+            Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroTreshold, 1000));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void PowerThrowsOnBadMaxIter()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.floatMat(4, 4);
+        var v = arena.floatVec(4);
+        var w = arena.floatVec(4);
+
+        Assert.Catch<ArgumentException>(() =>
+            Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroTreshold, 0));
+
+        arena.Dispose();
+    }
+
+}

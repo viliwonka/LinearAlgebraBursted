@@ -214,7 +214,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void qrDirectSolve(ref doubleMxN A, ref doubleN b, ref doubleN x) {
             if (A.M_Rows < A.N_Cols)
-                throw new System.Exception("OrthoOP.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
+                throw new System.Exception("OrthoOP.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
 
             if (b.N != A.M_Rows)
                 throw new System.Exception("OrthoOP.qrDirectSolve: b.N must equal A.M_Rows");

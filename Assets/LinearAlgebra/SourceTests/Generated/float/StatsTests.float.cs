@@ -36,6 +36,9 @@ public class floatStatsTests
 
         public TestType Type;
 
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff
+        public NativeArray<float> Fail;
+
         public void Execute()
         {
             switch (Type)
@@ -430,95 +433,125 @@ public class floatStatsTests
             arena.Dispose();
         }
 
+        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertClose(float a, float b, float precision)
         {
             float diff = math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
             Assert.IsTrue(diff <= precision);
+        }
+    }
+
+    // Helper used by every managed runner to allocate/run/dispose with failure diagnostics.
+    private void RunJob(TestJob.TestType type)
+    {
+        var fail = new NativeArray<float>(4, Allocator.TempJob);
+        try {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            // Under Burst a failed in-job assert logs an exception and aborts the job without
+            // throwing to the caller - surface the recorded diagnostics here as well.
+            if (fail[0] != (float)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+
+        }
+        catch (Exception e) {
+            if (fail[0] != (float)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally {
+            fail.Dispose();
         }
     }
 
     [Test]
     public void VectorVarianceStdDevTest()
     {
-        new TestJob() { Type = TestJob.TestType.VectorVarianceStdDev }.Run();
+        RunJob(TestJob.TestType.VectorVarianceStdDev);
     }
 
     [Test]
     public void SingleElementVarianceTest()
     {
-        new TestJob() { Type = TestJob.TestType.SingleElementVariance }.Run();
+        RunJob(TestJob.TestType.SingleElementVariance);
     }
 
     [Test]
     public void ArgMinMaxVectorTest()
     {
-        new TestJob() { Type = TestJob.TestType.ArgMinMaxVector }.Run();
+        RunJob(TestJob.TestType.ArgMinMaxVector);
     }
 
     [Test]
     public void ArgMinMaxAllEqualTest()
     {
-        new TestJob() { Type = TestJob.TestType.ArgMinMaxAllEqual }.Run();
+        RunJob(TestJob.TestType.ArgMinMaxAllEqual);
     }
 
     [Test]
     public void Matrix2x3Test()
     {
-        new TestJob() { Type = TestJob.TestType.Matrix2x3 }.Run();
+        RunJob(TestJob.TestType.Matrix2x3);
     }
 
     [Test]
     public void Matrix3x2NegativesTest()
     {
-        new TestJob() { Type = TestJob.TestType.Matrix3x2Negatives }.Run();
+        RunJob(TestJob.TestType.Matrix3x2Negatives);
     }
 
     [Test]
     public void OneColumnMatrixTest()
     {
-        new TestJob() { Type = TestJob.TestType.OneColumnMatrix }.Run();
+        RunJob(TestJob.TestType.OneColumnMatrix);
     }
 
     [Test]
     public void ArgMinMaxMatrixTest()
     {
-        new TestJob() { Type = TestJob.TestType.ArgMinMaxMatrix }.Run();
+        RunJob(TestJob.TestType.ArgMinMaxMatrix);
     }
 
     [Test]
     public void CovarianceKnownTest()
     {
-        new TestJob() { Type = TestJob.TestType.CovarianceKnown }.Run();
+        RunJob(TestJob.TestType.CovarianceKnown);
     }
 
     [Test]
     public void CovarianceDiagEqualsVarianceSampleTest()
     {
-        new TestJob() { Type = TestJob.TestType.CovarianceDiagEqualsVarianceSample }.Run();
+        RunJob(TestJob.TestType.CovarianceDiagEqualsVarianceSample);
     }
 
     [Test]
     public void CorrelationKnownTest()
     {
-        new TestJob() { Type = TestJob.TestType.CorrelationKnown }.Run();
+        RunJob(TestJob.TestType.CorrelationKnown);
     }
 
     [Test]
     public void CorrelationPerfectAndAntiTest()
     {
-        new TestJob() { Type = TestJob.TestType.CorrelationPerfectAndAnti }.Run();
+        RunJob(TestJob.TestType.CorrelationPerfectAndAnti);
     }
 
     [Test]
     public void CorrelationConstantColumnTest()
     {
-        new TestJob() { Type = TestJob.TestType.CorrelationConstantColumn }.Run();
+        RunJob(TestJob.TestType.CorrelationConstantColumn);
     }
 
     [Test]
     public void Covariance1VariableTest()
     {
-        new TestJob() { Type = TestJob.TestType.Covariance1Variable }.Run();
+        RunJob(TestJob.TestType.Covariance1Variable);
     }
 
     // Case 9: Managed throw-tests (must run on main thread, not inside a Burst job).
