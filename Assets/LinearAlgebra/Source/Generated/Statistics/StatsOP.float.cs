@@ -1,4 +1,4 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
 
 using Unity.Collections;
 using Unity.Mathematics;
@@ -20,9 +20,9 @@ namespace LinearAlgebra.Stats
                 return x.Data[0];
 
             float sum = 0f;
-            for (int i = 0; i < x.Data.Length; i++)
+            for (int i = 0; i < x.Data.Length; i++) 
                 sum += x.Data[i];
-
+            
             return sum;
         }
 
@@ -124,7 +124,7 @@ namespace LinearAlgebra.Stats
             float min = float.MaxValue;
             for (int i = 0; i < x.Data.Length; i++)
                 min = math.min(min, x.Data[i]);
-
+            
             return min;
         }
 
@@ -138,7 +138,7 @@ namespace LinearAlgebra.Stats
             float max = float.MinValue;
             for (int i = 0; i < x.Data.Length; i++)
                 max = math.max(max, x.Data[i]);
-
+            
             return max;
         }
 
@@ -146,7 +146,7 @@ namespace LinearAlgebra.Stats
         public static float median<T>(in T x) where T : unmanaged, IUnsafefloatArray {
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute median of an empty array.");
-
+            
             if (x.Data.Length == 1)
                 return x.Data[0];
 
@@ -255,7 +255,7 @@ namespace LinearAlgebra.Stats
             float iqr = q3 - q1;
 
             copy.Dispose();
-
+            
             float stdDev = math.sqrt(variance);
 
             return new floatFullStats(x.Data.Length, mean, min, max, range, median, stdDev, variance, iqr, q1, q3);
@@ -273,10 +273,10 @@ namespace LinearAlgebra.Stats
                 float sum = 0f;
                 for (int c = 0; c < A.N_Cols; c++)
                     sum += A[r, c];
-
+                
                 vec[r] = sum;
             }
-
+            
             return vec;
         }
 

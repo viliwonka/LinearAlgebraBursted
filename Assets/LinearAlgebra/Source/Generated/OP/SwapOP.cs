@@ -1,4 +1,4 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
 
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.CompilerServices;
@@ -8,7 +8,7 @@ namespace LinearAlgebra
 {
     public static class SwapOP {
 
-
+        
 
         // just for completeness, swap two elements in a vector
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -78,7 +78,7 @@ namespace LinearAlgebra
             }
         }
 
-
+        
 
         // just for completeness, swap two elements in a vector
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -148,7 +148,7 @@ namespace LinearAlgebra
             }
         }
 
-
+        
 
     }
 }

@@ -30,7 +30,7 @@ namespace LinearAlgebra
         /// Note: xTol is an absolute tolerance on the interval width.
         /// </summary>
         public static bool bisection<F>(ref F f, double lo, double hi, out double root,
-                                        double xTol = Consts.doubleZeroTreshold, int maxIter = 200)
+                                        double xTol, int maxIter)
             where F : struct, IdoubleScalarFunction
         {
             if (maxIter < 1)
@@ -68,11 +68,22 @@ namespace LinearAlgebra
             return (hi - lo) <= xTol;
         }
 
+        /// <summary>bisection with default maxIter (200).</summary>
+        public static bool bisection<F>(ref F f, double lo, double hi, out double root,
+                                        double xTol)
+            where F : struct, IdoubleScalarFunction
+            => bisection(ref f, lo, hi, out root, xTol, 200);
+
+        /// <summary>bisection with default xTol (Consts.doubleZeroTreshold) and maxIter (200).</summary>
+        public static bool bisection<F>(ref F f, double lo, double hi, out double root)
+            where F : struct, IdoubleScalarFunction
+            => bisection(ref f, lo, hi, out root, Consts.doubleZeroTreshold, 200);
+
         /// <summary>
         /// Newton root find. Converged when |f(x)| &lt;= fTol. Returns false if |f'(x)| &lt; Consts.doubleZeroTreshold (flat/badly-scaled, absolute guard) or maxIter exhausted; root holds last iterate.
         /// </summary>
         public static bool newtonRoot<F>(ref F f, double x0, out double root,
-                                         double fTol = Consts.doubleZeroTreshold, int maxIter = 100)
+                                         double fTol, int maxIter)
             where F : struct, IdoubleScalarDerivativeFunction
         {
             if (maxIter < 1)
@@ -94,12 +105,23 @@ namespace LinearAlgebra
             return math.abs(f.Eval(x)) <= fTol;
         }
 
+        /// <summary>newtonRoot with default maxIter (100).</summary>
+        public static bool newtonRoot<F>(ref F f, double x0, out double root,
+                                         double fTol)
+            where F : struct, IdoubleScalarDerivativeFunction
+            => newtonRoot(ref f, x0, out root, fTol, 100);
+
+        /// <summary>newtonRoot with default fTol (Consts.doubleZeroTreshold) and maxIter (100).</summary>
+        public static bool newtonRoot<F>(ref F f, double x0, out double root)
+            where F : struct, IdoubleScalarDerivativeFunction
+            => newtonRoot(ref f, x0, out root, Consts.doubleZeroTreshold, 100);
+
         /// <summary>
         /// Golden-section minimization of unimodal f on [a, b]. xMin = midpoint of final bracket. Returns true when (b - a) &lt;= xTol within maxIter.
         /// Note: xTol is an absolute tolerance on the bracket width.
         /// </summary>
         public static bool goldenSection<F>(ref F f, double a, double b, out double xMin,
-                                            double xTol = Consts.doubleZeroTreshold, int maxIter = 200)
+                                            double xTol, int maxIter)
             where F : struct, IdoubleScalarFunction
         {
             if (maxIter < 1)
@@ -139,6 +161,17 @@ namespace LinearAlgebra
             xMin = a + (b - a) * (double)0.5;
             return (b - a) <= xTol;
         }
+
+        /// <summary>goldenSection with default maxIter (200).</summary>
+        public static bool goldenSection<F>(ref F f, double a, double b, out double xMin,
+                                            double xTol)
+            where F : struct, IdoubleScalarFunction
+            => goldenSection(ref f, a, b, out xMin, xTol, 200);
+
+        /// <summary>goldenSection with default xTol (Consts.doubleZeroTreshold) and maxIter (200).</summary>
+        public static bool goldenSection<F>(ref F f, double a, double b, out double xMin)
+            where F : struct, IdoubleScalarFunction
+            => goldenSection(ref f, a, b, out xMin, Consts.doubleZeroTreshold, 200);
 
         // Fixed-step gradient descent, in-place on x. g is caller-provided scratch (length x.N). Does NOT allocate.
         // Iterates x -= learningRate * g until L2(g) <= gradTol or maxIter. Returns true if gradTol reached; iterations = performed count.

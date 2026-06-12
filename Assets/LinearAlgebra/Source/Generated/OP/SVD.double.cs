@@ -29,8 +29,7 @@ namespace LinearAlgebra
         /// Does not allocate.
         /// </summary>
         public static bool svdDecomposition(ref doubleMxN U, ref doubleN S, ref doubleMxN V,
-                                            int maxSweeps = 30,
-                                            double eps = Consts.doubleZeroTreshold)
+                                            int maxSweeps, double eps)
         {
             if (U.M_Rows < U.N_Cols)
                 throw new System.ArgumentException("svdDecomposition: U must have m >= n (more rows than columns)");
@@ -181,5 +180,14 @@ namespace LinearAlgebra
 
             return converged;
         }
+
+        /// <summary>svdDecomposition with default eps (Consts.doubleZeroTreshold).</summary>
+        public static bool svdDecomposition(ref doubleMxN U, ref doubleN S, ref doubleMxN V,
+                                            int maxSweeps)
+            => svdDecomposition(ref U, ref S, ref V, maxSweeps, Consts.doubleZeroTreshold);
+
+        /// <summary>svdDecomposition with default maxSweeps (30) and eps (Consts.doubleZeroTreshold).</summary>
+        public static bool svdDecomposition(ref doubleMxN U, ref doubleN S, ref doubleMxN V)
+            => svdDecomposition(ref U, ref S, ref V, 30, Consts.doubleZeroTreshold);
     }
 }

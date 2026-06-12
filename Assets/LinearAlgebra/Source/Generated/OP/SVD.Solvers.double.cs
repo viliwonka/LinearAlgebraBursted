@@ -24,7 +24,7 @@ namespace LinearAlgebra
         /// Returns the numerical rank used; converged is svdDecomposition's return value.
         /// </summary>
         public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
-                                    double relTol = -1, int maxSweeps = 30)
+                                    double relTol, int maxSweeps)
         {
             if (b.N != A.M_Rows)
                 throw new ArgumentException("pinvSolve: b.N must equal A.M_Rows");
@@ -126,12 +126,21 @@ namespace LinearAlgebra
             }
         }
 
+        /// <summary>pinvSolve with default maxSweeps (30).</summary>
+        public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
+                                    double relTol)
+            => pinvSolve(ref A, in b, ref x, out converged, relTol, 30);
+
+        /// <summary>pinvSolve with default relTol (-1, auto tolerance) and maxSweeps (30).</summary>
+        public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged)
+            => pinvSolve(ref A, in b, ref x, out converged, (double)(-1), 30);
+
         /// <summary>
         /// Moore-Penrose pseudo-inverse: Aplus (N_Cols x M_Rows, caller-allocated) = V diag(1/S_i, S_i > tol) U^T.
         /// A is DESTROYED. Same tolerance/rank/return semantics as pinvSolve. Any shape.
         /// </summary>
         public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
-                                        double relTol = -1, int maxSweeps = 30)
+                                        double relTol, int maxSweeps)
         {
             if (Aplus.M_Rows != A.N_Cols)
                 throw new ArgumentException("pseudoInverse: Aplus.M_Rows must equal A.N_Cols");
@@ -222,5 +231,14 @@ namespace LinearAlgebra
                 return rank;
             }
         }
+
+        /// <summary>pseudoInverse with default maxSweeps (30).</summary>
+        public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
+                                        double relTol)
+            => pseudoInverse(ref A, ref Aplus, out converged, relTol, 30);
+
+        /// <summary>pseudoInverse with default relTol (-1, auto tolerance) and maxSweeps (30).</summary>
+        public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged)
+            => pseudoInverse(ref A, ref Aplus, out converged, (double)(-1), 30);
     }
 }
