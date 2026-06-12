@@ -73,8 +73,8 @@ public class fProxyDotOperationTests
 
             fProxy b = fProxyOP.dot(x, y);
 
-            Assert.AreEqual((fProxy)vecLen, b);
-            
+            Assert.IsTrue(b == (fProxy)vecLen);
+
             x = arena.fProxyVec(vecLen);
             y = arena.fProxyVec(vecLen);
 
@@ -86,7 +86,7 @@ public class fProxyDotOperationTests
 
             b = fProxyOP.dot(x, y);
 
-            Assert.AreEqual((fProxy)0f, b);
+            Assert.IsTrue(b == (fProxy)0f);
 
             arena.Dispose();
         }
@@ -122,14 +122,14 @@ public class fProxyDotOperationTests
             Assert.AreEqual(vecLen, b.N);
             
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(x[i], b[i]);
+                Assert.IsTrue(b[i] == x[i]);
 
             x = arena.fProxyIndexZeroVector(vecLen);
 
             b = fProxyOP.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((fProxy)i, b[i]);
+                Assert.IsTrue(b[i] == (fProxy)i);
 
             arena.Dispose();
         }
@@ -149,19 +149,19 @@ public class fProxyDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((fProxy)1f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (fProxy)1f);
                 else
-                    Assert.AreEqual((fProxy)0f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (fProxy)0f);
             }
 
             fProxyMxN R = arena.fProxyRandomMatrix(matLen, matLen);
-            
+
             C = fProxyOP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
             {
-                Assert.AreEqual(R[i, j], C[i, j]);
+                Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
             C = arena.fProxyIdentityMatrix(matLen);
@@ -172,9 +172,9 @@ public class fProxyDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((fProxy)1f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (fProxy)1f);
                 else
-                    Assert.AreEqual((fProxy)0f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (fProxy)0f);
             }
 
             arena.Dispose();
@@ -236,14 +236,14 @@ public class fProxyDotOperationTests
 
             fProxyMxN B = fProxyOP.outerDot(y, x);
 
-            for (int i = 0; A.Length < i; i++)
-                Assert.AreEqual((fProxy)1f, A[i]);
+            for (int i = 0; i < A.Length; i++)
+                Assert.IsTrue(A[i] == (fProxy)1f);
 
             Assert.AreEqual(vecM, B.N_Cols);
             Assert.AreEqual(vecN, B.M_Rows);
 
-            for (int i = 0; B.Length < i; i++)
-                Assert.AreEqual((fProxy)1f, B[i]);
+            for (int i = 0; i < B.Length; i++)
+                Assert.IsTrue(B[i] == (fProxy)1f);
 
             x = arena.fProxyLinVector(vecM, 0f, 2f);
             y = arena.fProxyLinVector(vecN, 0f, 2f);
@@ -252,7 +252,7 @@ public class fProxyDotOperationTests
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)
-                    Assert.AreEqual(x[i] * y[j], C[i, j]);
+                    Assert.IsTrue(C[i, j] == x[i] * y[j]);
 
             arena.Dispose();
         }

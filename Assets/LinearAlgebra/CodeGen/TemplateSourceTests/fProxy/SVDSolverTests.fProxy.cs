@@ -176,13 +176,14 @@ public class fProxySVDSolverTests
                 maxAbs = Unity.Mathematics.math.max(maxAbs, Unity.Mathematics.math.abs(Atr[k]));
 
             // looser tolerance: errors get squared through A^T A
-            Assert.IsTrue(maxAbs < (fProxy)1E-2f, $"||A^T(Ax-b)||inf = {maxAbs}");
+            Assert.IsTrue(maxAbs < (fProxy)1E-2f);
 
             arena.Dispose();
         }
 
         // Case 3: Rank-deficient minimum-norm. A = 4x2, both columns = (1,1,1,1)^T,
-        // b = (1,1,1,1)^T -> rank 1, x = (0.25, 0.25) (minimum-norm solution).
+        // b = (1,1,1,1)^T -> rank 1. A x = (x0+x1) * ones, so any x0+x1 = 1 solves exactly;
+        // the minimum-norm solution is x = (0.5, 0.5).
         public void PinvRankDeficientMinNorm()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -210,8 +211,8 @@ public class fProxySVDSolverTests
 
             Assert.IsFalse(Analysis.IsAnyNan(in x));
 
-            AssertClose(x[0], (fProxy)0.25f, 1E-4f);
-            AssertClose(x[1], (fProxy)0.25f, 1E-4f);
+            AssertClose(x[0], (fProxy)0.5f, 1E-4f);
+            AssertClose(x[1], (fProxy)0.5f, 1E-4f);
 
             arena.Dispose();
         }
@@ -376,7 +377,7 @@ public class fProxySVDSolverTests
         private void AssertClose(fProxy a, fProxy b, fProxy precision)
         {
             fProxy diff = Unity.Mathematics.math.abs(a - b);
-            Assert.IsTrue(diff <= precision, $"Expected {b} got {a} (diff {diff})");
+            Assert.IsTrue(diff <= precision);
         }
 
     }

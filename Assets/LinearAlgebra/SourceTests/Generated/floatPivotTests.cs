@@ -290,10 +290,10 @@ public class floatPivotTests
 
             pivot.ApplyVec(ref vec);
 
-            Assert.AreEqual((float)0f, vec[0]);
-            Assert.AreEqual((float)0f, vec[1]);
-            Assert.AreEqual((float)0f, vec[2]);
-            Assert.AreEqual((float)1f, vec[3]);
+            Assert.IsTrue(vec[0] == (float)0f);
+            Assert.IsTrue(vec[1] == (float)0f);
+            Assert.IsTrue(vec[2] == (float)0f);
+            Assert.IsTrue(vec[3] == (float)1f);
 
             pivot.ApplyInverseVec(ref vec);
 

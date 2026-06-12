@@ -290,10 +290,10 @@ public class doublePivotTests
 
             pivot.ApplyVec(ref vec);
 
-            Assert.AreEqual((double)0f, vec[0]);
-            Assert.AreEqual((double)0f, vec[1]);
-            Assert.AreEqual((double)0f, vec[2]);
-            Assert.AreEqual((double)1f, vec[3]);
+            Assert.IsTrue(vec[0] == (double)0f);
+            Assert.IsTrue(vec[1] == (double)0f);
+            Assert.IsTrue(vec[2] == (double)0f);
+            Assert.IsTrue(vec[3] == (double)1f);
 
             pivot.ApplyInverseVec(ref vec);
 

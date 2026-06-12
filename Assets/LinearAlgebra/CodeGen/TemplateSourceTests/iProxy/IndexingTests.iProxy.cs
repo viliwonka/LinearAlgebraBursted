@@ -56,13 +56,13 @@ public class iProxyIndexingTests {
                 vec[i] = (iProxy)i;
 
             for (int i = 0; i < dim; i++)
-                Assert.AreEqual((iProxy)i, vec[i]);
+                Assert.IsTrue(vec[i] == (iProxy)i);
 
             for (int i = 0; i < dim; i++)
                 vec[^i] = (iProxy)i;
 
             for (int i = 0; i < dim; i++)
-                Assert.AreEqual((iProxy)i, vec[^i]);
+                Assert.IsTrue(vec[^i] == (iProxy)i);
 
             arena.Dispose();
         }
@@ -81,13 +81,13 @@ public class iProxyIndexingTests {
                 mat[i] = (iProxy)i;
 
             for (int i = 0; i < len; i++)
-                Assert.AreEqual((iProxy)i, mat[i]);
+                Assert.IsTrue(mat[i] == (iProxy)i);
 
             for (int i = 0; i < len; i++)
                 mat[^i] = (iProxy)i;
 
             for (int i = 0; i < len; i++)
-                Assert.AreEqual((iProxy)i, mat[^i]);
+                Assert.IsTrue(mat[^i] == (iProxy)i);
 
             arena.Dispose();
         }
@@ -107,7 +107,7 @@ public class iProxyIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((iProxy)(r * c), mat[r, c]);
+                Assert.IsTrue(mat[r, c] == (iProxy)(r * c));
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
@@ -115,7 +115,7 @@ public class iProxyIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((iProxy)(r * c), mat[^r, c]);
+                Assert.IsTrue(mat[^r, c] == (iProxy)(r * c));
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
@@ -123,7 +123,7 @@ public class iProxyIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((iProxy)(r * c), mat[r, ^c]);
+                Assert.IsTrue(mat[r, ^c] == (iProxy)(r * c));
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
@@ -131,7 +131,7 @@ public class iProxyIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((iProxy)(r * c), mat[^r, ^c]);
+                Assert.IsTrue(mat[^r, ^c] == (iProxy)(r * c));
 
             arena.Dispose();
         }
@@ -155,7 +155,7 @@ public class iProxyIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((iProxy)(r * c * 2), mat[r, c]);
+                Assert.IsTrue(mat[r, c] == (iProxy)(r * c * 2));
         }
     }
 

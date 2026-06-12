@@ -25,7 +25,7 @@ public class longOperationsTest {
 
             longN b = arena.longVec(vecLen, 10);
 
-            Assert.AreEqual(a[vecLen/2], b[vecLen/2]);
+            Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
             
             Assert.AreEqual(2, arena.AllocationsCount);
 
@@ -218,7 +218,7 @@ public class longOperationsTest {
             a = -a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(long)10f, a[i]);
+                Assert.IsTrue(a[i] == -(long)10f);
 
             arena.Dispose();
         }
@@ -232,19 +232,19 @@ public class longOperationsTest {
             longN a = arena.longVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)10d, a[i]);
+                Assert.IsTrue(a[i] == (long)10d);
 
             a += 1;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)11d, a[i]);
+                Assert.IsTrue(a[i] == (long)11d);
 
             longN r = arena.longVec(vecLen, 5);
 
             a += r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)16, a[i]);
+                Assert.IsTrue(a[i] == (long)16);
 
             arena.Dispose();
         }
@@ -258,23 +258,23 @@ public class longOperationsTest {
             longN a = arena.longVec(vecLen, 10);
 
             a -= 1;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)9f, a[i]);
+                Assert.IsTrue(a[i] == (long)9f);
 
             longN r = arena.longVec(vecLen, 5);
 
             a -= r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)4d, a[i]);
+                Assert.IsTrue(a[i] == (long)4d);
 
             a = arena.longVec(vecLen, 10);
-            
+
             a = 1 - a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(long)9d, a[i]);
+                Assert.IsTrue(a[i] == -(long)9d);
 
             arena.Dispose();
         }
@@ -290,19 +290,19 @@ public class longOperationsTest {
             a *= 1;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)1d, a[i]);
+                Assert.IsTrue(a[i] == (long)1d);
 
             a *= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)2d, a[i]);
-                        
+                Assert.IsTrue(a[i] == (long)2d);
+
             a = arena.longIndexZeroVector(vecLen);
 
             a *= 2;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)(2d*i), a[i]);
+                Assert.IsTrue(a[i] == (long)(2d*i));
 
             a = arena.longIndexZeroVector(vecLen);
             longN b = arena.longIndexZeroVector(vecLen);
@@ -310,7 +310,7 @@ public class longOperationsTest {
             var c = a * b;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)(i * i), c[i]);
+                Assert.IsTrue(c[i] == (long)(i * i));
 
             arena.Dispose();
         }
@@ -326,19 +326,19 @@ public class longOperationsTest {
             a /= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)1, a[i]);
+                Assert.IsTrue(a[i] == (long)1);
 
             a /= 1;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)1, a[i]);
+                Assert.IsTrue(a[i] == (long)1);
 
             a = arena.longIndexZeroVector(vecLen);
 
             a /= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)(0.5 * i), a[i]);
+                Assert.IsTrue(a[i] == (long)(0.5 * i));
 
             a = arena.longIndexZeroVector(vecLen);
             longN b = arena.longIndexZeroVector(vecLen);
@@ -352,8 +352,8 @@ public class longOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((long)1, c0[i]);
-                Assert.AreEqual((long)1, c1[i]);
+                Assert.IsTrue(c0[i] == (long)1);
+                Assert.IsTrue(c1[i] == (long)1);
             }
 
             a = arena.longVec(vecLen, 2);
@@ -361,7 +361,7 @@ public class longOperationsTest {
             a = 2 / a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)1, a[i]);   
+                Assert.IsTrue(a[i] == (long)1);
 
             arena.Dispose();
         }
@@ -375,19 +375,19 @@ public class longOperationsTest {
             longN a = arena.longVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)10, a[i]);
+                Assert.IsTrue(a[i] == (long)10);
 
             a %= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)0, a[i]);
+                Assert.IsTrue(a[i] == (long)0);
 
             a = arena.longIndexZeroVector(vecLen);
 
             a %= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((long)(i % (long)2), a[i]);
+                Assert.IsTrue(a[i] == (long)(i % (long)2));
 
             a = arena.longIndexZeroVector(vecLen);
             longN b = arena.longIndexZeroVector(vecLen);
@@ -401,8 +401,8 @@ public class longOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((long)0, c0[i]);
-                Assert.AreEqual((long)0, c1[i]);
+                Assert.IsTrue(c0[i] == (long)0);
+                Assert.IsTrue(c1[i] == (long)0);
             }
 
             arena.Dispose();
@@ -419,7 +419,7 @@ public class longOperationsTest {
             a = -a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual(-(long)10f, a[i]);
+                Assert.IsTrue(a[i] == -(long)10f);
 
             arena.Dispose();
         }
@@ -438,7 +438,7 @@ public class longOperationsTest {
             a += 1;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((long)11f, a[i]);
+                Assert.IsTrue(a[i] == (long)11f);
 
             arena.Dispose();
         }
@@ -457,7 +457,7 @@ public class longOperationsTest {
             a -= 5;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((long)5f, a[i]);
+                Assert.IsTrue(a[i] == (long)5f);
 
             arena.Dispose();
         }
@@ -476,12 +476,12 @@ public class longOperationsTest {
             a *= 3;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((long)6f, a[i]);
+                Assert.IsTrue(a[i] == (long)6f);
 
             a = 3 * a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((long)18f, a[i]);
+                Assert.IsTrue(a[i] == (long)18f);
 
             arena.Dispose();
         }
@@ -500,12 +500,12 @@ public class longOperationsTest {
             a /= 2;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((long)5, a[i]);
+                Assert.IsTrue(a[i] == (long)5);
 
             a = 5 / a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((long)1, a[i]);
+                Assert.IsTrue(a[i] == (long)1);
 
             arena.Dispose();
         }
@@ -524,14 +524,14 @@ public class longOperationsTest {
             a %= 3;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((long)1f, a[i]);
+                Assert.IsTrue(a[i] == (long)1f);
 
             a = arena.longMat(rows, cols, 4);
 
             a = 4 % a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((long)0f, a[i]);
+                Assert.IsTrue(a[i] == (long)0f);
 
             a = arena.longMat(rows, cols, 3);
             longMxN b = arena.longMat(rows, cols, 2);
@@ -539,7 +539,7 @@ public class longOperationsTest {
             a = a % b;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((long)1f, a[i]);
+                Assert.IsTrue(a[i] == (long)1f);
 
             arena.Dispose();
         }

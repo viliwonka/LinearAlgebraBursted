@@ -25,7 +25,7 @@ public class floatOperationsTest {
 
             floatN b = arena.floatVec(vecLen, 10f);
 
-            Assert.AreEqual(a[vecLen/2], b[vecLen/2]);
+            Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
             
             Assert.AreEqual(2, arena.AllocationsCount);
 
@@ -200,7 +200,7 @@ public class floatOperationsTest {
             a = -a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(float)10f, a[i]);
+                Assert.IsTrue(a[i] == -(float)10f);
 
             arena.Dispose();
         }
@@ -214,19 +214,19 @@ public class floatOperationsTest {
             floatN a = arena.floatVec(vecLen, 10f);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)10d, a[i]);
+                Assert.IsTrue(a[i] == (float)10d);
 
             a += 1f;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)11d, a[i]);
+                Assert.IsTrue(a[i] == (float)11d);
 
             floatN r = arena.floatVec(vecLen, 5f);
 
             a += r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)16, a[i]);
+                Assert.IsTrue(a[i] == (float)16);
 
             arena.Dispose();
         }
@@ -240,23 +240,23 @@ public class floatOperationsTest {
             floatN a = arena.floatVec(vecLen, 10f);
 
             a -= 1f;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)9f, a[i]);
+                Assert.IsTrue(a[i] == (float)9f);
 
             floatN r = arena.floatVec(vecLen, 5f);
 
             a -= r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)4d, a[i]);
+                Assert.IsTrue(a[i] == (float)4d);
 
             a = arena.floatVec(vecLen, 10f);
-            
+
             a = 1f - a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(float)9d, a[i]);
+                Assert.IsTrue(a[i] == -(float)9d);
 
             arena.Dispose();
         }
@@ -272,19 +272,19 @@ public class floatOperationsTest {
             a *= 1f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)1d, a[i]);
+                Assert.IsTrue(a[i] == (float)1d);
 
             a *= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)2d, a[i]);
-                        
+                Assert.IsTrue(a[i] == (float)2d);
+
             a = arena.floatIndexZeroVector(vecLen);
 
             a *= 2f;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)(2d*i), a[i]);
+                Assert.IsTrue(a[i] == (float)(2d*i));
 
             a = arena.floatIndexZeroVector(vecLen);
             floatN b = arena.floatIndexZeroVector(vecLen);
@@ -292,7 +292,7 @@ public class floatOperationsTest {
             var c = a * b;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)(i * i), c[i]);
+                Assert.IsTrue(c[i] == (float)(i * i));
 
             arena.Dispose();
         }
@@ -308,19 +308,19 @@ public class floatOperationsTest {
             a /= 1f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)1f, a[i]);
+                Assert.IsTrue(a[i] == (float)1f);
 
             a /= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)0.5f, a[i]);
+                Assert.IsTrue(a[i] == (float)0.5f);
 
             a = arena.floatIndexZeroVector(vecLen);
 
             a /= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)0.5f * i, a[i]);
+                Assert.IsTrue(a[i] == (float)0.5f * i);
 
             a = arena.floatIndexZeroVector(vecLen);
             floatN b = arena.floatIndexZeroVector(vecLen);
@@ -334,8 +334,8 @@ public class floatOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((float)1f, c0[i]);
-                Assert.AreEqual((float)1f, c1[i]);
+                Assert.IsTrue(c0[i] == (float)1f);
+                Assert.IsTrue(c1[i] == (float)1f);
             }
 
             a = arena.floatVec(vecLen, 2f);
@@ -343,7 +343,7 @@ public class floatOperationsTest {
             a = 2f / a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)1f, a[i]);   
+                Assert.IsTrue(a[i] == (float)1f);
 
             arena.Dispose();
         }
@@ -357,19 +357,19 @@ public class floatOperationsTest {
             floatN a = arena.floatVec(vecLen, 10f);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)10f, a[i]);
+                Assert.IsTrue(a[i] == (float)10f);
 
             a %= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)0f, a[i]);
+                Assert.IsTrue(a[i] == (float)0f);
 
             a = arena.floatIndexZeroVector(vecLen);
 
             a %= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((float)(i % (float)2d), a[i]);
+                Assert.IsTrue(a[i] == (float)(i % (float)2d));
 
             a = arena.floatIndexZeroVector(vecLen);
             floatN b = arena.floatIndexZeroVector(vecLen);
@@ -383,8 +383,8 @@ public class floatOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((float)0f, c0[i]);
-                Assert.AreEqual((float)0f, c1[i]);
+                Assert.IsTrue(c0[i] == (float)0f);
+                Assert.IsTrue(c1[i] == (float)0f);
             }
 
             arena.Dispose();
@@ -401,7 +401,7 @@ public class floatOperationsTest {
             a = -a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual(-(float)10f, a[i]);
+                Assert.IsTrue(a[i] == -(float)10f);
 
             arena.Dispose();
         }
@@ -420,7 +420,7 @@ public class floatOperationsTest {
             a += 1f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)11f, a[i]);
+                Assert.IsTrue(a[i] == (float)11f);
 
             arena.Dispose();
         }
@@ -439,7 +439,7 @@ public class floatOperationsTest {
             a -= 5f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)5f, a[i]);
+                Assert.IsTrue(a[i] == (float)5f);
 
             arena.Dispose();
         }
@@ -458,19 +458,19 @@ public class floatOperationsTest {
             a *= 3f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)6f, a[i]);
+                Assert.IsTrue(a[i] == (float)6f);
 
             a = 3f * a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)18f, a[i]);
+                Assert.IsTrue(a[i] == (float)18f);
 
             var b = arena.floatMat(rows, cols, 0.5f);
 
             a = a * b;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)9f, a[i]);
+                Assert.IsTrue(a[i] == (float)9f);
 
             arena.Dispose();
         }
@@ -489,12 +489,12 @@ public class floatOperationsTest {
             a /= 2f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)5f, a[i]);
+                Assert.IsTrue(a[i] == (float)5f);
 
             a = 5f / a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)1f, a[i]);
+                Assert.IsTrue(a[i] == (float)1f);
 
             floatMxN b = arena.floatMat(rows, cols, 0.5f);
 
@@ -503,8 +503,8 @@ public class floatOperationsTest {
 
             for (int i = 0; i < totalElements; i++)
             {
-                Assert.AreEqual((float)2f, c0[i]);
-                Assert.AreEqual((float)0.5f, c1[i]);
+                Assert.IsTrue(c0[i] == (float)2f);
+                Assert.IsTrue(c1[i] == (float)0.5f);
             }
 
             arena.Dispose();
@@ -524,14 +524,14 @@ public class floatOperationsTest {
             a %= 3f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)1f, a[i]);
+                Assert.IsTrue(a[i] == (float)1f);
 
             a = arena.floatMat(rows, cols, 4f);
 
             a = 4f % a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)0f, a[i]);
+                Assert.IsTrue(a[i] == (float)0f);
 
             a = arena.floatMat(rows, cols, 3f);
             floatMxN b = arena.floatMat(rows, cols, 2f);
@@ -539,7 +539,7 @@ public class floatOperationsTest {
             a = a % b;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((float)1f, a[i]);
+                Assert.IsTrue(a[i] == (float)1f);
 
             arena.Dispose();
         }

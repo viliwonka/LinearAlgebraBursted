@@ -48,7 +48,7 @@ public class fProxyTransposeTests
 
             for (int r = 0; r < dim; r++)
             for (int c = 0; c < dim; c++)
-                Assert.AreEqual(A[r, c], B[c, r]); 
+                Assert.IsTrue(B[c, r] == A[r, c]);
 
             arena.Dispose();
         }
@@ -69,7 +69,7 @@ public class fProxyTransposeTests
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual(A[r, c], B[c, r]);
+                Assert.IsTrue(B[c, r] == A[r, c]);
 
             arena.Dispose();
         }

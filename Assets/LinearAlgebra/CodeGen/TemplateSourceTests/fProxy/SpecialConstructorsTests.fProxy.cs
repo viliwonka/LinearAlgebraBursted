@@ -97,18 +97,18 @@ public class fProxySpecialConstructorsTests {
 
             var v = arena.fProxyBasisVector(10, 0);
 
-            Assert.AreEqual((fProxy)1, v[0]);
+            Assert.IsTrue(v[0] == (fProxy)1);
 
             for(int i = 1; i < v.N; i++) {
-                Assert.AreEqual((fProxy)0, v[i]);
+                Assert.IsTrue(v[i] == (fProxy)0);
             }
 
             v = arena.fProxyBasisVector(10, 9);
 
-            Assert.AreEqual((fProxy)1, v[9]);
+            Assert.IsTrue(v[9] == (fProxy)1);
 
             for(int i = 0; i < v.N - 1; i++) {
-                Assert.AreEqual((fProxy)0, v[i]);
+                Assert.IsTrue(v[i] == (fProxy)0);
             }
 
             arena.Dispose();
@@ -121,7 +121,7 @@ public class fProxySpecialConstructorsTests {
             var v = arena.fProxyIndexZeroVector(16);
 
             for(int i = 0; i < v.N; i++) {
-                Assert.AreEqual((fProxy)i, v[i]);
+                Assert.IsTrue(v[i] == (fProxy)i);
             }
 
             arena.Dispose();
@@ -133,7 +133,7 @@ public class fProxySpecialConstructorsTests {
             var v = arena.fProxyIndexOneVector(16);
 
             for (int i = 0; i < v.N; i++) {
-                Assert.AreEqual((fProxy)i + 1, v[i]);
+                Assert.IsTrue(v[i] == (fProxy)i + 1);
             }
 
             arena.Dispose();
@@ -149,7 +149,7 @@ public class fProxySpecialConstructorsTests {
 
                 var len = fProxyNormsOP.L2(in v);
 
-                Assert.AreEqual((fProxy)1, len, 0.00001f);
+                Assert.IsTrue(Unity.Mathematics.math.abs(len - (fProxy)1) <= 0.00001f);
             }
 
             arena.Dispose();
@@ -193,7 +193,7 @@ public class fProxySpecialConstructorsTests {
             var m = arena.fProxyIndexZeroMatrix(16, 16);
 
             for(int i = 0; i < m.Length; i++)
-                Assert.AreEqual((fProxy)i, m[i]);
+                Assert.IsTrue(m[i] == (fProxy)i);
         }
 
         public void IndexOneMat()
@@ -202,7 +202,7 @@ public class fProxySpecialConstructorsTests {
             var m = arena.fProxyIndexOneMatrix(16, 16);
 
             for (int i = 0; i < m.Length; i++)
-                Assert.AreEqual((fProxy)i + 1, m[i]);
+                Assert.IsTrue(m[i] == (fProxy)i + 1);
 
         }
 
@@ -217,10 +217,10 @@ public class fProxySpecialConstructorsTests {
             for (int i = 0; i < m.M_Rows; i++)
             for(int j = 0; j < m.N_Cols; j++)
             {
-                if(i == j) 
-                    Assert.AreEqual((fProxy)1, m[i, j]);
-                else 
-                    Assert.AreEqual((fProxy)0, m[i, j]);
+                if(i == j)
+                    Assert.IsTrue(m[i, j] == (fProxy)1);
+                else
+                    Assert.IsTrue(m[i, j] == (fProxy)0);
             }
 
             arena.Dispose();
@@ -237,9 +237,9 @@ public class fProxySpecialConstructorsTests {
             for (int j = 0; j < m.N_Cols; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((fProxy)2, m[i, j]);
+                    Assert.IsTrue(m[i, j] == (fProxy)2);
                 else
-                    Assert.AreEqual((fProxy)0, m[i, j]);
+                    Assert.IsTrue(m[i, j] == (fProxy)0);
             }
 
             arena.Dispose();
@@ -258,7 +258,7 @@ public class fProxySpecialConstructorsTests {
                 if (i == j)
                     Assert.IsFalse(m[i, j] < -3f || m[i, j] > 3f);
                 else
-                    Assert.AreEqual((fProxy)0, m[i, j]);  
+                    Assert.IsTrue(m[i, j] == (fProxy)0);
             }
 
             arena.Dispose();
@@ -322,10 +322,10 @@ public class fProxySpecialConstructorsTests {
 
             m = arena.fProxyPermutationMatrix(2, 0, 1);
 
-            Assert.AreEqual((fProxy)0, m[0, 0]);
-            Assert.AreEqual((fProxy)0, m[1, 1]);
-            Assert.AreEqual((fProxy)1, m[0, 1]);
-            Assert.AreEqual((fProxy)1, m[1, 0]);
+            Assert.IsTrue(m[0, 0] == (fProxy)0);
+            Assert.IsTrue(m[1, 1] == (fProxy)0);
+            Assert.IsTrue(m[0, 1] == (fProxy)1);
+            Assert.IsTrue(m[1, 0] == (fProxy)1);
 
             arena.Dispose();
         }

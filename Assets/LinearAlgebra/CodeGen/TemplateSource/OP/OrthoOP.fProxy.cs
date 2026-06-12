@@ -216,6 +216,12 @@ namespace LinearAlgebra
             if (A.M_Rows < A.N_Cols)
                 throw new System.Exception("OrthoOP.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
 
+            if (b.N != A.M_Rows)
+                throw new System.Exception("OrthoOP.qrDirectSolve: b.N must equal A.M_Rows");
+
+            if (x.N != A.N_Cols)
+                throw new System.Exception("OrthoOP.qrDirectSolve: x.N must equal A.N_Cols");
+
             // vector to be copied from A below diagonal
             // auxilary vector, will be reused in each step
             var u = new fProxyN(A.M_Rows, Allocator.Temp, false);

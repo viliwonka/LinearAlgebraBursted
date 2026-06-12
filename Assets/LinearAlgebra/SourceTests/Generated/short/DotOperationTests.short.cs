@@ -73,8 +73,8 @@ public class shortDotOperationTests
 
             short b = shortOP.dot(x, y);
 
-            Assert.AreEqual((short)vecLen, b);
-            
+            Assert.IsTrue(b == (short)vecLen);
+
             x = arena.shortVec(vecLen);
             y = arena.shortVec(vecLen);
 
@@ -86,7 +86,7 @@ public class shortDotOperationTests
 
             b = shortOP.dot(x, y);
 
-            Assert.AreEqual((short)0f, b);
+            Assert.IsTrue(b == (short)0f);
 
             arena.Dispose();
         }
@@ -122,14 +122,14 @@ public class shortDotOperationTests
             Assert.AreEqual(vecLen, b.N);
             
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(x[i], b[i]);
+                Assert.IsTrue(b[i] == x[i]);
 
             x = arena.shortIndexZeroVector(vecLen);
 
             b = shortOP.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)i, b[i]);
+                Assert.IsTrue(b[i] == (short)i);
 
             arena.Dispose();
         }
@@ -149,9 +149,9 @@ public class shortDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((short)1f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (short)1f);
                 else
-                    Assert.AreEqual((short)0f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (short)0f);
             }
 
             shortMxN R = arena.shortRandomMatrix(matLen, matLen);
@@ -161,7 +161,7 @@ public class shortDotOperationTests
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
             {
-                Assert.AreEqual(R[i, j], C[i, j]);
+                Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
             C = arena.shortIdentityMatrix(matLen);
@@ -172,9 +172,9 @@ public class shortDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((short)1f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (short)1f);
                 else
-                    Assert.AreEqual((short)0f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (short)0f);
             }
 
             arena.Dispose();
@@ -236,14 +236,14 @@ public class shortDotOperationTests
 
             shortMxN B = shortOP.outerDot(y, x);
 
-            for (int i = 0; A.Length < i; i++)
-                Assert.AreEqual((short)1, A[i]);
+            for (int i = 0; i < A.Length; i++)
+                Assert.IsTrue(A[i] == (short)1);
 
             Assert.AreEqual(vecM, B.N_Cols);
             Assert.AreEqual(vecN, B.M_Rows);
 
-            for (int i = 0; B.Length < i; i++)
-                Assert.AreEqual((short)1, B[i]);
+            for (int i = 0; i < B.Length; i++)
+                Assert.IsTrue(B[i] == (short)1);
 
             x = arena.shortLinVector(vecM, 0, 20);
             y = arena.shortLinVector(vecN, 0, 20);
@@ -252,7 +252,7 @@ public class shortDotOperationTests
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)
-                    Assert.AreEqual((short)x[i] * y[j], (short)C[i, j]);
+                    Assert.IsTrue((short)C[i, j] == (short)x[i] * y[j]);
 
             arena.Dispose();
         }

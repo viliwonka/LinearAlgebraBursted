@@ -590,9 +590,6 @@ public class fProxyLUTests
 
             var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
-            Debug.Log($"Error of max(abs(x_Known - x_Solved)): {zeroError}");
-
-
             Assert.IsTrue(zeroError < 1E-03f);
 
             pivot.Dispose();
@@ -635,8 +632,6 @@ public class fProxyLUTests
 
             var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
-            Debug.Log($"Error of max(abs(x_Known - x_Solved)): {zeroError}");
-
             Assert.IsTrue(zeroError < 1E-03f);
 
             pivot.Dispose();
@@ -646,19 +641,19 @@ public class fProxyLUTests
 
         private void AssertClose(fProxy a, fProxy b, fProxy precision) {
             fProxy diff = Unity.Mathematics.math.abs(a - b);
-            Assert.IsTrue(diff <= precision, $"Expected {b} got {a} (diff {diff})");
+            Assert.IsTrue(diff <= precision);
         }
 
         private void AssertCloseRel(fProxy a, fProxy b, fProxy relPrecision) {
             fProxy denom = Unity.Mathematics.math.max((fProxy)1f, Unity.Mathematics.math.abs(b));
             fProxy diff = Unity.Mathematics.math.abs(a - b) / denom;
-            Assert.IsTrue(diff <= relPrecision, $"Expected {b} got {a} (rel diff {diff})");
+            Assert.IsTrue(diff <= relPrecision);
         }
 
         private void AssertVecClose(in fProxyN expected, in fProxyN got, int dim, fProxy precision) {
             for (int i = 0; i < dim; i++) {
                 fProxy diff = Unity.Mathematics.math.abs(expected[i] - got[i]);
-                Assert.IsTrue(diff <= precision, $"x[{i}] expected {expected[i]} got {got[i]} (diff {diff})");
+                Assert.IsTrue(diff <= precision);
             }
         }
 
@@ -667,12 +662,8 @@ public class fProxyLUTests
         {
             fProxyMxN shouldBeZero = A - fProxyOP.dot(L, U);
 
-            var zeroError = Analysis.MaxZeroError(shouldBeZero);
-
             if (Analysis.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
-
-            Debug.Log($"Error of max(abs(A - LU)): {zeroError}");
 
             Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
             Assert.IsTrue(Analysis.IsLowerTriangular(L, precision));

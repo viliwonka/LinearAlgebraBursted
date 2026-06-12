@@ -56,13 +56,13 @@ public class shortIndexingTests {
                 vec[i] = (short)i;
 
             for (int i = 0; i < dim; i++)
-                Assert.AreEqual((short)i, vec[i]);
+                Assert.IsTrue(vec[i] == (short)i);
 
             for (int i = 0; i < dim; i++)
                 vec[^i] = (short)i;
 
             for (int i = 0; i < dim; i++)
-                Assert.AreEqual((short)i, vec[^i]);
+                Assert.IsTrue(vec[^i] == (short)i);
 
             arena.Dispose();
         }
@@ -81,13 +81,13 @@ public class shortIndexingTests {
                 mat[i] = (short)i;
 
             for (int i = 0; i < len; i++)
-                Assert.AreEqual((short)i, mat[i]);
+                Assert.IsTrue(mat[i] == (short)i);
 
             for (int i = 0; i < len; i++)
                 mat[^i] = (short)i;
 
             for (int i = 0; i < len; i++)
-                Assert.AreEqual((short)i, mat[^i]);
+                Assert.IsTrue(mat[^i] == (short)i);
 
             arena.Dispose();
         }
@@ -107,7 +107,7 @@ public class shortIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((short)(r * c), mat[r, c]);
+                Assert.IsTrue(mat[r, c] == (short)(r * c));
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
@@ -115,7 +115,7 @@ public class shortIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((short)(r * c), mat[^r, c]);
+                Assert.IsTrue(mat[^r, c] == (short)(r * c));
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
@@ -123,7 +123,7 @@ public class shortIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((short)(r * c), mat[r, ^c]);
+                Assert.IsTrue(mat[r, ^c] == (short)(r * c));
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
@@ -131,7 +131,7 @@ public class shortIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((short)(r * c), mat[^r, ^c]);
+                Assert.IsTrue(mat[^r, ^c] == (short)(r * c));
 
             arena.Dispose();
         }
@@ -155,7 +155,7 @@ public class shortIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((short)(r * c * 2), mat[r, c]);
+                Assert.IsTrue(mat[r, c] == (short)(r * c * 2));
         }
     }
 

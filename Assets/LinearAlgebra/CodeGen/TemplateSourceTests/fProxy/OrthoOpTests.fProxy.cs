@@ -157,7 +157,7 @@ public class fProxyOrthoOpTests
 
             OrthoOP.qrDecomposition(ref Q, ref R);
 
-            Print.Log(R);
+            //Print.Log(R);
 
             AssertQR(in A, in Q, in R, 1E-05f);
 
@@ -278,8 +278,6 @@ public class fProxyOrthoOpTests
             if (Analysis.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
-            Debug.Log($"Error of max(abs(A - QR)): {zeroError}");
-
             Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
             Assert.IsTrue(Analysis.IsUpperTriangular(R, precision));
             Assert.IsTrue(Analysis.IsOrthogonal(Q, precision));
@@ -328,8 +326,6 @@ public class fProxyOrthoOpTests
             }
 
             fProxy avgError = errorSum / tests;
-
-            Debug.Log($"Average error of max(abs(A - QR)): {avgError}");
 
             arena.Dispose();
         }
@@ -425,7 +421,8 @@ public class fProxyOrthoOpTests
 
             fProxy avgError = errorSum / (randomMatTests*randomVecTests);
 
-            Debug.Log($"Average error: {avgError}");
+            // conservative bound: well-conditioned systems, sized for the lowest precision
+            Assert.IsTrue(avgError < (fProxy)0.05f);
 
             arena.Dispose();
         }
@@ -476,8 +473,8 @@ public class fProxyOrthoOpTests
 
             fProxy avgError = errorSum / (randomMatTests * randomVecTests);
 
-            Debug.Log($"Average error: {avgError}");
-
+            // conservative bound: well-conditioned systems, sized for the lowest precision
+            Assert.IsTrue(avgError < (fProxy)0.05f);
         }
 
         void SquareFullRankDirect() {
@@ -517,7 +514,8 @@ public class fProxyOrthoOpTests
 
             fProxy avgError = errorSum / (randomMatTests);
 
-            Debug.Log($"Average error: {avgError}");
+            // conservative bound: well-conditioned systems, sized for the lowest precision
+            Assert.IsTrue(avgError < (fProxy)0.05f);
 
             arena.Dispose();
         }
@@ -560,8 +558,8 @@ public class fProxyOrthoOpTests
 
             fProxy avgError = errorSum / (randomMatTests);
 
-            Debug.Log($"Average error: {avgError}");
-
+            // conservative bound: well-conditioned systems, sized for the lowest precision
+            Assert.IsTrue(avgError < (fProxy)0.05f);
         }
     }
 

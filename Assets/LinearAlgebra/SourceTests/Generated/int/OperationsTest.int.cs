@@ -25,7 +25,7 @@ public class intOperationsTest {
 
             intN b = arena.intVec(vecLen, 10);
 
-            Assert.AreEqual(a[vecLen/2], b[vecLen/2]);
+            Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
             
             Assert.AreEqual(2, arena.AllocationsCount);
 
@@ -218,7 +218,7 @@ public class intOperationsTest {
             a = -a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(int)10f, a[i]);
+                Assert.IsTrue(a[i] == -(int)10f);
 
             arena.Dispose();
         }
@@ -232,19 +232,19 @@ public class intOperationsTest {
             intN a = arena.intVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)10d, a[i]);
+                Assert.IsTrue(a[i] == (int)10d);
 
             a += 1;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)11d, a[i]);
+                Assert.IsTrue(a[i] == (int)11d);
 
             intN r = arena.intVec(vecLen, 5);
 
             a += r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)16, a[i]);
+                Assert.IsTrue(a[i] == (int)16);
 
             arena.Dispose();
         }
@@ -258,23 +258,23 @@ public class intOperationsTest {
             intN a = arena.intVec(vecLen, 10);
 
             a -= 1;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)9f, a[i]);
+                Assert.IsTrue(a[i] == (int)9f);
 
             intN r = arena.intVec(vecLen, 5);
 
             a -= r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)4d, a[i]);
+                Assert.IsTrue(a[i] == (int)4d);
 
             a = arena.intVec(vecLen, 10);
-            
+
             a = 1 - a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(int)9d, a[i]);
+                Assert.IsTrue(a[i] == -(int)9d);
 
             arena.Dispose();
         }
@@ -290,19 +290,19 @@ public class intOperationsTest {
             a *= 1;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)1d, a[i]);
+                Assert.IsTrue(a[i] == (int)1d);
 
             a *= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)2d, a[i]);
-                        
+                Assert.IsTrue(a[i] == (int)2d);
+
             a = arena.intIndexZeroVector(vecLen);
 
             a *= 2;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)(2d*i), a[i]);
+                Assert.IsTrue(a[i] == (int)(2d*i));
 
             a = arena.intIndexZeroVector(vecLen);
             intN b = arena.intIndexZeroVector(vecLen);
@@ -310,7 +310,7 @@ public class intOperationsTest {
             var c = a * b;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)(i * i), c[i]);
+                Assert.IsTrue(c[i] == (int)(i * i));
 
             arena.Dispose();
         }
@@ -326,19 +326,19 @@ public class intOperationsTest {
             a /= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)1, a[i]);
+                Assert.IsTrue(a[i] == (int)1);
 
             a /= 1;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)1, a[i]);
+                Assert.IsTrue(a[i] == (int)1);
 
             a = arena.intIndexZeroVector(vecLen);
 
             a /= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)(0.5 * i), a[i]);
+                Assert.IsTrue(a[i] == (int)(0.5 * i));
 
             a = arena.intIndexZeroVector(vecLen);
             intN b = arena.intIndexZeroVector(vecLen);
@@ -352,8 +352,8 @@ public class intOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((int)1, c0[i]);
-                Assert.AreEqual((int)1, c1[i]);
+                Assert.IsTrue(c0[i] == (int)1);
+                Assert.IsTrue(c1[i] == (int)1);
             }
 
             a = arena.intVec(vecLen, 2);
@@ -361,7 +361,7 @@ public class intOperationsTest {
             a = 2 / a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)1, a[i]);   
+                Assert.IsTrue(a[i] == (int)1);
 
             arena.Dispose();
         }
@@ -375,19 +375,19 @@ public class intOperationsTest {
             intN a = arena.intVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)10, a[i]);
+                Assert.IsTrue(a[i] == (int)10);
 
             a %= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)0, a[i]);
+                Assert.IsTrue(a[i] == (int)0);
 
             a = arena.intIndexZeroVector(vecLen);
 
             a %= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)(i % (int)2), a[i]);
+                Assert.IsTrue(a[i] == (int)(i % (int)2));
 
             a = arena.intIndexZeroVector(vecLen);
             intN b = arena.intIndexZeroVector(vecLen);
@@ -401,8 +401,8 @@ public class intOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((int)0, c0[i]);
-                Assert.AreEqual((int)0, c1[i]);
+                Assert.IsTrue(c0[i] == (int)0);
+                Assert.IsTrue(c1[i] == (int)0);
             }
 
             arena.Dispose();
@@ -419,7 +419,7 @@ public class intOperationsTest {
             a = -a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual(-(int)10f, a[i]);
+                Assert.IsTrue(a[i] == -(int)10f);
 
             arena.Dispose();
         }
@@ -438,7 +438,7 @@ public class intOperationsTest {
             a += 1;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((int)11f, a[i]);
+                Assert.IsTrue(a[i] == (int)11f);
 
             arena.Dispose();
         }
@@ -457,7 +457,7 @@ public class intOperationsTest {
             a -= 5;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((int)5f, a[i]);
+                Assert.IsTrue(a[i] == (int)5f);
 
             arena.Dispose();
         }
@@ -476,12 +476,12 @@ public class intOperationsTest {
             a *= 3;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((int)6f, a[i]);
+                Assert.IsTrue(a[i] == (int)6f);
 
             a = 3 * a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((int)18f, a[i]);
+                Assert.IsTrue(a[i] == (int)18f);
 
             arena.Dispose();
         }
@@ -500,12 +500,12 @@ public class intOperationsTest {
             a /= 2;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((int)5, a[i]);
+                Assert.IsTrue(a[i] == (int)5);
 
             a = 5 / a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((int)1, a[i]);
+                Assert.IsTrue(a[i] == (int)1);
 
             arena.Dispose();
         }
@@ -524,14 +524,14 @@ public class intOperationsTest {
             a %= 3;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((int)1f, a[i]);
+                Assert.IsTrue(a[i] == (int)1f);
 
             a = arena.intMat(rows, cols, 4);
 
             a = 4 % a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((int)0f, a[i]);
+                Assert.IsTrue(a[i] == (int)0f);
 
             a = arena.intMat(rows, cols, 3);
             intMxN b = arena.intMat(rows, cols, 2);
@@ -539,7 +539,7 @@ public class intOperationsTest {
             a = a % b;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((int)1f, a[i]);
+                Assert.IsTrue(a[i] == (int)1f);
 
             arena.Dispose();
         }

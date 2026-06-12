@@ -97,18 +97,18 @@ public class doubleSpecialConstructorsTests {
 
             var v = arena.doubleBasisVector(10, 0);
 
-            Assert.AreEqual((double)1, v[0]);
+            Assert.IsTrue(v[0] == (double)1);
 
             for(int i = 1; i < v.N; i++) {
-                Assert.AreEqual((double)0, v[i]);
+                Assert.IsTrue(v[i] == (double)0);
             }
 
             v = arena.doubleBasisVector(10, 9);
 
-            Assert.AreEqual((double)1, v[9]);
+            Assert.IsTrue(v[9] == (double)1);
 
             for(int i = 0; i < v.N - 1; i++) {
-                Assert.AreEqual((double)0, v[i]);
+                Assert.IsTrue(v[i] == (double)0);
             }
 
             arena.Dispose();
@@ -121,7 +121,7 @@ public class doubleSpecialConstructorsTests {
             var v = arena.doubleIndexZeroVector(16);
 
             for(int i = 0; i < v.N; i++) {
-                Assert.AreEqual((double)i, v[i]);
+                Assert.IsTrue(v[i] == (double)i);
             }
 
             arena.Dispose();
@@ -133,7 +133,7 @@ public class doubleSpecialConstructorsTests {
             var v = arena.doubleIndexOneVector(16);
 
             for (int i = 0; i < v.N; i++) {
-                Assert.AreEqual((double)i + 1, v[i]);
+                Assert.IsTrue(v[i] == (double)i + 1);
             }
 
             arena.Dispose();
@@ -149,7 +149,7 @@ public class doubleSpecialConstructorsTests {
 
                 var len = doubleNormsOP.L2(in v);
 
-                Assert.AreEqual((double)1, len, 0.00001f);
+                Assert.IsTrue(Unity.Mathematics.math.abs(len - (double)1) <= 0.00001f);
             }
 
             arena.Dispose();
@@ -193,7 +193,7 @@ public class doubleSpecialConstructorsTests {
             var m = arena.doubleIndexZeroMatrix(16, 16);
 
             for(int i = 0; i < m.Length; i++)
-                Assert.AreEqual((double)i, m[i]);
+                Assert.IsTrue(m[i] == (double)i);
         }
 
         public void IndexOneMat()
@@ -202,7 +202,7 @@ public class doubleSpecialConstructorsTests {
             var m = arena.doubleIndexOneMatrix(16, 16);
 
             for (int i = 0; i < m.Length; i++)
-                Assert.AreEqual((double)i + 1, m[i]);
+                Assert.IsTrue(m[i] == (double)i + 1);
 
         }
 
@@ -217,10 +217,10 @@ public class doubleSpecialConstructorsTests {
             for (int i = 0; i < m.M_Rows; i++)
             for(int j = 0; j < m.N_Cols; j++)
             {
-                if(i == j) 
-                    Assert.AreEqual((double)1, m[i, j]);
-                else 
-                    Assert.AreEqual((double)0, m[i, j]);
+                if(i == j)
+                    Assert.IsTrue(m[i, j] == (double)1);
+                else
+                    Assert.IsTrue(m[i, j] == (double)0);
             }
 
             arena.Dispose();
@@ -237,9 +237,9 @@ public class doubleSpecialConstructorsTests {
             for (int j = 0; j < m.N_Cols; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((double)2, m[i, j]);
+                    Assert.IsTrue(m[i, j] == (double)2);
                 else
-                    Assert.AreEqual((double)0, m[i, j]);
+                    Assert.IsTrue(m[i, j] == (double)0);
             }
 
             arena.Dispose();
@@ -258,7 +258,7 @@ public class doubleSpecialConstructorsTests {
                 if (i == j)
                     Assert.IsFalse(m[i, j] < -3f || m[i, j] > 3f);
                 else
-                    Assert.AreEqual((double)0, m[i, j]);  
+                    Assert.IsTrue(m[i, j] == (double)0);
             }
 
             arena.Dispose();
@@ -322,10 +322,10 @@ public class doubleSpecialConstructorsTests {
 
             m = arena.doublePermutationMatrix(2, 0, 1);
 
-            Assert.AreEqual((double)0, m[0, 0]);
-            Assert.AreEqual((double)0, m[1, 1]);
-            Assert.AreEqual((double)1, m[0, 1]);
-            Assert.AreEqual((double)1, m[1, 0]);
+            Assert.IsTrue(m[0, 0] == (double)0);
+            Assert.IsTrue(m[1, 1] == (double)0);
+            Assert.IsTrue(m[0, 1] == (double)1);
+            Assert.IsTrue(m[1, 0] == (double)1);
 
             arena.Dispose();
         }

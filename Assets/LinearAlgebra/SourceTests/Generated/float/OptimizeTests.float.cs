@@ -135,11 +135,13 @@ public class floatOptimizeTests
         }
 
         // bisection on (x-3)^2 - 4 over [3, 10]: f(3) = -4 < 0, f(10) = 45 > 0, root = 5.
+        // xTol = 1e-6: near |x| ~ 5 the 32-bit ulp is ~4.8e-7, so a tighter interval
+        // tolerance is not reachable in the lowest precision.
         public void BisectionParabola()
         {
             var fn = new ShiftedParabola();
 
-            bool ok = Optimize.bisection(ref fn, (float)3, (float)10, out float root, (float)1E-7f);
+            bool ok = Optimize.bisection(ref fn, (float)3, (float)10, out float root, (float)1E-6f);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
@@ -160,11 +162,13 @@ public class floatOptimizeTests
         }
 
         // cos(x) over [0, 3]: f(0) = 1 > 0, f(3) ~ -0.99 < 0, root = pi/2.
+        // xTol = 1e-6: near pi/2 the 32-bit ulp is ~1.2e-7, so the interval can never
+        // shrink below ~2 ulp; 1e-7 is unreachable in the lowest precision.
         public void BisectionCos()
         {
             var fn = new Cos();
 
-            bool ok = Optimize.bisection(ref fn, (float)0, (float)3, out float root, (float)1E-7f);
+            bool ok = Optimize.bisection(ref fn, (float)0, (float)3, out float root, (float)1E-6f);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
@@ -198,6 +202,8 @@ public class floatOptimizeTests
         }
 
         // Golden-section on (x-2)^2 + 1 over [-5, 5]: minimum at x = 2.
+        // xMin tolerance 1e-3: a smooth minimum can only be localized to ~sqrt(machine eps)
+        // (~3.5e-4 in 32-bit) because f is constant to rounding within that distance.
         public void GoldenParabolaMin()
         {
             var fn = new ParabolaMin();
@@ -206,10 +212,11 @@ public class floatOptimizeTests
 
             Assert.IsTrue(ok);
             AssertFinite(xMin);
-            AssertClose(xMin, (float)2, 1E-4f);
+            AssertClose(xMin, (float)2, 1E-3f);
         }
 
         // Golden-section on cos(x) over [2, 4]: minimum at x = pi (unimodal on this bracket).
+        // xMin tolerance 1e-3: see GoldenParabolaMin (sqrt(eps) localization limit).
         public void GoldenCosMin()
         {
             var fn = new Cos();
@@ -218,7 +225,7 @@ public class floatOptimizeTests
 
             Assert.IsTrue(ok);
             AssertFinite(xMin);
-            AssertClose(xMin, (float)Unity.Mathematics.math.PI, 1E-4f);
+            AssertClose(xMin, (float)Unity.Mathematics.math.PI, 1E-3f);
         }
 
         // Gradient descent on the 4-D bowl from x = 0: converges to targets (1,2,3,4).
@@ -238,7 +245,7 @@ public class floatOptimizeTests
                                                (float)0.1f, (float)1E-4f, maxIter, out int iterations);
 
             Assert.IsTrue(ok);
-            Assert.IsTrue(iterations < maxIter, $"iterations {iterations} should be < {maxIter}");
+            Assert.IsTrue(iterations < maxIter);
 
             for (int i = 0; i < n; i++)
             {
@@ -281,13 +288,13 @@ public class floatOptimizeTests
 
         private void AssertFinite(float v)
         {
-            Assert.IsTrue(Unity.Mathematics.math.isfinite(v), $"Expected finite value, got {v}");
+            Assert.IsTrue(Unity.Mathematics.math.isfinite(v));
         }
 
         private void AssertClose(float a, float b, float precision)
         {
             float diff = Unity.Mathematics.math.abs(a - b);
-            Assert.IsTrue(diff <= precision, $"Expected {b} got {a} (diff {diff})");
+            Assert.IsTrue(diff <= precision);
         }
 
     }

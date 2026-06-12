@@ -25,7 +25,7 @@ public class doubleOperationsTest {
 
             doubleN b = arena.doubleVec(vecLen, 10f);
 
-            Assert.AreEqual(a[vecLen/2], b[vecLen/2]);
+            Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
             
             Assert.AreEqual(2, arena.AllocationsCount);
 
@@ -200,7 +200,7 @@ public class doubleOperationsTest {
             a = -a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(double)10f, a[i]);
+                Assert.IsTrue(a[i] == -(double)10f);
 
             arena.Dispose();
         }
@@ -214,19 +214,19 @@ public class doubleOperationsTest {
             doubleN a = arena.doubleVec(vecLen, 10f);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)10d, a[i]);
+                Assert.IsTrue(a[i] == (double)10d);
 
             a += 1f;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)11d, a[i]);
+                Assert.IsTrue(a[i] == (double)11d);
 
             doubleN r = arena.doubleVec(vecLen, 5f);
 
             a += r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)16, a[i]);
+                Assert.IsTrue(a[i] == (double)16);
 
             arena.Dispose();
         }
@@ -240,23 +240,23 @@ public class doubleOperationsTest {
             doubleN a = arena.doubleVec(vecLen, 10f);
 
             a -= 1f;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)9f, a[i]);
+                Assert.IsTrue(a[i] == (double)9f);
 
             doubleN r = arena.doubleVec(vecLen, 5f);
 
             a -= r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)4d, a[i]);
+                Assert.IsTrue(a[i] == (double)4d);
 
             a = arena.doubleVec(vecLen, 10f);
-            
+
             a = 1f - a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(double)9d, a[i]);
+                Assert.IsTrue(a[i] == -(double)9d);
 
             arena.Dispose();
         }
@@ -272,19 +272,19 @@ public class doubleOperationsTest {
             a *= 1f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)1d, a[i]);
+                Assert.IsTrue(a[i] == (double)1d);
 
             a *= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)2d, a[i]);
-                        
+                Assert.IsTrue(a[i] == (double)2d);
+
             a = arena.doubleIndexZeroVector(vecLen);
 
             a *= 2f;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)(2d*i), a[i]);
+                Assert.IsTrue(a[i] == (double)(2d*i));
 
             a = arena.doubleIndexZeroVector(vecLen);
             doubleN b = arena.doubleIndexZeroVector(vecLen);
@@ -292,7 +292,7 @@ public class doubleOperationsTest {
             var c = a * b;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)(i * i), c[i]);
+                Assert.IsTrue(c[i] == (double)(i * i));
 
             arena.Dispose();
         }
@@ -308,19 +308,19 @@ public class doubleOperationsTest {
             a /= 1f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)1f, a[i]);
+                Assert.IsTrue(a[i] == (double)1f);
 
             a /= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)0.5f, a[i]);
+                Assert.IsTrue(a[i] == (double)0.5f);
 
             a = arena.doubleIndexZeroVector(vecLen);
 
             a /= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)0.5f * i, a[i]);
+                Assert.IsTrue(a[i] == (double)0.5f * i);
 
             a = arena.doubleIndexZeroVector(vecLen);
             doubleN b = arena.doubleIndexZeroVector(vecLen);
@@ -334,8 +334,8 @@ public class doubleOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((double)1f, c0[i]);
-                Assert.AreEqual((double)1f, c1[i]);
+                Assert.IsTrue(c0[i] == (double)1f);
+                Assert.IsTrue(c1[i] == (double)1f);
             }
 
             a = arena.doubleVec(vecLen, 2f);
@@ -343,7 +343,7 @@ public class doubleOperationsTest {
             a = 2f / a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)1f, a[i]);   
+                Assert.IsTrue(a[i] == (double)1f);
 
             arena.Dispose();
         }
@@ -357,19 +357,19 @@ public class doubleOperationsTest {
             doubleN a = arena.doubleVec(vecLen, 10f);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)10f, a[i]);
+                Assert.IsTrue(a[i] == (double)10f);
 
             a %= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)0f, a[i]);
+                Assert.IsTrue(a[i] == (double)0f);
 
             a = arena.doubleIndexZeroVector(vecLen);
 
             a %= 2f;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)(i % (double)2d), a[i]);
+                Assert.IsTrue(a[i] == (double)(i % (double)2d));
 
             a = arena.doubleIndexZeroVector(vecLen);
             doubleN b = arena.doubleIndexZeroVector(vecLen);
@@ -383,8 +383,8 @@ public class doubleOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((double)0f, c0[i]);
-                Assert.AreEqual((double)0f, c1[i]);
+                Assert.IsTrue(c0[i] == (double)0f);
+                Assert.IsTrue(c1[i] == (double)0f);
             }
 
             arena.Dispose();
@@ -401,7 +401,7 @@ public class doubleOperationsTest {
             a = -a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual(-(double)10f, a[i]);
+                Assert.IsTrue(a[i] == -(double)10f);
 
             arena.Dispose();
         }
@@ -420,7 +420,7 @@ public class doubleOperationsTest {
             a += 1f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)11f, a[i]);
+                Assert.IsTrue(a[i] == (double)11f);
 
             arena.Dispose();
         }
@@ -439,7 +439,7 @@ public class doubleOperationsTest {
             a -= 5f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)5f, a[i]);
+                Assert.IsTrue(a[i] == (double)5f);
 
             arena.Dispose();
         }
@@ -458,19 +458,19 @@ public class doubleOperationsTest {
             a *= 3f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)6f, a[i]);
+                Assert.IsTrue(a[i] == (double)6f);
 
             a = 3f * a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)18f, a[i]);
+                Assert.IsTrue(a[i] == (double)18f);
 
             var b = arena.doubleMat(rows, cols, 0.5f);
 
             a = a * b;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)9f, a[i]);
+                Assert.IsTrue(a[i] == (double)9f);
 
             arena.Dispose();
         }
@@ -489,12 +489,12 @@ public class doubleOperationsTest {
             a /= 2f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)5f, a[i]);
+                Assert.IsTrue(a[i] == (double)5f);
 
             a = 5f / a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)1f, a[i]);
+                Assert.IsTrue(a[i] == (double)1f);
 
             doubleMxN b = arena.doubleMat(rows, cols, 0.5f);
 
@@ -503,8 +503,8 @@ public class doubleOperationsTest {
 
             for (int i = 0; i < totalElements; i++)
             {
-                Assert.AreEqual((double)2f, c0[i]);
-                Assert.AreEqual((double)0.5f, c1[i]);
+                Assert.IsTrue(c0[i] == (double)2f);
+                Assert.IsTrue(c1[i] == (double)0.5f);
             }
 
             arena.Dispose();
@@ -524,14 +524,14 @@ public class doubleOperationsTest {
             a %= 3f;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)1f, a[i]);
+                Assert.IsTrue(a[i] == (double)1f);
 
             a = arena.doubleMat(rows, cols, 4f);
 
             a = 4f % a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)0f, a[i]);
+                Assert.IsTrue(a[i] == (double)0f);
 
             a = arena.doubleMat(rows, cols, 3f);
             doubleMxN b = arena.doubleMat(rows, cols, 2f);
@@ -539,7 +539,7 @@ public class doubleOperationsTest {
             a = a % b;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((double)1f, a[i]);
+                Assert.IsTrue(a[i] == (double)1f);
 
             arena.Dispose();
         }

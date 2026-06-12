@@ -25,7 +25,7 @@ public class shortOperationsTest {
 
             shortN b = arena.shortVec(vecLen, 10);
 
-            Assert.AreEqual(a[vecLen/2], b[vecLen/2]);
+            Assert.IsTrue(b[vecLen/2] == a[vecLen/2]);
             
             Assert.AreEqual(2, arena.AllocationsCount);
 
@@ -218,7 +218,7 @@ public class shortOperationsTest {
             a = -a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(short)10f, a[i]);
+                Assert.IsTrue(a[i] == -(short)10f);
 
             arena.Dispose();
         }
@@ -232,19 +232,19 @@ public class shortOperationsTest {
             shortN a = arena.shortVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)10d, a[i]);
+                Assert.IsTrue(a[i] == (short)10d);
 
             a += 1;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)11d, a[i]);
+                Assert.IsTrue(a[i] == (short)11d);
 
             shortN r = arena.shortVec(vecLen, 5);
 
             a += r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)16, a[i]);
+                Assert.IsTrue(a[i] == (short)16);
 
             arena.Dispose();
         }
@@ -258,23 +258,23 @@ public class shortOperationsTest {
             shortN a = arena.shortVec(vecLen, 10);
 
             a -= 1;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)9f, a[i]);
+                Assert.IsTrue(a[i] == (short)9f);
 
             shortN r = arena.shortVec(vecLen, 5);
 
             a -= r;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)4d, a[i]);
+                Assert.IsTrue(a[i] == (short)4d);
 
             a = arena.shortVec(vecLen, 10);
-            
+
             a = 1 - a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(-(short)9d, a[i]);
+                Assert.IsTrue(a[i] == -(short)9d);
 
             arena.Dispose();
         }
@@ -290,19 +290,19 @@ public class shortOperationsTest {
             a *= 1;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)1d, a[i]);
+                Assert.IsTrue(a[i] == (short)1d);
 
             a *= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)2d, a[i]);
-                        
+                Assert.IsTrue(a[i] == (short)2d);
+
             a = arena.shortIndexZeroVector(vecLen);
 
             a *= 2;
-            
+
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)(2d*i), a[i]);
+                Assert.IsTrue(a[i] == (short)(2d*i));
 
             a = arena.shortIndexZeroVector(vecLen);
             shortN b = arena.shortIndexZeroVector(vecLen);
@@ -310,7 +310,7 @@ public class shortOperationsTest {
             var c = a * b;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)(i * i), c[i]);
+                Assert.IsTrue(c[i] == (short)(i * i));
 
             arena.Dispose();
         }
@@ -326,19 +326,19 @@ public class shortOperationsTest {
             a /= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)1, a[i]);
+                Assert.IsTrue(a[i] == (short)1);
 
             a /= 1;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)1, a[i]);
+                Assert.IsTrue(a[i] == (short)1);
 
             a = arena.shortIndexZeroVector(vecLen);
 
             a /= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)(0.5 * i), a[i]);
+                Assert.IsTrue(a[i] == (short)(0.5 * i));
 
             a = arena.shortIndexZeroVector(vecLen);
             shortN b = arena.shortIndexZeroVector(vecLen);
@@ -352,8 +352,8 @@ public class shortOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((short)1, c0[i]);
-                Assert.AreEqual((short)1, c1[i]);
+                Assert.IsTrue(c0[i] == (short)1);
+                Assert.IsTrue(c1[i] == (short)1);
             }
 
             a = arena.shortVec(vecLen, 2);
@@ -361,7 +361,7 @@ public class shortOperationsTest {
             a = 2 / a;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)1, a[i]);   
+                Assert.IsTrue(a[i] == (short)1);
 
             arena.Dispose();
         }
@@ -375,19 +375,19 @@ public class shortOperationsTest {
             shortN a = arena.shortVec(vecLen, 10);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)10, a[i]);
+                Assert.IsTrue(a[i] == (short)10);
 
             a %= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)0, a[i]);
+                Assert.IsTrue(a[i] == (short)0);
 
             a = arena.shortIndexZeroVector(vecLen);
 
             a %= 2;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((short)(i % (short)2), a[i]);
+                Assert.IsTrue(a[i] == (short)(i % (short)2));
 
             a = arena.shortIndexZeroVector(vecLen);
             shortN b = arena.shortIndexZeroVector(vecLen);
@@ -401,8 +401,8 @@ public class shortOperationsTest {
 
             for (int i = 0; i < vecLen; i++)
             {
-                Assert.AreEqual((short)0, c0[i]);
-                Assert.AreEqual((short)0, c1[i]);
+                Assert.IsTrue(c0[i] == (short)0);
+                Assert.IsTrue(c1[i] == (short)0);
             }
 
             arena.Dispose();
@@ -419,7 +419,7 @@ public class shortOperationsTest {
             a = -a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual(-(short)10f, a[i]);
+                Assert.IsTrue(a[i] == -(short)10f);
 
             arena.Dispose();
         }
@@ -438,7 +438,7 @@ public class shortOperationsTest {
             a += 1;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((short)11f, a[i]);
+                Assert.IsTrue(a[i] == (short)11f);
 
             arena.Dispose();
         }
@@ -457,7 +457,7 @@ public class shortOperationsTest {
             a -= 5;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((short)5f, a[i]);
+                Assert.IsTrue(a[i] == (short)5f);
 
             arena.Dispose();
         }
@@ -476,12 +476,12 @@ public class shortOperationsTest {
             a *= 3;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((short)6f, a[i]);
+                Assert.IsTrue(a[i] == (short)6f);
 
             a = 3 * a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((short)18f, a[i]);
+                Assert.IsTrue(a[i] == (short)18f);
 
             arena.Dispose();
         }
@@ -500,12 +500,12 @@ public class shortOperationsTest {
             a /= 2;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((short)5, a[i]);
+                Assert.IsTrue(a[i] == (short)5);
 
             a = 5 / a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((short)1, a[i]);
+                Assert.IsTrue(a[i] == (short)1);
 
             arena.Dispose();
         }
@@ -524,14 +524,14 @@ public class shortOperationsTest {
             a %= 3;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((short)1f, a[i]);
+                Assert.IsTrue(a[i] == (short)1f);
 
             a = arena.shortMat(rows, cols, 4);
 
             a = 4 % a;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((short)0f, a[i]);
+                Assert.IsTrue(a[i] == (short)0f);
 
             a = arena.shortMat(rows, cols, 3);
             shortMxN b = arena.shortMat(rows, cols, 2);
@@ -539,7 +539,7 @@ public class shortOperationsTest {
             a = a % b;
 
             for (int i = 0; i < totalElements; i++)
-                Assert.AreEqual((short)1f, a[i]);
+                Assert.IsTrue(a[i] == (short)1f);
 
             arena.Dispose();
         }

@@ -250,8 +250,8 @@ public class fProxySVDTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             // exactly one zero singular value (smallest), the third is non-trivial
-            Assert.IsTrue(S[3] < 1E-4f, $"Expected S[3] < tol, got {S[3]}");
-            Assert.IsTrue(S[2] > 1E-4f, $"Expected S[2] > tol, got {S[2]}");
+            Assert.IsTrue(S[3] < 1E-4f);
+            Assert.IsTrue(S[2] > 1E-4f);
 
             AssertDescendingNonNegative(in S, dim);
 
@@ -352,10 +352,9 @@ public class fProxySVDTests
 
             // maxSweeps = 1: regardless of convergence bool, outputs must be finite,
             // S descending and non-negative.
-            bool success = SVD.svdDecomposition(ref U, ref S, ref V, 1);
+            SVD.svdDecomposition(ref U, ref S, ref V, 1);
 
             // The return value is intentionally not asserted (may or may not converge).
-            Debug.Log($"SVD maxSweeps=1 converged: {success}");
 
             Assert.IsFalse(Analysis.IsAnyNan(in U));
             Assert.IsFalse(Analysis.IsAnyNan(in S));
@@ -381,24 +380,22 @@ public class fProxySVDTests
 
             var zeroError = Analysis.MaxZeroError(shouldBeZero);
 
-            Debug.Log($"Error of max(abs(A - U*diag(S)*V^T)): {zeroError}");
-
             Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
         }
 
         private void AssertDescendingNonNegative(in fProxyN S, int n)
         {
             for (int i = 0; i < n; i++)
-                Assert.IsTrue(S[i] >= (fProxy)(-1E-6f), $"S[{i}] = {S[i]} is negative");
+                Assert.IsTrue(S[i] >= (fProxy)(-1E-6f));
 
             for (int i = 1; i < n; i++)
-                Assert.IsTrue(S[i] <= S[i - 1] + (fProxy)1E-6f, $"S not descending: S[{i - 1}]={S[i - 1]} < S[{i}]={S[i]}");
+                Assert.IsTrue(S[i] <= S[i - 1] + (fProxy)1E-6f);
         }
 
         private void AssertClose(fProxy a, fProxy b, fProxy precision)
         {
             fProxy diff = Unity.Mathematics.math.abs(a - b);
-            Assert.IsTrue(diff <= precision, $"Expected {b} got {a} (diff {diff})");
+            Assert.IsTrue(diff <= precision);
         }
 
     }

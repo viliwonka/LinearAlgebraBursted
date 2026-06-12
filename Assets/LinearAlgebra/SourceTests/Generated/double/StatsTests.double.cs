@@ -433,7 +433,7 @@ public class doubleStatsTests
         private void AssertClose(double a, double b, double precision)
         {
             double diff = math.abs(a - b);
-            Assert.IsTrue(diff <= precision, $"Expected {b} got {a} (diff {diff})");
+            Assert.IsTrue(diff <= precision);
         }
     }
 

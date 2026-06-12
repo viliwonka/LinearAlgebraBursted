@@ -73,8 +73,8 @@ public class intDotOperationTests
 
             int b = intOP.dot(x, y);
 
-            Assert.AreEqual((int)vecLen, b);
-            
+            Assert.IsTrue(b == (int)vecLen);
+
             x = arena.intVec(vecLen);
             y = arena.intVec(vecLen);
 
@@ -86,7 +86,7 @@ public class intDotOperationTests
 
             b = intOP.dot(x, y);
 
-            Assert.AreEqual((int)0f, b);
+            Assert.IsTrue(b == (int)0f);
 
             arena.Dispose();
         }
@@ -122,14 +122,14 @@ public class intDotOperationTests
             Assert.AreEqual(vecLen, b.N);
             
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(x[i], b[i]);
+                Assert.IsTrue(b[i] == x[i]);
 
             x = arena.intIndexZeroVector(vecLen);
 
             b = intOP.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((int)i, b[i]);
+                Assert.IsTrue(b[i] == (int)i);
 
             arena.Dispose();
         }
@@ -149,9 +149,9 @@ public class intDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((int)1f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (int)1f);
                 else
-                    Assert.AreEqual((int)0f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (int)0f);
             }
 
             intMxN R = arena.intRandomMatrix(matLen, matLen);
@@ -161,7 +161,7 @@ public class intDotOperationTests
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
             {
-                Assert.AreEqual(R[i, j], C[i, j]);
+                Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
             C = arena.intIdentityMatrix(matLen);
@@ -172,9 +172,9 @@ public class intDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((int)1f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (int)1f);
                 else
-                    Assert.AreEqual((int)0f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (int)0f);
             }
 
             arena.Dispose();
@@ -236,14 +236,14 @@ public class intDotOperationTests
 
             intMxN B = intOP.outerDot(y, x);
 
-            for (int i = 0; A.Length < i; i++)
-                Assert.AreEqual((int)1, A[i]);
+            for (int i = 0; i < A.Length; i++)
+                Assert.IsTrue(A[i] == (int)1);
 
             Assert.AreEqual(vecM, B.N_Cols);
             Assert.AreEqual(vecN, B.M_Rows);
 
-            for (int i = 0; B.Length < i; i++)
-                Assert.AreEqual((int)1, B[i]);
+            for (int i = 0; i < B.Length; i++)
+                Assert.IsTrue(B[i] == (int)1);
 
             x = arena.intLinVector(vecM, 0, 20);
             y = arena.intLinVector(vecN, 0, 20);
@@ -252,7 +252,7 @@ public class intDotOperationTests
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)
-                    Assert.AreEqual((int)x[i] * y[j], (int)C[i, j]);
+                    Assert.IsTrue((int)C[i, j] == (int)x[i] * y[j]);
 
             arena.Dispose();
         }

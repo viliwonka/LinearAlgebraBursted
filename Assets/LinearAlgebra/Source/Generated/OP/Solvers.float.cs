@@ -10,10 +10,12 @@ namespace LinearAlgebra
     public static partial class Solvers {
 
         // Solve Ux = b for x
+        // U may be tall (M_Rows >= N_Cols): only the top N_Cols x N_Cols block is read,
+        // which is the R block produced by QR on overdetermined systems.
         public static void SolveUpperTriangular(ref floatMxN U, ref floatN x)
         {
-            if(U.IsSquare == false)
-                throw new System.Exception("Solvers.SolveUpperTriangular: Matrix must be square");
+            if(U.M_Rows < U.N_Cols)
+                throw new System.Exception("Solvers.SolveUpperTriangular: Matrix must be square or tall (M_Rows >= N_Cols)");
 
             if(U.N_Cols != x.N)
                 throw new System.Exception("Solvers.SolveUpperTriangular: Matrix and vector must have same number of columns");

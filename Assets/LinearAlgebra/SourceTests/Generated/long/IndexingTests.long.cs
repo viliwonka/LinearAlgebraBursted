@@ -56,13 +56,13 @@ public class longIndexingTests {
                 vec[i] = (long)i;
 
             for (int i = 0; i < dim; i++)
-                Assert.AreEqual((long)i, vec[i]);
+                Assert.IsTrue(vec[i] == (long)i);
 
             for (int i = 0; i < dim; i++)
                 vec[^i] = (long)i;
 
             for (int i = 0; i < dim; i++)
-                Assert.AreEqual((long)i, vec[^i]);
+                Assert.IsTrue(vec[^i] == (long)i);
 
             arena.Dispose();
         }
@@ -81,13 +81,13 @@ public class longIndexingTests {
                 mat[i] = (long)i;
 
             for (int i = 0; i < len; i++)
-                Assert.AreEqual((long)i, mat[i]);
+                Assert.IsTrue(mat[i] == (long)i);
 
             for (int i = 0; i < len; i++)
                 mat[^i] = (long)i;
 
             for (int i = 0; i < len; i++)
-                Assert.AreEqual((long)i, mat[^i]);
+                Assert.IsTrue(mat[^i] == (long)i);
 
             arena.Dispose();
         }
@@ -107,7 +107,7 @@ public class longIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((long)(r * c), mat[r, c]);
+                Assert.IsTrue(mat[r, c] == (long)(r * c));
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
@@ -115,7 +115,7 @@ public class longIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((long)(r * c), mat[^r, c]);
+                Assert.IsTrue(mat[^r, c] == (long)(r * c));
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
@@ -123,7 +123,7 @@ public class longIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((long)(r * c), mat[r, ^c]);
+                Assert.IsTrue(mat[r, ^c] == (long)(r * c));
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
@@ -131,7 +131,7 @@ public class longIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((long)(r * c), mat[^r, ^c]);
+                Assert.IsTrue(mat[^r, ^c] == (long)(r * c));
 
             arena.Dispose();
         }
@@ -155,7 +155,7 @@ public class longIndexingTests {
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.AreEqual((long)(r * c * 2), mat[r, c]);
+                Assert.IsTrue(mat[r, c] == (long)(r * c * 2));
         }
     }
 

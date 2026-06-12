@@ -290,10 +290,10 @@ public class fProxyPivotTests
 
             pivot.ApplyVec(ref vec);
 
-            Assert.AreEqual((fProxy)0f, vec[0]);
-            Assert.AreEqual((fProxy)0f, vec[1]);
-            Assert.AreEqual((fProxy)0f, vec[2]);
-            Assert.AreEqual((fProxy)1f, vec[3]);
+            Assert.IsTrue(vec[0] == (fProxy)0f);
+            Assert.IsTrue(vec[1] == (fProxy)0f);
+            Assert.IsTrue(vec[2] == (fProxy)0f);
+            Assert.IsTrue(vec[3] == (fProxy)1f);
 
             pivot.ApplyInverseVec(ref vec);
 

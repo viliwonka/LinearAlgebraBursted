@@ -73,8 +73,8 @@ public class doubleDotOperationTests
 
             double b = doubleOP.dot(x, y);
 
-            Assert.AreEqual((double)vecLen, b);
-            
+            Assert.IsTrue(b == (double)vecLen);
+
             x = arena.doubleVec(vecLen);
             y = arena.doubleVec(vecLen);
 
@@ -86,7 +86,7 @@ public class doubleDotOperationTests
 
             b = doubleOP.dot(x, y);
 
-            Assert.AreEqual((double)0f, b);
+            Assert.IsTrue(b == (double)0f);
 
             arena.Dispose();
         }
@@ -122,14 +122,14 @@ public class doubleDotOperationTests
             Assert.AreEqual(vecLen, b.N);
             
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual(x[i], b[i]);
+                Assert.IsTrue(b[i] == x[i]);
 
             x = arena.doubleIndexZeroVector(vecLen);
 
             b = doubleOP.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
-                Assert.AreEqual((double)i, b[i]);
+                Assert.IsTrue(b[i] == (double)i);
 
             arena.Dispose();
         }
@@ -149,19 +149,19 @@ public class doubleDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((double)1f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (double)1f);
                 else
-                    Assert.AreEqual((double)0f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (double)0f);
             }
 
             doubleMxN R = arena.doubleRandomMatrix(matLen, matLen);
-            
+
             C = doubleOP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
             {
-                Assert.AreEqual(R[i, j], C[i, j]);
+                Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
             C = arena.doubleIdentityMatrix(matLen);
@@ -172,9 +172,9 @@ public class doubleDotOperationTests
             for (int j = 0; j < matLen; j++)
             {
                 if (i == j)
-                    Assert.AreEqual((double)1f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (double)1f);
                 else
-                    Assert.AreEqual((double)0f, C[i, j]);
+                    Assert.IsTrue(C[i, j] == (double)0f);
             }
 
             arena.Dispose();
@@ -236,14 +236,14 @@ public class doubleDotOperationTests
 
             doubleMxN B = doubleOP.outerDot(y, x);
 
-            for (int i = 0; A.Length < i; i++)
-                Assert.AreEqual((double)1f, A[i]);
+            for (int i = 0; i < A.Length; i++)
+                Assert.IsTrue(A[i] == (double)1f);
 
             Assert.AreEqual(vecM, B.N_Cols);
             Assert.AreEqual(vecN, B.M_Rows);
 
-            for (int i = 0; B.Length < i; i++)
-                Assert.AreEqual((double)1f, B[i]);
+            for (int i = 0; i < B.Length; i++)
+                Assert.IsTrue(B[i] == (double)1f);
 
             x = arena.doubleLinVector(vecM, 0f, 2f);
             y = arena.doubleLinVector(vecN, 0f, 2f);
@@ -252,7 +252,7 @@ public class doubleDotOperationTests
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)
-                    Assert.AreEqual(x[i] * y[j], C[i, j]);
+                    Assert.IsTrue(C[i, j] == x[i] * y[j]);
 
             arena.Dispose();
         }

@@ -433,7 +433,7 @@ public class fProxyStatsTests
         private void AssertClose(fProxy a, fProxy b, fProxy precision)
         {
             fProxy diff = math.abs(a - b);
-            Assert.IsTrue(diff <= precision, $"Expected {b} got {a} (diff {diff})");
+            Assert.IsTrue(diff <= precision);
         }
     }
 

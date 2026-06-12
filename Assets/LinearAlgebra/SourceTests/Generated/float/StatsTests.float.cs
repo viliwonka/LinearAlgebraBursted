@@ -433,7 +433,7 @@ public class floatStatsTests
         private void AssertClose(float a, float b, float precision)
         {
             float diff = math.abs(a - b);
-            Assert.IsTrue(diff <= precision, $"Expected {b} got {a} (diff {diff})");
+            Assert.IsTrue(diff <= precision);
         }
     }
 
