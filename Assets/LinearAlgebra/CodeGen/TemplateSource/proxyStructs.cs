@@ -10,6 +10,7 @@ namespace LinearAlgebra
 
         public static float MinValue => float.MinValue;
         public static float MaxValue => float.MaxValue;
+        public static float PositiveInfinity => float.PositiveInfinity;
 
         public fProxy(float value)
         {

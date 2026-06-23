@@ -17,11 +17,23 @@ namespace LinearAlgebra
             }
         }
 
+        // Standard L1 norm: the sum of absolute values, Σ|xᵢ| (NOT averaged by length).
+        // Naïve accumulation (no Kahan/pairwise compensation): accurate at moderate sizes; very
+        // long float vectors may lose precision. The same caveat applies to matrixL1 / matrixLInf.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float L1<T>(in T a) where T : unmanaged, IUnsafefloatArray {
 
             unsafe {
-                return UnsafeOP.sumAbs(a.Data.Ptr, a.Data.Length) / a.Data.Length;
+                return UnsafeOP.sumAbs(a.Data.Ptr, a.Data.Length);
+            }
+        }
+
+        // L-infinity (max-abs) norm: the largest absolute element, max_i |xᵢ|.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float LInf<T>(in T a) where T : unmanaged, IUnsafefloatArray {
+
+            unsafe {
+                return UnsafeOP.maxAbs(a.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -135,6 +147,51 @@ namespace LinearAlgebra
             {
                 return UnsafeOP.normalizeLP(x.Data.Ptr, start, end, p);
             }
+        }
+
+        // ---- Induced (operator) matrix norms ----
+
+        // Induced 1-norm ‖A‖₁: the maximum absolute column sum, max_j Σ_i |A[i,j]|. Allocation-free.
+        public static float matrixL1(in floatMxN A)
+        {
+            float best = (float)0;
+            for (int j = 0; j < A.N_Cols; j++)
+            {
+                float colSum = (float)0;
+                for (int i = 0; i < A.M_Rows; i++)
+                    colSum += math.abs(A[i, j]);
+                if (colSum > best)
+                    best = colSum;
+            }
+            return best;
+        }
+
+        // Induced ∞-norm ‖A‖∞: the maximum absolute row sum, max_i Σ_j |A[i,j]|. Allocation-free.
+        public static float matrixLInf(in floatMxN A)
+        {
+            float best = (float)0;
+            for (int i = 0; i < A.M_Rows; i++)
+            {
+                float rowSum = (float)0;
+                for (int j = 0; j < A.N_Cols; j++)
+                    rowSum += math.abs(A[i, j]);
+                if (rowSum > best)
+                    best = rowSum;
+            }
+            return best;
+        }
+
+        // Induced 2-norm (spectral norm) ‖A‖₂ = σ_max(A), the largest singular value. Runs a
+        // one-sided Jacobi SVD on a copy (A is not modified); allocates SVD scratch from A's arena.
+        public static float matrixL2(in floatMxN A)
+        {
+            int k = math.min(A.M_Rows, A.N_Cols);
+            if (k == 0)
+                return (float)0;
+
+            floatN S = A.tempfloatVec(k);
+            SVD.singularValues(in A, ref S);
+            return S[0];   // singular values are sorted descending -> σ_max
         }
     }
 }
