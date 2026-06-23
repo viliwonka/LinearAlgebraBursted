@@ -1,0 +1,38 @@
+#!/bin/sh
+#
+# Pre-push gate: run the headless Unity test suite and block the push if it fails.
+# Lives in Tools/git-hooks (version-controlled); activated via:
+#     git config core.hooksPath Tools/git-hooks
+#
+# Bypass / control:
+#   git push --no-verify        # skip ALL hooks for one push (git built-in)
+#   SKIP_PREPUSH=1 git push     # skip just this hook for one push
+#   PREPUSH_DRIFT=1 git push    # ALSO verify generated files match templates
+#                               # (extra ~1 min Unity launch; rewrites stale
+#                               #  generated files into your working tree)
+#
+if [ "${SKIP_PREPUSH:-0}" = "1" ]; then
+  echo "[pre-push] SKIP_PREPUSH=1 -> skipping checks."
+  exit 0
+fi
+
+PS=powershell.exe
+
+if [ "${PREPUSH_DRIFT:-0}" = "1" ]; then
+  echo "[pre-push] Checking codegen drift (templates vs generated)..."
+  "$PS" -NoProfile -ExecutionPolicy Bypass -File "Tools/regen.ps1" -Check || {
+    echo "[pre-push] BLOCKED: generated files differ from templates (they have now been"
+    echo "           regenerated in your working tree) or codegen failed. Review the diff,"
+    echo "           commit, and push again. Bypass once with: git push --no-verify"
+    exit 1
+  }
+fi
+
+echo "[pre-push] Running EditMode tests (headless Unity, ~1 min)..."
+"$PS" -NoProfile -ExecutionPolicy Bypass -File "Tools/run-tests.ps1" || {
+  echo "[pre-push] BLOCKED: tests failed. Fix them, or bypass once with: git push --no-verify"
+  exit 1
+}
+
+echo "[pre-push] All checks passed."
+exit 0
