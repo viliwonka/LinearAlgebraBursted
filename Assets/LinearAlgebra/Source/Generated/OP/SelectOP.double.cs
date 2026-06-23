@@ -1,5 +1,6 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
+using System;
 using Unity.Burst;
 
 namespace LinearAlgebra
@@ -12,47 +13,86 @@ namespace LinearAlgebra
     /// <returns>The selection between a and b according to bool c.</returns>
     public static partial class SelectOP
     {
-        public static doubleN select(in doubleN a, in doubleN b, in boolN c)
+        // ref-dest primitive. No alias guard: select is elementwise (dst[i] = c[i] ? b[i] : a[i]),
+        // so the destination may alias a or b safely.
+        public static void select(in doubleN a, in doubleN b, in boolN c, ref doubleN dest)
         {
             Assume.SameDim(in a, in b);
             Assume.SameDim(in a, in c);
 
-            doubleN res = a.tempdoubleVec(a.N, true);
+            if (dest.N != a.N)
+                throw new ArgumentException("select: dest.N must equal a.N");
 
             unsafe
             {
-                UnsafeSelectOP.selectdouble(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.N);
+                UnsafeSelectOP.selectdouble(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.N);
             }
+        }
 
+        public static doubleN select(in doubleN a, in doubleN b, in boolN c)
+        {
+            doubleN res = a.tempdoubleVec(a.N, true);
+            select(in a, in b, in c, ref res);
             return res;
+        }
+
+        // ref-dest primitive. No alias guard: elementwise op.
+        public static void select(in doubleMxN a, in doubleMxN b, in boolMxN c, ref doubleMxN dest)
+        {
+            Assume.SameDim(in a, in b);
+            Assume.SameDim(in a, in c);
+
+            if (dest.M_Rows != a.M_Rows || dest.N_Cols != a.N_Cols)
+                throw new ArgumentException("select: dest dimensions must match a");
+
+            unsafe
+            {
+                UnsafeSelectOP.selectdouble(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.M_Rows * a.N_Cols);
+            }
         }
 
         public static doubleMxN select(in doubleMxN a, in doubleMxN b, in boolMxN c)
         {
-            Assume.SameDim(in a, in b);
-            Assume.SameDim(in a, in c);
-
             doubleMxN res = a.tempdoubleMat(a.M_Rows, a.N_Cols, true);
-
-            unsafe
-            {
-                UnsafeSelectOP.selectdouble(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.M_Rows * a.N_Cols);
-            }
-
+            select(in a, in b, in c, ref res);
             return res;
+        }
+
+        // ref-dest primitive. No alias guard: scalar bool selects the whole source unchanged.
+        public static void select(in doubleN a, in doubleN b, in bool c, ref doubleN dest)
+        {
+            Assume.SameDim(in a, in b);
+
+            if (dest.N != a.N)
+                throw new ArgumentException("select: dest.N must equal a.N");
+
+            if (c)
+                dest.Data.CopyFrom(b.Data);
+            else
+                dest.Data.CopyFrom(a.Data);
         }
 
         public static doubleN select(in doubleN a, in doubleN b, in bool c)
         {
+            return c ? b.TempCopy() : a.TempCopy();
+        }
+
+        // ref-dest primitive. No alias guard: scalar bool selects the whole source unchanged.
+        public static void select(in doubleMxN a, in doubleMxN b, in bool c, ref doubleMxN dest)
+        {
             Assume.SameDim(in a, in b);
 
-            return c ? b.TempCopy() : a.TempCopy();
+            if (dest.M_Rows != a.M_Rows || dest.N_Cols != a.N_Cols)
+                throw new ArgumentException("select: dest dimensions must match a");
+
+            if (c)
+                dest.Data.CopyFrom(b.Data);
+            else
+                dest.Data.CopyFrom(a.Data);
         }
 
         public static doubleMxN select(in doubleMxN a, in doubleMxN b, in bool c)
         {
-            Assume.SameDim(in a, in b);
-
             return c ? b.TempCopy() : a.TempCopy();
         }
     }

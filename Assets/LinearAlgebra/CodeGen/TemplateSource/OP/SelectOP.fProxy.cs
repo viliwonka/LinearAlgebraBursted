@@ -1,5 +1,6 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
+using System;
 using Unity.Burst;
 
 namespace LinearAlgebra
@@ -12,47 +13,86 @@ namespace LinearAlgebra
     /// <returns>The selection between a and b according to bool c.</returns>
     public static partial class SelectOP
     {
-        public static fProxyN select(in fProxyN a, in fProxyN b, in boolN c)
+        // ref-dest primitive. No alias guard: select is elementwise (dst[i] = c[i] ? b[i] : a[i]),
+        // so the destination may alias a or b safely.
+        public static void select(in fProxyN a, in fProxyN b, in boolN c, ref fProxyN dest)
         {
             Assume.SameDim(in a, in b);
             Assume.SameDim(in a, in c);
 
-            fProxyN res = a.tempfProxyVec(a.N, true);
+            if (dest.N != a.N)
+                throw new ArgumentException("select: dest.N must equal a.N");
 
             unsafe
             {
-                UnsafeSelectOP.selectfProxy(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.N);
+                UnsafeSelectOP.selectfProxy(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.N);
             }
+        }
 
+        public static fProxyN select(in fProxyN a, in fProxyN b, in boolN c)
+        {
+            fProxyN res = a.tempfProxyVec(a.N, true);
+            select(in a, in b, in c, ref res);
             return res;
+        }
+
+        // ref-dest primitive. No alias guard: elementwise op.
+        public static void select(in fProxyMxN a, in fProxyMxN b, in boolMxN c, ref fProxyMxN dest)
+        {
+            Assume.SameDim(in a, in b);
+            Assume.SameDim(in a, in c);
+
+            if (dest.M_Rows != a.M_Rows || dest.N_Cols != a.N_Cols)
+                throw new ArgumentException("select: dest dimensions must match a");
+
+            unsafe
+            {
+                UnsafeSelectOP.selectfProxy(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.M_Rows * a.N_Cols);
+            }
         }
 
         public static fProxyMxN select(in fProxyMxN a, in fProxyMxN b, in boolMxN c)
         {
-            Assume.SameDim(in a, in b);
-            Assume.SameDim(in a, in c);
-
             fProxyMxN res = a.tempfProxyMat(a.M_Rows, a.N_Cols, true);
-
-            unsafe
-            {
-                UnsafeSelectOP.selectfProxy(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.M_Rows * a.N_Cols);
-            }
-
+            select(in a, in b, in c, ref res);
             return res;
+        }
+
+        // ref-dest primitive. No alias guard: scalar bool selects the whole source unchanged.
+        public static void select(in fProxyN a, in fProxyN b, in bool c, ref fProxyN dest)
+        {
+            Assume.SameDim(in a, in b);
+
+            if (dest.N != a.N)
+                throw new ArgumentException("select: dest.N must equal a.N");
+
+            if (c)
+                dest.Data.CopyFrom(b.Data);
+            else
+                dest.Data.CopyFrom(a.Data);
         }
 
         public static fProxyN select(in fProxyN a, in fProxyN b, in bool c)
         {
+            return c ? b.TempCopy() : a.TempCopy();
+        }
+
+        // ref-dest primitive. No alias guard: scalar bool selects the whole source unchanged.
+        public static void select(in fProxyMxN a, in fProxyMxN b, in bool c, ref fProxyMxN dest)
+        {
             Assume.SameDim(in a, in b);
 
-            return c ? b.TempCopy() : a.TempCopy();
+            if (dest.M_Rows != a.M_Rows || dest.N_Cols != a.N_Cols)
+                throw new ArgumentException("select: dest dimensions must match a");
+
+            if (c)
+                dest.Data.CopyFrom(b.Data);
+            else
+                dest.Data.CopyFrom(a.Data);
         }
 
         public static fProxyMxN select(in fProxyMxN a, in fProxyMxN b, in bool c)
         {
-            Assume.SameDim(in a, in b);
-
             return c ? b.TempCopy() : a.TempCopy();
         }
     }
