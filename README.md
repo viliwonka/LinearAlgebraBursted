@@ -130,6 +130,7 @@ Here's a simple example:
 - ✅ Cholesky decomposition & solver (symmetric positive-definite systems)
 - ✅ Conjugate Gradient (matrix-free, zero-alloc iterative solver for SPD systems)
 - ✅ Preallocated-destination (`ref`) overloads for the arithmetic ops (dot/matmul, outerDot, trans, select) — zero-alloc hot loops
+- ✅ Zero-alloc solver overloads — the QR and SVD solvers can take pre-allocated scratch buffers instead of allocating their own, so repeated solves in a loop allocate nothing (`qrDecomposition`/`qrDirectSolve`/`SolveQR`, `pinvSolve`/`pseudoInverse`); for SVD, `Arena.<type>SvdWorkspace(m, n)` bundles that scratch into one reusable handle
 - 🔳 View/Slice 
 - 🔳 Find/Query operations (e.g.: find row with biggest L2 norm)
 - ✅ SVD decomposition
