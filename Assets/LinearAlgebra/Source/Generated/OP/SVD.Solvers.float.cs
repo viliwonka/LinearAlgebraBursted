@@ -23,8 +23,15 @@ namespace LinearAlgebra
         /// Allocates temporaries from A's arena via tempfloatVec/tempfloatMat (not an Inpl op).
         /// Returns the numerical rank used; converged is svdDecomposition's return value.
         /// </summary>
+        // Caller-provided scratch overload (zero-alloc). Let k = min(A.M_Rows, A.N_Cols):
+        //   S  - singular values, length k
+        //   M  - singular-vector matrix, k x k (plays the role of V for tall A, W for wide A)
+        //   At - A^T scratch, A.N_Cols x A.M_Rows; USED ONLY when A is wide (m < n). For m >= n
+        //        pass default(floatMxN) (it is never read). Filled in-place via the ref-dest trans.
+        // Hoist these out of a hot loop solving many same-shape systems to avoid per-call allocs.
         public static int pinvSolve(ref floatMxN A, in floatN b, ref floatN x, out bool converged,
-                                    float relTol, int maxSweeps)
+                                    float relTol, int maxSweeps,
+                                    ref floatN S, ref floatMxN M, ref floatMxN At)
         {
             if (b.N != A.M_Rows)
                 throw new ArgumentException("pinvSolve: b.N must equal A.M_Rows");
@@ -37,21 +44,25 @@ namespace LinearAlgebra
 
             int m = A.M_Rows;
             int n = A.N_Cols;
+            int k = math.min(m, n);
+
+            if (S.N != k)
+                throw new ArgumentException("pinvSolve: S scratch length must equal min(A.M_Rows, A.N_Cols)");
+
+            if (M.M_Rows != k || M.N_Cols != k)
+                throw new ArgumentException("pinvSolve: M scratch must be k x k, k = min(A.M_Rows, A.N_Cols)");
 
             if (m >= n) {
-                // Tall or square case: A = U * diag(S) * V^T, U stored in A after decomposition
-                floatN S = A.tempfloatVec(n);
-                floatMxN V = A.tempfloatMat(n, n);
-
-                converged = svdDecomposition(ref A, ref S, ref V, maxSweeps);
+                // Tall or square case: A = U * diag(S) * V^T, U stored in A after decomposition; M = V
+                converged = svdDecomposition(ref A, ref S, ref M, maxSweeps);
 
                 // Auto tolerance
                 if (relTol < (float)0)
                     relTol = (float)math.max(m, n) * Consts.floatZeroTreshold;
 
                 // Zero x
-                for (int k = 0; k < n; k++)
-                    x[k] = (float)0;
+                for (int kk = 0; kk < n; kk++)
+                    x[kk] = (float)0;
 
                 if (n == 0 || S[0] == (float)0)
                     return 0;
@@ -71,8 +82,8 @@ namespace LinearAlgebra
 
                     float coeff = dot / S[j];
 
-                    for (int k = 0; k < n; k++)
-                        x[k] += coeff * V[k, j];
+                    for (int kk = 0; kk < n; kk++)
+                        x[kk] += coeff * M[kk, j];
 
                     rank++;
                 }
@@ -81,20 +92,21 @@ namespace LinearAlgebra
             }
             else {
                 // Wide case: decompose A^T (n x m, tall). Right singular vectors of A
-                // are columns of A^T after decomposition; left singular vectors of A are columns of W.
-                floatMxN At = floatOP.trans(A);
-                floatN S = A.tempfloatVec(m);
-                floatMxN W = A.tempfloatMat(m, m);
+                // are columns of A^T after decomposition; left singular vectors of A are columns of M (= W).
+                if (At.M_Rows != n || At.N_Cols != m)
+                    throw new ArgumentException("pinvSolve: At scratch must be A.N_Cols x A.M_Rows for the wide (m < n) case");
 
-                converged = svdDecomposition(ref At, ref S, ref W, maxSweeps);
+                floatOP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
+
+                converged = svdDecomposition(ref At, ref S, ref M, maxSweeps);
 
                 // Auto tolerance
                 if (relTol < (float)0)
                     relTol = (float)math.max(m, n) * Consts.floatZeroTreshold;
 
                 // Zero x
-                for (int k = 0; k < n; k++)
-                    x[k] = (float)0;
+                for (int kk = 0; kk < n; kk++)
+                    x[kk] = (float)0;
 
                 if (m == 0 || S[0] == (float)0)
                     return 0;
@@ -104,7 +116,7 @@ namespace LinearAlgebra
 
                 // x = At * diag(1/S_j) * W^T * b  (only for S[j] > tol)
                 // At columns (length n) are right singular vectors of A
-                // W columns (length m) are left singular vectors of A
+                // M (= W) columns (length m) are left singular vectors of A
                 for (int j = 0; j < m; j++) {
                     if (S[j] <= tol)
                         continue;
@@ -112,12 +124,12 @@ namespace LinearAlgebra
                     // coeff = (W[:,j]^T * b) / S[j]
                     float dot = (float)0;
                     for (int i = 0; i < m; i++)
-                        dot += W[i, j] * b[i];
+                        dot += M[i, j] * b[i];
 
                     float coeff = dot / S[j];
 
-                    for (int k = 0; k < n; k++)
-                        x[k] += coeff * At[k, j];
+                    for (int kk = 0; kk < n; kk++)
+                        x[kk] += coeff * At[kk, j];
 
                     rank++;
                 }
@@ -125,6 +137,45 @@ namespace LinearAlgebra
                 return rank;
             }
         }
+
+        /// <summary>
+        /// pinvSolve allocating wrapper: allocates the SVD scratch (S, k x k singular-vector matrix,
+        /// and A^T for the wide case) from A's arena and delegates to the zero-alloc primitive.
+        /// </summary>
+        public static int pinvSolve(ref floatMxN A, in floatN b, ref floatN x, out bool converged,
+                                    float relTol, int maxSweeps)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            int k = math.min(m, n);
+
+            floatN S = A.tempfloatVec(k);
+            floatMxN M = A.tempfloatMat(k, k);
+            floatMxN At = default;
+            if (m < n)
+                At = A.tempfloatMat(n, m);
+
+            return pinvSolve(ref A, in b, ref x, out converged, relTol, maxSweeps, ref S, ref M, ref At);
+        }
+
+        /// <summary>
+        /// pinvSolve using a reusable workspace (Arena.floatSvdWorkspace(m, n)) — zero-alloc.
+        /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)); the guards in
+        /// the underlying scratch primitive enforce this.
+        /// </summary>
+        public static int pinvSolve(ref floatMxN A, in floatN b, ref floatN x, out bool converged,
+                                    ref floatSvdWorkspace ws, float relTol, int maxSweeps)
+            => pinvSolve(ref A, in b, ref x, out converged, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.At);
+
+        /// <summary>pinvSolve (workspace) with default maxSweeps (30).</summary>
+        public static int pinvSolve(ref floatMxN A, in floatN b, ref floatN x, out bool converged,
+                                    ref floatSvdWorkspace ws, float relTol)
+            => pinvSolve(ref A, in b, ref x, out converged, ref ws, relTol, 30);
+
+        /// <summary>pinvSolve (workspace) with default relTol (-1, auto) and maxSweeps (30).</summary>
+        public static int pinvSolve(ref floatMxN A, in floatN b, ref floatN x, out bool converged,
+                                    ref floatSvdWorkspace ws)
+            => pinvSolve(ref A, in b, ref x, out converged, ref ws, (float)(-1), 30);
 
         /// <summary>pinvSolve with default maxSweeps (30).</summary>
         public static int pinvSolve(ref floatMxN A, in floatN b, ref floatN x, out bool converged,
@@ -139,8 +190,12 @@ namespace LinearAlgebra
         /// Moore-Penrose pseudo-inverse: Aplus (N_Cols x M_Rows, caller-allocated) = V diag(1/S_i, S_i > tol) U^T.
         /// A is DESTROYED. Same tolerance/rank/return semantics as pinvSolve. Any shape.
         /// </summary>
+        // Caller-provided scratch overload (zero-alloc); same scratch contract as pinvSolve:
+        // k = min(A.M_Rows, A.N_Cols); S length k; M is k x k (V for tall A, W for wide A);
+        // At (A.N_Cols x A.M_Rows) used only when A is wide (m < n), else pass default(floatMxN).
         public static int pseudoInverse(ref floatMxN A, ref floatMxN Aplus, out bool converged,
-                                        float relTol, int maxSweeps)
+                                        float relTol, int maxSweeps,
+                                        ref floatN S, ref floatMxN M, ref floatMxN At)
         {
             if (Aplus.M_Rows != A.N_Cols)
                 throw new ArgumentException("pseudoInverse: Aplus.M_Rows must equal A.N_Cols");
@@ -153,6 +208,13 @@ namespace LinearAlgebra
 
             int m = A.M_Rows;
             int n = A.N_Cols;
+            int k = math.min(m, n);
+
+            if (S.N != k)
+                throw new ArgumentException("pseudoInverse: S scratch length must equal min(A.M_Rows, A.N_Cols)");
+
+            if (M.M_Rows != k || M.N_Cols != k)
+                throw new ArgumentException("pseudoInverse: M scratch must be k x k, k = min(A.M_Rows, A.N_Cols)");
 
             // Zero-initialize Aplus
             for (int r = 0; r < Aplus.M_Rows; r++)
@@ -160,11 +222,8 @@ namespace LinearAlgebra
                     Aplus[r, c] = (float)0;
 
             if (m >= n) {
-                // A = U * diag(S) * V^T, A now holds U after decomposition
-                floatN S = A.tempfloatVec(n);
-                floatMxN V = A.tempfloatMat(n, n);
-
-                converged = svdDecomposition(ref A, ref S, ref V, maxSweeps);
+                // A = U * diag(S) * V^T, A now holds U after decomposition; M = V
+                converged = svdDecomposition(ref A, ref S, ref M, maxSweeps);
 
                 if (relTol < (float)0)
                     relTol = (float)math.max(m, n) * Consts.floatZeroTreshold;
@@ -184,7 +243,7 @@ namespace LinearAlgebra
                     float invS = (float)1 / S[j];
 
                     for (int r = 0; r < n; r++) {
-                        float vr = V[r, j] * invS;
+                        float vr = M[r, j] * invS;
                         for (int c = 0; c < m; c++)
                             Aplus[r, c] += vr * A[c, j];
                     }
@@ -195,12 +254,13 @@ namespace LinearAlgebra
                 return rank;
             }
             else {
-                // Wide case: decompose A^T (n x m)
-                floatMxN At = floatOP.trans(A);
-                floatN S = A.tempfloatVec(m);
-                floatMxN W = A.tempfloatMat(m, m);
+                // Wide case: decompose A^T (n x m); M = W
+                if (At.M_Rows != n || At.N_Cols != m)
+                    throw new ArgumentException("pseudoInverse: At scratch must be A.N_Cols x A.M_Rows for the wide (m < n) case");
 
-                converged = svdDecomposition(ref At, ref S, ref W, maxSweeps);
+                floatOP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
+
+                converged = svdDecomposition(ref At, ref S, ref M, maxSweeps);
 
                 if (relTol < (float)0)
                     relTol = (float)math.max(m, n) * Consts.floatZeroTreshold;
@@ -222,7 +282,7 @@ namespace LinearAlgebra
                     for (int r = 0; r < n; r++) {
                         float atr = At[r, j] * invS;
                         for (int c = 0; c < m; c++)
-                            Aplus[r, c] += atr * W[c, j];
+                            Aplus[r, c] += atr * M[c, j];
                     }
 
                     rank++;
@@ -231,6 +291,44 @@ namespace LinearAlgebra
                 return rank;
             }
         }
+
+        /// <summary>
+        /// pseudoInverse allocating wrapper: allocates the SVD scratch (S, k x k singular-vector
+        /// matrix, and A^T for the wide case) from A's arena and delegates to the zero-alloc primitive.
+        /// </summary>
+        public static int pseudoInverse(ref floatMxN A, ref floatMxN Aplus, out bool converged,
+                                        float relTol, int maxSweeps)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            int k = math.min(m, n);
+
+            floatN S = A.tempfloatVec(k);
+            floatMxN M = A.tempfloatMat(k, k);
+            floatMxN At = default;
+            if (m < n)
+                At = A.tempfloatMat(n, m);
+
+            return pseudoInverse(ref A, ref Aplus, out converged, relTol, maxSweeps, ref S, ref M, ref At);
+        }
+
+        /// <summary>
+        /// pseudoInverse using a reusable workspace (Arena.floatSvdWorkspace(m, n)) — zero-alloc.
+        /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)).
+        /// </summary>
+        public static int pseudoInverse(ref floatMxN A, ref floatMxN Aplus, out bool converged,
+                                        ref floatSvdWorkspace ws, float relTol, int maxSweeps)
+            => pseudoInverse(ref A, ref Aplus, out converged, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.At);
+
+        /// <summary>pseudoInverse (workspace) with default maxSweeps (30).</summary>
+        public static int pseudoInverse(ref floatMxN A, ref floatMxN Aplus, out bool converged,
+                                        ref floatSvdWorkspace ws, float relTol)
+            => pseudoInverse(ref A, ref Aplus, out converged, ref ws, relTol, 30);
+
+        /// <summary>pseudoInverse (workspace) with default relTol (-1, auto) and maxSweeps (30).</summary>
+        public static int pseudoInverse(ref floatMxN A, ref floatMxN Aplus, out bool converged,
+                                        ref floatSvdWorkspace ws)
+            => pseudoInverse(ref A, ref Aplus, out converged, ref ws, (float)(-1), 30);
 
         /// <summary>pseudoInverse with default maxSweeps (30).</summary>
         public static int pseudoInverse(ref floatMxN A, ref floatMxN Aplus, out bool converged,
