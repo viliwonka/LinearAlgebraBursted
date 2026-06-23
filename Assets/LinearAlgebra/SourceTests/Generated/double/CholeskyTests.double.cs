@@ -1,0 +1,390 @@
+using LinearAlgebra;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+public class doubleCholeskyTests
+{
+    [BurstCompile]
+    public struct CholeskyTestJob : IJob
+    {
+        public enum TestType
+        {
+            RoundTrip,
+            SolveOneStep,
+            SolveTwoStep,
+            KnownSmall,
+            Identity,
+            NotSPD,
+            CrossCheckLU,
+            Tiny,
+            Aliasing,
+        }
+
+        public TestType Type;
+
+        // Float expansion needs a generous tolerance; double is far tighter.
+        // doubleZeroTreshold is per-precision (1e-6 float, 1e-14 double).
+        static double Tol() => 256 * Consts.doubleSqrtEps;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.RoundTrip:
+                    RoundTrip();
+                    break;
+                case TestType.SolveOneStep:
+                    SolveOneStep();
+                    break;
+                case TestType.SolveTwoStep:
+                    SolveTwoStep();
+                    break;
+                case TestType.KnownSmall:
+                    KnownSmall();
+                    break;
+                case TestType.Identity:
+                    Identity();
+                    break;
+                case TestType.NotSPD:
+                    NotSPD();
+                    break;
+                case TestType.CrossCheckLU:
+                    CrossCheckLU();
+                    break;
+                case TestType.Tiny:
+                    Tiny();
+                    break;
+                case TestType.Aliasing:
+                    Aliasing();
+                    break;
+            }
+        }
+
+        // Build an SPD matrix reliably as A = MᵀM + n·I.
+        // MᵀM is symmetric positive-semidefinite; adding n·I (n = dim) makes it
+        // strictly positive-definite and diagonally dominant, so Cholesky must succeed.
+        static doubleMxN BuildSPD(ref Arena arena, int dim, uint seed)
+        {
+            var M = arena.doubleRandomMatrix(dim, dim, -1f, 1f, seed);
+
+            // dot(M, M, transposeA:true) == Mᵀ·M
+            var A = doubleOP.dot(M, M, true);
+
+            for (int d = 0; d < dim; d++)
+                A[d, d] += dim;
+
+            return A;
+        }
+
+        void RoundTrip()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 10;
+
+            var A = BuildSPD(ref arena, dim, 90125);
+            var L = arena.doubleMat(dim, dim);
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+
+            // L must be lower triangular (strict upper zeroed).
+            Assert.IsTrue(Analysis.IsLowerTriangular(L, Tol()));
+
+            // Reconstruct A = L·Lᵀ and compare. Build Lᵀ explicitly then L·Lᵀ.
+            var Lt = doubleOP.trans(L);
+            var recon = doubleOP.dot(L, Lt, false);
+
+            Assert.IsTrue(Analysis.IsZero(A - recon, Tol()));
+
+            arena.Dispose();
+        }
+
+        void SolveOneStep()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 12;
+
+            var A = BuildSPD(ref arena, dim, 31337);
+            var L = arena.doubleMat(dim, dim);
+
+            var b = arena.doubleRandomVector(dim, -1f, 1f, 4242);
+            var bOrig = b.Copy();
+
+            // factor + solve in one call; b is overwritten with x.
+            bool ok = Cholesky.choleskySolve(in A, ref L, ref b);
+            Assert.IsTrue(ok);
+
+            // Verify A·x ≈ bOrig
+            var Ax = doubleOP.dot(A, b);
+            Assert.IsTrue(Analysis.IsZero(bOrig - Ax, Tol()));
+
+            arena.Dispose();
+        }
+
+        void SolveTwoStep()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 9;
+
+            var A = BuildSPD(ref arena, dim, 271828);
+            var L = arena.doubleMat(dim, dim);
+
+            var b = arena.doubleRandomVector(dim, -1f, 1f, 5151);
+            var bOrig = b.Copy();
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+
+            // Solve using the pre-computed factor.
+            Cholesky.choleskySolve(ref L, ref b);
+
+            var Ax = doubleOP.dot(A, b);
+            Assert.IsTrue(Analysis.IsZero(bOrig - Ax, Tol()));
+
+            arena.Dispose();
+        }
+
+        void KnownSmall()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // A = [[4,2],[2,3]] -> L = [[2,0],[1,sqrt(2)]]
+            var A = arena.doubleMat(2, 2);
+            A[0, 0] = 4f; A[0, 1] = 2f;
+            A[1, 0] = 2f; A[1, 1] = 3f;
+
+            var L = arena.doubleMat(2, 2);
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+
+            double tol = Tol();
+            Assert.IsTrue(math.abs(L[0, 0] - 2f) < tol);
+            Assert.IsTrue(math.abs(L[0, 1] - 0f) < tol);
+            Assert.IsTrue(math.abs(L[1, 0] - 1f) < tol);
+            Assert.IsTrue(math.abs(L[1, 1] - math.sqrt((double)2f)) < tol);
+
+            // Reconstruct as a second check.
+            var Lt = doubleOP.trans(L);
+            var recon = doubleOP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis.IsZero(A - recon, tol));
+
+            arena.Dispose();
+        }
+
+        void Identity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 8;
+
+            var A = arena.doubleIdentityMatrix(dim);
+            var L = arena.doubleMat(dim, dim);
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+
+            // chol(I) = I
+            Assert.IsTrue(Analysis.IsIdentity(L, Tol()));
+
+            // Solving I x = b returns x = b.
+            var b = arena.doubleRandomVector(dim, -1f, 1f, 9090);
+            var bOrig = b.Copy();
+            Cholesky.choleskySolve(ref L, ref b);
+            Assert.IsTrue(Analysis.IsZero(bOrig - b, Tol()));
+
+            arena.Dispose();
+        }
+
+        void NotSPD()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // Case 1: symmetric but indefinite. [[1,2],[2,1]] has eigenvalues 3 and -1.
+            {
+                var A = arena.doubleMat(2, 2);
+                A[0, 0] = 1f; A[0, 1] = 2f;
+                A[1, 0] = 2f; A[1, 1] = 1f;
+
+                var L = arena.doubleMat(2, 2);
+
+                bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+                Assert.IsFalse(ok);
+                // On false, no NaN must be produced.
+                Assert.IsFalse(Analysis.IsAnyNan(in L));
+
+                // choleskySolve factor+solve overload must also report failure.
+                var b = arena.doubleRandomVector(2, -1f, 1f, 13);
+                bool solved = Cholesky.choleskySolve(in A, ref L, ref b);
+                Assert.IsFalse(solved);
+            }
+
+            // Case 2: zero matrix (first pivot is 0, not > 0) -> not positive-definite.
+            {
+                int dim = 5;
+                var A = arena.doubleMat(dim, dim);
+                var L = arena.doubleMat(dim, dim);
+
+                bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+                Assert.IsFalse(ok);
+                Assert.IsFalse(Analysis.IsAnyNan(in L));
+            }
+
+            // Case 3: negative diagonal -> not positive-definite.
+            {
+                var A = arena.doubleMat(3, 3);
+                A[0, 0] = 2f;  A[0, 1] = 0f;  A[0, 2] = 0f;
+                A[1, 0] = 0f;  A[1, 1] = -3f; A[1, 2] = 0f;
+                A[2, 0] = 0f;  A[2, 1] = 0f;  A[2, 2] = 1f;
+
+                var L = arena.doubleMat(3, 3);
+
+                bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+                Assert.IsFalse(ok);
+                Assert.IsFalse(Analysis.IsAnyNan(in L));
+            }
+
+            arena.Dispose();
+        }
+
+        void CrossCheckLU()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 11;
+
+            var A = BuildSPD(ref arena, dim, 707070);
+
+            var b = arena.doubleRandomVector(dim, -1f, 1f, 8181);
+
+            // Cholesky solve
+            var bChol = b.Copy();
+            var L = arena.doubleMat(dim, dim);
+            bool ok = Cholesky.choleskySolve(in A, ref L, ref bChol);
+            Assert.IsTrue(ok);
+
+            // LU solve on the same system (inplace LU with pivot).
+            var lu = A.Copy();
+            var pivot = new Pivot(dim, Allocator.Temp);
+            bool luOk = LinearAlgebra.LU.luDecompositionInplace(ref lu, ref pivot);
+            Assert.IsTrue(luOk);
+
+            var bLU = b.Copy();
+            LinearAlgebra.LU.LUSolve(ref lu, in pivot, ref bLU);
+            pivot.Dispose();
+
+            // The two solutions must agree.
+            Assert.IsTrue(Analysis.IsZero(bChol - bLU, Tol()));
+
+            arena.Dispose();
+        }
+
+        // n == 1 degenerate path: A = [[k]] (k > 0) -> L = [[sqrt(k)]].
+        void Tiny()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.doubleMat(1, 1);
+            A[0, 0] = 9f;
+
+            var L = arena.doubleMat(1, 1);
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+            Assert.IsTrue(math.abs(L[0, 0] - 3f) < Tol());
+
+            // Solve 9·x = b -> A·x ≈ b.
+            var b = arena.doubleRandomVector(1, -1f, 1f, 77);
+            var bOrig = b.Copy();
+            Cholesky.choleskySolve(ref L, ref b);
+            var Ax = doubleOP.dot(A, b);
+            Assert.IsTrue(Analysis.IsZero(bOrig - Ax, Tol()));
+
+            arena.Dispose();
+        }
+
+        // L aliasing A must be safe: only A's lower triangle is read, and each
+        // entry is read before it is overwritten, so factoring in place is valid.
+        void Aliasing()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 7;
+
+            var A = BuildSPD(ref arena, dim, 424242);
+            var Aorig = A.Copy();
+
+            // L and A are distinct handles over the SAME underlying data.
+            var L = A;
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+
+            // Reconstruct L·Lᵀ and compare against the ORIGINAL A.
+            var Lt = doubleOP.trans(L);
+            var recon = doubleOP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis.IsZero(Aorig - recon, Tol()));
+
+            arena.Dispose();
+        }
+    }
+
+    [Test]
+    public void RoundTripTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.RoundTrip }.Run();
+    }
+
+    [Test]
+    public void SolveOneStepTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveOneStep }.Run();
+    }
+
+    [Test]
+    public void SolveTwoStepTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveTwoStep }.Run();
+    }
+
+    [Test]
+    public void KnownSmallTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.KnownSmall }.Run();
+    }
+
+    [Test]
+    public void IdentityTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Identity }.Run();
+    }
+
+    [Test]
+    public void NotSPDTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.NotSPD }.Run();
+    }
+
+    [Test]
+    public void CrossCheckLUTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.CrossCheckLU }.Run();
+    }
+
+    [Test]
+    public void TinyTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Tiny }.Run();
+    }
+
+    [Test]
+    public void AliasingTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Aliasing }.Run();
+    }
+}
