@@ -14,7 +14,7 @@ namespace LinearAlgebra
 
         internal static void SameDim(in iProxyMxN a, in iProxyMxN b)
         {
-            if (a.M_Rows != b.M_Rows && a.N_Cols != b.N_Cols)
+            if (a.M_Rows != b.M_Rows || a.N_Cols != b.N_Cols)
                 throw new ArgumentException("iProxyMxNs must have same dimension");
             
         }
@@ -27,7 +27,7 @@ namespace LinearAlgebra
 
         internal static void SameDim(in iProxyMxN a, in boolMxN b)
         {
-            if (a.M_Rows != b.M_Rows && a.N_Cols != b.N_Cols)
+            if (a.M_Rows != b.M_Rows || a.N_Cols != b.N_Cols)
                 throw new ArgumentException("iProxyMxN and boolMxN must have same dimension");
         }
     }

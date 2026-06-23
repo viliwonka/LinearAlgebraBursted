@@ -13,7 +13,7 @@ namespace LinearAlgebra
 
         internal static void IndexInsideBounds(in int2 dim, int2 index)
         {
-            if (math.any(0 < index) && math.any(index >= dim))
+            if (math.any(index < 0) || math.any(index >= dim))
                 throw new ArgumentException("Index out of bounds");
         }
 
@@ -25,7 +25,7 @@ namespace LinearAlgebra
 
         internal static void SameDim(in boolMxN a, in boolMxN b)
         {
-            if (a.M_Rows != b.M_Rows && a.N_Cols != b.N_Cols)
+            if (a.M_Rows != b.M_Rows || a.N_Cols != b.N_Cols)
                 throw new ArgumentException("Matrices must have same dimension");
         }
 

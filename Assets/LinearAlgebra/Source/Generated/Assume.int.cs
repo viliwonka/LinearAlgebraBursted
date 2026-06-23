@@ -14,7 +14,7 @@ namespace LinearAlgebra
 
         internal static void SameDim(in intMxN a, in intMxN b)
         {
-            if (a.M_Rows != b.M_Rows && a.N_Cols != b.N_Cols)
+            if (a.M_Rows != b.M_Rows || a.N_Cols != b.N_Cols)
                 throw new ArgumentException("intMxNs must have same dimension");
             
         }
@@ -27,7 +27,7 @@ namespace LinearAlgebra
 
         internal static void SameDim(in intMxN a, in boolMxN b)
         {
-            if (a.M_Rows != b.M_Rows && a.N_Cols != b.N_Cols)
+            if (a.M_Rows != b.M_Rows || a.N_Cols != b.N_Cols)
                 throw new ArgumentException("intMxN and boolMxN must have same dimension");
         }
     }
