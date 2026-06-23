@@ -64,6 +64,24 @@ namespace LinearAlgebra
             }
         }
 
+        // y += a * x
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void addScaledInpl<T>(this T y, double a, T x) where T : unmanaged, IUnsafedoubleArray
+        {
+            unsafe {
+                UnsafeOP.axpy(y.Data.Ptr, x.Data.Ptr, a, x.Data.Length);
+            }
+        }
+
+        // y = a * y + x
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void scaleAddInpl<T>(this T y, double a, T x) where T : unmanaged, IUnsafedoubleArray
+        {
+            unsafe {
+                UnsafeOP.aypx(y.Data.Ptr, x.Data.Ptr, a, x.Data.Length);
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void modInpl<T>(this T place, double s) where T : unmanaged, IUnsafedoubleArray
         {

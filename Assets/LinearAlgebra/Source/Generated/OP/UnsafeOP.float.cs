@@ -181,6 +181,22 @@ namespace LinearAlgebra
                 target[i] += from[i];
         }
 
+        // y[i] += a * x[i]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void axpy([NoAlias] float* y, [NoAlias] float* x, float a, int n) {
+
+            for (int i = 0; i < n; i++)
+                y[i] += a * x[i];
+        }
+
+        // y[i] = a * y[i] + x[i]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void aypx([NoAlias] float* y, [NoAlias] float* x, float a, int n) {
+
+            for (int i = 0; i < n; i++)
+                y[i] = a * y[i] + x[i];
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void compSub([NoAlias] float* from, [NoAlias] float* target, int n)
         {

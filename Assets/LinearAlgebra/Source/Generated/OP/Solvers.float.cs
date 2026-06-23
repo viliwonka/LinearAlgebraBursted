@@ -1,5 +1,6 @@
 #define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
+using System;
 using Unity.Collections;
 
 namespace LinearAlgebra
@@ -116,6 +117,115 @@ namespace LinearAlgebra
         {
             OrthoOP.qrDirectSolve(ref A, ref b, ref x);
 
+        }
+
+        /// <summary>
+        /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b.
+        /// Caller provides x (initial guess, overwritten with solution) and three scratch vectors
+        /// r, p, Ap (all length A.M_Rows). Returns true if converged within maxIterations to the
+        /// relative residual tolerance; false if not converged or non-positive curvature p·Ap <= 0
+        /// is encountered (A not SPD or numerical breakdown). On a false return x is undefined
+        /// (it may have been partially updated) — only read x when the call returns true.
+        /// </summary>
+        public static bool conjugateGradient(in floatMxN A, in floatN b, ref floatN x,
+                                             ref floatN r, ref floatN p, ref floatN Ap,
+                                             int maxIterations, float tolerance)
+        {
+            if (!A.IsSquare)
+                throw new ArgumentException("conjugateGradient: A must be square");
+
+            if (b.N != A.M_Rows)
+                throw new ArgumentException("conjugateGradient: b.N must equal A.M_Rows");
+
+            if (x.N != A.M_Rows)
+                throw new ArgumentException("conjugateGradient: x.N must equal A.M_Rows");
+
+            if (r.N != A.M_Rows)
+                throw new ArgumentException("conjugateGradient: r.N must equal A.M_Rows");
+
+            if (p.N != A.M_Rows)
+                throw new ArgumentException("conjugateGradient: p.N must equal A.M_Rows");
+
+            if (Ap.N != A.M_Rows)
+                throw new ArgumentException("conjugateGradient: Ap.N must equal A.M_Rows");
+
+            if (maxIterations < 1)
+                throw new ArgumentException("conjugateGradient: maxIterations must be >= 1");
+
+            float bb = floatOP.dot(b, b);
+
+            // b is the zero vector — x = 0 is the exact solution. Copy b (all zeros)
+            // rather than multiplying by 0, so a NaN/Inf initial guess is sanitized
+            // (NaN * 0 = NaN would otherwise leak through).
+            if (bb == (float)0)
+            {
+                x.Data.CopyFrom(b.Data);
+                return true;
+            }
+
+            // r = b - A x
+            floatOP.dot(in A, in x, ref Ap);           // Ap = A x (temp use of Ap)
+            r.Data.CopyFrom(b.Data);                     // r  = b
+            r.addScaledInpl((float)(-1), Ap);           // r -= Ap  =>  r = b - A x
+
+            // p = r
+            p.Data.CopyFrom(r.Data);
+
+            float rsold = floatOP.dot(r, r);
+            float threshold = tolerance * tolerance * bb;
+
+            if (rsold <= threshold)
+                return true;
+
+            for (int k = 0; k < maxIterations; k++)
+            {
+                floatOP.dot(in A, in p, ref Ap);        // Ap = A p
+
+                float pAp = floatOP.dot(p, Ap);
+
+                if (!(pAp > (float)0))                  // NaN-safe: also catches breakdown
+                    return false;
+
+                float alpha = rsold / pAp;
+
+                x.addScaledInpl(alpha, p);               // x += alpha p
+                r.addScaledInpl(-alpha, Ap);             // r -= alpha Ap
+
+                float rsnew = floatOP.dot(r, r);
+
+                if (rsnew <= threshold)
+                    return true;
+
+                float beta = rsnew / rsold;
+
+                p.scaleAddInpl(beta, r);                 // p = beta p + r
+
+                rsold = rsnew;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Conjugate Gradient solver — allocates three scratch vectors from the arena and calls
+        /// the zero-alloc primitive. x is overwritten with the solution on convergence.
+        /// </summary>
+        public static bool conjugateGradient(in floatMxN A, in floatN b, ref floatN x,
+                                             int maxIterations, float tolerance)
+        {
+            floatN r  = b.tempfloatVec(A.M_Rows);
+            floatN p  = b.tempfloatVec(A.M_Rows);
+            floatN Ap = b.tempfloatVec(A.M_Rows);
+            return conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Conjugate Gradient solver with default maxIterations (A.M_Rows) and tolerance
+        /// (Consts.floatSqrtEps). x is overwritten with the solution on convergence.
+        /// </summary>
+        public static bool conjugateGradient(in floatMxN A, in floatN b, ref floatN x)
+        {
+            return conjugateGradient(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
     }
 
