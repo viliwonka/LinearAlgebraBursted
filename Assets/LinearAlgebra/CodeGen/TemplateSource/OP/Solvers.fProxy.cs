@@ -89,27 +89,39 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Solve QRx = b for x
-        /// Use if you intend to solve for multiple b vectors, you have to compute QR decomposition only once
-        /// dim(b) >= dim(x)
+        /// Solve QRx = b for x, with Q,R from a precomputed QR decomposition (solve for multiple
+        /// b vectors reusing one decomposition). Caller provides the destination x (length
+        /// Q.N_Cols); x must be distinct from b. Zero-alloc: Qᵀb is formed directly into x with
+        /// the ref-dest dot — no internal temporary. dim(b) = Q.M_Rows >= dim(x) = Q.N_Cols.
         /// </summary>
         /// <param name="Q">Ortho matrix Q from QR decomposition</param>
         /// <param name="R">Upper triangular matrix R from QR decomposition</param>
-        /// <param name="b">Known vector</param>
-        /// <param name="x">Unknown vector</param>
-        public static void SolveQR(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN b, out fProxyN x) {
+        /// <param name="b">Known vector (length Q.M_Rows)</param>
+        /// <param name="x">Solution destination (length Q.N_Cols), must not alias b</param>
+        public static void SolveQR(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN b, ref fProxyN x) {
             // Solve Ax = b for x
             // A = QR
             // QRx = b
             // Rx = Q^T b
             // x = R^-1 Q^T b
 
-            // y = Q^T b (or b^T Q)
-            fProxyN y = fProxyOP.dot(b, Q);
-            // Solve Rx = Q^T b for x
-            SolveUpperTriangular(ref R, ref y);
+            if (x.N != Q.N_Cols)
+                throw new ArgumentException("SolveQR: x.N must equal Q.N_Cols");
 
-            x = y;
+            // x = Q^T b (or b^T Q). The ref-dest dot guards x-aliases-b and zeroes x first.
+            fProxyOP.dot(in b, in Q, ref x);
+            // Solve Rx = Q^T b for x, in place
+            SolveUpperTriangular(ref R, ref x);
+        }
+
+        /// <summary>
+        /// SolveQR convenience: allocates the solution vector x (length Q.N_Cols) from the arena
+        /// and returns it. Use the ref-destination overload in hot loops to avoid the allocation.
+        /// </summary>
+        public static fProxyN SolveQR(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN b) {
+            fProxyN x = b.tempfProxyVec(Q.N_Cols);
+            SolveQR(ref Q, ref R, ref b, ref x);
+            return x;
         }
 
         // Solve Ax = b for x

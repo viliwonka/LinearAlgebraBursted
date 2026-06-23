@@ -102,15 +102,16 @@ namespace LinearAlgebra
 
         // Q is original matrix A, R is identity matrix
         // Q becomes orthogonal matrix, R becomes upper triangular matrix
+        // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
+        // EXACTLY Q.M_Rows. Hoist u out of a hot loop to skip the per-call Allocator.Temp alloc.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R)
+        public static void qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN u)
         {
             if (Q.M_Rows < Q.N_Cols)
                 throw new System.Exception("OrthoOP.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
 
-            // vector to be copied from A below diagonal
-            // auxilary vector, will be reused in each step
-            var u = new fProxyN(Q.M_Rows, Allocator.Temp, false);
+            if (u.N != Q.M_Rows)
+                throw new System.Exception("OrthoOP.qrDecomposition: scratch vector u.N must equal Q.M_Rows");
 
             int qrSteps = Q.N_Cols;
 
@@ -203,6 +204,14 @@ namespace LinearAlgebra
                 }
             }
 
+        }
+
+        // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R)
+        {
+            var u = new fProxyN(Q.M_Rows, Allocator.Temp, false);
+            qrDecomposition(ref Q, ref R, ref u);
             u.Dispose();
         }
 
@@ -211,8 +220,10 @@ namespace LinearAlgebra
         // b will be transformed into y, where y = Q^T b, and then solved for x
         // x is the solution
         // Q and b get modified (destroyed)
+        // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
+        // EXACTLY A.M_Rows. Hoist u out of a hot loop to skip the per-call Allocator.Temp alloc.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x) {
+        public static void qrDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, ref fProxyN u) {
             if (A.M_Rows < A.N_Cols)
                 throw new System.Exception("OrthoOP.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
 
@@ -222,9 +233,8 @@ namespace LinearAlgebra
             if (x.N != A.N_Cols)
                 throw new System.Exception("OrthoOP.qrDirectSolve: x.N must equal A.N_Cols");
 
-            // vector to be copied from A below diagonal
-            // auxilary vector, will be reused in each step
-            var u = new fProxyN(A.M_Rows, Allocator.Temp, false);
+            if (u.N != A.M_Rows)
+                throw new System.Exception("OrthoOP.qrDirectSolve: scratch vector u.N must equal A.M_Rows");
 
             int qrSteps = A.N_Cols;
 
@@ -264,7 +274,13 @@ namespace LinearAlgebra
             // Solve Rx = y
 
             Solvers.SolveUpperTriangular(ref A, ref x);
+        }
 
+        // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void qrDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x) {
+            var u = new fProxyN(A.M_Rows, Allocator.Temp, false);
+            qrDirectSolve(ref A, ref b, ref x, ref u);
             u.Dispose();
         }
     }
