@@ -127,6 +127,9 @@ Here's a simple example:
 - ✅ QR decomposition & solver for well-determined and over-determined systems
 - ✅ Pivoting
 - ✅ LU decomposition & solver
+- ✅ Cholesky decomposition & solver (symmetric positive-definite systems)
+- ✅ Conjugate Gradient (matrix-free, zero-alloc iterative solver for SPD systems)
+- ✅ Preallocated-destination (`ref`) overloads for the arithmetic ops (dot/matmul, outerDot, trans, select) — zero-alloc hot loops
 - 🔳 View/Slice 
 - 🔳 Find/Query operations (e.g.: find row with biggest L2 norm)
 - ✅ SVD decomposition

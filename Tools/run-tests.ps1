@@ -13,7 +13,8 @@
   EditMode (default) or PlayMode.
 
 .PARAMETER Filter
-  Optional test name filter passed to Unity's -testFilter (e.g. "*SVD*").
+  Optional test name filter. Unity's -testFilter is a regex; this script also
+  accepts glob-style '*' (converted to '.*'), so "*Eigen*" and "Eigen" both work.
 
 .EXAMPLE
   ./Tools/run-tests.ps1
@@ -39,7 +40,12 @@ Write-Host "Running tests (first run imports the project and can take several mi
 $unityArgs = @("-runTests", "-testPlatform", $Platform, "-testResults", $Results)
 # PlayMode needs a graphics device; EditMode can run headless.
 if ($Platform -eq "EditMode") { $unityArgs += "-nographics" }
-if ($Filter) { $unityArgs += @("-testFilter", $Filter) }
+if ($Filter) {
+  # Unity's -testFilter is a REGEX, so a glob like "*Cholesky*" is an invalid
+  # pattern and aborts the run. Accept glob-style '*' by converting it to '.*'.
+  $regexFilter = $Filter -replace '\*', '.*'
+  $unityArgs += @("-testFilter", $regexFilter)
+}
 
 $exit = Invoke-Unity -Arguments $unityArgs -LogFile $Log
 Write-Host "Unity exit code: $exit"
@@ -69,7 +75,11 @@ Write-Host "`n--- Failures ---"
 $failures = $xml.SelectNodes("//test-case[@result='Failed']")
 foreach ($f in $failures) {
   Write-Host ("FAILED: {0}" -f $f.fullname)
-  if ($f.failure.message) { Write-Host ("  {0}" -f ($f.failure.message.Trim())) }
+  # NUnit's <failure><message> can be an XmlElement (CDATA / nested) rather than a
+  # plain string, so extract inner text robustly before trimming.
+  $msg = $f.failure.message
+  if ($msg -is [System.Xml.XmlElement]) { $msg = $msg.InnerText }
+  if ($msg) { Write-Host ("  {0}" -f ([string]$msg).Trim()) }
 }
 if (-not $failures -or $failures.Count -eq 0) {
   Write-Host "(no per-test failures parsed; tail of log:)"
