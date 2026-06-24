@@ -366,7 +366,7 @@ namespace LinearAlgebra
             fProxy sum = 0f;
 
             for (int i = 0; i < n; i++)
-                sum += math.pow(target[i], p);
+                sum += math.pow(math.abs(target[i]), p);   // Lp norm uses |x_i|^p
 
             sum = math.pow(sum, 1f / p);
 
@@ -382,7 +382,7 @@ namespace LinearAlgebra
             fProxy sum = 0f;
 
             for (int i = start; i < end; i++)
-                sum += math.pow(target[i], p);
+                sum += math.pow(math.abs(target[i]), p);   // Lp norm uses |x_i|^p
 
             sum = math.pow(sum, 1f / p);
 

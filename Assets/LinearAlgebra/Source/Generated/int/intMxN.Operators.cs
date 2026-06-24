@@ -46,7 +46,10 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static intMxN operator -(int lhs, in intMxN rhs)
         {
-            return rhs - lhs;
+            // subtraction is NOT commutative: lhs - rhs[i,j], not rhs[i,j] - lhs
+            intMxN matrix = rhs.TempCopy();
+            intOP.subInpl(lhs, matrix);
+            return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static intMxN operator *(in intMxN a, int s)
@@ -74,13 +77,9 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static intMxN operator /(int s, in intMxN a)
         {
+            // 0 / M is valid (= 0 where M != 0); a zero MATRIX entry still throws (integer div by zero).
             intMxN matrix = a.TempCopy();
-            
-            if (s == 0f)
-                throw new DivideByZeroException();
-
             intOP.divInpl(s, matrix);
-
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -98,11 +97,8 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static intMxN operator %(int s, in intMxN a)
         {
+            // 0 % M is valid (= 0 where M != 0); a zero MATRIX entry still throws (integer mod by zero).
             intMxN matrix = a.TempCopy();
-
-            if (s == 0f)
-                throw new DivideByZeroException();
-
             intOP.modInpl(s, matrix);
 
             return matrix;

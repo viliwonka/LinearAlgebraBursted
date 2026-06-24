@@ -46,7 +46,10 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxyMxN operator -(fProxy lhs, in fProxyMxN rhs)
         {
-            return rhs - lhs;
+            // subtraction is NOT commutative: lhs - rhs[i,j], not rhs[i,j] - lhs
+            fProxyMxN matrix = rhs.TempCopy();
+            fProxyOP.subInpl(lhs, matrix);
+            return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxyMxN operator *(in fProxyMxN a, fProxy s)
@@ -74,13 +77,9 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxyMxN operator /(fProxy s, in fProxyMxN a)
         {
+            // 0 / M is valid (= 0 where M != 0); division by zero MATRIX entries is left to IEEE (Inf/NaN).
             fProxyMxN matrix = a.TempCopy();
-            
-            if (s == 0f)
-                throw new DivideByZeroException();
-
             fProxyOP.divInpl(s, matrix);
-
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -98,11 +97,8 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxyMxN operator %(fProxy s, in fProxyMxN a)
         {
+            // 0 % M is valid (= 0 where M != 0); a zero MATRIX entry is left to IEEE / runtime semantics.
             fProxyMxN matrix = a.TempCopy();
-
-            if (s == 0f)
-                throw new DivideByZeroException();
-
             fProxyOP.modInpl(s, matrix);
 
             return matrix;

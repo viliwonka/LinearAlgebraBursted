@@ -126,7 +126,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double NormalizeLP<T>(in T x, float p) where T : unmanaged, IUnsafedoubleArray
+        public static double NormalizeLP<T>(in T x, double p) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe
             {
@@ -135,7 +135,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double NormalizeLP<T>(in T x, int start, int end, float p) where T : unmanaged, IUnsafedoubleArray
+        public static double NormalizeLP<T>(in T x, int start, int end, double p) where T : unmanaged, IUnsafedoubleArray
         {
             if (start >= end)
                 throw new System.Exception("NormalizeLP: start must be less than end");

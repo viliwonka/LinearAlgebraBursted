@@ -249,7 +249,9 @@ namespace LinearAlgebra
 
             bool valid = true;
 
-            if (!IsIdentity(B, epsilon))
+            // NaN-reject: a NaN in B = AᵀA would otherwise slip through IsIdentity's epsilon test
+            // (abs(NaN) > eps is false), wrongly reporting a NaN-poisoned matrix as orthogonal.
+            if (IsAnyNan(in B) || !IsIdentity(B, epsilon))
             {
                 valid = false;
             }

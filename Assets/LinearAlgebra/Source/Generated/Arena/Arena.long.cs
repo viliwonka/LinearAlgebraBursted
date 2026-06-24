@@ -33,7 +33,7 @@ namespace LinearAlgebra
         internal longN longVec(in longN orig)
         {
             var vec = new longN(in orig);
-            templongVectors.Add(in vec);
+            longVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
             return vec;
         }
 
@@ -55,7 +55,8 @@ namespace LinearAlgebra
         #region MATRIX
         public longMxN longMat(int dim, bool uninit = false)
         {
-            return new longMxN(dim, dim, in this, uninit);
+            // forward to the (rows, cols) overload so the matrix is TRACKED (was leaking on Dispose).
+            return longMat(dim, dim, uninit);
         }
 
         public longMxN longMat(int M_rows, int N_cols, bool uninit = false)

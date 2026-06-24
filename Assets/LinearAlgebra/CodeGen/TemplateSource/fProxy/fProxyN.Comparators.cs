@@ -7,7 +7,7 @@ namespace LinearAlgebra
 
         #region SCALAR OPERATIONS
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator <(in fProxyN lhs, float rhs) {
+        public static boolN operator <(in fProxyN lhs, fProxy rhs) {
 
             boolN res = lhs.tempBoolVec(lhs.N, true);
 
@@ -18,9 +18,9 @@ namespace LinearAlgebra
             return res; 
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator <(float lhs, in fProxyN rhs) => rhs > lhs;
+        public static boolN operator <(fProxy lhs, in fProxyN rhs) => rhs > lhs;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator >(in fProxyN lhs, float rhs) {
+        public static boolN operator >(in fProxyN lhs, fProxy rhs) {
             boolN res = lhs.tempBoolVec(lhs.N, true);
 
             unsafe {
@@ -30,9 +30,9 @@ namespace LinearAlgebra
             return res;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator >(float lhs, in fProxyN rhs) => rhs < lhs;
+        public static boolN operator >(fProxy lhs, in fProxyN rhs) => rhs < lhs;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator <=(in fProxyN lhs, float rhs)
+        public static boolN operator <=(in fProxyN lhs, fProxy rhs)
         {
             boolN res = lhs.tempBoolVec(lhs.N, true);
 
@@ -44,9 +44,9 @@ namespace LinearAlgebra
             return res;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator <=(float lhs, in fProxyN rhs) => rhs >= lhs;
+        public static boolN operator <=(fProxy lhs, in fProxyN rhs) => rhs >= lhs;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator >=(in fProxyN lhs, float rhs)
+        public static boolN operator >=(in fProxyN lhs, fProxy rhs)
         {
             boolN res = lhs.tempBoolVec(lhs.N, true);
 
@@ -58,9 +58,9 @@ namespace LinearAlgebra
             return res;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator >=(float lhs, in fProxyN rhs) => rhs <= lhs;
+        public static boolN operator >=(fProxy lhs, in fProxyN rhs) => rhs <= lhs;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator ==(in fProxyN lhs, float rhs)
+        public static boolN operator ==(in fProxyN lhs, fProxy rhs)
         {
             boolN res = lhs.tempBoolVec(lhs.N, true);
 
@@ -72,9 +72,9 @@ namespace LinearAlgebra
             return res;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator ==(float lhs, in fProxyN rhs) => rhs == lhs;
+        public static boolN operator ==(fProxy lhs, in fProxyN rhs) => rhs == lhs;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator !=(in fProxyN lhs, float rhs)
+        public static boolN operator !=(in fProxyN lhs, fProxy rhs)
         {
             boolN res = lhs.tempBoolVec(lhs.N, true);
 
@@ -86,7 +86,7 @@ namespace LinearAlgebra
             return res;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static boolN operator !=(float lhs, in fProxyN rhs) => rhs != lhs;
+        public static boolN operator !=(fProxy lhs, in fProxyN rhs) => rhs != lhs;
 
         #endregion
 

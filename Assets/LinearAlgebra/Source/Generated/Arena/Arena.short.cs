@@ -33,7 +33,7 @@ namespace LinearAlgebra
         internal shortN shortVec(in shortN orig)
         {
             var vec = new shortN(in orig);
-            tempshortVectors.Add(in vec);
+            shortVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
             return vec;
         }
 
@@ -55,7 +55,8 @@ namespace LinearAlgebra
         #region MATRIX
         public shortMxN shortMat(int dim, bool uninit = false)
         {
-            return new shortMxN(dim, dim, in this, uninit);
+            // forward to the (rows, cols) overload so the matrix is TRACKED (was leaking on Dispose).
+            return shortMat(dim, dim, uninit);
         }
 
         public shortMxN shortMat(int M_rows, int N_cols, bool uninit = false)

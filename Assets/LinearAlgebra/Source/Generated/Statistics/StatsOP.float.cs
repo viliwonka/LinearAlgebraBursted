@@ -200,6 +200,17 @@ namespace LinearAlgebra.Stats
             return new floatMeanMinMaxRangeStats(mean, min, max, range);
         }
 
+        // p-th (0..1) percentile of a SORTED list via linear interpolation (numpy 'linear' method).
+        // pos = p*(n-1) is always in [0, n-1], so both indices are in bounds for any n >= 1.
+        static float Percentile(UnsafeList<float> sorted, float p)
+        {
+            int n = sorted.Length;
+            float pos = p * (float)(n - 1);
+            int lo = (int)math.floor(pos);
+            int hi = (int)math.ceil(pos);
+            return sorted[lo] + (pos - (float)lo) * (sorted[hi] - sorted[lo]);
+        }
+
         public static floatFullStats meanMinMaxRange_medianIQRstdDevVariance<T>(in T x) where T : unmanaged, IUnsafefloatArray {
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute meanMinMaxRange_medianIQRstdDevVariance of an empty array.");
@@ -231,27 +242,12 @@ namespace LinearAlgebra.Stats
             }
             variance /= x.Data.Length;
 
-            float median;
-            float q1;
-            float q3;
-            if (copy.Length % 2 != 0)
-            {
-                int midIndex = copy.Length / 2;
-                median = copy[midIndex];
-                int q1Index = midIndex / 2;
-                int q3Index = midIndex + q1Index;
-                q1 = copy[q1Index];
-                q3 = copy[q3Index];
-            }
-            else
-            {
-                int midIndex = copy.Length / 2;
-                median = (copy[midIndex - 1] + copy[midIndex]) / 2f;
-                int q1Index = midIndex / 2 - 1;
-                int q3Index = midIndex + q1Index;
-                q1 = (copy[q1Index] + copy[q1Index + 1]) / 2f;
-                q3 = (copy[q3Index] + copy[q3Index + 1]) / 2f;
-            }
+            // Quartiles via linear-interpolation percentile (numpy 'linear'). Bounds-safe for all
+            // n >= 2 — the previous index arithmetic read out of bounds for n==2 (q1Index = -1) and
+            // collapsed Q3 onto the median for small odd n.
+            float median = Percentile(copy, (float)0.5);
+            float q1 = Percentile(copy, (float)0.25);
+            float q3 = Percentile(copy, (float)0.75);
             float iqr = q3 - q1;
 
             copy.Dispose();

@@ -33,7 +33,7 @@ namespace LinearAlgebra
         internal floatN floatVec(in floatN orig)
         {
             var vec = new floatN(in orig);
-            tempfloatVectors.Add(in vec);
+            floatVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
             return vec;
         }
 
@@ -55,7 +55,9 @@ namespace LinearAlgebra
         #region MATRIX
         public floatMxN floatMat(int dim, bool uninit = false)
         {
-            return new floatMxN(dim, dim, in this, uninit);
+            // forward to the (rows, cols) overload so the matrix is TRACKED in floatMatrices —
+            // the direct `new floatMxN(...)` here was untracked and leaked on Dispose.
+            return floatMat(dim, dim, uninit);
         }
 
         public floatMxN floatMat(int M_rows, int N_cols, bool uninit = false)

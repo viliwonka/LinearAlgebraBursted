@@ -46,7 +46,10 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static doubleMxN operator -(double lhs, in doubleMxN rhs)
         {
-            return rhs - lhs;
+            // subtraction is NOT commutative: lhs - rhs[i,j], not rhs[i,j] - lhs
+            doubleMxN matrix = rhs.TempCopy();
+            doubleOP.subInpl(lhs, matrix);
+            return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static doubleMxN operator *(in doubleMxN a, double s)
@@ -74,13 +77,9 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static doubleMxN operator /(double s, in doubleMxN a)
         {
+            // 0 / M is valid (= 0 where M != 0); division by zero MATRIX entries is left to IEEE (Inf/NaN).
             doubleMxN matrix = a.TempCopy();
-            
-            if (s == 0f)
-                throw new DivideByZeroException();
-
             doubleOP.divInpl(s, matrix);
-
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -98,11 +97,8 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static doubleMxN operator %(double s, in doubleMxN a)
         {
+            // 0 % M is valid (= 0 where M != 0); a zero MATRIX entry is left to IEEE / runtime semantics.
             doubleMxN matrix = a.TempCopy();
-
-            if (s == 0f)
-                throw new DivideByZeroException();
-
             doubleOP.modInpl(s, matrix);
 
             return matrix;

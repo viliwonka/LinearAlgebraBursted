@@ -69,7 +69,7 @@ namespace LinearAlgebra
                 str.Append('[');
                 for (int c = 0; c < dimCols; c++)
                 {
-                    float element =  math.round(m[r, c]*10000f)/10000f;
+                    float element =  math.round(m[r, c]*(float)10000)/(float)10000;
                     if (element >= 0)
                         str.Append('+');
                     FixedString128Bytes elementString;

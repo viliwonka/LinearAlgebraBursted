@@ -126,7 +126,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLP<T>(in T x, float p) where T : unmanaged, IUnsafefProxyArray
+        public static fProxy NormalizeLP<T>(in T x, fProxy p) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe
             {
@@ -135,7 +135,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLP<T>(in T x, int start, int end, float p) where T : unmanaged, IUnsafefProxyArray
+        public static fProxy NormalizeLP<T>(in T x, int start, int end, fProxy p) where T : unmanaged, IUnsafefProxyArray
         {
             if (start >= end)
                 throw new System.Exception("NormalizeLP: start must be less than end");

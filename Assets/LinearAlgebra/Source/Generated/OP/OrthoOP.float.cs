@@ -28,7 +28,12 @@ namespace LinearAlgebra
                 throw new System.Exception("OrthoOP.householder: Vector must be at least as long as the largest dimension of the matrix");
 
             float vTv = floatOP.dot(u, u); // Inline dot product calculation
-            
+
+            // Degenerate (zero / near-zero) reflector -> identity transform; leave matrix unchanged.
+            // NaN-safe (!(vTv > t) is true for NaN); avoids 2/0 = Inf poisoning the matrix.
+            if (!(vTv > Consts.floatZeroTreshold))
+                return;
+
             float scaleFactor = 2 / vTv;
 
             for (int i = 0; i < matrix.M_Rows; i++)
@@ -41,46 +46,25 @@ namespace LinearAlgebra
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void genHouseholder(ref floatMxN Q, ref floatN u, int k) {
-            // copy column d of A into u
-            // here we are forming x vector
-            for (int r = k; r < Q.M_Rows; r++)
-                u[r] = Q[r, k];
-
-            // norm of vector, with range
-            float xNorm = floatNormsOP.L2Range(u, k, u.N);
-
-            // Check if xNorm is zero or very small
-            if (Math.Abs(xNorm) < Consts.floatZeroTreshold) {
-                // Set v to be 'identity' vector
-                for (int r = k; r < u.N; r++)
-                    u[r] = (r == k) ? 1 : 0;
-
-                return; // Early return as no further processing is needed
-            }
-
-            // v = x + sign(x[0]) * ||x|| * e_0
-            u[k] += sign(u[k]) * xNorm;
-
-            floatNormsOP.NormalizeL2(u, k, u.N);
-        }
-
         static float sign(float x) {
             return x < 0 ? -1 : 1;
         }
 
+        // zeroThreshold is the ABSOLUTE column-norm below which a column is treated as zero. Callers
+        // pass a SCALE-RELATIVE value (Consts.floatZeroTreshold * matrix magnitude) so QR is
+        // scale-invariant — a fixed absolute constant mis-classifies every column of a uniformly
+        // tiny-magnitude matrix as a zero column and silently produces a garbage decomposition.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void genHouseholderPete(ref floatMxN Q, ref floatN u, int k) {
+        private static void genHouseholderPete(ref floatMxN Q, ref floatN u, int k, float zeroThreshold) {
 
             // copy column d of A into u
             // here we are forming x vector
             for (int r = k; r < u.N; r++)
                 u[r] = Q[r, k];
-            
+
             float xNorm = floatNormsOP.L2Range(u, k, u.N);
 
-            if (math.abs(xNorm) > Consts.floatZeroTreshold) {
+            if (math.abs(xNorm) > zeroThreshold) {
 
                 for (int r = k; r < u.N; r++)
                     u[r] = u[r] / xNorm;
@@ -115,11 +99,15 @@ namespace LinearAlgebra
 
             int qrSteps = Q.N_Cols;
 
+            // scale-relative zero-column threshold (see genHouseholderPete): keyed off the original
+            // matrix magnitude so QR is scale-invariant. LInf(Q) == max |entry|.
+            float zeroThreshold = Consts.floatZeroTreshold * floatNormsOP.LInf(in Q);
+
             // forming R inside Q (will be copied into R later)
             // d = step and diagonal index
             for (int d = 0; d < qrSteps; d++)
             {
-                genHouseholderPete(ref Q, ref u, d);;
+                genHouseholderPete(ref Q, ref u, d, zeroThreshold);;
                                  
                 for (int c = d; c < Q.N_Cols; c++) 
                 {
@@ -238,12 +226,15 @@ namespace LinearAlgebra
 
             int qrSteps = A.N_Cols;
 
-            float dotProduct = 0; 
+            // scale-relative zero-column threshold (see genHouseholderPete); LInf(A) == max |entry|.
+            float zeroThreshold = Consts.floatZeroTreshold * floatNormsOP.LInf(in A);
+
+            float dotProduct = 0;
             // forming R inside Q (will be copied into R later)
             // d = step and diagonal index
             for (int d = 0; d < qrSteps; d++) {
 
-                genHouseholderPete(ref A, ref u, d);
+                genHouseholderPete(ref A, ref u, d, zeroThreshold);
 
                 for (int c = d; c < A.N_Cols; c++) {
 

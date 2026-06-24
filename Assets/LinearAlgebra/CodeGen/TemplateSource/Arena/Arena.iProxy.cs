@@ -33,7 +33,7 @@ namespace LinearAlgebra
         internal iProxyN iProxyVec(in iProxyN orig)
         {
             var vec = new iProxyN(in orig);
-            tempiProxyVectors.Add(in vec);
+            iProxyVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
             return vec;
         }
 
@@ -55,7 +55,8 @@ namespace LinearAlgebra
         #region MATRIX
         public iProxyMxN iProxyMat(int dim, bool uninit = false)
         {
-            return new iProxyMxN(dim, dim, in this, uninit);
+            // forward to the (rows, cols) overload so the matrix is TRACKED (was leaking on Dispose).
+            return iProxyMat(dim, dim, uninit);
         }
 
         public iProxyMxN iProxyMat(int M_rows, int N_cols, bool uninit = false)

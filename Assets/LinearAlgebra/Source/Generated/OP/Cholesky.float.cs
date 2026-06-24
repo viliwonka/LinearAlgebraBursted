@@ -22,6 +22,11 @@ namespace LinearAlgebra
         /// Returns true on success; false if A is not positive-definite (a non-positive pivot is
         /// encountered, which also catches NaN). On false: no NaN/Inf is written, since the check
         /// happens before the sqrt.
+        ///
+        /// L may alias A (in-place factorization): each A entry is read before it is overwritten, so
+        /// passing the same matrix as both A and L is safe — but then A's strict upper triangle is
+        /// destroyed (zeroed). On a false (non-PD) return with L aliasing A, the lower triangle is
+        /// left partially overwritten, so treat A as destroyed on failure.
         /// </summary>
         public static bool choleskyDecomposition(in floatMxN A, ref floatMxN L) {
             if (!A.IsSquare)
@@ -75,6 +80,10 @@ namespace LinearAlgebra
         /// Solve A x = b for x given the Cholesky factor L (A = L * Lᵀ) from choleskyDecomposition.
         /// b is overwritten with x. Use this overload to solve for multiple right-hand sides without
         /// refactoring. Solves L y = b (forward substitution), then Lᵀ x = y (back substitution).
+        ///
+        /// PRECONDITION: L must be a valid factor from a choleskyDecomposition that returned true.
+        /// Passing an invalid or partially-computed L (e.g. from a decomposition that returned false)
+        /// divides by a zero/garbage diagonal and silently produces NaN/Inf — always check the bool.
         /// </summary>
         public static void choleskySolve(ref floatMxN L, ref floatN b) {
             if (!L.IsSquare)

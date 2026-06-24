@@ -44,8 +44,9 @@ namespace LinearAlgebra
 
             _arenaPtr = orig._arenaPtr;
 
+            // guard a standalone (null-arena) source — was dereferencing null for the default allocator
             if(allocator == Allocator.Invalid)
-                allocator = _arenaPtr->Allocator;
+                allocator = _arenaPtr != null ? _arenaPtr->Allocator : Allocator.Temp;
 
             //var allocator1 = _arenaPtr->Allocator;
             //UnityEngine.Debug.Log($"Vector: {allocator}");
@@ -66,8 +67,10 @@ namespace LinearAlgebra
         {
             _arenaPtr = null;
 
+            // standalone (non-arena) vector — fall back to Temp instead of dereferencing the null
+            // _arenaPtr (which crashed for the default Allocator.Invalid).
             if (allocator == Allocator.Invalid)
-                allocator = _arenaPtr->Allocator;
+                allocator = Allocator.Temp;
 
             var data = new UnsafeList<double>(n, allocator, NativeArrayOptions.UninitializedMemory);
             data.Resize(n, uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
@@ -82,7 +85,7 @@ namespace LinearAlgebra
 
         public unsafe doubleN TempCopy()
         {
-            return _arenaPtr->doubleVec(in this);
+            return _arenaPtr->tempdoubleVec(in this);   // temp pool (was wrongly the persistent Copy path)
         }
 
         public void CopyTo(in doubleN vec)

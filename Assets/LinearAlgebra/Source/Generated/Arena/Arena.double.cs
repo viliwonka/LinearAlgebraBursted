@@ -33,7 +33,7 @@ namespace LinearAlgebra
         internal doubleN doubleVec(in doubleN orig)
         {
             var vec = new doubleN(in orig);
-            tempdoubleVectors.Add(in vec);
+            doubleVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
             return vec;
         }
 
@@ -55,7 +55,9 @@ namespace LinearAlgebra
         #region MATRIX
         public doubleMxN doubleMat(int dim, bool uninit = false)
         {
-            return new doubleMxN(dim, dim, in this, uninit);
+            // forward to the (rows, cols) overload so the matrix is TRACKED in doubleMatrices —
+            // the direct `new doubleMxN(...)` here was untracked and leaked on Dispose.
+            return doubleMat(dim, dim, uninit);
         }
 
         public doubleMxN doubleMat(int M_rows, int N_cols, bool uninit = false)

@@ -33,7 +33,7 @@ namespace LinearAlgebra
         internal fProxyN fProxyVec(in fProxyN orig)
         {
             var vec = new fProxyN(in orig);
-            tempfProxyVectors.Add(in vec);
+            fProxyVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
             return vec;
         }
 
@@ -55,7 +55,9 @@ namespace LinearAlgebra
         #region MATRIX
         public fProxyMxN fProxyMat(int dim, bool uninit = false)
         {
-            return new fProxyMxN(dim, dim, in this, uninit);
+            // forward to the (rows, cols) overload so the matrix is TRACKED in fProxyMatrices —
+            // the direct `new fProxyMxN(...)` here was untracked and leaked on Dispose.
+            return fProxyMat(dim, dim, uninit);
         }
 
         public fProxyMxN fProxyMat(int M_rows, int N_cols, bool uninit = false)

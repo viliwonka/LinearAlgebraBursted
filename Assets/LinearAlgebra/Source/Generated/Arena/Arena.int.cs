@@ -33,7 +33,7 @@ namespace LinearAlgebra
         internal intN intVec(in intN orig)
         {
             var vec = new intN(in orig);
-            tempintVectors.Add(in vec);
+            intVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
             return vec;
         }
 
@@ -55,7 +55,8 @@ namespace LinearAlgebra
         #region MATRIX
         public intMxN intMat(int dim, bool uninit = false)
         {
-            return new intMxN(dim, dim, in this, uninit);
+            // forward to the (rows, cols) overload so the matrix is TRACKED (was leaking on Dispose).
+            return intMat(dim, dim, uninit);
         }
 
         public intMxN intMat(int M_rows, int N_cols, bool uninit = false)
