@@ -201,7 +201,7 @@ public class iProxyOperationsTest {
                     ModMat();
                     break;
                 case TestType.SignFlipMat:
-                    SignFlipVec();
+                    SignFlipMat();
                     break;
 
             }

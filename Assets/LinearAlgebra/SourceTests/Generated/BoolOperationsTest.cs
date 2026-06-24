@@ -30,7 +30,10 @@ public class BoolOperationsTest
             XorMat,
 
             EqualsVecVec,
-            NotEqualsVecVec,   
+            NotEqualsVecVec,
+            AndVecVec,
+            OrVecVec,
+            XorVecVec,
         }
 
         public OPType Type;
@@ -84,6 +87,15 @@ public class BoolOperationsTest
                     break;
                     case OPType.NotEqualsVecVec:
                         NotEqualsVecVec(ref arena);
+                    break;
+                    case OPType.AndVecVec:
+                        AndVecVec(ref arena);
+                    break;
+                    case OPType.OrVecVec:
+                        OrVecVec(ref arena);
+                    break;
+                    case OPType.XorVecVec:
+                        XorVecVec(ref arena);
                     break;
                     default:
                         throw new NotImplementedException();
@@ -293,7 +305,7 @@ public class BoolOperationsTest
             boolN c = a == b;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.IsTrue(a[i] == b[i] == c[i]);
+                Assert.IsTrue((a[i] == b[i]) == c[i]);
         }
 
         public void NotEqualsVecVec(ref Arena arena)
@@ -305,7 +317,7 @@ public class BoolOperationsTest
             boolN c = a != b;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.IsTrue(a[i] == b[i] != c[i]);
+                Assert.IsTrue((a[i] != b[i]) == c[i]);
         }
 
         public void AndVecVec(ref Arena arena)
@@ -317,7 +329,7 @@ public class BoolOperationsTest
             boolN c = a & b;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.IsTrue(a[i] && b[i] == c[i]);
+                Assert.IsTrue((a[i] & b[i]) == c[i]);
         }
 
         public void OrVecVec(ref Arena arena)
@@ -329,7 +341,19 @@ public class BoolOperationsTest
             boolN c = a | b;
 
             for (int i = 0; i < vecLen; i++)
-                Assert.IsTrue(a[i] || b[i] == c[i]);
+                Assert.IsTrue((a[i] | b[i]) == c[i]);
+        }
+
+        public void XorVecVec(ref Arena arena)
+        {
+            int vecLen = 16;
+
+            boolN a = arena.boolRandomVec(vecLen);
+            boolN b = arena.boolRandomVec(vecLen);
+            boolN c = a ^ b;
+
+            for (int i = 0; i < vecLen; i++)
+                Assert.IsTrue((a[i] ^ b[i]) == c[i]);
         }
     }
 

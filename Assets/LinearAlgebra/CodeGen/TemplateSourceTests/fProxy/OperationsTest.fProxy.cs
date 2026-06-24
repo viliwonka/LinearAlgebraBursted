@@ -183,7 +183,7 @@ public class fProxyOperationsTest {
                     ModMat();
                     break;
                 case TestType.SignFlipMat:
-                    SignFlipVec();
+                    SignFlipMat();
                     break;
 
             }

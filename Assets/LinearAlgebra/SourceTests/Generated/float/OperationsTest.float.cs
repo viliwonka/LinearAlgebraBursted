@@ -183,7 +183,7 @@ public class floatOperationsTest {
                     ModMat();
                     break;
                 case TestType.SignFlipMat:
-                    SignFlipVec();
+                    SignFlipMat();
                     break;
 
             }

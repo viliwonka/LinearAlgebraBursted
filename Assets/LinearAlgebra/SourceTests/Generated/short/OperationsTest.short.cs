@@ -201,7 +201,7 @@ public class shortOperationsTest {
                     ModMat();
                     break;
                 case TestType.SignFlipMat:
-                    SignFlipVec();
+                    SignFlipMat();
                     break;
 
             }
