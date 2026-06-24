@@ -349,5 +349,309 @@ namespace LinearAlgebra
         public static bool eigenDecomposition(ref floatMxN A, ref floatN eigenvalues,
                                               ref floatMxN V)
             => eigenDecomposition(ref A, ref eigenvalues, ref V, 30, Consts.floatZeroTreshold);
+
+        // copysign: magnitude of a with the sign of b (b >= 0 -> +|a|). EISPACK SIGN(a,b).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float copysign(float a, float b) => b >= (float)0 ? math.abs(a) : -math.abs(a);
+
+        /// <summary>
+        /// All eigenvalues of a GENERAL (non-symmetric) real square matrix, via the QR algorithm:
+        /// reduction to upper Hessenberg form (elimination with partial pivoting) followed by the
+        /// Francis double-shift QR iteration to the real Schur form (EISPACK elmhes + hqr). Real
+        /// arithmetic only — complex-conjugate eigenvalue pairs are produced from the 2x2 Schur
+        /// blocks, so NO complex number type is needed.
+        ///
+        /// Unlike eigenDecomposition (symmetric-only Jacobi) and powerIteration (dominant pair only),
+        /// this handles arbitrary real matrices including those with complex eigenvalues (e.g.
+        /// rotations). It returns eigenVALUES only (no eigenvectors).
+        ///
+        /// On input A must be square; A is DESTROYED (overwritten during reduction/iteration).
+        /// On output eigenvaluesReal[i] / eigenvaluesImag[i] are the real and imaginary parts of the
+        /// i-th eigenvalue. Results are sorted by (real, then imaginary) DESCENDING, so a conjugate
+        /// pair a±bi appears as (a,+b) immediately before (a,-b). Read the outputs only when the
+        /// method returns true.
+        ///
+        /// Returns true if every eigenvalue converged within maxIterPerRoot iterations; false if the
+        /// iteration limit was hit (outputs then undefined). Does not allocate.
+        /// </summary>
+        public static bool eigenvaluesQR(ref floatMxN A, ref floatN eigenvaluesReal,
+                                         ref floatN eigenvaluesImag, int maxIterPerRoot)
+        {
+            if (!A.IsSquare)
+                throw new ArgumentException("Eigen.eigenvaluesQR: A must be square");
+
+            int n = A.N_Cols;
+
+            if (eigenvaluesReal.N != n)
+                throw new ArgumentException("Eigen.eigenvaluesQR: eigenvaluesReal.N must equal A dimension");
+
+            if (eigenvaluesImag.N != n)
+                throw new ArgumentException("Eigen.eigenvaluesQR: eigenvaluesImag.N must equal A dimension");
+
+            if (maxIterPerRoot < 1)
+                throw new ArgumentException("Eigen.eigenvaluesQR: maxIterPerRoot must be >= 1");
+
+            if (n == 0)
+                return true;
+
+            // ---- Step 1: reduce A to upper Hessenberg form (elmhes: Gaussian elimination with
+            //      partial pivoting via similarity transforms; preserves eigenvalues). ----
+            for (int m = 1; m < n - 1; m++)
+            {
+                // pivot: largest |A[j, m-1]| over rows j >= m.
+                float x = (float)0;
+                int piv = m;
+                for (int j = m; j < n; j++)
+                {
+                    if (math.abs(A[j, m - 1]) > math.abs(x))
+                    {
+                        x = A[j, m - 1];
+                        piv = j;
+                    }
+                }
+
+                // interchange rows and columns piv <-> m (a similarity transform).
+                if (piv != m)
+                {
+                    for (int j = m - 1; j < n; j++)
+                    {
+                        float tmp = A[piv, j]; A[piv, j] = A[m, j]; A[m, j] = tmp;
+                    }
+                    for (int j = 0; j < n; j++)
+                    {
+                        float tmp = A[j, piv]; A[j, piv] = A[j, m]; A[j, m] = tmp;
+                    }
+                }
+
+                // eliminate below the subdiagonal in column m-1.
+                if (x != (float)0)
+                {
+                    for (int i = m + 1; i < n; i++)
+                    {
+                        float y = A[i, m - 1];
+                        if (y != (float)0)
+                        {
+                            y /= x;
+                            A[i, m - 1] = y;                          // store multiplier (cleared below)
+                            for (int j = m; j < n; j++)
+                                A[i, j] -= y * A[m, j];
+                            for (int j = 0; j < n; j++)
+                                A[j, m] += y * A[j, i];
+                        }
+                    }
+                }
+            }
+
+            // clear the stored multipliers below the subdiagonal -> clean upper Hessenberg H in A.
+            for (int i = 2; i < n; i++)
+                for (int j = 0; j < i - 1; j++)
+                    A[i, j] = (float)0;
+
+            // ---- Step 2: Francis double-shift QR on the Hessenberg matrix (hqr). ----
+            float anorm = (float)0;
+            for (int i = 0; i < n; i++)
+                for (int j = math.max(i - 1, 0); j < n; j++)
+                    anorm += math.abs(A[i, j]);
+
+            int nn = n - 1;     // index of the current bottom-right active row/col
+            float t = (float)0;
+
+            while (nn >= 0)
+            {
+                int its = 0;
+                int l;
+                do
+                {
+                    // look for a single negligible subdiagonal element to split off.
+                    for (l = nn; l >= 1; l--)
+                    {
+                        float s0 = math.abs(A[l - 1, l - 1]) + math.abs(A[l, l]);
+                        if (s0 == (float)0) s0 = anorm;
+                        if (math.abs(A[l, l - 1]) + s0 == s0)
+                        {
+                            A[l, l - 1] = (float)0;
+                            break;
+                        }
+                    }
+                    if (l < 0) l = 0;
+
+                    float x = A[nn, nn];
+
+                    if (l == nn)
+                    {
+                        // one real root.
+                        eigenvaluesReal[nn] = x + t;
+                        eigenvaluesImag[nn] = (float)0;
+                        nn--;
+                    }
+                    else
+                    {
+                        float y = A[nn - 1, nn - 1];
+                        float w = A[nn, nn - 1] * A[nn - 1, nn];
+
+                        if (l == nn - 1)
+                        {
+                            // two roots from the trailing 2x2 block.
+                            float p = (float)0.5 * (y - x);
+                            float q = p * p + w;
+                            float z = math.sqrt(math.abs(q));
+                            x += t;
+                            if (q >= (float)0)
+                            {
+                                // real pair.
+                                z = p + copysign(z, p);
+                                eigenvaluesReal[nn - 1] = x + z;
+                                eigenvaluesReal[nn] = (z != (float)0) ? (x - w / z) : (x + z);
+                                eigenvaluesImag[nn - 1] = (float)0;
+                                eigenvaluesImag[nn] = (float)0;
+                            }
+                            else
+                            {
+                                // complex-conjugate pair a +/- bi.
+                                eigenvaluesReal[nn - 1] = x + p;
+                                eigenvaluesReal[nn] = x + p;
+                                eigenvaluesImag[nn - 1] = z;
+                                eigenvaluesImag[nn] = -z;
+                            }
+                            nn -= 2;
+                        }
+                        else
+                        {
+                            // no root yet: perform a double-shift QR sweep.
+                            if (its >= maxIterPerRoot)
+                                return false;   // not converged
+
+                            if (its == 10 || its == 20)
+                            {
+                                // exceptional shift to break a cycle.
+                                t += x;
+                                for (int i = 0; i <= nn; i++)
+                                    A[i, i] -= x;
+                                float s1 = math.abs(A[nn, nn - 1]) + math.abs(A[nn - 1, nn - 2]);
+                                y = x = (float)0.75 * s1;
+                                w = (float)(-0.4375) * s1 * s1;
+                            }
+                            its++;
+
+                            // find two consecutive negligible subdiagonals to start the sweep.
+                            float p = (float)0, q = (float)0, r = (float)0;
+                            int m;
+                            for (m = nn - 2; m >= l; m--)
+                            {
+                                float z = A[m, m];
+                                float rr = x - z;
+                                float ss = y - z;
+                                p = (rr * ss - w) / A[m + 1, m] + A[m, m + 1];
+                                q = A[m + 1, m + 1] - z - rr - ss;
+                                r = A[m + 2, m + 1];
+                                float s2 = math.abs(p) + math.abs(q) + math.abs(r);
+                                // guard the normalization (matches the guarded analog in the QR sweep
+                                // below): if p,q,r are all exactly zero, leave them zero rather than
+                                // dividing 0/0 -> NaN, which would poison the convergence test.
+                                if (s2 != (float)0) { p /= s2; q /= s2; r /= s2; }
+                                if (m == l) break;
+                                float u = math.abs(A[m, m - 1]) * (math.abs(q) + math.abs(r));
+                                float v = math.abs(p) * (math.abs(A[m - 1, m - 1]) + math.abs(z) + math.abs(A[m + 1, m + 1]));
+                                if (u + v == v) break;
+                            }
+
+                            for (int i = m + 2; i <= nn; i++)
+                            {
+                                A[i, i - 2] = (float)0;
+                                if (i != m + 2) A[i, i - 3] = (float)0;
+                            }
+
+                            // the double QR step over rows/cols m..nn.
+                            for (int k = m; k <= nn - 1; k++)
+                            {
+                                if (k != m)
+                                {
+                                    p = A[k, k - 1];
+                                    q = A[k + 1, k - 1];
+                                    r = (float)0;
+                                    if (k != nn - 1) r = A[k + 2, k - 1];
+                                    x = math.abs(p) + math.abs(q) + math.abs(r);
+                                    if (x != (float)0)
+                                    {
+                                        p /= x; q /= x; r /= x;
+                                    }
+                                }
+
+                                float s = copysign(math.sqrt(p * p + q * q + r * r), p);
+                                if (s != (float)0)
+                                {
+                                    if (k == m)
+                                    {
+                                        if (l != m)
+                                            A[k, k - 1] = -A[k, k - 1];
+                                    }
+                                    else
+                                    {
+                                        A[k, k - 1] = -s * x;
+                                    }
+                                    p += s;
+                                    float xx = p / s;
+                                    float yy = q / s;
+                                    float zz = r / s;
+                                    q /= p;
+                                    r /= p;
+
+                                    // row modification.
+                                    for (int j = k; j <= nn; j++)
+                                    {
+                                        p = A[k, j] + q * A[k + 1, j];
+                                        if (k != nn - 1)
+                                        {
+                                            p += r * A[k + 2, j];
+                                            A[k + 2, j] -= p * zz;
+                                        }
+                                        A[k + 1, j] -= p * yy;
+                                        A[k, j] -= p * xx;
+                                    }
+
+                                    int mmin = nn < k + 3 ? nn : k + 3;
+                                    // column modification.
+                                    for (int i = l; i <= mmin; i++)
+                                    {
+                                        p = xx * A[i, k] + yy * A[i, k + 1];
+                                        if (k != nn - 1)
+                                        {
+                                            p += zz * A[i, k + 2];
+                                            A[i, k + 2] -= p * r;
+                                        }
+                                        A[i, k + 1] -= p * q;
+                                        A[i, k] -= p;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } while (l < nn - 1);
+            }
+
+            // ---- sort by (real, then imaginary) descending; keep re/im paired. ----
+            for (int a = 0; a < n - 1; a++)
+            {
+                int best = a;
+                for (int b = a + 1; b < n; b++)
+                {
+                    if (eigenvaluesReal[b] > eigenvaluesReal[best] ||
+                        (eigenvaluesReal[b] == eigenvaluesReal[best] && eigenvaluesImag[b] > eigenvaluesImag[best]))
+                        best = b;
+                }
+                if (best != a)
+                {
+                    float tr = eigenvaluesReal[a]; eigenvaluesReal[a] = eigenvaluesReal[best]; eigenvaluesReal[best] = tr;
+                    float ti = eigenvaluesImag[a]; eigenvaluesImag[a] = eigenvaluesImag[best]; eigenvaluesImag[best] = ti;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>eigenvaluesQR with default maxIterPerRoot (30, the EISPACK hqr limit).</summary>
+        public static bool eigenvaluesQR(ref floatMxN A, ref floatN eigenvaluesReal,
+                                         ref floatN eigenvaluesImag)
+            => eigenvaluesQR(ref A, ref eigenvaluesReal, ref eigenvaluesImag, 30);
     }
 }
