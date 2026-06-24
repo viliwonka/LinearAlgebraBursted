@@ -13,6 +13,10 @@ namespace LinearAlgebra
         // Solve Ux = b for x
         // U may be tall (M_Rows >= N_Cols): only the top N_Cols x N_Cols block is read,
         // which is the R block produced by QR on overdetermined systems.
+        // PRECONDITION: U is non-singular — every diagonal U[r,r] must be nonzero. A zero diagonal
+        // (a singular/rank-deficient triangular factor) divides by zero and yields Inf/NaN; this
+        // primitive does not guard it. For rank-deficient systems use the rank-revealing paths
+        // (OrthoOP.qrDecompositionColumnPivot, SVD.pinvSolve, or Cholesky.choleskyPivotSolve).
         public static void SolveUpperTriangular(ref floatMxN U, ref floatN x)
         {
             if(U.M_Rows < U.N_Cols)
@@ -33,6 +37,8 @@ namespace LinearAlgebra
         }
 
         // Solve Lx = b for x
+        // PRECONDITION: L is non-singular — every diagonal L[r,r] must be nonzero (see
+        // SolveUpperTriangular; a zero diagonal divides by zero -> Inf/NaN, unguarded).
         public static void SolveLowerTriangular(ref floatMxN L, ref floatN x)
         {
             if (L.IsSquare == false)

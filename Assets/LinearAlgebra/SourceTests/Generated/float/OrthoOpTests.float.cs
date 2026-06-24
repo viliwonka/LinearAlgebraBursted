@@ -42,6 +42,7 @@ public class floatOrthoOpTests
             QRDecompHilbert,
             QRDecompPermutation,
             QRDecompZero,
+            QRDecompRankDeficient,
         }
 
         public TestType Type;
@@ -76,6 +77,9 @@ public class floatOrthoOpTests
                     break;
                 case TestType.QRDecompZero:
                     QRDecompZero();
+                    break;
+                case TestType.QRDecompRankDeficient:
+                    QRDecompRankDeficient();
                     break;
             }
         }
@@ -266,6 +270,29 @@ public class floatOrthoOpTests
             //Print.Log(R);
 
             AssertQR(in A, in Q, in R);
+
+            arena.Dispose();
+        }
+
+        // Rank-deficient tall matrix (column 3 == column 0): the DECOMPOSITION must still be valid —
+        // Householder QR reconstructs A = Q*R and keeps Q orthogonal / R upper-triangular regardless
+        // of rank (it is only the back-substitution SOLVE that is undefined for rank-deficient A, so
+        // that is deliberately not exercised here; QRCP / SVD / pivoted-Cholesky cover the solve).
+        public void QRDecompRankDeficient()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 5;
+            var Q = arena.floatRandomMatrix(m, n, -1f, 1f, 555123);
+            for (int r = 0; r < m; r++)
+                Q[r, 3] = Q[r, 0]; // make column 3 a duplicate of column 0 -> rank deficient
+
+            var R = arena.floatMat(n);
+            var A = Q.Copy();
+
+            OrthoOP.qrDecomposition(ref Q, ref R);
+
+            AssertQR(in A, in Q, in R, 1E-4f);
 
             arena.Dispose();
         }

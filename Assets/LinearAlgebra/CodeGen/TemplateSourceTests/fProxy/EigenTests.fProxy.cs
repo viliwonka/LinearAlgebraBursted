@@ -27,6 +27,8 @@ public class fProxyEigenTests
             EigenReconstruct,
             EigenPSDvsSVD,
             EigenZero,
+            EigenRank1Projection,
+            EigenLaplacianSingular,
             EigenNonConvergence,
             // powerIteration
             PowerDiagonalDominant,
@@ -65,6 +67,12 @@ public class fProxyEigenTests
                     break;
                 case TestType.EigenZero:
                     EigenZero();
+                    break;
+                case TestType.EigenRank1Projection:
+                    EigenRank1Projection();
+                    break;
+                case TestType.EigenLaplacianSingular:
+                    EigenLaplacianSingular();
                     break;
                 case TestType.EigenNonConvergence:
                     EigenNonConvergence();
@@ -389,6 +397,83 @@ public class fProxyEigenTests
                 AssertClose(eig[i], (fProxy)0, (fProxy)100 * Consts.fProxyZeroTreshold);
 
             Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroTreshold));
+
+            arena.Dispose();
+        }
+
+        // Rank-1 projection A = v*vᵀ (v = (1,2,3,1)): SINGULAR symmetric matrix whose eigenvalues
+        // are exactly {‖v‖² = 15, 0, 0, 0}. Tests a genuine zero eigenvalue ALONGSIDE a nonzero one
+        // (the realistic rank-deficient eigen case — distinct from the all-zero EigenZero). Checks
+        // the dominant eigenvalue, the exact-zero tail, descending order, reconstruction, and that
+        // the trailing (null-space) eigenvectors still form an orthonormal V.
+        public void EigenRank1Projection()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 4;
+
+            var v = arena.fProxyVec(n);
+            v[0] = (fProxy)1; v[1] = (fProxy)2; v[2] = (fProxy)3; v[3] = (fProxy)1;
+            fProxy vv = (fProxy)0;
+            for (int i = 0; i < n; i++) vv += v[i] * v[i]; // = 15
+
+            var A = arena.fProxyMat(n, n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = v[i] * v[j];
+
+            var Aorig = A.Copy();
+            var eig = arena.fProxyVec(n);
+            var V = arena.fProxyMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            Assert.IsTrue(converged);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            fProxy tol = (fProxy)100 * Consts.fProxyZeroTreshold;
+            // dominant eigenvalue == ‖v‖² = 15; the other three are exactly zero.
+            AssertClose(eig[0], vv, tol * ((fProxy)1 + vv));
+            for (int i = 1; i < n; i++)
+                AssertClose(eig[i], (fProxy)0, tol * ((fProxy)1 + vv));
+
+            AssertDescending(in eig, n);
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+
+            arena.Dispose();
+        }
+
+        // Triangle-graph Laplacian L = [[2,-1,-1],[-1,2,-1],[-1,-1,2]]: a classic SINGULAR symmetric
+        // matrix with exact eigenvalues {3, 3, 0} (the 0 is the all-ones null vector; rank 2). A
+        // known literature vector exercising a zero eigenvalue plus a repeated nonzero one.
+        public void EigenLaplacianSingular()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 3;
+
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = (fProxy)2; A[0, 1] = (fProxy)(-1); A[0, 2] = (fProxy)(-1);
+            A[1, 0] = (fProxy)(-1); A[1, 1] = (fProxy)2; A[1, 2] = (fProxy)(-1);
+            A[2, 0] = (fProxy)(-1); A[2, 1] = (fProxy)(-1); A[2, 2] = (fProxy)2;
+
+            var Aorig = A.Copy();
+            var eig = arena.fProxyVec(n);
+            var V = arena.fProxyMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            Assert.IsTrue(converged);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+
+            fProxy tol = (fProxy)100 * Consts.fProxyZeroTreshold;
+            AssertClose(eig[0], (fProxy)3, tol * (fProxy)4);
+            AssertClose(eig[1], (fProxy)3, tol * (fProxy)4);
+            AssertClose(eig[2], (fProxy)0, tol * (fProxy)4); // singular: smallest eigenvalue is 0
+
+            AssertDescending(in eig, n);
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
 
             arena.Dispose();
         }

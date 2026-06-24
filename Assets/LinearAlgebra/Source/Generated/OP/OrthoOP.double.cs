@@ -357,6 +357,11 @@ namespace LinearAlgebra
         // b will be transformed into y, where y = Q^T b, and then solved for x
         // x is the solution
         // Q and b get modified (destroyed)
+        // PRECONDITION: A has FULL COLUMN RANK. This un-pivoted solve back-substitutes through R's
+        // diagonal; a rank-deficient A produces a zero on that diagonal and the result x is then
+        // Inf/NaN (no guard). For rank-deficient / least-norm problems use the rank-revealing paths
+        // instead: OrthoOP.qrDecompositionColumnPivot (QRCP), SVD.pinvSolve, or
+        // Cholesky.choleskyPivotSolve.
         // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
         // EXACTLY A.M_Rows. Hoist u out of a hot loop to skip the per-call Allocator.Temp alloc.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -19,6 +19,7 @@ public class floatConjugateGradientTests
             OverloadsAgree,
             ZeroRhs,
             NotSPD,
+            SingularConsistent,
             AlreadyConverged,
             Tiny,
         }
@@ -55,6 +56,9 @@ public class floatConjugateGradientTests
                     break;
                 case TestType.NotSPD:
                     NotSPD();
+                    break;
+                case TestType.SingularConsistent:
+                    SingularConsistent();
                     break;
                 case TestType.AlreadyConverged:
                     AlreadyConverged();
@@ -253,6 +257,37 @@ public class floatConjugateGradientTests
 
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
             Assert.IsFalse(ok);
+
+            arena.Dispose();
+        }
+
+        // Singular but CONSISTENT SPD-semidefinite system: A = [[1,1],[1,1]] (rank 1, eigenvalues
+        // 2 and 0), b = [2,2] is in range(A). CG must stay well-behaved on the rank-deficient input:
+        // never NaN, and if it reports convergence the returned x must actually solve A x = b. (A
+        // search direction entering the null space trips the p·Ap<=0 guard -> clean false; otherwise
+        // the residual is annihilated and it converges to a valid solution.)
+        void SingularConsistent()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.floatMat(2, 2);
+            A[0, 0] = 1f; A[0, 1] = 1f;
+            A[1, 0] = 1f; A[1, 1] = 1f;
+
+            var b = arena.floatVec(2);
+            b[0] = 2f; b[1] = 2f;
+
+            var x = arena.floatVec(2);
+            bool ok = Solvers.conjugateGradient(in A, in b, ref x);
+
+            // never produces NaN/Inf on the rank-deficient input...
+            Assert.IsFalse(Analysis.IsAnyNan(in x));
+            // ...and a reported convergence must be a genuine solution.
+            if (ok)
+            {
+                var Ax = floatOP.dot(A, x);
+                Assert.IsTrue(Analysis.IsZero(b - Ax, Tol()));
+            }
 
             arena.Dispose();
         }
