@@ -120,24 +120,18 @@ Here's a simple example:
 
 ## Features
 
-- ✅ Basic Unity.mathematics operations
-- ✅ float, double, int, short, long, bool vectors and matrices
-- ✅ Statistics (mean, variance/std, median, min/max, argmin/argmax, row/col reductions, covariance & correlation)
-- ✅ Basic vector-vector, vector-matrix, matrix-vector and matrix-matrix operations
-- ✅ QR decomposition & solver for well-determined and over-determined systems
-- ✅ Pivoting
-- ✅ LU decomposition & solver
-- ✅ Cholesky decomposition & solver (symmetric positive-definite systems)
-- ✅ Conjugate Gradient (matrix-free, zero-alloc iterative solver for SPD systems)
-- ✅ Preallocated-destination (`ref`) overloads for the arithmetic ops (dot/matmul, outerDot, trans, select) — zero-alloc hot loops
-- ✅ Zero-alloc solver overloads — the QR and SVD solvers can take pre-allocated scratch buffers instead of allocating their own, so repeated solves in a loop allocate nothing (`qrDecomposition`/`qrDirectSolve`/`SolveQR`, `pinvSolve`/`pseudoInverse`); for SVD, `Arena.<type>SvdWorkspace(m, n)` bundles that scratch into one reusable handle
-- 🔳 View/Slice 
-- 🔳 Find/Query operations (e.g.: find row with biggest L2 norm)
-- ✅ SVD decomposition
-- ✅ Least squares / pseudo-inverse (SVD-based, rank-deficient tolerant)
-- ✅ Optimizers (1D root finding, 1D minimization, gradient descent)
-- ✅ Eigen: dominant eigenpair via power iteration with Rayleigh quotient (`Eigen.powerIteration`)
-- ✅ Eigen: full symmetric eigendecomposition via classical Jacobi (`Eigen.eigenDecomposition`)
+- ✅ float, double, int, short, long and bool vectors and matrices
+- ✅ Element-wise and linear-algebra ops: dot, matrix multiply, transpose, outer product, select, comparisons
+- ✅ LU (partial pivoting), QR and Cholesky decompositions and solvers; QR also solves over-determined (least-squares) systems
+- ✅ SVD, pseudo-inverse and minimum-norm least squares (rank-deficient tolerant)
+- ✅ Conjugate Gradient — matrix-free iterative solver for SPD systems
+- ✅ Eigen: dominant eigenpair (power iteration) and full symmetric eigendecomposition (Jacobi)
+- ✅ Optimizers: 1D root-finding, 1D minimization, gradient descent
+- ✅ Statistics: mean, variance/std, median, min/max, argmin/argmax, row/col reductions, covariance, correlation
+- ✅ Condition number, determinant, trace, rank, vector/matrix norms
+- ✅ Zero-allocation variants of the ops and solvers for hot loops (preallocated outputs, reusable workspaces)
+- 🔳 Vector/matrix views (slicing)
+- 🔳 Find/query (e.g. the row with the largest L2 norm)
 
 ## TODO
 - Better arena management and standalone vec/mat management (without arena allocation)
