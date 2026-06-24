@@ -259,227 +259,368 @@ namespace LinearAlgebra.Stats
 
         #region MATRIX
 
-        // sum along rows of matrix
-        public static floatN rowSum(in floatMxN A)
+        // --- Every row*/col* reduction below comes in two forms: a zero-alloc ref-DESTINATION
+        //     primitive `(in A, ref floatN dest)` that writes into a caller-provided vector
+        //     (length A.M_Rows for row* ops, A.N_Cols for col* ops), and an allocating wrapper
+        //     `(in A)` that returns a fresh arena vector. Use the ref form in per-frame / realtime
+        //     loops (e.g. over a rolling window) to avoid allocating a result vector every call.
+        //     The col* accumulating ops (colSum / colVariance / colNorm*) clear dest first, so dest
+        //     may hold garbage on entry. ---
+
+        // sum along rows of matrix (dest length M_Rows)
+        public static void rowSum(in floatMxN A, ref floatN dest)
         {
-            var vec = A.floatVec(A.M_Rows);
+            if (dest.N != A.M_Rows)
+                throw new System.ArgumentException("StatsOP.rowSum: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
                 float sum = 0f;
                 for (int c = 0; c < A.N_Cols; c++)
                     sum += A[r, c];
-                
-                vec[r] = sum;
+                dest[r] = sum;
             }
-            
+        }
+
+        public static floatN rowSum(in floatMxN A)
+        {
+            var vec = A.floatVec(A.M_Rows);
+            rowSum(in A, ref vec);
             return vec;
         }
 
-        // sum along cols of matrix
+        // sum along cols of matrix (dest length N_Cols)
+        public static void colSum(in floatMxN A, ref floatN dest)
+        {
+            if (dest.N != A.N_Cols)
+                throw new System.ArgumentException("StatsOP.colSum: dest.N must equal A.N_Cols");
+
+            for (int c = 0; c < A.N_Cols; c++)
+                dest[c] = 0f;
+
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    dest[c] += A[r, c];
+        }
+
         public static floatN colSum(in floatMxN A)
         {
             var vec = A.floatVec(A.N_Cols);
-
-            for (int r = 0; r < A.M_Rows; r++)
-            {
-                for (int c = 0; c < A.N_Cols; c++)
-                    vec[c] += A[r, c];
-            }
-
+            colSum(in A, ref vec);
             return vec;
         }
 
-        // mean along rows of matrix
+        // mean along rows of matrix (dest length M_Rows)
+        public static void rowMean(in floatMxN A, ref floatN dest)
+        {
+            rowSum(in A, ref dest);
+            floatOP.divInpl(dest, A.N_Cols);
+        }
+
         public static floatN rowMean(in floatMxN A)
         {
-            var vec = rowSum(in A);
-
-            floatOP.divInpl(vec, A.N_Cols);
-
+            var vec = A.floatVec(A.M_Rows);
+            rowMean(in A, ref vec);
             return vec;
         }
 
-        // mean along cols of matrix
+        // mean along cols of matrix (dest length N_Cols)
+        public static void colMean(in floatMxN A, ref floatN dest)
+        {
+            colSum(in A, ref dest);
+            floatOP.divInpl(dest, A.M_Rows);
+        }
+
         public static floatN colMean(in floatMxN A)
         {
-            var vec = colSum(in A);
-
-            floatOP.divInpl(vec, A.M_Rows);
-
+            var vec = A.floatVec(A.N_Cols);
+            colMean(in A, ref vec);
             return vec;
         }
 
-        // min along rows of matrix (length M_Rows)
-        public static floatN rowMin(in floatMxN A)
+        // min along rows of matrix (dest length M_Rows)
+        public static void rowMin(in floatMxN A, ref floatN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
-
-            var vec = A.floatVec(A.M_Rows);
+            if (dest.N != A.M_Rows)
+                throw new System.ArgumentException("StatsOP.rowMin: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
                 float m = A[r, 0];
                 for (int c = 1; c < A.N_Cols; c++)
                     m = math.min(m, A[r, c]);
-                vec[r] = m;
+                dest[r] = m;
             }
+        }
 
+        public static floatN rowMin(in floatMxN A)
+        {
+            var vec = A.floatVec(A.M_Rows);
+            rowMin(in A, ref vec);
             return vec;
         }
 
-        // max along rows of matrix (length M_Rows)
-        public static floatN rowMax(in floatMxN A)
+        // max along rows of matrix (dest length M_Rows)
+        public static void rowMax(in floatMxN A, ref floatN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
-
-            var vec = A.floatVec(A.M_Rows);
+            if (dest.N != A.M_Rows)
+                throw new System.ArgumentException("StatsOP.rowMax: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
                 float m = A[r, 0];
                 for (int c = 1; c < A.N_Cols; c++)
                     m = math.max(m, A[r, c]);
-                vec[r] = m;
+                dest[r] = m;
             }
+        }
 
+        public static floatN rowMax(in floatMxN A)
+        {
+            var vec = A.floatVec(A.M_Rows);
+            rowMax(in A, ref vec);
             return vec;
         }
 
-        // min along cols of matrix (length N_Cols)
+        // min along cols of matrix (dest length N_Cols)
+        public static void colMin(in floatMxN A, ref floatN dest)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
+            if (dest.N != A.N_Cols)
+                throw new System.ArgumentException("StatsOP.colMin: dest.N must equal A.N_Cols");
+
+            for (int c = 0; c < A.N_Cols; c++)
+                dest[c] = A[0, c];
+
+            for (int r = 1; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    dest[c] = math.min(dest[c], A[r, c]);
+        }
+
         public static floatN colMin(in floatMxN A)
         {
-            if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
-
             var vec = A.floatVec(A.N_Cols);
-
-            for (int c = 0; c < A.N_Cols; c++)
-                vec[c] = A[0, c];
-
-            for (int r = 1; r < A.M_Rows; r++)
-            {
-                for (int c = 0; c < A.N_Cols; c++)
-                    vec[c] = math.min(vec[c], A[r, c]);
-            }
-
+            colMin(in A, ref vec);
             return vec;
         }
 
-        // max along cols of matrix (length N_Cols)
+        // max along cols of matrix (dest length N_Cols)
+        public static void colMax(in floatMxN A, ref floatN dest)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
+            if (dest.N != A.N_Cols)
+                throw new System.ArgumentException("StatsOP.colMax: dest.N must equal A.N_Cols");
+
+            for (int c = 0; c < A.N_Cols; c++)
+                dest[c] = A[0, c];
+
+            for (int r = 1; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    dest[c] = math.max(dest[c], A[r, c]);
+        }
+
         public static floatN colMax(in floatMxN A)
         {
-            if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
-
             var vec = A.floatVec(A.N_Cols);
-
-            for (int c = 0; c < A.N_Cols; c++)
-                vec[c] = A[0, c];
-
-            for (int r = 1; r < A.M_Rows; r++)
-            {
-                for (int c = 0; c < A.N_Cols; c++)
-                    vec[c] = math.max(vec[c], A[r, c]);
-            }
-
+            colMax(in A, ref vec);
             return vec;
         }
 
-        // population variance along rows (÷N_Cols). Two-pass: compute each row mean inline as a scalar, then accumulate squared deviations.
-        // A 1-column matrix produces all-zero result.
-        public static floatN rowVariance(in floatMxN A)
+        // population variance along rows (÷N_Cols), dest length M_Rows. Two-pass per row: compute the
+        // row mean inline (scalar, no alloc), then accumulate squared deviations. 1-column => all zero.
+        public static void rowVariance(in floatMxN A, ref floatN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
-
-            var vec = A.floatVec(A.M_Rows);
+            if (dest.N != A.M_Rows)
+                throw new System.ArgumentException("StatsOP.rowVariance: dest.N must equal A.M_Rows");
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                // First pass: compute row mean inline (no allocation).
-                float rowSum = 0f;
+                float rsum = 0f;
                 for (int c = 0; c < A.N_Cols; c++)
-                    rowSum += A[r, c];
-                float m = rowSum / A.N_Cols;
+                    rsum += A[r, c];
+                float m = rsum / A.N_Cols;
 
-                // Second pass: accumulate squared deviations.
                 float sum = 0f;
                 for (int c = 0; c < A.N_Cols; c++)
                 {
                     float d = A[r, c] - m;
                     sum += d * d;
                 }
-                vec[r] = sum;
+                dest[r] = sum / A.N_Cols;
             }
+        }
 
-            floatOP.divInpl(vec, A.N_Cols);
-
+        public static floatN rowVariance(in floatMxN A)
+        {
+            var vec = A.floatVec(A.M_Rows);
+            rowVariance(in A, ref vec);
             return vec;
         }
 
-        // population variance along cols (÷M_Rows). Two-pass: allocate temp vector for col means, then accumulate squared deviations.
-        public static floatN colVariance(in floatMxN A)
+        // population variance along cols (÷M_Rows), dest length N_Cols. Two-pass; needs one N_Cols
+        // scratch vector for the column means. The scratch is a function-local Allocator.Temp
+        // allocation disposed before return — it does NOT persist in the arena temp pool, so calling
+        // this every frame leaks nothing (unlike a tempfloatVec, which lives until ClearTemp).
+        public static void colVariance(in floatMxN A, ref floatN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
                 throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
+            if (dest.N != A.N_Cols)
+                throw new System.ArgumentException("StatsOP.colVariance: dest.N must equal A.N_Cols");
 
-            // Allocate means from the temp pool (reclaimed by ClearTemp, not persistent).
-            var means = A.tempfloatVec(A.N_Cols);
-            var vec = A.floatVec(A.N_Cols);
-
-            // First pass: accumulate column sums into means.
+            // column means in a self-disposing local temp (zero-initialised; freed on return).
+            var means = new floatN(A.N_Cols, Allocator.Temp);
             for (int r = 0; r < A.M_Rows; r++)
-            {
                 for (int c = 0; c < A.N_Cols; c++)
                     means[c] += A[r, c];
-            }
-
-            // Divide to get means.
             floatOP.divInpl(means, A.M_Rows);
 
-            // Second pass: accumulate squared deviations.
+            for (int c = 0; c < A.N_Cols; c++)
+                dest[c] = 0f;
+
             for (int r = 0; r < A.M_Rows; r++)
-            {
                 for (int c = 0; c < A.N_Cols; c++)
                 {
                     float d = A[r, c] - means[c];
-                    vec[c] += d * d;
+                    dest[c] += d * d;
                 }
-            }
 
-            floatOP.divInpl(vec, A.M_Rows);
+            floatOP.divInpl(dest, A.M_Rows);
 
+            means.Dispose();
+        }
+
+        public static floatN colVariance(in floatMxN A)
+        {
+            var vec = A.floatVec(A.N_Cols);
+            colVariance(in A, ref vec);
             return vec;
         }
 
-        // population std dev along rows (sqrt of rowVariance)
+        // population std dev along rows (sqrt of rowVariance), dest length M_Rows
+        public static void rowStdDev(in floatMxN A, ref floatN dest)
+        {
+            rowVariance(in A, ref dest);
+            for (int r = 0; r < A.M_Rows; r++)
+                dest[r] = math.sqrt(dest[r]);
+        }
+
         public static floatN rowStdDev(in floatMxN A)
         {
-            if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
-
-            var vec = rowVariance(in A);
-
-            for (int r = 0; r < A.M_Rows; r++)
-                vec[r] = math.sqrt(vec[r]);
-
+            var vec = A.floatVec(A.M_Rows);
+            rowStdDev(in A, ref vec);
             return vec;
         }
 
-        // population std dev along cols (sqrt of colVariance)
+        // population std dev along cols (sqrt of colVariance), dest length N_Cols
+        public static void colStdDev(in floatMxN A, ref floatN dest)
+        {
+            colVariance(in A, ref dest);
+            for (int c = 0; c < A.N_Cols; c++)
+                dest[c] = math.sqrt(dest[c]);
+        }
+
         public static floatN colStdDev(in floatMxN A)
         {
-            if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("Cannot compute statistics of an empty matrix.");
+            var vec = A.floatVec(A.N_Cols);
+            colStdDev(in A, ref vec);
+            return vec;
+        }
 
-            var vec = colVariance(in A);
+        // L1 norm of each row (Σ|·| across columns), dest length M_Rows
+        public static void rowNormL1(in floatMxN A, ref floatN dest)
+        {
+            if (dest.N != A.M_Rows)
+                throw new System.ArgumentException("StatsOP.rowNormL1: dest.N must equal A.M_Rows");
+
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float s = 0f;
+                for (int c = 0; c < A.N_Cols; c++)
+                    s += math.abs(A[r, c]);
+                dest[r] = s;
+            }
+        }
+
+        public static floatN rowNormL1(in floatMxN A)
+        {
+            var vec = A.floatVec(A.M_Rows);
+            rowNormL1(in A, ref vec);
+            return vec;
+        }
+
+        // L2 norm of each row (sqrt Σ·² across columns), dest length M_Rows
+        public static void rowNormL2(in floatMxN A, ref floatN dest)
+        {
+            if (dest.N != A.M_Rows)
+                throw new System.ArgumentException("StatsOP.rowNormL2: dest.N must equal A.M_Rows");
+
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float s = 0f;
+                for (int c = 0; c < A.N_Cols; c++)
+                    s += A[r, c] * A[r, c];
+                dest[r] = math.sqrt(s);
+            }
+        }
+
+        public static floatN rowNormL2(in floatMxN A)
+        {
+            var vec = A.floatVec(A.M_Rows);
+            rowNormL2(in A, ref vec);
+            return vec;
+        }
+
+        // L1 norm of each column (Σ|·| across rows), dest length N_Cols
+        public static void colNormL1(in floatMxN A, ref floatN dest)
+        {
+            if (dest.N != A.N_Cols)
+                throw new System.ArgumentException("StatsOP.colNormL1: dest.N must equal A.N_Cols");
 
             for (int c = 0; c < A.N_Cols; c++)
-                vec[c] = math.sqrt(vec[c]);
+                dest[c] = 0f;
 
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    dest[c] += math.abs(A[r, c]);
+        }
+
+        public static floatN colNormL1(in floatMxN A)
+        {
+            var vec = A.floatVec(A.N_Cols);
+            colNormL1(in A, ref vec);
+            return vec;
+        }
+
+        // L2 norm of each column (sqrt Σ·² across rows), dest length N_Cols
+        public static void colNormL2(in floatMxN A, ref floatN dest)
+        {
+            if (dest.N != A.N_Cols)
+                throw new System.ArgumentException("StatsOP.colNormL2: dest.N must equal A.N_Cols");
+
+            for (int c = 0; c < A.N_Cols; c++)
+                dest[c] = 0f;
+
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    dest[c] += A[r, c] * A[r, c];
+
+            for (int c = 0; c < A.N_Cols; c++)
+                dest[c] = math.sqrt(dest[c]);
+        }
+
+        public static floatN colNormL2(in floatMxN A)
+        {
+            var vec = A.floatVec(A.N_Cols);
+            colNormL2(in A, ref vec);
             return vec;
         }
 

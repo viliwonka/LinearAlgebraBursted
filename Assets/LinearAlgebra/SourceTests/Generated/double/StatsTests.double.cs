@@ -31,7 +31,10 @@ public class doubleStatsTests
             CorrelationKnown,
             CorrelationPerfectAndAnti,
             CorrelationConstantColumn,
-            Covariance1Variable
+            Covariance1Variable,
+            RowColSumMean,
+            RowColNorms,
+            RefDestMatchesAllocating
         }
 
         public TestType Type;
@@ -85,7 +88,133 @@ public class doubleStatsTests
                 case TestType.Covariance1Variable:
                     Covariance1Variable();
                     break;
+                case TestType.RowColSumMean:
+                    RowColSumMean();
+                    break;
+                case TestType.RowColNorms:
+                    RowColNorms();
+                    break;
+                case TestType.RefDestMatchesAllocating:
+                    RefDestMatchesAllocating();
+                    break;
             }
+        }
+
+        // Known-value oracle for rowSum/colSum/rowMean/colMean on {{1,2,3},{4,6,8}}:
+        // rowSum={6,18}, colSum={5,8,11}, rowMean={2,6}, colMean={2.5,4,5.5}.
+        void RowColSumMean()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.doubleMat(2, 3);
+            A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
+            A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
+
+            var rSum = doubleStatsOP.rowSum(in A);
+            var cSum = doubleStatsOP.colSum(in A);
+            var rMean = doubleStatsOP.rowMean(in A);
+            var cMean = doubleStatsOP.colMean(in A);
+
+            Assert.AreEqual(2, rSum.N); Assert.AreEqual(3, cSum.N);
+            Assert.AreEqual(2, rMean.N); Assert.AreEqual(3, cMean.N);
+
+            AssertClose(rSum[0], (double)6f, 1E-5f);
+            AssertClose(rSum[1], (double)18f, 1E-5f);
+            AssertClose(cSum[0], (double)5f, 1E-5f);
+            AssertClose(cSum[1], (double)8f, 1E-5f);
+            AssertClose(cSum[2], (double)11f, 1E-5f);
+
+            AssertClose(rMean[0], (double)2f, 1E-5f);
+            AssertClose(rMean[1], (double)6f, 1E-5f);
+            AssertClose(cMean[0], (double)2.5f, 1E-5f);
+            AssertClose(cMean[1], (double)4f, 1E-5f);
+            AssertClose(cMean[2], (double)5.5f, 1E-5f);
+
+            arena.Dispose();
+        }
+
+        // Per-row / per-col L1 & L2 norms on {{1,-2,3},{-4,6,-8}} (abs handled):
+        // rowNormL1=={6,18}, rowNormL2=={sqrt14,sqrt116}, colNormL1=={5,8,11}, colNormL2=={sqrt17,sqrt40,sqrt73}
+        void RowColNorms()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.doubleMat(2, 3);
+            A[0, 0] = 1f; A[0, 1] = -2f; A[0, 2] = 3f;
+            A[1, 0] = -4f; A[1, 1] = 6f; A[1, 2] = -8f;
+
+            var rL1 = doubleStatsOP.rowNormL1(in A);
+            var rL2 = doubleStatsOP.rowNormL2(in A);
+            var cL1 = doubleStatsOP.colNormL1(in A);
+            var cL2 = doubleStatsOP.colNormL2(in A);
+
+            Assert.AreEqual(2, rL1.N); Assert.AreEqual(2, rL2.N);
+            Assert.AreEqual(3, cL1.N); Assert.AreEqual(3, cL2.N);
+
+            AssertClose(rL1[0], (double)6f, 1E-5f);
+            AssertClose(rL1[1], (double)18f, 1E-5f);
+            AssertClose(rL2[0], (double)math.sqrt(14f), 1E-5f);
+            AssertClose(rL2[1], (double)math.sqrt(116f), 1E-5f);
+
+            AssertClose(cL1[0], (double)5f, 1E-5f);
+            AssertClose(cL1[1], (double)8f, 1E-5f);
+            AssertClose(cL1[2], (double)11f, 1E-5f);
+            AssertClose(cL2[0], (double)math.sqrt(17f), 1E-5f);
+            AssertClose(cL2[1], (double)math.sqrt(40f), 1E-5f);
+            AssertClose(cL2[2], (double)math.sqrt(73f), 1E-5f);
+
+            arena.Dispose();
+        }
+
+        // The zero-alloc ref-destination overloads must produce identical results to the allocating
+        // wrappers for every row*/col* reduction (covers the whole refactored surface).
+        void RefDestMatchesAllocating()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 4;
+            var A = arena.doubleRandomMatrix(m, n, -3f, 3f, 778899);
+
+            var rDest = arena.doubleVec(m);
+            var cDest = arena.doubleVec(n);
+
+            // Poison dest before each call so an accumulating col op with a missing zeroing loop
+            // (which += into garbage) would actually fail — the dest does NOT start zeroed.
+            // row ops -> length m
+            Poison(in rDest); doubleStatsOP.rowSum(in A, ref rDest);      EqVec(in rDest, doubleStatsOP.rowSum(in A), m);
+            Poison(in rDest); doubleStatsOP.rowMean(in A, ref rDest);     EqVec(in rDest, doubleStatsOP.rowMean(in A), m);
+            Poison(in rDest); doubleStatsOP.rowMin(in A, ref rDest);      EqVec(in rDest, doubleStatsOP.rowMin(in A), m);
+            Poison(in rDest); doubleStatsOP.rowMax(in A, ref rDest);      EqVec(in rDest, doubleStatsOP.rowMax(in A), m);
+            Poison(in rDest); doubleStatsOP.rowVariance(in A, ref rDest); EqVec(in rDest, doubleStatsOP.rowVariance(in A), m);
+            Poison(in rDest); doubleStatsOP.rowStdDev(in A, ref rDest);   EqVec(in rDest, doubleStatsOP.rowStdDev(in A), m);
+            Poison(in rDest); doubleStatsOP.rowNormL1(in A, ref rDest);   EqVec(in rDest, doubleStatsOP.rowNormL1(in A), m);
+            Poison(in rDest); doubleStatsOP.rowNormL2(in A, ref rDest);   EqVec(in rDest, doubleStatsOP.rowNormL2(in A), m);
+
+            // col ops -> length n
+            Poison(in cDest); doubleStatsOP.colSum(in A, ref cDest);      EqVec(in cDest, doubleStatsOP.colSum(in A), n);
+            Poison(in cDest); doubleStatsOP.colMean(in A, ref cDest);     EqVec(in cDest, doubleStatsOP.colMean(in A), n);
+            Poison(in cDest); doubleStatsOP.colMin(in A, ref cDest);      EqVec(in cDest, doubleStatsOP.colMin(in A), n);
+            Poison(in cDest); doubleStatsOP.colMax(in A, ref cDest);      EqVec(in cDest, doubleStatsOP.colMax(in A), n);
+            Poison(in cDest); doubleStatsOP.colVariance(in A, ref cDest); EqVec(in cDest, doubleStatsOP.colVariance(in A), n);
+            Poison(in cDest); doubleStatsOP.colStdDev(in A, ref cDest);   EqVec(in cDest, doubleStatsOP.colStdDev(in A), n);
+            Poison(in cDest); doubleStatsOP.colNormL1(in A, ref cDest);   EqVec(in cDest, doubleStatsOP.colNormL1(in A), n);
+            Poison(in cDest); doubleStatsOP.colNormL2(in A, ref cDest);   EqVec(in cDest, doubleStatsOP.colNormL2(in A), n);
+
+            arena.Dispose();
+        }
+
+        void Poison(in doubleN v)
+        {
+            for (int i = 0; i < v.N; i++)
+                v[i] = (double)999f;
+        }
+
+        void EqVec(in doubleN a, in doubleN b, int len)
+        {
+            Assert.AreEqual(len, a.N);
+            Assert.AreEqual(len, b.N);
+            for (int i = 0; i < len; i++)
+                AssertClose(a[i], b[i], 1E-5f);
         }
 
         // Case 1: Vector {2,4,4,4,5,5,7,9} (n=8, mean 5)
@@ -552,6 +681,24 @@ public class doubleStatsTests
     public void Covariance1VariableTest()
     {
         RunJob(TestJob.TestType.Covariance1Variable);
+    }
+
+    [Test]
+    public void RowColSumMeanTest()
+    {
+        RunJob(TestJob.TestType.RowColSumMean);
+    }
+
+    [Test]
+    public void RowColNormsTest()
+    {
+        RunJob(TestJob.TestType.RowColNorms);
+    }
+
+    [Test]
+    public void RefDestMatchesAllocatingTest()
+    {
+        RunJob(TestJob.TestType.RefDestMatchesAllocating);
     }
 
     // Case 9: Managed throw-tests (must run on main thread, not inside a Burst job).
