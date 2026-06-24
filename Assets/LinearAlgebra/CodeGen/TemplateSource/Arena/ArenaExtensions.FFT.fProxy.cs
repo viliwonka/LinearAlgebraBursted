@@ -1,0 +1,32 @@
+namespace LinearAlgebra
+{
+    // Allocating (arena) wrappers for the single-output fProxyFFT spectrum reductions. The transforms
+    // themselves (fft/ifft/rfft/dft/idft) are in-place or caller-provides-arrays, so they have no
+    // allocating form; these three reduce a (re, im) spectrum to a fresh real vector.
+    public static partial class ArenaExtensions
+    {
+        /// <summary>Per-bin magnitude sqrt(re² + im²) as a fresh vector.</summary>
+        public static fProxyN fProxyMagnitude(this ref Arena arena, in fProxyN re, in fProxyN im)
+        {
+            var dest = arena.fProxyVec(re.N);
+            fProxyFFT.magnitude(in re, in im, ref dest);
+            return dest;
+        }
+
+        /// <summary>Per-bin power re² + im² as a fresh vector.</summary>
+        public static fProxyN fProxyPowerSpectrum(this ref Arena arena, in fProxyN re, in fProxyN im)
+        {
+            var dest = arena.fProxyVec(re.N);
+            fProxyFFT.powerSpectrum(in re, in im, ref dest);
+            return dest;
+        }
+
+        /// <summary>Per-bin phase atan2(im, re) as a fresh vector.</summary>
+        public static fProxyN fProxyPhase(this ref Arena arena, in fProxyN re, in fProxyN im)
+        {
+            var dest = arena.fProxyVec(re.N);
+            fProxyFFT.phase(in re, in im, ref dest);
+            return dest;
+        }
+    }
+}
