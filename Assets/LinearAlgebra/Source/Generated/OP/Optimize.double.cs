@@ -9,9 +9,9 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    public interface IdoubleScalarFunction {
-        double Eval(double x);
-    }
+    // IdoubleScalarFunction (the shared scalar-curve functor — the Burst "lambda" used by the
+    // optimizers AND the generators) lives in Interfaces/ScalarFunction.double.cs. The derivative /
+    // gradient functor interfaces below are optimizer-specific and stay here.
 
     public interface IdoubleScalarDerivativeFunction : IdoubleScalarFunction {
         double Derivative(double x);

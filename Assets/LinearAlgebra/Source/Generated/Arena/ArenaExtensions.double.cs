@@ -73,16 +73,13 @@ namespace LinearAlgebra
             return vec;
         }
 
-        //linspace
+        // linspace. Prefer doubleLinspace(a, b, N) for new code; this older name is kept for existing
+        // callers and now delegates to the guarded doubleGenOP.linspace (handles N==1 instead of
+        // dividing by zero, and pins both endpoints exactly).
         public static doubleN doubleLinVector(this ref Arena arena, int N, double start, double end)
         {
             var vec = arena.doubleVec(N);
-
-            double scale = 1 / (double)(N - 1);
-            for(int i = 0; i < N; i++) {
-                vec[i] = math.lerp(start, end, i * scale);
-            }
-
+            doubleGenOP.linspace(ref vec, start, end);
             return vec;
         }
 

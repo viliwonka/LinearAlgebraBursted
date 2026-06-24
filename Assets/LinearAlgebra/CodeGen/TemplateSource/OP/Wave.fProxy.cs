@@ -44,7 +44,8 @@ namespace LinearAlgebra
             }
         }
 
-        /// <summary>Square wave: +1 for the first <c>Duty</c> fraction of each period, else -1. Defaults: Cycles=1, Duty=0.5, Phase=0.</summary>
+        /// <summary>Square wave: +1 for the first <c>Duty</c> fraction of each period, else -1. Defaults: Cycles=1, Duty=0.5, Phase=0.
+        /// Note: a <c>Duty</c> of exactly 0 is treated as the 0.5 default (see the class remarks), so an always-low square can't be requested this way.</summary>
         public struct Square : IfProxyScalarFunction
         {
             public fProxy Cycles;

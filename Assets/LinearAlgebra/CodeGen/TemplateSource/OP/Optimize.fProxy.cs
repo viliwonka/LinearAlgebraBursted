@@ -9,9 +9,9 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    public interface IfProxyScalarFunction {
-        fProxy Eval(fProxy x);
-    }
+    // IfProxyScalarFunction (the shared scalar-curve functor — the Burst "lambda" used by the
+    // optimizers AND the generators) lives in Interfaces/ScalarFunction.fProxy.cs. The derivative /
+    // gradient functor interfaces below are optimizer-specific and stay here.
 
     public interface IfProxyScalarDerivativeFunction : IfProxyScalarFunction {
         fProxy Derivative(fProxy x);

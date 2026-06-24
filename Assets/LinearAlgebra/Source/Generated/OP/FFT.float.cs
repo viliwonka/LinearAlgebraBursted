@@ -3,7 +3,6 @@
 using System;
 using System.Runtime.CompilerServices;
 
-using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
@@ -153,9 +152,10 @@ namespace LinearAlgebra
         /// <summary>
         /// Forward discrete Fourier transform for ANY length N (O(N²)). outRe/outIm receive the spectrum
         /// and must not alias the inputs (each output bin reads every input sample).
-        /// PRECISION NOTE: the twiddle angle is computed as baseAng·k·t, which grows like N². For the
-        /// float expansion this loses accuracy for large N (the angle's ulp swamps a radian by N≈1e3);
-        /// prefer the power-of-two <see cref="fft"/>, or the double expansion, when N is large.
+        /// PRECISION NOTE: the twiddle angle is baseAng·k·t; the intermediate product k·t reaches ~N²
+        /// before the O(1/N) base angle brings the angle itself to O(N). For the float expansion that
+        /// large angle still loses accuracy at big N (its ulp approaches a radian near N≈1e3); prefer
+        /// the power-of-two <see cref="fft"/>, or the double expansion, when N is large.
         /// </summary>
         public static void dft(in floatN inRe, in floatN inIm, ref floatN outRe, ref floatN outIm)
         {

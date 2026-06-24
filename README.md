@@ -129,6 +129,8 @@ Here's a simple example:
 - ✅ Optimizers: 1D root-finding, 1D minimization, gradient descent
 - ✅ Statistics: mean, variance/std, median, min/max, argmin/argmax, row/col reductions, covariance, correlation
 - ✅ Generators: linspace/arange, sample any curve functor, easing & wave (LFO) functor libraries, Gaussian/box/tent convolution kernels, DSP windows (Hann/Hamming/Blackman), and rank-1 (1D×1D) outer / outer-sum matrices
+- ✅ 1D Fourier transform: radix-2 FFT/IFFT (power-of-two) and direct DFT/IDFT (any N), real-input rfft, magnitude/phase/power-spectrum (split real/imag, no complex type)
+- ✅ Realtime: fixed-capacity rolling window (ring buffer of feature vectors) with O(1) push, time-ordered AsMatrix, and zero-alloc moving-average / covariance — the per-frame front-end for the matrix ops (covariance → eigendecomposition = PCA)
 - ✅ Condition number, determinant, trace, rank, vector/matrix norms
 - ✅ Zero-allocation variants of the ops and solvers for hot loops (preallocated outputs, reusable workspaces)
 - 🔳 Vector/matrix views (slicing)

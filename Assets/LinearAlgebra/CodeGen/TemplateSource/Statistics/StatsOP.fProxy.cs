@@ -627,7 +627,9 @@ namespace LinearAlgebra.Stats
         // Core covariance computation: fills caller-provided N×N matrix C (already allocated).
         // Assumes A.M_Rows >= 2 and A.N_Cols == N (no guard). Uses a temp vector for column
         // means (reclaimed by ClearTemp). Fills all N×N cells symmetric with ÷(M−1).
-        private static void covarianceInto(in fProxyMxN A, ref fProxyMxN C)
+        // Public so zero-alloc callers (e.g. the realtime rolling window) can reuse it with a
+        // preallocated C instead of going through the allocating covariance(in A) wrapper.
+        public static void covarianceInto(in fProxyMxN A, ref fProxyMxN C)
         {
             int N = A.N_Cols;
             int M = A.M_Rows;

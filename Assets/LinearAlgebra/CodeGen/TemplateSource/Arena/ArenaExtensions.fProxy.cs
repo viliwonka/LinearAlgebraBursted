@@ -73,16 +73,13 @@ namespace LinearAlgebra
             return vec;
         }
 
-        //linspace
+        // linspace. Prefer fProxyLinspace(a, b, N) for new code; this older name is kept for existing
+        // callers and now delegates to the guarded fProxyGenOP.linspace (handles N==1 instead of
+        // dividing by zero, and pins both endpoints exactly).
         public static fProxyN fProxyLinVector(this ref Arena arena, int N, fProxy start, fProxy end)
         {
             var vec = arena.fProxyVec(N);
-
-            fProxy scale = 1 / (fProxy)(N - 1);
-            for(int i = 0; i < N; i++) {
-                vec[i] = math.lerp(start, end, i * scale);
-            }
-
+            fProxyGenOP.linspace(ref vec, start, end);
             return vec;
         }
 

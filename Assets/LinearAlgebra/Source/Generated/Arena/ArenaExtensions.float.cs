@@ -73,16 +73,13 @@ namespace LinearAlgebra
             return vec;
         }
 
-        //linspace
+        // linspace. Prefer floatLinspace(a, b, N) for new code; this older name is kept for existing
+        // callers and now delegates to the guarded floatGenOP.linspace (handles N==1 instead of
+        // dividing by zero, and pins both endpoints exactly).
         public static floatN floatLinVector(this ref Arena arena, int N, float start, float end)
         {
             var vec = arena.floatVec(N);
-
-            float scale = 1 / (float)(N - 1);
-            for(int i = 0; i < N; i++) {
-                vec[i] = math.lerp(start, end, i * scale);
-            }
-
+            floatGenOP.linspace(ref vec, start, end);
             return vec;
         }
 

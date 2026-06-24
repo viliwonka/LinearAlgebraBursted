@@ -9,9 +9,9 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    public interface IfloatScalarFunction {
-        float Eval(float x);
-    }
+    // IfloatScalarFunction (the shared scalar-curve functor — the Burst "lambda" used by the
+    // optimizers AND the generators) lives in Interfaces/ScalarFunction.float.cs. The derivative /
+    // gradient functor interfaces below are optimizer-specific and stay here.
 
     public interface IfloatScalarDerivativeFunction : IfloatScalarFunction {
         float Derivative(float x);
