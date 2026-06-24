@@ -172,7 +172,7 @@ namespace LinearAlgebra
 
             shortMxN matrix = lhs.TempCopy();
 
-            shortOP.addInpl(rhs, matrix);
+            shortOP.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
 
             return matrix;
         }

@@ -176,7 +176,7 @@ namespace LinearAlgebra
 
             longN vec = a.TempCopy();
 
-            longOP.addInpl(b, vec);
+            longOP.addInpl(vec, b);   // vec += b  (vec is the copy of a)
 
             return vec;
         }

@@ -85,8 +85,28 @@ namespace LinearAlgebra
         }
 
         public void Dispose() {
-
+#if LINALG_DEBUG
+            // poison the buffer so a read-after-dispose surfaces as NaN instead of stale data
+            for (int i = 0; i < Length; i++) this[i] = float.NaN;
+#endif
             Data.Dispose();
+        }
+
+        public override string ToString()
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int r = 0; r < M_Rows; r++)
+            {
+                sb.Append("[ ");
+                for (int c = 0; c < N_Cols; c++)
+                {
+                    if (c > 0) sb.Append("  ");
+                    sb.Append(this[r, c]);
+                }
+                sb.Append(" ]");
+                if (r < M_Rows - 1) sb.AppendLine();
+            }
+            return sb.ToString();
         }
 
         void IMatrix<double>.CopyTo(IMatrix<double> destination) {

@@ -119,7 +119,7 @@ namespace LinearAlgebra
 
             fProxyMxN matrix = lhs.TempCopy();
 
-            fProxyOP.addInpl(rhs, matrix);
+            fProxyOP.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
 
             return matrix;
         }

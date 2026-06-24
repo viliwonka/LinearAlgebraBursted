@@ -86,5 +86,22 @@ namespace LinearAlgebra
 
             Data.Dispose();
         }
+
+        public override string ToString()
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int r = 0; r < M_Rows; r++)
+            {
+                sb.Append("[ ");
+                for (int c = 0; c < N_Cols; c++)
+                {
+                    if (c > 0) sb.Append("  ");
+                    sb.Append(this[r, c]);
+                }
+                sb.Append(" ]");
+                if (r < M_Rows - 1) sb.AppendLine();
+            }
+            return sb.ToString();
+        }
     }
 }

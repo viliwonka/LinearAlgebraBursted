@@ -101,6 +101,25 @@ namespace LinearAlgebra
         }
         #endregion
 
+        // --- debug pool checks: confirm a buffer lives in the expected (persistent vs temp) list,
+        //     e.g. to assert an op didn't silently move a persistent input into the temp pool ---
+        public unsafe bool DB_isPersistent(in fProxyN v) {
+            for (int i = 0; i < fProxyVectors.Length; i++) if (fProxyVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            return false;
+        }
+        public unsafe bool DB_isTemp(in fProxyN v) {
+            for (int i = 0; i < tempfProxyVectors.Length; i++) if (tempfProxyVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            return false;
+        }
+        public unsafe bool DB_isPersistent(in fProxyMxN m) {
+            for (int i = 0; i < fProxyMatrices.Length; i++) if (fProxyMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            return false;
+        }
+        public unsafe bool DB_isTemp(in fProxyMxN m) {
+            for (int i = 0; i < tempfProxyMatrices.Length; i++) if (tempfProxyMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            return false;
+        }
+
     }
 
 }

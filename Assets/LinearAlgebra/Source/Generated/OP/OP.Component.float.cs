@@ -52,7 +52,9 @@ namespace LinearAlgebra
         public static void addInpl<T>(this T place, T from) where T : unmanaged, IUnsafefloatArray
         {
             unsafe {
-                UnsafeOP.compAdd(from.Data.Ptr, place.Data.Ptr, from.Data.Length);
+                // place += from. (compAdd is (target, from); the old call passed them reversed, so this
+                // method actually mutated `from` instead of `place` — wrong for any direct caller.)
+                UnsafeOP.compAdd(place.Data.Ptr, from.Data.Ptr, from.Data.Length);
             }
         }
 
@@ -60,7 +62,7 @@ namespace LinearAlgebra
         public static void subInpl<T>(this T place, T fromB) where T : unmanaged, IUnsafefloatArray
         {
             unsafe {
-                UnsafeOP.compSub(fromB.Data.Ptr, place.Data.Ptr, fromB.Data.Length);
+                UnsafeOP.compSub(place.Data.Ptr, fromB.Data.Ptr, fromB.Data.Length);
             }
         }
 

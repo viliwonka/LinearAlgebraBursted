@@ -100,6 +100,24 @@ namespace LinearAlgebra
         }
         #endregion
 
+        // --- debug pool checks (see Arena.fProxy) ---
+        public unsafe bool DB_isPersistent(in intN v) {
+            for (int i = 0; i < intVectors.Length; i++) if (intVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            return false;
+        }
+        public unsafe bool DB_isTemp(in intN v) {
+            for (int i = 0; i < tempintVectors.Length; i++) if (tempintVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            return false;
+        }
+        public unsafe bool DB_isPersistent(in intMxN m) {
+            for (int i = 0; i < intMatrices.Length; i++) if (intMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            return false;
+        }
+        public unsafe bool DB_isTemp(in intMxN m) {
+            for (int i = 0; i < tempintMatrices.Length; i++) if (tempintMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            return false;
+        }
+
     }
 
 }

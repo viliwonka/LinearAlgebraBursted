@@ -179,7 +179,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void compSub([NoAlias] iProxy* from, [NoAlias] iProxy* target, int n)
+        public static void compSub([NoAlias] iProxy* target, [NoAlias] iProxy* from, int n)
         {
             for (int i = 0; i < n; i++)
                 target[i] -= from[i];

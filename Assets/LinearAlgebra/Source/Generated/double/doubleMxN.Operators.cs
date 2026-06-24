@@ -119,7 +119,7 @@ namespace LinearAlgebra
 
             doubleMxN matrix = lhs.TempCopy();
 
-            doubleOP.addInpl(rhs, matrix);
+            doubleOP.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
 
             return matrix;
         }

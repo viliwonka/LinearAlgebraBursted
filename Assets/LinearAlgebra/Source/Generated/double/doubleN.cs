@@ -105,9 +105,22 @@ namespace LinearAlgebra
         }
 
         public void Dispose() {
-
+#if LINALG_DEBUG
+            // poison the buffer so a read-after-dispose surfaces as NaN instead of stale data
+            for (int i = 0; i < N; i++) this[i] = float.NaN;
+#endif
             Data.Dispose();
         }
 
+        public override string ToString()
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < N; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(this[i]);
+            }
+            return sb.ToString();
+        }
     }
 }

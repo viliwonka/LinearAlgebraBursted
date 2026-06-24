@@ -51,7 +51,8 @@ namespace LinearAlgebra
         public static void addInpl<T>(this T place, T from) where T : unmanaged, IUnsafeiProxyArray
         {
             unsafe {
-                UnsafeOP.compAdd(from.Data.Ptr, place.Data.Ptr, from.Data.Length);
+                // place += from. (was passing the operands to compAdd reversed → mutated `from`.)
+                UnsafeOP.compAdd(place.Data.Ptr, from.Data.Ptr, from.Data.Length);
             }
         }
 
@@ -59,7 +60,7 @@ namespace LinearAlgebra
         public static void subInpl<T>(this T place, T fromB) where T : unmanaged, IUnsafeiProxyArray
         {
             unsafe {
-                UnsafeOP.compSub(fromB.Data.Ptr, place.Data.Ptr, fromB.Data.Length);
+                UnsafeOP.compSub(place.Data.Ptr, fromB.Data.Ptr, fromB.Data.Length);
             }
         }
 

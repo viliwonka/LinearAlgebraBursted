@@ -122,7 +122,7 @@ namespace LinearAlgebra
 
             floatN vec = a.TempCopy();
 
-            floatOP.addInpl(b, vec);
+            floatOP.addInpl(vec, b);   // vec += b  (vec is the copy of a)
 
             return vec;
         }

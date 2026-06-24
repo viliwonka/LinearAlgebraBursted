@@ -122,7 +122,7 @@ namespace LinearAlgebra
 
             doubleN vec = a.TempCopy();
 
-            doubleOP.addInpl(b, vec);
+            doubleOP.addInpl(vec, b);   // vec += b  (vec is the copy of a)
 
             return vec;
         }
