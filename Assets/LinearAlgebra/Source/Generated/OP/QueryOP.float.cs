@@ -11,15 +11,15 @@ namespace LinearAlgebra
     //
     // Groups:
     //   1 — Extremes: argMaxAbs / argMinAbs (generic, single-value); decodeIndex helper.
-    //       Per-axis rowArgMin/Max / colArgMin/Max with intN index buffers live in
-    //       Source/OP/QueryOP.Indices.cs (hand-maintained, cross-type).
+    //       Per-axis rowArgMin/Max / colArgMin/Max with Indices buffer (filled in this file
+    //       using Indices as the shared buffer type).
     //   2 — Norm-selection: argMaxRowNorm / argMaxColNorm (reuses per-row/col norm loops)
     //   3 — Search over a set of vectors: distancesToRow/Column, nearestRow/Column,
     //         farthestRow/Column, kNearestRows/Columns + kFarthest*, rowsWithinRadius/Column,
     //         countWithinRadius/Column.
-    //       Methods that return intN index vectors (kNearestRows etc.) are in QueryOP.Indices.cs.
+    //       Methods that return Indices index buffers (kNearestRows etc.) are also in this file.
     //   4 — Value / mask search: findValue, nonzero, countNonzero.
-    //       nonzero (ref intN) lives in QueryOP.Indices.cs.
+    //       nonzero (ref Indices) is in this file.
     public static partial class floatQueryOP
     {
         // -------------------------------------------------------------------------
@@ -79,9 +79,196 @@ namespace LinearAlgebra
             col = flat % nCols;
         }
 
+        // ---- Per-axis row/col arg-min/max with Indices buffer ---
+
+        /// <summary>
+        /// For each row i of A, writes the column index of the minimum element into
+        /// colIndexPerRow[i] and the minimum value into valPerRow[i].
+        /// Returns A.M_Rows. Both buffers must have length A.M_Rows.
+        /// </summary>
+        public static int rowArgMin(in floatMxN A, ref Indices colIndexPerRow, ref floatN valPerRow)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("QueryOP.rowArgMin: empty matrix");
+            if (colIndexPerRow.N != A.M_Rows)
+                throw new System.ArgumentException("QueryOP.rowArgMin: colIndexPerRow.N must equal A.M_Rows");
+            if (valPerRow.N != A.M_Rows)
+                throw new System.ArgumentException("QueryOP.rowArgMin: valPerRow.N must equal A.M_Rows");
+
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float best = A[r, 0];
+                int bestC = 0;
+                for (int c = 1; c < A.N_Cols; c++)
+                    if (A[r, c] < best) { best = A[r, c]; bestC = c; }
+                colIndexPerRow[r] = bestC;
+                valPerRow[r] = best;
+            }
+            return A.M_Rows;
+        }
+
+        /// <summary>
+        /// Index-only form of rowArgMin (no value output).
+        /// Returns A.M_Rows. colIndexPerRow must have length A.M_Rows.
+        /// </summary>
+        public static int rowArgMin(in floatMxN A, ref Indices colIndexPerRow)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("QueryOP.rowArgMin: empty matrix");
+            if (colIndexPerRow.N != A.M_Rows)
+                throw new System.ArgumentException("QueryOP.rowArgMin: colIndexPerRow.N must equal A.M_Rows");
+
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float best = A[r, 0];
+                int bestC = 0;
+                for (int c = 1; c < A.N_Cols; c++)
+                    if (A[r, c] < best) { best = A[r, c]; bestC = c; }
+                colIndexPerRow[r] = bestC;
+            }
+            return A.M_Rows;
+        }
+
+        /// <summary>
+        /// For each row i of A, writes the column index of the maximum element into
+        /// colIndexPerRow[i] and the maximum value into valPerRow[i].
+        /// Returns A.M_Rows. Both buffers must have length A.M_Rows.
+        /// </summary>
+        public static int rowArgMax(in floatMxN A, ref Indices colIndexPerRow, ref floatN valPerRow)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("QueryOP.rowArgMax: empty matrix");
+            if (colIndexPerRow.N != A.M_Rows)
+                throw new System.ArgumentException("QueryOP.rowArgMax: colIndexPerRow.N must equal A.M_Rows");
+            if (valPerRow.N != A.M_Rows)
+                throw new System.ArgumentException("QueryOP.rowArgMax: valPerRow.N must equal A.M_Rows");
+
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float best = A[r, 0];
+                int bestC = 0;
+                for (int c = 1; c < A.N_Cols; c++)
+                    if (A[r, c] > best) { best = A[r, c]; bestC = c; }
+                colIndexPerRow[r] = bestC;
+                valPerRow[r] = best;
+            }
+            return A.M_Rows;
+        }
+
+        /// <summary>
+        /// Index-only form of rowArgMax.
+        /// Returns A.M_Rows. colIndexPerRow must have length A.M_Rows.
+        /// </summary>
+        public static int rowArgMax(in floatMxN A, ref Indices colIndexPerRow)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("QueryOP.rowArgMax: empty matrix");
+            if (colIndexPerRow.N != A.M_Rows)
+                throw new System.ArgumentException("QueryOP.rowArgMax: colIndexPerRow.N must equal A.M_Rows");
+
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float best = A[r, 0];
+                int bestC = 0;
+                for (int c = 1; c < A.N_Cols; c++)
+                    if (A[r, c] > best) { best = A[r, c]; bestC = c; }
+                colIndexPerRow[r] = bestC;
+            }
+            return A.M_Rows;
+        }
+
+        /// <summary>
+        /// For each column j of A, writes the row index of the minimum element into
+        /// rowIndexPerCol[j] and the minimum value into valPerCol[j].
+        /// Returns A.N_Cols. Columns are strided (non-contiguous).
+        /// </summary>
+        public static int colArgMin(in floatMxN A, ref Indices rowIndexPerCol, ref floatN valPerCol)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("QueryOP.colArgMin: empty matrix");
+            if (rowIndexPerCol.N != A.N_Cols)
+                throw new System.ArgumentException("QueryOP.colArgMin: rowIndexPerCol.N must equal A.N_Cols");
+            if (valPerCol.N != A.N_Cols)
+                throw new System.ArgumentException("QueryOP.colArgMin: valPerCol.N must equal A.N_Cols");
+
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float best = A[0, c];
+                int bestR = 0;
+                for (int r = 1; r < A.M_Rows; r++)
+                    if (A[r, c] < best) { best = A[r, c]; bestR = r; }
+                rowIndexPerCol[c] = bestR;
+                valPerCol[c] = best;
+            }
+            return A.N_Cols;
+        }
+
+        /// <summary>Index-only form of colArgMin. Returns A.N_Cols.</summary>
+        public static int colArgMin(in floatMxN A, ref Indices rowIndexPerCol)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("QueryOP.colArgMin: empty matrix");
+            if (rowIndexPerCol.N != A.N_Cols)
+                throw new System.ArgumentException("QueryOP.colArgMin: rowIndexPerCol.N must equal A.N_Cols");
+
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float best = A[0, c];
+                int bestR = 0;
+                for (int r = 1; r < A.M_Rows; r++)
+                    if (A[r, c] < best) { best = A[r, c]; bestR = r; }
+                rowIndexPerCol[c] = bestR;
+            }
+            return A.N_Cols;
+        }
+
+        /// <summary>
+        /// For each column j of A, writes the row index of the maximum element into
+        /// rowIndexPerCol[j] and the maximum value into valPerCol[j].
+        /// Returns A.N_Cols. Columns are strided (non-contiguous).
+        /// </summary>
+        public static int colArgMax(in floatMxN A, ref Indices rowIndexPerCol, ref floatN valPerCol)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("QueryOP.colArgMax: empty matrix");
+            if (rowIndexPerCol.N != A.N_Cols)
+                throw new System.ArgumentException("QueryOP.colArgMax: rowIndexPerCol.N must equal A.N_Cols");
+            if (valPerCol.N != A.N_Cols)
+                throw new System.ArgumentException("QueryOP.colArgMax: valPerCol.N must equal A.N_Cols");
+
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float best = A[0, c];
+                int bestR = 0;
+                for (int r = 1; r < A.M_Rows; r++)
+                    if (A[r, c] > best) { best = A[r, c]; bestR = r; }
+                rowIndexPerCol[c] = bestR;
+                valPerCol[c] = best;
+            }
+            return A.N_Cols;
+        }
+
+        /// <summary>Index-only form of colArgMax. Returns A.N_Cols.</summary>
+        public static int colArgMax(in floatMxN A, ref Indices rowIndexPerCol)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("QueryOP.colArgMax: empty matrix");
+            if (rowIndexPerCol.N != A.N_Cols)
+                throw new System.ArgumentException("QueryOP.colArgMax: rowIndexPerCol.N must equal A.N_Cols");
+
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float best = A[0, c];
+                int bestR = 0;
+                for (int r = 1; r < A.M_Rows; r++)
+                    if (A[r, c] > best) { best = A[r, c]; bestR = r; }
+                rowIndexPerCol[c] = bestR;
+            }
+            return A.N_Cols;
+        }
+
         // -------------------------------------------------------------------------
         // GROUP 2 — NORM-SELECTION
-        // (Per-axis row/col argMin/Max with intN buffers → QueryOP.Indices.cs)
         // -------------------------------------------------------------------------
 
         /// <summary>
@@ -479,6 +666,238 @@ namespace LinearAlgebra
             return count;
         }
 
+        // ---- kNearest/kFarthest rows/columns with Indices buffer ---
+
+        /// <summary>
+        /// Finds the k nearest rows to query q. idx and scores must both have length >= k.
+        /// Fills idx[0..count) and scores[0..count) sorted best-first.
+        /// Returns min(k, A.M_Rows). Uses bounded insertion sort (O(M·k)) — optimal for small k.
+        /// q.N must equal A.N_Cols.
+        /// </summary>
+        public static int kNearestRows(in floatMxN A, in floatN q, int k, Metric m, ref Indices idx, ref floatN scores)
+        {
+            if (A.M_Rows == 0 || k <= 0) return 0;
+            if (q.N != A.N_Cols)
+                throw new System.ArgumentException("QueryOP.kNearestRows: q.N must equal A.N_Cols");
+            if (idx.N < k)
+                throw new System.ArgumentException("QueryOP.kNearestRows: idx.N must be >= k");
+            if (scores.N < k)
+                throw new System.ArgumentException("QueryOP.kNearestRows: scores.N must be >= k");
+
+            int clampedK = math.min(k, A.M_Rows);
+            bool sim = m == Metric.Cosine || m == Metric.Dot;
+            int count = 0;
+
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float s = floatQueryOP.RowScore(in A, r, in q, m);
+                if (count < clampedK)
+                {
+                    int ins = count;
+                    while (ins > 0 && (sim ? s > scores[ins - 1] : s < scores[ins - 1])) ins--;
+                    for (int j = count; j > ins; j--) { scores[j] = scores[j - 1]; idx[j] = idx[j - 1]; }
+                    scores[ins] = s; idx[ins] = r; count++;
+                }
+                else
+                {
+                    float kth = scores[clampedK - 1];
+                    if (sim ? s <= kth : s >= kth) continue;
+                    int ins = clampedK - 1;
+                    while (ins > 0 && (sim ? s > scores[ins - 1] : s < scores[ins - 1])) ins--;
+                    for (int j = clampedK - 1; j > ins; j--) { scores[j] = scores[j - 1]; idx[j] = idx[j - 1]; }
+                    scores[ins] = s; idx[ins] = r;
+                }
+            }
+            return clampedK;
+        }
+
+        /// <summary>
+        /// Finds the k nearest columns to query q. idx and scores must both have length >= k.
+        /// Returns min(k, A.N_Cols). q.N must equal A.M_Rows. Columns are strided.
+        /// </summary>
+        public static int kNearestColumns(in floatMxN A, in floatN q, int k, Metric m, ref Indices idx, ref floatN scores)
+        {
+            if (A.N_Cols == 0 || k <= 0) return 0;
+            if (q.N != A.M_Rows)
+                throw new System.ArgumentException("QueryOP.kNearestColumns: q.N must equal A.M_Rows");
+            if (idx.N < k)
+                throw new System.ArgumentException("QueryOP.kNearestColumns: idx.N must be >= k");
+            if (scores.N < k)
+                throw new System.ArgumentException("QueryOP.kNearestColumns: scores.N must be >= k");
+
+            int clampedK = math.min(k, A.N_Cols);
+            bool sim = m == Metric.Cosine || m == Metric.Dot;
+            int count = 0;
+
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float s = floatQueryOP.ColScore(in A, c, in q, m);
+                if (count < clampedK)
+                {
+                    int ins = count;
+                    while (ins > 0 && (sim ? s > scores[ins - 1] : s < scores[ins - 1])) ins--;
+                    for (int j = count; j > ins; j--) { scores[j] = scores[j - 1]; idx[j] = idx[j - 1]; }
+                    scores[ins] = s; idx[ins] = c; count++;
+                }
+                else
+                {
+                    float kth = scores[clampedK - 1];
+                    if (sim ? s <= kth : s >= kth) continue;
+                    int ins = clampedK - 1;
+                    while (ins > 0 && (sim ? s > scores[ins - 1] : s < scores[ins - 1])) ins--;
+                    for (int j = clampedK - 1; j > ins; j--) { scores[j] = scores[j - 1]; idx[j] = idx[j - 1]; }
+                    scores[ins] = s; idx[ins] = c;
+                }
+            }
+            return clampedK;
+        }
+
+        /// <summary>
+        /// Finds the k farthest rows from query q. idx and scores must have length >= k.
+        /// Returns min(k, A.M_Rows). Sorted worst-first (highest distance / lowest similarity).
+        /// </summary>
+        public static int kFarthestRows(in floatMxN A, in floatN q, int k, Metric m, ref Indices idx, ref floatN scores)
+        {
+            if (A.M_Rows == 0 || k <= 0) return 0;
+            if (q.N != A.N_Cols)
+                throw new System.ArgumentException("QueryOP.kFarthestRows: q.N must equal A.N_Cols");
+            if (idx.N < k)
+                throw new System.ArgumentException("QueryOP.kFarthestRows: idx.N must be >= k");
+            if (scores.N < k)
+                throw new System.ArgumentException("QueryOP.kFarthestRows: scores.N must be >= k");
+
+            int clampedK = math.min(k, A.M_Rows);
+            bool sim = m == Metric.Cosine || m == Metric.Dot;
+            int count = 0;
+
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float s = floatQueryOP.RowScore(in A, r, in q, m);
+                if (count < clampedK)
+                {
+                    int ins = count;
+                    while (ins > 0 && (sim ? s < scores[ins - 1] : s > scores[ins - 1])) ins--;
+                    for (int j = count; j > ins; j--) { scores[j] = scores[j - 1]; idx[j] = idx[j - 1]; }
+                    scores[ins] = s; idx[ins] = r; count++;
+                }
+                else
+                {
+                    float kth = scores[clampedK - 1];
+                    if (sim ? s >= kth : s <= kth) continue;
+                    int ins = clampedK - 1;
+                    while (ins > 0 && (sim ? s < scores[ins - 1] : s > scores[ins - 1])) ins--;
+                    for (int j = clampedK - 1; j > ins; j--) { scores[j] = scores[j - 1]; idx[j] = idx[j - 1]; }
+                    scores[ins] = s; idx[ins] = r;
+                }
+            }
+            return clampedK;
+        }
+
+        /// <summary>
+        /// Finds the k farthest columns from query q. Returns min(k, A.N_Cols).
+        /// q.N must equal A.M_Rows. Columns are strided.
+        /// </summary>
+        public static int kFarthestColumns(in floatMxN A, in floatN q, int k, Metric m, ref Indices idx, ref floatN scores)
+        {
+            if (A.N_Cols == 0 || k <= 0) return 0;
+            if (q.N != A.M_Rows)
+                throw new System.ArgumentException("QueryOP.kFarthestColumns: q.N must equal A.M_Rows");
+            if (idx.N < k)
+                throw new System.ArgumentException("QueryOP.kFarthestColumns: idx.N must be >= k");
+            if (scores.N < k)
+                throw new System.ArgumentException("QueryOP.kFarthestColumns: scores.N must be >= k");
+
+            int clampedK = math.min(k, A.N_Cols);
+            bool sim = m == Metric.Cosine || m == Metric.Dot;
+            int count = 0;
+
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float s = floatQueryOP.ColScore(in A, c, in q, m);
+                if (count < clampedK)
+                {
+                    int ins = count;
+                    while (ins > 0 && (sim ? s < scores[ins - 1] : s > scores[ins - 1])) ins--;
+                    for (int j = count; j > ins; j--) { scores[j] = scores[j - 1]; idx[j] = idx[j - 1]; }
+                    scores[ins] = s; idx[ins] = c; count++;
+                }
+                else
+                {
+                    float kth = scores[clampedK - 1];
+                    if (sim ? s >= kth : s <= kth) continue;
+                    int ins = clampedK - 1;
+                    while (ins > 0 && (sim ? s < scores[ins - 1] : s > scores[ins - 1])) ins--;
+                    for (int j = clampedK - 1; j > ins; j--) { scores[j] = scores[j - 1]; idx[j] = idx[j - 1]; }
+                    scores[ins] = s; idx[ins] = c;
+                }
+            }
+            return clampedK;
+        }
+
+        /// <summary>
+        /// Fills idx[0..count) with indices of rows within radius r of query q.
+        /// For distance metrics: score &lt;= r. For similarity metrics: score >= r.
+        /// Returns count. idx must be sized >= A.M_Rows (worst case).
+        /// q.N must equal A.N_Cols.
+        /// </summary>
+        public static int rowsWithinRadius(in floatMxN A, in floatN q, float r, Metric m, ref Indices idx)
+        {
+            if (q.N != A.N_Cols)
+                throw new System.ArgumentException("QueryOP.rowsWithinRadius: q.N must equal A.N_Cols");
+            if (idx.N < A.M_Rows)
+                throw new System.ArgumentException("QueryOP.rowsWithinRadius: idx.N must be >= A.M_Rows (worst case)");
+
+            bool sim = m == Metric.Cosine || m == Metric.Dot;
+            int count = 0;
+            for (int row = 0; row < A.M_Rows; row++)
+            {
+                float s = floatQueryOP.RowScore(in A, row, in q, m);
+                if (sim ? s >= r : s <= r) idx[count++] = row;
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// Fills idx[0..count) with indices of columns within radius r of query q.
+        /// Returns count. idx must be sized >= A.N_Cols. q.N must equal A.M_Rows.
+        /// Columns are strided.
+        /// </summary>
+        public static int columnsWithinRadius(in floatMxN A, in floatN q, float r, Metric m, ref Indices idx)
+        {
+            if (q.N != A.M_Rows)
+                throw new System.ArgumentException("QueryOP.columnsWithinRadius: q.N must equal A.M_Rows");
+            if (idx.N < A.N_Cols)
+                throw new System.ArgumentException("QueryOP.columnsWithinRadius: idx.N must be >= A.N_Cols (worst case)");
+
+            bool sim = m == Metric.Cosine || m == Metric.Dot;
+            int count = 0;
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float s = floatQueryOP.ColScore(in A, c, in q, m);
+                if (sim ? s >= r : s <= r) idx[count++] = c;
+            }
+            return count;
+        }
+
+        // ---- nonzero with Indices buffer ---
+
+        /// <summary>
+        /// Fills idx[0..count) with flat indices of elements in x with |x[i]| > tol.
+        /// Returns count. idx must be sized >= x.Data.Length (worst case).
+        /// Generic over floatN and floatMxN.
+        /// </summary>
+        public static int nonzero<T>(in T x, float tol, ref Indices idx)
+            where T : unmanaged, IUnsafefloatArray
+        {
+            if (idx.N < x.Data.Length)
+                throw new System.ArgumentException("QueryOP.nonzero: idx.N must be >= x.Data.Length (worst case)");
+
+            int count = 0;
+            for (int i = 0; i < x.Data.Length; i++)
+                if (math.abs(x.Data[i]) > tol) idx[count++] = i;
+            return count;
+        }
+
         // -------------------------------------------------------------------------
         // GROUP 4 — VALUE / MASK SEARCH
         // -------------------------------------------------------------------------
@@ -501,7 +920,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Returns the count of elements in x with absolute value &gt; tol.
-        /// Zero-alloc; use with nonzero (QueryOP.Indices) for the full index list.
+        /// Zero-alloc; use with nonzero (ref Indices) for the full index list.
         /// </summary>
         public static int countNonzero<T>(in T x, float tol)
             where T : unmanaged, IUnsafefloatArray

@@ -58,11 +58,42 @@ namespace LinearAlgebra
         }
 
         // --- QueryOP bridge: bool mask → scalar counts ---------------------------
-        // whichTrue (ref intN) lives in Source/OP/QueryOP.Indices.cs (cross-type).
+
+        // ---- whichTrue — fills Indices from boolN/boolMxN ---
+
+        /// <summary>
+        /// Fills idx[0..count) with the flat indices of true elements in mask.
+        /// Returns count. idx must be sized >= mask.N (worst case).
+        /// Use countTrue first if you want to allocate an exact-sized Indices buffer.
+        /// </summary>
+        public static int whichTrue(in boolN mask, ref Indices idx)
+        {
+            if (idx.N < mask.N)
+                throw new System.ArgumentException("BoolAnalysis.whichTrue: idx.N must be >= mask.N");
+            int count = 0;
+            for (int i = 0; i < mask.N; i++)
+                if (mask.Data[i]) idx[count++] = i;
+            return count;
+        }
+
+        /// <summary>
+        /// Matrix overload: fills idx[0..count) with flat indices of true elements in mask.
+        /// idx must be sized >= mask.M_Rows * mask.N_Cols.
+        /// </summary>
+        public static int whichTrue(in boolMxN mask, ref Indices idx)
+        {
+            int total = mask.M_Rows * mask.N_Cols;
+            if (idx.N < total)
+                throw new System.ArgumentException("BoolAnalysis.whichTrue: idx.N must be >= mask total size");
+            int count = 0;
+            for (int i = 0; i < total; i++)
+                if (mask.Data[i]) idx[count++] = i;
+            return count;
+        }
 
         /// <summary>
         /// Returns the count of true elements in mask (no index buffer needed).
-        /// Use whichTrue (in QueryOP.Indices) when you also need the indices.
+        /// Use whichTrue (in BoolAnalysis) when you also need the indices.
         /// </summary>
         public static int countTrue(in boolN mask)
         {
@@ -82,6 +113,40 @@ namespace LinearAlgebra
             for (int i = 0; i < total; i++)
                 if (mask.Data[i]) count++;
             return count;
+        }
+    }
+
+    public static partial class ArenaExtensions
+    {
+        // ---- whichTrue (bool → Indices) ----
+
+        /// <summary>
+        /// Count-pass + exact-alloc: fills exact-sized Indices with indices of true elements in mask.
+        /// </summary>
+        public static Indices WhichTrue(this ref Arena arena, in boolN mask)
+        {
+            int count = BoolAnalysis.countTrue(in mask);
+            if (count == 0) return arena.Indices(0);
+            var idx = arena.Indices(count);
+            int written = 0;
+            for (int i = 0; i < mask.N; i++)
+                if (mask.Data[i]) idx[written++] = i;
+            return idx;
+        }
+
+        /// <summary>
+        /// Matrix overload: count-pass + exact-alloc Indices of true element flat indices.
+        /// </summary>
+        public static Indices WhichTrue(this ref Arena arena, in boolMxN mask)
+        {
+            int count = BoolAnalysis.countTrue(in mask);
+            if (count == 0) return arena.Indices(0);
+            int total = mask.M_Rows * mask.N_Cols;
+            var idx = arena.Indices(count);
+            int written = 0;
+            for (int i = 0; i < total; i++)
+                if (mask.Data[i]) idx[written++] = i;
+            return idx;
         }
     }
 }

@@ -51,6 +51,7 @@ namespace LinearAlgebra
         private UnsafeList<boolMxN> TempBoolMatrices;
 
         private UnsafeList<Pivot> Pivots;
+        private UnsafeList<Indices> IndexBuffers;
 
         public Arena(Allocator allocator) {
 
@@ -93,12 +94,24 @@ namespace LinearAlgebra
             TempBoolMatrices = new UnsafeList<boolMxN>(2, Allocator);
 
             Pivots = new UnsafeList<Pivot>(2, Allocator);
+            IndexBuffers = new UnsafeList<Indices>(4, Allocator);
         }
 
         public Pivot Pivot(int size) {
             var pivot = new Pivot(size, this.Allocator);
             Pivots.Add(in pivot);
             return pivot;
+        }
+
+        /// <summary>
+        /// Allocates a new Indices buffer of length n from this arena.
+        /// The arena owns disposal — no manual Dispose needed.
+        /// </summary>
+        public Indices Indices(int n)
+        {
+            var buf = new Indices(n, this.Allocator);
+            IndexBuffers.Add(in buf);
+            return buf;
         }
 
         public void Clear() {
@@ -158,6 +171,10 @@ namespace LinearAlgebra
             for (int i = 0; i < Pivots.Length; i++)
                 Pivots[i].Dispose();
             Pivots.Clear();
+
+            for (int i = 0; i < IndexBuffers.Length; i++)
+                IndexBuffers[i].Dispose();
+            IndexBuffers.Clear();
 
             ClearTemp();
         }
@@ -259,6 +276,7 @@ namespace LinearAlgebra
             TempBoolVectors.Dispose();
 
             Pivots.Dispose();
+            IndexBuffers.Dispose();
 
             Initialized = false;
             Allocator = Allocator.Invalid;
