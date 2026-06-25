@@ -5,7 +5,7 @@ namespace LinearAlgebra
 {
 
     [BurstCompile]
-    public static class BoolAnalysis {
+    public static partial class BoolAnalysis {
         
         public static bool IsDiagonal(in boolMxN bm, bool compare = true)
         {
@@ -55,6 +55,33 @@ namespace LinearAlgebra
                     return true;
             }
             return false;
+        }
+
+        // --- QueryOP bridge: bool mask → scalar counts ---------------------------
+        // whichTrue (ref intN) lives in Source/OP/QueryOP.Indices.cs (cross-type).
+
+        /// <summary>
+        /// Returns the count of true elements in mask (no index buffer needed).
+        /// Use whichTrue (in QueryOP.Indices) when you also need the indices.
+        /// </summary>
+        public static int countTrue(in boolN mask)
+        {
+            int count = 0;
+            for (int i = 0; i < mask.N; i++)
+                if (mask.Data[i]) count++;
+            return count;
+        }
+
+        /// <summary>
+        /// Matrix overload: returns the count of true elements in mask.
+        /// </summary>
+        public static int countTrue(in boolMxN mask)
+        {
+            int total = mask.M_Rows * mask.N_Cols;
+            int count = 0;
+            for (int i = 0; i < total; i++)
+                if (mask.Data[i]) count++;
+            return count;
         }
     }
 }
