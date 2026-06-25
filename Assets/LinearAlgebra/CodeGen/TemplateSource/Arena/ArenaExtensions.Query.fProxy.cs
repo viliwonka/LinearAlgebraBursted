@@ -112,7 +112,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.fProxyVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.fProxyVec(clampedK);
-            count = fProxyQueryOP.kNearestRows(in A, in q, k, m, ref idx, ref scores);
+            count = fProxyQueryOP.kNearestRows(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -125,7 +125,39 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.fProxyVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.fProxyVec(clampedK);
-            count = fProxyQueryOP.kNearestColumns(in A, in q, k, m, ref idx, ref scores);
+            count = fProxyQueryOP.kNearestColumns(in A, in q, clampedK, m, ref idx, ref scores);
+            return idx;
+        }
+
+        // -------------------------------------------------------------------------
+        // kFarthestRows / kFarthestColumns — arena-alloc Indices + fProxyN scores
+        // -------------------------------------------------------------------------
+
+        /// <summary>
+        /// Allocates clamped-k Indices + fProxyN from arena, fills via kFarthestRows.
+        /// Returns idx; scores and count are out params. count = min(k, A.M_Rows).
+        /// </summary>
+        public static Indices fProxyKFarthestRows(this ref Arena arena, in fProxyMxN A, in fProxyN q, int k, Metric m, out fProxyN scores, out int count)
+        {
+            int clampedK = math.min(k, A.M_Rows);
+            if (clampedK <= 0) { scores = A.fProxyVec(0, true); count = 0; return arena.Indices(0); }
+            var idx = arena.Indices(clampedK);
+            scores = A.fProxyVec(clampedK);
+            count = fProxyQueryOP.kFarthestRows(in A, in q, clampedK, m, ref idx, ref scores);
+            return idx;
+        }
+
+        /// <summary>
+        /// Allocates clamped-k Indices + fProxyN from arena, fills via kFarthestColumns.
+        /// Returns idx; scores and count are out params. count = min(k, A.N_Cols).
+        /// </summary>
+        public static Indices fProxyKFarthestColumns(this ref Arena arena, in fProxyMxN A, in fProxyN q, int k, Metric m, out fProxyN scores, out int count)
+        {
+            int clampedK = math.min(k, A.N_Cols);
+            if (clampedK <= 0) { scores = A.fProxyVec(0, true); count = 0; return arena.Indices(0); }
+            var idx = arena.Indices(clampedK);
+            scores = A.fProxyVec(clampedK);
+            count = fProxyQueryOP.kFarthestColumns(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
     }

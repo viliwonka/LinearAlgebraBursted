@@ -75,6 +75,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void decodeIndex(int flat, int nCols, out int row, out int col)
         {
+            if (nCols <= 0) throw new System.ArgumentException("decodeIndex: nCols must be > 0");
             row = flat / nCols;
             col = flat % nCols;
         }

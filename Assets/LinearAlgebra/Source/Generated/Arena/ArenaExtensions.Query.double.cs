@@ -112,7 +112,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.doubleVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.doubleVec(clampedK);
-            count = doubleQueryOP.kNearestRows(in A, in q, k, m, ref idx, ref scores);
+            count = doubleQueryOP.kNearestRows(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -125,7 +125,39 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.doubleVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.doubleVec(clampedK);
-            count = doubleQueryOP.kNearestColumns(in A, in q, k, m, ref idx, ref scores);
+            count = doubleQueryOP.kNearestColumns(in A, in q, clampedK, m, ref idx, ref scores);
+            return idx;
+        }
+
+        // -------------------------------------------------------------------------
+        // kFarthestRows / kFarthestColumns — arena-alloc Indices + doubleN scores
+        // -------------------------------------------------------------------------
+
+        /// <summary>
+        /// Allocates clamped-k Indices + doubleN from arena, fills via kFarthestRows.
+        /// Returns idx; scores and count are out params. count = min(k, A.M_Rows).
+        /// </summary>
+        public static Indices doubleKFarthestRows(this ref Arena arena, in doubleMxN A, in doubleN q, int k, Metric m, out doubleN scores, out int count)
+        {
+            int clampedK = math.min(k, A.M_Rows);
+            if (clampedK <= 0) { scores = A.doubleVec(0, true); count = 0; return arena.Indices(0); }
+            var idx = arena.Indices(clampedK);
+            scores = A.doubleVec(clampedK);
+            count = doubleQueryOP.kFarthestRows(in A, in q, clampedK, m, ref idx, ref scores);
+            return idx;
+        }
+
+        /// <summary>
+        /// Allocates clamped-k Indices + doubleN from arena, fills via kFarthestColumns.
+        /// Returns idx; scores and count are out params. count = min(k, A.N_Cols).
+        /// </summary>
+        public static Indices doubleKFarthestColumns(this ref Arena arena, in doubleMxN A, in doubleN q, int k, Metric m, out doubleN scores, out int count)
+        {
+            int clampedK = math.min(k, A.N_Cols);
+            if (clampedK <= 0) { scores = A.doubleVec(0, true); count = 0; return arena.Indices(0); }
+            var idx = arena.Indices(clampedK);
+            scores = A.doubleVec(clampedK);
+            count = doubleQueryOP.kFarthestColumns(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
     }

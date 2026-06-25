@@ -55,6 +55,9 @@ namespace LinearAlgebra
     {
         private int value;
 
+        public static int MinValue => int.MinValue;
+        public static int MaxValue => int.MaxValue;
+
         public iProxy(int value)
         {
             this.value = value;

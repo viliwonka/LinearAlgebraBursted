@@ -44,16 +44,22 @@ the dropped "views" idea would have helped; we just write the strided loop direc
   `normalizeColumns`, `argMaxScore`/`kBestScored`, `pairwiseDistances`.
 - New `QueryOP.iProxy.cs` for the integer subset; `QueryOP.fProxy.cs` for the full surface.
 
-### P3. Integer overflow — RESOLVED
+### P3. Integer overflow — REAL BOUNDS (NOT "overflow-safe")
 Integer **SqEuclidean** and **Dot** accumulate products (`diff*diff`, `a*b`) → can overflow for large
 coords (esp. `short`). Decision:
 - **No silent widening** (cross-type accumulation breaks the one-type-per-expansion codegen). Accumulate
   in the proxy type.
-- **L1 (Manhattan) and Linf (Chebyshev) are the recommended, overflow-safe integer metrics** — they sum/
-  max `|diff|`, never square. They're also the canonical grid distances games want (taxicab / king-move).
+- **L1 (Manhattan) and Linf (Chebyshev) are the recommended integer metrics** — they sum/max `|diff|`,
+  never square. They're also the canonical grid distances games want (taxicab / king-move).
+  **However** they are NOT fully overflow-safe: the subtraction `A[r,c] - q[c]` itself can overflow
+  at the type boundary (e.g. `30000 - (-30000) = 60000` wraps for `short`). The real precondition is:
+  **each element AND each element-wise difference must fit the proxy type** (for `short`: coordinates
+  roughly within ±16383 so differences fit ±32767). Values at the type extreme (MinValue) are mapped to
+  MaxValue in abs — off-by-one in magnitude, but correct sign/ordering and nonzero classification.
 - **SqEuclidean / Dot for integers carry a documented caveat:** caller must ensure
   `maxAbsValue² × dimension` fits the type; otherwise use the float/double variant. Document the bound;
   do not guard in the hot loop.
+- **For larger coordinate ranges:** use the float/double variant. Document this at each API entry point.
 
 ### P4. Variable-length results — caller `intN` buffer + returned count, NEVER `int[]`
 `int op(... ref intN indices)` fills `indices[0..count)` and returns `count`; caller sizes
