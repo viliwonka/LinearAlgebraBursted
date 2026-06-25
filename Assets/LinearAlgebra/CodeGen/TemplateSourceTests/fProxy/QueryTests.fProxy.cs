@@ -49,6 +49,7 @@ public class fProxyQueryTests
             NonzeroCountNonzero,
             Symmetry,
             ArenaWrappers,
+            ArenaKWrapperClamp,
         }
 
         public TestType Type;
@@ -79,6 +80,7 @@ public class fProxyQueryTests
                 case TestType.NonzeroCountNonzero:          NonzeroCountNonzero();          break;
                 case TestType.Symmetry:                     Symmetry();                     break;
                 case TestType.ArenaWrappers:                ArenaWrappers();                break;
+                case TestType.ArenaKWrapperClamp:           ArenaKWrapperClamp();           break;
             }
         }
 
@@ -754,6 +756,96 @@ public class fProxyQueryTests
             AssertEqI(fProxyQueryOP.argMaxColNorm(in A, Norm.L2),
                       fProxyQueryOP.argMaxRowNorm(in At, Norm.L2));
 
+            // farthestColumn(A) == farthestRow(transpose(A)).
+            fProxyQueryOP.farthestColumn(in A, in q, Metric.SqEuclidean, out int fci, out fProxy fcs);
+            fProxyQueryOP.farthestRow(in At, in q, Metric.SqEuclidean, out int fri, out fProxy frs);
+            AssertEqI(fci, fri); AssertClose(fcs, frs, sqrtEps());
+
+            // kNearestColumns(A) == kNearestRows(transpose(A)): same indices + scores.
+            int kk = 3;
+            var ncIdx = arena.Indices(kk); var ncVal = arena.fProxyVec(kk);
+            var nrIdx = arena.Indices(kk); var nrVal = arena.fProxyVec(kk);
+            int ncCnt = fProxyQueryOP.kNearestColumns(in A, in q, kk, Metric.SqEuclidean, ref ncIdx, ref ncVal);
+            int nrCnt = fProxyQueryOP.kNearestRows(in At, in q, kk, Metric.SqEuclidean, ref nrIdx, ref nrVal);
+            AssertEqI(ncCnt, nrCnt);
+            for (int i = 0; i < ncCnt; i++)
+            {
+                AssertEqI(ncIdx[i], nrIdx[i]);
+                AssertClose(ncVal[i], nrVal[i], sqrtEps());
+            }
+
+            // kFarthestColumns(A) == kFarthestRows(transpose(A)).
+            var fcIdx = arena.Indices(kk); var fcVal = arena.fProxyVec(kk);
+            var frIdx = arena.Indices(kk); var frVal = arena.fProxyVec(kk);
+            int fcCnt = fProxyQueryOP.kFarthestColumns(in A, in q, kk, Metric.SqEuclidean, ref fcIdx, ref fcVal);
+            int frCnt = fProxyQueryOP.kFarthestRows(in At, in q, kk, Metric.SqEuclidean, ref frIdx, ref frVal);
+            AssertEqI(fcCnt, frCnt);
+            for (int i = 0; i < fcCnt; i++)
+            {
+                AssertEqI(fcIdx[i], frIdx[i]);
+                AssertClose(fcVal[i], frVal[i], sqrtEps());
+            }
+
+            // columnsWithinRadius(A) == rowsWithinRadius(transpose(A)); same for the count twin.
+            fProxy rad = (fProxy)6;
+            var cwrIdx = arena.Indices(N);
+            var rwrIdx = arena.Indices(N);
+            int cwrCnt = fProxyQueryOP.columnsWithinRadius(in A, in q, rad, Metric.SqEuclidean, ref cwrIdx);
+            int rwrCnt = fProxyQueryOP.rowsWithinRadius(in At, in q, rad, Metric.SqEuclidean, ref rwrIdx);
+            AssertEqI(cwrCnt, rwrCnt);
+            for (int i = 0; i < cwrCnt; i++) AssertEqI(cwrIdx[i], rwrIdx[i]);
+            AssertEqI(fProxyQueryOP.countWithinColumnRadius(in A, in q, rad, Metric.SqEuclidean),
+                      fProxyQueryOP.countWithinRadius(in At, in q, rad, Metric.SqEuclidean));
+
+            arena.Dispose();
+        }
+
+        // Arena k-wrappers must CLAMP k to the matrix dimension (review's CRITICAL regression):
+        // calling with k > M_Rows / N_Cols returns count == min(k, dim) with NO exception, and
+        // the result matches a brute-force top-/bottom-k.
+        void ArenaKWrapperClamp()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int M = 4, N = 3;
+            var A = arena.fProxyRandomMatrix(M, N, -3f, 3f, 13572468);
+            var q = arena.fProxyVec(N);
+            q[0] = (fProxy)0.5; q[1] = (fProxy)(-1.5); q[2] = (fProxy)1;
+            var qc = arena.fProxyVec(M);
+            for (int i = 0; i < M; i++) qc[i] = (fProxy)(i - 1) * (fProxy)0.5;
+
+            int kRows = M + 5;   // k > M_Rows
+            int kCols = N + 5;   // k > N_Cols
+
+            // --- fProxyKNearestRows: clamp to M, ascending, matches brute force ---
+            var nrIdx = arena.fProxyKNearestRows(in A, in q, kRows, Metric.SqEuclidean, out fProxyN nrScore, out int nrCnt);
+            AssertEqI(nrCnt, M);
+            AssertEqI(nrIdx.N, M);
+            var allR = arena.fProxyVec(M);
+            fProxyQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref allR);
+            for (int i = 0; i + 1 < nrCnt; i++) AssertTrue(nrScore[i] <= nrScore[i + 1] + sqrtEps());
+            for (int i = 0; i < nrCnt; i++) AssertClose(nrScore[i], allR[nrIdx[i]], sqrtEps());
+
+            // --- fProxyKFarthestRows: clamp to M, descending ---
+            var frIdx = arena.fProxyKFarthestRows(in A, in q, kRows, Metric.SqEuclidean, out fProxyN frScore, out int frCnt);
+            AssertEqI(frCnt, M);
+            for (int i = 0; i + 1 < frCnt; i++) AssertTrue(frScore[i] >= frScore[i + 1] - sqrtEps());
+            for (int i = 0; i < frCnt; i++) AssertClose(frScore[i], allR[frIdx[i]], sqrtEps());
+
+            // --- fProxyKNearestColumns: clamp to N ---
+            var ncIdx = arena.fProxyKNearestColumns(in A, in qc, kCols, Metric.SqEuclidean, out fProxyN ncScore, out int ncCnt);
+            AssertEqI(ncCnt, N);
+            var allC = arena.fProxyVec(N);
+            fProxyQueryOP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
+            for (int i = 0; i + 1 < ncCnt; i++) AssertTrue(ncScore[i] <= ncScore[i + 1] + sqrtEps());
+            for (int i = 0; i < ncCnt; i++) AssertClose(ncScore[i], allC[ncIdx[i]], sqrtEps());
+
+            // --- fProxyKFarthestColumns: clamp to N ---
+            var fcIdx = arena.fProxyKFarthestColumns(in A, in qc, kCols, Metric.SqEuclidean, out fProxyN fcScore, out int fcCnt);
+            AssertEqI(fcCnt, N);
+            for (int i = 0; i + 1 < fcCnt; i++) AssertTrue(fcScore[i] >= fcScore[i + 1] - sqrtEps());
+            for (int i = 0; i < fcCnt; i++) AssertClose(fcScore[i], allC[fcIdx[i]], sqrtEps());
+
             arena.Dispose();
         }
 
@@ -924,6 +1016,7 @@ public class fProxyQueryTests
     [Test] public void NonzeroCountNonzeroTest()         => RunJob(TestJob.TestType.NonzeroCountNonzero);
     [Test] public void SymmetryTest()                    => RunJob(TestJob.TestType.Symmetry);
     [Test] public void ArenaWrappersTest()               => RunJob(TestJob.TestType.ArenaWrappers);
+    [Test] public void ArenaKWrapperClampTest()          => RunJob(TestJob.TestType.ArenaKWrapperClamp);
 
     // -------------------------------------------------------------------------
     // GROUP 4 — BoolAnalysis.whichTrue / countTrue (bool mask bridge).
@@ -1037,6 +1130,19 @@ public class fProxyQueryTests
     // -------------------------------------------------------------------------
     // Indices type: out-of-range indexer access throws ArgumentOutOfRangeException.
     // -------------------------------------------------------------------------
+
+    // decodeIndex guards against a non-positive nCols (Fix 6): nCols <= 0 -> ArgumentException.
+    [Test]
+    public void DecodeIndexGuardThrows()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            fProxyQueryOP.decodeIndex(5, 0, out int _, out int _));
+        Assert.Throws<ArgumentException>(() =>
+            fProxyQueryOP.decodeIndex(5, -3, out int _, out int _));
+        // a valid nCols must NOT throw.
+        Assert.DoesNotThrow(() =>
+            fProxyQueryOP.decodeIndex(5, 3, out int _, out int _));
+    }
 
     [Test]
     public void IndicesOutOfRangeThrows()

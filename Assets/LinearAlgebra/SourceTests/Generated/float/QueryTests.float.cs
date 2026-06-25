@@ -49,6 +49,7 @@ public class floatQueryTests
             NonzeroCountNonzero,
             Symmetry,
             ArenaWrappers,
+            ArenaKWrapperClamp,
         }
 
         public TestType Type;
@@ -79,6 +80,7 @@ public class floatQueryTests
                 case TestType.NonzeroCountNonzero:          NonzeroCountNonzero();          break;
                 case TestType.Symmetry:                     Symmetry();                     break;
                 case TestType.ArenaWrappers:                ArenaWrappers();                break;
+                case TestType.ArenaKWrapperClamp:           ArenaKWrapperClamp();           break;
             }
         }
 
@@ -754,6 +756,96 @@ public class floatQueryTests
             AssertEqI(floatQueryOP.argMaxColNorm(in A, Norm.L2),
                       floatQueryOP.argMaxRowNorm(in At, Norm.L2));
 
+            // farthestColumn(A) == farthestRow(transpose(A)).
+            floatQueryOP.farthestColumn(in A, in q, Metric.SqEuclidean, out int fci, out float fcs);
+            floatQueryOP.farthestRow(in At, in q, Metric.SqEuclidean, out int fri, out float frs);
+            AssertEqI(fci, fri); AssertClose(fcs, frs, sqrtEps());
+
+            // kNearestColumns(A) == kNearestRows(transpose(A)): same indices + scores.
+            int kk = 3;
+            var ncIdx = arena.Indices(kk); var ncVal = arena.floatVec(kk);
+            var nrIdx = arena.Indices(kk); var nrVal = arena.floatVec(kk);
+            int ncCnt = floatQueryOP.kNearestColumns(in A, in q, kk, Metric.SqEuclidean, ref ncIdx, ref ncVal);
+            int nrCnt = floatQueryOP.kNearestRows(in At, in q, kk, Metric.SqEuclidean, ref nrIdx, ref nrVal);
+            AssertEqI(ncCnt, nrCnt);
+            for (int i = 0; i < ncCnt; i++)
+            {
+                AssertEqI(ncIdx[i], nrIdx[i]);
+                AssertClose(ncVal[i], nrVal[i], sqrtEps());
+            }
+
+            // kFarthestColumns(A) == kFarthestRows(transpose(A)).
+            var fcIdx = arena.Indices(kk); var fcVal = arena.floatVec(kk);
+            var frIdx = arena.Indices(kk); var frVal = arena.floatVec(kk);
+            int fcCnt = floatQueryOP.kFarthestColumns(in A, in q, kk, Metric.SqEuclidean, ref fcIdx, ref fcVal);
+            int frCnt = floatQueryOP.kFarthestRows(in At, in q, kk, Metric.SqEuclidean, ref frIdx, ref frVal);
+            AssertEqI(fcCnt, frCnt);
+            for (int i = 0; i < fcCnt; i++)
+            {
+                AssertEqI(fcIdx[i], frIdx[i]);
+                AssertClose(fcVal[i], frVal[i], sqrtEps());
+            }
+
+            // columnsWithinRadius(A) == rowsWithinRadius(transpose(A)); same for the count twin.
+            float rad = (float)6;
+            var cwrIdx = arena.Indices(N);
+            var rwrIdx = arena.Indices(N);
+            int cwrCnt = floatQueryOP.columnsWithinRadius(in A, in q, rad, Metric.SqEuclidean, ref cwrIdx);
+            int rwrCnt = floatQueryOP.rowsWithinRadius(in At, in q, rad, Metric.SqEuclidean, ref rwrIdx);
+            AssertEqI(cwrCnt, rwrCnt);
+            for (int i = 0; i < cwrCnt; i++) AssertEqI(cwrIdx[i], rwrIdx[i]);
+            AssertEqI(floatQueryOP.countWithinColumnRadius(in A, in q, rad, Metric.SqEuclidean),
+                      floatQueryOP.countWithinRadius(in At, in q, rad, Metric.SqEuclidean));
+
+            arena.Dispose();
+        }
+
+        // Arena k-wrappers must CLAMP k to the matrix dimension (review's CRITICAL regression):
+        // calling with k > M_Rows / N_Cols returns count == min(k, dim) with NO exception, and
+        // the result matches a brute-force top-/bottom-k.
+        void ArenaKWrapperClamp()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int M = 4, N = 3;
+            var A = arena.floatRandomMatrix(M, N, -3f, 3f, 13572468);
+            var q = arena.floatVec(N);
+            q[0] = (float)0.5; q[1] = (float)(-1.5); q[2] = (float)1;
+            var qc = arena.floatVec(M);
+            for (int i = 0; i < M; i++) qc[i] = (float)(i - 1) * (float)0.5;
+
+            int kRows = M + 5;   // k > M_Rows
+            int kCols = N + 5;   // k > N_Cols
+
+            // --- floatKNearestRows: clamp to M, ascending, matches brute force ---
+            var nrIdx = arena.floatKNearestRows(in A, in q, kRows, Metric.SqEuclidean, out floatN nrScore, out int nrCnt);
+            AssertEqI(nrCnt, M);
+            AssertEqI(nrIdx.N, M);
+            var allR = arena.floatVec(M);
+            floatQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref allR);
+            for (int i = 0; i + 1 < nrCnt; i++) AssertTrue(nrScore[i] <= nrScore[i + 1] + sqrtEps());
+            for (int i = 0; i < nrCnt; i++) AssertClose(nrScore[i], allR[nrIdx[i]], sqrtEps());
+
+            // --- floatKFarthestRows: clamp to M, descending ---
+            var frIdx = arena.floatKFarthestRows(in A, in q, kRows, Metric.SqEuclidean, out floatN frScore, out int frCnt);
+            AssertEqI(frCnt, M);
+            for (int i = 0; i + 1 < frCnt; i++) AssertTrue(frScore[i] >= frScore[i + 1] - sqrtEps());
+            for (int i = 0; i < frCnt; i++) AssertClose(frScore[i], allR[frIdx[i]], sqrtEps());
+
+            // --- floatKNearestColumns: clamp to N ---
+            var ncIdx = arena.floatKNearestColumns(in A, in qc, kCols, Metric.SqEuclidean, out floatN ncScore, out int ncCnt);
+            AssertEqI(ncCnt, N);
+            var allC = arena.floatVec(N);
+            floatQueryOP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
+            for (int i = 0; i + 1 < ncCnt; i++) AssertTrue(ncScore[i] <= ncScore[i + 1] + sqrtEps());
+            for (int i = 0; i < ncCnt; i++) AssertClose(ncScore[i], allC[ncIdx[i]], sqrtEps());
+
+            // --- floatKFarthestColumns: clamp to N ---
+            var fcIdx = arena.floatKFarthestColumns(in A, in qc, kCols, Metric.SqEuclidean, out floatN fcScore, out int fcCnt);
+            AssertEqI(fcCnt, N);
+            for (int i = 0; i + 1 < fcCnt; i++) AssertTrue(fcScore[i] >= fcScore[i + 1] - sqrtEps());
+            for (int i = 0; i < fcCnt; i++) AssertClose(fcScore[i], allC[fcIdx[i]], sqrtEps());
+
             arena.Dispose();
         }
 
@@ -924,6 +1016,7 @@ public class floatQueryTests
     [Test] public void NonzeroCountNonzeroTest()         => RunJob(TestJob.TestType.NonzeroCountNonzero);
     [Test] public void SymmetryTest()                    => RunJob(TestJob.TestType.Symmetry);
     [Test] public void ArenaWrappersTest()               => RunJob(TestJob.TestType.ArenaWrappers);
+    [Test] public void ArenaKWrapperClampTest()          => RunJob(TestJob.TestType.ArenaKWrapperClamp);
 
     // -------------------------------------------------------------------------
     // GROUP 4 — BoolAnalysis.whichTrue / countTrue (bool mask bridge).
@@ -1037,6 +1130,19 @@ public class floatQueryTests
     // -------------------------------------------------------------------------
     // Indices type: out-of-range indexer access throws ArgumentOutOfRangeException.
     // -------------------------------------------------------------------------
+
+    // decodeIndex guards against a non-positive nCols (Fix 6): nCols <= 0 -> ArgumentException.
+    [Test]
+    public void DecodeIndexGuardThrows()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            floatQueryOP.decodeIndex(5, 0, out int _, out int _));
+        Assert.Throws<ArgumentException>(() =>
+            floatQueryOP.decodeIndex(5, -3, out int _, out int _));
+        // a valid nCols must NOT throw.
+        Assert.DoesNotThrow(() =>
+            floatQueryOP.decodeIndex(5, 3, out int _, out int _));
+    }
 
     [Test]
     public void IndicesOutOfRangeThrows()
