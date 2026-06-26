@@ -1,0 +1,638 @@
+using System;
+
+using LinearAlgebra;
+
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+
+using Unity.Jobs;
+using Unity.Mathematics;
+using Random = Unity.Mathematics.Random;
+
+// Tests for the random-generation continuous core (RandomOP + Sampler).
+// Two layers:
+//   * In-job (Burst) tests: pure ICDF quantiles, empirical moments / support,
+//     determinism, stream advance, Gaussian spare bookkeeping, matrix overloads.
+//   * Managed throw tests (main thread): constructor / arg validation, mirroring
+//     the clampInpl / FFT guard-test convention.
+//
+// The underlying uniform stream (NextFloat -> (float)NextFloat) is float-valued for
+// BOTH expansions, so a fixed seed makes every statistic deterministic; the only
+// float/double divergence is in the transcendental ICDF math, absorbed by the loose
+// tolerances. Never use a time-based seed.
+public class floatRandomTests
+{
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            ICDFKnownValues,
+            ICDFMonotonic,
+            WeibullExponentialIdentity,
+            ICDFBoundaryFinite,
+            UniformMoments,
+            ExponentialMoments,
+            GaussianMoments,
+            RayleighMoments,
+            CauchyMedian,
+            ParetoMedian,
+            RangeSupport,
+            Determinism,
+            StreamAdvance,
+            GaussianSpareNoAdvance,
+            GaussianAdvanceCount,
+            MatrixOverloads
+        }
+
+        public TestType Type;
+
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff
+        public NativeArray<float> Fail;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.ICDFKnownValues: ICDFKnownValues(); break;
+                case TestType.ICDFMonotonic: ICDFMonotonic(); break;
+                case TestType.WeibullExponentialIdentity: WeibullExponentialIdentity(); break;
+                case TestType.ICDFBoundaryFinite: ICDFBoundaryFinite(); break;
+                case TestType.UniformMoments: UniformMoments(); break;
+                case TestType.ExponentialMoments: ExponentialMoments(); break;
+                case TestType.GaussianMoments: GaussianMoments(); break;
+                case TestType.RayleighMoments: RayleighMoments(); break;
+                case TestType.CauchyMedian: CauchyMedian(); break;
+                case TestType.ParetoMedian: ParetoMedian(); break;
+                case TestType.RangeSupport: RangeSupport(); break;
+                case TestType.Determinism: Determinism(); break;
+                case TestType.StreamAdvance: StreamAdvance(); break;
+                case TestType.GaussianSpareNoAdvance: GaussianSpareNoAdvance(); break;
+                case TestType.GaussianAdvanceCount: GaussianAdvanceCount(); break;
+                case TestType.MatrixOverloads: MatrixOverloads(); break;
+            }
+        }
+
+        // ---------------- A. Pure ICDF unit tests ----------------
+
+        // Hand-computed quantiles at u=0, u=0.5, and a mid u for every closed-form sampler.
+        void ICDFKnownValues()
+        {
+            float tol = Consts.floatSqrtEps;
+
+            // Uniform: ICDF(0)=a, ICDF(0.5)=(a+b)/2, ICDF(u)=a+(b-a)u.
+            AssertClose(floatUniform.UniformICDF((float)0, (float)2, (float)6), (float)2, tol);
+            AssertClose(floatUniform.UniformICDF((float)0.5, (float)2, (float)6), (float)4, tol);
+            AssertClose(floatUniform.UniformICDF((float)0.25, (float)0, (float)4), (float)1, tol);
+
+            // Exponential: ICDF(0,λ)=0; ICDF(u,λ)=-ln(1-u)/λ.
+            AssertClose(floatExponential.ExponentialICDF((float)0, (float)2), (float)0, tol);
+            AssertClose(floatExponential.ExponentialICDF((float)0.5, (float)2),
+                        -math.log((float)0.5) / (float)2, tol);
+            AssertClose(floatExponential.ExponentialICDF((float)0.3, (float)1.5),
+                        -math.log((float)0.7) / (float)1.5, tol);
+
+            // Rayleigh: ICDF(0,σ)=0; median (u=0.5) = σ·sqrt(ln4).
+            AssertClose(floatRayleigh.RayleighICDF((float)0, (float)2), (float)0, tol);
+            AssertClose(floatRayleigh.RayleighICDF((float)0.5, (float)2),
+                        (float)2 * math.sqrt(math.log((float)4)), tol);
+
+            // Pareto: ICDF(0,xm,α)=xm; with α=1, ICDF(0.5)=2·xm.
+            AssertClose(floatPareto.ParetoICDF((float)0, (float)2, (float)1.5), (float)2, tol);
+            AssertClose(floatPareto.ParetoICDF((float)0.5, (float)2, (float)1), (float)4, tol);
+
+            // Logistic: ICDF(0.5,μ,s)=μ.
+            AssertClose(floatLogistic.LogisticICDF((float)0.5, (float)3, (float)2), (float)3, tol);
+
+            // Cauchy: ICDF(0.5,x0,γ)=x0.
+            AssertClose(floatCauchy.CauchyICDF((float)0.5, (float)5, (float)2), (float)5, tol);
+
+            // Triangular over [low,high]=[-1,5], mode=2 => fc=(2-(-1))/(5-(-1))=0.5.
+            // ICDF(0)=low, ICDF(1)=high, ICDF(fc)=mode.
+            AssertClose(floatTriangular.TriangularICDF((float)0, (float)(-1), (float)2, (float)5),
+                        (float)(-1), tol);
+            AssertClose(floatTriangular.TriangularICDF((float)1, (float)(-1), (float)2, (float)5),
+                        (float)5, tol);
+            AssertClose(floatTriangular.TriangularICDF((float)0.5, (float)(-1), (float)2, (float)5),
+                        (float)2, tol);
+            // First branch interior value: u=0.15 < fc => a + sqrt(u·(b-a)·(c-a)) = -1 + sqrt(0.15·6·3).
+            AssertClose(floatTriangular.TriangularICDF((float)0.15, (float)(-1), (float)2, (float)5),
+                        (float)(-1) + math.sqrt((float)0.15 * (float)6 * (float)3), tol);
+        }
+
+        // Every ICDF is non-decreasing in u across a sweep of the open interval.
+        void ICDFMonotonic()
+        {
+            int steps = 200;
+            float lo = (float)0.005, hi = (float)0.995;
+            float step = (hi - lo) / (float)(steps - 1);
+
+            float pU = floatUniform.UniformICDF(lo, (float)(-2), (float)4);
+            float pE = floatExponential.ExponentialICDF(lo, (float)2);
+            float pR = floatRayleigh.RayleighICDF(lo, (float)1.5);
+            float pW = floatWeibull.WeibullICDF(lo, (float)1.5, (float)2);
+            float pC = floatCauchy.CauchyICDF(lo, (float)5, (float)2);
+            float pL = floatLogistic.LogisticICDF(lo, (float)3, (float)2);
+            float pP = floatPareto.ParetoICDF(lo, (float)2, (float)1.5);
+            float pT = floatTriangular.TriangularICDF(lo, (float)(-1), (float)2, (float)5);
+
+            for (int i = 1; i < steps; i++)
+            {
+                float u = lo + step * (float)i;
+                float cU = floatUniform.UniformICDF(u, (float)(-2), (float)4);
+                float cE = floatExponential.ExponentialICDF(u, (float)2);
+                float cR = floatRayleigh.RayleighICDF(u, (float)1.5);
+                float cW = floatWeibull.WeibullICDF(u, (float)1.5, (float)2);
+                float cC = floatCauchy.CauchyICDF(u, (float)5, (float)2);
+                float cL = floatLogistic.LogisticICDF(u, (float)3, (float)2);
+                float cP = floatPareto.ParetoICDF(u, (float)2, (float)1.5);
+                float cT = floatTriangular.TriangularICDF(u, (float)(-1), (float)2, (float)5);
+
+                NonDecreasing(pU, cU); NonDecreasing(pE, cE); NonDecreasing(pR, cR);
+                NonDecreasing(pW, cW); NonDecreasing(pC, cC); NonDecreasing(pL, cL);
+                NonDecreasing(pP, cP); NonDecreasing(pT, cT);
+
+                pU = cU; pE = cE; pR = cR; pW = cW; pC = cC; pL = cL; pP = cP; pT = cT;
+            }
+        }
+
+        // Weibull(k=1, λ) reduces to Exponential with rate 1/λ (scale-vs-rate reciprocal).
+        void WeibullExponentialIdentity()
+        {
+            float lambda = (float)2.5;          // Weibull scale
+            float rate = (float)1 / lambda;     // Exponential rate
+            float tol = Consts.floatSqrtEps;
+
+            for (int i = 1; i < 50; i++)
+            {
+                float u = (float)i / (float)50;   // (0,1)
+                float w = floatWeibull.WeibullICDF(u, (float)1, lambda);
+                float e = floatExponential.ExponentialICDF(u, rate);
+                AssertClose(w, e, tol + math.abs(e) * (float)1e-4);
+            }
+        }
+
+        // Heavy-tailed Cauchy / Logistic ICDF stay finite at the clamped endpoints (u=0, u->1).
+        void ICDFBoundaryFinite()
+        {
+            float c0 = floatCauchy.CauchyICDF((float)0, (float)5, (float)2);
+            float c1 = floatCauchy.CauchyICDF((float)1, (float)5, (float)2);
+            float l0 = floatLogistic.LogisticICDF((float)0, (float)3, (float)2);
+            float l1 = floatLogistic.LogisticICDF((float)1, (float)3, (float)2);
+
+            AssertTrue(math.isfinite(c0));
+            AssertTrue(math.isfinite(c1));
+            AssertTrue(math.isfinite(l0));
+            AssertTrue(math.isfinite(l1));
+
+            // Symmetric clamp about the median: u=0 below x0, u->1 above x0.
+            AssertTrue(c0 < (float)5);
+            AssertTrue(c1 > (float)5);
+            AssertTrue(l0 < (float)3);
+            AssertTrue(l1 > (float)3);
+        }
+
+        // ---------------- B. Sampler distribution tests ----------------
+
+        const int StatN = 8192;
+
+        // Uniform[a,b]: mean=(a+b)/2, var=(b-a)^2/12.
+        void UniformMoments()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var rng = new Random(1234567u);
+            var s = new floatUniform((float)(-2), (float)4);
+            var v = arena.floatVec(StatN);
+            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+
+            float mean = Mean(in v);
+            float var = Variance(in v, mean);
+            AssertClose(mean, (float)1, (float)0.1);             // (a+b)/2 = 1
+            AssertClose(var, (float)3, (float)0.3);              // (b-a)^2/12 = 3
+            arena.Dispose();
+        }
+
+        // Exponential(λ): mean=1/λ, var=1/λ^2.
+        void ExponentialMoments()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var rng = new Random(2468013u);
+            float lambda = (float)2;
+            var s = new floatExponential(lambda);
+            var v = arena.floatVec(StatN);
+            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+
+            float mean = Mean(in v);
+            float var = Variance(in v, mean);
+            AssertClose(mean, (float)1 / lambda, (float)0.05);          // 0.5
+            AssertClose(var, (float)1 / (lambda * lambda), (float)0.08); // 0.25
+            arena.Dispose();
+        }
+
+        // Gaussian(μ,σ): mean≈μ, var≈σ^2.
+        void GaussianMoments()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var rng = new Random(13572468u);
+            float mu = (float)1.5, sd = (float)2;
+            var s = new floatGaussian(mu, sd);
+            var v = arena.floatVec(StatN);
+            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+
+            float mean = Mean(in v);
+            float var = Variance(in v, mean);
+            AssertClose(mean, mu, (float)0.12);
+            AssertClose(var, sd * sd, (float)0.4);     // σ^2 = 4
+            arena.Dispose();
+        }
+
+        // Rayleigh(σ): mean=σ·sqrt(π/2).
+        void RayleighMoments()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var rng = new Random(97531864u);
+            float sigma = (float)1.5;
+            var s = new floatRayleigh(sigma);
+            var v = arena.floatVec(StatN);
+            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+
+            float mean = Mean(in v);
+            float expected = sigma * math.sqrt((float)(System.Math.PI / 2.0));
+            AssertClose(mean, expected, (float)0.08);
+            arena.Dispose();
+        }
+
+        // Cauchy: no finite mean/var. Median = x0 => ~50% of draws below x0.
+        void CauchyMedian()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var rng = new Random(192837465u);
+            float x0 = (float)5, gamma = (float)2;
+            var s = new floatCauchy(x0, gamma);
+            var v = arena.floatVec(StatN);
+            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+
+            float frac = FractionBelow(in v, x0);
+            AssertClose(frac, (float)0.5, (float)0.04);
+            arena.Dispose();
+        }
+
+        // Pareto α=1.5: variance diverges (α<2). Median = xm·2^(1/α) => ~50% below.
+        void ParetoMedian()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var rng = new Random(564738291u);
+            float xm = (float)2, alpha = (float)1.5;
+            var s = new floatPareto(xm, alpha);
+            var v = arena.floatVec(StatN);
+            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+
+            float median = xm * math.pow((float)2, (float)1 / alpha);
+            float frac = FractionBelow(in v, median);
+            AssertClose(frac, (float)0.5, (float)0.04);
+
+            // Support: every Pareto draw >= xm.
+            for (int i = 0; i < v.N; i++)
+                AssertTrue(v[i] >= xm);
+            arena.Dispose();
+        }
+
+        // Range / support guarantees per distribution.
+        void RangeSupport()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var rng = new Random(424242u);
+            int n = 2048;
+
+            // Uniform[a,b): a <= x < b.
+            float a = (float)(-2), b = (float)4;
+            var su = new floatUniform(a, b);
+            var vu = arena.floatVec(n);
+            floatRandomOP.randomInpl(ref rng, ref vu, ref su);
+            for (int i = 0; i < n; i++)
+                AssertTrue(vu[i] >= a && vu[i] < b);
+
+            // Exponential >= 0.
+            var se = new floatExponential((float)2);
+            var ve = arena.floatVec(n);
+            floatRandomOP.randomInpl(ref rng, ref ve, ref se);
+            for (int i = 0; i < n; i++)
+                AssertTrue(ve[i] >= (float)0);
+
+            // Rayleigh >= 0.
+            var sr = new floatRayleigh((float)1.5);
+            var vr = arena.floatVec(n);
+            floatRandomOP.randomInpl(ref rng, ref vr, ref sr);
+            for (int i = 0; i < n; i++)
+                AssertTrue(vr[i] >= (float)0);
+
+            // Weibull >= 0.
+            var sw = new floatWeibull((float)1.5, (float)2);
+            var vw = arena.floatVec(n);
+            floatRandomOP.randomInpl(ref rng, ref vw, ref sw);
+            for (int i = 0; i < n; i++)
+                AssertTrue(vw[i] >= (float)0);
+
+            // Triangular in [low,high].
+            float low = (float)(-1), high = (float)5;
+            var st = new floatTriangular(low, (float)2, high);
+            var vt = arena.floatVec(n);
+            floatRandomOP.randomInpl(ref rng, ref vt, ref st);
+            for (int i = 0; i < n; i++)
+                AssertTrue(vt[i] >= low && vt[i] <= high);
+
+            arena.Dispose();
+        }
+
+        // ---------------- C. Mechanics ----------------
+
+        // Same seed + same sampler => identical fill, element-wise exact.
+        void Determinism()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 256;
+
+            var r1 = new Random(55u);
+            var s1 = new floatExponential((float)1.7);
+            var v1 = arena.floatVec(n);
+            floatRandomOP.randomInpl(ref r1, ref v1, ref s1);
+
+            var r2 = new Random(55u);
+            var s2 = new floatExponential((float)1.7);
+            var v2 = arena.floatVec(n);
+            floatRandomOP.randomInpl(ref r2, ref v2, ref s2);
+
+            for (int i = 0; i < n; i++)
+                AssertClose(v1[i], v2[i], (float)0);   // bit-identical
+
+            arena.Dispose();
+        }
+
+        // Two nextUniformInpl calls over the SAME rng advance the stream: buffers differ.
+        void StreamAdvance()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 256;
+            var rng = new Random(7777u);
+
+            var v1 = arena.floatVec(n);
+            floatRandomOP.nextUniformInpl(ref rng, ref v1);
+            var v2 = arena.floatVec(n);
+            floatRandomOP.nextUniformInpl(ref rng, ref v2);
+
+            bool anyDiff = false;
+            for (int i = 0; i < n; i++)
+                if (v1[i] != v2[i]) anyDiff = true;
+            AssertTrue(anyDiff);
+
+            // Re-seeding resets the stream: a fresh rng reproduces the first buffer.
+            var rng3 = new Random(7777u);
+            var v3 = arena.floatVec(n);
+            floatRandomOP.nextUniformInpl(ref rng3, ref v3);
+            for (int i = 0; i < n; i++)
+                AssertClose(v1[i], v3[i], (float)0);
+
+            arena.Dispose();
+        }
+
+        // Box-Muller spare: the 2nd of a pair is returned without advancing the rng.
+        void GaussianSpareNoAdvance()
+        {
+            var rng = new Random(31415926u);
+            var g = new floatGaussian((float)0, (float)1);
+
+            float a = g.Next(ref rng);
+            uint s1 = rng.state;
+            float b = g.Next(ref rng);     // spare path: no rng advance
+            uint s2 = rng.state;
+            float c = g.Next(ref rng);     // new pair: advances
+            uint s3 = rng.state;
+
+            AssertTrue(a != b);             // two distinct variates from one pair
+            AssertTrue(s2 == s1);           // spare draw left the stream untouched
+            AssertTrue(s3 != s2);           // the following draw advanced it again
+        }
+
+        // Over an N-element Gaussian fill the rng advances ceil(N/2)*2 NextFloat steps.
+        void GaussianAdvanceCount()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 5;                       // odd: exercises the +1 (discarded spare) draw
+            uint seed = 99887766u;
+
+            var rngFill = new Random(seed);
+            var g = new floatGaussian((float)0, (float)1);
+            var v = arena.floatVec(n);
+            floatRandomOP.randomInpl(ref rngFill, ref v, ref g);
+            uint stateFill = rngFill.state;
+
+            // Reference: advance an identically-seeded rng by ceil(n/2)*2 uniform draws.
+            int draws = ((n + 1) / 2) * 2;   // n=5 -> 6
+            var rngRef = new Random(seed);
+            for (int i = 0; i < draws; i++)
+                rngRef.NextFloat();
+            uint stateRef = rngRef.state;
+
+            AssertTrue(stateFill == stateRef);
+
+            // Even N consumes exactly N draws (no discarded spare).
+            int nEven = 6;
+            var rngFill2 = new Random(seed);
+            var g2 = new floatGaussian((float)0, (float)1);
+            var v2 = arena.floatVec(nEven);
+            floatRandomOP.randomInpl(ref rngFill2, ref v2, ref g2);
+
+            var rngRef2 = new Random(seed);
+            for (int i = 0; i < nEven; i++)
+                rngRef2.NextFloat();
+            AssertTrue(rngFill2.state == rngRef2.state);
+
+            arena.Dispose();
+        }
+
+        // Matrix overloads fill all M*N flat elements, all in range.
+        void MatrixOverloads()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var rng = new Random(20240626u);
+
+            // nextUniformInpl(min,max) over a 4x5 matrix: poison first, then assert all in [min,max).
+            float mn = (float)(-1), mx = (float)2;
+            var M = arena.floatMat(4, 5);
+            for (int i = 0; i < M.Length; i++) M[i] = (float)999;
+            floatRandomOP.nextUniformInpl(ref rng, ref M, mn, mx);
+            AssertTrue(M.Length == 20);
+            for (int i = 0; i < M.Length; i++)
+                AssertTrue(M[i] >= mn && M[i] < mx);
+
+            // nextUniformInpl [0,1) over a 3x7 matrix.
+            var M01 = arena.floatMat(3, 7);
+            for (int i = 0; i < M01.Length; i++) M01[i] = (float)999;
+            floatRandomOP.nextUniformInpl(ref rng, ref M01);
+            for (int i = 0; i < M01.Length; i++)
+                AssertTrue(M01[i] >= (float)0 && M01[i] < (float)1);
+
+            // randomInpl<S> over a 3x7 matrix with Exponential: all >= 0, all written.
+            var g = new floatExponential((float)2);
+            var ME = arena.floatMat(3, 7);
+            for (int i = 0; i < ME.Length; i++) ME[i] = (float)(-999);
+            floatRandomOP.randomInpl(ref rng, ref ME, ref g);
+            AssertTrue(ME.Length == 21);
+            for (int i = 0; i < ME.Length; i++)
+                AssertTrue(ME[i] >= (float)0);
+
+            arena.Dispose();
+        }
+
+        // ---------------- helpers ----------------
+
+        float Mean(in floatN v)
+        {
+            float sum = (float)0;
+            for (int i = 0; i < v.N; i++) sum += v[i];
+            return sum / (float)v.N;
+        }
+
+        float Variance(in floatN v, float mean)
+        {
+            float sum = (float)0;
+            for (int i = 0; i < v.N; i++)
+            {
+                float d = v[i] - mean;
+                sum += d * d;
+            }
+            return sum / (float)v.N;
+        }
+
+        float FractionBelow(in floatN v, float threshold)
+        {
+            int count = 0;
+            for (int i = 0; i < v.N; i++)
+                if (v[i] < threshold) count++;
+            return (float)count / (float)v.N;
+        }
+
+        // curr must be >= prev (allowing tiny relative float slack).
+        void NonDecreasing(float prev, float curr)
+        {
+            float slack = math.abs(prev) * (float)1e-4 + (float)1e-5;
+            if (!(curr >= prev - slack) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = curr;
+                Fail[2] = prev;
+                Fail[3] = curr - prev;
+            }
+            Assert.IsTrue(curr >= prev - slack);
+        }
+
+        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
+        void AssertClose(float a, float b, float precision)
+        {
+            float diff = math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = diff;
+            }
+            Assert.IsTrue(diff <= precision);
+        }
+
+        void AssertTrue(bool ok)
+        {
+            if (!ok && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = (float)(-1);
+                Fail[2] = (float)(-1);
+                Fail[3] = (float)(-1);
+            }
+            Assert.IsTrue(ok);
+        }
+    }
+
+    void RunJob(TestJob.TestType type)
+    {
+        var fail = new NativeArray<float>(4, Allocator.TempJob);
+        try
+        {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            if (fail[0] != (float)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+        }
+        catch (Exception e)
+        {
+            if (fail[0] != (float)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally
+        {
+            fail.Dispose();
+        }
+    }
+
+    [Test] public void ICDFKnownValuesTest() => RunJob(TestJob.TestType.ICDFKnownValues);
+    [Test] public void ICDFMonotonicTest() => RunJob(TestJob.TestType.ICDFMonotonic);
+    [Test] public void WeibullExponentialIdentityTest() => RunJob(TestJob.TestType.WeibullExponentialIdentity);
+    [Test] public void ICDFBoundaryFiniteTest() => RunJob(TestJob.TestType.ICDFBoundaryFinite);
+    [Test] public void UniformMomentsTest() => RunJob(TestJob.TestType.UniformMoments);
+    [Test] public void ExponentialMomentsTest() => RunJob(TestJob.TestType.ExponentialMoments);
+    [Test] public void GaussianMomentsTest() => RunJob(TestJob.TestType.GaussianMoments);
+    [Test] public void RayleighMomentsTest() => RunJob(TestJob.TestType.RayleighMoments);
+    [Test] public void CauchyMedianTest() => RunJob(TestJob.TestType.CauchyMedian);
+    [Test] public void ParetoMedianTest() => RunJob(TestJob.TestType.ParetoMedian);
+    [Test] public void RangeSupportTest() => RunJob(TestJob.TestType.RangeSupport);
+    [Test] public void DeterminismTest() => RunJob(TestJob.TestType.Determinism);
+    [Test] public void StreamAdvanceTest() => RunJob(TestJob.TestType.StreamAdvance);
+    [Test] public void GaussianSpareNoAdvanceTest() => RunJob(TestJob.TestType.GaussianSpareNoAdvance);
+    [Test] public void GaussianAdvanceCountTest() => RunJob(TestJob.TestType.GaussianAdvanceCount);
+    [Test] public void MatrixOverloadsTest() => RunJob(TestJob.TestType.MatrixOverloads);
+
+    // ---------------- D. Managed validation throws (main thread, not in a Burst job) ----------------
+
+    [Test]
+    public void SamplerConstructorsValidate()
+    {
+        // Exponential: lambda must be > 0.
+        Assert.Throws<ArgumentException>(() => new floatExponential((float)0));
+        Assert.Throws<ArgumentException>(() => new floatExponential((float)(-1)));
+
+        // Rayleigh: sigma must be > 0.
+        Assert.Throws<ArgumentException>(() => new floatRayleigh((float)(-1)));
+
+        // Weibull: k must be > 0.
+        Assert.Throws<ArgumentException>(() => new floatWeibull((float)0, (float)1));
+
+        // Pareto: alpha must be > 0 (xm=1 valid, alpha=0 invalid).
+        Assert.Throws<ArgumentException>(() => new floatPareto((float)1, (float)0));
+
+        // Gaussian: std must be > 0.
+        Assert.Throws<ArgumentException>(() => new floatGaussian((float)0, (float)(-1)));
+
+        // Uniform: min must be <= max.
+        Assert.Throws<ArgumentException>(() => new floatUniform((float)5, (float)1));
+
+        // Triangular: requires low <= mode <= high.
+        Assert.Throws<ArgumentException>(() => new floatTriangular((float)0, (float)15, (float)10)); // mode>high
+        Assert.Throws<ArgumentException>(() => new floatTriangular((float)5, (float)0, (float)10));  // mode<low
+    }
+
+    [Test]
+    public void NextUniformInplMinGreaterMaxThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var v = arena.floatVec(8);
+        Random rng = new Random(1u);
+        Assert.Throws<ArgumentException>(() => floatRandomOP.nextUniformInpl(ref rng, ref v, (float)5, (float)1));
+
+        var M = arena.floatMat(3, 3);
+        Assert.Throws<ArgumentException>(() => floatRandomOP.nextUniformInpl(ref rng, ref M, (float)5, (float)1));
+
+        arena.Dispose();
+    }
+}
