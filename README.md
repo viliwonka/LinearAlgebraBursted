@@ -125,23 +125,30 @@ Here's a simple example:
 - ✅ LU (partial pivoting), QR and Cholesky decompositions and solvers; QR also solves over-determined (least-squares) systems
 - ✅ SVD, pseudo-inverse and minimum-norm least squares (rank-deficient tolerant)
 - ✅ Conjugate Gradient — matrix-free iterative solver for SPD systems
-- ✅ Eigen: dominant eigenpair (power iteration) and full symmetric eigendecomposition (Jacobi)
+- ✅ Eigen: dominant eigenpair (power iteration), full symmetric eigendecomposition (Jacobi), and non-symmetric eigenvalues (Francis double-shift QR, real + complex spectra)
 - ✅ Optimizers: 1D root-finding, 1D minimization, gradient descent
 - ✅ Statistics: mean, variance/std, median, min/max, argmin/argmax, row/col reductions, covariance, correlation
+- ✅ Transforms: unit-length normalize (L1/L2/L∞) and distribution transforms (standardize/z-score, rescale to [0,1] or [lo,hi], center, max-abs, softmax, clamp) — per-vector, per-row, per-column, or whole-matrix
 - ✅ Generators: linspace/arange, sample any curve functor, easing & wave (LFO) functor libraries, Gaussian/box/tent convolution kernels, DSP windows (Hann/Hamming/Blackman), and rank-1 (1D×1D) outer / outer-sum matrices
 - ✅ 1D Fourier transform: radix-2 FFT/IFFT (power-of-two) and direct DFT/IDFT (any N), real-input rfft, magnitude/phase/power-spectrum (split real/imag, no complex type)
 - ✅ Realtime: fixed-capacity rolling window (ring buffer of feature vectors) with O(1) push, time-ordered AsMatrix, and zero-alloc moving-average / covariance — the per-frame front-end for the matrix ops (covariance → eigendecomposition = PCA)
 - ✅ Condition number, determinant, trace, rank, vector/matrix norms
 - ✅ Zero-allocation variants of the ops and solvers for hot loops (preallocated outputs, reusable workspaces)
-- 🔳 Vector/matrix views (slicing)
-- 🔳 Find/query (e.g. the row with the largest L2 norm)
+- ✅ Find/query: arg-min/max (per-row/col and abs), nearest/farthest and k-nearest rows/columns by metric (Manhattan/Euclidean/Chebyshev/cosine/dot), within-radius selection, find-value and nonzero — for float, double, int, short and long
 
 ## TODO
 - Better arena management and standalone vec/mat management (without arena allocation)
-- Test arena/vec/mat allocated outside jobs (On normal C# thread)
 - Refactor, unify the names / simplify
 - More safety checks
-- Vec/Mat views (simple structs for easier read/write)
-- Sparse matrix?
 - Documentation
+
+### Candidate directions (not yet scheduled)
+- Predicate-based queries (Burst struct-functor row predicates + masked query ops)
+- K-means / clustering (Lloyd's algorithm over the arena)
+- Realtime: Kalman filter, PCA convenience on the rolling window
+- Sparse matrix (BSR)
+
+Vector/matrix views (slicing) were evaluated and intentionally dropped: a non-owning
+view can't feed the contiguous Burst kernels directly, so callers materialize anyway —
+the query ops above cover the real need.
 

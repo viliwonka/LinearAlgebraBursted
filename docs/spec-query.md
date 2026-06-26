@@ -1,8 +1,10 @@
 # Spec: QueryOP — search & selection inside vectors/matrices
 
-Status: **CONVERGED, coder-ready** (2026-06-25). Supersedes the Query half of
+Status: **IMPLEMENTED** (2026-06-26). Shipped as `QueryOP` for float/double/int/short/long (index
+buffers use the shared `Indices` struct, not `int[]`). Supersedes the Query half of
 `docs/spec-views-and-query.md`. **Views are DROPPED** (see that doc's banner). Games-oriented Burst
 library — favour small, zero-alloc, Burst-compatible designs; do **not** chase numpy/matlab completeness.
+This doc is retained as the design rationale; the code is the source of truth.
 
 ## The reframe (why this is worth building)
 - `StatsOP` is the **reduction** layer: collapse a vec/matrix to scalars or per-axis vectors
