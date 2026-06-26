@@ -143,8 +143,22 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void signFlipInpl<T>(this T a) where T : unmanaged, IUnsafefloatArray
         {
-            unsafe { 
+            unsafe {
                 UnsafeOP.signFlip(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
+            }
+        }
+
+        /// <summary>Clamp every element of <paramref name="x"/> to [<paramref name="lo"/>, <paramref name="hi"/>] in-place.
+        /// Delegates to the mathUnsafe clamp kernel; no allocation.</summary>
+        /// <remarks>Precondition: <paramref name="lo"/> must be less than or equal to <paramref name="hi"/>.
+        /// If <c>lo &gt; hi</c>, every element collapses to <paramref name="lo"/>, per <c>math.clamp</c> semantics.
+        /// No runtime guard is added to keep the hot path clean — validate inputs at the call site.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void clampInpl<T>(in T x, float lo, float hi) where T : unmanaged, IUnsafefloatArray
+        {
+            unsafe
+            {
+                mathUnsafefloat.clamp(x.Data.Ptr, x.Data.Length, lo, hi);
             }
         }
     }

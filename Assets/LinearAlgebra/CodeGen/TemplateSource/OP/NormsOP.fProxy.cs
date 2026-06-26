@@ -149,6 +149,106 @@ namespace LinearAlgebra
             }
         }
 
+        // ---- Enum-dispatch normalize ----
+
+        /// <summary>Normalize x to unit norm in-place, using the specified <paramref name="n"/> (L1/L2/Linf).
+        /// Delegates to the corresponding <c>NormalizeL1</c>/<c>NormalizeL2</c>/<c>NormalizeLMax</c> kernel.</summary>
+        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
+        /// <b>whole-matrix</b> scope (all elements as a single distribution); use
+        /// <see cref="NormalizeRows"/> or <see cref="NormalizeColumns"/> for per-axis normalization.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Normalize<T>(in T x, Norm n) where T : unmanaged, IUnsafefProxyArray
+        {
+            switch (n)
+            {
+                case Norm.L1:   NormalizeL1(in x);   break;
+                case Norm.L2:   NormalizeL2(in x);   break;
+                default:        NormalizeLMax(in x);  break; // Linf
+            }
+        }
+
+        // NormalizeRows: normalize each row of A to unit norm (by the chosen norm).
+        // Zero-norm row → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
+        public static void NormalizeRows(ref fProxyMxN A, Norm n)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                fProxy rowNorm;
+                switch (n)
+                {
+                    case Norm.L1:
+                    {
+                        fProxy s = 0f;
+                        for (int c = 0; c < A.N_Cols; c++) s += math.abs(A[r, c]);
+                        rowNorm = s;
+                        break;
+                    }
+                    case Norm.L2:
+                    {
+                        fProxy s = 0f;
+                        for (int c = 0; c < A.N_Cols; c++) s += A[r, c] * A[r, c];
+                        rowNorm = math.sqrt(s);
+                        break;
+                    }
+                    default: // Linf
+                    {
+                        fProxy s = 0f;
+                        for (int c = 0; c < A.N_Cols; c++) s = math.max(s, math.abs(A[r, c]));
+                        rowNorm = s;
+                        break;
+                    }
+                }
+
+                if (!(rowNorm > 0f)) continue; // zero-norm row → leave unchanged
+
+                fProxy inv = (fProxy)1f / rowNorm;
+                for (int c = 0; c < A.N_Cols; c++) A[r, c] *= inv;
+            }
+        }
+
+        // NormalizeColumns: normalize each column of A to unit norm (by the chosen norm).
+        // Zero-norm column → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
+        public static void NormalizeColumns(ref fProxyMxN A, Norm n)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                fProxy colNorm;
+                switch (n)
+                {
+                    case Norm.L1:
+                    {
+                        fProxy s = 0f;
+                        for (int r = 0; r < A.M_Rows; r++) s += math.abs(A[r, c]);
+                        colNorm = s;
+                        break;
+                    }
+                    case Norm.L2:
+                    {
+                        fProxy s = 0f;
+                        for (int r = 0; r < A.M_Rows; r++) s += A[r, c] * A[r, c];
+                        colNorm = math.sqrt(s);
+                        break;
+                    }
+                    default: // Linf
+                    {
+                        fProxy s = 0f;
+                        for (int r = 0; r < A.M_Rows; r++) s = math.max(s, math.abs(A[r, c]));
+                        colNorm = s;
+                        break;
+                    }
+                }
+
+                if (!(colNorm > 0f)) continue; // zero-norm column → leave unchanged
+
+                fProxy inv = (fProxy)1f / colNorm;
+                for (int r = 0; r < A.M_Rows; r++) A[r, c] *= inv;
+            }
+        }
+
         // ---- Induced (operator) matrix norms ----
 
         // Induced 1-norm ‖A‖₁: the maximum absolute column sum, max_j Σ_i |A[i,j]|. Allocation-free.

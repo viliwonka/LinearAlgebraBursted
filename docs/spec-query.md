@@ -88,8 +88,10 @@ no buffer). If large-k ever matters, quickselect is the future add — not now.
 enum Norm   { L1, L2, Linf }                                       // single-vector magnitude (Lp dropped — add to NormsOP if ever needed)
 enum Metric { Manhattan, Euclidean, SqEuclidean, Chebyshev,        // distance: nearest = MIN
               Cosine, Dot }                                        // Cosine/Dot similarity: nearest = MAX
-enum NormalizeMode { MinMax, ZScore }
 ```
+`NormalizeMode` was removed. Per-column/row distribution transforms now live in `StatsOP` as distinct
+named verbs: `standardizeColumns` (z-score), `rescaleColumns` (min-max), `centerColumns`, etc.
+Per-column/row norm normalization uses `NormsOP.NormalizeColumns`/`NormsOP.NormalizeRows` with the `Norm` enum.
 `distance(a,b) = norm(a−b)` unifies the distance metrics. **The enum carries direction:** `nearestRow`
 returns the row optimizing closeness (min distance OR max similarity) so cosine "just works";
 `farthestRow` returns the opposite. Metric dispatch + its min/max direction hoist outside the per-row loop.
@@ -156,7 +158,9 @@ Score(in fProxyN row); }` → `argMaxBy/argMinBy/topKBy<S>`. Build when a real u
 
 ### Group 5 — Utility-AI convenience (fProxy only, optional)
 ```
-void normalizeColumns(ref fProxyMxN A, NormalizeMode mode)       // reuse colMin/Max/Mean/StdDev; + normalizeRows
+// Column/row normalization is now in StatsOP + NormsOP (not QueryOP):
+//   StatsOP.standardizeColumns / rescaleColumns / centerColumns / maxAbsColumns / softmaxColumns
+//   NormsOP.NormalizeColumns(ref A, Norm n) / NormsOP.NormalizeRows(ref A, Norm n)
 int  argMaxScore(in fProxyMxN A, in fProxyN weights)             // = argmax(A·w), FUSED zero-alloc (dot-per-row, track max; no temp)
 int  kBestScored(in fProxyMxN A, in fProxyN weights, int k, ref intN idx, ref fProxyN score)
 ```
@@ -166,7 +170,7 @@ int  kBestScored(in fProxyMxN A, in fProxyN weights, int k, ref intN idx, ref fP
 ## Utility AI — what it actually needs (expanded)
 Utility AI scores a set of options and picks the best/top-k. **Rows = options** (targets, cover points,
 actions), **cols = considerations** (distance, health, threat, cost). Pipeline:
-1. **Normalize considerations** so they're comparable → `normalizeColumns` (reuses col stats). *[Group 5]*
+1. **Normalize considerations** so they're comparable → `StatsOP.rescaleColumns` (min-max) or `StatsOP.standardizeColumns` (z-score), or `NormsOP.NormalizeColumns` (unit-norm). These live in their respective OPs, not QueryOP.
 2. **Apply a response curve** (diminishing returns/thresholds) → the **easing functors already exist**
    (generators work). *[already in library]*
 3. **Weighted sum** → score per row = `A·w` → `dot`. *[already in library]*
@@ -180,7 +184,7 @@ step 1). Document it as a recipe, not a black box.
 // nearest enemy:           queryOP.nearestRow(in enemies, in playerPos, Metric.SqEuclidean, out int idx, out fProxy d2);
 // 3 best targets:          int n = queryOP.kNearestRows(in enemies, in playerPos, 3, Metric.SqEuclidean, ref idxBuf, ref distBuf);
 // units in attack range:   int n = queryOP.rowsWithinRadius(in units, in self, range, Metric.Euclidean, ref idxBuf);
-// utility-AI best action:  queryOP.normalizeColumns(ref C, NormalizeMode.MinMax);  int best = queryOP.argMaxScore(in C, in weights);
+// utility-AI best action:  StatsOP.rescaleColumns(ref C);  int best = queryOP.argMaxScore(in C, in weights);  // NormalizeMode removed; use StatsOP verbs directly
 ```
 All read cleanly. Two gaps the snippets surfaced:
 - **Masked / predicate-filtered nearest** ("closest *visible* enemy") has no direct API — it's the

@@ -128,6 +128,20 @@ namespace LinearAlgebra
             }
         }
 
+        /// <summary>Clamp every element of <paramref name="x"/> to [<paramref name="lo"/>, <paramref name="hi"/>] in-place.
+        /// Delegates to the mathUnsafe clamp kernel; no allocation.</summary>
+        /// <remarks>Precondition: <paramref name="lo"/> must be less than or equal to <paramref name="hi"/>.
+        /// If <c>lo &gt; hi</c>, every element collapses to <paramref name="lo"/>, per <c>math.clamp</c> semantics.
+        /// No runtime guard is added to keep the hot path clean — validate inputs at the call site.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void clampInpl<T>(in T x, short lo, short hi) where T : unmanaged, IUnsafeshortArray
+        {
+            unsafe
+            {
+                mathUnsafeshort.clamp(x.Data.Ptr, x.Data.Length, lo, hi);
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseComplementInpl<T>(this T a) where T : unmanaged, IUnsafeshortArray {
             unsafe {

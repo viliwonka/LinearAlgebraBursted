@@ -4,6 +4,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using Unity.Collections.LowLevel.Unsafe;
 using System;
+using System.Runtime.CompilerServices;
 
 namespace LinearAlgebra.Stats
 {
@@ -728,151 +729,317 @@ namespace LinearAlgebra.Stats
             return R;
         }
 
-        // --- Feature scaling (in-place transforms) ---
+        // --- Distribution transforms (in-place) ---
         //
-        // normalizeColumns: scales each COLUMN of A independently so that every column
-        //   satisfies the chosen NormalizeMode criterion.
-        //   MinMax:  x ← (x − min) / (max − min), mapping the column to [0,1].
-        //            A constant column (max == min, or NaN range) has all entries set to 0.
-        //   ZScore:  x ← (x − mean) / stdDev using the POPULATION std dev (÷M_Rows).
-        //            A constant column (stdDev == 0, or NaN) has all entries set to 0.
+        // Each verb comes in three scopes:
+        //   <T> flat  — generic over vec + matrix (matrix is IUnsafefloatArray over flat row-major data).
+        //   *Rows     — per row of a floatMxN.
+        //   *Columns  — per column of a floatMxN (strided).
         //
-        //   Allocates two Allocator.Temp scratch vectors of length A.N_Cols, disposed before
-        //   return — callers on per-frame paths leak nothing (unlike tempfloatVec / arena temp).
+        // Matrix variants use function-local Allocator.Temp scratch vectors disposed before
+        // return — callers on per-frame paths leak nothing (unlike tempfloatVec / arena temp).
         //
-        // normalizeRows: identical semantics applied to each ROW independently.
-        //   Scratch vector length is A.M_Rows.
+        // Zero/constant-axis guards use !(x > 0) which is NaN-safe (catches 0 AND NaN).
 
-        /// <summary>
-        /// Normalizes each column of <paramref name="A"/> independently (in-place).
-        /// MinMax maps each column to [0,1]; ZScore standardises with population stdDev (÷M_Rows).
-        /// A constant column (MinMax: max==min; ZScore: stdDev==0, including NaN range) has its
-        /// entries set to 0 — no division by zero occurs.
-        /// Uses two Allocator.Temp scratch vectors of length A.N_Cols, freed before return.
-        /// </summary>
-        public static void normalizeColumns(ref floatMxN A, NormalizeMode mode)
+        // --- standardize: z-score (x − mean) / stdDev (population ÷ N). ---
+        // Constant axis (stdDev == 0) → zero-fill.
+        /// <summary>z-score standardize every element in-place: x ← (x − mean) / stdDev (population ÷ N).
+        /// Constant input (stdDev == 0) → zero-fill. Empty → no-op.</summary>
+        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
+        /// <b>whole-matrix</b> scope (all elements as a single distribution); use the
+        /// <c>Rows</c>/<c>Columns</c> variants for per-axis.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void standardize<T>(in T x) where T : unmanaged, IUnsafefloatArray
         {
-            if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("Cannot normalize an empty matrix.");
-
-            // Two Temp scratch vectors; both freed before return (no arena leak).
-            var s0 = new floatN(A.N_Cols, Allocator.Temp); // min  (MinMax) or mean   (ZScore)
-            var s1 = new floatN(A.N_Cols, Allocator.Temp); // max  (MinMax) or stdDev (ZScore)
-
-            if (mode == NormalizeMode.MinMax)
+            if (x.Data.Length == 0) return;
+            unsafe
             {
-                colMin(in A, ref s0);
-                colMax(in A, ref s1);
-
-                for (int c = 0; c < A.N_Cols; c++)
-                {
-                    float lo  = s0[c];
-                    float rng = s1[c] - lo;
-
-                    // !(rng > 0) is NaN-safe: catches zero range AND NaN inputs.
-                    if (!(rng > 0f))
-                    {
-                        for (int r = 0; r < A.M_Rows; r++) A[r, c] = 0f;
-                    }
-                    else
-                    {
-                        for (int r = 0; r < A.M_Rows; r++)
-                            A[r, c] = (A[r, c] - lo) / rng;
-                    }
-                }
+                float* ptr = x.Data.Ptr;
+                int n = x.Data.Length;
+                float m = (float)0;
+                for (int i = 0; i < n; i++) m += ptr[i];
+                m /= n;
+                float varAcc = (float)0;
+                for (int i = 0; i < n; i++) { float d = ptr[i] - m; varAcc += d * d; }
+                float sd = math.sqrt(varAcc / n);
+                if (!(sd > (float)0)) { for (int i = 0; i < n; i++) ptr[i] = (float)0; }
+                else                   { for (int i = 0; i < n; i++) ptr[i] = (ptr[i] - m) / sd; }
             }
-            else // ZScore
-            {
-                colMean(in A, ref s0);
-                // colStdDev uses population variance (÷M_Rows); allocates its own Temp internally.
-                colStdDev(in A, ref s1);
-
-                for (int c = 0; c < A.N_Cols; c++)
-                {
-                    float mu = s0[c];
-                    float sd = s1[c];
-
-                    // !(sd > 0) is NaN-safe: catches zero stdDev AND NaN inputs.
-                    if (!(sd > 0f))
-                    {
-                        for (int r = 0; r < A.M_Rows; r++) A[r, c] = 0f;
-                    }
-                    else
-                    {
-                        for (int r = 0; r < A.M_Rows; r++)
-                            A[r, c] = (A[r, c] - mu) / sd;
-                    }
-                }
-            }
-
-            s0.Dispose();
-            s1.Dispose();
         }
 
-        /// <summary>
-        /// Normalizes each row of <paramref name="A"/> independently (in-place).
-        /// MinMax maps each row to [0,1]; ZScore standardises with population stdDev (÷N_Cols).
-        /// A constant row (MinMax: max==min; ZScore: stdDev==0, including NaN range) has its
-        /// entries set to 0 — no division by zero occurs.
-        /// Uses two Allocator.Temp scratch vectors of length A.M_Rows, freed before return.
-        /// </summary>
-        public static void normalizeRows(ref floatMxN A, NormalizeMode mode)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void standardizeRows(ref floatMxN A)
         {
-            if (A.M_Rows == 0 || A.N_Cols == 0)
-                throw new System.InvalidOperationException("Cannot normalize an empty matrix.");
-
-            // Two Temp scratch vectors; both freed before return (no arena leak).
-            var s0 = new floatN(A.M_Rows, Allocator.Temp); // min  (MinMax) or mean   (ZScore)
-            var s1 = new floatN(A.M_Rows, Allocator.Temp); // max  (MinMax) or stdDev (ZScore)
-
-            if (mode == NormalizeMode.MinMax)
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            var s0 = new floatN(A.M_Rows, Allocator.Temp);
+            var s1 = new floatN(A.M_Rows, Allocator.Temp);
+            rowMean(in A, ref s0);
+            rowStdDev(in A, ref s1);
+            for (int r = 0; r < A.M_Rows; r++)
             {
-                rowMin(in A, ref s0);
-                rowMax(in A, ref s1);
+                float mu = s0[r], sd = s1[r];
+                if (!(sd > (float)0)) { for (int c = 0; c < A.N_Cols; c++) A[r, c] = (float)0; }
+                else                   { for (int c = 0; c < A.N_Cols; c++) A[r, c] = (A[r, c] - mu) / sd; }
+            }
+            s0.Dispose(); s1.Dispose();
+        }
 
-                for (int r = 0; r < A.M_Rows; r++)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void standardizeColumns(ref floatMxN A)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            var s0 = new floatN(A.N_Cols, Allocator.Temp); // column means
+            var s1 = new floatN(A.N_Cols, Allocator.Temp); // column std devs
+            // pass 1: compute column means into s0 (no extra Temp alloc — colMean uses ref dest)
+            colMean(in A, ref s0);
+            // pass 2: inline column variance using s0, store std dev into s1
+            // (avoids the extra Temp alloc that colStdDev → colVariance would make for its own means)
+            for (int c = 0; c < A.N_Cols; c++)
+                s1[c] = (float)0;
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
                 {
-                    float lo  = s0[r];
-                    float rng = s1[r] - lo;
+                    float d = A[r, c] - s0[c];
+                    s1[c] += d * d;
+                }
+            for (int c = 0; c < A.N_Cols; c++)
+                s1[c] = math.sqrt(s1[c] / A.M_Rows);
+            // pass 3: apply z-score in-place
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float mu = s0[c], sd = s1[c];
+                if (!(sd > (float)0)) { for (int r = 0; r < A.M_Rows; r++) A[r, c] = (float)0; }
+                else                   { for (int r = 0; r < A.M_Rows; r++) A[r, c] = (A[r, c] - mu) / sd; }
+            }
+            s0.Dispose(); s1.Dispose();
+        }
 
-                    // !(rng > 0) is NaN-safe: catches zero range AND NaN inputs.
-                    if (!(rng > 0f))
-                    {
-                        for (int c = 0; c < A.N_Cols; c++) A[r, c] = 0f;
-                    }
-                    else
-                    {
-                        for (int c = 0; c < A.N_Cols; c++)
-                            A[r, c] = (A[r, c] - lo) / rng;
-                    }
+        // --- rescale: min-max to [lo, hi]. No-arg overload maps to [0, 1]. ---
+        // Constant axis (max == min, NaN-safe) → lo.
+        /// <summary>Rescale every element in-place to [lo, hi] via min-max normalization.
+        /// The no-arg overload maps to [0, 1]. Constant input (max == min) → every element set to lo. Empty → no-op.</summary>
+        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
+        /// <b>whole-matrix</b> scope (all elements as a single distribution); use the
+        /// <c>Rows</c>/<c>Columns</c> variants for per-axis.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void rescale<T>(in T x) where T : unmanaged, IUnsafefloatArray
+            => rescale(in x, (float)0, (float)1);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void rescale<T>(in T x, float lo, float hi) where T : unmanaged, IUnsafefloatArray
+        {
+            if (x.Data.Length == 0) return;
+            unsafe
+            {
+                float* ptr = x.Data.Ptr;
+                int n = x.Data.Length;
+                float mn = ptr[0], mx = ptr[0];
+                for (int i = 1; i < n; i++)
+                {
+                    if (ptr[i] < mn) mn = ptr[i];
+                    if (ptr[i] > mx) mx = ptr[i];
+                }
+                float rng = mx - mn;
+                if (!(rng > (float)0)) { for (int i = 0; i < n; i++) ptr[i] = lo; }
+                else
+                {
+                    float sc = hi - lo;
+                    for (int i = 0; i < n; i++) ptr[i] = lo + ((ptr[i] - mn) / rng) * sc;
                 }
             }
-            else // ZScore
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void rescaleRows(ref floatMxN A) => rescaleRows(ref A, (float)0, (float)1);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void rescaleRows(ref floatMxN A, float lo, float hi)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            var s0 = new floatN(A.M_Rows, Allocator.Temp);
+            var s1 = new floatN(A.M_Rows, Allocator.Temp);
+            rowMin(in A, ref s0); rowMax(in A, ref s1);
+            for (int r = 0; r < A.M_Rows; r++)
             {
-                rowMean(in A, ref s0);
-                // rowStdDev uses population variance (÷N_Cols); computed inline (no extra alloc).
-                rowStdDev(in A, ref s1);
-
-                for (int r = 0; r < A.M_Rows; r++)
+                float mn = s0[r], rng = s1[r] - mn;
+                if (!(rng > (float)0)) { for (int c = 0; c < A.N_Cols; c++) A[r, c] = lo; }
+                else
                 {
-                    float mu = s0[r];
-                    float sd = s1[r];
-
-                    // !(sd > 0) is NaN-safe: catches zero stdDev AND NaN inputs.
-                    if (!(sd > 0f))
-                    {
-                        for (int c = 0; c < A.N_Cols; c++) A[r, c] = 0f;
-                    }
-                    else
-                    {
-                        for (int c = 0; c < A.N_Cols; c++)
-                            A[r, c] = (A[r, c] - mu) / sd;
-                    }
+                    float sc = hi - lo;
+                    for (int c = 0; c < A.N_Cols; c++) A[r, c] = lo + ((A[r, c] - mn) / rng) * sc;
                 }
             }
+            s0.Dispose(); s1.Dispose();
+        }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void rescaleColumns(ref floatMxN A) => rescaleColumns(ref A, (float)0, (float)1);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void rescaleColumns(ref floatMxN A, float lo, float hi)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            var s0 = new floatN(A.N_Cols, Allocator.Temp);
+            var s1 = new floatN(A.N_Cols, Allocator.Temp);
+            colMin(in A, ref s0); colMax(in A, ref s1);
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float mn = s0[c], rng = s1[c] - mn;
+                if (!(rng > (float)0)) { for (int r = 0; r < A.M_Rows; r++) A[r, c] = lo; }
+                else
+                {
+                    float sc = hi - lo;
+                    for (int r = 0; r < A.M_Rows; r++) A[r, c] = lo + ((A[r, c] - mn) / rng) * sc;
+                }
+            }
+            s0.Dispose(); s1.Dispose();
+        }
+
+        // --- center: subtract mean only (x ← x − mean). No-op on empty. ---
+        /// <summary>Center every element in-place by subtracting the mean: x ← x − mean. Empty → no-op.</summary>
+        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
+        /// <b>whole-matrix</b> scope (all elements as a single distribution); use the
+        /// <c>Rows</c>/<c>Columns</c> variants for per-axis.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void center<T>(in T x) where T : unmanaged, IUnsafefloatArray
+        {
+            if (x.Data.Length == 0) return;
+            unsafe
+            {
+                float* ptr = x.Data.Ptr;
+                int n = x.Data.Length;
+                float m = (float)0;
+                for (int i = 0; i < n; i++) m += ptr[i];
+                m /= n;
+                for (int i = 0; i < n; i++) ptr[i] -= m;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void centerRows(ref floatMxN A)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            var s0 = new floatN(A.M_Rows, Allocator.Temp);
+            rowMean(in A, ref s0);
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float m = s0[r];
+                for (int c = 0; c < A.N_Cols; c++) A[r, c] -= m;
+            }
             s0.Dispose();
-            s1.Dispose();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void centerColumns(ref floatMxN A)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            var s0 = new floatN(A.N_Cols, Allocator.Temp);
+            colMean(in A, ref s0);
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float m = s0[c];
+                for (int r = 0; r < A.M_Rows; r++) A[r, c] -= m;
+            }
+            s0.Dispose();
+        }
+
+        // --- maxAbs: divide by max|x|, mapping into [−1, 1]. ---
+        // All-zero axis → leave unchanged (no divide). NaN-safe guard.
+        /// <summary>Divide every element in-place by max|x|, mapping data into [−1, 1].
+        /// All-zero (or NaN-only) input → left unchanged. Empty → no-op.</summary>
+        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
+        /// <b>whole-matrix</b> scope (all elements as a single distribution); use the
+        /// <c>Rows</c>/<c>Columns</c> variants for per-axis.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void maxAbs<T>(in T x) where T : unmanaged, IUnsafefloatArray
+        {
+            if (x.Data.Length == 0) return;
+            unsafe
+            {
+                float* ptr = x.Data.Ptr;
+                int n = x.Data.Length;
+                float mAbs = (float)0;
+                for (int i = 0; i < n; i++) mAbs = math.max(mAbs, math.abs(ptr[i]));
+                if (!(mAbs > (float)0)) return;
+                for (int i = 0; i < n; i++) ptr[i] /= mAbs;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void maxAbsRows(ref floatMxN A)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float mAbs = (float)0;
+                for (int c = 0; c < A.N_Cols; c++) mAbs = math.max(mAbs, math.abs(A[r, c]));
+                if (!(mAbs > (float)0)) continue;
+                for (int c = 0; c < A.N_Cols; c++) A[r, c] /= mAbs;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void maxAbsColumns(ref floatMxN A)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float mAbs = (float)0;
+                for (int r = 0; r < A.M_Rows; r++) mAbs = math.max(mAbs, math.abs(A[r, c]));
+                if (!(mAbs > (float)0)) continue;
+                for (int r = 0; r < A.M_Rows; r++) A[r, c] /= mAbs;
+            }
+        }
+
+        // --- softmax: numerically stable eˣ/Σeˣ. Subtract axis max before exp. ---
+        // In-place, no allocation. Empty → no-op.
+        /// <summary>Apply numerically stable softmax in-place: x ← exp(x − max(x)) / Σ exp(x − max(x)).
+        /// No allocation. Empty → no-op.</summary>
+        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
+        /// <b>whole-matrix</b> scope (all elements as a single distribution); use the
+        /// <c>Rows</c>/<c>Columns</c> variants for per-axis.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void softmax<T>(in T x) where T : unmanaged, IUnsafefloatArray
+        {
+            if (x.Data.Length == 0) return;
+            unsafe
+            {
+                float* ptr = x.Data.Ptr;
+                int n = x.Data.Length;
+                float maxVal = ptr[0];
+                for (int i = 1; i < n; i++) if (ptr[i] > maxVal) maxVal = ptr[i];
+                float expSum = (float)0;
+                for (int i = 0; i < n; i++) { ptr[i] = math.exp(ptr[i] - maxVal); expSum += ptr[i]; }
+                for (int i = 0; i < n; i++) ptr[i] /= expSum;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void softmaxRows(ref floatMxN A)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            for (int r = 0; r < A.M_Rows; r++)
+            {
+                float maxVal = A[r, 0];
+                for (int c = 1; c < A.N_Cols; c++) if (A[r, c] > maxVal) maxVal = A[r, c];
+                float expSum = (float)0;
+                for (int c = 0; c < A.N_Cols; c++) { A[r, c] = math.exp(A[r, c] - maxVal); expSum += A[r, c]; }
+                for (int c = 0; c < A.N_Cols; c++) A[r, c] /= expSum;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void softmaxColumns(ref floatMxN A)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0) return;
+            for (int c = 0; c < A.N_Cols; c++)
+            {
+                float maxVal = A[0, c];
+                for (int r = 1; r < A.M_Rows; r++) if (A[r, c] > maxVal) maxVal = A[r, c];
+                float expSum = (float)0;
+                for (int r = 0; r < A.M_Rows; r++) { A[r, c] = math.exp(A[r, c] - maxVal); expSum += A[r, c]; }
+                for (int r = 0; r < A.M_Rows; r++) A[r, c] /= expSum;
+            }
         }
 
         #endregion

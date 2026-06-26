@@ -54,7 +54,7 @@ namespace LinearAlgebra
         public static void clamp([NoAlias] iProxy* x, int n, iProxy min, iProxy max)
         {
             for (int i = 0; i < n; i++)
-                x[i] = x[i] > max ? max : x[i] < min ? min : x[i];
+                x[i] = (iProxy)math.max(min, math.min(max, x[i]));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
