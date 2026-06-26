@@ -135,6 +135,7 @@ Here's a simple example:
 - ✅ Condition number, determinant, trace, rank, vector/matrix norms
 - ✅ Zero-allocation variants of the ops and solvers for hot loops (preallocated outputs, reusable workspaces)
 - ✅ Find/query: arg-min/max (per-row/col and abs), nearest/farthest and k-nearest rows/columns by metric (Manhattan/Euclidean/Chebyshev/cosine/dot), within-radius selection, find-value and nonzero — for float, double, int, short and long
+- ✅ Random: in-place caller-stream refill; distribution samplers (`IfProxySampler`) by inverse-transform — uniform, exponential, Rayleigh, Weibull, Cauchy, logistic, Pareto, triangular — plus Gaussian (Box–Muller); integer/bool/Bernoulli refill; weighted pick, shuffle/permutation, sample-without-replacement; and structured matrices — multivariate Normal (via Cholesky), Haar-orthogonal, SPD/condition-controlled, fixed-rank, row-stochastic
 
 ## TODO
 - Better arena management and standalone vec/mat management (without arena allocation)
