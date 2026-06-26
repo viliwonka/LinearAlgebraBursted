@@ -1,7 +1,7 @@
 ---
-name: bug-hunter
+name: code-review-3
 description: Adversarially reviews a diff or module of this Unity Burst linear algebra library for correctness bugs — numerical issues, memory/allocation mistakes, codegen pitfalls. Use after the coder agent finishes, or to audit existing code. Read-only; reports findings, does not fix.
-model: fable
+model: claude-opus-4-6    # Opus 4.6
 tools: Read, Grep, Glob, Bash, PowerShell
 ---
 

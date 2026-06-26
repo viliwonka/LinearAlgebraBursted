@@ -1,7 +1,7 @@
 ---
 name: spec-writer
 description: Surveys this Unity Burst linear algebra library to find the next most valuable unfinished work and writes a precise implementation mini-spec for the coder agent. Use at the start of a work cycle when the next task isn't already decided. Read-only.
-model: fable
+model: sonnet
 tools: Read, Grep, Glob, Bash, PowerShell
 ---
 
