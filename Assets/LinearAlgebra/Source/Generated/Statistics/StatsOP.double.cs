@@ -728,6 +728,153 @@ namespace LinearAlgebra.Stats
             return R;
         }
 
+        // --- Feature scaling (in-place transforms) ---
+        //
+        // normalizeColumns: scales each COLUMN of A independently so that every column
+        //   satisfies the chosen NormalizeMode criterion.
+        //   MinMax:  x ← (x − min) / (max − min), mapping the column to [0,1].
+        //            A constant column (max == min, or NaN range) has all entries set to 0.
+        //   ZScore:  x ← (x − mean) / stdDev using the POPULATION std dev (÷M_Rows).
+        //            A constant column (stdDev == 0, or NaN) has all entries set to 0.
+        //
+        //   Allocates two Allocator.Temp scratch vectors of length A.N_Cols, disposed before
+        //   return — callers on per-frame paths leak nothing (unlike tempdoubleVec / arena temp).
+        //
+        // normalizeRows: identical semantics applied to each ROW independently.
+        //   Scratch vector length is A.M_Rows.
+
+        /// <summary>
+        /// Normalizes each column of <paramref name="A"/> independently (in-place).
+        /// MinMax maps each column to [0,1]; ZScore standardises with population stdDev (÷M_Rows).
+        /// A constant column (MinMax: max==min; ZScore: stdDev==0, including NaN range) has its
+        /// entries set to 0 — no division by zero occurs.
+        /// Uses two Allocator.Temp scratch vectors of length A.N_Cols, freed before return.
+        /// </summary>
+        public static void normalizeColumns(ref doubleMxN A, NormalizeMode mode)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("Cannot normalize an empty matrix.");
+
+            // Two Temp scratch vectors; both freed before return (no arena leak).
+            var s0 = new doubleN(A.N_Cols, Allocator.Temp); // min  (MinMax) or mean   (ZScore)
+            var s1 = new doubleN(A.N_Cols, Allocator.Temp); // max  (MinMax) or stdDev (ZScore)
+
+            if (mode == NormalizeMode.MinMax)
+            {
+                colMin(in A, ref s0);
+                colMax(in A, ref s1);
+
+                for (int c = 0; c < A.N_Cols; c++)
+                {
+                    double lo  = s0[c];
+                    double rng = s1[c] - lo;
+
+                    // !(rng > 0) is NaN-safe: catches zero range AND NaN inputs.
+                    if (!(rng > 0f))
+                    {
+                        for (int r = 0; r < A.M_Rows; r++) A[r, c] = 0f;
+                    }
+                    else
+                    {
+                        for (int r = 0; r < A.M_Rows; r++)
+                            A[r, c] = (A[r, c] - lo) / rng;
+                    }
+                }
+            }
+            else // ZScore
+            {
+                colMean(in A, ref s0);
+                // colStdDev uses population variance (÷M_Rows); allocates its own Temp internally.
+                colStdDev(in A, ref s1);
+
+                for (int c = 0; c < A.N_Cols; c++)
+                {
+                    double mu = s0[c];
+                    double sd = s1[c];
+
+                    // !(sd > 0) is NaN-safe: catches zero stdDev AND NaN inputs.
+                    if (!(sd > 0f))
+                    {
+                        for (int r = 0; r < A.M_Rows; r++) A[r, c] = 0f;
+                    }
+                    else
+                    {
+                        for (int r = 0; r < A.M_Rows; r++)
+                            A[r, c] = (A[r, c] - mu) / sd;
+                    }
+                }
+            }
+
+            s0.Dispose();
+            s1.Dispose();
+        }
+
+        /// <summary>
+        /// Normalizes each row of <paramref name="A"/> independently (in-place).
+        /// MinMax maps each row to [0,1]; ZScore standardises with population stdDev (÷N_Cols).
+        /// A constant row (MinMax: max==min; ZScore: stdDev==0, including NaN range) has its
+        /// entries set to 0 — no division by zero occurs.
+        /// Uses two Allocator.Temp scratch vectors of length A.M_Rows, freed before return.
+        /// </summary>
+        public static void normalizeRows(ref doubleMxN A, NormalizeMode mode)
+        {
+            if (A.M_Rows == 0 || A.N_Cols == 0)
+                throw new System.InvalidOperationException("Cannot normalize an empty matrix.");
+
+            // Two Temp scratch vectors; both freed before return (no arena leak).
+            var s0 = new doubleN(A.M_Rows, Allocator.Temp); // min  (MinMax) or mean   (ZScore)
+            var s1 = new doubleN(A.M_Rows, Allocator.Temp); // max  (MinMax) or stdDev (ZScore)
+
+            if (mode == NormalizeMode.MinMax)
+            {
+                rowMin(in A, ref s0);
+                rowMax(in A, ref s1);
+
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double lo  = s0[r];
+                    double rng = s1[r] - lo;
+
+                    // !(rng > 0) is NaN-safe: catches zero range AND NaN inputs.
+                    if (!(rng > 0f))
+                    {
+                        for (int c = 0; c < A.N_Cols; c++) A[r, c] = 0f;
+                    }
+                    else
+                    {
+                        for (int c = 0; c < A.N_Cols; c++)
+                            A[r, c] = (A[r, c] - lo) / rng;
+                    }
+                }
+            }
+            else // ZScore
+            {
+                rowMean(in A, ref s0);
+                // rowStdDev uses population variance (÷N_Cols); computed inline (no extra alloc).
+                rowStdDev(in A, ref s1);
+
+                for (int r = 0; r < A.M_Rows; r++)
+                {
+                    double mu = s0[r];
+                    double sd = s1[r];
+
+                    // !(sd > 0) is NaN-safe: catches zero stdDev AND NaN inputs.
+                    if (!(sd > 0f))
+                    {
+                        for (int c = 0; c < A.N_Cols; c++) A[r, c] = 0f;
+                    }
+                    else
+                    {
+                        for (int c = 0; c < A.N_Cols; c++)
+                            A[r, c] = (A[r, c] - mu) / sd;
+                    }
+                }
+            }
+
+            s0.Dispose();
+            s1.Dispose();
+        }
+
         #endregion
     }
 }
