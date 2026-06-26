@@ -110,6 +110,81 @@ namespace LinearAlgebra
             for (int i = 0; i < len; i++)
                 dest[i] = s.Next(ref rng);
         }
+
+        // ---- weighted pick ----
+
+        // Private helper: cumulative-scan pick given a pre-validated total.
+        // Called by both weightedPick and weightedPickInpl so validation + summation
+        // run only once per public call (not once per draw in the Inpl case).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static int weightedPickFromTotal(in fProxyN weights, fProxy total, ref Random rng)
+        {
+            fProxy r = rng.NextFProxy() * total;
+            fProxy acc = (fProxy)0;
+            int n = weights.N;
+            for (int i = 0; i < n; i++)
+            {
+                acc += weights[i];
+                if (acc > r)
+                    return i;
+            }
+            return n - 1; // clamp to last index for FP edge cases
+        }
+
+        // Shared validation + summation used by both public entry points.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static fProxy weightedPickValidateAndSum(in fProxyN weights, string callerName)
+        {
+            int n = weights.N;
+            if (n == 0)
+                throw new ArgumentException(callerName + ": weights must be non-empty");
+            fProxy total = (fProxy)0;
+            for (int i = 0; i < n; i++)
+            {
+                if (!math.isfinite(weights[i]) || !(weights[i] >= (fProxy)0))
+                    throw new ArgumentException(callerName + ": all weights must be finite and >= 0");
+                total += weights[i];
+            }
+            if (!(total > (fProxy)0))
+                throw new ArgumentException(callerName + ": total weight must be > 0");
+            return total;
+        }
+
+        /// <summary>
+        /// Picks one index from <c>[0, weights.N)</c> with probability proportional to
+        /// <paramref name="weights"/> using a linear scan over cumulative weights.
+        /// Algorithm: validate; <c>total = Σweights</c>; <c>r = rng.NextFProxy() × total</c>;
+        /// walk accumulating until <c>acc &gt; r</c>; return that index.
+        /// Clamps to the last index to handle FP edge cases where rounding prevents an early
+        /// return. O(N); no allocations.
+        /// Throws <see cref="ArgumentException"/> if: weights is empty, any weight is
+        /// non-finite or &lt; 0 (+Inf and NaN both throw), or total is 0.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int weightedPick(in fProxyN weights, ref Random rng)
+        {
+            fProxy total = weightedPickValidateAndSum(in weights, "fProxyRandomOP.weightedPick");
+            return weightedPickFromTotal(in weights, total, ref rng);
+        }
+
+        /// <summary>
+        /// Fills <paramref name="dest"/> with <c>dest.N</c> independent weighted picks
+        /// (with replacement) drawn from <paramref name="weights"/>. Validates and computes
+        /// the total once before the draw loop (so invalid weights throw even when
+        /// <c>dest.N == 0</c>). Zero-alloc; O(N + k) where k = dest.N.
+        /// Throws <see cref="ArgumentException"/> if: weights is empty, any weight is
+        /// non-finite or &lt; 0 (+Inf and NaN both throw), or total is 0.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void weightedPickInpl(in fProxyN weights, ref Indices dest, ref Random rng)
+        {
+            // Validate + sum once before the draw loop so bad weights throw
+            // even when dest.N == 0 (empty destination).
+            fProxy total = weightedPickValidateAndSum(in weights, "fProxyRandomOP.weightedPickInpl");
+            int k = dest.N;
+            for (int i = 0; i < k; i++)
+                dest[i] = weightedPickFromTotal(in weights, total, ref rng);
+        }
     }
 
     // ========================================================================
@@ -387,10 +462,13 @@ namespace LinearAlgebra
         /// If <c>u &lt; fc</c>: <c>a + sqrt(u·(b−a)·(c−a))</c>.
         /// Else: <c>b − sqrt((1−u)·(b−a)·(b−c))</c>.
         /// Parameters: <paramref name="a"/> = low, <paramref name="c"/> = mode, <paramref name="b"/> = high.
+        /// <para>Point-mass fast-path: if b == a (i.e. low == mode == high), returns a directly
+        /// to avoid 0/0 in the fc computation.</para>
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy TriangularICDF(fProxy u, fProxy a, fProxy c, fProxy b)
         {
+            if (b == a) return a; // point-mass: low == mode == high, fc = 0/0 = NaN otherwise
             fProxy fc = (c - a) / (b - a);
             if (u < fc)
                 return a + math.sqrt(u * (b - a) * (c - a));
@@ -441,8 +519,8 @@ namespace LinearAlgebra
         /// Returns one Gaussian variate. Every other call returns the fully-scaled spare cached
         /// by the previous Box–Muller pair (no RNG advance). The spare is stored fully scaled so
         /// that a mid-fill change to mean/std cannot silently rescale a pending value.
-        /// <c>math.sincos</c> is not used here: in the template compilation pass
-        /// <c>out fProxy</c> does not match <c>out float</c>, so <c>math.sin</c>/<c>math.cos</c>
+        /// <c>math.sincos</c> is not used here because its <c>out</c>-parameter overload is not
+        /// available via the type-proxy template mechanism; <c>math.sin</c> and <c>math.cos</c>
         /// are called separately instead.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
