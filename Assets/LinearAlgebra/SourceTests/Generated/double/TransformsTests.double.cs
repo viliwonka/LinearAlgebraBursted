@@ -62,7 +62,6 @@ public class doubleTransformsTests
             // clamp
             ClampVector,
             ClampMatrix,
-            ClampLoGreaterThanHi,
         }
 
         public TestType Type;
@@ -116,7 +115,6 @@ public class doubleTransformsTests
 
                 case TestType.ClampVector:              ClampVector(); break;
                 case TestType.ClampMatrix:              ClampMatrix(); break;
-                case TestType.ClampLoGreaterThanHi:     ClampLoGreaterThanHi(); break;
             }
         }
 
@@ -642,19 +640,6 @@ public class doubleTransformsTests
             arena.Dispose();
         }
 
-        // Documented degenerate case: lo > hi → math.clamp collapses every element to lo.
-        void ClampLoGreaterThanHi()
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var v = arena.doubleVec(3);
-            v[0] = -5f; v[1] = 0f; v[2] = 5f;
-
-            doubleOP.clampInpl(in v, (double)4f, (double)(-1f)); // lo > hi
-            for (int i = 0; i < 3; i++)
-                AssertClose(v[i], (double)4f, (double)EPS); // all collapse to lo
-            arena.Dispose();
-        }
-
         // ---------------- assertion helpers ----------------
 
         // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
@@ -709,4 +694,15 @@ public class doubleTransformsTests
 
     [TestCaseSource("GetEnums")]
     public void TransformCases(TestJob.TestType type) => RunJob(type);
+
+    // lo > hi must throw ArgumentException — called directly on the test thread, not inside a Burst job.
+    [Test]
+    public void ClampLoGreaterThanHiThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var v = arena.doubleVec(3);
+        v[0] = -5f; v[1] = 0f; v[2] = 5f;
+        Assert.Throws<ArgumentException>(() => doubleOP.clampInpl(in v, (double)4f, (double)(-1f)));
+        arena.Dispose();
+    }
 }

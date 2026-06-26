@@ -8,14 +8,9 @@ using Unity.Collections;
 
 using Unity.Jobs;
 
-// Tests for the brand-new integer clampInpl<T> surface (int / short / long), vec + matrix.
+// Tests for the integer clampInpl<T> surface (int / short / long), vec + matrix.
 // Semantics mirror the float clamp: below lo→lo, above hi→hi, in-range untouched.
-//
-// NOTE: the documented degenerate case (lo > hi → every element collapses to lo) currently
-// FAILS for the integer kernel — see ClampLoGreaterThanHiCollapsesToLo below. The integer
-// kernel (mathUnsafeiProxy.clamp) uses a `x > max ? max : x < min ? min : x` ternary chain
-// that does NOT collapse to lo when lo > hi (e.g. value 9, lo 6, hi -1 → -1, not 6), unlike
-// the float kernel (math.clamp = max(min, min(max,x))) and unlike the kernel's own docstring.
+// Passing lo > hi throws ArgumentException (eager validation, same as Cholesky / FFT guards).
 public class iProxyClampTests
 {
     [BurstCompile]
@@ -95,24 +90,14 @@ public class iProxyClampTests
         new ClampTestJob() { Type = type }.Run();
     }
 
-    // Documented contract (per the clampInpl docstring AND the float sibling): when lo > hi every
-    // element collapses to lo. Run on the main thread (managed) so the bug surfaces as a clean
-    // NUnit assertion failure rather than a Burst-aborting exception.
-    //
-    // EXPECTED TO FAIL against the current integer kernel — this is an intentional bug-exposing
-    // regression test (the production fix is to make mathUnsafeiProxy.clamp use
-    // max(min, min(max, x)) like the float kernel). Do not weaken to the buggy behavior.
+    // lo > hi must throw ArgumentException — called directly on the test thread, not inside a Burst job.
     [Test]
-    public void ClampLoGreaterThanHiCollapsesToLo()
+    public void ClampLoGreaterThanHiThrows()
     {
         var arena = new Arena(Allocator.Persistent);
         var v = arena.iProxyVec(3, 0);
         v[0] = (iProxy)(-4); v[1] = (iProxy)0; v[2] = (iProxy)9;
-
-        iProxyOP.clampInpl(in v, (iProxy)6, (iProxy)(-1)); // lo > hi
-        for (int i = 0; i < 3; i++)
-            Assert.AreEqual((iProxy)6, v[i], $"index {i}: lo>hi must collapse to lo (6)");
-
+        Assert.Throws<ArgumentException>(() => iProxyOP.clampInpl(in v, (iProxy)6, (iProxy)(-1)));
         arena.Dispose();
     }
 }

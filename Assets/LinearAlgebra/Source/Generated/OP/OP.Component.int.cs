@@ -1,5 +1,6 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
+using System;
 using System.Runtime.CompilerServices;
 
 using Unity.Burst;
@@ -130,12 +131,12 @@ namespace LinearAlgebra
 
         /// <summary>Clamp every element of <paramref name="x"/> to [<paramref name="lo"/>, <paramref name="hi"/>] in-place.
         /// Delegates to the mathUnsafe clamp kernel; no allocation.</summary>
-        /// <remarks>Precondition: <paramref name="lo"/> must be less than or equal to <paramref name="hi"/>.
-        /// If <c>lo &gt; hi</c>, every element collapses to <paramref name="lo"/>, per <c>math.clamp</c> semantics.
-        /// No runtime guard is added to keep the hot path clean — validate inputs at the call site.</remarks>
+        /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void clampInpl<T>(in T x, int lo, int hi) where T : unmanaged, IUnsafeintArray
         {
+            if (lo > hi)
+                throw new ArgumentException("clampInpl: lo must be <= hi");
             unsafe
             {
                 mathUnsafeint.clamp(x.Data.Ptr, x.Data.Length, lo, hi);
