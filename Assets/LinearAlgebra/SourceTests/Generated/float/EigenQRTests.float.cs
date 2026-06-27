@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -50,6 +51,8 @@ public class floatEigenQRTests
             SymmetricCrossCheckJacobi,
             TraceInvariant,
             NilpotentJordan,
+            FrankRealPositive,
+            CompanionGalleryRoots,
         }
 
         public TestType Type;
@@ -70,6 +73,8 @@ public class floatEigenQRTests
                 case TestType.SymmetricCrossCheckJacobi: SymmetricCrossCheckJacobi(); break;
                 case TestType.TraceInvariant:            TraceInvariant();            break;
                 case TestType.NilpotentJordan:           NilpotentJordan();           break;
+                case TestType.FrankRealPositive:         FrankRealPositive();         break;
+                case TestType.CompanionGalleryRoots:     CompanionGalleryRoots();     break;
             }
         }
 
@@ -336,6 +341,77 @@ public class floatEigenQRTests
                     AssertClose(im[i], 0f, (float)1E-5f);
                 }
             }
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Frank matrix — upper Hessenberg, det=1.
+        // Known property: ALL eigenvalues are real and positive (and come in reciprocal pairs).
+        // For n=5 the spectrum is {10.063, 3.557, 1.0, 0.281, 0.0994}: well separated, smallest
+        // ~0.0994, so a 1E-2 positivity band is robust under float QR. Also checks sum(re)==trace.
+        void FrankRealPositive()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+            var A = arena.floatFrank(n);
+
+            // trace must be read before eigenvaluesQR destroys A.
+            float trace = 0;
+            for (int i = 0; i < n; i++) trace += A[i, i];
+
+            var re = arena.floatVec(n);
+            var im = arena.floatVec(n);
+            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            RecordEq(ok ? 1 : 0, 1);
+
+            float tol = (float)1E-2f;
+            float posTol = (float)1E-2f;
+            float sumRe = 0;
+            for (int i = 0; i < n; i++)
+            {
+                AssertClose(im[i], 0f, tol);     // real spectrum
+                sumRe += re[i];
+
+                bool pos = re[i] > posTol;       // positive spectrum
+                if (!pos && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1;
+                    Fail[1] = re[i];
+                    Fail[2] = posTol;
+                    Fail[3] = (float)i;
+                }
+                Assert.IsTrue(pos);
+            }
+
+            AssertClose(sumRe, trace, (float)1E-2f * ((float)1 + math.abs(trace)));
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Special): companion matrix of the monic polynomial
+        // (x-1)(x-2)(x-3)(x-4) = x^4 - 10x^3 + 35x^2 - 50x + 24, built via the gallery generator
+        // from coeffs {24,-50,35,-10}. Eigenvalues equal the roots {1,2,3,4}; sorted desc -> {4,3,2,1}.
+        void CompanionGalleryRoots()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 4;
+            var coeffs = arena.floatVec(n);
+            coeffs[0] = 24f; coeffs[1] = -50f; coeffs[2] = 35f; coeffs[3] = -10f;
+
+            var A = arena.floatCompanion(in coeffs);
+
+            var re = arena.floatVec(n);
+            var im = arena.floatVec(n);
+            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            RecordEq(ok ? 1 : 0, 1);
+
+            // companion eigenproblems are mildly stiff; scale-relative tolerance.
+            float tol = (float)1E-2f;
+            AssertClose(re[0], 4f, tol); AssertClose(re[1], 3f, tol);
+            AssertClose(re[2], 2f, tol); AssertClose(re[3], 1f, tol);
+            for (int i = 0; i < n; i++) AssertClose(im[i], 0f, tol);
 
             arena.Dispose();
         }

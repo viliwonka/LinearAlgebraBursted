@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -51,6 +52,7 @@ public class fProxyOrthoColumnPivotTests
             FirstPivotLargestColumn,
             RankRevealingDeficient,
             KahanNoPivot,
+            KahanGalleryReconstruct,
             SingleElement,
             AllZero,
             ZeroColumnMiddle,
@@ -71,6 +73,7 @@ public class fProxyOrthoColumnPivotTests
                 case TestType.FirstPivotLargestColumn:  FirstPivotLargestColumn();  break;
                 case TestType.RankRevealingDeficient:   RankRevealingDeficient();   break;
                 case TestType.KahanNoPivot:             KahanNoPivot();             break;
+                case TestType.KahanGalleryReconstruct:  KahanGalleryReconstruct();  break;
                 case TestType.SingleElement:            SingleElement();            break;
                 case TestType.AllZero:                  AllZero();                  break;
                 case TestType.ZeroColumnMiddle:         ZeroColumnMiddle();         break;
@@ -232,6 +235,31 @@ public class fProxyOrthoColumnPivotTests
             // No pivoting: P must be the identity permutation.
             for (int d = 0; d < dim; d++)
                 RecordEq(P[d], d);
+
+            P.Dispose();
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Special): n=8 Kahan matrix via the gallery generator (built
+        // from theta, K[i,i]=s^i, K[i,j]=-c·s^i). It is ill-conditioned — the canonical QRCP stress
+        // case. Independent of whether any pivot fires, the factorisation must satisfy the defining
+        // properties: A·P ≈ Q·R, R upper-triangular, Q orthogonal, and |R[d,d]| non-increasing
+        // (all checked by AssertQRCP). Uses a different n/theta than KahanNoPivot for extra coverage.
+        void KahanGalleryReconstruct()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 8;
+            fProxy theta = (fProxy)1.2f; // c=cos, s=sin both comfortably away from 0
+
+            var Q = arena.fProxyKahan(dim, theta);
+            var R = arena.fProxyMat(dim);
+            var P = new Pivot(dim, Allocator.Persistent);
+            var A = Q.Copy();
+
+            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+
+            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
 
             P.Dispose();
             arena.Dispose();

@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using LinearAlgebra.Stats;
 
 using NUnit.Framework;
@@ -29,6 +30,9 @@ public class doubleEigenTests
             EigenZero,
             EigenRank1Projection,
             EigenLaplacianSingular,
+            EigenClement,
+            EigenFiedler,
+            EigenDingDong,
             EigenNonConvergence,
             // powerIteration
             PowerDiagonalDominant,
@@ -73,6 +77,15 @@ public class doubleEigenTests
                     break;
                 case TestType.EigenLaplacianSingular:
                     EigenLaplacianSingular();
+                    break;
+                case TestType.EigenClement:
+                    EigenClement();
+                    break;
+                case TestType.EigenFiedler:
+                    EigenFiedler();
+                    break;
+                case TestType.EigenDingDong:
+                    EigenDingDong();
                     break;
                 case TestType.EigenNonConvergence:
                     EigenNonConvergence();
@@ -474,6 +487,141 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
             Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Clement matrix — symmetric tridiagonal with
+        // zero diagonal whose eigenvalues are EXACTLY the integer-spaced set {n-1, n-3, ..., -(n-1)}
+        // = {4, 2, 0, -2, -4} for n=5 (symmetric about 0, trace 0). Well-separated spectrum, so a
+        // 1000*ZeroTreshold absolute tolerance comfortably covers float Jacobi noise.
+        public void EigenClement()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var A = arena.doubleClement(n);
+            var Aorig = A.Copy();
+
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            Assert.IsTrue(converged);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            double tol = (double)1000 * Consts.doubleZeroTreshold;
+            AssertClose(eig[0], (double)4, tol);
+            AssertClose(eig[1], (double)2, tol);
+            AssertClose(eig[2], (double)0, tol);
+            AssertClose(eig[3], (double)(-2), tol);
+            AssertClose(eig[4], (double)(-4), tol);
+
+            AssertDescending(in eig, n);
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Fiedler distance matrix F[i,j]=|i-j|. Known
+        // inertia: EXACTLY ONE positive eigenvalue and n-1 negative ones. For n=5 the spectrum is
+        // {8.288, -0.558, -0.764, -1.730, -5.236}; the smallest gap from 0 is ~0.558, so a 1E-2 band
+        // cleanly separates the signs while staying far above float Jacobi noise. Descending order
+        // means the single positive value lands at eig[0].
+        public void EigenFiedler()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var A = arena.doubleFiedler(n);
+            var Aorig = A.Copy();
+
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            Assert.IsTrue(converged);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            double band = (double)1E-2f;
+
+            // The single positive eigenvalue is the largest (descending) -> eig[0] > band.
+            bool topPos = eig[0] > band;
+            if (!topPos && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1;
+                Fail[1] = eig[0];
+                Fail[2] = band;
+                Fail[3] = (double)0;
+            }
+            Assert.IsTrue(topPos);
+
+            // The remaining n-1 eigenvalues are all strictly negative.
+            for (int i = 1; i < n; i++)
+            {
+                bool isNeg = eig[i] < -band;
+                if (!isNeg && Fail[0] == (double)0)
+                {
+                    Fail[0] = (double)1;
+                    Fail[1] = eig[i];
+                    Fail[2] = -band;
+                    Fail[3] = (double)i;
+                }
+                Assert.IsTrue(isNeg);
+            }
+
+            AssertDescending(in eig, n);
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1000 * Consts.doubleZeroTreshold));
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 DingDong symmetric Hankel matrix. Known
+        // property: every eigenvalue lies strictly inside (-pi/2, pi/2), clustering near +-pi/2.
+        // For n=5 the extreme eigenvalues are ~+-1.5707..., ~1.7e-6 below pi/2, so a small margin
+        // absorbs Jacobi error while still asserting the bound is not exceeded.
+        public void EigenDingDong()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var A = arena.doubleDingDong(n);
+            var Aorig = A.Copy();
+
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            Assert.IsTrue(converged);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            double half = (double)(Unity.Mathematics.math.PI_DBL * 0.5);
+            double margin = (double)1000 * Consts.doubleZeroTreshold;
+
+            for (int i = 0; i < n; i++)
+            {
+                bool inBand = eig[i] <= half + margin && eig[i] >= -half - margin;
+                if (!inBand && Fail[0] == (double)0)
+                {
+                    Fail[0] = (double)1;
+                    Fail[1] = eig[i];
+                    Fail[2] = half;
+                    Fail[3] = (double)i;
+                }
+                Assert.IsTrue(inBand);
+            }
+
+            AssertDescending(in eig, n);
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+            Assert.IsTrue(Analysis.IsOrthogonal(V, margin));
 
             arena.Dispose();
         }

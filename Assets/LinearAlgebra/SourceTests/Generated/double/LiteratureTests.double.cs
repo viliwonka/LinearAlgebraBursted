@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -56,13 +57,9 @@ public class doubleLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var V = arena.doubleMat(n, n);
-            for (int i = 0; i < n; i++)
-            {
-                double xi = (double)(i + 1);   // nodes 1,2,3,4
-                double p = (double)1;
-                for (int j = 0; j < n; j++) { V[i, j] = p; p *= xi; }
-            }
+            var nodes = arena.doubleVec(n);
+            for (int i = 0; i < n; i++) nodes[i] = (double)(i + 1);   // nodes 1,2,3,4
+            var V = arena.doubleVandermonde(in nodes);
 
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
@@ -110,8 +107,7 @@ public class doubleLiteratureTests
             xTrue[0] = (double)1; xTrue[1] = (double)2; xTrue[2] = (double)3;
 
             // --- SVD pseudo-inverse solve (pinvSolve destroys A, not b) ---
-            var A1 = arena.doubleMat(4, 3);
-            BuildLauchli(A1, eps);
+            var A1 = arena.doubleLauchli(3, eps);   // (3+1)x3 = 4x3
             var b1 = doubleOP.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.doubleVec(3);
             SVD.pinvSolve(ref A1, in b1, ref xSvd, out bool converged);
@@ -120,8 +116,7 @@ public class doubleLiteratureTests
                 AssertClose(xSvd[k], xTrue[k], (double)1E-2);
 
             // --- QR direct solve (destroys A and b) ---
-            var A2 = arena.doubleMat(4, 3);
-            BuildLauchli(A2, eps);
+            var A2 = arena.doubleLauchli(3, eps);   // (3+1)x3 = 4x3
             var b2 = doubleOP.dot(A2, xTrue);
             var xQr = arena.doubleVec(3);
             OrthoOP.qrDirectSolve(ref A2, ref b2, ref xQr);
@@ -131,13 +126,6 @@ public class doubleLiteratureTests
             arena.Dispose();
         }
 
-        // Fills a zero-initialized 4x3 matrix with the Läuchli pattern.
-        void BuildLauchli(doubleMxN A, double eps)
-        {
-            A[0, 0] = (double)1; A[0, 1] = (double)1; A[0, 2] = (double)1;
-            A[1, 0] = eps; A[2, 1] = eps; A[3, 2] = eps;
-        }
-
         // Symmetric Pascal matrix P[i,j] = P[i-1,j] + P[i,j-1] (P[i,0]=P[0,j]=1). Known: det(P) = 1
         // for all n, and P is SPD. Tests LU determinant against an exact integer result + Cholesky.
         void PascalDetAndCholesky()
@@ -145,12 +133,7 @@ public class doubleLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var P = arena.doubleMat(n, n);
-            for (int i = 0; i < n; i++) P[i, 0] = (double)1;
-            for (int j = 0; j < n; j++) P[0, j] = (double)1;
-            for (int i = 1; i < n; i++)
-                for (int j = 1; j < n; j++)
-                    P[i, j] = P[i - 1, j] + P[i, j - 1];
+            var P = arena.doublePascal(n);
 
             // SPD -> Cholesky succeeds (read-only on P)
             var L = arena.doubleMat(n, n);
@@ -174,10 +157,10 @@ public class doubleLiteratureTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var H3 = arena.doubleHilbertMatrix(3);
+            var H3 = arena.doubleHilbert(3);
             AssertClose(doubleOP.cond(in H3), (double)524.0568, (double)5);
 
-            var H5 = arena.doubleHilbertMatrix(5);
+            var H5 = arena.doubleHilbert(5);
             AssertBelow((double)1E5, doubleOP.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
 
             arena.Dispose();
@@ -191,13 +174,7 @@ public class doubleLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 21;
-            int half = (n - 1) / 2;   // 10
-            var W = arena.doubleMat(n, n);
-            for (int i = 0; i < n; i++)
-            {
-                W[i, i] = (double)math.abs(i - half);
-                if (i > 0) { W[i, i - 1] = (double)1; W[i - 1, i] = (double)1; }
-            }
+            var W = arena.doubleWilkinsonPlus(n);   // symmetric tridiag, diag |10-i|, off 1
 
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
@@ -228,12 +205,7 @@ public class doubleLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 6;
-            var T = arena.doubleMat(n, n);
-            for (int i = 0; i < n; i++)
-            {
-                T[i, i] = (double)2;
-                if (i > 0) { T[i, i - 1] = (double)(-1); T[i - 1, i] = (double)(-1); }
-            }
+            var T = arena.doubleLaplacian1D(n);   // diag 2, off-diag -1
 
             double pi = (double)math.PI_DBL;
             double lamMax = (double)2 - (double)2 * math.cos((double)n * pi / (double)(n + 1));

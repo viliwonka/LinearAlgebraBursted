@@ -1,4 +1,5 @@
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -22,6 +23,8 @@ public class fProxyConjugateGradientTests
             SingularConsistent,
             AlreadyConverged,
             Tiny,
+            GalleryLaplacian1D,
+            GalleryMinIJ,
         }
 
         public TestType Type;
@@ -65,6 +68,12 @@ public class fProxyConjugateGradientTests
                     break;
                 case TestType.Tiny:
                     Tiny();
+                    break;
+                case TestType.GalleryLaplacian1D:
+                    GalleryLaplacian1D();
+                    break;
+                case TestType.GalleryMinIJ:
+                    GalleryMinIJ();
                     break;
             }
         }
@@ -341,6 +350,51 @@ public class fProxyConjugateGradientTests
 
             arena.Dispose();
         }
+
+        // GALLERY KNOWN-ANSWER (Gallery.SPD): the n×n 1D Laplacian (tridiagonal 2,-1) is SPD — the
+        // canonical CG benchmark. CG must solve A·x = b accurately (A·x ≈ b). Iterations capped at
+        // 4n to cover the conditioning (cond ≈ (2(n+1)/π)²) plus float round-off.
+        void GalleryLaplacian1D()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 16;
+
+            var A = arena.fProxyLaplacian1D(dim);
+            var b = arena.fProxyRandomVector(dim, -1f, 1f, 4242);
+
+            var x = arena.fProxyVec(dim); // zero initial guess
+
+            bool ok = Solvers.conjugateGradient(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
+            Assert.IsTrue(ok);
+
+            var Ax = fProxyOP.dot(A, x);
+            Assert.IsTrue(Analysis.IsZero(b - Ax, Tol()));
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Phase2): the n×n MinIJ matrix A[i,j]=min(i,j)+1 is SPD, so
+        // CG must solve A·x = b accurately. Iterations capped at 4n for conditioning + round-off.
+        void GalleryMinIJ()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 10;
+
+            var A = arena.fProxyMinIJ(dim);
+            var b = arena.fProxyRandomVector(dim, -1f, 1f, 8181);
+
+            var x = arena.fProxyVec(dim);
+
+            bool ok = Solvers.conjugateGradient(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
+            Assert.IsTrue(ok);
+
+            var Ax = fProxyOP.dot(A, x);
+            Assert.IsTrue(Analysis.IsZero(b - Ax, Tol()));
+
+            arena.Dispose();
+        }
     }
 
     [Test]
@@ -395,5 +449,17 @@ public class fProxyConjugateGradientTests
     public void TinyTest()
     {
         new ConjugateGradientTestJob() { Type = ConjugateGradientTestJob.TestType.Tiny }.Run();
+    }
+
+    [Test]
+    public void GalleryLaplacian1DTest()
+    {
+        new ConjugateGradientTestJob() { Type = ConjugateGradientTestJob.TestType.GalleryLaplacian1D }.Run();
+    }
+
+    [Test]
+    public void GalleryMinIJTest()
+    {
+        new ConjugateGradientTestJob() { Type = ConjugateGradientTestJob.TestType.GalleryMinIJ }.Run();
     }
 }

@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -56,13 +57,9 @@ public class fProxyLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var V = arena.fProxyMat(n, n);
-            for (int i = 0; i < n; i++)
-            {
-                fProxy xi = (fProxy)(i + 1);   // nodes 1,2,3,4
-                fProxy p = (fProxy)1;
-                for (int j = 0; j < n; j++) { V[i, j] = p; p *= xi; }
-            }
+            var nodes = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) nodes[i] = (fProxy)(i + 1);   // nodes 1,2,3,4
+            var V = arena.fProxyVandermonde(in nodes);
 
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
@@ -110,8 +107,7 @@ public class fProxyLiteratureTests
             xTrue[0] = (fProxy)1; xTrue[1] = (fProxy)2; xTrue[2] = (fProxy)3;
 
             // --- SVD pseudo-inverse solve (pinvSolve destroys A, not b) ---
-            var A1 = arena.fProxyMat(4, 3);
-            BuildLauchli(A1, eps);
+            var A1 = arena.fProxyLauchli(3, eps);   // (3+1)x3 = 4x3
             var b1 = fProxyOP.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.fProxyVec(3);
             SVD.pinvSolve(ref A1, in b1, ref xSvd, out bool converged);
@@ -120,8 +116,7 @@ public class fProxyLiteratureTests
                 AssertClose(xSvd[k], xTrue[k], (fProxy)1E-2);
 
             // --- QR direct solve (destroys A and b) ---
-            var A2 = arena.fProxyMat(4, 3);
-            BuildLauchli(A2, eps);
+            var A2 = arena.fProxyLauchli(3, eps);   // (3+1)x3 = 4x3
             var b2 = fProxyOP.dot(A2, xTrue);
             var xQr = arena.fProxyVec(3);
             OrthoOP.qrDirectSolve(ref A2, ref b2, ref xQr);
@@ -131,13 +126,6 @@ public class fProxyLiteratureTests
             arena.Dispose();
         }
 
-        // Fills a zero-initialized 4x3 matrix with the Läuchli pattern.
-        void BuildLauchli(fProxyMxN A, fProxy eps)
-        {
-            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1; A[0, 2] = (fProxy)1;
-            A[1, 0] = eps; A[2, 1] = eps; A[3, 2] = eps;
-        }
-
         // Symmetric Pascal matrix P[i,j] = P[i-1,j] + P[i,j-1] (P[i,0]=P[0,j]=1). Known: det(P) = 1
         // for all n, and P is SPD. Tests LU determinant against an exact integer result + Cholesky.
         void PascalDetAndCholesky()
@@ -145,12 +133,7 @@ public class fProxyLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var P = arena.fProxyMat(n, n);
-            for (int i = 0; i < n; i++) P[i, 0] = (fProxy)1;
-            for (int j = 0; j < n; j++) P[0, j] = (fProxy)1;
-            for (int i = 1; i < n; i++)
-                for (int j = 1; j < n; j++)
-                    P[i, j] = P[i - 1, j] + P[i, j - 1];
+            var P = arena.fProxyPascal(n);
 
             // SPD -> Cholesky succeeds (read-only on P)
             var L = arena.fProxyMat(n, n);
@@ -174,10 +157,10 @@ public class fProxyLiteratureTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var H3 = arena.fProxyHilbertMatrix(3);
+            var H3 = arena.fProxyHilbert(3);
             AssertClose(fProxyOP.cond(in H3), (fProxy)524.0568, (fProxy)5);
 
-            var H5 = arena.fProxyHilbertMatrix(5);
+            var H5 = arena.fProxyHilbert(5);
             AssertBelow((fProxy)1E5, fProxyOP.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
 
             arena.Dispose();
@@ -191,13 +174,7 @@ public class fProxyLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 21;
-            int half = (n - 1) / 2;   // 10
-            var W = arena.fProxyMat(n, n);
-            for (int i = 0; i < n; i++)
-            {
-                W[i, i] = (fProxy)math.abs(i - half);
-                if (i > 0) { W[i, i - 1] = (fProxy)1; W[i - 1, i] = (fProxy)1; }
-            }
+            var W = arena.fProxyWilkinsonPlus(n);   // symmetric tridiag, diag |10-i|, off 1
 
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
@@ -228,12 +205,7 @@ public class fProxyLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 6;
-            var T = arena.fProxyMat(n, n);
-            for (int i = 0; i < n; i++)
-            {
-                T[i, i] = (fProxy)2;
-                if (i > 0) { T[i, i - 1] = (fProxy)(-1); T[i - 1, i] = (fProxy)(-1); }
-            }
+            var T = arena.fProxyLaplacian1D(n);   // diag 2, off-diag -1
 
             fProxy pi = (fProxy)math.PI_DBL;
             fProxy lamMax = (fProxy)2 - (fProxy)2 * math.cos((fProxy)n * pi / (fProxy)(n + 1));

@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using LinearAlgebra.Stats;
 
 using NUnit.Framework;
@@ -27,7 +28,9 @@ public class floatSVDTests
             SVDRankDeficient,
             SVDZero,
             SVDSingleColumn,
-            SVDNonConvergence
+            SVDNonConvergence,
+            SVDGalleryHadamard,
+            SVDGalleryParter
         }
 
         public TestType Type;
@@ -65,6 +68,12 @@ public class floatSVDTests
                 break;
                 case TestType.SVDNonConvergence:
                     SVDNonConvergence();
+                break;
+                case TestType.SVDGalleryHadamard:
+                    SVDGalleryHadamard();
+                break;
+                case TestType.SVDGalleryParter:
+                    SVDGalleryParter();
                 break;
             }
         }
@@ -363,6 +372,74 @@ public class floatSVDTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             AssertDescendingNonNegative(in S, dim);
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Special): the 4x4 Sylvester-Walsh Hadamard matrix satisfies
+        // HᵀH = n·I, so ALL singular values equal √n = √4 = 2 and the condition number is exactly 1.
+        // Uses SVD.singularValues (A is not modified, S is sorted descending).
+        public void SVDGalleryHadamard()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 4;
+
+            var A = arena.floatHadamard(n);
+            var S = arena.floatVec(n);
+
+            int k = SVD.singularValues(in A, ref S);
+            AssertClose((float)k, (float)n, 1E-6f);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            // every singular value == sqrt(4) == 2 (cond = 1)
+            for (int i = 0; i < n; i++)
+                AssertClose(S[i], (float)2f, 1E-4f);
+
+            AssertDescendingNonNegative(in S, n);
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Phase2): the 8x8 Parter matrix (Toeplitz 1/(i-j+0.5)) has
+        // singular values that cluster near π, ALL strictly below π. For n=8 the largest is
+        // 3.1415926534..., only ~1.1e-10 below π — far tighter than float SVD precision — so the
+        // bound is asserted with a scale-aware margin that still rejects any gross overshoot.
+        public void SVDGalleryParter()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 8;
+
+            var A = arena.floatParter(n);
+            var S = arena.floatVec(n);
+
+            SVD.singularValues(in A, ref S);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            float pi = (float)Unity.Mathematics.math.PI_DBL;
+            // boundary lies within ~1e-10 of π; absorb float SVD error without masking a real overshoot.
+            float margin = (float)64 * Consts.floatSqrtEps;
+
+            for (int i = 0; i < n; i++)
+            {
+                bool below = S[i] <= pi + margin;
+                if (!below && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1;
+                    Fail[1] = S[i];
+                    Fail[2] = pi;
+                    Fail[3] = (float)i;
+                }
+                Assert.IsTrue(below);
+            }
+
+            // largest singular value clusters near π (close from below).
+            AssertClose(S[0], pi, margin);
+
+            AssertDescendingNonNegative(in S, n);
 
             arena.Dispose();
         }

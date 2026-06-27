@@ -1,4 +1,5 @@
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -21,6 +22,9 @@ public class fProxyCholeskyTests
             CrossCheckLU,
             Tiny,
             Aliasing,
+            GalleryMinIJ,
+            GalleryGCD,
+            GalleryFiedlerRejects,
         }
 
         public TestType Type;
@@ -59,6 +63,15 @@ public class fProxyCholeskyTests
                     break;
                 case TestType.Aliasing:
                     Aliasing();
+                    break;
+                case TestType.GalleryMinIJ:
+                    GalleryMinIJ();
+                    break;
+                case TestType.GalleryGCD:
+                    GalleryGCD();
+                    break;
+                case TestType.GalleryFiedlerRejects:
+                    GalleryFiedlerRejects();
                     break;
             }
         }
@@ -332,6 +345,76 @@ public class fProxyCholeskyTests
 
             arena.Dispose();
         }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Phase2 / SPD): the n×n MinIJ matrix A[i,j]=min(i,j)+1 is SPD
+        // (and det=1), so Cholesky must succeed and reconstruct: L lower triangular with A = L·Lᵀ.
+        void GalleryMinIJ()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 6;
+
+            var A = arena.fProxyMinIJ(dim);
+            var L = arena.fProxyMat(dim, dim);
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+
+            Assert.IsTrue(Analysis.IsLowerTriangular(L, Tol()));
+
+            var Lt = fProxyOP.trans(L);
+            var recon = fProxyOP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis.IsZero(A - recon, Tol()));
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Phase2): the n×n GCD matrix A[i,j]=gcd(i+1,j+1) is SPD
+        // (Smith's theorem, det = ∏ φ(k) > 0), so Cholesky must succeed and reconstruct A = L·Lᵀ.
+        void GalleryGCD()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 6;
+
+            var A = arena.fProxyGCD(dim);
+            var L = arena.fProxyMat(dim, dim);
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+
+            Assert.IsTrue(Analysis.IsLowerTriangular(L, Tol()));
+
+            var Lt = fProxyOP.trans(L);
+            var recon = fProxyOP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis.IsZero(A - recon, Tol()));
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER (Gallery.Special): the Fiedler matrix F[i,j]=|i-j| is symmetric but
+        // INDEFINITE (one positive eigenvalue, n-1 negative). Cholesky must REJECT it (return false)
+        // and produce no NaN. For n=3 the leading entry is 0, so the very first pivot is non-positive.
+        void GalleryFiedlerRejects()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 3;
+
+            var A = arena.fProxyFiedler(dim);
+            var L = arena.fProxyMat(dim, dim);
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsFalse(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in L));
+
+            // factor+solve overload must also report failure.
+            var b = arena.fProxyRandomVector(dim, -1f, 1f, 17);
+            bool solved = Cholesky.choleskySolve(in A, ref L, ref b);
+            Assert.IsFalse(solved);
+
+            arena.Dispose();
+        }
     }
 
     [Test]
@@ -386,5 +469,23 @@ public class fProxyCholeskyTests
     public void AliasingTest()
     {
         new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Aliasing }.Run();
+    }
+
+    [Test]
+    public void GalleryMinIJTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryMinIJ }.Run();
+    }
+
+    [Test]
+    public void GalleryGCDTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryGCD }.Run();
+    }
+
+    [Test]
+    public void GalleryFiedlerRejectsTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryFiedlerRejects }.Run();
     }
 }

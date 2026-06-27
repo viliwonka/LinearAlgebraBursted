@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using LinearAlgebra.Stats;
 
 using NUnit.Framework;
@@ -26,6 +27,7 @@ public class floatLUTests
             LUDecompSingular,
             LUDecompPivotRequired,
             LUDeterminant,
+            LUDeterminantGallery,
             LUReusePivot,
             SwapOPTest,
             LUSolveSystem,
@@ -61,6 +63,9 @@ public class floatLUTests
                 break;
                 case TestType.LUDeterminant:
                     LUDeterminant();
+                break;
+                case TestType.LUDeterminantGallery:
+                    LUDeterminantGallery();
                 break;
                 case TestType.LUReusePivot:
                     LUReusePivot();
@@ -453,6 +458,61 @@ public class floatLUTests
 
                 float det = LU.determinant(in P, in pivot);
                 AssertCloseRel(det, (float)(-1f), 1E-4f);
+
+                pivot.Dispose();
+            }
+
+            arena.Dispose();
+        }
+
+        // GALLERY KNOWN-ANSWER: famous unit-determinant matrices. det is computed via
+        // luDecompositionInplace + LU.determinant (the file's established sequence).
+        //  - Pascal(5):  symmetric Pascal, det = 1.
+        //  - MinIJ(5):   A[i,j]=min(i,j)+1, det = 1.
+        //  - Frank(5):   upper-Hessenberg Frank, det = 1 (ill-conditioned but integer-valued, so
+        //                float LU stays accurate — relerr ~1e-6 in single precision).
+        public void LUDeterminantGallery()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // Pascal(5): det = 1
+            {
+                int dim = 5;
+                var A = arena.floatPascal(dim);
+                var pivot = new Pivot(dim, Allocator.Temp);
+                bool success = LU.luDecompositionInplace(ref A, ref pivot);
+                Assert.IsTrue(success);
+
+                float det = LU.determinant(in A, in pivot);
+                AssertCloseRel(det, (float)1f, 1E-4f);
+
+                pivot.Dispose();
+            }
+
+            // MinIJ(5): det = 1
+            {
+                int dim = 5;
+                var A = arena.floatMinIJ(dim);
+                var pivot = new Pivot(dim, Allocator.Temp);
+                bool success = LU.luDecompositionInplace(ref A, ref pivot);
+                Assert.IsTrue(success);
+
+                float det = LU.determinant(in A, in pivot);
+                AssertCloseRel(det, (float)1f, 1E-4f);
+
+                pivot.Dispose();
+            }
+
+            // Frank(5): det = 1
+            {
+                int dim = 5;
+                var A = arena.floatFrank(dim);
+                var pivot = new Pivot(dim, Allocator.Temp);
+                bool success = LU.luDecompositionInplace(ref A, ref pivot);
+                Assert.IsTrue(success);
+
+                float det = LU.determinant(in A, in pivot);
+                AssertCloseRel(det, (float)1f, 1E-4f);
 
                 pivot.Dispose();
             }

@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -56,13 +57,9 @@ public class floatLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var V = arena.floatMat(n, n);
-            for (int i = 0; i < n; i++)
-            {
-                float xi = (float)(i + 1);   // nodes 1,2,3,4
-                float p = (float)1;
-                for (int j = 0; j < n; j++) { V[i, j] = p; p *= xi; }
-            }
+            var nodes = arena.floatVec(n);
+            for (int i = 0; i < n; i++) nodes[i] = (float)(i + 1);   // nodes 1,2,3,4
+            var V = arena.floatVandermonde(in nodes);
 
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
@@ -110,8 +107,7 @@ public class floatLiteratureTests
             xTrue[0] = (float)1; xTrue[1] = (float)2; xTrue[2] = (float)3;
 
             // --- SVD pseudo-inverse solve (pinvSolve destroys A, not b) ---
-            var A1 = arena.floatMat(4, 3);
-            BuildLauchli(A1, eps);
+            var A1 = arena.floatLauchli(3, eps);   // (3+1)x3 = 4x3
             var b1 = floatOP.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.floatVec(3);
             SVD.pinvSolve(ref A1, in b1, ref xSvd, out bool converged);
@@ -120,8 +116,7 @@ public class floatLiteratureTests
                 AssertClose(xSvd[k], xTrue[k], (float)1E-2);
 
             // --- QR direct solve (destroys A and b) ---
-            var A2 = arena.floatMat(4, 3);
-            BuildLauchli(A2, eps);
+            var A2 = arena.floatLauchli(3, eps);   // (3+1)x3 = 4x3
             var b2 = floatOP.dot(A2, xTrue);
             var xQr = arena.floatVec(3);
             OrthoOP.qrDirectSolve(ref A2, ref b2, ref xQr);
@@ -131,13 +126,6 @@ public class floatLiteratureTests
             arena.Dispose();
         }
 
-        // Fills a zero-initialized 4x3 matrix with the Läuchli pattern.
-        void BuildLauchli(floatMxN A, float eps)
-        {
-            A[0, 0] = (float)1; A[0, 1] = (float)1; A[0, 2] = (float)1;
-            A[1, 0] = eps; A[2, 1] = eps; A[3, 2] = eps;
-        }
-
         // Symmetric Pascal matrix P[i,j] = P[i-1,j] + P[i,j-1] (P[i,0]=P[0,j]=1). Known: det(P) = 1
         // for all n, and P is SPD. Tests LU determinant against an exact integer result + Cholesky.
         void PascalDetAndCholesky()
@@ -145,12 +133,7 @@ public class floatLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var P = arena.floatMat(n, n);
-            for (int i = 0; i < n; i++) P[i, 0] = (float)1;
-            for (int j = 0; j < n; j++) P[0, j] = (float)1;
-            for (int i = 1; i < n; i++)
-                for (int j = 1; j < n; j++)
-                    P[i, j] = P[i - 1, j] + P[i, j - 1];
+            var P = arena.floatPascal(n);
 
             // SPD -> Cholesky succeeds (read-only on P)
             var L = arena.floatMat(n, n);
@@ -174,10 +157,10 @@ public class floatLiteratureTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var H3 = arena.floatHilbertMatrix(3);
+            var H3 = arena.floatHilbert(3);
             AssertClose(floatOP.cond(in H3), (float)524.0568, (float)5);
 
-            var H5 = arena.floatHilbertMatrix(5);
+            var H5 = arena.floatHilbert(5);
             AssertBelow((float)1E5, floatOP.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
 
             arena.Dispose();
@@ -191,13 +174,7 @@ public class floatLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 21;
-            int half = (n - 1) / 2;   // 10
-            var W = arena.floatMat(n, n);
-            for (int i = 0; i < n; i++)
-            {
-                W[i, i] = (float)math.abs(i - half);
-                if (i > 0) { W[i, i - 1] = (float)1; W[i - 1, i] = (float)1; }
-            }
+            var W = arena.floatWilkinsonPlus(n);   // symmetric tridiag, diag |10-i|, off 1
 
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
@@ -228,12 +205,7 @@ public class floatLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 6;
-            var T = arena.floatMat(n, n);
-            for (int i = 0; i < n; i++)
-            {
-                T[i, i] = (float)2;
-                if (i > 0) { T[i, i - 1] = (float)(-1); T[i - 1, i] = (float)(-1); }
-            }
+            var T = arena.floatLaplacian1D(n);   // diag 2, off-diag -1
 
             float pi = (float)math.PI_DBL;
             float lamMax = (float)2 - (float)2 * math.cos((float)n * pi / (float)(n + 1));
