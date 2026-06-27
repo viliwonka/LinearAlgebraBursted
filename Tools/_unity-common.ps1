@@ -67,7 +67,9 @@ function Invoke-Unity {
   Write-Host "Project: $root"
   New-Item -ItemType Directory -Force -Path (Split-Path $LogFile) | Out-Null
   $all = @("-batchmode", "-projectPath", $root, "-logFile", $LogFile) + $Arguments
-  $proc = Start-Process -FilePath $unity -ArgumentList $all -PassThru -Wait
+  # -WindowStyle Hidden keeps the launched Unity.exe from grabbing foreground focus,
+  # which otherwise kicks an exclusive-fullscreen game (e.g. CS2) out to the desktop.
+  $proc = Start-Process -FilePath $unity -ArgumentList $all -PassThru -Wait -WindowStyle Hidden
   return [int]$proc.ExitCode
 }
 
