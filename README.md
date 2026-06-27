@@ -136,6 +136,8 @@ Here's a simple example:
 - ✅ Zero-allocation variants of the ops and solvers for hot loops (preallocated outputs, reusable workspaces)
 - ✅ Find/query: arg-min/max (per-row/col and abs), nearest/farthest and k-nearest rows/columns by metric (Manhattan/Euclidean/Chebyshev/cosine/dot), within-radius selection, find-value and nonzero — for float, double, int, short and long
 - ✅ Random: in-place caller-stream refill; distribution samplers (`IfProxySampler`) by inverse-transform — uniform, exponential, Rayleigh, Weibull, Cauchy, logistic, Pareto, triangular — plus Gaussian (Box–Muller); integer/bool/Bernoulli refill; weighted pick, shuffle/permutation, sample-without-replacement; and structured matrices — multivariate Normal (via Cholesky), Haar-orthogonal, SPD/condition-controlled, fixed-rank, row-stochastic
+- ✅ Histogram: equal-width binning (counts, normalized density, empirical CDF) with NaN-drop and closed-upper-edge handling, auto-range, and 2D joint histograms (heatmaps) — counts feed the weighted-pick sampler for sampling-from-data
+- ✅ Resampling / interpolation: evaluate a vector as a continuous function (`sampleAt`), gather at arbitrary positions, and resize vectors (1D) or matrices (2D, separable) to any dimension — nearest / linear / Catmull-Rom cubic, with clamp / wrap / mirror edge modes
 
 ## TODO
 - Better arena management and standalone vec/mat management (without arena allocation)
