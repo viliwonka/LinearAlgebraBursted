@@ -83,11 +83,22 @@ Two kinds, both valuable:
 - float + double generated variants; per-precision tolerance via `Consts.fProxySqrtEps` (ill-conditioned
   ones — Hilbert/Frank/Kahan — need loose float / tight double, or double-only tight asserts).
 
-## Deferred (Phase 2 — easy adds once the pattern is set)
-Rosser (fixed 8×8, double + near + zero eigenvalues), Magic (row/col sums, rank rules), Redheffer
-(det = Mertens), GCD/Fibonacci (det = ∏φ), Lotkin (nonsym Hilbert), Parter/Prolate (Toeplitz, σ near π),
-Grcar (pseudospectra), Cauchy (general), Chebyshev-Vandermonde. Int-typed variants of the integer
-matrices. quaternion/2D-Poisson block matrices.
+## Phase 2 (BUILDING 2026-06-27) — `Arena/Gallery.Phase2.fProxy.cs`, same `fProxyGallery` partial class
+| Generator | Definition (0-based) | Known property (assert) |
+|---|---|---|
+| `fProxyCauchy(in fProxyN x, in fProxyN y)` | `1/(x[i]+y[j])`, n=x.N=y.N, x[i]+y[j]≠0 | **det = ∏_{i<j}(x[j]−x[i])(y[j]−y[i]) / ∏_{i,j}(x[i]+y[j])** (Cauchy det; Hilbert is a special case) |
+| `fProxyGCD(int n)` | `gcd(i+1, j+1)` (private Euclid helper) | SPD; **det = ∏_{k=1}^n φ(k)** (Smith's theorem) |
+| `fProxyRedheffer(int n)` | `1` if `j==0` or `(i+1)\|(j+1)`, else 0 | **det = Mertens M(n)** = Σ μ(k); M(1..8)=1,0,−1,−1,−2,−1,−2,−2 |
+| `fProxyMagic(int n)` (odd n only, else throw) | Siamese construction | every **row/col/both-diagonal sum = n(n²+1)/2** |
+| `fProxyRosser()` | fixed 8×8 (hardcoded, see below) | symmetric; **trace=4040**; eigenvalues ≈ {−1020.0532, −0.1705, 0.2180, 999.9469, 1000.1207, 1019.5244, 1019.9936, 1020.4202} (close pairs near 0, 1000, 1020 — eigensolver stress) |
+| `fProxyParter(int n)` | Toeplitz `1/(i−j+0.5)` | nonsymmetric; **singular values cluster near π**, all < π |
+| `fProxyProlate(int n, fProxy w)` (0<w<0.5) | sym Toeplitz `a_0=2w`, `a_k=sin(2π w k)/(π k)`, `A[i,j]=a_{\|i−j\|}` | symmetric; ill-cond; **eigenvalues in (0,1)**, cluster near 0 and 1 |
+| `fProxyGrcar(int n, int k=3)` | Toeplitz: `1` on diag and superdiags `1..k`; `−1` on subdiag; else 0 | nonsymmetric banded; sensitive (pseudospectra) — structural test |
+| `fProxyLotkin(int n)` | Hilbert with **row 0 = all ones**; `A[i,j]=1/(i+j+1)` for i≥1 | nonsymmetric; ill-conditioned (cond large) |
+
+Rosser 8×8 (row-major): `[611,196,−192,407,−8,−52,−49,29; 196,899,113,−192,−71,−43,−8,−44; −192,113,899,196,61,49,8,52; 407,−192,196,611,8,44,59,−23; −8,−71,61,8,411,−599,208,208; −52,−43,49,44,−599,411,208,208; −49,−8,8,59,208,208,99,−911; 29,−44,52,−23,208,208,−911,99]`.
+
+## Deferred (Phase 3) — int-typed variants of the integer matrices; Chebyshev-Vandermonde; quaternion / 2D-Poisson block matrices.
 
 ## Build order
 1. Batch A + Batch B coders in parallel (disjoint files, one partial class), no regen.
