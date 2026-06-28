@@ -84,18 +84,57 @@ namespace LinearAlgebra
             }
         }
 
+        // Apply a Householder reflector to the trailing submatrix in place:
+        //     Q[d:, d:] -= u · (uᵀ · Q[d:, d:]).
+        // Two contiguous-memory passes through the vectorising UnsafeOP.axpy ([NoAlias]) — the same
+        // raw-pointer path GEMM uses, so Burst SIMD-vectorises the inner work (float runs ~2x double).
+        // The previous formulation looped over rows r (stride N_Cols when indexing Q[r, c]), which
+        // Burst cannot vectorise — it vectorises loops, and the unit-stride axis here is the columns,
+        // not r. Walking each row left-to-right instead lets axpy run at GEMM speed.
+        //
+        // w is scratch of length >= (N - d); only w[0..L) is used. Bitwise identical to the prior
+        // per-column scalar form: pass 1 accumulates each w[i] over rows r = d..M-1 in the SAME
+        // ascending order, and pass 2's (-u[r])·w[i] added to Q[r,c] equals Q[r,c] - u[r]·w[i]
+        // exactly in IEEE (negation and sign-symmetric multiply are exact).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void applyReflectorRight(ref floatMxN Q, ref floatN u, ref floatN w, int d)
+        {
+            int M = Q.M_Rows;
+            int N = Q.N_Cols;
+            int L = N - d;                          // width of the trailing column block
+            if (L <= 0)
+                return;
+
+            float* qp = Q.Data.Ptr;
+            float* up = u.Data.Ptr;
+            float* wp = w.Data.Ptr;
+
+            // pass 1: w[0..L) = Σ_{r=d}^{M-1} u[r] · Q[r, d..N)   (row segments are unit-stride)
+            UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<float>());
+            for (int r = d; r < M; r++)
+                UnsafeOP.axpy(wp, qp + (long)r * N + d, up[r], L);
+
+            // pass 2: Q[r, d..N) += (-u[r]) · w[0..L)  ==  Q[r, d..N) -= u[r] · w
+            for (int r = d; r < M; r++)
+                UnsafeOP.axpy(qp + (long)r * N + d, wp, -up[r], L);
+        }
+
         // Q is original matrix A, R is identity matrix
         // Q becomes orthogonal matrix, R becomes upper triangular matrix
         // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
-        // EXACTLY Q.M_Rows. Hoist u out of a hot loop to skip the per-call Allocator.Temp alloc.
+        // EXACTLY Q.M_Rows; w is a workspace vector of length >= Q.N_Cols (the reflector-apply
+        // accumulator). Hoist both out of a hot loop to skip the per-call Allocator.Temp allocs.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecomposition(ref floatMxN Q, ref floatMxN R, ref floatN u)
+        public static void qrDecomposition(ref floatMxN Q, ref floatMxN R, ref floatN u, ref floatN w)
         {
             if (Q.M_Rows < Q.N_Cols)
                 throw new System.Exception("OrthoOP.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
 
             if (u.N != Q.M_Rows)
                 throw new System.Exception("OrthoOP.qrDecomposition: scratch vector u.N must equal Q.M_Rows");
+
+            if (w.N < Q.N_Cols)
+                throw new System.Exception("OrthoOP.qrDecomposition: scratch vector w.N must be at least Q.N_Cols");
 
             int qrSteps = Q.N_Cols;
 
@@ -109,47 +148,9 @@ namespace LinearAlgebra
             {
                 genHouseholderPete(ref Q, ref u, d, zeroThreshold);
 
-                // Apply the reflector to the trailing submatrix: Q -= u·(uᵀ·Q).
-                // The previous formulation took one column at a time, walking Q[k,c] DOWN a column
-                // (stride N_Cols) for both the dot and the rank-1 update — cache-unfriendly and
-                // un-vectorizable, worst on tall systems. Here we instead sweep four trailing columns
-                // at once with four register accumulators, so the inner loops walk each row
-                // left-to-right (unit-stride, SIMD-friendly) with NO scratch allocation. Each
-                // accumulator sums over r = d..M-1 in the SAME ascending order as the old per-column
-                // dot, and the four columns of a block are mutually independent, so the result is
-                // bitwise identical.
-                int M = Q.M_Rows;
-                int N = Q.N_Cols;
-                int c = d;
-                for (; c + 4 <= N; c += 4)
-                {
-                    float w0 = 0, w1 = 0, w2 = 0, w3 = 0;
-                    for (int r = d; r < M; r++)
-                    {
-                        float ur = u[r];
-                        w0 += ur * Q[r, c];
-                        w1 += ur * Q[r, c + 1];
-                        w2 += ur * Q[r, c + 2];
-                        w3 += ur * Q[r, c + 3];
-                    }
-                    for (int r = d; r < M; r++)
-                    {
-                        float ur = u[r];
-                        Q[r, c]     -= ur * w0;
-                        Q[r, c + 1] -= ur * w1;
-                        Q[r, c + 2] -= ur * w2;
-                        Q[r, c + 3] -= ur * w3;
-                    }
-                }
-                // tail: the remaining (< 4) columns, one at a time (the original scalar form)
-                for (; c < N; c++)
-                {
-                    float dotProduct = 0;
-                    for (int r = d; r < M; r++)
-                        dotProduct += u[r] * Q[r, c];
-                    for (int r = d; r < M; r++)
-                        Q[r, c] -= u[r] * dotProduct;
-                }
+                // Apply the reflector to the trailing submatrix: Q[d:, d:] -= u·(uᵀ·Q[d:, d:]).
+                // Vectorised, zero-alloc (w is caller scratch). See applyReflectorRight.
+                applyReflectorRight(ref Q, ref u, ref w, d);
 
                 // copy current Q diagonal element into R
                 // it will be over-written in the next step
@@ -205,52 +206,32 @@ namespace LinearAlgebra
                     Q[i, d] = i == d? 1 : 0;
                 }
 
-                // Apply the reflector to the trailing columns: Q -= u·(uᵀ·Q). Same row-major
-                // register-blocking as the factorization apply above — four columns at a time with
-                // four accumulators, unit-stride access, zero scratch. Bitwise identical to the prior
-                // per-column form (each accumulator sums r = d..M-1 in the same ascending order, and
-                // the columns of a block are mutually independent).
-                int M = Q.M_Rows;
-                int N = Q.N_Cols;
-                int c = d;
-                for (; c + 4 <= N; c += 4)
-                {
-                    float w0 = 0, w1 = 0, w2 = 0, w3 = 0;
-                    for (int r = d; r < M; r++)
-                    {
-                        float ur = u[r];
-                        w0 += ur * Q[r, c];
-                        w1 += ur * Q[r, c + 1];
-                        w2 += ur * Q[r, c + 2];
-                        w3 += ur * Q[r, c + 3];
-                    }
-                    for (int r = d; r < M; r++)
-                    {
-                        float ur = u[r];
-                        Q[r, c]     -= ur * w0;
-                        Q[r, c + 1] -= ur * w1;
-                        Q[r, c + 2] -= ur * w2;
-                        Q[r, c + 3] -= ur * w3;
-                    }
-                }
-                for (; c < N; c++)
-                {
-                    float dotProduct = 0;
-                    for (int r = d; r < M; r++)
-                        dotProduct += u[r] * Q[r, c];
-                    for (int r = d; r < M; r++)
-                        Q[r, c] -= u[r] * dotProduct;
-                }
+                // Apply the reflector to the trailing columns: Q[d:, d:] -= u·(uᵀ·Q[d:, d:]).
+                // Same vectorised, zero-alloc helper as the factorization apply above.
+                applyReflectorRight(ref Q, ref u, ref w, d);
             }
 
         }
 
-        // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
+        // Back-compat workspace overload: takes only the u scratch (length Q.M_Rows) and allocates
+        // the small w accumulator (length Q.N_Cols) from Allocator.Temp. Behaviour is identical to
+        // the 4-arg primitive; use that one to be fully zero-alloc in a hot loop.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void qrDecomposition(ref floatMxN Q, ref floatMxN R, ref floatN u)
+        {
+            var w = new floatN(Q.N_Cols, Allocator.Temp, false);
+            qrDecomposition(ref Q, ref R, ref u, ref w);
+            w.Dispose();
+        }
+
+        // Allocating wrapper: allocates both scratch vectors (Allocator.Temp) and delegates.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void qrDecomposition(ref floatMxN Q, ref floatMxN R)
         {
             var u = new floatN(Q.M_Rows, Allocator.Temp, false);
-            qrDecomposition(ref Q, ref R, ref u);
+            var w = new floatN(Q.N_Cols, Allocator.Temp, false);
+            qrDecomposition(ref Q, ref R, ref u, ref w);
+            w.Dispose();
             u.Dispose();
         }
 
