@@ -6,6 +6,7 @@ Hard-won rules from vectorizing the dense kernels. Terse on purpose.
 - **`float == double` in a benchmark ⇒ NOT SIMD-vectorized.** When vectorized, float runs ~1.5–2× double (float4 vs double2/4). This ratio is the single best diagnostic.
 - **Measure in Burst, not Mono.** Run work inside a `[BurstCompile] IJob` via `.Run()`; a plain managed call mis-measures ~10×. Use `CompileSynchronously = true`; warmup + median over N runs; include large N (cache effects show only there).
 - **GEMM is the ceiling reference** (~70 GFLOP/s float on this machine). Compare a kernel's GFLOP/s to GEMM to gauge remaining headroom.
+- **Bench BOTH float and double; the ratio attributes the win.** A unit-stride rewrite can give a big wall-clock gain (3–6×) yet leave float/double pinned at ~1.3× — that gain was *cache*, not SIMD. Two common reasons SIMD still won't fire on an otherwise-contiguous loop: a reduction (dot) stays scalar under strict `FloatMode`, and two offset pointers into the *same* buffer (e.g. rows `i` and `i+1` of one matrix) can't be proven non-aliasing. Cache-first is still the right order — just don't claim "vectorized" from a wall-clock drop alone.
 
 ## Why a kernel won't vectorize
 - **Burst vectorizes loops along their iteration axis — not hand-unrolled bodies.** Make the unit-stride axis the *inner loop variable*.
