@@ -126,26 +126,12 @@ namespace LinearAlgebra
                             double c = (double)1 / math.sqrt((double)1 + t * t);
                             double s = c * t;
 
-                            // Rotate rows p and q of Ut (length m, contiguous — vectorizes)
-                            // Captures old values before writing to avoid read-after-write hazard.
-                            for (int i = 0; i < m; i++) {
-                                double bip = rowPU[i];
-                                double biq = rowQU[i];
-                                rowPU[i] = c * bip - s * biq;
-                                rowQU[i] = s * bip + c * biq;
-                            }
-
-                            // Rotate rows p and q of Vt (length n, contiguous — vectorizes).
-                            // Row rotation on Vt = G^T * Vt is equivalent to V -> V * G
-                            // (column rotation), so Vt^T = V throughout.
-                            double* rowPV = vtp + (long)p * n;
-                            double* rowQV = vtp + (long)q * n;
-                            for (int i = 0; i < n; i++) {
-                                double vip = rowPV[i];
-                                double viq = rowQV[i];
-                                rowPV[i] = c * vip - s * viq;
-                                rowQV[i] = s * vip + c * viq;
-                            }
+                            // Rotate rows p and q of Ut (length m) and of Vt (length n) — contiguous
+                            // + [NoAlias] (p != q ⇒ distinct rows) so Burst vectorizes the butterfly.
+                            // Row rotation on Vt = G^T * Vt is equivalent to V -> V * G (column
+                            // rotation), so Vt^T = V throughout.
+                            UnsafeOP.jacobiRotate(rowPU, rowQU, c, s, m);
+                            UnsafeOP.jacobiRotate(vtp + (long)p * n, vtp + (long)q * n, c, s, n);
 
                             rotations++;
                         }

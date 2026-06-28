@@ -771,16 +771,8 @@ namespace LinearAlgebra
                                 g = c * r - b;
 
                                 // Apply the plane rotation to ROWS i, i+1 of the transposed eigenvector
-                                // matrix — contiguous, so this loop vectorizes (the column form did not).
-                                float* rowI  = qp + (long)i * n;
-                                float* rowI1 = qp + (long)(i + 1) * n;
-                                for (int rr = 0; rr < n; rr++)
-                                {
-                                    float a  = rowI[rr];
-                                    float bb = rowI1[rr];
-                                    rowI1[rr] = s * a + c * bb;
-                                    rowI[rr]  = c * a - s * bb;
-                                }
+                                // matrix — contiguous + [NoAlias] (distinct rows) so Burst vectorizes it.
+                                UnsafeOP.jacobiRotate(qp + (long)i * n, qp + (long)(i + 1) * n, c, s, n);
                             }
                             if (r == (float)0 && i >= l) continue;
                             eigenvalues[l] -= pp; eVec[l] = g; eVec[m] = 0;

@@ -210,6 +210,24 @@ namespace LinearAlgebra
                 acc[i] += x[i] * x[i];
         }
 
+        // Plane (Givens / Jacobi) rotation of two vectors:
+        //   a[i] = c*a[i] - s*b[i];   b[i] = s*a[i_old] + c*b[i]
+        // a and b MUST be distinct, non-overlapping ranges (e.g. two different rows of a matrix —
+        // p != q in Jacobi, i != i+1 in QL), which is what makes the [NoAlias] truthful and lets
+        // Burst vectorise the butterfly (each i is independent). The SVD/eigen sweeps transpose
+        // first so the rotated pair is row-contiguous, then call this.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void jacobiRotate([NoAlias] fProxy* a, [NoAlias] fProxy* b, fProxy c, fProxy s, int n) {
+
+            for (int i = 0; i < n; i++)
+            {
+                fProxy ai = a[i];
+                fProxy bi = b[i];
+                a[i] = c * ai - s * bi;
+                b[i] = s * ai + c * bi;
+            }
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void compSub([NoAlias] fProxy* target, [NoAlias] fProxy* from, int n)
         {
