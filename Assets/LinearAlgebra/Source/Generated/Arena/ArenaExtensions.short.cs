@@ -52,8 +52,11 @@ namespace LinearAlgebra
                     vec[i] = (short)random.NextInt((int)min, (int)max);
             }
             else {
+                // max < min: pass the smaller bound first so NextInt gets a valid [lo, hi) range.
+                // Previously passed (min, max) here, where min > max — Unity.Mathematics NextInt
+                // then computed (max - min) as a negative span and returned garbage.
                 for (int i = N - 1; i >= 0; i--)
-                    vec[i] = (short)random.NextInt((int)min, (int)max);
+                    vec[i] = (short)random.NextInt((int)max, (int)min);
             }
 
             return vec;
@@ -64,10 +67,18 @@ namespace LinearAlgebra
         {
             var vec = arena.shortVec(N);
 
+            // N == 1 would divide by (N-1) == 0 -> Inf -> NaN -> garbage int. Match the guarded
+            // fProxyGenOP.linspace convention: a single sample returns {start}.
+            if (N == 1) { vec[0] = start; return vec; }
+
             float scale = 1 / (float)(N - 1);
             for(int i = 0; i < N; i++) {
                 vec[i] = (short)math.lerp((short)start, (short)end, i * scale);
             }
+            // Pin endpoints exactly (the lerp at the last index lands ~1 ulp short of end,
+            // which can truncate to the wrong integer).
+            vec[0] = start;
+            vec[N - 1] = end;
 
             return vec;
         }
@@ -156,8 +167,10 @@ namespace LinearAlgebra
                     matrix[i, i] = (short)rand.NextInt((int)min, (int)max);
             }
             else {
+                // max < min: pass the smaller bound first so NextInt gets a valid [lo, hi) range
+                // (previously passed the inverted (min, max), yielding garbage).
                 for (int i = N - 1; i >= 0; i--)
-                    matrix[i, i] = (short)rand.NextInt((int)min, (int)max);
+                    matrix[i, i] = (short)rand.NextInt((int)max, (int)min);
             }
 
             return matrix;

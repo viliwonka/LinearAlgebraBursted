@@ -20,7 +20,7 @@ namespace LinearAlgebra
         }
 
         // creates vector with s values
-        public doubleN doubleVec(int N, float s)
+        public doubleN doubleVec(int N, double s)
         {
             var vec = new doubleN(N, in this, true);
             doubleVectors.Add(in vec);
@@ -68,7 +68,7 @@ namespace LinearAlgebra
         }
 
         // creates vector with s values
-        public doubleMxN doubleMat(int M_rows, int N_cols, float s)
+        public doubleMxN doubleMat(int M_rows, int N_cols, double s)
         {
             var matrix = new doubleMxN(M_rows, N_cols, in this, false);
             doubleMatrices.Add(in matrix);

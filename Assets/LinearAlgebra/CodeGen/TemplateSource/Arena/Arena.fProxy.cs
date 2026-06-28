@@ -20,7 +20,7 @@ namespace LinearAlgebra
         }
 
         // creates vector with s values
-        public fProxyN fProxyVec(int N, float s)
+        public fProxyN fProxyVec(int N, fProxy s)
         {
             var vec = new fProxyN(N, in this, true);
             fProxyVectors.Add(in vec);
@@ -68,7 +68,7 @@ namespace LinearAlgebra
         }
 
         // creates vector with s values
-        public fProxyMxN fProxyMat(int M_rows, int N_cols, float s)
+        public fProxyMxN fProxyMat(int M_rows, int N_cols, fProxy s)
         {
             var matrix = new fProxyMxN(M_rows, N_cols, in this, false);
             fProxyMatrices.Add(in matrix);
