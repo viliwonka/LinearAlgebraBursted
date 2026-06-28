@@ -1,0 +1,58 @@
+using LinearAlgebra.ML;
+
+namespace LinearAlgebra.ML
+{
+    /// <summary>
+    /// Reusable scratch storage for zero-alloc Lloyd k-means.
+    /// Allocate ONCE (sized for the data shape) via <c>Arena.floatKMeansWorkspace(N, D, k)</c>
+    /// and reuse across same-shape calls. All buffers are arena-owned and disposed with the arena.
+    ///
+    /// Memory layout (all float-scalar counts):
+    ///   Gram           N×k  — GEMM output X·Cᵀ, patched in-place to L2² scores each iter
+    ///   Ct             D×k  — transposed centroids (refreshed each iteration)
+    ///   PointNormSq    N    — ‖xₙ‖² (precomputed once before the Lloyd loop)
+    ///   CentNormSq     k    — ‖cⱼ‖² (recomputed each iteration)
+    ///   PrevAssignment N    — cluster labels from previous iter (early-exit detection)
+    ///   NewCentroids   k×D  — centroid accumulator (zeroed each iteration)
+    ///   ClusterCounts  k    — per-cluster point count (zeroed each iteration)
+    ///   D2Weights      N    — D² distances used for k-means++ seeding only
+    /// </summary>
+    public struct floatKMeansWorkspace
+    {
+        public floatMxN Gram;           // N x k  GEMM output X*C^T, patched to scores in-place
+        public floatMxN Ct;             // D x k  transposed centroids (refreshed each iteration)
+        public floatN   PointNormSq;    // N      ||x_n||^2 constant (computed once before loop)
+        public floatN   CentNormSq;     // k      ||c_j||^2 (recomputed each iteration)
+        public Indices   PrevAssignment; // N      cluster labels from previous iter (early-exit)
+        public floatMxN NewCentroids;   // k x D  centroid accumulator (zeroed each iteration)
+        public Indices   ClusterCounts;  // k      per-cluster point count (zeroed each iteration)
+        public floatN   D2Weights;      // N      D^2 distances for k-means++ seeding only
+    }
+}
+
+namespace LinearAlgebra
+{
+    public partial struct Arena
+    {
+        /// <summary>
+        /// Allocates a k-means workspace sized for <paramref name="N"/> points,
+        /// <paramref name="D"/> features, and <paramref name="k"/> clusters.
+        /// All buffers are persistent in this arena (disposed with it).
+        /// Create once outside hot loops and reuse for same-shape calls.
+        /// </summary>
+        public LinearAlgebra.ML.floatKMeansWorkspace floatKMeansWorkspace(int N, int D, int k)
+        {
+            return new LinearAlgebra.ML.floatKMeansWorkspace
+            {
+                Gram           = floatMat(N, k),
+                Ct             = floatMat(D, k),
+                PointNormSq    = floatVec(N),
+                CentNormSq     = floatVec(k),
+                PrevAssignment = Indices(N),
+                NewCentroids   = floatMat(k, D),
+                ClusterCounts  = Indices(k),
+                D2Weights      = floatVec(N)
+            };
+        }
+    }
+}
