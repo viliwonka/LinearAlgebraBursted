@@ -1,0 +1,243 @@
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
+
+using System;
+using System.Runtime.CompilerServices;
+
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
+
+namespace LinearAlgebra
+{
+    /// <summary>
+    /// Golub-Kahan-Householder bidiagonalization: reduce A to upper bidiagonal form.
+    /// This is Phase 1 of a Golub-Kahan SVD — the iterative phase is separate.
+    /// </summary>
+    public static partial class Bidiag
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static fProxy sign(fProxy x) => x < 0 ? (fProxy)(-1) : (fProxy)1;
+
+        // Build a Householder reflector from COLUMN k of matrix M (rows k..M_Rows-1).
+        // Stores result in u[k..M_Rows-1]; entries u[0..k-1] are not accessed.
+        // Convention: H = I - u*uᵀ with ||u||² = 2, matching OrthoOP.genHouseholderPete.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void genHouseholderCol(ref fProxyMxN M, ref fProxyN u, int k, fProxy zeroThreshold)
+        {
+            for (int r = k; r < M.M_Rows; r++)
+                u[r] = M[r, k];
+
+            fProxy xNorm = fProxyNormsOP.L2Range(u, k, M.M_Rows);
+
+            if (math.abs(xNorm) > zeroThreshold)
+            {
+                for (int r = k; r < M.M_Rows; r++)
+                    u[r] = u[r] / xNorm;
+                u[k] = u[k] + sign(u[k]);
+                fProxy div = math.sqrt(math.abs(u[k]));
+                for (int r = k; r < M.M_Rows; r++)
+                    u[r] = u[r] / div;
+            }
+            else
+            {
+                u[k] = math.SQRT2;
+            }
+        }
+
+        // Build a Householder reflector from ROW `row` of matrix M, columns colStart..N_Cols-1.
+        // Stores result in v[colStart..N_Cols-1]; entries v[0..colStart-1] are not accessed.
+        // Convention: G = I - v*vᵀ with ||v||² = 2, same sign convention as genHouseholderCol.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void genHouseholderRow(ref fProxyMxN M, ref fProxyN v, int row, int colStart, fProxy zeroThreshold)
+        {
+            int n = M.N_Cols;
+            for (int c = colStart; c < n; c++)
+                v[c] = M[row, c];
+
+            fProxy xNorm = fProxyNormsOP.L2Range(v, colStart, n);
+
+            if (math.abs(xNorm) > zeroThreshold)
+            {
+                for (int c = colStart; c < n; c++)
+                    v[c] = v[c] / xNorm;
+                v[colStart] = v[colStart] + sign(v[colStart]);
+                fProxy div = math.sqrt(math.abs(v[colStart]));
+                for (int c = colStart; c < n; c++)
+                    v[c] = v[c] / div;
+            }
+            else
+            {
+                v[colStart] = math.SQRT2;
+            }
+        }
+
+        // Apply Householder H = I - u*uᵀ from the LEFT to the trailing block M[d:, d:]:
+        //   M[d:, d:] -= u · (uᵀ · M[d:, d:])
+        // w is scratch of length >= M.N_Cols - d (zeroed by MemClear inside).
+        // Identical in semantics to OrthoOP.applyReflectorRight (which is a left-apply).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void applyHouseholderLeft(ref fProxyMxN M, ref fProxyN u, ref fProxyN w, int d)
+        {
+            int rows = M.M_Rows;
+            int cols = M.N_Cols;
+            int L = cols - d;
+            if (L <= 0) return;
+
+            fProxy* mp = M.Data.Ptr;
+            fProxy* up = u.Data.Ptr;
+            fProxy* wp = w.Data.Ptr;
+
+            // pass 1: w[0..L) = Σ_{r=d}^{rows-1} u[r] · M[r, d..cols)
+            UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<fProxy>());
+            for (int r = d; r < rows; r++)
+                UnsafeOP.axpy(wp, mp + (long)r * cols + d, up[r], L);
+
+            // pass 2: M[r, d..cols) -= u[r] · w[0..L)
+            for (int r = d; r < rows; r++)
+                UnsafeOP.axpy(mp + (long)r * cols + d, wp, -up[r], L);
+        }
+
+        // Apply Householder G = I - v*vᵀ from the RIGHT to M[rowStart:, colStart:]:
+        //   M[r, colStart:] -= (M[r, colStart:] · v[colStart:]) · v[colStart:]  for each r >= rowStart
+        // v[0..colStart-1] are treated as zero (not accessed).
+        // Per-row dot + axpy — unit-stride in the column axis, vectorizes.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void applyHouseholderRight(ref fProxyMxN M, ref fProxyN v, int rowStart, int colStart)
+        {
+            int rows = M.M_Rows;
+            int cols = M.N_Cols;
+            int L = cols - colStart;
+            if (L <= 0) return;
+
+            fProxy* mp = M.Data.Ptr;
+            fProxy* vp = v.Data.Ptr + colStart;
+
+            for (int r = rowStart; r < rows; r++)
+            {
+                fProxy* rowPtr = mp + (long)r * cols + colStart;
+                fProxy dot = UnsafeOP.vecDot(rowPtr, vp, L);
+                UnsafeOP.axpy(rowPtr, vp, -dot, L);
+            }
+        }
+
+        /// <summary>
+        /// Golub-Kahan-Householder bidiagonalization of A = U · B · Vᵀ.
+        /// <para>A is m×n with m≥n (not modified — a working copy is used internally).
+        /// U (m×n) receives the left orthogonal factor with orthonormal columns (UᵀU = I_n).
+        /// B (n×n) receives the upper bidiagonal factor (nonzero only on main diagonal and first superdiagonal).
+        /// V (n×n) receives the right orthogonal factor (VᵀV = I_n).</para>
+        /// <para>Allocates Allocator.Temp scratch internally (O(mn) total).</para>
+        /// </summary>
+        /// <param name="A">Input m×n matrix (m≥n). Not modified.</param>
+        /// <param name="U">Output m×n left factor (orthonormal columns). Caller-allocated.</param>
+        /// <param name="B">Output n×n upper bidiagonal factor. Caller-allocated.</param>
+        /// <param name="V">Output n×n right orthogonal factor. Caller-allocated.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void bidiagonalize(in fProxyMxN A, ref fProxyMxN U, ref fProxyMxN B, ref fProxyMxN V)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("Bidiag.bidiagonalize: A must have m >= n");
+            if (U.M_Rows != m || U.N_Cols != n)
+                throw new ArgumentException("Bidiag.bidiagonalize: U must be m x n");
+            if (B.M_Rows != n || B.N_Cols != n)
+                throw new ArgumentException("Bidiag.bidiagonalize: B must be n x n");
+            if (V.M_Rows != n || V.N_Cols != n)
+                throw new ArgumentException("Bidiag.bidiagonalize: V must be n x n");
+
+            // Initialize V = I_n, B = 0 (will fill bands at end)
+            unsafe
+            {
+                UnsafeUtility.MemClear(V.Data.Ptr, (long)n * n * UnsafeUtility.SizeOf<fProxy>());
+                UnsafeUtility.MemClear(B.Data.Ptr, (long)n * n * UnsafeUtility.SizeOf<fProxy>());
+            }
+            for (int i = 0; i < n; i++)
+                V[i, i] = (fProxy)1;
+
+            if (n == 0 || m == 0)
+                return;
+
+            // W: working copy of A (will be reduced to bidiagonal form in-place)
+            var W = new fProxyMxN(m, n, Allocator.Temp, true);
+            W.Data.CopyFrom(A.Data);
+
+            // leftU: column k holds the k-th left Householder reflector (entries k..m-1)
+            // Zeroed so entries below the active range are naturally 0.
+            var leftU = new fProxyMxN(m, n, Allocator.Temp, false);
+
+            // scratch vectors
+            var uVec    = new fProxyN(m, Allocator.Temp, false);
+            var vVec    = new fProxyN(n, Allocator.Temp, false);
+            var wScratch = new fProxyN(n, Allocator.Temp, false);
+
+            fProxy zeroThreshold = Consts.fProxyZeroTreshold * fProxyNormsOP.LInf(in A);
+
+            // ---- Forward sweep: reduce W to upper bidiagonal form ----
+            for (int k = 0; k < n; k++)
+            {
+                // Step 1: LEFT Householder — zero W[k+1..m-1, k]
+                genHouseholderCol(ref W, ref uVec, k, zeroThreshold);
+
+                // Apply H_k from left to trailing block W[k:, k:]
+                applyHouseholderLeft(ref W, ref uVec, ref wScratch, k);
+
+                // Store left reflector vector for backward U reconstruction
+                for (int r = k; r < m; r++)
+                    leftU[r, k] = uVec[r];
+
+                // Step 2: RIGHT Householder — zero W[k, k+2..n-1]  (only if room exists)
+                if (k <= n - 2)
+                {
+                    int colStart = k + 1;
+
+                    genHouseholderRow(ref W, ref vVec, k, colStart, zeroThreshold);
+
+                    // Apply G_k from right to trailing rows W[k:, k+1:]
+                    applyHouseholderRight(ref W, ref vVec, k, colStart);
+
+                    // Accumulate V from the right: V = V * G_k
+                    // All rows of V (0..n-1), columns k+1..n-1
+                    applyHouseholderRight(ref V, ref vVec, 0, colStart);
+                }
+            }
+
+            // ---- Backward pass: reconstruct thin U (m x n) from stored left reflectors ----
+            // Initialise U = first n columns of I_m, then apply H_k in reverse order from left.
+            // After the backward pass: U[:,j] = H_0 * H_1 * ... * H_{n-1} * e_j  (correct thin factor).
+            unsafe
+            {
+                UnsafeUtility.MemClear(U.Data.Ptr, (long)m * n * UnsafeUtility.SizeOf<fProxy>());
+            }
+            for (int j = 0; j < n; j++)
+                U[j, j] = (fProxy)1;
+
+            for (int k = n - 1; k >= 0; k--)
+            {
+                // Restore left reflector vector for step k
+                for (int r = k; r < m; r++)
+                    uVec[r] = leftU[r, k];
+
+                // Apply H_k from left to U[k:, k:]
+                applyHouseholderLeft(ref U, ref uVec, ref wScratch, k);
+            }
+
+            // ---- Extract B (n x n upper bidiagonal) from reduced W ----
+            // B is already zeroed above; fill diagonal and superdiagonal bands.
+            for (int k = 0; k < n; k++)
+            {
+                B[k, k] = W[k, k];
+                if (k < n - 1)
+                    B[k, k + 1] = W[k, k + 1];
+            }
+
+            // Cleanup
+            wScratch.Dispose();
+            vVec.Dispose();
+            uVec.Dispose();
+            leftU.Dispose();
+            W.Dispose();
+        }
+    }
+}
