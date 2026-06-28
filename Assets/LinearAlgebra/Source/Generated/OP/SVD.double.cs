@@ -330,7 +330,34 @@ namespace LinearAlgebra
             for (int i = 1; i < n; i++) eVec[i] = B[i - 1, i];
             B.Dispose();
 
-            bool ok = bidiagonalQR(ref U, ref dVec, ref eVec, ref V, m, n, maxIter);
+            // Transpose U (m x n) -> Ut (n x m) and V (n x n) -> Vt (n x n) so the bidiagonal QR's
+            // plane rotations hit CONTIGUOUS rows (unit-stride, SIMD via UnsafeOP.jacobiRotate)
+            // instead of strided columns — same trick that vectorized eigenSymmetric / svdDecomposition.
+            bool ok;
+            {
+                var Ut = new doubleMxN(n, m, Allocator.Temp, false);
+                var Vt = new doubleMxN(n, n, Allocator.Temp, false);
+                for (int i = 0; i < m; i++)
+                    for (int j = 0; j < n; j++)
+                        Ut[j, i] = U[i, j];
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < n; j++)
+                        Vt[j, i] = V[i, j];
+
+                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIter);
+
+                if (ok)
+                {
+                    for (int i = 0; i < m; i++)
+                        for (int j = 0; j < n; j++)
+                            U[i, j] = Ut[j, i];
+                    for (int i = 0; i < n; i++)
+                        for (int j = 0; j < n; j++)
+                            V[i, j] = Vt[j, i];
+                }
+                Ut.Dispose();
+                Vt.Dispose();
+            }
 
             if (ok)
             {
@@ -367,14 +394,20 @@ namespace LinearAlgebra
             => svdGolubKahan(in A, ref U, ref S, ref V, 75, Consts.doubleZeroTreshold);
 
         // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (diagonal d, superdiagonal e
-        // with e[0]=0), accumulating left rotations into U (m x n) columns and right rotations into V
-        // (n x n) columns. Golub-Reinsch (Numerical Recipes svdcmp diagonalization). The deflation
-        // threshold is machine-eps relative to the GLOBAL scale anorm (not a local |d|+|e|), which is
-        // what lets FLOAT converge on clustered / zero singular values (same lesson as the symmetric
-        // eigen QL). Returns false if any singular value fails to converge within maxIter sweeps.
-        static bool bidiagonalQR(ref doubleMxN U, ref doubleN d, ref doubleN e, ref doubleMxN V,
-                                 int m, int n, int maxIter)
+        // with e[0]=0), accumulating left rotations into Ut (n x m) ROWS and right rotations into Vt
+        // (n x n) ROWS — Ut/Vt are the TRANSPOSES of the SVD's U/V, so each plane rotation touches two
+        // contiguous rows (unit-stride, SIMD via UnsafeOP.jacobiRotate). NR's Givens convention
+        // a'=c*a+s*b, b'=c*b-s*a equals jacobiRotate(a,b,c,-s). Golub-Reinsch (Numerical Recipes svdcmp
+        // diagonalization). The deflation threshold is machine-eps relative to the GLOBAL scale anorm
+        // (not a local |d|+|e|), which is what lets FLOAT converge on clustered / zero singular values
+        // (same lesson as the symmetric eigen QL). Returns false if any singular value fails to
+        // converge within maxIter sweeps.
+        static unsafe bool bidiagonalQR(ref doubleMxN Ut, ref doubleN d, ref doubleN e, ref doubleMxN Vt,
+                                        int m, int n, int maxIter)
         {
+            double* utp = Ut.Data.Ptr;
+            double* vtp = Vt.Data.Ptr;
+
             double anorm = (double)0;
             for (int i = 0; i < n; i++)
             {
@@ -400,7 +433,7 @@ namespace LinearAlgebra
                     if (flag)
                     {
                         // Cancel e[l] (l > 0): Givens rotations zero the superdiagonal, applied to
-                        // U columns nm = l-1 and i.
+                        // U columns nm = l-1 and i (= Ut rows nm and i).
                         double c = (double)0, s = (double)1;
                         for (int i = l; i <= k; i++)
                         {
@@ -413,13 +446,7 @@ namespace LinearAlgebra
                             h = (double)1 / h;
                             c = g * h;
                             s = -f * h;
-                            for (int j = 0; j < m; j++)
-                            {
-                                double y = U[j, nm];
-                                double z = U[j, i];
-                                U[j, nm] = y * c + z * s;
-                                U[j, i]  = z * c - y * s;
-                            }
+                            UnsafeOP.jacobiRotate(utp + (long)nm * m, utp + (long)i * m, c, -s, m);
                         }
                     }
 
@@ -430,7 +457,8 @@ namespace LinearAlgebra
                         if (zz < (double)0)
                         {
                             d[k] = -zz;
-                            for (int j = 0; j < n; j++) V[j, k] = -V[j, k];
+                            double* vrow = vtp + (long)k * n; // column k of V = row k of Vt
+                            for (int j = 0; j < n; j++) vrow[j] = -vrow[j];
                         }
                         break;
                     }
@@ -465,13 +493,8 @@ namespace LinearAlgebra
                         g2 = g2 * c2 - x * s2;
                         h2 = yy * s2;
                         yy *= c2;
-                        for (int jj = 0; jj < n; jj++)
-                        {
-                            double xv = V[jj, j];
-                            double zv = V[jj, i];
-                            V[jj, j] = xv * c2 + zv * s2;
-                            V[jj, i] = zv * c2 - xv * s2;
-                        }
+                        // V columns j,i = Vt rows j,i
+                        UnsafeOP.jacobiRotate(vtp + (long)j * n, vtp + (long)i * n, c2, -s2, n);
                         zr = svdPythag(f2, h2);
                         d[j] = zr;
                         if (zr != (double)0)
@@ -482,13 +505,8 @@ namespace LinearAlgebra
                         }
                         f2 = c2 * g2 + s2 * yy;
                         x = c2 * yy - s2 * g2;
-                        for (int jj = 0; jj < m; jj++)
-                        {
-                            double yu = U[jj, j];
-                            double zu = U[jj, i];
-                            U[jj, j] = yu * c2 + zu * s2;
-                            U[jj, i] = zu * c2 - yu * s2;
-                        }
+                        // U columns j,i = Ut rows j,i
+                        UnsafeOP.jacobiRotate(utp + (long)j * m, utp + (long)i * m, c2, -s2, m);
                     }
                     e[l] = (double)0;
                     e[k] = f2;

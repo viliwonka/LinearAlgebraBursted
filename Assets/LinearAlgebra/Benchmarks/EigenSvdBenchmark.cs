@@ -214,6 +214,28 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SvdGKJobFloat : IJob
+    {
+        public floatMxN A;     // input, not modified (svdGolubKahan takes A `in`)
+        public floatMxN U;
+        public floatN S;
+        public floatMxN V;
+
+        public void Execute() => SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SvdGKJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN U;
+        public doubleN S;
+        public doubleMxN V;
+
+        public void Execute() => SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+    }
+
     public static class EigenSvdBenchmark
     {
         static readonly int[] Sizes = { 32, 64, 128, 256 };
@@ -226,6 +248,12 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Sizes) sb.AppendLine(Svd(n));
             foreach (var n in Sizes) sb.AppendLine(SvdD(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Golub-Kahan full SVD (svdGolubKahan; bidiag + implicit-shift QR, ms) ===");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in Sizes) sb.AppendLine(SvdGK(n));
+            foreach (var n in Sizes) sb.AppendLine(SvdGKD(n));
             sb.AppendLine();
 
             sb.AppendLine("=== SVD singular values only (svdValues, augmented Householder; ms) ===");
@@ -257,6 +285,46 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Sizes) sb.AppendLine(EigQR(n));
             foreach (var n in Sizes) sb.AppendLine(EigQRD(n));
             sb.AppendLine();
+        }
+
+        static string SvdGK(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var U = arena.floatMat(n, n);
+            var S = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = rng.NextFloat(-1f, 1f);
+
+            var job = new SvdGKJobFloat { A = A, U = U, S = S, V = V };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float", n, stat);
+        }
+
+        static string SvdGKD(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(n, n);
+            var U = arena.doubleMat(n, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = rng.NextDouble(-1.0, 1.0);
+
+            var job = new SvdGKJobDouble { A = A, U = U, S = S, V = V };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double", n, stat);
         }
 
         static string Svd(int n)
