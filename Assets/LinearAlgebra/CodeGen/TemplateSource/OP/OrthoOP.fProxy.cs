@@ -274,6 +274,12 @@ namespace LinearAlgebra
             int m = Q.M_Rows;
             int n = Q.N_Cols;
 
+            // Reflector-apply accumulator (length n) + per-column squared-norm buffer for pivoting.
+            // Allocated once per call (O(n) « O(n³)); this path has no zero-alloc w contract, unlike
+            // qrDecomposition's 4-arg overload.
+            var w = new fProxyN(n, Allocator.Temp, false);
+            var colNorm2 = new fProxyN(n, Allocator.Temp, false);
+
             // scale-relative zero-column threshold (see genHouseholderPete); LInf(Q) == max |entry|.
             fProxy zeroThreshold = Consts.fProxyZeroTreshold * fProxyNormsOP.LInf(in Q);
 
@@ -282,22 +288,29 @@ namespace LinearAlgebra
                 // --- column pivot: among trailing columns d..n-1, pick the one whose partial 2-norm
                 //     over rows d..m-1 is largest (recomputed exactly), and bring it to position d. ---
 
-                // partial squared-norm of the incumbent column d.
-                fProxy diagNorm2 = 0;
-                for (int r = d; r < m; r++)
-                    diagNorm2 += Q[r, d] * Q[r, d];
+                // Squared 2-norms of all trailing columns built in ONE row-major sweep (unit-stride,
+                // vectorised addSquares) rather than n separate down-a-column reductions — the same
+                // restructuring as the reflector apply. Recomputed exactly each step (not downdated).
+                // Bitwise identical to the per-column form: each colNorm2[c] sums rows d..m-1 in the
+                // same ascending order.
+                unsafe
+                {
+                    fProxy* qp = Q.Data.Ptr;
+                    fProxy* cn = colNorm2.Data.Ptr;
+                    int L = n - d;
+                    UnsafeUtility.MemClear(cn + d, (long)L * UnsafeUtility.SizeOf<fProxy>());
+                    for (int r = d; r < m; r++)
+                        UnsafeOP.addSquares(cn + d, qp + (long)r * n + d, L);
+                }
 
+                fProxy diagNorm2 = colNorm2[d];
                 int pivotCol = d;
                 fProxy maxNorm2 = diagNorm2;
                 for (int c = d + 1; c < n; c++)
                 {
-                    fProxy norm2 = 0;
-                    for (int r = d; r < m; r++)
-                        norm2 += Q[r, c] * Q[r, c];
-
-                    if (norm2 > maxNorm2)
+                    if (colNorm2[c] > maxNorm2)
                     {
-                        maxNorm2 = norm2;
+                        maxNorm2 = colNorm2[c];
                         pivotCol = c;
                     }
                 }
@@ -319,15 +332,8 @@ namespace LinearAlgebra
 
                 genHouseholderPete(ref Q, ref u, d, zeroThreshold);
 
-                for (int c = d; c < n; c++)
-                {
-                    fProxy dotProduct = 0;
-                    for (int k = d; k < m; k++)
-                        dotProduct += u[k] * Q[k, c];
-
-                    for (int r = d; r < m; r++)
-                        Q[r, c] -= u[r] * dotProduct;
-                }
+                // Apply the reflector to the trailing submatrix (vectorised, see applyReflectorRight).
+                applyReflectorRight(ref Q, ref u, ref w, d);
 
                 // copy current Q diagonal element into R (over-written in next step)
                 R[d, d] = Q[d, d];
@@ -362,16 +368,12 @@ namespace LinearAlgebra
                     Q[i, d] = i == d ? 1 : 0;
                 }
 
-                for (int c = d; c < n; c++)
-                {
-                    fProxy dotProduct = 0;
-                    for (int k = d; k < m; k++)
-                        dotProduct += u[k] * Q[k, c];
-
-                    for (int r = d; r < m; r++)
-                        Q[r, c] -= u[r] * dotProduct;
-                }
+                // Apply the reflector to the trailing columns (vectorised, see applyReflectorRight).
+                applyReflectorRight(ref Q, ref u, ref w, d);
             }
+
+            colNorm2.Dispose();
+            w.Dispose();
         }
 
         // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
@@ -412,6 +414,9 @@ namespace LinearAlgebra
 
             int qrSteps = A.N_Cols;
 
+            // Reflector-apply accumulator (length N_Cols). Allocated once per call (O(n) « O(n³)).
+            var w = new fProxyN(A.N_Cols, Allocator.Temp, false);
+
             // scale-relative zero-column threshold (see genHouseholderPete); LInf(A) == max |entry|.
             fProxy zeroThreshold = Consts.fProxyZeroTreshold * fProxyNormsOP.LInf(in A);
 
@@ -422,18 +427,10 @@ namespace LinearAlgebra
 
                 genHouseholderPete(ref A, ref u, d, zeroThreshold);
 
-                for (int c = d; c < A.N_Cols; c++) {
+                // Apply the reflector to the trailing submatrix (vectorised, see applyReflectorRight).
+                applyReflectorRight(ref A, ref u, ref w, d);
 
-                    dotProduct = 0;
-                    for (int r = d; r < A.M_Rows; r++)
-                        dotProduct += u[r] * A[r, c];
-
-                    //dotProduct *= 2;
-                    for (int r = d; r < A.M_Rows; r++)
-                        A[r, c] -= u[r] * dotProduct;
-                }
-
-                // apply same transformation to b vector
+                // apply same transformation to b vector (O(n) — left scalar)
                 dotProduct = 0;
                 for (int r = d; r < A.M_Rows; r++)
                     dotProduct += u[r] * b[r];
@@ -442,6 +439,8 @@ namespace LinearAlgebra
                 for (int r = d; r < A.M_Rows; r++)
                     b[r] -= u[r] * dotProduct;
             }
+
+            w.Dispose();
 
             // copy b into x (x may be smaller dimension than b)
             for (int r = 0; r < A.N_Cols; r++)

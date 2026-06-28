@@ -201,6 +201,15 @@ namespace LinearAlgebra
                 y[i] = a * y[i] + x[i];
         }
 
+        // acc[i] += x[i] * x[i]  — accumulate squares. Independent across i (no reduction), so it
+        // vectorises; used to build per-column squared norms in a row-major sweep (QRCP pivoting).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void addSquares([NoAlias] double* acc, [NoAlias] double* x, int n) {
+
+            for (int i = 0; i < n; i++)
+                acc[i] += x[i] * x[i];
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void compSub([NoAlias] double* target, [NoAlias] double* from, int n)
         {
