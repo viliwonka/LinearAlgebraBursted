@@ -42,8 +42,9 @@ namespace LinearAlgebra
         {
             _arenaPtr = orig._arenaPtr;
 
+            // guard a standalone (null-arena) source — was dereferencing null for the default allocator
             if (allocator == Allocator.Invalid)
-                allocator = _arenaPtr->Allocator;
+                allocator = _arenaPtr != null ? _arenaPtr->Allocator : Allocator.Temp;
 
             var data = new UnsafeList<bool>(orig.N, allocator, NativeArrayOptions.UninitializedMemory);
             data.Resize(orig.N, NativeArrayOptions.UninitializedMemory);

@@ -29,7 +29,7 @@ namespace LinearAlgebra
         public ref short this[System.Index index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref Data.ElementAt(index.IsFromEnd ? Data.Length - 1 - index.Value : index.Value);
+            get => ref Data.ElementAt(index.IsFromEnd ? Data.Length - index.Value : index.Value);
         }
 
 
@@ -63,11 +63,10 @@ namespace LinearAlgebra
             get
             {
 
+                var c = indexC.IsFromEnd ? N_Cols - indexC.Value : indexC.Value;
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-                Assume.IndexInsideBounds(new int2(M_Rows, N_Cols), new int2(r, indexC.Value));
+                Assume.IndexInsideBounds(new int2(M_Rows, N_Cols), new int2(r, c));
 #endif
-                var c = indexC.IsFromEnd? N_Cols - 1 - indexC.Value : indexC.Value;
-
                 return ref Data.ElementAt(r * N_Cols + c);
             }
         }
@@ -84,11 +83,10 @@ namespace LinearAlgebra
             get
             {
 
+                var r = indexR.IsFromEnd ? M_Rows - indexR.Value : indexR.Value;
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-                Assume.IndexInsideBounds(new int2(M_Rows, N_Cols), new int2(indexR.Value, c));
+                Assume.IndexInsideBounds(new int2(M_Rows, N_Cols), new int2(r, c));
 #endif
-                var r = indexR.IsFromEnd ? M_Rows - 1 - indexR.Value : indexR.Value;
-
                 return ref Data.ElementAt(r * N_Cols + c);
             }
         }
@@ -105,12 +103,11 @@ namespace LinearAlgebra
             get
             {
 
+                var r = indexR.IsFromEnd ? M_Rows - indexR.Value : indexR.Value;
+                var c = indexC.IsFromEnd ? N_Cols - indexC.Value : indexC.Value;
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-                Assume.IndexInsideBounds(new int2(M_Rows, N_Cols), new int2(indexR.Value, indexC.Value));
+                Assume.IndexInsideBounds(new int2(M_Rows, N_Cols), new int2(r, c));
 #endif
-                var r = indexR.IsFromEnd ? M_Rows - 1 - indexR.Value : indexR.Value;
-                var c = indexC.IsFromEnd ? N_Cols - 1 - indexC.Value : indexC.Value;
-
                 return ref Data.ElementAt(r * N_Cols + c);
             }
         }

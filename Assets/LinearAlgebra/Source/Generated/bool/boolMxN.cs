@@ -48,8 +48,9 @@ namespace LinearAlgebra
 
         public unsafe boolMxN(in boolMxN orig, Allocator allocator = Allocator.Invalid)
         {
+            // guard a standalone (null-arena) source — was dereferencing null for the default allocator
             if (allocator == Allocator.Invalid)
-                allocator = orig._arenaPtr->Allocator;
+                allocator = orig._arenaPtr != null ? orig._arenaPtr->Allocator : Allocator.Temp;
 
             _arenaPtr = orig._arenaPtr;
             M_Rows = orig.M_Rows;

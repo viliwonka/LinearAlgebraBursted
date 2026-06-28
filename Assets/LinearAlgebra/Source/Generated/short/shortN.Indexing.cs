@@ -20,7 +20,7 @@ namespace LinearAlgebra
         public ref short this[System.Index index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref Data.ElementAt(index.IsFromEnd? (Data.Length - 1) - index.Value: index.Value);
+            get => ref Data.ElementAt(index.IsFromEnd ? Data.Length - index.Value : index.Value);
         }
     }
 }

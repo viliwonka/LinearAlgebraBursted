@@ -52,17 +52,27 @@ public class floatIndexingTests {
 
             floatN vec = arena.floatVec(dim);
 
+            // Forward-fill DISTINCT ground-truth values via the plain int indexer (oracle).
             for (int i = 0; i < dim; i++)
-                vec[i] = i;
+                vec[i] = (float)(i + 1);
 
             for (int i = 0; i < dim; i++)
-                Assert.IsTrue(vec[i] == (float)i);
+                Assert.IsTrue(vec[i] == (float)(i + 1));
 
-            for (int i = 0; i < dim; i++)
-                vec[^i] = i;
+            // From-end accessor must equal the forward element at (Length - k).
+            for (int k = 1; k <= dim; k++)
+                Assert.IsTrue(vec[^k] == vec[dim - k]);
 
-            for (int i = 0; i < dim; i++)
-                Assert.IsTrue(vec[^i] == (float)i);
+            // ^1 is the LAST element.
+            Assert.IsTrue(vec[^1] == vec[dim - 1]);
+
+            // Write through the from-end accessor with fresh distinct values,
+            // read them back through the plain forward int accessor.
+            for (int k = 1; k <= dim; k++)
+                vec[^k] = (float)(1000 + k);
+
+            for (int k = 1; k <= dim; k++)
+                Assert.IsTrue(vec[dim - k] == (float)(1000 + k));
 
             arena.Dispose();
         }
@@ -77,17 +87,26 @@ public class floatIndexingTests {
 
             int len = dim * dim;
 
+            // Forward-fill DISTINCT ground-truth values via the plain int indexer (oracle).
             for (int i = 0; i < len; i++)
-                mat[i] = i;
+                mat[i] = (float)(i + 1);
 
             for (int i = 0; i < len; i++)
-                Assert.IsTrue(mat[i] == (float)i);
+                Assert.IsTrue(mat[i] == (float)(i + 1));
 
-            for (int i = 0; i < len; i++)
-                mat[^i] = i;
+            // From-end accessor must equal the forward element at (Length - k).
+            for (int k = 1; k <= len; k++)
+                Assert.IsTrue(mat[^k] == mat[len - k]);
 
-            for (int i = 0; i < len; i++)
-                Assert.IsTrue(mat[^i] == (float)i);
+            // ^1 is the LAST element.
+            Assert.IsTrue(mat[^1] == mat[len - 1]);
+
+            // Write through the from-end accessor, read back through forward int accessor.
+            for (int k = 1; k <= len; k++)
+                mat[^k] = (float)(1000 + k);
+
+            for (int k = 1; k <= len; k++)
+                Assert.IsTrue(mat[len - k] == (float)(1000 + k));
 
             arena.Dispose();
         }
@@ -100,38 +119,42 @@ public class floatIndexingTests {
             int cols = 16;
 
             floatMxN mat = arena.floatMat(rows, cols);
-            
+
+            // Forward-fill DISTINCT ground-truth values via the plain [r, c] oracle.
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                    mat[r, c] = r*c;
+                    mat[r, c] = (float)(r * cols + c + 1);
 
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
-                Assert.IsTrue(mat[r, c] == (float)(r * c));
+                Assert.IsTrue(mat[r, c] == (float)(r * cols + c + 1));
 
-            for (int r = 0; r < rows; r++)
+            // [^r, c] : from-end row, forward col -> forward [rows - r, c].
+            for (int r = 1; r <= rows; r++)
             for (int c = 0; c < cols; c++)
-                    mat[^r, c] = r * c;
+                Assert.IsTrue(mat[^r, c] == mat[rows - r, c]);
 
+            // [r, ^c] : forward row, from-end col -> forward [r, cols - c].
             for (int r = 0; r < rows; r++)
-            for (int c = 0; c < cols; c++)
-                Assert.IsTrue(mat[^r, c] == (float)(r * c));
+            for (int c = 1; c <= cols; c++)
+                Assert.IsTrue(mat[r, ^c] == mat[r, cols - c]);
 
-            for (int r = 0; r < rows; r++)
-            for (int c = 0; c < cols; c++)
-                mat[r, ^c] = r * c;
+            // [^r, ^c] : both from-end -> forward [rows - r, cols - c].
+            for (int r = 1; r <= rows; r++)
+            for (int c = 1; c <= cols; c++)
+                Assert.IsTrue(mat[^r, ^c] == mat[rows - r, cols - c]);
 
-            for (int r = 0; r < rows; r++)
-            for (int c = 0; c < cols; c++)
-                Assert.IsTrue(mat[r, ^c] == (float)(r * c));
+            // ^1, ^1 is the LAST element.
+            Assert.IsTrue(mat[^1, ^1] == mat[rows - 1, cols - 1]);
 
-            for (int r = 0; r < rows; r++)
-            for (int c = 0; c < cols; c++)
-                mat[^r, ^c] = r * c;
+            // Write through the from-end accessor (both axes), read back through forward [r, c].
+            for (int r = 1; r <= rows; r++)
+            for (int c = 1; c <= cols; c++)
+                mat[^r, ^c] = (float)(1000 + r * cols + c);
 
-            for (int r = 0; r < rows; r++)
-            for (int c = 0; c < cols; c++)
-                Assert.IsTrue(mat[^r, ^c] == (float)(r * c));
+            for (int r = 1; r <= rows; r++)
+            for (int c = 1; c <= cols; c++)
+                Assert.IsTrue(mat[rows - r, cols - c] == (float)(1000 + r * cols + c));
 
             arena.Dispose();
         }

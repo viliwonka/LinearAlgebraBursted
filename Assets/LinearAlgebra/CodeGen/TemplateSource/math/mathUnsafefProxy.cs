@@ -207,8 +207,10 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void acosh([NoAlias] fProxy* x, int n)
         {
+            // acosh(x) = log(x + sqrt(x^2 - 1)), domain x >= 1.
+            // Unity.Mathematics has no math.acosh; this previously called math.acos by mistake.
             for (int i = 0; i < n; i++)
-                x[i] = math.acos(x[i]);
+                x[i] = math.log(x[i] + math.sqrt(x[i] * x[i] - (fProxy)1));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
