@@ -106,7 +106,7 @@ public class floatLiteratureTests
             var xTrue = arena.floatVec(3);
             xTrue[0] = (float)1; xTrue[1] = (float)2; xTrue[2] = (float)3;
 
-            // --- SVD pseudo-inverse solve (pinvSolve destroys A, not b) ---
+            // --- SVD pseudo-inverse solve (pinvSolve no longer modifies A or b) ---
             var A1 = arena.floatLauchli(3, eps);   // (3+1)x3 = 4x3
             var b1 = floatOP.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.floatVec(3);

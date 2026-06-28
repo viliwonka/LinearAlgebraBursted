@@ -106,7 +106,7 @@ public class doubleLiteratureTests
             var xTrue = arena.doubleVec(3);
             xTrue[0] = (double)1; xTrue[1] = (double)2; xTrue[2] = (double)3;
 
-            // --- SVD pseudo-inverse solve (pinvSolve destroys A, not b) ---
+            // --- SVD pseudo-inverse solve (pinvSolve no longer modifies A or b) ---
             var A1 = arena.doubleLauchli(3, eps);   // (3+1)x3 = 4x3
             var b1 = doubleOP.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.doubleVec(3);

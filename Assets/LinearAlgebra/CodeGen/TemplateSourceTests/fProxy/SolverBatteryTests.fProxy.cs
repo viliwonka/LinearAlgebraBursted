@@ -466,7 +466,7 @@ public class fProxySolverBatteryTests
 
             var b = fProxyOP.dot(A, xTrue);   // length 4, in range(A)
 
-            var Aw = A.Copy();                // pinvSolve destroys A
+            var Aw = A.Copy();                // pinvSolve no longer modifies A (copy kept for clarity)
             var x = arena.fProxyVec(n);
             int r = SVD.pinvSolve(ref Aw, in b, ref x, out bool conv);
             AssertTrue(conv);

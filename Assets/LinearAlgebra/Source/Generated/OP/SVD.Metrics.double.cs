@@ -11,9 +11,10 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Computes the singular values of any-shape A into S (length k = min(M_Rows, N_Cols)),
-        /// sorted in descending order. A is NOT modified — an internal copy (tall A) or transpose
-        /// (wide A) is decomposed, since A and Aᵀ share the same singular values. Allocates SVD
-        /// scratch from A's arena. Returns k (= S.N). Shared by matrixL2 / cond / rank.
+        /// sorted in descending order. A is NOT modified — for wide A its transpose is decomposed,
+        /// since A and Aᵀ share the same singular values. Uses the fast values-only Golub-Kahan path
+        /// (svdValues), which needs no orthogonal factors. Allocates SVD scratch from A's arena.
+        /// Returns k (= S.N). Shared by matrixL2 / cond / rank.
         /// </summary>
         public static int singularValues(in doubleMxN A, ref doubleN S)
         {
@@ -28,18 +29,13 @@ namespace LinearAlgebra
                 return 0;
 
             if (m >= n) {
-                // U holds a copy of A (svdDecomposition overwrites it with the left vectors).
-                // TempCopy (not Copy) so the scratch lands in the temp pool reclaimed by ClearTemp,
-                // matching the wide branch's trans() and the sibling SVD solvers.
-                doubleMxN U = A.TempCopy();
-                doubleMxN V = A.tempdoubleMat(n, n);
-                svdDecomposition(ref U, ref S, ref V, 30);
+                // svdValues takes A as input (not modified) — no copy needed.
+                svdValues(in A, ref S);
             }
             else {
                 // Wide: decompose Aᵀ (n x m, tall); same singular values as A.
                 doubleMxN At = doubleOP.trans(A);
-                doubleMxN V = A.tempdoubleMat(m, m);
-                svdDecomposition(ref At, ref S, ref V, 30);
+                svdValues(in At, ref S);
             }
 
             return k;

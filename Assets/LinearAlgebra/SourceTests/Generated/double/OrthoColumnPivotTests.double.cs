@@ -608,7 +608,7 @@ public class doubleOrthoColumnPivotTests
             double resQrcp = ResidualNorm(in A_copy, in x, in b);
             double normQrcp = VecNorm(in x);
 
-            // pinv reference (destroys A) — same residual, minimum norm
+            // pinv reference (no longer modifies A) — same residual, minimum norm
             var Apinv = A_copy.Copy();
             var xPinv = arena.doubleVec(n);
             int pinvRank = SVD.pinvSolve(ref Apinv, in b, ref xPinv, out bool converged);

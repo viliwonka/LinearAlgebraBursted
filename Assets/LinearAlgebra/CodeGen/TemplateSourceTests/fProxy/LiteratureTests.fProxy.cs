@@ -106,7 +106,7 @@ public class fProxyLiteratureTests
             var xTrue = arena.fProxyVec(3);
             xTrue[0] = (fProxy)1; xTrue[1] = (fProxy)2; xTrue[2] = (fProxy)3;
 
-            // --- SVD pseudo-inverse solve (pinvSolve destroys A, not b) ---
+            // --- SVD pseudo-inverse solve (pinvSolve no longer modifies A or b) ---
             var A1 = arena.fProxyLauchli(3, eps);   // (3+1)x3 = 4x3
             var b1 = fProxyOP.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.fProxyVec(3);

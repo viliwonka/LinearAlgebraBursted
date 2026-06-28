@@ -70,8 +70,8 @@ public class floatSVDSolverTests
         }
 
         // Case 1: Square full-rank. Well-conditioned 8x8 (diagonal-boosted), known x_orig,
-        // b = A*x_orig. pinvSolve destroys A, so b is built from a copy and residual checks
-        // use the saved copy.
+        // b = A*x_orig. pinvSolve no longer modifies A; copies are kept for clarity and residual
+        // checks use the saved copy.
         public void PinvSquareFullRank()
         {
             var arena = new Arena(Allocator.Persistent);

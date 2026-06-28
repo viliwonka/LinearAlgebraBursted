@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Phase-2 solver-workspace tests for the SVD solvers: the caller-provided-scratch overloads
-// pinvSolve(...,ref S,ref M,ref At) / pseudoInverse(...,ref S,ref M,ref At) must produce results
+// pinvSolve(...,ref S,ref M,ref U,ref At) / pseudoInverse(...,ref S,ref M,ref U,ref At) must produce results
 // identical to the allocating wrappers (they run the SAME kernel), for both the tall/square
 // (m>=n) and wide (m<n) branches; and a mis-sized scratch must throw.
 public class fProxySVDWorkspaceTests
@@ -54,7 +54,7 @@ public class fProxySVDWorkspaceTests
 
             var b = arena.fProxyRandomVector(m, -5f, 5f, 9090);   // read-only in pinvSolve
 
-            // allocating reference (pinvSolve DESTROYS A, so each call gets a fresh copy)
+            // allocating reference (A is no longer modified, but keep per-call copies for clarity)
             var Aa = A0.Copy();
             var xa = arena.fProxyVec(n);
             int ra = SVD.pinvSolve(ref Aa, in b, ref xa, out bool ca);
@@ -64,10 +64,11 @@ public class fProxySVDWorkspaceTests
             var xb = arena.fProxyVec(n);
             var S = arena.fProxyVec(k);
             var M = arena.fProxyMat(k, k);
+            var U = arena.fProxyMat(m < n ? n : m, k);
             fProxyMxN At = default;
             if (m < n)
                 At = arena.fProxyMat(n, m);
-            int rb = SVD.pinvSolve(ref Ab, in b, ref xb, out bool cb, (fProxy)(-1), 30, ref S, ref M, ref At);
+            int rb = SVD.pinvSolve(ref Ab, in b, ref xb, out bool cb, (fProxy)(-1), 30, ref S, ref M, ref U, ref At);
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
@@ -106,10 +107,11 @@ public class fProxySVDWorkspaceTests
             var Pb = arena.fProxyMat(n, m);
             var S = arena.fProxyVec(k);
             var M = arena.fProxyMat(k, k);
+            var U = arena.fProxyMat(m < n ? n : m, k);
             fProxyMxN At = default;
             if (m < n)
                 At = arena.fProxyMat(n, m);
-            int rb = SVD.pseudoInverse(ref Ab, ref Pb, out bool cb, (fProxy)(-1), 30, ref S, ref M, ref At);
+            int rb = SVD.pseudoInverse(ref Ab, ref Pb, out bool cb, (fProxy)(-1), 30, ref S, ref M, ref U, ref At);
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
@@ -183,9 +185,10 @@ public class fProxySVDWorkspaceTests
             var x = arena.fProxyVec(3);
             var S = arena.fProxyVec(2);        // must be length 3
             var M = arena.fProxyMat(3, 3);
+            var U = arena.fProxyMat(4, 3);
             fProxyMxN At = default;
             Assert.Throws<ArgumentException>(
-                () => SVD.pinvSolve(ref A, in b, ref x, out bool c, (fProxy)(-1), 30, ref S, ref M, ref At));
+                () => SVD.pinvSolve(ref A, in b, ref x, out bool c, (fProxy)(-1), 30, ref S, ref M, ref U, ref At));
         }
         finally { arena.Dispose(); }
     }
@@ -201,9 +204,29 @@ public class fProxySVDWorkspaceTests
             var x = arena.fProxyVec(3);
             var S = arena.fProxyVec(3);
             var M = arena.fProxyMat(3, 2);     // must be 3 x 3
+            var U = arena.fProxyMat(4, 3);
             fProxyMxN At = default;
             Assert.Throws<ArgumentException>(
-                () => SVD.pinvSolve(ref A, in b, ref x, out bool c, (fProxy)(-1), 30, ref S, ref M, ref At));
+                () => SVD.pinvSolve(ref A, in b, ref x, out bool c, (fProxy)(-1), 30, ref S, ref M, ref U, ref At));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Pinv_BadScratchU_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.fProxyMat(4, 3);     // tall, k = 3, big = 4 -> U must be 4 x 3
+            var b = arena.fProxyVec(4);
+            var x = arena.fProxyVec(3);
+            var S = arena.fProxyVec(3);
+            var M = arena.fProxyMat(3, 3);
+            var U = arena.fProxyMat(3, 3);     // wrong: must be 4 x 3
+            fProxyMxN At = default;
+            Assert.Throws<ArgumentException>(
+                () => SVD.pinvSolve(ref A, in b, ref x, out bool c, (fProxy)(-1), 30, ref S, ref M, ref U, ref At));
         }
         finally { arena.Dispose(); }
     }
@@ -219,9 +242,10 @@ public class fProxySVDWorkspaceTests
             var x = arena.fProxyVec(5);
             var S = arena.fProxyVec(3);
             var M = arena.fProxyMat(3, 3);
+            var U = arena.fProxyMat(5, 3);
             fProxyMxN At = default;            // missing (0 x 0) -> must throw
             Assert.Throws<ArgumentException>(
-                () => SVD.pinvSolve(ref A, in b, ref x, out bool c, (fProxy)(-1), 30, ref S, ref M, ref At));
+                () => SVD.pinvSolve(ref A, in b, ref x, out bool c, (fProxy)(-1), 30, ref S, ref M, ref U, ref At));
         }
         finally { arena.Dispose(); }
     }
@@ -233,17 +257,21 @@ public class fProxySVDWorkspaceTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            // tall: k = n; At unused (left default). Only assert the always-allocated buffers.
+            // tall: k = n, big = m; U = big x k = 7 x 4; At unused (left default).
             var wsTall = arena.fProxySvdWorkspace(7, 4);
             Assert.AreEqual(4, wsTall.S.N);
             Assert.AreEqual(4, wsTall.M.M_Rows);
             Assert.AreEqual(4, wsTall.M.N_Cols);
+            Assert.AreEqual(7, wsTall.U.M_Rows);
+            Assert.AreEqual(4, wsTall.U.N_Cols);
 
-            // wide: k = m; At = n x m
+            // wide: k = m, big = n; U = big x k = 8 x 3; At = n x m
             var wsWide = arena.fProxySvdWorkspace(3, 8);
             Assert.AreEqual(3, wsWide.S.N);
             Assert.AreEqual(3, wsWide.M.M_Rows);
             Assert.AreEqual(3, wsWide.M.N_Cols);
+            Assert.AreEqual(8, wsWide.U.M_Rows);
+            Assert.AreEqual(3, wsWide.U.N_Cols);
             Assert.AreEqual(8, wsWide.At.M_Rows);
             Assert.AreEqual(3, wsWide.At.N_Cols);
         }
@@ -260,9 +288,10 @@ public class fProxySVDWorkspaceTests
             var Aplus = arena.fProxyMat(5, 3); // N_Cols x M_Rows
             var S = arena.fProxyVec(3);
             var M = arena.fProxyMat(3, 3);
+            var U = arena.fProxyMat(5, 3);
             var At = arena.fProxyMat(3, 5);    // wrong shape (must be 5 x 3) -> must throw
             Assert.Throws<ArgumentException>(
-                () => SVD.pseudoInverse(ref A, ref Aplus, out bool c, (fProxy)(-1), 30, ref S, ref M, ref At));
+                () => SVD.pseudoInverse(ref A, ref Aplus, out bool c, (fProxy)(-1), 30, ref S, ref M, ref U, ref At));
         }
         finally { arena.Dispose(); }
     }
