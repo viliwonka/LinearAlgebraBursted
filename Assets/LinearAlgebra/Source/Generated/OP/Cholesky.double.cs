@@ -43,45 +43,59 @@ namespace LinearAlgebra
 
             if (n == 0) return true;
 
-            for (int j = 0; j < n; j++) {
+            // RIGHT-LOOKING (outer-product) Cholesky. The left-looking form's hot loop is a dot
+            // (reduction over already-computed columns), which stays effectively scalar under strict
+            // FloatMode (loop-carried accumulator). This form instead, once column j is known,
+            // immediately subtracts its rank-1 contribution from the trailing LOWER triangle as a set
+            // of row-wise axpys: L[i, j+1..i] -= L[i,j] * L[j+1..i, j]. Each row segment is unit-stride
+            // (row-major), so they go through the vectorising UnsafeOP.axpy ([NoAlias], the GEMM
+            // pointer path) and run at LU speed (float ~2x double). Only the lower triangle is touched
+            // (i >= column index), so no work is wasted on the symmetric upper half.
+            //
+            // The active column j is gathered into a contiguous buffer `lj` (one strided pass) so both
+            // axpy operands are unit-stride. Results differ from the old left-looking form by rounding
+            // only (a different, equally-valid summation order); A = L*Lᵀ to working precision.
+            unsafe
+            {
+                double* lp = L.Data.Ptr;
 
-                // Diagonal: L[j,j] = sqrt(A[j,j] - sum_{k<j} L[j,k]^2)
-                double diag = A[j, j];
-                for (int k = 0; k < j; k++) {
-                    double Ljk = L[j, k];
-                    diag -= Ljk * Ljk;
+                // Working matrix L := lower triangle of A, strict upper := 0. (L may alias A: the lower
+                // copy is then a self-copy and zeroing the strict upper destroys A's upper half, which
+                // matches the documented in-place behaviour. Only A's lower triangle is ever read.)
+                for (int i = 0; i < n; i++)
+                {
+                    for (int j = 0; j <= i; j++) L[i, j] = A[i, j];
+                    for (int j = i + 1; j < n; j++) L[i, j] = (double)0;
                 }
 
-                // Not positive-definite. !(diag > 0) is also true for NaN, so this rejects
-                // non-finite inputs before the sqrt can produce a NaN.
-                if (!(diag > 0))
-                    return false;
+                var lj = new doubleN(n, Allocator.Temp, false);
+                double* ljp = lj.Data.Ptr;
 
-                double Ljj = math.sqrt(diag);
-                L[j, j] = Ljj;
-
-                // Below diagonal: L[i,j] = (A[i,j] - sum_{k<j} L[i,k] * L[j,k]) / L[j,j].
-                // The inner sum is a dot of two DISTINCT already-computed rows (i > j) over the
-                // unit-stride prefix [0,j); routed through UnsafeOP.vecDotRange4 ([NoAlias], four
-                // parallel accumulators) so Burst SLP-vectorises this O(n^3) hot loop and overlaps the
-                // FMA latencies — float then runs ~2x double (a single-accumulator dot stays scalar
-                // under strict FloatMode). Uses the dot-then-subtract association, so results differ
-                // from the old running subtraction by rounding only.
-                unsafe
+                for (int j = 0; j < n; j++)
                 {
-                    double* lp = L.Data.Ptr;
-                    double* rowJ = lp + (long)j * n;
+                    // L[j,j] already holds A[j,j] - sum_{k<j} L[j,k]^2 (applied by earlier rank-1
+                    // updates). Not positive-definite -> reject; !(d > 0) also catches NaN, before sqrt.
+                    double d = L[j, j];
+                    if (!(d > (double)0)) { lj.Dispose(); return false; }
+
+                    double Ljj = math.sqrt(d);
+                    L[j, j] = Ljj;
+                    double inv = (double)1 / Ljj;
+
+                    // Scale column j below the diagonal and gather it contiguously into lj.
                     for (int i = j + 1; i < n; i++)
                     {
-                        double* rowI = lp + (long)i * n;
-                        double sum = A[i, j] - UnsafeOP.vecDotRange4(rowI, rowJ, 0, j);
-
-                        L[i, j] = sum / Ljj;
-
-                        // L is exactly lower-triangular
-                        L[j, i] = 0;
+                        double v = L[i, j] * inv;
+                        L[i, j] = v;
+                        ljp[i] = v;
                     }
+
+                    // Rank-1 update of the trailing lower triangle, one row-axpy per row.
+                    for (int i = j + 1; i < n; i++)
+                        UnsafeOP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
                 }
+
+                lj.Dispose();
             }
 
             return true;
