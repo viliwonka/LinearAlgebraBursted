@@ -724,6 +724,16 @@ namespace LinearAlgebra
                     if (rowSum > anorm) anorm = rowSum;
                 }
 
+                // Transpose Q in place so the QL plane rotations below hit CONTIGUOUS rows (unit
+                // stride → vectorizes) instead of strided columns. Transposed back after the sweep.
+                for (int ti = 0; ti < n; ti++)
+                    for (int tj = ti + 1; tj < n; tj++)
+                    {
+                        double* pa = qp + (long)ti * n + tj;
+                        double* pb = qp + (long)tj * n + ti;
+                        double t = *pa; *pa = *pb; *pb = t;
+                    }
+
                 // ---- implicit-shift QL with eigenvector accumulation (tql2) ----
                 for (int l = 0; l < n; l++)
                 {
@@ -760,13 +770,16 @@ namespace LinearAlgebra
                                 eigenvalues[i + 1] = g + pp;
                                 g = c * r - b;
 
-                                // Apply the plane rotation to columns i, i+1 of the eigenvector matrix.
+                                // Apply the plane rotation to ROWS i, i+1 of the transposed eigenvector
+                                // matrix — contiguous, so this loop vectorizes (the column form did not).
+                                double* rowI  = qp + (long)i * n;
+                                double* rowI1 = qp + (long)(i + 1) * n;
                                 for (int rr = 0; rr < n; rr++)
                                 {
-                                    double* qrow = qp + (long)rr * n;
-                                    double fz = qrow[i + 1];
-                                    qrow[i + 1] = s * qrow[i] + c * fz;
-                                    qrow[i]     = c * qrow[i] - s * fz;
+                                    double a  = rowI[rr];
+                                    double bb = rowI1[rr];
+                                    rowI1[rr] = s * a + c * bb;
+                                    rowI[rr]  = c * a - s * bb;
                                 }
                             }
                             if (r == (double)0 && i >= l) continue;
@@ -774,6 +787,15 @@ namespace LinearAlgebra
                         }
                     } while (m != l);
                 }
+
+                // Transpose Q back: rows → columns, so column i is eigenvector i again.
+                for (int ti = 0; ti < n; ti++)
+                    for (int tj = ti + 1; tj < n; tj++)
+                    {
+                        double* pa = qp + (long)ti * n + tj;
+                        double* pb = qp + (long)tj * n + ti;
+                        double t = *pa; *pa = *pb; *pb = t;
+                    }
             }
 
             eVec.Dispose();
