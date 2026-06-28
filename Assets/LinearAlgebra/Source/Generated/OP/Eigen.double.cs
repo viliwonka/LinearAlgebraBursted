@@ -552,6 +552,212 @@ namespace LinearAlgebra
             => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.doubleZeroTreshold);
 
         /// <summary>
+        /// Full eigenDECOMPOSITION of a SYMMETRIC real matrix via Householder tridiagonalization with
+        /// orthogonal accumulation (tred2) + implicit-shift QL with eigenvector accumulation (tql2).
+        /// Same result as the cyclic-Jacobi eigenDecomposition but far faster: the O(n^3)
+        /// tridiagonalization is gemv + rank-2 axpy updates (vectorises) and runs ONCE, where Jacobi
+        /// does several full sweeps of strided column rotations.
+        ///
+        /// A must be symmetric (checked within eps) and is DESTROYED. On output eigenvalues[i] is the
+        /// i-th eigenvalue (sorted DESCENDING) and column i of V is its unit eigenvector, so
+        /// A = V * diag(eigenvalues) * Vᵀ and VᵀV = I. Returns true on convergence; false if QL hit
+        /// maxIterPerEig (outputs then undefined). Allocates three length-n Temp scratch vectors.
+        /// </summary>
+        public static bool eigenSymmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleMxN V,
+                                          int maxIterPerEig, double eps)
+        {
+            if (!A.IsSquare)
+                throw new ArgumentException("Eigen.eigenSymmetric: A must be square");
+
+            int n = A.M_Rows;
+
+            if (eigenvalues.N != n)
+                throw new ArgumentException("Eigen.eigenSymmetric: eigenvalues.N must equal A dimension");
+
+            if (!V.IsSquare || V.M_Rows != n)
+                throw new ArgumentException("Eigen.eigenSymmetric: V must be square with side equal to A dimension");
+
+            if (maxIterPerEig < 1)
+                throw new ArgumentException("Eigen.eigenSymmetric: maxIterPerEig must be >= 1");
+
+            if (eps <= (double)0)
+                throw new ArgumentException("Eigen.eigenSymmetric: eps must be > 0");
+
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    double aij = A[i, j], aji = A[j, i];
+                    double diff = math.abs(aij - aji);
+                    double relScale = (double)1 + math.abs(aij) + math.abs(aji);
+                    if (diff > eps * relScale)
+                        throw new ArgumentException("Eigen.eigenSymmetric: Matrix must be symmetric");
+                }
+
+            if (n == 0) return true;
+
+            // V starts as identity (it accumulates Q = H_0 H_1 ... then the QL rotations).
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    V[i, j] = (i == j) ? (double)1 : (double)0;
+
+            if (n == 1) { eigenvalues[0] = A[0, 0]; return true; }
+
+            var eVec = new doubleN(n, Allocator.Temp, false);
+            var vVec = new doubleN(n, Allocator.Temp, false);
+            var pVec = new doubleN(n, Allocator.Temp, false);
+
+            unsafe
+            {
+                double* ap = A.Data.Ptr;
+                double* qp = V.Data.Ptr;
+                double* v  = vVec.Data.Ptr;
+                double* p  = pVec.Data.Ptr;
+
+                // ---- Householder tridiagonalization with Q accumulation into V ----
+                for (int k = 0; k < n - 2; k++)
+                {
+                    int m0 = k + 1;
+
+                    double sigma = 0;
+                    for (int i = m0 + 1; i < n; i++)
+                    {
+                        double aik = ap[(long)i * n + k];
+                        sigma += aik * aik;
+                    }
+                    double x0 = ap[(long)m0 * n + k];
+
+                    if (sigma == (double)0)
+                    {
+                        eVec[k] = x0;
+                        continue;
+                    }
+
+                    double xnorm = math.sqrt(x0 * x0 + sigma);
+                    double alpha = (x0 >= (double)0) ? -xnorm : xnorm;
+
+                    v[m0] = x0 - alpha;
+                    for (int i = m0 + 1; i < n; i++) v[i] = ap[(long)i * n + k];
+
+                    double vtv  = v[m0] * v[m0] + sigma;
+                    double beta = (double)2 / vtv;
+
+                    for (int r = m0; r < n; r++)
+                    {
+                        double* arow = ap + (long)r * n;
+                        double s = 0;
+                        for (int c = m0; c < n; c++) s += arow[c] * v[c];
+                        p[r] = beta * s;
+                    }
+
+                    double vp = 0;
+                    for (int i = m0; i < n; i++) vp += v[i] * p[i];
+                    double K = beta * vp / (double)2;
+                    for (int i = m0; i < n; i++) p[i] -= K * v[i];
+
+                    int len = n - m0;
+                    for (int r = m0; r < n; r++)
+                    {
+                        double* arow = ap + (long)r * n;
+                        UnsafeOP.axpy(arow + m0, p + m0, -v[r], len);
+                        UnsafeOP.axpy(arow + m0, v + m0, -p[r], len);
+                    }
+
+                    // Accumulate Q: V := V * H_k  (H_k = I - beta v vᵀ on columns [m0,n)).
+                    // For each row r: V[r, m0:] -= beta*(V[r,m0:]·v) * v.
+                    for (int r = 0; r < n; r++)
+                    {
+                        double* qrow = qp + (long)r * n;
+                        double s = 0;
+                        for (int c = m0; c < n; c++) s += qrow[c] * v[c];
+                        UnsafeOP.axpy(qrow + m0, v + m0, -(beta * s), len);
+                    }
+
+                    eVec[k] = alpha;
+                }
+
+                eVec[n - 2] = ap[(long)(n - 1) * n + (n - 2)];
+                eVec[n - 1] = (double)0;
+                for (int i = 0; i < n; i++) eigenvalues[i] = ap[(long)i * n + i];
+
+                // ---- implicit-shift QL with eigenvector accumulation (tql2) ----
+                for (int l = 0; l < n; l++)
+                {
+                    int iter = 0;
+                    int m;
+                    do
+                    {
+                        for (m = l; m < n - 1; m++)
+                        {
+                            double dd = math.abs(eigenvalues[m]) + math.abs(eigenvalues[m + 1]);
+                            if (math.abs(eVec[m]) <= eps * dd) break;
+                        }
+                        if (m != l)
+                        {
+                            if (iter++ >= maxIterPerEig) { eVec.Dispose(); vVec.Dispose(); pVec.Dispose(); return false; }
+
+                            double g = (eigenvalues[l + 1] - eigenvalues[l]) / ((double)2 * eVec[l]);
+                            double r = pythag(g, (double)1);
+                            g = eigenvalues[m] - eigenvalues[l] + eVec[l] / (g + copysign(r, g));
+                            double s = 1, c = 1, pp = 0;
+                            int i;
+                            for (i = m - 1; i >= l; i--)
+                            {
+                                double f = s * eVec[i];
+                                double b = c * eVec[i];
+                                r = pythag(f, g);
+                                eVec[i + 1] = r;
+                                if (r == (double)0) { eigenvalues[i + 1] -= pp; eVec[m] = 0; break; }
+                                s = f / r; c = g / r;
+                                g = eigenvalues[i + 1] - pp;
+                                r = (eigenvalues[i] - g) * s + (double)2 * c * b;
+                                pp = s * r;
+                                eigenvalues[i + 1] = g + pp;
+                                g = c * r - b;
+
+                                // Apply the plane rotation to columns i, i+1 of the eigenvector matrix.
+                                for (int rr = 0; rr < n; rr++)
+                                {
+                                    double* qrow = qp + (long)rr * n;
+                                    double fz = qrow[i + 1];
+                                    qrow[i + 1] = s * qrow[i] + c * fz;
+                                    qrow[i]     = c * qrow[i] - s * fz;
+                                }
+                            }
+                            if (r == (double)0 && i >= l) continue;
+                            eigenvalues[l] -= pp; eVec[l] = g; eVec[m] = 0;
+                        }
+                    } while (m != l);
+                }
+            }
+
+            eVec.Dispose();
+            vVec.Dispose();
+            pVec.Dispose();
+
+            // sort descending by eigenvalue, carrying eigenvector columns along
+            for (int j = 0; j < n; j++)
+            {
+                int maxIdx = j;
+                double maxVal = eigenvalues[j];
+                for (int k = j + 1; k < n; k++)
+                    if (eigenvalues[k] > maxVal) { maxIdx = k; maxVal = eigenvalues[k]; }
+                if (maxIdx != j)
+                {
+                    double tmp = eigenvalues[j];
+                    eigenvalues[j] = eigenvalues[maxIdx];
+                    eigenvalues[maxIdx] = tmp;
+                    SwapOP.Columns(ref V, j, maxIdx);
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>eigenSymmetric with default maxIterPerEig (30) and eps (Consts.doubleZeroTreshold).</summary>
+        public static bool eigenSymmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleMxN V)
+            => eigenSymmetric(ref A, ref eigenvalues, ref V, 30, Consts.doubleZeroTreshold);
+
+        /// <summary>
         /// All eigenvalues of a GENERAL (non-symmetric) real square matrix, via the QR algorithm:
         /// reduction to upper Hessenberg form (elimination with partial pivoting) followed by the
         /// Francis double-shift QR iteration to the real Schur form (EISPACK elmhes + hqr). Real

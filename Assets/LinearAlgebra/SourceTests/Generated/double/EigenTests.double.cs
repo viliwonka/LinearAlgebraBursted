@@ -46,7 +46,16 @@ public class doubleEigenTests
             EvSymKnown2x2,
             EvSymN1,
             EvSymCrossCheckJacobi,
-            EvSymLaplacian
+            EvSymLaplacian,
+            // eigenSymmetric (tred2 + tql2 full decomposition)
+            EsymIdentity,
+            EsymDiagonal,
+            EsymKnown2x2,
+            EsymReconstruct,
+            EsymOrthogonality,
+            EsymEigenpair,
+            EsymCrossCheck,
+            EsymLaplacian
         }
 
         public TestType Type;
@@ -129,6 +138,30 @@ public class doubleEigenTests
                     break;
                 case TestType.EvSymLaplacian:
                     EvSymLaplacian();
+                    break;
+                case TestType.EsymIdentity:
+                    EsymIdentity();
+                    break;
+                case TestType.EsymDiagonal:
+                    EsymDiagonal();
+                    break;
+                case TestType.EsymKnown2x2:
+                    EsymKnown2x2();
+                    break;
+                case TestType.EsymReconstruct:
+                    EsymReconstruct();
+                    break;
+                case TestType.EsymOrthogonality:
+                    EsymOrthogonality();
+                    break;
+                case TestType.EsymEigenpair:
+                    EsymEigenpair();
+                    break;
+                case TestType.EsymCrossCheck:
+                    EsymCrossCheck();
+                    break;
+                case TestType.EsymLaplacian:
+                    EsymLaplacian();
                     break;
             }
         }
@@ -1048,8 +1081,360 @@ public class doubleEigenTests
         }
 
         // ---------------------------------------------------------------------
+        // eigenSymmetric tests (tred2 Householder + tql2 implicit-shift QL)
+        // ---------------------------------------------------------------------
+
+        // n=5 identity: every eigenvalue exactly 1, V orthogonal. Exact closed form so
+        // 100*ZeroTreshold comfortably covers any QL noise. A is DESTROYED.
+        public void EsymIdentity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var A = arena.doubleIdentityMatrix(n);
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            for (int i = 0; i < n; i++)
+                AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroTreshold);
+
+            AssertDescending(in eig, n);
+
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroTreshold));
+
+            arena.Dispose();
+        }
+
+        // diag(3, -2, 0.5, 5, -7): eigenvalues are the diagonal, sorted DESCENDING BY VALUE
+        // -> (5, 3, 0.5, -2, -7). V is a permutation/sign variant of identity, so rather than
+        // pin exact V we verify the decomposition reconstructs A = V*diag(eig)*V^T and that V
+        // is orthogonal. Diagonal input is exact, tolerance generous.
+        public void EsymDiagonal()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var A = arena.doubleMat(n, n);
+            A[0, 0] = (double)3;
+            A[1, 1] = (double)(-2);
+            A[2, 2] = (double)0.5;
+            A[3, 3] = (double)5;
+            A[4, 4] = (double)(-7);
+
+            var Aorig = A.Copy();
+
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            double tol = (double)100 * Consts.doubleZeroTreshold;
+            AssertClose(eig[0], (double)5, tol);
+            AssertClose(eig[1], (double)3, tol);
+            AssertClose(eig[2], (double)0.5, tol);
+            AssertClose(eig[3], (double)(-2), tol);
+            AssertClose(eig[4], (double)(-7), tol);
+
+            AssertDescending(in eig, n);
+
+            // V a permutation of identity -> check A = V diag(eig) V^T rather than exact V.
+            AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroTreshold);
+
+            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+
+            arena.Dispose();
+        }
+
+        // [[2,1],[1,2]]: closed-form eigenvalues 3 (vector (1,1)/sqrt2) and 1 (vector (1,-1)/sqrt2),
+        // descending. Sign-agnostic eigenvector check: A_orig * v_k ~= lambda_k * v_k per column.
+        public void EsymKnown2x2()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 2;
+
+            var A = arena.doubleMat(n, n);
+            A[0, 0] = (double)2; A[0, 1] = (double)1;
+            A[1, 0] = (double)1; A[1, 1] = (double)2;
+
+            var Aorig = A.Copy();
+
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+
+            Assert.IsTrue(ok);
+
+            AssertClose(eig[0], (double)3, (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(eig[1], (double)1, (double)100 * Consts.doubleZeroTreshold);
+
+            AssertDescending(in eig, n);
+
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroTreshold));
+
+            arena.Dispose();
+        }
+
+        // RECONSTRUCTION on random symmetric matrices (n=6, n=8): keep a copy of A before it is
+        // destroyed, then assert ||A - V*diag(eig)*V^T|| small.
+        public void EsymReconstruct()
+        {
+            ReconstructOne(6, 3310991);
+            ReconstructOne(8, 7745213);
+        }
+
+        private void ReconstructOne(int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = MakeRandomSymmetric(ref arena, n, seed);
+            var Aorig = A.Copy();
+
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroTreshold);
+
+            arena.Dispose();
+        }
+
+        // ORTHOGONALITY on random symmetric matrices (n=6, n=8): ||V^T V - I|| small.
+        public void EsymOrthogonality()
+        {
+            OrthogonalityOne(6, 5519027);
+            OrthogonalityOne(8, 9081237);
+        }
+
+        private void OrthogonalityOne(int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = MakeRandomSymmetric(ref arena, n, seed);
+
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            // Explicit ||V^T V - I||_max check (Analysis.IsOrthogonal also asserted for parity).
+            double precision = (double)1000 * Consts.doubleZeroTreshold;
+            double maxErr = (double)0;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double dot = (double)0;
+                    for (int k = 0; k < n; k++)
+                        dot += V[k, i] * V[k, j];
+                    double expected = (i == j) ? (double)1 : (double)0;
+                    double err = Unity.Mathematics.math.abs(dot - expected);
+                    if (err > maxErr)
+                        maxErr = err;
+                }
+            if (!(maxErr <= precision) && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1;
+                Fail[1] = maxErr;
+                Fail[2] = precision;
+                Fail[3] = maxErr - precision;
+            }
+            Assert.IsTrue(maxErr <= precision);
+
+            Assert.IsTrue(Analysis.IsOrthogonal(V, precision));
+
+            arena.Dispose();
+        }
+
+        // EIGENPAIR residual on random symmetric matrices (n=6, n=8): for each i,
+        // ||A*V[:,i] - lambda_i*V[:,i]|| small (using the saved copy of A).
+        public void EsymEigenpair()
+        {
+            EigenpairOne(6, 2240881);
+            EigenpairOne(8, 6612553);
+        }
+
+        private void EigenpairOne(int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = MakeRandomSymmetric(ref arena, n, seed);
+            var Aorig = A.Copy();
+
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            AssertDescending(in eig, n);
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+
+            arena.Dispose();
+        }
+
+        // CROSS-CHECK eigenvalues vs the trusted values-only eigenvaluesSymmetric on the SAME
+        // random symmetric matrices (n=6, n=8). Both DESTROY their input and sort descending, so
+        // run each on a separate copy and compare elementwise.
+        public void EsymCrossCheck()
+        {
+            CrossCheckValuesOne(6, 4456121);
+            CrossCheckValuesOne(8, 8123779);
+        }
+
+        private void CrossCheckValuesOne(int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = MakeRandomSymmetric(ref arena, n, seed);
+
+            var Asym = A.Copy();   // destroyed by eigenSymmetric
+            var Aval = A.Copy();   // destroyed by eigenvaluesSymmetric
+
+            var eigSym = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+            bool symOk = Eigen.eigenSymmetric(ref Asym, ref eigSym, ref V);
+            Assert.IsTrue(symOk);
+
+            var eigVal = arena.doubleVec(n);
+            bool valOk = Eigen.eigenvaluesSymmetric(ref Aval, ref eigVal);
+            Assert.IsTrue(valOk);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in eigSym));
+            AssertDescending(in eigSym, n);
+
+            for (int i = 0; i < n; i++)
+            {
+                double scale = (double)1 + Unity.Mathematics.math.abs(eigVal[i]);
+                double tol = (double)1000 * Consts.doubleZeroTreshold * scale;
+                double diff = Unity.Mathematics.math.abs(eigSym[i] - eigVal[i]);
+                if (!(diff <= tol) && Fail[0] == (double)0)
+                {
+                    Fail[0] = (double)1;
+                    Fail[1] = eigSym[i];
+                    Fail[2] = eigVal[i];
+                    Fail[3] = diff;
+                }
+                Assert.IsTrue(diff <= tol);
+            }
+
+            arena.Dispose();
+        }
+
+        // LITERATURE KNOWN-ANSWER: n=6 1D-Laplacian (path-graph) tridiagonal with diag 2 and
+        // off-diagonal -1. Eigenvalues are EXACTLY lambda_k = 2 - 2*cos(k*pi/(n+1)), k=1..n.
+        // Descending order -> eig[i] corresponds to k = n - i. Also verify the eigenpairs and
+        // orthogonality of the computed V.
+        public void EsymLaplacian()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;
+
+            var A = arena.doubleMat(n, n);
+            for (int i = 0; i < n; i++)
+            {
+                A[i, i] = (double)2;
+                if (i + 1 < n)
+                {
+                    A[i, i + 1] = (double)(-1);
+                    A[i + 1, i] = (double)(-1);
+                }
+            }
+
+            var Aorig = A.Copy();
+
+            var eig = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis.IsAnyNan(in V));
+
+            double tol = (double)1000 * Consts.doubleZeroTreshold;
+            for (int i = 0; i < n; i++)
+            {
+                int k = n - i;
+                double lamD = 2.0 - 2.0 * Unity.Mathematics.math.cos(k * Unity.Mathematics.math.PI_DBL / (n + 1));
+                AssertClose(eig[i], (double)lamD, tol);
+            }
+
+            AssertDescending(in eig, n);
+            AssertEigenResidual(in Aorig, in V, in eig, n);
+            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+
+            arena.Dispose();
+        }
+
+        // ---------------------------------------------------------------------
         // Helpers
         // ---------------------------------------------------------------------
+
+        // Allocate a random matrix (entries ~ +-5) and symmetrize it in place.
+        private doubleMxN MakeRandomSymmetric(ref Arena arena, int n, uint seed)
+        {
+            var A = arena.doubleRandomMatrix(n, n, (double)(-5), (double)5, seed);
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    double avg = (A[i, j] + A[j, i]) * (double)0.5;
+                    A[i, j] = avg;
+                    A[j, i] = avg;
+                }
+            return A;
+        }
+
+        // Reconstruct recon = V*diag(eig)*V^T element-by-element and assert ||A - recon||_max small.
+        // No arena allocation (caller's arena is busy with A copy); uses a stack-free triple loop.
+        private void AssertReconstruction(in doubleMxN A, in doubleMxN V, in doubleN eig, int n, double precision)
+        {
+            double maxErr = (double)0;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double sum = (double)0;
+                    for (int k = 0; k < n; k++)
+                        sum += V[i, k] * eig[k] * V[j, k];
+                    double err = Unity.Mathematics.math.abs(sum - A[i, j]);
+                    if (err > maxErr)
+                        maxErr = err;
+                }
+            if (!(maxErr <= precision) && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1;
+                Fail[1] = maxErr;
+                Fail[2] = precision;
+                Fail[3] = maxErr - precision;
+            }
+            Assert.IsTrue(maxErr <= precision);
+        }
 
         // For every eigenpair (lambda_k = eig[k], v_k = column k of V), assert
         // ||A*v_k - lambda_k*v_k||_inf <= 1000*ZeroTreshold * (1 + |lambda_k|).
@@ -1295,6 +1680,65 @@ public class doubleEigenTests
         var eig = arena.doubleVec(3);
 
         Assert.Catch<ArgumentException>(() => Eigen.eigenvaluesSymmetric(ref A, ref eig));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EsymThrowsOnNonSquare()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleMat(3, 4);
+        var eig = arena.doubleVec(4);
+        var V = arena.doubleMat(4, 4);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenSymmetric(ref A, ref eig, ref V));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EsymThrowsOnNonSymmetric()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleMat(2, 2);
+        A[0, 0] = (double)1; A[0, 1] = (double)2;
+        A[1, 0] = (double)0; A[1, 1] = (double)1;
+
+        var eig = arena.doubleVec(2);
+        var V = arena.doubleMat(2, 2);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenSymmetric(ref A, ref eig, ref V));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EsymThrowsOnWrongEigenvalueLength()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleMat(4, 4);
+        var eig = arena.doubleVec(3);
+        var V = arena.doubleMat(4, 4);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenSymmetric(ref A, ref eig, ref V));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EsymThrowsOnWrongVShape()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleMat(4, 4);
+        var eig = arena.doubleVec(4);
+        var V = arena.doubleMat(3, 3);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenSymmetric(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
