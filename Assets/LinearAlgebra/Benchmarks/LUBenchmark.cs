@@ -8,59 +8,61 @@ using LinearAlgebra;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // QR Householder factorization (also forms Q explicitly). Each Execute copies a pristine source
-    // into the working matrix and factors it, so every timed sample does identical work
-    // (qrDecomposition overwrites its input). The O(N^2) copy against an O(N^3) factorization is
-    // < 1% for N >= 128 and is included in the reported time.
+    // LU with partial pivoting. Each Execute copies a pristine source into U (which luDecomposition
+    // overwrites) and allocates a fresh Pivot in Temp (O(N), negligible vs the O(N^3) factorization),
+    // so every timed sample does identical work.
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct QRJobFloat : IJob
+    public struct LUJobFloat : IJob
     {
-        public floatMxN Q;
-        public floatMxN R;
+        public floatMxN U;
+        public floatMxN L;
         public floatMxN Src;
 
         public void Execute()
         {
-            int rows = Q.M_Rows, cols = Q.N_Cols;
+            int rows = U.M_Rows, cols = U.N_Cols;
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < cols; c++)
-                    Q[r, c] = Src[r, c];
+                    U[r, c] = Src[r, c];
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            var P = new Pivot(rows, Allocator.Temp);
+            LU.luDecomposition(ref U, ref L, ref P);
+            P.Dispose();
         }
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct QRJobDouble : IJob
+    public struct LUJobDouble : IJob
     {
-        public doubleMxN Q;
-        public doubleMxN R;
+        public doubleMxN U;
+        public doubleMxN L;
         public doubleMxN Src;
 
         public void Execute()
         {
-            int rows = Q.M_Rows, cols = Q.N_Cols;
+            int rows = U.M_Rows, cols = U.N_Cols;
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < cols; c++)
-                    Q[r, c] = Src[r, c];
+                    U[r, c] = Src[r, c];
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            var P = new Pivot(rows, Allocator.Temp);
+            LU.luDecomposition(ref U, ref L, ref P);
+            P.Dispose();
         }
     }
 
-    public static class QRBenchmark
+    public static class LUBenchmark
     {
-        // (4/3) N^3 is the standard leading term for square Householder QR (approximate; forming Q
-        // explicitly adds more, so GFLOP/s here is a lower bound on real work).
-        static double Flops(int n) => (4.0 / 3.0) * n * (double)n * n;
+        // (2/3) N^3 is the standard leading term for LU factorization.
+        static double Flops(int n) => (2.0 / 3.0) * n * (double)n * n;
 
-        // Single-kernel entry point for A/B runs: writes TestResults/benchmark-qr.txt.
-        public static void Run() => Bench.WriteReport("benchmark-qr.txt", Section);
+        // Single-kernel entry point for A/B runs: writes TestResults/benchmark-lu.txt.
+        public static void Run() => Bench.WriteReport("benchmark-lu.txt", Section);
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== QR Householder factorization (time = copy-in + qrDecomposition, forms Q) ===");
+            sb.AppendLine("=== LU factorization with partial pivoting (time = copy-in + luDecomposition) ===");
             sb.AppendLine(Bench.Header());
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchFloat(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchDouble(n));
@@ -70,8 +72,8 @@ namespace LinearAlgebra.Benchmarks
         static string BenchFloat(int n)
         {
             var arena = new Arena(Allocator.Persistent);
-            var Q = arena.floatMat(n, n);
-            var R = arena.floatMat(n, n);
+            var U = arena.floatMat(n, n);
+            var L = arena.floatMat(n, n);
             var Src = arena.floatMat(n, n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
@@ -79,9 +81,9 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < n; c++)
                     Src[r, c] = rng.NextFloat(-1f, 1f);
             for (int d = 0; d < n; d++)
-                Src[d, d] += n;                 // diagonal dominance => full rank, no zero-column early-out
+                Src[d, d] += n;                 // diagonal dominance => well-conditioned, full rank
 
-            var job = new QRJobFloat { Q = Q, R = R, Src = Src };
+            var job = new LUJobFloat { U = U, L = L, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
@@ -91,8 +93,8 @@ namespace LinearAlgebra.Benchmarks
         static string BenchDouble(int n)
         {
             var arena = new Arena(Allocator.Persistent);
-            var Q = arena.doubleMat(n, n);
-            var R = arena.doubleMat(n, n);
+            var U = arena.doubleMat(n, n);
+            var L = arena.doubleMat(n, n);
             var Src = arena.doubleMat(n, n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
@@ -102,7 +104,7 @@ namespace LinearAlgebra.Benchmarks
             for (int d = 0; d < n; d++)
                 Src[d, d] += n;
 
-            var job = new QRJobDouble { Q = Q, R = R, Src = Src };
+            var job = new LUJobDouble { U = U, L = L, Src = Src };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
