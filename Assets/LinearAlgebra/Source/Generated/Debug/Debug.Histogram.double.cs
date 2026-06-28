@@ -1,0 +1,87 @@
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
+
+using Unity.Collections;
+using Unity.Mathematics;
+
+namespace LinearAlgebra
+{
+    public static partial class Print
+    {
+        // Quick ASCII horizontal histogram of a vector's value distribution. Bins [min, max] into
+        // `bins` equal buckets and prints one bar per bucket, scaled so the fullest bucket is
+        // `width` characters wide. Each line is "<left edge> | ####### <count>". Burst-callable;
+        // long outputs (many bins) are flushed in chunks so nothing is truncated.
+        public static void Histogram(in doubleN data, int bins = 16, int width = 40)
+        {
+            if (bins < 1) bins = 1;
+            if (width < 1) width = 1;
+
+            int n = data.N;
+            if (n == 0)
+            {
+                UnityEngine.Debug.Log("Histogram: empty data");
+                return;
+            }
+
+            double lo = data[0], hi = data[0];
+            for (int i = 1; i < n; i++)
+            {
+                double v = data[i];
+                if (v < lo) lo = v;
+                if (v > hi) hi = v;
+            }
+
+            double range = hi - lo;
+
+            var counts = new NativeArray<int>(bins, Allocator.Temp);
+            for (int i = 0; i < n; i++)
+            {
+                int b;
+                if (range <= 0)
+                {
+                    b = 0; // all values identical -> single populated bucket
+                }
+                else
+                {
+                    b = (int)(((data[i] - lo) / range) * bins);
+                    if (b >= bins) b = bins - 1;
+                    if (b < 0) b = 0;
+                }
+                counts[b] = counts[b] + 1;
+            }
+
+            int maxCount = 1;
+            for (int b = 0; b < bins; b++)
+                if (counts[b] > maxCount) maxCount = counts[b];
+
+            FixedString4096Bytes str = new FixedString4096Bytes();
+            FixedString128Bytes header = $"Histogram  n={n}  range=[{lo:G4}, {hi:G4}]  bins={bins}\n";
+            str.Append(header);
+
+            for (int b = 0; b < bins; b++)
+            {
+                double edge = lo + range * ((double)b / bins);
+                int barLen = (int)(((double)counts[b] / maxCount) * width);
+
+                FixedString128Bytes line = $"{edge:G4} | ";
+                str.Append(line);
+                for (int k = 0; k < barLen; k++)
+                    str.Append('#');
+                FixedString32Bytes tail = $" {counts[b]}\n";
+                str.Append(tail);
+
+                // flush before the FixedString can overflow (many bins / large counts)
+                if (str.Length > 3500)
+                {
+                    UnityEngine.Debug.Log($"{str}");
+                    str.Clear();
+                }
+            }
+
+            if (str.Length > 0)
+                UnityEngine.Debug.Log($"{str}");
+
+            counts.Dispose();
+        }
+    }
+}
