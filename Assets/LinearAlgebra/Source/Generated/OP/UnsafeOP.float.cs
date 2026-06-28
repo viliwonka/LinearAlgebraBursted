@@ -70,6 +70,34 @@ namespace LinearAlgebra
 
 
 
+        // Dot of vA·vB over [start,end) with FOUR independent accumulators. A plain single-accumulator
+        // reduction (vecDotRange) has a loop-carried dependency on the running sum that Burst cannot
+        // break under strict FloatMode (no reassociation), so it stays scalar (float == double). The
+        // four parallel chains here are a SOURCE-level reassociation, so Burst SLP-vectorises them
+        // (float4 / double4 FMAs) and overlaps their latencies — float then runs ~2x double. Result
+        // differs from vecDotRange by summation order (rounding only).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static float vecDotRange4([NoAlias] float* vA, [NoAlias] float* vB, int start, int end)
+        {
+            float s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+
+            int i = start;
+            int end4 = start + ((end - start) & ~3);   // largest start + multiple-of-4 <= end
+            for (; i < end4; i += 4)
+            {
+                s0 += vA[i]     * vB[i];
+                s1 += vA[i + 1] * vB[i + 1];
+                s2 += vA[i + 2] * vB[i + 2];
+                s3 += vA[i + 3] * vB[i + 3];
+            }
+
+            float s = (s0 + s1) + (s2 + s3);
+            for (; i < end; i++)
+                s += vA[i] * vB[i];
+
+            return s;
+        }
+
         // outer dot product (vec x vec => mat)
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void vecOuterDot([NoAlias] float* vA, [NoAlias] float* vB, [NoAlias] float* mat, int m, int n)

@@ -62,10 +62,11 @@ namespace LinearAlgebra
 
                 // Below diagonal: L[i,j] = (A[i,j] - sum_{k<j} L[i,k] * L[j,k]) / L[j,j].
                 // The inner sum is a dot of two DISTINCT already-computed rows (i > j) over the
-                // unit-stride prefix [0,j); routed through the vectorising UnsafeOP.vecDotRange
-                // ([NoAlias], the GEMM pointer path) so Burst SIMD-vectorises this O(n^3) hot loop
-                // (float ~2x double). This uses the BLAS dot-then-subtract association rather than the
-                // old running subtraction, so results differ from the prior form by rounding only.
+                // unit-stride prefix [0,j); routed through UnsafeOP.vecDotRange4 ([NoAlias], four
+                // parallel accumulators) so Burst SLP-vectorises this O(n^3) hot loop and overlaps the
+                // FMA latencies — float then runs ~2x double (a single-accumulator dot stays scalar
+                // under strict FloatMode). Uses the dot-then-subtract association, so results differ
+                // from the old running subtraction by rounding only.
                 unsafe
                 {
                     fProxy* lp = L.Data.Ptr;
@@ -73,7 +74,7 @@ namespace LinearAlgebra
                     for (int i = j + 1; i < n; i++)
                     {
                         fProxy* rowI = lp + (long)i * n;
-                        fProxy sum = A[i, j] - UnsafeOP.vecDotRange(rowI, rowJ, 0, j);
+                        fProxy sum = A[i, j] - UnsafeOP.vecDotRange4(rowI, rowJ, 0, j);
 
                         L[i, j] = sum / Ljj;
 
