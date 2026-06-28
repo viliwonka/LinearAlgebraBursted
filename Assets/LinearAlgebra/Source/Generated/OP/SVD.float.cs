@@ -189,5 +189,68 @@ namespace LinearAlgebra
         /// <summary>svdDecomposition with default maxSweeps (30) and eps (Consts.floatZeroTreshold).</summary>
         public static bool svdDecomposition(ref floatMxN U, ref floatN S, ref floatMxN V)
             => svdDecomposition(ref U, ref S, ref V, 30, Consts.floatZeroTreshold);
+
+        /// <summary>
+        /// Singular VALUES only of A (m x n, m >= n), via the symmetric eigenvalues of the augmented
+        /// matrix H = [[0, A], [Aᵀ, 0]] (the Jordan–Wielandt form). H's eigenvalues are ±σ_i plus
+        /// (m-n) zeros, so the n largest are exactly the singular values, descending. This routes the
+        /// O(n^3) work through the fast Householder Eigen.eigenvaluesSymmetric, and unlike forming AᵀA
+        /// it keeps the condition number κ(A) (not κ(A)²), so small singular values are not lost.
+        ///
+        /// A is NOT modified (it is copied into the augmented matrix). S (length n) receives the
+        /// singular values, descending, clamped to be non-negative. Returns the convergence flag of
+        /// the underlying QL iteration. Allocates an (m+n)² + (m+n) Temp workspace.
+        /// </summary>
+        public static bool svdValues(in floatMxN A, ref floatN S, int maxIter, float eps)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("svdValues: A must have m >= n (more rows than columns)");
+            if (S.N != n)
+                throw new ArgumentException("svdValues: S.N must equal A.N_Cols");
+            if (maxIter < 1)
+                throw new ArgumentException("svdValues: maxIter must be >= 1");
+            if (eps <= (float)0)
+                throw new ArgumentException("svdValues: eps must be > 0");
+
+            if (n == 0)
+                return true;
+
+            int d = m + n;
+            var H = new floatMxN(d, d, Allocator.Temp, false);
+            var eig = new floatN(d, Allocator.Temp, false);
+
+            // H = [[0, A], [Aᵀ, 0]]  (symmetric). Zero everything, then fill the two off-diagonal
+            // blocks: H[i, m+j] = H[m+j, i] = A[i,j].
+            unsafe
+            {
+                UnsafeUtility.MemClear(H.Data.Ptr, (long)d * d * UnsafeUtility.SizeOf<float>());
+            }
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    float a = A[i, j];
+                    H[i, m + j] = a;
+                    H[m + j, i] = a;
+                }
+
+            bool ok = Eigen.eigenvaluesSymmetric(ref H, ref eig, maxIter, eps);
+
+            // The n largest eigenvalues (descending) are σ_1 ≥ ... ≥ σ_n ≥ 0. Clamp tiny negatives
+            // (rounding around a zero singular value) up to 0.
+            if (ok)
+                for (int i = 0; i < n; i++)
+                    S[i] = math.max(eig[i], (float)0);
+
+            eig.Dispose();
+            H.Dispose();
+            return ok;
+        }
+
+        /// <summary>svdValues with default maxIter (30) and eps (Consts.floatZeroTreshold).</summary>
+        public static bool svdValues(in floatMxN A, ref floatN S)
+            => svdValues(in A, ref S, 30, Consts.floatZeroTreshold);
     }
 }

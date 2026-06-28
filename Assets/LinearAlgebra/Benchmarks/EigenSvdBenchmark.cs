@@ -51,6 +51,15 @@ namespace LinearAlgebra.Benchmarks
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SvdValuesJobFloat : IJob
+    {
+        public floatMxN A;     // not modified (svdValues copies into the augmented matrix)
+        public floatN S;
+
+        public void Execute() => SVD.svdValues(in A, ref S);
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct EigSymJobFloat : IJob
     {
         public floatMxN A;
@@ -116,6 +125,11 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Sizes) sb.AppendLine(Svd(n));
             sb.AppendLine();
 
+            sb.AppendLine("=== SVD singular values only (svdValues, augmented Householder; ms) ===");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in Sizes) sb.AppendLine(SvdVals(n));
+            sb.AppendLine();
+
             sb.AppendLine("=== Cyclic-Jacobi symmetric eigen (eigenDecomposition; iterative, ms only) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Sizes) sb.AppendLine(EigJacobi(n));
@@ -175,6 +189,24 @@ namespace LinearAlgebra.Benchmarks
                 }
 
             var job = new EigJacobiJobFloat { A = A, Src = Src, E = E, V = V };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float", n, stat);
+        }
+
+        static string SvdVals(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var S = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = rng.NextFloat(-1f, 1f);
+
+            var job = new SvdValuesJobFloat { A = A, S = S };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();

@@ -417,6 +417,15 @@ namespace LinearAlgebra
                 float* v  = vVec.Data.Ptr;
                 float* p  = pVec.Data.Ptr;
 
+                // Matrix scale (max |entry|) for the column-deflation test in the reduction below.
+                float matScale = (float)0;
+                for (long ii = 0; ii < (long)n * n; ii++)
+                {
+                    float a = math.abs(ap[ii]);
+                    if (a > matScale) matScale = a;
+                }
+                float belowNormTol = (float)n * Consts.floatEpsilon * matScale;
+
                 // ---- Householder tridiagonalization (full symmetric storage, values only) ----
                 // The trailing submatrix stays symmetric; column k below the subdiagonal is never read
                 // again, so (values-only) we record the subdiagonal in e[k] and skip zeroing it.
@@ -433,9 +442,13 @@ namespace LinearAlgebra
                     }
                     float x0 = ap[(long)m0 * n + k];
 
-                    if (sigma == (float)0)
+                    // Deflate a column whose below-subdiagonal norm is negligible vs the matrix scale.
+                    // Exact (sigma == 0) is not enough: for rank-deficient/structured matrices sigma
+                    // shrinks to denormal (nonzero), vtv underflows and beta = 2/vtv OVERFLOWS to Inf,
+                    // and the rank-2 update then forms Inf - Inf = NaN. Deflate cleanly before that.
+                    if (math.sqrt(sigma) <= belowNormTol)
                     {
-                        // column already in tridiagonal form
+                        // column already (effectively) in tridiagonal form
                         eVec[k] = x0;
                         continue;
                     }
@@ -483,6 +496,17 @@ namespace LinearAlgebra
                 for (int i = 0; i < n; i++) eigenvalues[i] = ap[(long)i * n + i];
             }
 
+            // Global tridiagonal scale. The deflation test below is floored by this so a cluster of
+            // ZERO eigenvalues can still deflate: there the local |d[m]|+|d[m+1]| collapses to ~0, but
+            // the sub-diagonal noise floor is set by the GLOBAL scale, so a purely local threshold
+            // never triggers in float and QL spins to maxIter (the rank-deficient svdValues case).
+            float anorm = math.abs(eigenvalues[0]) + math.abs(eVec[0]);
+            for (int i = 1; i < n; i++)
+            {
+                float rowSum = math.abs(eVec[i - 1]) + math.abs(eigenvalues[i]) + math.abs(eVec[i]);
+                if (rowSum > anorm) anorm = rowSum;
+            }
+
             // ---- implicit-shift QL on the tridiagonal (d = eigenvalues, e), values only ----
             // e[i] couples d[i] and d[i+1]; e[n-1] = 0.
             for (int l = 0; l < n; l++)
@@ -494,7 +518,8 @@ namespace LinearAlgebra
                     for (m = l; m < n - 1; m++)
                     {
                         float dd = math.abs(eigenvalues[m]) + math.abs(eigenvalues[m + 1]);
-                        if (math.abs(eVec[m]) <= eps * dd) break;
+                        // machine-eps relative, floored by the global scale `anorm` (see above)
+                        if (math.abs(eVec[m]) <= (float)8 * Consts.floatEpsilon * (dd + anorm)) break;
                     }
                     if (m != l)
                     {
@@ -613,6 +638,15 @@ namespace LinearAlgebra
                 float* v  = vVec.Data.Ptr;
                 float* p  = pVec.Data.Ptr;
 
+                // Matrix scale (max |entry|) for the column-deflation test in the reduction below.
+                float matScale = (float)0;
+                for (long ii = 0; ii < (long)n * n; ii++)
+                {
+                    float a = math.abs(ap[ii]);
+                    if (a > matScale) matScale = a;
+                }
+                float belowNormTol = (float)n * Consts.floatEpsilon * matScale;
+
                 // ---- Householder tridiagonalization with Q accumulation into V ----
                 for (int k = 0; k < n - 2; k++)
                 {
@@ -626,7 +660,9 @@ namespace LinearAlgebra
                     }
                     float x0 = ap[(long)m0 * n + k];
 
-                    if (sigma == (float)0)
+                    // See eigenvaluesSymmetric: deflate near-negligible columns before vtv underflows
+                    // and beta = 2/vtv overflows to Inf (which would make the rank-2 update form NaN).
+                    if (math.sqrt(sigma) <= belowNormTol)
                     {
                         eVec[k] = x0;
                         continue;
@@ -679,6 +715,15 @@ namespace LinearAlgebra
                 eVec[n - 1] = (float)0;
                 for (int i = 0; i < n; i++) eigenvalues[i] = ap[(long)i * n + i];
 
+                // Global tridiagonal scale (see eigenvaluesSymmetric): floors the deflation threshold
+                // so clustered zero eigenvalues still deflate instead of spinning QL to maxIter.
+                float anorm = math.abs(eigenvalues[0]) + math.abs(eVec[0]);
+                for (int i = 1; i < n; i++)
+                {
+                    float rowSum = math.abs(eVec[i - 1]) + math.abs(eigenvalues[i]) + math.abs(eVec[i]);
+                    if (rowSum > anorm) anorm = rowSum;
+                }
+
                 // ---- implicit-shift QL with eigenvector accumulation (tql2) ----
                 for (int l = 0; l < n; l++)
                 {
@@ -689,7 +734,8 @@ namespace LinearAlgebra
                         for (m = l; m < n - 1; m++)
                         {
                             float dd = math.abs(eigenvalues[m]) + math.abs(eigenvalues[m + 1]);
-                            if (math.abs(eVec[m]) <= eps * dd) break;
+                            // machine-eps relative, floored by the global scale `anorm` (see above)
+                            if (math.abs(eVec[m]) <= (float)8 * Consts.floatEpsilon * (dd + anorm)) break;
                         }
                         if (m != l)
                         {

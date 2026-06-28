@@ -7,6 +7,7 @@ using LinearAlgebra.Stats;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Mathematics;
 
 using Unity.Jobs;
 using UnityEngine;
@@ -30,7 +31,15 @@ public class fProxySVDTests
             SVDSingleColumn,
             SVDNonConvergence,
             SVDGalleryHadamard,
-            SVDGalleryParter
+            SVDGalleryParter,
+            SVValuesIdentity,
+            SVValuesDiagonal,
+            SVValuesKnown2x2,
+            SVValuesRankDeficient,
+            SVValuesCrossSquare6,
+            SVValuesCrossSquare8,
+            SVValuesCrossTall8x5,
+            SVValuesCrossTall7x3
         }
 
         public TestType Type;
@@ -74,6 +83,30 @@ public class fProxySVDTests
                 break;
                 case TestType.SVDGalleryParter:
                     SVDGalleryParter();
+                break;
+                case TestType.SVValuesIdentity:
+                    SVValuesIdentity();
+                break;
+                case TestType.SVValuesDiagonal:
+                    SVValuesDiagonal();
+                break;
+                case TestType.SVValuesKnown2x2:
+                    SVValuesKnown2x2();
+                break;
+                case TestType.SVValuesRankDeficient:
+                    SVValuesRankDeficient();
+                break;
+                case TestType.SVValuesCrossSquare6:
+                    SVValuesCross(6, 6, 9001011);
+                break;
+                case TestType.SVValuesCrossSquare8:
+                    SVValuesCross(8, 8, 4242421);
+                break;
+                case TestType.SVValuesCrossTall8x5:
+                    SVValuesCross(8, 5, 7733119);
+                break;
+                case TestType.SVValuesCrossTall7x3:
+                    SVValuesCross(7, 3, 1551991);
                 break;
             }
         }
@@ -444,6 +477,198 @@ public class fProxySVDTests
             arena.Dispose();
         }
 
+        // ---- svdValues (singular VALUES only, A unmodified) ----
+
+        // Identity n=5 -> all singular values 1.
+        public void SVValuesIdentity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var A = arena.fProxyIdentityMatrix(n);
+            var S = arena.fProxyVec(n);
+
+            bool ok = SVD.svdValues(in A, ref S);
+            Assert.IsTrue(ok);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            for (int i = 0; i < n; i++)
+                AssertClose(S[i], (fProxy)1f, 1E-4f);
+
+            AssertDescendingNonNegative(in S, n);
+
+            // A must be unchanged (still identity).
+            Assert.IsTrue(Analysis.IsIdentity(in A, 1E-5f));
+
+            arena.Dispose();
+        }
+
+        // Diagonal diag(d) -> singular values = |d_i| sorted descending.
+        public void SVValuesDiagonal()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = 3f;
+            A[1, 1] = -2f;
+            A[2, 2] = 0.5f;
+            A[3, 3] = 5f;
+            A[4, 4] = -1f;
+
+            var Apristine = A.Copy();
+
+            var S = arena.fProxyVec(n);
+
+            bool ok = SVD.svdValues(in A, ref S);
+            Assert.IsTrue(ok);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            // |d| sorted descending: 5, 3, 2, 1, 0.5
+            AssertClose(S[0], (fProxy)5f, 1E-4f);
+            AssertClose(S[1], (fProxy)3f, 1E-4f);
+            AssertClose(S[2], (fProxy)2f, 1E-4f);
+            AssertClose(S[3], (fProxy)1f, 1E-4f);
+            AssertClose(S[4], (fProxy)0.5f, 1E-4f);
+
+            AssertDescendingNonNegative(in S, n);
+
+            // A must be unmodified.
+            AssertMatrixUnchanged(in A, in Apristine, n, n);
+
+            arena.Dispose();
+        }
+
+        // Known small matrix [[3,0],[0,-4]] -> singular values 4, 3.
+        public void SVValuesKnown2x2()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 2;
+
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = 3f; A[0, 1] = 0f;
+            A[1, 0] = 0f; A[1, 1] = -4f;
+
+            var S = arena.fProxyVec(n);
+
+            bool ok = SVD.svdValues(in A, ref S);
+            Assert.IsTrue(ok);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            AssertClose(S[0], (fProxy)4f, 1E-4f);
+            AssertClose(S[1], (fProxy)3f, 1E-4f);
+
+            AssertDescendingNonNegative(in S, n);
+
+            arena.Dispose();
+        }
+
+        // Rank-1 outer product u*v^T -> exactly one positive singular value (= |u|*|v|), rest ~0.
+        public void SVValuesRankDeficient()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var u = arena.fProxyVec(n);
+            u[0] = 1f; u[1] = -2f; u[2] = 3f; u[3] = 0.5f; u[4] = -1.5f;
+            var v = arena.fProxyVec(n);
+            v[0] = 2f; v[1] = 1f; v[2] = -1f; v[3] = 4f; v[4] = 0.25f;
+
+            var A = arena.fProxyOuter(in u, in v);
+            var Apristine = A.Copy();
+
+            var S = arena.fProxyVec(n);
+
+            bool ok = SVD.svdValues(in A, ref S);
+            Assert.IsTrue(ok);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            // expected sole singular value = ||u|| * ||v||
+            fProxy nu = (fProxy)0f, nv = (fProxy)0f;
+            for (int i = 0; i < n; i++) { nu += u[i] * u[i]; nv += v[i] * v[i]; }
+            fProxy sigma = math.sqrt(nu) * math.sqrt(nv);
+
+            AssertClose(S[0], sigma, (fProxy)1E-3f + (fProxy)1E-4f * sigma);
+
+            // the rest collapse to ~0
+            for (int i = 1; i < n; i++)
+                AssertClose(S[i], (fProxy)0f, (fProxy)1E-3f + (fProxy)1E-4f * sigma);
+
+            AssertDescendingNonNegative(in S, n);
+
+            AssertMatrixUnchanged(in A, in Apristine, n, n);
+
+            arena.Dispose();
+        }
+
+        // Cross-check svdValues vs the trusted svdDecomposition for m >= n (square AND tall).
+        // svdDecomposition destroys its U argument; svdValues takes A `in` (must be unmodified).
+        public void SVValuesCross(int m, int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.fProxyRandomMatrix(m, n, -10f, 10f, seed);
+            var Apristine = A.Copy();
+
+            // reference path: copy of A consumed by svdDecomposition
+            var U = A.Copy();
+            var Sref = arena.fProxyVec(n);
+            var V = arena.fProxyMat(n, n);
+            bool okRef = SVD.svdDecomposition(ref U, ref Sref, ref V);
+            Assert.IsTrue(okRef);
+
+            // values-only path on the untouched A
+            var S = arena.fProxyVec(n);
+            bool ok = SVD.svdValues(in A, ref S);
+            Assert.IsTrue(ok);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis.IsAnyNan(in Sref));
+
+            AssertDescendingNonNegative(in S, n);
+            AssertDescendingNonNegative(in Sref, n);
+
+            // agree element-wise (both descending) with a scale-aware tolerance.
+            for (int i = 0; i < n; i++)
+            {
+                fProxy scale = math.max(math.abs(S[i]), math.abs(Sref[i]));
+                fProxy tol = (fProxy)1E-3f + (fProxy)1E-3f * scale;
+                AssertClose(S[i], Sref[i], tol);
+            }
+
+            // svdValues must NOT have modified A.
+            AssertMatrixUnchanged(in A, in Apristine, m, n);
+
+            arena.Dispose();
+        }
+
+        // Fail layout: [1]=A[i,j], [2]=ref[i,j], [3]=diff
+        private void AssertMatrixUnchanged(in fProxyMxN A, in fProxyMxN B, int m, int n)
+        {
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    fProxy diff = math.abs(A[i, j] - B[i, j]);
+                    bool same = diff <= (fProxy)1E-6f;
+                    if (!same && Fail[0] == (fProxy)0)
+                    {
+                        Fail[0] = (fProxy)1;
+                        Fail[1] = A[i, j];
+                        Fail[2] = B[i, j];
+                        Fail[3] = diff;
+                    }
+                    Assert.IsTrue(same);
+                }
+        }
+
         private void AssertReconstruct(in fProxyMxN A, in fProxyMxN U, in fProxyN S, in fProxyMxN V, ref Arena arena, fProxy precision)
         {
             // A ~= U * diag(S) * V^T
@@ -596,6 +821,32 @@ public class fProxySVDTests
         var V = arena.fProxyMat(3, 3);
 
         Assert.Catch<ArgumentException>(() => SVD.svdDecomposition(ref U, ref S, ref V, 0));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void SVValuesThrowsOnWideMatrix()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.fProxyMat(2, 3);
+        var S = arena.fProxyVec(3);
+
+        Assert.Catch<ArgumentException>(() => SVD.svdValues(in A, ref S));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void SVValuesThrowsOnWrongSLength()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.fProxyMat(4, 3);
+        var S = arena.fProxyVec(2);
+
+        Assert.Catch<ArgumentException>(() => SVD.svdValues(in A, ref S));
 
         arena.Dispose();
     }
