@@ -1,4 +1,5 @@
 using System.Text;
+#pragma warning disable 618 // benchmarks the deprecated Jacobi svdDecomposition / eigenDecomposition for comparison (kept for reference)
 
 using Unity.Burst;
 using Unity.Collections;

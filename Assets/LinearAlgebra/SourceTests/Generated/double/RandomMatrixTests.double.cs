@@ -1,4 +1,5 @@
 using System;
+#pragma warning disable 618 // intentionally exercises the deprecated Jacobi svdDecomposition / eigenDecomposition (kept for reference)
 
 using LinearAlgebra;
 

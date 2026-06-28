@@ -192,6 +192,10 @@ namespace LinearAlgebra
         ///     sign differences.
         ///   - Does not allocate.
         /// </summary>
+        /// <remarks>DEPRECATED: prefer <see cref="eigenSymmetric(ref floatMxN, ref floatN, ref floatMxN)"/>
+        /// (Householder tridiagonalization + QL, ~30x faster) for symmetric eigenpairs, or
+        /// <see cref="eigenvaluesSymmetric(ref floatMxN, ref floatN)"/> for eigenvalues only. Retained for reference.</remarks>
+        [System.Obsolete("Prefer Eigen.eigenSymmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.eigenvaluesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static bool eigenDecomposition(ref floatMxN A, ref floatN eigenvalues,
                                               ref floatMxN V, int maxSweeps, float eps)
         {
@@ -340,15 +344,21 @@ namespace LinearAlgebra
             return converged;
         }
 
+        // The default-argument overloads forward to the deprecated primitive; suppress the
+        // self-referential obsolete warning (618) on the forwarding calls.
+#pragma warning disable 618
         /// <summary>eigenDecomposition with default eps (Consts.floatZeroTreshold).</summary>
+        [System.Obsolete("Prefer Eigen.eigenSymmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.eigenvaluesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static bool eigenDecomposition(ref floatMxN A, ref floatN eigenvalues,
                                               ref floatMxN V, int maxSweeps)
             => eigenDecomposition(ref A, ref eigenvalues, ref V, maxSweeps, Consts.floatZeroTreshold);
 
         /// <summary>eigenDecomposition with default maxSweeps (30) and eps (Consts.floatZeroTreshold).</summary>
+        [System.Obsolete("Prefer Eigen.eigenSymmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.eigenvaluesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static bool eigenDecomposition(ref floatMxN A, ref floatN eigenvalues,
                                               ref floatMxN V)
             => eigenDecomposition(ref A, ref eigenvalues, ref V, 30, Consts.floatZeroTreshold);
+#pragma warning restore 618
 
         // copysign: magnitude of a with the sign of b (b >= 0 -> +|a|). EISPACK SIGN(a,b).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

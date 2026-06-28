@@ -30,6 +30,10 @@ namespace LinearAlgebra
         /// SIMD-vectorize the inner plane-rotation loops; same algorithm, unit-stride rows
         /// instead of strided columns).
         /// </summary>
+        /// <remarks>DEPRECATED: prefer <see cref="svdGolubKahan(in floatMxN, ref floatMxN, ref floatN, ref floatMxN)"/>
+        /// (Golub-Kahan bidiagonal SVD, ~3x faster and does not modify its input) for the full SVD, or
+        /// <see cref="svdValues(in floatMxN, ref floatN)"/> for singular values only. Retained for reference.</remarks>
+        [System.Obsolete("Prefer SVD.svdGolubKahan (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref floatMxN U, ref floatN S, ref floatMxN V,
                                             int maxSweeps, float eps)
         {
@@ -200,14 +204,20 @@ namespace LinearAlgebra
             return converged;
         }
 
+        // The default-argument overloads forward to the deprecated primitive; suppress the
+        // self-referential obsolete warning (618) on the forwarding calls.
+#pragma warning disable 618
         /// <summary>svdDecomposition with default eps (Consts.floatZeroTreshold).</summary>
+        [System.Obsolete("Prefer SVD.svdGolubKahan (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref floatMxN U, ref floatN S, ref floatMxN V,
                                             int maxSweeps)
             => svdDecomposition(ref U, ref S, ref V, maxSweeps, Consts.floatZeroTreshold);
 
         /// <summary>svdDecomposition with default maxSweeps (30) and eps (Consts.floatZeroTreshold).</summary>
+        [System.Obsolete("Prefer SVD.svdGolubKahan (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref floatMxN U, ref floatN S, ref floatMxN V)
             => svdDecomposition(ref U, ref S, ref V, 30, Consts.floatZeroTreshold);
+#pragma warning restore 618
 
         /// <summary>
         /// Singular VALUES only of A (m x n, m >= n), via the Golub-Kahan bidiagonal path: reduce A to
