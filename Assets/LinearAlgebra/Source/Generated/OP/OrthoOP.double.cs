@@ -107,21 +107,48 @@ namespace LinearAlgebra
             // d = step and diagonal index
             for (int d = 0; d < qrSteps; d++)
             {
-                genHouseholderPete(ref Q, ref u, d, zeroThreshold);;
-                                 
-                for (int c = d; c < Q.N_Cols; c++) 
+                genHouseholderPete(ref Q, ref u, d, zeroThreshold);
+
+                // Apply the reflector to the trailing submatrix: Q -= u·(uᵀ·Q).
+                // The previous formulation took one column at a time, walking Q[k,c] DOWN a column
+                // (stride N_Cols) for both the dot and the rank-1 update — cache-unfriendly and
+                // un-vectorizable, worst on tall systems. Here we instead sweep four trailing columns
+                // at once with four register accumulators, so the inner loops walk each row
+                // left-to-right (unit-stride, SIMD-friendly) with NO scratch allocation. Each
+                // accumulator sums over r = d..M-1 in the SAME ascending order as the old per-column
+                // dot, and the four columns of a block are mutually independent, so the result is
+                // bitwise identical.
+                int M = Q.M_Rows;
+                int N = Q.N_Cols;
+                int c = d;
+                for (; c + 4 <= N; c += 4)
+                {
+                    double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
+                    for (int r = d; r < M; r++)
+                    {
+                        double ur = u[r];
+                        w0 += ur * Q[r, c];
+                        w1 += ur * Q[r, c + 1];
+                        w2 += ur * Q[r, c + 2];
+                        w3 += ur * Q[r, c + 3];
+                    }
+                    for (int r = d; r < M; r++)
+                    {
+                        double ur = u[r];
+                        Q[r, c]     -= ur * w0;
+                        Q[r, c + 1] -= ur * w1;
+                        Q[r, c + 2] -= ur * w2;
+                        Q[r, c + 3] -= ur * w3;
+                    }
+                }
+                // tail: the remaining (< 4) columns, one at a time (the original scalar form)
+                for (; c < N; c++)
                 {
                     double dotProduct = 0;
-                    for (int k = d; k < Q.M_Rows; k++)
-                    {
-                        dotProduct += u[k] * Q[k, c];
-                    }
-
-                    //dotProduct *= 2;
-                    for (int r = d; r < Q.M_Rows; r++)
-                    {
+                    for (int r = d; r < M; r++)
+                        dotProduct += u[r] * Q[r, c];
+                    for (int r = d; r < M; r++)
                         Q[r, c] -= u[r] * dotProduct;
-                    }
                 }
 
                 // copy current Q diagonal element into R
