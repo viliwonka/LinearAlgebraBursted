@@ -428,6 +428,172 @@ namespace LinearAlgebra
             qrDirectSolve(ref A, ref b, ref x, ref u);
             u.Dispose();
         }
+
+        // QRCP-based rank-safe least-squares: basic (truncated) solution.
+        //
+        // Solves A x ≈ b (m >= n) for a possibly rank-deficient A. Uses column-pivoted QR
+        // (Businger-Golub, A·P = Q·R) to expose the numerical rank r: the R diagonal is
+        // non-increasing, so r = count of leading entries with |R[i,i]| > tol where
+        //     tol = relTol * |R[0,0]|
+        // and relTol defaults to max(m,n) * Consts.fProxyZeroTreshold (matching SVD.pinvSolve /
+        // MatrixMetrics.rank, so rank detection agrees across the library). A negative relTol is
+        // an "auto" sentinel that selects that same default.
+        //
+        // Only the leading r×r block of R is back-substituted; the remaining (n-r) free variables
+        // are set to zero in the permuted ordering, then the column permutation P is un-applied to
+        // recover x. This is the BASIC (truncated) solution: it minimises the residual ||Ax - b||
+        // but is NOT the minimum-norm solution. For minimum-norm use SVD.pinvSolve. When A has
+        // full column rank (r == n) the result is identical to ordinary QR least-squares.
+        //
+        //   A   in:  m x n matrix (m >= n). Not modified (copied into Q scratch).
+        //   b   in:  right-hand side, length m. Must not alias x.
+        //   x   out: solution, length n.
+        //   Q   scratch: m x n (receives orthogonal factor; consumed).
+        //   R   scratch: n x n (receives upper-triangular factor; consumed).
+        //   P   scratch: column Pivot of size n (reset internally).
+        //   u   scratch: length EXACTLY m (Householder workspace; first n entries are
+        //                repurposed for the un-permute scatter after the decomposition).
+        //   rank out: detected numerical rank r.
+        //   relTol:  rank threshold ratio; tol = relTol * |R[0,0]|. Negative = auto default.
+        /// <summary>
+        /// QRCP-based rank-safe least-squares: basic (truncated) solution. Returns the least-squares
+        /// solution x with at most r nonzeros in the permuted ordering, where r is the detected
+        /// numerical rank. This is NOT the minimum-norm solution; see SVD.pinvSolve for that.
+        /// The full-rank path (r == n) is divide-safe by construction (all used R diagonals exceed tol).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
+                                           ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P,
+                                           ref fProxyN u, out int rank, fProxy relTol)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("OrthoOP.qrcpDirectSolve: A must be square or tall (M_Rows >= N_Cols)");
+            if (b.N != m)
+                throw new ArgumentException("OrthoOP.qrcpDirectSolve: b.N must equal A.M_Rows");
+            if (x.N != n)
+                throw new ArgumentException("OrthoOP.qrcpDirectSolve: x.N must equal A.N_Cols");
+            if (Q.M_Rows != m || Q.N_Cols != n)
+                throw new ArgumentException("OrthoOP.qrcpDirectSolve: Q must be M_Rows x N_Cols");
+            if (R.M_Rows != n || R.N_Cols != n)
+                throw new ArgumentException("OrthoOP.qrcpDirectSolve: R must be N_Cols x N_Cols");
+            if (P.N != n)
+                throw new ArgumentException("OrthoOP.qrcpDirectSolve: P.N must equal A.N_Cols");
+            if (u.N != m)
+                throw new ArgumentException("OrthoOP.qrcpDirectSolve: u.N must equal A.M_Rows");
+
+            // Negative relTol is an "auto" sentinel: use the library-standard rank threshold
+            // (same default as SVD.pinvSolve / MatrixMetrics.rank). This also makes the threshold
+            // divide-safe (tol >= 0), so a stray negative can never inflate rank into a divide-by-tiny.
+            if (relTol < (fProxy)0)
+                relTol = (fProxy)(math.max(m, n)) * Consts.fProxyZeroTreshold;
+
+            // Degenerate: zero-column system.
+            if (n == 0) { rank = 0; return; }
+
+            // Step 1: copy A into Q (qrDecompositionColumnPivot destroys its input).
+            Q.Data.CopyFrom(A.Data);
+
+            // Step 2: QRCP — A·P = Q·R. P is reset and built inside this call.
+            qrDecompositionColumnPivot(ref Q, ref R, ref P, ref u);
+
+            // Step 3: determine numerical rank r from R's non-increasing diagonal.
+            // tol = relTol * |R[0,0]|. When R[0,0] == 0 tol == 0, and |R[0,0]| > 0 is false
+            // → rank stays 0. NaN in R[0,0] → tol = NaN → all comparisons false → rank = 0.
+            fProxy tol = relTol * math.abs(R[0, 0]);
+            rank = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (math.abs(R[i, i]) > tol)
+                    rank++;
+                else
+                    break;
+            }
+
+            // Step 4: zero matrix (rank == 0) → x = 0, done.
+            if (rank == 0)
+            {
+                for (int j = 0; j < n; j++)
+                    x[j] = (fProxy)0;
+                return;
+            }
+
+            int r = rank;
+
+            // Step 5: form c = Qᵀ b into x.
+            // dot(in b, in Q, ref x) computes x[j] = Σ_i Q[i,j]·b[i] = (Qᵀb)[j].
+            // dot zeroes x via MemClear before accumulating, so x needs no prior initialisation.
+            // Guard: x must not alias b (enforced inside dot by pointer comparison).
+            fProxyOP.dot(in b, in Q, ref x);
+
+            // Step 6: back-solve the leading r×r block of R in place.
+            // x holds c = Qᵀb; overwrite x[0..r-1] with the triangular solution.
+            // Every R[i,i] for i < r satisfies |R[i,i]| > tol, so no divide-by-zero.
+            for (int i = r - 1; i >= 0; i--)
+            {
+                fProxy sum = (fProxy)0;
+                for (int j = i + 1; j < r; j++)
+                    sum += R[i, j] * x[j];
+                x[i] = (x[i] - sum) / R[i, i];
+            }
+            // Zero the free variables (columns beyond the numerical rank).
+            for (int j = r; j < n; j++)
+                x[j] = (fProxy)0;
+
+            // Step 7: un-permute — scatter from permuted ordering back to original column ordering.
+            // QRCP gives A·P = Q·R where P[j] = original column index promoted to position j.
+            // The permuted solution z (in x) satisfies: x_final[P[j]] = z[j].
+            // Borrow u[0..n-1] as scatter scratch (u is no longer needed after Step 2).
+            for (int j = 0; j < n; j++)
+                u[j] = x[j];
+            for (int j = 0; j < n; j++)
+                x[P[j]] = u[j];
+        }
+
+        // Default-tolerance overload: passes the auto sentinel (relTol < 0), so the primitive
+        // uses max(m,n) * Consts.fProxyZeroTreshold (consistent with SVD.pinvSolve / MatrixMetrics.rank).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
+                                           ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P,
+                                           ref fProxyN u, out int rank)
+        {
+            qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out rank, (fProxy)(-1));
+        }
+
+        /// <summary>
+        /// Allocating convenience wrapper: allocates Q (m×n), R (n×n), P (n-Pivot) and u (m)
+        /// from Allocator.Temp and delegates to the zero-alloc primitive. Use the primitive in
+        /// hot loops to avoid repeated Temp allocs.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
+                                           out int rank, fProxy relTol)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            var Q = new fProxyMxN(m, n, Allocator.Temp, false);
+            var R = new fProxyMxN(n, n, Allocator.Temp, false);
+            var P = new Pivot(n, Allocator.Temp);
+            var u = new fProxyN(m, Allocator.Temp, false);
+            qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out rank, relTol);
+            u.Dispose();
+            P.Dispose();
+            R.Dispose();
+            Q.Dispose();
+        }
+
+        /// <summary>
+        /// Allocating convenience wrapper with default tolerance (max(m,n) * Consts.fProxyZeroTreshold,
+        /// matching SVD.pinvSolve / MatrixMetrics.rank).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
+                                           out int rank)
+        {
+            qrcpDirectSolve(ref A, ref b, ref x, out rank, (fProxy)(-1));
+        }
     }
 
 }
