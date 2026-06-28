@@ -239,5 +239,71 @@ namespace LinearAlgebra
             leftU.Dispose();
             W.Dispose();
         }
+
+        /// <summary>
+        /// VALUES-ONLY Golub-Kahan-Householder bidiagonalization: reduce A (m×n, m≥n) to the
+        /// diagonal d and superdiagonal e of its upper-bidiagonal form B, WITHOUT forming the
+        /// orthogonal factors U or V. NR convention: e[0] = 0, e[i] = B[i-1, i] for i = 1..n-1.
+        /// <para>This skips the U backward pass and the V accumulation of <see cref="bidiagonalize"/>
+        /// (≈ the column-rotation O(mn²)+O(n³) work), so when only the singular values are wanted it is
+        /// far cheaper. Feed (d, e) into SVD's rotation-free bidiagonal QR.</para>
+        /// <para>A is NOT modified (worked on a Temp copy). Allocates O(mn) Temp scratch.</para>
+        /// </summary>
+        /// <param name="A">Input m×n matrix (m≥n). Not modified.</param>
+        /// <param name="d">Output diagonal, length n. Caller-allocated.</param>
+        /// <param name="e">Output superdiagonal, length n (e[0]=0). Caller-allocated.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void bidiagonalizeValues(in doubleMxN A, ref doubleN d, ref doubleN e)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("Bidiag.bidiagonalizeValues: A must have m >= n");
+            if (d.N != n)
+                throw new ArgumentException("Bidiag.bidiagonalizeValues: d.N must equal A.N_Cols");
+            if (e.N != n)
+                throw new ArgumentException("Bidiag.bidiagonalizeValues: e.N must equal A.N_Cols");
+
+            if (n == 0)
+                return;
+
+            // W: working copy of A, reduced to bidiagonal form in place.
+            var W = new doubleMxN(m, n, Allocator.Temp, true);
+            W.Data.CopyFrom(A.Data);
+
+            var uVec     = new doubleN(m, Allocator.Temp, false);
+            var vVec     = new doubleN(n, Allocator.Temp, false);
+            var wScratch = new doubleN(n, Allocator.Temp, false);
+
+            double zeroThreshold = Consts.doubleZeroTreshold * doubleNormsOP.LInf(in A);
+
+            for (int k = 0; k < n; k++)
+            {
+                // LEFT Householder — zero W[k+1..m-1, k]. Reflector is not stored (no U).
+                genHouseholderCol(ref W, ref uVec, k, zeroThreshold);
+                applyHouseholderLeft(ref W, ref uVec, ref wScratch, k);
+
+                // RIGHT Householder — zero W[k, k+2..n-1]. Not accumulated into V.
+                if (k <= n - 2)
+                {
+                    int colStart = k + 1;
+                    genHouseholderRow(ref W, ref vVec, k, colStart, zeroThreshold);
+                    applyHouseholderRight(ref W, ref vVec, k, colStart);
+                }
+            }
+
+            // Extract the bidiagonal bands (NR convention).
+            for (int k = 0; k < n; k++)
+                d[k] = W[k, k];
+            e[0] = (double)0;
+            for (int k = 1; k < n; k++)
+                e[k] = W[k - 1, k];
+
+            wScratch.Dispose();
+            vVec.Dispose();
+            uVec.Dispose();
+            W.Dispose();
+        }
     }
 }

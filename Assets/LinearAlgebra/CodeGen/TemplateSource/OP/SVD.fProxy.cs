@@ -210,15 +210,15 @@ namespace LinearAlgebra
             => svdDecomposition(ref U, ref S, ref V, 30, Consts.fProxyZeroTreshold);
 
         /// <summary>
-        /// Singular VALUES only of A (m x n, m >= n), via the symmetric eigenvalues of the augmented
-        /// matrix H = [[0, A], [Aᵀ, 0]] (the Jordan–Wielandt form). H's eigenvalues are ±σ_i plus
-        /// (m-n) zeros, so the n largest are exactly the singular values, descending. This routes the
-        /// O(n^3) work through the fast Householder Eigen.eigenvaluesSymmetric, and unlike forming AᵀA
-        /// it keeps the condition number κ(A) (not κ(A)²), so small singular values are not lost.
+        /// Singular VALUES only of A (m x n, m >= n), via the Golub-Kahan bidiagonal path: reduce A to
+        /// upper bidiagonal form with Householder reflectors (NOT forming U/V) and diagonalize the
+        /// bidiagonal with the rotation-free implicit-shift QR. Like the full svdGolubKahan it operates
+        /// on A directly, so it keeps the condition number κ(A) (not κ(A)²) — small singular values are
+        /// not lost — but it skips ALL the orthogonal-factor work, making it the fast values-only path.
         ///
-        /// A is NOT modified (it is copied into the augmented matrix). S (length n) receives the
-        /// singular values, descending, clamped to be non-negative. Returns the convergence flag of
-        /// the underlying QL iteration. Allocates an (m+n)² + (m+n) Temp workspace.
+        /// A is NOT modified (worked on a Temp copy). S (length n) receives the singular values,
+        /// descending and non-negative. Returns the convergence flag of the bidiagonal QR. Allocates an
+        /// O(mn) Temp workspace.
         /// </summary>
         public static bool svdValues(in fProxyMxN A, ref fProxyN S, int maxIter, fProxy eps)
         {
@@ -237,40 +237,39 @@ namespace LinearAlgebra
             if (n == 0)
                 return true;
 
-            int d = m + n;
-            var H = new fProxyMxN(d, d, Allocator.Temp, false);
-            var eig = new fProxyN(d, Allocator.Temp, false);
+            var dVec = new fProxyN(n, Allocator.Temp, false);
+            var eVec = new fProxyN(n, Allocator.Temp, false);
 
-            // H = [[0, A], [Aᵀ, 0]]  (symmetric). Zero everything, then fill the two off-diagonal
-            // blocks: H[i, m+j] = H[m+j, i] = A[i,j].
-            unsafe
+            Bidiag.bidiagonalizeValues(in A, ref dVec, ref eVec);
+            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIter);
+
+            if (ok)
             {
-                UnsafeUtility.MemClear(H.Data.Ptr, (long)d * d * UnsafeUtility.SizeOf<fProxy>());
-            }
-            for (int i = 0; i < m; i++)
+                for (int i = 0; i < n; i++) S[i] = dVec[i];
+
+                // Sort descending (selection sort; no factors to carry).
                 for (int j = 0; j < n; j++)
                 {
-                    fProxy a = A[i, j];
-                    H[i, m + j] = a;
-                    H[m + j, i] = a;
+                    int maxIdx = j;
+                    fProxy maxVal = S[j];
+                    for (int k = j + 1; k < n; k++)
+                        if (S[k] > maxVal) { maxIdx = k; maxVal = S[k]; }
+                    if (maxIdx != j)
+                    {
+                        S[maxIdx] = S[j];
+                        S[j] = maxVal;
+                    }
                 }
+            }
 
-            bool ok = Eigen.eigenvaluesSymmetric(ref H, ref eig, maxIter, eps);
-
-            // The n largest eigenvalues (descending) are σ_1 ≥ ... ≥ σ_n ≥ 0. Clamp tiny negatives
-            // (rounding around a zero singular value) up to 0.
-            if (ok)
-                for (int i = 0; i < n; i++)
-                    S[i] = math.max(eig[i], (fProxy)0);
-
-            eig.Dispose();
-            H.Dispose();
+            eVec.Dispose();
+            dVec.Dispose();
             return ok;
         }
 
-        /// <summary>svdValues with default maxIter (30) and eps (Consts.fProxyZeroTreshold).</summary>
+        /// <summary>svdValues with default maxIter (75) and eps (Consts.fProxyZeroTreshold).</summary>
         public static bool svdValues(in fProxyMxN A, ref fProxyN S)
-            => svdValues(in A, ref S, 30, Consts.fProxyZeroTreshold);
+            => svdValues(in A, ref S, 75, Consts.fProxyZeroTreshold);
 
         // pythag(a,b) = sqrt(a^2 + b^2) without destructive under/overflow.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -507,6 +506,108 @@ namespace LinearAlgebra
                         x = c2 * yy - s2 * g2;
                         // U columns j,i = Ut rows j,i
                         UnsafeOP.jacobiRotate(utp + (long)j * m, utp + (long)i * m, c2, -s2, m);
+                    }
+                    e[l] = (fProxy)0;
+                    e[k] = f2;
+                    d[k] = x;
+                }
+            }
+            return true;
+        }
+
+        // VALUES-ONLY implicit-shift QR diagonalization of an upper-bidiagonal matrix (diagonal d,
+        // superdiagonal e with e[0]=0). Identical scalar recurrence to bidiagonalQR, but it does NOT
+        // accumulate any plane rotations (no U/V), so the inner sweeps are pure O(n) work on d/e —
+        // the cheap path when only singular values are wanted. On convergence d[k] is made
+        // non-negative (no V column to flip). Returns false on non-convergence within maxIter sweeps.
+        static bool bidiagonalQRValues(ref fProxyN d, ref fProxyN e, int n, int maxIter)
+        {
+            fProxy anorm = (fProxy)0;
+            for (int i = 0; i < n; i++)
+            {
+                fProxy t = math.abs(d[i]) + math.abs(e[i]);
+                if (t > anorm) anorm = t;
+            }
+            fProxy thresh = Consts.fProxyEpsilon * anorm;
+
+            for (int k = n - 1; k >= 0; k--)
+            {
+                for (int its = 0; its < maxIter; its++)
+                {
+                    bool flag = true;
+                    int l;
+                    int nm = 0;
+                    for (l = k; l >= 0; l--)
+                    {
+                        nm = l - 1;
+                        if (l == 0 || math.abs(e[l]) <= thresh) { flag = false; break; }
+                        if (math.abs(d[nm]) <= thresh) break;
+                    }
+
+                    if (flag)
+                    {
+                        // Cancel e[l] (l > 0): the rotations that would hit U are dropped.
+                        fProxy c = (fProxy)0, s = (fProxy)1;
+                        for (int i = l; i <= k; i++)
+                        {
+                            fProxy f = s * e[i];
+                            e[i] = c * e[i];
+                            if (math.abs(f) <= thresh) break;
+                            fProxy g = d[i];
+                            fProxy h = svdPythag(f, g);
+                            d[i] = h;
+                            h = (fProxy)1 / h;
+                            c = g * h;
+                            s = -f * h;
+                        }
+                    }
+
+                    fProxy zz = d[k];
+                    if (l == k)
+                    {
+                        if (zz < (fProxy)0)
+                            d[k] = -zz;
+                        break;
+                    }
+
+                    if (its == maxIter - 1)
+                        return false;
+
+                    fProxy x = d[l];
+                    nm = k - 1;
+                    fProxy yy = d[nm];
+                    fProxy g2 = e[nm];
+                    fProxy h2 = e[k];
+                    fProxy f2 = ((yy - zz) * (yy + zz) + (g2 - h2) * (g2 + h2)) / ((fProxy)2 * h2 * yy);
+                    g2 = svdPythag(f2, (fProxy)1);
+                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + svdSign(g2, f2))) - h2)) / x;
+
+                    fProxy c2 = (fProxy)1, s2 = (fProxy)1;
+                    for (int j = l; j <= nm; j++)
+                    {
+                        int i = j + 1;
+                        g2 = e[i];
+                        yy = d[i];
+                        h2 = s2 * g2;
+                        g2 = c2 * g2;
+                        fProxy zr = svdPythag(f2, h2);
+                        e[j] = zr;
+                        c2 = f2 / zr;
+                        s2 = h2 / zr;
+                        f2 = x * c2 + g2 * s2;
+                        g2 = g2 * c2 - x * s2;
+                        h2 = yy * s2;
+                        yy *= c2;
+                        zr = svdPythag(f2, h2);
+                        d[j] = zr;
+                        if (zr != (fProxy)0)
+                        {
+                            zr = (fProxy)1 / zr;
+                            c2 = f2 * zr;
+                            s2 = h2 * zr;
+                        }
+                        f2 = c2 * g2 + s2 * yy;
+                        x = c2 * yy - s2 * g2;
                     }
                     e[l] = (fProxy)0;
                     e[k] = f2;

@@ -93,7 +93,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SvdValuesJobFloat : IJob
     {
-        public floatMxN A;     // not modified (svdValues copies into the augmented matrix)
+        public floatMxN A;     // not modified (svdValues works on a Temp copy)
         public floatN S;
 
         public void Execute() => SVD.svdValues(in A, ref S);
@@ -102,7 +102,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SvdValuesJobDouble : IJob
     {
-        public doubleMxN A;    // not modified (svdValues copies into the augmented matrix)
+        public doubleMxN A;    // not modified (svdValues works on a Temp copy)
         public doubleN S;
 
         public void Execute() => SVD.svdValues(in A, ref S);
@@ -256,7 +256,7 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Sizes) sb.AppendLine(SvdGKD(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== SVD singular values only (svdValues, augmented Householder; ms) ===");
+            sb.AppendLine("=== SVD singular values only (svdValues, Golub-Kahan bidiagonal; ms) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Sizes) sb.AppendLine(SvdVals(n));
             foreach (var n in Sizes) sb.AppendLine(SvdValsD(n));

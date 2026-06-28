@@ -20,6 +20,8 @@ public class doubleBidiagTests
             RandomTall10x6,
             RandomTall12x4,
             RandomTall5x1,
+            ValuesMatchFullSquare,
+            ValuesMatchFullTall,
         }
 
         public TestType Type;
@@ -38,6 +40,8 @@ public class doubleBidiagTests
                 case TestType.RandomTall10x6:    RandomTall10x6();    break;
                 case TestType.RandomTall12x4:    RandomTall12x4();    break;
                 case TestType.RandomTall5x1:     RandomTall5x1();     break;
+                case TestType.ValuesMatchFullSquare: CheckValuesMatchFull(7, 7, (double)(-3f), (double)3f, 161803); break;
+                case TestType.ValuesMatchFullTall:   CheckValuesMatchFull(11, 5, (double)(-2f), (double)2f, 424242); break;
             }
         }
 
@@ -213,6 +217,30 @@ public class doubleBidiagTests
             arena.Dispose();
         }
 
+        // bidiagonalizeValues must produce EXACTLY the bidiagonal bands of the full bidiagonalize:
+        // both use identical reflectors/applies, so d[k]=B[k,k], e[0]=0, e[k]=B[k-1,k].
+        void CheckValuesMatchFull(int m, int n, double lo, double hi, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleRandomMatrix(m, n, lo, hi, seed);
+            var U = arena.doubleMat(m, n);
+            var B = arena.doubleMat(n, n);
+            var V = arena.doubleMat(n, n);
+            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+
+            var d = arena.doubleVec(n);
+            var e = arena.doubleVec(n);
+            Bidiag.bidiagonalizeValues(in A, ref d, ref e);
+
+            for (int k = 0; k < n; k++)
+                AssertClose(d[k], B[k, k], (double)1E-4f);
+            AssertClose(e[0], (double)0, (double)1E-4f);
+            for (int k = 1; k < n; k++)
+                AssertClose(e[k], B[k - 1, k], (double)1E-4f);
+
+            arena.Dispose();
+        }
+
         void RandomTall5x1()
         {
             // Single column: B is 1x1, U is 5x1 unit vector, V is 1x1 = [[±1]]
@@ -289,6 +317,28 @@ public class doubleBidiagTests
         var B = arena.doubleMat(3, 4);   // wrong: should be 4x4
         var V = arena.doubleMat(4, 4);
         Assert.Catch<ArgumentException>(() => Bidiag.bidiagonalize(in A, ref U, ref B, ref V));
+        arena.Dispose();
+    }
+
+    [Test]
+    public void BidiagValuesThrowsOnWideMatrix()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var A = arena.doubleMat(3, 5);
+        var d = arena.doubleVec(5);
+        var e = arena.doubleVec(5);
+        Assert.Catch<ArgumentException>(() => Bidiag.bidiagonalizeValues(in A, ref d, ref e));
+        arena.Dispose();
+    }
+
+    [Test]
+    public void BidiagValuesThrowsOnWrongVectorLength()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var A = arena.doubleMat(6, 4);
+        var d = arena.doubleVec(3);   // wrong: should be length 4
+        var e = arena.doubleVec(4);
+        Assert.Catch<ArgumentException>(() => Bidiag.bidiagonalizeValues(in A, ref d, ref e));
         arena.Dispose();
     }
 
