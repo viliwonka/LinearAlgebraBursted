@@ -847,13 +847,14 @@ namespace LinearAlgebra
         /// Returns true if every eigenvalue converged within maxIterPerRoot iterations; false if the
         /// iteration limit was hit (outputs then undefined). Does not allocate.
         /// </summary>
-        public static bool eigenvaluesQR(ref doubleMxN A, ref doubleN eigenvaluesReal,
-                                         ref doubleN eigenvaluesImag, int maxIterPerRoot)
+        public static unsafe bool eigenvaluesQR(ref doubleMxN A, ref doubleN eigenvaluesReal,
+                                                ref doubleN eigenvaluesImag, int maxIterPerRoot)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Eigen.eigenvaluesQR: A must be square");
 
             int n = A.N_Cols;
+            double* ap = A.Data.Ptr;   // row r starts at ap + (long)r * n (square: stride = n)
 
             if (eigenvaluesReal.N != n)
                 throw new ArgumentException("Eigen.eigenvaluesQR: eigenvaluesReal.N must equal A dimension");
@@ -906,8 +907,9 @@ namespace LinearAlgebra
                         {
                             y /= x;
                             A[i, m - 1] = y;                          // store multiplier (cleared below)
-                            for (int j = m; j < n; j++)
-                                A[i, j] -= y * A[m, j];
+                            // row update A[i, m:] -= y * A[m, m:] — unit-stride, vectorized.
+                            UnsafeOP.axpy(ap + (long)i * n + m, ap + (long)m * n + m, -y, n - m);
+                            // column update A[:, m] += y * A[:, i] — column-strided, left scalar.
                             for (int j = 0; j < n; j++)
                                 A[j, m] += y * A[j, i];
                         }
@@ -1069,18 +1071,15 @@ namespace LinearAlgebra
                                     q /= p;
                                     r /= p;
 
-                                    // row modification.
-                                    for (int j = k; j <= nn; j++)
-                                    {
-                                        p = A[k, j] + q * A[k + 1, j];
-                                        if (k != nn - 1)
-                                        {
-                                            p += r * A[k + 2, j];
-                                            A[k + 2, j] -= p * zz;
-                                        }
-                                        A[k + 1, j] -= p * yy;
-                                        A[k, j] -= p * xx;
-                                    }
+                                    // row modification over columns j = k..nn (unit-stride). Rows
+                                    // k, k+1, k+2 are distinct -> [NoAlias] Francis butterfly SIMDs it.
+                                    int rowLen = nn - k + 1;
+                                    if (k != nn - 1)
+                                        UnsafeOP.francisRow3(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
+                                                             ap + (long)(k + 2) * n + k, q, r, xx, yy, zz, rowLen);
+                                    else
+                                        UnsafeOP.francisRow2(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
+                                                             q, xx, yy, rowLen);
 
                                     int mmin = nn < k + 3 ? nn : k + 3;
                                     // column modification.

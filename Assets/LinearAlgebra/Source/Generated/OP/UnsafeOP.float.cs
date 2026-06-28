@@ -228,6 +228,38 @@ namespace LinearAlgebra
             }
         }
 
+        // Francis double-shift QR ROW update (3-row form), over a contiguous column range [0,n):
+        //   p = a[i] + q*b[i] + r*c[i];   c[i] -= p*zz;   b[i] -= p*yy;   a[i] -= p*xx;
+        // a, b, c are three DISTINCT rows of the Hessenberg matrix (rows k, k+1, k+2), so the
+        // [NoAlias] is truthful and Burst can SIMD the (otherwise can't-prove-non-aliasing) butterfly.
+        // p is read from the old values before any write, so the three stores are independent per i.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void francisRow3([NoAlias] float* a, [NoAlias] float* b, [NoAlias] float* c,
+                                       float q, float r, float xx, float yy, float zz, int n) {
+
+            for (int i = 0; i < n; i++)
+            {
+                float p = a[i] + q * b[i] + r * c[i];
+                c[i] -= p * zz;
+                b[i] -= p * yy;
+                a[i] -= p * xx;
+            }
+        }
+
+        // Francis double-shift QR ROW update (2-row form, used when k == nn-1, no third row):
+        //   p = a[i] + q*b[i];   b[i] -= p*yy;   a[i] -= p*xx;
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void francisRow2([NoAlias] float* a, [NoAlias] float* b,
+                                       float q, float xx, float yy, int n) {
+
+            for (int i = 0; i < n; i++)
+            {
+                float p = a[i] + q * b[i];
+                b[i] -= p * yy;
+                a[i] -= p * xx;
+            }
+        }
+
         // Fused 2x2 Gram dots of a vector pair: aa = a·a, bb = b·b, ab = a·b over [0,n).
         // 4-way unrolled with INDEPENDENT partial accumulators so the three reductions are not
         // latency-bound on a single loop-carried chain (recovers FMA-pipeline ILP, and lets Burst
