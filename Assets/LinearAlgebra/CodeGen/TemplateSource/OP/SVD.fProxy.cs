@@ -88,19 +88,10 @@ namespace LinearAlgebra
                             fProxy* rowPU = utp + (long)p * m;
                             fProxy* rowQU = utp + (long)q * m;
 
-                            // Fused dot: alpha = ||row_p||^2, beta = ||row_q||^2, gamma = row_p·row_q
-                            // All three are now unit-stride reads of length m — Burst vectorizes this.
-                            fProxy alpha = (fProxy)0;
-                            fProxy beta  = (fProxy)0;
-                            fProxy gamma = (fProxy)0;
-
-                            for (int i = 0; i < m; i++) {
-                                fProxy bip = rowPU[i];
-                                fProxy biq = rowQU[i];
-                                alpha += bip * bip;
-                                beta  += biq * biq;
-                                gamma += bip * biq;
-                            }
+                            // Fused 2x2 Gram dot: alpha = ||row_p||^2, beta = ||row_q||^2,
+                            // gamma = row_p·row_q. Unit-stride reads of length m, 4-way unrolled with
+                            // independent partial accumulators (breaks the loop-carried reduction chain).
+                            UnsafeOP.gram2x2(rowPU, rowQU, out fProxy alpha, out fProxy beta, out fProxy gamma, m);
 
                             // Skip if either column is zero or pair is already orthogonal
                             if (alpha == (fProxy)0 || beta == (fProxy)0)

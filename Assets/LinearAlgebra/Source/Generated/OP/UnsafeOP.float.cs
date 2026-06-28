@@ -228,6 +228,47 @@ namespace LinearAlgebra
             }
         }
 
+        // Fused 2x2 Gram dots of a vector pair: aa = a·a, bb = b·b, ab = a·b over [0,n).
+        // 4-way unrolled with INDEPENDENT partial accumulators so the three reductions are not
+        // latency-bound on a single loop-carried chain (recovers FMA-pipeline ILP, and lets Burst
+        // pack lanes). a,b must be distinct non-overlapping ranges. NOTE: the 4-way partial-sum order
+        // differs from a sequential sum, so results are rounding-level (not bitwise) different from a
+        // naive accumulate — fine for the one-sided Jacobi SVD Gram step. Used by svdDecomposition.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void gram2x2([NoAlias] float* a, [NoAlias] float* b,
+                                   out float aa, out float bb, out float ab, int n) {
+
+            float a0 = 0, a1 = 0, a2 = 0, a3 = 0;
+            float b0 = 0, b1 = 0, b2 = 0, b3 = 0;
+            float g0 = 0, g1 = 0, g2 = 0, g3 = 0;
+
+            int i = 0;
+            int n4 = n & ~3;
+            for (; i < n4; i += 4)
+            {
+                float p0 = a[i],     q0 = b[i];
+                float p1 = a[i + 1], q1 = b[i + 1];
+                float p2 = a[i + 2], q2 = b[i + 2];
+                float p3 = a[i + 3], q3 = b[i + 3];
+                a0 += p0 * p0; b0 += q0 * q0; g0 += p0 * q0;
+                a1 += p1 * p1; b1 += q1 * q1; g1 += p1 * q1;
+                a2 += p2 * p2; b2 += q2 * q2; g2 += p2 * q2;
+                a3 += p3 * p3; b3 += q3 * q3; g3 += p3 * q3;
+            }
+
+            float aSum = (a0 + a1) + (a2 + a3);
+            float bSum = (b0 + b1) + (b2 + b3);
+            float gSum = (g0 + g1) + (g2 + g3);
+
+            for (; i < n; i++)
+            {
+                float p = a[i], q = b[i];
+                aSum += p * p; bSum += q * q; gSum += p * q;
+            }
+
+            aa = aSum; bb = bSum; ab = gSum;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void compSub([NoAlias] float* target, [NoAlias] float* from, int n)
         {
