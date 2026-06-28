@@ -271,5 +271,231 @@ namespace LinearAlgebra
         /// <summary>svdValues with default maxIter (30) and eps (Consts.doubleZeroTreshold).</summary>
         public static bool svdValues(in doubleMxN A, ref doubleN S)
             => svdValues(in A, ref S, 30, Consts.doubleZeroTreshold);
+
+        // pythag(a,b) = sqrt(a^2 + b^2) without destructive under/overflow.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static double svdPythag(double a, double b)
+        {
+            double aa = math.abs(a), ab = math.abs(b);
+            if (aa > ab) { double r = ab / aa; return aa * math.sqrt((double)1 + r * r); }
+            if (ab == (double)0) return (double)0;
+            { double r = aa / ab; return ab * math.sqrt((double)1 + r * r); }
+        }
+
+        // magnitude of a with the sign of b (NR SIGN; b >= 0 -> +|a|).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static double svdSign(double a, double b) => b >= (double)0 ? math.abs(a) : -math.abs(a);
+
+        /// <summary>
+        /// Full SVD A = U * diag(S) * Vᵀ via Golub-Kahan: Householder bidiagonalization
+        /// (Bidiag.bidiagonalize) followed by the implicit-shift bidiagonal QR (Golub-Reinsch).
+        /// A (m x n, m >= n) is NOT modified. On output U (m x n) has orthonormal columns (left
+        /// singular vectors), S (length n) the singular values (non-negative, DESCENDING), and V
+        /// (n x n, NOT transposed) the right singular vectors. Returns true on convergence; false if
+        /// the bidiagonal QR hit maxIter (outputs then undefined). Allocates an n x n + 2*n Temp
+        /// workspace (plus whatever Bidiag.bidiagonalize uses). For m &lt; n, transpose A and swap U/V.
+        /// </summary>
+        public static bool svdGolubKahan(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
+                                         int maxIter, double eps)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("svdGolubKahan: A must have m >= n (more rows than columns)");
+            if (U.M_Rows != m || U.N_Cols != n)
+                throw new ArgumentException("svdGolubKahan: U must be m x n");
+            if (S.N != n)
+                throw new ArgumentException("svdGolubKahan: S.N must equal A.N_Cols");
+            if (!V.IsSquare || V.M_Rows != n)
+                throw new ArgumentException("svdGolubKahan: V must be square with side equal to A.N_Cols");
+            if (maxIter < 1)
+                throw new ArgumentException("svdGolubKahan: maxIter must be >= 1");
+            if (eps <= (double)0)
+                throw new ArgumentException("svdGolubKahan: eps must be > 0");
+
+            if (n == 0)
+                return true;
+
+            // Phase 1: A = U * B * Vᵀ, B upper bidiagonal.
+            var B = new doubleMxN(n, n, Allocator.Temp, false);
+            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+
+            // Extract the bidiagonal in NR convention: d = diagonal, e the superdiagonal with
+            // e[0] = 0 and e[i] = B[i-1, i] for i = 1..n-1.
+            var dVec = new doubleN(n, Allocator.Temp, false);
+            var eVec = new doubleN(n, Allocator.Temp, false);
+            for (int i = 0; i < n; i++) dVec[i] = B[i, i];
+            eVec[0] = (double)0;
+            for (int i = 1; i < n; i++) eVec[i] = B[i - 1, i];
+            B.Dispose();
+
+            bool ok = bidiagonalQR(ref U, ref dVec, ref eVec, ref V, m, n, maxIter);
+
+            if (ok)
+            {
+                for (int i = 0; i < n; i++) S[i] = dVec[i];
+
+                // sort descending, carrying the matching U and V columns
+                for (int j = 0; j < n; j++)
+                {
+                    int maxIdx = j;
+                    double maxVal = S[j];
+                    for (int k = j + 1; k < n; k++)
+                        if (S[k] > maxVal) { maxIdx = k; maxVal = S[k]; }
+                    if (maxIdx != j)
+                    {
+                        double tmp = S[j]; S[j] = S[maxIdx]; S[maxIdx] = tmp;
+                        SwapOP.Columns(ref U, j, maxIdx);
+                        SwapOP.Columns(ref V, j, maxIdx);
+                    }
+                }
+            }
+
+            dVec.Dispose();
+            eVec.Dispose();
+            return ok;
+        }
+
+        /// <summary>svdGolubKahan with default eps (Consts.doubleZeroTreshold).</summary>
+        public static bool svdGolubKahan(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
+                                         int maxIter)
+            => svdGolubKahan(in A, ref U, ref S, ref V, maxIter, Consts.doubleZeroTreshold);
+
+        /// <summary>svdGolubKahan with default maxIter (75) and eps (Consts.doubleZeroTreshold).</summary>
+        public static bool svdGolubKahan(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V)
+            => svdGolubKahan(in A, ref U, ref S, ref V, 75, Consts.doubleZeroTreshold);
+
+        // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (diagonal d, superdiagonal e
+        // with e[0]=0), accumulating left rotations into U (m x n) columns and right rotations into V
+        // (n x n) columns. Golub-Reinsch (Numerical Recipes svdcmp diagonalization). The deflation
+        // threshold is machine-eps relative to the GLOBAL scale anorm (not a local |d|+|e|), which is
+        // what lets FLOAT converge on clustered / zero singular values (same lesson as the symmetric
+        // eigen QL). Returns false if any singular value fails to converge within maxIter sweeps.
+        static bool bidiagonalQR(ref doubleMxN U, ref doubleN d, ref doubleN e, ref doubleMxN V,
+                                 int m, int n, int maxIter)
+        {
+            double anorm = (double)0;
+            for (int i = 0; i < n; i++)
+            {
+                double t = math.abs(d[i]) + math.abs(e[i]);
+                if (t > anorm) anorm = t;
+            }
+            double thresh = Consts.doubleEpsilon * anorm;
+
+            for (int k = n - 1; k >= 0; k--)
+            {
+                for (int its = 0; its < maxIter; its++)
+                {
+                    bool flag = true;
+                    int l;
+                    int nm = 0;
+                    for (l = k; l >= 0; l--)
+                    {
+                        nm = l - 1;
+                        if (l == 0 || math.abs(e[l]) <= thresh) { flag = false; break; }
+                        if (math.abs(d[nm]) <= thresh) break;
+                    }
+
+                    if (flag)
+                    {
+                        // Cancel e[l] (l > 0): Givens rotations zero the superdiagonal, applied to
+                        // U columns nm = l-1 and i.
+                        double c = (double)0, s = (double)1;
+                        for (int i = l; i <= k; i++)
+                        {
+                            double f = s * e[i];
+                            e[i] = c * e[i];
+                            if (math.abs(f) <= thresh) break;
+                            double g = d[i];
+                            double h = svdPythag(f, g);
+                            d[i] = h;
+                            h = (double)1 / h;
+                            c = g * h;
+                            s = -f * h;
+                            for (int j = 0; j < m; j++)
+                            {
+                                double y = U[j, nm];
+                                double z = U[j, i];
+                                U[j, nm] = y * c + z * s;
+                                U[j, i]  = z * c - y * s;
+                            }
+                        }
+                    }
+
+                    double zz = d[k];
+                    if (l == k)
+                    {
+                        // Converged: make the singular value non-negative.
+                        if (zz < (double)0)
+                        {
+                            d[k] = -zz;
+                            for (int j = 0; j < n; j++) V[j, k] = -V[j, k];
+                        }
+                        break;
+                    }
+
+                    if (its == maxIter - 1)
+                        return false;
+
+                    // Wilkinson shift from the trailing 2x2 of BᵀB.
+                    double x = d[l];
+                    nm = k - 1;
+                    double yy = d[nm];
+                    double g2 = e[nm];
+                    double h2 = e[k];
+                    double f2 = ((yy - zz) * (yy + zz) + (g2 - h2) * (g2 + h2)) / ((double)2 * h2 * yy);
+                    g2 = svdPythag(f2, (double)1);
+                    f2 = ((x - zz) * (x + zz) + h2 * ((yy / (f2 + svdSign(g2, f2))) - h2)) / x;
+
+                    // Implicit QR sweep: chase the bulge l..k-1, rotating V (right) and U (left).
+                    double c2 = (double)1, s2 = (double)1;
+                    for (int j = l; j <= nm; j++)
+                    {
+                        int i = j + 1;
+                        g2 = e[i];
+                        yy = d[i];
+                        h2 = s2 * g2;
+                        g2 = c2 * g2;
+                        double zr = svdPythag(f2, h2);
+                        e[j] = zr;
+                        c2 = f2 / zr;
+                        s2 = h2 / zr;
+                        f2 = x * c2 + g2 * s2;
+                        g2 = g2 * c2 - x * s2;
+                        h2 = yy * s2;
+                        yy *= c2;
+                        for (int jj = 0; jj < n; jj++)
+                        {
+                            double xv = V[jj, j];
+                            double zv = V[jj, i];
+                            V[jj, j] = xv * c2 + zv * s2;
+                            V[jj, i] = zv * c2 - xv * s2;
+                        }
+                        zr = svdPythag(f2, h2);
+                        d[j] = zr;
+                        if (zr != (double)0)
+                        {
+                            zr = (double)1 / zr;
+                            c2 = f2 * zr;
+                            s2 = h2 * zr;
+                        }
+                        f2 = c2 * g2 + s2 * yy;
+                        x = c2 * yy - s2 * g2;
+                        for (int jj = 0; jj < m; jj++)
+                        {
+                            double yu = U[jj, j];
+                            double zu = U[jj, i];
+                            U[jj, j] = yu * c2 + zu * s2;
+                            U[jj, i] = zu * c2 - yu * s2;
+                        }
+                    }
+                    e[l] = (double)0;
+                    e[k] = f2;
+                    d[k] = x;
+                }
+            }
+            return true;
+        }
     }
 }

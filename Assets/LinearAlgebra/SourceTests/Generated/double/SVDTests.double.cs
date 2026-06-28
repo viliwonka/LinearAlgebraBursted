@@ -39,7 +39,15 @@ public class doubleSVDTests
             SVValuesCrossSquare6,
             SVValuesCrossSquare8,
             SVValuesCrossTall8x5,
-            SVValuesCrossTall7x3
+            SVValuesCrossTall7x3,
+            GolubKahanCrossSquare6,
+            GolubKahanCrossSquare8,
+            GolubKahanCrossTall10x6,
+            GolubKahanCrossTall12x4,
+            GolubKahanRankDeficient,
+            GolubKahanClustered,
+            GolubKahanZero,
+            GolubKahanRank3
         }
 
         public TestType Type;
@@ -107,6 +115,30 @@ public class doubleSVDTests
                 break;
                 case TestType.SVValuesCrossTall7x3:
                     SVValuesCross(7, 3, 1551991);
+                break;
+                case TestType.GolubKahanCrossSquare6:
+                    GolubKahanCross(6, 6, 9001011);
+                break;
+                case TestType.GolubKahanCrossSquare8:
+                    GolubKahanCross(8, 8, 4242421);
+                break;
+                case TestType.GolubKahanCrossTall10x6:
+                    GolubKahanCross(10, 6, 7733119);
+                break;
+                case TestType.GolubKahanCrossTall12x4:
+                    GolubKahanCross(12, 4, 1551991);
+                break;
+                case TestType.GolubKahanRankDeficient:
+                    GolubKahanRankDeficient();
+                break;
+                case TestType.GolubKahanClustered:
+                    GolubKahanClustered();
+                break;
+                case TestType.GolubKahanZero:
+                    GolubKahanZero();
+                break;
+                case TestType.GolubKahanRank3:
+                    GolubKahanRank3();
                 break;
             }
         }
@@ -646,6 +678,188 @@ public class doubleSVDTests
 
             // svdValues must NOT have modified A.
             AssertMatrixUnchanged(in A, in Apristine, m, n);
+
+            arena.Dispose();
+        }
+
+        // Cross-check the Golub-Kahan full SVD vs the trusted one-sided Jacobi svdDecomposition,
+        // plus reconstruction A = U diag(S) Vᵀ and orthonormal U,V. A must be unmodified.
+        public void GolubKahanCross(int m, int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.doubleRandomMatrix(m, n, -10f, 10f, seed);
+            var Apristine = A.Copy();
+
+            // oracle: one-sided Jacobi (destroys its U arg = copy of A)
+            var Uref = A.Copy();
+            var Sref = arena.doubleVec(n);
+            var Vref = arena.doubleMat(n, n);
+            bool okRef = SVD.svdDecomposition(ref Uref, ref Sref, ref Vref);
+            Assert.IsTrue(okRef);
+
+            // Golub-Kahan on the untouched A
+            var U = arena.doubleMat(m, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            Assert.IsTrue(ok);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            AssertDescendingNonNegative(in S, n);
+
+            // singular values agree with the oracle (both descending, scale-aware tol)
+            for (int i = 0; i < n; i++)
+            {
+                double scale = math.max(math.abs(S[i]), math.abs(Sref[i]));
+                double tol = (double)1E-3f + (double)1E-3f * scale;
+                AssertClose(S[i], Sref[i], tol);
+            }
+
+            double reconTol = (double)1E-3f + (double)1E-4f * math.abs(S[0]);
+            AssertReconstruct(in A, in U, in S, in V, ref arena, reconTol);
+            Assert.IsTrue(Analysis.IsOrthogonal(U, (double)1E-3f));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1E-3f));
+
+            AssertMatrixUnchanged(in A, in Apristine, m, n);
+
+            arena.Dispose();
+        }
+
+        // Rank-1 (rank-deficient) matrix: one nonzero singular value ||u||*||v||, the rest ~0.
+        // Exercises the clustered-zero deflation in the bidiagonal QR.
+        public void GolubKahanRankDeficient()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+            var u = arena.doubleVec(n);
+            u[0] = 1f; u[1] = -2f; u[2] = 3f; u[3] = 0.5f; u[4] = -1.5f;
+            var v = arena.doubleVec(n);
+            v[0] = 2f; v[1] = 1f; v[2] = -1f; v[3] = 4f; v[4] = 0.25f;
+
+            var A = arena.doubleOuter(in u, in v);
+            var Apristine = A.Copy();
+
+            var U = arena.doubleMat(n, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            double nu = (double)0f, nv = (double)0f;
+            for (int i = 0; i < n; i++) { nu += u[i] * u[i]; nv += v[i] * v[i]; }
+            double sigma = math.sqrt(nu) * math.sqrt(nv);
+
+            AssertClose(S[0], sigma, (double)1E-3f + (double)1E-3f * sigma);
+            for (int i = 1; i < n; i++)
+                AssertClose(S[i], (double)0f, (double)1E-3f + (double)1E-3f * sigma);
+
+            AssertDescendingNonNegative(in S, n);
+            AssertReconstruct(in A, in U, in S, in V, ref arena, (double)1E-3f + (double)1E-4f * sigma);
+            AssertMatrixUnchanged(in A, in Apristine, n, n);
+
+            arena.Dispose();
+        }
+
+        // Fully clustered spectrum: A = 3*I has all singular values equal to 3. Stresses deflation.
+        public void GolubKahanClustered()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;
+            var A = arena.doubleMat(n, n);
+            for (int i = 0; i < n; i++) A[i, i] = (double)3f;
+            var Apristine = A.Copy();
+
+            var U = arena.doubleMat(n, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            for (int i = 0; i < n; i++)
+                AssertClose(S[i], (double)3f, (double)1E-3f);
+
+            AssertReconstruct(in A, in U, in S, in V, ref arena, (double)1E-3f);
+            Assert.IsTrue(Analysis.IsOrthogonal(U, (double)1E-3f));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1E-3f));
+            AssertMatrixUnchanged(in A, in Apristine, n, n);
+
+            arena.Dispose();
+        }
+
+        // Zero matrix: anorm == 0 → deflation threshold 0; must still converge (no NaN), S all 0.
+        public void GolubKahanZero()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+            var A = arena.doubleMat(n, n);   // all zeros
+
+            var U = arena.doubleMat(n, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            for (int i = 0; i < n; i++)
+                AssertClose(S[i], (double)0f, (double)1E-5f);
+
+            arena.Dispose();
+        }
+
+        // Rank-3 6x6 (sum of three independent outer products) → 3 nonzero + 3 zero singular values.
+        // The INTERIOR zeros exercise the cancellation branch (|d[nm]| <= thresh) of the bidiagonal QR.
+        public void GolubKahanRank3()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;
+            var u1 = arena.doubleVec(n); u1[0]=1f; u1[1]=0f; u1[2]=0f; u1[3]=1f; u1[4]=0f; u1[5]=0f;
+            var v1 = arena.doubleVec(n); v1[0]=1f; v1[1]=2f; v1[2]=0f; v1[3]=0f; v1[4]=0f; v1[5]=0f;
+            var u2 = arena.doubleVec(n); u2[0]=0f; u2[1]=1f; u2[2]=0f; u2[3]=0f; u2[4]=1f; u2[5]=0f;
+            var v2 = arena.doubleVec(n); v2[0]=0f; v2[1]=0f; v2[2]=1f; v2[3]=3f; v2[4]=0f; v2[5]=0f;
+            var u3 = arena.doubleVec(n); u3[0]=0f; u3[1]=0f; u3[2]=1f; u3[3]=0f; u3[4]=0f; u3[5]=1f;
+            var v3 = arena.doubleVec(n); v3[0]=0f; v3[1]=0f; v3[2]=0f; v3[3]=0f; v3[4]=1f; v3[5]=2f;
+
+            var A = arena.doubleMat(n, n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = u1[i] * v1[j] + u2[i] * v2[j] + u3[i] * v3[j];
+            var Apristine = A.Copy();
+
+            // oracle
+            var Uref = A.Copy();
+            var Sref = arena.doubleVec(n);
+            var Vref = arena.doubleMat(n, n);
+            bool okRef = SVD.svdDecomposition(ref Uref, ref Sref, ref Vref);
+            Assert.IsTrue(okRef);
+
+            var U = arena.doubleMat(n, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            AssertDescendingNonNegative(in S, n);
+
+            for (int i = 0; i < n; i++)
+            {
+                double scale = math.max(math.abs(S[i]), math.abs(Sref[i]));
+                double tol = (double)1E-3f + (double)1E-3f * scale;
+                AssertClose(S[i], Sref[i], tol);
+            }
+            // bottom three singular values are the (interior) zeros
+            for (int i = 3; i < n; i++)
+                AssertClose(S[i], (double)0f, (double)1E-3f + (double)1E-3f * S[0]);
+
+            AssertReconstruct(in A, in U, in S, in V, ref arena, (double)1E-3f + (double)1E-4f * S[0]);
+            Assert.IsTrue(Analysis.IsOrthogonal(U, (double)1E-3f));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1E-3f));
+            AssertMatrixUnchanged(in A, in Apristine, n, n);
 
             arena.Dispose();
         }
