@@ -132,7 +132,8 @@ namespace LinearAlgebra.ML
             // iters is set at the top of each iteration so it reflects the count on exit
             // (break or natural loop end). Initial value satisfies C# definite-assignment.
             iters = 0;
-            inertia = (float)0; // overwritten in final sync below
+            inertia = (float)0; // overwritten in the converged branch (5.4.6) or in the final sync
+            bool converged = false;
 
             for (int iter = 0; iter < maxIter; iter++)
             {
@@ -170,9 +171,17 @@ namespace LinearAlgebra.ML
 
                 // 5.4.6  Convergence: break before updating centroids so that returned
                 //   centroids are the ones used for this iteration's Gram + assignment.
-                //   Inertia is computed in the final sync below (not here) so it is always
-                //   consistent with the returned centroids on all exit paths.
-                if (changes == 0) break;
+                //   Gram is already valid for the current centroids (computed in 5.4.3-5.4.4),
+                //   so inertia can be computed here from the existing Gram — no extra GEMM.
+                if (changes == 0)
+                {
+                    float sseCvg = (float)0;
+                    for (int n = 0; n < N; n++)
+                        sseCvg += ws.PointNormSq[n] + ws.Gram[n, assignment[n]];
+                    inertia = math.max(sseCvg, (float)0);
+                    converged = true;
+                    break;
+                }
 
                 // 5.4.7  Zero centroid accumulators and cluster counts
                 for (int j = 0; j < k; j++)
@@ -227,15 +236,17 @@ namespace LinearAlgebra.ML
                 }
             }
 
-            // FIX 3: Final sync — compute assignment and inertia against the FINAL returned
-            // centroids on ALL exit paths.
+            // Final sync: only executed on the MaxIter-exhaustion path.
             //
-            // Convergence-break path: centroids were NOT updated this iteration (we break
-            //   before 5.4.7). Gram was computed from those same centroids in 5.4.3-5.4.4,
-            //   so the redo is a true no-op (same scores, same argmin, same inertia).
-            // MaxIter-exhaustion path: centroids were updated in 5.4.10 of the last
-            //   iteration, but assignment/Gram still reflect the pre-update centroids.
-            //   This sync makes assignment and inertia consistent with the returned centroids.
+            // MaxIter-exhaustion path (converged == false): centroids were updated in 5.4.10
+            //   of the last iteration, but assignment/Gram still reflect the pre-update
+            //   centroids. Recompute Gram, assignment, and inertia so all outputs are
+            //   mutually consistent with the returned centroids.
+            //
+            // Convergence path (converged == true): Gram is already valid (computed in
+            //   5.4.3-5.4.4 from unchanged centroids), inertia was computed in 5.4.6.
+            //   Skipped entirely — avoids a redundant O(N·D·k) GEMM + transpose.
+            if (!converged)
             {
                 for (int j = 0; j < k; j++)
                 {

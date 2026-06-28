@@ -100,6 +100,9 @@ namespace LinearAlgebra
 
         #region CONVERSIONS_TO_MATH
         public static fProxy2 Convert(this ref Arena arena, in fProxyN mathVec) {
+            if (mathVec.N < 2)
+                throw new System.ArgumentException("Convert(fProxyN -> fProxy2): source vector must have length >= 2");
+
             var vec = new fProxy2();
 
             vec.x = mathVec[0];

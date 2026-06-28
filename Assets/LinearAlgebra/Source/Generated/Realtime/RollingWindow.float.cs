@@ -78,7 +78,13 @@ namespace LinearAlgebra.Realtime
         public float this[int i, int f]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _buffer[RingRow(i), f];
+            get
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                Assume.IndexInsideBounds(new int2(_count, _features), new int2(i, f));
+#endif
+                return _buffer[RingRow(i), f];
+            }
         }
 
         /// <summary>Copies the i-th retained sample (0 = oldest) into dest (length Features).</summary>
@@ -139,12 +145,16 @@ namespace LinearAlgebra.Realtime
                 throw new ArgumentException("RollingWindow.Mean: dest length must equal Features");
 
             for (int c = 0; c < _features; c++)
+                dest[c] = (float)0;
+
+            for (int i = 0; i < _count; i++)
             {
-                float sum = (float)0;
-                for (int i = 0; i < _count; i++)
-                    sum += _buffer[RingRow(i), c];
-                dest[c] = sum / (float)_count;
+                int row = RingRow(i);
+                for (int c = 0; c < _features; c++)
+                    dest[c] += _buffer[row, c];
             }
+            for (int c = 0; c < _features; c++)
+                dest[c] /= (float)_count;
         }
 
         /// <summary>Allocating moving average — a fresh Features vector from the arena TEMP pool.</summary>

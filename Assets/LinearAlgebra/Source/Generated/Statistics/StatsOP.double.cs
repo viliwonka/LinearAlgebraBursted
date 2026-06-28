@@ -626,8 +626,9 @@ namespace LinearAlgebra.Stats
         }
 
         // Core covariance computation: fills caller-provided N×N matrix C (already allocated).
-        // Assumes A.M_Rows >= 2 and A.N_Cols == N (no guard). Uses a temp vector for column
-        // means (reclaimed by ClearTemp). Fills all N×N cells symmetric with ÷(M−1).
+        // M_Rows < 2 → zero-fills C and returns gracefully (no NaN). Uses temp vectors/matrix
+        // for column means and centered data (both reclaimed by ClearTemp). Fills all N×N cells
+        // via Gram formulation (centeredᵀ·centered ÷ (M−1)), which is exactly symmetric.
         // Public so zero-alloc callers (e.g. the realtime rolling window) can reuse it with a
         // preallocated C instead of going through the allocating covariance(in A) wrapper.
         public static void covarianceInto(in doubleMxN A, ref doubleMxN C)
@@ -635,33 +636,45 @@ namespace LinearAlgebra.Stats
             int N = A.N_Cols;
             int M = A.M_Rows;
 
+            // Guard: M < 2 makes 1/(M−1) = 1/0 = Inf, and 0·Inf = NaN-fills every cell.
+            // Zero-fill C and return gracefully — the wrappers (covariance / correlation /
+            // RollingWindow.Covariance) all throw for M < 2; this primitive degrades without
+            // NaN for any zero-alloc realtime caller that pre-screens count.
+            if (M < 2)
+            {
+                for (int i = 0; i < N; i++)
+                    for (int j = 0; j < N; j++)
+                        C[i, j] = (double)0;
+                return;
+            }
+
             // Temp vector for column means (reclaimed by ClearTemp, not persistent).
             var means = A.tempdoubleVec(N);
 
-            // First pass: accumulate column sums, then divide to get means.
+            // First pass: accumulate column sums (row-major), then divide to get means.
             for (int r = 0; r < M; r++)
-            {
                 for (int c = 0; c < N; c++)
                     means[c] += A[r, c];
-            }
             for (int c = 0; c < N; c++)
                 means[c] /= (double)M;
 
-            // Second pass: compute upper triangle and mirror for symmetry.
+            // Second pass: build centered M×N matrix in one row-major sweep (reclaimed by ClearTemp).
+            // centered[r, c] = A[r, c] − mean[c]
+            var centered = A.tempdoubleMat(M, N);
+            for (int r = 0; r < M; r++)
+                for (int c = 0; c < N; c++)
+                    centered[r, c] = A[r, c] - means[c];
+
+            // C = centeredᵀ · centered (Gram formulation). dot(..., transposeA:true) dispatches
+            // to matMatDotTransA; inner read is unit-stride over columns of centered. Zeros C first.
+            doubleOP.dot(in centered, in centered, ref C, transposeA: true);
+
+            // Scale by 1/(M−1) (Bessel correction). The Gram matrix is exactly symmetric under
+            // IEEE 754 (mul(a,b)==mul(b,a)), so no explicit symmetrization pass is needed.
             double invDenom = 1f / (double)(M - 1);
             for (int i = 0; i < N; i++)
-            {
-                for (int j = i; j < N; j++)
-                {
-                    double acc = 0f;
-                    for (int r = 0; r < M; r++)
-                        acc += (A[r, i] - means[i]) * (A[r, j] - means[j]);
-
-                    double cov = acc * invDenom;
-                    C[i, j] = cov;
-                    C[j, i] = cov;
-                }
-            }
+                for (int j = 0; j < N; j++)
+                    C[i, j] *= invDenom;
         }
 
         // Sample covariance matrix (N_Cols × N_Cols). Columns = variables, rows = observations.
@@ -771,17 +784,20 @@ namespace LinearAlgebra.Stats
         public static void standardizeRows(ref doubleMxN A)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
-            var s0 = new doubleN(A.M_Rows, Allocator.Temp);
-            var s1 = new doubleN(A.M_Rows, Allocator.Temp);
-            rowMean(in A, ref s0);
-            rowStdDev(in A, ref s1);
+            // Process each row in a single combined pass: compute mean once (eliminating the
+            // duplicate computed by rowMean + rowVariance), then variance, then apply.
+            // No Temp allocations — all scalars; rows are independently standardized.
             for (int r = 0; r < A.M_Rows; r++)
             {
-                double mu = s0[r], sd = s1[r];
+                double rsum = (double)0;
+                for (int c = 0; c < A.N_Cols; c++) rsum += A[r, c];
+                double mu = rsum / A.N_Cols;
+                double varAcc = (double)0;
+                for (int c = 0; c < A.N_Cols; c++) { double d = A[r, c] - mu; varAcc += d * d; }
+                double sd = math.sqrt(varAcc / A.N_Cols);
                 if (!(sd > (double)0)) { for (int c = 0; c < A.N_Cols; c++) A[r, c] = (double)0; }
                 else                   { for (int c = 0; c < A.N_Cols; c++) A[r, c] = (A[r, c] - mu) / sd; }
             }
-            s0.Dispose(); s1.Dispose();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -804,13 +820,14 @@ namespace LinearAlgebra.Stats
                 }
             for (int c = 0; c < A.N_Cols; c++)
                 s1[c] = math.sqrt(s1[c] / A.M_Rows);
-            // pass 3: apply z-score in-place
-            for (int c = 0; c < A.N_Cols; c++)
-            {
-                double mu = s0[c], sd = s1[c];
-                if (!(sd > (double)0)) { for (int r = 0; r < A.M_Rows; r++) A[r, c] = (double)0; }
-                else                   { for (int r = 0; r < A.M_Rows; r++) A[r, c] = (A[r, c] - mu) / sd; }
-            }
+            // pass 3: apply z-score in-place (row-major traverse for unit-stride writes)
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                {
+                    double mu = s0[c], sd = s1[c];
+                    if (!(sd > (double)0)) A[r, c] = (double)0;
+                    else                   A[r, c] = (A[r, c] - mu) / sd;
+                }
             s0.Dispose(); s1.Dispose();
         }
 
@@ -882,16 +899,15 @@ namespace LinearAlgebra.Stats
             var s0 = new doubleN(A.N_Cols, Allocator.Temp);
             var s1 = new doubleN(A.N_Cols, Allocator.Temp);
             colMin(in A, ref s0); colMax(in A, ref s1);
-            for (int c = 0; c < A.N_Cols; c++)
-            {
-                double mn = s0[c], rng = s1[c] - mn;
-                if (!(rng > (double)0)) { for (int r = 0; r < A.M_Rows; r++) A[r, c] = lo; }
-                else
+            // Apply: row-major traverse for unit-stride writes.
+            double sc = hi - lo;
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
                 {
-                    double sc = hi - lo;
-                    for (int r = 0; r < A.M_Rows; r++) A[r, c] = lo + ((A[r, c] - mn) / rng) * sc;
+                    double mn = s0[c], rng = s1[c] - mn;
+                    if (!(rng > (double)0)) A[r, c] = lo;
+                    else                    A[r, c] = lo + ((A[r, c] - mn) / rng) * sc;
                 }
-            }
             s0.Dispose(); s1.Dispose();
         }
 
@@ -935,11 +951,10 @@ namespace LinearAlgebra.Stats
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
             var s0 = new doubleN(A.N_Cols, Allocator.Temp);
             colMean(in A, ref s0);
-            for (int c = 0; c < A.N_Cols; c++)
-            {
-                double m = s0[c];
-                for (int r = 0; r < A.M_Rows; r++) A[r, c] -= m;
-            }
+            // Apply: row-major traverse for unit-stride writes.
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    A[r, c] -= s0[c];
             s0.Dispose();
         }
 
@@ -982,13 +997,16 @@ namespace LinearAlgebra.Stats
         public static void maxAbsColumns(ref doubleMxN A)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
-            for (int c = 0; c < A.N_Cols; c++)
-            {
-                double mAbs = (double)0;
-                for (int r = 0; r < A.M_Rows; r++) mAbs = math.max(mAbs, math.abs(A[r, c]));
-                if (!(mAbs > (double)0)) continue;
-                for (int r = 0; r < A.M_Rows; r++) A[r, c] /= mAbs;
-            }
+            // Pre-compute per-column max|x| into a temp array via row-major stats pass.
+            var mAbsArr = new doubleN(A.N_Cols, Allocator.Temp);
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    mAbsArr[c] = math.max(mAbsArr[c], math.abs(A[r, c]));
+            // Apply: row-major traverse for unit-stride writes.
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    if (mAbsArr[c] > (double)0) A[r, c] /= mAbsArr[c];
+            mAbsArr.Dispose();
         }
 
         // --- softmax: numerically stable eˣ/Σeˣ. Subtract axis max before exp. ---

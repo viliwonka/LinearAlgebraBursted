@@ -98,6 +98,9 @@ namespace LinearAlgebra
 
         #region CONVERSIONS_TO_MATH
         public static double2 Convert(this ref Arena arena, in doubleN mathVec) {
+            if (mathVec.N < 2)
+                throw new System.ArgumentException("Convert(doubleN -> double2): source vector must have length >= 2");
+
             var vec = new double2();
 
             vec.x = mathVec[0];

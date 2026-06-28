@@ -175,15 +175,15 @@ namespace LinearAlgebra
         {
             int n = inRe.N;
             if (inIm.N != n)
-                throw new ArgumentException("dft: inRe and inIm must have the same length");
+                throw new ArgumentException("dft/idft: inRe and inIm must have the same length");
             if (outRe.N != n || outIm.N != n)
-                throw new ArgumentException("dft: outRe and outIm must match the input length");
+                throw new ArgumentException("dft/idft: outRe and outIm must match the input length");
 
             unsafe
             {
                 if (outRe.Data.Ptr == inRe.Data.Ptr || outRe.Data.Ptr == inIm.Data.Ptr ||
                     outIm.Data.Ptr == inRe.Data.Ptr || outIm.Data.Ptr == inIm.Data.Ptr)
-                    throw new ArgumentException("dft: output must not alias the input");
+                    throw new ArgumentException("dft/idft: output must not alias the input");
             }
 
             if (n == 0)

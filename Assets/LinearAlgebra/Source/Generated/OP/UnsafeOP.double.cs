@@ -103,13 +103,17 @@ namespace LinearAlgebra
         {
             // mat = m x n
             // y = inVec = m
-            // x = outVec = n, needs to be initialized to zero
+            // x = outVec = n
             // x = y^T * mat
-            for (int c = 0; c < n; c++)
+            // Zero result first, then accumulate row-wise so mat[baseIdx + c] is unit-stride in c.
+            UnsafeUtility.MemClear(x, (long)n * UnsafeUtility.SizeOf<double>());
+            for (int r = 0; r < m; r++)
             {
-                for (int r = 0; r < m; r++)
+                double yr = y[r];
+                int baseIdx = r * n;
+                for (int c = 0; c < n; c++)
                 {
-                    x[c] += y[r] * mat[r * n + c];
+                    x[c] += yr * mat[baseIdx + c];
                 }
             }
         }

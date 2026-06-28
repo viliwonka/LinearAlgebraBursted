@@ -98,6 +98,9 @@ namespace LinearAlgebra
 
         #region CONVERSIONS_TO_MATH
         public static float2 Convert(this ref Arena arena, in floatN mathVec) {
+            if (mathVec.N < 2)
+                throw new System.ArgumentException("Convert(floatN -> float2): source vector must have length >= 2");
+
             var vec = new float2();
 
             vec.x = mathVec[0];

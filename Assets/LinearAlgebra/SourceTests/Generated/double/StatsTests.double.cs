@@ -34,7 +34,8 @@ public class doubleStatsTests
             Covariance1Variable,
             RowColSumMean,
             RowColNorms,
-            RefDestMatchesAllocating
+            RefDestMatchesAllocating,
+            CovarianceIntoSingleRowZeroFill
         }
 
         public TestType Type;
@@ -97,7 +98,39 @@ public class doubleStatsTests
                 case TestType.RefDestMatchesAllocating:
                     RefDestMatchesAllocating();
                     break;
+                case TestType.CovarianceIntoSingleRowZeroFill:
+                    CovarianceIntoSingleRowZeroFill();
+                    break;
             }
+        }
+
+        // Guard: covarianceInto must degrade gracefully when M_Rows < 2.
+        // Previously 1/(M-1) = 1/0 = Inf and 0*Inf = NaN filled every cell; the guard now
+        // zero-fills the N×N output and returns. Build a 1-row matrix (M=1, N=3), poison the
+        // 3×3 destination, run covarianceInto, and assert every cell is EXACTLY 0 and not NaN.
+        void CovarianceIntoSingleRowZeroFill()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.doubleMat(1, 3);
+            A[0, 0] = 5f; A[0, 1] = -2f; A[0, 2] = 9f;
+
+            var C = arena.doubleMat(3, 3);
+            // Poison every cell so a non-zeroing / NaN-producing primitive would be caught.
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                    C[i, j] = (double)999f;
+
+            doubleStatsOP.covarianceInto(in A, ref C);
+
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                {
+                    AssertNotNaN(C[i, j]);
+                    AssertClose(C[i, j], (double)0f, 0f); // exactly zero
+                }
+
+            arena.Dispose();
         }
 
         // Known-value oracle for rowSum/colSum/rowMean/colMean on {{1,2,3},{4,6,8}}:
@@ -575,6 +608,19 @@ public class doubleStatsTests
             }
             Assert.IsTrue(diff <= precision);
         }
+
+        // Fails (records got=NaN-marker) if the value is NaN. Used by the M<2 zero-fill guard test.
+        private void AssertNotNaN(double a)
+        {
+            if (math.isnan(a) && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1;
+                Fail[1] = a;
+                Fail[2] = (double)0;
+                Fail[3] = a;
+            }
+            Assert.IsFalse(math.isnan(a));
+        }
     }
 
     // Helper used by every managed runner to allocate/run/dispose with failure diagnostics.
@@ -699,6 +745,27 @@ public class doubleStatsTests
     public void RefDestMatchesAllocatingTest()
     {
         RunJob(TestJob.TestType.RefDestMatchesAllocating);
+    }
+
+    [Test]
+    public void CovarianceIntoSingleRowZeroFillTest()
+    {
+        RunJob(TestJob.TestType.CovarianceIntoSingleRowZeroFill);
+    }
+
+    // The zero-alloc primitive covarianceInto degrades to a zero-fill for M<2, but the allocating
+    // wrapper covariance(in A) STILL throws — that contract is unchanged. (M=1, N=3.)
+    [Test]
+    public void CovarianceWrapperSingleRowStillThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.doubleMat(1, 3);
+        A[0, 0] = 5f; A[0, 1] = -2f; A[0, 2] = 9f;
+
+        Assert.Throws<InvalidOperationException>(() => doubleStatsOP.covariance(in A));
+
+        arena.Dispose();
     }
 
     // Case 9: Managed throw-tests (must run on main thread, not inside a Burst job).

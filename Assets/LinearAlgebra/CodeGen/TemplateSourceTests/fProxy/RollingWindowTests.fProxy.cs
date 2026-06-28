@@ -24,7 +24,8 @@ public class fProxyRollingWindowTests
             MovingAverage,
             CovarianceMatchesStatsOP,
             GetSampleAndIndexer,
-            ClearResets
+            ClearResets,
+            IndexerFeatureBounds
         }
 
         public TestType Type;
@@ -43,7 +44,31 @@ public class fProxyRollingWindowTests
                 case TestType.CovarianceMatchesStatsOP: CovarianceMatchesStatsOP(); break;
                 case TestType.GetSampleAndIndexer: GetSampleAndIndexer(); break;
                 case TestType.ClearResets: ClearResets(); break;
+                case TestType.IndexerFeatureBounds: IndexerFeatureBounds(); break;
             }
+        }
+
+        // Positive coverage for the [i,f] indexer's two-axis bounds: every valid (i,f) within
+        // Count×Features returns the right sample value (feature axis included, not just feature 0).
+        void IndexerFeatureBounds()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var w = arena.fProxyRollingWindow(3, 2);
+
+            // Distinct per (sample, feature) values: sample s, feature f -> 10*s + f.
+            var s = arena.fProxyVec(2);
+            s[0] = 10f; s[1] = 11f; w.Push(in s); // sample 0
+            s[0] = 20f; s[1] = 21f; w.Push(in s); // sample 1
+            s[0] = 30f; s[1] = 31f; w.Push(in s); // sample 2
+
+            AssertEqI(3, w.Count);
+            AssertEqI(2, w.Features);
+
+            for (int i = 0; i < w.Count; i++)
+                for (int f = 0; f < w.Features; f++)
+                    AssertClose(w[i, f], (fProxy)(10f * (i + 1) + f), 1E-6f);
+
+            arena.Dispose();
         }
 
         // Helper: push a single 1-feature sample value. arena is taken by ref — fProxyVec mutates the
@@ -286,6 +311,7 @@ public class fProxyRollingWindowTests
     [Test] public void CovarianceMatchesStatsOPTest() => RunJob(TestJob.TestType.CovarianceMatchesStatsOP);
     [Test] public void GetSampleAndIndexerTest() => RunJob(TestJob.TestType.GetSampleAndIndexer);
     [Test] public void ClearResetsTest() => RunJob(TestJob.TestType.ClearResets);
+    [Test] public void IndexerFeatureBoundsTest() => RunJob(TestJob.TestType.IndexerFeatureBounds);
 
     // ---- Managed throw tests (guard paths) ----
 
@@ -342,4 +368,44 @@ public class fProxyRollingWindowTests
         Assert.Throws<ArgumentException>(() => w.AsMatrix(ref wrong));
         arena.Dispose();
     }
+
+    // The [i,f] indexer validates BOTH axes via Assume.IndexInsideBounds, which throws
+    // ArgumentException when collection checks are enabled. The guard is compiled only under
+    // ENABLE_UNITY_COLLECTIONS_CHECKS, so the throw tests are compiled under the same symbol —
+    // when checks are off the indexer cannot throw and these tests would be vacuous/false.
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+    [Test]
+    public void IndexerFeatureOutOfRangeThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var w = arena.fProxyRollingWindow(3, 2);
+        var s = arena.fProxyVec(2);
+        s[0] = 1f; s[1] = 2f; w.Push(in s);
+        s[0] = 3f; s[1] = 4f; w.Push(in s);
+
+        // f == Features (2) is one past the last valid feature index.
+        Assert.Throws<ArgumentException>(() => { var _ = w[0, w.Features]; });
+        // negative feature index also rejected.
+        Assert.Throws<ArgumentException>(() => { var _ = w[0, -1]; });
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void IndexerSampleOutOfRangeThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var w = arena.fProxyRollingWindow(3, 2);
+        var s = arena.fProxyVec(2);
+        s[0] = 1f; s[1] = 2f; w.Push(in s);
+        s[0] = 3f; s[1] = 4f; w.Push(in s);
+
+        // i == Count (2) is one past the last valid sample index (not Capacity).
+        Assert.Throws<ArgumentException>(() => { var _ = w[w.Count, 0]; });
+        // negative sample index also rejected.
+        Assert.Throws<ArgumentException>(() => { var _ = w[-1, 0]; });
+
+        arena.Dispose();
+    }
+#endif
 }
