@@ -76,6 +76,21 @@ namespace LinearAlgebra.Benchmarks
                 dtype, n, st.Min, st.Median, st.Mean, st.Max, gflops);
         }
 
+        // Time-only header/row for iterative algorithms (SVD, eigen) whose flop count is
+        // data-dependent (varies with iteration/sweep count), so a GFLOP/s column would be misleading.
+        public static string HeaderTime()
+        {
+            return string.Format("{0,-7} {1,-6} {2,11} {3,11} {4,11} {5,11}",
+                "dtype", "N", "min(ms)", "med(ms)", "mean(ms)", "max(ms)");
+        }
+
+        public static string RowTime(string dtype, int n, Stat st)
+        {
+            return string.Format(CultureInfo.InvariantCulture,
+                "{0,-7} {1,-6} {2,11:F4} {3,11:F4} {4,11:F4} {5,11:F4}",
+                dtype, n, st.Min, st.Median, st.Mean, st.Max);
+        }
+
         // Builds the common preamble, runs `body` to fill in the kernel section(s), writes the report
         // to TestResults/<fileName>, echoes it to the Editor log, and logs the path on its own line
         // (benchmark.ps1 parses that line to know which file to print).

@@ -1,0 +1,159 @@
+using System.Text;
+
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+
+using LinearAlgebra;
+
+namespace LinearAlgebra.Benchmarks
+{
+    // Iterative spectral algorithms: one-sided Jacobi SVD, cyclic-Jacobi symmetric eigen, and the
+    // general-matrix QR-iteration eigenvalues (elmhes + Francis hqr). Their cost is data-dependent
+    // (sweep / iteration count), so only ms is reported, and sizes are smaller than the direct
+    // decompositions because Jacobi is O(sweeps * n^3) with strided column access. Each Execute copies
+    // a pristine source so every timed sample does identical (and identically-converging) work.
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SvdJobFloat : IJob
+    {
+        public floatMxN U;
+        public floatMxN Src;
+        public floatN S;
+        public floatMxN V;
+
+        public void Execute()
+        {
+            int rows = U.M_Rows, cols = U.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    U[r, c] = Src[r, c];
+            SVD.svdDecomposition(ref U, ref S, ref V);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct EigJacobiJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatMxN Src;
+        public floatN E;
+        public floatMxN V;
+
+        public void Execute()
+        {
+            int n = A.M_Rows;
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = Src[r, c];
+            Eigen.eigenDecomposition(ref A, ref E, ref V);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct EigQRJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatMxN Src;
+        public floatN Re;
+        public floatN Im;
+
+        public void Execute()
+        {
+            int n = A.M_Rows;
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = Src[r, c];
+            Eigen.eigenvaluesQR(ref A, ref Re, ref Im, 100);
+        }
+    }
+
+    public static class EigenSvdBenchmark
+    {
+        static readonly int[] Sizes = { 32, 64, 128, 256 };
+
+        public static void Run() => Bench.WriteReport("benchmark-eigensvd.txt", Section);
+
+        public static void Section(StringBuilder sb)
+        {
+            sb.AppendLine("=== One-sided Jacobi SVD (svdDecomposition; iterative, ms only) ===");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in Sizes) sb.AppendLine(Svd(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Cyclic-Jacobi symmetric eigen (eigenDecomposition; iterative, ms only) ===");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in Sizes) sb.AppendLine(EigJacobi(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== General eigenvalues, QR iteration (eigenvaluesQR; iterative, ms only) ===");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in Sizes) sb.AppendLine(EigQR(n));
+            sb.AppendLine();
+        }
+
+        static string Svd(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var U = arena.floatMat(n, n);
+            var Src = arena.floatMat(n, n);
+            var S = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextFloat(-1f, 1f);
+
+            var job = new SvdJobFloat { U = U, Src = Src, S = S, V = V };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float", n, stat);
+        }
+
+        static string EigJacobi(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var Src = arena.floatMat(n, n);
+            var E = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = i; j < n; j++)
+                {
+                    float v = rng.NextFloat(-1f, 1f);
+                    Src[i, j] = v;
+                    Src[j, i] = v;              // exactly symmetric
+                }
+
+            var job = new EigJacobiJobFloat { A = A, Src = Src, E = E, V = V };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float", n, stat);
+        }
+
+        static string EigQR(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var Src = arena.floatMat(n, n);
+            var Re = arena.floatVec(n);
+            var Im = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextFloat(-1f, 1f);
+
+            var job = new EigQRJobFloat { A = A, Src = Src, Re = Re, Im = Im };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float", n, stat);
+        }
+    }
+}
