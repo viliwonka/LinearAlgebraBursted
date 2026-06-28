@@ -60,17 +60,26 @@ namespace LinearAlgebra
                 float Ljj = math.sqrt(diag);
                 L[j, j] = Ljj;
 
-                // Below diagonal: L[i,j] = (A[i,j] - sum_{k<j} L[i,k] * L[j,k]) / L[j,j]
-                for (int i = j + 1; i < n; i++) {
+                // Below diagonal: L[i,j] = (A[i,j] - sum_{k<j} L[i,k] * L[j,k]) / L[j,j].
+                // The inner sum is a dot of two DISTINCT already-computed rows (i > j) over the
+                // unit-stride prefix [0,j); routed through the vectorising UnsafeOP.vecDotRange
+                // ([NoAlias], the GEMM pointer path) so Burst SIMD-vectorises this O(n^3) hot loop
+                // (float ~2x double). This uses the BLAS dot-then-subtract association rather than the
+                // old running subtraction, so results differ from the prior form by rounding only.
+                unsafe
+                {
+                    float* lp = L.Data.Ptr;
+                    float* rowJ = lp + (long)j * n;
+                    for (int i = j + 1; i < n; i++)
+                    {
+                        float* rowI = lp + (long)i * n;
+                        float sum = A[i, j] - UnsafeOP.vecDotRange(rowI, rowJ, 0, j);
 
-                    float sum = A[i, j];
-                    for (int k = 0; k < j; k++)
-                        sum -= L[i, k] * L[j, k];
+                        L[i, j] = sum / Ljj;
 
-                    L[i, j] = sum / Ljj;
-
-                    // L is exactly lower-triangular
-                    L[j, i] = 0;
+                        // L is exactly lower-triangular
+                        L[j, i] = 0;
+                    }
                 }
             }
 
