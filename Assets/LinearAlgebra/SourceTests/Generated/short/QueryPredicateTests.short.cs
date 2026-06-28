@@ -1,0 +1,180 @@
+using System;
+
+using LinearAlgebra;
+
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Tests for the integer scalar-predicate subset of the QueryOP extension (shortQueryOP, Group A
+// only). Spec: docs/spec-predicate-queries.md (Section 4b + T1). Groups B/C/D are fProxy-only.
+//
+// One template expands to int / short / long QueryOP, so every literal must be exact AND safe for
+// the tightest type (short): coordinates stay small. Functor struct is NESTED in the outer class
+// so the generated int / short / long files do not collide on a namespace-scope type name.
+//
+// Burst-compatible computational tests live in TestJob; the managed-throw guard is a plain [Test].
+public class shortQueryPredicateTests
+{
+    struct GreaterThanInt : IfshortPredicate
+    {
+        public short t;
+        public bool Test(short x) => x > t;
+    }
+
+    [BurstCompile]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            GroupAScalar,
+        }
+
+        public TestType Type;
+
+        // [0] flag (1 = failure recorded), [1] got, [2] expected, [3] diff
+        public NativeArray<short> Fail;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.GroupAScalar: GroupAScalar(); break;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // GROUP A — FLAT / SCALAR PREDICATE OPS (T1, integer)
+        // ---------------------------------------------------------------------
+
+        void GroupAScalar()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // v = [-2, 0, 3, 1, 4, 2]; threshold 2 -> {3@2, 4@4} pass.
+            var v = arena.shortVec(6);
+            v[0] = (short)(-2); v[1] = (short)0; v[2] = (short)3;
+            v[3] = (short)1;    v[4] = (short)4; v[5] = (short)2;
+
+            var pass = new GreaterThanInt { t = (short)2 };
+            AssertEqI(shortQueryOP.findFirst(in v, ref pass), 2);
+            AssertEqI(shortQueryOP.count(in v, ref pass), 2);
+            AssertTrue(shortQueryOP.any(in v, ref pass));
+            // not all > 2 (e.g. the -2 fails) -> all == false.
+            AssertTrue(!shortQueryOP.all(in v, ref pass));
+
+            var idx = arena.Indices(6);
+            int fc = shortQueryOP.findAll(in v, ref pass, ref idx);
+            AssertEqI(fc, 2);
+            AssertEqI(idx[0], 2); AssertEqI(idx[1], 4);
+            // findAll count == count.
+            AssertEqI(fc, shortQueryOP.count(in v, ref pass));
+
+            // No element matches -> findFirst -1, count 0, any false, findAll 0.
+            var none = new GreaterThanInt { t = (short)100 };
+            AssertEqI(shortQueryOP.findFirst(in v, ref none), -1);
+            AssertEqI(shortQueryOP.count(in v, ref none), 0);
+            AssertTrue(!shortQueryOP.any(in v, ref none));
+            AssertEqI(shortQueryOP.findAll(in v, ref none, ref idx), 0);
+
+            // Every element passes -> all true, any true.
+            var allPass = new GreaterThanInt { t = (short)(-10) };
+            AssertTrue(shortQueryOP.all(in v, ref allPass));
+            AssertTrue(shortQueryOP.any(in v, ref allPass));
+
+            // Empty vector: findFirst -1, count 0, any false, all true (vacuous), findAll 0.
+            var v0 = arena.shortVec(0);
+            AssertEqI(shortQueryOP.findFirst(in v0, ref pass), -1);
+            AssertEqI(shortQueryOP.count(in v0, ref pass), 0);
+            AssertTrue(!shortQueryOP.any(in v0, ref pass));
+            AssertTrue(shortQueryOP.all(in v0, ref pass));
+            var idx0 = arena.Indices(1);
+            AssertEqI(shortQueryOP.findAll(in v0, ref pass, ref idx0), 0);
+
+            // Matrix flat-index variant (generic T over shortMxN, row-major flat order).
+            // A = [1 5; 2 5] -> flat [1,5,2,5]; threshold 4 -> {5@1, 5@3}.
+            var A = arena.shortMat(2, 2);
+            A[0, 0] = (short)1; A[0, 1] = (short)5;
+            A[1, 0] = (short)2; A[1, 1] = (short)5;
+            var matPass = new GreaterThanInt { t = (short)4 };
+            AssertEqI(shortQueryOP.findFirst(in A, ref matPass), 1);
+            AssertEqI(shortQueryOP.count(in A, ref matPass), 2);
+            var idxM = arena.Indices(4);
+            int mc = shortQueryOP.findAll(in A, ref matPass, ref idxM);
+            AssertEqI(mc, 2);
+            AssertEqI(idxM[0], 1); AssertEqI(idxM[1], 3);
+
+            arena.Dispose();
+        }
+
+        // ---------------------------------------------------------------------
+        // helpers (integer ops are exact — no tolerance)
+        // ---------------------------------------------------------------------
+
+        // Fail layout: [0]=flag, [1]=got, [2]=expected, [3]=diff
+        void AssertEqI(int got, int expected)
+        {
+            if (got != expected && Fail[0] == (short)0)
+            {
+                Fail[0] = (short)1;
+                Fail[1] = (short)got;
+                Fail[2] = (short)expected;
+                Fail[3] = (short)(got - expected);
+            }
+            Assert.AreEqual(expected, got);
+        }
+
+        void AssertTrue(bool ok)
+        {
+            if (!ok && Fail[0] == (short)0)
+            {
+                Fail[0] = (short)1;
+                Fail[1] = (short)(-1);
+                Fail[2] = (short)(-1);
+                Fail[3] = (short)(-1);
+            }
+            Assert.IsTrue(ok);
+        }
+    }
+
+    void RunJob(TestJob.TestType type)
+    {
+        var fail = new NativeArray<short>(4, Allocator.TempJob);
+        try
+        {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            if (fail[0] != (short)0)
+                Assert.Fail($"got {fail[1]}, expected {fail[2]}, diff {fail[3]}");
+        }
+        catch (Exception e)
+        {
+            if (fail[0] != (short)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected {fail[2]}, diff {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally
+        {
+            fail.Dispose();
+        }
+    }
+
+    [Test] public void GroupAScalarTest() => RunJob(TestJob.TestType.GroupAScalar);
+
+    // -------------------------------------------------------------------------
+    // Managed-throw guard (main thread): undersized Indices on findAll.
+    // -------------------------------------------------------------------------
+
+    [Test]
+    public void FindAllUndersizedThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var v = arena.shortVec(5);
+        var gt = new GreaterThanInt { t = (short)0 };
+        var small = arena.Indices(4);   // < v.Data.Length (5)
+        Assert.Throws<ArgumentException>(() => shortQueryOP.findAll(in v, ref gt, ref small));
+        arena.Dispose();
+    }
+}

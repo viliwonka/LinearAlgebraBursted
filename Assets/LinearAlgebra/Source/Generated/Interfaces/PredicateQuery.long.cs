@@ -1,0 +1,12 @@
+namespace LinearAlgebra
+{
+    /// <summary>
+    /// Scalar predicate for integer flat data (<see cref="IUnsafelongArray"/>).
+    /// Used by the long Group-A predicate ops: findFirst, count, any, all, findAll.
+    /// Groups B, C, and D are fProxy-only; for integer matrix row/col filtering
+    /// convert to the float or double variant.
+    /// </summary>
+    public interface IflongPredicate {
+        bool Test(long x);
+    }
+}
