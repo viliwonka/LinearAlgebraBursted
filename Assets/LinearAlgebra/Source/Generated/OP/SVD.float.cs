@@ -26,7 +26,9 @@ namespace LinearAlgebra
         /// moderate magnitude (column 2-norms within the type's representable range);
         /// extreme magnitudes that overflow when squared are not rescaled in this version).
         /// For m &lt; n: decompose trans(A) and swap the roles of U and V.
-        /// Does not allocate.
+        /// Allocates an n x m and an n x n Temp workspace (transposed layout so Burst can
+        /// SIMD-vectorize the inner plane-rotation loops; same algorithm, unit-stride rows
+        /// instead of strided columns).
         /// </summary>
         public static bool svdDecomposition(ref floatMxN U, ref floatN S, ref floatMxN V,
                                             int maxSweeps, float eps)
@@ -52,105 +54,132 @@ namespace LinearAlgebra
             if (n == 0)
                 return true;
 
-            // Step 1: Set V to identity
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++)
-                    V[i, j] = (i == j) ? (float)1 : (float)0;
+            // Transpose U into Ut (n x m) so that column j of U becomes ROW j of Ut.
+            // Working on rows of Ut gives unit-stride contiguous access that Burst vectorizes.
+            // Vt (n x n) accumulates V^T: row operations on Vt correspond to column operations
+            // on V, so at the end we transpose Vt back into V.
+            var Ut = new floatMxN(n, m, Allocator.Temp, true);  // will fill every element
+            var Vt = new floatMxN(n, n, Allocator.Temp, false); // zeroed; diagonal set below
 
-            // Step 2: One-sided Jacobi sweeps
+            // Fill Ut: row j of Ut = column j of U
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    Ut[j, i] = U[i, j];
+
+            // Initialize Vt to identity (Vt accumulates right singular vectors as rows)
+            for (int i = 0; i < n; i++)
+                Vt[i, i] = (float)1;
+
+            // Step 2: One-sided Jacobi sweeps — all inner loops now hit contiguous rows
             bool converged = false;
 
-            for (int sweep = 0; sweep < maxSweeps; sweep++) {
+            unsafe
+            {
+                float* utp = Ut.Data.Ptr;
+                float* vtp = Vt.Data.Ptr;
 
-                int rotations = 0;
+                for (int sweep = 0; sweep < maxSweeps; sweep++) {
 
-                for (int p = 0; p < n - 1; p++) {
-                    for (int q = p + 1; q < n; q++) {
+                    int rotations = 0;
 
-                        // Fused loop: compute alpha, beta, gamma
-                        float alpha = (float)0;
-                        float beta  = (float)0;
-                        float gamma = (float)0;
+                    for (int p = 0; p < n - 1; p++) {
+                        for (int q = p + 1; q < n; q++) {
 
-                        for (int i = 0; i < m; i++) {
-                            float bip = U[i, p];
-                            float biq = U[i, q];
-                            alpha += bip * bip;
-                            beta  += biq * biq;
-                            gamma += bip * biq;
+                            float* rowPU = utp + (long)p * m;
+                            float* rowQU = utp + (long)q * m;
+
+                            // Fused dot: alpha = ||row_p||^2, beta = ||row_q||^2, gamma = row_p·row_q
+                            // All three are now unit-stride reads of length m — Burst vectorizes this.
+                            float alpha = (float)0;
+                            float beta  = (float)0;
+                            float gamma = (float)0;
+
+                            for (int i = 0; i < m; i++) {
+                                float bip = rowPU[i];
+                                float biq = rowQU[i];
+                                alpha += bip * bip;
+                                beta  += biq * biq;
+                                gamma += bip * biq;
+                            }
+
+                            // Skip if either column is zero or pair is already orthogonal
+                            if (alpha == (float)0 || beta == (float)0)
+                                continue;
+
+                            if (math.abs(gamma) <= eps * math.sqrt(alpha) * math.sqrt(beta))
+                                continue;
+
+                            // Rutishauser rotation (byte-for-byte unchanged from the original)
+                            float zeta = (beta - alpha) / ((float)2 * gamma);
+                            // sign(zeta) with 0 -> +1
+                            float signZeta = zeta >= (float)0 ? (float)1 : (float)(-1);
+                            float absZeta = math.abs(zeta);
+                            float t;
+                            if (absZeta > (float)1) {
+                                // Factor out |zeta| to avoid zeta*zeta overflow; inv*inv <= 1
+                                float inv = (float)1 / zeta;
+                                t = signZeta / (absZeta * ((float)1 + math.sqrt((float)1 + inv * inv)));
+                            } else {
+                                // |zeta| <= 1 -> zeta*zeta <= 1, safe; zeta==0 -> t = signZeta
+                                t = signZeta / (absZeta + math.sqrt((float)1 + zeta * zeta));
+                            }
+                            float c = (float)1 / math.sqrt((float)1 + t * t);
+                            float s = c * t;
+
+                            // Rotate rows p and q of Ut (length m, contiguous — vectorizes)
+                            // Captures old values before writing to avoid read-after-write hazard.
+                            for (int i = 0; i < m; i++) {
+                                float bip = rowPU[i];
+                                float biq = rowQU[i];
+                                rowPU[i] = c * bip - s * biq;
+                                rowQU[i] = s * bip + c * biq;
+                            }
+
+                            // Rotate rows p and q of Vt (length n, contiguous — vectorizes).
+                            // Row rotation on Vt = G^T * Vt is equivalent to V -> V * G
+                            // (column rotation), so Vt^T = V throughout.
+                            float* rowPV = vtp + (long)p * n;
+                            float* rowQV = vtp + (long)q * n;
+                            for (int i = 0; i < n; i++) {
+                                float vip = rowPV[i];
+                                float viq = rowQV[i];
+                                rowPV[i] = c * vip - s * viq;
+                                rowQV[i] = s * vip + c * viq;
+                            }
+
+                            rotations++;
                         }
+                    }
 
-                        // Skip if either column is zero or pair is already orthogonal
-                        if (alpha == (float)0 || beta == (float)0)
-                            continue;
-
-                        if (math.abs(gamma) <= eps * math.sqrt(alpha) * math.sqrt(beta))
-                            continue;
-
-                        // Rutishauser rotation
-                        float zeta = (beta - alpha) / ((float)2 * gamma);
-                        // sign(zeta) with 0 -> +1
-                        float signZeta = zeta >= (float)0 ? (float)1 : (float)(-1);
-                        float absZeta = math.abs(zeta);
-                        float t;
-                        if (absZeta > (float)1) {
-                            // Factor out |zeta| to avoid zeta*zeta overflow; inv*inv <= 1
-                            float inv = (float)1 / zeta;
-                            t = signZeta / (absZeta * ((float)1 + math.sqrt((float)1 + inv * inv)));
-                        } else {
-                            // |zeta| <= 1 -> zeta*zeta <= 1, safe; zeta==0 -> t = signZeta
-                            t = signZeta / (absZeta + math.sqrt((float)1 + zeta * zeta));
-                        }
-                        float c = (float)1 / math.sqrt((float)1 + t * t);
-                        float s = c * t;
-
-                        // Rotate columns p and q of U (B)
-                        for (int i = 0; i < m; i++) {
-                            float bip = U[i, p];
-                            float biq = U[i, q];
-                            U[i, p] = c * bip - s * biq;
-                            U[i, q] = s * bip + c * biq;
-                        }
-
-                        // Rotate columns p and q of V
-                        for (int i = 0; i < n; i++) {
-                            float vip = V[i, p];
-                            float viq = V[i, q];
-                            V[i, p] = c * vip - s * viq;
-                            V[i, q] = s * vip + c * viq;
-                        }
-
-                        rotations++;
+                    if (rotations == 0) {
+                        converged = true;
+                        break;
                     }
                 }
 
-                if (rotations == 0) {
-                    converged = true;
-                    break;
-                }
-            }
+                // Step 3: Extract singular values from row norms of Ut and normalize
+                for (int j = 0; j < n; j++) {
+                    float* rowJ = utp + (long)j * m;
+                    float colNormSq = (float)0;
+                    for (int i = 0; i < m; i++) {
+                        float bij = rowJ[i];
+                        colNormSq += bij * bij;
+                    }
 
-            // Step 3: Extract singular values and normalize columns of U
-            for (int j = 0; j < n; j++) {
-                float colNormSq = (float)0;
-                for (int i = 0; i < m; i++) {
-                    float bij = U[i, j];
-                    colNormSq += bij * bij;
-                }
+                    float sigma = math.sqrt(colNormSq);
+                    S[j] = sigma;
 
-                float sigma = math.sqrt(colNormSq);
-                S[j] = sigma;
-
-                if (sigma > (float)0) {
-                    float invSigma = (float)1 / sigma;
-                    for (int i = 0; i < m; i++)
-                        U[i, j] = U[i, j] * invSigma;
-                }
-                else {
-                    // Explicit zero for rank-deficient columns
-                    for (int i = 0; i < m; i++)
-                        U[i, j] = (float)0;
-                    S[j] = (float)0;
+                    if (sigma > (float)0) {
+                        float invSigma = (float)1 / sigma;
+                        for (int i = 0; i < m; i++)
+                            rowJ[i] *= invSigma;
+                    }
+                    else {
+                        // Explicit zero for rank-deficient rows
+                        for (int i = 0; i < m; i++)
+                            rowJ[i] = (float)0;
+                        S[j] = (float)0;
+                    }
                 }
             }
 
@@ -172,11 +201,24 @@ namespace LinearAlgebra
                     S[j] = S[maxIdx];
                     S[maxIdx] = tmp;
 
-                    // Swap columns of U and V
-                    SwapOP.Columns(ref U, j, maxIdx);
-                    SwapOP.Columns(ref V, j, maxIdx);
+                    // Swap rows of Ut and Vt (unit-stride — vectorizes; equivalent to
+                    // swapping columns of U and V in the original layout)
+                    SwapOP.Rows(ref Ut, j, maxIdx);
+                    SwapOP.Rows(ref Vt, j, maxIdx);
                 }
             }
+
+            // Final: transpose Ut back into U (U[i,j] = Ut[j,i]) and Vt into V (V[i,j] = Vt[j,i])
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    U[i, j] = Ut[j, i];
+
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    V[i, j] = Vt[j, i];
+
+            Ut.Dispose();
+            Vt.Dispose();
 
             return converged;
         }
