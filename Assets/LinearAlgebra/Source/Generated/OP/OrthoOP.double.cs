@@ -205,17 +205,41 @@ namespace LinearAlgebra
                     Q[i, d] = i == d? 1 : 0;
                 }
 
-                // Apply the Householder transformation to Q
-                for (int c = d; c < Q.N_Cols; c++) {
-
+                // Apply the reflector to the trailing columns: Q -= u·(uᵀ·Q). Same row-major
+                // register-blocking as the factorization apply above — four columns at a time with
+                // four accumulators, unit-stride access, zero scratch. Bitwise identical to the prior
+                // per-column form (each accumulator sums r = d..M-1 in the same ascending order, and
+                // the columns of a block are mutually independent).
+                int M = Q.M_Rows;
+                int N = Q.N_Cols;
+                int c = d;
+                for (; c + 4 <= N; c += 4)
+                {
+                    double w0 = 0, w1 = 0, w2 = 0, w3 = 0;
+                    for (int r = d; r < M; r++)
+                    {
+                        double ur = u[r];
+                        w0 += ur * Q[r, c];
+                        w1 += ur * Q[r, c + 1];
+                        w2 += ur * Q[r, c + 2];
+                        w3 += ur * Q[r, c + 3];
+                    }
+                    for (int r = d; r < M; r++)
+                    {
+                        double ur = u[r];
+                        Q[r, c]     -= ur * w0;
+                        Q[r, c + 1] -= ur * w1;
+                        Q[r, c + 2] -= ur * w2;
+                        Q[r, c + 3] -= ur * w3;
+                    }
+                }
+                for (; c < N; c++)
+                {
                     double dotProduct = 0;
-                    for (int k = d; k < Q.M_Rows; k++) {
-                        dotProduct += u[k] * Q[k, c];
-                    }
-                    //dotProduct *= 2;
-                    for (int r = d; r < Q.M_Rows; r++) {
+                    for (int r = d; r < M; r++)
+                        dotProduct += u[r] * Q[r, c];
+                    for (int r = d; r < M; r++)
                         Q[r, c] -= u[r] * dotProduct;
-                    }
                 }
             }
 
