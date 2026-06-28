@@ -51,6 +51,23 @@ namespace LinearAlgebra.Benchmarks
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct EigSymJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatMxN Src;
+        public floatN E;
+
+        public void Execute()
+        {
+            int n = A.M_Rows;
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = Src[r, c];
+            Eigen.eigenvaluesSymmetric(ref A, ref E);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct EigQRJobFloat : IJob
     {
         public floatMxN A;
@@ -84,6 +101,11 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("=== Cyclic-Jacobi symmetric eigen (eigenDecomposition; iterative, ms only) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Sizes) sb.AppendLine(EigJacobi(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Householder symmetric eigenvalues (eigenvaluesSymmetric; values only, ms) ===");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in Sizes) sb.AppendLine(EigSym(n));
             sb.AppendLine();
 
             sb.AppendLine("=== General eigenvalues, QR iteration (eigenvaluesQR; iterative, ms only) ===");
@@ -130,6 +152,29 @@ namespace LinearAlgebra.Benchmarks
                 }
 
             var job = new EigJacobiJobFloat { A = A, Src = Src, E = E, V = V };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float", n, stat);
+        }
+
+        static string EigSym(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var Src = arena.floatMat(n, n);
+            var E = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+                for (int j = i; j < n; j++)
+                {
+                    float v = rng.NextFloat(-1f, 1f);
+                    Src[i, j] = v;
+                    Src[j, i] = v;              // exactly symmetric
+                }
+
+            var job = new EigSymJobFloat { A = A, Src = Src, E = E };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();

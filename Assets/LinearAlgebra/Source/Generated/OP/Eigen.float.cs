@@ -354,6 +354,203 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float copysign(float a, float b) => b >= (float)0 ? math.abs(a) : -math.abs(a);
 
+        // sqrt(a^2 + b^2) computed so neither square overflows/underflows prematurely.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float pythag(float a, float b)
+        {
+            float aa = math.abs(a), ab = math.abs(b);
+            if (aa > ab) { float r = ab / aa; return aa * math.sqrt((float)1 + r * r); }
+            if (ab == (float)0) return (float)0;
+            { float r = aa / ab; return ab * math.sqrt((float)1 + r * r); }
+        }
+
+        /// <summary>
+        /// All eigenVALUES of a SYMMETRIC real matrix, via Householder tridiagonalization followed by
+        /// the implicit-shift QL iteration (EISPACK tred1 + tql1, GVL Alg. 8.3.1). Much faster than the
+        /// cyclic-Jacobi eigenDecomposition: the O(n^3) reduction is a sequence of gemv + symmetric
+        /// rank-2 updates (the rank-2 update is axpy → vectorises), and the QL sweep that follows is
+        /// only O(n^2). No eigenvectors (use eigenDecomposition if you need them).
+        ///
+        /// A must be symmetric (checked within eps-relative tolerance) and is DESTROYED. On output
+        /// eigenvalues[i] holds the i-th eigenvalue, sorted DESCENDING. Returns true on convergence;
+        /// false if QL hit maxIterPerEig for some eigenvalue (outputs then undefined). Does not allocate
+        /// beyond three length-n Temp scratch vectors.
+        /// </summary>
+        public static bool eigenvaluesSymmetric(ref floatMxN A, ref floatN eigenvalues, int maxIterPerEig, float eps)
+        {
+            if (!A.IsSquare)
+                throw new ArgumentException("Eigen.eigenvaluesSymmetric: A must be square");
+
+            int n = A.M_Rows;
+
+            if (eigenvalues.N != n)
+                throw new ArgumentException("Eigen.eigenvaluesSymmetric: eigenvalues.N must equal A dimension");
+
+            if (maxIterPerEig < 1)
+                throw new ArgumentException("Eigen.eigenvaluesSymmetric: maxIterPerEig must be >= 1");
+
+            if (eps <= (float)0)
+                throw new ArgumentException("Eigen.eigenvaluesSymmetric: eps must be > 0");
+
+            // Symmetry guard (same as eigenDecomposition). The reduction reads the full symmetric
+            // matrix (the gemv uses whole rows), so both triangles must agree.
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    float aij = A[i, j], aji = A[j, i];
+                    float diff = math.abs(aij - aji);
+                    float relScale = (float)1 + math.abs(aij) + math.abs(aji);
+                    if (diff > eps * relScale)
+                        throw new ArgumentException("Eigen.eigenvaluesSymmetric: Matrix must be symmetric");
+                }
+
+            if (n == 0) return true;
+            if (n == 1) { eigenvalues[0] = A[0, 0]; return true; }
+
+            var eVec = new floatN(n, Allocator.Temp, false);   // off-diagonal e[i] couples d[i], d[i+1]
+            var vVec = new floatN(n, Allocator.Temp, false);   // Householder vector (entries m0..n-1)
+            var pVec = new floatN(n, Allocator.Temp, false);   // p = beta*A*v, then q = p - K v
+
+            unsafe
+            {
+                float* ap = A.Data.Ptr;
+                float* v  = vVec.Data.Ptr;
+                float* p  = pVec.Data.Ptr;
+
+                // ---- Householder tridiagonalization (full symmetric storage, values only) ----
+                // The trailing submatrix stays symmetric; column k below the subdiagonal is never read
+                // again, so (values-only) we record the subdiagonal in e[k] and skip zeroing it.
+                for (int k = 0; k < n - 2; k++)
+                {
+                    int m0 = k + 1;
+
+                    // x = A[m0.., k]; sigma = ||x[1..]||^2 (entries strictly below the leading one).
+                    float sigma = 0;
+                    for (int i = m0 + 1; i < n; i++)
+                    {
+                        float aik = ap[(long)i * n + k];
+                        sigma += aik * aik;
+                    }
+                    float x0 = ap[(long)m0 * n + k];
+
+                    if (sigma == (float)0)
+                    {
+                        // column already in tridiagonal form
+                        eVec[k] = x0;
+                        continue;
+                    }
+
+                    float xnorm = math.sqrt(x0 * x0 + sigma);
+                    float alpha = (x0 >= (float)0) ? -xnorm : xnorm;   // -sign(x0)*||x||
+
+                    // Householder vector v (entries m0..n-1): v[m0] = x0 - alpha, v[i>m0] = x[i].
+                    v[m0] = x0 - alpha;
+                    for (int i = m0 + 1; i < n; i++) v[i] = ap[(long)i * n + k];
+
+                    float vtv  = v[m0] * v[m0] + sigma;
+                    float beta = (float)2 / vtv;
+
+                    // p = beta * A_sub * v   (A_sub = A[m0:n, m0:n], symmetric). Row dots (contiguous).
+                    for (int r = m0; r < n; r++)
+                    {
+                        float* arow = ap + (long)r * n;
+                        float s = 0;
+                        for (int c = m0; c < n; c++) s += arow[c] * v[c];
+                        p[r] = beta * s;
+                    }
+
+                    // K = beta * (vᵀp) / 2;  q = p - K v   (overwrite p with q)
+                    float vp = 0;
+                    for (int i = m0; i < n; i++) vp += v[i] * p[i];
+                    float K = beta * vp / (float)2;
+                    for (int i = m0; i < n; i++) p[i] -= K * v[i];
+
+                    // Symmetric rank-2 update: A_sub -= v qᵀ + q vᵀ  (two contiguous axpys per row).
+                    int len = n - m0;
+                    for (int r = m0; r < n; r++)
+                    {
+                        float* arow = ap + (long)r * n;
+                        UnsafeOP.axpy(arow + m0, p + m0, -v[r], len);   // -= v[r] * q
+                        UnsafeOP.axpy(arow + m0, v + m0, -p[r], len);   // -= q[r] * v
+                    }
+
+                    eVec[k] = alpha;
+                }
+
+                // trailing subdiagonal + diagonal
+                eVec[n - 2] = ap[(long)(n - 1) * n + (n - 2)];
+                eVec[n - 1] = (float)0;
+                for (int i = 0; i < n; i++) eigenvalues[i] = ap[(long)i * n + i];
+            }
+
+            // ---- implicit-shift QL on the tridiagonal (d = eigenvalues, e), values only ----
+            // e[i] couples d[i] and d[i+1]; e[n-1] = 0.
+            for (int l = 0; l < n; l++)
+            {
+                int iter = 0;
+                int m;
+                do
+                {
+                    for (m = l; m < n - 1; m++)
+                    {
+                        float dd = math.abs(eigenvalues[m]) + math.abs(eigenvalues[m + 1]);
+                        if (math.abs(eVec[m]) <= eps * dd) break;
+                    }
+                    if (m != l)
+                    {
+                        if (iter++ >= maxIterPerEig) { eVec.Dispose(); vVec.Dispose(); pVec.Dispose(); return false; }
+
+                        float g = (eigenvalues[l + 1] - eigenvalues[l]) / ((float)2 * eVec[l]);
+                        float r = pythag(g, (float)1);
+                        g = eigenvalues[m] - eigenvalues[l] + eVec[l] / (g + copysign(r, g));
+                        float s = 1, c = 1, pp = 0;
+                        int i;
+                        for (i = m - 1; i >= l; i--)
+                        {
+                            float f = s * eVec[i];
+                            float b = c * eVec[i];
+                            r = pythag(f, g);
+                            eVec[i + 1] = r;
+                            if (r == (float)0) { eigenvalues[i + 1] -= pp; eVec[m] = 0; break; }
+                            s = f / r; c = g / r;
+                            g = eigenvalues[i + 1] - pp;
+                            r = (eigenvalues[i] - g) * s + (float)2 * c * b;
+                            pp = s * r;
+                            eigenvalues[i + 1] = g + pp;
+                            g = c * r - b;
+                        }
+                        if (r == (float)0 && i >= l) continue;
+                        eigenvalues[l] -= pp; eVec[l] = g; eVec[m] = 0;
+                    }
+                } while (m != l);
+            }
+
+            eVec.Dispose();
+            vVec.Dispose();
+            pVec.Dispose();
+
+            // sort descending (selection sort, matching eigenDecomposition)
+            for (int j = 0; j < n; j++)
+            {
+                int maxIdx = j;
+                float maxVal = eigenvalues[j];
+                for (int k = j + 1; k < n; k++)
+                    if (eigenvalues[k] > maxVal) { maxIdx = k; maxVal = eigenvalues[k]; }
+                if (maxIdx != j)
+                {
+                    float tmp = eigenvalues[j];
+                    eigenvalues[j] = eigenvalues[maxIdx];
+                    eigenvalues[maxIdx] = tmp;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>eigenvaluesSymmetric with default maxIterPerEig (30) and eps (Consts.floatZeroTreshold).</summary>
+        public static bool eigenvaluesSymmetric(ref floatMxN A, ref floatN eigenvalues)
+            => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.floatZeroTreshold);
+
         /// <summary>
         /// All eigenvalues of a GENERAL (non-symmetric) real square matrix, via the QR algorithm:
         /// reduction to upper Hessenberg form (elimination with partial pivoting) followed by the

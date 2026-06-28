@@ -39,7 +39,14 @@ public class fProxyEigenTests
             PowerNegativeDominant,
             PowerSymmetricCrossCheck,
             PowerComplexPair,
-            PowerZeroMatrix
+            PowerZeroMatrix,
+            // eigenvaluesSymmetric
+            EvSymIdentity,
+            EvSymDiagonal,
+            EvSymKnown2x2,
+            EvSymN1,
+            EvSymCrossCheckJacobi,
+            EvSymLaplacian
         }
 
         public TestType Type;
@@ -104,6 +111,24 @@ public class fProxyEigenTests
                     break;
                 case TestType.PowerZeroMatrix:
                     PowerZeroMatrix();
+                    break;
+                case TestType.EvSymIdentity:
+                    EvSymIdentity();
+                    break;
+                case TestType.EvSymDiagonal:
+                    EvSymDiagonal();
+                    break;
+                case TestType.EvSymKnown2x2:
+                    EvSymKnown2x2();
+                    break;
+                case TestType.EvSymN1:
+                    EvSymN1();
+                    break;
+                case TestType.EvSymCrossCheckJacobi:
+                    EvSymCrossCheckJacobi();
+                    break;
+                case TestType.EvSymLaplacian:
+                    EvSymLaplacian();
                     break;
             }
         }
@@ -812,6 +837,217 @@ public class fProxyEigenTests
         }
 
         // ---------------------------------------------------------------------
+        // eigenvaluesSymmetric tests (Householder tridiagonalization + implicit-shift QL)
+        // ---------------------------------------------------------------------
+
+        // n=5 identity: all eigenvalues exactly 1, sorted descending. Exact closed form ->
+        // 100*ZeroTreshold tolerance comfortably above QL noise. A is DESTROYED.
+        public void EvSymIdentity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 5;
+
+            var A = arena.fProxyIdentityMatrix(n);
+            var eig = arena.fProxyVec(n);
+
+            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+
+            for (int i = 0; i < n; i++)
+                AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroTreshold);
+
+            AssertDescending(in eig, n);
+
+            arena.Dispose();
+        }
+
+        // diag(3, -2, 0.5, 5, -7, 1): eigenvalues are the diagonal entries, sorted DESCENDING BY
+        // VALUE -> (5, 3, 1, 0.5, -2, -7). Diagonal input is exact (Householder leaves it untouched),
+        // so a generous tolerance applies. A is DESTROYED.
+        public void EvSymDiagonal()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;
+
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = (fProxy)3;
+            A[1, 1] = (fProxy)(-2);
+            A[2, 2] = (fProxy)0.5;
+            A[3, 3] = (fProxy)5;
+            A[4, 4] = (fProxy)(-7);
+            A[5, 5] = (fProxy)1;
+
+            var eig = arena.fProxyVec(n);
+
+            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+
+            fProxy tol = (fProxy)100 * Consts.fProxyZeroTreshold;
+            AssertClose(eig[0], (fProxy)5, tol);
+            AssertClose(eig[1], (fProxy)3, tol);
+            AssertClose(eig[2], (fProxy)1, tol);
+            AssertClose(eig[3], (fProxy)0.5, tol);
+            AssertClose(eig[4], (fProxy)(-2), tol);
+            AssertClose(eig[5], (fProxy)(-7), tol);
+
+            AssertDescending(in eig, n);
+
+            arena.Dispose();
+        }
+
+        // [[2,1],[1,2]]: closed-form eigenvalues 3 and 1 (descending). A is DESTROYED.
+        public void EvSymKnown2x2()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 2;
+
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = (fProxy)2; A[0, 1] = (fProxy)1;
+            A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)2;
+
+            var eig = arena.fProxyVec(n);
+
+            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+
+            AssertClose(eig[0], (fProxy)3, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(eig[1], (fProxy)1, (fProxy)100 * Consts.fProxyZeroTreshold);
+
+            AssertDescending(in eig, n);
+
+            arena.Dispose();
+        }
+
+        // n=1 trivial: the sole eigenvalue equals the single entry (early-return path, no iteration).
+        public void EvSymN1()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 1;
+
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = (fProxy)(-3.25);
+
+            var eig = arena.fProxyVec(n);
+
+            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+
+            Assert.IsTrue(ok);
+            AssertClose(eig[0], (fProxy)(-3.25), (fProxy)100 * Consts.fProxyZeroTreshold);
+
+            arena.Dispose();
+        }
+
+        // CROSS-CHECK vs the Jacobi eigenDecomposition: for n=6 and n=8 random SYMMETRIC matrices,
+        // run eigenDecomposition on one copy and eigenvaluesSymmetric on a SEPARATE copy (both
+        // DESTROY their input, both sort descending) and require the eigenvalue vectors to agree.
+        // Tolerance scaled by (1+|lambda|): entries ~ +-5, so float values land around few*1e-5.
+        public void EvSymCrossCheckJacobi()
+        {
+            CrossCheckOne(6, 6610337);
+            CrossCheckOne(8, 1277459);
+        }
+
+        private void CrossCheckOne(int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-5), (fProxy)5, seed);
+            // symmetrize in place
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    fProxy avg = (A[i, j] + A[j, i]) * (fProxy)0.5;
+                    A[i, j] = avg;
+                    A[j, i] = avg;
+                }
+
+            var Ajac = A.Copy();   // destroyed by eigenDecomposition
+            var Aql = A.Copy();    // destroyed by eigenvaluesSymmetric
+
+            var eigJac = arena.fProxyVec(n);
+            var V = arena.fProxyMat(n, n);
+            bool jacOk = Eigen.eigenDecomposition(ref Ajac, ref eigJac, ref V);
+            Assert.IsTrue(jacOk);
+
+            var eigQL = arena.fProxyVec(n);
+            bool qlOk = Eigen.eigenvaluesSymmetric(ref Aql, ref eigQL);
+            Assert.IsTrue(qlOk);
+
+            Assert.IsFalse(Analysis.IsAnyNan(in eigQL));
+            AssertDescending(in eigQL, n);
+
+            // both sorted descending -> compare elementwise.
+            for (int i = 0; i < n; i++)
+            {
+                fProxy scale = (fProxy)1 + Unity.Mathematics.math.abs(eigJac[i]);
+                fProxy tol = (fProxy)1000 * Consts.fProxyZeroTreshold * scale;
+                fProxy diff = Unity.Mathematics.math.abs(eigQL[i] - eigJac[i]);
+                if (!(diff <= tol) && Fail[0] == (fProxy)0)
+                {
+                    Fail[0] = (fProxy)1;
+                    Fail[1] = eigQL[i];
+                    Fail[2] = eigJac[i];
+                    Fail[3] = diff;
+                }
+                Assert.IsTrue(diff <= tol);
+            }
+
+            arena.Dispose();
+        }
+
+        // LITERATURE KNOWN-ANSWER: n=6 path-graph (1D Laplacian) tridiagonal with diag 2 and
+        // off-diagonal -1. Eigenvalues are EXACTLY lambda_k = 2 - 2*cos(k*pi/(n+1)), k=1..n. Sorted
+        // descending corresponds to k = n, n-1, ..., 1. Well-separated spectrum -> 1000*ZeroTreshold
+        // absolute tolerance covers float QL noise.
+        public void EvSymLaplacian()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;
+
+            var A = arena.fProxyMat(n, n);
+            for (int i = 0; i < n; i++)
+            {
+                A[i, i] = (fProxy)2;
+                if (i + 1 < n)
+                {
+                    A[i, i + 1] = (fProxy)(-1);
+                    A[i + 1, i] = (fProxy)(-1);
+                }
+            }
+
+            var eig = arena.fProxyVec(n);
+
+            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+
+            Assert.IsTrue(ok);
+            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+
+            fProxy tol = (fProxy)1000 * Consts.fProxyZeroTreshold;
+            // descending order: eig[i] corresponds to k = n - i.
+            for (int i = 0; i < n; i++)
+            {
+                int k = n - i;
+                double lamD = 2.0 - 2.0 * Unity.Mathematics.math.cos(k * Unity.Mathematics.math.PI_DBL / (n + 1));
+                AssertClose(eig[i], (fProxy)lamD, tol);
+            }
+
+            AssertDescending(in eig, n);
+
+            arena.Dispose();
+        }
+
+        // ---------------------------------------------------------------------
         // Helpers
         // ---------------------------------------------------------------------
 
@@ -1017,6 +1253,48 @@ public class fProxyEigenTests
         var V = arena.fProxyMat(2, 2);
 
         Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EvSymThrowsOnNonSymmetric()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.fProxyMat(2, 2);
+        A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)2;
+        A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)1;
+
+        var eig = arena.fProxyVec(2);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenvaluesSymmetric(ref A, ref eig));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EvSymThrowsOnNonSquare()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.fProxyMat(3, 4);
+        var eig = arena.fProxyVec(4);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenvaluesSymmetric(ref A, ref eig));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void EvSymThrowsOnWrongEigenvalueLength()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var A = arena.fProxyMat(4, 4);
+        var eig = arena.fProxyVec(3);
+
+        Assert.Catch<ArgumentException>(() => Eigen.eigenvaluesSymmetric(ref A, ref eig));
 
         arena.Dispose();
     }
