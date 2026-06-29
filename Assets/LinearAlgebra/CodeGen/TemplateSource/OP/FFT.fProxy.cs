@@ -3,6 +3,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
+using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
@@ -122,15 +123,23 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Real-input forward FFT: fills (re, im) from a real signal (im set to 0) and runs the in-place
-        /// radix-2 <see cref="fft"/>. real.N must be a power of two; re/im must match its length. re may
-        /// alias real; im must NOT alias real or re.
+        /// Efficient real-input forward FFT using the two-for-one packing trick: the N-point real signal
+        /// is packed into one M-point complex FFT (M = N/2), then the M+1 unique half-spectrum bins are
+        /// unpacked. This is ~2× faster than a full N-point FFT at large N.
+        /// <para><c>real</c> has length N (power of two, N ≥ 1). <c>re</c> and <c>im</c> are OUTPUT and
+        /// must have length exactly N/2+1 (the non-redundant bins). The DC bin <c>im[0]</c> and Nyquist
+        /// bin <c>im[N/2]</c> are always zero for a real signal. <c>im</c> must not alias <c>real</c>
+        /// or <c>re</c>.</para>
         /// </summary>
         public static void rfft(in fProxyN real, ref fProxyN re, ref fProxyN im)
         {
             int n = real.N;
-            if (re.N != n || im.N != n)
-                throw new ArgumentException("rfft: re and im must match real.N");
+            if (!IsPow2(n))
+                throw new ArgumentException("rfft: length must be a power of two");
+
+            int halfSpec = (n >> 1) + 1; // N/2 + 1
+            if (re.N != halfSpec || im.N != halfSpec)
+                throw new ArgumentException("rfft: re and im must have length N/2+1");
 
             unsafe
             {
@@ -138,13 +147,175 @@ namespace LinearAlgebra
                     throw new ArgumentException("rfft: im must not alias real or re");
             }
 
-            for (int i = 0; i < n; i++)
+            // N=1: trivial; half-spectrum has a single bin.
+            if (n == 1)
             {
-                re[i] = real[i];
-                im[i] = (fProxy)0;
+                re[0] = real[0];
+                im[0] = (fProxy)0;
+                return;
             }
 
-            fft(ref re, ref im);
+            int M = n >> 1; // N/2
+
+            // Step 1: Pack even and odd samples into a length-M complex sequence.
+            var cz = new fProxyN(M, Allocator.Temp, false);
+            var sz = new fProxyN(M, Allocator.Temp, false);
+            for (int j = 0; j < M; j++)
+            {
+                cz[j] = real[2 * j];
+                sz[j] = real[2 * j + 1];
+            }
+
+            // Step 2: One length-M complex FFT (M is a power of two since N is).
+            fft(ref cz, ref sz);
+
+            // Step 3: Unpack. DC and Nyquist are always real for a real input.
+            re[0] = cz[0] + sz[0];
+            im[0] = (fProxy)0;
+            re[M] = cz[0] - sz[0];
+            im[M] = (fProxy)0;
+
+            // General bins k = 1 .. M-1.
+            // E[k] = (Y[k] + conj(Y[M-k])) / 2  — DFT of the even samples.
+            // O[k] = -i*(Y[k] - conj(Y[M-k])) / 2 — DFT of the odd samples (rotated).
+            // X[k] = E[k] + W^k * O[k],  W^k = exp(-2πi·k/N).
+            // Twiddle W^k = exp(-2πi·k/N), advanced by a block recurrence (one complex multiply per bin)
+            // rather than a cos/sin per bin: M per-bin transcendentals would otherwise dominate and erase
+            // the half-length-FFT saving (the same per-element-trig trap the direct DFT has). The twiddle
+            // is re-seeded with an exact cos/sin every `twiddleBlock` bins so the recurrence drift stays
+            // far under the transform's accuracy (block·eps « 1) — only ~M/block transcendentals total.
+            const int twiddleBlock = 256;
+            fProxy twoPiOverN = (fProxy)(-2.0 * System.Math.PI) / (fProxy)n;
+            fProxy wStepRe = math.cos(twoPiOverN);
+            fProxy wStepIm = math.sin(twoPiOverN);
+            fProxy curRe = (fProxy)1, curIm = (fProxy)0;
+            for (int k = 1; k < M; k++)
+            {
+                if (((k - 1) & (twiddleBlock - 1)) == 0)        // re-seed W^k exactly at each block start
+                {
+                    fProxy a = twoPiOverN * (fProxy)k;
+                    curRe = math.cos(a);
+                    curIm = math.sin(a);
+                }
+                else                                            // cur *= W
+                {
+                    fProxy nRe = curRe * wStepRe - curIm * wStepIm;
+                    curIm = curRe * wStepIm + curIm * wStepRe;
+                    curRe = nRe;
+                }
+
+                int kr = M - k;
+                fProxy E_re = (cz[k] + cz[kr]) * (fProxy)0.5;
+                fProxy E_im = (sz[k] - sz[kr]) * (fProxy)0.5;
+                fProxy O_re = (sz[k] + sz[kr]) * (fProxy)0.5;
+                fProxy O_im = (cz[kr] - cz[k]) * (fProxy)0.5; // -(cz[k]-cz[kr])*0.5
+
+                re[k] = E_re + (curRe * O_re - curIm * O_im);
+                im[k] = E_im + (curRe * O_im + curIm * O_re);
+            }
+
+            cz.Dispose();
+            sz.Dispose();
+        }
+
+        /// <summary>
+        /// Inverse of <see cref="rfft"/>: reconstructs the length-N real signal from the half-spectrum
+        /// (<c>re</c>, <c>im</c>) of length N/2+1. N = 2·(re.N − 1) must be a power of two and re.N ≥ 2.
+        /// <c>real</c> receives the output and must have length exactly N; it must not alias <c>re</c>
+        /// or <c>im</c>. <c>irfft(rfft(x)) == x</c> to floating-point precision.
+        /// </summary>
+        public static void irfft(in fProxyN re, in fProxyN im, ref fProxyN real)
+        {
+            int halfSpec = re.N; // M + 1, where M = N/2
+            if (im.N != halfSpec)
+                throw new ArgumentException("irfft: re and im must have the same length");
+            if (halfSpec < 2)
+                throw new ArgumentException("irfft: re.N must be >= 2 (minimum signal length N=2)");
+
+            int M = halfSpec - 1; // N/2
+            int N = M << 1;       // signal length
+
+            if (!IsPow2(N))
+                throw new ArgumentException("irfft: N = 2*(re.N-1) must be a power of two");
+            if (real.N != N)
+                throw new ArgumentException("irfft: real.N must equal 2*(re.N-1)");
+
+            unsafe
+            {
+                if (real.Data.Ptr == re.Data.Ptr || real.Data.Ptr == im.Data.Ptr)
+                    throw new ArgumentException("irfft: real must not alias re or im");
+            }
+
+            // Reconstruct Y[0..M-1] = E[k] + i·O[k], the M-point complex FFT of the interleaved
+            // even/odd real samples, by inverting the rfft unpack step.
+            var cz = new fProxyN(M, Allocator.Temp, false);
+            var sz = new fProxyN(M, Allocator.Temp, false);
+
+            // k=0: X[0] = E[0]+O[0] and X[M] = E[0]-O[0] (both are purely real).
+            cz[0] = (re[0] + re[M]) * (fProxy)0.5;
+            sz[0] = (re[0] - re[M]) * (fProxy)0.5;
+
+            // General bins k = 1 .. M-1.
+            // From X[k] = E[k] + W^k·O[k] and X[M-k] = conj(E[k]) - conj(W^k)·O[k]:
+            //   E[k] = (X[k] + conj(X[M-k])) / 2
+            //   O[k] = (X[k] - conj(X[M-k])) / (2·W^k) = (X[k]-conj(X[M-k]))·conj(W^k)/2
+            //   Y[k] = E[k] + i·O[k]
+            // Same block-recurrence twiddle as rfft (one complex multiply per bin, exact re-seed every
+            // `twiddleBlock` bins) — avoids the per-bin cos/sin that would dominate the inverse unpack.
+            const int twiddleBlock = 256;
+            fProxy twoPiOverN = (fProxy)(-2.0 * System.Math.PI) / (fProxy)N;
+            fProxy wStepRe = math.cos(twoPiOverN);
+            fProxy wStepIm = math.sin(twoPiOverN);
+            fProxy curRe = (fProxy)1, curIm = (fProxy)0;
+            for (int k = 1; k < M; k++)
+            {
+                if (((k - 1) & (twiddleBlock - 1)) == 0)        // re-seed W^k exactly at each block start
+                {
+                    fProxy ang = twoPiOverN * (fProxy)k;
+                    curRe = math.cos(ang);
+                    curIm = math.sin(ang);
+                }
+                else                                            // cur *= W
+                {
+                    fProxy nRe = curRe * wStepRe - curIm * wStepIm;
+                    curIm = curRe * wStepIm + curIm * wStepRe;
+                    curRe = nRe;
+                }
+
+                int kr = M - k;
+                fProxy xr_k  = re[k],  xi_k  = im[k];
+                fProxy xr_kr = re[kr], xi_kr = im[kr];
+
+                // E[k] = (X[k] + conj(X[M-k])) / 2
+                fProxy E_re = (xr_k + xr_kr) * (fProxy)0.5;
+                fProxy E_im = (xi_k - xi_kr) * (fProxy)0.5;
+
+                // (X[k] - conj(X[M-k])) = a + i·b
+                fProxy a = xr_k - xr_kr;
+                fProxy b = xi_k + xi_kr;
+
+                // W^k = curRe + i·curIm (|W^k| = 1, so 1/W^k = conj(W^k) = curRe - i·curIm).
+                // O[k] = (a + i·b) · conj(W^k) / 2.
+                fProxy O_re = (a * curRe + b * curIm) * (fProxy)0.5;
+                fProxy O_im = (b * curRe - a * curIm) * (fProxy)0.5;
+
+                // Y[k] = E[k] + i·O[k]
+                cz[k] = E_re - O_im;
+                sz[k] = E_im + O_re;
+            }
+
+            // One M-point inverse FFT recovers the interleaved even/odd real samples.
+            ifft(ref cz, ref sz);
+
+            // Deinterleave: real[2j] = even[j], real[2j+1] = odd[j].
+            for (int j = 0; j < M; j++)
+            {
+                real[2 * j]     = cz[j];
+                real[2 * j + 1] = sz[j];
+            }
+
+            cz.Dispose();
+            sz.Dispose();
         }
 
         // ---- direct O(N²) DFT for arbitrary N ----

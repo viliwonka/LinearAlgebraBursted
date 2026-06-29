@@ -26,7 +26,9 @@ public class doubleFFTTests
             DftConstantOddN,
             IfftKnownValue,
             IdftKnownValue,
-            FftSmallSizes
+            FftSmallSizes,
+            RfftRoundTrip,
+            RfftKnownSignals,
         }
 
         public TestType Type;
@@ -49,6 +51,8 @@ public class doubleFFTTests
                 case TestType.IfftKnownValue: IfftKnownValue(); break;
                 case TestType.IdftKnownValue: IdftKnownValue(); break;
                 case TestType.FftSmallSizes: FftSmallSizes(); break;
+                case TestType.RfftRoundTrip: RfftRoundTrip(); break;
+                case TestType.RfftKnownSignals: RfftKnownSignals(); break;
             }
         }
 
@@ -169,27 +173,35 @@ public class doubleFFTTests
             arena.Dispose();
         }
 
-        // rfft(real) == fft(real, 0).
+        // rfft now returns N/2+1 unique bins. Verify each bin matches the corresponding bin of the
+        // full N-point FFT (computed by zero-padding im and calling fft). Twiddle factors introduce
+        // small rounding, so allow a tight but non-zero tolerance.
         void RfftEqualsFft()
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
+            int halfSpec = (N >> 1) + 1; // 5
             var real = arena.doubleRandomVector(N, -2f, 2f, 1234);
 
-            var rRe = arena.doubleVec(N);
-            var rIm = arena.doubleVec(N);
+            // half-spectrum output
+            var rRe = arena.doubleVec(halfSpec);
+            var rIm = arena.doubleVec(halfSpec);
             doubleFFT.rfft(in real, ref rRe, ref rIm);
 
+            // full N-point FFT oracle
             var fRe = real.Copy();
-            var fIm = arena.doubleVec(N); // zeros
+            var fIm = arena.doubleVec(N); // zeros (real input)
             doubleFFT.fft(ref fRe, ref fIm);
 
-            // rfft and the manual (real, 0) -> fft path do bit-identical work: expect EXACT equality.
-            for (int k = 0; k < N; k++)
+            // Compare only the N/2+1 non-redundant bins (0..N/2).
+            for (int k = 0; k <= N / 2; k++)
             {
-                AssertClose(rRe[k], fRe[k], 0f);
-                AssertClose(rIm[k], fIm[k], 0f);
+                AssertClose(rRe[k], fRe[k], (double)1E-4f);
+                AssertClose(rIm[k], fIm[k], (double)1E-4f);
             }
+            // DC and Nyquist imaginaries are always exactly zero for a real signal.
+            AssertClose(rIm[0],     (double)0, 0f);
+            AssertClose(rIm[N / 2], (double)0, 0f);
             arena.Dispose();
         }
 
@@ -329,6 +341,152 @@ public class doubleFFTTests
             arena.Dispose();
         }
 
+        // irfft(rfft(x)) == x to floating-point precision, at several power-of-two lengths.
+        void RfftRoundTrip()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // N=8
+            {
+                int N = 8;
+                int halfSpec = (N >> 1) + 1;
+                var real0 = arena.doubleRandomVector(N, -3f, 3f, 5555);
+                var rRe = arena.doubleVec(halfSpec);
+                var rIm = arena.doubleVec(halfSpec);
+                var real2 = arena.doubleVec(N);
+                doubleFFT.rfft(in real0, ref rRe, ref rIm);
+                doubleFFT.irfft(in rRe, in rIm, ref real2);
+                for (int i = 0; i < N; i++)
+                    AssertClose(real2[i], real0[i], (double)1E-4f);
+            }
+
+            // N=16
+            {
+                int N = 16;
+                int halfSpec = (N >> 1) + 1;
+                var real0 = arena.doubleRandomVector(N, -3f, 3f, 6666);
+                var rRe = arena.doubleVec(halfSpec);
+                var rIm = arena.doubleVec(halfSpec);
+                var real2 = arena.doubleVec(N);
+                doubleFFT.rfft(in real0, ref rRe, ref rIm);
+                doubleFFT.irfft(in rRe, in rIm, ref real2);
+                for (int i = 0; i < N; i++)
+                    AssertClose(real2[i], real0[i], (double)1E-4f);
+            }
+
+            // N=64
+            {
+                int N = 64;
+                int halfSpec = (N >> 1) + 1;
+                var real0 = arena.doubleRandomVector(N, -3f, 3f, 7777);
+                var rRe = arena.doubleVec(halfSpec);
+                var rIm = arena.doubleVec(halfSpec);
+                var real2 = arena.doubleVec(N);
+                doubleFFT.rfft(in real0, ref rRe, ref rIm);
+                doubleFFT.irfft(in rRe, in rIm, ref real2);
+                for (int i = 0; i < N; i++)
+                    AssertClose(real2[i], real0[i], (double)1E-4f);
+            }
+
+            // irfft arena wrapper round-trip (N=8)
+            {
+                int N = 8;
+                int halfSpec = (N >> 1) + 1;
+                var real0 = arena.doubleRandomVector(N, -3f, 3f, 8888);
+                var rRe = arena.doubleVec(halfSpec);
+                var rIm = arena.doubleVec(halfSpec);
+                doubleFFT.rfft(in real0, ref rRe, ref rIm);
+                var real2 = arena.doubleIrfft(in rRe, in rIm);
+                for (int i = 0; i < N; i++)
+                    AssertClose(real2[i], real0[i], (double)1E-4f);
+            }
+
+            arena.Dispose();
+        }
+
+        // Known-signal oracle tests for rfft (human-readable, catch convention/scale bugs).
+        void RfftKnownSignals()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int N = 8;
+            int halfSpec = (N >> 1) + 1; // 5
+
+            // --- DC: x[n]=1 for all n ---
+            // X[0]=N, all other bins 0; im all 0.
+            {
+                var dc = arena.doubleVec(N, 1f);
+                var dcRe = arena.doubleVec(halfSpec);
+                var dcIm = arena.doubleVec(halfSpec);
+                doubleFFT.rfft(in dc, ref dcRe, ref dcIm);
+                AssertClose(dcRe[0], (double)N, (double)1E-4f);
+                AssertClose(dcIm[0], (double)0, 0f);
+                for (int k = 1; k <= N / 2; k++)
+                {
+                    AssertClose(dcRe[k], (double)0, (double)1E-4f);
+                    AssertClose(dcIm[k], (double)0, (double)1E-4f);
+                }
+            }
+
+            // --- Pure cosine at integer frequency f=2: x[n] = cos(2π·2·n/N) ---
+            // Full-spectrum DFT has N/2 at bin f and N/2 at bin N-f; the half-spectrum sees bin f.
+            // re[f]=N/2, im[f]≈0; all other half-spectrum bins ≈0.
+            {
+                int f = 2;
+                var cosX = arena.doubleVec(N);
+                double wf = (double)(2.0 * System.Math.PI * f) / (double)N;
+                for (int n = 0; n < N; n++)
+                    cosX[n] = math.cos(wf * (double)n);
+
+                var cosRe = arena.doubleVec(halfSpec);
+                var cosIm = arena.doubleVec(halfSpec);
+                doubleFFT.rfft(in cosX, ref cosRe, ref cosIm);
+
+                AssertClose(cosRe[f], (double)(N / 2), (double)1E-4f);
+                AssertClose(cosIm[f], (double)0, (double)1E-4f);
+                for (int k = 0; k <= N / 2; k++)
+                {
+                    if (k == f) continue;
+                    AssertClose(cosRe[k], (double)0, (double)1E-4f);
+                    AssertClose(cosIm[k], (double)0, (double)1E-4f);
+                }
+            }
+
+            // --- Nyquist: x[n] = (-1)^n ---
+            // X[N/2]=N, all other bins 0; im all 0.
+            {
+                var nyq = arena.doubleVec(N);
+                for (int n = 0; n < N; n++)
+                    nyq[n] = (n % 2 == 0) ? (double)1 : (double)(-1);
+
+                var nyqRe = arena.doubleVec(halfSpec);
+                var nyqIm = arena.doubleVec(halfSpec);
+                doubleFFT.rfft(in nyq, ref nyqRe, ref nyqIm);
+
+                AssertClose(nyqRe[N / 2], (double)N, (double)1E-4f);
+                AssertClose(nyqIm[N / 2], (double)0, 0f);
+                for (int k = 0; k < N / 2; k++)
+                {
+                    AssertClose(nyqRe[k], (double)0, (double)1E-4f);
+                    AssertClose(nyqIm[k], (double)0, (double)1E-4f);
+                }
+            }
+
+            // --- N=2 edge case: x=[a,b] -> re=[a+b, a-b], im=[0,0] ---
+            {
+                var x2 = arena.doubleVec(2);
+                x2[0] = (double)3; x2[1] = (double)7;
+                var r2 = arena.doubleVec(2);
+                var i2 = arena.doubleVec(2);
+                doubleFFT.rfft(in x2, ref r2, ref i2);
+                AssertClose(r2[0], (double)10, (double)1E-5f);
+                AssertClose(r2[1], (double)(-4), (double)1E-5f);
+                AssertClose(i2[0], (double)0, 0f);
+                AssertClose(i2[1], (double)0, 0f);
+            }
+
+            arena.Dispose();
+        }
+
         // Fail layout: [0]=flag, [1]=got, [2]=expected, [3]=diff
         void AssertClose(double a, double b, double precision)
         {
@@ -376,6 +534,8 @@ public class doubleFFTTests
     [Test] public void IfftKnownValueTest() => RunJob(TestJob.TestType.IfftKnownValue);
     [Test] public void IdftKnownValueTest() => RunJob(TestJob.TestType.IdftKnownValue);
     [Test] public void FftSmallSizesTest() => RunJob(TestJob.TestType.FftSmallSizes);
+    [Test] public void RfftRoundTripTest() => RunJob(TestJob.TestType.RfftRoundTrip);
+    [Test] public void RfftKnownSignalsTest() => RunJob(TestJob.TestType.RfftKnownSignals);
 
     // ---- Managed throw tests (guard paths) ----
 
@@ -440,11 +600,59 @@ public class doubleFFTTests
     {
         var arena = new Arena(Allocator.Persistent);
         var real = arena.doubleVec(8);
-        var re = arena.doubleVec(8);
-        var imShort = arena.doubleVec(4);
-        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re, ref imShort)); // length mismatch
+        // For N=8, the correct half-spectrum length is N/2+1 = 5.
+        var re5  = arena.doubleVec(5);  // correct
+        var im5  = arena.doubleVec(5);  // correct
+        var re8  = arena.doubleVec(8);  // wrong (full-N, not N/2+1)
+        var im4  = arena.doubleVec(4);  // wrong
+
+        // wrong re length
+        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re8, ref im5));
+        // wrong im length
+        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re5, ref im4));
+        // non-power-of-two real length
+        var real7 = arena.doubleVec(7);
+        var re4   = arena.doubleVec(4);
+        var im4b  = arena.doubleVec(4);
+        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real7, ref re4, ref im4b));
         // im aliasing real must throw
-        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re, ref real));
+        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re5, ref real));
+        arena.Dispose();
+    }
+
+    [Test]
+    public void IrfftGuards()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        // For N=8, half-spectrum has length N/2+1=5.
+        var re5   = arena.doubleVec(5);
+        var im5   = arena.doubleVec(5);
+        var real8 = arena.doubleVec(8);
+
+        // im.N != re.N
+        var im4 = arena.doubleVec(4);
+        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re5, in im4, ref real8));
+
+        // halfSpec < 2 (re.N=1 means N=0; minimum is N=2)
+        var re1  = arena.doubleVec(1);
+        var im1  = arena.doubleVec(1);
+        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re1, in im1, ref real8));
+
+        // wrong real output length (real.N=7 but N=8)
+        var real7 = arena.doubleVec(7);
+        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re5, in im5, ref real7));
+
+        // Alias tests: use N=2 (halfSpec=2, real.N=2) so all length guards pass and the alias
+        // check is reached. re2.N=2 = N, so real.N matches and the ptr check fires.
+        var re2  = arena.doubleVec(2);
+        var im2  = arena.doubleVec(2);
+        var real2 = arena.doubleVec(2);
+
+        // real aliasing re (correct lengths: halfSpec=2, N=2)
+        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re2, in im2, ref re2));
+        // real aliasing im (correct lengths)
+        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re2, in im2, ref im2));
+
         arena.Dispose();
     }
 

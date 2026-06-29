@@ -28,5 +28,17 @@ namespace LinearAlgebra
             doubleFFT.phase(in re, in im, ref dest);
             return dest;
         }
+
+        /// <summary>
+        /// Inverse real FFT: allocates a fresh real output of length N = 2*(re.N-1) and fills it
+        /// with <see cref="doubleFFT.irfft"/>. re.N must be ≥ 2 and N must be a power of two.
+        /// </summary>
+        public static doubleN doubleIrfft(this ref Arena arena, in doubleN re, in doubleN im)
+        {
+            int N = (re.N - 1) << 1;
+            var real = arena.doubleVec(N);
+            doubleFFT.irfft(in re, in im, ref real);
+            return real;
+        }
     }
 }

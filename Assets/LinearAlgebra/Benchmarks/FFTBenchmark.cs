@@ -51,6 +51,28 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- real-input half-spectrum rfft (float) ----
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct RfftJobFloat : IJob
+    {
+        public floatN real;   // NOT modified (rfft takes `in`)
+        public floatN re;     // output — overwritten each Execute
+        public floatN im;     // output — overwritten each Execute
+
+        public void Execute() => floatFFT.rfft(in real, ref re, ref im);
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct RfftJobDouble : IJob
+    {
+        public doubleN real;
+        public doubleN re;
+        public doubleN im;
+
+        public void Execute() => doubleFFT.rfft(in real, ref re, ref im);
+    }
+
     // ---- direct DFT (float) ----
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -92,6 +114,13 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(FftFloat(n));
             foreach (var n in FftSizes) sb.AppendLine(FftDouble(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Real-input half-spectrum FFT (floatFFT.rfft / doubleFFT.rfft; two-for-one; ms) ===");
+            sb.AppendLine("    real input `in` — not modified; re/im output length N/2+1 overwritten each call.");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in FftSizes) sb.AppendLine(RfftFloat(n));
+            foreach (var n in FftSizes) sb.AppendLine(RfftDouble(n));
             sb.AppendLine();
 
             sb.AppendLine("=== Direct DFT (floatFFT.dft / doubleFFT.dft; O(N^2); ms) ===");
@@ -142,6 +171,44 @@ namespace LinearAlgebra.Benchmarks
             }
 
             var job = new FftJobDouble { re = re, im = im, srcRe = srcRe, srcIm = srcIm };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double", n, stat);
+        }
+
+        // ---- rfft helpers ----
+
+        static string RfftFloat(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var real  = arena.floatVec(n);
+            var re    = arena.floatVec(n / 2 + 1);
+            var im    = arena.floatVec(n / 2 + 1);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xDEADBEEFu);
+            for (int i = 0; i < n; i++)
+                real[i] = rng.NextFloat(-1f, 1f);
+
+            var job = new RfftJobFloat { real = real, re = re, im = im };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float", n, stat);
+        }
+
+        static string RfftDouble(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var real  = arena.doubleVec(n);
+            var re    = arena.doubleVec(n / 2 + 1);
+            var im    = arena.doubleVec(n / 2 + 1);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xDEADBEEFu);
+            for (int i = 0; i < n; i++)
+                real[i] = rng.NextDouble(-1.0, 1.0);
+
+            var job = new RfftJobDouble { real = real, re = re, im = im };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
