@@ -73,6 +73,102 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => doubleFFT.rfft(in real, ref re, ref im);
     }
 
+    // ---- table-indexed FFT (float) ----
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FftTableJobFloat : IJob
+    {
+        public floatN re;
+        public floatN im;
+        public floatN srcRe;
+        public floatN srcIm;
+        public floatFftWorkspace ws;
+
+        public void Execute()
+        {
+            int n = srcRe.N;
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            floatFFT.fft(ref re, ref im, in ws);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FftTableJobDouble : IJob
+    {
+        public doubleN re;
+        public doubleN im;
+        public doubleN srcRe;
+        public doubleN srcIm;
+        public doubleFftWorkspace ws;
+
+        public void Execute()
+        {
+            int n = srcRe.N;
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            doubleFFT.fft(ref re, ref im, in ws);
+        }
+    }
+
+    // ---- table-indexed real-input rfft (float) ----
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct RfftTableJobFloat : IJob
+    {
+        public floatN real;
+        public floatN re;
+        public floatN im;
+        public floatFftWorkspace ws;   // built once, outside the timed loop
+
+        public void Execute() => floatFFT.rfft(in real, ref re, ref im, in ws);
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct RfftTableJobDouble : IJob
+    {
+        public doubleN real;
+        public doubleN re;
+        public doubleN im;
+        public doubleFftWorkspace ws;
+
+        public void Execute() => doubleFFT.rfft(in real, ref re, ref im, in ws);
+    }
+
+    // ---- radix-4 FFT dispatch with twiddle-table workspace ----
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FftRadix4JobFloat : IJob
+    {
+        public floatN re;
+        public floatN im;
+        public floatN srcRe;
+        public floatN srcIm;
+        public floatFftWorkspace ws;   // built once outside the timed loop; contains full-circle table
+
+        public void Execute()
+        {
+            int n = srcRe.N;
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            floatFFT.fftRadix4(ref re, ref im, in ws);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FftRadix4JobDouble : IJob
+    {
+        public doubleN re;
+        public doubleN im;
+        public doubleN srcRe;
+        public doubleN srcIm;
+        public doubleFftWorkspace ws;
+
+        public void Execute()
+        {
+            int n = srcRe.N;
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            doubleFFT.fftRadix4(ref re, ref im, in ws);
+        }
+    }
+
     // ---- direct DFT (float) ----
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -116,11 +212,35 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in FftSizes) sb.AppendLine(FftDouble(n));
             sb.AppendLine();
 
+            sb.AppendLine("=== Radix-2 FFT in-place, twiddle-table workspace (floatFFT.fft(ws) / doubleFFT.fft(ws); ms) ===");
+            sb.AppendLine("    Workspace built once; no per-element cos/sin in the butterfly loop.");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in FftSizes) sb.AppendLine(FftTableFloat(n));
+            foreach (var n in FftSizes) sb.AppendLine(FftTableDouble(n));
+            sb.AppendLine();
+
             sb.AppendLine("=== Real-input half-spectrum FFT (floatFFT.rfft / doubleFFT.rfft; two-for-one; ms) ===");
             sb.AppendLine("    real input `in` — not modified; re/im output length N/2+1 overwritten each call.");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(RfftFloat(n));
             foreach (var n in FftSizes) sb.AppendLine(RfftDouble(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Real-input FFT, twiddle-table workspace (floatFFT.rfft(ws) / doubleFFT.rfft(ws); ms) ===");
+            sb.AppendLine("    Workspace built ONCE (arena persistent); no cos/sin in the unpack or butterfly.");
+            sb.AppendLine("    Expectation: float no longer slower than double at large N (trig anomaly eliminated).");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in FftSizes) sb.AppendLine(RfftTableFloat(n));
+            foreach (var n in FftSizes) sb.AppendLine(RfftTableDouble(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Radix-4 FFT, twiddle-table workspace (floatFFT.fftRadix4 / doubleFFT.fftRadix4; ms) ===");
+            sb.AppendLine("    All FftSizes are powers of 4 → true radix-4 path (log4(N) stages vs log2(N) for radix-2).");
+            sb.AppendLine("    Workspace (with full-circle table) built ONCE outside the timed loop.");
+            sb.AppendLine("    Bandwidth tradeoff: ~2x twiddle memory vs half the pass count at large N.");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in FftSizes) sb.AppendLine(FftRadix4Float(n));
+            foreach (var n in FftSizes) sb.AppendLine(FftRadix4Double(n));
             sb.AppendLine();
 
             sb.AppendLine("=== Direct DFT (floatFFT.dft / doubleFFT.dft; O(N^2); ms) ===");
@@ -177,6 +297,54 @@ namespace LinearAlgebra.Benchmarks
             return Bench.RowTime("double", n, stat);
         }
 
+        // ---- table FFT helpers ----
+
+        static string FftTableFloat(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.floatVec(n);
+            var im    = arena.floatVec(n);
+            var srcRe = arena.floatVec(n);
+            var srcIm = arena.floatVec(n);
+            var ws    = arena.floatFftWorkspace(n);   // built ONCE outside the timed loop
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextFloat(-1f, 1f);
+                srcIm[i] = rng.NextFloat(-1f, 1f);
+            }
+
+            var job = new FftTableJobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float(ws)", n, stat);
+        }
+
+        static string FftTableDouble(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.doubleVec(n);
+            var im    = arena.doubleVec(n);
+            var srcRe = arena.doubleVec(n);
+            var srcIm = arena.doubleVec(n);
+            var ws    = arena.doubleFftWorkspace(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextDouble(-1.0, 1.0);
+                srcIm[i] = rng.NextDouble(-1.0, 1.0);
+            }
+
+            var job = new FftTableJobDouble { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double(ws)", n, stat);
+        }
+
         // ---- rfft helpers ----
 
         static string RfftFloat(int n)
@@ -213,6 +381,94 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.RowTime("double", n, stat);
+        }
+
+        // ---- table rfft helpers ----
+
+        static string RfftTableFloat(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var real  = arena.floatVec(n);
+            var re    = arena.floatVec(n / 2 + 1);
+            var im    = arena.floatVec(n / 2 + 1);
+            var ws    = arena.floatFftWorkspace(n);   // built ONCE outside the timed loop
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xDEADBEEFu);
+            for (int i = 0; i < n; i++)
+                real[i] = rng.NextFloat(-1f, 1f);
+
+            var job = new RfftTableJobFloat { real = real, re = re, im = im, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float(ws)", n, stat);
+        }
+
+        static string RfftTableDouble(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var real  = arena.doubleVec(n);
+            var re    = arena.doubleVec(n / 2 + 1);
+            var im    = arena.doubleVec(n / 2 + 1);
+            var ws    = arena.doubleFftWorkspace(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xDEADBEEFu);
+            for (int i = 0; i < n; i++)
+                real[i] = rng.NextDouble(-1.0, 1.0);
+
+            var job = new RfftTableJobDouble { real = real, re = re, im = im, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double(ws)", n, stat);
+        }
+
+        // ---- radix-4 FFT helpers ----
+
+        static string FftRadix4Float(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.floatVec(n);
+            var im    = arena.floatVec(n);
+            var srcRe = arena.floatVec(n);
+            var srcIm = arena.floatVec(n);
+            var ws    = arena.floatFftWorkspace(n);   // full-circle table built ONCE outside timed loop
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextFloat(-1f, 1f);
+                srcIm[i] = rng.NextFloat(-1f, 1f);
+            }
+
+            var job = new FftRadix4JobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float(r4)", n, stat);
+        }
+
+        static string FftRadix4Double(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.doubleVec(n);
+            var im    = arena.doubleVec(n);
+            var srcRe = arena.doubleVec(n);
+            var srcIm = arena.doubleVec(n);
+            var ws    = arena.doubleFftWorkspace(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextDouble(-1.0, 1.0);
+                srcIm[i] = rng.NextDouble(-1.0, 1.0);
+            }
+
+            var job = new FftRadix4JobDouble { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double(r4)", n, stat);
         }
 
         // ---- DFT helpers ----
