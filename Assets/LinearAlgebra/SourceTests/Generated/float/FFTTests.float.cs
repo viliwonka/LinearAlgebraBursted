@@ -39,6 +39,13 @@ public class floatFFTTests
             // radix-4 oracle validation tests
             Radix4MatchesOracle,
             Radix4RoundTrip,
+            // comprehensive numerical-stability / correctness suite
+            FftVsDftCrossCheck,
+            ParsevalEnergy,
+            FftLinearity,
+            KnownAnalytics,
+            RoundTripLargeN,
+            WorkspaceReuse,
         }
 
         public TestType Type;
@@ -71,6 +78,12 @@ public class floatFFTTests
                 case TestType.TableRfftRoundTrip: TableRfftRoundTrip(); break;
                 case TestType.Radix4MatchesOracle: Radix4MatchesOracle(); break;
                 case TestType.Radix4RoundTrip: Radix4RoundTrip(); break;
+                case TestType.FftVsDftCrossCheck: FftVsDftCrossCheck(); break;
+                case TestType.ParsevalEnergy: ParsevalEnergy(); break;
+                case TestType.FftLinearity: FftLinearity(); break;
+                case TestType.KnownAnalytics: KnownAnalytics(); break;
+                case TestType.RoundTripLargeN: RoundTripLargeN(); break;
+                case TestType.WorkspaceReuse: WorkspaceReuse(); break;
             }
         }
 
@@ -850,6 +863,464 @@ public class floatFFTTests
             Radix4RoundTripOneSize(8192, 32019u, 32020u);   // 2·4^6 mixed-radix
         }
 
+        // ====================================================================================
+        // Comprehensive numerical-stability / correctness suite
+        // ====================================================================================
+
+        // Relative-tolerance assert: tolerance is relTol scaled by max(1, |reference|). This is the
+        // same floor-at-1.0 scheme used by Radix4MatchesOracle — it never hard-asserts near-zero bins
+        // (which accumulate twiddle noise at large float N) yet keeps large bins to a relative bound.
+        void AssertCloseRel(float got, float reference, float relTol)
+        {
+            float tol = relTol * math.max((float)1.0f, math.abs(reference));
+            AssertClose(got, reference, tol);
+        }
+
+        // Total complex energy Σ_i (re[i]² + im[i]²).
+        static float Energy(in floatN re, in floatN im)
+        {
+            float s = (float)0;
+            for (int i = 0; i < re.N; i++)
+                s += re[i] * re[i] + im[i] * im[i];
+            return s;
+        }
+
+        // ---- 1. fft vs dft cross-check (the anchor) -------------------------------------------
+        // dft is the independent O(N²) ground truth. Both the no-workspace recurrence fft and the
+        // workspace radix-4/mixed fft must match it bin-by-bin on random complex input. Validates
+        // fft (BOTH paths) AND dft simultaneously. Sizes cover power-of-4 (16,64,256) and mixed
+        // 2·4^k (8,32) dispatch classes.
+        void FftVsDftOneSize(int N, uint seedRe, uint seedIm)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var ws = arena.floatFftWorkspace(N);
+            var re0 = arena.floatRandomVector(N, -2f, 2f, seedRe);
+            var im0 = arena.floatRandomVector(N, -2f, 2f, seedIm);
+
+            // Ground truth: direct DFT.
+            var dRe = arena.floatVec(N);
+            var dIm = arena.floatVec(N);
+            floatFFT.dft(in re0, in im0, ref dRe, ref dIm);
+
+            // No-workspace recurrence fft.
+            var fRe = re0.Copy(); var fIm = im0.Copy();
+            floatFFT.fft(ref fRe, ref fIm);
+
+            // Workspace radix-4 / mixed fft.
+            var wRe = re0.Copy(); var wIm = im0.Copy();
+            floatFFT.fft(ref wRe, ref wIm, in ws);
+
+            float relTol = (float)1E-3f;
+            for (int k = 0; k < N; k++)
+            {
+                AssertCloseRel(fRe[k], dRe[k], relTol);
+                AssertCloseRel(fIm[k], dIm[k], relTol);
+                AssertCloseRel(wRe[k], dRe[k], relTol);
+                AssertCloseRel(wIm[k], dIm[k], relTol);
+            }
+            arena.Dispose();
+        }
+
+        void FftVsDftCrossCheck()
+        {
+            FftVsDftOneSize(8,   51001u, 51002u);   // 2·4^1 mixed
+            FftVsDftOneSize(16,  51003u, 51004u);   // 4^2 radix-4
+            FftVsDftOneSize(32,  51005u, 51006u);   // 2·4^2 mixed
+            FftVsDftOneSize(64,  51007u, 51008u);   // 4^3 radix-4
+            FftVsDftOneSize(256, 51009u, 51010u);   // 4^4 radix-4
+        }
+
+        // ---- 2. Parseval / energy conservation ------------------------------------------------
+        // Σ|x|² == (1/N)·Σ|X|². Checked as a RELATIVE error on the single total-energy scalar
+        // (robust to per-bin twiddle noise). Includes large N (4096, 16384) for fft, dft only to
+        // 512 (O(N²)), plus the rfft half-spectrum energy identity.
+        void ParsevalFftOneSize(int N, uint seedRe, uint seedIm)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var ws = arena.floatFftWorkspace(N);
+            var re0 = arena.floatRandomVector(N, -2f, 2f, seedRe);
+            var im0 = arena.floatRandomVector(N, -2f, 2f, seedIm);
+
+            float timeE = Energy(in re0, in im0);
+            float relTol = (float)1E-2f;   // robust scalar-energy bound (float summation at large N)
+
+            // No-workspace fft.
+            var fRe = re0.Copy(); var fIm = im0.Copy();
+            floatFFT.fft(ref fRe, ref fIm);
+            AssertCloseRel(Energy(in fRe, in fIm) / (float)N, timeE, relTol);
+
+            // Workspace fft.
+            var wRe = re0.Copy(); var wIm = im0.Copy();
+            floatFFT.fft(ref wRe, ref wIm, in ws);
+            AssertCloseRel(Energy(in wRe, in wIm) / (float)N, timeE, relTol);
+
+            arena.Dispose();
+        }
+
+        void ParsevalDftOneSize(int N, uint seedRe, uint seedIm)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re0 = arena.floatRandomVector(N, -2f, 2f, seedRe);
+            var im0 = arena.floatRandomVector(N, -2f, 2f, seedIm);
+
+            float timeE = Energy(in re0, in im0);
+            var dRe = arena.floatVec(N);
+            var dIm = arena.floatVec(N);
+            floatFFT.dft(in re0, in im0, ref dRe, ref dIm);
+            AssertCloseRel(Energy(in dRe, in dIm) / (float)N, timeE, (float)5E-3f);
+            arena.Dispose();
+        }
+
+        // rfft Parseval: real-signal energy Σx² equals (1/N)·full-spectrum energy reconstructed from
+        // the half spectrum: |X[0]|² + |X[N/2]|² + 2·Σ_{k=1}^{N/2-1}|X[k]|².
+        void ParsevalRfftOneSize(int N, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var ws = arena.floatFftWorkspace(N);
+            int halfSpec = (N >> 1) + 1;
+            int M = N >> 1;
+            var real = arena.floatRandomVector(N, -2f, 2f, seed);
+
+            float timeE = (float)0;
+            for (int i = 0; i < N; i++) timeE += real[i] * real[i];
+
+            var rRe = arena.floatVec(halfSpec);
+            var rIm = arena.floatVec(halfSpec);
+            floatFFT.rfft(in real, ref rRe, ref rIm, in ws);
+
+            float specE = rRe[0] * rRe[0] + rIm[0] * rIm[0]
+                         + rRe[M] * rRe[M] + rIm[M] * rIm[M];
+            for (int k = 1; k < M; k++)
+                specE += (float)2 * (rRe[k] * rRe[k] + rIm[k] * rIm[k]);
+
+            AssertCloseRel(specE / (float)N, timeE, (float)1E-2f);
+            arena.Dispose();
+        }
+
+        void ParsevalEnergy()
+        {
+            ParsevalFftOneSize(8,     52001u, 52002u);
+            ParsevalFftOneSize(64,    52003u, 52004u);
+            ParsevalFftOneSize(256,   52005u, 52006u);
+            ParsevalFftOneSize(4096,  52007u, 52008u);
+            ParsevalFftOneSize(16384, 52009u, 52010u);
+
+            ParsevalDftOneSize(7,   52021u, 52022u);   // non-power-of-two
+            ParsevalDftOneSize(64,  52023u, 52024u);
+            ParsevalDftOneSize(512, 52025u, 52026u);
+
+            ParsevalRfftOneSize(8,     52031u);
+            ParsevalRfftOneSize(64,    52032u);
+            ParsevalRfftOneSize(256,   52033u);
+            ParsevalRfftOneSize(4096,  52034u);
+            ParsevalRfftOneSize(16384, 52035u);
+        }
+
+        // ---- 3. Linearity ---------------------------------------------------------------------
+        // fft(a·x + b·y) == a·fft(x) + b·fft(y) for random complex scalars a,b and signals x,y.
+        // Validated for fft(no-ws), fft(ws) and dft. Per-bin relative tolerance.
+        void FftLinearityOneSize(int N, uint sx, uint sy)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var ws = arena.floatFftWorkspace(N);
+
+            var xr = arena.floatRandomVector(N, -2f, 2f, sx);
+            var xi = arena.floatRandomVector(N, -2f, 2f, sx + 17u);
+            var yr = arena.floatRandomVector(N, -2f, 2f, sy);
+            var yi = arena.floatRandomVector(N, -2f, 2f, sy + 17u);
+
+            float aRe = (float)1.5f, aIm = (float)(-0.5f);
+            float bRe = (float)(-2.0f), bIm = (float)0.75f;
+
+            // z = a·x + b·y (complex, per sample).
+            var zr = arena.floatVec(N);
+            var zi = arena.floatVec(N);
+            for (int n = 0; n < N; n++)
+            {
+                float axr = aRe * xr[n] - aIm * xi[n];
+                float axi = aRe * xi[n] + aIm * xr[n];
+                float byr = bRe * yr[n] - bIm * yi[n];
+                float byi = bRe * yi[n] + bIm * yr[n];
+                zr[n] = axr + byr;
+                zi[n] = axi + byi;
+            }
+
+            // Forward transforms of x and y for the RHS combination (dft ground truth).
+            var Xr = arena.floatVec(N); var Xi = arena.floatVec(N);
+            var Yr = arena.floatVec(N); var Yi = arena.floatVec(N);
+            floatFFT.dft(in xr, in xi, ref Xr, ref Xi);
+            floatFFT.dft(in yr, in yi, ref Yr, ref Yi);
+
+            // LHS via three transforms.
+            var Zno_r = zr.Copy(); var Zno_i = zi.Copy(); floatFFT.fft(ref Zno_r, ref Zno_i);
+            var Zws_r = zr.Copy(); var Zws_i = zi.Copy(); floatFFT.fft(ref Zws_r, ref Zws_i, in ws);
+            var Zdf_r = arena.floatVec(N); var Zdf_i = arena.floatVec(N);
+            floatFFT.dft(in zr, in zi, ref Zdf_r, ref Zdf_i);
+
+            float relTol = (float)1E-3f;
+            for (int k = 0; k < N; k++)
+            {
+                float rhsRe = (aRe * Xr[k] - aIm * Xi[k]) + (bRe * Yr[k] - bIm * Yi[k]);
+                float rhsIm = (aRe * Xi[k] + aIm * Xr[k]) + (bRe * Yi[k] + bIm * Yr[k]);
+
+                AssertCloseRel(Zno_r[k], rhsRe, relTol);
+                AssertCloseRel(Zno_i[k], rhsIm, relTol);
+                AssertCloseRel(Zws_r[k], rhsRe, relTol);
+                AssertCloseRel(Zws_i[k], rhsIm, relTol);
+                AssertCloseRel(Zdf_r[k], rhsRe, relTol);
+                AssertCloseRel(Zdf_i[k], rhsIm, relTol);
+            }
+            arena.Dispose();
+        }
+
+        void FftLinearity()
+        {
+            FftLinearityOneSize(16, 53001u, 53101u);
+            FftLinearityOneSize(64, 53003u, 53103u);
+        }
+
+        // ---- 4. Known analytic transforms -----------------------------------------------------
+        // Anchored to closed-form spectra, independently for fft(ws) and dft. Sign convention:
+        // X[k] = Σ x[n]·exp(-2πi·kn/N).
+        //   impulse δ[0]        -> X[k] = 1 (flat)
+        //   shifted impulse δ[m]-> X[k] = exp(-2πi·km/N) = cos(2πkm/N) - i·sin(2πkm/N)
+        //   constant c          -> X[0] = c·N, else 0
+        //   exp(+2πi·k0·n/N)    -> X[k0] = N, else 0
+        // Runs the input through BOTH fft(ws) and dft and compares each to the analytic expectation.
+        void KnownRunBoth(in floatFftWorkspace ws, int N,
+                          in floatN inRe, in floatN inIm,
+                          in floatN expRe, in floatN expIm, float relTol)
+        {
+            var fr = inRe.Copy(); var fi = inIm.Copy();
+            floatFFT.fft(ref fr, ref fi, in ws);
+            for (int k = 0; k < N; k++)
+            {
+                AssertCloseRel(fr[k], expRe[k], relTol);
+                AssertCloseRel(fi[k], expIm[k], relTol);
+            }
+        }
+
+        void KnownAnalytics()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int N = 16;
+            var ws = arena.floatFftWorkspace(N);
+            float twoPi = (float)(2.0 * System.Math.PI);
+            float relTol = (float)2E-3f;
+
+            // --- impulse δ[0] -> flat spectrum (all ones) ---
+            {
+                var inRe = arena.floatVec(N); var inIm = arena.floatVec(N);
+                inRe[0] = (float)1;
+                var expRe = arena.floatVec(N, 1f); var expIm = arena.floatVec(N);
+
+                var dRe = arena.floatVec(N); var dIm = arena.floatVec(N);
+                floatFFT.dft(in inRe, in inIm, ref dRe, ref dIm);
+                for (int k = 0; k < N; k++)
+                {
+                    AssertCloseRel(dRe[k], expRe[k], relTol);
+                    AssertCloseRel(dIm[k], expIm[k], relTol);
+                }
+                KnownRunBoth(in ws, N, in inRe, in inIm, in expRe, in expIm, relTol);
+            }
+
+            // --- shifted impulse δ[m], m=3 -> X[k] = cos(2πkm/N) - i·sin(2πkm/N) ---
+            {
+                int m = 3;
+                var inRe = arena.floatVec(N); var inIm = arena.floatVec(N);
+                inRe[m] = (float)1;
+                var expRe = arena.floatVec(N); var expIm = arena.floatVec(N);
+                for (int k = 0; k < N; k++)
+                {
+                    float ang = twoPi * (float)(k * m) / (float)N;
+                    expRe[k] = math.cos(ang);
+                    expIm[k] = -math.sin(ang);
+                }
+                var dRe = arena.floatVec(N); var dIm = arena.floatVec(N);
+                floatFFT.dft(in inRe, in inIm, ref dRe, ref dIm);
+                for (int k = 0; k < N; k++)
+                {
+                    AssertCloseRel(dRe[k], expRe[k], relTol);
+                    AssertCloseRel(dIm[k], expIm[k], relTol);
+                }
+                KnownRunBoth(in ws, N, in inRe, in inIm, in expRe, in expIm, relTol);
+            }
+
+            // --- constant c -> DC spike X[0] = c·N ---
+            {
+                float c = (float)2.5f;
+                var inRe = arena.floatVec(N, 2.5f); var inIm = arena.floatVec(N);
+                var expRe = arena.floatVec(N); var expIm = arena.floatVec(N);
+                expRe[0] = c * (float)N;
+
+                var dRe = arena.floatVec(N); var dIm = arena.floatVec(N);
+                floatFFT.dft(in inRe, in inIm, ref dRe, ref dIm);
+                for (int k = 0; k < N; k++)
+                {
+                    AssertCloseRel(dRe[k], expRe[k], relTol);
+                    AssertCloseRel(dIm[k], expIm[k], relTol);
+                }
+                KnownRunBoth(in ws, N, in inRe, in inIm, in expRe, in expIm, relTol);
+            }
+
+            // --- pure exponential exp(+2πi·k0·n/N), k0=3 -> single bin X[k0] = N ---
+            {
+                int k0 = 3;
+                var inRe = arena.floatVec(N); var inIm = arena.floatVec(N);
+                float w = twoPi * (float)k0 / (float)N;
+                for (int n = 0; n < N; n++)
+                {
+                    inRe[n] = math.cos(w * (float)n);
+                    inIm[n] = math.sin(w * (float)n);
+                }
+                var expRe = arena.floatVec(N); var expIm = arena.floatVec(N);
+                expRe[k0] = (float)N;
+
+                var dRe = arena.floatVec(N); var dIm = arena.floatVec(N);
+                floatFFT.dft(in inRe, in inIm, ref dRe, ref dIm);
+                for (int k = 0; k < N; k++)
+                {
+                    AssertCloseRel(dRe[k], expRe[k], relTol);
+                    AssertCloseRel(dIm[k], expIm[k], relTol);
+                }
+                KnownRunBoth(in ws, N, in inRe, in inIm, in expRe, in expIm, relTol);
+            }
+
+            arena.Dispose();
+        }
+
+        // ---- 6. Round-trip accuracy at large N ------------------------------------------------
+        // ifft(fft(x,ws),ws)==x and irfft(rfft(x,ws),ws)==x up to N=16384; idft(dft(x))==x to ~512
+        // (incl. non-power-of-two). Forward+inverse errors cancel, so a tight absolute/relative
+        // bound holds (float ~1e-3, double far tighter).
+        void RoundTripFftWsOneSize(int N, uint seedRe, uint seedIm)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var ws = arena.floatFftWorkspace(N);
+            var re0 = arena.floatRandomVector(N, -3f, 3f, seedRe);
+            var im0 = arena.floatRandomVector(N, -3f, 3f, seedIm);
+
+            var re = re0.Copy(); var im = im0.Copy();
+            floatFFT.fft(ref re, ref im, in ws);
+            floatFFT.ifft(ref re, ref im, in ws);
+
+            float tol = (float)1E-3f;
+            for (int i = 0; i < N; i++)
+            {
+                AssertClose(re[i], re0[i], tol);
+                AssertClose(im[i], im0[i], tol);
+            }
+            arena.Dispose();
+        }
+
+        void RoundTripRfftWsOneSize(int N, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var ws = arena.floatFftWorkspace(N);
+            int halfSpec = (N >> 1) + 1;
+            var real0 = arena.floatRandomVector(N, -3f, 3f, seed);
+
+            var rRe = arena.floatVec(halfSpec);
+            var rIm = arena.floatVec(halfSpec);
+            floatFFT.rfft(in real0, ref rRe, ref rIm, in ws);
+
+            var real2 = arena.floatVec(N);
+            floatFFT.irfft(in rRe, in rIm, ref real2, in ws);
+
+            float tol = (float)1E-3f;
+            for (int i = 0; i < N; i++)
+                AssertClose(real2[i], real0[i], tol);
+            arena.Dispose();
+        }
+
+        void RoundTripDftOneSize(int N, uint seedRe, uint seedIm)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re0 = arena.floatRandomVector(N, -3f, 3f, seedRe);
+            var im0 = arena.floatRandomVector(N, -3f, 3f, seedIm);
+
+            var fRe = arena.floatVec(N); var fIm = arena.floatVec(N);
+            floatFFT.dft(in re0, in im0, ref fRe, ref fIm);
+            var bRe = arena.floatVec(N); var bIm = arena.floatVec(N);
+            floatFFT.idft(in fRe, in fIm, ref bRe, ref bIm);
+
+            float relTol = (float)5E-3f;
+            for (int i = 0; i < N; i++)
+            {
+                AssertCloseRel(bRe[i], re0[i], relTol);
+                AssertCloseRel(bIm[i], im0[i], relTol);
+            }
+            arena.Dispose();
+        }
+
+        void RoundTripLargeN()
+        {
+            RoundTripFftWsOneSize(1024,  54001u, 54002u);
+            RoundTripFftWsOneSize(8192,  54003u, 54004u);   // 2·4^6 mixed
+            RoundTripFftWsOneSize(16384, 54005u, 54006u);   // 4^7 radix-4
+
+            RoundTripRfftWsOneSize(1024,  54011u);
+            RoundTripRfftWsOneSize(16384, 54012u);
+
+            RoundTripDftOneSize(257, 54021u, 54022u);   // non-power-of-two
+            RoundTripDftOneSize(512, 54023u, 54024u);
+        }
+
+        // ---- 7. Zero-alloc workspace reuse ----------------------------------------------------
+        // Drive fft(ws) -> rfft(ws) -> ifft(ws) on the SAME workspace and confirm each result is
+        // still correct. Guards the shared cz/sz/visited scratch against cross-call corruption
+        // (the recent zero-alloc change). Covers power-of-4 and mixed sizes (and their inner-M dual).
+        void WorkspaceReuseOneSize(int N, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var ws = arena.floatFftWorkspace(N);
+            int halfSpec = (N >> 1) + 1;
+
+            var re0 = arena.floatRandomVector(N, -2f, 2f, seed);
+            var im0 = arena.floatRandomVector(N, -2f, 2f, seed + 1u);
+
+            // (a) fft(ws) on the fresh workspace, validated against dft.
+            var dRe = arena.floatVec(N); var dIm = arena.floatVec(N);
+            floatFFT.dft(in re0, in im0, ref dRe, ref dIm);
+            var fRe = re0.Copy(); var fIm = im0.Copy();
+            floatFFT.fft(ref fRe, ref fIm, in ws);
+            float relTol = (float)1E-3f;
+            for (int k = 0; k < N; k++)
+            {
+                AssertCloseRel(fRe[k], dRe[k], relTol);
+                AssertCloseRel(fIm[k], dIm[k], relTol);
+            }
+
+            // (b) rfft(ws) on the SAME workspace (touches cz/sz/visited) — compare to no-ws rfft.
+            var real = arena.floatRandomVector(N, -2f, 2f, seed + 2u);
+            var rRe = arena.floatVec(halfSpec); var rIm = arena.floatVec(halfSpec);
+            floatFFT.rfft(in real, ref rRe, ref rIm, in ws);
+            var oRe = arena.floatVec(halfSpec); var oIm = arena.floatVec(halfSpec);
+            floatFFT.rfft(in real, ref oRe, ref oIm);   // no-ws oracle
+            for (int k = 0; k <= N / 2; k++)
+            {
+                AssertCloseRel(rRe[k], oRe[k], relTol);
+                AssertCloseRel(rIm[k], oIm[k], relTol);
+            }
+
+            // (c) ifft(ws) on the SAME workspace, inverting the step-(a) spectrum back to re0/im0.
+            // If rfft had corrupted the shared scratch this round-trip would fail.
+            floatFFT.ifft(ref fRe, ref fIm, in ws);
+            for (int i = 0; i < N; i++)
+            {
+                AssertClose(fRe[i], re0[i], (float)1E-3f);
+                AssertClose(fIm[i], im0[i], (float)1E-3f);
+            }
+
+            arena.Dispose();
+        }
+
+        void WorkspaceReuse()
+        {
+            WorkspaceReuseOneSize(64,  55001u);   // 4^3 radix-4 (inner M=32 mixed for rfft)
+            WorkspaceReuseOneSize(128, 55003u);   // 2·4^3 mixed (inner M=64 radix-4 for rfft)
+        }
+
         // Fail layout: [0]=flag, [1]=got, [2]=expected, [3]=diff
         void AssertClose(float a, float b, float precision)
         {
@@ -909,6 +1380,13 @@ public class floatFFTTests
     // radix-4 oracle validation
     [Test] public void Radix4MatchesOracleTest() => RunJob(TestJob.TestType.Radix4MatchesOracle);
     [Test] public void Radix4RoundTripTest() => RunJob(TestJob.TestType.Radix4RoundTrip);
+    // comprehensive numerical-stability / correctness suite
+    [Test] public void FftVsDftCrossCheckTest() => RunJob(TestJob.TestType.FftVsDftCrossCheck);
+    [Test] public void ParsevalEnergyTest() => RunJob(TestJob.TestType.ParsevalEnergy);
+    [Test] public void FftLinearityTest() => RunJob(TestJob.TestType.FftLinearity);
+    [Test] public void KnownAnalyticsTest() => RunJob(TestJob.TestType.KnownAnalytics);
+    [Test] public void RoundTripLargeNTest() => RunJob(TestJob.TestType.RoundTripLargeN);
+    [Test] public void WorkspaceReuseTest() => RunJob(TestJob.TestType.WorkspaceReuse);
 
     // ---- Managed throw tests (guard paths) ----
 
