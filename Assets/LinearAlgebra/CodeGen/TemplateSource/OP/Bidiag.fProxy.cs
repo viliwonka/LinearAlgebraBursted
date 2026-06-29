@@ -172,7 +172,7 @@ namespace LinearAlgebra
             var vVec    = new fProxyN(n, Allocator.Temp, false);
             var wScratch = new fProxyN(n, Allocator.Temp, false);
 
-            fProxy zeroThreshold = Consts.fProxyZeroTreshold * fProxyNormsOP.LInf(in A);
+            fProxy zeroThreshold = Consts.fProxyZeroThreshold * fProxyNormsOP.LInf(in A);
 
             // ---- Forward sweep: reduce W to upper bidiagonal form ----
             for (int k = 0; k < n; k++)
@@ -276,7 +276,7 @@ namespace LinearAlgebra
             var vVec     = new fProxyN(n, Allocator.Temp, false);
             var wScratch = new fProxyN(n, Allocator.Temp, false);
 
-            fProxy zeroThreshold = Consts.fProxyZeroTreshold * fProxyNormsOP.LInf(in A);
+            fProxy zeroThreshold = Consts.fProxyZeroThreshold * fProxyNormsOP.LInf(in A);
 
             for (int k = 0; k < n; k++)
             {

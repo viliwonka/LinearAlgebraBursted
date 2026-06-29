@@ -172,7 +172,7 @@ namespace LinearAlgebra
             var vVec    = new floatN(n, Allocator.Temp, false);
             var wScratch = new floatN(n, Allocator.Temp, false);
 
-            float zeroThreshold = Consts.floatZeroTreshold * floatNormsOP.LInf(in A);
+            float zeroThreshold = Consts.floatZeroThreshold * floatNormsOP.LInf(in A);
 
             // ---- Forward sweep: reduce W to upper bidiagonal form ----
             for (int k = 0; k < n; k++)
@@ -276,7 +276,7 @@ namespace LinearAlgebra
             var vVec     = new floatN(n, Allocator.Temp, false);
             var wScratch = new floatN(n, Allocator.Temp, false);
 
-            float zeroThreshold = Consts.floatZeroTreshold * floatNormsOP.LInf(in A);
+            float zeroThreshold = Consts.floatZeroThreshold * floatNormsOP.LInf(in A);
 
             for (int k = 0; k < n; k++)
             {

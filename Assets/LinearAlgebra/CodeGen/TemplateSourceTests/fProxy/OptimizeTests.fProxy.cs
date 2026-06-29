@@ -137,18 +137,18 @@ public class fProxyOptimizeTests
         }
 
         // bisection on (x-3)^2 - 4 over [3, 10]: f(3) = -4 < 0, f(10) = 45 > 0, root = 5.
-        // xTol = 10 * ZeroTreshold (1e-5 float / 1e-13 double): stays above the ulp
+        // xTol = 10 * ZeroThreshold (1e-5 float / 1e-13 double): stays above the ulp
         // near |x| ~ 5 in each precision, so the interval width is actually reachable.
         public void BisectionParabola()
         {
             var fn = new ShiftedParabola();
 
             bool ok = Optimize.bisection(ref fn, (fProxy)3, (fProxy)10, out fProxy root,
-                                         (fProxy)10 * Consts.fProxyZeroTreshold);
+                                         (fProxy)10 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
-            AssertClose(root, (fProxy)5, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(root, (fProxy)5, (fProxy)100 * Consts.fProxyZeroThreshold);
         }
 
         // Non-bracketing interval [6, 10]: f(6) = 5 > 0, f(10) = 45 > 0, both positive -> false.
@@ -162,24 +162,24 @@ public class fProxyOptimizeTests
             AssertFinite(root);
             // root must be the endpoint with the smaller |f|; |f(6)| = 5 < |f(10)| = 45 -> 6.
             // The endpoint is returned unchanged, so this is exact in both precisions.
-            AssertClose(root, (fProxy)6, Consts.fProxyZeroTreshold);
+            AssertClose(root, (fProxy)6, Consts.fProxyZeroThreshold);
         }
 
         // cos(x) over [0, 3]: f(0) = 1 > 0, f(3) ~ -0.99 < 0, root = pi/2.
-        // xTol = 10 * ZeroTreshold (1e-5 float / 1e-13 double): the interval can never
+        // xTol = 10 * ZeroThreshold (1e-5 float / 1e-13 double): the interval can never
         // shrink below ~2 ulp near pi/2, so xTol must stay above that in each precision.
         public void BisectionCos()
         {
             var fn = new Cos();
 
             bool ok = Optimize.bisection(ref fn, (fProxy)0, (fProxy)3, out fProxy root,
-                                         (fProxy)10 * Consts.fProxyZeroTreshold);
+                                         (fProxy)10 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
             // full-precision pi/2 literal: math.PI is a float constant whose error (~4.4e-8)
             // would dominate the double-precision tolerance (1e-12)
-            AssertClose(root, (fProxy)1.5707963267948966, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(root, (fProxy)1.5707963267948966, (fProxy)100 * Consts.fProxyZeroThreshold);
         }
 
         // Newton on x^2 - 2 from x0 = 1: converges to sqrt(2).
@@ -191,10 +191,10 @@ public class fProxyOptimizeTests
 
             Assert.IsTrue(ok);
             AssertFinite(root);
-            AssertClose(root, (fProxy)1.4142135623730951, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(root, (fProxy)1.4142135623730951, (fProxy)100 * Consts.fProxyZeroThreshold);
 
-            // |f(root)| must be within the convergence tolerance (default fTol = ZeroTreshold).
-            Assert.IsTrue(Unity.Mathematics.math.abs(fn.Eval(root)) <= Consts.fProxyZeroTreshold);
+            // |f(root)| must be within the convergence tolerance (default fTol = ZeroThreshold).
+            Assert.IsTrue(Unity.Mathematics.math.abs(fn.Eval(root)) <= Consts.fProxyZeroThreshold);
         }
 
         // Newton with a flat (zero) derivative -> must return false, root finite (no NaN).
@@ -217,7 +217,7 @@ public class fProxyOptimizeTests
             var fn = new ParabolaMin();
 
             bool ok = Optimize.goldenSection(ref fn, (fProxy)(-5), (fProxy)5, out fProxy xMin,
-                                             (fProxy)10 * Consts.fProxyZeroTreshold);
+                                             (fProxy)10 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(xMin);
@@ -231,7 +231,7 @@ public class fProxyOptimizeTests
             var fn = new Cos();
 
             bool ok = Optimize.goldenSection(ref fn, (fProxy)2, (fProxy)4, out fProxy xMin,
-                                             (fProxy)10 * Consts.fProxyZeroTreshold);
+                                             (fProxy)10 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(xMin);

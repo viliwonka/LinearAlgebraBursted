@@ -31,7 +31,7 @@ namespace LinearAlgebra
 
             // Degenerate (zero / near-zero) reflector -> identity transform; leave matrix unchanged.
             // NaN-safe (!(vTv > t) is true for NaN); avoids 2/0 = Inf poisoning the matrix.
-            if (!(vTv > Consts.doubleZeroTreshold))
+            if (!(vTv > Consts.doubleZeroThreshold))
                 return;
 
             double scaleFactor = 2 / vTv;
@@ -51,7 +51,7 @@ namespace LinearAlgebra
         }
 
         // zeroThreshold is the ABSOLUTE column-norm below which a column is treated as zero. Callers
-        // pass a SCALE-RELATIVE value (Consts.doubleZeroTreshold * matrix magnitude) so QR is
+        // pass a SCALE-RELATIVE value (Consts.doubleZeroThreshold * matrix magnitude) so QR is
         // scale-invariant — a fixed absolute constant mis-classifies every column of a uniformly
         // tiny-magnitude matrix as a zero column and silently produces a garbage decomposition.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -140,7 +140,7 @@ namespace LinearAlgebra
 
             // scale-relative zero-column threshold (see genHouseholderPete): keyed off the original
             // matrix magnitude so QR is scale-invariant. LInf(Q) == max |entry|.
-            double zeroThreshold = Consts.doubleZeroTreshold * doubleNormsOP.LInf(in Q);
+            double zeroThreshold = Consts.doubleZeroThreshold * doubleNormsOP.LInf(in Q);
 
             // forming R inside Q (will be copied into R later)
             // d = step and diagonal index
@@ -281,7 +281,7 @@ namespace LinearAlgebra
             var colNorm2 = new doubleN(n, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholderPete); LInf(Q) == max |entry|.
-            double zeroThreshold = Consts.doubleZeroTreshold * doubleNormsOP.LInf(in Q);
+            double zeroThreshold = Consts.doubleZeroThreshold * doubleNormsOP.LInf(in Q);
 
             for (int d = 0; d < n; d++)
             {
@@ -418,7 +418,7 @@ namespace LinearAlgebra
             var w = new doubleN(A.N_Cols, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholderPete); LInf(A) == max |entry|.
-            double zeroThreshold = Consts.doubleZeroTreshold * doubleNormsOP.LInf(in A);
+            double zeroThreshold = Consts.doubleZeroThreshold * doubleNormsOP.LInf(in A);
 
             double dotProduct = 0;
             // forming R inside Q (will be copied into R later)
@@ -466,7 +466,7 @@ namespace LinearAlgebra
         // (Businger-Golub, A·P = Q·R) to expose the numerical rank r: the R diagonal is
         // non-increasing, so r = count of leading entries with |R[i,i]| > tol where
         //     tol = relTol * |R[0,0]|
-        // and relTol defaults to max(m,n) * Consts.doubleZeroTreshold (matching SVD.pinvSolve /
+        // and relTol defaults to max(m,n) * Consts.doubleZeroThreshold (matching SVD.pinvSolve /
         // MatrixMetrics.rank, so rank detection agrees across the library). A negative relTol is
         // an "auto" sentinel that selects that same default.
         //
@@ -519,7 +519,7 @@ namespace LinearAlgebra
             // (same default as SVD.pinvSolve / MatrixMetrics.rank). This also makes the threshold
             // divide-safe (tol >= 0), so a stray negative can never inflate rank into a divide-by-tiny.
             if (relTol < (double)0)
-                relTol = (double)(math.max(m, n)) * Consts.doubleZeroTreshold;
+                relTol = (double)(math.max(m, n)) * Consts.doubleZeroThreshold;
 
             // Degenerate: zero-column system.
             if (n == 0) { rank = 0; return; }
@@ -584,7 +584,7 @@ namespace LinearAlgebra
         }
 
         // Default-tolerance overload: passes the auto sentinel (relTol < 0), so the primitive
-        // uses max(m,n) * Consts.doubleZeroTreshold (consistent with SVD.pinvSolve / MatrixMetrics.rank).
+        // uses max(m,n) * Consts.doubleZeroThreshold (consistent with SVD.pinvSolve / MatrixMetrics.rank).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void qrcpDirectSolve(ref doubleMxN A, ref doubleN b, ref doubleN x,
                                            ref doubleMxN Q, ref doubleMxN R, ref Pivot P,
@@ -616,7 +616,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Allocating convenience wrapper with default tolerance (max(m,n) * Consts.doubleZeroTreshold,
+        /// Allocating convenience wrapper with default tolerance (max(m,n) * Consts.doubleZeroThreshold,
         /// matching SVD.pinvSolve / MatrixMetrics.rank).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

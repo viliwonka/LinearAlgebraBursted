@@ -19,7 +19,7 @@ using Unity.Mathematics;
 // Burst-compatible computational tests live in TestJob; the managed-throw guard is a plain [Test].
 public class intQueryPredicateTests
 {
-    struct GreaterThanInt : IfintPredicate
+    struct GreaterThanInt : IintPredicate
     {
         public int t;
         public bool Test(int x) => x > t;

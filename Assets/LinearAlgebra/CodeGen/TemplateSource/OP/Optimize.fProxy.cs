@@ -81,13 +81,13 @@ namespace LinearAlgebra
             where F : struct, IfProxyScalarFunction
             => bisection(ref f, lo, hi, out root, xTol, (fProxy)0, 200);
 
-        /// <summary>bisection with default xTol (Consts.fProxyZeroTreshold), rTol (4 * Consts.fProxyEpsilon) and maxIter (200).</summary>
+        /// <summary>bisection with default xTol (Consts.fProxyZeroThreshold), rTol (4 * Consts.fProxyEpsilon) and maxIter (200).</summary>
         public static bool bisection<F>(ref F f, fProxy lo, fProxy hi, out fProxy root)
             where F : struct, IfProxyScalarFunction
-            => bisection(ref f, lo, hi, out root, Consts.fProxyZeroTreshold, (fProxy)4 * Consts.fProxyEpsilon, 200);
+            => bisection(ref f, lo, hi, out root, Consts.fProxyZeroThreshold, (fProxy)4 * Consts.fProxyEpsilon, 200);
 
         /// <summary>
-        /// Newton root find. Converged when |f(x)| &lt;= fTol. Returns false if |f'(x)| &lt; Consts.fProxyZeroTreshold (flat/badly-scaled, absolute guard) or maxIter exhausted; root holds last iterate.
+        /// Newton root find. Converged when |f(x)| &lt;= fTol. Returns false if |f'(x)| &lt; Consts.fProxyZeroThreshold (flat/badly-scaled, absolute guard) or maxIter exhausted; root holds last iterate.
         /// </summary>
         public static bool newtonRoot<F>(ref F f, fProxy x0, out fProxy root,
                                          fProxy fTol, int maxIter)
@@ -103,7 +103,7 @@ namespace LinearAlgebra
                 if (math.abs(fx) <= fTol) { root = x; return true; }
 
                 fProxy d = f.Derivative(x);
-                if (math.abs(d) < Consts.fProxyZeroTreshold) { root = x; return false; }
+                if (math.abs(d) < Consts.fProxyZeroThreshold) { root = x; return false; }
 
                 x = x - fx / d;
             }
@@ -118,10 +118,10 @@ namespace LinearAlgebra
             where F : struct, IfProxyScalarDerivativeFunction
             => newtonRoot(ref f, x0, out root, fTol, 100);
 
-        /// <summary>newtonRoot with default fTol (Consts.fProxyZeroTreshold) and maxIter (100).</summary>
+        /// <summary>newtonRoot with default fTol (Consts.fProxyZeroThreshold) and maxIter (100).</summary>
         public static bool newtonRoot<F>(ref F f, fProxy x0, out fProxy root)
             where F : struct, IfProxyScalarDerivativeFunction
-            => newtonRoot(ref f, x0, out root, Consts.fProxyZeroTreshold, 100);
+            => newtonRoot(ref f, x0, out root, Consts.fProxyZeroThreshold, 100);
 
         /// <summary>
         /// Golden-section minimization of unimodal f on [a, b]. xMin = midpoint of final bracket. Returns true when (b - a) &lt;= xTol within maxIter.
@@ -183,10 +183,10 @@ namespace LinearAlgebra
             where F : struct, IfProxyScalarFunction
             => goldenSection(ref f, a, b, out xMin, xTol, (fProxy)0, 200);
 
-        /// <summary>goldenSection with default xTol (Consts.fProxyZeroTreshold), rTol (3 * Consts.fProxySqrtEps) and maxIter (200).</summary>
+        /// <summary>goldenSection with default xTol (Consts.fProxyZeroThreshold), rTol (3 * Consts.fProxySqrtEps) and maxIter (200).</summary>
         public static bool goldenSection<F>(ref F f, fProxy a, fProxy b, out fProxy xMin)
             where F : struct, IfProxyScalarFunction
-            => goldenSection(ref f, a, b, out xMin, Consts.fProxyZeroTreshold, (fProxy)3 * Consts.fProxySqrtEps, 200);
+            => goldenSection(ref f, a, b, out xMin, Consts.fProxyZeroThreshold, (fProxy)3 * Consts.fProxySqrtEps, 200);
 
         // Fixed-step gradient descent, in-place on x. g is caller-provided scratch (length x.N). Does NOT allocate.
         // Iterates x -= learningRate * g until L2(g) <= gradTol or maxIter. Returns true if gradTol reached; iterations = performed count.

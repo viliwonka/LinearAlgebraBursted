@@ -699,7 +699,7 @@ public class fProxyOrthoColumnPivotTests
             var u = arena.fProxyVec(m);
             var x = arena.fProxyVec(n);
 
-            fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroTreshold;
+            fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroThreshold;
             OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, explicitTol);
 
             RecordEq(rank, 3);
@@ -769,7 +769,7 @@ public class fProxyOrthoColumnPivotTests
         }
 
         // (8) Auto sentinel: relTol = -1 must select the documented default
-        // (max(m,n)*Consts.fProxyZeroTreshold). Verify it produces the SAME rank and the SAME x as
+        // (max(m,n)*Consts.fProxyZeroThreshold). Verify it produces the SAME rank and the SAME x as
         // (a) the default overload and (b) the explicit positive default tolerance — bit-for-bit
         // (identical code path). Exercised on a rank-deficient system so rank/truncation matter.
         void AutoSentinel()
@@ -788,7 +788,7 @@ public class fProxyOrthoColumnPivotTests
             var xNeg = arena.fProxyVec(n);
             OrthoOP.qrcpDirectSolve(ref A, ref b, ref xNeg, out int rankNeg, (fProxy)(-1)); // sentinel
 
-            fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroTreshold;
+            fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroThreshold;
             var xExpl = arena.fProxyVec(n);
             OrthoOP.qrcpDirectSolve(ref A, ref b, ref xExpl, out int rankExpl, explicitTol);
 

@@ -172,7 +172,7 @@ public class fProxyEigenTests
         // ---------------------------------------------------------------------
 
         // 4x4 identity: every eigenvalue == 1, V orthogonal. Exact closed form, so
-        // eigenvalue tolerance 100*ZeroTreshold is comfortably above float Jacobi noise.
+        // eigenvalue tolerance 100*ZeroThreshold is comfortably above float Jacobi noise.
         public void EigenIdentity()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -188,9 +188,9 @@ public class fProxyEigenTests
             Assert.IsTrue(converged);
 
             for (int i = 0; i < n; i++)
-                AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroTreshold);
+                AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -216,14 +216,14 @@ public class fProxyEigenTests
 
             Assert.IsTrue(converged);
 
-            AssertClose(eig[0], (fProxy)5, (fProxy)100 * Consts.fProxyZeroTreshold);
-            AssertClose(eig[1], (fProxy)3, (fProxy)100 * Consts.fProxyZeroTreshold);
-            AssertClose(eig[2], (fProxy)0.5, (fProxy)100 * Consts.fProxyZeroTreshold);
-            AssertClose(eig[3], (fProxy)(-2), (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(eig[0], (fProxy)5, (fProxy)100 * Consts.fProxyZeroThreshold);
+            AssertClose(eig[1], (fProxy)3, (fProxy)100 * Consts.fProxyZeroThreshold);
+            AssertClose(eig[2], (fProxy)0.5, (fProxy)100 * Consts.fProxyZeroThreshold);
+            AssertClose(eig[3], (fProxy)(-2), (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertDescending(in eig, n);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -249,8 +249,8 @@ public class fProxyEigenTests
 
             Assert.IsTrue(converged);
 
-            AssertClose(eig[0], (fProxy)3, (fProxy)100 * Consts.fProxyZeroTreshold);
-            AssertClose(eig[1], (fProxy)1, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(eig[0], (fProxy)3, (fProxy)100 * Consts.fProxyZeroThreshold);
+            AssertClose(eig[1], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertDescending(in eig, n);
 
@@ -258,7 +258,7 @@ public class fProxyEigenTests
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
             // V orthogonal
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -266,7 +266,7 @@ public class fProxyEigenTests
         // 8x8 random symmetric (values ~ +-5). Check: converged, V orthogonal, eigenvalues
         // descending, per-eigenpair residual small (scaled by (1+|lambda|)), trace == sum lambda.
         // Residual/orthogonality tolerance scaled by matrix magnitude: 8x8 entries up to 5,
-        // float Jacobi residual ~ few * 1e-5 absolute -> 1000*ZeroTreshold*(1+|lambda|).
+        // float Jacobi residual ~ few * 1e-5 absolute -> 1000*ZeroThreshold*(1+|lambda|).
         public void EigenRandomSymmetric()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -295,7 +295,7 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)1000 * Consts.fProxyZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)1000 * Consts.fProxyZeroThreshold));
 
             AssertDescending(in eig, n);
 
@@ -309,14 +309,14 @@ public class fProxyEigenTests
             for (int i = 0; i < n; i++)
                 sumEig += eig[i];
             // trace magnitude up to ~8*5 = 40; allow magnitude-scaled tolerance.
-            AssertClose(trace, sumEig, (fProxy)1000 * Consts.fProxyZeroTreshold);
+            AssertClose(trace, sumEig, (fProxy)1000 * Consts.fProxyZeroThreshold);
 
             arena.Dispose();
         }
 
         // Same setup as EigenRandomSymmetric (different seed): reconstruct V*diag(lambda)*V^T
         // and compare to A_orig elementwise. Reconstruction error for float Jacobi on an
-        // 8x8 with entries up to ~5 lands around 1e-5..1e-4 absolute -> 1000*ZeroTreshold.
+        // 8x8 with entries up to ~5 lands around 1e-5..1e-4 absolute -> 1000*ZeroThreshold.
         public void EigenReconstruct()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -352,7 +352,7 @@ public class fProxyEigenTests
             if (Analysis.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
-            fProxy precision = (fProxy)1000 * Consts.fProxyZeroTreshold;
+            fProxy precision = (fProxy)1000 * Consts.fProxyZeroThreshold;
             fProxy zeroError = Analysis.MaxZeroError(shouldBeZero);
             if (!(zeroError <= precision) && Fail[0] == (fProxy)0)
             {
@@ -407,7 +407,7 @@ public class fProxyEigenTests
             Assert.IsTrue(converged);
 
             // eigenvalues all >= -tol (PSD)
-            fProxy negTol = (fProxy)1000 * Consts.fProxyZeroTreshold;
+            fProxy negTol = (fProxy)1000 * Consts.fProxyZeroThreshold;
             for (int i = 0; i < n; i++)
             {
                 bool nonNeg = eig[i] >= -negTol;
@@ -432,7 +432,7 @@ public class fProxyEigenTests
             for (int i = 0; i < n; i++)
             {
                 fProxy scale = (fProxy)1 + Unity.Mathematics.math.abs(S[i]);
-                fProxy tol = (fProxy)1000 * Consts.fProxyZeroTreshold * scale;
+                fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold * scale;
                 fProxy diff = Unity.Mathematics.math.abs(eig[i] - S[i]);
                 if (!(diff <= tol) && Fail[0] == (fProxy)0)
                 {
@@ -466,9 +466,9 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             for (int i = 0; i < n; i++)
-                AssertClose(eig[i], (fProxy)0, (fProxy)100 * Consts.fProxyZeroTreshold);
+                AssertClose(eig[i], (fProxy)0, (fProxy)100 * Consts.fProxyZeroThreshold);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -503,7 +503,7 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            fProxy tol = (fProxy)100 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)100 * Consts.fProxyZeroThreshold;
             // dominant eigenvalue == ‖v‖² = 15; the other three are exactly zero.
             AssertClose(eig[0], vv, tol * ((fProxy)1 + vv));
             for (int i = 1; i < n; i++)
@@ -538,7 +538,7 @@ public class fProxyEigenTests
             Assert.IsTrue(converged);
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
-            fProxy tol = (fProxy)100 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)100 * Consts.fProxyZeroThreshold;
             AssertClose(eig[0], (fProxy)3, tol * (fProxy)4);
             AssertClose(eig[1], (fProxy)3, tol * (fProxy)4);
             AssertClose(eig[2], (fProxy)0, tol * (fProxy)4); // singular: smallest eigenvalue is 0
@@ -553,7 +553,7 @@ public class fProxyEigenTests
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Clement matrix — symmetric tridiagonal with
         // zero diagonal whose eigenvalues are EXACTLY the integer-spaced set {n-1, n-3, ..., -(n-1)}
         // = {4, 2, 0, -2, -4} for n=5 (symmetric about 0, trace 0). Well-separated spectrum, so a
-        // 1000*ZeroTreshold absolute tolerance comfortably covers float Jacobi noise.
+        // 1000*ZeroThreshold absolute tolerance comfortably covers float Jacobi noise.
         public void EigenClement()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -571,7 +571,7 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            fProxy tol = (fProxy)1000 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold;
             AssertClose(eig[0], (fProxy)4, tol);
             AssertClose(eig[1], (fProxy)2, tol);
             AssertClose(eig[2], (fProxy)0, tol);
@@ -636,7 +636,7 @@ public class fProxyEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)1000 * Consts.fProxyZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)1000 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -663,7 +663,7 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             fProxy half = (fProxy)(Unity.Mathematics.math.PI_DBL * 0.5);
-            fProxy margin = (fProxy)1000 * Consts.fProxyZeroTreshold;
+            fProxy margin = (fProxy)1000 * Consts.fProxyZeroThreshold;
 
             for (int i = 0; i < n; i++)
             {
@@ -729,12 +729,12 @@ public class fProxyEigenTests
             var v = arena.fProxyVec(n);   // zero vector -> deterministic seeding
             var w = arena.fProxyVec(n);
 
-            fProxy tol = (fProxy)10 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 1000);
 
             Assert.IsTrue(ok);
             AssertFinite(lambda);
-            AssertClose(lambda, (fProxy)5, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(lambda, (fProxy)5, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertPowerResidual(in A, in v, lambda, tol, n);
 
@@ -756,15 +756,15 @@ public class fProxyEigenTests
             var v = arena.fProxyVec(n);
             var w = arena.fProxyVec(n);
 
-            fProxy tol = (fProxy)10 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 1000);
 
             Assert.IsTrue(ok);
             AssertFinite(lambda);
-            AssertClose(lambda, (fProxy)(-7), (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(lambda, (fProxy)(-7), (fProxy)100 * Consts.fProxyZeroThreshold);
 
             // eigenvector aligned with e0: |v[0]| ~= 1
-            AssertClose(Unity.Mathematics.math.abs(v[0]), (fProxy)1, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(Unity.Mathematics.math.abs(v[0]), (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertPowerResidual(in A, in v, lambda, tol, n);
 
@@ -809,7 +809,7 @@ public class fProxyEigenTests
             var v = arena.fProxyVec(n);
             var w = arena.fProxyVec(n);
 
-            fProxy tol = (fProxy)10 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in Apow, ref v, ref w, out fProxy lambda, tol, 2000);
 
             Assert.IsTrue(ok);
@@ -817,7 +817,7 @@ public class fProxyEigenTests
 
             // magnitude up to ~16; scale tolerance by (1+|reference|).
             fProxy scale = (fProxy)1 + Unity.Mathematics.math.abs(reference);
-            AssertClose(lambda, reference, (fProxy)1000 * Consts.fProxyZeroTreshold * scale);
+            AssertClose(lambda, reference, (fProxy)1000 * Consts.fProxyZeroThreshold * scale);
 
             arena.Dispose();
         }
@@ -837,7 +837,7 @@ public class fProxyEigenTests
             var v = arena.fProxyVec(n);
             var w = arena.fProxyVec(n);
 
-            fProxy tol = (fProxy)10 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 200);
 
             Assert.IsFalse(ok);
@@ -860,12 +860,12 @@ public class fProxyEigenTests
             var v = arena.fProxyVec(n);
             var w = arena.fProxyVec(n);
 
-            fProxy tol = (fProxy)10 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 1000);
 
             Assert.IsTrue(ok);
             AssertFinite(lambda);
-            AssertClose(lambda, (fProxy)0, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(lambda, (fProxy)0, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             arena.Dispose();
         }
@@ -875,7 +875,7 @@ public class fProxyEigenTests
         // ---------------------------------------------------------------------
 
         // n=5 identity: all eigenvalues exactly 1, sorted descending. Exact closed form ->
-        // 100*ZeroTreshold tolerance comfortably above QL noise. A is DESTROYED.
+        // 100*ZeroThreshold tolerance comfortably above QL noise. A is DESTROYED.
         public void EvSymIdentity()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -891,7 +891,7 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
             for (int i = 0; i < n; i++)
-                AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroTreshold);
+                AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertDescending(in eig, n);
 
@@ -922,7 +922,7 @@ public class fProxyEigenTests
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
-            fProxy tol = (fProxy)100 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)100 * Consts.fProxyZeroThreshold;
             AssertClose(eig[0], (fProxy)5, tol);
             AssertClose(eig[1], (fProxy)3, tol);
             AssertClose(eig[2], (fProxy)1, tol);
@@ -953,8 +953,8 @@ public class fProxyEigenTests
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
-            AssertClose(eig[0], (fProxy)3, (fProxy)100 * Consts.fProxyZeroTreshold);
-            AssertClose(eig[1], (fProxy)1, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(eig[0], (fProxy)3, (fProxy)100 * Consts.fProxyZeroThreshold);
+            AssertClose(eig[1], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertDescending(in eig, n);
 
@@ -976,7 +976,7 @@ public class fProxyEigenTests
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            AssertClose(eig[0], (fProxy)(-3.25), (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(eig[0], (fProxy)(-3.25), (fProxy)100 * Consts.fProxyZeroThreshold);
 
             arena.Dispose();
         }
@@ -1024,7 +1024,7 @@ public class fProxyEigenTests
             for (int i = 0; i < n; i++)
             {
                 fProxy scale = (fProxy)1 + Unity.Mathematics.math.abs(eigJac[i]);
-                fProxy tol = (fProxy)1000 * Consts.fProxyZeroTreshold * scale;
+                fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold * scale;
                 fProxy diff = Unity.Mathematics.math.abs(eigQL[i] - eigJac[i]);
                 if (!(diff <= tol) && Fail[0] == (fProxy)0)
                 {
@@ -1041,7 +1041,7 @@ public class fProxyEigenTests
 
         // LITERATURE KNOWN-ANSWER: n=6 path-graph (1D Laplacian) tridiagonal with diag 2 and
         // off-diagonal -1. Eigenvalues are EXACTLY lambda_k = 2 - 2*cos(k*pi/(n+1)), k=1..n. Sorted
-        // descending corresponds to k = n, n-1, ..., 1. Well-separated spectrum -> 1000*ZeroTreshold
+        // descending corresponds to k = n, n-1, ..., 1. Well-separated spectrum -> 1000*ZeroThreshold
         // absolute tolerance covers float QL noise.
         public void EvSymLaplacian()
         {
@@ -1067,7 +1067,7 @@ public class fProxyEigenTests
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
-            fProxy tol = (fProxy)1000 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold;
             // descending order: eig[i] corresponds to k = n - i.
             for (int i = 0; i < n; i++)
             {
@@ -1086,7 +1086,7 @@ public class fProxyEigenTests
         // ---------------------------------------------------------------------
 
         // n=5 identity: every eigenvalue exactly 1, V orthogonal. Exact closed form so
-        // 100*ZeroTreshold comfortably covers any QL noise. A is DESTROYED.
+        // 100*ZeroThreshold comfortably covers any QL noise. A is DESTROYED.
         public void EsymIdentity()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1104,11 +1104,11 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             for (int i = 0; i < n; i++)
-                AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroTreshold);
+                AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertDescending(in eig, n);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -1141,7 +1141,7 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            fProxy tol = (fProxy)100 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)100 * Consts.fProxyZeroThreshold;
             AssertClose(eig[0], (fProxy)5, tol);
             AssertClose(eig[1], (fProxy)3, tol);
             AssertClose(eig[2], (fProxy)0.5, tol);
@@ -1151,7 +1151,7 @@ public class fProxyEigenTests
             AssertDescending(in eig, n);
 
             // V a permutation of identity -> check A = V diag(eig) V^T rather than exact V.
-            AssertReconstruction(in Aorig, in V, in eig, n, (fProxy)1000 * Consts.fProxyZeroTreshold);
+            AssertReconstruction(in Aorig, in V, in eig, n, (fProxy)1000 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
 
@@ -1179,14 +1179,14 @@ public class fProxyEigenTests
 
             Assert.IsTrue(ok);
 
-            AssertClose(eig[0], (fProxy)3, (fProxy)100 * Consts.fProxyZeroTreshold);
-            AssertClose(eig[1], (fProxy)1, (fProxy)100 * Consts.fProxyZeroTreshold);
+            AssertClose(eig[0], (fProxy)3, (fProxy)100 * Consts.fProxyZeroThreshold);
+            AssertClose(eig[1], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertDescending(in eig, n);
 
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -1215,7 +1215,7 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            AssertReconstruction(in Aorig, in V, in eig, n, (fProxy)1000 * Consts.fProxyZeroTreshold);
+            AssertReconstruction(in Aorig, in V, in eig, n, (fProxy)1000 * Consts.fProxyZeroThreshold);
 
             arena.Dispose();
         }
@@ -1242,7 +1242,7 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             // Explicit ||V^T V - I||_max check (Analysis.IsOrthogonal also asserted for parity).
-            fProxy precision = (fProxy)1000 * Consts.fProxyZeroTreshold;
+            fProxy precision = (fProxy)1000 * Consts.fProxyZeroThreshold;
             fProxy maxErr = (fProxy)0;
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
@@ -1332,7 +1332,7 @@ public class fProxyEigenTests
             for (int i = 0; i < n; i++)
             {
                 fProxy scale = (fProxy)1 + Unity.Mathematics.math.abs(eigVal[i]);
-                fProxy tol = (fProxy)1000 * Consts.fProxyZeroTreshold * scale;
+                fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold * scale;
                 fProxy diff = Unity.Mathematics.math.abs(eigSym[i] - eigVal[i]);
                 if (!(diff <= tol) && Fail[0] == (fProxy)0)
                 {
@@ -1379,7 +1379,7 @@ public class fProxyEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            fProxy tol = (fProxy)1000 * Consts.fProxyZeroTreshold;
+            fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold;
             for (int i = 0; i < n; i++)
             {
                 int k = n - i;
@@ -1438,7 +1438,7 @@ public class fProxyEigenTests
         }
 
         // For every eigenpair (lambda_k = eig[k], v_k = column k of V), assert
-        // ||A*v_k - lambda_k*v_k||_inf <= 1000*ZeroTreshold * (1 + |lambda_k|).
+        // ||A*v_k - lambda_k*v_k||_inf <= 1000*ZeroThreshold * (1 + |lambda_k|).
         private void AssertEigenResidual(in fProxyMxN A, in fProxyMxN V, in fProxyN eig, int n)
         {
             for (int k = 0; k < n; k++)
@@ -1454,7 +1454,7 @@ public class fProxyEigenTests
                     if (ri > maxRes)
                         maxRes = ri;
                 }
-                fProxy tol = (fProxy)1000 * Consts.fProxyZeroTreshold * ((fProxy)1 + Unity.Mathematics.math.abs(lambda));
+                fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold * ((fProxy)1 + Unity.Mathematics.math.abs(lambda));
                 if (!(maxRes <= tol) && Fail[0] == (fProxy)0)
                 {
                     Fail[0] = (fProxy)1;
@@ -1500,7 +1500,7 @@ public class fProxyEigenTests
         {
             for (int i = 1; i < n; i++)
             {
-                bool descending = eig[i] <= eig[i - 1] + (fProxy)100 * Consts.fProxyZeroTreshold;
+                bool descending = eig[i] <= eig[i - 1] + (fProxy)100 * Consts.fProxyZeroThreshold;
                 if (!descending && Fail[0] == (fProxy)0)
                 {
                     Fail[0] = (fProxy)1;
@@ -1754,7 +1754,7 @@ public class fProxyEigenTests
         var w = arena.fProxyVec(4);
 
         Assert.Catch<ArgumentException>(() =>
-            Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroTreshold, 1000));
+            Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroThreshold, 1000));
 
         arena.Dispose();
     }
@@ -1769,7 +1769,7 @@ public class fProxyEigenTests
         var w = arena.fProxyVec(4);
 
         Assert.Catch<ArgumentException>(() =>
-            Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroTreshold, 1000));
+            Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroThreshold, 1000));
 
         arena.Dispose();
     }
@@ -1784,7 +1784,7 @@ public class fProxyEigenTests
         var w = arena.fProxyVec(3);
 
         Assert.Catch<ArgumentException>(() =>
-            Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroTreshold, 1000));
+            Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroThreshold, 1000));
 
         arena.Dispose();
     }
@@ -1799,7 +1799,7 @@ public class fProxyEigenTests
         var w = arena.fProxyVec(4);
 
         Assert.Catch<ArgumentException>(() =>
-            Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroTreshold, 0));
+            Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, Consts.fProxyZeroThreshold, 0));
 
         arena.Dispose();
     }

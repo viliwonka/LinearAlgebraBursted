@@ -81,13 +81,13 @@ namespace LinearAlgebra
             where F : struct, IfloatScalarFunction
             => bisection(ref f, lo, hi, out root, xTol, (float)0, 200);
 
-        /// <summary>bisection with default xTol (Consts.floatZeroTreshold), rTol (4 * Consts.floatEpsilon) and maxIter (200).</summary>
+        /// <summary>bisection with default xTol (Consts.floatZeroThreshold), rTol (4 * Consts.floatEpsilon) and maxIter (200).</summary>
         public static bool bisection<F>(ref F f, float lo, float hi, out float root)
             where F : struct, IfloatScalarFunction
-            => bisection(ref f, lo, hi, out root, Consts.floatZeroTreshold, (float)4 * Consts.floatEpsilon, 200);
+            => bisection(ref f, lo, hi, out root, Consts.floatZeroThreshold, (float)4 * Consts.floatEpsilon, 200);
 
         /// <summary>
-        /// Newton root find. Converged when |f(x)| &lt;= fTol. Returns false if |f'(x)| &lt; Consts.floatZeroTreshold (flat/badly-scaled, absolute guard) or maxIter exhausted; root holds last iterate.
+        /// Newton root find. Converged when |f(x)| &lt;= fTol. Returns false if |f'(x)| &lt; Consts.floatZeroThreshold (flat/badly-scaled, absolute guard) or maxIter exhausted; root holds last iterate.
         /// </summary>
         public static bool newtonRoot<F>(ref F f, float x0, out float root,
                                          float fTol, int maxIter)
@@ -103,7 +103,7 @@ namespace LinearAlgebra
                 if (math.abs(fx) <= fTol) { root = x; return true; }
 
                 float d = f.Derivative(x);
-                if (math.abs(d) < Consts.floatZeroTreshold) { root = x; return false; }
+                if (math.abs(d) < Consts.floatZeroThreshold) { root = x; return false; }
 
                 x = x - fx / d;
             }
@@ -118,10 +118,10 @@ namespace LinearAlgebra
             where F : struct, IfloatScalarDerivativeFunction
             => newtonRoot(ref f, x0, out root, fTol, 100);
 
-        /// <summary>newtonRoot with default fTol (Consts.floatZeroTreshold) and maxIter (100).</summary>
+        /// <summary>newtonRoot with default fTol (Consts.floatZeroThreshold) and maxIter (100).</summary>
         public static bool newtonRoot<F>(ref F f, float x0, out float root)
             where F : struct, IfloatScalarDerivativeFunction
-            => newtonRoot(ref f, x0, out root, Consts.floatZeroTreshold, 100);
+            => newtonRoot(ref f, x0, out root, Consts.floatZeroThreshold, 100);
 
         /// <summary>
         /// Golden-section minimization of unimodal f on [a, b]. xMin = midpoint of final bracket. Returns true when (b - a) &lt;= xTol within maxIter.
@@ -183,10 +183,10 @@ namespace LinearAlgebra
             where F : struct, IfloatScalarFunction
             => goldenSection(ref f, a, b, out xMin, xTol, (float)0, 200);
 
-        /// <summary>goldenSection with default xTol (Consts.floatZeroTreshold), rTol (3 * Consts.floatSqrtEps) and maxIter (200).</summary>
+        /// <summary>goldenSection with default xTol (Consts.floatZeroThreshold), rTol (3 * Consts.floatSqrtEps) and maxIter (200).</summary>
         public static bool goldenSection<F>(ref F f, float a, float b, out float xMin)
             where F : struct, IfloatScalarFunction
-            => goldenSection(ref f, a, b, out xMin, Consts.floatZeroTreshold, (float)3 * Consts.floatSqrtEps, 200);
+            => goldenSection(ref f, a, b, out xMin, Consts.floatZeroThreshold, (float)3 * Consts.floatSqrtEps, 200);
 
         // Fixed-step gradient descent, in-place on x. g is caller-provided scratch (length x.N). Does NOT allocate.
         // Iterates x -= learningRate * g until L2(g) <= gradTol or maxIter. Returns true if gradTol reached; iterations = performed count.

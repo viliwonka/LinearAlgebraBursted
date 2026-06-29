@@ -22,7 +22,7 @@ namespace LinearAlgebra
         /// caller-allocated) receive those vectors (orthonormal); the RETURN VALUE is dim = n - rank.
         /// Remaining columns of basis are left untouched.
         ///
-        /// relTol &lt; 0 selects the auto tolerance max(m, n) * Consts.doubleZeroTreshold; a singular
+        /// relTol &lt; 0 selects the auto tolerance max(m, n) * Consts.doubleZeroThreshold; a singular
         /// value S[j] &lt;= relTol * S[0] counts as zero. A is NOT modified. <paramref name="converged"/>
         /// is the SVD's convergence flag — when false the result is 0 and basis is untouched. Allocates
         /// SVD scratch (m x n + n x n + n) from A's arena.
@@ -53,7 +53,7 @@ namespace LinearAlgebra
                 return 0;
 
             if (relTol < (double)0)
-                relTol = (double)math.max(m, n) * Consts.doubleZeroTreshold;
+                relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
             double tol = relTol * S[0];
 
             // S is descending, so the negligible singular values are the trailing ones; compact their
@@ -114,7 +114,7 @@ namespace LinearAlgebra
                 return 0;
 
             if (relTol < (double)0)
-                relTol = (double)math.max(m, n) * Consts.doubleZeroTreshold;
+                relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
             double tol = relTol * S[0];
 
             // S is descending, so the significant singular values are the leading ones (columns

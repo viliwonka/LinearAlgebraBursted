@@ -172,7 +172,7 @@ namespace LinearAlgebra
             var vVec    = new doubleN(n, Allocator.Temp, false);
             var wScratch = new doubleN(n, Allocator.Temp, false);
 
-            double zeroThreshold = Consts.doubleZeroTreshold * doubleNormsOP.LInf(in A);
+            double zeroThreshold = Consts.doubleZeroThreshold * doubleNormsOP.LInf(in A);
 
             // ---- Forward sweep: reduce W to upper bidiagonal form ----
             for (int k = 0; k < n; k++)
@@ -276,7 +276,7 @@ namespace LinearAlgebra
             var vVec     = new doubleN(n, Allocator.Temp, false);
             var wScratch = new doubleN(n, Allocator.Temp, false);
 
-            double zeroThreshold = Consts.doubleZeroTreshold * doubleNormsOP.LInf(in A);
+            double zeroThreshold = Consts.doubleZeroThreshold * doubleNormsOP.LInf(in A);
 
             for (int k = 0; k < n; k++)
             {

@@ -137,18 +137,18 @@ public class floatOptimizeTests
         }
 
         // bisection on (x-3)^2 - 4 over [3, 10]: f(3) = -4 < 0, f(10) = 45 > 0, root = 5.
-        // xTol = 10 * ZeroTreshold (1e-5 float / 1e-13 double): stays above the ulp
+        // xTol = 10 * ZeroThreshold (1e-5 float / 1e-13 double): stays above the ulp
         // near |x| ~ 5 in each precision, so the interval width is actually reachable.
         public void BisectionParabola()
         {
             var fn = new ShiftedParabola();
 
             bool ok = Optimize.bisection(ref fn, (float)3, (float)10, out float root,
-                                         (float)10 * Consts.floatZeroTreshold);
+                                         (float)10 * Consts.floatZeroThreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
-            AssertClose(root, (float)5, (float)100 * Consts.floatZeroTreshold);
+            AssertClose(root, (float)5, (float)100 * Consts.floatZeroThreshold);
         }
 
         // Non-bracketing interval [6, 10]: f(6) = 5 > 0, f(10) = 45 > 0, both positive -> false.
@@ -162,24 +162,24 @@ public class floatOptimizeTests
             AssertFinite(root);
             // root must be the endpoint with the smaller |f|; |f(6)| = 5 < |f(10)| = 45 -> 6.
             // The endpoint is returned unchanged, so this is exact in both precisions.
-            AssertClose(root, (float)6, Consts.floatZeroTreshold);
+            AssertClose(root, (float)6, Consts.floatZeroThreshold);
         }
 
         // cos(x) over [0, 3]: f(0) = 1 > 0, f(3) ~ -0.99 < 0, root = pi/2.
-        // xTol = 10 * ZeroTreshold (1e-5 float / 1e-13 double): the interval can never
+        // xTol = 10 * ZeroThreshold (1e-5 float / 1e-13 double): the interval can never
         // shrink below ~2 ulp near pi/2, so xTol must stay above that in each precision.
         public void BisectionCos()
         {
             var fn = new Cos();
 
             bool ok = Optimize.bisection(ref fn, (float)0, (float)3, out float root,
-                                         (float)10 * Consts.floatZeroTreshold);
+                                         (float)10 * Consts.floatZeroThreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
             // full-precision pi/2 literal: math.PI is a float constant whose error (~4.4e-8)
             // would dominate the double-precision tolerance (1e-12)
-            AssertClose(root, (float)1.5707963267948966, (float)100 * Consts.floatZeroTreshold);
+            AssertClose(root, (float)1.5707963267948966, (float)100 * Consts.floatZeroThreshold);
         }
 
         // Newton on x^2 - 2 from x0 = 1: converges to sqrt(2).
@@ -191,10 +191,10 @@ public class floatOptimizeTests
 
             Assert.IsTrue(ok);
             AssertFinite(root);
-            AssertClose(root, (float)1.4142135623730951, (float)100 * Consts.floatZeroTreshold);
+            AssertClose(root, (float)1.4142135623730951, (float)100 * Consts.floatZeroThreshold);
 
-            // |f(root)| must be within the convergence tolerance (default fTol = ZeroTreshold).
-            Assert.IsTrue(Unity.Mathematics.math.abs(fn.Eval(root)) <= Consts.floatZeroTreshold);
+            // |f(root)| must be within the convergence tolerance (default fTol = ZeroThreshold).
+            Assert.IsTrue(Unity.Mathematics.math.abs(fn.Eval(root)) <= Consts.floatZeroThreshold);
         }
 
         // Newton with a flat (zero) derivative -> must return false, root finite (no NaN).
@@ -217,7 +217,7 @@ public class floatOptimizeTests
             var fn = new ParabolaMin();
 
             bool ok = Optimize.goldenSection(ref fn, (float)(-5), (float)5, out float xMin,
-                                             (float)10 * Consts.floatZeroTreshold);
+                                             (float)10 * Consts.floatZeroThreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(xMin);
@@ -231,7 +231,7 @@ public class floatOptimizeTests
             var fn = new Cos();
 
             bool ok = Optimize.goldenSection(ref fn, (float)2, (float)4, out float xMin,
-                                             (float)10 * Consts.floatZeroTreshold);
+                                             (float)10 * Consts.floatZeroThreshold);
 
             Assert.IsTrue(ok);
             AssertFinite(xMin);

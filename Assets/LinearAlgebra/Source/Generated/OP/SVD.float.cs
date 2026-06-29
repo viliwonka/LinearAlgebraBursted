@@ -207,16 +207,16 @@ namespace LinearAlgebra
         // The default-argument overloads forward to the deprecated primitive; suppress the
         // self-referential obsolete warning (618) on the forwarding calls.
 #pragma warning disable 618
-        /// <summary>svdDecomposition with default eps (Consts.floatZeroTreshold).</summary>
+        /// <summary>svdDecomposition with default eps (Consts.floatZeroThreshold).</summary>
         [System.Obsolete("Prefer SVD.svdGolubKahan (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref floatMxN U, ref floatN S, ref floatMxN V,
                                             int maxSweeps)
-            => svdDecomposition(ref U, ref S, ref V, maxSweeps, Consts.floatZeroTreshold);
+            => svdDecomposition(ref U, ref S, ref V, maxSweeps, Consts.floatZeroThreshold);
 
-        /// <summary>svdDecomposition with default maxSweeps (30) and eps (Consts.floatZeroTreshold).</summary>
+        /// <summary>svdDecomposition with default maxSweeps (30) and eps (Consts.floatZeroThreshold).</summary>
         [System.Obsolete("Prefer SVD.svdGolubKahan (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref floatMxN U, ref floatN S, ref floatMxN V)
-            => svdDecomposition(ref U, ref S, ref V, 30, Consts.floatZeroTreshold);
+            => svdDecomposition(ref U, ref S, ref V, 30, Consts.floatZeroThreshold);
 #pragma warning restore 618
 
         /// <summary>
@@ -277,9 +277,9 @@ namespace LinearAlgebra
             return ok;
         }
 
-        /// <summary>svdValues with default maxIter (75) and eps (Consts.floatZeroTreshold).</summary>
+        /// <summary>svdValues with default maxIter (75) and eps (Consts.floatZeroThreshold).</summary>
         public static bool svdValues(in floatMxN A, ref floatN S)
-            => svdValues(in A, ref S, 75, Consts.floatZeroTreshold);
+            => svdValues(in A, ref S, 75, Consts.floatZeroThreshold);
 
         // pythag(a,b) = sqrt(a^2 + b^2) without destructive under/overflow.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -393,14 +393,14 @@ namespace LinearAlgebra
             return ok;
         }
 
-        /// <summary>svdGolubKahan with default eps (Consts.floatZeroTreshold).</summary>
+        /// <summary>svdGolubKahan with default eps (Consts.floatZeroThreshold).</summary>
         public static bool svdGolubKahan(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
                                          int maxIter)
-            => svdGolubKahan(in A, ref U, ref S, ref V, maxIter, Consts.floatZeroTreshold);
+            => svdGolubKahan(in A, ref U, ref S, ref V, maxIter, Consts.floatZeroThreshold);
 
-        /// <summary>svdGolubKahan with default maxIter (75) and eps (Consts.floatZeroTreshold).</summary>
+        /// <summary>svdGolubKahan with default maxIter (75) and eps (Consts.floatZeroThreshold).</summary>
         public static bool svdGolubKahan(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V)
-            => svdGolubKahan(in A, ref U, ref S, ref V, 75, Consts.floatZeroTreshold);
+            => svdGolubKahan(in A, ref U, ref S, ref V, 75, Consts.floatZeroThreshold);
 
         // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (diagonal d, superdiagonal e
         // with e[0]=0), accumulating left rotations into Ut (n x m) ROWS and right rotations into Vt

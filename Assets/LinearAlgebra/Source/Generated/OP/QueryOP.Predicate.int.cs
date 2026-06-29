@@ -11,7 +11,7 @@ namespace LinearAlgebra
     // Group A — Flat / scalar predicate ops (generic T + P):
     //   findFirst, count, any, all, findAll.
     // Constraint: where T : unmanaged, IUnsafeintArray
-    //             where P : struct, IfintPredicate
+    //             where P : struct, IintPredicate
     public static partial class intQueryOP
     {
         // -------------------------------------------------------------------------
@@ -26,7 +26,7 @@ namespace LinearAlgebra
         /// </summary>
         public static int findFirst<T, P>(in T x, ref P pred)
             where T : unmanaged, IUnsafeintArray
-            where P : struct, IfintPredicate
+            where P : struct, IintPredicate
         {
             for (int i = 0; i < x.Data.Length; i++)
                 if (pred.Test(x.Data[i])) return i;
@@ -39,7 +39,7 @@ namespace LinearAlgebra
         /// </summary>
         public static int count<T, P>(in T x, ref P pred)
             where T : unmanaged, IUnsafeintArray
-            where P : struct, IfintPredicate
+            where P : struct, IintPredicate
         {
             int c = 0;
             for (int i = 0; i < x.Data.Length; i++)
@@ -53,7 +53,7 @@ namespace LinearAlgebra
         /// </summary>
         public static bool any<T, P>(in T x, ref P pred)
             where T : unmanaged, IUnsafeintArray
-            where P : struct, IfintPredicate
+            where P : struct, IintPredicate
         {
             for (int i = 0; i < x.Data.Length; i++)
                 if (pred.Test(x.Data[i])) return true;
@@ -66,7 +66,7 @@ namespace LinearAlgebra
         /// </summary>
         public static bool all<T, P>(in T x, ref P pred)
             where T : unmanaged, IUnsafeintArray
-            where P : struct, IfintPredicate
+            where P : struct, IintPredicate
         {
             for (int i = 0; i < x.Data.Length; i++)
                 if (!pred.Test(x.Data[i])) return false;
@@ -81,7 +81,7 @@ namespace LinearAlgebra
         /// </summary>
         public static int findAll<T, P>(in T x, ref P pred, ref Indices idx)
             where T : unmanaged, IUnsafeintArray
-            where P : struct, IfintPredicate
+            where P : struct, IintPredicate
         {
             if (idx.N < x.Data.Length)
                 throw new System.ArgumentException("QueryOP.findAll: idx.N must be >= x.Data.Length");

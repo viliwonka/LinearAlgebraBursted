@@ -91,7 +91,7 @@ namespace LinearAlgebra
 
         public static void Spy(in fProxyMxN m) => Spy(m, 0.01f);
 
-        public static void Spy(in fProxyMxN m, fProxy absTreshold)
+        public static void Spy(in fProxyMxN m, fProxy absThreshold)
         {
             FixedString4096Bytes str = new FixedString4096Bytes();
 
@@ -112,7 +112,7 @@ namespace LinearAlgebra
                 for (int c = 0; c < dimCols; c++)
                 {
                     fProxy element = math.abs(m[r, c]);
-                    if (element >= absTreshold)
+                    if (element >= absThreshold)
                         str.Append('X');
                     else 
                         str.Append(' ');

@@ -172,7 +172,7 @@ public class doubleEigenTests
         // ---------------------------------------------------------------------
 
         // 4x4 identity: every eigenvalue == 1, V orthogonal. Exact closed form, so
-        // eigenvalue tolerance 100*ZeroTreshold is comfortably above float Jacobi noise.
+        // eigenvalue tolerance 100*ZeroThreshold is comfortably above float Jacobi noise.
         public void EigenIdentity()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -188,9 +188,9 @@ public class doubleEigenTests
             Assert.IsTrue(converged);
 
             for (int i = 0; i < n; i++)
-                AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroTreshold);
+                AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -216,14 +216,14 @@ public class doubleEigenTests
 
             Assert.IsTrue(converged);
 
-            AssertClose(eig[0], (double)5, (double)100 * Consts.doubleZeroTreshold);
-            AssertClose(eig[1], (double)3, (double)100 * Consts.doubleZeroTreshold);
-            AssertClose(eig[2], (double)0.5, (double)100 * Consts.doubleZeroTreshold);
-            AssertClose(eig[3], (double)(-2), (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(eig[0], (double)5, (double)100 * Consts.doubleZeroThreshold);
+            AssertClose(eig[1], (double)3, (double)100 * Consts.doubleZeroThreshold);
+            AssertClose(eig[2], (double)0.5, (double)100 * Consts.doubleZeroThreshold);
+            AssertClose(eig[3], (double)(-2), (double)100 * Consts.doubleZeroThreshold);
 
             AssertDescending(in eig, n);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -249,8 +249,8 @@ public class doubleEigenTests
 
             Assert.IsTrue(converged);
 
-            AssertClose(eig[0], (double)3, (double)100 * Consts.doubleZeroTreshold);
-            AssertClose(eig[1], (double)1, (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(eig[0], (double)3, (double)100 * Consts.doubleZeroThreshold);
+            AssertClose(eig[1], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertDescending(in eig, n);
 
@@ -258,7 +258,7 @@ public class doubleEigenTests
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
             // V orthogonal
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -266,7 +266,7 @@ public class doubleEigenTests
         // 8x8 random symmetric (values ~ +-5). Check: converged, V orthogonal, eigenvalues
         // descending, per-eigenpair residual small (scaled by (1+|lambda|)), trace == sum lambda.
         // Residual/orthogonality tolerance scaled by matrix magnitude: 8x8 entries up to 5,
-        // float Jacobi residual ~ few * 1e-5 absolute -> 1000*ZeroTreshold*(1+|lambda|).
+        // float Jacobi residual ~ few * 1e-5 absolute -> 1000*ZeroThreshold*(1+|lambda|).
         public void EigenRandomSymmetric()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -295,7 +295,7 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1000 * Consts.doubleZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1000 * Consts.doubleZeroThreshold));
 
             AssertDescending(in eig, n);
 
@@ -309,14 +309,14 @@ public class doubleEigenTests
             for (int i = 0; i < n; i++)
                 sumEig += eig[i];
             // trace magnitude up to ~8*5 = 40; allow magnitude-scaled tolerance.
-            AssertClose(trace, sumEig, (double)1000 * Consts.doubleZeroTreshold);
+            AssertClose(trace, sumEig, (double)1000 * Consts.doubleZeroThreshold);
 
             arena.Dispose();
         }
 
         // Same setup as EigenRandomSymmetric (different seed): reconstruct V*diag(lambda)*V^T
         // and compare to A_orig elementwise. Reconstruction error for float Jacobi on an
-        // 8x8 with entries up to ~5 lands around 1e-5..1e-4 absolute -> 1000*ZeroTreshold.
+        // 8x8 with entries up to ~5 lands around 1e-5..1e-4 absolute -> 1000*ZeroThreshold.
         public void EigenReconstruct()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -352,7 +352,7 @@ public class doubleEigenTests
             if (Analysis.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
-            double precision = (double)1000 * Consts.doubleZeroTreshold;
+            double precision = (double)1000 * Consts.doubleZeroThreshold;
             double zeroError = Analysis.MaxZeroError(shouldBeZero);
             if (!(zeroError <= precision) && Fail[0] == (double)0)
             {
@@ -407,7 +407,7 @@ public class doubleEigenTests
             Assert.IsTrue(converged);
 
             // eigenvalues all >= -tol (PSD)
-            double negTol = (double)1000 * Consts.doubleZeroTreshold;
+            double negTol = (double)1000 * Consts.doubleZeroThreshold;
             for (int i = 0; i < n; i++)
             {
                 bool nonNeg = eig[i] >= -negTol;
@@ -432,7 +432,7 @@ public class doubleEigenTests
             for (int i = 0; i < n; i++)
             {
                 double scale = (double)1 + Unity.Mathematics.math.abs(S[i]);
-                double tol = (double)1000 * Consts.doubleZeroTreshold * scale;
+                double tol = (double)1000 * Consts.doubleZeroThreshold * scale;
                 double diff = Unity.Mathematics.math.abs(eig[i] - S[i]);
                 if (!(diff <= tol) && Fail[0] == (double)0)
                 {
@@ -466,9 +466,9 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             for (int i = 0; i < n; i++)
-                AssertClose(eig[i], (double)0, (double)100 * Consts.doubleZeroTreshold);
+                AssertClose(eig[i], (double)0, (double)100 * Consts.doubleZeroThreshold);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -503,7 +503,7 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            double tol = (double)100 * Consts.doubleZeroTreshold;
+            double tol = (double)100 * Consts.doubleZeroThreshold;
             // dominant eigenvalue == ‖v‖² = 15; the other three are exactly zero.
             AssertClose(eig[0], vv, tol * ((double)1 + vv));
             for (int i = 1; i < n; i++)
@@ -538,7 +538,7 @@ public class doubleEigenTests
             Assert.IsTrue(converged);
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
-            double tol = (double)100 * Consts.doubleZeroTreshold;
+            double tol = (double)100 * Consts.doubleZeroThreshold;
             AssertClose(eig[0], (double)3, tol * (double)4);
             AssertClose(eig[1], (double)3, tol * (double)4);
             AssertClose(eig[2], (double)0, tol * (double)4); // singular: smallest eigenvalue is 0
@@ -553,7 +553,7 @@ public class doubleEigenTests
         // GALLERY KNOWN-ANSWER (Gallery.Special): n=5 Clement matrix — symmetric tridiagonal with
         // zero diagonal whose eigenvalues are EXACTLY the integer-spaced set {n-1, n-3, ..., -(n-1)}
         // = {4, 2, 0, -2, -4} for n=5 (symmetric about 0, trace 0). Well-separated spectrum, so a
-        // 1000*ZeroTreshold absolute tolerance comfortably covers float Jacobi noise.
+        // 1000*ZeroThreshold absolute tolerance comfortably covers float Jacobi noise.
         public void EigenClement()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -571,7 +571,7 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            double tol = (double)1000 * Consts.doubleZeroTreshold;
+            double tol = (double)1000 * Consts.doubleZeroThreshold;
             AssertClose(eig[0], (double)4, tol);
             AssertClose(eig[1], (double)2, tol);
             AssertClose(eig[2], (double)0, tol);
@@ -636,7 +636,7 @@ public class doubleEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1000 * Consts.doubleZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1000 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -663,7 +663,7 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             double half = (double)(Unity.Mathematics.math.PI_DBL * 0.5);
-            double margin = (double)1000 * Consts.doubleZeroTreshold;
+            double margin = (double)1000 * Consts.doubleZeroThreshold;
 
             for (int i = 0; i < n; i++)
             {
@@ -729,12 +729,12 @@ public class doubleEigenTests
             var v = arena.doubleVec(n);   // zero vector -> deterministic seeding
             var w = arena.doubleVec(n);
 
-            double tol = (double)10 * Consts.doubleZeroTreshold;
+            double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out double lambda, tol, 1000);
 
             Assert.IsTrue(ok);
             AssertFinite(lambda);
-            AssertClose(lambda, (double)5, (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(lambda, (double)5, (double)100 * Consts.doubleZeroThreshold);
 
             AssertPowerResidual(in A, in v, lambda, tol, n);
 
@@ -756,15 +756,15 @@ public class doubleEigenTests
             var v = arena.doubleVec(n);
             var w = arena.doubleVec(n);
 
-            double tol = (double)10 * Consts.doubleZeroTreshold;
+            double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out double lambda, tol, 1000);
 
             Assert.IsTrue(ok);
             AssertFinite(lambda);
-            AssertClose(lambda, (double)(-7), (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(lambda, (double)(-7), (double)100 * Consts.doubleZeroThreshold);
 
             // eigenvector aligned with e0: |v[0]| ~= 1
-            AssertClose(Unity.Mathematics.math.abs(v[0]), (double)1, (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(Unity.Mathematics.math.abs(v[0]), (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertPowerResidual(in A, in v, lambda, tol, n);
 
@@ -809,7 +809,7 @@ public class doubleEigenTests
             var v = arena.doubleVec(n);
             var w = arena.doubleVec(n);
 
-            double tol = (double)10 * Consts.doubleZeroTreshold;
+            double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in Apow, ref v, ref w, out double lambda, tol, 2000);
 
             Assert.IsTrue(ok);
@@ -817,7 +817,7 @@ public class doubleEigenTests
 
             // magnitude up to ~16; scale tolerance by (1+|reference|).
             double scale = (double)1 + Unity.Mathematics.math.abs(reference);
-            AssertClose(lambda, reference, (double)1000 * Consts.doubleZeroTreshold * scale);
+            AssertClose(lambda, reference, (double)1000 * Consts.doubleZeroThreshold * scale);
 
             arena.Dispose();
         }
@@ -837,7 +837,7 @@ public class doubleEigenTests
             var v = arena.doubleVec(n);
             var w = arena.doubleVec(n);
 
-            double tol = (double)10 * Consts.doubleZeroTreshold;
+            double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out double lambda, tol, 200);
 
             Assert.IsFalse(ok);
@@ -860,12 +860,12 @@ public class doubleEigenTests
             var v = arena.doubleVec(n);
             var w = arena.doubleVec(n);
 
-            double tol = (double)10 * Consts.doubleZeroTreshold;
+            double tol = (double)10 * Consts.doubleZeroThreshold;
             bool ok = Eigen.powerIteration(in A, ref v, ref w, out double lambda, tol, 1000);
 
             Assert.IsTrue(ok);
             AssertFinite(lambda);
-            AssertClose(lambda, (double)0, (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(lambda, (double)0, (double)100 * Consts.doubleZeroThreshold);
 
             arena.Dispose();
         }
@@ -875,7 +875,7 @@ public class doubleEigenTests
         // ---------------------------------------------------------------------
 
         // n=5 identity: all eigenvalues exactly 1, sorted descending. Exact closed form ->
-        // 100*ZeroTreshold tolerance comfortably above QL noise. A is DESTROYED.
+        // 100*ZeroThreshold tolerance comfortably above QL noise. A is DESTROYED.
         public void EvSymIdentity()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -891,7 +891,7 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
             for (int i = 0; i < n; i++)
-                AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroTreshold);
+                AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertDescending(in eig, n);
 
@@ -922,7 +922,7 @@ public class doubleEigenTests
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
-            double tol = (double)100 * Consts.doubleZeroTreshold;
+            double tol = (double)100 * Consts.doubleZeroThreshold;
             AssertClose(eig[0], (double)5, tol);
             AssertClose(eig[1], (double)3, tol);
             AssertClose(eig[2], (double)1, tol);
@@ -953,8 +953,8 @@ public class doubleEigenTests
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
-            AssertClose(eig[0], (double)3, (double)100 * Consts.doubleZeroTreshold);
-            AssertClose(eig[1], (double)1, (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(eig[0], (double)3, (double)100 * Consts.doubleZeroThreshold);
+            AssertClose(eig[1], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertDescending(in eig, n);
 
@@ -976,7 +976,7 @@ public class doubleEigenTests
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            AssertClose(eig[0], (double)(-3.25), (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(eig[0], (double)(-3.25), (double)100 * Consts.doubleZeroThreshold);
 
             arena.Dispose();
         }
@@ -1024,7 +1024,7 @@ public class doubleEigenTests
             for (int i = 0; i < n; i++)
             {
                 double scale = (double)1 + Unity.Mathematics.math.abs(eigJac[i]);
-                double tol = (double)1000 * Consts.doubleZeroTreshold * scale;
+                double tol = (double)1000 * Consts.doubleZeroThreshold * scale;
                 double diff = Unity.Mathematics.math.abs(eigQL[i] - eigJac[i]);
                 if (!(diff <= tol) && Fail[0] == (double)0)
                 {
@@ -1041,7 +1041,7 @@ public class doubleEigenTests
 
         // LITERATURE KNOWN-ANSWER: n=6 path-graph (1D Laplacian) tridiagonal with diag 2 and
         // off-diagonal -1. Eigenvalues are EXACTLY lambda_k = 2 - 2*cos(k*pi/(n+1)), k=1..n. Sorted
-        // descending corresponds to k = n, n-1, ..., 1. Well-separated spectrum -> 1000*ZeroTreshold
+        // descending corresponds to k = n, n-1, ..., 1. Well-separated spectrum -> 1000*ZeroThreshold
         // absolute tolerance covers float QL noise.
         public void EvSymLaplacian()
         {
@@ -1067,7 +1067,7 @@ public class doubleEigenTests
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
 
-            double tol = (double)1000 * Consts.doubleZeroTreshold;
+            double tol = (double)1000 * Consts.doubleZeroThreshold;
             // descending order: eig[i] corresponds to k = n - i.
             for (int i = 0; i < n; i++)
             {
@@ -1086,7 +1086,7 @@ public class doubleEigenTests
         // ---------------------------------------------------------------------
 
         // n=5 identity: every eigenvalue exactly 1, V orthogonal. Exact closed form so
-        // 100*ZeroTreshold comfortably covers any QL noise. A is DESTROYED.
+        // 100*ZeroThreshold comfortably covers any QL noise. A is DESTROYED.
         public void EsymIdentity()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1104,11 +1104,11 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             for (int i = 0; i < n; i++)
-                AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroTreshold);
+                AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertDescending(in eig, n);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -1141,7 +1141,7 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            double tol = (double)100 * Consts.doubleZeroTreshold;
+            double tol = (double)100 * Consts.doubleZeroThreshold;
             AssertClose(eig[0], (double)5, tol);
             AssertClose(eig[1], (double)3, tol);
             AssertClose(eig[2], (double)0.5, tol);
@@ -1151,7 +1151,7 @@ public class doubleEigenTests
             AssertDescending(in eig, n);
 
             // V a permutation of identity -> check A = V diag(eig) V^T rather than exact V.
-            AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroTreshold);
+            AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroThreshold);
 
             Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
 
@@ -1179,14 +1179,14 @@ public class doubleEigenTests
 
             Assert.IsTrue(ok);
 
-            AssertClose(eig[0], (double)3, (double)100 * Consts.doubleZeroTreshold);
-            AssertClose(eig[1], (double)1, (double)100 * Consts.doubleZeroTreshold);
+            AssertClose(eig[0], (double)3, (double)100 * Consts.doubleZeroThreshold);
+            AssertClose(eig[1], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertDescending(in eig, n);
 
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroTreshold));
+            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -1215,7 +1215,7 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroTreshold);
+            AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroThreshold);
 
             arena.Dispose();
         }
@@ -1242,7 +1242,7 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
             // Explicit ||V^T V - I||_max check (Analysis.IsOrthogonal also asserted for parity).
-            double precision = (double)1000 * Consts.doubleZeroTreshold;
+            double precision = (double)1000 * Consts.doubleZeroThreshold;
             double maxErr = (double)0;
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
@@ -1332,7 +1332,7 @@ public class doubleEigenTests
             for (int i = 0; i < n; i++)
             {
                 double scale = (double)1 + Unity.Mathematics.math.abs(eigVal[i]);
-                double tol = (double)1000 * Consts.doubleZeroTreshold * scale;
+                double tol = (double)1000 * Consts.doubleZeroThreshold * scale;
                 double diff = Unity.Mathematics.math.abs(eigSym[i] - eigVal[i]);
                 if (!(diff <= tol) && Fail[0] == (double)0)
                 {
@@ -1379,7 +1379,7 @@ public class doubleEigenTests
             Assert.IsFalse(Analysis.IsAnyNan(in eig));
             Assert.IsFalse(Analysis.IsAnyNan(in V));
 
-            double tol = (double)1000 * Consts.doubleZeroTreshold;
+            double tol = (double)1000 * Consts.doubleZeroThreshold;
             for (int i = 0; i < n; i++)
             {
                 int k = n - i;
@@ -1438,7 +1438,7 @@ public class doubleEigenTests
         }
 
         // For every eigenpair (lambda_k = eig[k], v_k = column k of V), assert
-        // ||A*v_k - lambda_k*v_k||_inf <= 1000*ZeroTreshold * (1 + |lambda_k|).
+        // ||A*v_k - lambda_k*v_k||_inf <= 1000*ZeroThreshold * (1 + |lambda_k|).
         private void AssertEigenResidual(in doubleMxN A, in doubleMxN V, in doubleN eig, int n)
         {
             for (int k = 0; k < n; k++)
@@ -1454,7 +1454,7 @@ public class doubleEigenTests
                     if (ri > maxRes)
                         maxRes = ri;
                 }
-                double tol = (double)1000 * Consts.doubleZeroTreshold * ((double)1 + Unity.Mathematics.math.abs(lambda));
+                double tol = (double)1000 * Consts.doubleZeroThreshold * ((double)1 + Unity.Mathematics.math.abs(lambda));
                 if (!(maxRes <= tol) && Fail[0] == (double)0)
                 {
                     Fail[0] = (double)1;
@@ -1500,7 +1500,7 @@ public class doubleEigenTests
         {
             for (int i = 1; i < n; i++)
             {
-                bool descending = eig[i] <= eig[i - 1] + (double)100 * Consts.doubleZeroTreshold;
+                bool descending = eig[i] <= eig[i - 1] + (double)100 * Consts.doubleZeroThreshold;
                 if (!descending && Fail[0] == (double)0)
                 {
                     Fail[0] = (double)1;
@@ -1754,7 +1754,7 @@ public class doubleEigenTests
         var w = arena.doubleVec(4);
 
         Assert.Catch<ArgumentException>(() =>
-            Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroTreshold, 1000));
+            Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroThreshold, 1000));
 
         arena.Dispose();
     }
@@ -1769,7 +1769,7 @@ public class doubleEigenTests
         var w = arena.doubleVec(4);
 
         Assert.Catch<ArgumentException>(() =>
-            Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroTreshold, 1000));
+            Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroThreshold, 1000));
 
         arena.Dispose();
     }
@@ -1784,7 +1784,7 @@ public class doubleEigenTests
         var w = arena.doubleVec(3);
 
         Assert.Catch<ArgumentException>(() =>
-            Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroTreshold, 1000));
+            Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroThreshold, 1000));
 
         arena.Dispose();
     }
@@ -1799,7 +1799,7 @@ public class doubleEigenTests
         var w = arena.doubleVec(4);
 
         Assert.Catch<ArgumentException>(() =>
-            Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroTreshold, 0));
+            Eigen.powerIteration(in A, ref v, ref w, out double lambda, Consts.doubleZeroThreshold, 0));
 
         arena.Dispose();
     }

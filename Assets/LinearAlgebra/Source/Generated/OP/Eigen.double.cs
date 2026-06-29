@@ -164,10 +164,10 @@ namespace LinearAlgebra
                                           out double lambda, double tol)
             => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
 
-        /// <summary>powerIteration with default tol (Consts.doubleZeroTreshold) and maxIter (1000).</summary>
+        /// <summary>powerIteration with default tol (Consts.doubleZeroThreshold) and maxIter (1000).</summary>
         public static bool powerIteration(in doubleMxN A, ref doubleN v, ref doubleN w,
                                           out double lambda)
-            => powerIteration(in A, ref v, ref w, out lambda, Consts.doubleZeroTreshold, 1000);
+            => powerIteration(in A, ref v, ref w, out lambda, Consts.doubleZeroThreshold, 1000);
 
         /// <summary>
         /// Full symmetric eigendecomposition via classical two-sided (cyclic) Jacobi iteration.
@@ -347,17 +347,17 @@ namespace LinearAlgebra
         // The default-argument overloads forward to the deprecated primitive; suppress the
         // self-referential obsolete warning (618) on the forwarding calls.
 #pragma warning disable 618
-        /// <summary>eigenDecomposition with default eps (Consts.doubleZeroTreshold).</summary>
+        /// <summary>eigenDecomposition with default eps (Consts.doubleZeroThreshold).</summary>
         [System.Obsolete("Prefer Eigen.eigenSymmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.eigenvaluesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static bool eigenDecomposition(ref doubleMxN A, ref doubleN eigenvalues,
                                               ref doubleMxN V, int maxSweeps)
-            => eigenDecomposition(ref A, ref eigenvalues, ref V, maxSweeps, Consts.doubleZeroTreshold);
+            => eigenDecomposition(ref A, ref eigenvalues, ref V, maxSweeps, Consts.doubleZeroThreshold);
 
-        /// <summary>eigenDecomposition with default maxSweeps (30) and eps (Consts.doubleZeroTreshold).</summary>
+        /// <summary>eigenDecomposition with default maxSweeps (30) and eps (Consts.doubleZeroThreshold).</summary>
         [System.Obsolete("Prefer Eigen.eigenSymmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.eigenvaluesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static bool eigenDecomposition(ref doubleMxN A, ref doubleN eigenvalues,
                                               ref doubleMxN V)
-            => eigenDecomposition(ref A, ref eigenvalues, ref V, 30, Consts.doubleZeroTreshold);
+            => eigenDecomposition(ref A, ref eigenvalues, ref V, 30, Consts.doubleZeroThreshold);
 #pragma warning restore 618
 
         // copysign: magnitude of a with the sign of b (b >= 0 -> +|a|). EISPACK SIGN(a,b).
@@ -582,9 +582,9 @@ namespace LinearAlgebra
             return true;
         }
 
-        /// <summary>eigenvaluesSymmetric with default maxIterPerEig (30) and eps (Consts.doubleZeroTreshold).</summary>
+        /// <summary>eigenvaluesSymmetric with default maxIterPerEig (30) and eps (Consts.doubleZeroThreshold).</summary>
         public static bool eigenvaluesSymmetric(ref doubleMxN A, ref doubleN eigenvalues)
-            => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.doubleZeroTreshold);
+            => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.doubleZeroThreshold);
 
         /// <summary>
         /// Full eigenDECOMPOSITION of a SYMMETRIC real matrix via Householder tridiagonalization with
@@ -823,9 +823,9 @@ namespace LinearAlgebra
             return true;
         }
 
-        /// <summary>eigenSymmetric with default maxIterPerEig (30) and eps (Consts.doubleZeroTreshold).</summary>
+        /// <summary>eigenSymmetric with default maxIterPerEig (30) and eps (Consts.doubleZeroThreshold).</summary>
         public static bool eigenSymmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleMxN V)
-            => eigenSymmetric(ref A, ref eigenvalues, ref V, 30, Consts.doubleZeroTreshold);
+            => eigenSymmetric(ref A, ref eigenvalues, ref V, 30, Consts.doubleZeroThreshold);
 
         /// <summary>
         /// All eigenvalues of a GENERAL (non-symmetric) real square matrix, via the QR algorithm:

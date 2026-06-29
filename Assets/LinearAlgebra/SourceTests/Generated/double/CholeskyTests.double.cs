@@ -30,7 +30,7 @@ public class doubleCholeskyTests
         public TestType Type;
 
         // Float expansion needs a generous tolerance; double is far tighter.
-        // doubleZeroTreshold is per-precision (1e-6 float, 1e-14 double).
+        // doubleZeroThreshold is per-precision (1e-6 float, 1e-14 double).
         static double Tol() => 256 * Consts.doubleSqrtEps;
 
         public void Execute()

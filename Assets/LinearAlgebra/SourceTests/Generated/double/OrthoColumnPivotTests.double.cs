@@ -699,7 +699,7 @@ public class doubleOrthoColumnPivotTests
             var u = arena.doubleVec(m);
             var x = arena.doubleVec(n);
 
-            double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroTreshold;
+            double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
             OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, explicitTol);
 
             RecordEq(rank, 3);
@@ -769,7 +769,7 @@ public class doubleOrthoColumnPivotTests
         }
 
         // (8) Auto sentinel: relTol = -1 must select the documented default
-        // (max(m,n)*Consts.doubleZeroTreshold). Verify it produces the SAME rank and the SAME x as
+        // (max(m,n)*Consts.doubleZeroThreshold). Verify it produces the SAME rank and the SAME x as
         // (a) the default overload and (b) the explicit positive default tolerance — bit-for-bit
         // (identical code path). Exercised on a rank-deficient system so rank/truncation matter.
         void AutoSentinel()
@@ -788,7 +788,7 @@ public class doubleOrthoColumnPivotTests
             var xNeg = arena.doubleVec(n);
             OrthoOP.qrcpDirectSolve(ref A, ref b, ref xNeg, out int rankNeg, (double)(-1)); // sentinel
 
-            double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroTreshold;
+            double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
             var xExpl = arena.doubleVec(n);
             OrthoOP.qrcpDirectSolve(ref A, ref b, ref xExpl, out int rankExpl, explicitTol);
 

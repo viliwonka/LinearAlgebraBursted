@@ -45,7 +45,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Numerical rank: the number of singular values greater than relTol * σ_max (any shape,
-        /// via SVD). relTol &lt; 0 selects the automatic tolerance max(m, n) * Consts.doubleZeroTreshold
+        /// via SVD). relTol &lt; 0 selects the automatic tolerance max(m, n) * Consts.doubleZeroThreshold
         /// (matching pinvSolve). Allocates SVD scratch; A is not modified.
         /// </summary>
         public static int rank(in doubleMxN A, double relTol)
@@ -63,7 +63,7 @@ namespace LinearAlgebra
                 return 0;
 
             if (relTol < (double)0)
-                relTol = (double)math.max(m, n) * Consts.doubleZeroTreshold;
+                relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
 
             double tol = relTol * S[0];
             int r = 0;

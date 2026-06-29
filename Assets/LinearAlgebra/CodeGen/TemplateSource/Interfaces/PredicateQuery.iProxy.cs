@@ -6,7 +6,7 @@ namespace LinearAlgebra
     /// Groups B, C, and D are fProxy-only; for integer matrix row/col filtering
     /// convert to the float or double variant.
     /// </summary>
-    public interface IfiProxyPredicate {
+    public interface IiProxyPredicate {
         bool Test(iProxy x);
     }
 }

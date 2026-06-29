@@ -30,7 +30,7 @@ public class fProxyCholeskyTests
         public TestType Type;
 
         // Float expansion needs a generous tolerance; double is far tighter.
-        // fProxyZeroTreshold is per-precision (1e-6 float, 1e-14 double).
+        // fProxyZeroThreshold is per-precision (1e-6 float, 1e-14 double).
         static fProxy Tol() => 256 * Consts.fProxySqrtEps;
 
         public void Execute()

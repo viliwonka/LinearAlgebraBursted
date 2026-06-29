@@ -19,7 +19,7 @@ namespace LinearAlgebra
         /// Works for any shape (m >= n and m &lt; n) and any rank, including rank 0.
         /// A is NOT modified (the Golub-Kahan path takes it as input). b is not modified. x (length
         /// N_Cols) is overwritten.
-        /// relTol &lt; 0 selects auto tolerance: relTol = max(m, n) * Consts.doubleZeroTreshold.
+        /// relTol &lt; 0 selects auto tolerance: relTol = max(m, n) * Consts.doubleZeroThreshold.
         /// Singular values S[j] &lt;= relTol * S[0] are treated as zero.
         /// Allocates temporaries from A's arena via tempdoubleVec/tempdoubleMat (not an Inpl op).
         /// Returns the numerical rank used; converged is svdGolubKahan's return value.
@@ -65,7 +65,7 @@ namespace LinearAlgebra
 
                 // Auto tolerance
                 if (relTol < (double)0)
-                    relTol = (double)math.max(m, n) * Consts.doubleZeroTreshold;
+                    relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
 
                 // Zero x
                 for (int kk = 0; kk < n; kk++)
@@ -109,7 +109,7 @@ namespace LinearAlgebra
 
                 // Auto tolerance
                 if (relTol < (double)0)
-                    relTol = (double)math.max(m, n) * Consts.doubleZeroTreshold;
+                    relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
 
                 // Zero x
                 for (int kk = 0; kk < n; kk++)
@@ -241,7 +241,7 @@ namespace LinearAlgebra
                 converged = svdGolubKahan(in A, ref U, ref S, ref M, maxSweeps);
 
                 if (relTol < (double)0)
-                    relTol = (double)math.max(m, n) * Consts.doubleZeroTreshold;
+                    relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
 
                 if (n == 0 || S[0] == (double)0)
                     return 0;
@@ -278,7 +278,7 @@ namespace LinearAlgebra
                 converged = svdGolubKahan(in At, ref U, ref S, ref M, maxSweeps);
 
                 if (relTol < (double)0)
-                    relTol = (double)math.max(m, n) * Consts.doubleZeroTreshold;
+                    relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
 
                 if (m == 0 || S[0] == (double)0)
                     return 0;

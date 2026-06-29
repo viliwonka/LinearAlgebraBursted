@@ -45,7 +45,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Numerical rank: the number of singular values greater than relTol * σ_max (any shape,
-        /// via SVD). relTol &lt; 0 selects the automatic tolerance max(m, n) * Consts.fProxyZeroTreshold
+        /// via SVD). relTol &lt; 0 selects the automatic tolerance max(m, n) * Consts.fProxyZeroThreshold
         /// (matching pinvSolve). Allocates SVD scratch; A is not modified.
         /// </summary>
         public static int rank(in fProxyMxN A, fProxy relTol)
@@ -63,7 +63,7 @@ namespace LinearAlgebra
                 return 0;
 
             if (relTol < (fProxy)0)
-                relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroTreshold;
+                relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
 
             fProxy tol = relTol * S[0];
             int r = 0;
