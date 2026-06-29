@@ -152,10 +152,9 @@ namespace LinearAlgebra
         /// <summary>
         /// Forward discrete Fourier transform for ANY length N (O(N²)). outRe/outIm receive the spectrum
         /// and must not alias the inputs (each output bin reads every input sample).
-        /// PRECISION NOTE: the twiddle angle is baseAng·k·t; the intermediate product k·t reaches ~N²
-        /// before the O(1/N) base angle brings the angle itself to O(N). For the float expansion that
-        /// large angle still loses accuracy at big N (its ulp approaches a radian near N≈1e3); prefer
-        /// the power-of-two <see cref="fft"/>, or the double expansion, when N is large.
+        /// The twiddle angle is reduced as baseAng·((k·t) mod N) — exact, since exp is 2π-periodic and
+        /// baseAng = ±2π/N — so the angle stays in (−2π, 2π] and float sin/cos keeps full accuracy even
+        /// at large N. The transform is still O(N²); prefer the power-of-two <see cref="fft"/> for speed.
         /// </summary>
         public static void dft(in doubleN inRe, in doubleN inIm, ref doubleN outRe, ref doubleN outIm)
         {
@@ -199,7 +198,14 @@ namespace LinearAlgebra
                 double sumIm = (double)0;
                 for (int t = 0; t < n; t++)
                 {
-                    double ang = baseAng * (double)k * (double)t;
+                    // baseAng = ±2π/n and exp is 2π-periodic, so baseAng·k·t and baseAng·((k·t) mod n)
+                    // give the SAME twiddle exactly. Reducing k·t mod n keeps the angle in (−2π, 2π]
+                    // instead of letting it grow to ~2π·N: this keeps float sin/cos accurate at large N
+                    // (no precision lost reducing a huge argument) and is much faster under
+                    // FloatPrecision.High, which otherwise pays extended-precision range reduction on the
+                    // big argument. (long) guards the k·t product against int overflow for large N.
+                    int kt = (int)(((long)k * t) % n);
+                    double ang = baseAng * (double)kt;
                     double c = math.cos(ang);
                     double s = math.sin(ang);
                     double xr = inRe[t];
