@@ -1,0 +1,197 @@
+using System.Text;
+
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+
+using LinearAlgebra;
+
+namespace LinearAlgebra.Benchmarks
+{
+    // 1D FFT and DFT benchmarks. Own size arrays (not Bench.Sizes — which is for square matrices):
+    //   FFT: radix-2 in-place, lengths must be power of two, O(N log N).
+    //   DFT: direct O(N²) for arbitrary N (smaller sizes since it's quadratic).
+    //
+    // FFT is IN-PLACE so re/im are destroyed each call; the job copies pristine srcRe/srcIm
+    // into re/im at the start of each Execute so every timed sample does identical work.
+    // DFT inputs are `in` (not modified), outputs are separate; no copy needed each call.
+    // float-only for FFT and DFT; doubleFFT mirrors the API.
+
+    // ---- radix-2 in-place FFT (float) ----
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FftJobFloat : IJob
+    {
+        public floatN re;       // working buffer — overwritten each Execute
+        public floatN im;       // working buffer — overwritten each Execute
+        public floatN srcRe;    // pristine copy of input re
+        public floatN srcIm;    // pristine copy of input im
+
+        public void Execute()
+        {
+            int n = srcRe.N;
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            floatFFT.fft(ref re, ref im);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FftJobDouble : IJob
+    {
+        public doubleN re;
+        public doubleN im;
+        public doubleN srcRe;
+        public doubleN srcIm;
+
+        public void Execute()
+        {
+            int n = srcRe.N;
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            doubleFFT.fft(ref re, ref im);
+        }
+    }
+
+    // ---- direct DFT (float) ----
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct DftJobFloat : IJob
+    {
+        public floatN inRe;     // NOT modified
+        public floatN inIm;     // NOT modified
+        public floatN outRe;
+        public floatN outIm;
+
+        public void Execute() => floatFFT.dft(in inRe, in inIm, ref outRe, ref outIm);
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct DftJobDouble : IJob
+    {
+        public doubleN inRe;
+        public doubleN inIm;
+        public doubleN outRe;
+        public doubleN outIm;
+
+        public void Execute() => doubleFFT.dft(in inRe, in inIm, ref outRe, ref outIm);
+    }
+
+    public static class FFTBenchmark
+    {
+        // Power-of-two sizes for the O(N log N) radix-2 FFT.
+        static readonly int[] FftSizes = { 1024, 4096, 16384, 65536, 262144, 1048576 };
+
+        // Smaller sizes for the O(N²) direct DFT (quadratic cost limits feasible N).
+        static readonly int[] DftSizes = { 256, 512, 1024, 2048 };
+
+        public static void Run() => Bench.WriteReport("benchmark-fft.txt", Section);
+
+        public static void Section(StringBuilder sb)
+        {
+            sb.AppendLine("=== Radix-2 FFT in-place (floatFFT.fft / doubleFFT.fft; O(N log N); ms) ===");
+            sb.AppendLine("    Input destroyed each call; job copies srcRe/srcIm -> re/im before each run.");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in FftSizes) sb.AppendLine(FftFloat(n));
+            foreach (var n in FftSizes) sb.AppendLine(FftDouble(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Direct DFT (floatFFT.dft / doubleFFT.dft; O(N^2); ms) ===");
+            sb.AppendLine("    Inputs `in` — not modified; output written to separate outRe/outIm.");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in DftSizes) sb.AppendLine(DftFloat(n));
+            foreach (var n in DftSizes) sb.AppendLine(DftDouble(n));
+            sb.AppendLine();
+        }
+
+        // ---- FFT helpers ----
+
+        static string FftFloat(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.floatVec(n);
+            var im    = arena.floatVec(n);
+            var srcRe = arena.floatVec(n);
+            var srcIm = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextFloat(-1f, 1f);
+                srcIm[i] = rng.NextFloat(-1f, 1f);
+            }
+
+            var job = new FftJobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float", n, stat);
+        }
+
+        static string FftDouble(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.doubleVec(n);
+            var im    = arena.doubleVec(n);
+            var srcRe = arena.doubleVec(n);
+            var srcIm = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextDouble(-1.0, 1.0);
+                srcIm[i] = rng.NextDouble(-1.0, 1.0);
+            }
+
+            var job = new FftJobDouble { re = re, im = im, srcRe = srcRe, srcIm = srcIm };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double", n, stat);
+        }
+
+        // ---- DFT helpers ----
+
+        static string DftFloat(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var inRe  = arena.floatVec(n);
+            var inIm  = arena.floatVec(n);
+            var outRe = arena.floatVec(n);
+            var outIm = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                inRe[i] = rng.NextFloat(-1f, 1f);
+                inIm[i] = rng.NextFloat(-1f, 1f);
+            }
+
+            var job = new DftJobFloat { inRe = inRe, inIm = inIm, outRe = outRe, outIm = outIm };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float", n, stat);
+        }
+
+        static string DftDouble(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var inRe  = arena.doubleVec(n);
+            var inIm  = arena.doubleVec(n);
+            var outRe = arena.doubleVec(n);
+            var outIm = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                inRe[i] = rng.NextDouble(-1.0, 1.0);
+                inIm[i] = rng.NextDouble(-1.0, 1.0);
+            }
+
+            var job = new DftJobDouble { inRe = inRe, inIm = inIm, outRe = outRe, outIm = outIm };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double", n, stat);
+        }
+    }
+}

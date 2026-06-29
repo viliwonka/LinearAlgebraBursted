@@ -21,6 +21,10 @@ namespace LinearAlgebra.Benchmarks
                 QRVariantsBenchmark.Section(sb);
                 TallWideSolveBenchmark.Section(sb);
                 EigenSvdBenchmark.Section(sb);
+                SvdSolversBenchmark.Section(sb);
+                IterativeBenchmark.Section(sb);
+                KMeansBenchmark.Section(sb);
+                FFTBenchmark.Section(sb);
 
                 sb.AppendLine("GFLOP/s~ uses each kernel's leading-term flop count (approximate): GEMM 2N^3, " +
                               "LU (2/3)N^3, Cholesky (1/3)N^3, QR (4/3)N^3, tall/wide QR-LQ 2cols^2(rows-cols/3).");
