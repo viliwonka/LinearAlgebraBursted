@@ -95,12 +95,12 @@ namespace LinearAlgebra.mathProxies
         public fProxy2 c1;
         public fProxy2 c2;
                                          
-        unsafe public ref fProxy3 this[int index] {
+        unsafe public ref fProxy2 this[int index] {
             get {
-                if ((uint)index >= 2)
-                    throw new System.ArgumentException("index must be between[0...1]");
+                if ((uint)index >= 3)
+                    throw new System.ArgumentException("index must be between[0...2]");
 
-                fixed (fProxy2x3* array = &this) { return ref ((fProxy3*)array)[index]; }
+                fixed (fProxy2x3* array = &this) { return ref ((fProxy2*)array)[index]; }
             }
         }
     }
@@ -112,12 +112,12 @@ namespace LinearAlgebra.mathProxies
         public fProxy2 c2;
         public fProxy2 c3;
                                          
-        unsafe public ref fProxy4 this[int index] {
+        unsafe public ref fProxy2 this[int index] {
             get {
-                if ((uint)index >= 2)
-                    throw new System.ArgumentException("index must be between[0...1]");
+                if ((uint)index >= 4)
+                    throw new System.ArgumentException("index must be between[0...3]");
 
-                fixed (fProxy2x4* array = &this) { return ref ((fProxy4*)array)[index]; }
+                fixed (fProxy2x4* array = &this) { return ref ((fProxy2*)array)[index]; }
             }
         }
     }
@@ -142,12 +142,12 @@ namespace LinearAlgebra.mathProxies
         public fProxy3 c0;
         public fProxy3 c1;
 
-        unsafe public ref fProxy2 this[int index] {
+        unsafe public ref fProxy3 this[int index] {
             get {
-                if ((uint)index >= 3)
-                    throw new System.ArgumentException("index must be between[0...2]");
+                if ((uint)index >= 2)
+                    throw new System.ArgumentException("index must be between[0...1]");
 
-                fixed (fProxy3x2* array = &this) { return ref ((fProxy2*)array)[index]; }
+                fixed (fProxy3x2* array = &this) { return ref ((fProxy3*)array)[index]; }
             }
         }
     }
@@ -159,12 +159,12 @@ namespace LinearAlgebra.mathProxies
         public fProxy3 c2;
         public fProxy3 c3;
 
-        unsafe public ref fProxy4 this[int index] {
+        unsafe public ref fProxy3 this[int index] {
             get {
-                if ((uint)index >= 3)
-                    throw new System.ArgumentException("index must be between[0...2]");
+                if ((uint)index >= 4)
+                    throw new System.ArgumentException("index must be between[0...3]");
 
-                fixed (fProxy3x4* array = &this) { return ref ((fProxy4*)array)[index]; }
+                fixed (fProxy3x4* array = &this) { return ref ((fProxy3*)array)[index]; }
             }
         }
     }
@@ -190,12 +190,12 @@ namespace LinearAlgebra.mathProxies
         public fProxy4 c0;
         public fProxy4 c1;
 
-        unsafe public ref fProxy2 this[int index] {
+        unsafe public ref fProxy4 this[int index] {
             get {
-                if ((uint)index >= 4)
-                    throw new System.ArgumentException("index must be between[0...3]");
+                if ((uint)index >= 2)
+                    throw new System.ArgumentException("index must be between[0...1]");
 
-                fixed (fProxy4x2* array = &this) { return ref ((fProxy2*)array)[index]; }
+                fixed (fProxy4x2* array = &this) { return ref ((fProxy4*)array)[index]; }
             }
         }
     }
@@ -206,12 +206,12 @@ namespace LinearAlgebra.mathProxies
         public fProxy4 c1;
         public fProxy4 c2;
 
-        unsafe public ref fProxy3 this[int index] {
+        unsafe public ref fProxy4 this[int index] {
             get {
-                if ((uint)index >= 4)
-                    throw new System.ArgumentException("index must be between[0...3]");
+                if ((uint)index >= 3)
+                    throw new System.ArgumentException("index must be between[0...2]");
 
-                fixed (fProxy4x3* array = &this) { return ref ((fProxy3*)array)[index]; }
+                fixed (fProxy4x3* array = &this) { return ref ((fProxy4*)array)[index]; }
             }
         }
     }
