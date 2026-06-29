@@ -18,10 +18,10 @@ namespace LinearAlgebra
     /// The table is computed at double precision and cast to the element type (float or double),
     /// so accuracy is maximized regardless of the transform element type.
     ///
-    /// The full-circle table (twReFull/twImFull, length n) extends the half-table for radix-4:
-    /// radix-4 twiddles reach index 3n/4, past the half-table boundary. Bandwidth tradeoff:
-    /// full table uses ~2× twiddle memory (~16 MB at N=1M for float), offset by halving the
-    /// number of full-array passes (log4(N) vs log2(N) passes).
+    /// The full-circle table (twReFull/twImFull, length n) is required by the auto-dispatch
+    /// radix-4 paths inside fft/ifft: radix-4 twiddles reach index 3n/4, past the half-table
+    /// boundary. Bandwidth tradeoff: full table uses ~2× twiddle memory (~16 MB at N=1M for
+    /// float), offset by halving the number of full-array passes (log4(N) vs log2(N) passes).
     /// </summary>
     public struct doubleFftWorkspace
     {
@@ -40,8 +40,9 @@ namespace LinearAlgebra
         /// double precision so the table is maximally accurate regardless of element type. Entries are
         /// computed with direct per-entry cos/sin (no recurrence) for full accuracy.
         ///
-        /// The full-circle table twReFull/twImFull (length n) is also built: needed by fftRadix4 /
-        /// ifftRadix4 whose twiddles reach index 3n/4. The half-table suffices for all radix-2 paths.
+        /// The full-circle table twReFull/twImFull (length n) is also built: needed by the
+        /// auto-dispatch radix-4 paths inside fft/ifft whose twiddles reach index 3n/4.
+        /// The half-table suffices for the radix-2 table fallback path.
         ///
         /// The buffers are persistent in this arena (disposed with it), so create the workspace once
         /// outside a hot loop and pass it to the table overloads. One table serves fft/ifft of length
@@ -102,8 +103,8 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Throws if the workspace is missing the full-circle twiddle table required by
-        /// fftRadix4 / ifftRadix4. Extends <see cref="RequireFftWorkspace"/>.
+        /// Throws if the workspace is missing the full-circle twiddle table required by the
+        /// radix-4 dispatch paths. Extends <see cref="RequireFftWorkspace"/>.
         /// </summary>
         static void RequireRadix4Workspace(in doubleFftWorkspace ws, int n, string who)
         {
@@ -202,28 +203,75 @@ namespace LinearAlgebra
         // ---- table-indexed overloads ----
 
         /// <summary>
-        /// In-place forward radix-2 FFT using a precomputed twiddle table. Eliminates per-element
-        /// cos/sin from the hot path. ws must be sized for re.N (build via Arena.doubleFftWorkspace(N)).
-        /// Both arrays must have the same length, which must be a power of two.
+        /// In-place forward FFT using a precomputed twiddle table. Auto-dispatches by length:
+        ///   IsPowerOf4(n)     → FftCoreRadix4      (true radix-4, log4(N) passes)
+        ///   else IsPow2(n)    → FftCoreRadix4Mixed (one radix-2 stage + two radix-4 sub-FFTs)
+        /// These two cases cover EVERY power of two, so there is no plain-radix-2 size class here.
+        /// The final else is reached only by a non-power-of-two length (not a valid FFT size);
+        /// FftCoreTable then throws "length must be a power of two".
+        /// ws must be sized for re.N (build via Arena.doubleFftWorkspace(N)); it must contain the
+        /// full-circle twiddle table required by the radix-4 paths. Both arrays must have the same
+        /// length, which must be a power of two.
         /// </summary>
         public static void fft(ref doubleN re, ref doubleN im, in doubleFftWorkspace ws)
         {
-            RequireFftWorkspace(in ws, re.N, "fft");
-            var twRe = ws.twRe;   // copy the struct header (not the data — just a pointer + length)
-            var twIm = ws.twIm;
-            FftCoreTable(ref re, ref im, ref twRe, ref twIm, ws.n, false);
+            int n = re.N;
+            RequireRadix4Workspace(in ws, n, "fft");
+
+            if (IsPowerOf4(n))
+            {
+                var twReFull = ws.twReFull;
+                var twImFull = ws.twImFull;
+                FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, false);
+            }
+            else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
+            {
+                var twReFull = ws.twReFull;
+                var twImFull = ws.twImFull;
+                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, n, false);
+            }
+            else
+            {
+                // Not a power of two: radix-4 ∪ mixed already cover every valid (power-of-two)
+                // length, so this is the invalid-input guard — FftCoreTable rejects it.
+                var twRe = ws.twRe;
+                var twIm = ws.twIm;
+                FftCoreTable(ref re, ref im, ref twRe, ref twIm, ws.n, false);
+            }
         }
 
         /// <summary>
-        /// In-place inverse radix-2 FFT using a precomputed twiddle table. Divides by N, so
-        /// ifft(fft(x, ws), ws) == x. ws must be sized for re.N.
+        /// In-place inverse FFT using a precomputed twiddle table. Auto-dispatches by length,
+        /// same as fft: IsPowerOf4(n) → FftCoreRadix4; else IsPow2(n) → FftCoreRadix4Mixed.
+        /// Those two cover every power of two; the final else is the non-power-of-two guard
+        /// (FftCoreTable throws "length must be a power of two").
+        /// Divides by N so that ifft(fft(x, ws), ws) == x. ws must be sized for re.N.
         /// </summary>
         public static void ifft(ref doubleN re, ref doubleN im, in doubleFftWorkspace ws)
         {
-            RequireFftWorkspace(in ws, re.N, "ifft");
-            var twRe = ws.twRe;
-            var twIm = ws.twIm;
-            FftCoreTable(ref re, ref im, ref twRe, ref twIm, ws.n, true);
+            int n = re.N;
+            RequireRadix4Workspace(in ws, n, "ifft");
+
+            if (IsPowerOf4(n))
+            {
+                var twReFull = ws.twReFull;
+                var twImFull = ws.twImFull;
+                FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, true);
+            }
+            else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
+            {
+                var twReFull = ws.twReFull;
+                var twImFull = ws.twImFull;
+                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, n, true);
+            }
+            else
+            {
+                // Not a power of two: radix-4 ∪ mixed already cover every valid (power-of-two)
+                // length, so this is the invalid-input guard — FftCoreTable rejects it.
+                var twRe = ws.twRe;
+                var twIm = ws.twIm;
+                FftCoreTable(ref re, ref im, ref twRe, ref twIm, ws.n, true);
+            }
         }
 
         /// <summary>
@@ -650,71 +698,5 @@ namespace LinearAlgebra
             }
         }
 
-        // ---- radix-4 dispatch overloads ----
-
-        /// <summary>
-        /// In-place forward FFT using the radix-4 DIT core for power-of-4 lengths, falling back to
-        /// the radix-2 table core for other power-of-two lengths. ws must be an n-point workspace
-        /// built via Arena.doubleFftWorkspace(n) — it must contain the full-circle twiddle table
-        /// (twReFull / twImFull) required by the radix-4 path.
-        ///
-        /// Radix-4 halves the number of full-array passes vs radix-2 (log4(N) vs log2(N) stages),
-        /// at the cost of a 2× larger twiddle table. At large N the pass reduction is the goal;
-        /// for small N the overhead of the table dominates.
-        /// </summary>
-        public static void fftRadix4(ref doubleN re, ref doubleN im, in doubleFftWorkspace ws)
-        {
-            int n = re.N;
-            RequireRadix4Workspace(in ws, n, "fftRadix4");
-
-            if (IsPowerOf4(n))
-            {
-                var twReFull = ws.twReFull;
-                var twImFull = ws.twImFull;
-                FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, false);
-            }
-            else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
-            {
-                var twReFull = ws.twReFull;
-                var twImFull = ws.twImFull;
-                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, n, false);
-            }
-            else
-            {
-                var twRe = ws.twRe;
-                var twIm = ws.twIm;
-                FftCoreTable(ref re, ref im, ref twRe, ref twIm, ws.n, false);
-            }
-        }
-
-        /// <summary>
-        /// In-place inverse FFT using the radix-4 DIT core for power-of-4 lengths, falling back to
-        /// the radix-2 table core for other power-of-two lengths. Divides by N so that
-        /// ifftRadix4(fftRadix4(x, ws), ws) == x. ws must be an n-point workspace.
-        /// </summary>
-        public static void ifftRadix4(ref doubleN re, ref doubleN im, in doubleFftWorkspace ws)
-        {
-            int n = re.N;
-            RequireRadix4Workspace(in ws, n, "ifftRadix4");
-
-            if (IsPowerOf4(n))
-            {
-                var twReFull = ws.twReFull;
-                var twImFull = ws.twImFull;
-                FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, true);
-            }
-            else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
-            {
-                var twReFull = ws.twReFull;
-                var twImFull = ws.twImFull;
-                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, n, true);
-            }
-            else
-            {
-                var twRe = ws.twRe;
-                var twIm = ws.twIm;
-                FftCoreTable(ref re, ref im, ref twRe, ref twIm, ws.n, true);
-            }
-        }
     }
 }

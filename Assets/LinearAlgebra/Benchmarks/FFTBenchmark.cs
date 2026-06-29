@@ -133,42 +133,6 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => doubleFFT.rfft(in real, ref re, ref im, in ws);
     }
 
-    // ---- radix-4 FFT dispatch with twiddle-table workspace ----
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct FftRadix4JobFloat : IJob
-    {
-        public floatN re;
-        public floatN im;
-        public floatN srcRe;
-        public floatN srcIm;
-        public floatFftWorkspace ws;   // built once outside the timed loop; contains full-circle table
-
-        public void Execute()
-        {
-            int n = srcRe.N;
-            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
-            floatFFT.fftRadix4(ref re, ref im, in ws);
-        }
-    }
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct FftRadix4JobDouble : IJob
-    {
-        public doubleN re;
-        public doubleN im;
-        public doubleN srcRe;
-        public doubleN srcIm;
-        public doubleFftWorkspace ws;
-
-        public void Execute()
-        {
-            int n = srcRe.N;
-            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
-            doubleFFT.fftRadix4(ref re, ref im, in ws);
-        }
-    }
-
     // ---- direct DFT (float) ----
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -195,11 +159,8 @@ namespace LinearAlgebra.Benchmarks
 
     public static class FFTBenchmark
     {
-        // Power-of-two sizes for the O(N log N) radix-2 FFT.
+        // Power-of-two sizes for the O(N log N) FFT.
         static readonly int[] FftSizes = { 1024, 4096, 16384, 65536, 262144, 1048576 };
-
-        // Mixed-radix 2·4^k sizes: exercise FftCoreRadix4Mixed (one radix-2 wrap + two radix-4 sub-FFTs).
-        static readonly int[] MixedRadix4Sizes = { 2048, 8192, 32768, 131072, 524288 };
 
         // Smaller sizes for the O(N²) direct DFT (quadratic cost limits feasible N).
         static readonly int[] DftSizes = { 256, 512, 1024, 2048 };
@@ -215,8 +176,9 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in FftSizes) sb.AppendLine(FftDouble(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== Radix-2 FFT in-place, twiddle-table workspace (floatFFT.fft(ws) / doubleFFT.fft(ws); ms) ===");
-            sb.AppendLine("    Workspace built once; no per-element cos/sin in the butterfly loop.");
+            sb.AppendLine("=== FFT, twiddle-table workspace — auto radix-4/mixed/radix-2 (floatFFT.fft(ws) / doubleFFT.fft(ws); ms) ===");
+            sb.AppendLine("    Workspace built once; dispatches: IsPowerOf4 → radix-4 (log4N passes), 2·4^k → mixed, else → radix-2 table.");
+            sb.AppendLine("    No per-element cos/sin; full-circle twiddle table built ONCE outside the timed loop.");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(FftTableFloat(n));
             foreach (var n in FftSizes) sb.AppendLine(FftTableDouble(n));
@@ -235,24 +197,6 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(RfftTableFloat(n));
             foreach (var n in FftSizes) sb.AppendLine(RfftTableDouble(n));
-            sb.AppendLine();
-
-            sb.AppendLine("=== Radix-4 FFT, twiddle-table workspace (floatFFT.fftRadix4 / doubleFFT.fftRadix4; ms) ===");
-            sb.AppendLine("    All FftSizes are powers of 4 → true radix-4 path (log4(N) stages vs log2(N) for radix-2).");
-            sb.AppendLine("    Workspace (with full-circle table) built ONCE outside the timed loop.");
-            sb.AppendLine("    Bandwidth tradeoff: ~2x twiddle memory vs half the pass count at large N.");
-            sb.AppendLine(Bench.HeaderTime());
-            foreach (var n in FftSizes) sb.AppendLine(FftRadix4Float(n));
-            foreach (var n in FftSizes) sb.AppendLine(FftRadix4Double(n));
-            sb.AppendLine();
-
-            sb.AppendLine("=== Mixed-radix FFT: fftRadix4 vs recurrence fft at 2·4^k sizes (float; ms) ===");
-            sb.AppendLine("    fftRadix4 routes 2·4^k sizes through FftCoreRadix4Mixed:");
-            sb.AppendLine("    1 radix-2 combine stage + 2 radix-4 sub-FFTs of length N/2.");
-            sb.AppendLine("    Baseline: recurrence radix-2 fft (per-stage cos/sin, log2(N) passes).");
-            sb.AppendLine(Bench.HeaderTime());
-            foreach (var n in MixedRadix4Sizes) sb.AppendLine(FftFloat(n));
-            foreach (var n in MixedRadix4Sizes) sb.AppendLine(FftRadix4Float(n));
             sb.AppendLine();
 
             sb.AppendLine("=== Direct DFT (floatFFT.dft / doubleFFT.dft; O(N^2); ms) ===");
@@ -433,54 +377,6 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.RowTime("double(ws)", n, stat);
-        }
-
-        // ---- radix-4 FFT helpers ----
-
-        static string FftRadix4Float(int n)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var re    = arena.floatVec(n);
-            var im    = arena.floatVec(n);
-            var srcRe = arena.floatVec(n);
-            var srcIm = arena.floatVec(n);
-            var ws    = arena.floatFftWorkspace(n);   // full-circle table built ONCE outside timed loop
-
-            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
-            for (int i = 0; i < n; i++)
-            {
-                srcRe[i] = rng.NextFloat(-1f, 1f);
-                srcIm[i] = rng.NextFloat(-1f, 1f);
-            }
-
-            var job = new FftRadix4JobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
-            var stat = Bench.Time(() => job.Run());
-
-            arena.Dispose();
-            return Bench.RowTime("float(r4)", n, stat);
-        }
-
-        static string FftRadix4Double(int n)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var re    = arena.doubleVec(n);
-            var im    = arena.doubleVec(n);
-            var srcRe = arena.doubleVec(n);
-            var srcIm = arena.doubleVec(n);
-            var ws    = arena.doubleFftWorkspace(n);
-
-            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
-            for (int i = 0; i < n; i++)
-            {
-                srcRe[i] = rng.NextDouble(-1.0, 1.0);
-                srcIm[i] = rng.NextDouble(-1.0, 1.0);
-            }
-
-            var job = new FftRadix4JobDouble { re = re, im = im, srcRe = srcRe, srcIm = srcIm, ws = ws };
-            var stat = Bench.Time(() => job.Run());
-
-            arena.Dispose();
-            return Bench.RowTime("double(r4)", n, stat);
         }
 
         // ---- DFT helpers ----
