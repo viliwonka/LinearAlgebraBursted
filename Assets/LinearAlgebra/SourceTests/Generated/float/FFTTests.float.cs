@@ -698,10 +698,11 @@ public class floatFFTTests
 
         // Helper: compare fftRadix4 dispatch against the table oracle fft(ws) for one size.
         // Using fft(ws) as oracle (not the recurrence fft()) eliminates twiddle-source discrepancy:
-        // both paths use the same double-precision-cast twiddle table, so the only difference for
-        // pow-of-4 sizes is the butterfly structure (radix-2 vs radix-4). For non-pow-of-4 sizes,
-        // both fft(ws) and fftRadix4(ws) dispatch to the same FftCoreTable code path, so errors
-        // are exactly zero — confirming the dispatch falls through correctly.
+        // both paths use the same double-precision-cast twiddle table.
+        // Power-of-4 sizes exercise FftCoreRadix4 (radix-4 butterfly).
+        // Non-power-of-4 power-of-2 sizes (2·4^k) exercise FftCoreRadix4Mixed (one radix-2 stage
+        // wrapping two radix-4 sub-FFTs); the oracle uses FftCoreTable, so small differences are
+        // expected and covered by the relative tolerance.
         void Radix4VsOracleOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -736,23 +737,25 @@ public class floatFFTTests
             arena.Dispose();
         }
 
-        // Compare fftRadix4 vs fft oracle at all sizes in {2,4,8,16,32,64,128,256,512,1024,2048,4096}.
+        // Compare fftRadix4 vs fft oracle at all sizes in {2,4,8,...,4096,8192,32768}.
         // Power-of-4 sizes {4,16,64,256,1024,4096} exercise the true radix-4 path.
-        // Non-power-of-4 sizes {2,8,32,128,512,2048} exercise the radix-2 fallback path.
+        // Non-power-of-4 sizes {2,8,32,128,512,2048,8192,32768} exercise FftCoreRadix4Mixed.
         void Radix4MatchesOracle()
         {
-            Radix4VsOracleOneSize(2,    31001u, 31002u);
-            Radix4VsOracleOneSize(4,    31003u, 31004u);
-            Radix4VsOracleOneSize(8,    31005u, 31006u);
-            Radix4VsOracleOneSize(16,   31007u, 31008u);
-            Radix4VsOracleOneSize(32,   31009u, 31010u);
-            Radix4VsOracleOneSize(64,   31011u, 31012u);
-            Radix4VsOracleOneSize(128,  31013u, 31014u);
-            Radix4VsOracleOneSize(256,  31015u, 31016u);
-            Radix4VsOracleOneSize(512,  31017u, 31018u);
-            Radix4VsOracleOneSize(1024, 31019u, 31020u);
-            Radix4VsOracleOneSize(2048, 31021u, 31022u);
-            Radix4VsOracleOneSize(4096, 31023u, 31024u);
+            Radix4VsOracleOneSize(2,     31001u, 31002u);
+            Radix4VsOracleOneSize(4,     31003u, 31004u);
+            Radix4VsOracleOneSize(8,     31005u, 31006u);
+            Radix4VsOracleOneSize(16,    31007u, 31008u);
+            Radix4VsOracleOneSize(32,    31009u, 31010u);
+            Radix4VsOracleOneSize(64,    31011u, 31012u);
+            Radix4VsOracleOneSize(128,   31013u, 31014u);
+            Radix4VsOracleOneSize(256,   31015u, 31016u);
+            Radix4VsOracleOneSize(512,   31017u, 31018u);
+            Radix4VsOracleOneSize(1024,  31019u, 31020u);
+            Radix4VsOracleOneSize(2048,  31021u, 31022u);
+            Radix4VsOracleOneSize(4096,  31023u, 31024u);
+            Radix4VsOracleOneSize(8192,  31025u, 31026u);   // 2·4^6 mixed-radix
+            Radix4VsOracleOneSize(32768, 31027u, 31028u);   // 2·4^7 mixed-radix
         }
 
         // Helper: ifftRadix4(fftRadix4(x, ws), ws) == x for one size.
@@ -778,7 +781,7 @@ public class floatFFTTests
             arena.Dispose();
         }
 
-        // Round-trip at power-of-4 sizes and one non-power-of-4 size (fallback path).
+        // Round-trip at power-of-4 sizes and mixed-radix (2·4^k) sizes.
         void Radix4RoundTrip()
         {
             Radix4RoundTripOneSize(4,    32001u, 32002u);
@@ -787,7 +790,10 @@ public class floatFFTTests
             Radix4RoundTripOneSize(256,  32007u, 32008u);
             Radix4RoundTripOneSize(1024, 32009u, 32010u);
             Radix4RoundTripOneSize(4096, 32011u, 32012u);
-            Radix4RoundTripOneSize(8,    32013u, 32014u);   // non-pow4 fallback round-trip
+            Radix4RoundTripOneSize(8,    32013u, 32014u);   // 2·4^1 mixed-radix
+            Radix4RoundTripOneSize(512,  32015u, 32016u);   // 2·4^4 mixed-radix
+            Radix4RoundTripOneSize(2048, 32017u, 32018u);   // 2·4^5 mixed-radix
+            Radix4RoundTripOneSize(8192, 32019u, 32020u);   // 2·4^6 mixed-radix
         }
 
         // Fail layout: [0]=flag, [1]=got, [2]=expected, [3]=diff

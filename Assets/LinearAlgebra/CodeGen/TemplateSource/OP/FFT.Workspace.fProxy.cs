@@ -522,6 +522,86 @@ namespace LinearAlgebra
             }
         }
 
+        // Mixed-radix DIT for N = 2·4^k (IsPow2(N) && !IsPowerOf4(N)).
+        // One radix-2 level wraps two size-M = N/2 radix-4 sub-FFTs; M is always a power of 4.
+        // Inverse via conjugate trick at the OUTER level — sub-FFTs always run forward.
+        //
+        // Sub-table: T_M[k] = exp(-2πi·k/M) = exp(-2πi·2k/N) = T_N[2k], so we read every other
+        // entry from the N-size full-circle table into a Temp M-size array and pass it to FftCoreRadix4.
+        static unsafe void FftCoreRadix4Mixed(ref fProxyN re, ref fProxyN im,
+                                              ref fProxyN twReFull, ref fProxyN twImFull,
+                                              int n, bool inverse)
+        {
+            int M = n >> 1;   // N/2, always a power of 4
+
+            // Conjugate trick at the outer level: negate im → forward decomposition → negate+scale.
+            if (inverse)
+                for (int i = 0; i < n; i++)
+                    im[i] = -im[i];
+
+            // Step 1: Deinterleave into even-indexed (E) and odd-indexed (O) halves.
+            var ere = new fProxyN(M, Allocator.Temp, false);
+            var eim = new fProxyN(M, Allocator.Temp, false);
+            var ore = new fProxyN(M, Allocator.Temp, false);
+            var oim = new fProxyN(M, Allocator.Temp, false);
+
+            for (int k = 0; k < M; k++)
+            {
+                ere[k] = re[2 * k];
+                eim[k] = im[2 * k];
+                ore[k] = re[2 * k + 1];
+                oim[k] = im[2 * k + 1];
+            }
+
+            // Step 2: Sub-FFT each half (forward) via the validated radix-4 core.
+            // Build an M-size full-circle twiddle table from the N-size one: T_M[k] = T_N[2k].
+            var twrM = new fProxyN(M, Allocator.Temp, false);
+            var twiM = new fProxyN(M, Allocator.Temp, false);
+            for (int k = 0; k < M; k++)
+            {
+                twrM[k] = twReFull[2 * k];
+                twiM[k] = twImFull[2 * k];
+            }
+
+            FftCoreRadix4(ref ere, ref eim, ref twrM, ref twiM, M, false);
+            FftCoreRadix4(ref ore, ref oim, ref twrM, ref twiM, M, false);
+
+            twrM.Dispose();
+            twiM.Dispose();
+
+            // Step 3: Radix-2 DIT combine.
+            // t = W_N^k * O[k],  W_N^k = T_N[k] = (twReFull[k], twImFull[k]).
+            // X[k]   = E[k] + t
+            // X[k+M] = E[k] - t
+            for (int k = 0; k < M; k++)
+            {
+                fProxy wr = twReFull[k];
+                fProxy wi = twImFull[k];
+                fProxy tr = wr * ore[k] - wi * oim[k];
+                fProxy ti = wr * oim[k] + wi * ore[k];
+                re[k]     = ere[k] + tr;
+                im[k]     = eim[k] + ti;
+                re[k + M] = ere[k] - tr;
+                im[k + M] = eim[k] - ti;
+            }
+
+            ere.Dispose();
+            eim.Dispose();
+            ore.Dispose();
+            oim.Dispose();
+
+            // Conjugate and scale for inverse.
+            if (inverse)
+            {
+                fProxy invN = (fProxy)1 / (fProxy)n;
+                for (int i = 0; i < n; i++)
+                {
+                    re[i] =  re[i] * invN;
+                    im[i] = -im[i] * invN;   // undo conjugate, apply 1/N scale
+                }
+            }
+        }
+
         // ---- radix-4 dispatch overloads ----
 
         /// <summary>
@@ -544,6 +624,12 @@ namespace LinearAlgebra
                 var twReFull = ws.twReFull;
                 var twImFull = ws.twImFull;
                 FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, false);
+            }
+            else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
+            {
+                var twReFull = ws.twReFull;
+                var twImFull = ws.twImFull;
+                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, n, false);
             }
             else
             {
@@ -568,6 +654,12 @@ namespace LinearAlgebra
                 var twReFull = ws.twReFull;
                 var twImFull = ws.twImFull;
                 FftCoreRadix4(ref re, ref im, ref twReFull, ref twImFull, n, true);
+            }
+            else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
+            {
+                var twReFull = ws.twReFull;
+                var twImFull = ws.twImFull;
+                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, n, true);
             }
             else
             {

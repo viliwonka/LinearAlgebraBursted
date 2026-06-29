@@ -198,6 +198,9 @@ namespace LinearAlgebra.Benchmarks
         // Power-of-two sizes for the O(N log N) radix-2 FFT.
         static readonly int[] FftSizes = { 1024, 4096, 16384, 65536, 262144, 1048576 };
 
+        // Mixed-radix 2·4^k sizes: exercise FftCoreRadix4Mixed (one radix-2 wrap + two radix-4 sub-FFTs).
+        static readonly int[] MixedRadix4Sizes = { 2048, 8192, 32768, 131072, 524288 };
+
         // Smaller sizes for the O(N²) direct DFT (quadratic cost limits feasible N).
         static readonly int[] DftSizes = { 256, 512, 1024, 2048 };
 
@@ -241,6 +244,15 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(FftRadix4Float(n));
             foreach (var n in FftSizes) sb.AppendLine(FftRadix4Double(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Mixed-radix FFT: fftRadix4 vs recurrence fft at 2·4^k sizes (float; ms) ===");
+            sb.AppendLine("    fftRadix4 routes 2·4^k sizes through FftCoreRadix4Mixed:");
+            sb.AppendLine("    1 radix-2 combine stage + 2 radix-4 sub-FFTs of length N/2.");
+            sb.AppendLine("    Baseline: recurrence radix-2 fft (per-stage cos/sin, log2(N) passes).");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in MixedRadix4Sizes) sb.AppendLine(FftFloat(n));
+            foreach (var n in MixedRadix4Sizes) sb.AppendLine(FftRadix4Float(n));
             sb.AppendLine();
 
             sb.AppendLine("=== Direct DFT (floatFFT.dft / doubleFFT.dft; O(N^2); ms) ===");
