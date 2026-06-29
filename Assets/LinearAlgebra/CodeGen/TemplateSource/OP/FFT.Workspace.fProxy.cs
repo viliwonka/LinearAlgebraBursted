@@ -30,6 +30,13 @@ namespace LinearAlgebra
         public fProxyN twReFull;   // length n:   cos(-2π·m/n), m = 0..n-1    (full circle, radix-4)
         public fProxyN twImFull;   // length n:   sin(-2π·m/n)
         public int n;              // the FFT size this table is built for (must be a power of two, >= 2)
+
+        // Scratch buffers — allocated once in the factory, reused on every call.
+        // Single-use-at-a-time: one workspace per concurrent transform (FFTW-plan semantics).
+        public fProxyN cz;         // length n/2: even-sample packing scratch for rfft/irfft
+        public fProxyN sz;         // length n/2: odd-sample  packing scratch for rfft/irfft
+        public fProxyN visited;    // length n:   cycle-following scratch for FftCoreRadix4Mixed
+                                   //             (stores 0/1 flags via fProxy; [0,size) used per call)
     }
 
     public partial struct Arena
@@ -76,6 +83,14 @@ namespace LinearAlgebra
                 twImFull[m] = (fProxy)math.sin(ang);
             }
 
+            // Scratch buffers — persistent in this arena (disposed with the arena).
+            // cz/sz are the two-for-one packing temporaries for rfft/irfft (length n/2 = M).
+            // visited is the cycle-following scratch for FftCoreRadix4Mixed (length n; [0,M) used
+            // when called from the rfft/irfft inner M-point sub-FFT, still within bounds).
+            var cz      = fProxyVec(half, uninit: true);
+            var sz      = fProxyVec(half, uninit: true);
+            var visited = fProxyVec(n,    uninit: true);
+
             return new fProxyFftWorkspace
             {
                 twRe     = twRe,
@@ -83,6 +98,9 @@ namespace LinearAlgebra
                 twReFull = twReFull,
                 twImFull = twImFull,
                 n        = n,
+                cz       = cz,
+                sz       = sz,
+                visited  = visited,
             };
         }
     }
@@ -97,7 +115,8 @@ namespace LinearAlgebra
         /// </summary>
         static void RequireFftWorkspace(in fProxyFftWorkspace ws, int n, string who)
         {
-            if (ws.n != n || ws.twRe.N != n >> 1 || ws.twIm.N != n >> 1)
+            if (ws.n != n || ws.twRe.N != n >> 1 || ws.twIm.N != n >> 1 ||
+                ws.cz.N != n >> 1 || ws.sz.N != n >> 1 || ws.visited.N != n)
                 throw new ArgumentException(
                     who + ": workspace must be sized for an n-point FFT (use Arena.fProxyFftWorkspace(n))");
         }
@@ -226,9 +245,10 @@ namespace LinearAlgebra
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
-                var twReFull = ws.twReFull;
-                var twImFull = ws.twImFull;
-                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, n, false);
+                var twReFull    = ws.twReFull;
+                var twImFull    = ws.twImFull;
+                var visitedScratch = ws.visited;
+                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, visitedScratch, n, false);
             }
             else
             {
@@ -260,9 +280,10 @@ namespace LinearAlgebra
             }
             else if ((n & (n - 1)) == 0)   // power-of-2, not power-of-4 → 2·4^k mixed-radix path
             {
-                var twReFull = ws.twReFull;
-                var twImFull = ws.twImFull;
-                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, n, true);
+                var twReFull    = ws.twReFull;
+                var twImFull    = ws.twImFull;
+                var visitedScratch = ws.visited;
+                FftCoreRadix4Mixed(ref re, ref im, ref twReFull, ref twImFull, visitedScratch, n, true);
             }
             else
             {
@@ -309,8 +330,9 @@ namespace LinearAlgebra
             int M = n >> 1;   // N/2
 
             // Step 1: Pack even and odd samples into a length-M complex sequence.
-            var cz = new fProxyN(M, Allocator.Temp, false);
-            var sz = new fProxyN(M, Allocator.Temp, false);
+            // Use workspace scratch (no per-call allocation).
+            var cz = ws.cz;   // fProxyN of length n/2 = M
+            var sz = ws.sz;   // fProxyN of length n/2 = M
             for (int j = 0; j < M; j++)
             {
                 cz[j] = real[2 * j];
@@ -324,10 +346,11 @@ namespace LinearAlgebra
             var twIm = ws.twIm;
             var twReFull = ws.twReFull;
             var twImFull = ws.twImFull;
+            var visitedScratch = ws.visited;
             if (IsPowerOf4(M))
                 FftCoreRadix4(ref cz, ref sz, ref twReFull, ref twImFull, ws.n, false);
             else
-                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, ws.n, false);
+                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, visitedScratch, ws.n, false);
 
             // Step 3: Unpack. DC and Nyquist are always real for a real input.
             re[0] = cz[0] + sz[0];
@@ -352,8 +375,6 @@ namespace LinearAlgebra
                 im[k] = E_im + (curRe * O_im + curIm * O_re);
             }
 
-            cz.Dispose();
-            sz.Dispose();
         }
 
         /// <summary>
@@ -386,8 +407,9 @@ namespace LinearAlgebra
                     throw new ArgumentException("irfft: real must not alias re or im");
             }
 
-            var cz = new fProxyN(M, Allocator.Temp, false);
-            var sz = new fProxyN(M, Allocator.Temp, false);
+            // Use workspace scratch (no per-call allocation).
+            var cz = ws.cz;   // fProxyN of length n/2 = M
+            var sz = ws.sz;   // fProxyN of length n/2 = M
 
             // k=0: X[0] = E[0]+O[0] and X[M] = E[0]-O[0] (both purely real).
             cz[0] = (re[0] + re[M]) * (fProxy)0.5;
@@ -430,10 +452,11 @@ namespace LinearAlgebra
             // One M-point inverse FFT via radix-4 (with full-circle table, tableN = ws.n = N).
             var twReFull = ws.twReFull;
             var twImFull = ws.twImFull;
+            var visitedScratch = ws.visited;
             if (IsPowerOf4(M))
                 FftCoreRadix4(ref cz, ref sz, ref twReFull, ref twImFull, ws.n, true);
             else
-                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, ws.n, true);
+                FftCoreRadix4Mixed(ref cz, ref sz, ref twReFull, ref twImFull, visitedScratch, ws.n, true);
 
             // Deinterleave: real[2j] = even[j], real[2j+1] = odd[j].
             for (int j = 0; j < M; j++)
@@ -441,9 +464,6 @@ namespace LinearAlgebra
                 real[2 * j]     = cz[j];
                 real[2 * j + 1] = sz[j];
             }
-
-            cz.Dispose();
-            sz.Dispose();
         }
 
         // ---- radix-4 DIT FFT ----
@@ -612,8 +632,11 @@ namespace LinearAlgebra
         // Step 2: two radix-4 sub-FFTs on the contiguous even/odd halves via FftCoreRadix4Slice.
         // Step 3: radix-2 DIT combine, writing natural-order output back in-place.
         // Combine twiddle: W_size^k = T_tableN[k*(tableN/size)].
+        // visited is a workspace scratch of length >= size (0/1 flags, fProxy-typed).
+        // The caller passes ws.visited (length n); only [0, size) is used, cleared at entry.
         static unsafe void FftCoreRadix4Mixed(ref fProxyN re, ref fProxyN im,
                                               ref fProxyN twReFull, ref fProxyN twImFull,
+                                              fProxyN visited,
                                               int tableN, bool inverse)
         {
             int size = re.N;
@@ -628,13 +651,15 @@ namespace LinearAlgebra
             // dst(i) = i/2 if i is even; M + i/2 if i is odd.
             // After the permutation: [0,M) holds even-indexed elements, [M,2M) holds odd-indexed,
             // both in natural order — exactly what FftCoreRadix4Slice expects as input.
-            // Cycle-following uses a bool scratch (N bytes, Allocator.Temp) instead of 4×fProxyN temps.
-            var visited = new NativeArray<bool>(size, Allocator.Temp, NativeArrayOptions.ClearMemory);
+            // Cycle-following uses the workspace visited scratch (0 = unvisited, 1 = visited).
+            // Clear [0, size) — workspace is reused across calls so it must be zeroed each time.
+            for (int i = 0; i < size; i++)
+                visited[i] = (fProxy)0;
 
             for (int s = 0; s < size; s++)
             {
-                if (visited[s]) continue;
-                visited[s] = true;
+                if (visited[s] != (fProxy)0) continue;
+                visited[s] = (fProxy)1;
 
                 int j = (s & 1) == 0 ? (s >> 1) : (M + (s >> 1));
                 if (j == s) continue;   // fixed point (s==0 or s==size-1)
@@ -645,7 +670,7 @@ namespace LinearAlgebra
                     fProxy tmpRe = re[j], tmpIm = im[j];
                     re[j] = carryRe;
                     im[j] = carryIm;
-                    visited[j] = true;
+                    visited[j] = (fProxy)1;
                     carryRe = tmpRe;
                     carryIm = tmpIm;
                     j = (j & 1) == 0 ? (j >> 1) : (M + (j >> 1));
@@ -653,8 +678,6 @@ namespace LinearAlgebra
                 re[s] = carryRe;
                 im[s] = carryIm;
             }
-
-            visited.Dispose();
 
             // Step 2: Two in-place radix-4 sub-FFTs on the contiguous halves (no temp copy).
             // FftCoreRadix4Ptr twiddle indexing: W_M^j = T_tableN[j*(tableN/M)] via step=tableN/len,
