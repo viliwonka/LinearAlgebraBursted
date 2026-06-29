@@ -153,7 +153,8 @@ namespace LinearAlgebra
         /// goes significantly negative (below -n·eps·max|diag|). On a false return L/P/rank are
         /// undefined. Tolerance is scale-relative to the largest |diagonal| so it is scale-invariant.
         /// </summary>
-        public static bool choleskyDecompositionPivot(in floatMxN A, ref floatMxN L, ref Pivot P, out int rank) {
+        public static bool choleskyDecompositionPivot(in floatMxN A, ref floatMxN L, ref Pivot P, out int rank,
+                                                       ref floatCholeskyPivotWorkspace ws) {
             if (!A.IsSquare)
                 throw new ArgumentException("choleskyDecompositionPivot: A needs to be square");
 
@@ -167,6 +168,7 @@ namespace LinearAlgebra
 
             if (P.N != n)
                 throw new ArgumentException("choleskyDecompositionPivot: P.N must equal A dimension");
+            RequireCholeskyPivotWorkspace(in ws, n, true, false, "choleskyDecompositionPivot");
 
             P.Reset();
             rank = n;
@@ -179,9 +181,9 @@ namespace LinearAlgebra
                 for (int j = 0; j < n; j++)
                     L[i, j] = 0;
 
-            // Working full symmetric matrix W (Temp): pivoting needs a destroyable symmetric copy, and
-            // keeping BOTH triangles lets each symmetric pivot be a plain row-swap + column-swap.
-            var W = new floatMxN(n, n, Allocator.Temp);
+            // Working full symmetric matrix W (caller workspace): pivoting needs a destroyable symmetric
+            // copy, and keeping BOTH triangles lets each symmetric pivot be a plain row-swap + column-swap.
+            var W = ws.W;
             for (int i = 0; i < n; i++)
                 for (int j = 0; j <= i; j++) {
                     float v = A[i, j];
@@ -217,7 +219,6 @@ namespace LinearAlgebra
 
                 // a clearly-negative remaining diagonal => not PSD.
                 if (minDiag < -stopTol) {
-                    W.Dispose();
                     rank = k;
                     return false;
                 }
@@ -231,7 +232,6 @@ namespace LinearAlgebra
                     for (int i = k; i < n; i++)
                         for (int j = k; j < n; j++)
                             if (math.abs(W[i, j]) > stopTol) {
-                                W.Dispose();
                                 rank = k;
                                 return false;
                             }
@@ -263,8 +263,23 @@ namespace LinearAlgebra
                 }
             }
 
-            W.Dispose();
             return true;
+        }
+
+        /// <summary>
+        /// choleskyDecompositionPivot allocating its n x n symmetric working copy from Allocator.Temp.
+        /// See the ref-workspace overload for semantics.
+        /// </summary>
+        public static bool choleskyDecompositionPivot(in floatMxN A, ref floatMxN L, ref Pivot P, out int rank) {
+            int n = A.IsSquare ? A.M_Rows : 0;
+            var ws = new floatCholeskyPivotWorkspace
+            {
+                W = new floatMxN(n, n, Allocator.Temp),
+                bt = default
+            };
+            bool ok = choleskyDecompositionPivot(in A, ref L, ref P, out rank, ref ws);
+            ws.W.Dispose();
+            return ok;
         }
 
         /// <summary>
@@ -280,7 +295,8 @@ namespace LinearAlgebra
         ///   applies G⁻¹ twice. If b ∈ range(A) this reproduces the exact solution; otherwise it
         ///   returns the least-squares solution of smallest norm.
         /// </summary>
-        public static void choleskyPivotSolve(ref floatMxN L, in Pivot P, int rank, ref floatN b) {
+        public static void choleskyPivotSolve(ref floatMxN L, in Pivot P, int rank, ref floatN b,
+                                              ref floatCholeskyPivotWorkspace ws) {
             if (!L.IsSquare)
                 throw new ArgumentException("choleskyPivotSolve: L must be square");
 
@@ -294,6 +310,7 @@ namespace LinearAlgebra
 
             if (rank < 0 || rank > n)
                 throw new ArgumentException("choleskyPivotSolve: rank must be in [0, n]");
+            RequireCholeskyPivotWorkspace(in ws, n, false, true, "choleskyPivotSolve");
 
             // x = A⁺b = 0 for the zero matrix.
             if (rank == 0) {
@@ -302,8 +319,8 @@ namespace LinearAlgebra
                 return;
             }
 
-            // gather b̃[i] = b[P[i]] (apply the symmetric permutation to the RHS).
-            var bt = new floatN(n, Allocator.Temp);
+            // gather b̃[i] = b[P[i]] (apply the symmetric permutation to the RHS) into the workspace.
+            var bt = ws.bt;
             for (int i = 0; i < n; i++)
                 bt[i] = b[P[i]];
 
@@ -313,7 +330,6 @@ namespace LinearAlgebra
                 SolveUpperTriangularTransposed(ref L, ref bt);
                 for (int i = 0; i < n; i++)
                     b[P[i]] = bt[i];
-                bt.Dispose();
                 return;
             }
 
@@ -373,7 +389,22 @@ namespace LinearAlgebra
             GL.Dispose();
             G.Dispose();
             g.Dispose();
-            bt.Dispose();
+        }
+
+        /// <summary>
+        /// choleskyPivotSolve allocating its permuted-RHS scratch (length n) from Allocator.Temp.
+        /// See the ref-workspace overload for semantics (the rank-deficient Gram buffers are per-call
+        /// Temp in both forms).
+        /// </summary>
+        public static void choleskyPivotSolve(ref floatMxN L, in Pivot P, int rank, ref floatN b) {
+            int n = L.IsSquare ? L.M_Rows : 0;
+            var ws = new floatCholeskyPivotWorkspace
+            {
+                W = default,
+                bt = new floatN(n, Allocator.Temp)
+            };
+            choleskyPivotSolve(ref L, in P, rank, ref b, ref ws);
+            ws.bt.Dispose();
         }
 
         /// <summary>
@@ -386,6 +417,20 @@ namespace LinearAlgebra
                 return false;
 
             choleskyPivotSolve(ref L, in P, rank, ref b);
+            return true;
+        }
+
+        /// <summary>
+        /// Pivoted-Cholesky factor-and-solve using a caller workspace (W for the factorization, bt for
+        /// the solve). Returns false WITHOUT solving if A is indefinite. For a rank-deficient (PSD) A
+        /// this returns the minimum-norm least-squares solution.
+        /// </summary>
+        public static bool choleskyPivotSolve(in floatMxN A, ref floatMxN L, ref Pivot P, ref floatN b,
+                                              ref floatCholeskyPivotWorkspace ws) {
+            if (!choleskyDecompositionPivot(in A, ref L, ref P, out int rank, ref ws))
+                return false;
+
+            choleskyPivotSolve(ref L, in P, rank, ref b, ref ws);
             return true;
         }
 

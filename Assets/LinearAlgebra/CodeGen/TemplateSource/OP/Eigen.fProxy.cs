@@ -386,7 +386,8 @@ namespace LinearAlgebra
         /// false if QL hit maxIterPerEig for some eigenvalue (outputs then undefined). Does not allocate
         /// beyond three length-n Temp scratch vectors.
         /// </summary>
-        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy eps)
+        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy eps,
+                                                 ref fProxyEigenSymWorkspace ws)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Eigen.eigenvaluesSymmetric: A must be square");
@@ -414,12 +415,14 @@ namespace LinearAlgebra
                         throw new ArgumentException("Eigen.eigenvaluesSymmetric: Matrix must be symmetric");
                 }
 
+            RequireEigenSymWorkspace(in ws, n);
+
             if (n == 0) return true;
             if (n == 1) { eigenvalues[0] = A[0, 0]; return true; }
 
-            var eVec = new fProxyN(n, Allocator.Temp, false);   // off-diagonal e[i] couples d[i], d[i+1]
-            var vVec = new fProxyN(n, Allocator.Temp, false);   // Householder vector (entries m0..n-1)
-            var pVec = new fProxyN(n, Allocator.Temp, false);   // p = beta*A*v, then q = p - K v
+            var eVec = ws.eVec;   // off-diagonal e[i] couples d[i], d[i+1]
+            var vVec = ws.vVec;   // Householder vector (entries m0..n-1)
+            var pVec = ws.pVec;   // p = beta*A*v, then q = p - K v
 
             unsafe
             {
@@ -533,7 +536,7 @@ namespace LinearAlgebra
                     }
                     if (m != l)
                     {
-                        if (iter++ >= maxIterPerEig) { eVec.Dispose(); vVec.Dispose(); pVec.Dispose(); return false; }
+                        if (iter++ >= maxIterPerEig) { return false; }
 
                         fProxy g = (eigenvalues[l + 1] - eigenvalues[l]) / ((fProxy)2 * eVec[l]);
                         fProxy r = pythag(g, (fProxy)1);
@@ -560,10 +563,6 @@ namespace LinearAlgebra
                 } while (m != l);
             }
 
-            eVec.Dispose();
-            vVec.Dispose();
-            pVec.Dispose();
-
             // sort descending (selection sort, matching eigenDecomposition)
             for (int j = 0; j < n; j++)
             {
@@ -580,6 +579,30 @@ namespace LinearAlgebra
             }
 
             return true;
+        }
+
+        /// <summary>eigenvaluesSymmetric (ref workspace) with default maxIterPerEig (30) and eps (Consts.fProxyZeroThreshold).</summary>
+        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyEigenSymWorkspace ws)
+            => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.fProxyZeroThreshold, ref ws);
+
+        /// <summary>
+        /// eigenvaluesSymmetric allocating its tridiagonalization scratch (three length-n vectors) from
+        /// Allocator.Temp. See the ref-workspace overload for semantics. A is overwritten (destroyed).
+        /// </summary>
+        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy eps)
+        {
+            int n = A.M_Rows;
+            var ws = new fProxyEigenSymWorkspace
+            {
+                eVec = new fProxyN(n, Allocator.Temp, false),
+                vVec = new fProxyN(n, Allocator.Temp, false),
+                pVec = new fProxyN(n, Allocator.Temp, false)
+            };
+            bool ok = eigenvaluesSymmetric(ref A, ref eigenvalues, maxIterPerEig, eps, ref ws);
+            ws.eVec.Dispose();
+            ws.vVec.Dispose();
+            ws.pVec.Dispose();
+            return ok;
         }
 
         /// <summary>eigenvaluesSymmetric with default maxIterPerEig (30) and eps (Consts.fProxyZeroThreshold).</summary>

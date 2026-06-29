@@ -133,7 +133,8 @@ namespace LinearAlgebra
         /// <param name="B">Output n×n upper bidiagonal factor. Caller-allocated.</param>
         /// <param name="V">Output n×n right orthogonal factor. Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void bidiagonalize(in floatMxN A, ref floatMxN U, ref floatMxN B, ref floatMxN V)
+        public static void bidiagonalize(in floatMxN A, ref floatMxN U, ref floatMxN B, ref floatMxN V,
+                                         ref floatBidiagWorkspace ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -146,6 +147,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("Bidiag.bidiagonalize: B must be n x n");
             if (V.M_Rows != n || V.N_Cols != n)
                 throw new ArgumentException("Bidiag.bidiagonalize: V must be n x n");
+            RequireBidiagWorkspace(in ws, m, n, true, "Bidiag.bidiagonalize");
 
             // Initialize V = I_n, B = 0 (will fill bands at end)
             unsafe
@@ -159,18 +161,16 @@ namespace LinearAlgebra
             if (n == 0 || m == 0)
                 return;
 
-            // W: working copy of A (will be reduced to bidiagonal form in-place)
-            var W = new floatMxN(m, n, Allocator.Temp, true);
+            // Working buffers from the caller workspace. W is the working copy of A (reduced to
+            // bidiagonal form in place). leftU column k holds the k-th left Householder reflector
+            // (entries k..m-1); its written entries are exactly the ones the backward U pass reads, so
+            // values left over from a previous call are never observed.
+            var W = ws.W;
             W.Data.CopyFrom(A.Data);
-
-            // leftU: column k holds the k-th left Householder reflector (entries k..m-1)
-            // Zeroed so entries below the active range are naturally 0.
-            var leftU = new floatMxN(m, n, Allocator.Temp, false);
-
-            // scratch vectors
-            var uVec    = new floatN(m, Allocator.Temp, false);
-            var vVec    = new floatN(n, Allocator.Temp, false);
-            var wScratch = new floatN(n, Allocator.Temp, false);
+            var leftU = ws.leftU;
+            var uVec = ws.uVec;
+            var vVec = ws.vVec;
+            var wScratch = ws.wScratch;
 
             float zeroThreshold = Consts.floatZeroThreshold * floatNormsOP.LInf(in A);
 
@@ -231,13 +231,31 @@ namespace LinearAlgebra
                 if (k < n - 1)
                     B[k, k + 1] = W[k, k + 1];
             }
+        }
 
-            // Cleanup
-            wScratch.Dispose();
-            vVec.Dispose();
-            uVec.Dispose();
-            leftU.Dispose();
-            W.Dispose();
+        /// <summary>
+        /// bidiagonalize allocating its O(mn) scratch from Allocator.Temp. See the ref-workspace
+        /// overload for semantics.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void bidiagonalize(in floatMxN A, ref floatMxN U, ref floatMxN B, ref floatMxN V)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            var ws = new floatBidiagWorkspace
+            {
+                W = new floatMxN(m, n, Allocator.Temp, true),
+                leftU = new floatMxN(m, n, Allocator.Temp, false),
+                uVec = new floatN(m, Allocator.Temp, false),
+                vVec = new floatN(n, Allocator.Temp, false),
+                wScratch = new floatN(n, Allocator.Temp, false)
+            };
+            bidiagonalize(in A, ref U, ref B, ref V, ref ws);
+            ws.wScratch.Dispose();
+            ws.vVec.Dispose();
+            ws.uVec.Dispose();
+            ws.leftU.Dispose();
+            ws.W.Dispose();
         }
 
         /// <summary>
@@ -253,7 +271,8 @@ namespace LinearAlgebra
         /// <param name="d">Output diagonal, length n. Caller-allocated.</param>
         /// <param name="e">Output superdiagonal, length n (e[0]=0). Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void bidiagonalizeValues(in floatMxN A, ref floatN d, ref floatN e)
+        public static void bidiagonalizeValues(in floatMxN A, ref floatN d, ref floatN e,
+                                               ref floatBidiagWorkspace ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -264,17 +283,18 @@ namespace LinearAlgebra
                 throw new ArgumentException("Bidiag.bidiagonalizeValues: d.N must equal A.N_Cols");
             if (e.N != n)
                 throw new ArgumentException("Bidiag.bidiagonalizeValues: e.N must equal A.N_Cols");
+            RequireBidiagWorkspace(in ws, m, n, false, "Bidiag.bidiagonalizeValues");
 
             if (n == 0)
                 return;
 
-            // W: working copy of A, reduced to bidiagonal form in place.
-            var W = new floatMxN(m, n, Allocator.Temp, true);
+            // W: working copy of A, reduced to bidiagonal form in place (from the caller workspace).
+            var W = ws.W;
             W.Data.CopyFrom(A.Data);
 
-            var uVec     = new floatN(m, Allocator.Temp, false);
-            var vVec     = new floatN(n, Allocator.Temp, false);
-            var wScratch = new floatN(n, Allocator.Temp, false);
+            var uVec = ws.uVec;
+            var vVec = ws.vVec;
+            var wScratch = ws.wScratch;
 
             float zeroThreshold = Consts.floatZeroThreshold * floatNormsOP.LInf(in A);
 
@@ -299,11 +319,29 @@ namespace LinearAlgebra
             e[0] = (float)0;
             for (int k = 1; k < n; k++)
                 e[k] = W[k - 1, k];
+        }
 
-            wScratch.Dispose();
-            vVec.Dispose();
-            uVec.Dispose();
-            W.Dispose();
+        /// <summary>
+        /// bidiagonalizeValues allocating its O(mn) scratch from Allocator.Temp. See the ref-workspace
+        /// overload for semantics.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void bidiagonalizeValues(in floatMxN A, ref floatN d, ref floatN e)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            var ws = new floatBidiagWorkspace
+            {
+                W = new floatMxN(m, n, Allocator.Temp, true),
+                uVec = new floatN(m, Allocator.Temp, false),
+                vVec = new floatN(n, Allocator.Temp, false),
+                wScratch = new floatN(n, Allocator.Temp, false)
+            };
+            bidiagonalizeValues(in A, ref d, ref e, ref ws);
+            ws.wScratch.Dispose();
+            ws.vVec.Dispose();
+            ws.uVec.Dispose();
+            ws.W.Dispose();
         }
     }
 }

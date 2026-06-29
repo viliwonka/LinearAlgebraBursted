@@ -14,6 +14,10 @@ namespace LinearAlgebra
         // approximation matrix directly. Both compute the full Golub-Kahan SVD and slice — exact but
         // not cheaper than the full SVD; the *approximate* fast path (random projection) is randomized
         // SVD. A is m x n with m >= n (the svdGolubKahan precondition).
+        //
+        // Each op needs one full SVD (U m x n, S n, V n x n) of scratch. The allocating overloads take
+        // it from A's temp pool; the ref-workspace overloads reuse a caller-provided
+        // doubleSvdFullWorkspace (Arena.doubleSvdFullWorkspace(m, n)) for zero-alloc repeated calls.
 
         /// <summary>
         /// Truncated (thin) SVD: the k largest singular triplets of A (m x n, m >= n), so
@@ -25,10 +29,11 @@ namespace LinearAlgebra
         /// Computes the full Golub-Kahan SVD and slices, so it is EXACT but no cheaper than a full SVD
         /// (use randomized SVD when k ≪ n and an approximation suffices). A is NOT modified.
         /// <paramref name="converged"/> is the SVD's flag (when false the outputs are undefined).
-        /// Allocates full-SVD scratch (m x n + n x n + n) from A's arena.
+        /// <paramref name="ws"/> is full-SVD scratch (m x n + n + n x n) reused across calls; size it
+        /// with Arena.doubleSvdFullWorkspace(m, n).
         /// </summary>
         public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
-                                        int k, out bool converged, int maxIter)
+                                        int k, ref doubleSvdFullWorkspace ws, out bool converged, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -45,28 +50,48 @@ namespace LinearAlgebra
                 throw new ArgumentException("svdTruncated: Vk must be n x k");
             if (maxIter < 1)
                 throw new ArgumentException("svdTruncated: maxIter must be >= 1");
+            RequireSvdFullWorkspace(in ws, m, n, "svdTruncated");
 
             converged = true;
             if (n == 0 || k == 0)
                 return;
 
-            var U = A.tempdoubleMat(m, n);
-            var S = A.tempdoubleVec(n);
-            var V = A.tempdoubleMat(n, n);
-
-            converged = svdGolubKahan(in A, ref U, ref S, ref V, maxIter);
+            converged = svdGolubKahan(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
             if (!converged)
                 return;
 
             for (int t = 0; t < k; t++)
             {
-                Sk[t] = S[t];
-                for (int i = 0; i < m; i++) Uk[i, t] = U[i, t];
-                for (int i = 0; i < n; i++) Vk[i, t] = V[i, t];
+                Sk[t] = ws.S[t];
+                for (int i = 0; i < m; i++) Uk[i, t] = ws.U[i, t];
+                for (int i = 0; i < n; i++) Vk[i, t] = ws.V[i, t];
             }
         }
 
-        /// <summary>svdTruncated with default maxIter (75).</summary>
+        /// <summary>svdTruncated (ref workspace) with default maxIter (75).</summary>
+        public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                        int k, ref doubleSvdFullWorkspace ws, out bool converged)
+            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out converged, 75);
+
+        /// <summary>
+        /// svdTruncated allocating its full-SVD scratch (m x n + n x n + n) from A's arena.
+        /// See the ref-workspace overload for semantics.
+        /// </summary>
+        public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                        int k, out bool converged, int maxIter)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            var ws = new doubleSvdFullWorkspace
+            {
+                U = A.tempdoubleMat(m, n),
+                S = A.tempdoubleVec(n),
+                V = A.tempdoubleMat(n, n)
+            };
+            svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out converged, maxIter);
+        }
+
+        /// <summary>svdTruncated (allocating) with default maxIter (75).</summary>
         public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, out converged, 75);
@@ -76,10 +101,12 @@ namespace LinearAlgebra
         /// Ak = Σ_{t&lt;k} σ_t u_t v_tᵀ = Uk diag(Sk) Vkᵀ. This is the matrix that minimizes
         /// ||A - Ak|| over all rank-k matrices (Eckart-Young); the Frobenius error is sqrt(Σ_{i&gt;=k} σ_i²).
         /// Useful for compression / denoising. 0 &lt;= k &lt;= n. A is NOT modified.
-        /// <paramref name="converged"/> is the SVD's flag (when false Ak is undefined). Allocates
-        /// full-SVD scratch from A's arena.
+        /// <paramref name="converged"/> is the SVD's flag (when false Ak is undefined).
+        /// <paramref name="ws"/> is full-SVD scratch reused across calls; size it with
+        /// Arena.doubleSvdFullWorkspace(m, n).
         /// </summary>
-        public static void lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k, out bool converged, int maxIter)
+        public static void lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k,
+                                         ref doubleSvdFullWorkspace ws, out bool converged, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -92,6 +119,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("lowRankApprox: Ak must be m x n");
             if (maxIter < 1)
                 throw new ArgumentException("lowRankApprox: maxIter must be >= 1");
+            RequireSvdFullWorkspace(in ws, m, n, "lowRankApprox");
 
             converged = true;
 
@@ -103,11 +131,7 @@ namespace LinearAlgebra
             if (n == 0 || k == 0)
                 return;
 
-            var U = A.tempdoubleMat(m, n);
-            var S = A.tempdoubleVec(n);
-            var V = A.tempdoubleMat(n, n);
-
-            converged = svdGolubKahan(in A, ref U, ref S, ref V, maxIter);
+            converged = svdGolubKahan(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
             if (!converged)
                 return;
 
@@ -115,17 +139,39 @@ namespace LinearAlgebra
             // in the Ak row, V column gathered per t).
             for (int t = 0; t < k; t++)
             {
-                double s = S[t];
+                double s = ws.S[t];
                 for (int i = 0; i < m; i++)
                 {
-                    double us = U[i, t] * s;
+                    double us = ws.U[i, t] * s;
                     for (int j = 0; j < n; j++)
-                        Ak[i, j] += us * V[j, t];
+                        Ak[i, j] += us * ws.V[j, t];
                 }
             }
         }
 
-        /// <summary>lowRankApprox with default maxIter (75).</summary>
+        /// <summary>lowRankApprox (ref workspace) with default maxIter (75).</summary>
+        public static void lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k,
+                                         ref doubleSvdFullWorkspace ws, out bool converged)
+            => lowRankApprox(in A, ref Ak, k, ref ws, out converged, 75);
+
+        /// <summary>
+        /// lowRankApprox allocating its full-SVD scratch from A's arena.
+        /// See the ref-workspace overload for semantics.
+        /// </summary>
+        public static void lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k, out bool converged, int maxIter)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            var ws = new doubleSvdFullWorkspace
+            {
+                U = A.tempdoubleMat(m, n),
+                S = A.tempdoubleVec(n),
+                V = A.tempdoubleMat(n, n)
+            };
+            lowRankApprox(in A, ref Ak, k, ref ws, out converged, maxIter);
+        }
+
+        /// <summary>lowRankApprox (allocating) with default maxIter (75).</summary>
         public static void lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k, out bool converged)
             => lowRankApprox(in A, ref Ak, k, out converged, 75);
     }

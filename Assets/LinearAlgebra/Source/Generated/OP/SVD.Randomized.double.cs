@@ -23,6 +23,11 @@ namespace LinearAlgebra
         //                                                    the spectrum decays slowly)
         //   B  = Qᵀ A  (ℓ x n);  B = Ũ Σ Wᵀ  (exact small SVD, via Bᵀ);  U = Q Ũ
         // The leading k columns of (U, Σ, W) are the approximate top-k SVD.
+        //
+        // The dozen intermediate buffers come either from A's temp pool (the allocating overloads) or
+        // from a caller-provided doubleSvdRandomizedWorkspace (the ref-workspace overloads) for
+        // zero-alloc repeated calls — size the latter with Arena.doubleSvdRandomizedWorkspace(m, n, k,
+        // oversample).
 
         // Default sketch seed (golden-ratio constant). Inlined rather than a const field because this
         // type-independent member would otherwise be emitted into BOTH the float and double generated
@@ -40,8 +45,74 @@ namespace LinearAlgebra
         /// with k &gt;= r it is exact up to rounding. The cost is dominated by GEMMs (O(mnℓ)), so it
         /// beats the full O(mn²) SVD when k ≪ n. <paramref name="seed"/> seeds the Gaussian sketch
         /// (0 -&gt; a fixed default, making the call deterministic). Returns the inner SVD's convergence
-        /// flag (false -&gt; outputs undefined). A is NOT modified. Allocates O(mℓ + nℓ) scratch from
-        /// A's arena.
+        /// flag (false -&gt; outputs undefined). A is NOT modified.
+        ///
+        /// <paramref name="ws"/> holds all scratch; size it with
+        /// Arena.doubleSvdRandomizedWorkspace(m, n, k, oversample) using the SAME k and oversample.
+        /// </summary>
+        public static bool svdRandomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                         int k, int oversample, int powerIters, uint seed, int maxIter,
+                                         ref doubleSvdRandomizedWorkspace ws)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIter);
+
+            int l = math.min(k + oversample, n);   // sketch width ℓ (k <= ℓ <= n <= m)
+            RequireSvdRandomizedWorkspace(in ws, m, n, l);
+
+            // Ω (n x ℓ) standard normal; Y = A Ω (m x ℓ).
+            var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
+            var gauss = new doubleGaussian((double)0, (double)1);
+            doubleRandomOP.randomInpl(ref rng, ref ws.Omega, ref gauss);
+
+            doubleOP.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
+
+            // Q = orth(Y): qrDecomposition overwrites Y with the thin orthonormal Q (m x ℓ).
+            OrthoOP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+
+            // Subspace iteration: Y = A (Aᵀ Q), re-orthonormalize.
+            for (int it = 0; it < powerIters; it++)
+            {
+                doubleOP.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
+                doubleOP.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
+                OrthoOP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+            }
+
+            // B = Qᵀ A (ℓ x n); solve its SVD exactly via Bᵀ (n x ℓ, tall): Bᵀ = Up Σ Vpᵀ, so
+            // B = Vp Σ Upᵀ -> A ≈ Q B = (Q Vp) Σ Upᵀ.
+            doubleOP.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
+            doubleOP.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
+
+            bool ok = svdGolubKahan(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
+            if (!ok)
+                return false;
+
+            doubleOP.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
+
+            for (int t = 0; t < k; t++)
+            {
+                Sk[t] = ws.Sb[t];
+                for (int i = 0; i < m; i++) Uk[i, t] = ws.UA[i, t];
+                for (int i = 0; i < n; i++) Vk[i, t] = ws.Up[i, t];
+            }
+            return true;
+        }
+
+        /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
+        public static bool svdRandomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                         int k, uint seed, ref doubleSvdRandomizedWorkspace ws)
+            => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75, ref ws);
+
+        /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
+        public static bool svdRandomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                         int k, ref doubleSvdRandomizedWorkspace ws)
+            => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
+
+        /// <summary>
+        /// svdRandomized allocating all scratch (O(mℓ + nℓ)) from A's arena. See the ref-workspace
+        /// overload for semantics.
         /// </summary>
         public static bool svdRandomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter)
@@ -49,82 +120,33 @@ namespace LinearAlgebra
             int m = A.M_Rows;
             int n = A.N_Cols;
 
-            if (m < n)
-                throw new ArgumentException("svdRandomized: A must have m >= n (more rows than columns)");
-            if (k < 1 || k > n)
-                throw new ArgumentException("svdRandomized: k must be in [1, A.N_Cols]");
-            if (oversample < 0)
-                throw new ArgumentException("svdRandomized: oversample must be >= 0");
-            if (powerIters < 0)
-                throw new ArgumentException("svdRandomized: powerIters must be >= 0");
-            if (Uk.M_Rows != m || Uk.N_Cols != k)
-                throw new ArgumentException("svdRandomized: Uk must be m x k");
-            if (Sk.N != k)
-                throw new ArgumentException("svdRandomized: Sk must have length k");
-            if (Vk.M_Rows != n || Vk.N_Cols != k)
-                throw new ArgumentException("svdRandomized: Vk must be n x k");
-            if (maxIter < 1)
-                throw new ArgumentException("svdRandomized: maxIter must be >= 1");
+            RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIter);
 
-            int l = math.min(k + oversample, n);   // sketch width ℓ (k <= ℓ <= n <= m)
-
-            // Ω (n x ℓ) standard normal; Y = A Ω (m x ℓ).
-            var Omega = A.tempdoubleMat(n, l);
-            var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
-            var gauss = new doubleGaussian((double)0, (double)1);
-            doubleRandomOP.randomInpl(ref rng, ref Omega, ref gauss);
-
-            var Y = A.tempdoubleMat(m, l);
-            doubleOP.dot(in A, in Omega, ref Y);          // Y = A Ω
-
-            // Q = orth(Y): qrDecomposition overwrites Y with the thin orthonormal Q (m x ℓ).
-            var R  = A.tempdoubleMat(l, l);
-            var qu = A.tempdoubleVec(m);
-            var qw = A.tempdoubleVec(l);
-            OrthoOP.qrDecomposition(ref Y, ref R, ref qu, ref qw);
-
-            // Subspace iteration: Y = A (Aᵀ Q), re-orthonormalize.
-            var Z = A.tempdoubleMat(n, l);
-            for (int it = 0; it < powerIters; it++)
+            int l = math.min(k + oversample, n);
+            var ws = new doubleSvdRandomizedWorkspace
             {
-                doubleOP.dot(in A, in Y, ref Z, true);    // Z = Aᵀ Q   (n x ℓ)
-                doubleOP.dot(in A, in Z, ref Y);          // Y = A Z    (m x ℓ)
-                OrthoOP.qrDecomposition(ref Y, ref R, ref qu, ref qw);
-            }
-
-            // B = Qᵀ A (ℓ x n); solve its SVD exactly via Bᵀ (n x ℓ, tall): Bᵀ = Up Σ Vpᵀ, so
-            // B = Vp Σ Upᵀ -> A ≈ Q B = (Q Vp) Σ Upᵀ.
-            var B = A.tempdoubleMat(l, n);
-            doubleOP.dot(in Y, in A, ref B, true);        // B = Qᵀ A
-
-            var Bt = A.tempdoubleMat(n, l);
-            doubleOP.trans(in B, ref Bt);                 // Bᵀ (n x ℓ)
-
-            var Up = A.tempdoubleMat(n, l);
-            var Sb = A.tempdoubleVec(l);
-            var Vp = A.tempdoubleMat(l, l);
-            bool ok = svdGolubKahan(in Bt, ref Up, ref Sb, ref Vp, maxIter);
-            if (!ok)
-                return false;
-
-            var UA = A.tempdoubleMat(m, l);
-            doubleOP.dot(in Y, in Vp, ref UA);            // U = Q Vp   (m x ℓ)
-
-            for (int t = 0; t < k; t++)
-            {
-                Sk[t] = Sb[t];
-                for (int i = 0; i < m; i++) Uk[i, t] = UA[i, t];
-                for (int i = 0; i < n; i++) Vk[i, t] = Up[i, t];
-            }
-            return true;
+                Omega = A.tempdoubleMat(n, l),
+                Y = A.tempdoubleMat(m, l),
+                R = A.tempdoubleMat(l, l),
+                qu = A.tempdoubleVec(m),
+                qw = A.tempdoubleVec(l),
+                Z = A.tempdoubleMat(n, l),
+                B = A.tempdoubleMat(l, n),
+                Bt = A.tempdoubleMat(n, l),
+                Up = A.tempdoubleMat(n, l),
+                Sb = A.tempdoubleVec(l),
+                Vp = A.tempdoubleMat(l, l),
+                UA = A.tempdoubleMat(m, l)
+            };
+            return svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, maxIter, ref ws);
         }
 
-        /// <summary>svdRandomized with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
+        /// <summary>svdRandomized (allocating) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
         public static bool svdRandomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                          int k, uint seed)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75);
 
-        /// <summary>svdRandomized with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
+        /// <summary>svdRandomized (allocating) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
         public static bool svdRandomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk, int k)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75);
     }
