@@ -507,7 +507,36 @@ namespace LinearAlgebra
                 for (int i = 0; i < size; i++)
                     im[i] = -im[i];
 
-            // Base-4 digit reversal permutation.
+            // Digit reversal + butterfly stages via shared slice helper.
+            double* rePtr  = re.Data.Ptr;
+            double* imPtr  = im.Data.Ptr;
+            double* twrPtr = twReFull.Data.Ptr;
+            double* twiPtr = twImFull.Data.Ptr;
+            FftCoreRadix4Slice(rePtr, imPtr, twrPtr, twiPtr, size, tableN);
+
+            if (inverse)
+            {
+                double invN = (double)1 / (double)size;
+                for (int i = 0; i < size; i++)
+                {
+                    re[i] =  re[i] * invN;
+                    im[i] = -im[i] * invN;   // undo conjugate, apply 1/N scale
+                }
+            }
+        }
+
+        // Shared helper: base-4 digit reversal + butterfly on a raw pointer slice of length `size`.
+        // re/im are already offset to the start of the sub-array; twr/twi are the full-circle
+        // twiddle table (length tableN, shared across calls — read-only inside FftCoreRadix4Ptr).
+        // size must be a power of 4; tableN must be a multiple of size.
+        static unsafe void FftCoreRadix4Slice(
+            double* re, double* im,
+            double* twr, double* twi,
+            int size, int tableN)
+        {
+            if (size <= 1) return;
+
+            // Base-4 digit reversal on this slice.
             int log4n = 0;
             for (int t = size; t > 1; t >>= 2) log4n++;
 
@@ -521,22 +550,8 @@ namespace LinearAlgebra
                 }
             }
 
-            // Butterfly stages via pointer kernel.
-            double* rePtr  = re.Data.Ptr;
-            double* imPtr  = im.Data.Ptr;
-            double* twrPtr = twReFull.Data.Ptr;
-            double* twiPtr = twImFull.Data.Ptr;
-            FftCoreRadix4Ptr(rePtr, imPtr, twrPtr, twiPtr, size, tableN);
-
-            if (inverse)
-            {
-                double invN = (double)1 / (double)size;
-                for (int i = 0; i < size; i++)
-                {
-                    re[i] =  re[i] * invN;
-                    im[i] = -im[i] * invN;   // undo conjugate, apply 1/N scale
-                }
-            }
+            // Butterfly stages.
+            FftCoreRadix4Ptr(re, im, twr, twi, size, tableN);
         }
 
         // Mixed-radix DIT for N = 2·4^k (IsPow2(N) && !IsPowerOf4(N)).
@@ -544,8 +559,10 @@ namespace LinearAlgebra
         // One radix-2 level wraps two size-M = re.N/2 radix-4 sub-FFTs; M is always a power of 4.
         // Inverse via conjugate trick at the OUTER level — sub-FFTs always run forward.
         //
-        // Decoupled twiddle indexing: W_M^j = T_tableN[j*(tableN/M)], computed by FftCoreRadix4Ptr
-        // with step = tableN/len — no sub-table copy needed (the Temp twrM/twiM are eliminated).
+        // In-place implementation — no doubleN Temp allocations.
+        // Step 1: de-interleave in-place via cycle-following (bool visited scratch, N bytes).
+        // Step 2: two radix-4 sub-FFTs on the contiguous even/odd halves via FftCoreRadix4Slice.
+        // Step 3: radix-2 DIT combine, writing natural-order output back in-place.
         // Combine twiddle: W_size^k = T_tableN[k*(tableN/size)].
         static unsafe void FftCoreRadix4Mixed(ref doubleN re, ref doubleN im,
                                               ref doubleN twReFull, ref doubleN twImFull,
@@ -559,25 +576,48 @@ namespace LinearAlgebra
                 for (int i = 0; i < size; i++)
                     im[i] = -im[i];
 
-            // Step 1: Deinterleave into even-indexed (E) and odd-indexed (O) halves.
-            var ere = new doubleN(M, Allocator.Temp, false);
-            var eim = new doubleN(M, Allocator.Temp, false);
-            var ore = new doubleN(M, Allocator.Temp, false);
-            var oim = new doubleN(M, Allocator.Temp, false);
+            // Step 1: In-place de-interleave (unshuffle) via cycle-following.
+            // dst(i) = i/2 if i is even; M + i/2 if i is odd.
+            // After the permutation: [0,M) holds even-indexed elements, [M,2M) holds odd-indexed,
+            // both in natural order — exactly what FftCoreRadix4Slice expects as input.
+            // Cycle-following uses a bool scratch (N bytes, Allocator.Temp) instead of 4×doubleN temps.
+            var visited = new NativeArray<bool>(size, Allocator.Temp, NativeArrayOptions.ClearMemory);
 
-            for (int k = 0; k < M; k++)
+            for (int s = 0; s < size; s++)
             {
-                ere[k] = re[2 * k];
-                eim[k] = im[2 * k];
-                ore[k] = re[2 * k + 1];
-                oim[k] = im[2 * k + 1];
+                if (visited[s]) continue;
+                visited[s] = true;
+
+                int j = (s & 1) == 0 ? (s >> 1) : (M + (s >> 1));
+                if (j == s) continue;   // fixed point (s==0 or s==size-1)
+
+                double carryRe = re[s], carryIm = im[s];
+                while (j != s)
+                {
+                    double tmpRe = re[j], tmpIm = im[j];
+                    re[j] = carryRe;
+                    im[j] = carryIm;
+                    visited[j] = true;
+                    carryRe = tmpRe;
+                    carryIm = tmpIm;
+                    j = (j & 1) == 0 ? (j >> 1) : (M + (j >> 1));
+                }
+                re[s] = carryRe;
+                im[s] = carryIm;
             }
 
-            // Step 2: Sub-FFT each half (forward) via the radix-4 core.
-            // Pass the full tableN-size table; FftCoreRadix4Ptr computes step = tableN/len so
-            // T_M[j] = T_tableN[j*(tableN/M)] is read correctly — no sub-table copy required.
-            FftCoreRadix4(ref ere, ref eim, ref twReFull, ref twImFull, tableN, false);
-            FftCoreRadix4(ref ore, ref oim, ref twReFull, ref twImFull, tableN, false);
+            visited.Dispose();
+
+            // Step 2: Two in-place radix-4 sub-FFTs on the contiguous halves (no temp copy).
+            // FftCoreRadix4Ptr twiddle indexing: W_M^j = T_tableN[j*(tableN/M)] via step=tableN/len,
+            // so the full-size table drives the sub-transforms correctly — no sub-table copies needed.
+            double* rePtr  = re.Data.Ptr;
+            double* imPtr  = im.Data.Ptr;
+            double* twrPtr = twReFull.Data.Ptr;
+            double* twiPtr = twImFull.Data.Ptr;
+
+            FftCoreRadix4Slice(rePtr,     imPtr,     twrPtr, twiPtr, M, tableN);
+            FftCoreRadix4Slice(rePtr + M, imPtr + M, twrPtr, twiPtr, M, tableN);
 
             // Step 3: Radix-2 DIT combine.
             // W_size^k = T_tableN[k*(tableN/size)].
@@ -588,18 +628,15 @@ namespace LinearAlgebra
             {
                 double wr = twReFull[k * combineStep];
                 double wi = twImFull[k * combineStep];
-                double tr = wr * ore[k] - wi * oim[k];
-                double ti = wr * oim[k] + wi * ore[k];
-                re[k]     = ere[k] + tr;
-                im[k]     = eim[k] + ti;
-                re[k + M] = ere[k] - tr;
-                im[k + M] = eim[k] - ti;
+                double er  = re[k],     ei  = im[k];
+                double or_ = re[M + k], oi_ = im[M + k];
+                double tr  = wr * or_ - wi * oi_;
+                double ti  = wr * oi_ + wi * or_;
+                re[k]     = er + tr;
+                im[k]     = ei + ti;
+                re[M + k] = er - tr;
+                im[M + k] = ei - ti;
             }
-
-            ere.Dispose();
-            eim.Dispose();
-            ore.Dispose();
-            oim.Dispose();
 
             // Conjugate and scale for inverse.
             if (inverse)
