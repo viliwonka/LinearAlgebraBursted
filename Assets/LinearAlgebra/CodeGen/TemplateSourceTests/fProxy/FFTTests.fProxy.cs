@@ -571,7 +571,11 @@ public class fProxyFFTTests
             TableIfftVsRecurrence(256, 10063u, 10079u);
         }
 
-        // Helper: compare table rfft vs recurrence rfft for one size.
+        // Helper: compare table rfft(ws) [now radix-4 inner] vs recurrence rfft for one size.
+        // Tight 1E-4 absolute tolerance — appropriate for N ≤ 256 where both algorithms agree to
+        // that precision. For larger N the cross-algorithm absolute error grows to ~1e-3 (both
+        // algorithms are still CORRECT; they just diverge in absolute terms for near-zero bins).
+        // Large N correctness is validated by TableRfftRoundTrip (self-consistent irfft·rfft==id).
         void TableRfftVsRecurrence(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -593,18 +597,26 @@ public class fProxyFFTTests
                 AssertClose(reT[k], reR[k], tol);
                 AssertClose(imT[k], imR[k], tol);
             }
-            // DC and Nyquist imaginary parts must be exactly zero
+            // DC and Nyquist imaginary parts must be exactly zero (set unconditionally in rfft)
             AssertClose(imT[0],     (fProxy)0, 0f);
             AssertClose(imT[N / 2], (fProxy)0, 0f);
             arena.Dispose();
         }
 
-        // Table rfft == recurrence rfft on random real inputs at N=8, 16, 64, 256.
+        // Table rfft(ws) == recurrence rfft at N ≤ 256 (tight cross-algorithm comparison, 1E-4).
+        // Covers BOTH inner-M paths:
+        //   IsPowerOf4(M)=true  (Radix4 inner): N=2(M=1), N=8(M=4), N=32(M=16), N=128(M=64)
+        //   IsPowerOf4(M)=false (Mixed inner):  N=4(M=2), N=16(M=8), N=64(M=32), N=256(M=128)
+        // N > 256 cross-algorithm agreement is validated by TableRfftRoundTrip (irfft·rfft==id).
         void TableRfftMatchesRecurrence()
         {
+            TableRfftVsRecurrence(2,   3001u);
+            TableRfftVsRecurrence(4,   3005u);
             TableRfftVsRecurrence(8,   2468u);
             TableRfftVsRecurrence(16,  2475u);
+            TableRfftVsRecurrence(32,  3009u);
             TableRfftVsRecurrence(64,  2482u);
+            TableRfftVsRecurrence(128, 3013u);
             TableRfftVsRecurrence(256, 2489u);
         }
 
@@ -632,12 +644,18 @@ public class fProxyFFTTests
             arena.Dispose();
         }
 
-        // Table irfft == recurrence irfft at N=8, 16, 64, 256.
+        // Table irfft(ws) == recurrence irfft at N ≤ 256 (tight cross-algorithm comparison, 1E-4).
+        // Both inner-M paths covered (same split as TableRfftMatchesRecurrence).
+        // Large-N correctness validated by TableRfftRoundTrip (irfft·rfft round-trip).
         void TableIrfftMatchesRecurrence()
         {
+            TableIrfftVsRecurrence(2,   4001u);
+            TableIrfftVsRecurrence(4,   4005u);
             TableIrfftVsRecurrence(8,   1357u);
             TableIrfftVsRecurrence(16,  1374u);
+            TableIrfftVsRecurrence(32,  4009u);
             TableIrfftVsRecurrence(64,  1391u);
+            TableIrfftVsRecurrence(128, 4013u);
             TableIrfftVsRecurrence(256, 1408u);
         }
 
@@ -685,13 +703,22 @@ public class fProxyFFTTests
             arena.Dispose();
         }
 
-        // irfft(rfft(x, ws), ws) == x with a workspace at N=8, 16, 64, 256.
+        // irfft(rfft(x, ws), ws) == x with a workspace — full size range 2..8192, both inner-M paths.
         void TableRfftRoundTrip()
         {
-            TableRfftRoundTripOneSize(8,   8765u);
-            TableRfftRoundTripOneSize(16,  8796u);
-            TableRfftRoundTripOneSize(64,  8827u);
-            TableRfftRoundTripOneSize(256, 8858u);
+            TableRfftRoundTripOneSize(2,    5001u);
+            TableRfftRoundTripOneSize(4,    5005u);
+            TableRfftRoundTripOneSize(8,    8765u);
+            TableRfftRoundTripOneSize(16,   8796u);
+            TableRfftRoundTripOneSize(32,   5009u);
+            TableRfftRoundTripOneSize(64,   8827u);
+            TableRfftRoundTripOneSize(128,  5013u);
+            TableRfftRoundTripOneSize(256,  8858u);
+            TableRfftRoundTripOneSize(512,  5017u);
+            TableRfftRoundTripOneSize(1024, 5021u);
+            TableRfftRoundTripOneSize(2048, 5025u);
+            TableRfftRoundTripOneSize(4096, 5029u);
+            TableRfftRoundTripOneSize(8192, 5033u);
         }
 
         // ---- radix-4 oracle validation tests ----
