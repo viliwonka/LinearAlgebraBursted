@@ -181,88 +181,108 @@ namespace LinearAlgebra
                 for (int j = 0; j < n; j++)
                     L[i, j] = 0;
 
-            // Working full symmetric matrix W (caller workspace): pivoting needs a destroyable symmetric
-            // copy, and keeping BOTH triangles lets each symmetric pivot be a plain row-swap + column-swap.
+            // Working symmetric matrix W (caller workspace) holds the UPPER triangle only: W[i,j], j>=i.
+            // Factor as A = U^T U with U upper-triangular: the right-looking sweep broadcasts the freshly
+            // computed factor ROW U[k, k..] (contiguous in row-major) and subtracts its rank-1 contribution
+            // from each trailing row W[i, i..] (also contiguous) — a unit-stride axpy with NO symmetric
+            // mirror (the lower triangle is never stored, so there is nothing to strided-copy; that mirror
+            // was the cache cliff). The returned factor L is LOWER-triangular (P^T A P = L L^T, L = U^T);
+            // each finished U row is scattered into L's column k (an O(n) strided write, « the O(n^3)
+            // factor). Only A's lower triangle is read (A is assumed symmetric): W[i,j] := A[j,i], j>=i.
             var W = ws.W;
             for (int i = 0; i < n; i++)
-                for (int j = 0; j <= i; j++) {
-                    fProxy v = A[i, j];
-                    W[i, j] = v;
-                    W[j, i] = v;
-                }
+                for (int j = i; j < n; j++)
+                    W[i, j] = A[j, i];
 
-            // scale-relative numerical-zero / indefinite tolerance. Scanned over ALL entries (not
-            // just the diagonal): for a genuine PSD matrix the largest magnitude IS on the diagonal,
-            // so this is identical there — but it keeps the tolerance meaningful for a non-PSD input
-            // whose mass is off-diagonal (e.g. zero diagonal, nonzero off-diagonal), which must not
+            // scale-relative numerical-zero / indefinite tolerance. Scanned over all (upper-triangle)
+            // entries, not just the diagonal: for a genuine PSD matrix the largest magnitude IS on the
+            // diagonal, so this is identical there — but it keeps the tolerance meaningful for a non-PSD
+            // input whose mass is off-diagonal (e.g. zero diagonal, nonzero off-diagonal), which must not
             // be silently accepted as a rank-0 PSD matrix.
             fProxy absScale = 0;
             for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++) {
+                for (int j = i; j < n; j++) {
                     fProxy ad = math.abs(W[i, j]);
                     if (ad > absScale) absScale = ad;
                 }
             fProxy stopTol = (fProxy)n * Consts.fProxyEpsilon * absScale;
 
-            for (int k = 0; k < n; k++) {
+            // Freshly-computed factor row U[k, k..n-1] gathered contiguously into urow so the rank-1 Schur
+            // update is a set of unit-stride row-axpys (the vectorising UnsafeOP.axpy path). One O(n) Temp
+            // buffer (« the O(n^3) factor), matching the plain choleskyDecomposition's `lj`.
+            var urow = new fProxyN(n, Allocator.Temp, false);
+            unsafe {
+                fProxy* wp = W.Data.Ptr;
+                fProxy* urowp = urow.Data.Ptr;
 
-                // pick the largest remaining diagonal (the pivot); also track the smallest to detect
-                // indefiniteness (a PSD Schur complement keeps every diagonal >= 0).
-                int q = k;
-                fProxy maxDiag = W[k, k];
-                fProxy minDiag = W[k, k];
-                for (int j = k + 1; j < n; j++) {
-                    fProxy d = W[j, j];
-                    if (d > maxDiag) { maxDiag = d; q = j; }
-                    if (d < minDiag) minDiag = d;
-                }
+                for (int k = 0; k < n; k++) {
 
-                // a clearly-negative remaining diagonal => not PSD.
-                if (minDiag < -stopTol) {
-                    rank = k;
-                    return false;
-                }
-
-                // largest remaining diagonal is numerically zero (NaN-safe). For a genuine PSD matrix
-                // a zero diagonal forces its whole row/column to zero, so the trailing block is now
-                // all-negligible and rank k is reached. But if any trailing entry is still
-                // significant the matrix is NOT PSD (e.g. [[0,1],[1,0]], eigenvalues +/-1) => reject
-                // as indefinite rather than silently returning a bogus low rank.
-                if (!(maxDiag > stopTol)) {
-                    for (int i = k; i < n; i++)
-                        for (int j = k; j < n; j++)
-                            if (math.abs(W[i, j]) > stopTol) {
-                                rank = k;
-                                return false;
-                            }
-                    rank = k;
-                    break;
-                }
-
-                // symmetric pivot: bring column/row q to position k.
-                if (q != k) {
-                    SwapOP.Rows(ref W, k, q);          // full row swap
-                    SwapOP.Columns(ref W, k, q);       // + full column swap => symmetric
-                    SwapOP.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
-                    P.Swap(k, q);
-                }
-
-                // factor column k.
-                fProxy Lkk = math.sqrt(W[k, k]);
-                L[k, k] = Lkk;
-                for (int i = k + 1; i < n; i++)
-                    L[i, k] = W[i, k] / Lkk;
-
-                // rank-1 Schur update of the trailing block, kept symmetric for the next pivot.
-                for (int i = k + 1; i < n; i++) {
-                    fProxy Lik = L[i, k];
-                    for (int j = k + 1; j <= i; j++) {
-                        W[i, j] -= Lik * L[j, k];
-                        W[j, i] = W[i, j];
+                    // pick the largest remaining diagonal (the pivot); also track the smallest to detect
+                    // indefiniteness (a PSD Schur complement keeps every diagonal >= 0).
+                    int q = k;
+                    fProxy maxDiag = W[k, k];
+                    fProxy minDiag = W[k, k];
+                    for (int j = k + 1; j < n; j++) {
+                        fProxy d = W[j, j];
+                        if (d > maxDiag) { maxDiag = d; q = j; }
+                        if (d < minDiag) minDiag = d;
                     }
+
+                    // a clearly-negative remaining diagonal => not PSD.
+                    if (minDiag < -stopTol) {
+                        urow.Dispose();
+                        rank = k;
+                        return false;
+                    }
+
+                    // largest remaining diagonal is numerically zero (NaN-safe). For a genuine PSD matrix
+                    // a zero diagonal forces its whole row/column to zero, so the trailing block is now
+                    // all-negligible and rank k is reached. But if any trailing entry is still
+                    // significant the matrix is NOT PSD (e.g. [[0,1],[1,0]], eigenvalues +/-1) => reject
+                    // as indefinite rather than silently returning a bogus low rank.
+                    if (!(maxDiag > stopTol)) {
+                        for (int i = k; i < n; i++)
+                            for (int j = i; j < n; j++)
+                                if (math.abs(W[i, j]) > stopTol) {
+                                    urow.Dispose();
+                                    rank = k;
+                                    return false;
+                                }
+                        rank = k;
+                        break;
+                    }
+
+                    // symmetric pivot k <-> q (k < q) on the upper-triangle storage: swap the two
+                    // diagonals, the column segments above row k, the row segments right of column q, and
+                    // the transposed "between" segment; the cross entry W[k,q] maps to itself. Reads only
+                    // upper entries (i<=j), so no lower triangle is needed.
+                    if (q != k) {
+                        { fProxy t = W[k, k]; W[k, k] = W[q, q]; W[q, q] = t; }
+                        for (int i = 0; i < k; i++)     { fProxy t = W[i, k]; W[i, k] = W[i, q]; W[i, q] = t; }
+                        for (int j = q + 1; j < n; j++) { fProxy t = W[k, j]; W[k, j] = W[q, j]; W[q, j] = t; }
+                        for (int m = k + 1; m < q; m++) { fProxy t = W[k, m]; W[k, m] = W[m, q]; W[m, q] = t; }
+                        SwapOP.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
+                        P.Swap(k, q);
+                    }
+
+                    // factor row k: U[k,k] = sqrt(W[k,k]); U[k,j>k] = W[k,j] / U[k,k]. Gather U[k, k+1..]
+                    // contiguously into urow and scatter it into L's column k (L = U^T, strided O(n) write).
+                    fProxy Ukk = math.sqrt(W[k, k]);
+                    L[k, k] = Ukk;
+                    for (int j = k + 1; j < n; j++) {
+                        fProxy u = W[k, j] / Ukk;
+                        urowp[j] = u;
+                        L[j, k] = u;
+                    }
+
+                    // rank-1 Schur update of the trailing UPPER triangle, one unit-stride row-axpy per
+                    // row: W[i, i..n-1] -= urow[i] * urow[i..n-1].
+                    for (int i = k + 1; i < n; i++)
+                        UnsafeOP.axpy(wp + (long)i * n + i, urowp + i, -urowp[i], n - i);
                 }
             }
 
+            urow.Dispose();
             return true;
         }
 
