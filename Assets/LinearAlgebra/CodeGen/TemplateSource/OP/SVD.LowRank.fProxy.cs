@@ -91,10 +91,9 @@ namespace LinearAlgebra
                 fProxy* vBuf_ptr = ws.vBuf.Data.Ptr; // n-vector scratch (also used as coeff temp in u-reortho)
                 fProxy* A_ptr    = A.Data.Ptr;        // m×n row-major
 
-                // --- Zero-initialize UL (p×m), VL ((p+1)×n), B (p×p) ---
+                // --- Zero-initialize UL (p×m) and VL ((p+1)×n) ---
                 UnsafeUtility.MemClear(UL_ptr, (long)ws.UL.Data.Length * UnsafeUtility.SizeOf<fProxy>());
                 UnsafeUtility.MemClear(VL_ptr, (long)ws.VL.Data.Length * UnsafeUtility.SizeOf<fProxy>());
-                UnsafeUtility.MemClear(ws.B.Data.Ptr, (long)ws.B.Data.Length * UnsafeUtility.SizeOf<fProxy>());
 
                 // --- Seed v_0: deterministic pseudo-random unit vector in R^n → stored as VL[0,:] ---
                 var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
@@ -184,15 +183,19 @@ namespace LinearAlgebra
                 }
             }
 
-            // --- Form upper-bidiagonal B (p x p): already zero-initialised; fill converged part ---
-            for (int j = 0; j < pDone; j++)
-                ws.B[j, j] = ws.alpha[j];
-            for (int j = 0; j < pDone - 1; j++)
-                ws.B[j, j + 1] = ws.beta[j];
+            // --- Fill Lanczos bidiagonal d/e at full size p (zero-padded beyond pDone) ---
+            // Running the inner SVD on the full p×p zero-padded bidiagonal exactly reproduces the
+            // previous behaviour (where ws.B was p×p with zeros beyond pDone). The trailing zero
+            // singular values sort to the end and are never read by the map-back code.
+            for (int j = 0; j < p; j++)        ws.dB[j] = (j < pDone) ? ws.alpha[j] : (fProxy)0;
+            ws.eB[0] = (fProxy)0;
+            for (int j = 1; j < p; j++)        ws.eB[j] = (j < pDone) ? ws.beta[j - 1] : (fProxy)0;
 
-            // --- Inner SVD of the tiny p x p bidiagonal via svdThin ---
-            // BsvdWs.U receives P (p x p), BsvdWs.S sigma (sorted desc), BsvdWs.V receives Q (p x p)
-            if (!svdThin(in ws.B, ref ws.BsvdWs.U, ref ws.BsvdWs.S, ref ws.BsvdWs.V, maxIter))
+            // --- Inner SVD of the tiny p×p bidiagonal: skip Householder re-bidiagonalization ---
+            // BsvdWs.U receives P (p x p), BsvdWs.S sigma (sorted desc), BsvdWs.V receives Q (p x p).
+            // dB/eB are destroyed by bidiagonalSvdFromDE (filled again on every call above, so fine).
+            if (!bidiagonalSvdFromDE(ref ws.dB, ref ws.eB, ref ws.UtB, ref ws.VtB,
+                                     ref ws.BsvdWs.U, ref ws.BsvdWs.S, ref ws.BsvdWs.V, p, maxIter))
             {
                 converged = false;
                 return;
@@ -298,7 +301,10 @@ namespace LinearAlgebra
             {
                 UL     = A.tempfProxyMat(p, m),
                 VL     = A.tempfProxyMat(p + 1, n),
-                B      = A.tempfProxyMat(p, p),
+                dB     = A.tempfProxyVec(p),
+                eB     = A.tempfProxyVec(p),
+                UtB    = A.tempfProxyMat(p, p),
+                VtB    = A.tempfProxyMat(p, p),
                 BsvdWs = new fProxySvdFullWorkspace
                 {
                     U = A.tempfProxyMat(p, p),
@@ -328,7 +334,10 @@ namespace LinearAlgebra
             {
                 UL     = A.tempfProxyMat(p, m),
                 VL     = A.tempfProxyMat(p + 1, n),
-                B      = A.tempfProxyMat(p, p),
+                dB     = A.tempfProxyVec(p),
+                eB     = A.tempfProxyVec(p),
+                UtB    = A.tempfProxyMat(p, p),
+                VtB    = A.tempfProxyMat(p, p),
                 BsvdWs = new fProxySvdFullWorkspace
                 {
                     U = A.tempfProxyMat(p, p),

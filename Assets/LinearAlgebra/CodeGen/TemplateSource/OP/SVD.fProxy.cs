@@ -525,6 +525,64 @@ namespace LinearAlgebra
             return true;
         }
 
+        // SVD of a p×p UPPER-BIDIAGONAL matrix given directly by diagonal d[0..p-1] and superdiagonal
+        // e (e[0]=0, e[i]=B[i-1,i]). Skips the Householder bidiagonalization svdThin would redo on an
+        // already-bidiagonal matrix. Writes P (p×p, left singular vectors as COLUMNS), S (singular values,
+        // DESCENDING, non-negative), Q (p×p, right singular vectors as COLUMNS). Ut/Vt are p×p caller-owned
+        // scratch (the transposed accumulators bidiagonalQR fills). d and e are DESTROYED. No allocation.
+        // Mirrors svdThin's post-bidiagonalize tail exactly (bidiagonalQR on transposed accumulators, then
+        // transpose back, then descending selection sort carrying columns). Returns bidiagonalQR's flag.
+        static bool bidiagonalSvdFromDE(ref fProxyN d, ref fProxyN e, ref fProxyMxN Ut, ref fProxyMxN Vt,
+                                        ref fProxyMxN P, ref fProxyN S, ref fProxyMxN Q, int p, int maxIter)
+        {
+            if (p == 0) return true;
+
+            // Clear Ut and Vt (persistent workspace — may hold stale data from a previous call),
+            // then set diagonal to 1. This mirrors the identity-init that bidiagonalize's V starts
+            // from; here there is no Householder phase so both accumulators start at identity.
+            unsafe
+            {
+                UnsafeUtility.MemClear(Ut.Data.Ptr, (long)Ut.Data.Length * UnsafeUtility.SizeOf<fProxy>());
+                UnsafeUtility.MemClear(Vt.Data.Ptr, (long)Vt.Data.Length * UnsafeUtility.SizeOf<fProxy>());
+            }
+            for (int i = 0; i < p; i++)
+            {
+                Ut[i, i] = (fProxy)1;
+                Vt[i, i] = (fProxy)1;
+            }
+
+            bool ok = bidiagonalQR(ref Ut, ref d, ref e, ref Vt, p, p, maxIter);
+            if (!ok) return false;
+
+            // Transpose Ut→P and Vt→Q (svdThin's transpose-back-to-column-form step).
+            for (int i = 0; i < p; i++)
+                for (int j = 0; j < p; j++)
+                {
+                    P[i, j] = Ut[j, i];
+                    Q[i, j] = Vt[j, i];
+                }
+
+            // Copy d→S.
+            for (int i = 0; i < p; i++) S[i] = d[i];
+
+            // Descending selection sort carrying columns of P and Q (identical to svdThin's sort).
+            for (int j = 0; j < p; j++)
+            {
+                int maxIdx = j;
+                fProxy maxVal = S[j];
+                for (int kk = j + 1; kk < p; kk++)
+                    if (S[kk] > maxVal) { maxIdx = kk; maxVal = S[kk]; }
+                if (maxIdx != j)
+                {
+                    fProxy tmp = S[j]; S[j] = S[maxIdx]; S[maxIdx] = tmp;
+                    SwapOP.Columns(ref P, j, maxIdx);
+                    SwapOP.Columns(ref Q, j, maxIdx);
+                }
+            }
+
+            return true;
+        }
+
         // VALUES-ONLY implicit-shift QR diagonalization of an upper-bidiagonal matrix (diagonal d,
         // superdiagonal e with e[0]=0). Identical scalar recurrence to bidiagonalQR, but it does NOT
         // accumulate any plane rotations (no U/V), so the inner sweeps are pure O(n) work on d/e —

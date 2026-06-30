@@ -10,7 +10,9 @@ namespace LinearAlgebra
             bool ok =
                 ws.UL.M_Rows == p && ws.UL.N_Cols == m &&
                 ws.VL.M_Rows == p + 1 && ws.VL.N_Cols == n &&
-                ws.B.M_Rows == p && ws.B.N_Cols == p &&
+                ws.dB.N == p && ws.eB.N == p &&
+                ws.UtB.M_Rows == p && ws.UtB.N_Cols == p &&
+                ws.VtB.M_Rows == p && ws.VtB.N_Cols == p &&
                 ws.BsvdWs.U.M_Rows == p && ws.BsvdWs.U.N_Cols == p &&
                 ws.BsvdWs.S.N == p &&
                 ws.BsvdWs.V.M_Rows == p && ws.BsvdWs.V.N_Cols == p &&
@@ -32,21 +34,24 @@ namespace LinearAlgebra
     /// Layout (p = min(k+oversample, n)): UL (p x m) holds the left Lanczos basis u_1..u_p as
     /// ROWS (each u_j is a contiguous row of length m, enabling cache-coherent GEMV); VL ((p+1) x n)
     /// holds v_1..v_{p+1} as ROWS (each v_j is a contiguous row of length n; the extra row absorbs
-    /// the last step's v_{p+1} without overflow); B (p x p) holds the upper-bidiagonal reduction;
-    /// BsvdWs (p x p U/S/V) is the inner svdThin scratch; uBuf/vBuf are m/n matvec temporaries
-    /// (also reused as coefficient buffers in DGKS reorthogonalization); alpha/beta (length p each)
-    /// hold the Lanczos diagonal and superdiagonal.
+    /// the last step's v_{p+1} without overflow); dB/eB (length p each) hold the diagonal and
+    /// superdiagonal of the Lanczos bidiagonal; UtB/VtB (p x p each) are the transposed accumulator
+    /// scratch for bidiagonalSvdFromDE; BsvdWs (p x p U/S/V) receives the output singular triplets
+    /// of the inner bidiagonal SVD; uBuf/vBuf are m/n matvec temporaries (also reused as coefficient
+    /// buffers in DGKS reorthogonalization); alpha/beta (length p each) hold the Lanczos diagonal
+    /// and superdiagonal.
     ///
-    /// NOTE: this workspace avoids the large O(m·p + n·p) Lanczos-basis allocations on each call,
-    /// but the inner bidiagonal SVD (svdThin called on the p×p B matrix) still allocates a small
-    /// O(p²) Allocator.Temp workspace per svdTruncated call. The workspace is therefore NOT fully
-    /// zero-alloc on reuse; only the dominant Lanczos-basis memory is persistent.
+    /// svdTruncated is FULLY zero-alloc on workspace reuse: the inner bidiagonal SVD runs entirely
+    /// in dB/eB/UtB/VtB + BsvdWs (all persistent arena memory), with no Allocator.Temp usage.
     /// </summary>
     public struct fProxySvdTruncatedWorkspace
     {
         public fProxyMxN UL;
         public fProxyMxN VL;
-        public fProxyMxN B;
+        public fProxyN dB;
+        public fProxyN eB;
+        public fProxyMxN UtB;
+        public fProxyMxN VtB;
         public fProxySvdFullWorkspace BsvdWs;
         public fProxyN uBuf;
         public fProxyN vBuf;
@@ -69,7 +74,10 @@ namespace LinearAlgebra
             {
                 UL     = fProxyMat(p, m),
                 VL     = fProxyMat(p + 1, n),
-                B      = fProxyMat(p, p),
+                dB     = fProxyVec(p),
+                eB     = fProxyVec(p),
+                UtB    = fProxyMat(p, p),
+                VtB    = fProxyMat(p, p),
                 BsvdWs = new fProxySvdFullWorkspace
                 {
                     U = fProxyMat(p, p),
@@ -95,7 +103,10 @@ namespace LinearAlgebra
             {
                 UL     = fProxyMat(p, m),
                 VL     = fProxyMat(p + 1, n),
-                B      = fProxyMat(p, p),
+                dB     = fProxyVec(p),
+                eB     = fProxyVec(p),
+                UtB    = fProxyMat(p, p),
+                VtB    = fProxyMat(p, p),
                 BsvdWs = new fProxySvdFullWorkspace
                 {
                     U = fProxyMat(p, p),
