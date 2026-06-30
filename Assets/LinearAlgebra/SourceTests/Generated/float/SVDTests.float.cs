@@ -48,7 +48,17 @@ public class floatSVDTests
             GolubKahanRankDeficient,
             GolubKahanClustered,
             GolubKahanZero,
-            GolubKahanRank3
+            GolubKahanRank3,
+            // --- svdThin known-Σ (randsvd / Higham Test Matrix Toolbox): A = U·diag(Σ)·Vᵀ, Haar U/V,
+            //     prescribed Σ → exact singular values KNOWN. Sweeps the Higham randsvd modes. ---
+            ThinKnownGeometric_30x10,
+            ThinKnownArithmetic_24x8,
+            ThinKnownOneSmall_10x10,
+            ThinKnownClustered_20x8,
+            ThinKnownFlatCliff_40x12,
+            ThinKnownWideViaTranspose_6x15,
+            ThinGalleryHilbert_8,
+            ThinGalleryKahan_12
         }
 
         public TestType Type;
@@ -141,7 +151,211 @@ public class floatSVDTests
                 case TestType.GolubKahanRank3:
                     GolubKahanRank3();
                 break;
+                case TestType.ThinKnownGeometric_30x10:        ThinKnownGeometric_30x10();        break;
+                case TestType.ThinKnownArithmetic_24x8:        ThinKnownArithmetic_24x8();        break;
+                case TestType.ThinKnownOneSmall_10x10:         ThinKnownOneSmall_10x10();         break;
+                case TestType.ThinKnownClustered_20x8:         ThinKnownClustered_20x8();         break;
+                case TestType.ThinKnownFlatCliff_40x12:        ThinKnownFlatCliff_40x12();        break;
+                case TestType.ThinKnownWideViaTranspose_6x15:  ThinKnownWideViaTranspose_6x15();  break;
+                case TestType.ThinGalleryHilbert_8:            ThinGalleryHilbert_8();            break;
+                case TestType.ThinGalleryKahan_12:             ThinGalleryKahan_12();             break;
             }
+        }
+
+        // randsvd (Higham Test Matrix Toolbox): A = U·diag(σ)·Vᵀ with Haar-random orthogonal U (m×m),
+        // V (n×n) and a caller-prescribed σ (length n, descending) → the exact singular values are KNOWN.
+        void BuildRandSvd(ref Unity.Mathematics.Random rng, int m, int n, in floatN sigma, ref floatMxN A)
+        {
+            var U = new floatMxN(m, m, Allocator.Temp, false);
+            var V = new floatMxN(n, n, Allocator.Temp, false);
+            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref U);
+            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref V);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double acc = 0;
+                    for (int t = 0; t < n; t++)
+                        acc += (double)U[i, t] * (double)sigma[t] * (double)V[j, t];
+                    A[i, j] = (float)acc;
+                }
+            U.Dispose(); V.Dispose();
+        }
+
+        // U/V orthonormal-columns check: max |colᵀcol − δ| ≤ tol.
+        void AssertOrthoColsLocal(in floatMxN basis, int rows, int cols, float tol)
+        {
+            for (int a = 0; a < cols; a++)
+                for (int b = a; b < cols; b++)
+                {
+                    float dot = (float)0;
+                    for (int i = 0; i < rows; i++) dot += basis[i, a] * basis[i, b];
+                    AssertClose(dot, (a == b) ? (float)1 : (float)0, tol);
+                }
+        }
+
+        // Core known-Σ svdThin check: recovered S == prescribed σ (svTol), UᵀU=I, VᵀV=I, A == U diag(S) Vᵀ.
+        void CheckThinKnown(in floatMxN A, in floatN sigma, int m, int n, ref Arena arena)
+        {
+            var U = arena.floatMat(m, n);
+            var S = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+            Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            // svTol & ortho/recon tolerances scale with the numeric type via Consts.floatSqrtEps
+            // (float ~3.45e-4, double ~1.49e-8): the SAME bound holds for both generated expansions.
+            float svTol = (float)8 * Consts.floatSqrtEps * (sigma[0] + (float)1);
+            for (int t = 0; t < n; t++) AssertClose(S[t], sigma[t], svTol);
+
+            AssertDescendingNonNegative(in S, n);
+            AssertOrthoColsLocal(in U, m, n, (float)32 * Consts.floatSqrtEps);
+            AssertOrthoColsLocal(in V, n, n, (float)32 * Consts.floatSqrtEps);
+            AssertReconstruct(in A, in U, in S, in V, ref arena, svTol);
+        }
+
+        void ThinKnownGeometric_30x10()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 30, n = 10;
+            var sigma = arena.floatVec(n);
+            double s = 1.0; for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= 0.6; }
+            var A = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x7A0A0001u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+            CheckThinKnown(in A, in sigma, m, n, ref arena);
+            arena.Dispose();
+        }
+
+        void ThinKnownArithmetic_24x8()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 24, n = 8;
+            var sigma = arena.floatVec(n);
+            for (int i = 0; i < n; i++) sigma[i] = (float)(10.0 - i);   // 10,9,...,3 (descending)
+            var A = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x7A0A0002u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+            CheckThinKnown(in A, in sigma, m, n, ref arena);
+            arena.Dispose();
+        }
+
+        void ThinKnownOneSmall_10x10()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 10, n = 10;
+            var sigma = arena.floatVec(n);
+            for (int i = 0; i < n; i++) sigma[i] = (i == n - 1) ? (float)1E-4f : (float)1;  // κ=1e4
+            var A = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x7A0A0003u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+            CheckThinKnown(in A, in sigma, m, n, ref arena);
+            arena.Dispose();
+        }
+
+        void ThinKnownClustered_20x8()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 20, n = 8;
+            var sigma = arena.floatVec(n);
+            // [10,10,10, 3,2,1,0.5,0.25]
+            sigma[0]=(float)10; sigma[1]=(float)10; sigma[2]=(float)10; sigma[3]=(float)3;
+            sigma[4]=(float)2;  sigma[5]=(float)1;  sigma[6]=(float)0.5f; sigma[7]=(float)0.25f;
+            var A = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x7A0A0004u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+            CheckThinKnown(in A, in sigma, m, n, ref arena);
+            arena.Dispose();
+        }
+
+        void ThinKnownFlatCliff_40x12()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 40, n = 12;
+            var sigma = arena.floatVec(n);
+            for (int i = 0; i < n; i++)
+                sigma[i] = (i == 0) ? (float)100 : (i == 1) ? (float)80 : (i == 2) ? (float)60 : (float)1E-3f;
+            var A = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x7A0A0005u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+            CheckThinKnown(in A, in sigma, m, n, ref arena);
+            arena.Dispose();
+        }
+
+        // WIDE aspect: build a tall T (15×6) with known Σ; T = Wᵀ for the wide W = Tᵀ (6×15). svdThin
+        // requires m≥n, so the documented route for a wide matrix is svdThin(in trans(W)) = svdThin(T),
+        // which must recover W's singular values. Validates the transpose contract for wide inputs.
+        void ThinKnownWideViaTranspose_6x15()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int rows = 6, cols = 15;        // wide W is rows×cols
+            int m = cols, n = rows;         // tall T = Wᵀ is cols×rows = 15×6
+            var sigma = arena.floatVec(n);
+            double s = 1.0; for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= 0.55; }
+            var T = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x7A0A0006u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref T);   // T (15×6), its transpose is the 6×15 wide W
+            CheckThinKnown(in T, in sigma, m, n, ref arena);
+            arena.Dispose();
+        }
+
+        // Gallery ill-conditioned (Hilbert): assert σ sorted-descending positive, condition number
+        // σ_max/σ_min in the expected LARGE ballpark (Hilbert-8 κ≈1.5e10 in double; float resolves
+        // ≳1e6 before hitting its own precision floor), and reconstruction holds.
+        void ThinGalleryHilbert_8()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 8;
+            var A = arena.floatHilbert(n);
+            var U = arena.floatMat(n, n);
+            var S = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+            Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            AssertDescendingNonNegative(in S, n);
+            for (int i = 0; i < n; i++) { if (!(S[i] > (float)0)) Record(S[i], (float)0, S[i]); Assert.IsTrue(S[i] > (float)0); }
+
+            // Large condition number (lenient lower bound so FLOAT, capped by its precision floor, still passes).
+            float cond = S[0] / S[n - 1];
+            AssertGEf(cond, (float)1E3f);
+
+            AssertReconstruct(in A, in U, in S, in V, ref arena, (float)8 * Consts.floatSqrtEps * (S[0] + (float)1));
+            arena.Dispose();
+        }
+
+        // Gallery ill-conditioned (Kahan, θ=1.2): upper-triangular classic QRCP counterexample.
+        // Assert σ sorted-descending positive, κ large, reconstruction holds.
+        void ThinGalleryKahan_12()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 12;
+            var A = arena.floatKahan(n, (float)1.2f);
+            var U = arena.floatMat(n, n);
+            var S = arena.floatVec(n);
+            var V = arena.floatMat(n, n);
+            Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
+            Assert.IsFalse(Analysis.IsAnyNan(in S));
+
+            AssertDescendingNonNegative(in S, n);
+            for (int i = 0; i < n; i++) { if (!(S[i] > (float)0)) Record(S[i], (float)0, S[i]); Assert.IsTrue(S[i] > (float)0); }
+
+            float cond = S[0] / S[n - 1];
+            AssertGEf(cond, (float)10f);   // Kahan is ill-conditioned; lenient bound holds for both types
+
+            AssertReconstruct(in A, in U, in S, in V, ref arena, (float)8 * Consts.floatSqrtEps * (S[0] + (float)1));
+            arena.Dispose();
+        }
+
+        // Fail layout: [1]=val, [2]=limit, [3]=limit-val
+        void AssertGEf(float val, float limit)
+        {
+            if (!(val >= limit) && Fail[0] == (float)0) { Fail[0] = (float)1; Fail[1] = val; Fail[2] = limit; Fail[3] = limit - val; }
+            Assert.IsTrue(val >= limit);
+        }
+
+        void Record(float got, float expected, float diff)
+        {
+            if (Fail[0] == (float)0) { Fail[0] = (float)1; Fail[1] = got; Fail[2] = expected; Fail[3] = diff; }
         }
 
         public void SVDIdentity()

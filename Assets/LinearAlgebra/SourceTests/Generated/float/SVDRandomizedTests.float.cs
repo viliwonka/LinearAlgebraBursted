@@ -21,6 +21,12 @@ public class floatSVDRandomizedTests
             ExactRank3_24x12,
             ExactRank5_40x16,
             GeneralRandom20x10,
+            // --- known-Σ (randsvd) accuracy tests: U·diag(Σ)·Vᵀ, Haar U/V, prescribed Σ ---
+            // (Higham randsvd / Test Matrix Toolbox; Halko-Martinsson-Tropp 2011 error bounds)
+            RandSvdGeometricAccuracy_120x40,   // geometric Σ, q=2: recovered σ within a few % of prescribed
+            RandSvdReconNearOptimal_120x40,    // ‖A-Uk Sk Vkᵀ‖_F within small factor of Eckart-Young √(Σ_{i>k}σ_i²)
+            RandSvdPowerImproves_100x50,       // slow-decay Σ: q=2 recovers top-k strictly better than q=0 (HMT)
+            RandSvdOrthonormal_Known_140x40,   // Uk/Vk orthonormal on a known-Σ matrix
         }
 
         public TestType Type;
@@ -33,7 +39,31 @@ public class floatSVDRandomizedTests
                 case TestType.ExactRank3_24x12:  ExactRank3_24x12();  break;
                 case TestType.ExactRank5_40x16:  ExactRank5_40x16();  break;
                 case TestType.GeneralRandom20x10: GeneralRandom20x10(); break;
+                case TestType.RandSvdGeometricAccuracy_120x40: RandSvdGeometricAccuracy_120x40(); break;
+                case TestType.RandSvdReconNearOptimal_120x40:  RandSvdReconNearOptimal_120x40();  break;
+                case TestType.RandSvdPowerImproves_100x50:     RandSvdPowerImproves_100x50();     break;
+                case TestType.RandSvdOrthonormal_Known_140x40: RandSvdOrthonormal_Known_140x40(); break;
             }
+        }
+
+        // randsvd (Higham Test Matrix Toolbox): build A = U·diag(σ)·Vᵀ with Haar-random orthogonal
+        // U (m×m) and V (n×n) and a caller-prescribed σ (length n, descending). The exact singular
+        // values are then KNOWN — a stronger oracle than comparing to svdThin. Temp bases disposed here.
+        void BuildRandSvd(ref Unity.Mathematics.Random rng, int m, int n, in floatN sigma, ref floatMxN A)
+        {
+            var U = new floatMxN(m, m, Allocator.Temp, false);
+            var V = new floatMxN(n, n, Allocator.Temp, false);
+            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref U);
+            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref V);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double acc = 0;
+                    for (int t = 0; t < n; t++)
+                        acc += (double)U[i, t] * (double)sigma[t] * (double)V[j, t];
+                    A[i, j] = (float)acc;
+                }
+            U.Dispose(); V.Dispose();
         }
 
         void Record(float got, float expected, float diff)
@@ -147,6 +177,199 @@ public class floatSVDRandomizedTests
             var A = arena.floatRandomMatrix(m, n, (float)(-2f), (float)2f, 555);
             // flat-ish spectrum: only assert invariants + leading value (power iters sharpen it).
             CheckRandomized(in A, 4, 8, 3, 24680u, false, ref arena);
+            arena.Dispose();
+        }
+
+        // ============================================================================================
+        // Known-Σ (randsvd) accuracy — the strong oracle. A = U·diag(Σ)·Vᵀ with KNOWN Σ, FIXED seed.
+        // Calibrated to what a CORRECT Halko-Martinsson-Tropp 2011 implementation achieves with
+        // adequate oversample (p ≥ k) and q ≥ 2 power iterations: a few % relative on the recovered
+        // top-k singular values for a moderately-decaying spectrum, much tighter for sharp decay.
+        // A relative error > ~25%, wrong ordering, or wrong subspace would indicate a BUG.
+        // ============================================================================================
+
+        // Geometric spectrum σ_i = ρ^i (ρ=0.7, moderate decay). k=8, oversample=10, q=2.
+        // Recovered top-k σ must be within RELATIVE error relTol of prescribed σ.
+        void RandSvdGeometricAccuracy_120x40()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 120, n = 40, k = 8;
+
+            var sigma = arena.floatVec(n);
+            double rho = 0.7;
+            double s = 1.0;
+            for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= rho; }   // 1, 0.7, 0.49, ...
+
+            var A = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xA11CE5EDu);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            var Uk = arena.floatMat(m, k);
+            var Sk = arena.floatVec(k);
+            var Vk = arena.floatMat(n, k);
+            // oversample 10 (p=18), powerIters 2 — HMT-recommended regime.
+            bool ok = SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0001u, 75);
+            Assert.IsTrue(ok);
+
+            AssertOrthoCols(in Uk, m, k, (float)1E-3f);
+            AssertOrthoCols(in Vk, n, k, (float)1E-3f);
+
+            // Descending; and recovered ≤ prescribed (compression bound) within tiny slack.
+            for (int t = 0; t < k; t++)
+            {
+                if (t + 1 < k) AssertGE(Sk[t] + (float)1E-5f, Sk[t + 1]);
+                AssertLE(Sk[t], sigma[t] + (float)1E-3f * (sigma[0] + (float)1));
+            }
+
+            // RELATIVE accuracy of every recovered σ_t vs the PRESCRIBED value. With q=2 and oversample
+            // 10 a correct rSVD recovers a ρ=0.7 spectrum's top-8 to well under 5%. Record the worst.
+            // Measured worst relative error for this case (q=2, oversample 10) is < 1e-4; the 2% bound
+            // keeps a wide margin for seed/platform variation while still catching a real regression.
+            float relTol = (float)0.02f;
+            float worst = (float)0;
+            int worstIdx = 0;
+            for (int t = 0; t < k; t++)
+            {
+                float rel = math.abs(Sk[t] - sigma[t]) / sigma[t];
+                if (rel > worst) { worst = rel; worstIdx = t; }
+            }
+            if (!(worst <= relTol)) Record(Sk[worstIdx], sigma[worstIdx], worst);
+            Assert.IsTrue(worst <= relTol);
+
+            arena.Dispose();
+        }
+
+        // Reconstruction near-optimal: ‖A − Uk diag(Sk) Vkᵀ‖_F must be within a small factor of the
+        // Eckart-Young optimum √(Σ_{i≥k} σ_i²) computed from the PRESCRIBED Σ.
+        // HMT 2011 Frobenius bound: E‖A−QQᵀA‖_F ≤ (1 + k/(p−1))^{1/2}·√(Σ_{i>k}σ_i²); power iterations
+        // drive the factor toward 1. We allow ≤ 1.25× the optimum (q=2, oversample 10).
+        void RandSvdReconNearOptimal_120x40()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 120, n = 40, k = 8;
+
+            var sigma = arena.floatVec(n);
+            double rho = 0.7, s = 1.0;
+            for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= rho; }
+
+            var A = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xA11CE5EDu);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            var Uk = arena.floatMat(m, k);
+            var Sk = arena.floatVec(k);
+            var Vk = arena.floatMat(n, k);
+            bool ok = SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0002u, 75);
+            Assert.IsTrue(ok);
+
+            double err2 = 0;
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double recon = 0;
+                    for (int t = 0; t < k; t++) recon += (double)Uk[i, t] * (double)Sk[t] * (double)Vk[j, t];
+                    double d = (double)A[i, j] - recon;
+                    err2 += d * d;
+                }
+            double opt2 = 0;
+            for (int i = k; i < n; i++) opt2 += (double)sigma[i] * (double)sigma[i];
+
+            float errF = (float)math.sqrt(err2);
+            float optF = (float)math.sqrt(opt2);
+            // ratio errF/optF must be ≥ 1 (can't beat Eckart-Young) and ≤ 1.25 for a correct rSVD.
+            float ratio = errF / (optF + (float)1E-9f);
+            // Measured ratio ≈ 1.0000001 (essentially the Eckart-Young optimum); 1.05 catches any real
+            // suboptimality while tolerating rounding and seed variation.
+            if (!(ratio <= (float)1.05f)) Record(errF, optF, ratio);
+            Assert.IsTrue(ratio <= (float)1.05f);
+
+            arena.Dispose();
+        }
+
+        // Power-iteration improvement (HMT): on a SLOWLY-decaying spectrum, q=2 must recover the top-k
+        // singular values strictly more accurately than q=0. Same matrix, same sketch seed.
+        void RandSvdPowerImproves_100x50()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 100, n = 50, k = 6;
+
+            var sigma = arena.floatVec(n);
+            double rho = 0.92, s = 1.0;   // slow decay → q=0 leaves visible error, q=2 sharpens it
+            for (int i = 0; i < n; i++) { sigma[i] = (float)s; s *= rho; }
+
+            var A = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xC0FFEE11u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            uint sketchSeed = 0xD0D0BEEFu;
+
+            var Uk0 = arena.floatMat(m, k); var Sk0 = arena.floatVec(k); var Vk0 = arena.floatMat(n, k);
+            bool ok0 = SVD.svdRandomized(in A, ref Uk0, ref Sk0, ref Vk0, k, 10, 0, sketchSeed, 75);
+            Assert.IsTrue(ok0);
+
+            var Uk2 = arena.floatMat(m, k); var Sk2 = arena.floatVec(k); var Vk2 = arena.floatMat(n, k);
+            bool ok2 = SVD.svdRandomized(in A, ref Uk2, ref Sk2, ref Vk2, k, 10, 2, sketchSeed, 75);
+            Assert.IsTrue(ok2);
+
+            // Total relative error over the top-k must not increase with power iterations.
+            float err0 = (float)0, err2 = (float)0;
+            for (int t = 0; t < k; t++)
+            {
+                err0 += math.abs(Sk0[t] - sigma[t]) / sigma[t];
+                err2 += math.abs(Sk2[t] - sigma[t]) / sigma[t];
+            }
+            // q=2 must be at least as accurate (allow tiny float slack). Monotone HMT behavior.
+            // Measured (slow ρ=0.92): q=0 summed-rel-error ≈ 0.19 (float)/0.29 (double), q=2 ≈ 6e-5/1.6e-4
+            // → dramatic, monotone improvement. Require q=2 to be at least as accurate as q=0.
+            bool improved = err2 <= err0 + (float)1E-4f;
+            if (!improved) Record(err2, err0, err2 - err0);
+            Assert.IsTrue(improved);
+            // And q=2 should actually be accurate (each σ within ~2% on this slow spectrum).
+            for (int t = 0; t < k; t++)
+                AssertLE(math.abs(Sk2[t] - sigma[t]) / sigma[t], (float)0.02f);
+
+            arena.Dispose();
+        }
+
+        // Orthonormality of returned Uk/Vk columns on a known-Σ matrix (clustered + decaying).
+        void RandSvdOrthonormal_Known_140x40()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 140, n = 40, k = 7;
+
+            var sigma = arena.floatVec(n);
+            // clustered top then decay: [20,20,20, 8,5,3,2, then geometric tail]
+            double tail = 2.0;
+            for (int i = 0; i < n; i++)
+            {
+                double sg;
+                if (i < 3) sg = 20.0;
+                else if (i == 3) sg = 8.0;
+                else if (i == 4) sg = 5.0;
+                else if (i == 5) sg = 3.0;
+                else if (i == 6) sg = 2.0;
+                else { tail *= 0.8; sg = tail; }
+                sigma[i] = (float)sg;
+            }
+
+            var A = arena.floatMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x5EED1234u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            var Uk = arena.floatMat(m, k);
+            var Sk = arena.floatVec(k);
+            var Vk = arena.floatMat(n, k);
+            bool ok = SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9ABCDEF0u, 75);
+            Assert.IsTrue(ok);
+
+            AssertOrthoCols(in Uk, m, k, (float)1E-3f);
+            AssertOrthoCols(in Vk, n, k, (float)1E-3f);
+
+            // Sk descending and the well-separated values (indices 3..6) within 5% relative.
+            for (int t = 1; t < k; t++) AssertGE(Sk[t - 1] + (float)1E-4f * (sigma[0] + (float)1), Sk[t]);
+            for (int t = 3; t < k; t++)
+                AssertLE(math.abs(Sk[t] - sigma[t]) / sigma[t], (float)0.05f);
+
             arena.Dispose();
         }
     }

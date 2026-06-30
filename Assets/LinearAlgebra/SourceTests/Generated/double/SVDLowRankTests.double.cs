@@ -33,6 +33,11 @@ public class doubleSVDLowRankTests
             GklConvergedFalse_RankDeficient, // rank-3 A, k=5 → tail σ near-zero, graceful handling
             GklConvergedFalse_TooFewSteps,   // oversample=0 → p=k → betaLast large → converged=false
             GklConvergedFalse_MaxIter1,      // maxIter=1 → inner svdThin fails → converged=false
+            // --- known-Σ (randsvd, Higham Test Matrix Toolbox) truncation in the p<n regime ---
+            GklGeometricTrunc_80x30,         // geometric Σ=ρ^i (ρ=0.5), k=3, p=23<30
+            GklFlatCliffTrunc_70x25,         // Σ=[100,80,60,1e-3,…], k=3, p=9<25
+            GklOneSmallTrunc_50x20,          // Σ=[1,…,1,1e-4] (κ=1e4), k=3 inside flat top, full Krylov
+            GklClusterProjector_50x24,       // cluster Σ=[10,10,10,…], k=3 → rank-3 PROJECTOR matches oracle
         }
 
         public TestType Type;
@@ -58,7 +63,30 @@ public class doubleSVDLowRankTests
                 case TestType.GklConvergedFalse_RankDeficient: GklConvergedFalse_RankDeficient(); break;
                 case TestType.GklConvergedFalse_TooFewSteps:   GklConvergedFalse_TooFewSteps();   break;
                 case TestType.GklConvergedFalse_MaxIter1:  GklConvergedFalse_MaxIter1();   break;
+                case TestType.GklGeometricTrunc_80x30:     GklGeometricTrunc_80x30();      break;
+                case TestType.GklFlatCliffTrunc_70x25:     GklFlatCliffTrunc_70x25();      break;
+                case TestType.GklOneSmallTrunc_50x20:      GklOneSmallTrunc_50x20();       break;
+                case TestType.GklClusterProjector_50x24:   GklClusterProjector_50x24();    break;
             }
+        }
+
+        // randsvd (Higham Test Matrix Toolbox): A = U·diag(σ)·Vᵀ, Haar U(m×m)/V(n×n), prescribed σ
+        // (length n). The exact singular values are KNOWN. Temp bases disposed here.
+        void BuildRandSvd(ref Unity.Mathematics.Random rng, int m, int n, in doubleN sigma, ref doubleMxN A)
+        {
+            var U = new doubleMxN(m, m, Allocator.Temp, false);
+            var V = new doubleMxN(n, n, Allocator.Temp, false);
+            doubleRandomMatrixOP.randomOrthogonalInpl(ref rng, ref U);
+            doubleRandomMatrixOP.randomOrthogonalInpl(ref rng, ref V);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double acc = 0;
+                    for (int t = 0; t < n; t++)
+                        acc += (double)U[i, t] * (double)sigma[t] * (double)V[j, t];
+                    A[i, j] = (double)acc;
+                }
+            U.Dispose(); V.Dispose();
         }
 
         void Record(double got, double expected, double diff)
@@ -616,6 +644,150 @@ public class doubleSVDLowRankTests
             Assert.IsFalse(cT);
 
             arena.Dispose();
+        }
+
+        // ============================================================================================
+        // Known-Σ (randsvd) truncation — exact-converging GKL must return the EXACT top-k of a matrix
+        // whose singular values are prescribed. svTol scales with the type via Consts.doubleSqrtEps
+        // (float ~3.45e-4, double ~1.49e-8) so the same assertion holds across float/double expansions.
+        // ============================================================================================
+
+        // Geometric Σ_i = ρ^i (ρ=0.5). k=3, oversample=20 → p=min(23,30)=23 < n=30: genuine truncation.
+        // 20 extra Lanczos steps drive the top-3 Ritz values to machine precision.
+        void GklGeometricTrunc_80x30()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 80, n = 30, k = 3;
+
+            var sigma = arena.doubleVec(n);
+            double s = 1.0;
+            for (int i = 0; i < n; i++) { sigma[i] = (double)s; s *= 0.5; }   // 1, 0.5, 0.25, ...
+
+            var A = arena.doubleMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x10AD5EEDu);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            var Uk = arena.doubleMat(m, k);
+            var Sk = arena.doubleVec(k);
+            var Vk = arena.doubleMat(n, k);
+            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, 20, 0x1111AAAAu, 75, out bool cT);
+            Assert.IsTrue(cT);
+
+            double svTol = (double)8 * Consts.doubleSqrtEps * (sigma[0] + (double)1);
+            for (int t = 0; t < k; t++) AssertClose(Sk[t], sigma[t], svTol);
+            AssertOrthoCols(in Uk, m, k, (double)1E-3f);
+            AssertOrthoCols(in Vk, n, k, (double)1E-3f);
+
+            arena.Dispose();
+        }
+
+        // Flat-then-cliff Σ=[100,80,60, 1e-3,…]. k=3, oversample=6 → p=9 < n=25. Huge spectral gap at
+        // index 3 → top-3 converge almost immediately; compare values + vectors against svdThin oracle.
+        void GklFlatCliffTrunc_70x25()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 70, n = 25;
+
+            var sigma = arena.doubleVec(n);
+            for (int i = 0; i < n; i++)
+                sigma[i] = (i == 0) ? (double)100 : (i == 1) ? (double)80 : (i == 2) ? (double)60 : (double)1E-3f;
+
+            var A = arena.doubleMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xC11FF00Du);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            // svTol scaled to σ_max=100; vector + orthonormality tolerances as in the other GKL tests.
+            CheckTruncVsThin(in A, 3, 6, 0x2222BBBBu, m, n,
+                             (double)8 * Consts.doubleSqrtEps * (sigma[0] + (double)1),
+                             (double)0.01f, (double)1E-3f, ref arena);
+            arena.Dispose();
+        }
+
+        // One-small Σ=[1,…,1,1e-4] (κ=1e4). Targeting k=3 inside the FLAT top block: the individual
+        // singular vectors are non-unique, so we only assert the recovered VALUES are all ≈1 and the
+        // columns are orthonormal. oversample=17 → p=min(20,20)=20=n (full Krylov) → exact, converged.
+        void GklOneSmallTrunc_50x20()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 50, n = 20, k = 3;
+
+            var sigma = arena.doubleVec(n);
+            for (int i = 0; i < n; i++) sigma[i] = (i == n - 1) ? (double)1E-4f : (double)1;
+
+            var A = arena.doubleMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x0E5A3411u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            var Uk = arena.doubleMat(m, k);
+            var Sk = arena.doubleVec(k);
+            var Vk = arena.doubleMat(n, k);
+            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, 17, 0x3333CCCCu, 75, out bool cT);
+            Assert.IsTrue(cT);
+
+            double svTol = (double)8 * Consts.doubleSqrtEps * (sigma[0] + (double)1);
+            for (int t = 0; t < k; t++) AssertClose(Sk[t], (double)1, svTol);
+            AssertOrthoCols(in Uk, m, k, (double)1E-3f);
+            AssertOrthoCols(in Vk, n, k, (double)1E-3f);
+
+            arena.Dispose();
+        }
+
+        // Clustered Σ=[10,10,10, 3,2,1.5,1, …]: the top-3 are a degenerate cluster, so individual u/v
+        // are non-unique but the rank-3 SUBSPACE is well-defined. Assert the rank-3 projector
+        // Pk = Uk·Ukᵀ matches the svdThin oracle's top-3 projector (and likewise for V), plus Sk≈10.
+        // k=3, oversample=15 → p=18 < n=24. Gap 3/10=0.3 → residual ≈10·0.3^15 ≈1.4e-6 → converged.
+        void GklClusterProjector_50x24()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 50, n = 24, k = 3;
+
+            var sigma = arena.doubleVec(n);
+            for (int i = 0; i < n; i++)
+            {
+                double sg;
+                if (i < 3) sg = 10.0;
+                else if (i == 3) sg = 3.0;
+                else if (i == 4) sg = 2.0;
+                else if (i == 5) sg = 1.5;
+                else if (i == 6) sg = 1.0;
+                else sg = 0.5 / (i - 5);
+                sigma[i] = (double)sg;
+            }
+
+            var A = arena.doubleMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xC1051E33u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            var Uk = arena.doubleMat(m, k);
+            var Sk = arena.doubleVec(k);
+            var Vk = arena.doubleMat(n, k);
+            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, 15, 0x4444DDDDu, 75, out bool cT);
+            Assert.IsTrue(cT);
+
+            for (int t = 0; t < k; t++) AssertClose(Sk[t], (double)10, (double)0.05f);
+
+            // svdThin oracle; compare the rank-3 projectors Σ_t u_t u_tᵀ (subspace, not per-vector).
+            var Uf = arena.doubleMat(m, n);
+            var Sf = arena.doubleVec(n);
+            var Vf = arena.doubleMat(n, n);
+            Assert.IsTrue(SVD.svdThin(in A, ref Uf, ref Sf, ref Vf));
+
+            AssertProjectorMatch(in Uk, in Uf, m, k, (double)1E-2f);
+            AssertProjectorMatch(in Vk, in Vf, n, k, (double)1E-2f);
+
+            arena.Dispose();
+        }
+
+        // ‖B Bᵀ (first k cols) − Ref Refᵀ (first k cols)‖_max over the rank-k projectors.
+        void AssertProjectorMatch(in doubleMxN B, in doubleMxN Ref, int rows, int k, double tol)
+        {
+            for (int i = 0; i < rows; i++)
+                for (int j = 0; j < rows; j++)
+                {
+                    double pb = (double)0, pr = (double)0;
+                    for (int t = 0; t < k; t++) { pb += B[i, t] * B[j, t]; pr += Ref[i, t] * Ref[j, t]; }
+                    AssertClose(pb, pr, tol);
+                }
         }
     }
 
