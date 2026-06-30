@@ -13,8 +13,9 @@ namespace LinearAlgebra
     /// 1D discrete Fourier transform. Like <c>eigenvaluesQR</c>, this avoids a complex TYPE by storing
     /// the real and imaginary parts in two parallel <c>fProxyN</c> arrays.
     ///
-    /// Two algorithms: <see cref="fft"/>/<see cref="ifft"/> are in-place radix-2 Cooley–Tukey (O(N log N),
-    /// length must be a power of two); <see cref="dft"/>/<see cref="idft"/> are the direct O(N²) transform
+    /// Two algorithms: <see cref="fft"/>/<see cref="ifft"/> are in-place Cooley–Tukey (O(N log N),
+    /// length must be a power of two) — zero-alloc radix-4 recurrence for power-of-4 lengths, radix-2
+    /// recurrence otherwise; <see cref="dft"/>/<see cref="idft"/> are the direct O(N²) transform
     /// for any N. Forward sign convention: X[k] = Σ x[n]·exp(-2πi·kn/N); the inverse divides by N.
     /// Helpers <see cref="magnitude"/>/<see cref="phase"/>/<see cref="powerSpectrum"/> reduce a
     /// (re, im) pair to a single real vector. Typical DSP pipeline: window (Hann) → rfft → powerSpectrum.
@@ -28,21 +29,29 @@ namespace LinearAlgebra
         // ---- radix-2 in-place FFT (length must be a power of two) ----
 
         /// <summary>
-        /// In-place forward radix-2 FFT of the complex signal (re, im). Both arrays must have the same
+        /// In-place forward FFT of the complex signal (re, im). Both arrays must have the same
         /// length, which must be a power of two. On return they hold the spectrum X[k].
+        /// Dispatches to zero-alloc radix-4 recurrence for power-of-4 lengths, radix-2 otherwise.
         /// </summary>
         public static void fft(ref fProxyN re, ref fProxyN im)
         {
-            FftCore(ref re, ref im, false);
+            if (IsPowerOf4(re.N))
+                FftCoreRadix4Rec(ref re, ref im, false);
+            else
+                FftCore(ref re, ref im, false);
         }
 
         /// <summary>
-        /// In-place inverse radix-2 FFT (length a power of two). Divides by N, so ifft(fft(x)) == x.
+        /// In-place inverse FFT (length a power of two). Divides by N, so ifft(fft(x)) == x.
         /// Implemented via the conjugate trick: conjugate → forward FFT → conjugate → scale by 1/N.
+        /// Dispatches to zero-alloc radix-4 recurrence for power-of-4 lengths, radix-2 otherwise.
         /// </summary>
         public static void ifft(ref fProxyN re, ref fProxyN im)
         {
-            FftCore(ref re, ref im, true);
+            if (IsPowerOf4(re.N))
+                FftCoreRadix4Rec(ref re, ref im, true);
+            else
+                FftCore(ref re, ref im, true);
         }
 
         static void FftCore(ref fProxyN re, ref fProxyN im, bool inverse)
@@ -118,6 +127,119 @@ namespace LinearAlgebra
                 {
                     re[i] = re[i] * invN;
                     im[i] = -im[i] * invN;   // undo the input conjugation, with the 1/N scale
+                }
+            }
+        }
+
+        // Zero-alloc radix-4 DIT FFT — table-free recurrence twiddles.
+        // Length must be a power of 4 (caller guarantees via IsPowerOf4 dispatch).
+        // Conjugate trick inverse: negate im → forward → negate im + scale 1/n.
+        // Permutation: base-4 digit reversal (reuses ReverseBase4Digits from FFT.Workspace).
+        // Stages q=1,4,16,… (q<n, q<<=2): len=4q; one cos/sin per stage computes wlen=exp(-2πi/len),
+        // then w2=wlen^2 and w3=wlen^3. Per group: seed t1=t2=t3=(1,0); advance per j.
+        // Twiddle drift is bounded to at most q ≤ n/4 steps (same order as FftCore's radix-2 recurrence).
+        // Butterfly arithmetic copied exactly from FftCoreRadix4Ptr (forward sign convention).
+        static void FftCoreRadix4Rec(ref fProxyN re, ref fProxyN im, bool inverse)
+        {
+            int n = re.N;
+            if (im.N != n)
+                throw new ArgumentException("fft: re and im must have the same length");
+            if (n == 1)
+                return;
+
+            // Conjugate trick for inverse.
+            if (inverse)
+                for (int i = 0; i < n; i++)
+                    im[i] = -im[i];
+
+            // Base-4 digit-reversal permutation in place.
+            int log4n = 0;
+            for (int t = n; t > 1; t >>= 2) log4n++;
+
+            for (int i = 0; i < n; i++)
+            {
+                int j = ReverseBase4Digits(i, log4n);
+                if (j > i)
+                {
+                    fProxy tr = re[i]; re[i] = re[j]; re[j] = tr;
+                    fProxy ti = im[i]; im[i] = im[j]; im[j] = ti;
+                }
+            }
+
+            // Radix-4 DIT butterfly stages.
+            for (int q = 1; q < n; q <<= 2)
+            {
+                int len = q << 2;
+                fProxy ang = (fProxy)(-2.0 * System.Math.PI) / (fProxy)len;
+                fProxy wlenRe = math.cos(ang);
+                fProxy wlenIm = math.sin(ang);
+
+                // w2 = wlen * wlen
+                fProxy w2Re = wlenRe * wlenRe - wlenIm * wlenIm;
+                fProxy w2Im = wlenRe * wlenIm + wlenIm * wlenRe;
+
+                // w3 = w2 * wlen
+                fProxy w3Re = w2Re * wlenRe - w2Im * wlenIm;
+                fProxy w3Im = w2Re * wlenIm + w2Im * wlenRe;
+
+                for (int base_ = 0; base_ < n; base_ += len)
+                {
+                    fProxy t1Re = (fProxy)1, t1Im = (fProxy)0;
+                    fProxy t2Re = (fProxy)1, t2Im = (fProxy)0;
+                    fProxy t3Re = (fProxy)1, t3Im = (fProxy)0;
+
+                    for (int j = 0; j < q; j++)
+                    {
+                        int i0 = base_ + j;
+                        int i1 = i0 + q;
+                        int i2 = i1 + q;
+                        int i3 = i2 + q;
+
+                        fProxy A_re = re[i0], A_im = im[i0];
+
+                        fProxy B_re = t1Re * re[i1] - t1Im * im[i1];
+                        fProxy B_im = t1Re * im[i1] + t1Im * re[i1];
+
+                        fProxy C_re = t2Re * re[i2] - t2Im * im[i2];
+                        fProxy C_im = t2Re * im[i2] + t2Im * re[i2];
+
+                        fProxy D_re = t3Re * re[i3] - t3Im * im[i3];
+                        fProxy D_im = t3Re * im[i3] + t3Im * re[i3];
+
+                        // 4-point DFT butterfly (same arithmetic + sign convention as FftCoreRadix4Ptr)
+                        fProxy T0_re = A_re + C_re, T0_im = A_im + C_im;
+                        fProxy T1_re = A_re - C_re, T1_im = A_im - C_im;
+                        fProxy T2_re = B_re + D_re, T2_im = B_im + D_im;
+                        fProxy T3_re = B_re - D_re, T3_im = B_im - D_im;
+
+                        re[i0] = T0_re + T2_re; im[i0] = T0_im + T2_im;
+                        re[i2] = T0_re - T2_re; im[i2] = T0_im - T2_im;
+                        re[i1] = T1_re + T3_im; im[i1] = T1_im - T3_re;
+                        re[i3] = T1_re - T3_im; im[i3] = T1_im + T3_re;
+
+                        // Advance running twiddles: t1 *= wlen, t2 *= w2, t3 *= w3
+                        fProxy nt1Re = t1Re * wlenRe - t1Im * wlenIm;
+                        t1Im = t1Re * wlenIm + t1Im * wlenRe;
+                        t1Re = nt1Re;
+
+                        fProxy nt2Re = t2Re * w2Re - t2Im * w2Im;
+                        t2Im = t2Re * w2Im + t2Im * w2Re;
+                        t2Re = nt2Re;
+
+                        fProxy nt3Re = t3Re * w3Re - t3Im * w3Im;
+                        t3Im = t3Re * w3Im + t3Im * w3Re;
+                        t3Re = nt3Re;
+                    }
+                }
+            }
+
+            if (inverse)
+            {
+                fProxy invN = (fProxy)1 / (fProxy)n;
+                for (int i = 0; i < n; i++)
+                {
+                    re[i] =  re[i] * invN;
+                    im[i] = -im[i] * invN;   // undo conjugate, apply 1/N scale
                 }
             }
         }

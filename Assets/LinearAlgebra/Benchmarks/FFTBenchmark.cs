@@ -109,6 +109,48 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- table FFT WITH in-job table build (one-shot cost, build clocked in Burst) ----
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FftBuildRunJobFloat : IJob
+    {
+        public floatN re;
+        public floatN im;
+        public floatN srcRe;
+        public floatN srcIm;
+        public int n;
+
+        // Builds the workspace from scratch (the cos/sin table build, Burst-compiled) then runs one
+        // transform — the true one-shot cost of the table path, vs the reuse rows that build once.
+        public void Execute()
+        {
+            var a = new Arena(Allocator.Persistent);
+            var ws = a.floatFftWorkspace(n);
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            floatFFT.fft(ref re, ref im, in ws);
+            a.Dispose();
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FftBuildRunJobDouble : IJob
+    {
+        public doubleN re;
+        public doubleN im;
+        public doubleN srcRe;
+        public doubleN srcIm;
+        public int n;
+
+        public void Execute()
+        {
+            var a = new Arena(Allocator.Persistent);
+            var ws = a.doubleFftWorkspace(n);
+            for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
+            doubleFFT.fft(ref re, ref im, in ws);
+            a.Dispose();
+        }
+    }
+
     // ---- table-indexed real-input rfft (float) ----
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -169,7 +211,8 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== Radix-2 FFT in-place (floatFFT.fft / doubleFFT.fft; O(N log N); ms) ===");
+            sb.AppendLine("=== No-workspace FFT in-place (floatFFT.fft / doubleFFT.fft; O(N log N); ms) ===");
+            sb.AppendLine("    Auto-dispatch: power-of-4 → radix-4 recurrence (table-free, zero-alloc); else → radix-2 recurrence.");
             sb.AppendLine("    Input destroyed each call; job copies srcRe/srcIm -> re/im before each run.");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(FftFloat(n));
@@ -182,6 +225,14 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(FftTableFloat(n));
             foreach (var n in FftSizes) sb.AppendLine(FftTableDouble(n));
+            sb.AppendLine();
+
+            sb.AppendLine("=== FFT, table workspace WITH BUILD INCLUDED (one-shot: build + single transform; build in Burst; ms) ===");
+            sb.AppendLine("    Burst job builds the workspace from scratch then runs one fft(ws) — the one-shot cost the reuse rows hide.");
+            sb.AppendLine("    Crosses over the no-workspace path after ~1-3 transforms at N>=1024 (table build amortizes fast).");
+            sb.AppendLine(Bench.HeaderTime());
+            foreach (var n in FftSizes) sb.AppendLine(FftTableBuiltFloat(n));
+            foreach (var n in FftSizes) sb.AppendLine(FftTableBuiltDouble(n));
             sb.AppendLine();
 
             sb.AppendLine("=== Real-input half-spectrum FFT (floatFFT.rfft / doubleFFT.rfft; two-for-one; ms) ===");
@@ -299,6 +350,52 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.RowTime("double(ws)", n, stat);
+        }
+
+        // ---- table FFT WITH build included (one-shot, build clocked in Burst) ----
+
+        static string FftTableBuiltFloat(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.floatVec(n);
+            var im    = arena.floatVec(n);
+            var srcRe = arena.floatVec(n);
+            var srcIm = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextFloat(-1f, 1f);
+                srcIm[i] = rng.NextFloat(-1f, 1f);
+            }
+
+            var job = new FftBuildRunJobFloat { re = re, im = im, srcRe = srcRe, srcIm = srcIm, n = n };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("float(ws+build)", n, stat);
+        }
+
+        static string FftTableBuiltDouble(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var re    = arena.doubleVec(n);
+            var im    = arena.doubleVec(n);
+            var srcRe = arena.doubleVec(n);
+            var srcIm = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int i = 0; i < n; i++)
+            {
+                srcRe[i] = rng.NextDouble(-1.0, 1.0);
+                srcIm[i] = rng.NextDouble(-1.0, 1.0);
+            }
+
+            var job = new FftBuildRunJobDouble { re = re, im = im, srcRe = srcRe, srcIm = srcIm, n = n };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double(ws+build)", n, stat);
         }
 
         // ---- rfft helpers ----
