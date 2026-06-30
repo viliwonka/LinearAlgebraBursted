@@ -16,7 +16,7 @@ using Unity.Mathematics;
 // existing solvers (CG, eigenvaluesQR) as honest inputs.
 //
 // Verification reuses the library's own ops (LU.determinant, Cholesky, Eigen.eigenDecomposition /
-// eigenvaluesQR, floatFFT.fft). Tolerances are per-precision: they scale with Consts.floatSqrtEps
+// eigenvaluesQR, floatFFT_OP.fft). Tolerances are per-precision: they scale with Consts.floatSqrtEps
 // (float ≈ 3.45e-4, double ≈ 1.49e-8) so the SAME expression is loose for float and tight for double,
 // matching the LiteratureTests / RandomMatrixTests idiom. Ill-conditioned generators (Hilbert, Frank,
 // Pascal at larger n, Moler) use small n and generous multiples; exact-in-float properties (Hadamard
@@ -423,7 +423,7 @@ public class floatGalleryTests
 
             // HᵀH
             var HtH = arena.floatMat(n, n);
-            floatOP.dot(in H, in H, ref HtH, transposeA: true);
+            float_OP.dot(in H, in H, ref HtH, transposeA: true);
 
             float tol = (float)1E-4;   // exact arithmetic; tiny tolerance
             for (int r = 0; r < n; r++)
@@ -467,7 +467,7 @@ public class floatGalleryTests
             // DFT of c via the library FFT (in place ⇒ copy the real part, zero imag)
             var fRe = c.Copy();
             var fIm = arena.floatVec(n);
-            floatFFT.fft(ref fRe, ref fIm);
+            floatFFT_OP.fft(ref fRe, ref fIm);
 
             float spectralTol = (float)100 * Consts.floatSqrtEps;
 
@@ -573,7 +573,7 @@ public class floatGalleryTests
             var xTrue = arena.floatVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);   // 1,2,...,n
 
-            var b = floatOP.dot(A, xTrue);   // consistent RHS
+            var b = float_OP.dot(A, xTrue);   // consistent RHS
 
             var x = arena.floatVec(n);
             bool conv = Solvers.conjugateGradient(in A, in b, ref x, 200, Consts.floatSqrtEps);

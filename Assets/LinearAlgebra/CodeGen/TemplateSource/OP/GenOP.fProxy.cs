@@ -14,11 +14,11 @@ namespace LinearAlgebra
     /// matrix builders (outer / outerSum).
     ///
     /// Every fill comes in two forms — a zero-alloc ref-DESTINATION primitive here
-    /// (`fProxyGenOP.xxx(ref dest, …)`, length taken from dest) and an allocating Arena wrapper
+    /// (`fProxyGen_OP.xxx(ref dest, …)`, length taken from dest) and an allocating Arena wrapper
     /// (`arena.fProxyXxx(n, …)`). Use the ref form in per-frame / realtime loops.
     /// fProxy-only. Kernels are normalized to sum 1; easings map t∈[0,1].
     /// </summary>
-    public static partial class fProxyGenOP
+    public static partial class fProxyGen_OP
     {
         // ---- linspace / arange : the axis ----
 
@@ -209,12 +209,12 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Outer product M[i,j] = u[i]*v[j] (a u.N × v.N rank-1 matrix). Forwards to
-        /// <see cref="fProxyOP.outerDot(in fProxyN, in fProxyN, ref fProxyMxN)"/>. Use for separable
+        /// <see cref="fProxy_OP.outerDot(in fProxyN, in fProxyN, ref fProxyMxN)"/>. Use for separable
         /// fields — e.g. a 2D Gaussian is outer(g, g) of a 1D Gaussian.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void outer(in fProxyN u, in fProxyN v, ref fProxyMxN dest)
-            => fProxyOP.outerDot(in u, in v, ref dest);
+            => fProxy_OP.outerDot(in u, in v, ref dest);
 
         /// <summary>
         /// Additive outer "sum" M[i,j] = u[i]+v[j] (a u.N × v.N matrix). The separable building block for
@@ -253,7 +253,7 @@ namespace LinearAlgebra
 
             var g = new fProxyN(N, Allocator.Temp);
             gaussianKernel(ref g, sigma);
-            fProxyOP.outerDot(in g, in g, ref dest);
+            fProxy_OP.outerDot(in g, in g, ref dest);
             g.Dispose();
         }
     }

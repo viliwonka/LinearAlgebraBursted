@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Workspace-overload tests for SVD.svdRandomized (Halko-Martinsson-Tropp) and its workspace
-// fProxySvdRandomizedWorkspace (Arena.fProxySvdRandomizedWorkspace(m, n, k, oversample) and the
+// fProxySvdRandomized_WS (Arena.fProxySvdRandomized_WS(m, n, k, oversample) and the
 // default-oversample (m, n, k) factory).
 //
 // The allocating overload and the ref-workspace overload run the SAME sketch/QR/exact-SVD pipeline;
@@ -49,7 +49,7 @@ public class fProxySvdRandomizedWorkspaceTests
         {
             var B = arena.fProxyRandomMatrix(m, r, (fProxy)(-2f), (fProxy)2f, seed);
             var C = arena.fProxyRandomMatrix(r, n, (fProxy)(-2f), (fProxy)2f, seed + 13u);
-            return fProxyOP.dot(B, C);
+            return fProxy_OP.dot(B, C);
         }
 
         // Explicit oversample/powerIters/seed/maxIter: ws overload == allocating overload exactly.
@@ -63,14 +63,14 @@ public class fProxySvdRandomizedWorkspaceTests
             var UkA = arena.fProxyMat(m, k); var SkA = arena.fProxyVec(k); var VkA = arena.fProxyMat(n, k);
             bool okA = SVD.svdRandomized(in A, ref UkA, ref SkA, ref VkA, k, oversample, powerIters, seed, maxIter);
 
-            var ws = arena.fProxySvdRandomizedWorkspace(m, n, k, oversample);
+            var ws = arena.fProxySvdRandomized_WS(m, n, k, oversample);
             var UkW = arena.fProxyMat(m, k); var SkW = arena.fProxyVec(k); var VkW = arena.fProxyMat(n, k);
             bool okW = SVD.svdRandomized(in A, ref UkW, ref SkW, ref VkW, k, oversample, powerIters, seed, maxIter, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis.IsZero(SkA - SkW, Tol()));
-            Assert.IsTrue(Analysis.IsZero(UkA - UkW, Tol()));
-            Assert.IsTrue(Analysis.IsZero(VkA - VkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(SkA - SkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(UkA - UkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(VkA - VkW, Tol()));
 
             arena.Dispose();
         }
@@ -87,14 +87,14 @@ public class fProxySvdRandomizedWorkspaceTests
             var UkA = arena.fProxyMat(m, k); var SkA = arena.fProxyVec(k); var VkA = arena.fProxyMat(n, k);
             bool okA = SVD.svdRandomized(in A, ref UkA, ref SkA, ref VkA, k, seed);
 
-            var ws = arena.fProxySvdRandomizedWorkspace(m, n, k);   // default oversample 10
+            var ws = arena.fProxySvdRandomized_WS(m, n, k);   // default oversample 10
             var UkW = arena.fProxyMat(m, k); var SkW = arena.fProxyVec(k); var VkW = arena.fProxyMat(n, k);
             bool okW = SVD.svdRandomized(in A, ref UkW, ref SkW, ref VkW, k, seed, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis.IsZero(SkA - SkW, Tol()));
-            Assert.IsTrue(Analysis.IsZero(UkA - UkW, Tol()));
-            Assert.IsTrue(Analysis.IsZero(VkA - VkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(SkA - SkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(UkA - UkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(VkA - VkW, Tol()));
 
             arena.Dispose();
         }
@@ -110,7 +110,7 @@ public class fProxySvdRandomizedWorkspaceTests
             var A1 = RankR(ref arena, m, n, 5, 7001);
             var A2 = RankR(ref arena, m, n, 4, 8002);
 
-            var ws = arena.fProxySvdRandomizedWorkspace(m, n, k, oversample);   // ONCE
+            var ws = arena.fProxySvdRandomized_WS(m, n, k, oversample);   // ONCE
 
             // warm the workspace on A1
             var U1 = arena.fProxyMat(m, k); var S1 = arena.fProxyVec(k); var V1 = arena.fProxyMat(n, k);
@@ -125,9 +125,9 @@ public class fProxySvdRandomizedWorkspaceTests
             bool okA = SVD.svdRandomized(in A2, ref UA, ref SA, ref VA, k, oversample, powerIters, seed, maxIter);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis.IsZero(SW - SA, Tol()));
-            Assert.IsTrue(Analysis.IsZero(UW - UA, Tol()));
-            Assert.IsTrue(Analysis.IsZero(VW - VA, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(SW - SA, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(UW - UA, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(VW - VA, Tol()));
 
             arena.Dispose();
         }
@@ -152,7 +152,7 @@ public class fProxySvdRandomizedWorkspaceTests
             int m = 14, n = 6, k = 3, oversample = 4;
             var A = arena.fProxyMat(m, n);
             var Uk = arena.fProxyMat(m, k); var Sk = arena.fProxyVec(k); var Vk = arena.fProxyMat(n, k);
-            var ws = arena.fProxySvdRandomizedWorkspace(m + 1, n, k, oversample);   // wrong m
+            var ws = arena.fProxySvdRandomized_WS(m + 1, n, k, oversample);   // wrong m
             Assert.Throws<ArgumentException>(
                 () => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, 2, 123u, 75, ref ws));
         }
@@ -169,14 +169,14 @@ public class fProxySvdRandomizedWorkspaceTests
             var A = arena.fProxyMat(m, n);
             var Uk = arena.fProxyMat(m, k); var Sk = arena.fProxyVec(k); var Vk = arena.fProxyMat(n, k);
             // ws sketch width l = min(3 + 0, 6) = 3, but the call uses oversample 2 -> l = min(5, 6) = 5.
-            var ws = arena.fProxySvdRandomizedWorkspace(m, n, k, 0);
+            var ws = arena.fProxySvdRandomized_WS(m, n, k, 0);
             Assert.Throws<ArgumentException>(
                 () => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 2, 2, 123u, 75, ref ws));
         }
         finally { arena.Dispose(); }
     }
 
-    // Arena.fProxySvdRandomizedWorkspace(m, n, k, oversample) sizes everything by l = min(k+p, n).
+    // Arena.fProxySvdRandomized_WS(m, n, k, oversample) sizes everything by l = min(k+p, n).
     [Test]
     public void SvdRandomizedWorkspace_Factory_SizesCorrectly()
     {
@@ -185,7 +185,7 @@ public class fProxySvdRandomizedWorkspaceTests
         {
             int m = 14, n = 6, k = 3, oversample = 4;   // l = min(7, 6) = 6
             int l = 6;
-            var ws = arena.fProxySvdRandomizedWorkspace(m, n, k, oversample);
+            var ws = arena.fProxySvdRandomized_WS(m, n, k, oversample);
             Assert.AreEqual(n, ws.Omega.M_Rows); Assert.AreEqual(l, ws.Omega.N_Cols);
             Assert.AreEqual(m, ws.Y.M_Rows);     Assert.AreEqual(l, ws.Y.N_Cols);
             Assert.AreEqual(l, ws.R.M_Rows);     Assert.AreEqual(l, ws.R.N_Cols);
@@ -197,7 +197,7 @@ public class fProxySvdRandomizedWorkspaceTests
             Assert.AreEqual(m, ws.UA.M_Rows);    Assert.AreEqual(l, ws.UA.N_Cols);
 
             // default-oversample factory: l = min(3 + 10, 6) = 6 as well
-            var wsDef = arena.fProxySvdRandomizedWorkspace(m, n, k);
+            var wsDef = arena.fProxySvdRandomized_WS(m, n, k);
             Assert.AreEqual(l, wsDef.Omega.N_Cols);
         }
         finally { arena.Dispose(); }

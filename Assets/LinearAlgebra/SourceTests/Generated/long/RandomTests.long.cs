@@ -10,11 +10,11 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-// Tests for the integer uniform-refill core (longRandomOP.nextUniformInpl), expanded to
+// Tests for the integer uniform-refill core (longRandom_OP.nextUniformInpl), expanded to
 // int / short / long. Range is [min, max) per Unity NextInt; min == max is a constant fill
 // with NO rng advance; min > max throws.
 //
-// One template expands to intRandomOP / shortRandomOP / longRandomOP, so every literal must
+// One template expands to intRandom_OP / shortRandom_OP / longRandom_OP, so every literal must
 // be exact AND safe for the TIGHTEST type (short, [-32768, 32767]): all bounds and poison
 // values are kept small. The long-only out-of-int-range guard cannot be exercised here (the
 // proxy and the int/short expansions can never hold a value outside int range); it is covered
@@ -71,7 +71,7 @@ public class longRandomTests
 
             var v = arena.longVec(N);
             for (int i = 0; i < v.N; i++) v[i] = (long)999;   // poison
-            longRandomOP.nextUniformInpl(ref rng, ref v, min, max);
+            longRandom_OP.nextUniformInpl(ref rng, ref v, min, max);
 
             for (int i = 0; i < v.N; i++)
                 AssertTrue(v[i] >= min && v[i] < max);
@@ -88,7 +88,7 @@ public class longRandomTests
             long min = (long)0, max = (long)4;   // {0,1,2,3}
 
             var v = arena.longVec(N);
-            longRandomOP.nextUniformInpl(ref rng, ref v, min, max);
+            longRandom_OP.nextUniformInpl(ref rng, ref v, min, max);
 
             bool sawDistinct = false;
             bool sawMin = false, sawTop = false;
@@ -116,7 +116,7 @@ public class longRandomTests
             var v = arena.longVec(64);
             for (int i = 0; i < v.N; i++) v[i] = (long)0;
             uint before = rng.state;
-            longRandomOP.nextUniformInpl(ref rng, ref v, c, c);
+            longRandom_OP.nextUniformInpl(ref rng, ref v, c, c);
             uint after = rng.state;
 
             for (int i = 0; i < v.N; i++)
@@ -134,11 +134,11 @@ public class longRandomTests
 
             var r1 = new Random(55u);
             var v1 = arena.longVec(256);
-            longRandomOP.nextUniformInpl(ref r1, ref v1, min, max);
+            longRandom_OP.nextUniformInpl(ref r1, ref v1, min, max);
 
             var r2 = new Random(55u);
             var v2 = arena.longVec(256);
-            longRandomOP.nextUniformInpl(ref r2, ref v2, min, max);
+            longRandom_OP.nextUniformInpl(ref r2, ref v2, min, max);
 
             for (int i = 0; i < v1.N; i++)
                 AssertTrue(v1[i] == v2[i]);
@@ -156,9 +156,9 @@ public class longRandomTests
             var rng = new Random(7777u);
 
             var v1 = arena.longVec(n);
-            longRandomOP.nextUniformInpl(ref rng, ref v1, min, max);
+            longRandom_OP.nextUniformInpl(ref rng, ref v1, min, max);
             var v2 = arena.longVec(n);
-            longRandomOP.nextUniformInpl(ref rng, ref v2, min, max);
+            longRandom_OP.nextUniformInpl(ref rng, ref v2, min, max);
 
             bool anyDiff = false;
             for (int i = 0; i < n; i++)
@@ -167,7 +167,7 @@ public class longRandomTests
 
             var rng3 = new Random(7777u);
             var v3 = arena.longVec(n);
-            longRandomOP.nextUniformInpl(ref rng3, ref v3, min, max);
+            longRandom_OP.nextUniformInpl(ref rng3, ref v3, min, max);
             for (int i = 0; i < n; i++)
                 AssertTrue(v1[i] == v3[i]);
 
@@ -181,12 +181,12 @@ public class longRandomTests
             var rng = new Random(909090u);
 
             var empty = arena.longVec(0);
-            longRandomOP.nextUniformInpl(ref rng, ref empty, (long)(-2), (long)2);
+            longRandom_OP.nextUniformInpl(ref rng, ref empty, (long)(-2), (long)2);
             AssertTrue(empty.N == 0);
 
             long min = (long)5, max = (long)6;   // {5}
             var one = arena.longVec(1);
-            longRandomOP.nextUniformInpl(ref rng, ref one, min, max);
+            longRandom_OP.nextUniformInpl(ref rng, ref one, min, max);
             AssertTrue(one.N == 1);
             AssertTrue(one[0] >= min && one[0] < max);
             AssertTrue(one[0] == (long)5);
@@ -203,7 +203,7 @@ public class longRandomTests
 
             var M = arena.longMat(4, 5);
             for (int i = 0; i < M.Length; i++) M[i] = (long)999;   // poison
-            longRandomOP.nextUniformInpl(ref rng, ref M, min, max);
+            longRandom_OP.nextUniformInpl(ref rng, ref M, min, max);
 
             AssertTrue(M.Length == 20);
             for (int i = 0; i < M.Length; i++)
@@ -221,7 +221,7 @@ public class longRandomTests
 
             var M = arena.longMat(3, 3);
             uint before = rng.state;
-            longRandomOP.nextUniformInpl(ref rng, ref M, c, c);
+            longRandom_OP.nextUniformInpl(ref rng, ref M, c, c);
             uint after = rng.state;
 
             for (int i = 0; i < M.Length; i++)
@@ -285,10 +285,10 @@ public class longRandomTests
 
         var v = arena.longVec(8);
         Random rng = new Random(1u);
-        Assert.Throws<ArgumentException>(() => longRandomOP.nextUniformInpl(ref rng, ref v, (long)5, (long)1));
+        Assert.Throws<ArgumentException>(() => longRandom_OP.nextUniformInpl(ref rng, ref v, (long)5, (long)1));
 
         var M = arena.longMat(3, 3);
-        Assert.Throws<ArgumentException>(() => longRandomOP.nextUniformInpl(ref rng, ref M, (long)5, (long)1));
+        Assert.Throws<ArgumentException>(() => longRandom_OP.nextUniformInpl(ref rng, ref M, (long)5, (long)1));
 
         arena.Dispose();
     }

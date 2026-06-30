@@ -5,7 +5,7 @@ namespace LinearAlgebra
 {
     public static partial class SVD
     {
-        static void RequireSvdTruncatedWorkspace(in doubleSvdTruncatedWorkspace ws, int m, int n, int p, string who)
+        static void RequireSvdTruncatedWorkspace(in doubleSvdTruncated_WS ws, int m, int n, int p, string who)
         {
             bool ok =
                 ws.UL.M_Rows == p && ws.UL.N_Cols == m &&
@@ -25,13 +25,13 @@ namespace LinearAlgebra
             if (!ok)
                 throw new ArgumentException(
                     who + ": workspace must be sized for this (m, n, k, oversample) — use " +
-                    "Arena.doubleSvdTruncatedWorkspace(m, n, k, oversample) with the SAME k and oversample");
+                    "Arena.doubleSvdTruncated_WS(m, n, k, oversample) with the SAME k and oversample");
         }
     }
 
     /// <summary>
     /// Reusable scratch storage for svdTruncated (Golub-Kahan-Lanczos). Allocate ONCE via
-    /// Arena.doubleSvdTruncatedWorkspace(m, n, k, oversample) and reuse across same-shape calls.
+    /// Arena.doubleSvdTruncated_WS(m, n, k, oversample) and reuse across same-shape calls.
     ///
     /// Layout (p = min(k+oversample, n)): UL (p x m) holds the left Lanczos basis u_1..u_p as
     /// ROWS (each u_j is a contiguous row of length m, enabling cache-coherent GEMV); VL ((p+1) x n)
@@ -47,7 +47,7 @@ namespace LinearAlgebra
     /// svdTruncated is FULLY zero-alloc on workspace reuse: the inner bidiagonal SVD runs entirely
     /// in dB/eB/UtB/VtB + BsvdWs (all persistent arena memory), with no Allocator.Temp usage.
     /// </summary>
-    public struct doubleSvdTruncatedWorkspace
+    public struct doubleSvdTruncated_WS
     {
         public doubleMxN UL;
         public doubleMxN VL;
@@ -55,7 +55,7 @@ namespace LinearAlgebra
         public doubleN eB;
         public doubleMxN UtB;
         public doubleMxN VtB;
-        public doubleSvdFullWorkspace BsvdWs;
+        public doubleSvdFull_WS BsvdWs;
         public doubleN uBuf;
         public doubleN vBuf;
         public doubleN alpha;
@@ -72,10 +72,10 @@ namespace LinearAlgebra
         /// oversample to svdTruncated's ref-workspace overload. The buffers are persistent in this
         /// arena (disposed with it), so create the workspace once outside a hot loop.
         /// </summary>
-        public doubleSvdTruncatedWorkspace doubleSvdTruncatedWorkspace(int m, int n, int k, int oversample)
+        public doubleSvdTruncated_WS doubleSvdTruncated_WS(int m, int n, int k, int oversample)
         {
             int p = math.min(k + oversample, n);
-            return new doubleSvdTruncatedWorkspace
+            return new doubleSvdTruncated_WS
             {
                 UL     = doubleMat(p, m),
                 VL     = doubleMat(p + 1, n),
@@ -83,7 +83,7 @@ namespace LinearAlgebra
                 eB     = doubleVec(p),
                 UtB    = doubleMat(p, p),
                 VtB    = doubleMat(p, p),
-                BsvdWs = new doubleSvdFullWorkspace
+                BsvdWs = new doubleSvdFull_WS
                 {
                     U = doubleMat(p, p),
                     S = doubleVec(p),
@@ -103,10 +103,10 @@ namespace LinearAlgebra
         /// p = min(n, max(2*k, k+12)) — matches the svdTruncated convenience overloads that do
         /// not take an explicit oversample. For k in [1,12], p >= k+12; for k > 12, p >= 2*k.
         /// </summary>
-        public doubleSvdTruncatedWorkspace doubleSvdTruncatedWorkspace(int m, int n, int k)
+        public doubleSvdTruncated_WS doubleSvdTruncated_WS(int m, int n, int k)
         {
             int p = math.min(n, math.max(2 * k, k + 12));
-            return new doubleSvdTruncatedWorkspace
+            return new doubleSvdTruncated_WS
             {
                 UL     = doubleMat(p, m),
                 VL     = doubleMat(p + 1, n),
@@ -114,7 +114,7 @@ namespace LinearAlgebra
                 eB     = doubleVec(p),
                 UtB    = doubleMat(p, p),
                 VtB    = doubleMat(p, p),
-                BsvdWs = new doubleSvdFullWorkspace
+                BsvdWs = new doubleSvdFull_WS
                 {
                     U = doubleMat(p, p),
                     S = doubleVec(p),

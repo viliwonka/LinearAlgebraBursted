@@ -24,7 +24,7 @@ namespace LinearAlgebra
     /// fProxy-only (float / double generated variants); use the existing integer ops for
     /// index-space resampling.
     /// </summary>
-    public static partial class fProxyResampleOP
+    public static partial class fProxyResample_OP
     {
         // ---- private helpers ----
 

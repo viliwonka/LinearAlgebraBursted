@@ -86,7 +86,7 @@ public class floatConjugateGradientTests
             var M = arena.floatRandomMatrix(dim, dim, -1f, 1f, seed);
 
             // dot(M, M, transposeA:true) == Mᵀ·M
-            var A = floatOP.dot(M, M, true);
+            var A = float_OP.dot(M, M, true);
 
             for (int d = 0; d < dim; d++)
                 A[d, d] += dim;
@@ -164,8 +164,8 @@ public class floatConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
             Assert.IsTrue(ok);
 
-            var Ax = floatOP.dot(A, x);
-            Assert.IsTrue(Analysis.IsZero(b - Ax, Tol()));
+            var Ax = float_OP.dot(A, x);
+            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -191,7 +191,7 @@ public class floatConjugateGradientTests
             bool cholOk = Cholesky.choleskySolve(in A, ref L, ref bChol);
             Assert.IsTrue(cholOk);
 
-            Assert.IsTrue(Analysis.IsZero(xCG - bChol, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(xCG - bChol, Tol()));
 
             arena.Dispose();
         }
@@ -216,7 +216,7 @@ public class floatConjugateGradientTests
             var xExpl = arena.floatVec(dim);
             bool okExpl = Solvers.conjugateGradient(in A, in b, ref xExpl, dim, Consts.floatSqrtEps);
             Assert.IsTrue(okExpl);
-            Assert.IsTrue(Analysis.IsZero(xDef - xExpl, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(xDef - xExpl, Tol()));
 
             // Zero-alloc primitive with caller-provided scratch r, p, Ap.
             var xPrim = arena.floatVec(dim);
@@ -227,7 +227,7 @@ public class floatConjugateGradientTests
                                                     ref r, ref p, ref Ap,
                                                     dim, Consts.floatSqrtEps);
             Assert.IsTrue(okPrim);
-            Assert.IsTrue(Analysis.IsZero(xDef - xPrim, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(xDef - xPrim, Tol()));
 
             arena.Dispose();
         }
@@ -247,7 +247,7 @@ public class floatConjugateGradientTests
 
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
             Assert.IsTrue(ok);
-            Assert.IsTrue(Analysis.IsZero(in x, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(in x, Tol()));
 
             arena.Dispose();
         }
@@ -290,12 +290,12 @@ public class floatConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
 
             // never produces NaN/Inf on the rank-deficient input...
-            Assert.IsFalse(Analysis.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
             // ...and a reported convergence must be a genuine solution.
             if (ok)
             {
-                var Ax = floatOP.dot(A, x);
-                Assert.IsTrue(Analysis.IsZero(b - Ax, Tol()));
+                var Ax = float_OP.dot(A, x);
+                Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
             }
 
             arena.Dispose();
@@ -323,10 +323,10 @@ public class floatConjugateGradientTests
             Assert.IsTrue(ok2);
 
             // x must be unchanged (still solves the system).
-            Assert.IsTrue(Analysis.IsZero(x - xWarm, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(x - xWarm, Tol()));
 
-            var Ax = floatOP.dot(A, xWarm);
-            Assert.IsTrue(Analysis.IsZero(b - Ax, Tol()));
+            var Ax = float_OP.dot(A, xWarm);
+            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -345,8 +345,8 @@ public class floatConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
             Assert.IsTrue(ok);
 
-            var Ax = floatOP.dot(A, x);
-            Assert.IsTrue(Analysis.IsZero(b - Ax, Tol()));
+            var Ax = float_OP.dot(A, x);
+            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -368,8 +368,8 @@ public class floatConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(ok);
 
-            var Ax = floatOP.dot(A, x);
-            Assert.IsTrue(Analysis.IsZero(b - Ax, Tol()));
+            var Ax = float_OP.dot(A, x);
+            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -390,8 +390,8 @@ public class floatConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(ok);
 
-            var Ax = floatOP.dot(A, x);
-            Assert.IsTrue(Analysis.IsZero(b - Ax, Tol()));
+            var Ax = float_OP.dot(A, x);
+            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
 
             arena.Dispose();
         }

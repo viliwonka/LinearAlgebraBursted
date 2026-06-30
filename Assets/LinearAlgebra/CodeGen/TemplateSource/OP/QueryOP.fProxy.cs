@@ -20,7 +20,7 @@ namespace LinearAlgebra
     //       Methods that return Indices index buffers (kNearestRows etc.) are also in this file.
     //   4 — Value / mask search: findValue, nonzero, countNonzero.
     //       nonzero (ref Indices) is in this file.
-    public static partial class fProxyQueryOP
+    public static partial class fProxyQuery_OP
     {
         // -------------------------------------------------------------------------
         // GROUP 1 — EXTREMES
@@ -691,7 +691,7 @@ namespace LinearAlgebra
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                fProxy s = fProxyQueryOP.RowScore(in A, r, in q, m);
+                fProxy s = fProxyQuery_OP.RowScore(in A, r, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -732,7 +732,7 @@ namespace LinearAlgebra
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                fProxy s = fProxyQueryOP.ColScore(in A, c, in q, m);
+                fProxy s = fProxyQuery_OP.ColScore(in A, c, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -773,7 +773,7 @@ namespace LinearAlgebra
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                fProxy s = fProxyQueryOP.RowScore(in A, r, in q, m);
+                fProxy s = fProxyQuery_OP.RowScore(in A, r, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -814,7 +814,7 @@ namespace LinearAlgebra
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                fProxy s = fProxyQueryOP.ColScore(in A, c, in q, m);
+                fProxy s = fProxyQuery_OP.ColScore(in A, c, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -852,7 +852,7 @@ namespace LinearAlgebra
             int count = 0;
             for (int row = 0; row < A.M_Rows; row++)
             {
-                fProxy s = fProxyQueryOP.RowScore(in A, row, in q, m);
+                fProxy s = fProxyQuery_OP.RowScore(in A, row, in q, m);
                 if (sim ? s >= r : s <= r) idx[count++] = row;
             }
             return count;
@@ -874,7 +874,7 @@ namespace LinearAlgebra
             int count = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                fProxy s = fProxyQueryOP.ColScore(in A, c, in q, m);
+                fProxy s = fProxyQuery_OP.ColScore(in A, c, in q, m);
                 if (sim ? s >= r : s <= r) idx[count++] = c;
             }
             return count;

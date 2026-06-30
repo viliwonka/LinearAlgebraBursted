@@ -150,9 +150,9 @@ int findValue<T>   (in T x, fProxy target, fProxy tol)           // first flat i
 int nonzero<T>     (in T x, fProxy tol, ref intN idx)            // returns count
 int countNonzero<T>(in T x, fProxy tol)
 
-// whichTrue / countTrue are BOOL-ONLY → live in singular BoolAnalysis, NOT per-type QueryOP (no ×5 dup):
-int BoolAnalysis.whichTrue(in boolN mask, ref intN idx)          // bridges existing `C > A` masks; returns count
-int BoolAnalysis.countTrue(in boolN mask)                        // + boolMxN; sits beside IsAny/IsAllEqualTo
+// whichTrue / countTrue are BOOL-ONLY → live in singular BoolAnalysis_OP, NOT per-type QueryOP (no ×5 dup):
+int BoolAnalysis_OP.whichTrue(in boolN mask, ref intN idx)          // bridges existing `C > A` masks; returns count
+int BoolAnalysis_OP.countTrue(in boolN mask)                        // + boolMxN; sits beside IsAny/IsAllEqualTo
 ```
 **Tier C (on-demand, sketch only):** predicate functor `interface IfProxyPredicate { bool Test(fProxy x); }`
 → `findFirst/count/any/all/findAll<P>(... ref P pred)`; row-score `interface IfProxyRowScore { fProxy
@@ -219,4 +219,4 @@ game-sized sets), negative indices / steps.
 ---
 *Lean core to build first = `argMaxAbs` + per-axis `rowArgMin`/`rowArgMax` + `argMaxRowNorm` +
 `nearestRow`/`farthestRow`/`kNearestRows`/`rowsWithinRadius` + `findValue`/`nonzero`/`countNonzero` + the
-`BoolAnalysis` bool bridge. Everything else is on-demand.*
+`BoolAnalysis_OP` bool bridge. Everything else is on-demand.*

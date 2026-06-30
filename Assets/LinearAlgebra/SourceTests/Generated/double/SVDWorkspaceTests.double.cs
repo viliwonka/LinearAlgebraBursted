@@ -72,17 +72,17 @@ public class doubleSVDWorkspaceTests
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
-            Assert.IsTrue(Analysis.IsZero(xa - xb, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(xa - xb, Tol()));
 
             // workspace-struct form (default relTol/maxSweeps) must match the raw-scratch form
             var Aw = A0.Copy();
             var xw = arena.doubleVec(n);
-            var ws = arena.doubleSvdWorkspace(m, n);
+            var ws = arena.doubleSvd_WS(m, n);
             int rw = SVD.pinvSolve(ref Aw, in b, ref xw, out bool cw, ref ws);
 
             Assert.IsTrue(rw == rb);
             Assert.IsTrue(cw == cb);
-            Assert.IsTrue(Analysis.IsZero(xw - xb, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(xw - xb, Tol()));
 
             arena.Dispose();
         }
@@ -115,17 +115,17 @@ public class doubleSVDWorkspaceTests
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
-            Assert.IsTrue(Analysis.IsZero(Pa - Pb, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(Pa - Pb, Tol()));
 
             // workspace-struct form (default relTol/maxSweeps) must match the raw-scratch form
             var Aw = A0.Copy();
             var Pw = arena.doubleMat(n, m);
-            var ws = arena.doubleSvdWorkspace(m, n);
+            var ws = arena.doubleSvd_WS(m, n);
             int rw = SVD.pseudoInverse(ref Aw, ref Pw, out bool cw, ref ws);
 
             Assert.IsTrue(rw == rb);
             Assert.IsTrue(cw == cb);
-            Assert.IsTrue(Analysis.IsZero(Pw - Pb, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(Pw - Pb, Tol()));
 
             arena.Dispose();
         }
@@ -141,7 +141,7 @@ public class doubleSVDWorkspaceTests
             for (int d = 0; d < n; d++)
                 A0[d, d] += (double)10f;
 
-            var ws = arena.doubleSvdWorkspace(m, n);   // allocated ONCE, reused below
+            var ws = arena.doubleSvd_WS(m, n);   // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
@@ -157,7 +157,7 @@ public class doubleSVDWorkspaceTests
                 var xw = arena.doubleVec(n);
                 SVD.pinvSolve(ref Aw, in b, ref xw, out bool _, ref ws);
 
-                Assert.IsTrue(Analysis.IsZero(xa - xw, Tol()));
+                Assert.IsTrue(Analysis_OP.IsZero(xa - xw, Tol()));
             }
 
             arena.Dispose();
@@ -250,7 +250,7 @@ public class doubleSVDWorkspaceTests
         finally { arena.Dispose(); }
     }
 
-    // Arena.doubleSvdWorkspace(m, n) must size S (k), M (k x k), and At (n x m only when wide).
+    // Arena.doubleSvd_WS(m, n) must size S (k), M (k x k), and At (n x m only when wide).
     [Test]
     public void SvdWorkspace_Factory_SizesCorrectly()
     {
@@ -258,7 +258,7 @@ public class doubleSVDWorkspaceTests
         try
         {
             // tall: k = n, big = m; U = big x k = 7 x 4; At unused (left default).
-            var wsTall = arena.doubleSvdWorkspace(7, 4);
+            var wsTall = arena.doubleSvd_WS(7, 4);
             Assert.AreEqual(4, wsTall.S.N);
             Assert.AreEqual(4, wsTall.M.M_Rows);
             Assert.AreEqual(4, wsTall.M.N_Cols);
@@ -266,7 +266,7 @@ public class doubleSVDWorkspaceTests
             Assert.AreEqual(4, wsTall.U.N_Cols);
 
             // wide: k = m, big = n; U = big x k = 8 x 3; At = n x m
-            var wsWide = arena.doubleSvdWorkspace(3, 8);
+            var wsWide = arena.doubleSvd_WS(3, 8);
             Assert.AreEqual(3, wsWide.S.N);
             Assert.AreEqual(3, wsWide.M.M_Rows);
             Assert.AreEqual(3, wsWide.M.N_Cols);

@@ -19,7 +19,7 @@ namespace LinearAlgebra
         {
             fProxyMxN matrix = a.TempCopy();
             
-            fProxyOP.signFlipInpl(matrix);
+            fProxy_OP.signFlipInpl(matrix);
 
             return matrix;
         }
@@ -28,7 +28,7 @@ namespace LinearAlgebra
         {
             fProxyMxN matrix = lhs.TempCopy();
             
-            fProxyOP.addInpl(matrix, rhs);
+            fProxy_OP.addInpl(matrix, rhs);
 
             return matrix;
         }
@@ -39,7 +39,7 @@ namespace LinearAlgebra
         {
             fProxyMxN matrix = lhs.TempCopy();
             
-            fProxyOP.addInpl(matrix, -rhs);
+            fProxy_OP.addInpl(matrix, -rhs);
 
             return matrix;
         }
@@ -48,7 +48,7 @@ namespace LinearAlgebra
         {
             // subtraction is NOT commutative: lhs - rhs[i,j], not rhs[i,j] - lhs
             fProxyMxN matrix = rhs.TempCopy();
-            fProxyOP.subInpl(lhs, matrix);
+            fProxy_OP.subInpl(lhs, matrix);
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -56,7 +56,7 @@ namespace LinearAlgebra
         {
             fProxyMxN matrix = a.TempCopy();
 
-            fProxyOP.mulInpl(matrix, s);
+            fProxy_OP.mulInpl(matrix, s);
 
             return matrix;
         }
@@ -70,7 +70,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            fProxyOP.divInpl(matrix, s);
+            fProxy_OP.divInpl(matrix, s);
 
             return matrix;
         }
@@ -79,7 +79,7 @@ namespace LinearAlgebra
         {
             // 0 / M is valid (= 0 where M != 0); division by zero MATRIX entries is left to IEEE (Inf/NaN).
             fProxyMxN matrix = a.TempCopy();
-            fProxyOP.divInpl(s, matrix);
+            fProxy_OP.divInpl(s, matrix);
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -90,7 +90,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            fProxyOP.modInpl(matrix, s);
+            fProxy_OP.modInpl(matrix, s);
 
             return matrix;
         }
@@ -99,7 +99,7 @@ namespace LinearAlgebra
         {
             // 0 % M is valid (= 0 where M != 0); a zero MATRIX entry is left to IEEE / runtime semantics.
             fProxyMxN matrix = a.TempCopy();
-            fProxyOP.modInpl(s, matrix);
+            fProxy_OP.modInpl(s, matrix);
 
             return matrix;
         }
@@ -119,7 +119,7 @@ namespace LinearAlgebra
 
             fProxyMxN matrix = lhs.TempCopy();
 
-            fProxyOP.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
+            fProxy_OP.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
 
             return matrix;
         }
@@ -136,7 +136,7 @@ namespace LinearAlgebra
             
             fProxyMxN matrix = lhs.TempCopy();
 
-            fProxyOP.subInpl(matrix, rhs);
+            fProxy_OP.subInpl(matrix, rhs);
 
             return matrix;
         }
@@ -153,7 +153,7 @@ namespace LinearAlgebra
 
             fProxyMxN matrix = lhs.TempCopy();
 
-            fProxyOP.compMulInpl(rhs, matrix);
+            fProxy_OP.compMulInpl(rhs, matrix);
 
             return matrix;
         }
@@ -170,7 +170,7 @@ namespace LinearAlgebra
 
             fProxyMxN newDividendMatrix = dividend.TempCopy();
 
-            fProxyOP.compDivInpl(newDividendMatrix, divisor);
+            fProxy_OP.compDivInpl(newDividendMatrix, divisor);
             return newDividendMatrix;
         }
 
@@ -186,7 +186,7 @@ namespace LinearAlgebra
 
             var newDividendMatrix = dividend.TempCopy();
 
-            fProxyOP.compModDiv(newDividendMatrix, divisor);
+            fProxy_OP.compModDiv(newDividendMatrix, divisor);
             return newDividendMatrix;
         }
 

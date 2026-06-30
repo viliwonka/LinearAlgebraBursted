@@ -6,19 +6,19 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an m x n full SVD (U m x n, S length n,
-        /// V n x n) — the layout produced by Arena.fProxySvdFullWorkspace(m, n).
+        /// V n x n) — the layout produced by Arena.fProxySvdFull_WS(m, n).
         /// </summary>
-        static void RequireSvdFullWorkspace(in fProxySvdFullWorkspace ws, int m, int n, string who)
+        static void RequireSvdFullWorkspace(in fProxySvdFull_WS ws, int m, int n, string who)
         {
             if (ws.U.M_Rows != m || ws.U.N_Cols != n || ws.S.N != n || ws.V.M_Rows != n || ws.V.N_Cols != n)
-                throw new ArgumentException(who + ": workspace must be sized for m x n (use Arena.fProxySvdFullWorkspace(m, n))");
+                throw new ArgumentException(who + ": workspace must be sized for m x n (use Arena.fProxySvdFull_WS(m, n))");
         }
     }
 
     /// <summary>
     /// Reusable scratch storage for the full-SVD-family ops that each compute one Golub-Kahan SVD of
     /// an m x n (m >= n) matrix and slice it: svdTruncated, lowRankApprox, nullspaceBasis, rangeBasis.
-    /// Allocate ONCE (sized for the matrix shape) via Arena.fProxySvdFullWorkspace(m, n) and reuse it
+    /// Allocate ONCE (sized for the matrix shape) via Arena.fProxySvdFull_WS(m, n) and reuse it
     /// across many same-shape calls to avoid the per-call temp allocations.
     ///
     /// Layout matches the (U, S, V) factors svdThin writes: U is m x n (left singular vectors),
@@ -30,7 +30,7 @@ namespace LinearAlgebra
     /// still allocates a little Allocator.Temp scratch of its own each call, so the family ops are
     /// low-alloc rather than strictly zero-alloc.
     /// </summary>
-    public struct fProxySvdFullWorkspace
+    public struct fProxySvdFull_WS
     {
         public fProxyMxN U;
         public fProxyN S;
@@ -45,9 +45,9 @@ namespace LinearAlgebra
         /// create the workspace once outside a hot loop and pass it to the workspace overloads of
         /// svdTruncated / lowRankApprox / nullspaceBasis / rangeBasis.
         /// </summary>
-        public fProxySvdFullWorkspace fProxySvdFullWorkspace(int m, int n)
+        public fProxySvdFull_WS fProxySvdFull_WS(int m, int n)
         {
-            return new fProxySvdFullWorkspace
+            return new fProxySvdFull_WS
             {
                 U = fProxyMat(m, n),
                 S = fProxyVec(n),

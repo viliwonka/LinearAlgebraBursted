@@ -58,7 +58,7 @@ public class doubleGeneratorTests
             var arena = new Arena(Allocator.Persistent);
 
             var v = arena.doubleVec(5);
-            doubleGenOP.linspace(ref v, (double)0, (double)1);
+            doubleGen_OP.linspace(ref v, (double)0, (double)1);
             AssertClose(v[0], (double)0f, 1E-5f);
             AssertClose(v[1], (double)0.25f, 1E-5f);
             AssertClose(v[2], (double)0.5f, 1E-5f);
@@ -70,11 +70,11 @@ public class doubleGeneratorTests
             AssertClose(v[4], (double)1f, 0f);
 
             var one = arena.doubleVec(1);
-            doubleGenOP.linspace(ref one, (double)7, (double)9);
+            doubleGen_OP.linspace(ref one, (double)7, (double)9);
             AssertClose(one[0], (double)7f, 0f);
 
             var r = arena.doubleVec(4);
-            doubleGenOP.arange(ref r, (double)2, (double)3);
+            doubleGen_OP.arange(ref r, (double)2, (double)3);
             AssertClose(r[0], (double)2f, 1E-5f);
             AssertClose(r[1], (double)5f, 1E-5f);
             AssertClose(r[2], (double)8f, 1E-5f);
@@ -91,7 +91,7 @@ public class doubleGeneratorTests
             int N = 9;
             var f = new doubleEasing.EaseInQuad();
             var dest = arena.doubleVec(N);
-            doubleGenOP.sample(ref f, ref dest);
+            doubleGen_OP.sample(ref f, ref dest);
 
             double scale = (double)1 / (double)(N - 1);
             for (int i = 0; i < N; i++)
@@ -103,13 +103,13 @@ public class doubleGeneratorTests
 
             // N==1 -> {f.Eval(t0)}
             var one = arena.doubleVec(1);
-            doubleGenOP.sample(ref f, ref one, (double)0.5, (double)0.9);
+            doubleGen_OP.sample(ref f, ref one, (double)0.5, (double)0.9);
             AssertClose(one[0], f.Eval((double)0.5), 1E-6f);
 
             // explicit domain [2,4] hits the endpoints exactly
             var dom = arena.doubleVec(3);
             var lin = new doubleEasing.Linear();
-            doubleGenOP.sample(ref lin, ref dom, (double)2, (double)4);
+            doubleGen_OP.sample(ref lin, ref dom, (double)2, (double)4);
             AssertClose(dom[0], (double)2f, 1E-5f);
             AssertClose(dom[1], (double)3f, 1E-5f);
             AssertClose(dom[2], (double)4f, 1E-5f);
@@ -238,7 +238,7 @@ public class doubleGeneratorTests
 
             int N = 5;
             var g = arena.doubleVec(N);
-            doubleGenOP.gaussianKernel(ref g, (double)1);
+            doubleGen_OP.gaussianKernel(ref g, (double)1);
 
             double sum = (double)0;
             for (int i = 0; i < N; i++) sum += g[i];
@@ -254,7 +254,7 @@ public class doubleGeneratorTests
 
             // N==1 -> {1}
             var one = arena.doubleVec(1);
-            doubleGenOP.gaussianKernel(ref one, (double)2);
+            doubleGen_OP.gaussianKernel(ref one, (double)2);
             AssertClose(one[0], (double)1f, 1E-6f);
 
             arena.Dispose();
@@ -267,7 +267,7 @@ public class doubleGeneratorTests
 
             int N = 6;
             var box = arena.doubleVec(N);
-            doubleGenOP.boxKernel(ref box);
+            doubleGen_OP.boxKernel(ref box);
             double bsum = (double)0;
             for (int i = 0; i < N; i++)
             {
@@ -278,7 +278,7 @@ public class doubleGeneratorTests
 
             int M = 5;
             var tent = arena.doubleVec(M);
-            doubleGenOP.tentKernel(ref tent);
+            doubleGen_OP.tentKernel(ref tent);
             double tsum = (double)0;
             for (int i = 0; i < M; i++) tsum += tent[i];
             AssertClose(tsum, (double)1f, 1E-5f);
@@ -298,33 +298,33 @@ public class doubleGeneratorTests
             int N = 5;
 
             var hann = arena.doubleVec(N);
-            doubleGenOP.window(ref hann, WindowType.Hann);
+            doubleGen_OP.window(ref hann, WindowType.Hann);
             AssertClose(hann[0], (double)0f, 1E-5f);
             AssertClose(hann[4], (double)0f, 1E-5f);
             AssertClose(hann[2], (double)1f, 1E-5f); // 0.5(1-cos π) = 1
             AssertClose(hann[1], hann[3], 1E-5f);    // symmetric
 
             var hamming = arena.doubleVec(N);
-            doubleGenOP.window(ref hamming, WindowType.Hamming);
+            doubleGen_OP.window(ref hamming, WindowType.Hamming);
             AssertClose(hamming[0], (double)0.08f, 1E-5f);
             AssertClose(hamming[4], (double)0.08f, 1E-5f);
             AssertClose(hamming[2], (double)1f, 1E-5f); // 0.54+0.46 = 1
 
             var black = arena.doubleVec(N);
-            doubleGenOP.window(ref black, WindowType.Blackman);
+            doubleGen_OP.window(ref black, WindowType.Blackman);
             AssertClose(black[0], (double)0f, 1E-5f);  // 0.42-0.5+0.08 = 0
             AssertClose(black[4], (double)0f, 1E-5f);
             AssertClose(black[2], (double)1f, 1E-5f);  // 0.42+0.5+0.08 = 1 (center)
             AssertClose(black[1], black[3], 1E-5f);    // symmetric
 
             var box = arena.doubleVec(N);
-            doubleGenOP.window(ref box, WindowType.Box);
+            doubleGen_OP.window(ref box, WindowType.Box);
             for (int i = 0; i < N; i++)
                 AssertClose(box[i], (double)1f, 1E-6f);
 
             // N==1 -> {1} for the (N-1)-denominator windows (no div-by-zero)
             var one = arena.doubleVec(1);
-            doubleGenOP.window(ref one, WindowType.Hann);
+            doubleGen_OP.window(ref one, WindowType.Hann);
             AssertClose(one[0], (double)1f, 1E-6f);
 
             arena.Dispose();
@@ -341,10 +341,10 @@ public class doubleGeneratorTests
             v[0] = 4f; v[1] = 5f;
 
             var O = arena.doubleMat(3, 2);
-            doubleGenOP.outer(in u, in v, ref O);
+            doubleGen_OP.outer(in u, in v, ref O);
 
             var S = arena.doubleMat(3, 2);
-            doubleGenOP.outerSum(in u, in v, ref S);
+            doubleGen_OP.outerSum(in u, in v, ref S);
 
             for (int i = 0; i < 3; i++)
                 for (int j = 0; j < 2; j++)
@@ -365,10 +365,10 @@ public class doubleGeneratorTests
             double sigma = (double)1.2;
 
             var g = arena.doubleVec(N);
-            doubleGenOP.gaussianKernel(ref g, sigma);
+            doubleGen_OP.gaussianKernel(ref g, sigma);
 
             var K = arena.doubleMat(N, N);
-            doubleGenOP.gaussianKernel2D(ref K, sigma);
+            doubleGen_OP.gaussianKernel2D(ref K, sigma);
 
             double sum = (double)0;
             for (int i = 0; i < N; i++)
@@ -431,44 +431,44 @@ public class doubleGeneratorTests
 
             var lin = arena.doubleLinspace((double)(-2), (double)3, N);
             var linRef = arena.doubleVec(N);
-            doubleGenOP.linspace(ref linRef, (double)(-2), (double)3);
+            doubleGen_OP.linspace(ref linRef, (double)(-2), (double)3);
             EqVec(in lin, in linRef, N);
 
             var ar = arena.doubleArange((double)5, (double)(-2), N);
             var arRef = arena.doubleVec(N);
-            doubleGenOP.arange(ref arRef, (double)5, (double)(-2));
+            doubleGen_OP.arange(ref arRef, (double)5, (double)(-2));
             EqVec(in ar, in arRef, N);
 
             var quad = new doubleEasing.EaseInQuad();
             var smp = arena.doubleSample(ref quad, N, (double)(-1), (double)2);
             var smpRef = arena.doubleVec(N);
-            doubleGenOP.sample(ref quad, ref smpRef, (double)(-1), (double)2);
+            doubleGen_OP.sample(ref quad, ref smpRef, (double)(-1), (double)2);
             EqVec(in smp, in smpRef, N);
 
             var gk = arena.doubleGaussianKernel(N, (double)1.5);
             var gkRef = arena.doubleVec(N);
-            doubleGenOP.gaussianKernel(ref gkRef, (double)1.5);
+            doubleGen_OP.gaussianKernel(ref gkRef, (double)1.5);
             EqVec(in gk, in gkRef, N);
 
             var bk = arena.doubleBoxKernel(N);
             var bkRef = arena.doubleVec(N);
-            doubleGenOP.boxKernel(ref bkRef);
+            doubleGen_OP.boxKernel(ref bkRef);
             EqVec(in bk, in bkRef, N);
 
             var tk = arena.doubleTentKernel(N);
             var tkRef = arena.doubleVec(N);
-            doubleGenOP.tentKernel(ref tkRef);
+            doubleGen_OP.tentKernel(ref tkRef);
             EqVec(in tk, in tkRef, N);
 
             var win = arena.doubleWindow(N, WindowType.Blackman);
             var winRef = arena.doubleVec(N);
-            doubleGenOP.window(ref winRef, WindowType.Blackman);
+            doubleGen_OP.window(ref winRef, WindowType.Blackman);
             EqVec(in win, in winRef, N);
 
             var ease = new doubleEasing.SmoothStep();
             var lut = arena.doubleEasingLUT(ref ease, N);
             var lutRef = arena.doubleVec(N);
-            doubleGenOP.sample(ref ease, ref lutRef, (double)0, (double)1);
+            doubleGen_OP.sample(ref ease, ref lutRef, (double)0, (double)1);
             EqVec(in lut, in lutRef, N);
 
             // outer wrapper vs primitive
@@ -476,14 +476,14 @@ public class doubleGeneratorTests
             var v = arena.doubleLinspace((double)0, (double)2, 3);
             var O = arena.doubleOuter(in u, in v);
             var Oref = arena.doubleMat(4, 3);
-            doubleGenOP.outer(in u, in v, ref Oref);
+            doubleGen_OP.outer(in u, in v, ref Oref);
             for (int i = 0; i < 4; i++)
                 for (int j = 0; j < 3; j++)
                     AssertClose(O[i, j], Oref[i, j], 1E-5f);
 
             var Sm = arena.doubleOuterSum(in u, in v);
             var SmRef = arena.doubleMat(4, 3);
-            doubleGenOP.outerSum(in u, in v, ref SmRef);
+            doubleGen_OP.outerSum(in u, in v, ref SmRef);
             for (int i = 0; i < 4; i++)
                 for (int j = 0; j < 3; j++)
                     AssertClose(Sm[i, j], SmRef[i, j], 1E-5f);
@@ -491,7 +491,7 @@ public class doubleGeneratorTests
             // gaussianKernel2D wrapper vs primitive
             var K = arena.doubleGaussianKernel2D(5, (double)1.3);
             var Kref = arena.doubleMat(5, 5);
-            doubleGenOP.gaussianKernel2D(ref Kref, (double)1.3);
+            doubleGen_OP.gaussianKernel2D(ref Kref, (double)1.3);
             for (int i = 0; i < 5; i++)
                 for (int j = 0; j < 5; j++)
                     AssertClose(K[i, j], Kref[i, j], 1E-5f);
@@ -572,8 +572,8 @@ public class doubleGeneratorTests
     {
         var arena = new Arena(Allocator.Persistent);
         var v = arena.doubleVec(5);
-        Assert.Throws<ArgumentException>(() => doubleGenOP.gaussianKernel(ref v, (double)0));
-        Assert.Throws<ArgumentException>(() => doubleGenOP.gaussianKernel(ref v, (double)(-1)));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.gaussianKernel(ref v, (double)0));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.gaussianKernel(ref v, (double)(-1)));
         arena.Dispose();
     }
 
@@ -584,8 +584,8 @@ public class doubleGeneratorTests
         var u = arena.doubleVec(3);
         var w = arena.doubleVec(2);
         var bad = arena.doubleMat(2, 2);
-        Assert.Throws<ArgumentException>(() => doubleGenOP.outer(in u, in w, ref bad));
-        Assert.Throws<ArgumentException>(() => doubleGenOP.outerSum(in u, in w, ref bad));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.outer(in u, in w, ref bad));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.outerSum(in u, in w, ref bad));
         arena.Dispose();
     }
 
@@ -594,11 +594,11 @@ public class doubleGeneratorTests
     {
         var arena = new Arena(Allocator.Persistent);
         var bad = arena.doubleMat(3, 4);
-        Assert.Throws<ArgumentException>(() => doubleGenOP.gaussianKernel2D(ref bad, (double)1));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.gaussianKernel2D(ref bad, (double)1));
         // sigma guard fires before the internal Temp alloc (no leak on the throw path)
         var sq = arena.doubleMat(4, 4);
-        Assert.Throws<ArgumentException>(() => doubleGenOP.gaussianKernel2D(ref sq, (double)0));
-        Assert.Throws<ArgumentException>(() => doubleGenOP.gaussianKernel2D(ref sq, (double)(-2)));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.gaussianKernel2D(ref sq, (double)0));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.gaussianKernel2D(ref sq, (double)(-2)));
         arena.Dispose();
     }
 
@@ -608,13 +608,13 @@ public class doubleGeneratorTests
         var arena = new Arena(Allocator.Persistent);
         var v0 = arena.doubleVec(0);
         var quad = new doubleEasing.EaseInQuad();
-        Assert.Throws<ArgumentException>(() => doubleGenOP.linspace(ref v0, (double)0, (double)1));
-        Assert.Throws<ArgumentException>(() => doubleGenOP.arange(ref v0, (double)0, (double)1));
-        Assert.Throws<ArgumentException>(() => doubleGenOP.sample(ref quad, ref v0));
-        Assert.Throws<ArgumentException>(() => doubleGenOP.boxKernel(ref v0));
-        Assert.Throws<ArgumentException>(() => doubleGenOP.tentKernel(ref v0));
-        Assert.Throws<ArgumentException>(() => doubleGenOP.gaussianKernel(ref v0, (double)1));
-        Assert.Throws<ArgumentException>(() => doubleGenOP.window(ref v0, WindowType.Hann));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.linspace(ref v0, (double)0, (double)1));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.arange(ref v0, (double)0, (double)1));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.sample(ref quad, ref v0));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.boxKernel(ref v0));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.tentKernel(ref v0));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.gaussianKernel(ref v0, (double)1));
+        Assert.Throws<ArgumentException>(() => doubleGen_OP.window(ref v0, WindowType.Hann));
         arena.Dispose();
     }
 }

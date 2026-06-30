@@ -90,7 +90,7 @@ namespace LinearAlgebra.Benchmarks
                     M[row, col] = rng.NextFloat(-1f, 1f);
 
             // A = MᵀM (guaranteed positive semi-definite)
-            floatOP.dot(in M, in M, ref A, true);
+            float_OP.dot(in M, in M, ref A, true);
 
             // Add I: A becomes MᵀM + I (guaranteed SPD with min eigenvalue >= 1)
             for (int d = 0; d < n; d++) A[d, d] += 1f;
@@ -121,7 +121,7 @@ namespace LinearAlgebra.Benchmarks
                     M[row, col] = rng.NextDouble(-1.0, 1.0);
 
             // A = MᵀM (guaranteed positive semi-definite)
-            doubleOP.dot(in M, in M, ref A, true);
+            double_OP.dot(in M, in M, ref A, true);
 
             // Add I: A becomes MᵀM + I (guaranteed SPD with min eigenvalue >= 1)
             for (int d = 0; d < n; d++) A[d, d] += 1.0;

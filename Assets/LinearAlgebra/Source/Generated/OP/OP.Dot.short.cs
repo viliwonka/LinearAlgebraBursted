@@ -10,7 +10,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Inpl = inplace
     /// </summary>
-    public static partial class shortOP {
+    public static partial class short_OP {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static short dot(shortN a, shortN b)
@@ -19,7 +19,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("dot: Vector must have same dimension");
 
             unsafe {
-                return UnsafeOP.vecDot(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
+                return Unsafe_OP.vecDot(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -35,7 +35,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeOP.vecOuterDot(a.Data.Ptr, b.Data.Ptr, result.Data.Ptr, a.N, b.N);
+                Unsafe_OP.vecOuterDot(a.Data.Ptr, b.Data.Ptr, result.Data.Ptr, a.N, b.N);
             }
         }
 
@@ -65,7 +65,7 @@ namespace LinearAlgebra
                 // matVecDot accumulates (+=), so the destination must start zeroed.
                 UnsafeUtility.MemClear(result.Data.Ptr, (long)result.Data.Length * UnsafeUtility.SizeOf<short>());
 
-                UnsafeOP.matVecDot(A.Data.Ptr, x.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
+                Unsafe_OP.matVecDot(A.Data.Ptr, x.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
             }
         }
 
@@ -95,7 +95,7 @@ namespace LinearAlgebra
                 // vecMatDot accumulates (+=), so the destination must start zeroed.
                 UnsafeUtility.MemClear(result.Data.Ptr, (long)result.Data.Length * UnsafeUtility.SizeOf<short>());
 
-                UnsafeOP.vecMatDot(y.Data.Ptr, A.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
+                Unsafe_OP.vecMatDot(y.Data.Ptr, A.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
             }
         }
 
@@ -143,9 +143,9 @@ namespace LinearAlgebra
                 UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<short>());
 
                 if(transposeA)
-                    UnsafeOP.matMatDotTransA(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+                    Unsafe_OP.matMatDotTransA(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
                 else
-                    UnsafeOP.matMatDot(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+                    Unsafe_OP.matMatDot(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
             }
         }
 
@@ -176,7 +176,7 @@ namespace LinearAlgebra
                 if (T.Data.Ptr == A.Data.Ptr)
                     throw new ArgumentException("trans: destination must not alias the input");
 
-                UnsafeOP.matTrans(A.Data.Ptr, T.Data.Ptr, A.M_Rows, A.N_Cols);
+                Unsafe_OP.matTrans(A.Data.Ptr, T.Data.Ptr, A.M_Rows, A.N_Cols);
             }
         }
 

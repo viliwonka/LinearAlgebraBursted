@@ -168,8 +168,8 @@ public class floatSVDTests
         {
             var U = new floatMxN(m, m, Allocator.Temp, false);
             var V = new floatMxN(n, n, Allocator.Temp, false);
-            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref U);
-            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref V);
+            floatRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref U);
+            floatRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref V);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -200,7 +200,7 @@ public class floatSVDTests
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
             Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             // svTol & ortho/recon tolerances scale with the numeric type via Consts.floatSqrtEps
             // (float ~3.45e-4, double ~1.49e-8): the SAME bound holds for both generated expansions.
@@ -310,7 +310,7 @@ public class floatSVDTests
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
             Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             AssertDescendingNonNegative(in S, n);
             for (int i = 0; i < n; i++) { if (!(S[i] > (float)0)) Record(S[i], (float)0, S[i]); Assert.IsTrue(S[i] > (float)0); }
@@ -334,7 +334,7 @@ public class floatSVDTests
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
             Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             AssertDescendingNonNegative(in S, n);
             for (int i = 0; i < n; i++) { if (!(S[i] > (float)0)) Record(S[i], (float)0, S[i]); Assert.IsTrue(S[i] > (float)0); }
@@ -377,8 +377,8 @@ public class floatSVDTests
             for (int i = 0; i < dim; i++)
                 AssertClose(S[i], (float)1f, 1E-4f);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis.IsOrthogonal(V, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(U, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, 1E-4f));
 
             AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
 
@@ -446,8 +446,8 @@ public class floatSVDTests
 
             AssertDescendingNonNegative(in S, dim);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis.IsOrthogonal(V, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(U, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, 1E-4f));
 
             AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
 
@@ -470,12 +470,12 @@ public class floatSVDTests
 
             Assert.IsTrue(success);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in U));
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in U));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
-            Assert.IsTrue(Analysis.IsOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis.IsOrthogonal(V, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(U, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, 1E-4f));
 
             AssertDescendingNonNegative(in S, dim);
 
@@ -501,13 +501,13 @@ public class floatSVDTests
 
             Assert.IsTrue(success);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in U));
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in U));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             // U is 6x3 with orthonormal columns -> U^T U = I_3
-            Assert.IsTrue(Analysis.IsOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis.IsOrthogonal(V, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(U, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, 1E-4f));
 
             AssertDescendingNonNegative(in S, n);
 
@@ -536,9 +536,9 @@ public class floatSVDTests
 
             Assert.IsTrue(success);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in U));
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in U));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             // exactly one zero singular value (smallest), the third is non-trivial
             Assert.IsTrue(S[3] < 1E-4f);
@@ -578,18 +578,18 @@ public class floatSVDTests
 
             Assert.IsTrue(success);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in U));
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in U));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             for (int i = 0; i < dim; i++)
                 AssertClose(S[i], (float)0f, 1E-4f);
 
             // U is all zeros (every column matches a zero singular value)
-            Assert.IsTrue(Analysis.IsZero(in U, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsZero(in U, 1E-4f));
 
             // V stays identity (no rotations applied)
-            Assert.IsTrue(Analysis.IsIdentity(in V, 1E-4f));
+            Assert.IsTrue(Analysis_OP.IsIdentity(in V, 1E-4f));
 
             arena.Dispose();
         }
@@ -647,9 +647,9 @@ public class floatSVDTests
 
             // The return value is intentionally not asserted (may or may not converge).
 
-            Assert.IsFalse(Analysis.IsAnyNan(in U));
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in U));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             AssertDescendingNonNegative(in S, dim);
 
@@ -671,7 +671,7 @@ public class floatSVDTests
             int k = SVD.singularValues(in A, ref S);
             AssertClose((float)k, (float)n, 1E-6f);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             // every singular value == sqrt(4) == 2 (cond = 1)
             for (int i = 0; i < n; i++)
@@ -697,7 +697,7 @@ public class floatSVDTests
 
             SVD.singularValues(in A, ref S);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             float pi = (float)Unity.Mathematics.math.PI_DBL;
             // boundary lies within ~1e-10 of π; absorb float SVD error without masking a real overshoot.
@@ -739,7 +739,7 @@ public class floatSVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             for (int i = 0; i < n; i++)
                 AssertClose(S[i], (float)1f, 1E-4f);
@@ -747,7 +747,7 @@ public class floatSVDTests
             AssertDescendingNonNegative(in S, n);
 
             // A must be unchanged (still identity).
-            Assert.IsTrue(Analysis.IsIdentity(in A, 1E-5f));
+            Assert.IsTrue(Analysis_OP.IsIdentity(in A, 1E-5f));
 
             arena.Dispose();
         }
@@ -773,7 +773,7 @@ public class floatSVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             // |d| sorted descending: 5, 3, 2, 1, 0.5
             AssertClose(S[0], (float)5f, 1E-4f);
@@ -806,7 +806,7 @@ public class floatSVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             AssertClose(S[0], (float)4f, 1E-4f);
             AssertClose(S[1], (float)3f, 1E-4f);
@@ -836,7 +836,7 @@ public class floatSVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             // expected sole singular value = ||u|| * ||v||
             float nu = (float)0f, nv = (float)0f;
@@ -877,8 +877,8 @@ public class floatSVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
-            Assert.IsFalse(Analysis.IsAnyNan(in Sref));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in Sref));
 
             AssertDescendingNonNegative(in S, n);
             AssertDescendingNonNegative(in Sref, n);
@@ -920,7 +920,7 @@ public class floatSVDTests
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
 
             // singular values agree with the oracle (both descending, scale-aware tol)
@@ -933,8 +933,8 @@ public class floatSVDTests
 
             float reconTol = (float)1E-3f + (float)1E-4f * math.abs(S[0]);
             AssertReconstruct(in A, in U, in S, in V, ref arena, reconTol);
-            Assert.IsTrue(Analysis.IsOrthogonal(U, (float)1E-3f));
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (float)1E-3f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(U, (float)1E-3f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (float)1E-3f));
 
             AssertMatrixUnchanged(in A, in Apristine, m, n);
 
@@ -961,7 +961,7 @@ public class floatSVDTests
             var V = arena.floatMat(n, n);
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             float nu = (float)0f, nv = (float)0f;
             for (int i = 0; i < n; i++) { nu += u[i] * u[i]; nv += v[i] * v[i]; }
@@ -993,14 +993,14 @@ public class floatSVDTests
             var V = arena.floatMat(n, n);
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
 
             for (int i = 0; i < n; i++)
                 AssertClose(S[i], (float)3f, (float)1E-3f);
 
             AssertReconstruct(in A, in U, in S, in V, ref arena, (float)1E-3f);
-            Assert.IsTrue(Analysis.IsOrthogonal(U, (float)1E-3f));
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (float)1E-3f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(U, (float)1E-3f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (float)1E-3f));
             AssertMatrixUnchanged(in A, in Apristine, n, n);
 
             arena.Dispose();
@@ -1019,7 +1019,7 @@ public class floatSVDTests
             var V = arena.floatMat(n, n);
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
             for (int i = 0; i < n; i++)
                 AssertClose(S[i], (float)0f, (float)1E-5f);
 
@@ -1058,7 +1058,7 @@ public class floatSVDTests
             var V = arena.floatMat(n, n);
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in S));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
 
             for (int i = 0; i < n; i++)
@@ -1072,8 +1072,8 @@ public class floatSVDTests
                 AssertClose(S[i], (float)0f, (float)1E-3f + (float)1E-3f * S[0]);
 
             AssertReconstruct(in A, in U, in S, in V, ref arena, (float)1E-3f + (float)1E-4f * S[0]);
-            Assert.IsTrue(Analysis.IsOrthogonal(U, (float)1E-3f));
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (float)1E-3f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(U, (float)1E-3f));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (float)1E-3f));
             AssertMatrixUnchanged(in A, in Apristine, n, n);
 
             arena.Dispose();
@@ -1102,16 +1102,16 @@ public class floatSVDTests
         {
             // A ~= U * diag(S) * V^T
             var diagS = arena.floatDiagonalMatrix(in S);
-            var US = floatOP.dot(U, diagS);
-            var Vt = floatOP.trans(V);
-            var recon = floatOP.dot(US, Vt);
+            var US = float_OP.dot(U, diagS);
+            var Vt = float_OP.trans(V);
+            var recon = float_OP.dot(US, Vt);
 
             floatMxN shouldBeZero = A - recon;
 
-            if (Analysis.IsAnyNan(in shouldBeZero))
+            if (Analysis_OP.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
-            var zeroError = Analysis.MaxZeroError(shouldBeZero);
+            var zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
 
             // Fail layout: [1]=zeroError, [2]=precision, [3]=diff
             if (!(zeroError <= precision) && Fail[0] == (float)0)
@@ -1121,7 +1121,7 @@ public class floatSVDTests
                 Fail[2] = precision;
                 Fail[3] = zeroError - precision;
             }
-            Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis_OP.IsZero(in shouldBeZero, precision));
         }
 
         // Fail layout: [1]=S[i] (offending element), [2]=bound or S[i-1], [3]=index cast to float

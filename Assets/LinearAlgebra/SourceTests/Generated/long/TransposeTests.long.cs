@@ -41,7 +41,7 @@ public class longTransposeTests
             
             longMxN A = arena.longRandomMatrix(dim, dim);
 
-            longMxN B = longOP.trans(A);
+            longMxN B = long_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, dim);
             Assert.AreEqual(B.N_Cols, dim);
@@ -62,7 +62,7 @@ public class longTransposeTests
 
             longMxN A = arena.longRandomMatrix(rows, cols);
 
-            longMxN B = longOP.trans(A);
+            longMxN B = long_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, cols);
             Assert.AreEqual(B.N_Cols, rows);

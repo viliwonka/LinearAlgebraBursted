@@ -24,7 +24,7 @@ namespace LinearAlgebra
     ///
     /// fProxy-only.
     /// </summary>
-    public static partial class fProxyRandomMatrixOP
+    public static partial class fProxyRandomMatrix_OP
     {
         // =========================================================================
         // 1. Multivariate Normal   x = mean + L·z,  z ~ N(0,I),  Σ = L·Lᵀ
@@ -61,10 +61,10 @@ namespace LinearAlgebra
 
             // Fill zScratch with N(0,1) via Box-Muller
             var gauss = new fProxyGaussian((fProxy)0, (fProxy)1);
-            fProxyRandomOP.randomInpl(ref rng, ref zScratch, ref gauss);
+            fProxyRandom_OP.randomInpl(ref rng, ref zScratch, ref gauss);
 
             // dest = cholL · zScratch
-            fProxyOP.dot(in cholL, in zScratch, ref dest);
+            fProxy_OP.dot(in cholL, in zScratch, ref dest);
 
             // dest += mean
             for (int i = 0; i < n; i++)
@@ -124,8 +124,8 @@ namespace LinearAlgebra
 
             for (int r = 0; r < count; r++)
             {
-                fProxyRandomOP.randomInpl(ref rng, ref z, ref gauss);
-                fProxyOP.dot(in cholL, in z, ref row);
+                fProxyRandom_OP.randomInpl(ref rng, ref z, ref gauss);
+                fProxy_OP.dot(in cholL, in z, ref row);
                 for (int c = 0; c < n; c++)
                     destRows[r, c] = row[c] + mean[c];
             }
@@ -171,10 +171,10 @@ namespace LinearAlgebra
 
             // Step 1: fill G with N(0,1)
             var gauss = new fProxyGaussian((fProxy)0, (fProxy)1);
-            fProxyRandomOP.randomInpl(ref rng, ref G, ref gauss);
+            fProxyRandom_OP.randomInpl(ref rng, ref G, ref gauss);
 
             // Step 2: QR decomposition — G is overwritten with Q, R holds upper-triangular factor
-            OrthoOP.qrDecomposition(ref G, ref R);
+            Ortho_OP.qrDecomposition(ref G, ref R);
 
             // Step 3: Haar sign fix (Mezzadri 2007)
             //   Multiply column i of Q by sign(R[i,i]).  sign(0) = +1 (no flip needed).
@@ -238,7 +238,7 @@ namespace LinearAlgebra
             randomOrthogonalInpl(ref rng, ref Q);
 
             // Qt = Qᵀ — must be computed BEFORE we scale Q's columns (otherwise Qt = (QΛ)ᵀ = ΛQᵀ)
-            fProxyOP.trans(in Q, ref Qt);
+            fProxy_OP.trans(in Q, ref Qt);
 
             // Scale column i of Q by λᵢ ~ Uniform(minEig, maxEig) → QΛ in-place
             for (int i = 0; i < n; i++)
@@ -249,7 +249,7 @@ namespace LinearAlgebra
             }
 
             // dest = QΛ · Qᵀ  (= Q_orig · Λ · Q_origᵀ)
-            fProxyOP.dot(in Q, in Qt, ref dest);
+            fProxy_OP.dot(in Q, in Qt, ref dest);
 
             // Enforce exact symmetry: dest ← (dest + destᵀ) / 2
             // Operates only on the upper-triangle pairs to avoid redundant work.
@@ -307,7 +307,7 @@ namespace LinearAlgebra
             var V  = new fProxyMxN(n, n, Allocator.Temp);
             var Vt = new fProxyMxN(n, n, Allocator.Temp);
             randomOrthogonalInpl(ref rng, ref V);
-            fProxyOP.trans(in V, ref Vt);
+            fProxy_OP.trans(in V, ref Vt);
             V.Dispose();
 
             // Build UΣ (m×n): column i of U scaled by σᵢ; remaining columns zero.
@@ -336,7 +336,7 @@ namespace LinearAlgebra
             }
 
             // dest = UΣ · Vᵀ
-            fProxyOP.dot(in US, in Vt, ref dest);
+            fProxy_OP.dot(in US, in Vt, ref dest);
 
             US.Dispose();
             Vt.Dispose();
@@ -381,11 +381,11 @@ namespace LinearAlgebra
             var B = new fProxyMxN(rank, n, Allocator.Temp);
 
             var gauss = new fProxyGaussian((fProxy)0, (fProxy)1);
-            fProxyRandomOP.randomInpl(ref rng, ref A, ref gauss);
-            fProxyRandomOP.randomInpl(ref rng, ref B, ref gauss);
+            fProxyRandom_OP.randomInpl(ref rng, ref A, ref gauss);
+            fProxyRandom_OP.randomInpl(ref rng, ref B, ref gauss);
 
             // dest = A·B   (dot clears dest before accumulating)
-            fProxyOP.dot(in A, in B, ref dest);
+            fProxy_OP.dot(in A, in B, ref dest);
 
             B.Dispose();
             A.Dispose();
@@ -410,7 +410,7 @@ namespace LinearAlgebra
             if (m == 0 || n == 0) return;
 
             // Fill with Uniform[0,1)
-            fProxyRandomOP.nextUniformInpl(ref rng, ref dest);
+            fProxyRandom_OP.nextUniformInpl(ref rng, ref dest);
 
             fProxy invN = (fProxy)1 / (fProxy)n;
             for (int r = 0; r < m; r++)

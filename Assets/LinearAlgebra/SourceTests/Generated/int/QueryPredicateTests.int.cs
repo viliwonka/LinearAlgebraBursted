@@ -9,7 +9,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for the integer scalar-predicate subset of the QueryOP extension (intQueryOP, Group A
+// Tests for the integer scalar-predicate subset of the QueryOP extension (intQuery_OP, Group A
 // only). Spec: docs/spec-predicate-queries.md (Section 4b + T1). Groups B/C/D are fProxy-only.
 //
 // One template expands to int / short / long QueryOP, so every literal must be exact AND safe for
@@ -60,39 +60,39 @@ public class intQueryPredicateTests
             v[3] = (int)1;    v[4] = (int)4; v[5] = (int)2;
 
             var pass = new GreaterThanInt { t = (int)2 };
-            AssertEqI(intQueryOP.findFirst(in v, ref pass), 2);
-            AssertEqI(intQueryOP.count(in v, ref pass), 2);
-            AssertTrue(intQueryOP.any(in v, ref pass));
+            AssertEqI(intQuery_OP.findFirst(in v, ref pass), 2);
+            AssertEqI(intQuery_OP.count(in v, ref pass), 2);
+            AssertTrue(intQuery_OP.any(in v, ref pass));
             // not all > 2 (e.g. the -2 fails) -> all == false.
-            AssertTrue(!intQueryOP.all(in v, ref pass));
+            AssertTrue(!intQuery_OP.all(in v, ref pass));
 
             var idx = arena.Indices(6);
-            int fc = intQueryOP.findAll(in v, ref pass, ref idx);
+            int fc = intQuery_OP.findAll(in v, ref pass, ref idx);
             AssertEqI(fc, 2);
             AssertEqI(idx[0], 2); AssertEqI(idx[1], 4);
             // findAll count == count.
-            AssertEqI(fc, intQueryOP.count(in v, ref pass));
+            AssertEqI(fc, intQuery_OP.count(in v, ref pass));
 
             // No element matches -> findFirst -1, count 0, any false, findAll 0.
             var none = new GreaterThanInt { t = (int)100 };
-            AssertEqI(intQueryOP.findFirst(in v, ref none), -1);
-            AssertEqI(intQueryOP.count(in v, ref none), 0);
-            AssertTrue(!intQueryOP.any(in v, ref none));
-            AssertEqI(intQueryOP.findAll(in v, ref none, ref idx), 0);
+            AssertEqI(intQuery_OP.findFirst(in v, ref none), -1);
+            AssertEqI(intQuery_OP.count(in v, ref none), 0);
+            AssertTrue(!intQuery_OP.any(in v, ref none));
+            AssertEqI(intQuery_OP.findAll(in v, ref none, ref idx), 0);
 
             // Every element passes -> all true, any true.
             var allPass = new GreaterThanInt { t = (int)(-10) };
-            AssertTrue(intQueryOP.all(in v, ref allPass));
-            AssertTrue(intQueryOP.any(in v, ref allPass));
+            AssertTrue(intQuery_OP.all(in v, ref allPass));
+            AssertTrue(intQuery_OP.any(in v, ref allPass));
 
             // Empty vector: findFirst -1, count 0, any false, all true (vacuous), findAll 0.
             var v0 = arena.intVec(0);
-            AssertEqI(intQueryOP.findFirst(in v0, ref pass), -1);
-            AssertEqI(intQueryOP.count(in v0, ref pass), 0);
-            AssertTrue(!intQueryOP.any(in v0, ref pass));
-            AssertTrue(intQueryOP.all(in v0, ref pass));
+            AssertEqI(intQuery_OP.findFirst(in v0, ref pass), -1);
+            AssertEqI(intQuery_OP.count(in v0, ref pass), 0);
+            AssertTrue(!intQuery_OP.any(in v0, ref pass));
+            AssertTrue(intQuery_OP.all(in v0, ref pass));
             var idx0 = arena.Indices(1);
-            AssertEqI(intQueryOP.findAll(in v0, ref pass, ref idx0), 0);
+            AssertEqI(intQuery_OP.findAll(in v0, ref pass, ref idx0), 0);
 
             // Matrix flat-index variant (generic T over intMxN, row-major flat order).
             // A = [1 5; 2 5] -> flat [1,5,2,5]; threshold 4 -> {5@1, 5@3}.
@@ -100,10 +100,10 @@ public class intQueryPredicateTests
             A[0, 0] = (int)1; A[0, 1] = (int)5;
             A[1, 0] = (int)2; A[1, 1] = (int)5;
             var matPass = new GreaterThanInt { t = (int)4 };
-            AssertEqI(intQueryOP.findFirst(in A, ref matPass), 1);
-            AssertEqI(intQueryOP.count(in A, ref matPass), 2);
+            AssertEqI(intQuery_OP.findFirst(in A, ref matPass), 1);
+            AssertEqI(intQuery_OP.count(in A, ref matPass), 2);
             var idxM = arena.Indices(4);
-            int mc = intQueryOP.findAll(in A, ref matPass, ref idxM);
+            int mc = intQuery_OP.findAll(in A, ref matPass, ref idxM);
             AssertEqI(mc, 2);
             AssertEqI(idxM[0], 1); AssertEqI(idxM[1], 3);
 
@@ -174,7 +174,7 @@ public class intQueryPredicateTests
         var v = arena.intVec(5);
         var gt = new GreaterThanInt { t = (int)0 };
         var small = arena.Indices(4);   // < v.Data.Length (5)
-        Assert.Throws<ArgumentException>(() => intQueryOP.findAll(in v, ref gt, ref small));
+        Assert.Throws<ArgumentException>(() => intQuery_OP.findAll(in v, ref gt, ref small));
         arena.Dispose();
     }
 }

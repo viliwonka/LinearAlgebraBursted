@@ -64,7 +64,7 @@ public class doubleBidiagTests
         // All entries of |M| <= tol
         private void AssertNearZero(in doubleMxN M, double tol, string context)
         {
-            double err = Analysis.MaxZeroError(M);
+            double err = Analysis_OP.MaxZeroError(M);
             if (!(err <= tol) && Fail[0] == (double)0)
             {
                 Fail[0] = (double)1;
@@ -72,7 +72,7 @@ public class doubleBidiagTests
                 Fail[2] = tol;
                 Fail[3] = err - tol;
             }
-            Assert.IsTrue(Analysis.IsZero(in M, tol));
+            Assert.IsTrue(Analysis_OP.IsZero(in M, tol));
         }
 
         // Check B is upper bidiagonal: zero everywhere except B[k,k] and B[k,k+1]
@@ -110,12 +110,12 @@ public class doubleBidiagTests
             int n = A.N_Cols;
 
             // 1. Reconstruction: A ≈ U * B * Vᵀ
-            var Vt   = doubleOP.trans(V);
-            var UB   = doubleOP.dot(U, B);
-            var UBVt = doubleOP.dot(UB, Vt);
+            var Vt   = double_OP.trans(V);
+            var UB   = double_OP.dot(U, B);
+            var UBVt = double_OP.dot(UB, Vt);
             var diff = A - UBVt;
 
-            if (Analysis.IsAnyNan(in diff))
+            if (Analysis_OP.IsAnyNan(in diff))
                 throw new System.Exception("BidiagTests: NaN in reconstruction");
 
             AssertNearZero(in diff, tol, "reconstruction");
@@ -123,11 +123,11 @@ public class doubleBidiagTests
             // 2. B is upper bidiagonal
             AssertUpperBidiagonal(in B, tol);
 
-            // 3. UᵀU ≈ I_n  (Analysis.IsOrthogonal handles thin U: computes AᵀA = I_n)
-            Assert.IsTrue(Analysis.IsOrthogonal(in U, tol));
+            // 3. UᵀU ≈ I_n  (Analysis_OP.IsOrthogonal handles thin U: computes AᵀA = I_n)
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(in U, tol));
 
             // 4. VᵀV ≈ I_n  (V is square)
-            Assert.IsTrue(Analysis.IsOrthogonal(in V, tol));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(in V, tol));
         }
 
         // ---- test cases ----

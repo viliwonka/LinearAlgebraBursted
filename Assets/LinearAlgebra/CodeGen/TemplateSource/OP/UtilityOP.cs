@@ -5,7 +5,7 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace LinearAlgebra
 {
-    public static class UtilityOP {
+    public static class Utility_OP {
 
         // zeroes out a vector inplace
         //+copyReplace

@@ -22,7 +22,7 @@ namespace LinearAlgebra
         void Gradient(in floatN x, ref floatN g);
     }
 
-    public static partial class Optimize {
+    public static partial class Optimize_OP {
 
         /// <summary>
         /// Bracketing root find. Requires f(lo) and f(hi) to have opposite signs; returns false if not bracketed (root = the better endpoint).
@@ -206,7 +206,7 @@ namespace LinearAlgebra
             for (int i = 0; i < maxIter; i++) {
                 f.Gradient(in x, ref g);
 
-                if (floatNormsOP.L2(in g) <= gradTol)
+                if (floatNorms_OP.L2(in g) <= gradTol)
                     return true;
 
                 for (int j = 0; j < x.N; j++)
@@ -217,7 +217,7 @@ namespace LinearAlgebra
 
             // Final convergence check: compute fresh gradient at returned x
             f.Gradient(in x, ref g);
-            return floatNormsOP.L2(in g) <= gradTol;
+            return floatNorms_OP.L2(in g) <= gradTol;
         }
     }
 }

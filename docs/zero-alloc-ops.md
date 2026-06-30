@@ -8,7 +8,7 @@ can run without per-call arena allocations. Source of truth for the loop doing t
 - **Scope (phase 1): arithmetic ops only.** The `dot` family, `outerDot`, `trans`, `select`.
   Decompositions/solvers already take preallocated `ref` outputs; eliminating *their*
   internal temporaries (workspace structs) is a separate later phase.
-- **Component ops are already done** — `fProxyOP.addInpl/mulInpl/subInpl/compMulInpl/...`
+- **Component ops are already done** — `fProxy_OP.addInpl/mulInpl/subInpl/compMulInpl/...`
   are generic in-place forms over `IUnsafefProxyArray`, with operator sugar (`+`,`*`,…)
   for the allocating path. Do NOT touch them.
 - **Naming:** overload the existing method with a trailing `ref <dest>` parameter
@@ -58,7 +58,7 @@ all allocations are whole-matrix/vector (no slices/views in scope).
 
 - [x] `OP/OP.Dot.fProxy.cs` — `dot` mat·vec, vec·mat, mat·mat(+transA); `outerDot`; `trans`
 - [x] `OP/OP.Dot.iProxy.cs` — same set for int/short/long
-- [x] `OP/SelectOP.fProxy.cs` — `select` vec, mat, scalar-cond variants (no guard)
+- [x] `OP/Select_OP.fProxy.cs` — `select` vec, mat, scalar-cond variants (no guard)
 - [x] Tests: `DotRefTests.fProxy.cs` — equivalence + transpose oracle + DirtyDest (reused-dest)
 - [~] Tests: `DotRefTests.iProxy.cs`, `SelectRefTests.fProxy.cs` (written, validating)
 - [~] Tests: `DotRefGuardTests.fProxy.cs` — managed Assert.Throws for dim + alias guards (validating)

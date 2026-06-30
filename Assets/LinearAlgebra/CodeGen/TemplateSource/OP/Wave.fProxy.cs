@@ -7,7 +7,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Periodic wave functors (each : IfProxyScalarFunction) for building wavetables / LFOs. Eval(t)
     /// treats t∈[0,1] as <c>Cycles</c> full periods (Phase shifts the start). Output range is [-1,1].
-    /// Bake a table with <c>var w = new fProxyWave.Sine{Cycles=1}; fProxyGenOP.sample(ref w, ref dest);</c>
+    /// Bake a table with <c>var w = new fProxyWave.Sine{Cycles=1}; fProxyGen_OP.sample(ref w, ref dest);</c>
     /// or <c>arena.fProxySample(ref w, n)</c>. fProxy-only.
     ///
     /// Default-construction convenience: a <c>Cycles</c> of 0 is treated as 1 (and Square's <c>Duty</c>

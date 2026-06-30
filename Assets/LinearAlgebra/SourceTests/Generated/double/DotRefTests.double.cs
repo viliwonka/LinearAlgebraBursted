@@ -72,36 +72,36 @@ public class doubleDotRefTests
             {
                 var A = arena.doubleRandomMatrix(M, N, -1f, 1f, 12321);
                 var x = arena.doubleRandomVector(N, -1f, 1f, 45654);
-                var R = doubleOP.dot(A, x);
+                var R = double_OP.dot(A, x);
 
                 var D = arena.doubleVec(M);
-                doubleOP.addInpl(D, (double)999);   // dirty the destination
-                doubleOP.dot(in A, in x, ref D);
-                Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+                double_OP.addInpl(D, (double)999);   // dirty the destination
+                double_OP.dot(in A, in x, ref D);
+                Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
             }
 
             // vec·mat
             {
                 var y = arena.doubleRandomVector(M, -1f, 1f, 11221);
                 var A = arena.doubleRandomMatrix(M, N, -1f, 1f, 33443);
-                var R = doubleOP.dot(y, A);
+                var R = double_OP.dot(y, A);
 
                 var D = arena.doubleVec(N);
-                doubleOP.addInpl(D, (double)999);
-                doubleOP.dot(in y, in A, ref D);
-                Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+                double_OP.addInpl(D, (double)999);
+                double_OP.dot(in y, in A, ref D);
+                Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
             }
 
             // mat·mat
             {
                 var a = arena.doubleRandomMatrix(M, K, -1f, 1f, 32123);
                 var b = arena.doubleRandomMatrix(K, N, -1f, 1f, 65456);
-                var R = doubleOP.dot(a, b, false);
+                var R = double_OP.dot(a, b, false);
 
                 var D = arena.doubleMat(M, N);
-                doubleOP.addInpl(D, (double)999);
-                doubleOP.dot(in a, in b, ref D, false);
-                Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+                double_OP.addInpl(D, (double)999);
+                double_OP.dot(in a, in b, ref D, false);
+                Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
             }
 
             arena.Dispose();
@@ -119,13 +119,13 @@ public class doubleDotRefTests
             var b = arena.doubleRandomVector(N, -1f, 1f, 22222);
 
             // allocating reference
-            var R = doubleOP.outerDot(a, b);
+            var R = double_OP.outerDot(a, b);
 
             // ref-dest into a preallocated M x N destination
             var D = arena.doubleMat(M, N);
-            doubleOP.outerDot(in a, in b, ref D);
+            double_OP.outerDot(in a, in b, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -141,12 +141,12 @@ public class doubleDotRefTests
             var A = arena.doubleRandomMatrix(M, N, -1f, 1f, 33333);
             var x = arena.doubleRandomVector(N, -1f, 1f, 44444);
 
-            var R = doubleOP.dot(A, x);
+            var R = double_OP.dot(A, x);
 
             var D = arena.doubleVec(M);
-            doubleOP.dot(in A, in x, ref D);
+            double_OP.dot(in A, in x, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -162,12 +162,12 @@ public class doubleDotRefTests
             var y = arena.doubleRandomVector(M, -1f, 1f, 55555);
             var A = arena.doubleRandomMatrix(M, N, -1f, 1f, 66666);
 
-            var R = doubleOP.dot(y, A);
+            var R = double_OP.dot(y, A);
 
             var D = arena.doubleVec(N);
-            doubleOP.dot(in y, in A, ref D);
+            double_OP.dot(in y, in A, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -184,12 +184,12 @@ public class doubleDotRefTests
             var a = arena.doubleRandomMatrix(M, K, -1f, 1f, 77777);
             var b = arena.doubleRandomMatrix(K, N, -1f, 1f, 88888);
 
-            var R = doubleOP.dot(a, b, false);
+            var R = double_OP.dot(a, b, false);
 
             var D = arena.doubleMat(M, N);
-            doubleOP.dot(in a, in b, ref D, false);
+            double_OP.dot(in a, in b, ref D, false);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -206,19 +206,19 @@ public class doubleDotRefTests
             var a = arena.doubleRandomMatrix(K, M, -1f, 1f, 99999);
             var b = arena.doubleRandomMatrix(K, N, -1f, 1f, 10101);
 
-            var R = doubleOP.dot(a, b, true);
+            var R = double_OP.dot(a, b, true);
 
             // result is M x N (a.N_Cols x b.N_Cols)
             var D = arena.doubleMat(M, N);
-            doubleOP.dot(in a, in b, ref D, true);
+            double_OP.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             // Independent oracle: Aᵀ·B computed via an explicit transpose + plain matmul,
             // which exercises a different code path than the fused transposeA kernel.
-            var oracle = doubleOP.dot(doubleOP.trans(a), b);
-            Assert.IsTrue(Analysis.IsZero(R - oracle, Tol()));
+            var oracle = double_OP.dot(double_OP.trans(a), b);
+            Assert.IsTrue(Analysis_OP.IsZero(R - oracle, Tol()));
 
             arena.Dispose();
         }
@@ -233,12 +233,12 @@ public class doubleDotRefTests
 
             var A = arena.doubleRandomMatrix(M, N, -1f, 1f, 20202);
 
-            var R = doubleOP.trans(A);
+            var R = double_OP.trans(A);
 
             var D = arena.doubleMat(N, M);
-            doubleOP.trans(in A, ref D);
+            double_OP.trans(in A, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }

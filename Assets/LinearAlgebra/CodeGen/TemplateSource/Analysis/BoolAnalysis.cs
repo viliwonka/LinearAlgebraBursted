@@ -5,7 +5,7 @@ namespace LinearAlgebra
 {
 
     [BurstCompile]
-    public static partial class BoolAnalysis {
+    public static partial class BoolAnalysis_OP {
         
         public static bool IsDiagonal(in boolMxN bm, bool compare = true)
         {
@@ -69,7 +69,7 @@ namespace LinearAlgebra
         public static int whichTrue(in boolN mask, ref Indices idx)
         {
             if (idx.N < mask.N)
-                throw new System.ArgumentException("BoolAnalysis.whichTrue: idx.N must be >= mask.N");
+                throw new System.ArgumentException("BoolAnalysis_OP.whichTrue: idx.N must be >= mask.N");
             int count = 0;
             for (int i = 0; i < mask.N; i++)
                 if (mask.Data[i]) idx[count++] = i;
@@ -84,7 +84,7 @@ namespace LinearAlgebra
         {
             int total = mask.M_Rows * mask.N_Cols;
             if (idx.N < total)
-                throw new System.ArgumentException("BoolAnalysis.whichTrue: idx.N must be >= mask total size");
+                throw new System.ArgumentException("BoolAnalysis_OP.whichTrue: idx.N must be >= mask total size");
             int count = 0;
             for (int i = 0; i < total; i++)
                 if (mask.Data[i]) idx[count++] = i;
@@ -93,7 +93,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Returns the count of true elements in mask (no index buffer needed).
-        /// Use whichTrue (in BoolAnalysis) when you also need the indices.
+        /// Use whichTrue (in BoolAnalysis_OP) when you also need the indices.
         /// </summary>
         public static int countTrue(in boolN mask)
         {
@@ -125,7 +125,7 @@ namespace LinearAlgebra
         /// </summary>
         public static Indices WhichTrue(this ref Arena arena, in boolN mask)
         {
-            int count = BoolAnalysis.countTrue(in mask);
+            int count = BoolAnalysis_OP.countTrue(in mask);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             int written = 0;
@@ -139,7 +139,7 @@ namespace LinearAlgebra
         /// </summary>
         public static Indices WhichTrue(this ref Arena arena, in boolMxN mask)
         {
-            int count = BoolAnalysis.countTrue(in mask);
+            int count = BoolAnalysis_OP.countTrue(in mask);
             if (count == 0) return arena.Indices(0);
             int total = mask.M_Rows * mask.N_Cols;
             var idx = arena.Indices(count);

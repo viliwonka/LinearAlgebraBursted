@@ -48,7 +48,7 @@ namespace LinearAlgebra
             // FloatMode (loop-carried accumulator). This form instead, once column j is known,
             // immediately subtracts its rank-1 contribution from the trailing LOWER triangle as a set
             // of row-wise axpys: L[i, j+1..i] -= L[i,j] * L[j+1..i, j]. Each row segment is unit-stride
-            // (row-major), so they go through the vectorising UnsafeOP.axpy ([NoAlias], the GEMM
+            // (row-major), so they go through the vectorising Unsafe_OP.axpy ([NoAlias], the GEMM
             // pointer path) and run at LU speed (float ~2x double). Only the lower triangle is touched
             // (i >= column index), so no work is wasted on the symmetric upper half.
             //
@@ -92,7 +92,7 @@ namespace LinearAlgebra
 
                     // Rank-1 update of the trailing lower triangle, one row-axpy per row.
                     for (int i = j + 1; i < n; i++)
-                        UnsafeOP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
+                        Unsafe_OP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
                 }
 
                 lj.Dispose();
@@ -154,7 +154,7 @@ namespace LinearAlgebra
         /// undefined. Tolerance is scale-relative to the largest |diagonal| so it is scale-invariant.
         /// </summary>
         public static bool choleskyDecompositionPivot(in doubleMxN A, ref doubleMxN L, ref Pivot P, out int rank,
-                                                       ref doubleCholeskyPivotWorkspace ws) {
+                                                       ref doubleCholeskyPivot_WS ws) {
             if (!A.IsSquare)
                 throw new ArgumentException("choleskyDecompositionPivot: A needs to be square");
 
@@ -208,7 +208,7 @@ namespace LinearAlgebra
             double stopTol = (double)n * Consts.doubleEpsilon * absScale;
 
             // Freshly-computed factor row U[k, k..n-1] gathered contiguously into urow so the rank-1 Schur
-            // update is a set of unit-stride row-axpys (the vectorising UnsafeOP.axpy path). One O(n) Temp
+            // update is a set of unit-stride row-axpys (the vectorising Unsafe_OP.axpy path). One O(n) Temp
             // buffer (« the O(n^3) factor), matching the plain choleskyDecomposition's `lj`.
             var urow = new doubleN(n, Allocator.Temp, false);
             unsafe {
@@ -261,7 +261,7 @@ namespace LinearAlgebra
                         for (int i = 0; i < k; i++)     { double t = W[i, k]; W[i, k] = W[i, q]; W[i, q] = t; }
                         for (int j = q + 1; j < n; j++) { double t = W[k, j]; W[k, j] = W[q, j]; W[q, j] = t; }
                         for (int m = k + 1; m < q; m++) { double t = W[k, m]; W[k, m] = W[m, q]; W[m, q] = t; }
-                        SwapOP.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
+                        Swap_OP.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
                         P.Swap(k, q);
                     }
 
@@ -278,7 +278,7 @@ namespace LinearAlgebra
                     // rank-1 Schur update of the trailing UPPER triangle, one unit-stride row-axpy per
                     // row: W[i, i..n-1] -= urow[i] * urow[i..n-1].
                     for (int i = k + 1; i < n; i++)
-                        UnsafeOP.axpy(wp + (long)i * n + i, urowp + i, -urowp[i], n - i);
+                        Unsafe_OP.axpy(wp + (long)i * n + i, urowp + i, -urowp[i], n - i);
                 }
             }
 
@@ -292,7 +292,7 @@ namespace LinearAlgebra
         /// </summary>
         public static bool choleskyDecompositionPivot(in doubleMxN A, ref doubleMxN L, ref Pivot P, out int rank) {
             int n = A.IsSquare ? A.M_Rows : 0;
-            var ws = new doubleCholeskyPivotWorkspace
+            var ws = new doubleCholeskyPivot_WS
             {
                 W = new doubleMxN(n, n, Allocator.Temp),
                 bt = default
@@ -316,7 +316,7 @@ namespace LinearAlgebra
         ///   returns the least-squares solution of smallest norm.
         /// </summary>
         public static void choleskyPivotSolve(ref doubleMxN L, in Pivot P, int rank, ref doubleN b,
-                                              ref doubleCholeskyPivotWorkspace ws) {
+                                              ref doubleCholeskyPivot_WS ws) {
             if (!L.IsSquare)
                 throw new ArgumentException("choleskyPivotSolve: L must be square");
 
@@ -418,7 +418,7 @@ namespace LinearAlgebra
         /// </summary>
         public static void choleskyPivotSolve(ref doubleMxN L, in Pivot P, int rank, ref doubleN b) {
             int n = L.IsSquare ? L.M_Rows : 0;
-            var ws = new doubleCholeskyPivotWorkspace
+            var ws = new doubleCholeskyPivot_WS
             {
                 W = default,
                 bt = new doubleN(n, Allocator.Temp)
@@ -446,7 +446,7 @@ namespace LinearAlgebra
         /// this returns the minimum-norm least-squares solution.
         /// </summary>
         public static bool choleskyPivotSolve(in doubleMxN A, ref doubleMxN L, ref Pivot P, ref doubleN b,
-                                              ref doubleCholeskyPivotWorkspace ws) {
+                                              ref doubleCholeskyPivot_WS ws) {
             if (!choleskyDecompositionPivot(in A, ref L, ref P, out int rank, ref ws))
                 return false;
 

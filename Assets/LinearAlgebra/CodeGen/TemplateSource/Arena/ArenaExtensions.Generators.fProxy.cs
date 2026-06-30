@@ -1,8 +1,8 @@
 namespace LinearAlgebra
 {
-    // Allocating (arena) wrappers for the fProxyGenOP generators — each allocates a fresh persistent
+    // Allocating (arena) wrappers for the fProxyGen_OP generators — each allocates a fresh persistent
     // vector/matrix and delegates to the zero-alloc ref-dest primitive. Use these for one-off /
-    // setup-time builds (tween LUTs, kernels, wavetables); use the fProxyGenOP.xxx(ref dest, …) form
+    // setup-time builds (tween LUTs, kernels, wavetables); use the fProxyGen_OP.xxx(ref dest, …) form
     // inside per-frame loops.
     public static partial class ArenaExtensions
     {
@@ -12,7 +12,7 @@ namespace LinearAlgebra
         public static fProxyN fProxyLinspace(this ref Arena arena, fProxy a, fProxy b, int N)
         {
             var vec = arena.fProxyVec(N);
-            fProxyGenOP.linspace(ref vec, a, b);
+            fProxyGen_OP.linspace(ref vec, a, b);
             return vec;
         }
 
@@ -20,7 +20,7 @@ namespace LinearAlgebra
         public static fProxyN fProxyArange(this ref Arena arena, fProxy start, fProxy step, int N)
         {
             var vec = arena.fProxyVec(N);
-            fProxyGenOP.arange(ref vec, start, step);
+            fProxyGen_OP.arange(ref vec, start, step);
             return vec;
         }
 
@@ -29,7 +29,7 @@ namespace LinearAlgebra
             where F : struct, IfProxyScalarFunction
         {
             var vec = arena.fProxyVec(N);
-            fProxyGenOP.sample(ref f, ref vec, t0, t1);
+            fProxyGen_OP.sample(ref f, ref vec, t0, t1);
             return vec;
         }
 
@@ -51,7 +51,7 @@ namespace LinearAlgebra
         public static fProxyN fProxyGaussianKernel(this ref Arena arena, int N, fProxy sigma)
         {
             var vec = arena.fProxyVec(N);
-            fProxyGenOP.gaussianKernel(ref vec, sigma);
+            fProxyGen_OP.gaussianKernel(ref vec, sigma);
             return vec;
         }
 
@@ -59,7 +59,7 @@ namespace LinearAlgebra
         public static fProxyN fProxyBoxKernel(this ref Arena arena, int N)
         {
             var vec = arena.fProxyVec(N);
-            fProxyGenOP.boxKernel(ref vec);
+            fProxyGen_OP.boxKernel(ref vec);
             return vec;
         }
 
@@ -67,7 +67,7 @@ namespace LinearAlgebra
         public static fProxyN fProxyTentKernel(this ref Arena arena, int N)
         {
             var vec = arena.fProxyVec(N);
-            fProxyGenOP.tentKernel(ref vec);
+            fProxyGen_OP.tentKernel(ref vec);
             return vec;
         }
 
@@ -75,7 +75,7 @@ namespace LinearAlgebra
         public static fProxyMxN fProxyGaussianKernel2D(this ref Arena arena, int N, fProxy sigma)
         {
             var mat = arena.fProxyMat(N, N);
-            fProxyGenOP.gaussianKernel2D(ref mat, sigma);
+            fProxyGen_OP.gaussianKernel2D(ref mat, sigma);
             return mat;
         }
 
@@ -83,7 +83,7 @@ namespace LinearAlgebra
         public static fProxyN fProxyWindow(this ref Arena arena, int N, WindowType type)
         {
             var vec = arena.fProxyVec(N);
-            fProxyGenOP.window(ref vec, type);
+            fProxyGen_OP.window(ref vec, type);
             return vec;
         }
 
@@ -95,7 +95,7 @@ namespace LinearAlgebra
         public static fProxyMxN fProxyOuter(this ref Arena arena, in fProxyN u, in fProxyN v)
         {
             var mat = arena.fProxyMat(u.N, v.N);
-            fProxyGenOP.outer(in u, in v, ref mat);
+            fProxyGen_OP.outer(in u, in v, ref mat);
             return mat;
         }
 
@@ -103,7 +103,7 @@ namespace LinearAlgebra
         public static fProxyMxN fProxyOuterSum(this ref Arena arena, in fProxyN u, in fProxyN v)
         {
             var mat = arena.fProxyMat(u.N, v.N);
-            fProxyGenOP.outerSum(in u, in v, ref mat);
+            fProxyGen_OP.outerSum(in u, in v, ref mat);
             return mat;
         }
 

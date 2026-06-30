@@ -56,12 +56,12 @@ public class BoolAnalysisTests
             int dim = 4;
             boolMxN m = arena.BoolMatrix(dim, dim);
 
-            Assert.IsFalse(BoolAnalysis.IsDiagonal(m));
+            Assert.IsFalse(BoolAnalysis_OP.IsDiagonal(m));
             
             for (int i = 0; i < dim; i++)
                 m[i, i] = true;
 
-            Assert.IsTrue(BoolAnalysis.IsDiagonal(m));
+            Assert.IsTrue(BoolAnalysis_OP.IsDiagonal(m));
         }
 
         void IsAllSame(ref Arena arena)
@@ -69,11 +69,11 @@ public class BoolAnalysisTests
             int dim = 64;
             boolN v = arena.boolRandomVec(dim);
 
-            Assert.IsFalse(BoolAnalysis.IsAllSame(v));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(v));
 
             v &= false;
 
-            Assert.IsTrue(BoolAnalysis.IsAllSame(v));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllSame(v));
         }
 
         void IsAllEqualTo(ref Arena arena)
@@ -81,12 +81,12 @@ public class BoolAnalysisTests
             int dim = 64;
             boolN v = arena.boolRandomVec(dim);
 
-            Assert.IsFalse(BoolAnalysis.IsAllEqualTo(v, true));
-            Assert.IsFalse(BoolAnalysis.IsAllEqualTo(v, false));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(v, true));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(v, false));
 
             v |= true;
             
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(v, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(v, true));
         }
 
         void IsAnyEqualTo(ref Arena arena)
@@ -94,11 +94,11 @@ public class BoolAnalysisTests
             int dim = 64;
             boolN v = arena.BoolVector(dim);
 
-            Assert.IsFalse(BoolAnalysis.IsAnyEqualTo(v, true));
+            Assert.IsFalse(BoolAnalysis_OP.IsAnyEqualTo(v, true));
 
             v[0] = true;
 
-            Assert.IsTrue(BoolAnalysis.IsAnyEqualTo(v, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAnyEqualTo(v, true));
         }
     }
 

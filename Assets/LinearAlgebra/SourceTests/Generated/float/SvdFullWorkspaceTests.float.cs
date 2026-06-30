@@ -8,8 +8,8 @@ using Unity.Jobs;
 
 // Workspace-overload tests for SVD family ops with reusable workspaces.
 //
-// nullspaceBasis, rangeBasis, and lowRankApprox share floatSvdFullWorkspace.
-// svdTruncated (GKL bidiagonalization) uses its own floatSvdTruncatedWorkspace.
+// nullspaceBasis, rangeBasis, and lowRankApprox share floatSvdFull_WS.
+// svdTruncated (GKL bidiagonalization) uses its own floatSvdTruncated_WS.
 //
 // Each op has a `ref <WorkspaceType> ws` overload (caller-owned scratch) PLUS an allocating
 // overload. They run the same kernel with the same seed, so for identical inputs the outputs
@@ -57,7 +57,7 @@ public class floatSvdFullWorkspaceTests
         {
             var B = arena.floatRandomMatrix(m, r, (float)(-2f), (float)2f, seed);
             var C = arena.floatRandomMatrix(r, n, (float)(-2f), (float)2f, seed + 7u);
-            return floatOP.dot(B, C);
+            return float_OP.dot(B, C);
         }
 
         void NullspaceEquiv()
@@ -69,13 +69,13 @@ public class floatSvdFullWorkspaceTests
             var basisA = arena.floatMat(n, n);
             int dimA = SVD.nullspaceBasis(in A, ref basisA, out bool cA);
 
-            var ws = arena.floatSvdFullWorkspace(m, n);
+            var ws = arena.floatSvdFull_WS(m, n);
             var basisW = arena.floatMat(n, n);
             int dimW = SVD.nullspaceBasis(in A, ref basisW, ref ws, out bool cW);
 
             Assert.IsTrue(dimA == dimW);
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis.IsZero(basisA - basisW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(basisA - basisW, Tol()));
 
             arena.Dispose();
         }
@@ -89,13 +89,13 @@ public class floatSvdFullWorkspaceTests
             var basisA = arena.floatMat(m, n);
             int rankA = SVD.rangeBasis(in A, ref basisA, out bool cA);
 
-            var ws = arena.floatSvdFullWorkspace(m, n);
+            var ws = arena.floatSvdFull_WS(m, n);
             var basisW = arena.floatMat(m, n);
             int rankW = SVD.rangeBasis(in A, ref basisW, ref ws, out bool cW);
 
             Assert.IsTrue(rankA == rankW);
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis.IsZero(basisA - basisW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(basisA - basisW, Tol()));
 
             arena.Dispose();
         }
@@ -109,14 +109,14 @@ public class floatSvdFullWorkspaceTests
             var UkA = arena.floatMat(m, k); var SkA = arena.floatVec(k); var VkA = arena.floatMat(n, k);
             SVD.svdTruncated(in A, ref UkA, ref SkA, ref VkA, k, out bool cA);
 
-            var ws = arena.floatSvdTruncatedWorkspace(m, n, k);
+            var ws = arena.floatSvdTruncated_WS(m, n, k);
             var UkW = arena.floatMat(m, k); var SkW = arena.floatVec(k); var VkW = arena.floatMat(n, k);
             SVD.svdTruncated(in A, ref UkW, ref SkW, ref VkW, k, ref ws, out bool cW);
 
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis.IsZero(SkA - SkW, Tol()));
-            Assert.IsTrue(Analysis.IsZero(UkA - UkW, Tol()));
-            Assert.IsTrue(Analysis.IsZero(VkA - VkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(SkA - SkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(UkA - UkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(VkA - VkW, Tol()));
 
             arena.Dispose();
         }
@@ -130,12 +130,12 @@ public class floatSvdFullWorkspaceTests
             var AkA = arena.floatMat(m, n);
             SVD.lowRankApprox(in A, ref AkA, k, out bool cA);
 
-            var ws = arena.floatSvdFullWorkspace(m, n);
+            var ws = arena.floatSvdFull_WS(m, n);
             var AkW = arena.floatMat(m, n);
             SVD.lowRankApprox(in A, ref AkW, k, ref ws, out bool cW);
 
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis.IsZero(AkA - AkW, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(AkA - AkW, Tol()));
 
             arena.Dispose();
         }
@@ -150,8 +150,8 @@ public class floatSvdFullWorkspaceTests
             var A1 = RankDeficient(ref arena, m, n, 2, 5005);
             var A2 = RankDeficient(ref arena, m, n, 3, 6006);
 
-            var ws = arena.floatSvdFullWorkspace(m, n);           // for nullspace / range / lowRank
-            var wsTrunc = arena.floatSvdTruncatedWorkspace(m, n, k);  // for svdTruncated (GKL)
+            var ws = arena.floatSvdFull_WS(m, n);           // for nullspace / range / lowRank
+            var wsTrunc = arena.floatSvdTruncated_WS(m, n, k);  // for svdTruncated (GKL)
 
             // ---- nullspace ----
             var nb1 = arena.floatMat(n, n);
@@ -161,7 +161,7 @@ public class floatSvdFullWorkspaceTests
             var nbA = arena.floatMat(n, n);
             int dimA = SVD.nullspaceBasis(in A2, ref nbA, out bool _);
             Assert.IsTrue(dimW == dimA);
-            Assert.IsTrue(Analysis.IsZero(nbW - nbA, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(nbW - nbA, Tol()));
 
             // ---- range ----
             var rb1 = arena.floatMat(m, n);
@@ -171,7 +171,7 @@ public class floatSvdFullWorkspaceTests
             var rbA = arena.floatMat(m, n);
             int rkA = SVD.rangeBasis(in A2, ref rbA, out bool _);
             Assert.IsTrue(rkW == rkA);
-            Assert.IsTrue(Analysis.IsZero(rbW - rbA, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(rbW - rbA, Tol()));
 
             // ---- truncated ----
             var U1 = arena.floatMat(m, k); var S1 = arena.floatVec(k); var V1 = arena.floatMat(n, k);
@@ -180,9 +180,9 @@ public class floatSvdFullWorkspaceTests
             SVD.svdTruncated(in A2, ref UW, ref SW, ref VW, k, ref wsTrunc, out bool _);
             var UA = arena.floatMat(m, k); var SA = arena.floatVec(k); var VA = arena.floatMat(n, k);
             SVD.svdTruncated(in A2, ref UA, ref SA, ref VA, k, out bool _);
-            Assert.IsTrue(Analysis.IsZero(SW - SA, Tol()));
-            Assert.IsTrue(Analysis.IsZero(UW - UA, Tol()));
-            Assert.IsTrue(Analysis.IsZero(VW - VA, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(SW - SA, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(UW - UA, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(VW - VA, Tol()));
 
             // ---- low rank ----
             var Ak1 = arena.floatMat(m, n);
@@ -191,7 +191,7 @@ public class floatSvdFullWorkspaceTests
             SVD.lowRankApprox(in A2, ref AkW, k, ref ws, out bool _);
             var AkA = arena.floatMat(m, n);
             SVD.lowRankApprox(in A2, ref AkA, k, out bool _);
-            Assert.IsTrue(Analysis.IsZero(AkW - AkA, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(AkW - AkA, Tol()));
 
             arena.Dispose();
         }
@@ -215,7 +215,7 @@ public class floatSvdFullWorkspaceTests
         {
             var A = arena.floatMat(6, 4);
             var basis = arena.floatMat(4, 4);
-            var ws = arena.floatSvdFullWorkspace(5, 4);   // wrong m
+            var ws = arena.floatSvdFull_WS(5, 4);   // wrong m
             Assert.Throws<ArgumentException>(
                 () => SVD.nullspaceBasis(in A, ref basis, ref ws, out bool _));
         }
@@ -230,7 +230,7 @@ public class floatSvdFullWorkspaceTests
         {
             var A = arena.floatMat(6, 4);
             var basis = arena.floatMat(6, 4);
-            var ws = arena.floatSvdFullWorkspace(6, 3);   // wrong n
+            var ws = arena.floatSvdFull_WS(6, 3);   // wrong n
             Assert.Throws<ArgumentException>(
                 () => SVD.rangeBasis(in A, ref basis, ref ws, out bool _));
         }
@@ -245,7 +245,7 @@ public class floatSvdFullWorkspaceTests
         {
             var A = arena.floatMat(6, 4);
             var Uk = arena.floatMat(6, 2); var Sk = arena.floatVec(2); var Vk = arena.floatMat(4, 2);
-            var ws = arena.floatSvdTruncatedWorkspace(7, 4, 2);   // wrong m (7 vs A's 6)
+            var ws = arena.floatSvdTruncated_WS(7, 4, 2);   // wrong m (7 vs A's 6)
             Assert.Throws<ArgumentException>(
                 () => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, 2, ref ws, out bool _));
         }
@@ -260,21 +260,21 @@ public class floatSvdFullWorkspaceTests
         {
             var A = arena.floatMat(6, 4);
             var Ak = arena.floatMat(6, 4);
-            var ws = arena.floatSvdFullWorkspace(6, 5);   // wrong n
+            var ws = arena.floatSvdFull_WS(6, 5);   // wrong n
             Assert.Throws<ArgumentException>(
                 () => SVD.lowRankApprox(in A, ref Ak, 2, ref ws, out bool _));
         }
         finally { arena.Dispose(); }
     }
 
-    // Arena.floatSvdFullWorkspace(m, n) must size U (m x n), S (n), V (n x n).
+    // Arena.floatSvdFull_WS(m, n) must size U (m x n), S (n), V (n x n).
     [Test]
     public void SvdFullWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var ws = arena.floatSvdFullWorkspace(7, 4);
+            var ws = arena.floatSvdFull_WS(7, 4);
             Assert.AreEqual(7, ws.U.M_Rows);
             Assert.AreEqual(4, ws.U.N_Cols);
             Assert.AreEqual(4, ws.S.N);

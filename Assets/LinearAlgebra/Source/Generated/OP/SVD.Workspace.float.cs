@@ -3,7 +3,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Reusable scratch storage for the zero-alloc SVD solvers (SVD.pinvSolve / SVD.pseudoInverse).
     /// Allocate ONCE (sized for the matrix shape) and reuse it across many same-shape solves to
-    /// avoid per-call allocations — create via Arena.floatSvdWorkspace(m, n).
+    /// avoid per-call allocations — create via Arena.floatSvd_WS(m, n).
     ///
     /// Layout: with k = min(m, n), S is length k, M is k x k (the singular-vector matrix — V for a
     /// tall/square system, W for a wide one), U is the left-factor scratch max(m,n) x k (receives the
@@ -11,7 +11,7 @@ namespace LinearAlgebra
     /// is wide (m &lt; n); for m &gt;= n At is left as default (unused). This is exactly the (S, M, U, At)
     /// tuple the scratch-primitive overloads expect, bundled so callers don't size them by hand.
     /// </summary>
-    public struct floatSvdWorkspace
+    public struct floatSvd_WS
     {
         public floatN S;
         public floatMxN M;
@@ -28,11 +28,11 @@ namespace LinearAlgebra
         /// are persistent in this arena (disposed with it), so create the workspace once outside a
         /// hot loop and pass it to the workspace overloads of pinvSolve / pseudoInverse.
         /// </summary>
-        public floatSvdWorkspace floatSvdWorkspace(int m, int n)
+        public floatSvd_WS floatSvd_WS(int m, int n)
         {
             int k   = m < n ? m : n;
             int big = m < n ? n : m;
-            return new floatSvdWorkspace
+            return new floatSvd_WS
             {
                 S  = floatVec(k),
                 M  = floatMat(k, k),

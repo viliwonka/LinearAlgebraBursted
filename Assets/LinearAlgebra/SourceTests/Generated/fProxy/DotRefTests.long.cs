@@ -25,7 +25,7 @@ public class longDotRefTests
 
         // Integer arithmetic is EXACT: the ref-dest form runs the same kernel as the
         // allocating form, so the two results must be bit-for-bit identical. There is no
-        // long Analysis.IsZero, so assert exact elementwise equality directly.
+        // long Analysis_OP.IsZero, so assert exact elementwise equality directly.
         static bool ExactEqual(in longN x, in longN y)
         {
             if (x.N != y.N)
@@ -90,11 +90,11 @@ public class longDotRefTests
             {
                 var A = arena.longRandomMatrix(M, N, -9, 9, 12321);
                 var x = arena.longRandomVector(N, -9, 9, 45654);
-                var R = longOP.dot(A, x);
+                var R = long_OP.dot(A, x);
 
                 var D = arena.longVec(M);
-                longOP.addInpl(D, (long)999);   // dirty the destination
-                longOP.dot(in A, in x, ref D);
+                long_OP.addInpl(D, (long)999);   // dirty the destination
+                long_OP.dot(in A, in x, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -102,11 +102,11 @@ public class longDotRefTests
             {
                 var y = arena.longRandomVector(M, -9, 9, 11221);
                 var A = arena.longRandomMatrix(M, N, -9, 9, 33443);
-                var R = longOP.dot(y, A);
+                var R = long_OP.dot(y, A);
 
                 var D = arena.longVec(N);
-                longOP.addInpl(D, (long)999);
-                longOP.dot(in y, in A, ref D);
+                long_OP.addInpl(D, (long)999);
+                long_OP.dot(in y, in A, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -114,11 +114,11 @@ public class longDotRefTests
             {
                 var a = arena.longRandomMatrix(M, K, -9, 9, 32123);
                 var b = arena.longRandomMatrix(K, N, -9, 9, 65456);
-                var R = longOP.dot(a, b, false);
+                var R = long_OP.dot(a, b, false);
 
                 var D = arena.longMat(M, N);
-                longOP.addInpl(D, (long)999);
-                longOP.dot(in a, in b, ref D, false);
+                long_OP.addInpl(D, (long)999);
+                long_OP.dot(in a, in b, ref D, false);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -137,11 +137,11 @@ public class longDotRefTests
             var b = arena.longRandomVector(N, -9, 9, 22222);
 
             // allocating reference
-            var R = longOP.outerDot(a, b);
+            var R = long_OP.outerDot(a, b);
 
             // ref-dest into a preallocated M x N destination
             var D = arena.longMat(M, N);
-            longOP.outerDot(in a, in b, ref D);
+            long_OP.outerDot(in a, in b, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -159,10 +159,10 @@ public class longDotRefTests
             var A = arena.longRandomMatrix(M, N, -9, 9, 33333);
             var x = arena.longRandomVector(N, -9, 9, 44444);
 
-            var R = longOP.dot(A, x);
+            var R = long_OP.dot(A, x);
 
             var D = arena.longVec(M);
-            longOP.dot(in A, in x, ref D);
+            long_OP.dot(in A, in x, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -180,10 +180,10 @@ public class longDotRefTests
             var y = arena.longRandomVector(M, -9, 9, 55555);
             var A = arena.longRandomMatrix(M, N, -9, 9, 66666);
 
-            var R = longOP.dot(y, A);
+            var R = long_OP.dot(y, A);
 
             var D = arena.longVec(N);
-            longOP.dot(in y, in A, ref D);
+            long_OP.dot(in y, in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -202,10 +202,10 @@ public class longDotRefTests
             var a = arena.longRandomMatrix(M, K, -9, 9, 77777);
             var b = arena.longRandomMatrix(K, N, -9, 9, 88888);
 
-            var R = longOP.dot(a, b, false);
+            var R = long_OP.dot(a, b, false);
 
             var D = arena.longMat(M, N);
-            longOP.dot(in a, in b, ref D, false);
+            long_OP.dot(in a, in b, ref D, false);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -225,18 +225,18 @@ public class longDotRefTests
             var a = arena.longRandomMatrix(K, M, -9, 9, 99999);
             var b = arena.longRandomMatrix(K, N, -9, 9, 10101);
 
-            var R = longOP.dot(a, b, true);
+            var R = long_OP.dot(a, b, true);
 
             // result is M x N (a.N_Cols x b.N_Cols)
             var D = arena.longMat(M, N);
-            longOP.dot(in a, in b, ref D, true);
+            long_OP.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
             Assert.IsTrue(ExactEqual(in R, in D));
 
             // Independent oracle: Aᵀ·B computed via an explicit transpose + plain matmul,
             // which exercises a different code path than the fused transposeA kernel.
-            var oracle = longOP.dot(longOP.trans(a), b);
+            var oracle = long_OP.dot(long_OP.trans(a), b);
             Assert.IsTrue(ExactEqual(in R, in oracle));
 
             arena.Dispose();
@@ -252,10 +252,10 @@ public class longDotRefTests
 
             var A = arena.longRandomMatrix(M, N, -9, 9, 20202);
 
-            var R = longOP.trans(A);
+            var R = long_OP.trans(A);
 
             var D = arena.longMat(N, M);
-            longOP.trans(in A, ref D);
+            long_OP.trans(in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 

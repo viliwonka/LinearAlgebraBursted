@@ -10,7 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-// Tests for doubleHistogramOP (count-based distribution estimation: histogram / density / cdf / 2D).
+// Tests for doubleHistogram_OP (count-based distribution estimation: histogram / density / cdf / 2D).
 //
 // Verification is mostly EXACT: counts are integers (RecordEq) and float-valued 2D counts are small
 // integers (exact compare), so no tolerance is needed there. The normalized outputs (density / cdf)
@@ -99,7 +99,7 @@ public class doubleHistogramTests
             var counts = arena.Indices(5);
             for (int b = 0; b < 5; b++) counts[b] = 999;   // garbage; must be overwritten
 
-            doubleHistogramOP.histogramInto(in data, (double)0, (double)10, ref counts);
+            doubleHistogram_OP.histogramInto(in data, (double)0, (double)10, ref counts);
 
             RecordEq(counts[0], 2);
             RecordEq(counts[1], 2);
@@ -132,7 +132,7 @@ public class doubleHistogramTests
             data[11] = (double)float.NegativeInfinity; // dropped
 
             var counts = arena.Indices(5);
-            doubleHistogramOP.histogramInto(in data, (double)0, (double)10, ref counts);
+            doubleHistogram_OP.histogramInto(in data, (double)0, (double)10, ref counts);
 
             RecordEq(counts[0], 2);   // exactly the two finite samples 0 and 1 — not inflated
             RecordEq(counts[1], 2);
@@ -156,7 +156,7 @@ public class doubleHistogramTests
             var counts = arena.Indices(4);
             for (int b = 0; b < 4; b++) counts[b] = 777;   // garbage
 
-            doubleHistogramOP.histogramInto(in data, (double)0, (double)4, ref counts);
+            doubleHistogram_OP.histogramInto(in data, (double)0, (double)4, ref counts);
 
             RecordEq(counts[0], 2);
             RecordEq(counts[1], 0);   // garbage was cleared
@@ -180,7 +180,7 @@ public class doubleHistogramTests
             for (int i = 0; i < 5; i++) data[i] = (double)(i + 1);
 
             var counts = arena.Indices(4);
-            doubleHistogramOP.histogramInto(in data, ref counts);
+            doubleHistogram_OP.histogramInto(in data, ref counts);
 
             RecordEq(counts[0], 1);
             RecordEq(counts[1], 1);
@@ -201,7 +201,7 @@ public class doubleHistogramTests
 
             var counts = arena.Indices(4);
             for (int b = 0; b < 4; b++) counts[b] = 5;   // garbage
-            doubleHistogramOP.histogramInto(in data, ref counts);
+            doubleHistogram_OP.histogramInto(in data, ref counts);
 
             RecordEq(counts[0], 3);
             RecordEq(counts[1], 0);
@@ -221,7 +221,7 @@ public class doubleHistogramTests
 
             var counts = arena.Indices(4);
             for (int b = 0; b < 4; b++) counts[b] = 9;   // garbage
-            doubleHistogramOP.histogramInto(in data, ref counts);
+            doubleHistogram_OP.histogramInto(in data, ref counts);
 
             for (int b = 0; b < 4; b++) RecordEq(counts[b], 0);
 
@@ -239,7 +239,7 @@ public class doubleHistogramTests
             for (int i = 1; i < 6; i++) data[i] = (double)i;   // 1..5
 
             var counts = arena.Indices(4);
-            doubleHistogramOP.histogramInto(in data, ref counts);
+            doubleHistogram_OP.histogramInto(in data, ref counts);
 
             RecordEq(counts[0], 1);
             RecordEq(counts[1], 1);
@@ -266,7 +266,7 @@ public class doubleHistogramTests
             double lo = (double)1, hi = (double)5;
             double w = (hi - lo) / (double)K;
             var dest = arena.doubleVec(K);
-            doubleHistogramOP.densityInto(in data, lo, hi, ref dest);
+            doubleHistogram_OP.densityInto(in data, lo, hi, ref dest);
 
             double integral = (double)0;
             for (int b = 0; b < K; b++) integral += dest[b] * w;
@@ -289,7 +289,7 @@ public class doubleHistogramTests
             double lo = (double)2, hi = (double)4;
             double w = (hi - lo) / (double)K;
             var dest = arena.doubleVec(K);
-            doubleHistogramOP.densityInto(in data, lo, hi, ref dest);
+            doubleHistogram_OP.densityInto(in data, lo, hi, ref dest);
 
             double integral = (double)0;
             for (int b = 0; b < K; b++) integral += dest[b] * w;
@@ -314,7 +314,7 @@ public class doubleHistogramTests
 
             int K = 4;
             var dest = arena.doubleVec(K);
-            doubleHistogramOP.cdfInto(in data, (double)1, (double)5, ref dest);
+            doubleHistogram_OP.cdfInto(in data, (double)1, (double)5, ref dest);
 
             // monotone non-decreasing
             for (int b = 1; b < K; b++)
@@ -339,11 +339,11 @@ public class doubleHistogramTests
             double lo = (double)1, hi = (double)5;
 
             var counts = arena.Indices(K);
-            doubleHistogramOP.histogramInto(in data, lo, hi, ref counts);
+            doubleHistogram_OP.histogramInto(in data, lo, hi, ref counts);
             int total = Sum(in counts);
 
             var dest = arena.doubleVec(K);
-            doubleHistogramOP.cdfInto(in data, lo, hi, ref dest);
+            doubleHistogram_OP.cdfInto(in data, lo, hi, ref dest);
 
             int cum = 0;
             double tol = (double)10 * Consts.doubleSqrtEps;
@@ -367,7 +367,7 @@ public class doubleHistogramTests
             int K = 4;
             var dest = arena.doubleVec(K);
             for (int b = 0; b < K; b++) dest[b] = (double)123;   // garbage
-            doubleHistogramOP.cdfInto(in data, (double)10, (double)20, ref dest);
+            doubleHistogram_OP.cdfInto(in data, (double)10, (double)20, ref dest);
 
             for (int b = 0; b < K; b++)
                 AssertClose(dest[b], (double)0, (double)0);
@@ -398,7 +398,7 @@ public class doubleHistogramTests
             var counts = arena.doubleMat(2, 3);
             for (int i = 0; i < counts.Length; i++) counts[i] = (double)999;   // garbage
 
-            doubleHistogramOP.histogram2DInto(in dataX, in dataY,
+            doubleHistogram_OP.histogram2DInto(in dataX, in dataY,
                 (double)0, (double)4, (double)0, (double)6, ref counts);
 
             // rows = X bins (2), cols = Y bins (3)
@@ -432,7 +432,7 @@ public class doubleHistogramTests
 
             int K = 4;
             var counts = arena.Indices(K);
-            doubleHistogramOP.histogramInto(in data, (double)1, (double)5, ref counts);   // [1,1,1,2]
+            doubleHistogram_OP.histogramInto(in data, (double)1, (double)5, ref counts);   // [1,1,1,2]
 
             var weights = arena.doubleVec(K);
             for (int b = 0; b < K; b++) weights[b] = (double)counts[b];
@@ -440,7 +440,7 @@ public class doubleHistogramTests
             var rng = new Random(20240627u);
             for (int t = 0; t < 128; t++)
             {
-                int pick = doubleRandomOP.weightedPick(in weights, ref rng);
+                int pick = doubleRandom_OP.weightedPick(in weights, ref rng);
                 AssertTrue(pick >= 0 && pick < K);
             }
 
@@ -534,18 +534,18 @@ public class doubleHistogramTests
             // K < 1 (empty counts)
             var empty = arena.Indices(0);
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.histogramInto(in data, (double)0, (double)1, ref empty));
+                () => doubleHistogram_OP.histogramInto(in data, (double)0, (double)1, ref empty));
 
             // !(hi > lo): equal, and inverted
             var counts = arena.Indices(4);
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.histogramInto(in data, (double)1, (double)1, ref counts));
+                () => doubleHistogram_OP.histogramInto(in data, (double)1, (double)1, ref counts));
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.histogramInto(in data, (double)5, (double)1, ref counts));
+                () => doubleHistogram_OP.histogramInto(in data, (double)5, (double)1, ref counts));
 
             // auto-range overload also rejects K < 1
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.histogramInto(in data, ref empty));
+                () => doubleHistogram_OP.histogramInto(in data, ref empty));
         }
         finally { arena.Dispose(); }
     }
@@ -562,17 +562,17 @@ public class doubleHistogramTests
 
             // hi <= lo
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.densityInto(in data, (double)1, (double)1, ref dest));
+                () => doubleHistogram_OP.densityInto(in data, (double)1, (double)1, ref dest));
 
             // empty data (cannot normalize)
             var emptyData = arena.doubleVec(0);
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.densityInto(in emptyData, (double)0, (double)1, ref dest));
+                () => doubleHistogram_OP.densityInto(in emptyData, (double)0, (double)1, ref dest));
 
             // K < 1
             var emptyDest = arena.doubleVec(0);
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.densityInto(in data, (double)0, (double)1, ref emptyDest));
+                () => doubleHistogram_OP.densityInto(in data, (double)0, (double)1, ref emptyDest));
         }
         finally { arena.Dispose(); }
     }
@@ -588,11 +588,11 @@ public class doubleHistogramTests
             var dest = arena.doubleVec(4);
 
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.cdfInto(in data, (double)2, (double)1, ref dest));
+                () => doubleHistogram_OP.cdfInto(in data, (double)2, (double)1, ref dest));
 
             var emptyDest = arena.doubleVec(0);
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.cdfInto(in data, (double)0, (double)1, ref emptyDest));
+                () => doubleHistogram_OP.cdfInto(in data, (double)0, (double)1, ref emptyDest));
         }
         finally { arena.Dispose(); }
     }
@@ -609,16 +609,16 @@ public class doubleHistogramTests
 
             // mismatched dataX / dataY lengths
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.histogram2DInto(in dataX, in dataY,
+                () => doubleHistogram_OP.histogram2DInto(in dataX, in dataY,
                     (double)0, (double)1, (double)0, (double)1, ref counts));
 
             // paired (equal-length) but invalid ranges
             var dY = arena.doubleVec(5);
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.histogram2DInto(in dataX, in dY,
+                () => doubleHistogram_OP.histogram2DInto(in dataX, in dY,
                     (double)1, (double)1, (double)0, (double)1, ref counts));   // hiX <= loX
             Assert.Throws<ArgumentException>(
-                () => doubleHistogramOP.histogram2DInto(in dataX, in dY,
+                () => doubleHistogram_OP.histogram2DInto(in dataX, in dY,
                     (double)0, (double)1, (double)2, (double)1, ref counts));   // hiY <= loY
         }
         finally { arena.Dispose(); }

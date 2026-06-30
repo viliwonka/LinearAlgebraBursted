@@ -12,7 +12,7 @@ namespace LinearAlgebra
             boolN res = lhs.tempBoolVec(lhs.N, true);
 
             unsafe {
-                UnsafeBoolOP.cmprLessScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprLessScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
             }
 
             return res; 
@@ -24,7 +24,7 @@ namespace LinearAlgebra
             boolN res = lhs.tempBoolVec(lhs.N, true);
 
             unsafe {
-                UnsafeBoolOP.cmprGreaterScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprGreaterScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
             }
 
             return res;
@@ -38,7 +38,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeBoolOP.cmprLessOrEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprLessOrEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
             }
 
             return res;
@@ -52,7 +52,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeBoolOP.cmprGreaterOrEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprGreaterOrEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
             }
 
             return res;
@@ -66,7 +66,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeBoolOP.cmprEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
             }
 
             return res;
@@ -80,7 +80,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeBoolOP.cmprNotEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprNotEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
             }
 
             return res;
@@ -100,7 +100,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeBoolOP.cmprLess(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprLess(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.N);
             }
 
             return res;
@@ -116,7 +116,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeBoolOP.cmprLessOrEqual(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprLessOrEqual(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.N);
             }
 
             return res;
@@ -132,7 +132,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeBoolOP.cmprEqual(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprEqual(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.N);
             }
 
             return res;
@@ -146,7 +146,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeBoolOP.cmprNotEqual(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.N);
+                UnsafeBool_OP.cmprNotEqual(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.N);
             }
 
             return res;

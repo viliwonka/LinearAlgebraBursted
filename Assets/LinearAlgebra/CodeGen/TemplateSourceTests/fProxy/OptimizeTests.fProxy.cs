@@ -143,7 +143,7 @@ public class fProxyOptimizeTests
         {
             var fn = new ShiftedParabola();
 
-            bool ok = Optimize.bisection(ref fn, (fProxy)3, (fProxy)10, out fProxy root,
+            bool ok = Optimize_OP.bisection(ref fn, (fProxy)3, (fProxy)10, out fProxy root,
                                          (fProxy)10 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(ok);
@@ -156,7 +156,7 @@ public class fProxyOptimizeTests
         {
             var fn = new ShiftedParabola();
 
-            bool ok = Optimize.bisection(ref fn, (fProxy)6, (fProxy)10, out fProxy root);
+            bool ok = Optimize_OP.bisection(ref fn, (fProxy)6, (fProxy)10, out fProxy root);
 
             Assert.IsFalse(ok);
             AssertFinite(root);
@@ -172,7 +172,7 @@ public class fProxyOptimizeTests
         {
             var fn = new Cos();
 
-            bool ok = Optimize.bisection(ref fn, (fProxy)0, (fProxy)3, out fProxy root,
+            bool ok = Optimize_OP.bisection(ref fn, (fProxy)0, (fProxy)3, out fProxy root,
                                          (fProxy)10 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(ok);
@@ -187,7 +187,7 @@ public class fProxyOptimizeTests
         {
             var fn = new QuadraticDeriv();
 
-            bool ok = Optimize.newtonRoot(ref fn, (fProxy)1, out fProxy root);
+            bool ok = Optimize_OP.newtonRoot(ref fn, (fProxy)1, out fProxy root);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
@@ -202,7 +202,7 @@ public class fProxyOptimizeTests
         {
             var fn = new FlatDeriv();
 
-            bool ok = Optimize.newtonRoot(ref fn, (fProxy)1, out fProxy root);
+            bool ok = Optimize_OP.newtonRoot(ref fn, (fProxy)1, out fProxy root);
 
             Assert.IsFalse(ok);
             AssertFinite(root);
@@ -216,7 +216,7 @@ public class fProxyOptimizeTests
         {
             var fn = new ParabolaMin();
 
-            bool ok = Optimize.goldenSection(ref fn, (fProxy)(-5), (fProxy)5, out fProxy xMin,
+            bool ok = Optimize_OP.goldenSection(ref fn, (fProxy)(-5), (fProxy)5, out fProxy xMin,
                                              (fProxy)10 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(ok);
@@ -230,7 +230,7 @@ public class fProxyOptimizeTests
         {
             var fn = new Cos();
 
-            bool ok = Optimize.goldenSection(ref fn, (fProxy)2, (fProxy)4, out fProxy xMin,
+            bool ok = Optimize_OP.goldenSection(ref fn, (fProxy)2, (fProxy)4, out fProxy xMin,
                                              (fProxy)10 * Consts.fProxyZeroThreshold);
 
             Assert.IsTrue(ok);
@@ -253,7 +253,7 @@ public class fProxyOptimizeTests
             var fn = new Bowl();
 
             int maxIter = 1000;
-            bool ok = Optimize.gradientDescent(ref fn, ref x, ref g,
+            bool ok = Optimize_OP.gradientDescent(ref fn, ref x, ref g,
                                                (fProxy)0.1f, (fProxy)1E-4f, maxIter, out int iterations);
 
             Assert.IsTrue(ok);
@@ -283,7 +283,7 @@ public class fProxyOptimizeTests
                 x[i] = fn.Target(i);
 
             int maxIter = 1000;
-            bool ok = Optimize.gradientDescent(ref fn, ref x, ref g,
+            bool ok = Optimize_OP.gradientDescent(ref fn, ref x, ref g,
                                                (fProxy)0.1f, (fProxy)1E-4f, maxIter, out int iterations);
 
             Assert.IsTrue(ok);
@@ -365,7 +365,7 @@ public class fProxyOptimizeTests
         var fn = new Bowl();
 
         Assert.Catch<ArgumentException>(() =>
-            Optimize.gradientDescent(ref fn, ref x, ref g,
+            Optimize_OP.gradientDescent(ref fn, ref x, ref g,
                                      (fProxy)0.1f, (fProxy)1E-4f, 100, out int iterations));
 
         arena.Dispose();

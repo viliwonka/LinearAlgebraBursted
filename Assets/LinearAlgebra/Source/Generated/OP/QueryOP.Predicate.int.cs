@@ -12,7 +12,7 @@ namespace LinearAlgebra
     //   findFirst, count, any, all, findAll.
     // Constraint: where T : unmanaged, IUnsafeintArray
     //             where P : struct, IintPredicate
-    public static partial class intQueryOP
+    public static partial class intQuery_OP
     {
         // -------------------------------------------------------------------------
         // GROUP A — FLAT / SCALAR PREDICATE OPS

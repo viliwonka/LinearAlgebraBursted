@@ -84,7 +84,7 @@ public class floatCholeskyTests
             var M = arena.floatRandomMatrix(dim, dim, -1f, 1f, seed);
 
             // dot(M, M, transposeA:true) == Mᵀ·M
-            var A = floatOP.dot(M, M, true);
+            var A = float_OP.dot(M, M, true);
 
             for (int d = 0; d < dim; d++)
                 A[d, d] += dim;
@@ -105,13 +105,13 @@ public class floatCholeskyTests
             Assert.IsTrue(ok);
 
             // L must be lower triangular (strict upper zeroed).
-            Assert.IsTrue(Analysis.IsLowerTriangular(L, Tol()));
+            Assert.IsTrue(Analysis_OP.IsLowerTriangular(L, Tol()));
 
             // Reconstruct A = L·Lᵀ and compare. Build Lᵀ explicitly then L·Lᵀ.
-            var Lt = floatOP.trans(L);
-            var recon = floatOP.dot(L, Lt, false);
+            var Lt = float_OP.trans(L);
+            var recon = float_OP.dot(L, Lt, false);
 
-            Assert.IsTrue(Analysis.IsZero(A - recon, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(A - recon, Tol()));
 
             arena.Dispose();
         }
@@ -133,8 +133,8 @@ public class floatCholeskyTests
             Assert.IsTrue(ok);
 
             // Verify A·x ≈ bOrig
-            var Ax = floatOP.dot(A, b);
-            Assert.IsTrue(Analysis.IsZero(bOrig - Ax, Tol()));
+            var Ax = float_OP.dot(A, b);
+            Assert.IsTrue(Analysis_OP.IsZero(bOrig - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -157,8 +157,8 @@ public class floatCholeskyTests
             // Solve using the pre-computed factor.
             Cholesky.choleskySolve(ref L, ref b);
 
-            var Ax = floatOP.dot(A, b);
-            Assert.IsTrue(Analysis.IsZero(bOrig - Ax, Tol()));
+            var Ax = float_OP.dot(A, b);
+            Assert.IsTrue(Analysis_OP.IsZero(bOrig - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -184,9 +184,9 @@ public class floatCholeskyTests
             Assert.IsTrue(math.abs(L[1, 1] - math.sqrt((float)2f)) < tol);
 
             // Reconstruct as a second check.
-            var Lt = floatOP.trans(L);
-            var recon = floatOP.dot(L, Lt, false);
-            Assert.IsTrue(Analysis.IsZero(A - recon, tol));
+            var Lt = float_OP.trans(L);
+            var recon = float_OP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis_OP.IsZero(A - recon, tol));
 
             arena.Dispose();
         }
@@ -204,13 +204,13 @@ public class floatCholeskyTests
             Assert.IsTrue(ok);
 
             // chol(I) = I
-            Assert.IsTrue(Analysis.IsIdentity(L, Tol()));
+            Assert.IsTrue(Analysis_OP.IsIdentity(L, Tol()));
 
             // Solving I x = b returns x = b.
             var b = arena.floatRandomVector(dim, -1f, 1f, 9090);
             var bOrig = b.Copy();
             Cholesky.choleskySolve(ref L, ref b);
-            Assert.IsTrue(Analysis.IsZero(bOrig - b, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(bOrig - b, Tol()));
 
             arena.Dispose();
         }
@@ -230,7 +230,7 @@ public class floatCholeskyTests
                 bool ok = Cholesky.choleskyDecomposition(in A, ref L);
                 Assert.IsFalse(ok);
                 // On false, no NaN must be produced.
-                Assert.IsFalse(Analysis.IsAnyNan(in L));
+                Assert.IsFalse(Analysis_OP.IsAnyNan(in L));
 
                 // choleskySolve factor+solve overload must also report failure.
                 var b = arena.floatRandomVector(2, -1f, 1f, 13);
@@ -246,7 +246,7 @@ public class floatCholeskyTests
 
                 bool ok = Cholesky.choleskyDecomposition(in A, ref L);
                 Assert.IsFalse(ok);
-                Assert.IsFalse(Analysis.IsAnyNan(in L));
+                Assert.IsFalse(Analysis_OP.IsAnyNan(in L));
             }
 
             // Case 3: negative diagonal -> not positive-definite.
@@ -260,7 +260,7 @@ public class floatCholeskyTests
 
                 bool ok = Cholesky.choleskyDecomposition(in A, ref L);
                 Assert.IsFalse(ok);
-                Assert.IsFalse(Analysis.IsAnyNan(in L));
+                Assert.IsFalse(Analysis_OP.IsAnyNan(in L));
             }
 
             arena.Dispose();
@@ -293,7 +293,7 @@ public class floatCholeskyTests
             pivot.Dispose();
 
             // The two solutions must agree.
-            Assert.IsTrue(Analysis.IsZero(bChol - bLU, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(bChol - bLU, Tol()));
 
             arena.Dispose();
         }
@@ -316,8 +316,8 @@ public class floatCholeskyTests
             var b = arena.floatRandomVector(1, -1f, 1f, 77);
             var bOrig = b.Copy();
             Cholesky.choleskySolve(ref L, ref b);
-            var Ax = floatOP.dot(A, b);
-            Assert.IsTrue(Analysis.IsZero(bOrig - Ax, Tol()));
+            var Ax = float_OP.dot(A, b);
+            Assert.IsTrue(Analysis_OP.IsZero(bOrig - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -339,9 +339,9 @@ public class floatCholeskyTests
             Assert.IsTrue(ok);
 
             // Reconstruct L·Lᵀ and compare against the ORIGINAL A.
-            var Lt = floatOP.trans(L);
-            var recon = floatOP.dot(L, Lt, false);
-            Assert.IsTrue(Analysis.IsZero(Aorig - recon, Tol()));
+            var Lt = float_OP.trans(L);
+            var recon = float_OP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis_OP.IsZero(Aorig - recon, Tol()));
 
             arena.Dispose();
         }
@@ -360,11 +360,11 @@ public class floatCholeskyTests
             bool ok = Cholesky.choleskyDecomposition(in A, ref L);
             Assert.IsTrue(ok);
 
-            Assert.IsTrue(Analysis.IsLowerTriangular(L, Tol()));
+            Assert.IsTrue(Analysis_OP.IsLowerTriangular(L, Tol()));
 
-            var Lt = floatOP.trans(L);
-            var recon = floatOP.dot(L, Lt, false);
-            Assert.IsTrue(Analysis.IsZero(A - recon, Tol()));
+            var Lt = float_OP.trans(L);
+            var recon = float_OP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis_OP.IsZero(A - recon, Tol()));
 
             arena.Dispose();
         }
@@ -383,11 +383,11 @@ public class floatCholeskyTests
             bool ok = Cholesky.choleskyDecomposition(in A, ref L);
             Assert.IsTrue(ok);
 
-            Assert.IsTrue(Analysis.IsLowerTriangular(L, Tol()));
+            Assert.IsTrue(Analysis_OP.IsLowerTriangular(L, Tol()));
 
-            var Lt = floatOP.trans(L);
-            var recon = floatOP.dot(L, Lt, false);
-            Assert.IsTrue(Analysis.IsZero(A - recon, Tol()));
+            var Lt = float_OP.trans(L);
+            var recon = float_OP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis_OP.IsZero(A - recon, Tol()));
 
             arena.Dispose();
         }
@@ -406,7 +406,7 @@ public class floatCholeskyTests
 
             bool ok = Cholesky.choleskyDecomposition(in A, ref L);
             Assert.IsFalse(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in L));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in L));
 
             // factor+solve overload must also report failure.
             var b = arena.floatRandomVector(dim, -1f, 1f, 17);

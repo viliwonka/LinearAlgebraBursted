@@ -68,13 +68,13 @@ public class floatSelectRefTests
             var c = arena.boolRandomVec(N, 33333);
 
             // allocating reference
-            var R = SelectOP.select(a, b, c);
+            var R = Select_OP.select(a, b, c);
 
             // ref-dest into a preallocated destination
             var D = arena.floatVec(N);
-            SelectOP.select(in a, in b, in c, ref D);
+            Select_OP.select(in a, in b, in c, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -91,12 +91,12 @@ public class floatSelectRefTests
             var b = arena.floatRandomMatrix(M, N, -1f, 1f, 55555);
             var c = arena.boolRandomMat(M, N, 66666);
 
-            var R = SelectOP.select(a, b, c);
+            var R = Select_OP.select(a, b, c);
 
             var D = arena.floatMat(M, N);
-            SelectOP.select(in a, in b, in c, ref D);
+            Select_OP.select(in a, in b, in c, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -112,9 +112,9 @@ public class floatSelectRefTests
             var b = arena.floatRandomVector(N, -1f, 1f, 88888);
 
             var D = arena.floatVec(N);
-            SelectOP.select(in a, in b, true, ref D);
+            Select_OP.select(in a, in b, true, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(b - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(b - D, Tol()));
 
             arena.Dispose();
         }
@@ -130,9 +130,9 @@ public class floatSelectRefTests
             var b = arena.floatRandomVector(N, -1f, 1f, 10101);
 
             var D = arena.floatVec(N);
-            SelectOP.select(in a, in b, false, ref D);
+            Select_OP.select(in a, in b, false, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(a - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(a - D, Tol()));
 
             arena.Dispose();
         }
@@ -149,9 +149,9 @@ public class floatSelectRefTests
             var b = arena.floatRandomMatrix(M, N, -1f, 1f, 30303);
 
             var D = arena.floatMat(M, N);
-            SelectOP.select(in a, in b, true, ref D);
+            Select_OP.select(in a, in b, true, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(b - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(b - D, Tol()));
 
             arena.Dispose();
         }
@@ -168,9 +168,9 @@ public class floatSelectRefTests
             var b = arena.floatRandomMatrix(M, N, -1f, 1f, 50505);
 
             var D = arena.floatMat(M, N);
-            SelectOP.select(in a, in b, false, ref D);
+            Select_OP.select(in a, in b, false, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(a - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(a - D, Tol()));
 
             arena.Dispose();
         }
@@ -190,12 +190,12 @@ public class floatSelectRefTests
 
             // Reference into a SEPARATE buffer before a is overwritten.
             var R = arena.floatVec(N);
-            SelectOP.select(in a, in b, in c, ref R);
+            Select_OP.select(in a, in b, in c, ref R);
 
             // Now alias the destination onto input a.
-            SelectOP.select(in a, in b, in c, ref a);
+            Select_OP.select(in a, in b, in c, ref a);
 
-            Assert.IsTrue(Analysis.IsZero(R - a, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - a, Tol()));
 
             arena.Dispose();
         }

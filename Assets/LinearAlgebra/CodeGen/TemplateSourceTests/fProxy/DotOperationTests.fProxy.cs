@@ -71,7 +71,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(vecLen, 1f);
             fProxyN y = arena.fProxyVec(vecLen, 1f);
 
-            fProxy b = fProxyOP.dot(x, y);
+            fProxy b = fProxy_OP.dot(x, y);
 
             Assert.IsTrue(b == (fProxy)vecLen);
 
@@ -84,7 +84,7 @@ public class fProxyDotOperationTests
                 y[i] = (i+1f) % 2f;
             }
 
-            b = fProxyOP.dot(x, y);
+            b = fProxy_OP.dot(x, y);
 
             Assert.IsTrue(b == (fProxy)0f);
 
@@ -101,7 +101,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(inVecLen, 1f);
             fProxyMxN A = arena.fProxyRandomMatrix(outVecLen, inVecLen, -0.01f, 0.01f);
 
-            fProxyN b = fProxyOP.dot(A, x);
+            fProxyN b = fProxy_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -117,7 +117,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyRandomUnitVector(vecLen);
             fProxyMxN A = arena.fProxyIdentityMatrix(vecLen);
 
-            fProxyN b = fProxyOP.dot(x, A);
+            fProxyN b = fProxy_OP.dot(x, A);
 
             Assert.AreEqual(vecLen, b.N);
             
@@ -126,7 +126,7 @@ public class fProxyDotOperationTests
 
             x = arena.fProxyIndexZeroVector(vecLen);
 
-            b = fProxyOP.dot(x, A);
+            b = fProxy_OP.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == (fProxy)i);
@@ -143,7 +143,7 @@ public class fProxyDotOperationTests
             fProxyMxN A = arena.fProxyIdentityMatrix(matLen);
             fProxyMxN B = arena.fProxyIdentityMatrix(matLen);
 
-            fProxyMxN C = fProxyOP.dot(A, B);
+            fProxyMxN C = fProxy_OP.dot(A, B);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -156,7 +156,7 @@ public class fProxyDotOperationTests
 
             fProxyMxN R = arena.fProxyRandomMatrix(matLen, matLen);
 
-            C = fProxyOP.dot(A, R);
+            C = fProxy_OP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -166,7 +166,7 @@ public class fProxyDotOperationTests
 
             C = arena.fProxyIdentityMatrix(matLen);
 
-            fProxyMxN D = fProxyOP.dot(C, C);
+            fProxyMxN D = fProxy_OP.dot(C, C);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -190,7 +190,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(inVecLen, 1f);
             fProxyMxN A = arena.fProxyRandomMatrix(outVecLen, inVecLen, -0.01f, 0.01f);
 
-            fProxyN b = fProxyOP.dot(A, x);
+            fProxyN b = fProxy_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -207,7 +207,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(inVecLen, 1f);
             fProxyMxN A = arena.fProxyRandomMatrix(inVecLen, outVecLen, -0.01f, 0.01f);
 
-            fProxyN b = fProxyOP.dot(x, A);
+            fProxyN b = fProxy_OP.dot(x, A);
             
             Assert.AreEqual(outVecLen, b.N);
 
@@ -229,12 +229,12 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(vecM, 1f);
             fProxyN y = arena.fProxyVec(vecN, 1f);
 
-            fProxyMxN A = fProxyOP.outerDot(x, y);
+            fProxyMxN A = fProxy_OP.outerDot(x, y);
 
             Assert.AreEqual(vecM, A.M_Rows);
             Assert.AreEqual(vecN, A.N_Cols);
 
-            fProxyMxN B = fProxyOP.outerDot(y, x);
+            fProxyMxN B = fProxy_OP.outerDot(y, x);
 
             for (int i = 0; i < A.Length; i++)
                 Assert.IsTrue(A[i] == (fProxy)1f);
@@ -248,7 +248,7 @@ public class fProxyDotOperationTests
             x = arena.fProxyLinVector(vecM, 0f, 2f);
             y = arena.fProxyLinVector(vecN, 0f, 2f);
 
-            fProxyMxN C = fProxyOP.outerDot(x, y);
+            fProxyMxN C = fProxy_OP.outerDot(x, y);
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)

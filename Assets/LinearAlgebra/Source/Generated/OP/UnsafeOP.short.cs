@@ -6,7 +6,7 @@ using Unity.Burst;
 
 namespace LinearAlgebra
 {
-    public static unsafe partial class UnsafeOP {
+    public static unsafe partial class Unsafe_OP {
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static short sum([NoAlias] short* a, int n) {

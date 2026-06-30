@@ -23,7 +23,7 @@ public class fProxyOrthoOpTests
             var Q = arena.fProxyRandomMatrix(dim*2, dim);
             var R = arena.fProxyMat(dim);
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             arena.Dispose();
         }
@@ -95,7 +95,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             //Print.Log(A);
             //Print.Log(Q);
@@ -120,7 +120,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
 
             AssertQR(in A, in Q, in R);
@@ -139,7 +139,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             /*Print.Log(A);
             Print.Log(Q);
@@ -161,7 +161,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             //Print.Log(R);
 
@@ -181,7 +181,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-03f);
 
@@ -199,7 +199,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             //Print.Log(A);
             //Print.Log(Q);
@@ -236,13 +236,13 @@ public class fProxyOrthoOpTests
                     p1 = rand.NextInt(0, dim);
                 }
 
-                Q = fProxyOP.dot(arena.fProxyPermutationMatrix(dim, p0, p1), Q);
+                Q = fProxy_OP.dot(arena.fProxyPermutationMatrix(dim, p0, p1), Q);
 
                 var R = arena.fProxyMat(dim);
 
                 var A = Q.Copy();
 
-                OrthoOP.qrDecomposition(ref Q, ref R);
+                Ortho_OP.qrDecomposition(ref Q, ref R);
 
                 //Print.Log(A);
                 //Print.Log(Q);
@@ -263,7 +263,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             //Print.Log(A);
             //Print.Log(Q);
@@ -290,7 +290,7 @@ public class fProxyOrthoOpTests
             var R = arena.fProxyMat(n);
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-4f);
 
@@ -300,11 +300,11 @@ public class fProxyOrthoOpTests
         private void AssertQR(in fProxyMxN A, in fProxyMxN Q, in fProxyMxN R) => AssertQR(in A, in Q, in R, 1E-6f);
         private void AssertQR(in fProxyMxN A, in fProxyMxN Q, in fProxyMxN R, fProxy precision)
         {
-            fProxyMxN shouldBeZero = A - fProxyOP.dot(Q, R);
+            fProxyMxN shouldBeZero = A - fProxy_OP.dot(Q, R);
 
-            var zeroError = Analysis.MaxZeroError(shouldBeZero);
+            var zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
 
-            if (Analysis.IsAnyNan(in shouldBeZero))
+            if (Analysis_OP.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
             // Fail layout: [1]=zeroError, [2]=precision, [3]=diff
@@ -315,9 +315,9 @@ public class fProxyOrthoOpTests
                 Fail[2] = precision;
                 Fail[3] = zeroError - precision;
             }
-            Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
-            Assert.IsTrue(Analysis.IsUpperTriangular(R, precision));
-            Assert.IsTrue(Analysis.IsOrthogonal(Q, precision));
+            Assert.IsTrue(Analysis_OP.IsZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis_OP.IsUpperTriangular(R, precision));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(Q, precision));
         }
     }
 
@@ -352,7 +352,7 @@ public class fProxyOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.fProxyMat(dim);
 
-                OrthoOP.qrDecomposition(ref Q, ref R);
+                Ortho_OP.qrDecomposition(ref Q, ref R);
 
                 //Print.Log(Q);
                 //Print.Log(R);
@@ -369,14 +369,14 @@ public class fProxyOrthoOpTests
 
         private fProxy ErrorCheckQR(in fProxyMxN A, in fProxyMxN Q, in fProxyMxN R) {
 
-            fProxyMxN shouldBeZero = A - fProxyOP.dot(Q, R);
+            fProxyMxN shouldBeZero = A - fProxy_OP.dot(Q, R);
 
-            if(Analysis.IsAnyNan(in shouldBeZero))
+            if(Analysis_OP.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("PrecisionReconstructTestJob: NaN detected");
 
             //Print.Log(shouldBeZero);
 
-            fProxy zeroError = Analysis.MaxZeroError(shouldBeZero);
+            fProxy zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
 
             return zeroError;
         }
@@ -438,20 +438,20 @@ public class fProxyOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.fProxyMat(systemDim);
 
-                OrthoOP.qrDecomposition(ref Q, ref R);
+                Ortho_OP.qrDecomposition(ref Q, ref R);
 
                 for(uint j = 0; j < randomVecTests; j++) {
 
                     fProxyN xOrig = arena.fProxyRandomVector(systemDim, -25, +25, 1337 + i * i + j * 5);
-                    fProxyN b = fProxyOP.dot(A, xOrig);
-                    fProxyN y = fProxyOP.dot(b, Q);
+                    fProxyN b = fProxy_OP.dot(A, xOrig);
+                    fProxyN y = fProxy_OP.dot(b, Q);
 
                     Solvers.SolveUpperTriangular(ref R, ref y);
 
                     y.subInpl(xOrig);
-                    fProxy zeroError = Analysis.MaxZeroError(y);
+                    fProxy zeroError = Analysis_OP.MaxZeroError(y);
 
-                    if(Analysis.IsAnyNan(in y)) {
+                    if(Analysis_OP.IsAnyNan(in y)) {
                         throw new System.Exception("SolveSystemTestJob: NaN detected");
                     }
 
@@ -493,20 +493,20 @@ public class fProxyOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.fProxyMat(sysDimN);
 
-                OrthoOP.qrDecomposition(ref Q, ref R);
+                Ortho_OP.qrDecomposition(ref Q, ref R);
 
                 for (uint j = 0; j < randomVecTests; j++) {
 
                     fProxyN xOrig = arena.fProxyRandomVector(sysDimN, -25, +25, 1337 + i * i + j * 5);
-                    fProxyN b = fProxyOP.dot(A, xOrig);
-                    fProxyN y = fProxyOP.dot(b, Q);
+                    fProxyN b = fProxy_OP.dot(A, xOrig);
+                    fProxyN y = fProxy_OP.dot(b, Q);
 
                     Solvers.SolveUpperTriangular(ref R, ref y);
 
                     y.subInpl(xOrig);
-                    fProxy zeroError = Analysis.MaxZeroError(y);
+                    fProxy zeroError = Analysis_OP.MaxZeroError(y);
 
-                    if (Analysis.IsAnyNan(in y)) {
+                    if (Analysis_OP.IsAnyNan(in y)) {
                         throw new System.Exception("SolveSystemTestJob: NaN detected");
                     }
 
@@ -543,17 +543,17 @@ public class fProxyOrthoOpTests
                     A[d, d] += 5.1f + 10f * random.NextFProxy();
 
                 fProxyN xOrig = arena.fProxyRandomVector(systemDim, -25, +25, 1337 + i * i + i * 5);
-                fProxyN b = fProxyOP.dot(A, xOrig);
+                fProxyN b = fProxy_OP.dot(A, xOrig);
                 fProxyN x = arena.fProxyVec(systemDim);
 
-                OrthoOP.qrDirectSolve(ref A, ref b, ref x);
+                Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
 
-                if (Analysis.IsAnyNan(in x)) {
+                if (Analysis_OP.IsAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
                 x.subInpl(xOrig);
 
-                fProxy zeroError = Analysis.MaxZeroError(x);
+                fProxy zeroError = Analysis_OP.MaxZeroError(x);
 
                 // per-solve garbage detector (~3x above the worst observed conditioning-tail
                 // error of ~0.21 float); the avg bound below is the actual quality guard
@@ -591,18 +591,18 @@ public class fProxyOrthoOpTests
                     A[d, d] += 5.1f + 10f * random.NextFProxy();
 
                 fProxyN xOrig = arena.fProxyRandomVector(sysDimN, -25, +25, 1337 + i * i + i * 5);
-                fProxyN b = fProxyOP.dot(A, xOrig);
+                fProxyN b = fProxy_OP.dot(A, xOrig);
                 fProxyN x = arena.fProxyVec(sysDimN);
 
-                OrthoOP.qrDirectSolve(ref A, ref b, ref x);
+                Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
 
-                if (Analysis.IsAnyNan(in x)) {
+                if (Analysis_OP.IsAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
 
                 x.subInpl(xOrig);
 
-                fProxy zeroError = Analysis.MaxZeroError(x);
+                fProxy zeroError = Analysis_OP.MaxZeroError(x);
 
                 // per-solve garbage detector (~3x above the worst observed conditioning-tail
                 // error of ~0.21 float); the avg bound below is the actual quality guard
@@ -791,7 +791,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(dim, dim);
             var Q    = arena.fProxyMat(dim, dim);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-6f);
             arena.Dispose();
         }
@@ -804,7 +804,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(dim, dim);
             var Q    = arena.fProxyMat(dim, dim);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -817,7 +817,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(m, m);
             var Q    = arena.fProxyMat(m, n);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -830,7 +830,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(m, m);
             var Q    = arena.fProxyMat(m, n);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -846,7 +846,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(m, m);
             var Q    = arena.fProxyMat(m, n);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -855,13 +855,13 @@ public class fProxyOrthoOpTests
         private void AssertLQ(in fProxyMxN A, in fProxyMxN L, in fProxyMxN Q, fProxy precision)
         {
             // 1. Reconstruction: A ≈ L * Q
-            fProxyMxN LQ   = fProxyOP.dot(L, Q);
+            fProxyMxN LQ   = fProxy_OP.dot(L, Q);
             fProxyMxN diff = A - LQ;
 
-            if (Analysis.IsAnyNan(in diff))
+            if (Analysis_OP.IsAnyNan(in diff))
                 throw new System.Exception("AssertLQ: NaN in reconstruction");
 
-            fProxy reconError = Analysis.MaxZeroError(diff);
+            fProxy reconError = Analysis_OP.MaxZeroError(diff);
             if (!(reconError <= precision) && Fail[0] == (fProxy)0)
             {
                 Fail[0] = (fProxy)1;
@@ -869,15 +869,15 @@ public class fProxyOrthoOpTests
                 Fail[2] = precision;
                 Fail[3] = reconError - precision;
             }
-            Assert.IsTrue(Analysis.IsZero(in diff, precision));
+            Assert.IsTrue(Analysis_OP.IsZero(in diff, precision));
 
             // 2. L is lower-triangular
-            Assert.IsTrue(Analysis.IsLowerTriangular(L, precision));
+            Assert.IsTrue(Analysis_OP.IsLowerTriangular(L, precision));
 
             // 3. Q has orthonormal rows: QQᵀ = I_m.
             //    IsOrthogonal(Qᵀ) checks (Qᵀ)ᵀ(Qᵀ) = QQᵀ = I_m.
-            fProxyMxN Qt = fProxyOP.trans(Q);
-            Assert.IsTrue(Analysis.IsOrthogonal(in Qt, precision));
+            fProxyMxN Qt = fProxy_OP.trans(Q);
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(in Qt, precision));
         }
     }
 
@@ -920,13 +920,13 @@ public class fProxyOrthoOpTests
             var c    = arena.fProxyRandomVector(m, -1f, 1f, 22222);
             // x_true = Aᵀ c  (dot(c, A) computes cᵀA = (Aᵀc)ᵀ → same n-vector values)
             var xTrue = arena.fProxyVec(n);
-            fProxyOP.dot(in c, in A, ref xTrue);
+            fProxy_OP.dot(in c, in A, ref xTrue);
             // b = A x_true
             var b = arena.fProxyVec(m);
-            fProxyOP.dot(in A, in xTrue, ref b);
+            fProxy_OP.dot(in A, in xTrue, ref b);
             // solve
             var x = arena.fProxyVec(n);
-            OrthoOP.lqMinNormSolve(ref A, ref b, ref x);
+            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -938,11 +938,11 @@ public class fProxyOrthoOpTests
             var A    = arena.fProxyRandomMatrix(m, n, -1f, 1f, 33333);
             var c    = arena.fProxyRandomVector(m, -1f, 1f, 44444);
             var xTrue = arena.fProxyVec(n);
-            fProxyOP.dot(in c, in A, ref xTrue);
+            fProxy_OP.dot(in c, in A, ref xTrue);
             var b = arena.fProxyVec(m);
-            fProxyOP.dot(in A, in xTrue, ref b);
+            fProxy_OP.dot(in A, in xTrue, ref b);
             var x = arena.fProxyVec(n);
-            OrthoOP.lqMinNormSolve(ref A, ref b, ref x);
+            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -954,11 +954,11 @@ public class fProxyOrthoOpTests
             var A    = arena.fProxyRandomMatrix(m, n, -1f, 1f, 55555);
             var c    = arena.fProxyRandomVector(m, -1f, 1f, 66666);
             var xTrue = arena.fProxyVec(n);
-            fProxyOP.dot(in c, in A, ref xTrue);
+            fProxy_OP.dot(in c, in A, ref xTrue);
             var b = arena.fProxyVec(m);
-            fProxyOP.dot(in A, in xTrue, ref b);
+            fProxy_OP.dot(in A, in xTrue, ref b);
             var x = arena.fProxyVec(n);
-            OrthoOP.lqMinNormSolve(ref A, ref b, ref x);
+            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -971,12 +971,12 @@ public class fProxyOrthoOpTests
             var A = arena.fProxyRandomMatrix(m, n, -2f, 2f, 77777);
             var b = arena.fProxyRandomVector(m, -1f, 1f, 88888);
             var x = arena.fProxyVec(n);
-            OrthoOP.lqMinNormSolve(ref A, ref b, ref x);
+            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
             // residual = A x - b
             var Ax   = arena.fProxyVec(m);
-            fProxyOP.dot(in A, in x, ref Ax);
+            fProxy_OP.dot(in A, in x, ref Ax);
             Ax.subInpl(b);
-            fProxy residual = Analysis.MaxZeroError(Ax);
+            fProxy residual = Analysis_OP.MaxZeroError(Ax);
             if (!(residual <= (fProxy)1E-4f) && Fail[0] == (fProxy)0)
             {
                 Fail[0] = (fProxy)1;
@@ -993,10 +993,10 @@ public class fProxyOrthoOpTests
         {
             fProxyN diff = got - expected;
 
-            if (Analysis.IsAnyNan(in diff))
+            if (Analysis_OP.IsAnyNan(in diff))
                 throw new System.Exception("AssertClose: NaN detected");
 
-            fProxy err = Analysis.MaxZeroError(diff);
+            fProxy err = Analysis_OP.MaxZeroError(diff);
             if (!(err <= precision) && Fail[0] == (fProxy)0)
             {
                 Fail[0] = (fProxy)1;
@@ -1004,7 +1004,7 @@ public class fProxyOrthoOpTests
                 Fail[2] = precision;
                 Fail[3] = err - precision;
             }
-            Assert.IsTrue(Analysis.IsZero(in diff, precision));
+            Assert.IsTrue(Analysis_OP.IsZero(in diff, precision));
         }
     }
 

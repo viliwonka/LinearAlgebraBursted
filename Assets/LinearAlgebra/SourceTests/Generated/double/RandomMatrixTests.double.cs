@@ -11,7 +11,7 @@ using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
 // Tests for Chunk 3 of the random-generation layer: structured / property matrices
-// (doubleRandomMatrixOP). Verification is PROPERTY-based — we construct the matrix and then
+// (doubleRandomMatrix_OP). Verification is PROPERTY-based — we construct the matrix and then
 // independently check the property it is supposed to have, reusing the library's own ops:
 //   * randomOrthogonalInpl   -> QᵀQ ≈ I  (dot(Q,Q,transposeA:true)); determinism.
 //   * randomSpdInpl          -> symmetry, Cholesky succeeds (PD), eigenvalues ∈ [minEig,maxEig]
@@ -94,11 +94,11 @@ public class doubleRandomMatrixTests
 
             var rng = new Random(seed);
             var Q = arena.doubleMat(n, n);
-            doubleRandomMatrixOP.randomOrthogonalInpl(ref rng, ref Q);
+            doubleRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref Q);
 
             // QᵀQ
             var QtQ = arena.doubleMat(n, n);
-            doubleOP.dot(in Q, in Q, ref QtQ, transposeA: true);
+            double_OP.dot(in Q, in Q, ref QtQ, transposeA: true);
 
             // off-diagonal orthonormality error scales with n; this bound is loose for float,
             // tight for double, but still far above the true ~n·eps backward error.
@@ -121,11 +121,11 @@ public class doubleRandomMatrixTests
 
             var r1 = new Random(424242u);
             var Q1 = arena.doubleMat(n, n);
-            doubleRandomMatrixOP.randomOrthogonalInpl(ref r1, ref Q1);
+            doubleRandomMatrix_OP.randomOrthogonalInpl(ref r1, ref Q1);
 
             var r2 = new Random(424242u);
             var Q2 = arena.doubleMat(n, n);
-            doubleRandomMatrixOP.randomOrthogonalInpl(ref r2, ref Q2);
+            doubleRandomMatrix_OP.randomOrthogonalInpl(ref r2, ref Q2);
 
             for (int i = 0; i < Q1.Length; i++)
                 AssertClose(Q1[i], Q2[i], (double)0);
@@ -150,7 +150,7 @@ public class doubleRandomMatrixTests
                 int n = 4 + (int)t;             // 4..9
                 var rng = new Random(5000u + t * 37u);
                 var A = arena.doubleMat(n, n);
-                doubleRandomMatrixOP.randomSpdInpl(ref rng, ref A, minEig, maxEig);
+                doubleRandomMatrix_OP.randomSpdInpl(ref rng, ref A, minEig, maxEig);
 
                 // (a) symmetry — implementation symmetrises exactly, so this is tight.
                 double symTol = (double)8 * Consts.doubleSqrtEps;
@@ -196,11 +196,11 @@ public class doubleRandomMatrixTests
 
             var r1 = new Random(96321u);
             var A1 = arena.doubleMat(n, n);
-            doubleRandomMatrixOP.randomSpdInpl(ref r1, ref A1, (double)1, (double)10);
+            doubleRandomMatrix_OP.randomSpdInpl(ref r1, ref A1, (double)1, (double)10);
 
             var r2 = new Random(96321u);
             var A2 = arena.doubleMat(n, n);
-            doubleRandomMatrixOP.randomSpdInpl(ref r2, ref A2, (double)1, (double)10);
+            doubleRandomMatrix_OP.randomSpdInpl(ref r2, ref A2, (double)1, (double)10);
 
             for (int i = 0; i < A1.Length; i++)
                 AssertClose(A1[i], A2[i], (double)0);
@@ -222,7 +222,7 @@ public class doubleRandomMatrixTests
 
             var rng = new Random(seed);
             var A = arena.doubleMat(m, n);
-            doubleRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, cond);
+            doubleRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, cond);
 
             int k = math.min(m, n);
             var S = arena.doubleVec(k);
@@ -244,7 +244,7 @@ public class doubleRandomMatrixTests
 
             var rng = new Random(6003u);
             var A = arena.doubleMat(1, 4);
-            doubleRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, (double)50);
+            doubleRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (double)50);
 
             var S = arena.doubleVec(1);    // k = min(1,4) = 1
             SVD.singularValues(in A, ref S);
@@ -274,7 +274,7 @@ public class doubleRandomMatrixTests
                 {
                     var rng = new Random(7000u + (uint)rank * 101u + t * 13u);
                     var A = arena.doubleMat(m, n);
-                    doubleRandomMatrixOP.randomMatrixWithRankInpl(ref rng, ref A, rank);
+                    doubleRandomMatrix_OP.randomMatrixWithRankInpl(ref rng, ref A, rank);
 
                     int got = NumericalRank(in arena, in A);
                     RecordEq(got, rank);
@@ -298,7 +298,7 @@ public class doubleRandomMatrixTests
             var rng0 = new Random(8001u);
             var A0 = arena.doubleMat(m, n);
             for (int i = 0; i < A0.Length; i++) A0[i] = (double)999;   // poison
-            doubleRandomMatrixOP.randomMatrixWithRankInpl(ref rng0, ref A0, 0);
+            doubleRandomMatrix_OP.randomMatrixWithRankInpl(ref rng0, ref A0, 0);
             for (int i = 0; i < A0.Length; i++)
                 AssertClose(A0[i], (double)0, (double)0);    // exact
             RecordEq(NumericalRank(in arena, in A0), 0);
@@ -306,7 +306,7 @@ public class doubleRandomMatrixTests
             // full rank.
             var rngF = new Random(8002u);
             var AF = arena.doubleMat(m, n);
-            doubleRandomMatrixOP.randomMatrixWithRankInpl(ref rngF, ref AF, k);
+            doubleRandomMatrix_OP.randomMatrixWithRankInpl(ref rngF, ref AF, k);
             RecordEq(NumericalRank(in arena, in AF), k);
 
             arena.Dispose();
@@ -348,7 +348,7 @@ public class doubleRandomMatrixTests
 
             var rng = new Random(seed);
             var A = arena.doubleMat(m, n);
-            doubleRandomMatrixOP.randomStochasticInpl(ref rng, ref A);
+            doubleRandomMatrix_OP.randomStochasticInpl(ref rng, ref A);
 
             double sumTol = (double)20 * Consts.doubleSqrtEps;
             for (int r = 0; r < m; r++)
@@ -392,7 +392,7 @@ public class doubleRandomMatrixTests
             var z = arena.doubleVec(n);
             for (int s = 0; s < samples; s++)
             {
-                doubleRandomMatrixOP.multivariateNormalInpl(ref rng, in I, in mean, ref dest, ref z);
+                doubleRandomMatrix_OP.multivariateNormalInpl(ref rng, in I, in mean, ref dest, ref z);
                 for (int i = 0; i < n; i++) acc[i] += dest[i];
             }
             double meanTol = (double)0.1;   // std error of mean over 8000 draws ≈ 0.011
@@ -404,7 +404,7 @@ public class doubleRandomMatrixTests
             for (int i = 0; i < n; i++) acc[i] = (double)0;
             for (int s = 0; s < samples; s++)
             {
-                doubleRandomMatrixOP.multivariateNormalInpl(ref rng2, in I, in mean, ref dest);
+                doubleRandomMatrix_OP.multivariateNormalInpl(ref rng2, in I, in mean, ref dest);
                 for (int i = 0; i < n; i++) acc[i] += dest[i];
             }
             for (int i = 0; i < n; i++)
@@ -435,7 +435,7 @@ public class doubleRandomMatrixTests
 
             var rng = new Random(13000u);
             var dest = arena.doubleMat(rows, n);
-            doubleRandomMatrixOP.multivariateNormalRowsInpl(ref rng, in L, in mean, ref dest);
+            doubleRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in L, in mean, ref dest);
 
             // empirical column means
             double m0 = (double)0, m1 = (double)0;
@@ -478,11 +478,11 @@ public class doubleRandomMatrixTests
 
             var r1 = new Random(55667788u);
             var D1 = arena.doubleMat(rows, n);
-            doubleRandomMatrixOP.multivariateNormalRowsInpl(ref r1, in L, in mean, ref D1);
+            doubleRandomMatrix_OP.multivariateNormalRowsInpl(ref r1, in L, in mean, ref D1);
 
             var r2 = new Random(55667788u);
             var D2 = arena.doubleMat(rows, n);
-            doubleRandomMatrixOP.multivariateNormalRowsInpl(ref r2, in L, in mean, ref D2);
+            doubleRandomMatrix_OP.multivariateNormalRowsInpl(ref r2, in L, in mean, ref D2);
 
             for (int i = 0; i < D1.Length; i++)
                 AssertClose(D1[i], D2[i], (double)0);
@@ -567,7 +567,7 @@ public class doubleRandomMatrixTests
             var rng = new Random(1u);
             var dest = arena.doubleMat(3, 4);
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomOrthogonalInpl(ref rng, ref dest));
+                () => doubleRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref dest));
         }
         finally { arena.Dispose(); }
     }
@@ -582,22 +582,22 @@ public class doubleRandomMatrixTests
 
             var nonSquare = arena.doubleMat(3, 4);
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomSpdInpl(ref rng, ref nonSquare, (double)1, (double)2));
+                () => doubleRandomMatrix_OP.randomSpdInpl(ref rng, ref nonSquare, (double)1, (double)2));
 
             var A = arena.doubleMat(3, 3);
             // minEig <= 0
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomSpdInpl(ref rng, ref A, (double)0, (double)2));
+                () => doubleRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (double)0, (double)2));
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomSpdInpl(ref rng, ref A, (double)(-1), (double)2));
+                () => doubleRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (double)(-1), (double)2));
             // minEig > maxEig
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomSpdInpl(ref rng, ref A, (double)5, (double)2));
+                () => doubleRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (double)5, (double)2));
             // non-finite bounds
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomSpdInpl(ref rng, ref A, (double)double.PositiveInfinity, (double)2));
+                () => doubleRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (double)double.PositiveInfinity, (double)2));
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomSpdInpl(ref rng, ref A, (double)1, (double)float.NaN));
+                () => doubleRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (double)1, (double)float.NaN));
         }
         finally { arena.Dispose(); }
     }
@@ -613,12 +613,12 @@ public class doubleRandomMatrixTests
 
             // cond < 1
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, (double)0.5));
+                () => doubleRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (double)0.5));
             // non-finite cond
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, (double)double.PositiveInfinity));
+                () => doubleRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (double)double.PositiveInfinity));
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, (double)float.NaN));
+                () => doubleRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (double)float.NaN));
         }
         finally { arena.Dispose(); }
     }
@@ -633,9 +633,9 @@ public class doubleRandomMatrixTests
             var A = arena.doubleMat(5, 3);   // min(m,n) = 3
 
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomMatrixWithRankInpl(ref rng, ref A, -1));
+                () => doubleRandomMatrix_OP.randomMatrixWithRankInpl(ref rng, ref A, -1));
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.randomMatrixWithRankInpl(ref rng, ref A, 4)); // > min(m,n)
+                () => doubleRandomMatrix_OP.randomMatrixWithRankInpl(ref rng, ref A, 4)); // > min(m,n)
         }
         finally { arena.Dispose(); }
     }
@@ -654,38 +654,38 @@ public class doubleRandomMatrixTests
             var dest3 = arena.doubleVec(3);
             var z3 = arena.doubleVec(3);
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3, ref z3));
+                () => doubleRandomMatrix_OP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3, ref z3));
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3));
+                () => doubleRandomMatrix_OP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3));
 
             var L = arena.doubleMat(3, 3);
 
             // mean.N mismatch
             var meanBad = arena.doubleVec(2);
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.multivariateNormalInpl(ref rng, in L, in meanBad, ref dest3, ref z3));
+                () => doubleRandomMatrix_OP.multivariateNormalInpl(ref rng, in L, in meanBad, ref dest3, ref z3));
 
             // dest.N mismatch
             var destBad = arena.doubleVec(4);
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.multivariateNormalInpl(ref rng, in L, in mean3, ref destBad, ref z3));
+                () => doubleRandomMatrix_OP.multivariateNormalInpl(ref rng, in L, in mean3, ref destBad, ref z3));
 
             // zScratch.N mismatch
             var zBad = arena.doubleVec(5);
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.multivariateNormalInpl(ref rng, in L, in mean3, ref dest3, ref zBad));
+                () => doubleRandomMatrix_OP.multivariateNormalInpl(ref rng, in L, in mean3, ref dest3, ref zBad));
 
             // rows overload: cholL not square
             var destRows = arena.doubleMat(8, 3);
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.multivariateNormalRowsInpl(ref rng, in nonSquare, in mean3, ref destRows));
+                () => doubleRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in nonSquare, in mean3, ref destRows));
             // rows overload: mean.N mismatch
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.multivariateNormalRowsInpl(ref rng, in L, in meanBad, ref destRows));
+                () => doubleRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in L, in meanBad, ref destRows));
             // rows overload: destRows.N_Cols mismatch
             var destRowsBad = arena.doubleMat(8, 4);
             Assert.Throws<ArgumentException>(
-                () => doubleRandomMatrixOP.multivariateNormalRowsInpl(ref rng, in L, in mean3, ref destRowsBad));
+                () => doubleRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in L, in mean3, ref destRowsBad));
         }
         finally { arena.Dispose(); }
     }

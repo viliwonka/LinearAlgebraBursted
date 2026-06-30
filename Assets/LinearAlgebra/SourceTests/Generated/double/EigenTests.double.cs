@@ -190,7 +190,7 @@ public class doubleEigenTests
             for (int i = 0; i < n; i++)
                 AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -223,7 +223,7 @@ public class doubleEigenTests
 
             AssertDescending(in eig, n);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -258,7 +258,7 @@ public class doubleEigenTests
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
             // V orthogonal
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -292,10 +292,10 @@ public class doubleEigenTests
 
             Assert.IsTrue(converged);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1000 * Consts.doubleZeroThreshold));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (double)1000 * Consts.doubleZeroThreshold));
 
             AssertDescending(in eig, n);
 
@@ -343,17 +343,17 @@ public class doubleEigenTests
 
             // Reconstruct: recon = V * diag(eig) * V^T
             var diagE = arena.doubleDiagonalMatrix(in eig);
-            var Vd = doubleOP.dot(V, diagE);
-            var Vt = doubleOP.trans(V);
-            var recon = doubleOP.dot(Vd, Vt);
+            var Vd = double_OP.dot(V, diagE);
+            var Vt = double_OP.trans(V);
+            var recon = double_OP.dot(Vd, Vt);
 
             doubleMxN shouldBeZero = Aorig - recon;
 
-            if (Analysis.IsAnyNan(in shouldBeZero))
+            if (Analysis_OP.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
             double precision = (double)1000 * Consts.doubleZeroThreshold;
-            double zeroError = Analysis.MaxZeroError(shouldBeZero);
+            double zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
             if (!(zeroError <= precision) && Fail[0] == (double)0)
             {
                 Fail[0] = (double)1;
@@ -361,7 +361,7 @@ public class doubleEigenTests
                 Fail[2] = precision;
                 Fail[3] = zeroError - precision;
             }
-            Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis_OP.IsZero(in shouldBeZero, precision));
 
             arena.Dispose();
         }
@@ -462,13 +462,13 @@ public class doubleEigenTests
 
             Assert.IsTrue(converged);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             for (int i = 0; i < n; i++)
                 AssertClose(eig[i], (double)0, (double)100 * Consts.doubleZeroThreshold);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -500,8 +500,8 @@ public class doubleEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             double tol = (double)100 * Consts.doubleZeroThreshold;
             // dominant eigenvalue == ‖v‖² = 15; the other three are exactly zero.
@@ -511,7 +511,7 @@ public class doubleEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
 
             arena.Dispose();
         }
@@ -536,7 +536,7 @@ public class doubleEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
 
             double tol = (double)100 * Consts.doubleZeroThreshold;
             AssertClose(eig[0], (double)3, tol * (double)4);
@@ -545,7 +545,7 @@ public class doubleEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
 
             arena.Dispose();
         }
@@ -568,8 +568,8 @@ public class doubleEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             double tol = (double)1000 * Consts.doubleZeroThreshold;
             AssertClose(eig[0], (double)4, tol);
@@ -580,7 +580,7 @@ public class doubleEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
 
             arena.Dispose();
         }
@@ -604,8 +604,8 @@ public class doubleEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             double band = (double)1E-2f;
 
@@ -636,7 +636,7 @@ public class doubleEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)1000 * Consts.doubleZeroThreshold));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (double)1000 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -659,8 +659,8 @@ public class doubleEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             double half = (double)(Unity.Mathematics.math.PI_DBL * 0.5);
             double margin = (double)1000 * Consts.doubleZeroThreshold;
@@ -680,7 +680,7 @@ public class doubleEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis.IsOrthogonal(V, margin));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, margin));
 
             arena.Dispose();
         }
@@ -700,8 +700,8 @@ public class doubleEigenTests
             // maxSweeps = 1: convergence not asserted.
             Eigen.eigenDecomposition(ref A, ref eig, ref V, 1);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             AssertDescending(in eig, n);
 
@@ -888,7 +888,7 @@ public class doubleEigenTests
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
 
             for (int i = 0; i < n; i++)
                 AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroThreshold);
@@ -920,7 +920,7 @@ public class doubleEigenTests
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
 
             double tol = (double)100 * Consts.doubleZeroThreshold;
             AssertClose(eig[0], (double)5, tol);
@@ -951,7 +951,7 @@ public class doubleEigenTests
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
 
             AssertClose(eig[0], (double)3, (double)100 * Consts.doubleZeroThreshold);
             AssertClose(eig[1], (double)1, (double)100 * Consts.doubleZeroThreshold);
@@ -1017,7 +1017,7 @@ public class doubleEigenTests
             bool qlOk = Eigen.eigenvaluesSymmetric(ref Aql, ref eigQL);
             Assert.IsTrue(qlOk);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in eigQL));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eigQL));
             AssertDescending(in eigQL, n);
 
             // both sorted descending -> compare elementwise.
@@ -1065,7 +1065,7 @@ public class doubleEigenTests
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
 
             double tol = (double)1000 * Consts.doubleZeroThreshold;
             // descending order: eig[i] corresponds to k = n - i.
@@ -1100,15 +1100,15 @@ public class doubleEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             for (int i = 0; i < n; i++)
                 AssertClose(eig[i], (double)1, (double)100 * Consts.doubleZeroThreshold);
 
             AssertDescending(in eig, n);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -1138,8 +1138,8 @@ public class doubleEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             double tol = (double)100 * Consts.doubleZeroThreshold;
             AssertClose(eig[0], (double)5, tol);
@@ -1153,7 +1153,7 @@ public class doubleEigenTests
             // V a permutation of identity -> check A = V diag(eig) V^T rather than exact V.
             AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroThreshold);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
 
             arena.Dispose();
         }
@@ -1186,7 +1186,7 @@ public class doubleEigenTests
 
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (double)100 * Consts.doubleZeroThreshold));
 
             arena.Dispose();
         }
@@ -1212,8 +1212,8 @@ public class doubleEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             AssertReconstruction(in Aorig, in V, in eig, n, (double)1000 * Consts.doubleZeroThreshold);
 
@@ -1239,9 +1239,9 @@ public class doubleEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
-            // Explicit ||V^T V - I||_max check (Analysis.IsOrthogonal also asserted for parity).
+            // Explicit ||V^T V - I||_max check (Analysis_OP.IsOrthogonal also asserted for parity).
             double precision = (double)1000 * Consts.doubleZeroThreshold;
             double maxErr = (double)0;
             for (int i = 0; i < n; i++)
@@ -1264,7 +1264,7 @@ public class doubleEigenTests
             }
             Assert.IsTrue(maxErr <= precision);
 
-            Assert.IsTrue(Analysis.IsOrthogonal(V, precision));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, precision));
 
             arena.Dispose();
         }
@@ -1290,8 +1290,8 @@ public class doubleEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
@@ -1326,7 +1326,7 @@ public class doubleEigenTests
             bool valOk = Eigen.eigenvaluesSymmetric(ref Aval, ref eigVal);
             Assert.IsTrue(valOk);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in eigSym));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eigSym));
             AssertDescending(in eigSym, n);
 
             for (int i = 0; i < n; i++)
@@ -1376,8 +1376,8 @@ public class doubleEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
 
             double tol = (double)1000 * Consts.doubleZeroThreshold;
             for (int i = 0; i < n; i++)
@@ -1389,7 +1389,7 @@ public class doubleEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
 
             arena.Dispose();
         }

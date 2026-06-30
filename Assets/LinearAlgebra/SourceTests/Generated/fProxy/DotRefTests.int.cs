@@ -25,7 +25,7 @@ public class intDotRefTests
 
         // Integer arithmetic is EXACT: the ref-dest form runs the same kernel as the
         // allocating form, so the two results must be bit-for-bit identical. There is no
-        // int Analysis.IsZero, so assert exact elementwise equality directly.
+        // int Analysis_OP.IsZero, so assert exact elementwise equality directly.
         static bool ExactEqual(in intN x, in intN y)
         {
             if (x.N != y.N)
@@ -90,11 +90,11 @@ public class intDotRefTests
             {
                 var A = arena.intRandomMatrix(M, N, -9, 9, 12321);
                 var x = arena.intRandomVector(N, -9, 9, 45654);
-                var R = intOP.dot(A, x);
+                var R = int_OP.dot(A, x);
 
                 var D = arena.intVec(M);
-                intOP.addInpl(D, (int)999);   // dirty the destination
-                intOP.dot(in A, in x, ref D);
+                int_OP.addInpl(D, (int)999);   // dirty the destination
+                int_OP.dot(in A, in x, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -102,11 +102,11 @@ public class intDotRefTests
             {
                 var y = arena.intRandomVector(M, -9, 9, 11221);
                 var A = arena.intRandomMatrix(M, N, -9, 9, 33443);
-                var R = intOP.dot(y, A);
+                var R = int_OP.dot(y, A);
 
                 var D = arena.intVec(N);
-                intOP.addInpl(D, (int)999);
-                intOP.dot(in y, in A, ref D);
+                int_OP.addInpl(D, (int)999);
+                int_OP.dot(in y, in A, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -114,11 +114,11 @@ public class intDotRefTests
             {
                 var a = arena.intRandomMatrix(M, K, -9, 9, 32123);
                 var b = arena.intRandomMatrix(K, N, -9, 9, 65456);
-                var R = intOP.dot(a, b, false);
+                var R = int_OP.dot(a, b, false);
 
                 var D = arena.intMat(M, N);
-                intOP.addInpl(D, (int)999);
-                intOP.dot(in a, in b, ref D, false);
+                int_OP.addInpl(D, (int)999);
+                int_OP.dot(in a, in b, ref D, false);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -137,11 +137,11 @@ public class intDotRefTests
             var b = arena.intRandomVector(N, -9, 9, 22222);
 
             // allocating reference
-            var R = intOP.outerDot(a, b);
+            var R = int_OP.outerDot(a, b);
 
             // ref-dest into a preallocated M x N destination
             var D = arena.intMat(M, N);
-            intOP.outerDot(in a, in b, ref D);
+            int_OP.outerDot(in a, in b, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -159,10 +159,10 @@ public class intDotRefTests
             var A = arena.intRandomMatrix(M, N, -9, 9, 33333);
             var x = arena.intRandomVector(N, -9, 9, 44444);
 
-            var R = intOP.dot(A, x);
+            var R = int_OP.dot(A, x);
 
             var D = arena.intVec(M);
-            intOP.dot(in A, in x, ref D);
+            int_OP.dot(in A, in x, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -180,10 +180,10 @@ public class intDotRefTests
             var y = arena.intRandomVector(M, -9, 9, 55555);
             var A = arena.intRandomMatrix(M, N, -9, 9, 66666);
 
-            var R = intOP.dot(y, A);
+            var R = int_OP.dot(y, A);
 
             var D = arena.intVec(N);
-            intOP.dot(in y, in A, ref D);
+            int_OP.dot(in y, in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -202,10 +202,10 @@ public class intDotRefTests
             var a = arena.intRandomMatrix(M, K, -9, 9, 77777);
             var b = arena.intRandomMatrix(K, N, -9, 9, 88888);
 
-            var R = intOP.dot(a, b, false);
+            var R = int_OP.dot(a, b, false);
 
             var D = arena.intMat(M, N);
-            intOP.dot(in a, in b, ref D, false);
+            int_OP.dot(in a, in b, ref D, false);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -225,18 +225,18 @@ public class intDotRefTests
             var a = arena.intRandomMatrix(K, M, -9, 9, 99999);
             var b = arena.intRandomMatrix(K, N, -9, 9, 10101);
 
-            var R = intOP.dot(a, b, true);
+            var R = int_OP.dot(a, b, true);
 
             // result is M x N (a.N_Cols x b.N_Cols)
             var D = arena.intMat(M, N);
-            intOP.dot(in a, in b, ref D, true);
+            int_OP.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
             Assert.IsTrue(ExactEqual(in R, in D));
 
             // Independent oracle: Aᵀ·B computed via an explicit transpose + plain matmul,
             // which exercises a different code path than the fused transposeA kernel.
-            var oracle = intOP.dot(intOP.trans(a), b);
+            var oracle = int_OP.dot(int_OP.trans(a), b);
             Assert.IsTrue(ExactEqual(in R, in oracle));
 
             arena.Dispose();
@@ -252,10 +252,10 @@ public class intDotRefTests
 
             var A = arena.intRandomMatrix(M, N, -9, 9, 20202);
 
-            var R = intOP.trans(A);
+            var R = int_OP.trans(A);
 
             var D = arena.intMat(N, M);
-            intOP.trans(in A, ref D);
+            int_OP.trans(in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 

@@ -122,12 +122,12 @@ public class floatPivotedCholeskyTests
 
                 // exact solve: b = A xOrig => x == xOrig.
                 var xOrig = arena.floatRandomVector(n, -3f, 3f, 71000 + t * 7);
-                var b = floatOP.dot(A, xOrig);
+                var b = float_OP.dot(A, xOrig);
                 var Lc = arena.floatMat(n);
                 var Pc = new Pivot(n, Allocator.Persistent);
                 Cholesky.choleskyPivotSolve(in A, ref Lc, ref Pc, ref b); // b <- x
                 for (int i = 0; i < n; i++) b[i] -= xOrig[i];
-                RecordBound(floatNormsOP.L2(in b), (float)1E-3f);
+                RecordBound(floatNorms_OP.L2(in b), (float)1E-3f);
 
                 Pc.Dispose();
                 P.Dispose();
@@ -183,18 +183,18 @@ public class floatPivotedCholeskyTests
 
                 // xRange = A·w ∈ range(A); b = A·xRange => min-norm solution == xRange.
                 var w = arena.floatRandomVector(n, -2f, 2f, 51000 + t * 5);
-                var xRange = floatOP.dot(A, w);
-                var b = floatOP.dot(A, xRange);
+                var xRange = float_OP.dot(A, w);
+                var b = float_OP.dot(A, xRange);
 
                 var Ls = arena.floatMat(n);
                 var Ps = new Pivot(n, Allocator.Persistent);
                 Cholesky.choleskyPivotSolve(in A, ref Ls, ref Ps, ref b); // b <- x
 
                 // A·x ≈ A·xRange (consistency) and x ≈ xRange (exact recovery, scaled by ‖xRange‖).
-                float scale = floatNormsOP.L2(in xRange) + (float)1f;
+                float scale = floatNorms_OP.L2(in xRange) + (float)1f;
                 var diff = arena.floatVec(n);
                 for (int i = 0; i < n; i++) diff[i] = b[i] - xRange[i];
-                RecordBound(floatNormsOP.L2(in diff) / scale, (float)1E-2f);
+                RecordBound(floatNorms_OP.L2(in diff) / scale, (float)1E-2f);
 
                 Ps.Dispose();
                 P.Dispose();
@@ -217,7 +217,7 @@ public class floatPivotedCholeskyTests
                 var A = Gram(in arena, in B);
 
                 var xOrig = arena.floatRandomVector(n, -2f, 2f, 42000 + t * 9);
-                var b = floatOP.dot(A, xOrig);     // b ∈ range(A)
+                var b = float_OP.dot(A, xOrig);     // b ∈ range(A)
                 var bForResidual = b.Copy();
 
                 var L = arena.floatMat(n);
@@ -225,15 +225,15 @@ public class floatPivotedCholeskyTests
                 Cholesky.choleskyPivotSolve(in A, ref L, ref P, ref b); // b <- x
 
                 // consistency: A·x ≈ bForResidual.
-                var Ax = floatOP.dot(A, b);
+                var Ax = float_OP.dot(A, b);
                 var resid = arena.floatVec(n);
                 for (int i = 0; i < n; i++) resid[i] = Ax[i] - bForResidual[i];
-                float bScale = floatNormsOP.L2(in bForResidual) + (float)1f;
-                RecordBound(floatNormsOP.L2(in resid) / bScale, (float)1E-2f);
+                float bScale = floatNorms_OP.L2(in bForResidual) + (float)1f;
+                RecordBound(floatNorms_OP.L2(in resid) / bScale, (float)1E-2f);
 
                 // minimum-norm: ‖x‖ ≤ ‖xOrig‖ (+ tiny slack).
-                float xNorm = floatNormsOP.L2(in b);
-                float origNorm = floatNormsOP.L2(in xOrig);
+                float xNorm = floatNorms_OP.L2(in b);
+                float origNorm = floatNorms_OP.L2(in xOrig);
                 if (!(xNorm <= origNorm + (float)1E-3f * (origNorm + (float)1f)) && Fail[0] == (float)0)
                 {
                     Fail[0] = (float)1;
@@ -305,7 +305,7 @@ public class floatPivotedCholeskyTests
             // solve: x = 0 for any b.
             var b = arena.floatRandomVector(n, -1f, 1f, 999);
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b);
-            RecordBound(floatNormsOP.L2(in b), (float)1E-6f);
+            RecordBound(floatNorms_OP.L2(in b), (float)1E-6f);
 
             P.Dispose();
             arena.Dispose();
@@ -406,16 +406,16 @@ public class floatPivotedCholeskyTests
                 RecordEq(ok ? 1 : 0, 1);
 
                 // normal equations: A(Ax) == A b  <=>  A(Ax - b) == 0  (residual ⟂ range(A)).
-                var Ax = floatOP.dot(A, b);
-                var AAx = floatOP.dot(A, Ax);
+                var Ax = float_OP.dot(A, b);
+                var AAx = float_OP.dot(A, Ax);
                 // recompute A b — b now holds x, so rebuild b from the same seed.
                 var bOrig = arena.floatRandomVector(n, -2f, 2f, 77000 + t * 13);
-                var Ab = floatOP.dot(A, bOrig);
+                var Ab = float_OP.dot(A, bOrig);
 
-                float scale = floatNormsOP.L2(in Ab) + (float)1f;
+                float scale = floatNorms_OP.L2(in Ab) + (float)1f;
                 var diff = arena.floatVec(n);
                 for (int i = 0; i < n; i++) diff[i] = AAx[i] - Ab[i];
-                RecordBound(floatNormsOP.L2(in diff) / scale, (float)1E-2f);
+                RecordBound(floatNorms_OP.L2(in diff) / scale, (float)1E-2f);
 
                 P.Dispose();
                 arena.Clear();

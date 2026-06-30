@@ -128,10 +128,10 @@ public class doubleTransformsTests
             v[0] = 2f; v[1] = 4f; v[2] = 4f; v[3] = 4f;
             v[4] = 5f; v[5] = 5f; v[6] = 7f; v[7] = 9f;
 
-            doubleStatsOP.standardize(in v);
+            doubleStats_OP.standardize(in v);
 
-            AssertClose(doubleStatsOP.mean(in v), (double)0f, (double)EPS);
-            AssertClose(doubleStatsOP.stdDev(in v), (double)1f, (double)EPS);
+            AssertClose(doubleStats_OP.mean(in v), (double)0f, (double)EPS);
+            AssertClose(doubleStats_OP.stdDev(in v), (double)1f, (double)EPS);
             arena.Dispose();
         }
 
@@ -142,7 +142,7 @@ public class doubleTransformsTests
             var v = arena.doubleVec(5);
             for (int i = 0; i < 5; i++) v[i] = 3f;
 
-            doubleStatsOP.standardize(in v);
+            doubleStats_OP.standardize(in v);
 
             for (int i = 0; i < 5; i++)
             {
@@ -159,7 +159,7 @@ public class doubleTransformsTests
             var v = arena.doubleVec(1);
             v[0] = 42f;
 
-            doubleStatsOP.standardize(in v);
+            doubleStats_OP.standardize(in v);
             AssertClose(v[0], (double)0f, (double)EPS);
             arena.Dispose();
         }
@@ -173,10 +173,10 @@ public class doubleTransformsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
 
-            doubleStatsOP.standardize(in A);
+            doubleStats_OP.standardize(in A);
 
-            AssertClose(doubleStatsOP.mean(in A), (double)0f, (double)EPS);
-            AssertClose(doubleStatsOP.stdDev(in A), (double)1f, (double)EPS);
+            AssertClose(doubleStats_OP.mean(in A), (double)0f, (double)EPS);
+            AssertClose(doubleStats_OP.stdDev(in A), (double)1f, (double)EPS);
             arena.Dispose();
         }
 
@@ -185,10 +185,10 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(4, 5, -3f, 3f, 12345);
-            doubleStatsOP.standardizeRows(ref A);
+            doubleStats_OP.standardizeRows(ref A);
 
-            var rMean = doubleStatsOP.rowMean(in A);
-            var rStd = doubleStatsOP.rowStdDev(in A);
+            var rMean = doubleStats_OP.rowMean(in A);
+            var rStd = doubleStats_OP.rowStdDev(in A);
             for (int r = 0; r < 4; r++)
             {
                 AssertClose(rMean[r], (double)0f, (double)EPS);
@@ -202,10 +202,10 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(5, 4, -3f, 3f, 67890);
-            doubleStatsOP.standardizeColumns(ref A);
+            doubleStats_OP.standardizeColumns(ref A);
 
-            var cMean = doubleStatsOP.colMean(in A);
-            var cStd = doubleStatsOP.colStdDev(in A);
+            var cMean = doubleStats_OP.colMean(in A);
+            var cStd = doubleStats_OP.colStdDev(in A);
             for (int c = 0; c < 4; c++)
             {
                 AssertClose(cMean[c], (double)0f, (double)EPS);
@@ -223,7 +223,7 @@ public class doubleTransformsTests
             var v = arena.doubleVec(4);
             v[0] = 10f; v[1] = 20f; v[2] = 30f; v[3] = 50f; // min 10, max 50
 
-            doubleStatsOP.rescale(in v);
+            doubleStats_OP.rescale(in v);
 
             AssertClose(v[0], (double)0f, (double)EPS);   // min → 0
             AssertClose(v[3], (double)1f, (double)EPS);   // max → 1
@@ -242,7 +242,7 @@ public class doubleTransformsTests
             v[0] = 10f; v[1] = 20f; v[2] = 30f; v[3] = 50f;
             double lo = -2f, hi = 5f;
 
-            doubleStatsOP.rescale(in v, lo, hi);
+            doubleStats_OP.rescale(in v, lo, hi);
 
             AssertClose(v[0], lo, (double)EPS);  // min → lo
             AssertClose(v[3], hi, (double)EPS);  // max → hi
@@ -260,7 +260,7 @@ public class doubleTransformsTests
             var v = arena.doubleVec(4);
             for (int i = 0; i < 4; i++) v[i] = 7f;
 
-            doubleStatsOP.rescale(in v, (double)(-3f), (double)9f);
+            doubleStats_OP.rescale(in v, (double)(-3f), (double)9f);
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(v[i], (double)(-3f), (double)EPS); // → lo
@@ -278,8 +278,8 @@ public class doubleTransformsTests
             a[0] = -4f; a[1] = 1f; a[2] = 0f; a[3] = 9f; a[4] = 2f;
             for (int i = 0; i < 5; i++) b[i] = a[i];
 
-            doubleStatsOP.rescale(in a);                       // forwarding
-            doubleStatsOP.rescale(in b, (double)0f, (double)1f); // explicit
+            doubleStats_OP.rescale(in a);                       // forwarding
+            doubleStats_OP.rescale(in b, (double)0f, (double)1f); // explicit
             for (int i = 0; i < 5; i++)
                 AssertClose(a[i], b[i], (double)EPS);
             arena.Dispose();
@@ -290,9 +290,9 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(4, 5, -3f, 3f, 222);
-            doubleStatsOP.rescaleRows(ref A);
-            var rMin = doubleStatsOP.rowMin(in A);
-            var rMax = doubleStatsOP.rowMax(in A);
+            doubleStats_OP.rescaleRows(ref A);
+            var rMin = doubleStats_OP.rowMin(in A);
+            var rMax = doubleStats_OP.rowMax(in A);
             for (int r = 0; r < 4; r++)
             {
                 AssertClose(rMin[r], (double)0f, (double)EPS);
@@ -307,9 +307,9 @@ public class doubleTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(5, 4, -3f, 3f, 333);
             double lo = 1f, hi = 3f;
-            doubleStatsOP.rescaleColumns(ref A, lo, hi);
-            var cMin = doubleStatsOP.colMin(in A);
-            var cMax = doubleStatsOP.colMax(in A);
+            doubleStats_OP.rescaleColumns(ref A, lo, hi);
+            var cMin = doubleStats_OP.colMin(in A);
+            var cMax = doubleStats_OP.colMax(in A);
             for (int c = 0; c < 4; c++)
             {
                 AssertClose(cMin[c], lo, (double)EPS);
@@ -327,11 +327,11 @@ public class doubleTransformsTests
             var v = arena.doubleVec(3);
             v[0] = 1f; v[1] = 2f; v[2] = 3f;
 
-            doubleStatsOP.center(in v);
+            doubleStats_OP.center(in v);
             AssertClose(v[0], (double)(-1f), (double)EPS);
             AssertClose(v[1], (double)0f, (double)EPS);
             AssertClose(v[2], (double)1f, (double)EPS);
-            AssertClose(doubleStatsOP.mean(in v), (double)0f, (double)EPS);
+            AssertClose(doubleStats_OP.mean(in v), (double)0f, (double)EPS);
             arena.Dispose();
         }
 
@@ -339,8 +339,8 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(4, 5, -5f, 5f, 444);
-            doubleStatsOP.centerRows(ref A);
-            var rMean = doubleStatsOP.rowMean(in A);
+            doubleStats_OP.centerRows(ref A);
+            var rMean = doubleStats_OP.rowMean(in A);
             for (int r = 0; r < 4; r++)
                 AssertClose(rMean[r], (double)0f, (double)EPS);
             arena.Dispose();
@@ -350,8 +350,8 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(5, 4, -5f, 5f, 555);
-            doubleStatsOP.centerColumns(ref A);
-            var cMean = doubleStatsOP.colMean(in A);
+            doubleStats_OP.centerColumns(ref A);
+            var cMean = doubleStats_OP.colMean(in A);
             for (int c = 0; c < 4; c++)
                 AssertClose(cMean[c], (double)0f, (double)EPS);
             arena.Dispose();
@@ -366,11 +366,11 @@ public class doubleTransformsTests
             var v = arena.doubleVec(3);
             v[0] = 2f; v[1] = -4f; v[2] = 1f;
 
-            doubleStatsOP.maxAbs(in v);
+            doubleStats_OP.maxAbs(in v);
             AssertClose(v[0], (double)0.5f, (double)EPS);
             AssertClose(v[1], (double)(-1f), (double)EPS); // max-abs maps to ±1
             AssertClose(v[2], (double)0.25f, (double)EPS);
-            AssertTrue(doubleNormsOP.LInf(in v) <= (double)1f + (double)EPS);
+            AssertTrue(doubleNorms_OP.LInf(in v) <= (double)1f + (double)EPS);
             arena.Dispose();
         }
 
@@ -381,7 +381,7 @@ public class doubleTransformsTests
             var v = arena.doubleVec(4);
             for (int i = 0; i < 4; i++) v[i] = 0f;
 
-            doubleStatsOP.maxAbs(in v);
+            doubleStats_OP.maxAbs(in v);
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(v[i], (double)0f, (double)EPS);
@@ -395,7 +395,7 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(4, 5, -3f, 3f, 666);
-            doubleStatsOP.maxAbsRows(ref A);
+            doubleStats_OP.maxAbsRows(ref A);
             for (int r = 0; r < 4; r++)
             {
                 double mAbs = (double)0f;
@@ -409,7 +409,7 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(5, 4, -3f, 3f, 777);
-            doubleStatsOP.maxAbsColumns(ref A);
+            doubleStats_OP.maxAbsColumns(ref A);
             for (int c = 0; c < 4; c++)
             {
                 double mAbs = (double)0f;
@@ -428,8 +428,8 @@ public class doubleTransformsTests
             var v = arena.doubleVec(5);
             v[0] = -1f; v[1] = 0f; v[2] = 2f; v[3] = 1f; v[4] = 3f;
 
-            doubleStatsOP.softmax(in v);
-            AssertClose(doubleStatsOP.sum(in v), (double)1f, (double)EPS);
+            doubleStats_OP.softmax(in v);
+            AssertClose(doubleStats_OP.sum(in v), (double)1f, (double)EPS);
             for (int i = 0; i < 5; i++)
                 AssertTrue(v[i] > (double)0f && v[i] < (double)1f);
             arena.Dispose();
@@ -441,7 +441,7 @@ public class doubleTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var v = arena.doubleVec(1);
             v[0] = 17f;
-            doubleStatsOP.softmax(in v);
+            doubleStats_OP.softmax(in v);
             AssertClose(v[0], (double)1f, (double)EPS);
             arena.Dispose();
         }
@@ -452,7 +452,7 @@ public class doubleTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var v = arena.doubleVec(4);
             v[0] = 0.5f; v[1] = 1f; v[2] = 2f; v[3] = 4f;
-            doubleStatsOP.softmax(in v);
+            doubleStats_OP.softmax(in v);
             for (int i = 1; i < 4; i++)
                 AssertTrue(v[i] > v[i - 1]);
             arena.Dispose();
@@ -464,9 +464,9 @@ public class doubleTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var v = arena.doubleVec(2);
             v[0] = 1000f; v[1] = 1001f;
-            doubleStatsOP.softmax(in v);
+            doubleStats_OP.softmax(in v);
             AssertTrue(math.isfinite(v[0]) && math.isfinite(v[1]));
-            AssertClose(doubleStatsOP.sum(in v), (double)1f, (double)EPS);
+            AssertClose(doubleStats_OP.sum(in v), (double)1f, (double)EPS);
             AssertTrue(v[1] > v[0]); // 1001 keeps the larger probability
             arena.Dispose();
         }
@@ -480,10 +480,10 @@ public class doubleTransformsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 5f; A[1, 2] = 6f;
 
-            doubleStatsOP.softmax(in A); // whole-matrix scope
+            doubleStats_OP.softmax(in A); // whole-matrix scope
 
-            AssertClose(doubleStatsOP.sum(in A), (double)1f, (double)EPS);
-            var rSum = doubleStatsOP.rowSum(in A);
+            AssertClose(doubleStats_OP.sum(in A), (double)1f, (double)EPS);
+            var rSum = doubleStats_OP.rowSum(in A);
             // proves it normalized over the whole matrix, not per row
             AssertTrue(rSum[0] < (double)1f - (double)EPS);
             AssertTrue(rSum[1] < (double)1f - (double)EPS);
@@ -495,8 +495,8 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(4, 5, -2f, 2f, 888);
-            doubleStatsOP.softmaxRows(ref A);
-            var rSum = doubleStatsOP.rowSum(in A);
+            doubleStats_OP.softmaxRows(ref A);
+            var rSum = doubleStats_OP.rowSum(in A);
             for (int r = 0; r < 4; r++)
             {
                 AssertClose(rSum[r], (double)1f, (double)EPS);
@@ -511,8 +511,8 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(5, 4, -2f, 2f, 999);
-            doubleStatsOP.softmaxColumns(ref A);
-            var cSum = doubleStatsOP.colSum(in A);
+            doubleStats_OP.softmaxColumns(ref A);
+            var cSum = doubleStats_OP.colSum(in A);
             for (int c = 0; c < 4; c++)
             {
                 AssertClose(cSum[c], (double)1f, (double)EPS);
@@ -531,18 +531,18 @@ public class doubleTransformsTests
 
             var v1 = arena.doubleVec(4);
             v1[0] = 1f; v1[1] = -2f; v1[2] = 3f; v1[3] = -4f;
-            doubleNormsOP.Normalize(in v1, Norm.L1);
-            AssertClose(doubleNormsOP.L1(in v1), (double)1f, (double)EPS);
+            doubleNorms_OP.Normalize(in v1, Norm.L1);
+            AssertClose(doubleNorms_OP.L1(in v1), (double)1f, (double)EPS);
 
             var v2 = arena.doubleVec(4);
             v2[0] = 1f; v2[1] = -2f; v2[2] = 3f; v2[3] = -4f;
-            doubleNormsOP.Normalize(in v2, Norm.L2);
-            AssertClose(doubleNormsOP.L2(in v2), (double)1f, (double)EPS);
+            doubleNorms_OP.Normalize(in v2, Norm.L2);
+            AssertClose(doubleNorms_OP.L2(in v2), (double)1f, (double)EPS);
 
             var vi = arena.doubleVec(4);
             vi[0] = 1f; vi[1] = -2f; vi[2] = 3f; vi[3] = -4f;
-            doubleNormsOP.Normalize(in vi, Norm.Linf);
-            AssertClose(doubleNormsOP.LInf(in vi), (double)1f, (double)EPS);
+            doubleNorms_OP.Normalize(in vi, Norm.Linf);
+            AssertClose(doubleNorms_OP.LInf(in vi), (double)1f, (double)EPS);
 
             arena.Dispose();
         }
@@ -552,8 +552,8 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(4, 5, -3f, 3f, 1212);
-            doubleNormsOP.NormalizeRows(ref A, Norm.L2);
-            var rL2 = doubleStatsOP.rowNormL2(in A);
+            doubleNorms_OP.NormalizeRows(ref A, Norm.L2);
+            var rL2 = doubleStats_OP.rowNormL2(in A);
             for (int r = 0; r < 4; r++)
                 AssertClose(rL2[r], (double)1f, (double)EPS);
             arena.Dispose();
@@ -564,8 +564,8 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleRandomMatrix(5, 4, -3f, 3f, 3434);
-            doubleNormsOP.NormalizeColumns(ref A, Norm.L1);
-            var cL1 = doubleStatsOP.colNormL1(in A);
+            doubleNorms_OP.NormalizeColumns(ref A, Norm.L1);
+            var cL1 = doubleStats_OP.colNormL1(in A);
             for (int c = 0; c < 4; c++)
                 AssertClose(cL1[c], (double)1f, (double)EPS);
             arena.Dispose();
@@ -582,14 +582,14 @@ public class doubleTransformsTests
             A[1, 0] = 0f; A[1, 1] = 0f; A[1, 2] = 0f;
             A[2, 0] = 3f; A[2, 1] = 0f; A[2, 2] = 4f;
 
-            doubleNormsOP.NormalizeRows(ref A, Norm.L2);
+            doubleNorms_OP.NormalizeRows(ref A, Norm.L2);
             for (int c = 0; c < 3; c++)
             {
                 AssertClose(A[1, c], (double)0f, (double)EPS); // zero row stays 0
                 AssertTrue(math.isfinite(A[1, c]));
             }
             // nonzero rows became unit
-            var rL2 = doubleStatsOP.rowNormL2(in A);
+            var rL2 = doubleStats_OP.rowNormL2(in A);
             AssertClose(rL2[0], (double)1f, (double)EPS);
             AssertClose(rL2[2], (double)1f, (double)EPS);
 
@@ -599,7 +599,7 @@ public class doubleTransformsTests
             B[1, 0] = 3f; B[1, 1] = 0f; B[1, 2] = 4f;
             B[2, 0] = 5f; B[2, 1] = 0f; B[2, 2] = 6f;
 
-            doubleNormsOP.NormalizeColumns(ref B, Norm.L1);
+            doubleNorms_OP.NormalizeColumns(ref B, Norm.L1);
             for (int r = 0; r < 3; r++)
             {
                 AssertClose(B[r, 1], (double)0f, (double)EPS);
@@ -616,7 +616,7 @@ public class doubleTransformsTests
             var v = arena.doubleVec(5);
             v[0] = -5f; v[1] = -1f; v[2] = 0f; v[3] = 3f; v[4] = 9f;
 
-            doubleOP.clampInpl(in v, (double)(-1f), (double)4f);
+            double_OP.clampInpl(in v, (double)(-1f), (double)4f);
             AssertClose(v[0], (double)(-1f), (double)EPS); // below lo
             AssertClose(v[1], (double)(-1f), (double)EPS); // at lo
             AssertClose(v[2], (double)0f, (double)EPS);    // in range
@@ -632,7 +632,7 @@ public class doubleTransformsTests
             A[0, 0] = -10f; A[0, 1] = 0.5f;
             A[1, 0] = 2f;   A[1, 1] = 100f;
 
-            doubleOP.clampInpl(in A, (double)0f, (double)1f);
+            double_OP.clampInpl(in A, (double)0f, (double)1f);
             AssertClose(A[0, 0], (double)0f, (double)EPS);
             AssertClose(A[0, 1], (double)0.5f, (double)EPS);
             AssertClose(A[1, 0], (double)1f, (double)EPS);
@@ -702,7 +702,7 @@ public class doubleTransformsTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.doubleVec(3);
         v[0] = -5f; v[1] = 0f; v[2] = 5f;
-        Assert.Throws<ArgumentException>(() => doubleOP.clampInpl(in v, (double)4f, (double)(-1f)));
+        Assert.Throws<ArgumentException>(() => double_OP.clampInpl(in v, (double)4f, (double)(-1f)));
         arena.Dispose();
     }
 }

@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Least-squares residual tests for the (un-pivoted) Householder QR solver OrthoOP.qrDirectSolve.
+// Least-squares residual tests for the (un-pivoted) Householder QR solver Ortho_OP.qrDirectSolve.
 // The existing QR solve tests only cover CONSISTENT right-hand sides (b = A*xOrig, zero residual).
 // These add genuinely INCONSISTENT overdetermined systems, where min ||Ax - b|| has a non-zero
 // residual r = b - Ax, and verify the defining least-squares property: r is orthogonal to the
@@ -60,9 +60,9 @@ public class floatQRLeastSquaresResidualTests
             var bwork = b.Copy();
             var x = arena.floatVec(2);
 
-            OrthoOP.qrDirectSolve(ref Awork, ref bwork, ref x);
+            Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-            if (Analysis.IsAnyNan(in x))
+            if (Analysis_OP.IsAnyNan(in x))
                 throw new System.Exception("TestJob: NaN detected");
 
             // x == [5, -3]
@@ -70,14 +70,14 @@ public class floatQRLeastSquaresResidualTests
             RecordBound(math.abs(x[1] - (float)(-3f)), (float)1E-4f);
 
             // residual r = b - A x == [1, -2, 1]
-            floatN r = b - floatOP.dot(A, x);
+            floatN r = b - float_OP.dot(A, x);
             RecordBound(math.abs(r[0] - (float)1f), (float)1E-4f);
             RecordBound(math.abs(r[1] - (float)(-2f)), (float)1E-4f);
             RecordBound(math.abs(r[2] - (float)1f), (float)1E-4f);
 
             // normal equations: Aᵀr == 0
-            floatN AtR = floatOP.dot(r, A);
-            RecordBound(Analysis.MaxZeroError(AtR), (float)1E-4f);
+            floatN AtR = float_OP.dot(r, A);
+            RecordBound(Analysis_OP.MaxZeroError(AtR), (float)1E-4f);
 
             arena.Dispose();
         }
@@ -99,21 +99,21 @@ public class floatQRLeastSquaresResidualTests
                 var bwork = b.Copy();
                 var x = arena.floatVec(n);
 
-                OrthoOP.qrDirectSolve(ref Awork, ref bwork, ref x);
+                Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis.IsAnyNan(in x))
+                if (Analysis_OP.IsAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                floatN r = b - floatOP.dot(A, x);
-                floatN AtR = floatOP.dot(r, A);
+                floatN r = b - float_OP.dot(A, x);
+                floatN AtR = float_OP.dot(r, A);
 
                 // scale-relative: ||Aᵀr||_inf small vs ||Aᵀb||_inf (the un-projected scale).
-                floatN AtB = floatOP.dot(b, A);
-                float scale = Analysis.MaxZeroError(AtB) + (float)1f;
-                RecordBound(Analysis.MaxZeroError(AtR), (float)1E-3f * scale);
+                floatN AtB = float_OP.dot(b, A);
+                float scale = Analysis_OP.MaxZeroError(AtB) + (float)1f;
+                RecordBound(Analysis_OP.MaxZeroError(AtR), (float)1E-3f * scale);
 
                 // sanity: the residual is genuinely non-zero (this is an inconsistent system).
-                float rNorm = floatNormsOP.L2(in r);
+                float rNorm = floatNorms_OP.L2(in r);
                 if (!(rNorm > (float)1E-2f) && Fail[0] == (float)0)
                 {
                     Fail[0] = (float)1;
@@ -144,12 +144,12 @@ public class floatQRLeastSquaresResidualTests
                 var bwork = b.Copy();
                 var x = arena.floatVec(n);
 
-                OrthoOP.qrDirectSolve(ref Awork, ref bwork, ref x);
+                Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis.IsAnyNan(in x))
+                if (Analysis_OP.IsAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                float r0 = SumSq(b - floatOP.dot(A, x));
+                float r0 = SumSq(b - float_OP.dot(A, x));
 
                 float delta = (float)0.05f;
                 for (int k = 0; k < n; k++)
@@ -157,9 +157,9 @@ public class floatQRLeastSquaresResidualTests
                     float saved = x[k];
 
                     x[k] = saved + delta;
-                    float rp = SumSq(b - floatOP.dot(A, x));
+                    float rp = SumSq(b - float_OP.dot(A, x));
                     x[k] = saved - delta;
-                    float rm = SumSq(b - floatOP.dot(A, x));
+                    float rm = SumSq(b - float_OP.dot(A, x));
                     x[k] = saved;
 
                     // both perturbations must be >= the optimum (minus tiny float slack).

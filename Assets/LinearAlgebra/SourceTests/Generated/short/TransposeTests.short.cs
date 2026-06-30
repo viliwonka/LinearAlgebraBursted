@@ -41,7 +41,7 @@ public class shortTransposeTests
             
             shortMxN A = arena.shortRandomMatrix(dim, dim);
 
-            shortMxN B = shortOP.trans(A);
+            shortMxN B = short_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, dim);
             Assert.AreEqual(B.N_Cols, dim);
@@ -62,7 +62,7 @@ public class shortTransposeTests
 
             shortMxN A = arena.shortRandomMatrix(rows, cols);
 
-            shortMxN B = shortOP.trans(A);
+            shortMxN B = short_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, cols);
             Assert.AreEqual(B.N_Cols, rows);

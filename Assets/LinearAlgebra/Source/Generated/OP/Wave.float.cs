@@ -7,7 +7,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Periodic wave functors (each : IfloatScalarFunction) for building wavetables / LFOs. Eval(t)
     /// treats t∈[0,1] as <c>Cycles</c> full periods (Phase shifts the start). Output range is [-1,1].
-    /// Bake a table with <c>var w = new floatWave.Sine{Cycles=1}; floatGenOP.sample(ref w, ref dest);</c>
+    /// Bake a table with <c>var w = new floatWave.Sine{Cycles=1}; floatGen_OP.sample(ref w, ref dest);</c>
     /// or <c>arena.floatSample(ref w, n)</c>. float-only.
     ///
     /// Default-construction convenience: a <c>Cycles</c> of 0 is treated as 1 (and Square's <c>Duty</c>

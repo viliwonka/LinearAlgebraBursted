@@ -29,7 +29,7 @@ namespace LinearAlgebra
         //   - UL is stored as p×m (Lanczos u-vectors as contiguous ROWS) and VL as (p+1)×n
         //     (Lanczos v-vectors as contiguous ROWS) so every GEMV (A·v and Aᵀ·u) hits unit-stride
         //     memory in both the matrix and the vector.
-        //   - Matvecs route through UnsafeOP.matVecDot / vecMatDot (cache-coherent, Burst-vectorized).
+        //   - Matvecs route through Unsafe_OP.matVecDot / vecMatDot (cache-coherent, Burst-vectorized).
         //   - DGKS reortho is expressed as matVecDot (to gather all dot-products in one sweep) + j
         //     axpy calls (unit-stride over UL/VL rows), eliminating strided column gathers.
         //   - All arithmetic uses native fProxy precision; stability comes from reorthogonalization,
@@ -37,8 +37,8 @@ namespace LinearAlgebra
         //
         // lowRankApprox still uses svdThin (full SVD + slice) internally — it stays EXACT (Eckart-Young).
         //
-        // The workspace (fProxySvdTruncatedWorkspace) bundles all scratch; allocate ONCE via
-        // Arena.fProxySvdTruncatedWorkspace(m, n, k, oversample) and reuse across same-shape calls.
+        // The workspace (fProxySvdTruncated_WS) bundles all scratch; allocate ONCE via
+        // Arena.fProxySvdTruncated_WS(m, n, k, oversample) and reuse across same-shape calls.
 
         /// <summary>
         /// GKL truncated SVD: the top-k singular triplets of A (m x n, m >= n) via Golub-Kahan-Lanczos
@@ -55,11 +55,11 @@ namespace LinearAlgebra
         /// are set to 0, Uk/Vk columns zeroed. The residual |β_last·P[p-1,t]| / (σ₀+ε) is also checked
         /// against 8·√ε; if it exceeds this tolerance, converged is set false.
         /// <paramref name="ws"/> is the GKL scratch; size it with
-        /// Arena.fProxySvdTruncatedWorkspace(m, n, k, oversample) using the SAME k and oversample.
+        /// Arena.fProxySvdTruncated_WS(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
-                                        bool partialReorth, ref fProxySvdTruncatedWorkspace ws, out bool converged)
+                                        bool partialReorth, ref fProxySvdTruncated_WS ws, out bool converged)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -113,9 +113,9 @@ namespace LinearAlgebra
                 fProxy* v0 = VL_ptr;  // VL[0,:] at offset 0 (contiguous n-vector)
                 for (int i = 0; i < n; i++)
                     v0[i] = (fProxy)(rng.NextFloat() * 2f - 1f);
-                fProxy seedNorm2 = UnsafeOP.vecDot(v0, v0, n);
+                fProxy seedNorm2 = Unsafe_OP.vecDot(v0, v0, n);
                 if (seedNorm2 > (fProxy)0)
-                    UnsafeOP.scalMul(v0, n, (fProxy)1 / math.sqrt(seedNorm2));
+                    Unsafe_OP.scalMul(v0, n, (fProxy)1 / math.sqrt(seedNorm2));
                 else
                     v0[0] = (fProxy)1;
 
@@ -151,12 +151,12 @@ namespace LinearAlgebra
 
                         // Step 1: uBuf = A·v̂_j − β_{j-1}·û_{j-1}   (β_{-1} term absent at j=0)
                         UnsafeUtility.MemClear(uBuf_ptr, (long)m * szfProxy);
-                        UnsafeOP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
+                        Unsafe_OP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
                         if (j > 0)
-                            UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
+                            Unsafe_OP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
 
                         // Step 2: α_j = ‖uBuf‖ (tentative)
-                        ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                        ws.alpha[j] = math.sqrt(Unsafe_OP.vecDot(uBuf_ptr, uBuf_ptr, m));
 
                         // Update scale estimate after first step
                         if (j == 0)
@@ -174,9 +174,9 @@ namespace LinearAlgebra
                             fProxy normold = ws.alpha[j];
                             for (int it = 0; it < 4; it++)
                             {
-                                fProxy t = UnsafeOP.vecDot(UL_ptr + (j - 1) * m, uBuf_ptr, m);
-                                UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -t, m);
-                                ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                                fProxy t = Unsafe_OP.vecDot(UL_ptr + (j - 1) * m, uBuf_ptr, m);
+                                Unsafe_OP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -t, m);
+                                ws.alpha[j] = math.sqrt(Unsafe_OP.vecDot(uBuf_ptr, uBuf_ptr, m));
                                 ws.beta[j - 1] += t;   // fold projection into bidiagonal
                                 if (ws.alpha[j] >= gamma * normold) { uNbrClean = true; break; }
                                 normold = ws.alpha[j];
@@ -232,11 +232,11 @@ namespace LinearAlgebra
                             while (true)
                             {
                                 UnsafeUtility.MemClear(vBuf_ptr, (long)j * szfProxy);
-                                UnsafeOP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
+                                Unsafe_OP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
                                 for (int l = 0; l < j; l++)
-                                    UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
+                                    Unsafe_OP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
                                 fProxy normrOldU = normrU;
-                                normrU = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                                normrU = math.sqrt(Unsafe_OP.vecDot(uBuf_ptr, uBuf_ptr, m));
                                 nreU++;
                                 if (nreU > 4)
                                 {
@@ -262,17 +262,17 @@ namespace LinearAlgebra
 
                         // Step 8: UL[j,:] = uBuf / α_j
                         fProxy invA = (fProxy)1 / ws.alpha[j];
-                        UnsafeOP.scalMul(uBuf_ptr, m, invA);
+                        Unsafe_OP.scalMul(uBuf_ptr, m, invA);
                         UnsafeUtility.MemCpy(UL_ptr + j * m, uBuf_ptr, (long)m * szfProxy);
 
                         // ---- V-half: compute v̂_{j+1} ----
 
                         // Step 9: vBuf = Aᵀ·û_j − α_j·v̂_j
-                        UnsafeOP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
-                        UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
+                        Unsafe_OP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
+                        Unsafe_OP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
 
                         // Step 10: β_j = ‖vBuf‖ (tentative)
-                        ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                        ws.beta[j] = math.sqrt(Unsafe_OP.vecDot(vBuf_ptr, vBuf_ptr, n));
 
                         // Step 11: ELR-V — if β_j < γ·α_j, reortho vBuf against v̂_j
                         // and fold projection into bidiagonal (lanbpro line 471). vNbrClean as in ELR-U.
@@ -283,9 +283,9 @@ namespace LinearAlgebra
                             fProxy normold = ws.beta[j];
                             for (int it = 0; it < 4; it++)
                             {
-                                fProxy t = UnsafeOP.vecDot(VL_ptr + j * n, vBuf_ptr, n);
-                                UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -t, n);
-                                ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                                fProxy t = Unsafe_OP.vecDot(VL_ptr + j * n, vBuf_ptr, n);
+                                Unsafe_OP.axpy(vBuf_ptr, VL_ptr + j * n, -t, n);
+                                ws.beta[j] = math.sqrt(Unsafe_OP.vecDot(vBuf_ptr, vBuf_ptr, n));
                                 ws.alpha[j] += t;   // fold projection into bidiagonal
                                 if (ws.beta[j] >= gamma * normold) { vNbrClean = true; break; }
                                 normold = ws.beta[j];
@@ -337,11 +337,11 @@ namespace LinearAlgebra
                             while (true)
                             {
                                 UnsafeUtility.MemClear(uBuf_ptr, (long)(j + 1) * szfProxy);
-                                UnsafeOP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
+                                Unsafe_OP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
                                 for (int l = 0; l <= j; l++)
-                                    UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
+                                    Unsafe_OP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
                                 fProxy normrOldV = normrV;
-                                normrV = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                                normrV = math.sqrt(Unsafe_OP.vecDot(vBuf_ptr, vBuf_ptr, n));
                                 nreV++;
                                 if (nreV > 4)
                                 {
@@ -366,7 +366,7 @@ namespace LinearAlgebra
 
                         // Step 17: VL[j+1,:] = vBuf / β_j
                         fProxy invB = (fProxy)1 / ws.beta[j];
-                        UnsafeOP.scalMul(vBuf_ptr, n, invB);
+                        Unsafe_OP.scalMul(vBuf_ptr, n, invB);
                         UnsafeUtility.MemCpy(VL_ptr + (j + 1) * n, vBuf_ptr, (long)n * szfProxy);
                     }
                 }
@@ -380,11 +380,11 @@ namespace LinearAlgebra
                     {
                         // ----- uBuf = A * VL[j,:] -----
                         UnsafeUtility.MemClear(uBuf_ptr, (long)m * szfProxy);
-                        UnsafeOP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
+                        Unsafe_OP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
 
                         // Subtract beta_{j-1} * UL[j-1,:]  (skipped at j=0)
                         if (j > 0)
-                            UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
+                            Unsafe_OP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
 
                         // DGKS double reorthogonalize uBuf against UL[0..j-1,:]
                         if (j > 0)
@@ -392,14 +392,14 @@ namespace LinearAlgebra
                             for (int pass = 0; pass < 2; pass++)
                             {
                                 UnsafeUtility.MemClear(vBuf_ptr, (long)j * szfProxy);
-                                UnsafeOP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
+                                Unsafe_OP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
                                 for (int l = 0; l < j; l++)
-                                    UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
+                                    Unsafe_OP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
                             }
                         }
 
                         // alpha_j = ||uBuf||
-                        ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                        ws.alpha[j] = math.sqrt(Unsafe_OP.vecDot(uBuf_ptr, uBuf_ptr, m));
 
                         // Update scale estimate after first step
                         if (j == 0)
@@ -415,24 +415,24 @@ namespace LinearAlgebra
 
                         // UL[j,:] = uBuf / alpha_j
                         fProxy invA = (fProxy)1 / ws.alpha[j];
-                        UnsafeOP.scalMul(uBuf_ptr, m, invA);
+                        Unsafe_OP.scalMul(uBuf_ptr, m, invA);
                         UnsafeUtility.MemCpy(UL_ptr + j * m, uBuf_ptr, (long)m * szfProxy);
 
                         // ----- vBuf = Aᵀ * UL[j,:] - alpha_j * VL[j,:] -----
-                        UnsafeOP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
-                        UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
+                        Unsafe_OP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
+                        Unsafe_OP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
 
                         // DGKS double reorthogonalize vBuf against VL[0..j,:]
                         for (int pass = 0; pass < 2; pass++)
                         {
                             UnsafeUtility.MemClear(uBuf_ptr, (long)(j + 1) * szfProxy);
-                            UnsafeOP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
+                            Unsafe_OP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
                             for (int l = 0; l <= j; l++)
-                                UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
+                                Unsafe_OP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
                         }
 
                         // beta_j = ||vBuf||
-                        ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                        ws.beta[j] = math.sqrt(Unsafe_OP.vecDot(vBuf_ptr, vBuf_ptr, n));
 
                         pDone = j + 1;
 
@@ -442,7 +442,7 @@ namespace LinearAlgebra
 
                         // VL[j+1,:] = vBuf / beta_j
                         fProxy invB = (fProxy)1 / ws.beta[j];
-                        UnsafeOP.scalMul(vBuf_ptr, n, invB);
+                        Unsafe_OP.scalMul(vBuf_ptr, n, invB);
                         UnsafeUtility.MemCpy(VL_ptr + (j + 1) * n, vBuf_ptr, (long)n * szfProxy);
                     }
                 }
@@ -496,13 +496,13 @@ namespace LinearAlgebra
                     // uBuf = sum_l P[l,t] * UL[l,:]
                     UnsafeUtility.MemClear(uBuf_ptr, (long)m * UnsafeUtility.SizeOf<fProxy>());
                     for (int l = 0; l < pDone; l++)
-                        UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, ws.BsvdWs.U[l, t], m);
+                        Unsafe_OP.axpy(uBuf_ptr, UL_ptr + l * m, ws.BsvdWs.U[l, t], m);
                     for (int i = 0; i < m; i++) Uk[i, t] = uBuf_ptr[i];
 
                     // vBuf = sum_l Q[l,t] * VL[l,:]
                     UnsafeUtility.MemClear(vBuf_ptr, (long)n * UnsafeUtility.SizeOf<fProxy>());
                     for (int l = 0; l < pDone; l++)
-                        UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, ws.BsvdWs.V[l, t], n);
+                        Unsafe_OP.axpy(vBuf_ptr, VL_ptr + l * n, ws.BsvdWs.V[l, t], n);
                     for (int i = 0; i < n; i++) Vk[i, t] = vBuf_ptr[i];
                 }
             }
@@ -523,29 +523,29 @@ namespace LinearAlgebra
         /// <summary>svdTruncated (ref workspace) with default partialReorth=true.</summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
-                                        ref fProxySvdTruncatedWorkspace ws, out bool converged)
+                                        ref fProxySvdTruncated_WS ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
 
         /// <summary>svdTruncated (ref workspace) with default maxIter (75) and partialReorth=true.</summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed,
-                                        ref fProxySvdTruncatedWorkspace ws, out bool converged)
+                                        ref fProxySvdTruncated_WS ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, ref ws, out converged);
 
         /// <summary>svdTruncated (ref workspace) with default seed and maxIter (75) and partialReorth=true.</summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample,
-                                        ref fProxySvdTruncatedWorkspace ws, out bool converged)
+                                        ref fProxySvdTruncated_WS ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
         /// svdTruncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12))
         /// and partialReorth=true.
-        /// Pass a workspace from Arena.fProxySvdTruncatedWorkspace(m, n, k) (no oversample overload)
+        /// Pass a workspace from Arena.fProxySvdTruncated_WS(m, n, k) (no oversample overload)
         /// which uses the same generous formula.
         /// </summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
-                                        int k, ref fProxySvdTruncatedWorkspace ws, out bool converged)
+                                        int k, ref fProxySvdTruncated_WS ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
@@ -560,7 +560,7 @@ namespace LinearAlgebra
             if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
             if (oversample < 0) throw new ArgumentException("svdTruncated: oversample must be >= 0");
             int p = math.min(k + oversample, n);
-            var ws = new fProxySvdTruncatedWorkspace
+            var ws = new fProxySvdTruncated_WS
             {
                 UL     = A.tempfProxyMat(p, m),
                 VL     = A.tempfProxyMat(p + 1, n),
@@ -568,7 +568,7 @@ namespace LinearAlgebra
                 eB     = A.tempfProxyVec(p),
                 UtB    = A.tempfProxyMat(p, p),
                 VtB    = A.tempfProxyMat(p, p),
-                BsvdWs = new fProxySvdFullWorkspace
+                BsvdWs = new fProxySvdFull_WS
                 {
                     U = A.tempfProxyMat(p, p),
                     S = A.tempfProxyVec(p),
@@ -597,7 +597,7 @@ namespace LinearAlgebra
             if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
             if (oversample < 0) throw new ArgumentException("svdTruncated: oversample must be >= 0");
             int p = math.min(k + oversample, n);
-            var ws = new fProxySvdTruncatedWorkspace
+            var ws = new fProxySvdTruncated_WS
             {
                 UL     = A.tempfProxyMat(p, m),
                 VL     = A.tempfProxyMat(p + 1, n),
@@ -605,7 +605,7 @@ namespace LinearAlgebra
                 eB     = A.tempfProxyVec(p),
                 UtB    = A.tempfProxyMat(p, p),
                 VtB    = A.tempfProxyMat(p, p),
-                BsvdWs = new fProxySvdFullWorkspace
+                BsvdWs = new fProxySvdFull_WS
                 {
                     U = A.tempfProxyMat(p, p),
                     S = A.tempfProxyVec(p),
@@ -632,7 +632,7 @@ namespace LinearAlgebra
             int n = A.N_Cols;
             if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
             int p = math.min(n, math.max(2 * k, k + 12));
-            var ws = new fProxySvdTruncatedWorkspace
+            var ws = new fProxySvdTruncated_WS
             {
                 UL     = A.tempfProxyMat(p, m),
                 VL     = A.tempfProxyMat(p + 1, n),
@@ -640,7 +640,7 @@ namespace LinearAlgebra
                 eB     = A.tempfProxyVec(p),
                 UtB    = A.tempfProxyMat(p, p),
                 VtB    = A.tempfProxyMat(p, p),
-                BsvdWs = new fProxySvdFullWorkspace
+                BsvdWs = new fProxySvdFull_WS
                 {
                     U = A.tempfProxyMat(p, p),
                     S = A.tempfProxyVec(p),
@@ -664,10 +664,10 @@ namespace LinearAlgebra
         /// Uses the FULL Golub-Kahan SVD (svdThin) internally — EXACT, not approximate. 0 &lt;= k &lt;= n.
         /// A is NOT modified. <paramref name="converged"/> is the SVD's flag (when false Ak is undefined).
         /// <paramref name="ws"/> is full-SVD scratch reused across calls; size it with
-        /// Arena.fProxySvdFullWorkspace(m, n).
+        /// Arena.fProxySvdFull_WS(m, n).
         /// </summary>
         public static void lowRankApprox(in fProxyMxN A, ref fProxyMxN Ak, int k,
-                                         ref fProxySvdFullWorkspace ws, out bool converged, int maxIter)
+                                         ref fProxySvdFull_WS ws, out bool converged, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -711,7 +711,7 @@ namespace LinearAlgebra
 
         /// <summary>lowRankApprox (ref workspace) with default maxIter (75).</summary>
         public static void lowRankApprox(in fProxyMxN A, ref fProxyMxN Ak, int k,
-                                         ref fProxySvdFullWorkspace ws, out bool converged)
+                                         ref fProxySvdFull_WS ws, out bool converged)
             => lowRankApprox(in A, ref Ak, k, ref ws, out converged, 75);
 
         /// <summary>
@@ -722,7 +722,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new fProxySvdFullWorkspace
+            var ws = new fProxySvdFull_WS
             {
                 U = A.tempfProxyMat(m, n),
                 S = A.tempfProxyVec(n),

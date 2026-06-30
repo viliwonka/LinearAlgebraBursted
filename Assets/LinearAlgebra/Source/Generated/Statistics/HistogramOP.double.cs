@@ -18,7 +18,7 @@ namespace LinearAlgebra.Stats
     //
     // Generic constraint IUnsafedoubleArray lets these ops work over both doubleN and
     // doubleMxN (a matrix histograms its flat row-major data, identical to StatsOP reductions).
-    public static partial class doubleHistogramOP
+    public static partial class doubleHistogram_OP
     {
         // -------------------------------------------------------------------------
         // histogramInto — explicit range

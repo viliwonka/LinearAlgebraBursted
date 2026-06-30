@@ -5,7 +5,7 @@ using Unity.Mathematics;
 namespace LinearAlgebra
 {
     // QueryOP.Predicate: predicate-filtered and score-based query operators.
-    // Extends fProxyQueryOP (partial class). Reuses RowScore/ColScore,
+    // Extends fProxyQuery_OP (partial class). Reuses RowScore/ColScore,
     // IsBetterForNearest, and WorstScoreForNearest from QueryOP.fProxy.cs.
     //
     // Groups:
@@ -19,7 +19,7 @@ namespace LinearAlgebra
     //   score = WorstScoreForNearest(m) (fProxy.MaxValue for distance metrics,
     //   fProxy.MinValue for similarity metrics). Callers must check index == -1 before use.
     //   kNearestRowsWhere / kNearestColumnsWhere return 0.
-    public static partial class fProxyQueryOP
+    public static partial class fProxyQuery_OP
     {
         // -------------------------------------------------------------------------
         // GROUP A — FLAT / SCALAR PREDICATE OPS

@@ -21,7 +21,7 @@ namespace LinearAlgebra
     /// The sampler is passed by <c>ref</c> so that stateful samplers like
     /// <see cref="doubleGaussian"/> accumulate state across elements. double-only.
     /// </summary>
-    public static partial class doubleRandomOP
+    public static partial class doubleRandom_OP
     {
         // ---- uniform refill (vector) ----
 
@@ -163,7 +163,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int weightedPick(in doubleN weights, ref Random rng)
         {
-            double total = weightedPickValidateAndSum(in weights, "doubleRandomOP.weightedPick");
+            double total = weightedPickValidateAndSum(in weights, "doubleRandom_OP.weightedPick");
             return weightedPickFromTotal(in weights, total, ref rng);
         }
 
@@ -180,7 +180,7 @@ namespace LinearAlgebra
         {
             // Validate + sum once before the draw loop so bad weights throw
             // even when dest.N == 0 (empty destination).
-            double total = weightedPickValidateAndSum(in weights, "doubleRandomOP.weightedPickInpl");
+            double total = weightedPickValidateAndSum(in weights, "doubleRandom_OP.weightedPickInpl");
             int k = dest.N;
             for (int i = 0; i < k; i++)
                 dest[i] = weightedPickFromTotal(in weights, total, ref rng);
@@ -492,7 +492,7 @@ namespace LinearAlgebra
     /// over a long fill.
     ///
     /// <para>Because of the cached spare, the sampler MUST be passed by <c>ref</c> to
-    /// <c>doubleRandomOP.randomInpl</c> — copying it by value would silently duplicate the
+    /// <c>doubleRandom_OP.randomInpl</c> — copying it by value would silently duplicate the
     /// spare state and corrupt the stream.</para>
     ///
     /// <para>No static ICDF is provided: Box–Muller is a two-draw transform, not a simple

@@ -3,7 +3,7 @@
 Procedural builders for vectors/matrices. Goal: **simple, one-call, games-friendly.**
 
 ## Conventions (match the rest of the library)
-- **Two forms each** (like the Stats ref overloads): a zero-alloc primitive `fProxyGenOP.xxx(ref fProxyN dest, …)` that fills a caller vector (length taken from `dest.N`), and an ergonomic `arena.fProxyXxx(n, …)` extension that allocates + returns. Use the ref form in per-frame loops.
+- **Two forms each** (like the Stats ref overloads): a zero-alloc primitive `fProxyGen_OP.xxx(ref fProxyN dest, …)` that fills a caller vector (length taken from `dest.N`), and an ergonomic `arena.fProxyXxx(n, …)` extension that allocates + returns. Use the ref form in per-frame loops.
 - **Functors are the Burst "lambda"** — reuse the existing `IfProxyScalarFunction { fProxy Eval(fProxy x); }` (same one the optimizers use). No managed lambdas in jobs.
 - **fProxy-only** (float/double). Kernels are **normalized to sum 1**. Easings map **t∈[0,1]**.
 
@@ -11,15 +11,15 @@ Procedural builders for vectors/matrices. Goal: **simple, one-call, games-friend
 
 ## 1. linspace / arange  — the axis
 ```
-fProxyGenOP.linspace(ref dest, a, b)        // dest[i] = a + (b-a)*i/(N-1);  N=1 → {a}
-fProxyGenOP.arange  (ref dest, start, step) // dest[i] = start + i*step
+fProxyGen_OP.linspace(ref dest, a, b)        // dest[i] = a + (b-a)*i/(N-1);  N=1 → {a}
+fProxyGen_OP.arange  (ref dest, start, step) // dest[i] = start + i*step
 arena.fProxyLinspace(a, b, n) / arena.fProxyArange(start, step, n)   // allocating
 ```
 `linspace(0,1,N)` is the canonical input to `sample`. Example: `var t = arena.fProxyLinspace(0f, 1f, 64);`
 
 ## 2. sample\<F\>  — fill from any curve
 ```
-fProxyGenOP.sample<F>(ref F f, ref dest, t0 = 0, t1 = 1) where F : struct, IfProxyScalarFunction
+fProxyGen_OP.sample<F>(ref F f, ref dest, t0 = 0, t1 = 1) where F : struct, IfProxyScalarFunction
     // dest[i] = f.Eval(t0 + (t1-t0)*i/(N-1))
 arena.fProxySample(ref f, n, t0, t1)        // allocating
 ```
@@ -48,10 +48,10 @@ Wave.Sine { Cycles=1, Phase=0 }   Wave.Saw   Wave.Square { Duty=0.5 }   Wave.Tri
 
 ## 5. Kernels  (normalized, symmetric, centered)
 ```
-fProxyGenOP.gaussianKernel (ref dest, sigma)   // 1D, dest[i]=exp(-(i-c)²/2σ²) then ÷Σ ;  c=(N-1)/2
-fProxyGenOP.boxKernel      (ref dest)          // 1D uniform 1/N
-fProxyGenOP.tentKernel     (ref dest)          // 1D triangular, ÷Σ
-fProxyGenOP.gaussianKernel2D(ref destMat, sigma)   // N×N separable = outer(g,g), ÷Σ (reuses outerDot)
+fProxyGen_OP.gaussianKernel (ref dest, sigma)   // 1D, dest[i]=exp(-(i-c)²/2σ²) then ÷Σ ;  c=(N-1)/2
+fProxyGen_OP.boxKernel      (ref dest)          // 1D uniform 1/N
+fProxyGen_OP.tentKernel     (ref dest)          // 1D triangular, ÷Σ
+fProxyGen_OP.gaussianKernel2D(ref destMat, sigma)   // N×N separable = outer(g,g), ÷Σ (reuses outerDot)
 arena.fProxyGaussianKernel(n, sigma) / arena.fProxyBoxKernel(n) / arena.fProxyTentKernel(n)
 arena.fProxyGaussianKernel2D(n, sigma)
 ```
@@ -60,7 +60,7 @@ Use: blur / smoothing weights / convolution. The 2D Gaussian is the outer produc
 ## 6. DSP window functions  (index-based, depend on N — single enum entry point)
 ```
 enum WindowType { Hann, Hamming, Blackman, Box }
-fProxyGenOP.window(ref dest, WindowType)        // dest[i] = w(i, N)
+fProxyGen_OP.window(ref dest, WindowType)        // dest[i] = w(i, N)
 arena.fProxyWindow(n, WindowType)               // allocating
 ```
 Formulas (i over 0..N-1): Hann `0.5(1−cos 2πi/(N−1))`, Hamming `0.54−0.46 cos(...)`, Blackman `0.42−0.5cos(...)+0.08cos(4πi/(N−1))`, Box `1`.
@@ -71,14 +71,14 @@ The 2D analog of `sample`. **One new interface** + one core; gradients/rank-1/di
 ```
 interface IfProxyBivariateFunction { fProxy Eval(fProxy x, fProxy y); }   // the 2D "lambda"
 
-fProxyGenOP.sample2D<F>(ref F f, ref destMat, x0,x1, y0,y1)
+fProxyGen_OP.sample2D<F>(ref F f, ref destMat, x0,x1, y0,y1)
     // M[i,j] = f.Eval( lerp(x0,x1, i/(M_Rows-1)),  lerp(y0,y1, j/(N_Cols-1)) )    — meshgrid + eval
 arena.fProxySample2D(ref f, rows, cols, x0,x1,y0,y1)                              // allocating
 ```
 **Rank-1 / two curves (separable, fast):**
 ```
-fProxyGenOP.outer   (in u, in v, ref destMat)   // M[i,j] = u[i]*v[j]   (reuses outerDot)
-fProxyGenOP.outerSum(in u, in v, ref destMat)   // M[i,j] = u[i]+v[j]   (additive fields)
+fProxyGen_OP.outer   (in u, in v, ref destMat)   // M[i,j] = u[i]*v[j]   (reuses outerDot)
+fProxyGen_OP.outerSum(in u, in v, ref destMat)   // M[i,j] = u[i]+v[j]   (additive fields)
 ```
 `gaussianKernel2D` = `outer(g, g)`. Any separable field = `outer(sampleU, sampleV)`.
 
@@ -101,7 +101,7 @@ Pairs with the windows (§6) and wavetables (§4). Plan when built:
 ---
 
 ## Placement
-- `fProxyGenOP` (new static class) — the ref-dest primitives + `sample<F>` / `sample2D<F>` / `outer`.
+- `fProxyGen_OP` (new static class) — the ref-dest primitives + `sample<F>` / `sample2D<F>` / `outer`.
 - `Arena` extensions (`ArenaExtensions.fProxy.cs`) — the allocating `fProxyXxx` wrappers, beside `fProxyIdentityMatrix`/`fProxyDiagonalMatrix`.
 - `IfProxyBivariateFunction` — new, beside `IfProxyScalarFunction` (Optimize.fProxy.cs).
 - `Easing` / `Wave` (univariate) and `Field2` (bivariate) — small structs implementing the functor interfaces.

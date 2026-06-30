@@ -25,7 +25,7 @@ public class iProxyDotRefTests
 
         // Integer arithmetic is EXACT: the ref-dest form runs the same kernel as the
         // allocating form, so the two results must be bit-for-bit identical. There is no
-        // iProxy Analysis.IsZero, so assert exact elementwise equality directly.
+        // iProxy Analysis_OP.IsZero, so assert exact elementwise equality directly.
         static bool ExactEqual(in iProxyN x, in iProxyN y)
         {
             if (x.N != y.N)
@@ -90,11 +90,11 @@ public class iProxyDotRefTests
             {
                 var A = arena.iProxyRandomMatrix(M, N, -9, 9, 12321);
                 var x = arena.iProxyRandomVector(N, -9, 9, 45654);
-                var R = iProxyOP.dot(A, x);
+                var R = iProxy_OP.dot(A, x);
 
                 var D = arena.iProxyVec(M);
-                iProxyOP.addInpl(D, (iProxy)999);   // dirty the destination
-                iProxyOP.dot(in A, in x, ref D);
+                iProxy_OP.addInpl(D, (iProxy)999);   // dirty the destination
+                iProxy_OP.dot(in A, in x, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -102,11 +102,11 @@ public class iProxyDotRefTests
             {
                 var y = arena.iProxyRandomVector(M, -9, 9, 11221);
                 var A = arena.iProxyRandomMatrix(M, N, -9, 9, 33443);
-                var R = iProxyOP.dot(y, A);
+                var R = iProxy_OP.dot(y, A);
 
                 var D = arena.iProxyVec(N);
-                iProxyOP.addInpl(D, (iProxy)999);
-                iProxyOP.dot(in y, in A, ref D);
+                iProxy_OP.addInpl(D, (iProxy)999);
+                iProxy_OP.dot(in y, in A, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -114,11 +114,11 @@ public class iProxyDotRefTests
             {
                 var a = arena.iProxyRandomMatrix(M, K, -9, 9, 32123);
                 var b = arena.iProxyRandomMatrix(K, N, -9, 9, 65456);
-                var R = iProxyOP.dot(a, b, false);
+                var R = iProxy_OP.dot(a, b, false);
 
                 var D = arena.iProxyMat(M, N);
-                iProxyOP.addInpl(D, (iProxy)999);
-                iProxyOP.dot(in a, in b, ref D, false);
+                iProxy_OP.addInpl(D, (iProxy)999);
+                iProxy_OP.dot(in a, in b, ref D, false);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -137,11 +137,11 @@ public class iProxyDotRefTests
             var b = arena.iProxyRandomVector(N, -9, 9, 22222);
 
             // allocating reference
-            var R = iProxyOP.outerDot(a, b);
+            var R = iProxy_OP.outerDot(a, b);
 
             // ref-dest into a preallocated M x N destination
             var D = arena.iProxyMat(M, N);
-            iProxyOP.outerDot(in a, in b, ref D);
+            iProxy_OP.outerDot(in a, in b, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -159,10 +159,10 @@ public class iProxyDotRefTests
             var A = arena.iProxyRandomMatrix(M, N, -9, 9, 33333);
             var x = arena.iProxyRandomVector(N, -9, 9, 44444);
 
-            var R = iProxyOP.dot(A, x);
+            var R = iProxy_OP.dot(A, x);
 
             var D = arena.iProxyVec(M);
-            iProxyOP.dot(in A, in x, ref D);
+            iProxy_OP.dot(in A, in x, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -180,10 +180,10 @@ public class iProxyDotRefTests
             var y = arena.iProxyRandomVector(M, -9, 9, 55555);
             var A = arena.iProxyRandomMatrix(M, N, -9, 9, 66666);
 
-            var R = iProxyOP.dot(y, A);
+            var R = iProxy_OP.dot(y, A);
 
             var D = arena.iProxyVec(N);
-            iProxyOP.dot(in y, in A, ref D);
+            iProxy_OP.dot(in y, in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -202,10 +202,10 @@ public class iProxyDotRefTests
             var a = arena.iProxyRandomMatrix(M, K, -9, 9, 77777);
             var b = arena.iProxyRandomMatrix(K, N, -9, 9, 88888);
 
-            var R = iProxyOP.dot(a, b, false);
+            var R = iProxy_OP.dot(a, b, false);
 
             var D = arena.iProxyMat(M, N);
-            iProxyOP.dot(in a, in b, ref D, false);
+            iProxy_OP.dot(in a, in b, ref D, false);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -225,18 +225,18 @@ public class iProxyDotRefTests
             var a = arena.iProxyRandomMatrix(K, M, -9, 9, 99999);
             var b = arena.iProxyRandomMatrix(K, N, -9, 9, 10101);
 
-            var R = iProxyOP.dot(a, b, true);
+            var R = iProxy_OP.dot(a, b, true);
 
             // result is M x N (a.N_Cols x b.N_Cols)
             var D = arena.iProxyMat(M, N);
-            iProxyOP.dot(in a, in b, ref D, true);
+            iProxy_OP.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
             Assert.IsTrue(ExactEqual(in R, in D));
 
             // Independent oracle: Aᵀ·B computed via an explicit transpose + plain matmul,
             // which exercises a different code path than the fused transposeA kernel.
-            var oracle = iProxyOP.dot(iProxyOP.trans(a), b);
+            var oracle = iProxy_OP.dot(iProxy_OP.trans(a), b);
             Assert.IsTrue(ExactEqual(in R, in oracle));
 
             arena.Dispose();
@@ -252,10 +252,10 @@ public class iProxyDotRefTests
 
             var A = arena.iProxyRandomMatrix(M, N, -9, 9, 20202);
 
-            var R = iProxyOP.trans(A);
+            var R = iProxy_OP.trans(A);
 
             var D = arena.iProxyMat(N, M);
-            iProxyOP.trans(in A, ref D);
+            iProxy_OP.trans(in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 

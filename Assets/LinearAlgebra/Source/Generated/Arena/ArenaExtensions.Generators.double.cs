@@ -1,8 +1,8 @@
 namespace LinearAlgebra
 {
-    // Allocating (arena) wrappers for the doubleGenOP generators — each allocates a fresh persistent
+    // Allocating (arena) wrappers for the doubleGen_OP generators — each allocates a fresh persistent
     // vector/matrix and delegates to the zero-alloc ref-dest primitive. Use these for one-off /
-    // setup-time builds (tween LUTs, kernels, wavetables); use the doubleGenOP.xxx(ref dest, …) form
+    // setup-time builds (tween LUTs, kernels, wavetables); use the doubleGen_OP.xxx(ref dest, …) form
     // inside per-frame loops.
     public static partial class ArenaExtensions
     {
@@ -12,7 +12,7 @@ namespace LinearAlgebra
         public static doubleN doubleLinspace(this ref Arena arena, double a, double b, int N)
         {
             var vec = arena.doubleVec(N);
-            doubleGenOP.linspace(ref vec, a, b);
+            doubleGen_OP.linspace(ref vec, a, b);
             return vec;
         }
 
@@ -20,7 +20,7 @@ namespace LinearAlgebra
         public static doubleN doubleArange(this ref Arena arena, double start, double step, int N)
         {
             var vec = arena.doubleVec(N);
-            doubleGenOP.arange(ref vec, start, step);
+            doubleGen_OP.arange(ref vec, start, step);
             return vec;
         }
 
@@ -29,7 +29,7 @@ namespace LinearAlgebra
             where F : struct, IdoubleScalarFunction
         {
             var vec = arena.doubleVec(N);
-            doubleGenOP.sample(ref f, ref vec, t0, t1);
+            doubleGen_OP.sample(ref f, ref vec, t0, t1);
             return vec;
         }
 
@@ -51,7 +51,7 @@ namespace LinearAlgebra
         public static doubleN doubleGaussianKernel(this ref Arena arena, int N, double sigma)
         {
             var vec = arena.doubleVec(N);
-            doubleGenOP.gaussianKernel(ref vec, sigma);
+            doubleGen_OP.gaussianKernel(ref vec, sigma);
             return vec;
         }
 
@@ -59,7 +59,7 @@ namespace LinearAlgebra
         public static doubleN doubleBoxKernel(this ref Arena arena, int N)
         {
             var vec = arena.doubleVec(N);
-            doubleGenOP.boxKernel(ref vec);
+            doubleGen_OP.boxKernel(ref vec);
             return vec;
         }
 
@@ -67,7 +67,7 @@ namespace LinearAlgebra
         public static doubleN doubleTentKernel(this ref Arena arena, int N)
         {
             var vec = arena.doubleVec(N);
-            doubleGenOP.tentKernel(ref vec);
+            doubleGen_OP.tentKernel(ref vec);
             return vec;
         }
 
@@ -75,7 +75,7 @@ namespace LinearAlgebra
         public static doubleMxN doubleGaussianKernel2D(this ref Arena arena, int N, double sigma)
         {
             var mat = arena.doubleMat(N, N);
-            doubleGenOP.gaussianKernel2D(ref mat, sigma);
+            doubleGen_OP.gaussianKernel2D(ref mat, sigma);
             return mat;
         }
 
@@ -83,7 +83,7 @@ namespace LinearAlgebra
         public static doubleN doubleWindow(this ref Arena arena, int N, WindowType type)
         {
             var vec = arena.doubleVec(N);
-            doubleGenOP.window(ref vec, type);
+            doubleGen_OP.window(ref vec, type);
             return vec;
         }
 
@@ -95,7 +95,7 @@ namespace LinearAlgebra
         public static doubleMxN doubleOuter(this ref Arena arena, in doubleN u, in doubleN v)
         {
             var mat = arena.doubleMat(u.N, v.N);
-            doubleGenOP.outer(in u, in v, ref mat);
+            doubleGen_OP.outer(in u, in v, ref mat);
             return mat;
         }
 
@@ -103,7 +103,7 @@ namespace LinearAlgebra
         public static doubleMxN doubleOuterSum(this ref Arena arena, in doubleN u, in doubleN v)
         {
             var mat = arena.doubleMat(u.N, v.N);
-            doubleGenOP.outerSum(in u, in v, ref mat);
+            doubleGen_OP.outerSum(in u, in v, ref mat);
             return mat;
         }
 

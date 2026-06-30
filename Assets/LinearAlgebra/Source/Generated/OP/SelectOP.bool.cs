@@ -10,7 +10,7 @@ namespace LinearAlgebra
     /// <param name="b">Value to use if c is true.</param>
     /// <param name="c">Bool value to choose between a and b.</param>
     /// <returns>The selection between a and b according to bool c.</returns>
-    public static partial class SelectOP
+    public static partial class Select_OP
     {
         public static boolN select(in boolN a, in boolN b, in boolN c)
         {
@@ -21,7 +21,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeSelectOP.selectBool(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.N);
+                UnsafeSelect_OP.selectBool(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.N);
             }
 
             return res;
@@ -36,7 +36,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeSelectOP.selectBool(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.M_Rows * a.N_Cols);
+                UnsafeSelect_OP.selectBool(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.M_Rows * a.N_Cols);
             }
 
             return res;
@@ -57,7 +57,7 @@ namespace LinearAlgebra
         }
     }
 
-    public static unsafe partial class UnsafeSelectOP
+    public static unsafe partial class UnsafeSelect_OP
     {
         public static void selectBool([NoAlias] bool* a, [NoAlias] bool* b, [NoAlias] bool* c, bool* target, int n)
         {

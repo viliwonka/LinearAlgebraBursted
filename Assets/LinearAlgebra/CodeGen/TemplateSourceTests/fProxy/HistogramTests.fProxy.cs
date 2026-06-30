@@ -10,7 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-// Tests for fProxyHistogramOP (count-based distribution estimation: histogram / density / cdf / 2D).
+// Tests for fProxyHistogram_OP (count-based distribution estimation: histogram / density / cdf / 2D).
 //
 // Verification is mostly EXACT: counts are integers (RecordEq) and float-valued 2D counts are small
 // integers (exact compare), so no tolerance is needed there. The normalized outputs (density / cdf)
@@ -99,7 +99,7 @@ public class fProxyHistogramTests
             var counts = arena.Indices(5);
             for (int b = 0; b < 5; b++) counts[b] = 999;   // garbage; must be overwritten
 
-            fProxyHistogramOP.histogramInto(in data, (fProxy)0, (fProxy)10, ref counts);
+            fProxyHistogram_OP.histogramInto(in data, (fProxy)0, (fProxy)10, ref counts);
 
             RecordEq(counts[0], 2);
             RecordEq(counts[1], 2);
@@ -132,7 +132,7 @@ public class fProxyHistogramTests
             data[11] = (fProxy)float.NegativeInfinity; // dropped
 
             var counts = arena.Indices(5);
-            fProxyHistogramOP.histogramInto(in data, (fProxy)0, (fProxy)10, ref counts);
+            fProxyHistogram_OP.histogramInto(in data, (fProxy)0, (fProxy)10, ref counts);
 
             RecordEq(counts[0], 2);   // exactly the two finite samples 0 and 1 — not inflated
             RecordEq(counts[1], 2);
@@ -156,7 +156,7 @@ public class fProxyHistogramTests
             var counts = arena.Indices(4);
             for (int b = 0; b < 4; b++) counts[b] = 777;   // garbage
 
-            fProxyHistogramOP.histogramInto(in data, (fProxy)0, (fProxy)4, ref counts);
+            fProxyHistogram_OP.histogramInto(in data, (fProxy)0, (fProxy)4, ref counts);
 
             RecordEq(counts[0], 2);
             RecordEq(counts[1], 0);   // garbage was cleared
@@ -180,7 +180,7 @@ public class fProxyHistogramTests
             for (int i = 0; i < 5; i++) data[i] = (fProxy)(i + 1);
 
             var counts = arena.Indices(4);
-            fProxyHistogramOP.histogramInto(in data, ref counts);
+            fProxyHistogram_OP.histogramInto(in data, ref counts);
 
             RecordEq(counts[0], 1);
             RecordEq(counts[1], 1);
@@ -201,7 +201,7 @@ public class fProxyHistogramTests
 
             var counts = arena.Indices(4);
             for (int b = 0; b < 4; b++) counts[b] = 5;   // garbage
-            fProxyHistogramOP.histogramInto(in data, ref counts);
+            fProxyHistogram_OP.histogramInto(in data, ref counts);
 
             RecordEq(counts[0], 3);
             RecordEq(counts[1], 0);
@@ -221,7 +221,7 @@ public class fProxyHistogramTests
 
             var counts = arena.Indices(4);
             for (int b = 0; b < 4; b++) counts[b] = 9;   // garbage
-            fProxyHistogramOP.histogramInto(in data, ref counts);
+            fProxyHistogram_OP.histogramInto(in data, ref counts);
 
             for (int b = 0; b < 4; b++) RecordEq(counts[b], 0);
 
@@ -239,7 +239,7 @@ public class fProxyHistogramTests
             for (int i = 1; i < 6; i++) data[i] = (fProxy)i;   // 1..5
 
             var counts = arena.Indices(4);
-            fProxyHistogramOP.histogramInto(in data, ref counts);
+            fProxyHistogram_OP.histogramInto(in data, ref counts);
 
             RecordEq(counts[0], 1);
             RecordEq(counts[1], 1);
@@ -266,7 +266,7 @@ public class fProxyHistogramTests
             fProxy lo = (fProxy)1, hi = (fProxy)5;
             fProxy w = (hi - lo) / (fProxy)K;
             var dest = arena.fProxyVec(K);
-            fProxyHistogramOP.densityInto(in data, lo, hi, ref dest);
+            fProxyHistogram_OP.densityInto(in data, lo, hi, ref dest);
 
             fProxy integral = (fProxy)0;
             for (int b = 0; b < K; b++) integral += dest[b] * w;
@@ -289,7 +289,7 @@ public class fProxyHistogramTests
             fProxy lo = (fProxy)2, hi = (fProxy)4;
             fProxy w = (hi - lo) / (fProxy)K;
             var dest = arena.fProxyVec(K);
-            fProxyHistogramOP.densityInto(in data, lo, hi, ref dest);
+            fProxyHistogram_OP.densityInto(in data, lo, hi, ref dest);
 
             fProxy integral = (fProxy)0;
             for (int b = 0; b < K; b++) integral += dest[b] * w;
@@ -314,7 +314,7 @@ public class fProxyHistogramTests
 
             int K = 4;
             var dest = arena.fProxyVec(K);
-            fProxyHistogramOP.cdfInto(in data, (fProxy)1, (fProxy)5, ref dest);
+            fProxyHistogram_OP.cdfInto(in data, (fProxy)1, (fProxy)5, ref dest);
 
             // monotone non-decreasing
             for (int b = 1; b < K; b++)
@@ -339,11 +339,11 @@ public class fProxyHistogramTests
             fProxy lo = (fProxy)1, hi = (fProxy)5;
 
             var counts = arena.Indices(K);
-            fProxyHistogramOP.histogramInto(in data, lo, hi, ref counts);
+            fProxyHistogram_OP.histogramInto(in data, lo, hi, ref counts);
             int total = Sum(in counts);
 
             var dest = arena.fProxyVec(K);
-            fProxyHistogramOP.cdfInto(in data, lo, hi, ref dest);
+            fProxyHistogram_OP.cdfInto(in data, lo, hi, ref dest);
 
             int cum = 0;
             fProxy tol = (fProxy)10 * Consts.fProxySqrtEps;
@@ -367,7 +367,7 @@ public class fProxyHistogramTests
             int K = 4;
             var dest = arena.fProxyVec(K);
             for (int b = 0; b < K; b++) dest[b] = (fProxy)123;   // garbage
-            fProxyHistogramOP.cdfInto(in data, (fProxy)10, (fProxy)20, ref dest);
+            fProxyHistogram_OP.cdfInto(in data, (fProxy)10, (fProxy)20, ref dest);
 
             for (int b = 0; b < K; b++)
                 AssertClose(dest[b], (fProxy)0, (fProxy)0);
@@ -398,7 +398,7 @@ public class fProxyHistogramTests
             var counts = arena.fProxyMat(2, 3);
             for (int i = 0; i < counts.Length; i++) counts[i] = (fProxy)999;   // garbage
 
-            fProxyHistogramOP.histogram2DInto(in dataX, in dataY,
+            fProxyHistogram_OP.histogram2DInto(in dataX, in dataY,
                 (fProxy)0, (fProxy)4, (fProxy)0, (fProxy)6, ref counts);
 
             // rows = X bins (2), cols = Y bins (3)
@@ -432,7 +432,7 @@ public class fProxyHistogramTests
 
             int K = 4;
             var counts = arena.Indices(K);
-            fProxyHistogramOP.histogramInto(in data, (fProxy)1, (fProxy)5, ref counts);   // [1,1,1,2]
+            fProxyHistogram_OP.histogramInto(in data, (fProxy)1, (fProxy)5, ref counts);   // [1,1,1,2]
 
             var weights = arena.fProxyVec(K);
             for (int b = 0; b < K; b++) weights[b] = (fProxy)counts[b];
@@ -440,7 +440,7 @@ public class fProxyHistogramTests
             var rng = new Random(20240627u);
             for (int t = 0; t < 128; t++)
             {
-                int pick = fProxyRandomOP.weightedPick(in weights, ref rng);
+                int pick = fProxyRandom_OP.weightedPick(in weights, ref rng);
                 AssertTrue(pick >= 0 && pick < K);
             }
 
@@ -534,18 +534,18 @@ public class fProxyHistogramTests
             // K < 1 (empty counts)
             var empty = arena.Indices(0);
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.histogramInto(in data, (fProxy)0, (fProxy)1, ref empty));
+                () => fProxyHistogram_OP.histogramInto(in data, (fProxy)0, (fProxy)1, ref empty));
 
             // !(hi > lo): equal, and inverted
             var counts = arena.Indices(4);
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.histogramInto(in data, (fProxy)1, (fProxy)1, ref counts));
+                () => fProxyHistogram_OP.histogramInto(in data, (fProxy)1, (fProxy)1, ref counts));
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.histogramInto(in data, (fProxy)5, (fProxy)1, ref counts));
+                () => fProxyHistogram_OP.histogramInto(in data, (fProxy)5, (fProxy)1, ref counts));
 
             // auto-range overload also rejects K < 1
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.histogramInto(in data, ref empty));
+                () => fProxyHistogram_OP.histogramInto(in data, ref empty));
         }
         finally { arena.Dispose(); }
     }
@@ -562,17 +562,17 @@ public class fProxyHistogramTests
 
             // hi <= lo
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.densityInto(in data, (fProxy)1, (fProxy)1, ref dest));
+                () => fProxyHistogram_OP.densityInto(in data, (fProxy)1, (fProxy)1, ref dest));
 
             // empty data (cannot normalize)
             var emptyData = arena.fProxyVec(0);
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.densityInto(in emptyData, (fProxy)0, (fProxy)1, ref dest));
+                () => fProxyHistogram_OP.densityInto(in emptyData, (fProxy)0, (fProxy)1, ref dest));
 
             // K < 1
             var emptyDest = arena.fProxyVec(0);
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.densityInto(in data, (fProxy)0, (fProxy)1, ref emptyDest));
+                () => fProxyHistogram_OP.densityInto(in data, (fProxy)0, (fProxy)1, ref emptyDest));
         }
         finally { arena.Dispose(); }
     }
@@ -588,11 +588,11 @@ public class fProxyHistogramTests
             var dest = arena.fProxyVec(4);
 
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.cdfInto(in data, (fProxy)2, (fProxy)1, ref dest));
+                () => fProxyHistogram_OP.cdfInto(in data, (fProxy)2, (fProxy)1, ref dest));
 
             var emptyDest = arena.fProxyVec(0);
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.cdfInto(in data, (fProxy)0, (fProxy)1, ref emptyDest));
+                () => fProxyHistogram_OP.cdfInto(in data, (fProxy)0, (fProxy)1, ref emptyDest));
         }
         finally { arena.Dispose(); }
     }
@@ -609,16 +609,16 @@ public class fProxyHistogramTests
 
             // mismatched dataX / dataY lengths
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.histogram2DInto(in dataX, in dataY,
+                () => fProxyHistogram_OP.histogram2DInto(in dataX, in dataY,
                     (fProxy)0, (fProxy)1, (fProxy)0, (fProxy)1, ref counts));
 
             // paired (equal-length) but invalid ranges
             var dY = arena.fProxyVec(5);
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.histogram2DInto(in dataX, in dY,
+                () => fProxyHistogram_OP.histogram2DInto(in dataX, in dY,
                     (fProxy)1, (fProxy)1, (fProxy)0, (fProxy)1, ref counts));   // hiX <= loX
             Assert.Throws<ArgumentException>(
-                () => fProxyHistogramOP.histogram2DInto(in dataX, in dY,
+                () => fProxyHistogram_OP.histogram2DInto(in dataX, in dY,
                     (fProxy)0, (fProxy)1, (fProxy)2, (fProxy)1, ref counts));   // hiY <= loY
         }
         finally { arena.Dispose(); }

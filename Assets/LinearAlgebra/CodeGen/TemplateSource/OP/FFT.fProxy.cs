@@ -21,7 +21,7 @@ namespace LinearAlgebra
     /// (re, im) pair to a single real vector. Typical DSP pipeline: window (Hann) → rfft → powerSpectrum.
     /// fProxy-only.
     /// </summary>
-    public static partial class fProxyFFT
+    public static partial class fProxyFFT_OP
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool IsPow2(int n) => n > 0 && (n & (n - 1)) == 0;

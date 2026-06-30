@@ -12,7 +12,7 @@ namespace LinearAlgebra
     //   findFirst, count, any, all, findAll.
     // Constraint: where T : unmanaged, IUnsafeiProxyArray
     //             where P : struct, IiProxyPredicate
-    public static partial class iProxyQueryOP
+    public static partial class iProxyQuery_OP
     {
         // -------------------------------------------------------------------------
         // GROUP A — FLAT / SCALAR PREDICATE OPS

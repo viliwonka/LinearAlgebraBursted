@@ -20,14 +20,14 @@ namespace LinearAlgebra
 
         // Build a Householder reflector from COLUMN k of matrix M (rows k..M_Rows-1).
         // Stores result in u[k..M_Rows-1]; entries u[0..k-1] are not accessed.
-        // Convention: H = I - u*uᵀ with ||u||² = 2, matching OrthoOP.genHouseholderPete.
+        // Convention: H = I - u*uᵀ with ||u||² = 2, matching Ortho_OP.genHouseholderPete.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void genHouseholderCol(ref doubleMxN M, ref doubleN u, int k, double zeroThreshold)
         {
             for (int r = k; r < M.M_Rows; r++)
                 u[r] = M[r, k];
 
-            double xNorm = doubleNormsOP.L2Range(u, k, M.M_Rows);
+            double xNorm = doubleNorms_OP.L2Range(u, k, M.M_Rows);
 
             if (math.abs(xNorm) > zeroThreshold)
             {
@@ -54,7 +54,7 @@ namespace LinearAlgebra
             for (int c = colStart; c < n; c++)
                 v[c] = M[row, c];
 
-            double xNorm = doubleNormsOP.L2Range(v, colStart, n);
+            double xNorm = doubleNorms_OP.L2Range(v, colStart, n);
 
             if (math.abs(xNorm) > zeroThreshold)
             {
@@ -74,7 +74,7 @@ namespace LinearAlgebra
         // Apply Householder H = I - u*uᵀ from the LEFT to the trailing block M[d:, d:]:
         //   M[d:, d:] -= u · (uᵀ · M[d:, d:])
         // w is scratch of length >= M.N_Cols - d (zeroed by MemClear inside).
-        // Identical in semantics to OrthoOP.applyReflectorRight (which is a left-apply).
+        // Identical in semantics to Ortho_OP.applyReflectorRight (which is a left-apply).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe void applyHouseholderLeft(ref doubleMxN M, ref doubleN u, ref doubleN w, int d)
         {
@@ -90,11 +90,11 @@ namespace LinearAlgebra
             // pass 1: w[0..L) = Σ_{r=d}^{rows-1} u[r] · M[r, d..cols)
             UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<double>());
             for (int r = d; r < rows; r++)
-                UnsafeOP.axpy(wp, mp + (long)r * cols + d, up[r], L);
+                Unsafe_OP.axpy(wp, mp + (long)r * cols + d, up[r], L);
 
             // pass 2: M[r, d..cols) -= u[r] · w[0..L)
             for (int r = d; r < rows; r++)
-                UnsafeOP.axpy(mp + (long)r * cols + d, wp, -up[r], L);
+                Unsafe_OP.axpy(mp + (long)r * cols + d, wp, -up[r], L);
         }
 
         // Apply Householder G = I - v*vᵀ from the RIGHT to M[rowStart:, colStart:]:
@@ -115,8 +115,8 @@ namespace LinearAlgebra
             for (int r = rowStart; r < rows; r++)
             {
                 double* rowPtr = mp + (long)r * cols + colStart;
-                double dot = UnsafeOP.vecDot(rowPtr, vp, L);
-                UnsafeOP.axpy(rowPtr, vp, -dot, L);
+                double dot = Unsafe_OP.vecDot(rowPtr, vp, L);
+                Unsafe_OP.axpy(rowPtr, vp, -dot, L);
             }
         }
 
@@ -134,7 +134,7 @@ namespace LinearAlgebra
         /// <param name="V">Output n×n right orthogonal factor. Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bidiagonalize(in doubleMxN A, ref doubleMxN U, ref doubleMxN B, ref doubleMxN V,
-                                         ref doubleBidiagWorkspace ws)
+                                         ref doubleBidiag_WS ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -172,7 +172,7 @@ namespace LinearAlgebra
             var vVec = ws.vVec;
             var wScratch = ws.wScratch;
 
-            double zeroThreshold = Consts.doubleZeroThreshold * doubleNormsOP.LInf(in A);
+            double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in A);
 
             // ---- Forward sweep: reduce W to upper bidiagonal form ----
             for (int k = 0; k < n; k++)
@@ -242,7 +242,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new doubleBidiagWorkspace
+            var ws = new doubleBidiag_WS
             {
                 W = new doubleMxN(m, n, Allocator.Temp, true),
                 leftU = new doubleMxN(m, n, Allocator.Temp, false),
@@ -272,7 +272,7 @@ namespace LinearAlgebra
         /// <param name="e">Output superdiagonal, length n (e[0]=0). Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bidiagonalizeValues(in doubleMxN A, ref doubleN d, ref doubleN e,
-                                               ref doubleBidiagWorkspace ws)
+                                               ref doubleBidiag_WS ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -296,7 +296,7 @@ namespace LinearAlgebra
             var vVec = ws.vVec;
             var wScratch = ws.wScratch;
 
-            double zeroThreshold = Consts.doubleZeroThreshold * doubleNormsOP.LInf(in A);
+            double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in A);
 
             for (int k = 0; k < n; k++)
             {
@@ -330,7 +330,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new doubleBidiagWorkspace
+            var ws = new doubleBidiag_WS
             {
                 W = new doubleMxN(m, n, Allocator.Temp, true),
                 uVec = new doubleN(m, Allocator.Temp, false),

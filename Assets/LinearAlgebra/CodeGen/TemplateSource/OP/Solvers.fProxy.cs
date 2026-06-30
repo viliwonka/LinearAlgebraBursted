@@ -16,7 +16,7 @@ namespace LinearAlgebra
         // PRECONDITION: U is non-singular — every diagonal U[r,r] must be nonzero. A zero diagonal
         // (a singular/rank-deficient triangular factor) divides by zero and yields Inf/NaN; this
         // primitive does not guard it. For rank-deficient systems use the rank-revealing paths
-        // (OrthoOP.qrDecompositionColumnPivot, SVD.pinvSolve, or Cholesky.choleskyPivotSolve).
+        // (Ortho_OP.qrDecompositionColumnPivot, SVD.pinvSolve, or Cholesky.choleskyPivotSolve).
         public static void SolveUpperTriangular(ref fProxyMxN U, ref fProxyN x)
         {
             if(U.M_Rows < U.N_Cols)
@@ -115,7 +115,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("SolveQR: x.N must equal Q.N_Cols");
 
             // x = Q^T b (or b^T Q). The ref-dest dot guards x-aliases-b and zeroes x first.
-            fProxyOP.dot(in b, in Q, ref x);
+            fProxy_OP.dot(in b, in Q, ref x);
             // Solve Rx = Q^T b for x, in place
             SolveUpperTriangular(ref R, ref x);
         }
@@ -133,7 +133,7 @@ namespace LinearAlgebra
         // Solve Ax = b for x
         public static void SolveQR(ref fProxyMxN A, ref fProxyN b, ref fProxyN x)
         {
-            OrthoOP.qrDirectSolve(ref A, ref b, ref x);
+            Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
 
         }
 
@@ -170,7 +170,7 @@ namespace LinearAlgebra
             if (maxIterations < 1)
                 throw new ArgumentException("conjugateGradient: maxIterations must be >= 1");
 
-            fProxy bb = fProxyOP.dot(b, b);
+            fProxy bb = fProxy_OP.dot(b, b);
 
             // b is the zero vector — x = 0 is the exact solution. Copy b (all zeros)
             // rather than multiplying by 0, so a NaN/Inf initial guess is sanitized
@@ -182,14 +182,14 @@ namespace LinearAlgebra
             }
 
             // r = b - A x
-            fProxyOP.dot(in A, in x, ref Ap);           // Ap = A x (temp use of Ap)
+            fProxy_OP.dot(in A, in x, ref Ap);           // Ap = A x (temp use of Ap)
             r.Data.CopyFrom(b.Data);                     // r  = b
             r.addScaledInpl((fProxy)(-1), Ap);           // r -= Ap  =>  r = b - A x
 
             // p = r
             p.Data.CopyFrom(r.Data);
 
-            fProxy rsold = fProxyOP.dot(r, r);
+            fProxy rsold = fProxy_OP.dot(r, r);
             fProxy threshold = tolerance * tolerance * bb;
 
             if (rsold <= threshold)
@@ -197,9 +197,9 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
-                fProxyOP.dot(in A, in p, ref Ap);        // Ap = A p
+                fProxy_OP.dot(in A, in p, ref Ap);        // Ap = A p
 
-                fProxy pAp = fProxyOP.dot(p, Ap);
+                fProxy pAp = fProxy_OP.dot(p, Ap);
 
                 if (!(pAp > (fProxy)0))                  // NaN-safe: also catches breakdown
                     return false;
@@ -209,7 +209,7 @@ namespace LinearAlgebra
                 x.addScaledInpl(alpha, p);               // x += alpha p
                 r.addScaledInpl(-alpha, Ap);             // r -= alpha Ap
 
-                fProxy rsnew = fProxyOP.dot(r, r);
+                fProxy rsnew = fProxy_OP.dot(r, r);
 
                 if (rsnew <= threshold)
                     return true;

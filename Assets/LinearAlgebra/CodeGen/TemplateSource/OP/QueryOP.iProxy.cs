@@ -6,13 +6,13 @@ using System.Runtime.CompilerServices;
 
 namespace LinearAlgebra
 {
-    // iProxyQueryOP: integer-exact search & selection inside integer vectors / matrices.
+    // iProxyQuery_OP: integer-exact search & selection inside integer vectors / matrices.
     // This is the P2 subset from spec-query.md — only the metrics/norms that are
     // exact for integer types: Manhattan, Chebyshev, SqEuclidean, Dot (Group 3);
     // L1 and Linf norms (Group 2). Euclidean, Cosine, and L2 are float-only (need
     // sqrt/division) and throw ArgumentException if passed to integer methods.
     //
-    // decodeIndex is type-agnostic (int→int) and lives in fProxyQueryOP — reuse that,
+    // decodeIndex is type-agnostic (int→int) and lives in fProxyQuery_OP — reuse that,
     // do NOT call or duplicate it here.
     //
     // P3 overflow note: ALL integer metrics require each element AND each element-wise
@@ -30,7 +30,7 @@ namespace LinearAlgebra
     //       Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
     //       Euclidean and Cosine throw ArgumentException.
     //   4 — Value / mask search: findValue, nonzero, countNonzero.
-    public static partial class iProxyQueryOP
+    public static partial class iProxyQuery_OP
     {
         // -------------------------------------------------------------------------
         // HELPERS
@@ -784,7 +784,7 @@ namespace LinearAlgebra
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                iProxy s = iProxyQueryOP.RowScore(in A, r, in q, m);
+                iProxy s = iProxyQuery_OP.RowScore(in A, r, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -833,7 +833,7 @@ namespace LinearAlgebra
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                iProxy s = iProxyQueryOP.ColScore(in A, c, in q, m);
+                iProxy s = iProxyQuery_OP.ColScore(in A, c, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -882,7 +882,7 @@ namespace LinearAlgebra
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                iProxy s = iProxyQueryOP.RowScore(in A, r, in q, m);
+                iProxy s = iProxyQuery_OP.RowScore(in A, r, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -930,7 +930,7 @@ namespace LinearAlgebra
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                iProxy s = iProxyQueryOP.ColScore(in A, c, in q, m);
+                iProxy s = iProxyQuery_OP.ColScore(in A, c, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -973,7 +973,7 @@ namespace LinearAlgebra
             int count = 0;
             for (int row = 0; row < A.M_Rows; row++)
             {
-                iProxy s = iProxyQueryOP.RowScore(in A, row, in q, m);
+                iProxy s = iProxyQuery_OP.RowScore(in A, row, in q, m);
                 if (sim ? s >= r : s <= r) idx[count++] = row;
             }
             return count;
@@ -1000,7 +1000,7 @@ namespace LinearAlgebra
             int count = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                iProxy s = iProxyQueryOP.ColScore(in A, c, in q, m);
+                iProxy s = iProxyQuery_OP.ColScore(in A, c, in q, m);
                 if (sim ? s >= r : s <= r) idx[count++] = c;
             }
             return count;

@@ -10,10 +10,10 @@ using Unity.Mathematics;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Precomputed twiddle table for doubleFFT. One size-n table serves every radix-2 transform of
+    /// Precomputed twiddle table for doubleFFT_OP. One size-n table serves every radix-2 transform of
     /// length ≤ n: the stage-len butterfly twiddle W_len^k is indexed as twRe[k*(n/len)],
     /// twIm[k*(n/len)], eliminating per-element cos/sin from the hot loop. Build once via
-    /// Arena.doubleFftWorkspace(n) and reuse across many transforms of the same size.
+    /// Arena.doubleFft_WS(n) and reuse across many transforms of the same size.
     ///
     /// The table is computed at double precision and cast to the element type (float or double),
     /// so accuracy is maximized regardless of the transform element type.
@@ -23,7 +23,7 @@ namespace LinearAlgebra
     /// boundary. Bandwidth tradeoff: full table uses ~2× twiddle memory (~16 MB at N=1M for
     /// float), offset by halving the number of full-array passes (log4(N) vs log2(N) passes).
     /// </summary>
-    public struct doubleFftWorkspace
+    public struct doubleFft_WS
     {
         public doubleN twRe;       // length n/2: cos(-2π·j/n), j = 0..n/2-1  (half circle, radix-2)
         public doubleN twIm;       // length n/2: sin(-2π·j/n)
@@ -55,10 +55,10 @@ namespace LinearAlgebra
         /// outside a hot loop and pass it to the table overloads. One table serves fft/ifft of length
         /// exactly n and rfft/irfft of real signal length exactly n.
         /// </summary>
-        public doubleFftWorkspace doubleFftWorkspace(int n)
+        public doubleFft_WS doubleFft_WS(int n)
         {
             if (n < 2 || (n & (n - 1)) != 0)
-                throw new ArgumentException("doubleFftWorkspace: n must be a power of two and >= 2");
+                throw new ArgumentException("doubleFft_WS: n must be a power of two and >= 2");
 
             int half = n >> 1;
             var twRe     = doubleVec(half);
@@ -91,7 +91,7 @@ namespace LinearAlgebra
             var sz      = doubleVec(half, uninit: true);
             var visited = doubleVec(n,    uninit: true);
 
-            return new doubleFftWorkspace
+            return new doubleFft_WS
             {
                 twRe     = twRe,
                 twIm     = twIm,
@@ -105,32 +105,32 @@ namespace LinearAlgebra
         }
     }
 
-    public static partial class doubleFFT
+    public static partial class doubleFFT_OP
     {
         // ---- workspace guard ----
 
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n-point FFT. Matches the layout
-        /// produced by Arena.doubleFftWorkspace(n): ws.n == n and table lengths == n/2.
+        /// produced by Arena.doubleFft_WS(n): ws.n == n and table lengths == n/2.
         /// </summary>
-        static void RequireFftWorkspace(in doubleFftWorkspace ws, int n, string who)
+        static void RequireFftWorkspace(in doubleFft_WS ws, int n, string who)
         {
             if (ws.n != n || ws.twRe.N != n >> 1 || ws.twIm.N != n >> 1 ||
                 ws.cz.N != n >> 1 || ws.sz.N != n >> 1 || ws.visited.N != n)
                 throw new ArgumentException(
-                    who + ": workspace must be sized for an n-point FFT (use Arena.doubleFftWorkspace(n))");
+                    who + ": workspace must be sized for an n-point FFT (use Arena.doubleFft_WS(n))");
         }
 
         /// <summary>
         /// Throws if the workspace is missing the full-circle twiddle table required by the
         /// radix-4 dispatch paths. Extends <see cref="RequireFftWorkspace"/>.
         /// </summary>
-        static void RequireRadix4Workspace(in doubleFftWorkspace ws, int n, string who)
+        static void RequireRadix4Workspace(in doubleFft_WS ws, int n, string who)
         {
             RequireFftWorkspace(in ws, n, who);
             if (ws.twReFull.N != n || ws.twImFull.N != n)
                 throw new ArgumentException(
-                    who + ": workspace must have full-circle twiddle table (use Arena.doubleFftWorkspace(n))");
+                    who + ": workspace must have full-circle twiddle table (use Arena.doubleFft_WS(n))");
         }
 
         // ---- table-indexed overloads ----
@@ -142,11 +142,11 @@ namespace LinearAlgebra
         /// These two cases cover EVERY power of two, so there is no plain-radix-2 size class here.
         /// The final else is reached only by a non-power-of-two length (not a valid FFT size)
         /// and throws — use dft for arbitrary N.
-        /// ws must be sized for re.N (build via Arena.doubleFftWorkspace(N)); it must contain the
+        /// ws must be sized for re.N (build via Arena.doubleFft_WS(N)); it must contain the
         /// full-circle twiddle table required by the radix-4 paths. Both arrays must have the same
         /// length, which must be a power of two.
         /// </summary>
-        public static void fft(ref doubleN re, ref doubleN im, in doubleFftWorkspace ws)
+        public static void fft(ref doubleN re, ref doubleN im, in doubleFft_WS ws)
         {
             int n = re.N;
             RequireRadix4Workspace(in ws, n, "fft");
@@ -179,7 +179,7 @@ namespace LinearAlgebra
         /// (throws — use idft for arbitrary N).
         /// Divides by N so that ifft(fft(x, ws), ws) == x. ws must be sized for re.N.
         /// </summary>
-        public static void ifft(ref doubleN re, ref doubleN im, in doubleFftWorkspace ws)
+        public static void ifft(ref doubleN re, ref doubleN im, in doubleFft_WS ws)
         {
             int n = re.N;
             RequireRadix4Workspace(in ws, n, "ifft");
@@ -212,7 +212,7 @@ namespace LinearAlgebra
         /// the radix-4/mixed dispatch and the unpack twiddle W_N^k = (ws.twRe[k], ws.twIm[k]) is
         /// read directly — no cos/sin in the hot loop.
         /// </summary>
-        public static void rfft(in doubleN real, ref doubleN re, ref doubleN im, in doubleFftWorkspace ws)
+        public static void rfft(in doubleN real, ref doubleN re, ref doubleN im, in doubleFft_WS ws)
         {
             int n = real.N;
             RequireFftWorkspace(in ws, n, "rfft");
@@ -293,7 +293,7 @@ namespace LinearAlgebra
         /// (ws.twRe[k], -ws.twIm[k]) — no cos/sin in the hot loop.
         /// irfft(rfft(x, ws), ws) == x to floating-point precision.
         /// </summary>
-        public static void irfft(in doubleN re, in doubleN im, ref doubleN real, in doubleFftWorkspace ws)
+        public static void irfft(in doubleN re, in doubleN im, ref doubleN real, in doubleFft_WS ws)
         {
             int halfSpec = re.N;
             if (im.N != halfSpec)

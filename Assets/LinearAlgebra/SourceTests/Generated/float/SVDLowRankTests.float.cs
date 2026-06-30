@@ -93,8 +93,8 @@ public class floatSVDLowRankTests
         {
             var U = new floatMxN(m, m, Allocator.Temp, false);
             var V = new floatMxN(n, n, Allocator.Temp, false);
-            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref U);
-            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref V);
+            floatRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref U);
+            floatRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref V);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -223,7 +223,7 @@ public class floatSVDLowRankTests
             int m = 10, n = 6, r = 3;
             var B = arena.floatRandomMatrix(m, r, (float)(-2f), (float)2f, 121212);
             var C = arena.floatRandomMatrix(r, n, (float)(-2f), (float)2f, 343434);
-            var A = floatOP.dot(B, C);   // rank 3
+            var A = float_OP.dot(B, C);   // rank 3
             var fullS = Spectrum(in A, ref arena, out float normA2);
             // k=3 captures all energy (tail ~ 0); k=2 leaves σ_2. k > rank(A) is not tested here —
             // GKL correctly signals converged=false for k > rank (rank-deficiency detected via Krylov
@@ -292,7 +292,7 @@ public class floatSVDLowRankTests
             int m = 24, n = 8, r = 4;
             var B = arena.floatRandomMatrix(m, r, (float)(-2f), (float)2f, 8881);
             var C = arena.floatRandomMatrix(r, n, (float)(-2f), (float)2f, 9992);
-            var A = floatOP.dot(B, C);   // exactly rank 4
+            var A = float_OP.dot(B, C);   // exactly rank 4
 
             // Full spectrum oracle
             var Sfull = arena.floatVec(n);
@@ -409,8 +409,8 @@ public class floatSVDLowRankTests
         {
             Ularge = new floatMxN(m, m, Allocator.Temp, false);
             Vmat   = new floatMxN(n, n, Allocator.Temp, false);
-            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref Ularge);
-            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref Vmat);
+            floatRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref Ularge);
+            floatRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref Vmat);
         }
 
         // Check GKL top-k against svdThin oracle. Asserts converged=true, σ within svTol of oracle,
@@ -592,7 +592,7 @@ public class floatSVDLowRankTests
             // k=5, oversample=5 → p = min(10, 20) = 10 < n=20.
             var B = arena.floatRandomMatrix(m, r, (float)(-2f), (float)2f, 0xBADC0DE0u);
             var C = arena.floatRandomMatrix(r, n, (float)(-2f), (float)2f, 0xBADC0DE1u);
-            var A = floatOP.dot(B, C);  // exactly rank 3
+            var A = float_OP.dot(B, C);  // exactly rank 3
 
             // True top-r singular values (oracle)
             var Sfull = arena.floatVec(n);

@@ -13,7 +13,7 @@ zero-alloc, Burst-compatible designs over completeness. The two open README item
 - No managed types in jobs: **no C# lambdas/delegates/closures**, no LINQ, no `List<T>`, no exceptions
   as control flow. Everything is unmanaged structs + pointers.
 - The library's existing data types (`fProxyN`/`fProxyMxN`) are **contiguous, row-major** over an
-  `UnsafeList` (`A[i,j] = Data[i*N_Cols + j]`). Every existing kernel (`UnsafeOP.*`) assumes this
+  `UnsafeList` (`A[i,j] = Data[i*N_Cols + j]`). Every existing kernel (`Unsafe_OP.*`) assumes this
   contiguity. A strided/non-contiguous view therefore CANNOT be fed to those kernels as-is.
 - The library already has the Burst-native "lambda": the **struct-functor pattern** used by the
   optimizers — `gradientDescent<F>(... ref F f) where F : struct, IfProxyGradientFunction`. The caller

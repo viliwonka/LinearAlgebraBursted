@@ -55,7 +55,7 @@ namespace LinearAlgebra {
                     pivot.Swap(fromR, toR);
                     
                     unsafe {
-                        UnsafeOP.swapRows(A.Data.Ptr, fromR, toR, A.N_Cols);
+                        Unsafe_OP.swapRows(A.Data.Ptr, fromR, toR, A.N_Cols);
                     }
                     
                     toR = pivot.indices[fromR];
@@ -79,7 +79,7 @@ namespace LinearAlgebra {
                     pivot.Swap(fromR, toR);
                     
                     unsafe {
-                        UnsafeOP.swapColumns(A.Data.Ptr, fromR, toR, A.M_Rows, A.N_Cols);
+                        Unsafe_OP.swapColumns(A.Data.Ptr, fromR, toR, A.M_Rows, A.N_Cols);
                     }
 
                     toR = pivot.indices[fromR];

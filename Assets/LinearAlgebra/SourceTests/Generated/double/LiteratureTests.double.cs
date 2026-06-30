@@ -89,8 +89,8 @@ public class doubleLiteratureTests
             AssertClose(S[0], (double)2, (double)1E-4);
             AssertClose(S[1], (double)1, (double)1E-4);
 
-            AssertClose(doubleNormsOP.matrixL2(in A), (double)2, (double)1E-4);
-            AssertClose(doubleOP.cond(in A), (double)2, (double)1E-4);
+            AssertClose(doubleNorms_OP.matrixL2(in A), (double)2, (double)1E-4);
+            AssertClose(double_OP.cond(in A), (double)2, (double)1E-4);
 
             arena.Dispose();
         }
@@ -109,7 +109,7 @@ public class doubleLiteratureTests
 
             // --- SVD pseudo-inverse solve (pinvSolve no longer modifies A or b) ---
             var A1 = arena.doubleLauchli(3, eps);   // (3+1)x3 = 4x3
-            var b1 = doubleOP.dot(A1, xTrue);   // length 4, exactly in range(A)
+            var b1 = double_OP.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.doubleVec(3);
             SVD.pinvSolve(ref A1, in b1, ref xSvd, out bool converged);
             AssertTrue(converged);
@@ -118,9 +118,9 @@ public class doubleLiteratureTests
 
             // --- QR direct solve (destroys A and b) ---
             var A2 = arena.doubleLauchli(3, eps);   // (3+1)x3 = 4x3
-            var b2 = doubleOP.dot(A2, xTrue);
+            var b2 = double_OP.dot(A2, xTrue);
             var xQr = arena.doubleVec(3);
-            OrthoOP.qrDirectSolve(ref A2, ref b2, ref xQr);
+            Ortho_OP.qrDirectSolve(ref A2, ref b2, ref xQr);
             for (int k = 0; k < 3; k++)
                 AssertClose(xQr[k], xTrue[k], (double)1E-2);
 
@@ -159,10 +159,10 @@ public class doubleLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             var H3 = arena.doubleHilbert(3);
-            AssertClose(doubleOP.cond(in H3), (double)524.0568, (double)5);
+            AssertClose(double_OP.cond(in H3), (double)524.0568, (double)5);
 
             var H5 = arena.doubleHilbert(5);
-            AssertBelow((double)1E5, doubleOP.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
+            AssertBelow((double)1E5, double_OP.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
 
             arena.Dispose();
         }
@@ -182,7 +182,7 @@ public class doubleLiteratureTests
             AssertTrue(Eigen.eigenDecomposition(ref W, ref eig, ref V, 100));   // destroys W; must converge
 
             // eigenvectors orthonormal
-            AssertTrue(Analysis.IsOrthogonal(V, (double)1E-3));
+            AssertTrue(Analysis_OP.IsOrthogonal(V, (double)1E-3));
 
             // two spectral invariants over ALL eigenvalues (so corrupted middle ones can't hide):
             //   Σλ = trace = 2*(1+..+10) = 110;   Σλ² = ‖W‖_F² = 2*(1²+..+10²) + 40 = 810
@@ -213,7 +213,7 @@ public class doubleLiteratureTests
             double lamMin = (double)2 - (double)2 * math.cos(pi / (double)(n + 1));
 
             // condition number (read-only on T)
-            AssertClose(doubleOP.cond(in T), lamMax / lamMin, (double)1E-2);
+            AssertClose(double_OP.cond(in T), lamMax / lamMin, (double)1E-2);
 
             // SPD -> Cholesky succeeds (read-only on T)
             var L = arena.doubleMat(n, n);
@@ -226,7 +226,7 @@ public class doubleLiteratureTests
             AssertTrue(Eigen.eigenDecomposition(ref Tc, ref eig, ref V));   // must converge
 
             // eigenvectors must be orthonormal
-            AssertTrue(Analysis.IsOrthogonal(V, (double)1E-3));
+            AssertTrue(Analysis_OP.IsOrthogonal(V, (double)1E-3));
 
             for (int i = 0; i < n; i++)
             {
@@ -248,14 +248,14 @@ public class doubleLiteratureTests
             double scale = (double)1E-7;
 
             var A = arena.doubleRandomMatrix(n, n, -1f, 1f, 90211);
-            doubleOP.mulInpl(A, scale);   // entries now ~1e-7
+            double_OP.mulInpl(A, scale);   // entries now ~1e-7
 
             var Q = A.Copy();
             var R = arena.doubleMat(n, n);
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
-            doubleMxN recon = doubleOP.dot(Q, R);
-            double err = Analysis.MaxZeroError(A - recon);
+            doubleMxN recon = double_OP.dot(Q, R);
+            double err = Analysis_OP.MaxZeroError(A - recon);
 
             // relative to the matrix scale; pre-fix this was O(scale) (total garbage)
             AssertBelow(err / scale, (double)1E-3);

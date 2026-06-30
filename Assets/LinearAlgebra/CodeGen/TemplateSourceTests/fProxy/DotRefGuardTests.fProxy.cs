@@ -21,7 +21,7 @@ public class fProxyDotRefGuardTests
             var A = arena.fProxyMat(3, 4);
             var x = arena.fProxyVec(4);
             var bad = arena.fProxyVec(2);   // must be length 3 (A.M_Rows)
-            Assert.Throws<ArgumentException>(() => fProxyOP.dot(in A, in x, ref bad));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.dot(in A, in x, ref bad));
         }
         finally { arena.Dispose(); }
     }
@@ -35,7 +35,7 @@ public class fProxyDotRefGuardTests
             var a = arena.fProxyMat(3, 4);
             var b = arena.fProxyMat(4, 5);
             var bad = arena.fProxyMat(3, 4);   // must be 3 x 5
-            Assert.Throws<ArgumentException>(() => fProxyOP.dot(in a, in b, ref bad, false));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.dot(in a, in b, ref bad, false));
         }
         finally { arena.Dispose(); }
     }
@@ -49,7 +49,7 @@ public class fProxyDotRefGuardTests
             var a = arena.fProxyMat(3, 4);
             var b = arena.fProxyMat(5, 6);     // a.N_Cols (4) != b.M_Rows (5)
             var c = arena.fProxyMat(3, 6);
-            Assert.Throws<ArgumentException>(() => fProxyOP.dot(in a, in b, ref c, false));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.dot(in a, in b, ref c, false));
         }
         finally { arena.Dispose(); }
     }
@@ -62,7 +62,7 @@ public class fProxyDotRefGuardTests
         {
             var A = arena.fProxyMat(3, 5);
             var bad = arena.fProxyMat(3, 5);   // must be 5 x 3
-            Assert.Throws<ArgumentException>(() => fProxyOP.trans(in A, ref bad));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.trans(in A, ref bad));
         }
         finally { arena.Dispose(); }
     }
@@ -78,7 +78,7 @@ public class fProxyDotRefGuardTests
             var A = arena.fProxyMat(3, 3);
             var x = arena.fProxyVec(3);
             var alias = x;   // shares x's buffer
-            Assert.Throws<ArgumentException>(() => fProxyOP.dot(in A, in x, ref alias));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.dot(in A, in x, ref alias));
         }
         finally { arena.Dispose(); }
     }
@@ -92,7 +92,7 @@ public class fProxyDotRefGuardTests
             var y = arena.fProxyVec(3);
             var A = arena.fProxyMat(3, 3);
             var alias = y;
-            Assert.Throws<ArgumentException>(() => fProxyOP.dot(in y, in A, ref alias));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.dot(in y, in A, ref alias));
         }
         finally { arena.Dispose(); }
     }
@@ -107,8 +107,8 @@ public class fProxyDotRefGuardTests
             var b = arena.fProxyMat(3, 3);
             var aliasA = a;
             var aliasB = b;
-            Assert.Throws<ArgumentException>(() => fProxyOP.dot(in a, in b, ref aliasA, false));
-            Assert.Throws<ArgumentException>(() => fProxyOP.dot(in a, in b, ref aliasB, false));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.dot(in a, in b, ref aliasA, false));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.dot(in a, in b, ref aliasB, false));
         }
         finally { arena.Dispose(); }
     }
@@ -121,7 +121,7 @@ public class fProxyDotRefGuardTests
         {
             var A = arena.fProxyMat(3, 3);
             var alias = A;
-            Assert.Throws<ArgumentException>(() => fProxyOP.trans(in A, ref alias));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.trans(in A, ref alias));
         }
         finally { arena.Dispose(); }
     }
@@ -137,7 +137,7 @@ public class fProxyDotRefGuardTests
             var a = arena.fProxyMat(3, 3);
             var c = arena.fProxyMat(3, 3);
             // dot(A, A, ref C): the two inputs alias each other (fine); C is distinct.
-            Assert.DoesNotThrow(() => fProxyOP.dot(in a, in a, ref c, false));
+            Assert.DoesNotThrow(() => fProxy_OP.dot(in a, in a, ref c, false));
         }
         finally { arena.Dispose(); }
     }

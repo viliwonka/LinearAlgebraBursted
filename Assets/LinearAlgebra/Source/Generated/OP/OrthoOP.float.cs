@@ -12,22 +12,22 @@ namespace LinearAlgebra
     /// <summary>           
     /// Inpl = inplace
     /// </summary>
-    public static partial class OrthoOP {
+    public static partial class Ortho_OP {
 
         public static void householderInpl(ref floatMxN matrix, in floatN u)
         {
             if(matrix.IsSquare == false)
-                throw new System.Exception("OrthoOP.householder: Matrix must be square");
+                throw new System.Exception("Ortho_OP.householder: Matrix must be square");
 
             if(matrix.M_Rows < matrix.N_Cols)
-                throw new System.Exception("OrthoOP.householder: Matrix must be square or tall (more or equal rows than cols)");
+                throw new System.Exception("Ortho_OP.householder: Matrix must be square or tall (more or equal rows than cols)");
 
             var maxDim = math.max(matrix.M_Rows, matrix.N_Cols);
 
             if(u.N < maxDim)
-                throw new System.Exception("OrthoOP.householder: Vector must be at least as long as the largest dimension of the matrix");
+                throw new System.Exception("Ortho_OP.householder: Vector must be at least as long as the largest dimension of the matrix");
 
-            float vTv = floatOP.dot(u, u); // Inline dot product calculation
+            float vTv = float_OP.dot(u, u); // Inline dot product calculation
 
             // Degenerate (zero / near-zero) reflector -> identity transform; leave matrix unchanged.
             // NaN-safe (!(vTv > t) is true for NaN); avoids 2/0 = Inf poisoning the matrix.
@@ -62,7 +62,7 @@ namespace LinearAlgebra
             for (int r = k; r < u.N; r++)
                 u[r] = Q[r, k];
 
-            float xNorm = floatNormsOP.L2Range(u, k, u.N);
+            float xNorm = floatNorms_OP.L2Range(u, k, u.N);
 
             if (math.abs(xNorm) > zeroThreshold) {
 
@@ -86,7 +86,7 @@ namespace LinearAlgebra
 
         // Apply a Householder reflector to the trailing submatrix in place:
         //     Q[d:, d:] -= u · (uᵀ · Q[d:, d:]).
-        // Two contiguous-memory passes through the vectorising UnsafeOP.axpy ([NoAlias]) — the same
+        // Two contiguous-memory passes through the vectorising Unsafe_OP.axpy ([NoAlias]) — the same
         // raw-pointer path GEMM uses, so Burst SIMD-vectorises the inner work (float runs ~2x double).
         // The previous formulation looped over rows r (stride N_Cols when indexing Q[r, c]), which
         // Burst cannot vectorise — it vectorises loops, and the unit-stride axis here is the columns,
@@ -112,11 +112,11 @@ namespace LinearAlgebra
             // pass 1: w[0..L) = Σ_{r=d}^{M-1} u[r] · Q[r, d..N)   (row segments are unit-stride)
             UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<float>());
             for (int r = d; r < M; r++)
-                UnsafeOP.axpy(wp, qp + (long)r * N + d, up[r], L);
+                Unsafe_OP.axpy(wp, qp + (long)r * N + d, up[r], L);
 
             // pass 2: Q[r, d..N) += (-u[r]) · w[0..L)  ==  Q[r, d..N) -= u[r] · w
             for (int r = d; r < M; r++)
-                UnsafeOP.axpy(qp + (long)r * N + d, wp, -up[r], L);
+                Unsafe_OP.axpy(qp + (long)r * N + d, wp, -up[r], L);
         }
 
         // Q is original matrix A, R is identity matrix
@@ -128,19 +128,19 @@ namespace LinearAlgebra
         public static void qrDecomposition(ref floatMxN Q, ref floatMxN R, ref floatN u, ref floatN w)
         {
             if (Q.M_Rows < Q.N_Cols)
-                throw new System.Exception("OrthoOP.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
+                throw new System.Exception("Ortho_OP.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
 
             if (u.N != Q.M_Rows)
-                throw new System.Exception("OrthoOP.qrDecomposition: scratch vector u.N must equal Q.M_Rows");
+                throw new System.Exception("Ortho_OP.qrDecomposition: scratch vector u.N must equal Q.M_Rows");
 
             if (w.N < Q.N_Cols)
-                throw new System.Exception("OrthoOP.qrDecomposition: scratch vector w.N must be at least Q.N_Cols");
+                throw new System.Exception("Ortho_OP.qrDecomposition: scratch vector w.N must be at least Q.N_Cols");
 
             int qrSteps = Q.N_Cols;
 
             // scale-relative zero-column threshold (see genHouseholderPete): keyed off the original
             // matrix magnitude so QR is scale-invariant. LInf(Q) == max |entry|.
-            float zeroThreshold = Consts.floatZeroThreshold * floatNormsOP.LInf(in Q);
+            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
 
             // forming R inside Q (will be copied into R later)
             // d = step and diagonal index
@@ -258,16 +258,16 @@ namespace LinearAlgebra
         public static void qrDecompositionColumnPivot(ref floatMxN Q, ref floatMxN R, ref Pivot P, ref floatN u)
         {
             if (Q.M_Rows < Q.N_Cols)
-                throw new System.Exception("OrthoOP.qrDecompositionColumnPivot: Matrix must be square or tall (M_Rows >= N_Cols)");
+                throw new System.Exception("Ortho_OP.qrDecompositionColumnPivot: Matrix must be square or tall (M_Rows >= N_Cols)");
 
             if (u.N != Q.M_Rows)
-                throw new System.Exception("OrthoOP.qrDecompositionColumnPivot: scratch vector u.N must equal Q.M_Rows");
+                throw new System.Exception("Ortho_OP.qrDecompositionColumnPivot: scratch vector u.N must equal Q.M_Rows");
 
             if (P.N != Q.N_Cols)
-                throw new System.Exception("OrthoOP.qrDecompositionColumnPivot: pivot P.N must equal Q.N_Cols");
+                throw new System.Exception("Ortho_OP.qrDecompositionColumnPivot: pivot P.N must equal Q.N_Cols");
 
             if (R.M_Rows != Q.N_Cols || R.N_Cols != Q.N_Cols)
-                throw new System.Exception("OrthoOP.qrDecompositionColumnPivot: R must be N_Cols x N_Cols");
+                throw new System.Exception("Ortho_OP.qrDecompositionColumnPivot: R must be N_Cols x N_Cols");
 
             P.Reset();
 
@@ -281,7 +281,7 @@ namespace LinearAlgebra
             var colNorm2 = new floatN(n, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholderPete); LInf(Q) == max |entry|.
-            float zeroThreshold = Consts.floatZeroThreshold * floatNormsOP.LInf(in Q);
+            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
 
             for (int d = 0; d < n; d++)
             {
@@ -300,7 +300,7 @@ namespace LinearAlgebra
                     int L = n - d;
                     UnsafeUtility.MemClear(cn + d, (long)L * UnsafeUtility.SizeOf<float>());
                     for (int r = d; r < m; r++)
-                        UnsafeOP.addSquares(cn + d, qp + (long)r * n + d, L);
+                        Unsafe_OP.addSquares(cn + d, qp + (long)r * n + d, L);
                 }
 
                 float diagNorm2 = colNorm2[d];
@@ -326,7 +326,7 @@ namespace LinearAlgebra
                     // Full-column swap (all rows): rows < d hold finished R entries that must travel
                     // with the column; rows >= d hold the live sub-matrix. Stored Householder vectors
                     // of earlier steps live in columns < d and are untouched (both indices are >= d).
-                    SwapOP.Columns(ref Q, d, pivotCol);
+                    Swap_OP.Columns(ref Q, d, pivotCol);
                     P.Swap(d, pivotCol);
                 }
 
@@ -394,23 +394,23 @@ namespace LinearAlgebra
         // PRECONDITION: A has FULL COLUMN RANK. This un-pivoted solve back-substitutes through R's
         // diagonal; a rank-deficient A produces a zero on that diagonal and the result x is then
         // Inf/NaN (no guard). For rank-deficient / least-norm problems use the rank-revealing paths
-        // instead: OrthoOP.qrDecompositionColumnPivot (QRCP), SVD.pinvSolve, or
+        // instead: Ortho_OP.qrDecompositionColumnPivot (QRCP), SVD.pinvSolve, or
         // Cholesky.choleskyPivotSolve.
         // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
         // EXACTLY A.M_Rows. Hoist u out of a hot loop to skip the per-call Allocator.Temp alloc.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void qrDirectSolve(ref floatMxN A, ref floatN b, ref floatN x, ref floatN u) {
             if (A.M_Rows < A.N_Cols)
-                throw new System.Exception("OrthoOP.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
+                throw new System.Exception("Ortho_OP.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
 
             if (b.N != A.M_Rows)
-                throw new System.Exception("OrthoOP.qrDirectSolve: b.N must equal A.M_Rows");
+                throw new System.Exception("Ortho_OP.qrDirectSolve: b.N must equal A.M_Rows");
 
             if (x.N != A.N_Cols)
-                throw new System.Exception("OrthoOP.qrDirectSolve: x.N must equal A.N_Cols");
+                throw new System.Exception("Ortho_OP.qrDirectSolve: x.N must equal A.N_Cols");
 
             if (u.N != A.M_Rows)
-                throw new System.Exception("OrthoOP.qrDirectSolve: scratch vector u.N must equal A.M_Rows");
+                throw new System.Exception("Ortho_OP.qrDirectSolve: scratch vector u.N must equal A.M_Rows");
 
             int qrSteps = A.N_Cols;
 
@@ -418,7 +418,7 @@ namespace LinearAlgebra
             var w = new floatN(A.N_Cols, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholderPete); LInf(A) == max |entry|.
-            float zeroThreshold = Consts.floatZeroThreshold * floatNormsOP.LInf(in A);
+            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in A);
 
             float dotProduct = 0;
             // forming R inside Q (will be copied into R later)
@@ -501,19 +501,19 @@ namespace LinearAlgebra
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("OrthoOP.qrcpDirectSolve: A must be square or tall (M_Rows >= N_Cols)");
+                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: A must be square or tall (M_Rows >= N_Cols)");
             if (b.N != m)
-                throw new ArgumentException("OrthoOP.qrcpDirectSolve: b.N must equal A.M_Rows");
+                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: b.N must equal A.M_Rows");
             if (x.N != n)
-                throw new ArgumentException("OrthoOP.qrcpDirectSolve: x.N must equal A.N_Cols");
+                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: x.N must equal A.N_Cols");
             if (Q.M_Rows != m || Q.N_Cols != n)
-                throw new ArgumentException("OrthoOP.qrcpDirectSolve: Q must be M_Rows x N_Cols");
+                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: Q must be M_Rows x N_Cols");
             if (R.M_Rows != n || R.N_Cols != n)
-                throw new ArgumentException("OrthoOP.qrcpDirectSolve: R must be N_Cols x N_Cols");
+                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: R must be N_Cols x N_Cols");
             if (P.N != n)
-                throw new ArgumentException("OrthoOP.qrcpDirectSolve: P.N must equal A.N_Cols");
+                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: P.N must equal A.N_Cols");
             if (u.N != m)
-                throw new ArgumentException("OrthoOP.qrcpDirectSolve: u.N must equal A.M_Rows");
+                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: u.N must equal A.M_Rows");
 
             // Negative relTol is an "auto" sentinel: use the library-standard rank threshold
             // (same default as SVD.pinvSolve / MatrixMetrics.rank). This also makes the threshold
@@ -557,7 +557,7 @@ namespace LinearAlgebra
             // dot(in b, in Q, ref x) computes x[j] = Σ_i Q[i,j]·b[i] = (Qᵀb)[j].
             // dot zeroes x via MemClear before accumulating, so x needs no prior initialisation.
             // Guard: x must not alias b (enforced inside dot by pointer comparison).
-            floatOP.dot(in b, in Q, ref x);
+            float_OP.dot(in b, in Q, ref x);
 
             // Step 6: back-solve the leading r×r block of R in place.
             // x holds c = Qᵀb; overwrite x[0..r-1] with the triangular solution.
@@ -645,11 +645,11 @@ namespace LinearAlgebra
             int n = A.N_Cols;
 
             if (m > n)
-                throw new ArgumentException("OrthoOP.lqDecomposition: A must be wide or square (M_Rows <= N_Cols)");
+                throw new ArgumentException("Ortho_OP.lqDecomposition: A must be wide or square (M_Rows <= N_Cols)");
             if (L.M_Rows != m || L.N_Cols != m)
-                throw new ArgumentException("OrthoOP.lqDecomposition: L must be m x m");
+                throw new ArgumentException("Ortho_OP.lqDecomposition: L must be m x m");
             if (Q.M_Rows != m || Q.N_Cols != n)
-                throw new ArgumentException("OrthoOP.lqDecomposition: Q must be m x n");
+                throw new ArgumentException("Ortho_OP.lqDecomposition: Q must be m x n");
 
             if (m == 0 || n == 0)
                 return;
@@ -658,16 +658,16 @@ namespace LinearAlgebra
             var T   = new floatMxN(n, m, Allocator.Temp, false);
             var Rqr = new floatMxN(m, m, Allocator.Temp, false);
 
-            floatOP.trans(in A, ref T);
+            float_OP.trans(in A, ref T);
 
             // QR(T): destroys T → Q_qr (n × m, orthonormal columns); fills Rqr (m × m, upper-tri).
             qrDecomposition(ref T, ref Rqr);
 
             // L = Rqrᵀ  (m × m, lower-triangular).
-            floatOP.trans(in Rqr, ref L);
+            float_OP.trans(in Rqr, ref L);
 
             // Q_lq = Q_qrᵀ = Tᵀ  (m × n, orthonormal rows).
-            floatOP.trans(in T, ref Q);
+            float_OP.trans(in T, ref Q);
 
             Rqr.Dispose();
             T.Dispose();
@@ -691,11 +691,11 @@ namespace LinearAlgebra
             int n = A.N_Cols;
 
             if (m > n)
-                throw new ArgumentException("OrthoOP.lqMinNormSolve: A must be wide or square (M_Rows <= N_Cols)");
+                throw new ArgumentException("Ortho_OP.lqMinNormSolve: A must be wide or square (M_Rows <= N_Cols)");
             if (b.N != m)
-                throw new ArgumentException("OrthoOP.lqMinNormSolve: b.N must equal A.M_Rows");
+                throw new ArgumentException("Ortho_OP.lqMinNormSolve: b.N must equal A.M_Rows");
             if (x.N != n)
-                throw new ArgumentException("OrthoOP.lqMinNormSolve: x.N must equal A.N_Cols");
+                throw new ArgumentException("Ortho_OP.lqMinNormSolve: x.N must equal A.N_Cols");
 
             var L = new floatMxN(m, m, Allocator.Temp, false);
             var Q = new floatMxN(m, n, Allocator.Temp, false);
@@ -708,7 +708,7 @@ namespace LinearAlgebra
             Solvers.SolveLowerTriangular(ref L, ref y);
 
             // Step 2: x = Qᵀ y.  dot(in y, in Q, ref x) computes yᵀ Q = (Qᵀ y)ᵀ → n-vector.
-            floatOP.dot(in y, in Q, ref x);
+            float_OP.dot(in y, in Q, ref x);
 
             y.Dispose();
             Q.Dispose();

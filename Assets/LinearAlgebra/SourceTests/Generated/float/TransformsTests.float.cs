@@ -128,10 +128,10 @@ public class floatTransformsTests
             v[0] = 2f; v[1] = 4f; v[2] = 4f; v[3] = 4f;
             v[4] = 5f; v[5] = 5f; v[6] = 7f; v[7] = 9f;
 
-            floatStatsOP.standardize(in v);
+            floatStats_OP.standardize(in v);
 
-            AssertClose(floatStatsOP.mean(in v), (float)0f, (float)EPS);
-            AssertClose(floatStatsOP.stdDev(in v), (float)1f, (float)EPS);
+            AssertClose(floatStats_OP.mean(in v), (float)0f, (float)EPS);
+            AssertClose(floatStats_OP.stdDev(in v), (float)1f, (float)EPS);
             arena.Dispose();
         }
 
@@ -142,7 +142,7 @@ public class floatTransformsTests
             var v = arena.floatVec(5);
             for (int i = 0; i < 5; i++) v[i] = 3f;
 
-            floatStatsOP.standardize(in v);
+            floatStats_OP.standardize(in v);
 
             for (int i = 0; i < 5; i++)
             {
@@ -159,7 +159,7 @@ public class floatTransformsTests
             var v = arena.floatVec(1);
             v[0] = 42f;
 
-            floatStatsOP.standardize(in v);
+            floatStats_OP.standardize(in v);
             AssertClose(v[0], (float)0f, (float)EPS);
             arena.Dispose();
         }
@@ -173,10 +173,10 @@ public class floatTransformsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
 
-            floatStatsOP.standardize(in A);
+            floatStats_OP.standardize(in A);
 
-            AssertClose(floatStatsOP.mean(in A), (float)0f, (float)EPS);
-            AssertClose(floatStatsOP.stdDev(in A), (float)1f, (float)EPS);
+            AssertClose(floatStats_OP.mean(in A), (float)0f, (float)EPS);
+            AssertClose(floatStats_OP.stdDev(in A), (float)1f, (float)EPS);
             arena.Dispose();
         }
 
@@ -185,10 +185,10 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(4, 5, -3f, 3f, 12345);
-            floatStatsOP.standardizeRows(ref A);
+            floatStats_OP.standardizeRows(ref A);
 
-            var rMean = floatStatsOP.rowMean(in A);
-            var rStd = floatStatsOP.rowStdDev(in A);
+            var rMean = floatStats_OP.rowMean(in A);
+            var rStd = floatStats_OP.rowStdDev(in A);
             for (int r = 0; r < 4; r++)
             {
                 AssertClose(rMean[r], (float)0f, (float)EPS);
@@ -202,10 +202,10 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(5, 4, -3f, 3f, 67890);
-            floatStatsOP.standardizeColumns(ref A);
+            floatStats_OP.standardizeColumns(ref A);
 
-            var cMean = floatStatsOP.colMean(in A);
-            var cStd = floatStatsOP.colStdDev(in A);
+            var cMean = floatStats_OP.colMean(in A);
+            var cStd = floatStats_OP.colStdDev(in A);
             for (int c = 0; c < 4; c++)
             {
                 AssertClose(cMean[c], (float)0f, (float)EPS);
@@ -223,7 +223,7 @@ public class floatTransformsTests
             var v = arena.floatVec(4);
             v[0] = 10f; v[1] = 20f; v[2] = 30f; v[3] = 50f; // min 10, max 50
 
-            floatStatsOP.rescale(in v);
+            floatStats_OP.rescale(in v);
 
             AssertClose(v[0], (float)0f, (float)EPS);   // min → 0
             AssertClose(v[3], (float)1f, (float)EPS);   // max → 1
@@ -242,7 +242,7 @@ public class floatTransformsTests
             v[0] = 10f; v[1] = 20f; v[2] = 30f; v[3] = 50f;
             float lo = -2f, hi = 5f;
 
-            floatStatsOP.rescale(in v, lo, hi);
+            floatStats_OP.rescale(in v, lo, hi);
 
             AssertClose(v[0], lo, (float)EPS);  // min → lo
             AssertClose(v[3], hi, (float)EPS);  // max → hi
@@ -260,7 +260,7 @@ public class floatTransformsTests
             var v = arena.floatVec(4);
             for (int i = 0; i < 4; i++) v[i] = 7f;
 
-            floatStatsOP.rescale(in v, (float)(-3f), (float)9f);
+            floatStats_OP.rescale(in v, (float)(-3f), (float)9f);
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(v[i], (float)(-3f), (float)EPS); // → lo
@@ -278,8 +278,8 @@ public class floatTransformsTests
             a[0] = -4f; a[1] = 1f; a[2] = 0f; a[3] = 9f; a[4] = 2f;
             for (int i = 0; i < 5; i++) b[i] = a[i];
 
-            floatStatsOP.rescale(in a);                       // forwarding
-            floatStatsOP.rescale(in b, (float)0f, (float)1f); // explicit
+            floatStats_OP.rescale(in a);                       // forwarding
+            floatStats_OP.rescale(in b, (float)0f, (float)1f); // explicit
             for (int i = 0; i < 5; i++)
                 AssertClose(a[i], b[i], (float)EPS);
             arena.Dispose();
@@ -290,9 +290,9 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(4, 5, -3f, 3f, 222);
-            floatStatsOP.rescaleRows(ref A);
-            var rMin = floatStatsOP.rowMin(in A);
-            var rMax = floatStatsOP.rowMax(in A);
+            floatStats_OP.rescaleRows(ref A);
+            var rMin = floatStats_OP.rowMin(in A);
+            var rMax = floatStats_OP.rowMax(in A);
             for (int r = 0; r < 4; r++)
             {
                 AssertClose(rMin[r], (float)0f, (float)EPS);
@@ -307,9 +307,9 @@ public class floatTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(5, 4, -3f, 3f, 333);
             float lo = 1f, hi = 3f;
-            floatStatsOP.rescaleColumns(ref A, lo, hi);
-            var cMin = floatStatsOP.colMin(in A);
-            var cMax = floatStatsOP.colMax(in A);
+            floatStats_OP.rescaleColumns(ref A, lo, hi);
+            var cMin = floatStats_OP.colMin(in A);
+            var cMax = floatStats_OP.colMax(in A);
             for (int c = 0; c < 4; c++)
             {
                 AssertClose(cMin[c], lo, (float)EPS);
@@ -327,11 +327,11 @@ public class floatTransformsTests
             var v = arena.floatVec(3);
             v[0] = 1f; v[1] = 2f; v[2] = 3f;
 
-            floatStatsOP.center(in v);
+            floatStats_OP.center(in v);
             AssertClose(v[0], (float)(-1f), (float)EPS);
             AssertClose(v[1], (float)0f, (float)EPS);
             AssertClose(v[2], (float)1f, (float)EPS);
-            AssertClose(floatStatsOP.mean(in v), (float)0f, (float)EPS);
+            AssertClose(floatStats_OP.mean(in v), (float)0f, (float)EPS);
             arena.Dispose();
         }
 
@@ -339,8 +339,8 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(4, 5, -5f, 5f, 444);
-            floatStatsOP.centerRows(ref A);
-            var rMean = floatStatsOP.rowMean(in A);
+            floatStats_OP.centerRows(ref A);
+            var rMean = floatStats_OP.rowMean(in A);
             for (int r = 0; r < 4; r++)
                 AssertClose(rMean[r], (float)0f, (float)EPS);
             arena.Dispose();
@@ -350,8 +350,8 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(5, 4, -5f, 5f, 555);
-            floatStatsOP.centerColumns(ref A);
-            var cMean = floatStatsOP.colMean(in A);
+            floatStats_OP.centerColumns(ref A);
+            var cMean = floatStats_OP.colMean(in A);
             for (int c = 0; c < 4; c++)
                 AssertClose(cMean[c], (float)0f, (float)EPS);
             arena.Dispose();
@@ -366,11 +366,11 @@ public class floatTransformsTests
             var v = arena.floatVec(3);
             v[0] = 2f; v[1] = -4f; v[2] = 1f;
 
-            floatStatsOP.maxAbs(in v);
+            floatStats_OP.maxAbs(in v);
             AssertClose(v[0], (float)0.5f, (float)EPS);
             AssertClose(v[1], (float)(-1f), (float)EPS); // max-abs maps to ±1
             AssertClose(v[2], (float)0.25f, (float)EPS);
-            AssertTrue(floatNormsOP.LInf(in v) <= (float)1f + (float)EPS);
+            AssertTrue(floatNorms_OP.LInf(in v) <= (float)1f + (float)EPS);
             arena.Dispose();
         }
 
@@ -381,7 +381,7 @@ public class floatTransformsTests
             var v = arena.floatVec(4);
             for (int i = 0; i < 4; i++) v[i] = 0f;
 
-            floatStatsOP.maxAbs(in v);
+            floatStats_OP.maxAbs(in v);
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(v[i], (float)0f, (float)EPS);
@@ -395,7 +395,7 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(4, 5, -3f, 3f, 666);
-            floatStatsOP.maxAbsRows(ref A);
+            floatStats_OP.maxAbsRows(ref A);
             for (int r = 0; r < 4; r++)
             {
                 float mAbs = (float)0f;
@@ -409,7 +409,7 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(5, 4, -3f, 3f, 777);
-            floatStatsOP.maxAbsColumns(ref A);
+            floatStats_OP.maxAbsColumns(ref A);
             for (int c = 0; c < 4; c++)
             {
                 float mAbs = (float)0f;
@@ -428,8 +428,8 @@ public class floatTransformsTests
             var v = arena.floatVec(5);
             v[0] = -1f; v[1] = 0f; v[2] = 2f; v[3] = 1f; v[4] = 3f;
 
-            floatStatsOP.softmax(in v);
-            AssertClose(floatStatsOP.sum(in v), (float)1f, (float)EPS);
+            floatStats_OP.softmax(in v);
+            AssertClose(floatStats_OP.sum(in v), (float)1f, (float)EPS);
             for (int i = 0; i < 5; i++)
                 AssertTrue(v[i] > (float)0f && v[i] < (float)1f);
             arena.Dispose();
@@ -441,7 +441,7 @@ public class floatTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var v = arena.floatVec(1);
             v[0] = 17f;
-            floatStatsOP.softmax(in v);
+            floatStats_OP.softmax(in v);
             AssertClose(v[0], (float)1f, (float)EPS);
             arena.Dispose();
         }
@@ -452,7 +452,7 @@ public class floatTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var v = arena.floatVec(4);
             v[0] = 0.5f; v[1] = 1f; v[2] = 2f; v[3] = 4f;
-            floatStatsOP.softmax(in v);
+            floatStats_OP.softmax(in v);
             for (int i = 1; i < 4; i++)
                 AssertTrue(v[i] > v[i - 1]);
             arena.Dispose();
@@ -464,9 +464,9 @@ public class floatTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var v = arena.floatVec(2);
             v[0] = 1000f; v[1] = 1001f;
-            floatStatsOP.softmax(in v);
+            floatStats_OP.softmax(in v);
             AssertTrue(math.isfinite(v[0]) && math.isfinite(v[1]));
-            AssertClose(floatStatsOP.sum(in v), (float)1f, (float)EPS);
+            AssertClose(floatStats_OP.sum(in v), (float)1f, (float)EPS);
             AssertTrue(v[1] > v[0]); // 1001 keeps the larger probability
             arena.Dispose();
         }
@@ -480,10 +480,10 @@ public class floatTransformsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 5f; A[1, 2] = 6f;
 
-            floatStatsOP.softmax(in A); // whole-matrix scope
+            floatStats_OP.softmax(in A); // whole-matrix scope
 
-            AssertClose(floatStatsOP.sum(in A), (float)1f, (float)EPS);
-            var rSum = floatStatsOP.rowSum(in A);
+            AssertClose(floatStats_OP.sum(in A), (float)1f, (float)EPS);
+            var rSum = floatStats_OP.rowSum(in A);
             // proves it normalized over the whole matrix, not per row
             AssertTrue(rSum[0] < (float)1f - (float)EPS);
             AssertTrue(rSum[1] < (float)1f - (float)EPS);
@@ -495,8 +495,8 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(4, 5, -2f, 2f, 888);
-            floatStatsOP.softmaxRows(ref A);
-            var rSum = floatStatsOP.rowSum(in A);
+            floatStats_OP.softmaxRows(ref A);
+            var rSum = floatStats_OP.rowSum(in A);
             for (int r = 0; r < 4; r++)
             {
                 AssertClose(rSum[r], (float)1f, (float)EPS);
@@ -511,8 +511,8 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(5, 4, -2f, 2f, 999);
-            floatStatsOP.softmaxColumns(ref A);
-            var cSum = floatStatsOP.colSum(in A);
+            floatStats_OP.softmaxColumns(ref A);
+            var cSum = floatStats_OP.colSum(in A);
             for (int c = 0; c < 4; c++)
             {
                 AssertClose(cSum[c], (float)1f, (float)EPS);
@@ -531,18 +531,18 @@ public class floatTransformsTests
 
             var v1 = arena.floatVec(4);
             v1[0] = 1f; v1[1] = -2f; v1[2] = 3f; v1[3] = -4f;
-            floatNormsOP.Normalize(in v1, Norm.L1);
-            AssertClose(floatNormsOP.L1(in v1), (float)1f, (float)EPS);
+            floatNorms_OP.Normalize(in v1, Norm.L1);
+            AssertClose(floatNorms_OP.L1(in v1), (float)1f, (float)EPS);
 
             var v2 = arena.floatVec(4);
             v2[0] = 1f; v2[1] = -2f; v2[2] = 3f; v2[3] = -4f;
-            floatNormsOP.Normalize(in v2, Norm.L2);
-            AssertClose(floatNormsOP.L2(in v2), (float)1f, (float)EPS);
+            floatNorms_OP.Normalize(in v2, Norm.L2);
+            AssertClose(floatNorms_OP.L2(in v2), (float)1f, (float)EPS);
 
             var vi = arena.floatVec(4);
             vi[0] = 1f; vi[1] = -2f; vi[2] = 3f; vi[3] = -4f;
-            floatNormsOP.Normalize(in vi, Norm.Linf);
-            AssertClose(floatNormsOP.LInf(in vi), (float)1f, (float)EPS);
+            floatNorms_OP.Normalize(in vi, Norm.Linf);
+            AssertClose(floatNorms_OP.LInf(in vi), (float)1f, (float)EPS);
 
             arena.Dispose();
         }
@@ -552,8 +552,8 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(4, 5, -3f, 3f, 1212);
-            floatNormsOP.NormalizeRows(ref A, Norm.L2);
-            var rL2 = floatStatsOP.rowNormL2(in A);
+            floatNorms_OP.NormalizeRows(ref A, Norm.L2);
+            var rL2 = floatStats_OP.rowNormL2(in A);
             for (int r = 0; r < 4; r++)
                 AssertClose(rL2[r], (float)1f, (float)EPS);
             arena.Dispose();
@@ -564,8 +564,8 @@ public class floatTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatRandomMatrix(5, 4, -3f, 3f, 3434);
-            floatNormsOP.NormalizeColumns(ref A, Norm.L1);
-            var cL1 = floatStatsOP.colNormL1(in A);
+            floatNorms_OP.NormalizeColumns(ref A, Norm.L1);
+            var cL1 = floatStats_OP.colNormL1(in A);
             for (int c = 0; c < 4; c++)
                 AssertClose(cL1[c], (float)1f, (float)EPS);
             arena.Dispose();
@@ -582,14 +582,14 @@ public class floatTransformsTests
             A[1, 0] = 0f; A[1, 1] = 0f; A[1, 2] = 0f;
             A[2, 0] = 3f; A[2, 1] = 0f; A[2, 2] = 4f;
 
-            floatNormsOP.NormalizeRows(ref A, Norm.L2);
+            floatNorms_OP.NormalizeRows(ref A, Norm.L2);
             for (int c = 0; c < 3; c++)
             {
                 AssertClose(A[1, c], (float)0f, (float)EPS); // zero row stays 0
                 AssertTrue(math.isfinite(A[1, c]));
             }
             // nonzero rows became unit
-            var rL2 = floatStatsOP.rowNormL2(in A);
+            var rL2 = floatStats_OP.rowNormL2(in A);
             AssertClose(rL2[0], (float)1f, (float)EPS);
             AssertClose(rL2[2], (float)1f, (float)EPS);
 
@@ -599,7 +599,7 @@ public class floatTransformsTests
             B[1, 0] = 3f; B[1, 1] = 0f; B[1, 2] = 4f;
             B[2, 0] = 5f; B[2, 1] = 0f; B[2, 2] = 6f;
 
-            floatNormsOP.NormalizeColumns(ref B, Norm.L1);
+            floatNorms_OP.NormalizeColumns(ref B, Norm.L1);
             for (int r = 0; r < 3; r++)
             {
                 AssertClose(B[r, 1], (float)0f, (float)EPS);
@@ -616,7 +616,7 @@ public class floatTransformsTests
             var v = arena.floatVec(5);
             v[0] = -5f; v[1] = -1f; v[2] = 0f; v[3] = 3f; v[4] = 9f;
 
-            floatOP.clampInpl(in v, (float)(-1f), (float)4f);
+            float_OP.clampInpl(in v, (float)(-1f), (float)4f);
             AssertClose(v[0], (float)(-1f), (float)EPS); // below lo
             AssertClose(v[1], (float)(-1f), (float)EPS); // at lo
             AssertClose(v[2], (float)0f, (float)EPS);    // in range
@@ -632,7 +632,7 @@ public class floatTransformsTests
             A[0, 0] = -10f; A[0, 1] = 0.5f;
             A[1, 0] = 2f;   A[1, 1] = 100f;
 
-            floatOP.clampInpl(in A, (float)0f, (float)1f);
+            float_OP.clampInpl(in A, (float)0f, (float)1f);
             AssertClose(A[0, 0], (float)0f, (float)EPS);
             AssertClose(A[0, 1], (float)0.5f, (float)EPS);
             AssertClose(A[1, 0], (float)1f, (float)EPS);
@@ -702,7 +702,7 @@ public class floatTransformsTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.floatVec(3);
         v[0] = -5f; v[1] = 0f; v[2] = 5f;
-        Assert.Throws<ArgumentException>(() => floatOP.clampInpl(in v, (float)4f, (float)(-1f)));
+        Assert.Throws<ArgumentException>(() => float_OP.clampInpl(in v, (float)4f, (float)(-1f)));
         arena.Dispose();
     }
 }

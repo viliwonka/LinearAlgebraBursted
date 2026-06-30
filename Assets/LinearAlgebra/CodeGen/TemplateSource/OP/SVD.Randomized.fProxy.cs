@@ -25,8 +25,8 @@ namespace LinearAlgebra
         // The leading k columns of (U, Σ, W) are the approximate top-k SVD.
         //
         // The dozen intermediate buffers come either from A's temp pool (the allocating overloads) or
-        // from a caller-provided fProxySvdRandomizedWorkspace (the ref-workspace overloads) for
-        // zero-alloc repeated calls — size the latter with Arena.fProxySvdRandomizedWorkspace(m, n, k,
+        // from a caller-provided fProxySvdRandomized_WS (the ref-workspace overloads) for
+        // zero-alloc repeated calls — size the latter with Arena.fProxySvdRandomized_WS(m, n, k,
         // oversample).
 
         // Default sketch seed (golden-ratio constant). Inlined rather than a const field because this
@@ -48,11 +48,11 @@ namespace LinearAlgebra
         /// flag (false -&gt; outputs undefined). A is NOT modified.
         ///
         /// <paramref name="ws"/> holds all scratch; size it with
-        /// Arena.fProxySvdRandomizedWorkspace(m, n, k, oversample) using the SAME k and oversample.
+        /// Arena.fProxySvdRandomized_WS(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static bool svdRandomized(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter,
-                                         ref fProxySvdRandomizedWorkspace ws)
+                                         ref fProxySvdRandomized_WS ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -65,31 +65,31 @@ namespace LinearAlgebra
             // Ω (n x ℓ) standard normal; Y = A Ω (m x ℓ).
             var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
             var gauss = new fProxyGaussian((fProxy)0, (fProxy)1);
-            fProxyRandomOP.randomInpl(ref rng, ref ws.Omega, ref gauss);
+            fProxyRandom_OP.randomInpl(ref rng, ref ws.Omega, ref gauss);
 
-            fProxyOP.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
+            fProxy_OP.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
 
             // Q = orth(Y): qrDecomposition overwrites Y with the thin orthonormal Q (m x ℓ).
-            OrthoOP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+            Ortho_OP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
 
             // Subspace iteration: Y = A (Aᵀ Q), re-orthonormalize.
             for (int it = 0; it < powerIters; it++)
             {
-                fProxyOP.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
-                fProxyOP.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
-                OrthoOP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+                fProxy_OP.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
+                fProxy_OP.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
+                Ortho_OP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
             }
 
             // B = Qᵀ A (ℓ x n); solve its SVD exactly via Bᵀ (n x ℓ, tall): Bᵀ = Up Σ Vpᵀ, so
             // B = Vp Σ Upᵀ -> A ≈ Q B = (Q Vp) Σ Upᵀ.
-            fProxyOP.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
-            fProxyOP.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
+            fProxy_OP.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
+            fProxy_OP.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
 
             bool ok = svdThin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
             if (!ok)
                 return false;
 
-            fProxyOP.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
+            fProxy_OP.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
 
             for (int t = 0; t < k; t++)
             {
@@ -102,12 +102,12 @@ namespace LinearAlgebra
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
         public static bool svdRandomized(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
-                                         int k, uint seed, ref fProxySvdRandomizedWorkspace ws)
+                                         int k, uint seed, ref fProxySvdRandomized_WS ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75, ref ws);
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
         public static bool svdRandomized(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
-                                         int k, ref fProxySvdRandomizedWorkspace ws)
+                                         int k, ref fProxySvdRandomized_WS ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
 
         /// <summary>
@@ -123,7 +123,7 @@ namespace LinearAlgebra
             RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIter);
 
             int l = math.min(k + oversample, n);
-            var ws = new fProxySvdRandomizedWorkspace
+            var ws = new fProxySvdRandomized_WS
             {
                 Omega = A.tempfProxyMat(n, l),
                 Y = A.tempfProxyMat(m, l),

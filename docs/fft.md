@@ -1,7 +1,7 @@
 # FFT / DFT — usage
 
 1D Fourier transforms over **split real/imaginary** arrays (`fProxyN re`, `fProxyN im`) —
-there is no complex type. Available for `float` and `double` via `floatFFT` / `doubleFFT`.
+there is no complex type. Available for `float` and `double` via `floatFFT_OP` / `doubleFFT_OP`.
 
 Convention: forward `X[k] = Σ x[n]·exp(-2πi·kn/N)` (no forward scaling); the inverse divides by N,
 so `ifft(fft(x)) == x`.
@@ -29,15 +29,15 @@ All FFT/IFFT/rfft lengths must be a **power of two** — use `dft` for arbitrary
   any repeated use.
 
 ```csharp
-var ws = arena.floatFftWorkspace(1024);     // builds the twiddle table on creation
+var ws = arena.floatFft_WS(1024);     // builds the twiddle table on creation
 for (int f = 0; f < frames; f++)
-    floatFFT.fft(ref re, ref im, in ws);    // zero-alloc, reuses the plan
+    floatFFT_OP.fft(ref re, ref im, in ws);    // zero-alloc, reuses the plan
 ```
 
 ## Workspace notes
 
-- Built on creation by the arena factory (`arena.floatFftWorkspace(n)`); disposed with the arena —
-  no manual `Dispose`. This matches every other workspace in the library (`floatSvdWorkspace`, …).
+- Built on creation by the arena factory (`arena.floatFft_WS(n)`); disposed with the arena —
+  no manual `Dispose`. This matches every other workspace in the library (`floatSvd_WS`, …).
 - Holds the twiddle tables plus the rfft/mixed-radix scratch, so repeated `fft/ifft/rfft/irfft(ws)`
   allocate nothing.
 - **Single-use-at-a-time**: the scratch is shared, so use one workspace per thread for parallel

@@ -21,7 +21,7 @@ namespace LinearAlgebra
     /// (re, im) pair to a single real vector. Typical DSP pipeline: window (Hann) → rfft → powerSpectrum.
     /// float-only.
     /// </summary>
-    public static partial class floatFFT
+    public static partial class floatFFT_OP
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool IsPow2(int n) => n > 0 && (n & (n - 1)) == 0;

@@ -171,10 +171,10 @@ public class fProxyCompareTests
             fProxyN v = arena.fProxyVec(dim);
 
             var boolVec = v == 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             boolVec = v == 1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
         }
 
         public void VecNotEquals(ref Arena arena)
@@ -184,10 +184,10 @@ public class fProxyCompareTests
             fProxyN v = arena.fProxyVec(dim);
 
             var boolVec = v != 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
 
             boolVec = v != 1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
         }
 
         public void VecLess(ref Arena arena)
@@ -197,10 +197,10 @@ public class fProxyCompareTests
             fProxyN v = arena.fProxyVec(dim);
 
             var boolVec = v < 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
 
             boolVec = v < 1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
         }
 
         public void VecLessOrEqual(ref Arena arena)
@@ -211,13 +211,13 @@ public class fProxyCompareTests
 
             var boolVec = v <= 0f;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
             boolVec = v <= 1f;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             boolVec = v <= -1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
         }
 
         public void VecGreater(ref Arena arena)
@@ -227,10 +227,10 @@ public class fProxyCompareTests
             fProxyN v = arena.fProxyVec(dim);
 
             var boolVec = v > 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
 
             boolVec = v > -1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
         }
 
         public void VecGreaterOrEqual(ref Arena arena)
@@ -240,13 +240,13 @@ public class fProxyCompareTests
             fProxyN v = arena.fProxyVec(dim);
 
             var boolVec = v >= 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             boolVec = v >= -1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             boolVec = v >= 1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
         }
 
         public void MatEquals(ref Arena arena)
@@ -256,10 +256,10 @@ public class fProxyCompareTests
             fProxyMxN m = arena.fProxyMat(dim, dim);
 
             var boolMat = m == 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
             boolMat = m == 1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
         }
 
         public void MatNotEquals(ref Arena arena)
@@ -269,10 +269,10 @@ public class fProxyCompareTests
             fProxyMxN m = arena.fProxyMat(dim, dim);
 
             var boolMat = m != 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
             boolMat = m != 1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
         }
 
         public void MatLess(ref Arena arena)
@@ -282,10 +282,10 @@ public class fProxyCompareTests
             fProxyMxN m = arena.fProxyMat(dim, dim);
 
             var boolMat = m < 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
             boolMat = m < 1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
         }
 
         public void MatLessOrEqual(ref Arena arena)
@@ -295,13 +295,13 @@ public class fProxyCompareTests
             fProxyMxN m = arena.fProxyMat(dim, dim);
 
             var boolMat = m <= 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
             boolMat = m <= 1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
             boolMat = m <= -1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
         }
 
         public void MatGreater(ref Arena arena)
@@ -311,10 +311,10 @@ public class fProxyCompareTests
             fProxyMxN m = arena.fProxyMat(dim, dim);
 
             var boolMat = m > 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
             boolMat = m > -1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
         }
 
         public void MatGreaterOrEqual(ref Arena arena)
@@ -324,13 +324,13 @@ public class fProxyCompareTests
             fProxyMxN m = arena.fProxyMat(dim, dim);
 
             var boolMat = m >= 0f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
             boolMat = m >= -1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
             boolMat = m >= 1f;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
         }
 
         public void VecRandom(ref Arena arena)
@@ -343,22 +343,22 @@ public class fProxyCompareTests
 
             var boolVec = v == 0f;
 
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v != 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v < 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v > 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v <= 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v >= 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
         }
 
         public void MatRandom(ref Arena arena)
@@ -371,22 +371,22 @@ public class fProxyCompareTests
 
             var boolMat = m == 0f;
 
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m != 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m < 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m > 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m <= 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m >= 0f;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
         }
 
         public void MatDiagonal(ref Arena arena)
@@ -397,9 +397,9 @@ public class fProxyCompareTests
             
             var boolMat = m0 == 1f;
 
-            Assert.IsTrue(BoolAnalysis.IsDiagonal(boolMat));
-            Assert.IsFalse(BoolAnalysis.IsAllEqualTo(boolMat, true));
-            Assert.IsFalse(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsDiagonal(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
         }
 
         public void VecVecEquals(ref Arena arena)
@@ -411,13 +411,13 @@ public class fProxyCompareTests
 
             var boolVec = v0 == v1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             v0[0] = 1f;
 
             boolVec = v0 == v1;
 
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
         }
 
         public void VecVecNotEquals(ref Arena arena)
@@ -429,13 +429,13 @@ public class fProxyCompareTests
 
             var boolVec = v0 != v1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 != v1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
         }
 
         public void VecVecLess(ref Arena arena)
@@ -447,12 +447,12 @@ public class fProxyCompareTests
             fProxyN v1 = arena.fProxyLinVector(dim, 2f, 3f);
 
             var boolVec = v0 < v1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 < v1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
         }
 
         public void VecVecLessOrEqual(ref Arena arena)
@@ -464,20 +464,20 @@ public class fProxyCompareTests
 
             var boolVec = v0 <= v1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 <= v1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             v0 = arena.fProxyLinVector(dim, 0f, 1f);
             v1 = arena.fProxyLinVector(dim, 1f, 0f);
 
             boolVec = v0 <= v1;
 
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
         }
 
         public void VecVecGreater(ref Arena arena)
@@ -489,22 +489,22 @@ public class fProxyCompareTests
 
             var boolVec = v0 > v1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
 
             v0 = v1;
 
             boolVec = v0 > v1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
 
             v0 = arena.fProxyLinVector(dim, 1f, 0f);
             v1 = arena.fProxyLinVector(dim, 0f, 1f);
 
             boolVec = v0 > v1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v1 > v0;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
         }
 
         public void VecVecGreaterOrEqual(ref Arena arena)
@@ -516,16 +516,16 @@ public class fProxyCompareTests
 
             var boolVec = v0 >= v1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
             v0 = v1;
 
             boolVec = v0 >= v1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
             v0 = arena.fProxyLinVector(dim, 1f, 0f);
 
             boolVec = v0 >= v1;
-            Assert.IsTrue(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolVec));
         }
 
         public void VecVecRandom(ref Arena arena)
@@ -539,22 +539,22 @@ public class fProxyCompareTests
             v0[1] = 1f-v1[1];
             var boolVec = v0 == v1;
 
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v0 != v1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v0 < v1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v0 > v1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v0 <= v1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
 
             boolVec = v0 >= v1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolVec));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
         }
 
         public void MatMatEquals(ref Arena arena)
@@ -565,7 +565,7 @@ public class fProxyCompareTests
             fProxyMxN m1 = arena.fProxyRandomMatrix(dim, dim, 0f, 1f);
 
             var boolMat = m0 == m1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
             m0[0,0] = 1f;
             m0[1,1] = 1f;
@@ -573,7 +573,7 @@ public class fProxyCompareTests
             m0[3,3] = 1f;
 
             boolMat = m0 == m1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
         }
 
         public void MatMatNotEquals(ref Arena arena)
@@ -584,12 +584,12 @@ public class fProxyCompareTests
             fProxyMxN m1 = arena.fProxyRandomMatrix(dim, dim, 0f, 1f, 2131);
 
             var boolMat = m0 != m1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
             m1 = arena.fProxyRandomMatrix(dim, dim, 2f, 3f, 2131);
 
             boolMat = m0 != m1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
         }
 
         public void MatMatLess(ref Arena arena)
@@ -600,12 +600,12 @@ public class fProxyCompareTests
             fProxyMxN m1 = arena.fProxyRandomMatrix(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 < m1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
             m0 = m1;
 
             boolMat = m0 < m1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
         }
 
         public void MatMatLessOrEqual(ref Arena arena)
@@ -617,19 +617,19 @@ public class fProxyCompareTests
 
             var boolMat = m0 <= m1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
             m0 = m1;
 
             boolMat = m0 <= m1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
             m0 = arena.fProxyRandomMatrix(dim, dim, 1f, 0f, 2131);
             m1 = arena.fProxyRandomMatrix(dim, dim, 0f, 1f, 2131);
 
             boolMat = m0 <= m1;
 
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
         }
 
         public void MatMatGreater(ref Arena arena)
@@ -640,21 +640,21 @@ public class fProxyCompareTests
             fProxyMxN m1 = arena.fProxyRandomMatrix(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 > m1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
             m0 = m1;
 
             boolMat = m0 > m1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
             m0 = arena.fProxyRandomMatrix(dim, dim, 1f, 0f, 2131);
             m1 = arena.fProxyRandomMatrix(dim, dim, 0f, 1f, 2131);
 
             boolMat = m0 > m1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m1 > m0;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
         }
 
         public void MatMatGreaterOrEqual(ref Arena arena)
@@ -665,17 +665,17 @@ public class fProxyCompareTests
             fProxyMxN m1 = arena.fProxyRandomMatrix(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 >= m1;
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
             m0 = m1;
 
             boolMat = m0 >= m1;
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
             m0 = arena.fProxyRandomMatrix(dim, dim, 1f, 0f, 2131);
 
             boolMat = m0 >= m1;
-            Assert.IsTrue(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolMat));
         }
 
         public void MatMatRandom(ref Arena arena)
@@ -689,22 +689,22 @@ public class fProxyCompareTests
             m0[0,1] = 1f - m1[0,1];
             var boolMat = m0 == m1;
 
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m0 != m1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m0 < m1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m0 > m1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m0 <= m1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
 
             boolMat = m0 >= m1;
-            Assert.IsFalse(BoolAnalysis.IsAllSame(boolMat));
+            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
         }
     } 
 

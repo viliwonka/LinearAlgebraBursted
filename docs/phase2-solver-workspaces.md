@@ -26,9 +26,9 @@ op work (`docs/zero-alloc-ops.md`) and the Conjugate Gradient primitive+convenie
 
 ## Inventory (check off as done)
 
-- [x] `OP/OrthoOP.fProxy.cs` — `qrDecomposition(ref Q, ref R, ref u)`, `qrDirectSolve(ref A, ref b, ref x, ref u)`
+- [x] `OP/Ortho_OP.fProxy.cs` — `qrDecomposition(ref Q, ref R, ref u)`, `qrDirectSolve(ref A, ref b, ref x, ref u)`
       (u length == M_Rows). Existing 2-arg / 3-arg forms now allocating wrappers. Tests green
-      (`OrthoWorkspaceTests.fProxy` — equiv + mis-sized guard, ×2 float/double; OrthoOP suite 60/60).
+      (`OrthoWorkspaceTests.fProxy` — equiv + mis-sized guard, ×2 float/double; Ortho_OP suite 60/60).
       bug-hunter audit: CLEAN (math byte-identical to original; exact-size guard confirmed load-bearing —
       oversized u would OOB-read Q/A; wrappers preserve allocator/dispose/inlining).
 - [x] `OP/Solvers.fProxy.cs` — `SolveQR` internal `y = dot(b, Q)` temp eliminated. Old dead
@@ -42,17 +42,17 @@ op work (`docs/zero-alloc-ops.md`) and the Conjugate Gradient primitive+convenie
 - [x] `OP/SVD.Solvers.fProxy.cs` — `pinvSolve` / `pseudoInverse` scratch overloads. KEY: with
       k=min(m,n), `S` is len k and `M` is k×k in BOTH branches (M = V when tall, W when wide);
       only `At` (n×m) is wide-specific (pass `default(fProxyMxN)` for m>=n). Wide branch fills At via
-      phase-1 ref-dest `fProxyOP.trans(in A, ref At)`. Inner loop var `k`→`kk` (method-scope k now).
+      phase-1 ref-dest `fProxy_OP.trans(in A, ref At)`. Inner loop var `k`→`kk` (method-scope k now).
       Wrappers temp-alloc S(k), M(k×k), At(n×m only if m<n) + delegate. Tests `SVDWorkspaceTests.fProxy`
       (pinv/pseudo equiv tall+wide ×2, + 4 mis-sized guards). SVD suite 111/111. bug-hunter audit:
       CLEAN on all 7 concerns (k-unification, kk-rename, M-as-V/W, trans, default-At, guards, codegen).
 
 ## Ergonomics polish (post-completion)
 
-- [x] `OP/SVD.Workspace.fProxy.cs` — `fProxySvdWorkspace { S; M; At; }` struct + `Arena.fProxySvdWorkspace(m, n)`
+- [x] `OP/SVD.Workspace.fProxy.cs` — `fProxySvd_WS { S; M; At; }` struct + `Arena.fProxySvd_WS(m, n)`
       factory (sizes S=k, M=k×k, At=n×m only if wide; k=min(m,n)). Removes the caller-side
       footgun of computing k / sizing the three buffers / remembering `default`-At for tall.
-- [x] `OP/SVD.Solvers.fProxy.cs` — 3 `pinvSolve` + 3 `pseudoInverse` `ref fProxySvdWorkspace ws`
+- [x] `OP/SVD.Solvers.fProxy.cs` — 3 `pinvSolve` + 3 `pseudoInverse` `ref fProxySvd_WS ws`
       overloads (full, relTol-only→maxSweeps 30, none→relTol -1/maxSweeps 30), forwarding to the
       scratch primitive. Disambiguated from the `relTol`/`maxSweeps` overloads by the 5th-arg type.
 - [x] Tests: `SVDWorkspaceTests` augmented — ws path ≡ raw-scratch path (pinv/pseudo, tall+wide) +
@@ -65,7 +65,7 @@ op work (`docs/zero-alloc-ops.md`) and the Conjugate Gradient primitive+convenie
 
 Every solver/decomposition with an internal scratch buffer now has a caller-provided-workspace
 overload (primitive) + allocating wrapper. Confirmed by grep: the only internal workspace allocs
-in the OP templates were the OrthoOP QR `new fProxyN(...Allocator.Temp...)` (now wrappers). LU,
+in the OP templates were the Ortho_OP QR `new fProxyN(...Allocator.Temp...)` (now wrappers). LU,
 Cholesky, Eigen, and the SVD core (`svdDecomposition`) were already zero-alloc (operate on
 caller-provided `ref` outputs); CG was done in the phase-1.5 batch.
 - [x] Tests: `OrthoWorkspaceTests.fProxy.cs` — QR scratch≡alloc equivalence + mis-sized guard +

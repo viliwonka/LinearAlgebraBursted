@@ -72,8 +72,8 @@ public class doubleMatrixMetricsTests
             var v = arena.doubleVec(4);
             v[0] = (double)3; v[1] = (double)(-4); v[2] = (double)0; v[3] = (double)1;
 
-            AssertClose(doubleNormsOP.L1(in v), (double)8, (double)1E-5);
-            AssertClose(doubleNormsOP.LInf(in v), (double)4, (double)1E-5);
+            AssertClose(doubleNorms_OP.L1(in v), (double)8, (double)1E-5);
+            AssertClose(doubleNorms_OP.LInf(in v), (double)4, (double)1E-5);
 
             arena.Dispose();
         }
@@ -87,7 +87,7 @@ public class doubleMatrixMetricsTests
             A[0, 0] = (double)1; A[0, 1] = (double)2;
             A[1, 0] = (double)3; A[1, 1] = (double)4;
 
-            AssertClose(doubleOP.trace(in A), (double)5, (double)1E-5);
+            AssertClose(double_OP.trace(in A), (double)5, (double)1E-5);
 
             arena.Dispose();
         }
@@ -101,7 +101,7 @@ public class doubleMatrixMetricsTests
             A[0, 0] = (double)1; A[0, 1] = (double)(-2);
             A[1, 0] = (double)(-3); A[1, 1] = (double)4;
 
-            AssertClose(doubleNormsOP.matrixL1(in A), (double)6, (double)1E-5);
+            AssertClose(doubleNorms_OP.matrixL1(in A), (double)6, (double)1E-5);
 
             arena.Dispose();
         }
@@ -115,7 +115,7 @@ public class doubleMatrixMetricsTests
             A[0, 0] = (double)1; A[0, 1] = (double)(-2);
             A[1, 0] = (double)(-3); A[1, 1] = (double)4;
 
-            AssertClose(doubleNormsOP.matrixLInf(in A), (double)7, (double)1E-5);
+            AssertClose(doubleNorms_OP.matrixLInf(in A), (double)7, (double)1E-5);
 
             arena.Dispose();
         }
@@ -128,7 +128,7 @@ public class doubleMatrixMetricsTests
             var A = arena.doubleMat(2, 2);
             A[0, 0] = (double)5; A[1, 1] = (double)2;
 
-            AssertClose(doubleNormsOP.matrixL2(in A), (double)5, (double)1E-4);
+            AssertClose(doubleNorms_OP.matrixL2(in A), (double)5, (double)1E-4);
 
             // tall/square branch must NOT modify A (it decomposes a TempCopy, not A itself)
             AssertClose(A[0, 0], (double)5, (double)1E-6);
@@ -148,9 +148,9 @@ public class doubleMatrixMetricsTests
             A[0, 0] = (double)3;
             A[1, 1] = (double)4;
 
-            AssertClose(doubleNormsOP.matrixL2(in A), (double)4, (double)1E-4);
-            AssertIntEqual(doubleOP.rank(in A), 2);
-            AssertClose(doubleOP.cond(in A), (double)4 / (double)3, (double)1E-4);
+            AssertClose(doubleNorms_OP.matrixL2(in A), (double)4, (double)1E-4);
+            AssertIntEqual(double_OP.rank(in A), 2);
+            AssertClose(double_OP.cond(in A), (double)4 / (double)3, (double)1E-4);
 
             AssertClose(A[0, 0], (double)3, (double)1E-6);
             AssertClose(A[1, 1], (double)4, (double)1E-6);
@@ -166,7 +166,7 @@ public class doubleMatrixMetricsTests
             var A = arena.doubleMat(2, 2);
             A[0, 0] = (double)4; A[1, 1] = (double)1;
 
-            AssertClose(doubleOP.cond(in A), (double)4, (double)1E-4);
+            AssertClose(double_OP.cond(in A), (double)4, (double)1E-4);
 
             arena.Dispose();
         }
@@ -177,7 +177,7 @@ public class doubleMatrixMetricsTests
             var arena = new Arena(Allocator.Persistent);
 
             var A = arena.doubleIdentityMatrix(3);
-            AssertClose(doubleOP.cond(in A), (double)1, (double)1E-4);
+            AssertClose(double_OP.cond(in A), (double)1, (double)1E-4);
 
             arena.Dispose();
         }
@@ -189,7 +189,7 @@ public class doubleMatrixMetricsTests
             var arena = new Arena(Allocator.Persistent);
 
             var A = arena.doubleMat(2, 2);   // all zeros
-            AssertGreater(doubleOP.cond(in A), (double)1E6);
+            AssertGreater(double_OP.cond(in A), (double)1E6);
 
             arena.Dispose();
         }
@@ -205,8 +205,8 @@ public class doubleMatrixMetricsTests
             A[1, 0] = (double)3;  A[1, 1] = (double)(-4);
             A[2, 0] = (double)5;  A[2, 1] = (double)6;
 
-            AssertClose(doubleNormsOP.matrixL1(in A), (double)12, (double)1E-5);
-            AssertClose(doubleNormsOP.matrixLInf(in A), (double)11, (double)1E-5);
+            AssertClose(doubleNorms_OP.matrixL1(in A), (double)12, (double)1E-5);
+            AssertClose(doubleNorms_OP.matrixLInf(in A), (double)11, (double)1E-5);
 
             arena.Dispose();
         }
@@ -219,7 +219,7 @@ public class doubleMatrixMetricsTests
             var A = arena.doubleMat(2, 2);
             A[0, 0] = (double)3; A[1, 0] = (double)4;   // column 1 is zero
 
-            double c = doubleOP.cond(in A);
+            double c = double_OP.cond(in A);
             // true value is +inf; accept anything astronomically large (NaN-safe via the record below)
             AssertGreater(c, (double)1E6);
 
@@ -256,7 +256,7 @@ public class doubleMatrixMetricsTests
                 expected = 0;
             }
 
-            int r = doubleOP.rank(in A);
+            int r = double_OP.rank(in A);
             AssertIntEqual(r, expected);
 
             arena.Dispose();
@@ -273,8 +273,8 @@ public class doubleMatrixMetricsTests
             A[0, 0] = (double)2; A[0, 1] = (double)1;
             A[1, 0] = (double)1; A[1, 1] = (double)2;
 
-            AssertClose(doubleOP.cond(in A), (double)3, (double)1E-4);
-            AssertClose(doubleNormsOP.matrixL2(in A), (double)3, (double)1E-4);
+            AssertClose(double_OP.cond(in A), (double)3, (double)1E-4);
+            AssertClose(doubleNorms_OP.matrixL2(in A), (double)3, (double)1E-4);
 
             arena.Dispose();
         }
@@ -288,10 +288,10 @@ public class doubleMatrixMetricsTests
             var A = arena.doubleMat(1, 1);
             A[0, 0] = (double)7;
 
-            AssertClose(doubleOP.trace(in A), (double)7, (double)1E-5);
-            AssertClose(doubleOP.cond(in A), (double)1, (double)1E-4);
-            AssertIntEqual(doubleOP.rank(in A), 1);
-            AssertClose(doubleNormsOP.matrixL2(in A), (double)7, (double)1E-4);
+            AssertClose(double_OP.trace(in A), (double)7, (double)1E-5);
+            AssertClose(double_OP.cond(in A), (double)1, (double)1E-4);
+            AssertIntEqual(double_OP.rank(in A), 1);
+            AssertClose(doubleNorms_OP.matrixL2(in A), (double)7, (double)1E-4);
 
             arena.Dispose();
         }
@@ -305,8 +305,8 @@ public class doubleMatrixMetricsTests
             var A = arena.doubleMat(2, 2);
             A[0, 0] = (double)1; A[1, 1] = (double)1E-5;
 
-            AssertIntEqual(doubleOP.rank(in A), 2);                       // auto tol
-            AssertIntEqual(doubleOP.rank(in A, (double)1E-2), 1);         // loose tol drops σ=1e-5
+            AssertIntEqual(double_OP.rank(in A), 2);                       // auto tol
+            AssertIntEqual(double_OP.rank(in A, (double)1E-2), 1);         // loose tol drops σ=1e-5
 
             arena.Dispose();
         }
@@ -371,7 +371,7 @@ public class doubleMatrixMetricsTests
         try
         {
             var A = arena.doubleMat(2, 3);
-            Assert.Throws<ArgumentException>(() => doubleOP.trace(in A));
+            Assert.Throws<ArgumentException>(() => double_OP.trace(in A));
         }
         finally { arena.Dispose(); }
     }

@@ -180,7 +180,7 @@ namespace LinearAlgebra.Realtime
             // Time-order into a temp matrix, then reuse the StatsOP covariance core.
             var m = _buffer.tempfloatMat(_count, _features);
             AsMatrix(ref m);
-            floatStatsOP.covarianceInto(in m, ref dest);
+            floatStats_OP.covarianceInto(in m, ref dest);
         }
 
         /// <summary>Allocating covariance — a fresh Features×Features matrix from the arena TEMP pool.</summary>

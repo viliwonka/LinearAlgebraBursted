@@ -23,7 +23,7 @@ public class floatOrthoOpTests
             var Q = arena.floatRandomMatrix(dim*2, dim);
             var R = arena.floatMat(dim);
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             arena.Dispose();
         }
@@ -95,7 +95,7 @@ public class floatOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             //Print.Log(A);
             //Print.Log(Q);
@@ -120,7 +120,7 @@ public class floatOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
 
             AssertQR(in A, in Q, in R);
@@ -139,7 +139,7 @@ public class floatOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             /*Print.Log(A);
             Print.Log(Q);
@@ -161,7 +161,7 @@ public class floatOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             //Print.Log(R);
 
@@ -181,7 +181,7 @@ public class floatOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-03f);
 
@@ -199,7 +199,7 @@ public class floatOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             //Print.Log(A);
             //Print.Log(Q);
@@ -236,13 +236,13 @@ public class floatOrthoOpTests
                     p1 = rand.NextInt(0, dim);
                 }
 
-                Q = floatOP.dot(arena.floatPermutationMatrix(dim, p0, p1), Q);
+                Q = float_OP.dot(arena.floatPermutationMatrix(dim, p0, p1), Q);
 
                 var R = arena.floatMat(dim);
 
                 var A = Q.Copy();
 
-                OrthoOP.qrDecomposition(ref Q, ref R);
+                Ortho_OP.qrDecomposition(ref Q, ref R);
 
                 //Print.Log(A);
                 //Print.Log(Q);
@@ -263,7 +263,7 @@ public class floatOrthoOpTests
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             //Print.Log(A);
             //Print.Log(Q);
@@ -290,7 +290,7 @@ public class floatOrthoOpTests
             var R = arena.floatMat(n);
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-4f);
 
@@ -300,11 +300,11 @@ public class floatOrthoOpTests
         private void AssertQR(in floatMxN A, in floatMxN Q, in floatMxN R) => AssertQR(in A, in Q, in R, 1E-6f);
         private void AssertQR(in floatMxN A, in floatMxN Q, in floatMxN R, float precision)
         {
-            floatMxN shouldBeZero = A - floatOP.dot(Q, R);
+            floatMxN shouldBeZero = A - float_OP.dot(Q, R);
 
-            var zeroError = Analysis.MaxZeroError(shouldBeZero);
+            var zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
 
-            if (Analysis.IsAnyNan(in shouldBeZero))
+            if (Analysis_OP.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
             // Fail layout: [1]=zeroError, [2]=precision, [3]=diff
@@ -315,9 +315,9 @@ public class floatOrthoOpTests
                 Fail[2] = precision;
                 Fail[3] = zeroError - precision;
             }
-            Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
-            Assert.IsTrue(Analysis.IsUpperTriangular(R, precision));
-            Assert.IsTrue(Analysis.IsOrthogonal(Q, precision));
+            Assert.IsTrue(Analysis_OP.IsZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis_OP.IsUpperTriangular(R, precision));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(Q, precision));
         }
     }
 
@@ -352,7 +352,7 @@ public class floatOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.floatMat(dim);
 
-                OrthoOP.qrDecomposition(ref Q, ref R);
+                Ortho_OP.qrDecomposition(ref Q, ref R);
 
                 //Print.Log(Q);
                 //Print.Log(R);
@@ -369,14 +369,14 @@ public class floatOrthoOpTests
 
         private float ErrorCheckQR(in floatMxN A, in floatMxN Q, in floatMxN R) {
 
-            floatMxN shouldBeZero = A - floatOP.dot(Q, R);
+            floatMxN shouldBeZero = A - float_OP.dot(Q, R);
 
-            if(Analysis.IsAnyNan(in shouldBeZero))
+            if(Analysis_OP.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("PrecisionReconstructTestJob: NaN detected");
 
             //Print.Log(shouldBeZero);
 
-            float zeroError = Analysis.MaxZeroError(shouldBeZero);
+            float zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
 
             return zeroError;
         }
@@ -438,20 +438,20 @@ public class floatOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.floatMat(systemDim);
 
-                OrthoOP.qrDecomposition(ref Q, ref R);
+                Ortho_OP.qrDecomposition(ref Q, ref R);
 
                 for(uint j = 0; j < randomVecTests; j++) {
 
                     floatN xOrig = arena.floatRandomVector(systemDim, -25, +25, 1337 + i * i + j * 5);
-                    floatN b = floatOP.dot(A, xOrig);
-                    floatN y = floatOP.dot(b, Q);
+                    floatN b = float_OP.dot(A, xOrig);
+                    floatN y = float_OP.dot(b, Q);
 
                     Solvers.SolveUpperTriangular(ref R, ref y);
 
                     y.subInpl(xOrig);
-                    float zeroError = Analysis.MaxZeroError(y);
+                    float zeroError = Analysis_OP.MaxZeroError(y);
 
-                    if(Analysis.IsAnyNan(in y)) {
+                    if(Analysis_OP.IsAnyNan(in y)) {
                         throw new System.Exception("SolveSystemTestJob: NaN detected");
                     }
 
@@ -493,20 +493,20 @@ public class floatOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.floatMat(sysDimN);
 
-                OrthoOP.qrDecomposition(ref Q, ref R);
+                Ortho_OP.qrDecomposition(ref Q, ref R);
 
                 for (uint j = 0; j < randomVecTests; j++) {
 
                     floatN xOrig = arena.floatRandomVector(sysDimN, -25, +25, 1337 + i * i + j * 5);
-                    floatN b = floatOP.dot(A, xOrig);
-                    floatN y = floatOP.dot(b, Q);
+                    floatN b = float_OP.dot(A, xOrig);
+                    floatN y = float_OP.dot(b, Q);
 
                     Solvers.SolveUpperTriangular(ref R, ref y);
 
                     y.subInpl(xOrig);
-                    float zeroError = Analysis.MaxZeroError(y);
+                    float zeroError = Analysis_OP.MaxZeroError(y);
 
-                    if (Analysis.IsAnyNan(in y)) {
+                    if (Analysis_OP.IsAnyNan(in y)) {
                         throw new System.Exception("SolveSystemTestJob: NaN detected");
                     }
 
@@ -543,17 +543,17 @@ public class floatOrthoOpTests
                     A[d, d] += 5.1f + 10f * random.NextFloat();
 
                 floatN xOrig = arena.floatRandomVector(systemDim, -25, +25, 1337 + i * i + i * 5);
-                floatN b = floatOP.dot(A, xOrig);
+                floatN b = float_OP.dot(A, xOrig);
                 floatN x = arena.floatVec(systemDim);
 
-                OrthoOP.qrDirectSolve(ref A, ref b, ref x);
+                Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
 
-                if (Analysis.IsAnyNan(in x)) {
+                if (Analysis_OP.IsAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
                 x.subInpl(xOrig);
 
-                float zeroError = Analysis.MaxZeroError(x);
+                float zeroError = Analysis_OP.MaxZeroError(x);
 
                 // per-solve garbage detector (~3x above the worst observed conditioning-tail
                 // error of ~0.21 float); the avg bound below is the actual quality guard
@@ -591,18 +591,18 @@ public class floatOrthoOpTests
                     A[d, d] += 5.1f + 10f * random.NextFloat();
 
                 floatN xOrig = arena.floatRandomVector(sysDimN, -25, +25, 1337 + i * i + i * 5);
-                floatN b = floatOP.dot(A, xOrig);
+                floatN b = float_OP.dot(A, xOrig);
                 floatN x = arena.floatVec(sysDimN);
 
-                OrthoOP.qrDirectSolve(ref A, ref b, ref x);
+                Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
 
-                if (Analysis.IsAnyNan(in x)) {
+                if (Analysis_OP.IsAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
 
                 x.subInpl(xOrig);
 
-                float zeroError = Analysis.MaxZeroError(x);
+                float zeroError = Analysis_OP.MaxZeroError(x);
 
                 // per-solve garbage detector (~3x above the worst observed conditioning-tail
                 // error of ~0.21 float); the avg bound below is the actual quality guard
@@ -791,7 +791,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(dim, dim);
             var Q    = arena.floatMat(dim, dim);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-6f);
             arena.Dispose();
         }
@@ -804,7 +804,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(dim, dim);
             var Q    = arena.floatMat(dim, dim);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -817,7 +817,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(m, m);
             var Q    = arena.floatMat(m, n);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -830,7 +830,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(m, m);
             var Q    = arena.floatMat(m, n);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -846,7 +846,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(m, m);
             var Q    = arena.floatMat(m, n);
-            OrthoOP.lqDecomposition(ref A, ref L, ref Q);
+            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -855,13 +855,13 @@ public class floatOrthoOpTests
         private void AssertLQ(in floatMxN A, in floatMxN L, in floatMxN Q, float precision)
         {
             // 1. Reconstruction: A ≈ L * Q
-            floatMxN LQ   = floatOP.dot(L, Q);
+            floatMxN LQ   = float_OP.dot(L, Q);
             floatMxN diff = A - LQ;
 
-            if (Analysis.IsAnyNan(in diff))
+            if (Analysis_OP.IsAnyNan(in diff))
                 throw new System.Exception("AssertLQ: NaN in reconstruction");
 
-            float reconError = Analysis.MaxZeroError(diff);
+            float reconError = Analysis_OP.MaxZeroError(diff);
             if (!(reconError <= precision) && Fail[0] == (float)0)
             {
                 Fail[0] = (float)1;
@@ -869,15 +869,15 @@ public class floatOrthoOpTests
                 Fail[2] = precision;
                 Fail[3] = reconError - precision;
             }
-            Assert.IsTrue(Analysis.IsZero(in diff, precision));
+            Assert.IsTrue(Analysis_OP.IsZero(in diff, precision));
 
             // 2. L is lower-triangular
-            Assert.IsTrue(Analysis.IsLowerTriangular(L, precision));
+            Assert.IsTrue(Analysis_OP.IsLowerTriangular(L, precision));
 
             // 3. Q has orthonormal rows: QQᵀ = I_m.
             //    IsOrthogonal(Qᵀ) checks (Qᵀ)ᵀ(Qᵀ) = QQᵀ = I_m.
-            floatMxN Qt = floatOP.trans(Q);
-            Assert.IsTrue(Analysis.IsOrthogonal(in Qt, precision));
+            floatMxN Qt = float_OP.trans(Q);
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(in Qt, precision));
         }
     }
 
@@ -920,13 +920,13 @@ public class floatOrthoOpTests
             var c    = arena.floatRandomVector(m, -1f, 1f, 22222);
             // x_true = Aᵀ c  (dot(c, A) computes cᵀA = (Aᵀc)ᵀ → same n-vector values)
             var xTrue = arena.floatVec(n);
-            floatOP.dot(in c, in A, ref xTrue);
+            float_OP.dot(in c, in A, ref xTrue);
             // b = A x_true
             var b = arena.floatVec(m);
-            floatOP.dot(in A, in xTrue, ref b);
+            float_OP.dot(in A, in xTrue, ref b);
             // solve
             var x = arena.floatVec(n);
-            OrthoOP.lqMinNormSolve(ref A, ref b, ref x);
+            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -938,11 +938,11 @@ public class floatOrthoOpTests
             var A    = arena.floatRandomMatrix(m, n, -1f, 1f, 33333);
             var c    = arena.floatRandomVector(m, -1f, 1f, 44444);
             var xTrue = arena.floatVec(n);
-            floatOP.dot(in c, in A, ref xTrue);
+            float_OP.dot(in c, in A, ref xTrue);
             var b = arena.floatVec(m);
-            floatOP.dot(in A, in xTrue, ref b);
+            float_OP.dot(in A, in xTrue, ref b);
             var x = arena.floatVec(n);
-            OrthoOP.lqMinNormSolve(ref A, ref b, ref x);
+            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -954,11 +954,11 @@ public class floatOrthoOpTests
             var A    = arena.floatRandomMatrix(m, n, -1f, 1f, 55555);
             var c    = arena.floatRandomVector(m, -1f, 1f, 66666);
             var xTrue = arena.floatVec(n);
-            floatOP.dot(in c, in A, ref xTrue);
+            float_OP.dot(in c, in A, ref xTrue);
             var b = arena.floatVec(m);
-            floatOP.dot(in A, in xTrue, ref b);
+            float_OP.dot(in A, in xTrue, ref b);
             var x = arena.floatVec(n);
-            OrthoOP.lqMinNormSolve(ref A, ref b, ref x);
+            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -971,12 +971,12 @@ public class floatOrthoOpTests
             var A = arena.floatRandomMatrix(m, n, -2f, 2f, 77777);
             var b = arena.floatRandomVector(m, -1f, 1f, 88888);
             var x = arena.floatVec(n);
-            OrthoOP.lqMinNormSolve(ref A, ref b, ref x);
+            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
             // residual = A x - b
             var Ax   = arena.floatVec(m);
-            floatOP.dot(in A, in x, ref Ax);
+            float_OP.dot(in A, in x, ref Ax);
             Ax.subInpl(b);
-            float residual = Analysis.MaxZeroError(Ax);
+            float residual = Analysis_OP.MaxZeroError(Ax);
             if (!(residual <= (float)1E-4f) && Fail[0] == (float)0)
             {
                 Fail[0] = (float)1;
@@ -993,10 +993,10 @@ public class floatOrthoOpTests
         {
             floatN diff = got - expected;
 
-            if (Analysis.IsAnyNan(in diff))
+            if (Analysis_OP.IsAnyNan(in diff))
                 throw new System.Exception("AssertClose: NaN detected");
 
-            float err = Analysis.MaxZeroError(diff);
+            float err = Analysis_OP.MaxZeroError(diff);
             if (!(err <= precision) && Fail[0] == (float)0)
             {
                 Fail[0] = (float)1;
@@ -1004,7 +1004,7 @@ public class floatOrthoOpTests
                 Fail[2] = precision;
                 Fail[3] = err - precision;
             }
-            Assert.IsTrue(Analysis.IsZero(in diff, precision));
+            Assert.IsTrue(Analysis_OP.IsZero(in diff, precision));
         }
     }
 

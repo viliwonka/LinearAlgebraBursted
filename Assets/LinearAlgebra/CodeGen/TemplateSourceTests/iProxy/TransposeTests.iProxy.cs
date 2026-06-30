@@ -41,7 +41,7 @@ public class iProxyTransposeTests
             
             iProxyMxN A = arena.iProxyRandomMatrix(dim, dim);
 
-            iProxyMxN B = iProxyOP.trans(A);
+            iProxyMxN B = iProxy_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, dim);
             Assert.AreEqual(B.N_Cols, dim);
@@ -62,7 +62,7 @@ public class iProxyTransposeTests
 
             iProxyMxN A = arena.iProxyRandomMatrix(rows, cols);
 
-            iProxyMxN B = iProxyOP.trans(A);
+            iProxyMxN B = iProxy_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, cols);
             Assert.AreEqual(B.N_Cols, rows);

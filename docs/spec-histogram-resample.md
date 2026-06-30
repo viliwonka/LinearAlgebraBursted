@@ -22,13 +22,13 @@ primitives + optional allocating Arena wrappers, `ArgumentException("method: msg
 8. **Physics sims** — particle velocity / energy distributions (Maxwell–Boltzmann checks), Monte-Carlo
    aggregation, empirical density estimation.
 9. **Sampling FROM data** — a histogram IS an empirical PMF. Raw counts feed the existing
-   `fProxyRandomOP.weightedPick` directly (it normalizes internally), so "sample from a histogram" =
+   `fProxyRandom_OP.weightedPick` directly (it normalizes internally), so "sample from a histogram" =
    `histogram` → `weightedPick` (bin) → uniform-or-interpolated within bin. The `cdf` output enables
    inverse-transform sampling; **resampling the CDF gives smooth continuous sampling** — the exact
    "turn a vector into a smooth function to sample from" the user described.
 
 ### Resampling / interpolation — does the library have any? **No.**
-`fProxyGenOP.sample<F>` samples a *functor* (formula); nothing resamples *existing data* to a new
+`fProxyGen_OP.sample<F>` samples a *functor* (formula); nothing resamples *existing data* to a new
 resolution, and nothing evaluates a data vector at an arbitrary continuous position. Genuine gap.
 
 Use cases: animation-curve / camera-path smoothing (Catmull–Rom), heightmap / texture resize (LOD),
@@ -44,12 +44,12 @@ Boundaries handled by an edge mode: **Clamp** (repeat edge), **Wrap** (periodic)
 
 ## Part 1 — Placement decisions (aesthetics)
 
-- **Histogram → new `fProxyHistogramOP`**, file `Statistics/HistogramOP.fProxy.cs`, namespace
-  `LinearAlgebra.Stats` (sibling to `fProxyStatsOP`). Rationale: StatsOP is scalar/per-axis *reductions*;
+- **Histogram → new `fProxyHistogram_OP`**, file `Statistics/HistogramOP.fProxy.cs`, namespace
+  `LinearAlgebra.Stats` (sibling to `fProxyStats_OP`). Rationale: StatsOP is scalar/per-axis *reductions*;
   histogram is *binning / distribution estimation* — a distinct family (counts / density / cdf / 2D). One
-  concept per OP, matching QueryOP / NormsOP / RandomOP / GenOP. Lives in the Stats folder & namespace so
+  concept per OP, matching QueryOP / NormsOP / Random_OP / GenOP. Lives in the Stats folder & namespace so
   it's grouped with statistics.
-- **Resampling → new `fProxyResampleOP`**, file `OP/ResampleOP.fProxy.cs`, namespace `LinearAlgebra`
+- **Resampling → new `fProxyResample_OP`**, file `OP/ResampleOP.fProxy.cs`, namespace `LinearAlgebra`
   (like GenOP). Sibling to GenOP (`sample<F>` samples a formula; `ResampleOP` samples data). Two enums in
   one singular file `OP/ResampleEnums.cs`: `Interp { Nearest, Linear, Cubic }`, `EdgeMode { Clamp, Wrap, Mirror }`.
 
@@ -63,7 +63,7 @@ Boundaries handled by an edge mode: **Clamp** (repeat edge), **Wrap** (periodic)
 
 ---
 
-## Part 2 — `fProxyHistogramOP` API
+## Part 2 — `fProxyHistogram_OP` API
 
 All bin layouts: **K equal-width bins** over `[lo, hi)`, width `w = (hi - lo) / K`; bin index
 `b = (int)floor((x - lo) / w)`. **Out-of-range policy = DROP** (numpy convention): a value with `b < 0`
@@ -96,7 +96,7 @@ a matrix histograms its flat data, exactly like StatsOP scalar reductions).
 
 ---
 
-## Part 3 — `fProxyResampleOP` API
+## Part 3 — `fProxyResample_OP` API
 
 Continuous index coordinate convention: a length-`N` vector spans positions `[0, N-1]`; `pos` need not be
 integral. Edge mode resolves indices outside `[0, N-1]` for all four cubic taps / two linear taps.
@@ -153,8 +153,8 @@ Resample:
 ---
 
 ## Part 5 — Build order
-1. Coder A: `ResampleEnums.cs` + `fProxyResampleOP` (no deps).
-2. Coder B: `fProxyHistogramOP` (no deps; `Indices` already exists).
+1. Coder A: `ResampleEnums.cs` + `fProxyResample_OP` (no deps).
+2. Coder B: `fProxyHistogram_OP` (no deps; `Indices` already exists).
    (A & B touch disjoint files — can run in parallel; neither runs regen.)
 3. One `Tools/regen-and-test.ps1` pass (single codegen run — avoid parallel regen race).
 4. 3 review agents (code-review-1/2/3) in parallel → fix CRITICAL/MAJOR.

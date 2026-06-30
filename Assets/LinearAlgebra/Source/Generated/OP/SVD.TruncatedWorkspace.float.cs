@@ -5,7 +5,7 @@ namespace LinearAlgebra
 {
     public static partial class SVD
     {
-        static void RequireSvdTruncatedWorkspace(in floatSvdTruncatedWorkspace ws, int m, int n, int p, string who)
+        static void RequireSvdTruncatedWorkspace(in floatSvdTruncated_WS ws, int m, int n, int p, string who)
         {
             bool ok =
                 ws.UL.M_Rows == p && ws.UL.N_Cols == m &&
@@ -25,13 +25,13 @@ namespace LinearAlgebra
             if (!ok)
                 throw new ArgumentException(
                     who + ": workspace must be sized for this (m, n, k, oversample) — use " +
-                    "Arena.floatSvdTruncatedWorkspace(m, n, k, oversample) with the SAME k and oversample");
+                    "Arena.floatSvdTruncated_WS(m, n, k, oversample) with the SAME k and oversample");
         }
     }
 
     /// <summary>
     /// Reusable scratch storage for svdTruncated (Golub-Kahan-Lanczos). Allocate ONCE via
-    /// Arena.floatSvdTruncatedWorkspace(m, n, k, oversample) and reuse across same-shape calls.
+    /// Arena.floatSvdTruncated_WS(m, n, k, oversample) and reuse across same-shape calls.
     ///
     /// Layout (p = min(k+oversample, n)): UL (p x m) holds the left Lanczos basis u_1..u_p as
     /// ROWS (each u_j is a contiguous row of length m, enabling cache-coherent GEMV); VL ((p+1) x n)
@@ -47,7 +47,7 @@ namespace LinearAlgebra
     /// svdTruncated is FULLY zero-alloc on workspace reuse: the inner bidiagonal SVD runs entirely
     /// in dB/eB/UtB/VtB + BsvdWs (all persistent arena memory), with no Allocator.Temp usage.
     /// </summary>
-    public struct floatSvdTruncatedWorkspace
+    public struct floatSvdTruncated_WS
     {
         public floatMxN UL;
         public floatMxN VL;
@@ -55,7 +55,7 @@ namespace LinearAlgebra
         public floatN eB;
         public floatMxN UtB;
         public floatMxN VtB;
-        public floatSvdFullWorkspace BsvdWs;
+        public floatSvdFull_WS BsvdWs;
         public floatN uBuf;
         public floatN vBuf;
         public floatN alpha;
@@ -72,10 +72,10 @@ namespace LinearAlgebra
         /// oversample to svdTruncated's ref-workspace overload. The buffers are persistent in this
         /// arena (disposed with it), so create the workspace once outside a hot loop.
         /// </summary>
-        public floatSvdTruncatedWorkspace floatSvdTruncatedWorkspace(int m, int n, int k, int oversample)
+        public floatSvdTruncated_WS floatSvdTruncated_WS(int m, int n, int k, int oversample)
         {
             int p = math.min(k + oversample, n);
-            return new floatSvdTruncatedWorkspace
+            return new floatSvdTruncated_WS
             {
                 UL     = floatMat(p, m),
                 VL     = floatMat(p + 1, n),
@@ -83,7 +83,7 @@ namespace LinearAlgebra
                 eB     = floatVec(p),
                 UtB    = floatMat(p, p),
                 VtB    = floatMat(p, p),
-                BsvdWs = new floatSvdFullWorkspace
+                BsvdWs = new floatSvdFull_WS
                 {
                     U = floatMat(p, p),
                     S = floatVec(p),
@@ -103,10 +103,10 @@ namespace LinearAlgebra
         /// p = min(n, max(2*k, k+12)) — matches the svdTruncated convenience overloads that do
         /// not take an explicit oversample. For k in [1,12], p >= k+12; for k > 12, p >= 2*k.
         /// </summary>
-        public floatSvdTruncatedWorkspace floatSvdTruncatedWorkspace(int m, int n, int k)
+        public floatSvdTruncated_WS floatSvdTruncated_WS(int m, int n, int k)
         {
             int p = math.min(n, math.max(2 * k, k + 12));
-            return new floatSvdTruncatedWorkspace
+            return new floatSvdTruncated_WS
             {
                 UL     = floatMat(p, m),
                 VL     = floatMat(p + 1, n),
@@ -114,7 +114,7 @@ namespace LinearAlgebra
                 eB     = floatVec(p),
                 UtB    = floatMat(p, p),
                 VtB    = floatMat(p, p),
-                BsvdWs = new floatSvdFullWorkspace
+                BsvdWs = new floatSvdFull_WS
                 {
                     U = floatMat(p, p),
                     S = floatVec(p),

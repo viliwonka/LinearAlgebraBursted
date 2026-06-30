@@ -6,14 +6,14 @@ using System.Runtime.CompilerServices;
 
 namespace LinearAlgebra
 {
-    public static partial class fProxyNormsOP {
+    public static partial class fProxyNorms_OP {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy L2<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
 
             unsafe
             {
-                return math.sqrt(UnsafeOP.vecDot(a.Data.Ptr, a.Data.Ptr, a.Data.Length));
+                return math.sqrt(Unsafe_OP.vecDot(a.Data.Ptr, a.Data.Ptr, a.Data.Length));
             }
         }
 
@@ -24,7 +24,7 @@ namespace LinearAlgebra
         public static fProxy L1<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
 
             unsafe {
-                return UnsafeOP.sumAbs(a.Data.Ptr, a.Data.Length);
+                return Unsafe_OP.sumAbs(a.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -33,7 +33,7 @@ namespace LinearAlgebra
         public static fProxy LInf<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
 
             unsafe {
-                return UnsafeOP.maxAbs(a.Data.Ptr, a.Data.Length);
+                return Unsafe_OP.maxAbs(a.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -48,7 +48,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return math.sqrt(UnsafeOP.vecDotRange(a.Data.Ptr, a.Data.Ptr, start, end));
+                return math.sqrt(Unsafe_OP.vecDotRange(a.Data.Ptr, a.Data.Ptr, start, end));
             }
         }
 
@@ -57,7 +57,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeOP.normalizeL2Inpl(x.Data.Ptr, x.Data.Length);
+                Unsafe_OP.normalizeL2Inpl(x.Data.Ptr, x.Data.Length);
             }
         }
 
@@ -73,7 +73,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return UnsafeOP.normalizeL2Inpl(x.Data.Ptr, start, end);
+                return Unsafe_OP.normalizeL2Inpl(x.Data.Ptr, start, end);
             }
         }
 
@@ -82,7 +82,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                return UnsafeOP.normalizeL1(x.Data.Ptr, x.Data.Length);
+                return Unsafe_OP.normalizeL1(x.Data.Ptr, x.Data.Length);
             }
         }
 
@@ -97,7 +97,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return UnsafeOP.normalizeL1(x.Data.Ptr, start, end);
+                return Unsafe_OP.normalizeL1(x.Data.Ptr, start, end);
             }
         }
 
@@ -106,7 +106,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                return UnsafeOP.normalizeLMax(x.Data.Ptr, x.Data.Length);
+                return Unsafe_OP.normalizeLMax(x.Data.Ptr, x.Data.Length);
             }
         }
 
@@ -121,7 +121,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return UnsafeOP.normalizeLMax(x.Data.Ptr, start, end);
+                return Unsafe_OP.normalizeLMax(x.Data.Ptr, start, end);
             }
         }
 
@@ -130,7 +130,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                return UnsafeOP.normalizeLP(x.Data.Ptr, x.Data.Length, p);
+                return Unsafe_OP.normalizeLP(x.Data.Ptr, x.Data.Length, p);
             }
         }
 
@@ -145,7 +145,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return UnsafeOP.normalizeLP(x.Data.Ptr, start, end, p);
+                return Unsafe_OP.normalizeLP(x.Data.Ptr, start, end, p);
             }
         }
 

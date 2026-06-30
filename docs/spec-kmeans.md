@@ -18,7 +18,7 @@ Rationale over .Data:
 ### New folder: Assets/LinearAlgebra/CodeGen/TemplateSource/ML/
 
 Two template files:
-- ML/KMeans.fProxy.cs         -- static class fProxyKMeansOP (algorithm + Lloyd loop)
+- ML/KMeans.fProxy.cs         -- static class fProxyKMeans_OP (algorithm + Lloyd loop)
 - ML/KMeans.Workspace.fProxy.cs -- workspace struct + Arena factory
 
 Codegen produces (fProxy -> float + double):
@@ -27,8 +27,8 @@ Codegen produces (fProxy -> float + double):
 - Assets/LinearAlgebra/Source/Generated/ML/KMeans.Workspace.float.cs
 - Assets/LinearAlgebra/Source/Generated/ML/KMeans.Workspace.double.cs
 
-Static class: public static partial class fProxyKMeansOP -- consistent with fProxyQueryOP,
-fProxyRandomOP, fProxyStatsOP. No iProxy variant (integer k-means is not meaningful).
+Static class: public static partial class fProxyKMeans_OP -- consistent with fProxyQuery_OP,
+fProxyRandom_OP, fProxyStats_OP. No iProxy variant (integer k-means is not meaningful).
 
 Test template: Assets/LinearAlgebra/CodeGen/TemplateSourceTests/fProxy/KMeansTests.fProxy.cs
 
@@ -58,7 +58,7 @@ The term pn[n] is SAME for all j at row n, so:
 
 Assignment step:
 1. Patch Gram in-place: Gram[n,j] <- cn[j] - 2*G[n,j]  (no allocation, one loop)
-2. Call fProxyQueryOP.rowArgMin(in ws.Gram, ref assignment)
+2. Call fProxyQuery_OP.rowArgMin(in ws.Gram, ref assignment)
    (QueryOP.fProxy.cs, index-only overload at line 115)
 
 pn[n] IS needed for true inertia:
@@ -68,16 +68,16 @@ It does NOT affect argmin and need not enter the score matrix.
 ### Implementing G = X * C^T using existing GEMM
 
 OP.Dot.fProxy.cs exposes:
-- fProxyOP.dot(in fProxyMxN a, in fProxyMxN b, ref fProxyMxN c, bool transposeA = false)
+- fProxy_OP.dot(in fProxyMxN a, in fProxyMxN b, ref fProxyMxN c, bool transposeA = false)
   (line 128)  -- C = A*B; transposeA=true gives A^T*B
-- fProxyOP.trans(in fProxyMxN A, ref fProxyMxN T) (line 183) -- explicit transpose
+- fProxy_OP.trans(in fProxyMxN A, ref fProxyMxN T) (line 183) -- explicit transpose
 
 The existing dot API has only transposeA (not transposeB). To compute G = X * C^T
 where X is N x D and centroids C is k x D:
 
-  Step 1: fProxyOP.trans(in centroids, ref ws.Ct)
+  Step 1: fProxy_OP.trans(in centroids, ref ws.Ct)
           -- transposes C (k x D) into ws.Ct (D x k)
-  Step 2: fProxyOP.dot(in X, in ws.Ct, ref ws.Gram)
+  Step 2: fProxy_OP.dot(in X, in ws.Ct, ref ws.Gram)
           -- X (N x D) * Ct (D x k) = Gram (N x k)
 
 Both use ref-dest primitives. Gram must not alias X or Ct -- guaranteed by distinct workspace
@@ -87,16 +87,16 @@ fields. The dot kernel zero-clears its destination before accumulating (OP.Dot.f
 
 ## 3. Workspace struct and Arena factory
 
-Pattern mirrors fProxySvdWorkspace / Arena.fProxySvdWorkspace in SVD.Workspace.fProxy.cs.
+Pattern mirrors fProxySvd_WS / Arena.fProxySvd_WS in SVD.Workspace.fProxy.cs.
 
-### struct fProxyKMeansWorkspace  (file: ML/KMeans.Workspace.fProxy.cs)
+### struct fProxyKMeans_WS  (file: ML/KMeans.Workspace.fProxy.cs)
 
 `csharp
 namespace LinearAlgebra.ML
 {
     // Reusable scratch for zero-alloc Lloyd k-means. Allocate once per (N, D, k) shape via
-    // Arena.fProxyKMeansWorkspace(N, D, k). All buffers are arena-owned (disposed with arena).
-    public struct fProxyKMeansWorkspace
+    // Arena.fProxyKMeans_WS(N, D, k). All buffers are arena-owned (disposed with arena).
+    public struct fProxyKMeans_WS
     {
         public fProxyMxN Gram;           // N x k  GEMM output X*C^T, patched to scores in-place
         public fProxyMxN Ct;             // D x k  transposed centroids (refreshed each iteration)
@@ -113,7 +113,7 @@ namespace LinearAlgebra.ML
 All fields are unmanaged value types; the struct is Burst-compatible.
 Memory: 2*N*k + 2*D*k + 2*N + k  fProxy scalars, plus N + k ints (Indices).
 
-### Arena.fProxyKMeansWorkspace factory  (partial Arena in same file)
+### Arena.fProxyKMeans_WS factory  (partial Arena in same file)
 
 `csharp
 public partial struct Arena
@@ -121,9 +121,9 @@ public partial struct Arena
     // Allocates workspace for N points, D features, k clusters.
     // Persistent arena allocations -- disposed with the arena.
     // Create once outside hot loops; reuse for same-shape calls.
-    public fProxyKMeansWorkspace fProxyKMeansWorkspace(int N, int D, int k)
+    public fProxyKMeans_WS fProxyKMeans_WS(int N, int D, int k)
     {
-        return new fProxyKMeansWorkspace
+        return new fProxyKMeans_WS
         {
             Gram           = fProxyMat(N, k),
             Ct             = fProxyMat(D, k),
@@ -147,7 +147,7 @@ File: Assets/LinearAlgebra/CodeGen/TemplateSource/ML/KMeans.fProxy.cs
 `csharp
 namespace LinearAlgebra.ML
 {
-    public static partial class fProxyKMeansOP
+    public static partial class fProxyKMeans_OP
     {
         // PRIMARY -- zero-alloc workspace-taking overload.
         // Lloyd k-means on X (N x D). k-means++ seeding (deterministic for fixed seed).
@@ -163,7 +163,7 @@ namespace LinearAlgebra.ML
         // assignment N output labels in [0, k) (caller pre-allocated, length N)
         // inertia    final total SSE (out)
         // iters      actual iteration count in [1, maxIter] (out)
-        // ws         pre-allocated workspace -- Arena.fProxyKMeansWorkspace(N, D, k)
+        // ws         pre-allocated workspace -- Arena.fProxyKMeans_WS(N, D, k)
         public static void kmeans(
             in fProxyMxN X,
             int k,
@@ -173,7 +173,7 @@ namespace LinearAlgebra.ML
             ref Indices assignment,
             out fProxy inertia,
             out int iters,
-            ref fProxyKMeansWorkspace ws
+            ref fProxyKMeans_WS ws
         )
 
         // ALLOCATING CONVENIENCE WRAPPER.
@@ -248,9 +248,9 @@ Initialize all ws.PrevAssignment[n] = -1 so the first iteration counts all N as 
         if !(total > (fProxy)0):
             nextIdx = (int)(rng.NextFProxy() * N)   // uniform fallback
         else:
-            // fProxyRandomOP.weightedPick -- RandomOP.fProxy.cs line 164
+            // fProxyRandom_OP.weightedPick -- Random_OP.fProxy.cs line 164
             // Validates weights finite + non-negative + total > 0 before drawing
-            nextIdx = fProxyRandomOP.weightedPick(in ws.D2Weights, ref rng)
+            nextIdx = fProxyRandom_OP.weightedPick(in ws.D2Weights, ref rng)
         for f = 0..D-1: centroids[j, f] = X[nextIdx, f]
 
 Seeding cost: O(k^2 * N * D). Acceptable for k << N. See OQ2 for uniform-random alternative.
@@ -269,11 +269,11 @@ Seeding cost: O(k^2 * N * D). Acceptable for k << N. See OQ2 for uniform-random 
             ws.CentNormSq[j] = s
 
         // 5.4.2  Transpose centroids (k x D) -> ws.Ct (D x k)
-        fProxyOP.trans(in centroids, ref ws.Ct)
+        fProxy_OP.trans(in centroids, ref ws.Ct)
         // OP.Dot.fProxy.cs line 183; Ct must not alias centroids (guaranteed by workspace)
 
         // 5.4.3  GEMM: ws.Gram = X * ws.Ct  (N x k)
-        fProxyOP.dot(in X, in ws.Ct, ref ws.Gram)
+        fProxy_OP.dot(in X, in ws.Ct, ref ws.Gram)
         // OP.Dot.fProxy.cs line 128, transposeA=false
         // dot zero-clears Gram before accumulating (OP.Dot.fProxy.cs line 156)
 
@@ -285,7 +285,7 @@ Seeding cost: O(k^2 * N * D). Acceptable for k << N. See OQ2 for uniform-random 
 
         // 5.4.5  Assignment and change count
         for n = 0..N-1: ws.PrevAssignment[n] = assignment[n]
-        fProxyQueryOP.rowArgMin(in ws.Gram, ref assignment)  // QueryOP.fProxy.cs line 115
+        fProxyQuery_OP.rowArgMin(in ws.Gram, ref assignment)  // QueryOP.fProxy.cs line 115
         int changes = 0
         for n = 0..N-1: if assignment[n] != ws.PrevAssignment[n]: changes++
 
@@ -336,7 +336,7 @@ Seeding cost: O(k^2 * N * D). Acceptable for k << N. See OQ2 for uniform-random 
         int kk = math.min(math.max(k, 1), N);
         centroids  = arena.fProxyMat(kk, D);
         assignment = arena.Indices(N);
-        var ws     = arena.fProxyKMeansWorkspace(N, D, kk);
+        var ws     = arena.fProxyKMeans_WS(N, D, kk);
         kmeans(in X, k, seed, maxIter, ref centroids, ref assignment, out inertia, out iters, ref ws);
     }
 
@@ -386,7 +386,7 @@ T5 -- Determinism for fixed seed
 
 T6 -- k==1 equals global mean
   k=1, any X with N=6 and D=2, seed=1. Assert centroid[0,f] == colMean(X)[f] within 1e-4.
-  Uses fProxyStatsOP.colMean (StatsOP.fProxy.cs line 329 for the ref-dest form).
+  Uses fProxyStats_OP.colMean (StatsOP.fProxy.cs line 329 for the ref-dest form).
   Inertia == sum_n ||x_n - mean||^2.
 
 T7 -- k >= N: each point its own centroid
@@ -422,7 +422,7 @@ Referenced existing files (read-only for coder):
   Assets/LinearAlgebra/CodeGen/TemplateSource/OP/QueryOP.fProxy.cs          rowArgMin line 115
   Assets/LinearAlgebra/CodeGen/TemplateSource/OP/OP.Dot.fProxy.cs           dot line 128, trans line 183
   Assets/LinearAlgebra/CodeGen/TemplateSource/OP/SVD.Workspace.fProxy.cs    workspace pattern
-  Assets/LinearAlgebra/CodeGen/TemplateSource/OP/RandomOP.fProxy.cs         weightedPick line 164
+  Assets/LinearAlgebra/CodeGen/TemplateSource/OP/Random_OP.fProxy.cs         weightedPick line 164
   Assets/LinearAlgebra/CodeGen/TemplateSource/Statistics/StatsOP.fProxy.cs  colMean line 329
   Assets/LinearAlgebra/CodeGen/TemplateSource/Arena/Arena.cs                Indices(n) factory line 83
 
@@ -435,7 +435,7 @@ extension, same pattern as SVD.Workspace.fProxy.cs line 21.
 
 1. Codegen produces KMeans.float.cs, KMeans.double.cs, KMeans.Workspace.float.cs, and
    KMeans.Workspace.double.cs with zero compile errors.
-2. fProxyKMeansWorkspace is unmanaged (Burst-safe). Arena.fProxyKMeansWorkspace(N,D,k) compiles
+2. fProxyKMeans_WS is unmanaged (Burst-safe). Arena.fProxyKMeans_WS(N,D,k) compiles
    inside a Burst IJob with no managed-type errors.
 3. The workspace overload contains no managed allocations in the compute path
    (no 
@@ -443,7 +443,7 @@ ew except
 ew Random(...)).
 4. Tests T1 through T10 all pass in the Unity Test Runner headless (Tools/*.ps1).
 5. Both float and double generated variants pass their own test runs independently.
-6. T6: centroid[0] matches floatStatsOP.colMean output within 1e-4 (float).
+6. T6: centroid[0] matches floatStats_OP.colMean output within 1e-4 (float).
 7. T5: two identical-arg calls produce bit-identical centroids, assignment, and inertia.
 8. No CS1750 compile error (no default-valued fProxy parameters in the template).
 
@@ -463,7 +463,7 @@ Not specced here; flag if desired.
 
 OQ3 -- Mini-batch k-means?
 Reduces per-iteration cost from O(N*D*k) to O(B*D*k) where B << N. A random-subset picker
-(fProxyRandomOP.weightedPickInpl already exists) would be needed. Separate spec recommended.
+(fProxyRandom_OP.weightedPickInpl already exists) would be needed. Separate spec recommended.
 
 OQ4 -- Multiple restarts / best-inertia selection?
 Trivially done by caller: call the workspace overload n_init times, compare inertia, keep best.

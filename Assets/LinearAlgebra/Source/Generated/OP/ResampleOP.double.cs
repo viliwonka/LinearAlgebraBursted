@@ -24,7 +24,7 @@ namespace LinearAlgebra
     /// double-only (float / double generated variants); use the existing integer ops for
     /// index-space resampling.
     /// </summary>
-    public static partial class doubleResampleOP
+    public static partial class doubleResample_OP
     {
         // ---- private helpers ----
 

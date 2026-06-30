@@ -11,7 +11,7 @@ namespace LinearAlgebra
         public static boolMxN operator |(in boolMxN lhs, bool rhs)
         {
             var vec = lhs.TempCopy();
-            BoolOP.or(vec, rhs);
+            Bool_OP.or(vec, rhs);
             return vec;
         }
 
@@ -20,7 +20,7 @@ namespace LinearAlgebra
         public static boolMxN operator &(in boolMxN lhs, bool rhs)
         {
             var vec = lhs.TempCopy();
-            BoolOP.and(vec, rhs);
+            Bool_OP.and(vec, rhs);
             return vec;
         }
 
@@ -29,7 +29,7 @@ namespace LinearAlgebra
         public static boolMxN operator ^(in boolMxN lhs, bool rhs)
         {
             var vec = lhs.TempCopy();
-            BoolOP.xor(vec, rhs);
+            Bool_OP.xor(vec, rhs);
             return vec;
         }
 
@@ -38,7 +38,7 @@ namespace LinearAlgebra
         public static boolMxN operator ==(in boolMxN lhs, bool rhs)
         {
             var vec = lhs.TempCopy();
-            BoolOP.equals(vec, rhs);
+            Bool_OP.equals(vec, rhs);
             return vec;
         }
 
@@ -47,7 +47,7 @@ namespace LinearAlgebra
         public static boolMxN operator !=(in boolMxN lhs, bool rhs)
         {
             var vec = lhs.TempCopy();
-            BoolOP.equals(vec, !rhs);
+            Bool_OP.equals(vec, !rhs);
             return vec;
         }
 
@@ -59,7 +59,7 @@ namespace LinearAlgebra
         {
             var vec = lhs.TempCopy();
 
-            BoolOP.not(vec);
+            Bool_OP.not(vec);
 
             return vec;
         }
@@ -72,7 +72,7 @@ namespace LinearAlgebra
             Assume.SameDim(in lhs, in rhs);
 
             var vec = lhs.TempCopy();
-            BoolOP.or(vec, rhs);
+            Bool_OP.or(vec, rhs);
             return vec;
         }
 
@@ -81,7 +81,7 @@ namespace LinearAlgebra
             Assume.SameDim(in lhs, in rhs);
 
             var vec = lhs.TempCopy();
-            BoolOP.and(vec, rhs);
+            Bool_OP.and(vec, rhs);
             return vec;
         }
 
@@ -90,7 +90,7 @@ namespace LinearAlgebra
             Assume.SameDim(in lhs, in rhs);
 
             var vec = lhs.TempCopy();
-            BoolOP.xor(vec, rhs);
+            Bool_OP.xor(vec, rhs);
             return vec;
         }
 
@@ -99,7 +99,7 @@ namespace LinearAlgebra
             Assume.SameDim(in lhs, in rhs);
 
             var vec = lhs.TempCopy();
-            BoolOP.equals(vec, rhs);
+            Bool_OP.equals(vec, rhs);
             return vec;
         }
 
@@ -108,7 +108,7 @@ namespace LinearAlgebra
             Assume.SameDim(in lhs, in rhs);
 
             var vec = lhs.TempCopy();
-            BoolOP.notEquals(vec, rhs);
+            Bool_OP.notEquals(vec, rhs);
             return vec;
         }
         #endregion

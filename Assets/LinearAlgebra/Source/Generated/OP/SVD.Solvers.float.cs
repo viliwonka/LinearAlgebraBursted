@@ -103,7 +103,7 @@ namespace LinearAlgebra
                 if (At.M_Rows != n || At.N_Cols != m)
                     throw new ArgumentException("pinvSolve: At scratch must be A.N_Cols x A.M_Rows for the wide (m < n) case");
 
-                floatOP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
+                float_OP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
 
                 converged = svdThin(in At, ref U, ref S, ref M, maxSweeps);
 
@@ -168,22 +168,22 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// pinvSolve using a reusable workspace (Arena.floatSvdWorkspace(m, n)) — zero-alloc.
+        /// pinvSolve using a reusable workspace (Arena.floatSvd_WS(m, n)) — zero-alloc.
         /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)); the guards in
         /// the underlying scratch primitive enforce this.
         /// </summary>
         public static int pinvSolve(ref floatMxN A, in floatN b, ref floatN x, out bool converged,
-                                    ref floatSvdWorkspace ws, float relTol, int maxSweeps)
+                                    ref floatSvd_WS ws, float relTol, int maxSweeps)
             => pinvSolve(ref A, in b, ref x, out converged, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
 
         /// <summary>pinvSolve (workspace) with default maxSweeps (30).</summary>
         public static int pinvSolve(ref floatMxN A, in floatN b, ref floatN x, out bool converged,
-                                    ref floatSvdWorkspace ws, float relTol)
+                                    ref floatSvd_WS ws, float relTol)
             => pinvSolve(ref A, in b, ref x, out converged, ref ws, relTol, 30);
 
         /// <summary>pinvSolve (workspace) with default relTol (-1, auto) and maxSweeps (30).</summary>
         public static int pinvSolve(ref floatMxN A, in floatN b, ref floatN x, out bool converged,
-                                    ref floatSvdWorkspace ws)
+                                    ref floatSvd_WS ws)
             => pinvSolve(ref A, in b, ref x, out converged, ref ws, (float)(-1), 30);
 
         /// <summary>pinvSolve with default maxSweeps (30).</summary>
@@ -273,7 +273,7 @@ namespace LinearAlgebra
                 if (At.M_Rows != n || At.N_Cols != m)
                     throw new ArgumentException("pseudoInverse: At scratch must be A.N_Cols x A.M_Rows for the wide (m < n) case");
 
-                floatOP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
+                float_OP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
 
                 converged = svdThin(in At, ref U, ref S, ref M, maxSweeps);
 
@@ -330,21 +330,21 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// pseudoInverse using a reusable workspace (Arena.floatSvdWorkspace(m, n)) — zero-alloc.
+        /// pseudoInverse using a reusable workspace (Arena.floatSvd_WS(m, n)) — zero-alloc.
         /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)).
         /// </summary>
         public static int pseudoInverse(ref floatMxN A, ref floatMxN Aplus, out bool converged,
-                                        ref floatSvdWorkspace ws, float relTol, int maxSweeps)
+                                        ref floatSvd_WS ws, float relTol, int maxSweeps)
             => pseudoInverse(ref A, ref Aplus, out converged, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
 
         /// <summary>pseudoInverse (workspace) with default maxSweeps (30).</summary>
         public static int pseudoInverse(ref floatMxN A, ref floatMxN Aplus, out bool converged,
-                                        ref floatSvdWorkspace ws, float relTol)
+                                        ref floatSvd_WS ws, float relTol)
             => pseudoInverse(ref A, ref Aplus, out converged, ref ws, relTol, 30);
 
         /// <summary>pseudoInverse (workspace) with default relTol (-1, auto) and maxSweeps (30).</summary>
         public static int pseudoInverse(ref floatMxN A, ref floatMxN Aplus, out bool converged,
-                                        ref floatSvdWorkspace ws)
+                                        ref floatSvd_WS ws)
             => pseudoInverse(ref A, ref Aplus, out converged, ref ws, (float)(-1), 30);
 
         /// <summary>pseudoInverse with default maxSweeps (30).</summary>

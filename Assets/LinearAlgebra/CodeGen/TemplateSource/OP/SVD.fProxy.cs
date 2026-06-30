@@ -95,7 +95,7 @@ namespace LinearAlgebra
                             // Fused 2x2 Gram dot: alpha = ||row_p||^2, beta = ||row_q||^2,
                             // gamma = row_p·row_q. Unit-stride reads of length m, 4-way unrolled with
                             // independent partial accumulators (breaks the loop-carried reduction chain).
-                            UnsafeOP.gram2x2(rowPU, rowQU, out fProxy alpha, out fProxy beta, out fProxy gamma, m);
+                            Unsafe_OP.gram2x2(rowPU, rowQU, out fProxy alpha, out fProxy beta, out fProxy gamma, m);
 
                             // Skip if either column is zero or pair is already orthogonal
                             if (alpha == (fProxy)0 || beta == (fProxy)0)
@@ -125,8 +125,8 @@ namespace LinearAlgebra
                             // + [NoAlias] (p != q ⇒ distinct rows) so Burst vectorizes the butterfly.
                             // Row rotation on Vt = G^T * Vt is equivalent to V -> V * G (column
                             // rotation), so Vt^T = V throughout.
-                            UnsafeOP.jacobiRotate(rowPU, rowQU, c, s, m);
-                            UnsafeOP.jacobiRotate(vtp + (long)p * n, vtp + (long)q * n, c, s, n);
+                            Unsafe_OP.jacobiRotate(rowPU, rowQU, c, s, m);
+                            Unsafe_OP.jacobiRotate(vtp + (long)p * n, vtp + (long)q * n, c, s, n);
 
                             rotations++;
                         }
@@ -184,8 +184,8 @@ namespace LinearAlgebra
 
                     // Swap rows of Ut and Vt (unit-stride — vectorizes; equivalent to
                     // swapping columns of U and V in the original layout)
-                    SwapOP.Rows(ref Ut, j, maxIdx);
-                    SwapOP.Rows(ref Vt, j, maxIdx);
+                    Swap_OP.Rows(ref Ut, j, maxIdx);
+                    Swap_OP.Rows(ref Vt, j, maxIdx);
                 }
             }
 
@@ -354,7 +354,7 @@ namespace LinearAlgebra
             B.Dispose();
 
             // Transpose U (m x n) -> Ut (n x m) and V (n x n) -> Vt (n x n) so the bidiagonal QR's
-            // plane rotations hit CONTIGUOUS rows (unit-stride, SIMD via UnsafeOP.jacobiRotate)
+            // plane rotations hit CONTIGUOUS rows (unit-stride, SIMD via Unsafe_OP.jacobiRotate)
             // instead of strided columns — same trick that vectorized eigenSymmetric / svdDecomposition.
             bool ok;
             {
@@ -396,8 +396,8 @@ namespace LinearAlgebra
                     if (maxIdx != j)
                     {
                         fProxy tmp = S[j]; S[j] = S[maxIdx]; S[maxIdx] = tmp;
-                        SwapOP.Columns(ref U, j, maxIdx);
-                        SwapOP.Columns(ref V, j, maxIdx);
+                        Swap_OP.Columns(ref U, j, maxIdx);
+                        Swap_OP.Columns(ref V, j, maxIdx);
                     }
                 }
             }
@@ -419,7 +419,7 @@ namespace LinearAlgebra
         // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (diagonal d, superdiagonal e
         // with e[0]=0), accumulating left rotations into Ut (n x m) ROWS and right rotations into Vt
         // (n x n) ROWS — Ut/Vt are the TRANSPOSES of the SVD's U/V, so each plane rotation touches two
-        // contiguous rows (unit-stride, SIMD via UnsafeOP.jacobiRotate). NR's Givens convention
+        // contiguous rows (unit-stride, SIMD via Unsafe_OP.jacobiRotate). NR's Givens convention
         // a'=c*a+s*b, b'=c*b-s*a equals jacobiRotate(a,b,c,-s). Golub-Reinsch (Numerical Recipes svdcmp
         // diagonalization). The deflation threshold is machine-eps relative to the GLOBAL scale anorm
         // (not a local |d|+|e|), which is what lets FLOAT converge on clustered / zero singular values
@@ -469,7 +469,7 @@ namespace LinearAlgebra
                             h = (fProxy)1 / h;
                             c = g * h;
                             s = -f * h;
-                            UnsafeOP.jacobiRotate(utp + (long)nm * m, utp + (long)i * m, c, -s, m);
+                            Unsafe_OP.jacobiRotate(utp + (long)nm * m, utp + (long)i * m, c, -s, m);
                         }
                     }
 
@@ -517,7 +517,7 @@ namespace LinearAlgebra
                         h2 = yy * s2;
                         yy *= c2;
                         // V columns j,i = Vt rows j,i
-                        UnsafeOP.jacobiRotate(vtp + (long)j * n, vtp + (long)i * n, c2, -s2, n);
+                        Unsafe_OP.jacobiRotate(vtp + (long)j * n, vtp + (long)i * n, c2, -s2, n);
                         zr = svdPythag(f2, h2);
                         d[j] = zr;
                         if (zr != (fProxy)0)
@@ -529,7 +529,7 @@ namespace LinearAlgebra
                         f2 = c2 * g2 + s2 * yy;
                         x = c2 * yy - s2 * g2;
                         // U columns j,i = Ut rows j,i
-                        UnsafeOP.jacobiRotate(utp + (long)j * m, utp + (long)i * m, c2, -s2, m);
+                        Unsafe_OP.jacobiRotate(utp + (long)j * m, utp + (long)i * m, c2, -s2, m);
                     }
                     e[l] = (fProxy)0;
                     e[k] = f2;
@@ -589,8 +589,8 @@ namespace LinearAlgebra
                 if (maxIdx != j)
                 {
                     fProxy tmp = S[j]; S[j] = S[maxIdx]; S[maxIdx] = tmp;
-                    SwapOP.Columns(ref P, j, maxIdx);
-                    SwapOP.Columns(ref Q, j, maxIdx);
+                    Swap_OP.Columns(ref P, j, maxIdx);
+                    Swap_OP.Columns(ref Q, j, maxIdx);
                 }
             }
 

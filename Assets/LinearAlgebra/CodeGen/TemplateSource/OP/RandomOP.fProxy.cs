@@ -21,7 +21,7 @@ namespace LinearAlgebra
     /// The sampler is passed by <c>ref</c> so that stateful samplers like
     /// <see cref="fProxyGaussian"/> accumulate state across elements. fProxy-only.
     /// </summary>
-    public static partial class fProxyRandomOP
+    public static partial class fProxyRandom_OP
     {
         // ---- uniform refill (vector) ----
 
@@ -163,7 +163,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int weightedPick(in fProxyN weights, ref Random rng)
         {
-            fProxy total = weightedPickValidateAndSum(in weights, "fProxyRandomOP.weightedPick");
+            fProxy total = weightedPickValidateAndSum(in weights, "fProxyRandom_OP.weightedPick");
             return weightedPickFromTotal(in weights, total, ref rng);
         }
 
@@ -180,7 +180,7 @@ namespace LinearAlgebra
         {
             // Validate + sum once before the draw loop so bad weights throw
             // even when dest.N == 0 (empty destination).
-            fProxy total = weightedPickValidateAndSum(in weights, "fProxyRandomOP.weightedPickInpl");
+            fProxy total = weightedPickValidateAndSum(in weights, "fProxyRandom_OP.weightedPickInpl");
             int k = dest.N;
             for (int i = 0; i < k; i++)
                 dest[i] = weightedPickFromTotal(in weights, total, ref rng);
@@ -492,7 +492,7 @@ namespace LinearAlgebra
     /// over a long fill.
     ///
     /// <para>Because of the cached spare, the sampler MUST be passed by <c>ref</c> to
-    /// <c>fProxyRandomOP.randomInpl</c> — copying it by value would silently duplicate the
+    /// <c>fProxyRandom_OP.randomInpl</c> — copying it by value would silently duplicate the
     /// spare state and corrupt the stream.</para>
     ///
     /// <para>No static ICDF is provided: Box–Muller is a two-draw transform, not a simple

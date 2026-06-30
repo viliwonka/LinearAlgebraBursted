@@ -2,7 +2,7 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // Allocating (arena) wrappers for fProxyQueryOP search operations.
+    // Allocating (arena) wrappers for fProxyQuery_OP search operations.
     // Zero-alloc ref-dest primitives (distancesToRow/Column) are in QueryOP;
     // these wrappers allocate from the matrix's own arena so callers don't
     // have to size buffers manually for the fProxy-typed outputs.
@@ -23,7 +23,7 @@ namespace LinearAlgebra
         public static fProxyN fProxyDistancesToRow(in fProxyMxN A, in fProxyN q, Metric m)
         {
             var dest = A.fProxyVec(A.M_Rows);
-            fProxyQueryOP.distancesToRow(in A, in q, m, ref dest);
+            fProxyQuery_OP.distancesToRow(in A, in q, m, ref dest);
             return dest;
         }
 
@@ -34,7 +34,7 @@ namespace LinearAlgebra
         public static fProxyN fProxyDistancesToColumn(in fProxyMxN A, in fProxyN q, Metric m)
         {
             var dest = A.fProxyVec(A.N_Cols);
-            fProxyQueryOP.distancesToColumn(in A, in q, m, ref dest);
+            fProxyQuery_OP.distancesToColumn(in A, in q, m, ref dest);
             return dest;
         }
 
@@ -49,7 +49,7 @@ namespace LinearAlgebra
         public static Indices fProxyNonzeroIndices<T>(this ref Arena arena, in T x, fProxy tol)
             where T : unmanaged, IUnsafefProxyArray
         {
-            int count = fProxyQueryOP.countNonzero(in x, tol);
+            int count = fProxyQuery_OP.countNonzero(in x, tol);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             int written = 0;
@@ -67,14 +67,14 @@ namespace LinearAlgebra
         /// </summary>
         public static Indices fProxyRowsWithinRadius(this ref Arena arena, in fProxyMxN A, in fProxyN q, fProxy r, Metric m)
         {
-            int count = fProxyQueryOP.countWithinRadius(in A, in q, r, m);
+            int count = fProxyQuery_OP.countWithinRadius(in A, in q, r, m);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int written = 0;
             for (int row = 0; row < A.M_Rows; row++)
             {
-                fProxy s = fProxyQueryOP.RowScore(in A, row, in q, m);
+                fProxy s = fProxyQuery_OP.RowScore(in A, row, in q, m);
                 if (sim ? s >= r : s <= r) idx[written++] = row;
             }
             return idx;
@@ -85,14 +85,14 @@ namespace LinearAlgebra
         /// </summary>
         public static Indices fProxyColumnsWithinRadius(this ref Arena arena, in fProxyMxN A, in fProxyN q, fProxy r, Metric m)
         {
-            int count = fProxyQueryOP.countWithinColumnRadius(in A, in q, r, m);
+            int count = fProxyQuery_OP.countWithinColumnRadius(in A, in q, r, m);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int written = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                fProxy s = fProxyQueryOP.ColScore(in A, c, in q, m);
+                fProxy s = fProxyQuery_OP.ColScore(in A, c, in q, m);
                 if (sim ? s >= r : s <= r) idx[written++] = c;
             }
             return idx;
@@ -112,7 +112,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.fProxyVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.fProxyVec(clampedK);
-            count = fProxyQueryOP.kNearestRows(in A, in q, clampedK, m, ref idx, ref scores);
+            count = fProxyQuery_OP.kNearestRows(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -125,7 +125,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.fProxyVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.fProxyVec(clampedK);
-            count = fProxyQueryOP.kNearestColumns(in A, in q, clampedK, m, ref idx, ref scores);
+            count = fProxyQuery_OP.kNearestColumns(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -143,7 +143,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.fProxyVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.fProxyVec(clampedK);
-            count = fProxyQueryOP.kFarthestRows(in A, in q, clampedK, m, ref idx, ref scores);
+            count = fProxyQuery_OP.kFarthestRows(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -157,7 +157,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.fProxyVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.fProxyVec(clampedK);
-            count = fProxyQueryOP.kFarthestColumns(in A, in q, clampedK, m, ref idx, ref scores);
+            count = fProxyQuery_OP.kFarthestColumns(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
     }

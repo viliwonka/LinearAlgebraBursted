@@ -53,8 +53,8 @@ public class doubleSVDRandomizedTests
         {
             var U = new doubleMxN(m, m, Allocator.Temp, false);
             var V = new doubleMxN(n, n, Allocator.Temp, false);
-            doubleRandomMatrixOP.randomOrthogonalInpl(ref rng, ref U);
-            doubleRandomMatrixOP.randomOrthogonalInpl(ref rng, ref V);
+            doubleRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref U);
+            doubleRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref V);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -154,7 +154,7 @@ public class doubleSVDRandomizedTests
             int m = 24, n = 12, r = 3;
             var B = arena.doubleRandomMatrix(m, r, (double)(-2f), (double)2f, 1001);
             var C = arena.doubleRandomMatrix(r, n, (double)(-2f), (double)2f, 2002);
-            var A = doubleOP.dot(B, C);   // rank 3
+            var A = double_OP.dot(B, C);   // rank 3
             CheckRandomized(in A, 3, 6, 2, 12345u, true, ref arena);
             arena.Dispose();
         }
@@ -165,7 +165,7 @@ public class doubleSVDRandomizedTests
             int m = 40, n = 16, r = 5;
             var B = arena.doubleRandomMatrix(m, r, (double)(-2f), (double)2f, 3003);
             var C = arena.doubleRandomMatrix(r, n, (double)(-2f), (double)2f, 4004);
-            var A = doubleOP.dot(B, C);   // rank 5
+            var A = double_OP.dot(B, C);   // rank 5
             CheckRandomized(in A, 5, 8, 2, 67890u, true, ref arena);
             arena.Dispose();
         }

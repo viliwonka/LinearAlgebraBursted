@@ -157,7 +157,7 @@ public class fProxyGalleryPhase2Tests
             var xTrue = arena.fProxyVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (fProxy)(i + 1);
 
-            var b = fProxyOP.dot(A, xTrue);   // consistent RHS
+            var b = fProxy_OP.dot(A, xTrue);   // consistent RHS
 
             var x = arena.fProxyVec(n);
             bool conv = Solvers.conjugateGradient(in A, in b, ref x, 500, Consts.fProxySqrtEps);

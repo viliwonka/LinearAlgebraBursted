@@ -12,7 +12,7 @@ namespace LinearAlgebra
     //   findFirst, count, any, all, findAll.
     // Constraint: where T : unmanaged, IUnsafeshortArray
     //             where P : struct, IshortPredicate
-    public static partial class shortQueryOP
+    public static partial class shortQuery_OP
     {
         // -------------------------------------------------------------------------
         // GROUP A — FLAT / SCALAR PREDICATE OPS

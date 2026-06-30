@@ -41,7 +41,7 @@ public class floatTransposeTests
             
             floatMxN A = arena.floatRandomMatrix(dim, dim);
 
-            floatMxN B = floatOP.trans(A);
+            floatMxN B = float_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, dim);
             Assert.AreEqual(B.N_Cols, dim);
@@ -62,7 +62,7 @@ public class floatTransposeTests
 
             floatMxN A = arena.floatRandomMatrix(rows, cols);
 
-            floatMxN B = floatOP.trans(A);
+            floatMxN B = float_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, cols);
             Assert.AreEqual(B.N_Cols, rows);

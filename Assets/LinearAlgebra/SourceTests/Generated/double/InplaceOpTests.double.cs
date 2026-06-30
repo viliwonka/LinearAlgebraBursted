@@ -22,7 +22,7 @@ public class doubleInplaceOpTests
             var a = arena.doubleVec(3); a[0] = (double)1; a[1] = (double)2; a[2] = (double)3;
             var b = arena.doubleVec(3); b[0] = (double)10; b[1] = (double)20; b[2] = (double)30;
 
-            doubleOP.addInpl(a, b);   // a += b
+            double_OP.addInpl(a, b);   // a += b
 
             // a updated...
             Assert.AreEqual(11.0, (double)a[0], 1e-6);
@@ -45,7 +45,7 @@ public class doubleInplaceOpTests
             var a = arena.doubleVec(2); a[0] = (double)10; a[1] = (double)20;
             var b = arena.doubleVec(2); b[0] = (double)3;  b[1] = (double)5;
 
-            doubleOP.subInpl(a, b);   // a -= b
+            double_OP.subInpl(a, b);   // a -= b
 
             Assert.AreEqual(7.0, (double)a[0], 1e-6);
             Assert.AreEqual(15.0, (double)a[1], 1e-6);

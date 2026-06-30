@@ -7,21 +7,21 @@ namespace LinearAlgebra
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n x n pivoted-Cholesky problem. W (n x n,
         /// the symmetric working copy) is needed by choleskyDecompositionPivot; bt (n, the permuted RHS)
-        /// by choleskyPivotSolve. Matches Arena.doubleCholeskyPivotWorkspace(n).
+        /// by choleskyPivotSolve. Matches Arena.doubleCholeskyPivot_WS(n).
         /// </summary>
-        static void RequireCholeskyPivotWorkspace(in doubleCholeskyPivotWorkspace ws, int n,
+        static void RequireCholeskyPivotWorkspace(in doubleCholeskyPivot_WS ws, int n,
                                                   bool needW, bool needBt, string who)
         {
             if (needW && (ws.W.M_Rows != n || ws.W.N_Cols != n))
-                throw new ArgumentException(who + ": workspace W must be n x n (use Arena.doubleCholeskyPivotWorkspace(n))");
+                throw new ArgumentException(who + ": workspace W must be n x n (use Arena.doubleCholeskyPivot_WS(n))");
             if (needBt && ws.bt.N != n)
-                throw new ArgumentException(who + ": workspace bt must have length n (use Arena.doubleCholeskyPivotWorkspace(n))");
+                throw new ArgumentException(who + ": workspace bt must have length n (use Arena.doubleCholeskyPivot_WS(n))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for pivoted (rank-revealing) Cholesky (Cholesky.choleskyDecompositionPivot /
-    /// choleskyPivotSolve). Allocate ONCE via Arena.doubleCholeskyPivotWorkspace(n) and reuse it across
+    /// choleskyPivotSolve). Allocate ONCE via Arena.doubleCholeskyPivot_WS(n) and reuse it across
     /// same-size calls. W (n x n) is the destroyable symmetric working copy the decomposition pivots
     /// on; bt (n) is the permuted right-hand side the solve gathers into.
     ///
@@ -30,7 +30,7 @@ namespace LinearAlgebra
     /// has no matrix-view type to slice an n x n buffer to a rank x rank stride) and remain per-call
     /// Allocator.Temp; only the full-rank path is fully zero-alloc with this workspace.
     /// </summary>
-    public struct doubleCholeskyPivotWorkspace
+    public struct doubleCholeskyPivot_WS
     {
         public doubleMxN W;
         public doubleN bt;
@@ -44,9 +44,9 @@ namespace LinearAlgebra
         /// loop and pass it to the ref-workspace overloads of choleskyDecompositionPivot /
         /// choleskyPivotSolve.
         /// </summary>
-        public doubleCholeskyPivotWorkspace doubleCholeskyPivotWorkspace(int n)
+        public doubleCholeskyPivot_WS doubleCholeskyPivot_WS(int n)
         {
-            return new doubleCholeskyPivotWorkspace
+            return new doubleCholeskyPivot_WS
             {
                 W = doubleMat(n, n),
                 bt = doubleVec(n)

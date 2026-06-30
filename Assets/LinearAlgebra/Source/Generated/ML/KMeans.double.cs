@@ -20,7 +20,7 @@ namespace LinearAlgebra.ML
     /// Multiple restarts for best inertia: call the workspace overload <c>n_init</c> times,
     /// compare the returned <c>inertia</c> values, and keep the best assignment + centroids.
     /// </summary>
-    public static partial class doubleKMeansOP
+    public static partial class doubleKMeans_OP
     {
         // =========================================================================
         // PRIMARY — zero-alloc workspace-taking overload (explicit init)
@@ -42,7 +42,7 @@ namespace LinearAlgebra.ML
         /// <paramref name="assignment"/> N output cluster labels in [0, k); always consistent with returned centroids.
         /// <paramref name="inertia"/>    Final total SSE; always consistent with returned centroids and assignment.
         /// <paramref name="iters"/>      Actual iteration count in [1, maxIter].
-        /// <paramref name="ws"/>         Pre-allocated workspace — Arena.doubleKMeansWorkspace(N, D, k).
+        /// <paramref name="ws"/>         Pre-allocated workspace — Arena.doubleKMeans_WS(N, D, k).
         /// </summary>
         public static void kmeans(
             in doubleMxN X,
@@ -54,15 +54,15 @@ namespace LinearAlgebra.ML
             ref Indices assignment,
             out double inertia,
             out int iters,
-            ref doubleKMeansWorkspace ws)
+            ref doubleKMeans_WS ws)
         {
             // ---- input guards ----
             if (X.M_Rows == 0 || X.N_Cols == 0)
-                throw new InvalidOperationException("doubleKMeansOP.kmeans: X is empty");
+                throw new InvalidOperationException("doubleKMeans_OP.kmeans: X is empty");
             if (k <= 0)
-                throw new ArgumentException("doubleKMeansOP.kmeans: k must be >= 1");
+                throw new ArgumentException("doubleKMeans_OP.kmeans: k must be >= 1");
             if (maxIter < 1)
-                throw new ArgumentException("doubleKMeansOP.kmeans: maxIter must be >= 1");
+                throw new ArgumentException("doubleKMeans_OP.kmeans: maxIter must be >= 1");
 
             int N = X.M_Rows;
             int D = X.N_Cols;
@@ -71,36 +71,36 @@ namespace LinearAlgebra.ML
             // ---- shape checks for caller-supplied outputs ----
             if (centroids.M_Rows != k || centroids.N_Cols != D)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: centroids must be k×D after clamping k to min(k,N)");
+                    "doubleKMeans_OP.kmeans: centroids must be k×D after clamping k to min(k,N)");
             if (assignment.N != N)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: assignment.N must equal X.M_Rows (N)");
+                    "doubleKMeans_OP.kmeans: assignment.N must equal X.M_Rows (N)");
 
             // ---- workspace shape checks ----
             if (ws.Gram.M_Rows != N || ws.Gram.N_Cols != k)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: ws.Gram must be N×k");
+                    "doubleKMeans_OP.kmeans: ws.Gram must be N×k");
             if (ws.Ct.M_Rows != D || ws.Ct.N_Cols != k)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: ws.Ct must be D×k");
+                    "doubleKMeans_OP.kmeans: ws.Ct must be D×k");
             if (ws.PointNormSq.N != N)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: ws.PointNormSq.N must equal N");
+                    "doubleKMeans_OP.kmeans: ws.PointNormSq.N must equal N");
             if (ws.CentNormSq.N != k)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: ws.CentNormSq.N must equal k");
+                    "doubleKMeans_OP.kmeans: ws.CentNormSq.N must equal k");
             if (ws.PrevAssignment.N != N)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: ws.PrevAssignment.N must equal N");
+                    "doubleKMeans_OP.kmeans: ws.PrevAssignment.N must equal N");
             if (ws.NewCentroids.M_Rows != k || ws.NewCentroids.N_Cols != D)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: ws.NewCentroids must be k×D");
+                    "doubleKMeans_OP.kmeans: ws.NewCentroids must be k×D");
             if (ws.ClusterCounts.N != k)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: ws.ClusterCounts.N must equal k");
+                    "doubleKMeans_OP.kmeans: ws.ClusterCounts.N must equal k");
             if (ws.D2Weights.N != N)
                 throw new ArgumentException(
-                    "doubleKMeansOP.kmeans: ws.D2Weights.N must equal N");
+                    "doubleKMeans_OP.kmeans: ws.D2Weights.N must equal N");
 
             // ---- precompute point squared norms (once, before the Lloyd loop) ----
             for (int n = 0; n < N; n++)
@@ -148,10 +148,10 @@ namespace LinearAlgebra.ML
                 }
 
                 // 5.4.2  Transpose centroids (k×D) -> ws.Ct (D×k)
-                doubleOP.trans(in centroids, ref ws.Ct);
+                double_OP.trans(in centroids, ref ws.Ct);
 
                 // 5.4.3  GEMM: ws.Gram = X * ws.Ct  (N×k); dot zero-clears before accumulating.
-                doubleOP.dot(in X, in ws.Ct, ref ws.Gram);
+                double_OP.dot(in X, in ws.Ct, ref ws.Gram);
 
                 // 5.4.4  Patch Gram in-place: score[n,j] = cn[j] - 2*G[n,j]
                 //   pn[n] omitted (constant over j — no effect on argmin).
@@ -163,7 +163,7 @@ namespace LinearAlgebra.ML
                 for (int n = 0; n < N; n++)
                     ws.PrevAssignment[n] = assignment[n];
 
-                doubleQueryOP.rowArgMin(in ws.Gram, ref assignment);
+                doubleQuery_OP.rowArgMin(in ws.Gram, ref assignment);
 
                 int changes = 0;
                 for (int n = 0; n < N; n++)
@@ -254,12 +254,12 @@ namespace LinearAlgebra.ML
                     for (int f = 0; f < D; f++) { double v = centroids[j, f]; s += v * v; }
                     ws.CentNormSq[j] = s;
                 }
-                doubleOP.trans(in centroids, ref ws.Ct);
-                doubleOP.dot(in X, in ws.Ct, ref ws.Gram);
+                double_OP.trans(in centroids, ref ws.Ct);
+                double_OP.dot(in X, in ws.Ct, ref ws.Gram);
                 for (int n = 0; n < N; n++)
                     for (int j = 0; j < k; j++)
                         ws.Gram[n, j] = ws.CentNormSq[j] - (double)2 * ws.Gram[n, j];
-                doubleQueryOP.rowArgMin(in ws.Gram, ref assignment);
+                doubleQuery_OP.rowArgMin(in ws.Gram, ref assignment);
 
                 double sse = (double)0;
                 for (int n = 0; n < N; n++)
@@ -275,7 +275,7 @@ namespace LinearAlgebra.ML
         // =========================================================================
 
         /// <summary>
-        /// Calls <see cref="kmeans(in doubleMxN,int,uint,int,KMeansInit,ref doubleMxN,ref Indices,out double,out int,ref doubleKMeansWorkspace)"/>
+        /// Calls <see cref="kmeans(in doubleMxN,int,uint,int,KMeansInit,ref doubleMxN,ref Indices,out double,out int,ref doubleKMeans_WS)"/>
         /// with <c>init = KMeansInit.KMeansPlusPlus</c>.
         /// </summary>
         public static void kmeans(
@@ -287,7 +287,7 @@ namespace LinearAlgebra.ML
             ref Indices assignment,
             out double inertia,
             out int iters,
-            ref doubleKMeansWorkspace ws)
+            ref doubleKMeans_WS ws)
             => kmeans(in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
                       ref centroids, ref assignment, out inertia, out iters, ref ws);
 
@@ -318,18 +318,18 @@ namespace LinearAlgebra.ML
         {
             // FIX 6: validate before allocating so invalid args cannot orphan arena memory.
             if (X.M_Rows == 0 || X.N_Cols == 0)
-                throw new InvalidOperationException("doubleKMeansOP.kmeans: X is empty");
+                throw new InvalidOperationException("doubleKMeans_OP.kmeans: X is empty");
             if (k <= 0)
-                throw new ArgumentException("doubleKMeansOP.kmeans: k must be >= 1");
+                throw new ArgumentException("doubleKMeans_OP.kmeans: k must be >= 1");
             if (maxIter < 1)
-                throw new ArgumentException("doubleKMeansOP.kmeans: maxIter must be >= 1");
+                throw new ArgumentException("doubleKMeans_OP.kmeans: maxIter must be >= 1");
 
             int N = X.M_Rows;
             int D = X.N_Cols;
             int kk = math.min(k, N);  // match the primary overload's clamp
             centroids  = arena.doubleMat(kk, D);
             assignment = arena.Indices(N);
-            var ws     = arena.doubleKMeansWorkspace(N, D, kk);
+            var ws     = arena.doubleKMeans_WS(N, D, kk);
             kmeans(in X, k, seed, maxIter, init, ref centroids, ref assignment,
                    out inertia, out iters, ref ws);
         }
@@ -368,7 +368,7 @@ namespace LinearAlgebra.ML
             in doubleMxN X, int N, int D, int k,
             ref Random rng,
             ref doubleMxN centroids,
-            ref doubleKMeansWorkspace ws)
+            ref doubleKMeans_WS ws)
         {
             // First centroid: uniform random point.
             int firstIdx = math.min((int)(rng.NextDouble() * (double)N), N - 1);
@@ -405,8 +405,8 @@ namespace LinearAlgebra.ML
                 }
                 else
                 {
-                    // doubleRandomOP.weightedPick validates + draws from D² distribution.
-                    nextIdx = doubleRandomOP.weightedPick(in ws.D2Weights, ref rng);
+                    // doubleRandom_OP.weightedPick validates + draws from D² distribution.
+                    nextIdx = doubleRandom_OP.weightedPick(in ws.D2Weights, ref rng);
                 }
 
                 for (int f = 0; f < D; f++) centroids[ci, f] = X[nextIdx, f];

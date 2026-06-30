@@ -6,7 +6,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Phase-2 solver-workspace tests for OrthoOP: the caller-provided-scratch QR overloads
+// Phase-2 solver-workspace tests for Ortho_OP: the caller-provided-scratch QR overloads
 // (qrDecomposition(...,ref u) / qrDirectSolve(...,ref u)) must produce results identical
 // to the allocating wrappers (they run the SAME kernel), and a mis-sized scratch must throw.
 public class fProxyOrthoWorkspaceTests
@@ -54,16 +54,16 @@ public class fProxyOrthoWorkspaceTests
             // allocating reference
             var Qa = A.Copy();
             var Ra = arena.fProxyMat(N);
-            OrthoOP.qrDecomposition(ref Qa, ref Ra);
+            Ortho_OP.qrDecomposition(ref Qa, ref Ra);
 
             // caller-scratch form
             var Qb = A.Copy();
             var Rb = arena.fProxyMat(N);
             var u = arena.fProxyVec(M);
-            OrthoOP.qrDecomposition(ref Qb, ref Rb, ref u);
+            Ortho_OP.qrDecomposition(ref Qb, ref Rb, ref u);
 
-            Assert.IsTrue(Analysis.IsZero(Qa - Qb, Tol()));
-            Assert.IsTrue(Analysis.IsZero(Ra - Rb, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(Qa - Qb, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(Ra - Rb, Tol()));
 
             arena.Dispose();
         }
@@ -83,18 +83,18 @@ public class fProxyOrthoWorkspaceTests
 
             // allocating reference (qrDirectSolve destroys A and b, so use fresh copies)
             var Aa = A0.Copy();
-            var ba = fProxyOP.dot(A0, xOrig);
+            var ba = fProxy_OP.dot(A0, xOrig);
             var xa = arena.fProxyVec(dim);
-            OrthoOP.qrDirectSolve(ref Aa, ref ba, ref xa);
+            Ortho_OP.qrDirectSolve(ref Aa, ref ba, ref xa);
 
             // caller-scratch form
             var Ab = A0.Copy();
-            var bb = fProxyOP.dot(A0, xOrig);
+            var bb = fProxy_OP.dot(A0, xOrig);
             var xb = arena.fProxyVec(dim);
             var u = arena.fProxyVec(dim);
-            OrthoOP.qrDirectSolve(ref Ab, ref bb, ref xb, ref u);
+            Ortho_OP.qrDirectSolve(ref Ab, ref bb, ref xb, ref u);
 
-            Assert.IsTrue(Analysis.IsZero(xa - xb, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(xa - xb, Tol()));
 
             arena.Dispose();
         }
@@ -111,21 +111,21 @@ public class fProxyOrthoWorkspaceTests
                 A[d, d] += 5f;
 
             var xOrig = arena.fProxyRandomVector(N, -3f, 3f, 60221);
-            var b = fProxyOP.dot(A, xOrig);   // consistent RHS; read-only in SolveQR, reusable
+            var b = fProxy_OP.dot(A, xOrig);   // consistent RHS; read-only in SolveQR, reusable
 
             // Precompute QR of A (qrDecomposition overwrites Q with the orthogonal factor)
             var Q = A.Copy();
             var R = arena.fProxyMat(N);
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             // ref-destination overload recovers x (length N)
             var x = arena.fProxyVec(N);
             Solvers.SolveQR(ref Q, ref R, ref b, ref x);
-            Assert.IsTrue(Analysis.IsZero(x - xOrig, SolveTol()));
+            Assert.IsTrue(Analysis_OP.IsZero(x - xOrig, SolveTol()));
 
             // allocating convenience must match the ref form exactly (same kernel)
             var xc = Solvers.SolveQR(ref Q, ref R, ref b);
-            Assert.IsTrue(Analysis.IsZero(xc - x, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(xc - x, Tol()));
 
             arena.Dispose();
         }
@@ -150,7 +150,7 @@ public class fProxyOrthoWorkspaceTests
             var Q = arena.fProxyMat(6, 4);
             var R = arena.fProxyMat(4);
             var badU = arena.fProxyVec(3);   // must be length 6 (Q.M_Rows)
-            Assert.Throws<Exception>(() => OrthoOP.qrDecomposition(ref Q, ref R, ref badU));
+            Assert.Throws<Exception>(() => Ortho_OP.qrDecomposition(ref Q, ref R, ref badU));
         }
         finally { arena.Dispose(); }
     }
@@ -165,7 +165,7 @@ public class fProxyOrthoWorkspaceTests
             var b = arena.fProxyVec(6);
             var x = arena.fProxyVec(4);
             var badU = arena.fProxyVec(4);   // must be length 6 (A.M_Rows)
-            Assert.Throws<Exception>(() => OrthoOP.qrDirectSolve(ref A, ref b, ref x, ref badU));
+            Assert.Throws<Exception>(() => Ortho_OP.qrDirectSolve(ref A, ref b, ref x, ref badU));
         }
         finally { arena.Dispose(); }
     }
@@ -181,7 +181,7 @@ public class fProxyOrthoWorkspaceTests
             for (int d = 0; d < 4; d++) A[d, d] = 2f;   // nonsingular so QR is well-defined
             var Q = A.Copy();
             var R = arena.fProxyMat(4);
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             var b = arena.fProxyVec(4);
             var badX = arena.fProxyVec(3);   // must be length 4 (Q.N_Cols)
@@ -201,7 +201,7 @@ public class fProxyOrthoWorkspaceTests
             for (int d = 0; d < 4; d++) A[d, d] = 2f;
             var Q = A.Copy();
             var R = arena.fProxyMat(4);
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             var b = arena.fProxyVec(4);
             var aliasB = b;   // shares b's buffer; length 4 == Q.N_Cols so it passes the dim guard

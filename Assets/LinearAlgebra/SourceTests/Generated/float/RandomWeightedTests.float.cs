@@ -10,8 +10,8 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-// Tests for the weighted discrete picker (floatRandomOP.weightedPick / weightedPickInpl).
-// One template expands to floatRandomOP / doubleRandomOP, so statistics use loose tolerances
+// Tests for the weighted discrete picker (floatRandom_OP.weightedPick / weightedPickInpl).
+// One template expands to floatRandom_OP / doubleRandom_OP, so statistics use loose tolerances
 // that hold for both precisions; the underlying uniform stream is float-valued for both, so a
 // fixed seed makes every count deterministic.
 //
@@ -60,7 +60,7 @@ public class floatRandomWeightedTests
             var w = arena.floatVec(1);
             w[0] = (float)5;
             for (int i = 0; i < 200; i++)
-                AssertTrue(floatRandomOP.weightedPick(in w, ref rng) == 0);
+                AssertTrue(floatRandom_OP.weightedPick(in w, ref rng) == 0);
             arena.Dispose();
         }
 
@@ -75,7 +75,7 @@ public class floatRandomWeightedTests
             int c0 = 0, c1 = 0, c2 = 0;
             for (int i = 0; i < Draws; i++)
             {
-                int idx = floatRandomOP.weightedPick(in w, ref rng);
+                int idx = floatRandom_OP.weightedPick(in w, ref rng);
                 AssertTrue(idx >= 0 && idx < 3);
                 if (idx == 0) c0++; else if (idx == 1) c1++; else c2++;
             }
@@ -96,7 +96,7 @@ public class floatRandomWeightedTests
             int c0 = 0, c1 = 0;
             for (int i = 0; i < Draws; i++)
             {
-                int idx = floatRandomOP.weightedPick(in w, ref rng);
+                int idx = floatRandom_OP.weightedPick(in w, ref rng);
                 if (idx == 0) c0++; else c1++;
             }
             AssertTrue(c0 > 0);
@@ -115,7 +115,7 @@ public class floatRandomWeightedTests
 
             int k = 256;
             var dest = arena.Indices(k);
-            floatRandomOP.weightedPickInpl(in w, ref dest, ref rng);
+            floatRandom_OP.weightedPickInpl(in w, ref dest, ref rng);
             AssertTrue(dest.N == k);
             for (int i = 0; i < k; i++)
             {
@@ -189,27 +189,27 @@ public class floatRandomWeightedTests
 
         // Empty weights.
         var empty = arena.floatVec(0);
-        Assert.Throws<ArgumentException>(() => floatRandomOP.weightedPick(in empty, ref rng));
+        Assert.Throws<ArgumentException>(() => floatRandom_OP.weightedPick(in empty, ref rng));
 
         // Any negative weight.
         var neg = arena.floatVec(3);
         neg[0] = (float)1; neg[1] = (float)(-2); neg[2] = (float)1;
-        Assert.Throws<ArgumentException>(() => floatRandomOP.weightedPick(in neg, ref rng));
+        Assert.Throws<ArgumentException>(() => floatRandom_OP.weightedPick(in neg, ref rng));
 
         // NaN weight (0/0 at runtime; not a compile-time constant).
         var nan = arena.floatVec(2);
         nan[0] = (float)1; nan[1] = (float)0 / (float)0;
-        Assert.Throws<ArgumentException>(() => floatRandomOP.weightedPick(in nan, ref rng));
+        Assert.Throws<ArgumentException>(() => floatRandom_OP.weightedPick(in nan, ref rng));
 
         // +Inf weight (1/0 at runtime).
         var inf = arena.floatVec(2);
         inf[0] = (float)1; inf[1] = (float)1 / (float)0;
-        Assert.Throws<ArgumentException>(() => floatRandomOP.weightedPick(in inf, ref rng));
+        Assert.Throws<ArgumentException>(() => floatRandom_OP.weightedPick(in inf, ref rng));
 
         // All-zero total.
         var zero = arena.floatVec(3);
         zero[0] = (float)0; zero[1] = (float)0; zero[2] = (float)0;
-        Assert.Throws<ArgumentException>(() => floatRandomOP.weightedPick(in zero, ref rng));
+        Assert.Throws<ArgumentException>(() => floatRandom_OP.weightedPick(in zero, ref rng));
 
         arena.Dispose();
     }
@@ -224,13 +224,13 @@ public class floatRandomWeightedTests
         var bad = arena.floatVec(3);
         bad[0] = (float)1; bad[1] = (float)(-1); bad[2] = (float)1;
         var emptyDest = arena.Indices(0);
-        Assert.Throws<ArgumentException>(() => floatRandomOP.weightedPickInpl(in bad, ref emptyDest, ref rng));
+        Assert.Throws<ArgumentException>(() => floatRandom_OP.weightedPickInpl(in bad, ref emptyDest, ref rng));
 
         // All-zero total likewise throws with an empty destination.
         var zero = arena.floatVec(2);
         zero[0] = (float)0; zero[1] = (float)0;
         var emptyDest2 = arena.Indices(0);
-        Assert.Throws<ArgumentException>(() => floatRandomOP.weightedPickInpl(in zero, ref emptyDest2, ref rng));
+        Assert.Throws<ArgumentException>(() => floatRandom_OP.weightedPickInpl(in zero, ref emptyDest2, ref rng));
 
         arena.Dispose();
     }

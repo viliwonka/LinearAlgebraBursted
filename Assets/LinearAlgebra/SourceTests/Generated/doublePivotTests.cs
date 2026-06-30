@@ -107,17 +107,17 @@ public class doublePivotTests
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsFalse(Analysis.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
 
             pivot.ApplyInverseRow(ref identity);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.Dispose();
         }
@@ -136,23 +136,23 @@ public class doublePivotTests
 
             var identity = arena.doubleIdentityMatrix(dim);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.ApplyRow(ref identity);
             pivot.ApplyRow(ref identity);
 
-            Assert.IsFalse(Analysis.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
 
             pivot.ApplyInverseRow(ref identity);
             pivot.ApplyInverseRow(ref identity);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.Dispose();
         }
@@ -168,17 +168,17 @@ public class doublePivotTests
 
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsFalse(Analysis.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
 
             pivot.ApplyInverseColumn(ref identity);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.Dispose();
         }
@@ -197,23 +197,23 @@ public class doublePivotTests
 
             var identity = arena.doubleIdentityMatrix(dim);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.ApplyColumn(ref identity);
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsFalse(Analysis.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
 
             pivot.ApplyInverseColumn(ref identity);
             pivot.ApplyInverseColumn(ref identity);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             pivot.Dispose();
         }
@@ -222,9 +222,9 @@ public class doublePivotTests
 
             var permutationMatrix = arena.doublePermutationMatrix(8, 2, 3);
 
-            permutationMatrix = doubleOP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 3, 6));
-            permutationMatrix = doubleOP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 6, 7));
-            permutationMatrix = doubleOP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 1, 4));
+            permutationMatrix = double_OP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 3, 6));
+            permutationMatrix = double_OP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 6, 7));
+            permutationMatrix = double_OP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 1, 4));
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 
@@ -236,7 +236,7 @@ public class doublePivotTests
             // applying inverse pivot operation to permutation matrix should form identity matrix
             pivot.ApplyInverseRow(ref permutationMatrix);
 
-            Assert.IsTrue(Analysis.IsIdentity(permutationMatrix));
+            Assert.IsTrue(Analysis_OP.IsIdentity(permutationMatrix));
 
             pivot.Dispose();
         }
@@ -245,11 +245,11 @@ public class doublePivotTests
 
             var permutationMatrix = arena.doublePermutationMatrix(8, 2, 3);
 
-            permutationMatrix = doubleOP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 3, 6));
-            permutationMatrix = doubleOP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 6, 7));
-            permutationMatrix = doubleOP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 1, 4));
+            permutationMatrix = double_OP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 3, 6));
+            permutationMatrix = double_OP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 6, 7));
+            permutationMatrix = double_OP.dot(permutationMatrix, arena.doublePermutationMatrix(8, 1, 4));
 
-            permutationMatrix = doubleOP.trans(permutationMatrix);
+            permutationMatrix = double_OP.trans(permutationMatrix);
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 
@@ -261,7 +261,7 @@ public class doublePivotTests
             // applying inverse pivot operation to permutation matrix should form identity matrix
             pivot.ApplyInverseColumn(ref permutationMatrix);
 
-            Assert.IsTrue(Analysis.IsIdentity(permutationMatrix));
+            Assert.IsTrue(Analysis_OP.IsIdentity(permutationMatrix));
               
             pivot.Dispose();
         }
@@ -279,12 +279,12 @@ public class doublePivotTests
 
             var vecCopy = vec.Copy();
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(vec == vecCopy, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(vec == vecCopy, true));
 
             // [1, 0, 0, 0] -> [0, 0, 0, 1]
             pivot.ApplyVec(ref vec);
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(vec == vecCopy, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(vec == vecCopy, true));
 
             pivot.Swap(0, 3);
 
@@ -297,7 +297,7 @@ public class doublePivotTests
 
             pivot.ApplyInverseVec(ref vec);
 
-            Assert.IsTrue(BoolAnalysis.IsAllEqualTo(vec == vecCopy, true));
+            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(vec == vecCopy, true));
 
             pivot.Dispose();
         }
@@ -356,11 +356,11 @@ public class doublePivotTests
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsFalse(Analysis.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
 
             pivot.ApplyInverseRow(ref identity);
 
-            Assert.IsTrue(Analysis.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
 
             // intentionally NOT disposing pivot - arena.Dispose() owns it (in Execute's finally).
         }

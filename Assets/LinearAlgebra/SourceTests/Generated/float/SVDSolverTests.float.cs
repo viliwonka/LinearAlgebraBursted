@@ -86,7 +86,7 @@ public class floatSVDSolverTests
             var A_copy = A.Copy();
 
             var xOrig = arena.floatRandomVector(dim, -3f, 3f, 1337);
-            var b = floatOP.dot(A_copy, xOrig);
+            var b = float_OP.dot(A_copy, xOrig);
 
             var x = arena.floatVec(dim);
 
@@ -95,7 +95,7 @@ public class floatSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(8, rank);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
 
             for (int k = 0; k < dim; k++)
                 AssertClose(x[k], xOrig[k], 1E-3f);
@@ -119,7 +119,7 @@ public class floatSVDSolverTests
             var A_copy = A.Copy();
 
             var xOrig = arena.floatRandomVector(n, -3f, 3f, 4242);
-            var b = floatOP.dot(A_copy, xOrig);
+            var b = float_OP.dot(A_copy, xOrig);
 
             var x = arena.floatVec(n);
 
@@ -128,7 +128,7 @@ public class floatSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(4, rank);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
 
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], xOrig[k], 1E-3f);
@@ -162,16 +162,16 @@ public class floatSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(4, rank);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
 
             // residual r = A x - b   (length m), using the saved copy of A
-            var Ax = floatOP.dot(A_copy, x);
+            var Ax = float_OP.dot(A_copy, x);
             floatN r = arena.floatVec(m);
             for (int i = 0; i < m; i++)
                 r[i] = Ax[i] - b_copy[i];
 
             // A^T r  (length n): vecMatDot computes r^T A = A^T r
-            var Atr = floatOP.dot(r, A_copy);
+            var Atr = float_OP.dot(r, A_copy);
 
             float maxAbs = (float)0f;
             for (int k = 0; k < n; k++)
@@ -219,7 +219,7 @@ public class floatSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(1, rank);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
 
             AssertClose(x[0], (float)0.5f, 1E-4f);
             AssertClose(x[1], (float)0.5f, 1E-4f);
@@ -251,7 +251,7 @@ public class floatSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(2, rank);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
 
             AssertClose(x[0], (float)2f, 1E-4f);
             AssertClose(x[1], (float)3f, 1E-4f);
@@ -279,7 +279,7 @@ public class floatSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(0, rank);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
 
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], (float)0f, 1E-4f);
@@ -310,10 +310,10 @@ public class floatSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(3, rank);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in Aplus));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in Aplus));
 
-            var prod = floatOP.dot(A_copy, Aplus);
-            Assert.IsTrue(Analysis.IsIdentity(in prod, 1E-3f));
+            var prod = float_OP.dot(A_copy, Aplus);
+            Assert.IsTrue(Analysis_OP.IsIdentity(in prod, 1E-3f));
 
             arena.Dispose();
         }
@@ -336,7 +336,7 @@ public class floatSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(1, rank);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in Aplus));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in Aplus));
 
             AssertClose(Aplus[0, 0], (float)0.5f, 1E-4f);
             AssertClose(Aplus[0, 1], (float)0f, 1E-4f);
@@ -372,14 +372,14 @@ public class floatSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(1, rank);
 
-            Assert.IsFalse(Analysis.IsAnyNan(in Aplus));
+            Assert.IsFalse(Analysis_OP.IsAnyNan(in Aplus));
 
             // Aplus * A_copy * Aplus  (n x m)
-            var AplusA = floatOP.dot(Aplus, A_copy);          // n x n
-            var AplusAAplus = floatOP.dot(AplusA, Aplus);     // n x m
+            var AplusA = float_OP.dot(Aplus, A_copy);          // n x n
+            var AplusAAplus = float_OP.dot(AplusA, Aplus);     // n x m
 
             floatMxN shouldBeZero = Aplus - AplusAAplus;
-            Assert.IsTrue(Analysis.IsZero(in shouldBeZero, 1E-3f));
+            Assert.IsTrue(Analysis_OP.IsZero(in shouldBeZero, 1E-3f));
 
             arena.Dispose();
         }

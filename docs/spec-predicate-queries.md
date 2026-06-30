@@ -2,7 +2,7 @@
 
 Status: **SPEC** (2026-06-28). Promotes the "Tier C" sketch in docs/spec-query.md (Group 4 footer
 and the masked-nearest gap flagged in the Call-site validation section) to a coder-ready
-implementation spec. All operators live in fProxyQueryOP (partial class) and follow every
+implementation spec. All operators live in fProxyQuery_OP (partial class) and follow every
 cross-cutting policy from docs/spec-query.md: camelCase, row+col symmetry, Indices+count
 convention, zero-alloc, no managed allocs, Burst struct-functor pattern.
 
@@ -105,7 +105,7 @@ namespace LinearAlgebra
 **File (new):**
 Assets/LinearAlgebra/CodeGen/TemplateSource/OP/QueryOP.Predicate.fProxy.cs
 
-public static partial class fProxyQueryOP in namespace LinearAlgebra. Same #define and using
+public static partial class fProxyQuery_OP in namespace LinearAlgebra. Same #define and using
 directives as QueryOP.fProxy.cs.
 
 #### Group A: Flat / scalar predicate ops
@@ -198,7 +198,7 @@ topKRowsBy uses the same bounded-insertion as kNearestRows with higher-score-win
 **File (new):**
 Assets/LinearAlgebra/CodeGen/TemplateSource/OP/QueryOP.Predicate.iProxy.cs
 
-public static partial class iProxyQueryOP. Group A only, using IfiProxyPredicate:
+public static partial class iProxyQuery_OP. Group A only, using IfiProxyPredicate:
 findFirst<T,P>, count<T,P>, any<T,P>, all<T,P>, findAll<T,P>.
 Constraints: where T : unmanaged, IUnsafeiProxyArray and where P : struct, IfiProxyPredicate.
 Logic identical to fProxy Group A with iProxy substituted. Document at file top: "Groups B/C/D
@@ -376,7 +376,7 @@ struct AlwaysFalseCol : IfProxyColPredicate { public bool Test(in fProxyMxN A, i
 
 ## 9. Open design questions for owner
 
-**Q1 -- iProxy Group A unification.** findFirst/count/any/all/findAll in iProxyQueryOP use
+**Q1 -- iProxy Group A unification.** findFirst/count/any/all/findAll in iProxyQuery_OP use
 IfiProxyPredicate. If the owner wants a single generic call-site that works on both float and
 integer flat data, a shared base predicate interface would be needed, touching the interface
 hierarchy more broadly. Current spec keeps them separate, consistent with the existing fProxy/iProxy

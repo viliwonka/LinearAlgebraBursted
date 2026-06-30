@@ -143,7 +143,7 @@ public class doubleOptimizeTests
         {
             var fn = new ShiftedParabola();
 
-            bool ok = Optimize.bisection(ref fn, (double)3, (double)10, out double root,
+            bool ok = Optimize_OP.bisection(ref fn, (double)3, (double)10, out double root,
                                          (double)10 * Consts.doubleZeroThreshold);
 
             Assert.IsTrue(ok);
@@ -156,7 +156,7 @@ public class doubleOptimizeTests
         {
             var fn = new ShiftedParabola();
 
-            bool ok = Optimize.bisection(ref fn, (double)6, (double)10, out double root);
+            bool ok = Optimize_OP.bisection(ref fn, (double)6, (double)10, out double root);
 
             Assert.IsFalse(ok);
             AssertFinite(root);
@@ -172,7 +172,7 @@ public class doubleOptimizeTests
         {
             var fn = new Cos();
 
-            bool ok = Optimize.bisection(ref fn, (double)0, (double)3, out double root,
+            bool ok = Optimize_OP.bisection(ref fn, (double)0, (double)3, out double root,
                                          (double)10 * Consts.doubleZeroThreshold);
 
             Assert.IsTrue(ok);
@@ -187,7 +187,7 @@ public class doubleOptimizeTests
         {
             var fn = new QuadraticDeriv();
 
-            bool ok = Optimize.newtonRoot(ref fn, (double)1, out double root);
+            bool ok = Optimize_OP.newtonRoot(ref fn, (double)1, out double root);
 
             Assert.IsTrue(ok);
             AssertFinite(root);
@@ -202,7 +202,7 @@ public class doubleOptimizeTests
         {
             var fn = new FlatDeriv();
 
-            bool ok = Optimize.newtonRoot(ref fn, (double)1, out double root);
+            bool ok = Optimize_OP.newtonRoot(ref fn, (double)1, out double root);
 
             Assert.IsFalse(ok);
             AssertFinite(root);
@@ -216,7 +216,7 @@ public class doubleOptimizeTests
         {
             var fn = new ParabolaMin();
 
-            bool ok = Optimize.goldenSection(ref fn, (double)(-5), (double)5, out double xMin,
+            bool ok = Optimize_OP.goldenSection(ref fn, (double)(-5), (double)5, out double xMin,
                                              (double)10 * Consts.doubleZeroThreshold);
 
             Assert.IsTrue(ok);
@@ -230,7 +230,7 @@ public class doubleOptimizeTests
         {
             var fn = new Cos();
 
-            bool ok = Optimize.goldenSection(ref fn, (double)2, (double)4, out double xMin,
+            bool ok = Optimize_OP.goldenSection(ref fn, (double)2, (double)4, out double xMin,
                                              (double)10 * Consts.doubleZeroThreshold);
 
             Assert.IsTrue(ok);
@@ -253,7 +253,7 @@ public class doubleOptimizeTests
             var fn = new Bowl();
 
             int maxIter = 1000;
-            bool ok = Optimize.gradientDescent(ref fn, ref x, ref g,
+            bool ok = Optimize_OP.gradientDescent(ref fn, ref x, ref g,
                                                (double)0.1f, (double)1E-4f, maxIter, out int iterations);
 
             Assert.IsTrue(ok);
@@ -283,7 +283,7 @@ public class doubleOptimizeTests
                 x[i] = fn.Target(i);
 
             int maxIter = 1000;
-            bool ok = Optimize.gradientDescent(ref fn, ref x, ref g,
+            bool ok = Optimize_OP.gradientDescent(ref fn, ref x, ref g,
                                                (double)0.1f, (double)1E-4f, maxIter, out int iterations);
 
             Assert.IsTrue(ok);
@@ -365,7 +365,7 @@ public class doubleOptimizeTests
         var fn = new Bowl();
 
         Assert.Catch<ArgumentException>(() =>
-            Optimize.gradientDescent(ref fn, ref x, ref g,
+            Optimize_OP.gradientDescent(ref fn, ref x, ref g,
                                      (double)0.1f, (double)1E-4f, 100, out int iterations));
 
         arena.Dispose();

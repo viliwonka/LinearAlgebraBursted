@@ -95,7 +95,7 @@ public class doubleFFTTests
             var re = arena.doubleVec(N, 1f);     // all ones
             var im = arena.doubleVec(N);         // zeros
 
-            doubleFFT.fft(ref re, ref im);
+            doubleFFT_OP.fft(ref re, ref im);
 
             AssertClose(re[0], (double)N, 1E-4f);
             AssertClose(im[0], (double)0f, 1E-4f);
@@ -118,10 +118,10 @@ public class doubleFFTTests
             for (int n = 0; n < N; n++)
                 re[n] = math.cos(w * n);
 
-            doubleFFT.fft(ref re, ref im);
+            doubleFFT_OP.fft(ref re, ref im);
 
             var mag = arena.doubleVec(N);
-            doubleFFT.magnitude(in re, in im, ref mag);
+            doubleFFT_OP.magnitude(in re, in im, ref mag);
 
             double half = (double)N * (double)0.5;
             AssertClose(mag[1], half, 1E-3f);
@@ -144,12 +144,12 @@ public class doubleFFTTests
             // fft path (in-place on copies)
             var fRe = sigRe.Copy();
             var fIm = sigIm.Copy();
-            doubleFFT.fft(ref fRe, ref fIm);
+            doubleFFT_OP.fft(ref fRe, ref fIm);
 
             // dft path
             var dRe = arena.doubleVec(N);
             var dIm = arena.doubleVec(N);
-            doubleFFT.dft(in sigRe, in sigIm, ref dRe, ref dIm);
+            doubleFFT_OP.dft(in sigRe, in sigIm, ref dRe, ref dIm);
 
             for (int k = 0; k < N; k++)
             {
@@ -169,8 +169,8 @@ public class doubleFFTTests
 
             var re = re0.Copy();
             var im = im0.Copy();
-            doubleFFT.fft(ref re, ref im);
-            doubleFFT.ifft(ref re, ref im);
+            doubleFFT_OP.fft(ref re, ref im);
+            doubleFFT_OP.ifft(ref re, ref im);
 
             for (int i = 0; i < N; i++)
             {
@@ -190,11 +190,11 @@ public class doubleFFTTests
 
             var fRe = arena.doubleVec(N);
             var fIm = arena.doubleVec(N);
-            doubleFFT.dft(in re0, in im0, ref fRe, ref fIm);
+            doubleFFT_OP.dft(in re0, in im0, ref fRe, ref fIm);
 
             var bRe = arena.doubleVec(N);
             var bIm = arena.doubleVec(N);
-            doubleFFT.idft(in fRe, in fIm, ref bRe, ref bIm);
+            doubleFFT_OP.idft(in fRe, in fIm, ref bRe, ref bIm);
 
             for (int i = 0; i < N; i++)
             {
@@ -217,12 +217,12 @@ public class doubleFFTTests
             // half-spectrum output
             var rRe = arena.doubleVec(halfSpec);
             var rIm = arena.doubleVec(halfSpec);
-            doubleFFT.rfft(in real, ref rRe, ref rIm);
+            doubleFFT_OP.rfft(in real, ref rRe, ref rIm);
 
             // full N-point FFT oracle
             var fRe = real.Copy();
             var fIm = arena.doubleVec(N); // zeros (real input)
-            doubleFFT.fft(ref fRe, ref fIm);
+            doubleFFT_OP.fft(ref fRe, ref fIm);
 
             // Compare only the N/2+1 non-redundant bins (0..N/2).
             for (int k = 0; k <= N / 2; k++)
@@ -250,9 +250,9 @@ public class doubleFFTTests
             var mag = arena.doubleVec(N);
             var pow = arena.doubleVec(N);
             var ph = arena.doubleVec(N);
-            doubleFFT.magnitude(in re, in im, ref mag);
-            doubleFFT.powerSpectrum(in re, in im, ref pow);
-            doubleFFT.phase(in re, in im, ref ph);
+            doubleFFT_OP.magnitude(in re, in im, ref mag);
+            doubleFFT_OP.powerSpectrum(in re, in im, ref pow);
+            doubleFFT_OP.phase(in re, in im, ref ph);
 
             AssertClose(mag[0], (double)5f, 1E-5f);
             AssertClose(mag[1], (double)1f, 1E-5f);
@@ -294,7 +294,7 @@ public class doubleFFTTests
             var oRe = arena.doubleVec(N);
             var oIm = arena.doubleVec(N);
 
-            doubleFFT.dft(in re, in im, ref oRe, ref oIm);
+            doubleFFT_OP.dft(in re, in im, ref oRe, ref oIm);
 
             AssertClose(oRe[0], (double)3f, 1E-4f);
             AssertClose(oIm[0], (double)0f, 1E-4f);
@@ -316,7 +316,7 @@ public class doubleFFTTests
             var im = arena.doubleVec(N);
             re[0] = (double)N; // X = [8, 0, 0, ...]
 
-            doubleFFT.ifft(ref re, ref im);
+            doubleFFT_OP.ifft(ref re, ref im);
 
             for (int n = 0; n < N; n++)
             {
@@ -337,7 +337,7 @@ public class doubleFFTTests
             var oRe = arena.doubleVec(N);
             var oIm = arena.doubleVec(N);
 
-            doubleFFT.idft(in re, in im, ref oRe, ref oIm);
+            doubleFFT_OP.idft(in re, in im, ref oRe, ref oIm);
 
             for (int n = 0; n < N; n++)
             {
@@ -356,14 +356,14 @@ public class doubleFFTTests
             var re1 = arena.doubleVec(1);
             var im1 = arena.doubleVec(1);
             re1[0] = (double)7; im1[0] = (double)(-2);
-            doubleFFT.fft(ref re1, ref im1);
+            doubleFFT_OP.fft(ref re1, ref im1);
             AssertClose(re1[0], (double)7f, 1E-5f);   // unchanged
             AssertClose(im1[0], (double)(-2f), 1E-5f);
 
             var re2 = arena.doubleVec(2);
             var im2 = arena.doubleVec(2);
             re2[0] = (double)1; re2[1] = (double)0;
-            doubleFFT.fft(ref re2, ref im2);
+            doubleFFT_OP.fft(ref re2, ref im2);
             AssertClose(re2[0], (double)1f, 1E-5f);   // X0 = x0+x1
             AssertClose(re2[1], (double)1f, 1E-5f);   // X1 = x0-x1
             AssertClose(im2[0], (double)0f, 1E-5f);
@@ -385,8 +385,8 @@ public class doubleFFTTests
                 var rRe = arena.doubleVec(halfSpec);
                 var rIm = arena.doubleVec(halfSpec);
                 var real2 = arena.doubleVec(N);
-                doubleFFT.rfft(in real0, ref rRe, ref rIm);
-                doubleFFT.irfft(in rRe, in rIm, ref real2);
+                doubleFFT_OP.rfft(in real0, ref rRe, ref rIm);
+                doubleFFT_OP.irfft(in rRe, in rIm, ref real2);
                 for (int i = 0; i < N; i++)
                     AssertClose(real2[i], real0[i], (double)1E-4f);
             }
@@ -399,8 +399,8 @@ public class doubleFFTTests
                 var rRe = arena.doubleVec(halfSpec);
                 var rIm = arena.doubleVec(halfSpec);
                 var real2 = arena.doubleVec(N);
-                doubleFFT.rfft(in real0, ref rRe, ref rIm);
-                doubleFFT.irfft(in rRe, in rIm, ref real2);
+                doubleFFT_OP.rfft(in real0, ref rRe, ref rIm);
+                doubleFFT_OP.irfft(in rRe, in rIm, ref real2);
                 for (int i = 0; i < N; i++)
                     AssertClose(real2[i], real0[i], (double)1E-4f);
             }
@@ -413,8 +413,8 @@ public class doubleFFTTests
                 var rRe = arena.doubleVec(halfSpec);
                 var rIm = arena.doubleVec(halfSpec);
                 var real2 = arena.doubleVec(N);
-                doubleFFT.rfft(in real0, ref rRe, ref rIm);
-                doubleFFT.irfft(in rRe, in rIm, ref real2);
+                doubleFFT_OP.rfft(in real0, ref rRe, ref rIm);
+                doubleFFT_OP.irfft(in rRe, in rIm, ref real2);
                 for (int i = 0; i < N; i++)
                     AssertClose(real2[i], real0[i], (double)1E-4f);
             }
@@ -426,7 +426,7 @@ public class doubleFFTTests
                 var real0 = arena.doubleRandomVector(N, -3f, 3f, 8888);
                 var rRe = arena.doubleVec(halfSpec);
                 var rIm = arena.doubleVec(halfSpec);
-                doubleFFT.rfft(in real0, ref rRe, ref rIm);
+                doubleFFT_OP.rfft(in real0, ref rRe, ref rIm);
                 var real2 = arena.doubleIrfft(in rRe, in rIm);
                 for (int i = 0; i < N; i++)
                     AssertClose(real2[i], real0[i], (double)1E-4f);
@@ -448,7 +448,7 @@ public class doubleFFTTests
                 var dc = arena.doubleVec(N, 1f);
                 var dcRe = arena.doubleVec(halfSpec);
                 var dcIm = arena.doubleVec(halfSpec);
-                doubleFFT.rfft(in dc, ref dcRe, ref dcIm);
+                doubleFFT_OP.rfft(in dc, ref dcRe, ref dcIm);
                 AssertClose(dcRe[0], (double)N, (double)1E-4f);
                 AssertClose(dcIm[0], (double)0, 0f);
                 for (int k = 1; k <= N / 2; k++)
@@ -470,7 +470,7 @@ public class doubleFFTTests
 
                 var cosRe = arena.doubleVec(halfSpec);
                 var cosIm = arena.doubleVec(halfSpec);
-                doubleFFT.rfft(in cosX, ref cosRe, ref cosIm);
+                doubleFFT_OP.rfft(in cosX, ref cosRe, ref cosIm);
 
                 AssertClose(cosRe[f], (double)(N / 2), (double)1E-4f);
                 AssertClose(cosIm[f], (double)0, (double)1E-4f);
@@ -491,7 +491,7 @@ public class doubleFFTTests
 
                 var nyqRe = arena.doubleVec(halfSpec);
                 var nyqIm = arena.doubleVec(halfSpec);
-                doubleFFT.rfft(in nyq, ref nyqRe, ref nyqIm);
+                doubleFFT_OP.rfft(in nyq, ref nyqRe, ref nyqIm);
 
                 AssertClose(nyqRe[N / 2], (double)N, (double)1E-4f);
                 AssertClose(nyqIm[N / 2], (double)0, 0f);
@@ -508,7 +508,7 @@ public class doubleFFTTests
                 x2[0] = (double)3; x2[1] = (double)7;
                 var r2 = arena.doubleVec(2);
                 var i2 = arena.doubleVec(2);
-                doubleFFT.rfft(in x2, ref r2, ref i2);
+                doubleFFT_OP.rfft(in x2, ref r2, ref i2);
                 AssertClose(r2[0], (double)10, (double)1E-5f);
                 AssertClose(r2[1], (double)(-4), (double)1E-5f);
                 AssertClose(i2[0], (double)0, 0f);
@@ -527,15 +527,15 @@ public class doubleFFTTests
         void TableFftVsRecurrence(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             var re0 = arena.doubleRandomVector(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVector(N, -2f, 2f, seedIm);
 
             var reR = re0.Copy(); var imR = im0.Copy();
-            doubleFFT.fft(ref reR, ref imR);
+            doubleFFT_OP.fft(ref reR, ref imR);
 
             var reT = re0.Copy(); var imT = im0.Copy();
-            doubleFFT.fft(ref reT, ref imT, in ws);
+            doubleFFT_OP.fft(ref reT, ref imT, in ws);
 
             double relTol = (double)1E-3f;
             for (int k = 0; k < N; k++)
@@ -564,15 +564,15 @@ public class doubleFFTTests
         void TableIfftVsRecurrence(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             var re0 = arena.doubleRandomVector(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVector(N, -2f, 2f, seedIm);
 
             var reR = re0.Copy(); var imR = im0.Copy();
-            doubleFFT.ifft(ref reR, ref imR);
+            doubleFFT_OP.ifft(ref reR, ref imR);
 
             var reT = re0.Copy(); var imT = im0.Copy();
-            doubleFFT.ifft(ref reT, ref imT, in ws);
+            doubleFFT_OP.ifft(ref reT, ref imT, in ws);
 
             double relTol = (double)1E-3f;
             for (int k = 0; k < N; k++)
@@ -603,16 +603,16 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             var real = arena.doubleRandomVector(N, -2f, 2f, seed);
 
             var reR = arena.doubleVec(halfSpec);
             var imR = arena.doubleVec(halfSpec);
-            doubleFFT.rfft(in real, ref reR, ref imR);
+            doubleFFT_OP.rfft(in real, ref reR, ref imR);
 
             var reT = arena.doubleVec(halfSpec);
             var imT = arena.doubleVec(halfSpec);
-            doubleFFT.rfft(in real, ref reT, ref imT, in ws);
+            doubleFFT_OP.rfft(in real, ref reT, ref imT, in ws);
 
             double tol = (double)1E-4f;
             for (int k = 0; k <= N / 2; k++)
@@ -648,18 +648,18 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             var real0 = arena.doubleRandomVector(N, -2f, 2f, seed);
 
             var specRe = arena.doubleVec(halfSpec);
             var specIm = arena.doubleVec(halfSpec);
-            doubleFFT.rfft(in real0, ref specRe, ref specIm);   // recurrence rfft as spectrum source
+            doubleFFT_OP.rfft(in real0, ref specRe, ref specIm);   // recurrence rfft as spectrum source
 
             var realR = arena.doubleVec(N);
-            doubleFFT.irfft(in specRe, in specIm, ref realR);
+            doubleFFT_OP.irfft(in specRe, in specIm, ref realR);
 
             var realT = arena.doubleVec(N);
-            doubleFFT.irfft(in specRe, in specIm, ref realT, in ws);
+            doubleFFT_OP.irfft(in specRe, in specIm, ref realT, in ws);
 
             double tol = (double)1E-4f;
             for (int i = 0; i < N; i++)
@@ -687,14 +687,14 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 64;
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
 
             var re0 = arena.doubleRandomVector(N, -3f, 3f, 6543u);
             var im0 = arena.doubleRandomVector(N, -3f, 3f, 7654u);
 
             var re = re0.Copy(); var im = im0.Copy();
-            doubleFFT.fft(ref re, ref im, in ws);
-            doubleFFT.ifft(ref re, ref im, in ws);
+            doubleFFT_OP.fft(ref re, ref im, in ws);
+            doubleFFT_OP.ifft(ref re, ref im, in ws);
 
             double tol = (double)1E-3f;
             for (int i = 0; i < N; i++)
@@ -710,15 +710,15 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             var real0 = arena.doubleRandomVector(N, -3f, 3f, seed);
 
             var rRe = arena.doubleVec(halfSpec);
             var rIm = arena.doubleVec(halfSpec);
-            doubleFFT.rfft(in real0, ref rRe, ref rIm, in ws);
+            doubleFFT_OP.rfft(in real0, ref rRe, ref rIm, in ws);
 
             var real2 = arena.doubleVec(N);
-            doubleFFT.irfft(in rRe, in rIm, ref real2, in ws);
+            doubleFFT_OP.irfft(in rRe, in rIm, ref real2, in ws);
 
             double tol = (double)1E-3f;
             for (int i = 0; i < N; i++)
@@ -763,7 +763,7 @@ public class doubleFFTTests
         void Radix4VsOracleOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.doubleFftWorkspace(N);
+            var ws    = arena.doubleFft_WS(N);
 
             var re0 = arena.doubleRandomVector(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVector(N, -2f, 2f, seedIm);
@@ -772,10 +772,10 @@ public class doubleFFTTests
             {
                 // Cross-algorithm oracle: recurrence fft (per-stage cos/sin) vs auto-dispatch fft(ws).
                 var reRef = re0.Copy(); var imRef = im0.Copy();
-                doubleFFT.fft(ref reRef, ref imRef);
+                doubleFFT_OP.fft(ref reRef, ref imRef);
 
                 var reW = re0.Copy(); var imW = im0.Copy();
-                doubleFFT.fft(ref reW, ref imW, in ws);
+                doubleFFT_OP.fft(ref reW, ref imW, in ws);
 
                 double relTol = (double)1E-3f;
                 for (int k = 0; k < N; k++)
@@ -790,8 +790,8 @@ public class doubleFFTTests
             {
                 // Round-trip: ifft(fft(x,ws),ws) == x — errors cancel, tight 1E-3.
                 var re = re0.Copy(); var im = im0.Copy();
-                doubleFFT.fft(ref re, ref im, in ws);
-                doubleFFT.ifft(ref re, ref im, in ws);
+                doubleFFT_OP.fft(ref re, ref im, in ws);
+                doubleFFT_OP.ifft(ref re, ref im, in ws);
 
                 double tol = (double)1E-3f;
                 for (int i = 0; i < N; i++)
@@ -829,14 +829,14 @@ public class doubleFFTTests
         void Radix4RoundTripOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.doubleFftWorkspace(N);
+            var ws    = arena.doubleFft_WS(N);
 
             var re0 = arena.doubleRandomVector(N, -3f, 3f, seedRe);
             var im0 = arena.doubleRandomVector(N, -3f, 3f, seedIm);
 
             var re = re0.Copy(); var im = im0.Copy();
-            doubleFFT.fft(ref re, ref im, in ws);
-            doubleFFT.ifft(ref re, ref im, in ws);
+            doubleFFT_OP.fft(ref re, ref im, in ws);
+            doubleFFT_OP.ifft(ref re, ref im, in ws);
 
             double tol = (double)1E-3f;
             for (int i = 0; i < N; i++)
@@ -893,22 +893,22 @@ public class doubleFFTTests
         void FftVsDftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             var re0 = arena.doubleRandomVector(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVector(N, -2f, 2f, seedIm);
 
             // Ground truth: direct DFT.
             var dRe = arena.doubleVec(N);
             var dIm = arena.doubleVec(N);
-            doubleFFT.dft(in re0, in im0, ref dRe, ref dIm);
+            doubleFFT_OP.dft(in re0, in im0, ref dRe, ref dIm);
 
             // No-workspace recurrence fft.
             var fRe = re0.Copy(); var fIm = im0.Copy();
-            doubleFFT.fft(ref fRe, ref fIm);
+            doubleFFT_OP.fft(ref fRe, ref fIm);
 
             // Workspace radix-4 / mixed fft.
             var wRe = re0.Copy(); var wIm = im0.Copy();
-            doubleFFT.fft(ref wRe, ref wIm, in ws);
+            doubleFFT_OP.fft(ref wRe, ref wIm, in ws);
 
             double relTol = (double)1E-3f;
             for (int k = 0; k < N; k++)
@@ -937,7 +937,7 @@ public class doubleFFTTests
         void ParsevalFftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             var re0 = arena.doubleRandomVector(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVector(N, -2f, 2f, seedIm);
 
@@ -946,12 +946,12 @@ public class doubleFFTTests
 
             // No-workspace fft.
             var fRe = re0.Copy(); var fIm = im0.Copy();
-            doubleFFT.fft(ref fRe, ref fIm);
+            doubleFFT_OP.fft(ref fRe, ref fIm);
             AssertCloseRel(Energy(in fRe, in fIm) / (double)N, timeE, relTol);
 
             // Workspace fft.
             var wRe = re0.Copy(); var wIm = im0.Copy();
-            doubleFFT.fft(ref wRe, ref wIm, in ws);
+            doubleFFT_OP.fft(ref wRe, ref wIm, in ws);
             AssertCloseRel(Energy(in wRe, in wIm) / (double)N, timeE, relTol);
 
             arena.Dispose();
@@ -966,7 +966,7 @@ public class doubleFFTTests
             double timeE = Energy(in re0, in im0);
             var dRe = arena.doubleVec(N);
             var dIm = arena.doubleVec(N);
-            doubleFFT.dft(in re0, in im0, ref dRe, ref dIm);
+            doubleFFT_OP.dft(in re0, in im0, ref dRe, ref dIm);
             AssertCloseRel(Energy(in dRe, in dIm) / (double)N, timeE, (double)5E-3f);
             arena.Dispose();
         }
@@ -976,7 +976,7 @@ public class doubleFFTTests
         void ParsevalRfftOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             int halfSpec = (N >> 1) + 1;
             int M = N >> 1;
             var real = arena.doubleRandomVector(N, -2f, 2f, seed);
@@ -986,7 +986,7 @@ public class doubleFFTTests
 
             var rRe = arena.doubleVec(halfSpec);
             var rIm = arena.doubleVec(halfSpec);
-            doubleFFT.rfft(in real, ref rRe, ref rIm, in ws);
+            doubleFFT_OP.rfft(in real, ref rRe, ref rIm, in ws);
 
             double specE = rRe[0] * rRe[0] + rIm[0] * rIm[0]
                          + rRe[M] * rRe[M] + rIm[M] * rIm[M];
@@ -1022,7 +1022,7 @@ public class doubleFFTTests
         void FftLinearityOneSize(int N, uint sx, uint sy)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
 
             var xr = arena.doubleRandomVector(N, -2f, 2f, sx);
             var xi = arena.doubleRandomVector(N, -2f, 2f, sx + 17u);
@@ -1048,14 +1048,14 @@ public class doubleFFTTests
             // Forward transforms of x and y for the RHS combination (dft ground truth).
             var Xr = arena.doubleVec(N); var Xi = arena.doubleVec(N);
             var Yr = arena.doubleVec(N); var Yi = arena.doubleVec(N);
-            doubleFFT.dft(in xr, in xi, ref Xr, ref Xi);
-            doubleFFT.dft(in yr, in yi, ref Yr, ref Yi);
+            doubleFFT_OP.dft(in xr, in xi, ref Xr, ref Xi);
+            doubleFFT_OP.dft(in yr, in yi, ref Yr, ref Yi);
 
             // LHS via three transforms.
-            var Zno_r = zr.Copy(); var Zno_i = zi.Copy(); doubleFFT.fft(ref Zno_r, ref Zno_i);
-            var Zws_r = zr.Copy(); var Zws_i = zi.Copy(); doubleFFT.fft(ref Zws_r, ref Zws_i, in ws);
+            var Zno_r = zr.Copy(); var Zno_i = zi.Copy(); doubleFFT_OP.fft(ref Zno_r, ref Zno_i);
+            var Zws_r = zr.Copy(); var Zws_i = zi.Copy(); doubleFFT_OP.fft(ref Zws_r, ref Zws_i, in ws);
             var Zdf_r = arena.doubleVec(N); var Zdf_i = arena.doubleVec(N);
-            doubleFFT.dft(in zr, in zi, ref Zdf_r, ref Zdf_i);
+            doubleFFT_OP.dft(in zr, in zi, ref Zdf_r, ref Zdf_i);
 
             double relTol = (double)1E-3f;
             for (int k = 0; k < N; k++)
@@ -1087,12 +1087,12 @@ public class doubleFFTTests
         //   constant c          -> X[0] = c·N, else 0
         //   exp(+2πi·k0·n/N)    -> X[k0] = N, else 0
         // Runs the input through BOTH fft(ws) and dft and compares each to the analytic expectation.
-        void KnownRunBoth(in doubleFftWorkspace ws, int N,
+        void KnownRunBoth(in doubleFft_WS ws, int N,
                           in doubleN inRe, in doubleN inIm,
                           in doubleN expRe, in doubleN expIm, double relTol)
         {
             var fr = inRe.Copy(); var fi = inIm.Copy();
-            doubleFFT.fft(ref fr, ref fi, in ws);
+            doubleFFT_OP.fft(ref fr, ref fi, in ws);
             for (int k = 0; k < N; k++)
             {
                 AssertCloseRel(fr[k], expRe[k], relTol);
@@ -1104,7 +1104,7 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 16;
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             double twoPi = (double)(2.0 * System.Math.PI);
             double relTol = (double)2E-3f;
 
@@ -1115,7 +1115,7 @@ public class doubleFFTTests
                 var expRe = arena.doubleVec(N, 1f); var expIm = arena.doubleVec(N);
 
                 var dRe = arena.doubleVec(N); var dIm = arena.doubleVec(N);
-                doubleFFT.dft(in inRe, in inIm, ref dRe, ref dIm);
+                doubleFFT_OP.dft(in inRe, in inIm, ref dRe, ref dIm);
                 for (int k = 0; k < N; k++)
                 {
                     AssertCloseRel(dRe[k], expRe[k], relTol);
@@ -1137,7 +1137,7 @@ public class doubleFFTTests
                     expIm[k] = -math.sin(ang);
                 }
                 var dRe = arena.doubleVec(N); var dIm = arena.doubleVec(N);
-                doubleFFT.dft(in inRe, in inIm, ref dRe, ref dIm);
+                doubleFFT_OP.dft(in inRe, in inIm, ref dRe, ref dIm);
                 for (int k = 0; k < N; k++)
                 {
                     AssertCloseRel(dRe[k], expRe[k], relTol);
@@ -1154,7 +1154,7 @@ public class doubleFFTTests
                 expRe[0] = c * (double)N;
 
                 var dRe = arena.doubleVec(N); var dIm = arena.doubleVec(N);
-                doubleFFT.dft(in inRe, in inIm, ref dRe, ref dIm);
+                doubleFFT_OP.dft(in inRe, in inIm, ref dRe, ref dIm);
                 for (int k = 0; k < N; k++)
                 {
                     AssertCloseRel(dRe[k], expRe[k], relTol);
@@ -1177,7 +1177,7 @@ public class doubleFFTTests
                 expRe[k0] = (double)N;
 
                 var dRe = arena.doubleVec(N); var dIm = arena.doubleVec(N);
-                doubleFFT.dft(in inRe, in inIm, ref dRe, ref dIm);
+                doubleFFT_OP.dft(in inRe, in inIm, ref dRe, ref dIm);
                 for (int k = 0; k < N; k++)
                 {
                     AssertCloseRel(dRe[k], expRe[k], relTol);
@@ -1196,13 +1196,13 @@ public class doubleFFTTests
         void RoundTripFftWsOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             var re0 = arena.doubleRandomVector(N, -3f, 3f, seedRe);
             var im0 = arena.doubleRandomVector(N, -3f, 3f, seedIm);
 
             var re = re0.Copy(); var im = im0.Copy();
-            doubleFFT.fft(ref re, ref im, in ws);
-            doubleFFT.ifft(ref re, ref im, in ws);
+            doubleFFT_OP.fft(ref re, ref im, in ws);
+            doubleFFT_OP.ifft(ref re, ref im, in ws);
 
             double tol = (double)1E-3f;
             for (int i = 0; i < N; i++)
@@ -1216,16 +1216,16 @@ public class doubleFFTTests
         void RoundTripRfftWsOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             int halfSpec = (N >> 1) + 1;
             var real0 = arena.doubleRandomVector(N, -3f, 3f, seed);
 
             var rRe = arena.doubleVec(halfSpec);
             var rIm = arena.doubleVec(halfSpec);
-            doubleFFT.rfft(in real0, ref rRe, ref rIm, in ws);
+            doubleFFT_OP.rfft(in real0, ref rRe, ref rIm, in ws);
 
             var real2 = arena.doubleVec(N);
-            doubleFFT.irfft(in rRe, in rIm, ref real2, in ws);
+            doubleFFT_OP.irfft(in rRe, in rIm, ref real2, in ws);
 
             double tol = (double)1E-3f;
             for (int i = 0; i < N; i++)
@@ -1240,9 +1240,9 @@ public class doubleFFTTests
             var im0 = arena.doubleRandomVector(N, -3f, 3f, seedIm);
 
             var fRe = arena.doubleVec(N); var fIm = arena.doubleVec(N);
-            doubleFFT.dft(in re0, in im0, ref fRe, ref fIm);
+            doubleFFT_OP.dft(in re0, in im0, ref fRe, ref fIm);
             var bRe = arena.doubleVec(N); var bIm = arena.doubleVec(N);
-            doubleFFT.idft(in fRe, in fIm, ref bRe, ref bIm);
+            doubleFFT_OP.idft(in fRe, in fIm, ref bRe, ref bIm);
 
             double relTol = (double)5E-3f;
             for (int i = 0; i < N; i++)
@@ -1273,7 +1273,7 @@ public class doubleFFTTests
         void WorkspaceReuseOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFftWorkspace(N);
+            var ws = arena.doubleFft_WS(N);
             int halfSpec = (N >> 1) + 1;
 
             var re0 = arena.doubleRandomVector(N, -2f, 2f, seed);
@@ -1281,9 +1281,9 @@ public class doubleFFTTests
 
             // (a) fft(ws) on the fresh workspace, validated against dft.
             var dRe = arena.doubleVec(N); var dIm = arena.doubleVec(N);
-            doubleFFT.dft(in re0, in im0, ref dRe, ref dIm);
+            doubleFFT_OP.dft(in re0, in im0, ref dRe, ref dIm);
             var fRe = re0.Copy(); var fIm = im0.Copy();
-            doubleFFT.fft(ref fRe, ref fIm, in ws);
+            doubleFFT_OP.fft(ref fRe, ref fIm, in ws);
             double relTol = (double)1E-3f;
             for (int k = 0; k < N; k++)
             {
@@ -1294,9 +1294,9 @@ public class doubleFFTTests
             // (b) rfft(ws) on the SAME workspace (touches cz/sz/visited) — compare to no-ws rfft.
             var real = arena.doubleRandomVector(N, -2f, 2f, seed + 2u);
             var rRe = arena.doubleVec(halfSpec); var rIm = arena.doubleVec(halfSpec);
-            doubleFFT.rfft(in real, ref rRe, ref rIm, in ws);
+            doubleFFT_OP.rfft(in real, ref rRe, ref rIm, in ws);
             var oRe = arena.doubleVec(halfSpec); var oIm = arena.doubleVec(halfSpec);
-            doubleFFT.rfft(in real, ref oRe, ref oIm);   // no-ws oracle
+            doubleFFT_OP.rfft(in real, ref oRe, ref oIm);   // no-ws oracle
             for (int k = 0; k <= N / 2; k++)
             {
                 AssertCloseRel(rRe[k], oRe[k], relTol);
@@ -1305,7 +1305,7 @@ public class doubleFFTTests
 
             // (c) ifft(ws) on the SAME workspace, inverting the step-(a) spectrum back to re0/im0.
             // If rfft had corrupted the shared scratch this round-trip would fail.
-            doubleFFT.ifft(ref fRe, ref fIm, in ws);
+            doubleFFT_OP.ifft(ref fRe, ref fIm, in ws);
             for (int i = 0; i < N; i++)
             {
                 AssertClose(fRe[i], re0[i], (double)1E-3f);
@@ -1396,8 +1396,8 @@ public class doubleFFTTests
         var arena = new Arena(Allocator.Persistent);
         var re = arena.doubleVec(6); // 6 is not a power of two
         var im = arena.doubleVec(6);
-        Assert.Throws<ArgumentException>(() => doubleFFT.fft(ref re, ref im));
-        Assert.Throws<ArgumentException>(() => doubleFFT.ifft(ref re, ref im));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.fft(ref re, ref im));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.ifft(ref re, ref im));
         arena.Dispose();
     }
 
@@ -1407,7 +1407,7 @@ public class doubleFFTTests
         var arena = new Arena(Allocator.Persistent);
         var re = arena.doubleVec(8);
         var im = arena.doubleVec(4);
-        Assert.Throws<ArgumentException>(() => doubleFFT.fft(ref re, ref im));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.fft(ref re, ref im));
         arena.Dispose();
     }
 
@@ -1420,12 +1420,12 @@ public class doubleFFTTests
         var oRe = arena.doubleVec(4);
         var oIm = arena.doubleVec(4);
         // every one of the four out-vs-in pointer collisions must throw (each output bin reads all inputs)
-        Assert.Throws<ArgumentException>(() => doubleFFT.dft(in re, in im, ref re, ref oIm));   // outRe==inRe
-        Assert.Throws<ArgumentException>(() => doubleFFT.dft(in re, in im, ref im, ref oIm));   // outRe==inIm
-        Assert.Throws<ArgumentException>(() => doubleFFT.dft(in re, in im, ref oRe, ref re));   // outIm==inRe
-        Assert.Throws<ArgumentException>(() => doubleFFT.dft(in re, in im, ref oRe, ref im));   // outIm==inIm
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.dft(in re, in im, ref re, ref oIm));   // outRe==inRe
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.dft(in re, in im, ref im, ref oIm));   // outRe==inIm
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.dft(in re, in im, ref oRe, ref re));   // outIm==inRe
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.dft(in re, in im, ref oRe, ref im));   // outIm==inIm
         // idft shares the guard via DftCore
-        Assert.Throws<ArgumentException>(() => doubleFFT.idft(in re, in im, ref re, ref oIm));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.idft(in re, in im, ref re, ref oIm));
         arena.Dispose();
     }
 
@@ -1440,9 +1440,9 @@ public class doubleFFTTests
         var outIm = arena.doubleVec(4);
         var outShort = arena.doubleVec(3);
         // inRe.N != inIm.N
-        Assert.Throws<ArgumentException>(() => doubleFFT.dft(in inRe, in inImShort, ref outRe, ref outIm));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.dft(in inRe, in inImShort, ref outRe, ref outIm));
         // output length != input length
-        Assert.Throws<ArgumentException>(() => doubleFFT.dft(in inRe, in inIm, ref outRe, ref outShort));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.dft(in inRe, in inIm, ref outRe, ref outShort));
         arena.Dispose();
     }
 
@@ -1458,16 +1458,16 @@ public class doubleFFTTests
         var im4  = arena.doubleVec(4);  // wrong
 
         // wrong re length
-        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re8, ref im5));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.rfft(in real, ref re8, ref im5));
         // wrong im length
-        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re5, ref im4));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.rfft(in real, ref re5, ref im4));
         // non-power-of-two real length
         var real7 = arena.doubleVec(7);
         var re4   = arena.doubleVec(4);
         var im4b  = arena.doubleVec(4);
-        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real7, ref re4, ref im4b));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.rfft(in real7, ref re4, ref im4b));
         // im aliasing real must throw
-        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re5, ref real));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.rfft(in real, ref re5, ref real));
         arena.Dispose();
     }
 
@@ -1482,16 +1482,16 @@ public class doubleFFTTests
 
         // im.N != re.N
         var im4 = arena.doubleVec(4);
-        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re5, in im4, ref real8));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.irfft(in re5, in im4, ref real8));
 
         // halfSpec < 2 (re.N=1 means N=0; minimum is N=2)
         var re1  = arena.doubleVec(1);
         var im1  = arena.doubleVec(1);
-        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re1, in im1, ref real8));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.irfft(in re1, in im1, ref real8));
 
         // wrong real output length (real.N=7 but N=8)
         var real7 = arena.doubleVec(7);
-        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re5, in im5, ref real7));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.irfft(in re5, in im5, ref real7));
 
         // Alias tests: use N=2 (halfSpec=2, real.N=2) so all length guards pass and the alias
         // check is reached. re2.N=2 = N, so real.N matches and the ptr check fires.
@@ -1500,9 +1500,9 @@ public class doubleFFTTests
         var real2 = arena.doubleVec(2);
 
         // real aliasing re (correct lengths: halfSpec=2, N=2)
-        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re2, in im2, ref re2));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.irfft(in re2, in im2, ref re2));
         // real aliasing im (correct lengths)
-        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in re2, in im2, ref im2));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.irfft(in re2, in im2, ref im2));
 
         arena.Dispose();
     }
@@ -1514,9 +1514,9 @@ public class doubleFFTTests
         var re = arena.doubleVec(4);
         var im = arena.doubleVec(4);
         var shortDest = arena.doubleVec(3);
-        Assert.Throws<ArgumentException>(() => doubleFFT.magnitude(in re, in im, ref shortDest));
-        Assert.Throws<ArgumentException>(() => doubleFFT.powerSpectrum(in re, in im, ref shortDest));
-        Assert.Throws<ArgumentException>(() => doubleFFT.phase(in re, in im, ref shortDest));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.magnitude(in re, in im, ref shortDest));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.powerSpectrum(in re, in im, ref shortDest));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.phase(in re, in im, ref shortDest));
         arena.Dispose();
     }
 
@@ -1526,11 +1526,11 @@ public class doubleFFTTests
     public void FftWorkspaceFactoryNonPow2Throws()
     {
         var arena = new Arena(Allocator.Persistent);
-        Assert.Throws<ArgumentException>(() => arena.doubleFftWorkspace(0));
-        Assert.Throws<ArgumentException>(() => arena.doubleFftWorkspace(1));
-        Assert.Throws<ArgumentException>(() => arena.doubleFftWorkspace(3));
-        Assert.Throws<ArgumentException>(() => arena.doubleFftWorkspace(5));
-        Assert.Throws<ArgumentException>(() => arena.doubleFftWorkspace(6));
+        Assert.Throws<ArgumentException>(() => arena.doubleFft_WS(0));
+        Assert.Throws<ArgumentException>(() => arena.doubleFft_WS(1));
+        Assert.Throws<ArgumentException>(() => arena.doubleFft_WS(3));
+        Assert.Throws<ArgumentException>(() => arena.doubleFft_WS(5));
+        Assert.Throws<ArgumentException>(() => arena.doubleFft_WS(6));
         arena.Dispose();
     }
 
@@ -1540,20 +1540,20 @@ public class doubleFFTTests
         var arena = new Arena(Allocator.Persistent);
         var re8  = arena.doubleVec(8);
         var im8  = arena.doubleVec(8);
-        var ws16 = arena.doubleFftWorkspace(16);   // sized for 16, not 8
+        var ws16 = arena.doubleFft_WS(16);   // sized for 16, not 8
 
         // fft and ifft with mismatched workspace
-        Assert.Throws<ArgumentException>(() => doubleFFT.fft(ref re8, ref im8, in ws16));
-        Assert.Throws<ArgumentException>(() => doubleFFT.ifft(ref re8, ref im8, in ws16));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.fft(ref re8, ref im8, in ws16));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.ifft(ref re8, ref im8, in ws16));
 
         // rfft: real.N=8 but ws.n=16
         var real8  = arena.doubleVec(8);
         var reHalf = arena.doubleVec(5);   // 8/2+1=5
         var imHalf = arena.doubleVec(5);
-        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real8, ref reHalf, ref imHalf, in ws16));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.rfft(in real8, ref reHalf, ref imHalf, in ws16));
 
         // irfft: re.N=5 -> N=8, but ws.n=16
-        Assert.Throws<ArgumentException>(() => doubleFFT.irfft(in reHalf, in imHalf, ref real8, in ws16));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.irfft(in reHalf, in imHalf, ref real8, in ws16));
 
         arena.Dispose();
     }
@@ -1562,15 +1562,15 @@ public class doubleFFTTests
     public void RfftTableWrongOutputLengthThrows()
     {
         var arena = new Arena(Allocator.Persistent);
-        var ws = arena.doubleFftWorkspace(8);
+        var ws = arena.doubleFft_WS(8);
         var real = arena.doubleVec(8);
         var re5  = arena.doubleVec(5);    // correct N/2+1
         var im5  = arena.doubleVec(5);    // correct
         var re4  = arena.doubleVec(4);    // wrong
         var im4  = arena.doubleVec(4);    // wrong
 
-        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re4, ref im5, in ws));
-        Assert.Throws<ArgumentException>(() => doubleFFT.rfft(in real, ref re5, ref im4, in ws));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.rfft(in real, ref re4, ref im5, in ws));
+        Assert.Throws<ArgumentException>(() => doubleFFT_OP.rfft(in real, ref re5, ref im4, in ws));
         arena.Dispose();
     }
 }

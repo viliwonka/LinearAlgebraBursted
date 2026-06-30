@@ -59,12 +59,12 @@ namespace LinearAlgebra.Benchmarks
             var G = new floatMxN(m, n, Allocator.Temp, false);
             var R = new floatMxN(n, n, Allocator.Temp, false);
             var gauss = new floatGaussian(0f, 1f);
-            floatRandomOP.randomInpl(ref rng, ref G, ref gauss);
-            OrthoOP.qrDecomposition(ref G, ref R);   // G → Q in-place
+            floatRandom_OP.randomInpl(ref rng, ref G, ref gauss);
+            Ortho_OP.qrDecomposition(ref G, ref R);   // G → Q in-place
 
             // V (n x n) Haar-uniform orthogonal
             var V = new floatMxN(n, n, Allocator.Temp, false);
-            floatRandomMatrixOP.randomOrthogonalInpl(ref rng, ref V);
+            floatRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref V);
 
             // A[i,j] = Σ_t  Sigma[t] · G[i,t] · V[j,t]   (double accumulation for accuracy)
             for (int i = 0; i < m; i++)
@@ -99,11 +99,11 @@ namespace LinearAlgebra.Benchmarks
             var G = new doubleMxN(m, n, Allocator.Temp, false);
             var R = new doubleMxN(n, n, Allocator.Temp, false);
             var gauss = new doubleGaussian(0.0, 1.0);
-            doubleRandomOP.randomInpl(ref rng, ref G, ref gauss);
-            OrthoOP.qrDecomposition(ref G, ref R);
+            doubleRandom_OP.randomInpl(ref rng, ref G, ref gauss);
+            Ortho_OP.qrDecomposition(ref G, ref R);
 
             var V = new doubleMxN(n, n, Allocator.Temp, false);
-            doubleRandomMatrixOP.randomOrthogonalInpl(ref rng, ref V);
+            doubleRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref V);
 
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
@@ -154,7 +154,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN Sk;
         public floatMxN Vk;
         public int k;
-        public floatSvdTruncatedWorkspace ws;
+        public floatSvdTruncated_WS ws;
         // Uses the 1-k-arg overload: oversample = max(k,12), seed = 0x9E3779B1, maxIter = 75.
         public void Execute() => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out bool _);
     }
@@ -167,7 +167,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN Sk;
         public doubleMxN Vk;
         public int k;
-        public doubleSvdTruncatedWorkspace ws;
+        public doubleSvdTruncated_WS ws;
         public void Execute() => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out bool _);
     }
 
@@ -183,7 +183,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN Sk;
         public floatMxN Vk;
         public int k;
-        public floatSvdRandomizedWorkspace ws;
+        public floatSvdRandomized_WS ws;
         // oversample=10, powerIters=2, seed=0x9E3779B1 (library defaults).
         public void Execute() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
     }
@@ -196,7 +196,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN Sk;
         public doubleMxN Vk;
         public int k;
-        public doubleSvdRandomizedWorkspace ws;
+        public doubleSvdRandomized_WS ws;
         public void Execute() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
     }
 
@@ -293,7 +293,7 @@ namespace LinearAlgebra.Benchmarks
 
                 // svdTruncated (GKL)
                 {
-                    var ws   = arena.floatSvdTruncatedWorkspace(m, n, k);
+                    var ws   = arena.floatSvdTruncated_WS(m, n, k);
                     var job  = new SvdCmpTruncJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrF(Sk, sigmaTrue, k);
@@ -304,7 +304,7 @@ namespace LinearAlgebra.Benchmarks
 
                 // svdRandomized (HMT, oversample=10 matches workspace default)
                 {
-                    var ws   = arena.floatSvdRandomizedWorkspace(m, n, k);
+                    var ws   = arena.floatSvdRandomized_WS(m, n, k);
                     var job  = new SvdCmpRandJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrF(Sk, sigmaTrue, k);
@@ -351,7 +351,7 @@ namespace LinearAlgebra.Benchmarks
 
                 // svdTruncated (GKL)
                 {
-                    var ws   = arena.doubleSvdTruncatedWorkspace(m, n, k);
+                    var ws   = arena.doubleSvdTruncated_WS(m, n, k);
                     var job  = new SvdCmpTruncJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrD(Sk, sigmaTrue, k);
@@ -362,7 +362,7 @@ namespace LinearAlgebra.Benchmarks
 
                 // svdRandomized (HMT)
                 {
-                    var ws   = arena.doubleSvdRandomizedWorkspace(m, n, k);
+                    var ws   = arena.doubleSvdRandomized_WS(m, n, k);
                     var job  = new SvdCmpRandJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
                     var stat = Bench.Time(() => job.Run());
                     double sigErr   = SigErrD(Sk, sigmaTrue, k);

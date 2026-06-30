@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace LinearAlgebra
 {
-    public static class SwapOP {
+    public static class Swap_OP {
 
         //+copyReplace
 
@@ -51,7 +51,7 @@ namespace LinearAlgebra
 
             unsafe {
 
-                UnsafeOP.swapRows(mat.Data.Ptr, i, j, mat.N_Cols, start, end);
+                Unsafe_OP.swapRows(mat.Data.Ptr, i, j, mat.N_Cols, start, end);
             }
         }
 
@@ -74,7 +74,7 @@ namespace LinearAlgebra
 
             unsafe {
 
-                UnsafeOP.swapColumns(mat.Data.Ptr, i, j, mat.M_Rows, mat.N_Cols, start, end);
+                Unsafe_OP.swapColumns(mat.Data.Ptr, i, j, mat.M_Rows, mat.N_Cols, start, end);
             }
         }
 

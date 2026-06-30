@@ -10,7 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-// Tests for the random-generation continuous core (RandomOP + Sampler).
+// Tests for the random-generation continuous core (Random_OP + Sampler).
 // Two layers:
 //   * In-job (Burst) tests: pure ICDF quantiles, empirical moments / support,
 //     determinism, stream advance, Gaussian spare bookkeeping, matrix overloads.
@@ -204,7 +204,7 @@ public class floatRandomTests
             var rng = new Random(1234567u);
             var s = new floatUniform((float)(-2), (float)4);
             var v = arena.floatVec(StatN);
-            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+            floatRandom_OP.randomInpl(ref rng, ref v, ref s);
 
             float mean = Mean(in v);
             float var = Variance(in v, mean);
@@ -221,7 +221,7 @@ public class floatRandomTests
             float lambda = (float)2;
             var s = new floatExponential(lambda);
             var v = arena.floatVec(StatN);
-            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+            floatRandom_OP.randomInpl(ref rng, ref v, ref s);
 
             float mean = Mean(in v);
             float var = Variance(in v, mean);
@@ -238,7 +238,7 @@ public class floatRandomTests
             float mu = (float)1.5, sd = (float)2;
             var s = new floatGaussian(mu, sd);
             var v = arena.floatVec(StatN);
-            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+            floatRandom_OP.randomInpl(ref rng, ref v, ref s);
 
             float mean = Mean(in v);
             float var = Variance(in v, mean);
@@ -255,7 +255,7 @@ public class floatRandomTests
             float sigma = (float)1.5;
             var s = new floatRayleigh(sigma);
             var v = arena.floatVec(StatN);
-            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+            floatRandom_OP.randomInpl(ref rng, ref v, ref s);
 
             float mean = Mean(in v);
             float expected = sigma * math.sqrt((float)(System.Math.PI / 2.0));
@@ -271,7 +271,7 @@ public class floatRandomTests
             float x0 = (float)5, gamma = (float)2;
             var s = new floatCauchy(x0, gamma);
             var v = arena.floatVec(StatN);
-            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+            floatRandom_OP.randomInpl(ref rng, ref v, ref s);
 
             float frac = FractionBelow(in v, x0);
             AssertClose(frac, (float)0.5, (float)0.04);
@@ -286,7 +286,7 @@ public class floatRandomTests
             float xm = (float)2, alpha = (float)1.5;
             var s = new floatPareto(xm, alpha);
             var v = arena.floatVec(StatN);
-            floatRandomOP.randomInpl(ref rng, ref v, ref s);
+            floatRandom_OP.randomInpl(ref rng, ref v, ref s);
 
             float median = xm * math.pow((float)2, (float)1 / alpha);
             float frac = FractionBelow(in v, median);
@@ -309,28 +309,28 @@ public class floatRandomTests
             float a = (float)(-2), b = (float)4;
             var su = new floatUniform(a, b);
             var vu = arena.floatVec(n);
-            floatRandomOP.randomInpl(ref rng, ref vu, ref su);
+            floatRandom_OP.randomInpl(ref rng, ref vu, ref su);
             for (int i = 0; i < n; i++)
                 AssertTrue(vu[i] >= a && vu[i] < b);
 
             // Exponential >= 0.
             var se = new floatExponential((float)2);
             var ve = arena.floatVec(n);
-            floatRandomOP.randomInpl(ref rng, ref ve, ref se);
+            floatRandom_OP.randomInpl(ref rng, ref ve, ref se);
             for (int i = 0; i < n; i++)
                 AssertTrue(ve[i] >= (float)0);
 
             // Rayleigh >= 0.
             var sr = new floatRayleigh((float)1.5);
             var vr = arena.floatVec(n);
-            floatRandomOP.randomInpl(ref rng, ref vr, ref sr);
+            floatRandom_OP.randomInpl(ref rng, ref vr, ref sr);
             for (int i = 0; i < n; i++)
                 AssertTrue(vr[i] >= (float)0);
 
             // Weibull >= 0.
             var sw = new floatWeibull((float)1.5, (float)2);
             var vw = arena.floatVec(n);
-            floatRandomOP.randomInpl(ref rng, ref vw, ref sw);
+            floatRandom_OP.randomInpl(ref rng, ref vw, ref sw);
             for (int i = 0; i < n; i++)
                 AssertTrue(vw[i] >= (float)0);
 
@@ -338,7 +338,7 @@ public class floatRandomTests
             float low = (float)(-1), high = (float)5;
             var st = new floatTriangular(low, (float)2, high);
             var vt = arena.floatVec(n);
-            floatRandomOP.randomInpl(ref rng, ref vt, ref st);
+            floatRandom_OP.randomInpl(ref rng, ref vt, ref st);
             for (int i = 0; i < n; i++)
                 AssertTrue(vt[i] >= low && vt[i] <= high);
 
@@ -356,12 +356,12 @@ public class floatRandomTests
             var r1 = new Random(55u);
             var s1 = new floatExponential((float)1.7);
             var v1 = arena.floatVec(n);
-            floatRandomOP.randomInpl(ref r1, ref v1, ref s1);
+            floatRandom_OP.randomInpl(ref r1, ref v1, ref s1);
 
             var r2 = new Random(55u);
             var s2 = new floatExponential((float)1.7);
             var v2 = arena.floatVec(n);
-            floatRandomOP.randomInpl(ref r2, ref v2, ref s2);
+            floatRandom_OP.randomInpl(ref r2, ref v2, ref s2);
 
             for (int i = 0; i < n; i++)
                 AssertClose(v1[i], v2[i], (float)0);   // bit-identical
@@ -377,9 +377,9 @@ public class floatRandomTests
             var rng = new Random(7777u);
 
             var v1 = arena.floatVec(n);
-            floatRandomOP.nextUniformInpl(ref rng, ref v1);
+            floatRandom_OP.nextUniformInpl(ref rng, ref v1);
             var v2 = arena.floatVec(n);
-            floatRandomOP.nextUniformInpl(ref rng, ref v2);
+            floatRandom_OP.nextUniformInpl(ref rng, ref v2);
 
             bool anyDiff = false;
             for (int i = 0; i < n; i++)
@@ -389,7 +389,7 @@ public class floatRandomTests
             // Re-seeding resets the stream: a fresh rng reproduces the first buffer.
             var rng3 = new Random(7777u);
             var v3 = arena.floatVec(n);
-            floatRandomOP.nextUniformInpl(ref rng3, ref v3);
+            floatRandom_OP.nextUniformInpl(ref rng3, ref v3);
             for (int i = 0; i < n; i++)
                 AssertClose(v1[i], v3[i], (float)0);
 
@@ -424,7 +424,7 @@ public class floatRandomTests
             var rngFill = new Random(seed);
             var g = new floatGaussian((float)0, (float)1);
             var v = arena.floatVec(n);
-            floatRandomOP.randomInpl(ref rngFill, ref v, ref g);
+            floatRandom_OP.randomInpl(ref rngFill, ref v, ref g);
             uint stateFill = rngFill.state;
 
             // Reference: advance an identically-seeded rng by ceil(n/2)*2 uniform draws.
@@ -441,7 +441,7 @@ public class floatRandomTests
             var rngFill2 = new Random(seed);
             var g2 = new floatGaussian((float)0, (float)1);
             var v2 = arena.floatVec(nEven);
-            floatRandomOP.randomInpl(ref rngFill2, ref v2, ref g2);
+            floatRandom_OP.randomInpl(ref rngFill2, ref v2, ref g2);
 
             var rngRef2 = new Random(seed);
             for (int i = 0; i < nEven; i++)
@@ -461,7 +461,7 @@ public class floatRandomTests
             float mn = (float)(-1), mx = (float)2;
             var M = arena.floatMat(4, 5);
             for (int i = 0; i < M.Length; i++) M[i] = (float)999;
-            floatRandomOP.nextUniformInpl(ref rng, ref M, mn, mx);
+            floatRandom_OP.nextUniformInpl(ref rng, ref M, mn, mx);
             AssertTrue(M.Length == 20);
             for (int i = 0; i < M.Length; i++)
                 AssertTrue(M[i] >= mn && M[i] < mx);
@@ -469,7 +469,7 @@ public class floatRandomTests
             // nextUniformInpl [0,1) over a 3x7 matrix.
             var M01 = arena.floatMat(3, 7);
             for (int i = 0; i < M01.Length; i++) M01[i] = (float)999;
-            floatRandomOP.nextUniformInpl(ref rng, ref M01);
+            floatRandom_OP.nextUniformInpl(ref rng, ref M01);
             for (int i = 0; i < M01.Length; i++)
                 AssertTrue(M01[i] >= (float)0 && M01[i] < (float)1);
 
@@ -477,7 +477,7 @@ public class floatRandomTests
             var g = new floatExponential((float)2);
             var ME = arena.floatMat(3, 7);
             for (int i = 0; i < ME.Length; i++) ME[i] = (float)(-999);
-            floatRandomOP.randomInpl(ref rng, ref ME, ref g);
+            floatRandom_OP.randomInpl(ref rng, ref ME, ref g);
             AssertTrue(ME.Length == 21);
             for (int i = 0; i < ME.Length; i++)
                 AssertTrue(ME[i] >= (float)0);
@@ -628,10 +628,10 @@ public class floatRandomTests
 
         var v = arena.floatVec(8);
         Random rng = new Random(1u);
-        Assert.Throws<ArgumentException>(() => floatRandomOP.nextUniformInpl(ref rng, ref v, (float)5, (float)1));
+        Assert.Throws<ArgumentException>(() => floatRandom_OP.nextUniformInpl(ref rng, ref v, (float)5, (float)1));
 
         var M = arena.floatMat(3, 3);
-        Assert.Throws<ArgumentException>(() => floatRandomOP.nextUniformInpl(ref rng, ref M, (float)5, (float)1));
+        Assert.Throws<ArgumentException>(() => floatRandom_OP.nextUniformInpl(ref rng, ref M, (float)5, (float)1));
 
         arena.Dispose();
     }

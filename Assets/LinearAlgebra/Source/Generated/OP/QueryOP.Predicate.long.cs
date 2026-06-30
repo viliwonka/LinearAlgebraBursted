@@ -12,7 +12,7 @@ namespace LinearAlgebra
     //   findFirst, count, any, all, findAll.
     // Constraint: where T : unmanaged, IUnsafelongArray
     //             where P : struct, IlongPredicate
-    public static partial class longQueryOP
+    public static partial class longQuery_OP
     {
         // -------------------------------------------------------------------------
         // GROUP A — FLAT / SCALAR PREDICATE OPS

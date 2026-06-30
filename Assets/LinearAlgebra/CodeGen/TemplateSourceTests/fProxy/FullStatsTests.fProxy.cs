@@ -47,7 +47,7 @@ public class fProxyFullStatsTests
             var v = arena.fProxyVec(2);
             v[0] = (fProxy)20; v[1] = (fProxy)10;   // unsorted on purpose
 
-            var s = fProxyStatsOP.meanMinMaxRange_medianIQRstdDevVariance(in v);
+            var s = fProxyStats_OP.meanMinMaxRange_medianIQRstdDevVariance(in v);
 
             AssertClose(s.median, (fProxy)15, (fProxy)1E-4);
             AssertClose(s.q1, (fProxy)12.5, (fProxy)1E-4);
@@ -72,7 +72,7 @@ public class fProxyFullStatsTests
             var v = arena.fProxyVec(4);
             v[0] = (fProxy)3; v[1] = (fProxy)1; v[2] = (fProxy)4; v[3] = (fProxy)2;
 
-            var s = fProxyStatsOP.meanMinMaxRange_medianIQRstdDevVariance(in v);
+            var s = fProxyStats_OP.meanMinMaxRange_medianIQRstdDevVariance(in v);
 
             AssertClose(s.median, (fProxy)2.5, (fProxy)1E-4);
             AssertClose(s.q1, (fProxy)1.75, (fProxy)1E-4);
@@ -92,11 +92,11 @@ public class fProxyFullStatsTests
 
             var odd = arena.fProxyVec(3);
             odd[0] = (fProxy)3; odd[1] = (fProxy)1; odd[2] = (fProxy)2;
-            AssertClose(fProxyStatsOP.median(in odd), (fProxy)2, (fProxy)1E-4);
+            AssertClose(fProxyStats_OP.median(in odd), (fProxy)2, (fProxy)1E-4);
 
             var even = arena.fProxyVec(4);
             even[0] = (fProxy)4; even[1] = (fProxy)2; even[2] = (fProxy)1; even[3] = (fProxy)3;
-            AssertClose(fProxyStatsOP.median(in even), (fProxy)2.5, (fProxy)1E-4);
+            AssertClose(fProxyStats_OP.median(in even), (fProxy)2.5, (fProxy)1E-4);
 
             arena.Dispose();
         }

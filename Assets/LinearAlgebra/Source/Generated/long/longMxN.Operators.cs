@@ -19,7 +19,7 @@ namespace LinearAlgebra
         {
             longMxN matrix = a.TempCopy();
             
-            longOP.signFlipInpl(matrix);
+            long_OP.signFlipInpl(matrix);
 
             return matrix;
         }
@@ -28,7 +28,7 @@ namespace LinearAlgebra
         {
             longMxN matrix = lhs.TempCopy();
             
-            longOP.addInpl(matrix, rhs);
+            long_OP.addInpl(matrix, rhs);
 
             return matrix;
         }
@@ -39,7 +39,7 @@ namespace LinearAlgebra
         {
             longMxN matrix = lhs.TempCopy();
             
-            longOP.addInpl(matrix, (long)(-rhs));
+            long_OP.addInpl(matrix, (long)(-rhs));
 
             return matrix;
         }
@@ -48,7 +48,7 @@ namespace LinearAlgebra
         {
             // subtraction is NOT commutative: lhs - rhs[i,j], not rhs[i,j] - lhs
             longMxN matrix = rhs.TempCopy();
-            longOP.subInpl(lhs, matrix);
+            long_OP.subInpl(lhs, matrix);
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -56,7 +56,7 @@ namespace LinearAlgebra
         {
             longMxN matrix = a.TempCopy();
 
-            longOP.mulInpl(matrix, s);
+            long_OP.mulInpl(matrix, s);
 
             return matrix;
         }
@@ -70,7 +70,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            longOP.divInpl(matrix, s);
+            long_OP.divInpl(matrix, s);
 
             return matrix;
         }
@@ -79,7 +79,7 @@ namespace LinearAlgebra
         {
             // 0 / M is valid (= 0 where M != 0); a zero MATRIX entry still throws (integer div by zero).
             longMxN matrix = a.TempCopy();
-            longOP.divInpl(s, matrix);
+            long_OP.divInpl(s, matrix);
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -90,7 +90,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            longOP.modInpl(matrix, s);
+            long_OP.modInpl(matrix, s);
 
             return matrix;
         }
@@ -99,7 +99,7 @@ namespace LinearAlgebra
         {
             // 0 % M is valid (= 0 where M != 0); a zero MATRIX entry still throws (integer mod by zero).
             longMxN matrix = a.TempCopy();
-            longOP.modInpl(s, matrix);
+            long_OP.modInpl(s, matrix);
 
             return matrix;
         }
@@ -109,7 +109,7 @@ namespace LinearAlgebra
 
             longMxN matrix = a.TempCopy();
 
-            longOP.bitwiseComplementInpl(matrix);
+            long_OP.bitwiseComplementInpl(matrix);
 
             return matrix;
         }
@@ -118,7 +118,7 @@ namespace LinearAlgebra
         public static longMxN operator &(in longMxN a, in long s) {
 
             longMxN matrix = a.TempCopy();
-            longOP.bitwiseAndInpl(matrix, s);
+            long_OP.bitwiseAndInpl(matrix, s);
             return matrix;
         }
 
@@ -127,7 +127,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator |(in longMxN a, in long s) {
             longMxN matrix = a.TempCopy();
-            longOP.bitwiseOrInpl(matrix, s);
+            long_OP.bitwiseOrInpl(matrix, s);
             return matrix;
         }
 
@@ -136,7 +136,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator ^(in longMxN a, in long s) {
             longMxN matrix = a.TempCopy();
-            longOP.bitwiseXorInpl(matrix, s);
+            long_OP.bitwiseXorInpl(matrix, s);
             return matrix;
         }
 
@@ -145,14 +145,14 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator <<(in longMxN a, int shift) {
             longMxN matrix = a.TempCopy();
-            longOP.bitwiseLeftShiftInpl(matrix, shift);
+            long_OP.bitwiseLeftShiftInpl(matrix, shift);
             return matrix;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator >>(in longMxN a, int shift) {
             longMxN matrix = a.TempCopy();
-            longOP.bitwiseRightShiftInpl(matrix, shift);
+            long_OP.bitwiseRightShiftInpl(matrix, shift);
             return matrix;
         }
 
@@ -172,7 +172,7 @@ namespace LinearAlgebra
 
             longMxN matrix = lhs.TempCopy();
 
-            longOP.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
+            long_OP.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
 
             return matrix;
         }
@@ -189,7 +189,7 @@ namespace LinearAlgebra
             
             longMxN matrix = lhs.TempCopy();
 
-            longOP.subInpl(matrix, rhs);
+            long_OP.subInpl(matrix, rhs);
 
             return matrix;
         }
@@ -206,7 +206,7 @@ namespace LinearAlgebra
 
             longMxN matrix = lhs.TempCopy();
 
-            longOP.compMulInpl(rhs, matrix);
+            long_OP.compMulInpl(rhs, matrix);
 
             return matrix;
         }
@@ -223,7 +223,7 @@ namespace LinearAlgebra
 
             longMxN newDividendMatrix = dividend.TempCopy();
 
-            longOP.compDivInpl(newDividendMatrix, divisor);
+            long_OP.compDivInpl(newDividendMatrix, divisor);
             return newDividendMatrix;
         }
 
@@ -239,7 +239,7 @@ namespace LinearAlgebra
 
             var newDividendMatrix = dividend.TempCopy();
 
-            longOP.compModDiv(newDividendMatrix, divisor);
+            long_OP.compModDiv(newDividendMatrix, divisor);
             return newDividendMatrix;
         }
 
@@ -249,7 +249,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             longMxN matrix = a.TempCopy();
-            longOP.bitwiseAndInpl(matrix, b);
+            long_OP.bitwiseAndInpl(matrix, b);
             return matrix;
         }
 
@@ -260,7 +260,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             longMxN matrix = a.TempCopy();
-            longOP.bitwiseOrInpl(matrix, b);
+            long_OP.bitwiseOrInpl(matrix, b);
             return matrix;
         }
 
@@ -271,7 +271,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             longMxN matrix = a.TempCopy();
-            longOP.bitwiseXorInpl(matrix, b);
+            long_OP.bitwiseXorInpl(matrix, b);
             return matrix;
         }
 

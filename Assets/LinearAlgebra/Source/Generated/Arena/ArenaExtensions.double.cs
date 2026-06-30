@@ -56,7 +56,7 @@ namespace LinearAlgebra
 
             double scale = 1 / math.sqrt(sum);
 
-            doubleOP.mulInpl(vec, scale);
+            double_OP.mulInpl(vec, scale);
 
             return vec;
         }
@@ -74,12 +74,12 @@ namespace LinearAlgebra
         }
 
         // linspace. Prefer doubleLinspace(a, b, N) for new code; this older name is kept for existing
-        // callers and now delegates to the guarded doubleGenOP.linspace (handles N==1 instead of
+        // callers and now delegates to the guarded doubleGen_OP.linspace (handles N==1 instead of
         // dividing by zero, and pins both endpoints exactly).
         public static doubleN doubleLinVector(this ref Arena arena, int N, double start, double end)
         {
             var vec = arena.doubleVec(N);
-            doubleGenOP.linspace(ref vec, start, end);
+            doubleGen_OP.linspace(ref vec, start, end);
             return vec;
         }
 
@@ -245,7 +245,7 @@ namespace LinearAlgebra
             var matrix = arena.doubleIdentityMatrix(M);
 
             // Compute the outer product of v
-            double vTv = doubleOP.dot(v, v);
+            double vTv = double_OP.dot(v, v);
             
             double scaleFactor = 2 / vTv;
             

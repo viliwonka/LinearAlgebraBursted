@@ -11,7 +11,7 @@ namespace LinearAlgebra
     /// <param name="b">Value to use if c is true.</param>
     /// <param name="c">Bool value to choose between a and b.</param>
     /// <returns>The selection between a and b according to bool c.</returns>
-    public static partial class SelectOP
+    public static partial class Select_OP
     {
         // ref-dest primitive. No alias guard: select is elementwise (dst[i] = c[i] ? b[i] : a[i]),
         // so the destination may alias a or b safely.
@@ -25,7 +25,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeSelectOP.selectdouble(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.N);
+                UnsafeSelect_OP.selectdouble(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.N);
             }
         }
 
@@ -47,7 +47,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeSelectOP.selectdouble(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.M_Rows * a.N_Cols);
+                UnsafeSelect_OP.selectdouble(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.M_Rows * a.N_Cols);
             }
         }
 
@@ -97,7 +97,7 @@ namespace LinearAlgebra
         }
     }
 
-    public static unsafe partial class UnsafeSelectOP
+    public static unsafe partial class UnsafeSelect_OP
     {
         public static void selectdouble([NoAlias] double* a, [NoAlias] double* b, [NoAlias] bool* c, double* target, int n)
         {

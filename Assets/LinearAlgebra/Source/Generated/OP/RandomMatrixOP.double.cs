@@ -24,7 +24,7 @@ namespace LinearAlgebra
     ///
     /// double-only.
     /// </summary>
-    public static partial class doubleRandomMatrixOP
+    public static partial class doubleRandomMatrix_OP
     {
         // =========================================================================
         // 1. Multivariate Normal   x = mean + L·z,  z ~ N(0,I),  Σ = L·Lᵀ
@@ -61,10 +61,10 @@ namespace LinearAlgebra
 
             // Fill zScratch with N(0,1) via Box-Muller
             var gauss = new doubleGaussian((double)0, (double)1);
-            doubleRandomOP.randomInpl(ref rng, ref zScratch, ref gauss);
+            doubleRandom_OP.randomInpl(ref rng, ref zScratch, ref gauss);
 
             // dest = cholL · zScratch
-            doubleOP.dot(in cholL, in zScratch, ref dest);
+            double_OP.dot(in cholL, in zScratch, ref dest);
 
             // dest += mean
             for (int i = 0; i < n; i++)
@@ -124,8 +124,8 @@ namespace LinearAlgebra
 
             for (int r = 0; r < count; r++)
             {
-                doubleRandomOP.randomInpl(ref rng, ref z, ref gauss);
-                doubleOP.dot(in cholL, in z, ref row);
+                doubleRandom_OP.randomInpl(ref rng, ref z, ref gauss);
+                double_OP.dot(in cholL, in z, ref row);
                 for (int c = 0; c < n; c++)
                     destRows[r, c] = row[c] + mean[c];
             }
@@ -171,10 +171,10 @@ namespace LinearAlgebra
 
             // Step 1: fill G with N(0,1)
             var gauss = new doubleGaussian((double)0, (double)1);
-            doubleRandomOP.randomInpl(ref rng, ref G, ref gauss);
+            doubleRandom_OP.randomInpl(ref rng, ref G, ref gauss);
 
             // Step 2: QR decomposition — G is overwritten with Q, R holds upper-triangular factor
-            OrthoOP.qrDecomposition(ref G, ref R);
+            Ortho_OP.qrDecomposition(ref G, ref R);
 
             // Step 3: Haar sign fix (Mezzadri 2007)
             //   Multiply column i of Q by sign(R[i,i]).  sign(0) = +1 (no flip needed).
@@ -238,7 +238,7 @@ namespace LinearAlgebra
             randomOrthogonalInpl(ref rng, ref Q);
 
             // Qt = Qᵀ — must be computed BEFORE we scale Q's columns (otherwise Qt = (QΛ)ᵀ = ΛQᵀ)
-            doubleOP.trans(in Q, ref Qt);
+            double_OP.trans(in Q, ref Qt);
 
             // Scale column i of Q by λᵢ ~ Uniform(minEig, maxEig) → QΛ in-place
             for (int i = 0; i < n; i++)
@@ -249,7 +249,7 @@ namespace LinearAlgebra
             }
 
             // dest = QΛ · Qᵀ  (= Q_orig · Λ · Q_origᵀ)
-            doubleOP.dot(in Q, in Qt, ref dest);
+            double_OP.dot(in Q, in Qt, ref dest);
 
             // Enforce exact symmetry: dest ← (dest + destᵀ) / 2
             // Operates only on the upper-triangle pairs to avoid redundant work.
@@ -307,7 +307,7 @@ namespace LinearAlgebra
             var V  = new doubleMxN(n, n, Allocator.Temp);
             var Vt = new doubleMxN(n, n, Allocator.Temp);
             randomOrthogonalInpl(ref rng, ref V);
-            doubleOP.trans(in V, ref Vt);
+            double_OP.trans(in V, ref Vt);
             V.Dispose();
 
             // Build UΣ (m×n): column i of U scaled by σᵢ; remaining columns zero.
@@ -336,7 +336,7 @@ namespace LinearAlgebra
             }
 
             // dest = UΣ · Vᵀ
-            doubleOP.dot(in US, in Vt, ref dest);
+            double_OP.dot(in US, in Vt, ref dest);
 
             US.Dispose();
             Vt.Dispose();
@@ -381,11 +381,11 @@ namespace LinearAlgebra
             var B = new doubleMxN(rank, n, Allocator.Temp);
 
             var gauss = new doubleGaussian((double)0, (double)1);
-            doubleRandomOP.randomInpl(ref rng, ref A, ref gauss);
-            doubleRandomOP.randomInpl(ref rng, ref B, ref gauss);
+            doubleRandom_OP.randomInpl(ref rng, ref A, ref gauss);
+            doubleRandom_OP.randomInpl(ref rng, ref B, ref gauss);
 
             // dest = A·B   (dot clears dest before accumulating)
-            doubleOP.dot(in A, in B, ref dest);
+            double_OP.dot(in A, in B, ref dest);
 
             B.Dispose();
             A.Dispose();
@@ -410,7 +410,7 @@ namespace LinearAlgebra
             if (m == 0 || n == 0) return;
 
             // Fill with Uniform[0,1)
-            doubleRandomOP.nextUniformInpl(ref rng, ref dest);
+            doubleRandom_OP.nextUniformInpl(ref rng, ref dest);
 
             double invN = (double)1 / (double)n;
             for (int r = 0; r < m; r++)

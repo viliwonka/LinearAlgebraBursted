@@ -17,7 +17,7 @@ using Unity.Mathematics;
 //   2 — Norm-selection: argMaxRowNorm/argMaxColNorm for each Norm (L1/L2/Linf).
 //   3 — Search: distancesToRow/Column, nearest/farthest, kNearest/kFarthest, within-radius/count,
 //       for each Metric; the similarity direction flip (Cosine/Dot -> nearest=MAX) is the key check.
-//   4 — Value/mask: findValue, nonzero/countNonzero, BoolAnalysis.whichTrue/countTrue.
+//   4 — Value/mask: findValue, nonzero/countNonzero, BoolAnalysis_OP.whichTrue/countTrue.
 //   Symmetry — a column op on A equals the row op on transpose(A) (spec P1).
 //   Arena wrappers — each allocating wrapper matches the zero-alloc primitive.
 //
@@ -98,18 +98,18 @@ public class fProxyQueryTests
             v[0] = (fProxy)(-2); v[1] = (fProxy)5; v[2] = (fProxy)(-5);
             v[3] = (fProxy)1;    v[4] = (fProxy)(-1); v[5] = (fProxy)4;
 
-            fProxyQueryOP.argMaxAbs(in v, out fProxy maxVal, out int maxIdx);
+            fProxyQuery_OP.argMaxAbs(in v, out fProxy maxVal, out int maxIdx);
             AssertEqI(maxIdx, 1);                  // first of the two |5| entries
             AssertClose(maxVal, (fProxy)5, (fProxy)0);
 
-            fProxyQueryOP.argMinAbs(in v, out fProxy minVal, out int minIdx);
+            fProxyQuery_OP.argMinAbs(in v, out fProxy minVal, out int minIdx);
             AssertEqI(minIdx, 3);                  // first of the two |1| entries
             AssertClose(minVal, (fProxy)1, (fProxy)0);
 
             // 1x1 / single-element vector: index 0, value = |element|.
             var one = arena.fProxyVec(1);
             one[0] = (fProxy)(-7);
-            fProxyQueryOP.argMaxAbs(in one, out fProxy ov, out int oi);
+            fProxyQuery_OP.argMaxAbs(in one, out fProxy ov, out int oi);
             AssertEqI(oi, 0);
             AssertClose(ov, (fProxy)7, (fProxy)0);
 
@@ -127,17 +127,17 @@ public class fProxyQueryTests
             A[0, 0] = (fProxy)1;  A[0, 1] = (fProxy)(-3); A[0, 2] = (fProxy)2;
             A[1, 0] = (fProxy)0;  A[1, 1] = (fProxy)4;    A[1, 2] = (fProxy)(-4);
 
-            fProxyQueryOP.argMaxAbs(in A, out fProxy maxVal, out int maxIdx);
+            fProxyQuery_OP.argMaxAbs(in A, out fProxy maxVal, out int maxIdx);
             AssertEqI(maxIdx, 4);
             AssertClose(maxVal, (fProxy)4, (fProxy)0);
-            fProxyQueryOP.decodeIndex(maxIdx, A.N_Cols, out int mr, out int mc);
+            fProxyQuery_OP.decodeIndex(maxIdx, A.N_Cols, out int mr, out int mc);
             AssertEqI(mr, 1); AssertEqI(mc, 1);
 
             // minAbs is the 0 at flat 3 (r1,c0).
-            fProxyQueryOP.argMinAbs(in A, out fProxy minVal, out int minIdx);
+            fProxyQuery_OP.argMinAbs(in A, out fProxy minVal, out int minIdx);
             AssertEqI(minIdx, 3);
             AssertClose(minVal, (fProxy)0, (fProxy)0);
-            fProxyQueryOP.decodeIndex(minIdx, A.N_Cols, out int nr, out int nc);
+            fProxyQuery_OP.decodeIndex(minIdx, A.N_Cols, out int nr, out int nc);
             AssertEqI(nr, 1); AssertEqI(nc, 0);
 
             arena.Dispose();
@@ -146,18 +146,18 @@ public class fProxyQueryTests
         // decodeIndex round-trips flat <-> (row,col) for a few hand values.
         void DecodeIndex()
         {
-            fProxyQueryOP.decodeIndex(0, 4, out int r, out int c);
+            fProxyQuery_OP.decodeIndex(0, 4, out int r, out int c);
             AssertEqI(r, 0); AssertEqI(c, 0);
-            fProxyQueryOP.decodeIndex(7, 4, out r, out c);   // 7 = 1*4 + 3
+            fProxyQuery_OP.decodeIndex(7, 4, out r, out c);   // 7 = 1*4 + 3
             AssertEqI(r, 1); AssertEqI(c, 3);
-            fProxyQueryOP.decodeIndex(11, 3, out r, out c);  // 11 = 3*3 + 2
+            fProxyQuery_OP.decodeIndex(11, 3, out r, out c);  // 11 = 3*3 + 2
             AssertEqI(r, 3); AssertEqI(c, 2);
             // round-trip: r*nCols+c -> (r,c)
             int nCols = 5;
             for (int rr = 0; rr < 4; rr++)
                 for (int cc = 0; cc < nCols; cc++)
                 {
-                    fProxyQueryOP.decodeIndex(rr * nCols + cc, nCols, out int gr, out int gc);
+                    fProxyQuery_OP.decodeIndex(rr * nCols + cc, nCols, out int gr, out int gc);
                     AssertEqI(gr, rr); AssertEqI(gc, cc);
                 }
         }
@@ -179,7 +179,7 @@ public class fProxyQueryTests
             var idxR = arena.Indices(3);
             var valR = arena.fProxyVec(3);
 
-            int nr = fProxyQueryOP.rowArgMin(in A, ref idxR, ref valR);
+            int nr = fProxyQuery_OP.rowArgMin(in A, ref idxR, ref valR);
             AssertEqI(nr, 3);
             AssertEqI(idxR[0], 1); AssertClose(valR[0], (fProxy)1, (fProxy)0);
             AssertEqI(idxR[1], 1); AssertClose(valR[1], (fProxy)7, (fProxy)0);
@@ -187,38 +187,38 @@ public class fProxyQueryTests
 
             // index-only form must match.
             var idxR2 = arena.Indices(3);
-            fProxyQueryOP.rowArgMin(in A, ref idxR2);
+            fProxyQuery_OP.rowArgMin(in A, ref idxR2);
             AssertEqI(idxR2[0], 1); AssertEqI(idxR2[1], 1); AssertEqI(idxR2[2], 0);
 
-            fProxyQueryOP.rowArgMax(in A, ref idxR, ref valR);
+            fProxyQuery_OP.rowArgMax(in A, ref idxR, ref valR);
             AssertEqI(idxR[0], 0); AssertClose(valR[0], (fProxy)3, (fProxy)0);
             AssertEqI(idxR[1], 0); AssertClose(valR[1], (fProxy)9, (fProxy)0);
             AssertEqI(idxR[2], 1); AssertClose(valR[2], (fProxy)5, (fProxy)0);
 
             var idxR3 = arena.Indices(3);
-            fProxyQueryOP.rowArgMax(in A, ref idxR3);
+            fProxyQuery_OP.rowArgMax(in A, ref idxR3);
             AssertEqI(idxR3[0], 0); AssertEqI(idxR3[1], 0); AssertEqI(idxR3[2], 1);
 
             // columns: colMin per column -> rows {2,0,0}; colMax per column -> rows {1,1,1}.
             var idxC = arena.Indices(3);
             var valC = arena.fProxyVec(3);
-            int nc = fProxyQueryOP.colArgMin(in A, ref idxC, ref valC);
+            int nc = fProxyQuery_OP.colArgMin(in A, ref idxC, ref valC);
             AssertEqI(nc, 3);
             AssertEqI(idxC[0], 2); AssertClose(valC[0], (fProxy)0, (fProxy)0);
             AssertEqI(idxC[1], 0); AssertClose(valC[1], (fProxy)1, (fProxy)0);
             AssertEqI(idxC[2], 0); AssertClose(valC[2], (fProxy)2, (fProxy)0);
 
             var idxC2 = arena.Indices(3);
-            fProxyQueryOP.colArgMin(in A, ref idxC2);
+            fProxyQuery_OP.colArgMin(in A, ref idxC2);
             AssertEqI(idxC2[0], 2); AssertEqI(idxC2[1], 0); AssertEqI(idxC2[2], 0);
 
-            fProxyQueryOP.colArgMax(in A, ref idxC, ref valC);
+            fProxyQuery_OP.colArgMax(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 1); AssertClose(valC[0], (fProxy)9, (fProxy)0);
             AssertEqI(idxC[1], 1); AssertClose(valC[1], (fProxy)7, (fProxy)0);
             AssertEqI(idxC[2], 1); AssertClose(valC[2], (fProxy)8, (fProxy)0);
 
             var idxC3 = arena.Indices(3);
-            fProxyQueryOP.colArgMax(in A, ref idxC3);
+            fProxyQuery_OP.colArgMax(in A, ref idxC3);
             AssertEqI(idxC3[0], 1); AssertEqI(idxC3[1], 1); AssertEqI(idxC3[2], 1);
 
             arena.Dispose();
@@ -246,11 +246,11 @@ public class fProxyQueryTests
             var idxC = arena.Indices(2);
             var valC = arena.fProxyVec(2);
 
-            fProxyQueryOP.colArgMin(in A, ref idxC, ref valC);
+            fProxyQuery_OP.colArgMin(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 0); AssertClose(valC[0], (fProxy)1, (fProxy)0);
             AssertEqI(idxC[1], 3); AssertClose(valC[1], (fProxy)4, (fProxy)0);
 
-            fProxyQueryOP.colArgMax(in A, ref idxC, ref valC);
+            fProxyQuery_OP.colArgMax(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 2); AssertClose(valC[0], (fProxy)9, (fProxy)0);
             AssertEqI(idxC[1], 0); AssertClose(valC[1], (fProxy)8, (fProxy)0);
 
@@ -275,15 +275,15 @@ public class fProxyQueryTests
             A[1, 0] = (fProxy)1;    A[1, 1] = (fProxy)1; A[1, 2] = (fProxy)1;
             A[2, 0] = (fProxy)(-2); A[2, 1] = (fProxy)2; A[2, 2] = (fProxy)0;
 
-            AssertEqI(fProxyQueryOP.argMaxRowNorm(in A, Norm.L1), 2);
-            AssertEqI(fProxyQueryOP.argMaxRowNorm(in A, Norm.L2), 0);
-            AssertEqI(fProxyQueryOP.argMaxRowNorm(in A, Norm.Linf), 0);
+            AssertEqI(fProxyQuery_OP.argMaxRowNorm(in A, Norm.L1), 2);
+            AssertEqI(fProxyQuery_OP.argMaxRowNorm(in A, Norm.L2), 0);
+            AssertEqI(fProxyQuery_OP.argMaxRowNorm(in A, Norm.Linf), 0);
 
             // Tie -> first occurrence. Two rows of identical L1 norm 5; first is row 0.
             var T = arena.fProxyMat(2, 2);
             T[0, 0] = (fProxy)5; T[0, 1] = (fProxy)0;
             T[1, 0] = (fProxy)0; T[1, 1] = (fProxy)5;
-            AssertEqI(fProxyQueryOP.argMaxRowNorm(in T, Norm.L1), 0);
+            AssertEqI(fProxyQuery_OP.argMaxRowNorm(in T, Norm.L1), 0);
 
             arena.Dispose();
         }
@@ -304,9 +304,9 @@ public class fProxyQueryTests
             A[1, 0] = (fProxy)1;    A[1, 1] = (fProxy)1; A[1, 2] = (fProxy)0;
             A[2, 0] = (fProxy)(-2); A[2, 1] = (fProxy)2; A[2, 2] = (fProxy)0;
 
-            AssertEqI(fProxyQueryOP.argMaxColNorm(in A, Norm.L1), 0);
-            AssertEqI(fProxyQueryOP.argMaxColNorm(in A, Norm.L2), 2);
-            AssertEqI(fProxyQueryOP.argMaxColNorm(in A, Norm.Linf), 2);
+            AssertEqI(fProxyQuery_OP.argMaxColNorm(in A, Norm.L1), 0);
+            AssertEqI(fProxyQuery_OP.argMaxColNorm(in A, Norm.L2), 2);
+            AssertEqI(fProxyQuery_OP.argMaxColNorm(in A, Norm.Linf), 2);
 
             arena.Dispose();
         }
@@ -332,39 +332,39 @@ public class fProxyQueryTests
             var d = arena.fProxyVec(2);
 
             // Manhattan: |3|+|4|=7 ; |1|+|0|=1
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.Manhattan, ref d);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.Manhattan, ref d);
             AssertClose(d[0], (fProxy)7, fEps()); AssertClose(d[1], (fProxy)1, fEps());
 
             // Euclidean: 5 ; 1
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.Euclidean, ref d);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.Euclidean, ref d);
             AssertClose(d[0], (fProxy)5, sqrtEps()); AssertClose(d[1], (fProxy)1, sqrtEps());
 
             // SqEuclidean (squared, no sqrt): 25 ; 1
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref d);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref d);
             AssertClose(d[0], (fProxy)25, fEps()); AssertClose(d[1], (fProxy)1, fEps());
 
             // Chebyshev: max(3,4)=4 ; max(1,0)=1
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.Chebyshev, ref d);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.Chebyshev, ref d);
             AssertClose(d[0], (fProxy)4, fEps()); AssertClose(d[1], (fProxy)1, fEps());
 
             // Dot with q=(0,0) is 0 for every row.
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.Dot, ref d);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.Dot, ref d);
             AssertClose(d[0], (fProxy)0, fEps()); AssertClose(d[1], (fProxy)0, fEps());
 
             // Cosine of a zero query vector = 0 (zero-vector guard).
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.Cosine, ref d);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.Cosine, ref d);
             AssertClose(d[0], (fProxy)0, fEps()); AssertClose(d[1], (fProxy)0, fEps());
 
             // Cosine with a non-zero query: q2 = (3,4) is exactly parallel to r0 -> cos=1;
             // r1=(1,0) -> cos = 3/5 = 0.6.
             var q2 = arena.fProxyVec(2);
             q2[0] = (fProxy)3; q2[1] = (fProxy)4;
-            fProxyQueryOP.distancesToRow(in A, in q2, Metric.Cosine, ref d);
+            fProxyQuery_OP.distancesToRow(in A, in q2, Metric.Cosine, ref d);
             AssertClose(d[0], (fProxy)1,   sqrtEps());
             AssertClose(d[1], (fProxy)0.6, sqrtEps());
 
             // Dot with q2: r0·q2 = 9+16 = 25 ; r1·q2 = 3+0 = 3.
-            fProxyQueryOP.distancesToRow(in A, in q2, Metric.Dot, ref d);
+            fProxyQuery_OP.distancesToRow(in A, in q2, Metric.Dot, ref d);
             AssertClose(d[0], (fProxy)25, fEps()); AssertClose(d[1], (fProxy)3, fEps());
 
             arena.Dispose();
@@ -386,19 +386,19 @@ public class fProxyQueryTests
             var d = arena.fProxyVec(2);
 
             // Manhattan: c0=4, c1=4
-            fProxyQueryOP.distancesToColumn(in A, in q, Metric.Manhattan, ref d);
+            fProxyQuery_OP.distancesToColumn(in A, in q, Metric.Manhattan, ref d);
             AssertClose(d[0], (fProxy)4, fEps()); AssertClose(d[1], (fProxy)4, fEps());
 
             // SqEuclidean: c0 = 9+1 = 10 ; c1 = 16+0 = 16
-            fProxyQueryOP.distancesToColumn(in A, in q, Metric.SqEuclidean, ref d);
+            fProxyQuery_OP.distancesToColumn(in A, in q, Metric.SqEuclidean, ref d);
             AssertClose(d[0], (fProxy)10, fEps()); AssertClose(d[1], (fProxy)16, fEps());
 
             // Euclidean: sqrt(10), 4
-            fProxyQueryOP.distancesToColumn(in A, in q, Metric.Euclidean, ref d);
+            fProxyQuery_OP.distancesToColumn(in A, in q, Metric.Euclidean, ref d);
             AssertClose(d[0], math.sqrt((fProxy)10), sqrtEps()); AssertClose(d[1], (fProxy)4, sqrtEps());
 
             // Chebyshev: c0=max(3,1)=3 ; c1=max(4,0)=4
-            fProxyQueryOP.distancesToColumn(in A, in q, Metric.Chebyshev, ref d);
+            fProxyQuery_OP.distancesToColumn(in A, in q, Metric.Chebyshev, ref d);
             AssertClose(d[0], (fProxy)3, fEps()); AssertClose(d[1], (fProxy)4, fEps());
 
             arena.Dispose();
@@ -418,14 +418,14 @@ public class fProxyQueryTests
             q[0] = (fProxy)0; q[1] = (fProxy)0;
 
             // SqEuclidean: distances 0, 25, 2. nearest=r0 (score 0), farthest=r1 (score 25).
-            fProxyQueryOP.nearestRow(in A, in q, Metric.SqEuclidean, out int ni, out fProxy ns);
+            fProxyQuery_OP.nearestRow(in A, in q, Metric.SqEuclidean, out int ni, out fProxy ns);
             AssertEqI(ni, 0); AssertClose(ns, (fProxy)0, fEps());
 
-            fProxyQueryOP.farthestRow(in A, in q, Metric.SqEuclidean, out int fi, out fProxy fs);
+            fProxyQuery_OP.farthestRow(in A, in q, Metric.SqEuclidean, out int fi, out fProxy fs);
             AssertEqI(fi, 1); AssertClose(fs, (fProxy)25, fEps());   // squared units, not sqrt
 
             // Euclidean score is in euclidean units: farthest = 5.
-            fProxyQueryOP.farthestRow(in A, in q, Metric.Euclidean, out int fi2, out fProxy fs2);
+            fProxyQuery_OP.farthestRow(in A, in q, Metric.Euclidean, out int fi2, out fProxy fs2);
             AssertEqI(fi2, 1); AssertClose(fs2, (fProxy)5, sqrtEps());
 
             arena.Dispose();
@@ -445,18 +445,18 @@ public class fProxyQueryTests
             var q = arena.fProxyVec(2);
             q[0] = (fProxy)1; q[1] = (fProxy)0;
 
-            fProxyQueryOP.nearestRow(in A, in q, Metric.Dot, out int ni, out fProxy ns);
+            fProxyQuery_OP.nearestRow(in A, in q, Metric.Dot, out int ni, out fProxy ns);
             AssertEqI(ni, 1); AssertClose(ns, (fProxy)10, fEps());
 
-            fProxyQueryOP.farthestRow(in A, in q, Metric.Dot, out int fi, out fProxy fs);
+            fProxyQuery_OP.farthestRow(in A, in q, Metric.Dot, out int fi, out fProxy fs);
             AssertEqI(fi, 2); AssertClose(fs, (fProxy)(-5), fEps());
 
             // Cosine: r0 & r1 are parallel to q (cos=1), r2 anti-parallel (cos=-1).
             // nearest = max cosine -> first of the two cos=1 rows (r0); farthest = r2.
-            fProxyQueryOP.nearestRow(in A, in q, Metric.Cosine, out int cni, out fProxy cns);
+            fProxyQuery_OP.nearestRow(in A, in q, Metric.Cosine, out int cni, out fProxy cns);
             AssertEqI(cni, 0); AssertClose(cns, (fProxy)1, sqrtEps());
 
-            fProxyQueryOP.farthestRow(in A, in q, Metric.Cosine, out int cfi, out fProxy cfs);
+            fProxyQuery_OP.farthestRow(in A, in q, Metric.Cosine, out int cfi, out fProxy cfs);
             AssertEqI(cfi, 2); AssertClose(cfs, (fProxy)(-1), sqrtEps());
 
             // Column twins: nearestColumn/farthestColumn with a similarity metric.
@@ -464,9 +464,9 @@ public class fProxyQueryTests
             var q3 = arena.fProxyVec(3);
             q3[0] = (fProxy)1; q3[1] = (fProxy)0; q3[2] = (fProxy)0;
             // Dot: c0·q3 = 1 ; c1·q3 = 0 -> nearest(max)=c0, farthest(min)=c1.
-            fProxyQueryOP.nearestColumn(in A, in q3, Metric.Dot, out int cni2, out fProxy cns2);
+            fProxyQuery_OP.nearestColumn(in A, in q3, Metric.Dot, out int cni2, out fProxy cns2);
             AssertEqI(cni2, 0); AssertClose(cns2, (fProxy)1, fEps());
-            fProxyQueryOP.farthestColumn(in A, in q3, Metric.Dot, out int cfi2, out fProxy cfs2);
+            fProxyQuery_OP.farthestColumn(in A, in q3, Metric.Dot, out int cfi2, out fProxy cfs2);
             AssertEqI(cfi2, 1); AssertClose(cfs2, (fProxy)0, fEps());
 
             arena.Dispose();
@@ -487,12 +487,12 @@ public class fProxyQueryTests
             var scores = arena.fProxyVec(k);
 
             // --- distance metric (SqEuclidean) ---
-            int cnt = fProxyQueryOP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
+            int cnt = fProxyQuery_OP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, k);
 
             // Brute-force all scores then verify: returned set is the k smallest, sorted ascending.
             var all = arena.fProxyVec(M);
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
             // sorted ascending => scores[0] <= scores[1] <= scores[2]
             for (int i = 0; i + 1 < cnt; i++)
                 AssertTrue(scores[i] <= scores[i + 1] + sqrtEps());
@@ -511,10 +511,10 @@ public class fProxyQueryTests
             // --- similarity metric (Dot): best-first = DESCENDING ---
             var idx2 = arena.Indices(k);
             var scores2 = arena.fProxyVec(k);
-            int cnt2 = fProxyQueryOP.kNearestRows(in A, in q, k, Metric.Dot, ref idx2, ref scores2);
+            int cnt2 = fProxyQuery_OP.kNearestRows(in A, in q, k, Metric.Dot, ref idx2, ref scores2);
             AssertEqI(cnt2, k);
             var allDot = arena.fProxyVec(M);
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.Dot, ref allDot);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.Dot, ref allDot);
             for (int i = 0; i + 1 < cnt2; i++)
                 AssertTrue(scores2[i] >= scores2[i + 1] - sqrtEps());
             for (int i = 0; i < cnt2; i++)
@@ -549,7 +549,7 @@ public class fProxyQueryTests
             int k = 10;
             var idx = arena.Indices(k);
             var scores = arena.fProxyVec(k);
-            int cnt = fProxyQueryOP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
+            int cnt = fProxyQuery_OP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, 3);
             // all returned scores == 1
             for (int i = 0; i < cnt; i++) AssertClose(scores[i], (fProxy)1, fEps());
@@ -557,7 +557,7 @@ public class fProxyQueryTests
             AssertEqI(idx[0], 0); AssertEqI(idx[1], 1); AssertEqI(idx[2], 2);
 
             // k = 0 -> returns 0, writes nothing.
-            int z = fProxyQueryOP.kNearestRows(in A, in q, 0, Metric.SqEuclidean, ref idx, ref scores);
+            int z = fProxyQuery_OP.kNearestRows(in A, in q, 0, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(z, 0);
 
             arena.Dispose();
@@ -576,11 +576,11 @@ public class fProxyQueryTests
             int k = 2;
             var idx = arena.Indices(k);
             var scores = arena.fProxyVec(k);
-            int cnt = fProxyQueryOP.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
+            int cnt = fProxyQuery_OP.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, k);
 
             var all = arena.fProxyVec(M);
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
             // farthest-first => descending distance
             for (int i = 0; i + 1 < cnt; i++)
                 AssertTrue(scores[i] >= scores[i + 1] - sqrtEps());
@@ -613,35 +613,35 @@ public class fProxyQueryTests
 
             // radius exactly 5 (boundary): inclusive -> all three rows qualify.
             var idx = arena.Indices(3);
-            int cnt = fProxyQueryOP.rowsWithinRadius(in A, in q, (fProxy)5, Metric.Euclidean, ref idx);
-            int ccnt = fProxyQueryOP.countWithinRadius(in A, in q, (fProxy)5, Metric.Euclidean);
+            int cnt = fProxyQuery_OP.rowsWithinRadius(in A, in q, (fProxy)5, Metric.Euclidean, ref idx);
+            int ccnt = fProxyQuery_OP.countWithinRadius(in A, in q, (fProxy)5, Metric.Euclidean);
             AssertEqI(cnt, 3); AssertEqI(ccnt, 3);
             // filled indices are 0,1,2 in scan order
             AssertEqI(idx[0], 0); AssertEqI(idx[1], 1); AssertEqI(idx[2], 2);
 
             // radius just under 5 -> r1 excluded (only the two close rows).
-            int cnt2 = fProxyQueryOP.rowsWithinRadius(in A, in q, (fProxy)4.9, Metric.Euclidean, ref idx);
+            int cnt2 = fProxyQuery_OP.rowsWithinRadius(in A, in q, (fProxy)4.9, Metric.Euclidean, ref idx);
             AssertEqI(cnt2, 2);
             AssertEqI(idx[0], 0); AssertEqI(idx[1], 2);
-            AssertEqI(fProxyQueryOP.countWithinRadius(in A, in q, (fProxy)4.9, Metric.Euclidean), 2);
+            AssertEqI(fProxyQuery_OP.countWithinRadius(in A, in q, (fProxy)4.9, Metric.Euclidean), 2);
 
             // similarity metric (Dot): inclusive >= r. q2=(1,0): dots 0, 3, 1.
             var q2 = arena.fProxyVec(2);
             q2[0] = (fProxy)1; q2[1] = (fProxy)0;
             // threshold exactly 1 -> rows with dot >= 1: r1(3) and r2(1). r0(0) excluded.
-            int cnt3 = fProxyQueryOP.rowsWithinRadius(in A, in q2, (fProxy)1, Metric.Dot, ref idx);
+            int cnt3 = fProxyQuery_OP.rowsWithinRadius(in A, in q2, (fProxy)1, Metric.Dot, ref idx);
             AssertEqI(cnt3, 2);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 2);
-            AssertEqI(fProxyQueryOP.countWithinRadius(in A, in q2, (fProxy)1, Metric.Dot), 2);
+            AssertEqI(fProxyQuery_OP.countWithinRadius(in A, in q2, (fProxy)1, Metric.Dot), 2);
 
             // Column twins. Columns of A length 3: c0=(0,3,1) c1=(0,4,1). qcol=(0,0,0).
             var qcol = arena.fProxyVec(3);
             qcol[0] = (fProxy)0; qcol[1] = (fProxy)0; qcol[2] = (fProxy)0;
             // SqEuclidean: c0=0+9+1=10, c1=0+16+1=17. radius 10 inclusive -> only c0.
             var idxc = arena.Indices(2);
-            int ccol = fProxyQueryOP.columnsWithinRadius(in A, in qcol, (fProxy)10, Metric.SqEuclidean, ref idxc);
+            int ccol = fProxyQuery_OP.columnsWithinRadius(in A, in qcol, (fProxy)10, Metric.SqEuclidean, ref idxc);
             AssertEqI(ccol, 1); AssertEqI(idxc[0], 0);
-            AssertEqI(fProxyQueryOP.countWithinColumnRadius(in A, in qcol, (fProxy)10, Metric.SqEuclidean), 1);
+            AssertEqI(fProxyQuery_OP.countWithinColumnRadius(in A, in qcol, (fProxy)10, Metric.SqEuclidean), 1);
 
             arena.Dispose();
         }
@@ -658,20 +658,20 @@ public class fProxyQueryTests
             v[0] = (fProxy)1; v[1] = (fProxy)2; v[2] = (fProxy)2; v[3] = (fProxy)3; v[4] = (fProxy)2;
 
             // first match (within tol 0) at index 1
-            AssertEqI(fProxyQueryOP.findValue(in v, (fProxy)2, (fProxy)0), 1);
+            AssertEqI(fProxyQuery_OP.findValue(in v, (fProxy)2, (fProxy)0), 1);
             // absent -> -1
-            AssertEqI(fProxyQueryOP.findValue(in v, (fProxy)9, (fProxy)0), -1);
+            AssertEqI(fProxyQuery_OP.findValue(in v, (fProxy)9, (fProxy)0), -1);
             // tol boundary, exactly representable in float+double: target 2.5, tol 0.5 matches the
             // 2's on the inclusive boundary (|2 - 2.5| = 0.5 <= 0.5) -> first 2 at index 1.
-            AssertEqI(fProxyQueryOP.findValue(in v, (fProxy)2.5, (fProxy)0.5), 1);
+            AssertEqI(fProxyQuery_OP.findValue(in v, (fProxy)2.5, (fProxy)0.5), 1);
             // tol below the gap (|2 - 2.5| = 0.5 > 0.25, |3 - 2.5| = 0.5 > 0.25) -> no match.
-            AssertEqI(fProxyQueryOP.findValue(in v, (fProxy)2.5, (fProxy)0.25), -1);
+            AssertEqI(fProxyQuery_OP.findValue(in v, (fProxy)2.5, (fProxy)0.25), -1);
 
             // matrix overload (flat index). 2x2 = [5, 6; 7, 6]; first 6 at flat 1.
             var A = arena.fProxyMat(2, 2);
             A[0, 0] = (fProxy)5; A[0, 1] = (fProxy)6;
             A[1, 0] = (fProxy)7; A[1, 1] = (fProxy)6;
-            AssertEqI(fProxyQueryOP.findValue(in A, (fProxy)6, (fProxy)0), 1);
+            AssertEqI(fProxyQuery_OP.findValue(in A, (fProxy)6, (fProxy)0), 1);
 
             arena.Dispose();
         }
@@ -685,15 +685,15 @@ public class fProxyQueryTests
             v[3] = (fProxy)(-3); v[4] = (fProxy)0.05; v[5] = (fProxy)0;
 
             // tol=0: nonzero are indices 1,3,4 -> count 3
-            AssertEqI(fProxyQueryOP.countNonzero(in v, (fProxy)0), 3);
+            AssertEqI(fProxyQuery_OP.countNonzero(in v, (fProxy)0), 3);
             var idx = arena.Indices(6);
-            int c = fProxyQueryOP.nonzero(in v, (fProxy)0, ref idx);
+            int c = fProxyQuery_OP.nonzero(in v, (fProxy)0, ref idx);
             AssertEqI(c, 3);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 3); AssertEqI(idx[2], 4);
 
             // tol=0.1: |0.05| filtered out -> indices 1,3 -> count 2
-            AssertEqI(fProxyQueryOP.countNonzero(in v, (fProxy)0.1), 2);
-            int c2 = fProxyQueryOP.nonzero(in v, (fProxy)0.1, ref idx);
+            AssertEqI(fProxyQuery_OP.countNonzero(in v, (fProxy)0.1), 2);
+            int c2 = fProxyQuery_OP.nonzero(in v, (fProxy)0.1, ref idx);
             AssertEqI(c2, 2);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 3);
 
@@ -701,9 +701,9 @@ public class fProxyQueryTests
             var A = arena.fProxyMat(2, 2);
             A[0, 0] = (fProxy)0; A[0, 1] = (fProxy)2;
             A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)0;
-            AssertEqI(fProxyQueryOP.countNonzero(in A, (fProxy)0), 1);
+            AssertEqI(fProxyQuery_OP.countNonzero(in A, (fProxy)0), 1);
             var idxA = arena.Indices(4);
-            int ca = fProxyQueryOP.nonzero(in A, (fProxy)0, ref idxA);
+            int ca = fProxyQuery_OP.nonzero(in A, (fProxy)0, ref idxA);
             AssertEqI(ca, 1); AssertEqI(idxA[0], 1);
 
             arena.Dispose();
@@ -719,7 +719,7 @@ public class fProxyQueryTests
 
             int M = 5, N = 4;
             var A = arena.fProxyRandomMatrix(M, N, -3f, 3f, 20240625);
-            var At = fProxyOP.trans(A);   // N x M
+            var At = fProxy_OP.trans(A);   // N x M
 
             // For a column op on A, the query length is M_Rows = M; this same q is the row query
             // for At (whose N_Cols = M). So nearestColumn(A,q) == nearestRow(At,q).
@@ -727,25 +727,25 @@ public class fProxyQueryTests
             for (int i = 0; i < M; i++) q[i] = (fProxy)(i - 2) * (fProxy)0.7;
 
             // nearestColumn(A) == nearestRow(transpose(A)) for a distance metric.
-            fProxyQueryOP.nearestColumn(in A, in q, Metric.SqEuclidean, out int ci, out fProxy cs);
-            fProxyQueryOP.nearestRow(in At, in q, Metric.SqEuclidean, out int ri, out fProxy rs);
+            fProxyQuery_OP.nearestColumn(in A, in q, Metric.SqEuclidean, out int ci, out fProxy cs);
+            fProxyQuery_OP.nearestRow(in At, in q, Metric.SqEuclidean, out int ri, out fProxy rs);
             AssertEqI(ci, ri); AssertClose(cs, rs, sqrtEps());
 
             // distancesToColumn(A) == distancesToRow(transpose(A)).
             var dc = arena.fProxyVec(N);
             var dr = arena.fProxyVec(N);
-            fProxyQueryOP.distancesToColumn(in A, in q, Metric.Euclidean, ref dc);
-            fProxyQueryOP.distancesToRow(in At, in q, Metric.Euclidean, ref dr);
+            fProxyQuery_OP.distancesToColumn(in A, in q, Metric.Euclidean, ref dc);
+            fProxyQuery_OP.distancesToRow(in At, in q, Metric.Euclidean, ref dr);
             for (int j = 0; j < N; j++)
                 AssertClose(dc[j], dr[j], sqrtEps());
 
             // colArgMin(A) == rowArgMin(transpose(A)): same per-column extreme indices.
             var colIdx = arena.Indices(N);
             var colVal = arena.fProxyVec(N);
-            fProxyQueryOP.colArgMin(in A, ref colIdx, ref colVal);
+            fProxyQuery_OP.colArgMin(in A, ref colIdx, ref colVal);
             var rowIdx = arena.Indices(N);
             var rowVal = arena.fProxyVec(N);
-            fProxyQueryOP.rowArgMin(in At, ref rowIdx, ref rowVal);
+            fProxyQuery_OP.rowArgMin(in At, ref rowIdx, ref rowVal);
             for (int j = 0; j < N; j++)
             {
                 AssertEqI(colIdx[j], rowIdx[j]);
@@ -753,20 +753,20 @@ public class fProxyQueryTests
             }
 
             // argMaxColNorm(A) == argMaxRowNorm(transpose(A)).
-            AssertEqI(fProxyQueryOP.argMaxColNorm(in A, Norm.L2),
-                      fProxyQueryOP.argMaxRowNorm(in At, Norm.L2));
+            AssertEqI(fProxyQuery_OP.argMaxColNorm(in A, Norm.L2),
+                      fProxyQuery_OP.argMaxRowNorm(in At, Norm.L2));
 
             // farthestColumn(A) == farthestRow(transpose(A)).
-            fProxyQueryOP.farthestColumn(in A, in q, Metric.SqEuclidean, out int fci, out fProxy fcs);
-            fProxyQueryOP.farthestRow(in At, in q, Metric.SqEuclidean, out int fri, out fProxy frs);
+            fProxyQuery_OP.farthestColumn(in A, in q, Metric.SqEuclidean, out int fci, out fProxy fcs);
+            fProxyQuery_OP.farthestRow(in At, in q, Metric.SqEuclidean, out int fri, out fProxy frs);
             AssertEqI(fci, fri); AssertClose(fcs, frs, sqrtEps());
 
             // kNearestColumns(A) == kNearestRows(transpose(A)): same indices + scores.
             int kk = 3;
             var ncIdx = arena.Indices(kk); var ncVal = arena.fProxyVec(kk);
             var nrIdx = arena.Indices(kk); var nrVal = arena.fProxyVec(kk);
-            int ncCnt = fProxyQueryOP.kNearestColumns(in A, in q, kk, Metric.SqEuclidean, ref ncIdx, ref ncVal);
-            int nrCnt = fProxyQueryOP.kNearestRows(in At, in q, kk, Metric.SqEuclidean, ref nrIdx, ref nrVal);
+            int ncCnt = fProxyQuery_OP.kNearestColumns(in A, in q, kk, Metric.SqEuclidean, ref ncIdx, ref ncVal);
+            int nrCnt = fProxyQuery_OP.kNearestRows(in At, in q, kk, Metric.SqEuclidean, ref nrIdx, ref nrVal);
             AssertEqI(ncCnt, nrCnt);
             for (int i = 0; i < ncCnt; i++)
             {
@@ -777,8 +777,8 @@ public class fProxyQueryTests
             // kFarthestColumns(A) == kFarthestRows(transpose(A)).
             var fcIdx = arena.Indices(kk); var fcVal = arena.fProxyVec(kk);
             var frIdx = arena.Indices(kk); var frVal = arena.fProxyVec(kk);
-            int fcCnt = fProxyQueryOP.kFarthestColumns(in A, in q, kk, Metric.SqEuclidean, ref fcIdx, ref fcVal);
-            int frCnt = fProxyQueryOP.kFarthestRows(in At, in q, kk, Metric.SqEuclidean, ref frIdx, ref frVal);
+            int fcCnt = fProxyQuery_OP.kFarthestColumns(in A, in q, kk, Metric.SqEuclidean, ref fcIdx, ref fcVal);
+            int frCnt = fProxyQuery_OP.kFarthestRows(in At, in q, kk, Metric.SqEuclidean, ref frIdx, ref frVal);
             AssertEqI(fcCnt, frCnt);
             for (int i = 0; i < fcCnt; i++)
             {
@@ -790,12 +790,12 @@ public class fProxyQueryTests
             fProxy rad = (fProxy)6;
             var cwrIdx = arena.Indices(N);
             var rwrIdx = arena.Indices(N);
-            int cwrCnt = fProxyQueryOP.columnsWithinRadius(in A, in q, rad, Metric.SqEuclidean, ref cwrIdx);
-            int rwrCnt = fProxyQueryOP.rowsWithinRadius(in At, in q, rad, Metric.SqEuclidean, ref rwrIdx);
+            int cwrCnt = fProxyQuery_OP.columnsWithinRadius(in A, in q, rad, Metric.SqEuclidean, ref cwrIdx);
+            int rwrCnt = fProxyQuery_OP.rowsWithinRadius(in At, in q, rad, Metric.SqEuclidean, ref rwrIdx);
             AssertEqI(cwrCnt, rwrCnt);
             for (int i = 0; i < cwrCnt; i++) AssertEqI(cwrIdx[i], rwrIdx[i]);
-            AssertEqI(fProxyQueryOP.countWithinColumnRadius(in A, in q, rad, Metric.SqEuclidean),
-                      fProxyQueryOP.countWithinRadius(in At, in q, rad, Metric.SqEuclidean));
+            AssertEqI(fProxyQuery_OP.countWithinColumnRadius(in A, in q, rad, Metric.SqEuclidean),
+                      fProxyQuery_OP.countWithinRadius(in At, in q, rad, Metric.SqEuclidean));
 
             arena.Dispose();
         }
@@ -822,7 +822,7 @@ public class fProxyQueryTests
             AssertEqI(nrCnt, M);
             AssertEqI(nrIdx.N, M);
             var allR = arena.fProxyVec(M);
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref allR);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref allR);
             for (int i = 0; i + 1 < nrCnt; i++) AssertTrue(nrScore[i] <= nrScore[i + 1] + sqrtEps());
             for (int i = 0; i < nrCnt; i++) AssertClose(nrScore[i], allR[nrIdx[i]], sqrtEps());
 
@@ -836,7 +836,7 @@ public class fProxyQueryTests
             var ncIdx = arena.fProxyKNearestColumns(in A, in qc, kCols, Metric.SqEuclidean, out fProxyN ncScore, out int ncCnt);
             AssertEqI(ncCnt, N);
             var allC = arena.fProxyVec(N);
-            fProxyQueryOP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
+            fProxyQuery_OP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
             for (int i = 0; i + 1 < ncCnt; i++) AssertTrue(ncScore[i] <= ncScore[i + 1] + sqrtEps());
             for (int i = 0; i < ncCnt; i++) AssertClose(ncScore[i], allC[ncIdx[i]], sqrtEps());
 
@@ -865,7 +865,7 @@ public class fProxyQueryTests
             // --- fProxyDistancesToRow / Column wrappers vs primitive ---
             var dr = ArenaExtensions.fProxyDistancesToRow(in A, in q, Metric.SqEuclidean);
             var drRef = arena.fProxyVec(M);
-            fProxyQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
+            fProxyQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
             AssertEqI(dr.N, M);
             for (int i = 0; i < M; i++) AssertClose(dr[i], drRef[i], sqrtEps());
 
@@ -873,14 +873,14 @@ public class fProxyQueryTests
             for (int i = 0; i < M; i++) qc[i] = (fProxy)(i) * (fProxy)0.2;
             var dcol = ArenaExtensions.fProxyDistancesToColumn(in A, in qc, Metric.SqEuclidean);
             var dcolRef = arena.fProxyVec(N);
-            fProxyQueryOP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
+            fProxyQuery_OP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
             AssertEqI(dcol.N, N);
             for (int j = 0; j < N; j++) AssertClose(dcol[j], dcolRef[j], sqrtEps());
 
             // --- fProxyNonzeroIndices: exact-sized, contents match the primitive ---
             var idxNz = arena.fProxyNonzeroIndices(in A, (fProxy)0.5);
             var refNz = arena.Indices(M * N);
-            int refCnt = fProxyQueryOP.nonzero(in A, (fProxy)0.5, ref refNz);
+            int refCnt = fProxyQuery_OP.nonzero(in A, (fProxy)0.5, ref refNz);
             AssertEqI(idxNz.N, refCnt);
             for (int i = 0; i < refCnt; i++) AssertEqI(idxNz[i], refNz[i]);
 
@@ -888,14 +888,14 @@ public class fProxyQueryTests
             fProxy radius = (fProxy)5;
             var idxRR = arena.fProxyRowsWithinRadius(in A, in q, radius, Metric.SqEuclidean);
             var refRR = arena.Indices(M);
-            int refRRcnt = fProxyQueryOP.rowsWithinRadius(in A, in q, radius, Metric.SqEuclidean, ref refRR);
+            int refRRcnt = fProxyQuery_OP.rowsWithinRadius(in A, in q, radius, Metric.SqEuclidean, ref refRR);
             AssertEqI(idxRR.N, refRRcnt);
             for (int i = 0; i < refRRcnt; i++) AssertEqI(idxRR[i], refRR[i]);
 
             // --- fProxyColumnsWithinRadius ---
             var idxCR = arena.fProxyColumnsWithinRadius(in A, in qc, (fProxy)8, Metric.SqEuclidean);
             var refCR = arena.Indices(N);
-            int refCRcnt = fProxyQueryOP.columnsWithinRadius(in A, in qc, (fProxy)8, Metric.SqEuclidean, ref refCR);
+            int refCRcnt = fProxyQuery_OP.columnsWithinRadius(in A, in qc, (fProxy)8, Metric.SqEuclidean, ref refCR);
             AssertEqI(idxCR.N, refCRcnt);
             for (int i = 0; i < refCRcnt; i++) AssertEqI(idxCR[i], refCR[i]);
 
@@ -904,7 +904,7 @@ public class fProxyQueryTests
             var idxK = arena.fProxyKNearestRows(in A, in q, k, Metric.SqEuclidean, out fProxyN scoresK, out int cntK);
             var refIdxK = arena.Indices(k);
             var refScoresK = arena.fProxyVec(k);
-            int refCntK = fProxyQueryOP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxK, ref refScoresK);
+            int refCntK = fProxyQuery_OP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxK, ref refScoresK);
             AssertEqI(cntK, refCntK);
             AssertEqI(idxK.N, refCntK);
             for (int i = 0; i < refCntK; i++)
@@ -917,7 +917,7 @@ public class fProxyQueryTests
             var idxKC = arena.fProxyKNearestColumns(in A, in qc, k, Metric.SqEuclidean, out fProxyN scoresKC, out int cntKC);
             var refIdxKC = arena.Indices(k);
             var refScoresKC = arena.fProxyVec(k);
-            int refCntKC = fProxyQueryOP.kNearestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKC, ref refScoresKC);
+            int refCntKC = fProxyQuery_OP.kNearestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKC, ref refScoresKC);
             AssertEqI(cntKC, refCntKC);
             for (int i = 0; i < refCntKC; i++)
             {
@@ -1019,7 +1019,7 @@ public class fProxyQueryTests
     [Test] public void ArenaKWrapperClampTest()          => RunJob(TestJob.TestType.ArenaKWrapperClamp);
 
     // -------------------------------------------------------------------------
-    // GROUP 4 — BoolAnalysis.whichTrue / countTrue (bool mask bridge).
+    // GROUP 4 — BoolAnalysis_OP.whichTrue / countTrue (bool mask bridge).
     // Bool ops live outside the per-type QueryOP; run on the main thread.
     // -------------------------------------------------------------------------
 
@@ -1032,10 +1032,10 @@ public class fProxyQueryTests
         mask[0] = false; mask[1] = true; mask[2] = false;
         mask[3] = true;  mask[4] = true; mask[5] = false;
 
-        Assert.AreEqual(3, BoolAnalysis.countTrue(in mask));
+        Assert.AreEqual(3, BoolAnalysis_OP.countTrue(in mask));
 
         var idx = arena.Indices(6);
-        int c = BoolAnalysis.whichTrue(in mask, ref idx);
+        int c = BoolAnalysis_OP.whichTrue(in mask, ref idx);
         Assert.AreEqual(3, c);
         Assert.AreEqual(1, idx[0]);
         Assert.AreEqual(3, idx[1]);
@@ -1061,10 +1061,10 @@ public class fProxyQueryTests
         mask[0] = true;  mask[1] = false; mask[2] = true;
         mask[3] = false; mask[4] = false; mask[5] = true;
 
-        Assert.AreEqual(3, BoolAnalysis.countTrue(in mask));
+        Assert.AreEqual(3, BoolAnalysis_OP.countTrue(in mask));
 
         var idx = arena.Indices(6);
-        int c = BoolAnalysis.whichTrue(in mask, ref idx);
+        int c = BoolAnalysis_OP.whichTrue(in mask, ref idx);
         Assert.AreEqual(3, c);
         Assert.AreEqual(0, idx[0]);
         Assert.AreEqual(2, idx[1]);
@@ -1087,9 +1087,9 @@ public class fProxyQueryTests
         var arena = new Arena(Allocator.Persistent);
         var v0 = arena.fProxyVec(0);
         Assert.Throws<InvalidOperationException>(() =>
-            fProxyQueryOP.argMaxAbs(in v0, out fProxy _, out int _));
+            fProxyQuery_OP.argMaxAbs(in v0, out fProxy _, out int _));
         Assert.Throws<InvalidOperationException>(() =>
-            fProxyQueryOP.argMinAbs(in v0, out fProxy _, out int _));
+            fProxyQuery_OP.argMinAbs(in v0, out fProxy _, out int _));
         arena.Dispose();
     }
 
@@ -1102,11 +1102,11 @@ public class fProxyQueryTests
         var dest = arena.fProxyVec(3);
 
         Assert.Throws<ArgumentException>(() =>
-            fProxyQueryOP.distancesToRow(in A, in qBad, Metric.SqEuclidean, ref dest));
+            fProxyQuery_OP.distancesToRow(in A, in qBad, Metric.SqEuclidean, ref dest));
         Assert.Throws<ArgumentException>(() =>
-            fProxyQueryOP.nearestRow(in A, in qBad, Metric.SqEuclidean, out int _, out fProxy _));
+            fProxyQuery_OP.nearestRow(in A, in qBad, Metric.SqEuclidean, out int _, out fProxy _));
         Assert.Throws<ArgumentException>(() =>
-            fProxyQueryOP.countWithinRadius(in A, in qBad, (fProxy)1, Metric.SqEuclidean));
+            fProxyQuery_OP.countWithinRadius(in A, in qBad, (fProxy)1, Metric.SqEuclidean));
         arena.Dispose();
     }
 
@@ -1119,11 +1119,11 @@ public class fProxyQueryTests
         var dest = arena.fProxyVec(4);
 
         Assert.Throws<ArgumentException>(() =>
-            fProxyQueryOP.distancesToColumn(in A, in qBad, Metric.SqEuclidean, ref dest));
+            fProxyQuery_OP.distancesToColumn(in A, in qBad, Metric.SqEuclidean, ref dest));
         Assert.Throws<ArgumentException>(() =>
-            fProxyQueryOP.nearestColumn(in A, in qBad, Metric.SqEuclidean, out int _, out fProxy _));
+            fProxyQuery_OP.nearestColumn(in A, in qBad, Metric.SqEuclidean, out int _, out fProxy _));
         Assert.Throws<ArgumentException>(() =>
-            fProxyQueryOP.countWithinColumnRadius(in A, in qBad, (fProxy)1, Metric.SqEuclidean));
+            fProxyQuery_OP.countWithinColumnRadius(in A, in qBad, (fProxy)1, Metric.SqEuclidean));
         arena.Dispose();
     }
 
@@ -1136,12 +1136,12 @@ public class fProxyQueryTests
     public void DecodeIndexGuardThrows()
     {
         Assert.Throws<ArgumentException>(() =>
-            fProxyQueryOP.decodeIndex(5, 0, out int _, out int _));
+            fProxyQuery_OP.decodeIndex(5, 0, out int _, out int _));
         Assert.Throws<ArgumentException>(() =>
-            fProxyQueryOP.decodeIndex(5, -3, out int _, out int _));
+            fProxyQuery_OP.decodeIndex(5, -3, out int _, out int _));
         // a valid nCols must NOT throw.
         Assert.DoesNotThrow(() =>
-            fProxyQueryOP.decodeIndex(5, 3, out int _, out int _));
+            fProxyQuery_OP.decodeIndex(5, 3, out int _, out int _));
     }
 
     [Test]

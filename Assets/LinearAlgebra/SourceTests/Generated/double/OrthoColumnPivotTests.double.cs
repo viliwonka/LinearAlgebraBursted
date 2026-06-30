@@ -8,7 +8,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for column-pivoted (rank-revealing) QR: OrthoOP.qrDecompositionColumnPivot.
+// Tests for column-pivoted (rank-revealing) QR: Ortho_OP.qrDecompositionColumnPivot.
 // A*P = Q*R with the pivot chosen greedily (Businger–Golub) so |R[d,d]| is non-increasing.
 //
 // Test vectors / properties sourced from the literature:
@@ -35,7 +35,7 @@ public class doubleOrthoColumnPivotTests
             var R = arena.doubleMat(6);
             var P = new Pivot(6, Allocator.Persistent);
 
-            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             P.Dispose();
             arena.Dispose();
@@ -95,7 +95,7 @@ public class doubleOrthoColumnPivotTests
                     var R = arena.doubleMat(n);
                     var A = Q.Copy();
 
-                    OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+                    Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
                     AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
@@ -119,7 +119,7 @@ public class doubleOrthoColumnPivotTests
                     var R = arena.doubleMat(dim);
                     var A = Q.Copy();
 
-                    OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+                    Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
                     AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
@@ -150,7 +150,7 @@ public class doubleOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             // Reconstruction must still hold...
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
@@ -182,7 +182,7 @@ public class doubleOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
@@ -228,7 +228,7 @@ public class doubleOrthoColumnPivotTests
             var P = new Pivot(dim, Allocator.Persistent);
             var A = Q.Copy();
 
-            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
@@ -257,7 +257,7 @@ public class doubleOrthoColumnPivotTests
             var P = new Pivot(dim, Allocator.Persistent);
             var A = Q.Copy();
 
-            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
@@ -276,7 +276,7 @@ public class doubleOrthoColumnPivotTests
             var P = new Pivot(1, Allocator.Persistent);
             var A = Q.Copy();
 
-            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
             RecordEq(P[0], 0);
@@ -298,7 +298,7 @@ public class doubleOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
             for (int d = 0; d < n; d++)
@@ -327,7 +327,7 @@ public class doubleOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
             RecordEq(P[0], 0); // largest stays first
@@ -352,7 +352,7 @@ public class doubleOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            OrthoOP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
@@ -382,17 +382,17 @@ public class doubleOrthoColumnPivotTests
                 for (int j = 0; j < n; j++)
                     Aperm[r, j] = A[r, P[j]];
 
-            doubleMxN shouldBeZero = Aperm - doubleOP.dot(Q, R);
+            doubleMxN shouldBeZero = Aperm - double_OP.dot(Q, R);
 
-            if (Analysis.IsAnyNan(in shouldBeZero))
+            if (Analysis_OP.IsAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
-            double zeroError = Analysis.MaxZeroError(shouldBeZero);
+            double zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
             RecordBound(zeroError, precision);
 
-            Assert.IsTrue(Analysis.IsZero(in shouldBeZero, precision));
-            Assert.IsTrue(Analysis.IsUpperTriangular(R, precision));
-            Assert.IsTrue(Analysis.IsOrthogonal(Q, precision));
+            Assert.IsTrue(Analysis_OP.IsZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis_OP.IsUpperTriangular(R, precision));
+            Assert.IsTrue(Analysis_OP.IsOrthogonal(Q, precision));
 
             // |R[d,d]| non-increasing (guaranteed by greedy column pivoting). Allow a small
             // absolute slack relative to the leading magnitude for float rounding.
@@ -464,7 +464,7 @@ public class doubleOrthoColumnPivotTests
     }
 
     // ────────────────────────────────────────────────────────────────────────────────
-    // SOLVER: OrthoOP.qrcpDirectSolve — QRCP-based rank-safe least-squares (BASIC / truncated
+    // SOLVER: Ortho_OP.qrcpDirectSolve — QRCP-based rank-safe least-squares (BASIC / truncated
     // solution). Solves min‖A x − b‖ for a possibly rank-deficient A (m >= n). Returns the
     // detected numerical rank and the basic solution (≤ rank nonzeros in permuted order):
     // minimal RESIDUAL but NOT minimum norm. At full column rank it reduces to ordinary QR-LS.
@@ -526,16 +526,16 @@ public class doubleOrthoColumnPivotTests
             var b = arena.doubleRandomVector(m, -5f, 5f, 9091);
 
             var x = arena.doubleVec(n);
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, out int rank); // qrcp leaves A,b intact
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank); // qrcp leaves A,b intact
 
             RecordEq(rank, n);
-            if (Analysis.IsAnyNan(in x)) { Fail0(0, 0); return; }
+            if (Analysis_OP.IsAnyNan(in x)) { Fail0(0, 0); return; }
 
             // reference: ordinary QR-LS (destroys its inputs -> feed copies)
             var Aqr = A.Copy();
             var bqr = b.Copy();
             var xRef = arena.doubleVec(n);
-            OrthoOP.qrDirectSolve(ref Aqr, ref bqr, ref xRef);
+            Ortho_OP.qrDirectSolve(ref Aqr, ref bqr, ref xRef);
 
             double tol = (double)Consts.doubleSqrtEps * (double)10;
             for (int k = 0; k < n; k++)
@@ -556,7 +556,7 @@ public class doubleOrthoColumnPivotTests
                 A[d, d] += (double)10f;
 
             var xOrig = arena.doubleRandomVector(dim, -3f, 3f, 1337);
-            var b = doubleOP.dot(A, xOrig); // b in range(A) -> exact solution exists
+            var b = double_OP.dot(A, xOrig); // b in range(A) -> exact solution exists
             var A_copy = A.Copy();          // for residual check after the solve
 
             var Q = arena.doubleMat(dim, dim);
@@ -565,10 +565,10 @@ public class doubleOrthoColumnPivotTests
             var u = arena.doubleVec(dim);
             var x = arena.doubleVec(dim);
 
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank);
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank);
 
             RecordEq(rank, dim);
-            if (!Analysis.IsAnyNan(in x))
+            if (!Analysis_OP.IsAnyNan(in x))
             {
                 double tol = (double)Consts.doubleSqrtEps * (double)10;
                 for (int k = 0; k < dim; k++)
@@ -600,10 +600,10 @@ public class doubleOrthoColumnPivotTests
             var b = arena.doubleRandomVector(m, -3f, 3f, 5511);
 
             var x = arena.doubleVec(n);
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
 
             RecordEq(rank, 3);
-            if (Analysis.IsAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis_OP.IsAnyNan(in x)) { Fail0(1, 0); return; }
 
             double resQrcp = ResidualNorm(in A_copy, in x, in b);
             double normQrcp = VecNorm(in x);
@@ -647,13 +647,13 @@ public class doubleOrthoColumnPivotTests
             mean /= (double)dim;
 
             var x = arena.doubleVec(dim);
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
 
             RecordEq(rank, 1);
-            if (Analysis.IsAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis_OP.IsAnyNan(in x)) { Fail0(1, 0); return; }
 
             // reconstruction A x must be the projection of b onto span(ones) = mean(b)*ones
-            var Ax = doubleOP.dot(A_copy, x);
+            var Ax = double_OP.dot(A_copy, x);
             double tol = (double)Consts.doubleSqrtEps * (double)10;
             for (int i = 0; i < dim; i++)
                 AssertClose(Ax[i], mean, tol * (math.abs(mean) + (double)1));
@@ -700,10 +700,10 @@ public class doubleOrthoColumnPivotTests
             var x = arena.doubleVec(n);
 
             double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, explicitTol);
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, explicitTol);
 
             RecordEq(rank, 3);
-            if (Analysis.IsAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis_OP.IsAnyNan(in x)) { Fail0(1, 0); return; }
 
             double resQrcp = ResidualNorm(in A_copy, in x, in b);
 
@@ -733,10 +733,10 @@ public class doubleOrthoColumnPivotTests
             var b = arena.doubleRandomVector(m, -5f, 5f, 5151);
 
             var x = arena.doubleVec(n);
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
 
             RecordEq(rank, 0);
-            if (Analysis.IsAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis_OP.IsAnyNan(in x)) { Fail0(1, 0); return; }
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], (double)0, (double)Consts.doubleSqrtEps);
 
@@ -757,10 +757,10 @@ public class doubleOrthoColumnPivotTests
             b[0] = (double)10f;
 
             var x = arena.doubleVec(1);
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
 
             RecordEq(rank, 1);
-            if (Analysis.IsAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis_OP.IsAnyNan(in x)) { Fail0(1, 0); return; }
 
             AssertClose(x[0], (double)2.5f, (double)Consts.doubleSqrtEps * (double)10);
             RecordBound(ResidualNorm(in A_copy, in x, in b), (double)Consts.doubleSqrtEps * (double)10);
@@ -783,14 +783,14 @@ public class doubleOrthoColumnPivotTests
             var b = arena.doubleRandomVector(m, -3f, 3f, 2424);
 
             var xAuto = arena.doubleVec(n);
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref xAuto, out int rankAuto); // default overload
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref xAuto, out int rankAuto); // default overload
 
             var xNeg = arena.doubleVec(n);
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref xNeg, out int rankNeg, (double)(-1)); // sentinel
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref xNeg, out int rankNeg, (double)(-1)); // sentinel
 
             double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
             var xExpl = arena.doubleVec(n);
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref xExpl, out int rankExpl, explicitTol);
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref xExpl, out int rankExpl, explicitTol);
 
             RecordEq(rankNeg, rankAuto);
             RecordEq(rankExpl, rankAuto);
@@ -828,10 +828,10 @@ public class doubleOrthoColumnPivotTests
             var u = arena.doubleVec(m);
             var x = arena.doubleVec(n);
 
-            OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, (double)(-1));
+            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, (double)(-1));
 
             RecordEq(rank, 1);
-            if (Analysis.IsAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis_OP.IsAnyNan(in x)) { Fail0(1, 0); return; }
 
             double tol = (double)Consts.doubleSqrtEps * (double)10;
             AssertClose(x[0], (double)0f, tol); // free variable (original col0) zeroed
@@ -849,7 +849,7 @@ public class doubleOrthoColumnPivotTests
         // ‖A x − b‖2 using an UNMODIFIED copy of A (the live A may be consumed by a solver).
         double ResidualNorm(in doubleMxN A, in doubleN x, in doubleN b)
         {
-            var Ax = doubleOP.dot(A, x);
+            var Ax = double_OP.dot(A, x);
             double s = (double)0;
             for (int i = 0; i < b.N; i++)
             {
@@ -955,7 +955,7 @@ public class doubleOrthoColumnPivotTests
         var A = arena.doubleMat(2, 3);
         var b = arena.doubleVec(2);
         var x = arena.doubleVec(3);
-        Assert.Catch<ArgumentException>(() => OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
+        Assert.Catch<ArgumentException>(() => Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
         arena.Dispose();
     }
 
@@ -966,7 +966,7 @@ public class doubleOrthoColumnPivotTests
         var A = arena.doubleMat(4, 3);
         var b = arena.doubleVec(3); // should be 4
         var x = arena.doubleVec(3);
-        Assert.Catch<ArgumentException>(() => OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
+        Assert.Catch<ArgumentException>(() => Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
         arena.Dispose();
     }
 
@@ -977,7 +977,7 @@ public class doubleOrthoColumnPivotTests
         var A = arena.doubleMat(4, 3);
         var b = arena.doubleVec(4);
         var x = arena.doubleVec(2); // should be 3
-        Assert.Catch<ArgumentException>(() => OrthoOP.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
+        Assert.Catch<ArgumentException>(() => Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
         arena.Dispose();
     }
 }

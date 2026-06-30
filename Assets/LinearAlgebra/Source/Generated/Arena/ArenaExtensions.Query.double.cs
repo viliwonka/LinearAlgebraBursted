@@ -2,7 +2,7 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // Allocating (arena) wrappers for doubleQueryOP search operations.
+    // Allocating (arena) wrappers for doubleQuery_OP search operations.
     // Zero-alloc ref-dest primitives (distancesToRow/Column) are in QueryOP;
     // these wrappers allocate from the matrix's own arena so callers don't
     // have to size buffers manually for the double-typed outputs.
@@ -23,7 +23,7 @@ namespace LinearAlgebra
         public static doubleN doubleDistancesToRow(in doubleMxN A, in doubleN q, Metric m)
         {
             var dest = A.doubleVec(A.M_Rows);
-            doubleQueryOP.distancesToRow(in A, in q, m, ref dest);
+            doubleQuery_OP.distancesToRow(in A, in q, m, ref dest);
             return dest;
         }
 
@@ -34,7 +34,7 @@ namespace LinearAlgebra
         public static doubleN doubleDistancesToColumn(in doubleMxN A, in doubleN q, Metric m)
         {
             var dest = A.doubleVec(A.N_Cols);
-            doubleQueryOP.distancesToColumn(in A, in q, m, ref dest);
+            doubleQuery_OP.distancesToColumn(in A, in q, m, ref dest);
             return dest;
         }
 
@@ -49,7 +49,7 @@ namespace LinearAlgebra
         public static Indices doubleNonzeroIndices<T>(this ref Arena arena, in T x, double tol)
             where T : unmanaged, IUnsafedoubleArray
         {
-            int count = doubleQueryOP.countNonzero(in x, tol);
+            int count = doubleQuery_OP.countNonzero(in x, tol);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             int written = 0;
@@ -67,14 +67,14 @@ namespace LinearAlgebra
         /// </summary>
         public static Indices doubleRowsWithinRadius(this ref Arena arena, in doubleMxN A, in doubleN q, double r, Metric m)
         {
-            int count = doubleQueryOP.countWithinRadius(in A, in q, r, m);
+            int count = doubleQuery_OP.countWithinRadius(in A, in q, r, m);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int written = 0;
             for (int row = 0; row < A.M_Rows; row++)
             {
-                double s = doubleQueryOP.RowScore(in A, row, in q, m);
+                double s = doubleQuery_OP.RowScore(in A, row, in q, m);
                 if (sim ? s >= r : s <= r) idx[written++] = row;
             }
             return idx;
@@ -85,14 +85,14 @@ namespace LinearAlgebra
         /// </summary>
         public static Indices doubleColumnsWithinRadius(this ref Arena arena, in doubleMxN A, in doubleN q, double r, Metric m)
         {
-            int count = doubleQueryOP.countWithinColumnRadius(in A, in q, r, m);
+            int count = doubleQuery_OP.countWithinColumnRadius(in A, in q, r, m);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             bool sim = m == Metric.Cosine || m == Metric.Dot;
             int written = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                double s = doubleQueryOP.ColScore(in A, c, in q, m);
+                double s = doubleQuery_OP.ColScore(in A, c, in q, m);
                 if (sim ? s >= r : s <= r) idx[written++] = c;
             }
             return idx;
@@ -112,7 +112,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.doubleVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.doubleVec(clampedK);
-            count = doubleQueryOP.kNearestRows(in A, in q, clampedK, m, ref idx, ref scores);
+            count = doubleQuery_OP.kNearestRows(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -125,7 +125,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.doubleVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.doubleVec(clampedK);
-            count = doubleQueryOP.kNearestColumns(in A, in q, clampedK, m, ref idx, ref scores);
+            count = doubleQuery_OP.kNearestColumns(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -143,7 +143,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.doubleVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.doubleVec(clampedK);
-            count = doubleQueryOP.kFarthestRows(in A, in q, clampedK, m, ref idx, ref scores);
+            count = doubleQuery_OP.kFarthestRows(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -157,7 +157,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.doubleVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.doubleVec(clampedK);
-            count = doubleQueryOP.kFarthestColumns(in A, in q, clampedK, m, ref idx, ref scores);
+            count = doubleQuery_OP.kFarthestColumns(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
     }

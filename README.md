@@ -42,17 +42,17 @@ Here's a simple example:
     floatMxN compSumMat = matI + matRand;
 
     // adds 1f to compSumMat inplace, allocating nothing
-    floatOP.addInpl(compSumMat, 1f);
+    float_OP.addInpl(compSumMat, 1f);
 
     // mulls matI into compSumMat inplace, allocating nothing 
-    floatOP.compMulInpl(compSumMat, matI);
+    float_OP.compMulInpl(compSumMat, matI);
 
     // creates random matrix with range from -3f to 3f
     floatMxN A = arena.floatRandomDiagonalMatrix(dim, -3f, 3f);
     floatMxN B = arena.floatRandomDiagonalMatrix(dim, -3f, 3f);
 
     // dot multiply A and B, will allocate new matrix
-    floatMxN C = floatOP.dot(A, B);
+    floatMxN C = float_OP.dot(A, B);
 
     // adds 5f to element on [0, 0] coords
     C[0, 0] += 5f;
@@ -63,10 +63,10 @@ Here's a simple example:
 
     // solves linear system Ax = b inplace using QR, will allocate nothing permament
     // but will modify A and b
-    OrthoOP.qrDirectSolve(ref A, ref b, ref x_result);
+    Ortho_OP.qrDirectSolve(ref A, ref b, ref x_result);
 
     // calculate L1 norm
-    float norm = floatNormsOP.L1(x_result);
+    float norm = floatNorms_OP.L1(x_result);
 
     // prints C matrix, although it will be cutoff because of big dimensions
     Print.Log(C);
@@ -106,13 +106,13 @@ Here's a simple example:
     longMxN longMat = arena.longRandomMatrix(10, 10, 0, 10);
 
     // mean of a vec
-    double mean = doubleStatsOP.mean(in doubleMat);
+    double mean = doubleStats_OP.mean(in doubleMat);
 
     // mean of a vec
-    double max = doubleStatsOP.max(in doubleMat);
+    double max = doubleStats_OP.max(in doubleMat);
 
     // vector of means of each row
-    doubleN rowMean = doubleStatsOP.rowMean(in doubleMat);
+    doubleN rowMean = doubleStats_OP.rowMean(in doubleMat);
 
     // clears and dispose all allocated vectors/matrices, disposes also arena
     arena.Dispose();

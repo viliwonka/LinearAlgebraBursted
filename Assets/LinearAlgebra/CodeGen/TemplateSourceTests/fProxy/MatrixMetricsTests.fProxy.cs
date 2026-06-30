@@ -72,8 +72,8 @@ public class fProxyMatrixMetricsTests
             var v = arena.fProxyVec(4);
             v[0] = (fProxy)3; v[1] = (fProxy)(-4); v[2] = (fProxy)0; v[3] = (fProxy)1;
 
-            AssertClose(fProxyNormsOP.L1(in v), (fProxy)8, (fProxy)1E-5);
-            AssertClose(fProxyNormsOP.LInf(in v), (fProxy)4, (fProxy)1E-5);
+            AssertClose(fProxyNorms_OP.L1(in v), (fProxy)8, (fProxy)1E-5);
+            AssertClose(fProxyNorms_OP.LInf(in v), (fProxy)4, (fProxy)1E-5);
 
             arena.Dispose();
         }
@@ -87,7 +87,7 @@ public class fProxyMatrixMetricsTests
             A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)2;
             A[1, 0] = (fProxy)3; A[1, 1] = (fProxy)4;
 
-            AssertClose(fProxyOP.trace(in A), (fProxy)5, (fProxy)1E-5);
+            AssertClose(fProxy_OP.trace(in A), (fProxy)5, (fProxy)1E-5);
 
             arena.Dispose();
         }
@@ -101,7 +101,7 @@ public class fProxyMatrixMetricsTests
             A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)(-2);
             A[1, 0] = (fProxy)(-3); A[1, 1] = (fProxy)4;
 
-            AssertClose(fProxyNormsOP.matrixL1(in A), (fProxy)6, (fProxy)1E-5);
+            AssertClose(fProxyNorms_OP.matrixL1(in A), (fProxy)6, (fProxy)1E-5);
 
             arena.Dispose();
         }
@@ -115,7 +115,7 @@ public class fProxyMatrixMetricsTests
             A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)(-2);
             A[1, 0] = (fProxy)(-3); A[1, 1] = (fProxy)4;
 
-            AssertClose(fProxyNormsOP.matrixLInf(in A), (fProxy)7, (fProxy)1E-5);
+            AssertClose(fProxyNorms_OP.matrixLInf(in A), (fProxy)7, (fProxy)1E-5);
 
             arena.Dispose();
         }
@@ -128,7 +128,7 @@ public class fProxyMatrixMetricsTests
             var A = arena.fProxyMat(2, 2);
             A[0, 0] = (fProxy)5; A[1, 1] = (fProxy)2;
 
-            AssertClose(fProxyNormsOP.matrixL2(in A), (fProxy)5, (fProxy)1E-4);
+            AssertClose(fProxyNorms_OP.matrixL2(in A), (fProxy)5, (fProxy)1E-4);
 
             // tall/square branch must NOT modify A (it decomposes a TempCopy, not A itself)
             AssertClose(A[0, 0], (fProxy)5, (fProxy)1E-6);
@@ -148,9 +148,9 @@ public class fProxyMatrixMetricsTests
             A[0, 0] = (fProxy)3;
             A[1, 1] = (fProxy)4;
 
-            AssertClose(fProxyNormsOP.matrixL2(in A), (fProxy)4, (fProxy)1E-4);
-            AssertIntEqual(fProxyOP.rank(in A), 2);
-            AssertClose(fProxyOP.cond(in A), (fProxy)4 / (fProxy)3, (fProxy)1E-4);
+            AssertClose(fProxyNorms_OP.matrixL2(in A), (fProxy)4, (fProxy)1E-4);
+            AssertIntEqual(fProxy_OP.rank(in A), 2);
+            AssertClose(fProxy_OP.cond(in A), (fProxy)4 / (fProxy)3, (fProxy)1E-4);
 
             AssertClose(A[0, 0], (fProxy)3, (fProxy)1E-6);
             AssertClose(A[1, 1], (fProxy)4, (fProxy)1E-6);
@@ -166,7 +166,7 @@ public class fProxyMatrixMetricsTests
             var A = arena.fProxyMat(2, 2);
             A[0, 0] = (fProxy)4; A[1, 1] = (fProxy)1;
 
-            AssertClose(fProxyOP.cond(in A), (fProxy)4, (fProxy)1E-4);
+            AssertClose(fProxy_OP.cond(in A), (fProxy)4, (fProxy)1E-4);
 
             arena.Dispose();
         }
@@ -177,7 +177,7 @@ public class fProxyMatrixMetricsTests
             var arena = new Arena(Allocator.Persistent);
 
             var A = arena.fProxyIdentityMatrix(3);
-            AssertClose(fProxyOP.cond(in A), (fProxy)1, (fProxy)1E-4);
+            AssertClose(fProxy_OP.cond(in A), (fProxy)1, (fProxy)1E-4);
 
             arena.Dispose();
         }
@@ -189,7 +189,7 @@ public class fProxyMatrixMetricsTests
             var arena = new Arena(Allocator.Persistent);
 
             var A = arena.fProxyMat(2, 2);   // all zeros
-            AssertGreater(fProxyOP.cond(in A), (fProxy)1E6);
+            AssertGreater(fProxy_OP.cond(in A), (fProxy)1E6);
 
             arena.Dispose();
         }
@@ -205,8 +205,8 @@ public class fProxyMatrixMetricsTests
             A[1, 0] = (fProxy)3;  A[1, 1] = (fProxy)(-4);
             A[2, 0] = (fProxy)5;  A[2, 1] = (fProxy)6;
 
-            AssertClose(fProxyNormsOP.matrixL1(in A), (fProxy)12, (fProxy)1E-5);
-            AssertClose(fProxyNormsOP.matrixLInf(in A), (fProxy)11, (fProxy)1E-5);
+            AssertClose(fProxyNorms_OP.matrixL1(in A), (fProxy)12, (fProxy)1E-5);
+            AssertClose(fProxyNorms_OP.matrixLInf(in A), (fProxy)11, (fProxy)1E-5);
 
             arena.Dispose();
         }
@@ -219,7 +219,7 @@ public class fProxyMatrixMetricsTests
             var A = arena.fProxyMat(2, 2);
             A[0, 0] = (fProxy)3; A[1, 0] = (fProxy)4;   // column 1 is zero
 
-            fProxy c = fProxyOP.cond(in A);
+            fProxy c = fProxy_OP.cond(in A);
             // true value is +inf; accept anything astronomically large (NaN-safe via the record below)
             AssertGreater(c, (fProxy)1E6);
 
@@ -256,7 +256,7 @@ public class fProxyMatrixMetricsTests
                 expected = 0;
             }
 
-            int r = fProxyOP.rank(in A);
+            int r = fProxy_OP.rank(in A);
             AssertIntEqual(r, expected);
 
             arena.Dispose();
@@ -273,8 +273,8 @@ public class fProxyMatrixMetricsTests
             A[0, 0] = (fProxy)2; A[0, 1] = (fProxy)1;
             A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)2;
 
-            AssertClose(fProxyOP.cond(in A), (fProxy)3, (fProxy)1E-4);
-            AssertClose(fProxyNormsOP.matrixL2(in A), (fProxy)3, (fProxy)1E-4);
+            AssertClose(fProxy_OP.cond(in A), (fProxy)3, (fProxy)1E-4);
+            AssertClose(fProxyNorms_OP.matrixL2(in A), (fProxy)3, (fProxy)1E-4);
 
             arena.Dispose();
         }
@@ -288,10 +288,10 @@ public class fProxyMatrixMetricsTests
             var A = arena.fProxyMat(1, 1);
             A[0, 0] = (fProxy)7;
 
-            AssertClose(fProxyOP.trace(in A), (fProxy)7, (fProxy)1E-5);
-            AssertClose(fProxyOP.cond(in A), (fProxy)1, (fProxy)1E-4);
-            AssertIntEqual(fProxyOP.rank(in A), 1);
-            AssertClose(fProxyNormsOP.matrixL2(in A), (fProxy)7, (fProxy)1E-4);
+            AssertClose(fProxy_OP.trace(in A), (fProxy)7, (fProxy)1E-5);
+            AssertClose(fProxy_OP.cond(in A), (fProxy)1, (fProxy)1E-4);
+            AssertIntEqual(fProxy_OP.rank(in A), 1);
+            AssertClose(fProxyNorms_OP.matrixL2(in A), (fProxy)7, (fProxy)1E-4);
 
             arena.Dispose();
         }
@@ -305,8 +305,8 @@ public class fProxyMatrixMetricsTests
             var A = arena.fProxyMat(2, 2);
             A[0, 0] = (fProxy)1; A[1, 1] = (fProxy)1E-5;
 
-            AssertIntEqual(fProxyOP.rank(in A), 2);                       // auto tol
-            AssertIntEqual(fProxyOP.rank(in A, (fProxy)1E-2), 1);         // loose tol drops σ=1e-5
+            AssertIntEqual(fProxy_OP.rank(in A), 2);                       // auto tol
+            AssertIntEqual(fProxy_OP.rank(in A, (fProxy)1E-2), 1);         // loose tol drops σ=1e-5
 
             arena.Dispose();
         }
@@ -371,7 +371,7 @@ public class fProxyMatrixMetricsTests
         try
         {
             var A = arena.fProxyMat(2, 3);
-            Assert.Throws<ArgumentException>(() => fProxyOP.trace(in A));
+            Assert.Throws<ArgumentException>(() => fProxy_OP.trace(in A));
         }
         finally { arena.Dispose(); }
     }

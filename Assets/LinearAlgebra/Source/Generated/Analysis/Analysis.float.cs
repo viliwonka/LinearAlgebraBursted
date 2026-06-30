@@ -5,7 +5,7 @@ using Unity.Burst;
 namespace LinearAlgebra
 {
 
-    public static partial class Analysis {
+    public static partial class Analysis_OP {
 
         public static bool IsAnyNan(in floatN a) {
             
@@ -244,7 +244,7 @@ namespace LinearAlgebra
 
             // B = A^T * A
             unsafe {
-                UnsafeOP.matMatDotTransA(A.Data.Ptr, A.Data.Ptr, B.Data.Ptr, A.N_Cols, A.M_Rows, B.N_Cols);
+                Unsafe_OP.matMatDotTransA(A.Data.Ptr, A.Data.Ptr, B.Data.Ptr, A.N_Cols, A.M_Rows, B.N_Cols);
             }
 
             bool valid = true;

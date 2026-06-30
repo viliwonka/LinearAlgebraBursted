@@ -47,19 +47,19 @@ public class floatSolversTests {
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             var b = arena.floatRandomVector(dim, -1f, 1f);
 
-            var y = floatOP.dot(b, Q);
+            var y = float_OP.dot(b, Q);
             
             //var x = arena.Vector(dim);
 
             Solvers.SolveUpperTriangular(ref R, ref y);
 
-            var Ax = floatOP.dot(A, y);
+            var Ax = float_OP.dot(A, y);
 
-            Assert.IsTrue(Analysis.IsZero(b - Ax, 1E-6f));
+            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, 1E-6f));
             /*Print.Log(A);
             Print.Log(Q);
             Print.Log(R);

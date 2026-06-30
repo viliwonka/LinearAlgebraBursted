@@ -4,7 +4,7 @@ namespace LinearAlgebra.ML
 {
     /// <summary>
     /// Reusable scratch storage for zero-alloc Lloyd k-means.
-    /// Allocate ONCE (sized for the data shape) via <c>Arena.floatKMeansWorkspace(N, D, k)</c>
+    /// Allocate ONCE (sized for the data shape) via <c>Arena.floatKMeans_WS(N, D, k)</c>
     /// and reuse across same-shape calls. All buffers are arena-owned and disposed with the arena.
     ///
     /// Memory layout (all float-scalar counts):
@@ -17,7 +17,7 @@ namespace LinearAlgebra.ML
     ///   ClusterCounts  k    — per-cluster point count (zeroed each iteration)
     ///   D2Weights      N    — D² distances used for k-means++ seeding only
     /// </summary>
-    public struct floatKMeansWorkspace
+    public struct floatKMeans_WS
     {
         public floatMxN Gram;           // N x k  GEMM output X*C^T, patched to scores in-place
         public floatMxN Ct;             // D x k  transposed centroids (refreshed each iteration)
@@ -40,9 +40,9 @@ namespace LinearAlgebra
         /// All buffers are persistent in this arena (disposed with it).
         /// Create once outside hot loops and reuse for same-shape calls.
         /// </summary>
-        public LinearAlgebra.ML.floatKMeansWorkspace floatKMeansWorkspace(int N, int D, int k)
+        public LinearAlgebra.ML.floatKMeans_WS floatKMeans_WS(int N, int D, int k)
         {
-            return new LinearAlgebra.ML.floatKMeansWorkspace
+            return new LinearAlgebra.ML.floatKMeans_WS
             {
                 Gram           = floatMat(N, k),
                 Ct             = floatMat(D, k),

@@ -16,7 +16,7 @@ Hard-won rules from vectorizing the dense kernels. Terse on purpose.
 
 ## The fixes (in order of leverage)
 1. **axpy beats dot.** `y[i] += a*x[i]` is independent across i → full SIMD. A dot/reduction has a loop-carried accumulator that Burst can't reassociate under strict `FloatMode` → stays scalar. Prefer **rank-update (axpy)** formulations over **inner-product (dot)** ones. (Right-looking LU/Cholesky, Householder rank-2 update.)
-2. **Route hot loops through the existing `[NoAlias]` raw-pointer `UnsafeOP` kernels** (`axpy`, `vecDotRange`, `addSquares`, …) — the same path GEMM uses. This is what makes Burst emit SIMD.
+2. **Route hot loops through the existing `[NoAlias]` raw-pointer `Unsafe_OP` kernels** (`axpy`, `vecDotRange`, `addSquares`, …) — the same path GEMM uses. This is what makes Burst emit SIMD.
 3. **If a dot is unavoidable, use multiple independent accumulators** (source-level reassociation). Recovers ILP (overlapped FMA latency) ≈ ~2×, but that's ILP, *not* SIMD width — the real win is a rank-update rewrite.
 4. **Cache vs SIMD are separate, stacking wins.** Register-blocking / row-reorder fixes *cache*; it does not vectorize. Do both.
 

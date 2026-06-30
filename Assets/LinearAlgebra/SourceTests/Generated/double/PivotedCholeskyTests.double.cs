@@ -122,12 +122,12 @@ public class doublePivotedCholeskyTests
 
                 // exact solve: b = A xOrig => x == xOrig.
                 var xOrig = arena.doubleRandomVector(n, -3f, 3f, 71000 + t * 7);
-                var b = doubleOP.dot(A, xOrig);
+                var b = double_OP.dot(A, xOrig);
                 var Lc = arena.doubleMat(n);
                 var Pc = new Pivot(n, Allocator.Persistent);
                 Cholesky.choleskyPivotSolve(in A, ref Lc, ref Pc, ref b); // b <- x
                 for (int i = 0; i < n; i++) b[i] -= xOrig[i];
-                RecordBound(doubleNormsOP.L2(in b), (double)1E-3f);
+                RecordBound(doubleNorms_OP.L2(in b), (double)1E-3f);
 
                 Pc.Dispose();
                 P.Dispose();
@@ -183,18 +183,18 @@ public class doublePivotedCholeskyTests
 
                 // xRange = A·w ∈ range(A); b = A·xRange => min-norm solution == xRange.
                 var w = arena.doubleRandomVector(n, -2f, 2f, 51000 + t * 5);
-                var xRange = doubleOP.dot(A, w);
-                var b = doubleOP.dot(A, xRange);
+                var xRange = double_OP.dot(A, w);
+                var b = double_OP.dot(A, xRange);
 
                 var Ls = arena.doubleMat(n);
                 var Ps = new Pivot(n, Allocator.Persistent);
                 Cholesky.choleskyPivotSolve(in A, ref Ls, ref Ps, ref b); // b <- x
 
                 // A·x ≈ A·xRange (consistency) and x ≈ xRange (exact recovery, scaled by ‖xRange‖).
-                double scale = doubleNormsOP.L2(in xRange) + (double)1f;
+                double scale = doubleNorms_OP.L2(in xRange) + (double)1f;
                 var diff = arena.doubleVec(n);
                 for (int i = 0; i < n; i++) diff[i] = b[i] - xRange[i];
-                RecordBound(doubleNormsOP.L2(in diff) / scale, (double)1E-2f);
+                RecordBound(doubleNorms_OP.L2(in diff) / scale, (double)1E-2f);
 
                 Ps.Dispose();
                 P.Dispose();
@@ -217,7 +217,7 @@ public class doublePivotedCholeskyTests
                 var A = Gram(in arena, in B);
 
                 var xOrig = arena.doubleRandomVector(n, -2f, 2f, 42000 + t * 9);
-                var b = doubleOP.dot(A, xOrig);     // b ∈ range(A)
+                var b = double_OP.dot(A, xOrig);     // b ∈ range(A)
                 var bForResidual = b.Copy();
 
                 var L = arena.doubleMat(n);
@@ -225,15 +225,15 @@ public class doublePivotedCholeskyTests
                 Cholesky.choleskyPivotSolve(in A, ref L, ref P, ref b); // b <- x
 
                 // consistency: A·x ≈ bForResidual.
-                var Ax = doubleOP.dot(A, b);
+                var Ax = double_OP.dot(A, b);
                 var resid = arena.doubleVec(n);
                 for (int i = 0; i < n; i++) resid[i] = Ax[i] - bForResidual[i];
-                double bScale = doubleNormsOP.L2(in bForResidual) + (double)1f;
-                RecordBound(doubleNormsOP.L2(in resid) / bScale, (double)1E-2f);
+                double bScale = doubleNorms_OP.L2(in bForResidual) + (double)1f;
+                RecordBound(doubleNorms_OP.L2(in resid) / bScale, (double)1E-2f);
 
                 // minimum-norm: ‖x‖ ≤ ‖xOrig‖ (+ tiny slack).
-                double xNorm = doubleNormsOP.L2(in b);
-                double origNorm = doubleNormsOP.L2(in xOrig);
+                double xNorm = doubleNorms_OP.L2(in b);
+                double origNorm = doubleNorms_OP.L2(in xOrig);
                 if (!(xNorm <= origNorm + (double)1E-3f * (origNorm + (double)1f)) && Fail[0] == (double)0)
                 {
                     Fail[0] = (double)1;
@@ -305,7 +305,7 @@ public class doublePivotedCholeskyTests
             // solve: x = 0 for any b.
             var b = arena.doubleRandomVector(n, -1f, 1f, 999);
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b);
-            RecordBound(doubleNormsOP.L2(in b), (double)1E-6f);
+            RecordBound(doubleNorms_OP.L2(in b), (double)1E-6f);
 
             P.Dispose();
             arena.Dispose();
@@ -406,16 +406,16 @@ public class doublePivotedCholeskyTests
                 RecordEq(ok ? 1 : 0, 1);
 
                 // normal equations: A(Ax) == A b  <=>  A(Ax - b) == 0  (residual ⟂ range(A)).
-                var Ax = doubleOP.dot(A, b);
-                var AAx = doubleOP.dot(A, Ax);
+                var Ax = double_OP.dot(A, b);
+                var AAx = double_OP.dot(A, Ax);
                 // recompute A b — b now holds x, so rebuild b from the same seed.
                 var bOrig = arena.doubleRandomVector(n, -2f, 2f, 77000 + t * 13);
-                var Ab = doubleOP.dot(A, bOrig);
+                var Ab = double_OP.dot(A, bOrig);
 
-                double scale = doubleNormsOP.L2(in Ab) + (double)1f;
+                double scale = doubleNorms_OP.L2(in Ab) + (double)1f;
                 var diff = arena.doubleVec(n);
                 for (int i = 0; i < n; i++) diff[i] = AAx[i] - Ab[i];
-                RecordBound(doubleNormsOP.L2(in diff) / scale, (double)1E-2f);
+                RecordBound(doubleNorms_OP.L2(in diff) / scale, (double)1E-2f);
 
                 P.Dispose();
                 arena.Clear();

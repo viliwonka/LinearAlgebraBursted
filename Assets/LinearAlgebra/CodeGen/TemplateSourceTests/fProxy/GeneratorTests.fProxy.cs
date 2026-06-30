@@ -58,7 +58,7 @@ public class fProxyGeneratorTests
             var arena = new Arena(Allocator.Persistent);
 
             var v = arena.fProxyVec(5);
-            fProxyGenOP.linspace(ref v, (fProxy)0, (fProxy)1);
+            fProxyGen_OP.linspace(ref v, (fProxy)0, (fProxy)1);
             AssertClose(v[0], (fProxy)0f, 1E-5f);
             AssertClose(v[1], (fProxy)0.25f, 1E-5f);
             AssertClose(v[2], (fProxy)0.5f, 1E-5f);
@@ -70,11 +70,11 @@ public class fProxyGeneratorTests
             AssertClose(v[4], (fProxy)1f, 0f);
 
             var one = arena.fProxyVec(1);
-            fProxyGenOP.linspace(ref one, (fProxy)7, (fProxy)9);
+            fProxyGen_OP.linspace(ref one, (fProxy)7, (fProxy)9);
             AssertClose(one[0], (fProxy)7f, 0f);
 
             var r = arena.fProxyVec(4);
-            fProxyGenOP.arange(ref r, (fProxy)2, (fProxy)3);
+            fProxyGen_OP.arange(ref r, (fProxy)2, (fProxy)3);
             AssertClose(r[0], (fProxy)2f, 1E-5f);
             AssertClose(r[1], (fProxy)5f, 1E-5f);
             AssertClose(r[2], (fProxy)8f, 1E-5f);
@@ -91,7 +91,7 @@ public class fProxyGeneratorTests
             int N = 9;
             var f = new fProxyEasing.EaseInQuad();
             var dest = arena.fProxyVec(N);
-            fProxyGenOP.sample(ref f, ref dest);
+            fProxyGen_OP.sample(ref f, ref dest);
 
             fProxy scale = (fProxy)1 / (fProxy)(N - 1);
             for (int i = 0; i < N; i++)
@@ -103,13 +103,13 @@ public class fProxyGeneratorTests
 
             // N==1 -> {f.Eval(t0)}
             var one = arena.fProxyVec(1);
-            fProxyGenOP.sample(ref f, ref one, (fProxy)0.5, (fProxy)0.9);
+            fProxyGen_OP.sample(ref f, ref one, (fProxy)0.5, (fProxy)0.9);
             AssertClose(one[0], f.Eval((fProxy)0.5), 1E-6f);
 
             // explicit domain [2,4] hits the endpoints exactly
             var dom = arena.fProxyVec(3);
             var lin = new fProxyEasing.Linear();
-            fProxyGenOP.sample(ref lin, ref dom, (fProxy)2, (fProxy)4);
+            fProxyGen_OP.sample(ref lin, ref dom, (fProxy)2, (fProxy)4);
             AssertClose(dom[0], (fProxy)2f, 1E-5f);
             AssertClose(dom[1], (fProxy)3f, 1E-5f);
             AssertClose(dom[2], (fProxy)4f, 1E-5f);
@@ -238,7 +238,7 @@ public class fProxyGeneratorTests
 
             int N = 5;
             var g = arena.fProxyVec(N);
-            fProxyGenOP.gaussianKernel(ref g, (fProxy)1);
+            fProxyGen_OP.gaussianKernel(ref g, (fProxy)1);
 
             fProxy sum = (fProxy)0;
             for (int i = 0; i < N; i++) sum += g[i];
@@ -254,7 +254,7 @@ public class fProxyGeneratorTests
 
             // N==1 -> {1}
             var one = arena.fProxyVec(1);
-            fProxyGenOP.gaussianKernel(ref one, (fProxy)2);
+            fProxyGen_OP.gaussianKernel(ref one, (fProxy)2);
             AssertClose(one[0], (fProxy)1f, 1E-6f);
 
             arena.Dispose();
@@ -267,7 +267,7 @@ public class fProxyGeneratorTests
 
             int N = 6;
             var box = arena.fProxyVec(N);
-            fProxyGenOP.boxKernel(ref box);
+            fProxyGen_OP.boxKernel(ref box);
             fProxy bsum = (fProxy)0;
             for (int i = 0; i < N; i++)
             {
@@ -278,7 +278,7 @@ public class fProxyGeneratorTests
 
             int M = 5;
             var tent = arena.fProxyVec(M);
-            fProxyGenOP.tentKernel(ref tent);
+            fProxyGen_OP.tentKernel(ref tent);
             fProxy tsum = (fProxy)0;
             for (int i = 0; i < M; i++) tsum += tent[i];
             AssertClose(tsum, (fProxy)1f, 1E-5f);
@@ -298,33 +298,33 @@ public class fProxyGeneratorTests
             int N = 5;
 
             var hann = arena.fProxyVec(N);
-            fProxyGenOP.window(ref hann, WindowType.Hann);
+            fProxyGen_OP.window(ref hann, WindowType.Hann);
             AssertClose(hann[0], (fProxy)0f, 1E-5f);
             AssertClose(hann[4], (fProxy)0f, 1E-5f);
             AssertClose(hann[2], (fProxy)1f, 1E-5f); // 0.5(1-cos π) = 1
             AssertClose(hann[1], hann[3], 1E-5f);    // symmetric
 
             var hamming = arena.fProxyVec(N);
-            fProxyGenOP.window(ref hamming, WindowType.Hamming);
+            fProxyGen_OP.window(ref hamming, WindowType.Hamming);
             AssertClose(hamming[0], (fProxy)0.08f, 1E-5f);
             AssertClose(hamming[4], (fProxy)0.08f, 1E-5f);
             AssertClose(hamming[2], (fProxy)1f, 1E-5f); // 0.54+0.46 = 1
 
             var black = arena.fProxyVec(N);
-            fProxyGenOP.window(ref black, WindowType.Blackman);
+            fProxyGen_OP.window(ref black, WindowType.Blackman);
             AssertClose(black[0], (fProxy)0f, 1E-5f);  // 0.42-0.5+0.08 = 0
             AssertClose(black[4], (fProxy)0f, 1E-5f);
             AssertClose(black[2], (fProxy)1f, 1E-5f);  // 0.42+0.5+0.08 = 1 (center)
             AssertClose(black[1], black[3], 1E-5f);    // symmetric
 
             var box = arena.fProxyVec(N);
-            fProxyGenOP.window(ref box, WindowType.Box);
+            fProxyGen_OP.window(ref box, WindowType.Box);
             for (int i = 0; i < N; i++)
                 AssertClose(box[i], (fProxy)1f, 1E-6f);
 
             // N==1 -> {1} for the (N-1)-denominator windows (no div-by-zero)
             var one = arena.fProxyVec(1);
-            fProxyGenOP.window(ref one, WindowType.Hann);
+            fProxyGen_OP.window(ref one, WindowType.Hann);
             AssertClose(one[0], (fProxy)1f, 1E-6f);
 
             arena.Dispose();
@@ -341,10 +341,10 @@ public class fProxyGeneratorTests
             v[0] = 4f; v[1] = 5f;
 
             var O = arena.fProxyMat(3, 2);
-            fProxyGenOP.outer(in u, in v, ref O);
+            fProxyGen_OP.outer(in u, in v, ref O);
 
             var S = arena.fProxyMat(3, 2);
-            fProxyGenOP.outerSum(in u, in v, ref S);
+            fProxyGen_OP.outerSum(in u, in v, ref S);
 
             for (int i = 0; i < 3; i++)
                 for (int j = 0; j < 2; j++)
@@ -365,10 +365,10 @@ public class fProxyGeneratorTests
             fProxy sigma = (fProxy)1.2;
 
             var g = arena.fProxyVec(N);
-            fProxyGenOP.gaussianKernel(ref g, sigma);
+            fProxyGen_OP.gaussianKernel(ref g, sigma);
 
             var K = arena.fProxyMat(N, N);
-            fProxyGenOP.gaussianKernel2D(ref K, sigma);
+            fProxyGen_OP.gaussianKernel2D(ref K, sigma);
 
             fProxy sum = (fProxy)0;
             for (int i = 0; i < N; i++)
@@ -431,44 +431,44 @@ public class fProxyGeneratorTests
 
             var lin = arena.fProxyLinspace((fProxy)(-2), (fProxy)3, N);
             var linRef = arena.fProxyVec(N);
-            fProxyGenOP.linspace(ref linRef, (fProxy)(-2), (fProxy)3);
+            fProxyGen_OP.linspace(ref linRef, (fProxy)(-2), (fProxy)3);
             EqVec(in lin, in linRef, N);
 
             var ar = arena.fProxyArange((fProxy)5, (fProxy)(-2), N);
             var arRef = arena.fProxyVec(N);
-            fProxyGenOP.arange(ref arRef, (fProxy)5, (fProxy)(-2));
+            fProxyGen_OP.arange(ref arRef, (fProxy)5, (fProxy)(-2));
             EqVec(in ar, in arRef, N);
 
             var quad = new fProxyEasing.EaseInQuad();
             var smp = arena.fProxySample(ref quad, N, (fProxy)(-1), (fProxy)2);
             var smpRef = arena.fProxyVec(N);
-            fProxyGenOP.sample(ref quad, ref smpRef, (fProxy)(-1), (fProxy)2);
+            fProxyGen_OP.sample(ref quad, ref smpRef, (fProxy)(-1), (fProxy)2);
             EqVec(in smp, in smpRef, N);
 
             var gk = arena.fProxyGaussianKernel(N, (fProxy)1.5);
             var gkRef = arena.fProxyVec(N);
-            fProxyGenOP.gaussianKernel(ref gkRef, (fProxy)1.5);
+            fProxyGen_OP.gaussianKernel(ref gkRef, (fProxy)1.5);
             EqVec(in gk, in gkRef, N);
 
             var bk = arena.fProxyBoxKernel(N);
             var bkRef = arena.fProxyVec(N);
-            fProxyGenOP.boxKernel(ref bkRef);
+            fProxyGen_OP.boxKernel(ref bkRef);
             EqVec(in bk, in bkRef, N);
 
             var tk = arena.fProxyTentKernel(N);
             var tkRef = arena.fProxyVec(N);
-            fProxyGenOP.tentKernel(ref tkRef);
+            fProxyGen_OP.tentKernel(ref tkRef);
             EqVec(in tk, in tkRef, N);
 
             var win = arena.fProxyWindow(N, WindowType.Blackman);
             var winRef = arena.fProxyVec(N);
-            fProxyGenOP.window(ref winRef, WindowType.Blackman);
+            fProxyGen_OP.window(ref winRef, WindowType.Blackman);
             EqVec(in win, in winRef, N);
 
             var ease = new fProxyEasing.SmoothStep();
             var lut = arena.fProxyEasingLUT(ref ease, N);
             var lutRef = arena.fProxyVec(N);
-            fProxyGenOP.sample(ref ease, ref lutRef, (fProxy)0, (fProxy)1);
+            fProxyGen_OP.sample(ref ease, ref lutRef, (fProxy)0, (fProxy)1);
             EqVec(in lut, in lutRef, N);
 
             // outer wrapper vs primitive
@@ -476,14 +476,14 @@ public class fProxyGeneratorTests
             var v = arena.fProxyLinspace((fProxy)0, (fProxy)2, 3);
             var O = arena.fProxyOuter(in u, in v);
             var Oref = arena.fProxyMat(4, 3);
-            fProxyGenOP.outer(in u, in v, ref Oref);
+            fProxyGen_OP.outer(in u, in v, ref Oref);
             for (int i = 0; i < 4; i++)
                 for (int j = 0; j < 3; j++)
                     AssertClose(O[i, j], Oref[i, j], 1E-5f);
 
             var Sm = arena.fProxyOuterSum(in u, in v);
             var SmRef = arena.fProxyMat(4, 3);
-            fProxyGenOP.outerSum(in u, in v, ref SmRef);
+            fProxyGen_OP.outerSum(in u, in v, ref SmRef);
             for (int i = 0; i < 4; i++)
                 for (int j = 0; j < 3; j++)
                     AssertClose(Sm[i, j], SmRef[i, j], 1E-5f);
@@ -491,7 +491,7 @@ public class fProxyGeneratorTests
             // gaussianKernel2D wrapper vs primitive
             var K = arena.fProxyGaussianKernel2D(5, (fProxy)1.3);
             var Kref = arena.fProxyMat(5, 5);
-            fProxyGenOP.gaussianKernel2D(ref Kref, (fProxy)1.3);
+            fProxyGen_OP.gaussianKernel2D(ref Kref, (fProxy)1.3);
             for (int i = 0; i < 5; i++)
                 for (int j = 0; j < 5; j++)
                     AssertClose(K[i, j], Kref[i, j], 1E-5f);
@@ -572,8 +572,8 @@ public class fProxyGeneratorTests
     {
         var arena = new Arena(Allocator.Persistent);
         var v = arena.fProxyVec(5);
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.gaussianKernel(ref v, (fProxy)0));
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.gaussianKernel(ref v, (fProxy)(-1)));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.gaussianKernel(ref v, (fProxy)0));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.gaussianKernel(ref v, (fProxy)(-1)));
         arena.Dispose();
     }
 
@@ -584,8 +584,8 @@ public class fProxyGeneratorTests
         var u = arena.fProxyVec(3);
         var w = arena.fProxyVec(2);
         var bad = arena.fProxyMat(2, 2);
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.outer(in u, in w, ref bad));
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.outerSum(in u, in w, ref bad));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.outer(in u, in w, ref bad));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.outerSum(in u, in w, ref bad));
         arena.Dispose();
     }
 
@@ -594,11 +594,11 @@ public class fProxyGeneratorTests
     {
         var arena = new Arena(Allocator.Persistent);
         var bad = arena.fProxyMat(3, 4);
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.gaussianKernel2D(ref bad, (fProxy)1));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.gaussianKernel2D(ref bad, (fProxy)1));
         // sigma guard fires before the internal Temp alloc (no leak on the throw path)
         var sq = arena.fProxyMat(4, 4);
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.gaussianKernel2D(ref sq, (fProxy)0));
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.gaussianKernel2D(ref sq, (fProxy)(-2)));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.gaussianKernel2D(ref sq, (fProxy)0));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.gaussianKernel2D(ref sq, (fProxy)(-2)));
         arena.Dispose();
     }
 
@@ -608,13 +608,13 @@ public class fProxyGeneratorTests
         var arena = new Arena(Allocator.Persistent);
         var v0 = arena.fProxyVec(0);
         var quad = new fProxyEasing.EaseInQuad();
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.linspace(ref v0, (fProxy)0, (fProxy)1));
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.arange(ref v0, (fProxy)0, (fProxy)1));
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.sample(ref quad, ref v0));
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.boxKernel(ref v0));
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.tentKernel(ref v0));
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.gaussianKernel(ref v0, (fProxy)1));
-        Assert.Throws<ArgumentException>(() => fProxyGenOP.window(ref v0, WindowType.Hann));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.linspace(ref v0, (fProxy)0, (fProxy)1));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.arange(ref v0, (fProxy)0, (fProxy)1));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.sample(ref quad, ref v0));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.boxKernel(ref v0));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.tentKernel(ref v0));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.gaussianKernel(ref v0, (fProxy)1));
+        Assert.Throws<ArgumentException>(() => fProxyGen_OP.window(ref v0, WindowType.Hann));
         arena.Dispose();
     }
 }

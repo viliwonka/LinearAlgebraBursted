@@ -13,13 +13,13 @@ namespace LinearAlgebra
     /// <summary>           
     /// Inpl = inplace
     /// </summary>
-    public static partial class doubleOP {
+    public static partial class double_OP {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void addInpl<T>(T place, double s) where T : unmanaged, IUnsafedoubleArray {
 
             unsafe {
-                UnsafeOP.scalAdd(place.Data.Ptr, place.Data.Length, s);
+                Unsafe_OP.scalAdd(place.Data.Ptr, place.Data.Length, s);
             }
         }
 
@@ -27,7 +27,7 @@ namespace LinearAlgebra
         public static void mulInpl<T>(T place, double s) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
-                UnsafeOP.scalMul(place.Data.Ptr, place.Data.Length, s);
+                Unsafe_OP.scalMul(place.Data.Ptr, place.Data.Length, s);
             }
         }
 
@@ -36,7 +36,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeOP.scalDiv(place.Data.Ptr, place.Data.Length, s);
+                Unsafe_OP.scalDiv(place.Data.Ptr, place.Data.Length, s);
             }
         }
 
@@ -45,7 +45,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeOP.scalDiv(s, place.Data.Ptr, place.Data.Length);
+                Unsafe_OP.scalDiv(s, place.Data.Ptr, place.Data.Length);
             }
         }
 
@@ -55,7 +55,7 @@ namespace LinearAlgebra
             unsafe {
                 // place += from. (compAdd is (target, from); the old call passed them reversed, so this
                 // method actually mutated `from` instead of `place` — wrong for any direct caller.)
-                UnsafeOP.compAdd(place.Data.Ptr, from.Data.Ptr, from.Data.Length);
+                Unsafe_OP.compAdd(place.Data.Ptr, from.Data.Ptr, from.Data.Length);
             }
         }
 
@@ -63,7 +63,7 @@ namespace LinearAlgebra
         public static void subInpl<T>(this T place, T fromB) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
-                UnsafeOP.compSub(place.Data.Ptr, fromB.Data.Ptr, fromB.Data.Length);
+                Unsafe_OP.compSub(place.Data.Ptr, fromB.Data.Ptr, fromB.Data.Length);
             }
         }
 
@@ -72,7 +72,7 @@ namespace LinearAlgebra
         public static void addScaledInpl<T>(this T y, double a, T x) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
-                UnsafeOP.axpy(y.Data.Ptr, x.Data.Ptr, a, x.Data.Length);
+                Unsafe_OP.axpy(y.Data.Ptr, x.Data.Ptr, a, x.Data.Length);
             }
         }
 
@@ -81,7 +81,7 @@ namespace LinearAlgebra
         public static void scaleAddInpl<T>(this T y, double a, T x) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
-                UnsafeOP.aypx(y.Data.Ptr, x.Data.Ptr, a, x.Data.Length);
+                Unsafe_OP.aypx(y.Data.Ptr, x.Data.Ptr, a, x.Data.Length);
             }
         }
 
@@ -90,7 +90,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeOP.scalMod(place.Data.Ptr, place.Data.Length, s);
+                Unsafe_OP.scalMod(place.Data.Ptr, place.Data.Length, s);
             }
         }
 
@@ -99,7 +99,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                UnsafeOP.scalMod(s, place.Data.Ptr, place.Data.Length);
+                Unsafe_OP.scalMod(s, place.Data.Ptr, place.Data.Length);
             }
         }
 
@@ -107,7 +107,7 @@ namespace LinearAlgebra
         public static void compMulInpl<T>(this T from, T to) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
-                UnsafeOP.compMul(from.Data.Ptr, to.Data.Ptr, from.Data.Length);
+                Unsafe_OP.compMul(from.Data.Ptr, to.Data.Ptr, from.Data.Length);
             }
         }
 
@@ -115,7 +115,7 @@ namespace LinearAlgebra
         public static void compDivInpl<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
-                UnsafeOP.compDiv(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
+                Unsafe_OP.compDiv(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
             }
         }
 
@@ -123,7 +123,7 @@ namespace LinearAlgebra
         public static void compModDiv<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
-                UnsafeOP.compMod(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
+                Unsafe_OP.compMod(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
             }
         }
 
@@ -137,7 +137,7 @@ namespace LinearAlgebra
         public static void subInpl<T>(double s, T v) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {                 
-                UnsafeOP.scalSub(s, v.Data.Ptr, v.Data.Length);
+                Unsafe_OP.scalSub(s, v.Data.Ptr, v.Data.Length);
             }
         }
 
@@ -145,7 +145,7 @@ namespace LinearAlgebra
         public static void signFlipInpl<T>(this T a) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
-                UnsafeOP.signFlip(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
+                Unsafe_OP.signFlip(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
             }
         }
 

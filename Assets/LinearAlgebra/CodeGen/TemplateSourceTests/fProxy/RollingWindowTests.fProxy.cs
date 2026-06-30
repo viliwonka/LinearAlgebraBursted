@@ -200,7 +200,7 @@ public class fProxyRollingWindowTests
             AssertClose(C[1, 1], 4f, 1E-5f);
 
             // identical to running StatsOP directly on the materialized matrix
-            var viaStats = fProxyStatsOP.covariance(w.AsMatrix());
+            var viaStats = fProxyStats_OP.covariance(w.AsMatrix());
             for (int i = 0; i < 2; i++)
                 for (int j = 0; j < 2; j++)
                     AssertClose(C[i, j], viaStats[i, j], 1E-5f);

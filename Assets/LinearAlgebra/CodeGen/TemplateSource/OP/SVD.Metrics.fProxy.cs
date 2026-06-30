@@ -34,7 +34,7 @@ namespace LinearAlgebra
             }
             else {
                 // Wide: decompose Aᵀ (n x m, tall); same singular values as A.
-                fProxyMxN At = fProxyOP.trans(A);
+                fProxyMxN At = fProxy_OP.trans(A);
                 svdValues(in At, ref S);
             }
 

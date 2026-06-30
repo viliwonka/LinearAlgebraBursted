@@ -25,8 +25,8 @@ namespace LinearAlgebra
         // The leading k columns of (U, Σ, W) are the approximate top-k SVD.
         //
         // The dozen intermediate buffers come either from A's temp pool (the allocating overloads) or
-        // from a caller-provided floatSvdRandomizedWorkspace (the ref-workspace overloads) for
-        // zero-alloc repeated calls — size the latter with Arena.floatSvdRandomizedWorkspace(m, n, k,
+        // from a caller-provided floatSvdRandomized_WS (the ref-workspace overloads) for
+        // zero-alloc repeated calls — size the latter with Arena.floatSvdRandomized_WS(m, n, k,
         // oversample).
 
         // Default sketch seed (golden-ratio constant). Inlined rather than a const field because this
@@ -48,11 +48,11 @@ namespace LinearAlgebra
         /// flag (false -&gt; outputs undefined). A is NOT modified.
         ///
         /// <paramref name="ws"/> holds all scratch; size it with
-        /// Arena.floatSvdRandomizedWorkspace(m, n, k, oversample) using the SAME k and oversample.
+        /// Arena.floatSvdRandomized_WS(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter,
-                                         ref floatSvdRandomizedWorkspace ws)
+                                         ref floatSvdRandomized_WS ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -65,31 +65,31 @@ namespace LinearAlgebra
             // Ω (n x ℓ) standard normal; Y = A Ω (m x ℓ).
             var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
             var gauss = new floatGaussian((float)0, (float)1);
-            floatRandomOP.randomInpl(ref rng, ref ws.Omega, ref gauss);
+            floatRandom_OP.randomInpl(ref rng, ref ws.Omega, ref gauss);
 
-            floatOP.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
+            float_OP.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
 
             // Q = orth(Y): qrDecomposition overwrites Y with the thin orthonormal Q (m x ℓ).
-            OrthoOP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+            Ortho_OP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
 
             // Subspace iteration: Y = A (Aᵀ Q), re-orthonormalize.
             for (int it = 0; it < powerIters; it++)
             {
-                floatOP.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
-                floatOP.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
-                OrthoOP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+                float_OP.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
+                float_OP.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
+                Ortho_OP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
             }
 
             // B = Qᵀ A (ℓ x n); solve its SVD exactly via Bᵀ (n x ℓ, tall): Bᵀ = Up Σ Vpᵀ, so
             // B = Vp Σ Upᵀ -> A ≈ Q B = (Q Vp) Σ Upᵀ.
-            floatOP.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
-            floatOP.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
+            float_OP.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
+            float_OP.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
 
             bool ok = svdThin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
             if (!ok)
                 return false;
 
-            floatOP.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
+            float_OP.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
 
             for (int t = 0; t < k; t++)
             {
@@ -102,12 +102,12 @@ namespace LinearAlgebra
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
         public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                         int k, uint seed, ref floatSvdRandomizedWorkspace ws)
+                                         int k, uint seed, ref floatSvdRandomized_WS ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75, ref ws);
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
         public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                         int k, ref floatSvdRandomizedWorkspace ws)
+                                         int k, ref floatSvdRandomized_WS ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
 
         /// <summary>
@@ -123,7 +123,7 @@ namespace LinearAlgebra
             RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIter);
 
             int l = math.min(k + oversample, n);
-            var ws = new floatSvdRandomizedWorkspace
+            var ws = new floatSvdRandomized_WS
             {
                 Omega = A.tempfloatMat(n, l),
                 Y = A.tempfloatMat(m, l),

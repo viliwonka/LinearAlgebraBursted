@@ -5,7 +5,7 @@ using Unity.Mathematics;
 namespace LinearAlgebra
 {
     // QueryOP.Predicate: predicate-filtered and score-based query operators.
-    // Extends floatQueryOP (partial class). Reuses RowScore/ColScore,
+    // Extends floatQuery_OP (partial class). Reuses RowScore/ColScore,
     // IsBetterForNearest, and WorstScoreForNearest from QueryOP.float.cs.
     //
     // Groups:
@@ -19,7 +19,7 @@ namespace LinearAlgebra
     //   score = WorstScoreForNearest(m) (float.MaxValue for distance metrics,
     //   float.MinValue for similarity metrics). Callers must check index == -1 before use.
     //   kNearestRowsWhere / kNearestColumnsWhere return 0.
-    public static partial class floatQueryOP
+    public static partial class floatQuery_OP
     {
         // -------------------------------------------------------------------------
         // GROUP A — FLAT / SCALAR PREDICATE OPS

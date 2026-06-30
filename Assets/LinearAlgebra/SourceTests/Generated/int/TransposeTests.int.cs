@@ -41,7 +41,7 @@ public class intTransposeTests
             
             intMxN A = arena.intRandomMatrix(dim, dim);
 
-            intMxN B = intOP.trans(A);
+            intMxN B = int_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, dim);
             Assert.AreEqual(B.N_Cols, dim);
@@ -62,7 +62,7 @@ public class intTransposeTests
 
             intMxN A = arena.intRandomMatrix(rows, cols);
 
-            intMxN B = intOP.trans(A);
+            intMxN B = int_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, cols);
             Assert.AreEqual(B.N_Cols, rows);

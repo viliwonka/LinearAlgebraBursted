@@ -11,7 +11,7 @@ using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
 // Tests for Chunk 3 of the random-generation layer: structured / property matrices
-// (fProxyRandomMatrixOP). Verification is PROPERTY-based — we construct the matrix and then
+// (fProxyRandomMatrix_OP). Verification is PROPERTY-based — we construct the matrix and then
 // independently check the property it is supposed to have, reusing the library's own ops:
 //   * randomOrthogonalInpl   -> QᵀQ ≈ I  (dot(Q,Q,transposeA:true)); determinism.
 //   * randomSpdInpl          -> symmetry, Cholesky succeeds (PD), eigenvalues ∈ [minEig,maxEig]
@@ -94,11 +94,11 @@ public class fProxyRandomMatrixTests
 
             var rng = new Random(seed);
             var Q = arena.fProxyMat(n, n);
-            fProxyRandomMatrixOP.randomOrthogonalInpl(ref rng, ref Q);
+            fProxyRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref Q);
 
             // QᵀQ
             var QtQ = arena.fProxyMat(n, n);
-            fProxyOP.dot(in Q, in Q, ref QtQ, transposeA: true);
+            fProxy_OP.dot(in Q, in Q, ref QtQ, transposeA: true);
 
             // off-diagonal orthonormality error scales with n; this bound is loose for float,
             // tight for double, but still far above the true ~n·eps backward error.
@@ -121,11 +121,11 @@ public class fProxyRandomMatrixTests
 
             var r1 = new Random(424242u);
             var Q1 = arena.fProxyMat(n, n);
-            fProxyRandomMatrixOP.randomOrthogonalInpl(ref r1, ref Q1);
+            fProxyRandomMatrix_OP.randomOrthogonalInpl(ref r1, ref Q1);
 
             var r2 = new Random(424242u);
             var Q2 = arena.fProxyMat(n, n);
-            fProxyRandomMatrixOP.randomOrthogonalInpl(ref r2, ref Q2);
+            fProxyRandomMatrix_OP.randomOrthogonalInpl(ref r2, ref Q2);
 
             for (int i = 0; i < Q1.Length; i++)
                 AssertClose(Q1[i], Q2[i], (fProxy)0);
@@ -150,7 +150,7 @@ public class fProxyRandomMatrixTests
                 int n = 4 + (int)t;             // 4..9
                 var rng = new Random(5000u + t * 37u);
                 var A = arena.fProxyMat(n, n);
-                fProxyRandomMatrixOP.randomSpdInpl(ref rng, ref A, minEig, maxEig);
+                fProxyRandomMatrix_OP.randomSpdInpl(ref rng, ref A, minEig, maxEig);
 
                 // (a) symmetry — implementation symmetrises exactly, so this is tight.
                 fProxy symTol = (fProxy)8 * Consts.fProxySqrtEps;
@@ -196,11 +196,11 @@ public class fProxyRandomMatrixTests
 
             var r1 = new Random(96321u);
             var A1 = arena.fProxyMat(n, n);
-            fProxyRandomMatrixOP.randomSpdInpl(ref r1, ref A1, (fProxy)1, (fProxy)10);
+            fProxyRandomMatrix_OP.randomSpdInpl(ref r1, ref A1, (fProxy)1, (fProxy)10);
 
             var r2 = new Random(96321u);
             var A2 = arena.fProxyMat(n, n);
-            fProxyRandomMatrixOP.randomSpdInpl(ref r2, ref A2, (fProxy)1, (fProxy)10);
+            fProxyRandomMatrix_OP.randomSpdInpl(ref r2, ref A2, (fProxy)1, (fProxy)10);
 
             for (int i = 0; i < A1.Length; i++)
                 AssertClose(A1[i], A2[i], (fProxy)0);
@@ -222,7 +222,7 @@ public class fProxyRandomMatrixTests
 
             var rng = new Random(seed);
             var A = arena.fProxyMat(m, n);
-            fProxyRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, cond);
+            fProxyRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, cond);
 
             int k = math.min(m, n);
             var S = arena.fProxyVec(k);
@@ -244,7 +244,7 @@ public class fProxyRandomMatrixTests
 
             var rng = new Random(6003u);
             var A = arena.fProxyMat(1, 4);
-            fProxyRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, (fProxy)50);
+            fProxyRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (fProxy)50);
 
             var S = arena.fProxyVec(1);    // k = min(1,4) = 1
             SVD.singularValues(in A, ref S);
@@ -274,7 +274,7 @@ public class fProxyRandomMatrixTests
                 {
                     var rng = new Random(7000u + (uint)rank * 101u + t * 13u);
                     var A = arena.fProxyMat(m, n);
-                    fProxyRandomMatrixOP.randomMatrixWithRankInpl(ref rng, ref A, rank);
+                    fProxyRandomMatrix_OP.randomMatrixWithRankInpl(ref rng, ref A, rank);
 
                     int got = NumericalRank(in arena, in A);
                     RecordEq(got, rank);
@@ -298,7 +298,7 @@ public class fProxyRandomMatrixTests
             var rng0 = new Random(8001u);
             var A0 = arena.fProxyMat(m, n);
             for (int i = 0; i < A0.Length; i++) A0[i] = (fProxy)999;   // poison
-            fProxyRandomMatrixOP.randomMatrixWithRankInpl(ref rng0, ref A0, 0);
+            fProxyRandomMatrix_OP.randomMatrixWithRankInpl(ref rng0, ref A0, 0);
             for (int i = 0; i < A0.Length; i++)
                 AssertClose(A0[i], (fProxy)0, (fProxy)0);    // exact
             RecordEq(NumericalRank(in arena, in A0), 0);
@@ -306,7 +306,7 @@ public class fProxyRandomMatrixTests
             // full rank.
             var rngF = new Random(8002u);
             var AF = arena.fProxyMat(m, n);
-            fProxyRandomMatrixOP.randomMatrixWithRankInpl(ref rngF, ref AF, k);
+            fProxyRandomMatrix_OP.randomMatrixWithRankInpl(ref rngF, ref AF, k);
             RecordEq(NumericalRank(in arena, in AF), k);
 
             arena.Dispose();
@@ -348,7 +348,7 @@ public class fProxyRandomMatrixTests
 
             var rng = new Random(seed);
             var A = arena.fProxyMat(m, n);
-            fProxyRandomMatrixOP.randomStochasticInpl(ref rng, ref A);
+            fProxyRandomMatrix_OP.randomStochasticInpl(ref rng, ref A);
 
             fProxy sumTol = (fProxy)20 * Consts.fProxySqrtEps;
             for (int r = 0; r < m; r++)
@@ -392,7 +392,7 @@ public class fProxyRandomMatrixTests
             var z = arena.fProxyVec(n);
             for (int s = 0; s < samples; s++)
             {
-                fProxyRandomMatrixOP.multivariateNormalInpl(ref rng, in I, in mean, ref dest, ref z);
+                fProxyRandomMatrix_OP.multivariateNormalInpl(ref rng, in I, in mean, ref dest, ref z);
                 for (int i = 0; i < n; i++) acc[i] += dest[i];
             }
             fProxy meanTol = (fProxy)0.1;   // std error of mean over 8000 draws ≈ 0.011
@@ -404,7 +404,7 @@ public class fProxyRandomMatrixTests
             for (int i = 0; i < n; i++) acc[i] = (fProxy)0;
             for (int s = 0; s < samples; s++)
             {
-                fProxyRandomMatrixOP.multivariateNormalInpl(ref rng2, in I, in mean, ref dest);
+                fProxyRandomMatrix_OP.multivariateNormalInpl(ref rng2, in I, in mean, ref dest);
                 for (int i = 0; i < n; i++) acc[i] += dest[i];
             }
             for (int i = 0; i < n; i++)
@@ -435,7 +435,7 @@ public class fProxyRandomMatrixTests
 
             var rng = new Random(13000u);
             var dest = arena.fProxyMat(rows, n);
-            fProxyRandomMatrixOP.multivariateNormalRowsInpl(ref rng, in L, in mean, ref dest);
+            fProxyRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in L, in mean, ref dest);
 
             // empirical column means
             fProxy m0 = (fProxy)0, m1 = (fProxy)0;
@@ -478,11 +478,11 @@ public class fProxyRandomMatrixTests
 
             var r1 = new Random(55667788u);
             var D1 = arena.fProxyMat(rows, n);
-            fProxyRandomMatrixOP.multivariateNormalRowsInpl(ref r1, in L, in mean, ref D1);
+            fProxyRandomMatrix_OP.multivariateNormalRowsInpl(ref r1, in L, in mean, ref D1);
 
             var r2 = new Random(55667788u);
             var D2 = arena.fProxyMat(rows, n);
-            fProxyRandomMatrixOP.multivariateNormalRowsInpl(ref r2, in L, in mean, ref D2);
+            fProxyRandomMatrix_OP.multivariateNormalRowsInpl(ref r2, in L, in mean, ref D2);
 
             for (int i = 0; i < D1.Length; i++)
                 AssertClose(D1[i], D2[i], (fProxy)0);
@@ -567,7 +567,7 @@ public class fProxyRandomMatrixTests
             var rng = new Random(1u);
             var dest = arena.fProxyMat(3, 4);
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomOrthogonalInpl(ref rng, ref dest));
+                () => fProxyRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref dest));
         }
         finally { arena.Dispose(); }
     }
@@ -582,22 +582,22 @@ public class fProxyRandomMatrixTests
 
             var nonSquare = arena.fProxyMat(3, 4);
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomSpdInpl(ref rng, ref nonSquare, (fProxy)1, (fProxy)2));
+                () => fProxyRandomMatrix_OP.randomSpdInpl(ref rng, ref nonSquare, (fProxy)1, (fProxy)2));
 
             var A = arena.fProxyMat(3, 3);
             // minEig <= 0
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomSpdInpl(ref rng, ref A, (fProxy)0, (fProxy)2));
+                () => fProxyRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (fProxy)0, (fProxy)2));
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomSpdInpl(ref rng, ref A, (fProxy)(-1), (fProxy)2));
+                () => fProxyRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (fProxy)(-1), (fProxy)2));
             // minEig > maxEig
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomSpdInpl(ref rng, ref A, (fProxy)5, (fProxy)2));
+                () => fProxyRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (fProxy)5, (fProxy)2));
             // non-finite bounds
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomSpdInpl(ref rng, ref A, (fProxy)fProxy.PositiveInfinity, (fProxy)2));
+                () => fProxyRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (fProxy)fProxy.PositiveInfinity, (fProxy)2));
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomSpdInpl(ref rng, ref A, (fProxy)1, (fProxy)float.NaN));
+                () => fProxyRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (fProxy)1, (fProxy)float.NaN));
         }
         finally { arena.Dispose(); }
     }
@@ -613,12 +613,12 @@ public class fProxyRandomMatrixTests
 
             // cond < 1
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, (fProxy)0.5));
+                () => fProxyRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (fProxy)0.5));
             // non-finite cond
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, (fProxy)fProxy.PositiveInfinity));
+                () => fProxyRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (fProxy)fProxy.PositiveInfinity));
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomMatrixWithConditionInpl(ref rng, ref A, (fProxy)float.NaN));
+                () => fProxyRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (fProxy)float.NaN));
         }
         finally { arena.Dispose(); }
     }
@@ -633,9 +633,9 @@ public class fProxyRandomMatrixTests
             var A = arena.fProxyMat(5, 3);   // min(m,n) = 3
 
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomMatrixWithRankInpl(ref rng, ref A, -1));
+                () => fProxyRandomMatrix_OP.randomMatrixWithRankInpl(ref rng, ref A, -1));
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.randomMatrixWithRankInpl(ref rng, ref A, 4)); // > min(m,n)
+                () => fProxyRandomMatrix_OP.randomMatrixWithRankInpl(ref rng, ref A, 4)); // > min(m,n)
         }
         finally { arena.Dispose(); }
     }
@@ -654,38 +654,38 @@ public class fProxyRandomMatrixTests
             var dest3 = arena.fProxyVec(3);
             var z3 = arena.fProxyVec(3);
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3, ref z3));
+                () => fProxyRandomMatrix_OP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3, ref z3));
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3));
+                () => fProxyRandomMatrix_OP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3));
 
             var L = arena.fProxyMat(3, 3);
 
             // mean.N mismatch
             var meanBad = arena.fProxyVec(2);
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.multivariateNormalInpl(ref rng, in L, in meanBad, ref dest3, ref z3));
+                () => fProxyRandomMatrix_OP.multivariateNormalInpl(ref rng, in L, in meanBad, ref dest3, ref z3));
 
             // dest.N mismatch
             var destBad = arena.fProxyVec(4);
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.multivariateNormalInpl(ref rng, in L, in mean3, ref destBad, ref z3));
+                () => fProxyRandomMatrix_OP.multivariateNormalInpl(ref rng, in L, in mean3, ref destBad, ref z3));
 
             // zScratch.N mismatch
             var zBad = arena.fProxyVec(5);
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.multivariateNormalInpl(ref rng, in L, in mean3, ref dest3, ref zBad));
+                () => fProxyRandomMatrix_OP.multivariateNormalInpl(ref rng, in L, in mean3, ref dest3, ref zBad));
 
             // rows overload: cholL not square
             var destRows = arena.fProxyMat(8, 3);
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.multivariateNormalRowsInpl(ref rng, in nonSquare, in mean3, ref destRows));
+                () => fProxyRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in nonSquare, in mean3, ref destRows));
             // rows overload: mean.N mismatch
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.multivariateNormalRowsInpl(ref rng, in L, in meanBad, ref destRows));
+                () => fProxyRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in L, in meanBad, ref destRows));
             // rows overload: destRows.N_Cols mismatch
             var destRowsBad = arena.fProxyMat(8, 4);
             Assert.Throws<ArgumentException>(
-                () => fProxyRandomMatrixOP.multivariateNormalRowsInpl(ref rng, in L, in mean3, ref destRowsBad));
+                () => fProxyRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in L, in mean3, ref destRowsBad));
         }
         finally { arena.Dispose(); }
     }

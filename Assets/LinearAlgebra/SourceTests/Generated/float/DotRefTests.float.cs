@@ -72,36 +72,36 @@ public class floatDotRefTests
             {
                 var A = arena.floatRandomMatrix(M, N, -1f, 1f, 12321);
                 var x = arena.floatRandomVector(N, -1f, 1f, 45654);
-                var R = floatOP.dot(A, x);
+                var R = float_OP.dot(A, x);
 
                 var D = arena.floatVec(M);
-                floatOP.addInpl(D, (float)999);   // dirty the destination
-                floatOP.dot(in A, in x, ref D);
-                Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+                float_OP.addInpl(D, (float)999);   // dirty the destination
+                float_OP.dot(in A, in x, ref D);
+                Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
             }
 
             // vec·mat
             {
                 var y = arena.floatRandomVector(M, -1f, 1f, 11221);
                 var A = arena.floatRandomMatrix(M, N, -1f, 1f, 33443);
-                var R = floatOP.dot(y, A);
+                var R = float_OP.dot(y, A);
 
                 var D = arena.floatVec(N);
-                floatOP.addInpl(D, (float)999);
-                floatOP.dot(in y, in A, ref D);
-                Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+                float_OP.addInpl(D, (float)999);
+                float_OP.dot(in y, in A, ref D);
+                Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
             }
 
             // mat·mat
             {
                 var a = arena.floatRandomMatrix(M, K, -1f, 1f, 32123);
                 var b = arena.floatRandomMatrix(K, N, -1f, 1f, 65456);
-                var R = floatOP.dot(a, b, false);
+                var R = float_OP.dot(a, b, false);
 
                 var D = arena.floatMat(M, N);
-                floatOP.addInpl(D, (float)999);
-                floatOP.dot(in a, in b, ref D, false);
-                Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+                float_OP.addInpl(D, (float)999);
+                float_OP.dot(in a, in b, ref D, false);
+                Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
             }
 
             arena.Dispose();
@@ -119,13 +119,13 @@ public class floatDotRefTests
             var b = arena.floatRandomVector(N, -1f, 1f, 22222);
 
             // allocating reference
-            var R = floatOP.outerDot(a, b);
+            var R = float_OP.outerDot(a, b);
 
             // ref-dest into a preallocated M x N destination
             var D = arena.floatMat(M, N);
-            floatOP.outerDot(in a, in b, ref D);
+            float_OP.outerDot(in a, in b, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -141,12 +141,12 @@ public class floatDotRefTests
             var A = arena.floatRandomMatrix(M, N, -1f, 1f, 33333);
             var x = arena.floatRandomVector(N, -1f, 1f, 44444);
 
-            var R = floatOP.dot(A, x);
+            var R = float_OP.dot(A, x);
 
             var D = arena.floatVec(M);
-            floatOP.dot(in A, in x, ref D);
+            float_OP.dot(in A, in x, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -162,12 +162,12 @@ public class floatDotRefTests
             var y = arena.floatRandomVector(M, -1f, 1f, 55555);
             var A = arena.floatRandomMatrix(M, N, -1f, 1f, 66666);
 
-            var R = floatOP.dot(y, A);
+            var R = float_OP.dot(y, A);
 
             var D = arena.floatVec(N);
-            floatOP.dot(in y, in A, ref D);
+            float_OP.dot(in y, in A, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -184,12 +184,12 @@ public class floatDotRefTests
             var a = arena.floatRandomMatrix(M, K, -1f, 1f, 77777);
             var b = arena.floatRandomMatrix(K, N, -1f, 1f, 88888);
 
-            var R = floatOP.dot(a, b, false);
+            var R = float_OP.dot(a, b, false);
 
             var D = arena.floatMat(M, N);
-            floatOP.dot(in a, in b, ref D, false);
+            float_OP.dot(in a, in b, ref D, false);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -206,19 +206,19 @@ public class floatDotRefTests
             var a = arena.floatRandomMatrix(K, M, -1f, 1f, 99999);
             var b = arena.floatRandomMatrix(K, N, -1f, 1f, 10101);
 
-            var R = floatOP.dot(a, b, true);
+            var R = float_OP.dot(a, b, true);
 
             // result is M x N (a.N_Cols x b.N_Cols)
             var D = arena.floatMat(M, N);
-            floatOP.dot(in a, in b, ref D, true);
+            float_OP.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             // Independent oracle: Aᵀ·B computed via an explicit transpose + plain matmul,
             // which exercises a different code path than the fused transposeA kernel.
-            var oracle = floatOP.dot(floatOP.trans(a), b);
-            Assert.IsTrue(Analysis.IsZero(R - oracle, Tol()));
+            var oracle = float_OP.dot(float_OP.trans(a), b);
+            Assert.IsTrue(Analysis_OP.IsZero(R - oracle, Tol()));
 
             arena.Dispose();
         }
@@ -233,12 +233,12 @@ public class floatDotRefTests
 
             var A = arena.floatRandomMatrix(M, N, -1f, 1f, 20202);
 
-            var R = floatOP.trans(A);
+            var R = float_OP.trans(A);
 
             var D = arena.floatMat(N, M);
-            floatOP.trans(in A, ref D);
+            float_OP.trans(in A, ref D);
 
-            Assert.IsTrue(Analysis.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
 
             arena.Dispose();
         }

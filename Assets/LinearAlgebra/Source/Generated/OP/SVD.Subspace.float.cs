@@ -17,7 +17,7 @@ namespace LinearAlgebra
         //
         // Each op needs one full Golub-Kahan SVD (U m x n, S n, V n x n) of scratch. The allocating
         // overloads take that from A's temp pool; the ref-workspace overloads reuse a caller-provided
-        // floatSvdFullWorkspace (Arena.floatSvdFullWorkspace(m, n)) for zero-alloc repeated calls.
+        // floatSvdFull_WS (Arena.floatSvdFull_WS(m, n)) for zero-alloc repeated calls.
 
         /// <summary>
         /// Orthonormal basis for the NULLSPACE (kernel) of A (m x n, m >= n): the set of x with Ax = 0.
@@ -30,9 +30,9 @@ namespace LinearAlgebra
         /// value S[j] &lt;= relTol * S[0] counts as zero. A is NOT modified. <paramref name="converged"/>
         /// is the SVD's convergence flag — when false the result is 0 and basis is untouched.
         /// <paramref name="ws"/> is full-SVD scratch (m x n + n + n x n) reused across calls; size it
-        /// with Arena.floatSvdFullWorkspace(m, n).
+        /// with Arena.floatSvdFull_WS(m, n).
         /// </summary>
-        public static int nullspaceBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFullWorkspace ws,
+        public static int nullspaceBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFull_WS ws,
                                          out bool converged, float relTol, int maxIter)
         {
             int m = A.M_Rows;
@@ -74,12 +74,12 @@ namespace LinearAlgebra
         }
 
         /// <summary>nullspaceBasis (ref workspace) with default maxIter (75).</summary>
-        public static int nullspaceBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFullWorkspace ws,
+        public static int nullspaceBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFull_WS ws,
                                          out bool converged, float relTol)
             => nullspaceBasis(in A, ref basis, ref ws, out converged, relTol, 75);
 
         /// <summary>nullspaceBasis (ref workspace) with auto tolerance (relTol = -1) and default maxIter (75).</summary>
-        public static int nullspaceBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFullWorkspace ws,
+        public static int nullspaceBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFull_WS ws,
                                          out bool converged)
             => nullspaceBasis(in A, ref basis, ref ws, out converged, (float)(-1), 75);
 
@@ -92,7 +92,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new floatSvdFullWorkspace
+            var ws = new floatSvdFull_WS
             {
                 U = A.tempfloatMat(m, n),
                 S = A.tempfloatVec(n),
@@ -117,9 +117,9 @@ namespace LinearAlgebra
         /// columns of basis are left untouched.
         ///
         /// Same tolerance / convergence semantics as <see cref="nullspaceBasis"/>. <paramref name="ws"/>
-        /// is full-SVD scratch reused across calls; size it with Arena.floatSvdFullWorkspace(m, n).
+        /// is full-SVD scratch reused across calls; size it with Arena.floatSvdFull_WS(m, n).
         /// </summary>
-        public static int rangeBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFullWorkspace ws,
+        public static int rangeBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFull_WS ws,
                                      out bool converged, float relTol, int maxIter)
         {
             int m = A.M_Rows;
@@ -161,12 +161,12 @@ namespace LinearAlgebra
         }
 
         /// <summary>rangeBasis (ref workspace) with default maxIter (75).</summary>
-        public static int rangeBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFullWorkspace ws,
+        public static int rangeBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFull_WS ws,
                                      out bool converged, float relTol)
             => rangeBasis(in A, ref basis, ref ws, out converged, relTol, 75);
 
         /// <summary>rangeBasis (ref workspace) with auto tolerance (relTol = -1) and default maxIter (75).</summary>
-        public static int rangeBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFullWorkspace ws,
+        public static int rangeBasis(in floatMxN A, ref floatMxN basis, ref floatSvdFull_WS ws,
                                      out bool converged)
             => rangeBasis(in A, ref basis, ref ws, out converged, (float)(-1), 75);
 
@@ -179,7 +179,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new floatSvdFullWorkspace
+            var ws = new floatSvdFull_WS
             {
                 U = A.tempfloatMat(m, n),
                 S = A.tempfloatVec(n),

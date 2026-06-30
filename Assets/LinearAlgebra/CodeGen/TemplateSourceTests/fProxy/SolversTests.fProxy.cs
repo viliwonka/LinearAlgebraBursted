@@ -47,19 +47,19 @@ public class fProxySolversTests {
 
             var A = Q.Copy();
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
 
             var b = arena.fProxyRandomVector(dim, -1f, 1f);
 
-            var y = fProxyOP.dot(b, Q);
+            var y = fProxy_OP.dot(b, Q);
             
             //var x = arena.Vector(dim);
 
             Solvers.SolveUpperTriangular(ref R, ref y);
 
-            var Ax = fProxyOP.dot(A, y);
+            var Ax = fProxy_OP.dot(A, y);
 
-            Assert.IsTrue(Analysis.IsZero(b - Ax, 1E-6f));
+            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, 1E-6f));
             /*Print.Log(A);
             Print.Log(Q);
             Print.Log(R);

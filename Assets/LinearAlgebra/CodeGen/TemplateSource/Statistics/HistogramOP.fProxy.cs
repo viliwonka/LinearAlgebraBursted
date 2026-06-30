@@ -18,7 +18,7 @@ namespace LinearAlgebra.Stats
     //
     // Generic constraint IUnsafefProxyArray lets these ops work over both fProxyN and
     // fProxyMxN (a matrix histograms its flat row-major data, identical to StatsOP reductions).
-    public static partial class fProxyHistogramOP
+    public static partial class fProxyHistogram_OP
     {
         // -------------------------------------------------------------------------
         // histogramInto — explicit range

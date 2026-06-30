@@ -122,12 +122,12 @@ public class fProxyPivotedCholeskyTests
 
                 // exact solve: b = A xOrig => x == xOrig.
                 var xOrig = arena.fProxyRandomVector(n, -3f, 3f, 71000 + t * 7);
-                var b = fProxyOP.dot(A, xOrig);
+                var b = fProxy_OP.dot(A, xOrig);
                 var Lc = arena.fProxyMat(n);
                 var Pc = new Pivot(n, Allocator.Persistent);
                 Cholesky.choleskyPivotSolve(in A, ref Lc, ref Pc, ref b); // b <- x
                 for (int i = 0; i < n; i++) b[i] -= xOrig[i];
-                RecordBound(fProxyNormsOP.L2(in b), (fProxy)1E-3f);
+                RecordBound(fProxyNorms_OP.L2(in b), (fProxy)1E-3f);
 
                 Pc.Dispose();
                 P.Dispose();
@@ -183,18 +183,18 @@ public class fProxyPivotedCholeskyTests
 
                 // xRange = A·w ∈ range(A); b = A·xRange => min-norm solution == xRange.
                 var w = arena.fProxyRandomVector(n, -2f, 2f, 51000 + t * 5);
-                var xRange = fProxyOP.dot(A, w);
-                var b = fProxyOP.dot(A, xRange);
+                var xRange = fProxy_OP.dot(A, w);
+                var b = fProxy_OP.dot(A, xRange);
 
                 var Ls = arena.fProxyMat(n);
                 var Ps = new Pivot(n, Allocator.Persistent);
                 Cholesky.choleskyPivotSolve(in A, ref Ls, ref Ps, ref b); // b <- x
 
                 // A·x ≈ A·xRange (consistency) and x ≈ xRange (exact recovery, scaled by ‖xRange‖).
-                fProxy scale = fProxyNormsOP.L2(in xRange) + (fProxy)1f;
+                fProxy scale = fProxyNorms_OP.L2(in xRange) + (fProxy)1f;
                 var diff = arena.fProxyVec(n);
                 for (int i = 0; i < n; i++) diff[i] = b[i] - xRange[i];
-                RecordBound(fProxyNormsOP.L2(in diff) / scale, (fProxy)1E-2f);
+                RecordBound(fProxyNorms_OP.L2(in diff) / scale, (fProxy)1E-2f);
 
                 Ps.Dispose();
                 P.Dispose();
@@ -217,7 +217,7 @@ public class fProxyPivotedCholeskyTests
                 var A = Gram(in arena, in B);
 
                 var xOrig = arena.fProxyRandomVector(n, -2f, 2f, 42000 + t * 9);
-                var b = fProxyOP.dot(A, xOrig);     // b ∈ range(A)
+                var b = fProxy_OP.dot(A, xOrig);     // b ∈ range(A)
                 var bForResidual = b.Copy();
 
                 var L = arena.fProxyMat(n);
@@ -225,15 +225,15 @@ public class fProxyPivotedCholeskyTests
                 Cholesky.choleskyPivotSolve(in A, ref L, ref P, ref b); // b <- x
 
                 // consistency: A·x ≈ bForResidual.
-                var Ax = fProxyOP.dot(A, b);
+                var Ax = fProxy_OP.dot(A, b);
                 var resid = arena.fProxyVec(n);
                 for (int i = 0; i < n; i++) resid[i] = Ax[i] - bForResidual[i];
-                fProxy bScale = fProxyNormsOP.L2(in bForResidual) + (fProxy)1f;
-                RecordBound(fProxyNormsOP.L2(in resid) / bScale, (fProxy)1E-2f);
+                fProxy bScale = fProxyNorms_OP.L2(in bForResidual) + (fProxy)1f;
+                RecordBound(fProxyNorms_OP.L2(in resid) / bScale, (fProxy)1E-2f);
 
                 // minimum-norm: ‖x‖ ≤ ‖xOrig‖ (+ tiny slack).
-                fProxy xNorm = fProxyNormsOP.L2(in b);
-                fProxy origNorm = fProxyNormsOP.L2(in xOrig);
+                fProxy xNorm = fProxyNorms_OP.L2(in b);
+                fProxy origNorm = fProxyNorms_OP.L2(in xOrig);
                 if (!(xNorm <= origNorm + (fProxy)1E-3f * (origNorm + (fProxy)1f)) && Fail[0] == (fProxy)0)
                 {
                     Fail[0] = (fProxy)1;
@@ -305,7 +305,7 @@ public class fProxyPivotedCholeskyTests
             // solve: x = 0 for any b.
             var b = arena.fProxyRandomVector(n, -1f, 1f, 999);
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b);
-            RecordBound(fProxyNormsOP.L2(in b), (fProxy)1E-6f);
+            RecordBound(fProxyNorms_OP.L2(in b), (fProxy)1E-6f);
 
             P.Dispose();
             arena.Dispose();
@@ -406,16 +406,16 @@ public class fProxyPivotedCholeskyTests
                 RecordEq(ok ? 1 : 0, 1);
 
                 // normal equations: A(Ax) == A b  <=>  A(Ax - b) == 0  (residual ⟂ range(A)).
-                var Ax = fProxyOP.dot(A, b);
-                var AAx = fProxyOP.dot(A, Ax);
+                var Ax = fProxy_OP.dot(A, b);
+                var AAx = fProxy_OP.dot(A, Ax);
                 // recompute A b — b now holds x, so rebuild b from the same seed.
                 var bOrig = arena.fProxyRandomVector(n, -2f, 2f, 77000 + t * 13);
-                var Ab = fProxyOP.dot(A, bOrig);
+                var Ab = fProxy_OP.dot(A, bOrig);
 
-                fProxy scale = fProxyNormsOP.L2(in Ab) + (fProxy)1f;
+                fProxy scale = fProxyNorms_OP.L2(in Ab) + (fProxy)1f;
                 var diff = arena.fProxyVec(n);
                 for (int i = 0; i < n; i++) diff[i] = AAx[i] - Ab[i];
-                RecordBound(fProxyNormsOP.L2(in diff) / scale, (fProxy)1E-2f);
+                RecordBound(fProxyNorms_OP.L2(in diff) / scale, (fProxy)1E-2f);
 
                 P.Dispose();
                 arena.Clear();

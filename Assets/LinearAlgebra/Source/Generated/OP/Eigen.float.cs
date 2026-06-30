@@ -337,7 +337,7 @@ namespace LinearAlgebra
                     eigenvalues[maxIdx] = tmp;
 
                     // Swap corresponding columns of V only (A's diagonal traveled into eigenvalues)
-                    SwapOP.Columns(ref V, j, maxIdx);
+                    Swap_OP.Columns(ref V, j, maxIdx);
                 }
             }
 
@@ -387,7 +387,7 @@ namespace LinearAlgebra
         /// beyond three length-n Temp scratch vectors.
         /// </summary>
         public static bool eigenvaluesSymmetric(ref floatMxN A, ref floatN eigenvalues, int maxIterPerEig, float eps,
-                                                 ref floatEigenSymWorkspace ws)
+                                                 ref floatEigenSym_WS ws)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Eigen.eigenvaluesSymmetric: A must be square");
@@ -496,8 +496,8 @@ namespace LinearAlgebra
                     for (int r = m0; r < n; r++)
                     {
                         float* arow = ap + (long)r * n;
-                        UnsafeOP.axpy(arow + m0, p + m0, -v[r], len);   // -= v[r] * q
-                        UnsafeOP.axpy(arow + m0, v + m0, -p[r], len);   // -= q[r] * v
+                        Unsafe_OP.axpy(arow + m0, p + m0, -v[r], len);   // -= v[r] * q
+                        Unsafe_OP.axpy(arow + m0, v + m0, -p[r], len);   // -= q[r] * v
                     }
 
                     eVec[k] = alpha;
@@ -582,7 +582,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>eigenvaluesSymmetric (ref workspace) with default maxIterPerEig (30) and eps (Consts.floatZeroThreshold).</summary>
-        public static bool eigenvaluesSymmetric(ref floatMxN A, ref floatN eigenvalues, ref floatEigenSymWorkspace ws)
+        public static bool eigenvaluesSymmetric(ref floatMxN A, ref floatN eigenvalues, ref floatEigenSym_WS ws)
             => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.floatZeroThreshold, ref ws);
 
         /// <summary>
@@ -592,7 +592,7 @@ namespace LinearAlgebra
         public static bool eigenvaluesSymmetric(ref floatMxN A, ref floatN eigenvalues, int maxIterPerEig, float eps)
         {
             int n = A.M_Rows;
-            var ws = new floatEigenSymWorkspace
+            var ws = new floatEigenSym_WS
             {
                 eVec = new floatN(n, Allocator.Temp, false),
                 vVec = new floatN(n, Allocator.Temp, false),
@@ -727,8 +727,8 @@ namespace LinearAlgebra
                     for (int r = m0; r < n; r++)
                     {
                         float* arow = ap + (long)r * n;
-                        UnsafeOP.axpy(arow + m0, p + m0, -v[r], len);
-                        UnsafeOP.axpy(arow + m0, v + m0, -p[r], len);
+                        Unsafe_OP.axpy(arow + m0, p + m0, -v[r], len);
+                        Unsafe_OP.axpy(arow + m0, v + m0, -p[r], len);
                     }
 
                     // Accumulate Q: V := V * H_k  (H_k = I - beta v vᵀ on columns [m0,n)).
@@ -738,7 +738,7 @@ namespace LinearAlgebra
                         float* qrow = qp + (long)r * n;
                         float s = 0;
                         for (int c = m0; c < n; c++) s += qrow[c] * v[c];
-                        UnsafeOP.axpy(qrow + m0, v + m0, -(beta * s), len);
+                        Unsafe_OP.axpy(qrow + m0, v + m0, -(beta * s), len);
                     }
 
                     eVec[k] = alpha;
@@ -805,7 +805,7 @@ namespace LinearAlgebra
 
                                 // Apply the plane rotation to ROWS i, i+1 of the transposed eigenvector
                                 // matrix — contiguous + [NoAlias] (distinct rows) so Burst vectorizes it.
-                                UnsafeOP.jacobiRotate(qp + (long)i * n, qp + (long)(i + 1) * n, c, s, n);
+                                Unsafe_OP.jacobiRotate(qp + (long)i * n, qp + (long)(i + 1) * n, c, s, n);
                             }
                             if (r == (float)0 && i >= l) continue;
                             eigenvalues[l] -= pp; eVec[l] = g; eVec[m] = 0;
@@ -839,7 +839,7 @@ namespace LinearAlgebra
                     float tmp = eigenvalues[j];
                     eigenvalues[j] = eigenvalues[maxIdx];
                     eigenvalues[maxIdx] = tmp;
-                    SwapOP.Columns(ref V, j, maxIdx);
+                    Swap_OP.Columns(ref V, j, maxIdx);
                 }
             }
 
@@ -931,7 +931,7 @@ namespace LinearAlgebra
                             y /= x;
                             A[i, m - 1] = y;                          // store multiplier (cleared below)
                             // row update A[i, m:] -= y * A[m, m:] — unit-stride, vectorized.
-                            UnsafeOP.axpy(ap + (long)i * n + m, ap + (long)m * n + m, -y, n - m);
+                            Unsafe_OP.axpy(ap + (long)i * n + m, ap + (long)m * n + m, -y, n - m);
                             // column update A[:, m] += y * A[:, i] — column-strided, left scalar.
                             for (int j = 0; j < n; j++)
                                 A[j, m] += y * A[j, i];
@@ -1098,10 +1098,10 @@ namespace LinearAlgebra
                                     // k, k+1, k+2 are distinct -> [NoAlias] Francis butterfly SIMDs it.
                                     int rowLen = nn - k + 1;
                                     if (k != nn - 1)
-                                        UnsafeOP.francisRow3(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
+                                        Unsafe_OP.francisRow3(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
                                                              ap + (long)(k + 2) * n + k, q, r, xx, yy, zz, rowLen);
                                     else
-                                        UnsafeOP.francisRow2(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
+                                        Unsafe_OP.francisRow2(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
                                                              q, xx, yy, rowLen);
 
                                     int mmin = nn < k + 3 ? nn : k + 3;

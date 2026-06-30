@@ -11,7 +11,7 @@ using Unity.Mathematics;
 
 // Tests for QueryOP Phase 2 (the long integer subset: int/short/long): the integer-exact
 // search & selection ops from docs/spec-query.md (policies P2/P3). One template expands to
-// intQueryOP / shortQueryOP / longQueryOP, so every literal must be exact AND safe for the
+// intQuery_OP / shortQuery_OP / longQuery_OP, so every literal must be exact AND safe for the
 // TIGHTEST type (short): coordinates kept small so Manhattan/Chebyshev differences fit the
 // type, and SqEuclidean/Dot accumulations fit short.MaxValue = 32767. Type extremes use the
 // proxy constants long.MinValue / long.MaxValue (which expand per type).
@@ -102,18 +102,18 @@ public class longQueryTests
             v[0] = (long)(-2); v[1] = (long)5; v[2] = (long)(-5);
             v[3] = (long)1;    v[4] = (long)(-1); v[5] = (long)4;
 
-            longQueryOP.argMaxAbs(in v, out long maxVal, out int maxIdx);
+            longQuery_OP.argMaxAbs(in v, out long maxVal, out int maxIdx);
             AssertEqI(maxIdx, 1);                  // first of the two |5| entries
             AssertEqV(maxVal, (long)5);
 
-            longQueryOP.argMinAbs(in v, out long minVal, out int minIdx);
+            longQuery_OP.argMinAbs(in v, out long minVal, out int minIdx);
             AssertEqI(minIdx, 3);                  // first of the two |1| entries
             AssertEqV(minVal, (long)1);
 
             // 1x1 / single-element vector: index 0, value = |element|.
             var one = arena.longVec(1);
             one[0] = (long)(-7);
-            longQueryOP.argMaxAbs(in one, out long ov, out int oi);
+            longQuery_OP.argMaxAbs(in one, out long ov, out int oi);
             AssertEqI(oi, 0);
             AssertEqV(ov, (long)7);
 
@@ -132,12 +132,12 @@ public class longQueryTests
             A[0, 0] = (long)1;  A[0, 1] = (long)(-3); A[0, 2] = (long)2;
             A[1, 0] = (long)0;  A[1, 1] = (long)4;    A[1, 2] = (long)(-4);
 
-            longQueryOP.argMaxAbs(in A, out long maxVal, out int maxIdx);
+            longQuery_OP.argMaxAbs(in A, out long maxVal, out int maxIdx);
             AssertEqI(maxIdx, 4);                  // (r,c) = (4/3, 4%3) = (1,1)
             AssertEqV(maxVal, (long)4);
 
             // minAbs is the 0 at flat 3 (r1,c0).
-            longQueryOP.argMinAbs(in A, out long minVal, out int minIdx);
+            longQuery_OP.argMinAbs(in A, out long minVal, out int minIdx);
             AssertEqI(minIdx, 3);                  // (r,c) = (3/3, 3%3) = (1,0)
             AssertEqV(minVal, (long)0);
 
@@ -161,7 +161,7 @@ public class longQueryTests
             var idxR = arena.Indices(3);
             var valR = arena.longVec(3);
 
-            int nr = longQueryOP.rowArgMin(in A, ref idxR, ref valR);
+            int nr = longQuery_OP.rowArgMin(in A, ref idxR, ref valR);
             AssertEqI(nr, 3);
             AssertEqI(idxR[0], 1); AssertEqV(valR[0], (long)1);
             AssertEqI(idxR[1], 1); AssertEqV(valR[1], (long)7);
@@ -169,38 +169,38 @@ public class longQueryTests
 
             // index-only form must match.
             var idxR2 = arena.Indices(3);
-            longQueryOP.rowArgMin(in A, ref idxR2);
+            longQuery_OP.rowArgMin(in A, ref idxR2);
             AssertEqI(idxR2[0], 1); AssertEqI(idxR2[1], 1); AssertEqI(idxR2[2], 0);
 
-            longQueryOP.rowArgMax(in A, ref idxR, ref valR);
+            longQuery_OP.rowArgMax(in A, ref idxR, ref valR);
             AssertEqI(idxR[0], 0); AssertEqV(valR[0], (long)3);
             AssertEqI(idxR[1], 0); AssertEqV(valR[1], (long)9);
             AssertEqI(idxR[2], 1); AssertEqV(valR[2], (long)5);
 
             var idxR3 = arena.Indices(3);
-            longQueryOP.rowArgMax(in A, ref idxR3);
+            longQuery_OP.rowArgMax(in A, ref idxR3);
             AssertEqI(idxR3[0], 0); AssertEqI(idxR3[1], 0); AssertEqI(idxR3[2], 1);
 
             // columns: colMin per column -> rows {2,0,0}; colMax per column -> rows {1,1,1}.
             var idxC = arena.Indices(3);
             var valC = arena.longVec(3);
-            int nc = longQueryOP.colArgMin(in A, ref idxC, ref valC);
+            int nc = longQuery_OP.colArgMin(in A, ref idxC, ref valC);
             AssertEqI(nc, 3);
             AssertEqI(idxC[0], 2); AssertEqV(valC[0], (long)0);
             AssertEqI(idxC[1], 0); AssertEqV(valC[1], (long)1);
             AssertEqI(idxC[2], 0); AssertEqV(valC[2], (long)2);
 
             var idxC2 = arena.Indices(3);
-            longQueryOP.colArgMin(in A, ref idxC2);
+            longQuery_OP.colArgMin(in A, ref idxC2);
             AssertEqI(idxC2[0], 2); AssertEqI(idxC2[1], 0); AssertEqI(idxC2[2], 0);
 
-            longQueryOP.colArgMax(in A, ref idxC, ref valC);
+            longQuery_OP.colArgMax(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 1); AssertEqV(valC[0], (long)9);
             AssertEqI(idxC[1], 1); AssertEqV(valC[1], (long)7);
             AssertEqI(idxC[2], 1); AssertEqV(valC[2], (long)8);
 
             var idxC3 = arena.Indices(3);
-            longQueryOP.colArgMax(in A, ref idxC3);
+            longQuery_OP.colArgMax(in A, ref idxC3);
             AssertEqI(idxC3[0], 1); AssertEqI(idxC3[1], 1); AssertEqI(idxC3[2], 1);
 
             arena.Dispose();
@@ -227,11 +227,11 @@ public class longQueryTests
             var idxC = arena.Indices(2);
             var valC = arena.longVec(2);
 
-            longQueryOP.colArgMin(in A, ref idxC, ref valC);
+            longQuery_OP.colArgMin(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 0); AssertEqV(valC[0], (long)1);
             AssertEqI(idxC[1], 3); AssertEqV(valC[1], (long)4);
 
-            longQueryOP.colArgMax(in A, ref idxC, ref valC);
+            longQuery_OP.colArgMax(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 2); AssertEqV(valC[0], (long)9);
             AssertEqI(idxC[1], 0); AssertEqV(valC[1], (long)8);
 
@@ -256,14 +256,14 @@ public class longQueryTests
             A[1, 0] = (long)1;    A[1, 1] = (long)1; A[1, 2] = (long)1;
             A[2, 0] = (long)(-2); A[2, 1] = (long)2; A[2, 2] = (long)0;
 
-            AssertEqI(longQueryOP.argMaxRowNorm(in A, Norm.L1), 2);
-            AssertEqI(longQueryOP.argMaxRowNorm(in A, Norm.Linf), 0);
+            AssertEqI(longQuery_OP.argMaxRowNorm(in A, Norm.L1), 2);
+            AssertEqI(longQuery_OP.argMaxRowNorm(in A, Norm.Linf), 0);
 
             // Tie -> first occurrence. Two rows of identical L1 norm 5; first is row 0.
             var T = arena.longMat(2, 2);
             T[0, 0] = (long)5; T[0, 1] = (long)0;
             T[1, 0] = (long)0; T[1, 1] = (long)5;
-            AssertEqI(longQueryOP.argMaxRowNorm(in T, Norm.L1), 0);
+            AssertEqI(longQuery_OP.argMaxRowNorm(in T, Norm.L1), 0);
 
             arena.Dispose();
         }
@@ -282,8 +282,8 @@ public class longQueryTests
             A[1, 0] = (long)1;    A[1, 1] = (long)1; A[1, 2] = (long)0;
             A[2, 0] = (long)(-2); A[2, 1] = (long)2; A[2, 2] = (long)0;
 
-            AssertEqI(longQueryOP.argMaxColNorm(in A, Norm.L1), 0);
-            AssertEqI(longQueryOP.argMaxColNorm(in A, Norm.Linf), 2);
+            AssertEqI(longQuery_OP.argMaxColNorm(in A, Norm.L1), 0);
+            AssertEqI(longQuery_OP.argMaxColNorm(in A, Norm.Linf), 2);
 
             arena.Dispose();
         }
@@ -309,25 +309,25 @@ public class longQueryTests
             var d = arena.longVec(2);
 
             // Manhattan: |3|+|4|=7 ; |1|+|0|=1
-            longQueryOP.distancesToRow(in A, in q, Metric.Manhattan, ref d);
+            longQuery_OP.distancesToRow(in A, in q, Metric.Manhattan, ref d);
             AssertEqV(d[0], (long)7); AssertEqV(d[1], (long)1);
 
             // SqEuclidean (unsquared, no sqrt): 25 ; 1
-            longQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref d);
+            longQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref d);
             AssertEqV(d[0], (long)25); AssertEqV(d[1], (long)1);
 
             // Chebyshev: max(3,4)=4 ; max(1,0)=1
-            longQueryOP.distancesToRow(in A, in q, Metric.Chebyshev, ref d);
+            longQuery_OP.distancesToRow(in A, in q, Metric.Chebyshev, ref d);
             AssertEqV(d[0], (long)4); AssertEqV(d[1], (long)1);
 
             // Dot with q=(0,0) is 0 for every row.
-            longQueryOP.distancesToRow(in A, in q, Metric.Dot, ref d);
+            longQuery_OP.distancesToRow(in A, in q, Metric.Dot, ref d);
             AssertEqV(d[0], (long)0); AssertEqV(d[1], (long)0);
 
             // Dot with q2=(3,4): r0.q2 = 9+16 = 25 ; r1.q2 = 3+0 = 3.
             var q2 = arena.longVec(2);
             q2[0] = (long)3; q2[1] = (long)4;
-            longQueryOP.distancesToRow(in A, in q2, Metric.Dot, ref d);
+            longQuery_OP.distancesToRow(in A, in q2, Metric.Dot, ref d);
             AssertEqV(d[0], (long)25); AssertEqV(d[1], (long)3);
 
             arena.Dispose();
@@ -349,19 +349,19 @@ public class longQueryTests
             var d = arena.longVec(2);
 
             // Manhattan: c0=4, c1=4
-            longQueryOP.distancesToColumn(in A, in q, Metric.Manhattan, ref d);
+            longQuery_OP.distancesToColumn(in A, in q, Metric.Manhattan, ref d);
             AssertEqV(d[0], (long)4); AssertEqV(d[1], (long)4);
 
             // SqEuclidean: c0 = 9+1 = 10 ; c1 = 16+0 = 16
-            longQueryOP.distancesToColumn(in A, in q, Metric.SqEuclidean, ref d);
+            longQuery_OP.distancesToColumn(in A, in q, Metric.SqEuclidean, ref d);
             AssertEqV(d[0], (long)10); AssertEqV(d[1], (long)16);
 
             // Chebyshev: c0=max(3,1)=3 ; c1=max(4,0)=4
-            longQueryOP.distancesToColumn(in A, in q, Metric.Chebyshev, ref d);
+            longQuery_OP.distancesToColumn(in A, in q, Metric.Chebyshev, ref d);
             AssertEqV(d[0], (long)3); AssertEqV(d[1], (long)4);
 
             // Dot with q=(0,0) is 0 for every column.
-            longQueryOP.distancesToColumn(in A, in q, Metric.Dot, ref d);
+            longQuery_OP.distancesToColumn(in A, in q, Metric.Dot, ref d);
             AssertEqV(d[0], (long)0); AssertEqV(d[1], (long)0);
 
             arena.Dispose();
@@ -381,16 +381,16 @@ public class longQueryTests
             q[0] = (long)0; q[1] = (long)0;
 
             // SqEuclidean: distances 0, 25, 2. nearest=r0 (score 0), farthest=r1 (score 25, squared).
-            longQueryOP.nearestRow(in A, in q, Metric.SqEuclidean, out int ni, out long ns);
+            longQuery_OP.nearestRow(in A, in q, Metric.SqEuclidean, out int ni, out long ns);
             AssertEqI(ni, 0); AssertEqV(ns, (long)0);
 
-            longQueryOP.farthestRow(in A, in q, Metric.SqEuclidean, out int fi, out long fs);
+            longQuery_OP.farthestRow(in A, in q, Metric.SqEuclidean, out int fi, out long fs);
             AssertEqI(fi, 1); AssertEqV(fs, (long)25);
 
             // Manhattan: distances 0, 7, 2. nearest=r0, farthest=r1 (score 7).
-            longQueryOP.nearestRow(in A, in q, Metric.Manhattan, out int ni2, out long ns2);
+            longQuery_OP.nearestRow(in A, in q, Metric.Manhattan, out int ni2, out long ns2);
             AssertEqI(ni2, 0); AssertEqV(ns2, (long)0);
-            longQueryOP.farthestRow(in A, in q, Metric.Manhattan, out int fi2, out long fs2);
+            longQuery_OP.farthestRow(in A, in q, Metric.Manhattan, out int fi2, out long fs2);
             AssertEqI(fi2, 1); AssertEqV(fs2, (long)7);
 
             arena.Dispose();
@@ -410,19 +410,19 @@ public class longQueryTests
             var q = arena.longVec(2);
             q[0] = (long)1; q[1] = (long)0;
 
-            longQueryOP.nearestRow(in A, in q, Metric.Dot, out int ni, out long ns);
+            longQuery_OP.nearestRow(in A, in q, Metric.Dot, out int ni, out long ns);
             AssertEqI(ni, 1); AssertEqV(ns, (long)10);
 
-            longQueryOP.farthestRow(in A, in q, Metric.Dot, out int fi, out long fs);
+            longQuery_OP.farthestRow(in A, in q, Metric.Dot, out int fi, out long fs);
             AssertEqI(fi, 2); AssertEqV(fs, (long)(-5));
 
             // Column twins: columns of A as vectors of length 3: c0=(1,10,-5), c1=(0,0,0). q3=(1,0,0).
             // Dot: c0.q3 = 1 ; c1.q3 = 0 -> nearest(max)=c0, farthest(min)=c1.
             var q3 = arena.longVec(3);
             q3[0] = (long)1; q3[1] = (long)0; q3[2] = (long)0;
-            longQueryOP.nearestColumn(in A, in q3, Metric.Dot, out int cni, out long cns);
+            longQuery_OP.nearestColumn(in A, in q3, Metric.Dot, out int cni, out long cns);
             AssertEqI(cni, 0); AssertEqV(cns, (long)1);
-            longQueryOP.farthestColumn(in A, in q3, Metric.Dot, out int cfi, out long cfs);
+            longQuery_OP.farthestColumn(in A, in q3, Metric.Dot, out int cfi, out long cfs);
             AssertEqI(cfi, 1); AssertEqV(cfs, (long)0);
 
             arena.Dispose();
@@ -444,11 +444,11 @@ public class longQueryTests
             var scores = arena.longVec(k);
 
             // --- distance metric (SqEuclidean): best-first = ASCENDING ---
-            int cnt = longQueryOP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
+            int cnt = longQuery_OP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, k);
 
             var all = arena.longVec(M);
-            longQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
+            longQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
             for (int i = 0; i + 1 < cnt; i++)
                 AssertTrue(scores[i] <= scores[i + 1]);
             for (int i = 0; i < cnt; i++)
@@ -464,10 +464,10 @@ public class longQueryTests
             // --- similarity metric (Dot): best-first = DESCENDING ---
             var idx2 = arena.Indices(k);
             var scores2 = arena.longVec(k);
-            int cnt2 = longQueryOP.kNearestRows(in A, in q, k, Metric.Dot, ref idx2, ref scores2);
+            int cnt2 = longQuery_OP.kNearestRows(in A, in q, k, Metric.Dot, ref idx2, ref scores2);
             AssertEqI(cnt2, k);
             var allDot = arena.longVec(M);
-            longQueryOP.distancesToRow(in A, in q, Metric.Dot, ref allDot);
+            longQuery_OP.distancesToRow(in A, in q, Metric.Dot, ref allDot);
             for (int i = 0; i + 1 < cnt2; i++)
                 AssertTrue(scores2[i] >= scores2[i + 1]);
             for (int i = 0; i < cnt2; i++)
@@ -486,10 +486,10 @@ public class longQueryTests
             int kc = 2;
             var idxC = arena.Indices(kc);
             var scoresC = arena.longVec(kc);
-            int cntC = longQueryOP.kNearestColumns(in A, in qc, kc, Metric.SqEuclidean, ref idxC, ref scoresC);
+            int cntC = longQuery_OP.kNearestColumns(in A, in qc, kc, Metric.SqEuclidean, ref idxC, ref scoresC);
             AssertEqI(cntC, kc);
             var allC = arena.longVec(N);
-            longQueryOP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
+            longQuery_OP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
             for (int i = 0; i + 1 < cntC; i++)
                 AssertTrue(scoresC[i] <= scoresC[i + 1]);
             for (int i = 0; i < cntC; i++)
@@ -523,14 +523,14 @@ public class longQueryTests
             int k = 10;
             var idx = arena.Indices(k);
             var scores = arena.longVec(k);
-            int cnt = longQueryOP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
+            int cnt = longQuery_OP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, 3);
             for (int i = 0; i < cnt; i++) AssertEqV(scores[i], (long)1);
             // pure tie -> insertion keeps first-seen order.
             AssertEqI(idx[0], 0); AssertEqI(idx[1], 1); AssertEqI(idx[2], 2);
 
             // k = 0 -> returns 0, writes nothing.
-            int z = longQueryOP.kNearestRows(in A, in q, 0, Metric.SqEuclidean, ref idx, ref scores);
+            int z = longQuery_OP.kNearestRows(in A, in q, 0, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(z, 0);
 
             arena.Dispose();
@@ -549,11 +549,11 @@ public class longQueryTests
             int k = 2;
             var idx = arena.Indices(k);
             var scores = arena.longVec(k);
-            int cnt = longQueryOP.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
+            int cnt = longQuery_OP.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, k);
 
             var all = arena.longVec(M);
-            longQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
+            longQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
             // farthest-first => descending distance
             for (int i = 0; i + 1 < cnt; i++)
                 AssertTrue(scores[i] >= scores[i + 1]);
@@ -573,10 +573,10 @@ public class longQueryTests
             int kc = 1;
             var idxC = arena.Indices(kc);
             var scoresC = arena.longVec(kc);
-            int cntC = longQueryOP.kFarthestColumns(in A, in qc, kc, Metric.SqEuclidean, ref idxC, ref scoresC);
+            int cntC = longQuery_OP.kFarthestColumns(in A, in qc, kc, Metric.SqEuclidean, ref idxC, ref scoresC);
             AssertEqI(cntC, kc);
             var allC = arena.longVec(N);
-            longQueryOP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
+            longQuery_OP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
             // the single farthest column must equal the max distance.
             long maxC = allC[0];
             for (int c = 1; c < N; c++) if (allC[c] > maxC) maxC = allC[c];
@@ -601,34 +601,34 @@ public class longQueryTests
 
             // radius exactly 25 (boundary): inclusive -> all three rows qualify.
             var idx = arena.Indices(3);
-            int cnt = longQueryOP.rowsWithinRadius(in A, in q, (long)25, Metric.SqEuclidean, ref idx);
-            int ccnt = longQueryOP.countWithinRadius(in A, in q, (long)25, Metric.SqEuclidean);
+            int cnt = longQuery_OP.rowsWithinRadius(in A, in q, (long)25, Metric.SqEuclidean, ref idx);
+            int ccnt = longQuery_OP.countWithinRadius(in A, in q, (long)25, Metric.SqEuclidean);
             AssertEqI(cnt, 3); AssertEqI(ccnt, 3);
             AssertEqI(idx[0], 0); AssertEqI(idx[1], 1); AssertEqI(idx[2], 2);
 
             // radius 24 -> r1 (distance 25) excluded.
-            int cnt2 = longQueryOP.rowsWithinRadius(in A, in q, (long)24, Metric.SqEuclidean, ref idx);
+            int cnt2 = longQuery_OP.rowsWithinRadius(in A, in q, (long)24, Metric.SqEuclidean, ref idx);
             AssertEqI(cnt2, 2);
             AssertEqI(idx[0], 0); AssertEqI(idx[1], 2);
-            AssertEqI(longQueryOP.countWithinRadius(in A, in q, (long)24, Metric.SqEuclidean), 2);
+            AssertEqI(longQuery_OP.countWithinRadius(in A, in q, (long)24, Metric.SqEuclidean), 2);
 
             // similarity metric (Dot): inclusive >= r. q2=(1,0): dots 0, 3, 1.
             var q2 = arena.longVec(2);
             q2[0] = (long)1; q2[1] = (long)0;
             // threshold exactly 1 -> rows with dot >= 1: r1(3) and r2(1). r0(0) excluded.
-            int cnt3 = longQueryOP.rowsWithinRadius(in A, in q2, (long)1, Metric.Dot, ref idx);
+            int cnt3 = longQuery_OP.rowsWithinRadius(in A, in q2, (long)1, Metric.Dot, ref idx);
             AssertEqI(cnt3, 2);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 2);
-            AssertEqI(longQueryOP.countWithinRadius(in A, in q2, (long)1, Metric.Dot), 2);
+            AssertEqI(longQuery_OP.countWithinRadius(in A, in q2, (long)1, Metric.Dot), 2);
 
             // Column twins. Columns of A length 3: c0=(0,3,1) c1=(0,4,1). qcol=(0,0,0).
             var qcol = arena.longVec(3);
             qcol[0] = (long)0; qcol[1] = (long)0; qcol[2] = (long)0;
             // SqEuclidean: c0=0+9+1=10, c1=0+16+1=17. radius 10 inclusive -> only c0.
             var idxc = arena.Indices(2);
-            int ccol = longQueryOP.columnsWithinRadius(in A, in qcol, (long)10, Metric.SqEuclidean, ref idxc);
+            int ccol = longQuery_OP.columnsWithinRadius(in A, in qcol, (long)10, Metric.SqEuclidean, ref idxc);
             AssertEqI(ccol, 1); AssertEqI(idxc[0], 0);
-            AssertEqI(longQueryOP.countWithinColumnRadius(in A, in qcol, (long)10, Metric.SqEuclidean), 1);
+            AssertEqI(longQuery_OP.countWithinColumnRadius(in A, in qcol, (long)10, Metric.SqEuclidean), 1);
 
             arena.Dispose();
         }
@@ -645,19 +645,19 @@ public class longQueryTests
             v[0] = (long)1; v[1] = (long)2; v[2] = (long)2; v[3] = (long)3; v[4] = (long)2;
 
             // first match (tol 0) at index 1
-            AssertEqI(longQueryOP.findValue(in v, (long)2, (long)0), 1);
+            AssertEqI(longQuery_OP.findValue(in v, (long)2, (long)0), 1);
             // absent -> -1
-            AssertEqI(longQueryOP.findValue(in v, (long)9, (long)0), -1);
+            AssertEqI(longQuery_OP.findValue(in v, (long)9, (long)0), -1);
             // integer tol: target 4, tol 1 -> first element with |x-4| <= 1 is the 3 at index 3.
-            AssertEqI(longQueryOP.findValue(in v, (long)4, (long)1), 3);
+            AssertEqI(longQuery_OP.findValue(in v, (long)4, (long)1), 3);
             // tol 0 of an absent target -> no match.
-            AssertEqI(longQueryOP.findValue(in v, (long)4, (long)0), -1);
+            AssertEqI(longQuery_OP.findValue(in v, (long)4, (long)0), -1);
 
             // matrix overload (flat index). 2x2 = [5, 6; 7, 6]; first 6 at flat 1.
             var A = arena.longMat(2, 2);
             A[0, 0] = (long)5; A[0, 1] = (long)6;
             A[1, 0] = (long)7; A[1, 1] = (long)6;
-            AssertEqI(longQueryOP.findValue(in A, (long)6, (long)0), 1);
+            AssertEqI(longQuery_OP.findValue(in A, (long)6, (long)0), 1);
 
             arena.Dispose();
         }
@@ -671,15 +671,15 @@ public class longQueryTests
             v[3] = (long)(-3); v[4] = (long)1; v[5] = (long)0;
 
             // tol=0: nonzero are indices 1,3,4 -> count 3
-            AssertEqI(longQueryOP.countNonzero(in v, (long)0), 3);
+            AssertEqI(longQuery_OP.countNonzero(in v, (long)0), 3);
             var idx = arena.Indices(6);
-            int c = longQueryOP.nonzero(in v, (long)0, ref idx);
+            int c = longQuery_OP.nonzero(in v, (long)0, ref idx);
             AssertEqI(c, 3);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 3); AssertEqI(idx[2], 4);
 
             // tol=1 (strict |x|>tol): |1| filtered out -> indices 1,3 -> count 2
-            AssertEqI(longQueryOP.countNonzero(in v, (long)1), 2);
-            int c2 = longQueryOP.nonzero(in v, (long)1, ref idx);
+            AssertEqI(longQuery_OP.countNonzero(in v, (long)1), 2);
+            int c2 = longQuery_OP.nonzero(in v, (long)1, ref idx);
             AssertEqI(c2, 2);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 3);
 
@@ -687,9 +687,9 @@ public class longQueryTests
             var A = arena.longMat(2, 2);
             A[0, 0] = (long)0; A[0, 1] = (long)2;
             A[1, 0] = (long)0; A[1, 1] = (long)0;
-            AssertEqI(longQueryOP.countNonzero(in A, (long)0), 1);
+            AssertEqI(longQuery_OP.countNonzero(in A, (long)0), 1);
             var idxA = arena.Indices(4);
-            int ca = longQueryOP.nonzero(in A, (long)0, ref idxA);
+            int ca = longQuery_OP.nonzero(in A, (long)0, ref idxA);
             AssertEqI(ca, 1); AssertEqI(idxA[0], 1);
 
             arena.Dispose();
@@ -709,15 +709,15 @@ public class longQueryTests
             v[0] = (long)long.MinValue; v[1] = (long)3; v[2] = (long)0; v[3] = (long)(-2);
 
             // argMaxAbs: |MinValue| saturates to MaxValue (the documented off-by-one) and wins.
-            longQueryOP.argMaxAbs(in v, out long mv, out int mi);
+            longQuery_OP.argMaxAbs(in v, out long mv, out int mi);
             AssertEqI(mi, 0);
             AssertEqV(mv, (long)long.MaxValue);
 
             // countNonzero(tol=0): MinValue classifies as nonzero -> {0,1,3} -> count 3.
-            AssertEqI(longQueryOP.countNonzero(in v, (long)0), 3);
+            AssertEqI(longQuery_OP.countNonzero(in v, (long)0), 3);
 
             // findValue(target = MinValue, tol = 0): exact match at flat 0.
-            AssertEqI(longQueryOP.findValue(in v, (long)long.MinValue, (long)0), 0);
+            AssertEqI(longQuery_OP.findValue(in v, (long)long.MinValue, (long)0), 0);
 
             arena.Dispose();
         }
@@ -739,7 +739,7 @@ public class longQueryTests
             // --- longDistancesToRow / Column wrappers vs primitive ---
             var dr = ArenaExtensions.longDistancesToRow(in A, in q, Metric.SqEuclidean);
             var drRef = arena.longVec(M);
-            longQueryOP.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
+            longQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
             AssertEqI(dr.N, M);
             for (int i = 0; i < M; i++) AssertEqV(dr[i], drRef[i]);
 
@@ -747,14 +747,14 @@ public class longQueryTests
             for (int i = 0; i < M; i++) qc[i] = (long)(i - 3);
             var dcol = ArenaExtensions.longDistancesToColumn(in A, in qc, Metric.SqEuclidean);
             var dcolRef = arena.longVec(N);
-            longQueryOP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
+            longQuery_OP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
             AssertEqI(dcol.N, N);
             for (int j = 0; j < N; j++) AssertEqV(dcol[j], dcolRef[j]);
 
             // --- longNonzeroIndices: exact-sized, contents match the primitive ---
             var idxNz = arena.longNonzeroIndices(in A, (long)0);
             var refNz = arena.Indices(M * N);
-            int refCnt = longQueryOP.nonzero(in A, (long)0, ref refNz);
+            int refCnt = longQuery_OP.nonzero(in A, (long)0, ref refNz);
             AssertEqI(idxNz.N, refCnt);
             for (int i = 0; i < refCnt; i++) AssertEqI(idxNz[i], refNz[i]);
 
@@ -762,14 +762,14 @@ public class longQueryTests
             long radius = (long)20;
             var idxRR = arena.longRowsWithinRadius(in A, in q, radius, Metric.SqEuclidean);
             var refRR = arena.Indices(M);
-            int refRRcnt = longQueryOP.rowsWithinRadius(in A, in q, radius, Metric.SqEuclidean, ref refRR);
+            int refRRcnt = longQuery_OP.rowsWithinRadius(in A, in q, radius, Metric.SqEuclidean, ref refRR);
             AssertEqI(idxRR.N, refRRcnt);
             for (int i = 0; i < refRRcnt; i++) AssertEqI(idxRR[i], refRR[i]);
 
             // --- longColumnsWithinRadius ---
             var idxCR = arena.longColumnsWithinRadius(in A, in qc, (long)40, Metric.SqEuclidean);
             var refCR = arena.Indices(N);
-            int refCRcnt = longQueryOP.columnsWithinRadius(in A, in qc, (long)40, Metric.SqEuclidean, ref refCR);
+            int refCRcnt = longQuery_OP.columnsWithinRadius(in A, in qc, (long)40, Metric.SqEuclidean, ref refCR);
             AssertEqI(idxCR.N, refCRcnt);
             for (int i = 0; i < refCRcnt; i++) AssertEqI(idxCR[i], refCR[i]);
 
@@ -778,7 +778,7 @@ public class longQueryTests
             var idxK = arena.longKNearestRows(in A, in q, k, Metric.SqEuclidean, out longN scoresK, out int cntK);
             var refIdxK = arena.Indices(k);
             var refScoresK = arena.longVec(k);
-            int refCntK = longQueryOP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxK, ref refScoresK);
+            int refCntK = longQuery_OP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxK, ref refScoresK);
             AssertEqI(cntK, refCntK);
             AssertEqI(idxK.N, refCntK);
             for (int i = 0; i < refCntK; i++)
@@ -791,7 +791,7 @@ public class longQueryTests
             var idxKC = arena.longKNearestColumns(in A, in qc, k, Metric.SqEuclidean, out longN scoresKC, out int cntKC);
             var refIdxKC = arena.Indices(k);
             var refScoresKC = arena.longVec(k);
-            int refCntKC = longQueryOP.kNearestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKC, ref refScoresKC);
+            int refCntKC = longQuery_OP.kNearestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKC, ref refScoresKC);
             AssertEqI(cntKC, refCntKC);
             for (int i = 0; i < refCntKC; i++)
             {
@@ -803,7 +803,7 @@ public class longQueryTests
             var idxKF = arena.longKFarthestRows(in A, in q, k, Metric.SqEuclidean, out longN scoresKF, out int cntKF);
             var refIdxKF = arena.Indices(k);
             var refScoresKF = arena.longVec(k);
-            int refCntKF = longQueryOP.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxKF, ref refScoresKF);
+            int refCntKF = longQuery_OP.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxKF, ref refScoresKF);
             AssertEqI(cntKF, refCntKF);
             AssertEqI(idxKF.N, refCntKF);
             for (int i = 0; i < refCntKF; i++)
@@ -816,7 +816,7 @@ public class longQueryTests
             var idxKFC = arena.longKFarthestColumns(in A, in qc, k, Metric.SqEuclidean, out longN scoresKFC, out int cntKFC);
             var refIdxKFC = arena.Indices(k);
             var refScoresKFC = arena.longVec(k);
-            int refCntKFC = longQueryOP.kFarthestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKFC, ref refScoresKFC);
+            int refCntKFC = longQuery_OP.kFarthestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKFC, ref refScoresKFC);
             AssertEqI(cntKFC, refCntKFC);
             for (int i = 0; i < refCntKFC; i++)
             {
@@ -924,11 +924,11 @@ public class longQueryTests
         A[1, 0] = (long)4; A[1, 1] = (long)5; A[1, 2] = (long)6;
         A[2, 0] = (long)7; A[2, 1] = (long)8; A[2, 2] = (long)9;
 
-        Assert.Throws<ArgumentException>(() => longQueryOP.argMaxRowNorm(in A, Norm.L2));
-        Assert.Throws<ArgumentException>(() => longQueryOP.argMaxColNorm(in A, Norm.L2));
+        Assert.Throws<ArgumentException>(() => longQuery_OP.argMaxRowNorm(in A, Norm.L2));
+        Assert.Throws<ArgumentException>(() => longQuery_OP.argMaxColNorm(in A, Norm.L2));
         // L1 / Linf must NOT throw.
-        Assert.DoesNotThrow(() => longQueryOP.argMaxRowNorm(in A, Norm.L1));
-        Assert.DoesNotThrow(() => longQueryOP.argMaxColNorm(in A, Norm.Linf));
+        Assert.DoesNotThrow(() => longQuery_OP.argMaxRowNorm(in A, Norm.L1));
+        Assert.DoesNotThrow(() => longQuery_OP.argMaxColNorm(in A, Norm.Linf));
 
         arena.Dispose();
     }
@@ -949,21 +949,21 @@ public class longQueryTests
         var scores = arena.longVec(2);
 
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.distancesToRow(in A, in q, Metric.Euclidean, ref dest));
+            longQuery_OP.distancesToRow(in A, in q, Metric.Euclidean, ref dest));
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.distancesToRow(in A, in q, Metric.Cosine, ref dest));
+            longQuery_OP.distancesToRow(in A, in q, Metric.Cosine, ref dest));
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.nearestRow(in A, in q, Metric.Euclidean, out int _, out long _));
+            longQuery_OP.nearestRow(in A, in q, Metric.Euclidean, out int _, out long _));
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.farthestRow(in A, in q, Metric.Cosine, out int _, out long _));
+            longQuery_OP.farthestRow(in A, in q, Metric.Cosine, out int _, out long _));
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.kNearestRows(in A, in q, 2, Metric.Euclidean, ref idx, ref scores));
+            longQuery_OP.kNearestRows(in A, in q, 2, Metric.Euclidean, ref idx, ref scores));
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.kFarthestRows(in A, in q, 2, Metric.Cosine, ref idx, ref scores));
+            longQuery_OP.kFarthestRows(in A, in q, 2, Metric.Cosine, ref idx, ref scores));
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.rowsWithinRadius(in A, in q, (long)1, Metric.Euclidean, ref idx));
+            longQuery_OP.rowsWithinRadius(in A, in q, (long)1, Metric.Euclidean, ref idx));
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.countWithinRadius(in A, in q, (long)1, Metric.Cosine));
+            longQuery_OP.countWithinRadius(in A, in q, (long)1, Metric.Cosine));
 
         arena.Dispose();
     }
@@ -977,16 +977,16 @@ public class longQueryTests
         var qBadRow = arena.longVec(3);         // wrong for row ops
         var destRow = arena.longVec(3);
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.distancesToRow(in A, in qBadRow, Metric.SqEuclidean, ref destRow));
+            longQuery_OP.distancesToRow(in A, in qBadRow, Metric.SqEuclidean, ref destRow));
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.nearestRow(in A, in qBadRow, Metric.SqEuclidean, out int _, out long _));
+            longQuery_OP.nearestRow(in A, in qBadRow, Metric.SqEuclidean, out int _, out long _));
 
         var qBadCol = arena.longVec(4);         // wrong for col ops
         var destCol = arena.longVec(4);
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.distancesToColumn(in A, in qBadCol, Metric.SqEuclidean, ref destCol));
+            longQuery_OP.distancesToColumn(in A, in qBadCol, Metric.SqEuclidean, ref destCol));
         Assert.Throws<ArgumentException>(() =>
-            longQueryOP.countWithinColumnRadius(in A, in qBadCol, (long)1, Metric.SqEuclidean));
+            longQuery_OP.countWithinColumnRadius(in A, in qBadCol, (long)1, Metric.SqEuclidean));
 
         arena.Dispose();
     }

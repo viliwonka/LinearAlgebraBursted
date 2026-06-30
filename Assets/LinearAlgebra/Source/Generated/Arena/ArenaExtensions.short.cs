@@ -68,7 +68,7 @@ namespace LinearAlgebra
             var vec = arena.shortVec(N);
 
             // N == 1 would divide by (N-1) == 0 -> Inf -> NaN -> garbage int. Match the guarded
-            // fProxyGenOP.linspace convention: a single sample returns {start}.
+            // fProxyGen_OP.linspace convention: a single sample returns {start}.
             if (N == 1) { vec[0] = start; return vec; }
 
             float scale = 1 / (float)(N - 1);

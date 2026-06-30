@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Least-squares residual tests for the (un-pivoted) Householder QR solver OrthoOP.qrDirectSolve.
+// Least-squares residual tests for the (un-pivoted) Householder QR solver Ortho_OP.qrDirectSolve.
 // The existing QR solve tests only cover CONSISTENT right-hand sides (b = A*xOrig, zero residual).
 // These add genuinely INCONSISTENT overdetermined systems, where min ||Ax - b|| has a non-zero
 // residual r = b - Ax, and verify the defining least-squares property: r is orthogonal to the
@@ -60,9 +60,9 @@ public class fProxyQRLeastSquaresResidualTests
             var bwork = b.Copy();
             var x = arena.fProxyVec(2);
 
-            OrthoOP.qrDirectSolve(ref Awork, ref bwork, ref x);
+            Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-            if (Analysis.IsAnyNan(in x))
+            if (Analysis_OP.IsAnyNan(in x))
                 throw new System.Exception("TestJob: NaN detected");
 
             // x == [5, -3]
@@ -70,14 +70,14 @@ public class fProxyQRLeastSquaresResidualTests
             RecordBound(math.abs(x[1] - (fProxy)(-3f)), (fProxy)1E-4f);
 
             // residual r = b - A x == [1, -2, 1]
-            fProxyN r = b - fProxyOP.dot(A, x);
+            fProxyN r = b - fProxy_OP.dot(A, x);
             RecordBound(math.abs(r[0] - (fProxy)1f), (fProxy)1E-4f);
             RecordBound(math.abs(r[1] - (fProxy)(-2f)), (fProxy)1E-4f);
             RecordBound(math.abs(r[2] - (fProxy)1f), (fProxy)1E-4f);
 
             // normal equations: Aᵀr == 0
-            fProxyN AtR = fProxyOP.dot(r, A);
-            RecordBound(Analysis.MaxZeroError(AtR), (fProxy)1E-4f);
+            fProxyN AtR = fProxy_OP.dot(r, A);
+            RecordBound(Analysis_OP.MaxZeroError(AtR), (fProxy)1E-4f);
 
             arena.Dispose();
         }
@@ -99,21 +99,21 @@ public class fProxyQRLeastSquaresResidualTests
                 var bwork = b.Copy();
                 var x = arena.fProxyVec(n);
 
-                OrthoOP.qrDirectSolve(ref Awork, ref bwork, ref x);
+                Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis.IsAnyNan(in x))
+                if (Analysis_OP.IsAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                fProxyN r = b - fProxyOP.dot(A, x);
-                fProxyN AtR = fProxyOP.dot(r, A);
+                fProxyN r = b - fProxy_OP.dot(A, x);
+                fProxyN AtR = fProxy_OP.dot(r, A);
 
                 // scale-relative: ||Aᵀr||_inf small vs ||Aᵀb||_inf (the un-projected scale).
-                fProxyN AtB = fProxyOP.dot(b, A);
-                fProxy scale = Analysis.MaxZeroError(AtB) + (fProxy)1f;
-                RecordBound(Analysis.MaxZeroError(AtR), (fProxy)1E-3f * scale);
+                fProxyN AtB = fProxy_OP.dot(b, A);
+                fProxy scale = Analysis_OP.MaxZeroError(AtB) + (fProxy)1f;
+                RecordBound(Analysis_OP.MaxZeroError(AtR), (fProxy)1E-3f * scale);
 
                 // sanity: the residual is genuinely non-zero (this is an inconsistent system).
-                fProxy rNorm = fProxyNormsOP.L2(in r);
+                fProxy rNorm = fProxyNorms_OP.L2(in r);
                 if (!(rNorm > (fProxy)1E-2f) && Fail[0] == (fProxy)0)
                 {
                     Fail[0] = (fProxy)1;
@@ -144,12 +144,12 @@ public class fProxyQRLeastSquaresResidualTests
                 var bwork = b.Copy();
                 var x = arena.fProxyVec(n);
 
-                OrthoOP.qrDirectSolve(ref Awork, ref bwork, ref x);
+                Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis.IsAnyNan(in x))
+                if (Analysis_OP.IsAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                fProxy r0 = SumSq(b - fProxyOP.dot(A, x));
+                fProxy r0 = SumSq(b - fProxy_OP.dot(A, x));
 
                 fProxy delta = (fProxy)0.05f;
                 for (int k = 0; k < n; k++)
@@ -157,9 +157,9 @@ public class fProxyQRLeastSquaresResidualTests
                     fProxy saved = x[k];
 
                     x[k] = saved + delta;
-                    fProxy rp = SumSq(b - fProxyOP.dot(A, x));
+                    fProxy rp = SumSq(b - fProxy_OP.dot(A, x));
                     x[k] = saved - delta;
-                    fProxy rm = SumSq(b - fProxyOP.dot(A, x));
+                    fProxy rm = SumSq(b - fProxy_OP.dot(A, x));
                     x[k] = saved;
 
                     // both perturbations must be >= the optimum (minus tiny float slack).

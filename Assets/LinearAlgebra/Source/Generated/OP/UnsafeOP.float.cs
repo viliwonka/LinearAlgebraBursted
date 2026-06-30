@@ -8,7 +8,7 @@ using Unity.Collections;
 
 namespace LinearAlgebra
 {
-    public static unsafe partial class UnsafeOP {
+    public static unsafe partial class Unsafe_OP {
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static float sum([NoAlias] float* a, int n) {

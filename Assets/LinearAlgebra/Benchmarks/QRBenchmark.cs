@@ -27,7 +27,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
         }
     }
 
@@ -45,7 +45,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            OrthoOP.qrDecomposition(ref Q, ref R);
+            Ortho_OP.qrDecomposition(ref Q, ref R);
         }
     }
 

@@ -116,14 +116,14 @@ namespace LinearAlgebra
                 P.Swap(k, pivotIndex);
 
                 // swap submatrix U rows
-                SwapOP.Rows(ref U, k, pivotIndex, k, m);
+                Swap_OP.Rows(ref U, k, pivotIndex, k, m);
 
                 // swap already calculated L rows
-                SwapOP.Rows(ref L, k, pivotIndex, 0, k);
+                Swap_OP.Rows(ref L, k, pivotIndex, 0, k);
 
                 // Calculate L and U. The trailing-row elimination U[j, k+1:] -= Ljk * U[k, k+1:] is
                 // an axpy over two DISTINCT rows (j > k) along the unit-stride column axis; routed
-                // through the vectorising UnsafeOP.axpy ([NoAlias], the GEMM pointer path) so Burst
+                // through the vectorising Unsafe_OP.axpy ([NoAlias], the GEMM pointer path) so Burst
                 // SIMD-vectorises this O(n^3) hot loop (float ~2x double). Bitwise identical to the
                 // scalar form: each column i is updated independently, and (-Ljk)*U[k,i] added to
                 // U[j,i] equals U[j,i] - Ljk*U[k,i] exactly in IEEE.
@@ -140,7 +140,7 @@ namespace LinearAlgebra
                         L[j, k] = Ljk;
 
                         float* rowJ = up + (long)j * m;
-                        UnsafeOP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
+                        Unsafe_OP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
 
                         // U is exactly upper-triangular
                         U[j, k] = 0;
@@ -216,7 +216,7 @@ namespace LinearAlgebra
                         float Ljk = LU[Pj, k] / Ukk;
 
                         float* rowPj = lup + (long)Pj * m;
-                        UnsafeOP.axpy(rowPj + (k + 1), rowPk + (k + 1), -Ljk, len);
+                        Unsafe_OP.axpy(rowPj + (k + 1), rowPk + (k + 1), -Ljk, len);
 
                         LU[Pj, k] = Ljk;
                     }

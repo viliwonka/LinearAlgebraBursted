@@ -8,7 +8,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for floatResampleOP (data-vector interpolation + 1D/2D resizing).
+// Tests for floatResample_OP (data-vector interpolation + 1D/2D resizing).
 //
 // Verification mixes EXACT checks (integer-position sampling, endpoint pinning, aligned-grid identity,
 // documented edge-mode taps via Nearest) with property checks at a per-precision tolerance that scales
@@ -94,9 +94,9 @@ public class floatResampleTests
         void CheckIntegerPos(in floatN data, int ix)
         {
             float pos = (float)ix;
-            AssertClose(floatResampleOP.sampleAt(in data, pos, Interp.Nearest, EdgeMode.Clamp), data[ix], (float)0);
-            AssertClose(floatResampleOP.sampleAt(in data, pos, Interp.Linear,  EdgeMode.Clamp), data[ix], (float)0);
-            AssertClose(floatResampleOP.sampleAt(in data, pos, Interp.Cubic,   EdgeMode.Clamp), data[ix], (float)0);
+            AssertClose(floatResample_OP.sampleAt(in data, pos, Interp.Nearest, EdgeMode.Clamp), data[ix], (float)0);
+            AssertClose(floatResample_OP.sampleAt(in data, pos, Interp.Linear,  EdgeMode.Clamp), data[ix], (float)0);
+            AssertClose(floatResample_OP.sampleAt(in data, pos, Interp.Cubic,   EdgeMode.Clamp), data[ix], (float)0);
         }
 
         // Linear at pos=0.5 -> exact mean of the two neighbors.
@@ -107,10 +107,10 @@ public class floatResampleTests
             var data = arena.floatVec(4);
             data[0] = (float)10; data[1] = (float)20; data[2] = (float)33; data[3] = (float)40;
 
-            float mid01 = floatResampleOP.sampleAt(in data, (float)0.5, Interp.Linear, EdgeMode.Clamp);
+            float mid01 = floatResample_OP.sampleAt(in data, (float)0.5, Interp.Linear, EdgeMode.Clamp);
             AssertClose(mid01, (float)15, (float)10 * Consts.floatSqrtEps);   // (10+20)/2
 
-            float mid12 = floatResampleOP.sampleAt(in data, (float)1.5, Interp.Linear, EdgeMode.Clamp);
+            float mid12 = floatResample_OP.sampleAt(in data, (float)1.5, Interp.Linear, EdgeMode.Clamp);
             AssertClose(mid12, (float)26.5, (float)10 * Consts.floatSqrtEps); // (20+33)/2
 
             arena.Dispose();
@@ -139,7 +139,7 @@ public class floatResampleTests
 
         void CheckQuadAt(in floatN data, float pos, float tol)
         {
-            float got = floatResampleOP.sampleAt(in data, pos, Interp.Cubic, EdgeMode.Clamp);
+            float got = floatResample_OP.sampleAt(in data, pos, Interp.Cubic, EdgeMode.Clamp);
             AssertClose(got, Quad(pos), tol);
         }
 
@@ -197,7 +197,7 @@ public class floatResampleTests
 
         // Nearest sample at an integer position (so round(pos)==pos) — reads back data[idx(pos)].
         float Near(in floatN data, int pos, EdgeMode edge) =>
-            floatResampleOP.sampleAt(in data, (float)pos, Interp.Nearest, edge);
+            floatResample_OP.sampleAt(in data, (float)pos, Interp.Nearest, edge);
 
         // =====================================================================
         // sampleAtInto
@@ -221,11 +221,11 @@ public class floatResampleTests
             positions[4] = (float)(-1);   // exercises the edge mode
 
             var dest = arena.floatVec(k);
-            floatResampleOP.sampleAtInto(in data, in positions, ref dest, Interp.Cubic, EdgeMode.Mirror);
+            floatResample_OP.sampleAtInto(in data, in positions, ref dest, Interp.Cubic, EdgeMode.Mirror);
 
             for (int j = 0; j < k; j++)
             {
-                float expected = floatResampleOP.sampleAt(in data, positions[j], Interp.Cubic, EdgeMode.Mirror);
+                float expected = floatResample_OP.sampleAt(in data, positions[j], Interp.Cubic, EdgeMode.Mirror);
                 AssertClose(dest[j], expected, (float)0);   // identical code path -> bit-exact
             }
 
@@ -247,11 +247,11 @@ public class floatResampleTests
             src[3] = (float)0.2; src[4] = (float)5.5;
 
             var dstL = arena.floatVec(n);
-            floatResampleOP.resampleInto(in src, ref dstL, Interp.Linear, EdgeMode.Clamp);
+            floatResample_OP.resampleInto(in src, ref dstL, Interp.Linear, EdgeMode.Clamp);
             for (int i = 0; i < n; i++) AssertClose(dstL[i], src[i], (float)0);
 
             var dstC = arena.floatVec(n);
-            floatResampleOP.resampleInto(in src, ref dstC, Interp.Cubic, EdgeMode.Clamp);
+            floatResample_OP.resampleInto(in src, ref dstC, Interp.Cubic, EdgeMode.Clamp);
             for (int i = 0; i < n; i++) AssertClose(dstC[i], src[i], (float)0);
 
             arena.Dispose();
@@ -266,7 +266,7 @@ public class floatResampleTests
             var up = arena.floatVec(4);
             up[0] = (float)10; up[1] = (float)20; up[2] = (float)30; up[3] = (float)40;
             var dstUp = arena.floatVec(9);
-            floatResampleOP.resampleInto(in up, ref dstUp, Interp.Cubic, EdgeMode.Clamp);
+            floatResample_OP.resampleInto(in up, ref dstUp, Interp.Cubic, EdgeMode.Clamp);
             AssertClose(dstUp[0], up[0], (float)0);
             AssertClose(dstUp[8], up[3], (float)0);
 
@@ -274,7 +274,7 @@ public class floatResampleTests
             var down = arena.floatVec(9);
             for (int i = 0; i < 9; i++) down[i] = (float)(i * i);
             var dstDown = arena.floatVec(4);
-            floatResampleOP.resampleInto(in down, ref dstDown, Interp.Linear, EdgeMode.Clamp);
+            floatResample_OP.resampleInto(in down, ref dstDown, Interp.Linear, EdgeMode.Clamp);
             AssertClose(dstDown[0], down[0], (float)0);
             AssertClose(dstDown[3], down[8], (float)0);
 
@@ -292,7 +292,7 @@ public class floatResampleTests
             for (int i = 0; i < srcN; i++) src[i] = a * (float)i + b;   // -1,1,3,5
 
             var dst = arena.floatVec(dstN);
-            floatResampleOP.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
+            floatResample_OP.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
 
             float scale = (float)(srcN - 1) / (float)(dstN - 1);
             float tol = (float)20 * Consts.floatSqrtEps;
@@ -314,7 +314,7 @@ public class floatResampleTests
             src[0] = (float)5; src[1] = (float)6; src[2] = (float)7;
 
             var dst = arena.floatVec(1);
-            floatResampleOP.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
+            floatResample_OP.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
             AssertClose(dst[0], src[0], (float)0);
 
             arena.Dispose();
@@ -345,7 +345,7 @@ public class floatResampleTests
         void CheckIdentity2D(ref Arena arena, in floatMxN src, Interp interp)
         {
             var dst = arena.floatMat(src.M_Rows, src.N_Cols);
-            floatResampleOP.resample2DInto(in src, ref dst, interp, EdgeMode.Clamp);
+            floatResample_OP.resample2DInto(in src, ref dst, interp, EdgeMode.Clamp);
             for (int r = 0; r < src.M_Rows; r++)
                 for (int c = 0; c < src.N_Cols; c++)
                     AssertClose(dst[r, c], src[r, c], (float)0);
@@ -364,7 +364,7 @@ public class floatResampleTests
 
             int M2 = 5, N2 = 7;
             var dst = arena.floatMat(M2, N2);
-            floatResampleOP.resample2DInto(in src, ref dst, Interp.Cubic, EdgeMode.Clamp);
+            floatResample_OP.resample2DInto(in src, ref dst, Interp.Cubic, EdgeMode.Clamp);
 
             AssertClose(dst[0, 0],        src[0, 0],         (float)0);
             AssertClose(dst[0, N2 - 1],   src[0, n - 1],     (float)0);
@@ -389,7 +389,7 @@ public class floatResampleTests
 
             int M2 = 7, N2 = 9;
             var dst = arena.floatMat(M2, N2);
-            floatResampleOP.resample2DInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
+            floatResample_OP.resample2DInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
 
             float rScale = (float)(m - 1) / (float)(M2 - 1);
             float cScale = (float)(n - 1) / (float)(N2 - 1);
@@ -457,7 +457,7 @@ public class floatResampleTests
         {
             var empty = arena.floatVec(0);
             Assert.Throws<ArgumentException>(
-                () => floatResampleOP.sampleAt(in empty, (float)0, Interp.Linear, EdgeMode.Clamp));
+                () => floatResample_OP.sampleAt(in empty, (float)0, Interp.Linear, EdgeMode.Clamp));
         }
         finally { arena.Dispose(); }
     }
@@ -475,13 +475,13 @@ public class floatResampleTests
             var positions = arena.floatVec(3);
             var destBad = arena.floatVec(4);
             Assert.Throws<ArgumentException>(
-                () => floatResampleOP.sampleAtInto(in data, in positions, ref destBad, Interp.Linear, EdgeMode.Clamp));
+                () => floatResample_OP.sampleAtInto(in data, in positions, ref destBad, Interp.Linear, EdgeMode.Clamp));
 
             // empty data (dest.N == positions.N so it reaches the data check) -> "sampleAtInto:" message
             var emptyData = arena.floatVec(0);
             var dest = arena.floatVec(3);
             var ex = Assert.Throws<ArgumentException>(
-                () => floatResampleOP.sampleAtInto(in emptyData, in positions, ref dest, Interp.Linear, EdgeMode.Clamp));
+                () => floatResample_OP.sampleAtInto(in emptyData, in positions, ref dest, Interp.Linear, EdgeMode.Clamp));
             StringAssert.Contains("sampleAtInto:", ex.Message);
         }
         finally { arena.Dispose(); }
@@ -496,12 +496,12 @@ public class floatResampleTests
             var src = arena.floatVec(4);
             var emptyDst = arena.floatVec(0);
             Assert.Throws<ArgumentException>(
-                () => floatResampleOP.resampleInto(in src, ref emptyDst, Interp.Linear, EdgeMode.Clamp));
+                () => floatResample_OP.resampleInto(in src, ref emptyDst, Interp.Linear, EdgeMode.Clamp));
 
             var emptySrc = arena.floatVec(0);
             var dst = arena.floatVec(4);
             Assert.Throws<ArgumentException>(
-                () => floatResampleOP.resampleInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
+                () => floatResample_OP.resampleInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
         }
         finally { arena.Dispose(); }
     }
@@ -517,18 +517,18 @@ public class floatResampleTests
             // dst with 0 rows
             var dstNoRows = arena.floatMat(0, 3);
             Assert.Throws<ArgumentException>(
-                () => floatResampleOP.resample2DInto(in src, ref dstNoRows, Interp.Linear, EdgeMode.Clamp));
+                () => floatResample_OP.resample2DInto(in src, ref dstNoRows, Interp.Linear, EdgeMode.Clamp));
 
             // dst with 0 cols
             var dstNoCols = arena.floatMat(3, 0);
             Assert.Throws<ArgumentException>(
-                () => floatResampleOP.resample2DInto(in src, ref dstNoCols, Interp.Linear, EdgeMode.Clamp));
+                () => floatResample_OP.resample2DInto(in src, ref dstNoCols, Interp.Linear, EdgeMode.Clamp));
 
             // src 0x0 (validated before any scratch allocation)
             var emptySrc = arena.floatMat(0, 0);
             var dst = arena.floatMat(2, 2);
             Assert.Throws<ArgumentException>(
-                () => floatResampleOP.resample2DInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
+                () => floatResample_OP.resample2DInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
         }
         finally { arena.Dispose(); }
     }

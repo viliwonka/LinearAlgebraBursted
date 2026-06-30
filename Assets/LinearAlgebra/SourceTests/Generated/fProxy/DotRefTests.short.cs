@@ -25,7 +25,7 @@ public class shortDotRefTests
 
         // Integer arithmetic is EXACT: the ref-dest form runs the same kernel as the
         // allocating form, so the two results must be bit-for-bit identical. There is no
-        // short Analysis.IsZero, so assert exact elementwise equality directly.
+        // short Analysis_OP.IsZero, so assert exact elementwise equality directly.
         static bool ExactEqual(in shortN x, in shortN y)
         {
             if (x.N != y.N)
@@ -90,11 +90,11 @@ public class shortDotRefTests
             {
                 var A = arena.shortRandomMatrix(M, N, -9, 9, 12321);
                 var x = arena.shortRandomVector(N, -9, 9, 45654);
-                var R = shortOP.dot(A, x);
+                var R = short_OP.dot(A, x);
 
                 var D = arena.shortVec(M);
-                shortOP.addInpl(D, (short)999);   // dirty the destination
-                shortOP.dot(in A, in x, ref D);
+                short_OP.addInpl(D, (short)999);   // dirty the destination
+                short_OP.dot(in A, in x, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -102,11 +102,11 @@ public class shortDotRefTests
             {
                 var y = arena.shortRandomVector(M, -9, 9, 11221);
                 var A = arena.shortRandomMatrix(M, N, -9, 9, 33443);
-                var R = shortOP.dot(y, A);
+                var R = short_OP.dot(y, A);
 
                 var D = arena.shortVec(N);
-                shortOP.addInpl(D, (short)999);
-                shortOP.dot(in y, in A, ref D);
+                short_OP.addInpl(D, (short)999);
+                short_OP.dot(in y, in A, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -114,11 +114,11 @@ public class shortDotRefTests
             {
                 var a = arena.shortRandomMatrix(M, K, -9, 9, 32123);
                 var b = arena.shortRandomMatrix(K, N, -9, 9, 65456);
-                var R = shortOP.dot(a, b, false);
+                var R = short_OP.dot(a, b, false);
 
                 var D = arena.shortMat(M, N);
-                shortOP.addInpl(D, (short)999);
-                shortOP.dot(in a, in b, ref D, false);
+                short_OP.addInpl(D, (short)999);
+                short_OP.dot(in a, in b, ref D, false);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
 
@@ -137,11 +137,11 @@ public class shortDotRefTests
             var b = arena.shortRandomVector(N, -9, 9, 22222);
 
             // allocating reference
-            var R = shortOP.outerDot(a, b);
+            var R = short_OP.outerDot(a, b);
 
             // ref-dest into a preallocated M x N destination
             var D = arena.shortMat(M, N);
-            shortOP.outerDot(in a, in b, ref D);
+            short_OP.outerDot(in a, in b, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -159,10 +159,10 @@ public class shortDotRefTests
             var A = arena.shortRandomMatrix(M, N, -9, 9, 33333);
             var x = arena.shortRandomVector(N, -9, 9, 44444);
 
-            var R = shortOP.dot(A, x);
+            var R = short_OP.dot(A, x);
 
             var D = arena.shortVec(M);
-            shortOP.dot(in A, in x, ref D);
+            short_OP.dot(in A, in x, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -180,10 +180,10 @@ public class shortDotRefTests
             var y = arena.shortRandomVector(M, -9, 9, 55555);
             var A = arena.shortRandomMatrix(M, N, -9, 9, 66666);
 
-            var R = shortOP.dot(y, A);
+            var R = short_OP.dot(y, A);
 
             var D = arena.shortVec(N);
-            shortOP.dot(in y, in A, ref D);
+            short_OP.dot(in y, in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -202,10 +202,10 @@ public class shortDotRefTests
             var a = arena.shortRandomMatrix(M, K, -9, 9, 77777);
             var b = arena.shortRandomMatrix(K, N, -9, 9, 88888);
 
-            var R = shortOP.dot(a, b, false);
+            var R = short_OP.dot(a, b, false);
 
             var D = arena.shortMat(M, N);
-            shortOP.dot(in a, in b, ref D, false);
+            short_OP.dot(in a, in b, ref D, false);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 
@@ -225,18 +225,18 @@ public class shortDotRefTests
             var a = arena.shortRandomMatrix(K, M, -9, 9, 99999);
             var b = arena.shortRandomMatrix(K, N, -9, 9, 10101);
 
-            var R = shortOP.dot(a, b, true);
+            var R = short_OP.dot(a, b, true);
 
             // result is M x N (a.N_Cols x b.N_Cols)
             var D = arena.shortMat(M, N);
-            shortOP.dot(in a, in b, ref D, true);
+            short_OP.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
             Assert.IsTrue(ExactEqual(in R, in D));
 
             // Independent oracle: Aᵀ·B computed via an explicit transpose + plain matmul,
             // which exercises a different code path than the fused transposeA kernel.
-            var oracle = shortOP.dot(shortOP.trans(a), b);
+            var oracle = short_OP.dot(short_OP.trans(a), b);
             Assert.IsTrue(ExactEqual(in R, in oracle));
 
             arena.Dispose();
@@ -252,10 +252,10 @@ public class shortDotRefTests
 
             var A = arena.shortRandomMatrix(M, N, -9, 9, 20202);
 
-            var R = shortOP.trans(A);
+            var R = short_OP.trans(A);
 
             var D = arena.shortMat(N, M);
-            shortOP.trans(in A, ref D);
+            short_OP.trans(in A, ref D);
 
             Assert.IsTrue(ExactEqual(in R, in D));
 

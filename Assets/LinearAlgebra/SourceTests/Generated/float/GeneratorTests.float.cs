@@ -58,7 +58,7 @@ public class floatGeneratorTests
             var arena = new Arena(Allocator.Persistent);
 
             var v = arena.floatVec(5);
-            floatGenOP.linspace(ref v, (float)0, (float)1);
+            floatGen_OP.linspace(ref v, (float)0, (float)1);
             AssertClose(v[0], (float)0f, 1E-5f);
             AssertClose(v[1], (float)0.25f, 1E-5f);
             AssertClose(v[2], (float)0.5f, 1E-5f);
@@ -70,11 +70,11 @@ public class floatGeneratorTests
             AssertClose(v[4], (float)1f, 0f);
 
             var one = arena.floatVec(1);
-            floatGenOP.linspace(ref one, (float)7, (float)9);
+            floatGen_OP.linspace(ref one, (float)7, (float)9);
             AssertClose(one[0], (float)7f, 0f);
 
             var r = arena.floatVec(4);
-            floatGenOP.arange(ref r, (float)2, (float)3);
+            floatGen_OP.arange(ref r, (float)2, (float)3);
             AssertClose(r[0], (float)2f, 1E-5f);
             AssertClose(r[1], (float)5f, 1E-5f);
             AssertClose(r[2], (float)8f, 1E-5f);
@@ -91,7 +91,7 @@ public class floatGeneratorTests
             int N = 9;
             var f = new floatEasing.EaseInQuad();
             var dest = arena.floatVec(N);
-            floatGenOP.sample(ref f, ref dest);
+            floatGen_OP.sample(ref f, ref dest);
 
             float scale = (float)1 / (float)(N - 1);
             for (int i = 0; i < N; i++)
@@ -103,13 +103,13 @@ public class floatGeneratorTests
 
             // N==1 -> {f.Eval(t0)}
             var one = arena.floatVec(1);
-            floatGenOP.sample(ref f, ref one, (float)0.5, (float)0.9);
+            floatGen_OP.sample(ref f, ref one, (float)0.5, (float)0.9);
             AssertClose(one[0], f.Eval((float)0.5), 1E-6f);
 
             // explicit domain [2,4] hits the endpoints exactly
             var dom = arena.floatVec(3);
             var lin = new floatEasing.Linear();
-            floatGenOP.sample(ref lin, ref dom, (float)2, (float)4);
+            floatGen_OP.sample(ref lin, ref dom, (float)2, (float)4);
             AssertClose(dom[0], (float)2f, 1E-5f);
             AssertClose(dom[1], (float)3f, 1E-5f);
             AssertClose(dom[2], (float)4f, 1E-5f);
@@ -238,7 +238,7 @@ public class floatGeneratorTests
 
             int N = 5;
             var g = arena.floatVec(N);
-            floatGenOP.gaussianKernel(ref g, (float)1);
+            floatGen_OP.gaussianKernel(ref g, (float)1);
 
             float sum = (float)0;
             for (int i = 0; i < N; i++) sum += g[i];
@@ -254,7 +254,7 @@ public class floatGeneratorTests
 
             // N==1 -> {1}
             var one = arena.floatVec(1);
-            floatGenOP.gaussianKernel(ref one, (float)2);
+            floatGen_OP.gaussianKernel(ref one, (float)2);
             AssertClose(one[0], (float)1f, 1E-6f);
 
             arena.Dispose();
@@ -267,7 +267,7 @@ public class floatGeneratorTests
 
             int N = 6;
             var box = arena.floatVec(N);
-            floatGenOP.boxKernel(ref box);
+            floatGen_OP.boxKernel(ref box);
             float bsum = (float)0;
             for (int i = 0; i < N; i++)
             {
@@ -278,7 +278,7 @@ public class floatGeneratorTests
 
             int M = 5;
             var tent = arena.floatVec(M);
-            floatGenOP.tentKernel(ref tent);
+            floatGen_OP.tentKernel(ref tent);
             float tsum = (float)0;
             for (int i = 0; i < M; i++) tsum += tent[i];
             AssertClose(tsum, (float)1f, 1E-5f);
@@ -298,33 +298,33 @@ public class floatGeneratorTests
             int N = 5;
 
             var hann = arena.floatVec(N);
-            floatGenOP.window(ref hann, WindowType.Hann);
+            floatGen_OP.window(ref hann, WindowType.Hann);
             AssertClose(hann[0], (float)0f, 1E-5f);
             AssertClose(hann[4], (float)0f, 1E-5f);
             AssertClose(hann[2], (float)1f, 1E-5f); // 0.5(1-cos π) = 1
             AssertClose(hann[1], hann[3], 1E-5f);    // symmetric
 
             var hamming = arena.floatVec(N);
-            floatGenOP.window(ref hamming, WindowType.Hamming);
+            floatGen_OP.window(ref hamming, WindowType.Hamming);
             AssertClose(hamming[0], (float)0.08f, 1E-5f);
             AssertClose(hamming[4], (float)0.08f, 1E-5f);
             AssertClose(hamming[2], (float)1f, 1E-5f); // 0.54+0.46 = 1
 
             var black = arena.floatVec(N);
-            floatGenOP.window(ref black, WindowType.Blackman);
+            floatGen_OP.window(ref black, WindowType.Blackman);
             AssertClose(black[0], (float)0f, 1E-5f);  // 0.42-0.5+0.08 = 0
             AssertClose(black[4], (float)0f, 1E-5f);
             AssertClose(black[2], (float)1f, 1E-5f);  // 0.42+0.5+0.08 = 1 (center)
             AssertClose(black[1], black[3], 1E-5f);    // symmetric
 
             var box = arena.floatVec(N);
-            floatGenOP.window(ref box, WindowType.Box);
+            floatGen_OP.window(ref box, WindowType.Box);
             for (int i = 0; i < N; i++)
                 AssertClose(box[i], (float)1f, 1E-6f);
 
             // N==1 -> {1} for the (N-1)-denominator windows (no div-by-zero)
             var one = arena.floatVec(1);
-            floatGenOP.window(ref one, WindowType.Hann);
+            floatGen_OP.window(ref one, WindowType.Hann);
             AssertClose(one[0], (float)1f, 1E-6f);
 
             arena.Dispose();
@@ -341,10 +341,10 @@ public class floatGeneratorTests
             v[0] = 4f; v[1] = 5f;
 
             var O = arena.floatMat(3, 2);
-            floatGenOP.outer(in u, in v, ref O);
+            floatGen_OP.outer(in u, in v, ref O);
 
             var S = arena.floatMat(3, 2);
-            floatGenOP.outerSum(in u, in v, ref S);
+            floatGen_OP.outerSum(in u, in v, ref S);
 
             for (int i = 0; i < 3; i++)
                 for (int j = 0; j < 2; j++)
@@ -365,10 +365,10 @@ public class floatGeneratorTests
             float sigma = (float)1.2;
 
             var g = arena.floatVec(N);
-            floatGenOP.gaussianKernel(ref g, sigma);
+            floatGen_OP.gaussianKernel(ref g, sigma);
 
             var K = arena.floatMat(N, N);
-            floatGenOP.gaussianKernel2D(ref K, sigma);
+            floatGen_OP.gaussianKernel2D(ref K, sigma);
 
             float sum = (float)0;
             for (int i = 0; i < N; i++)
@@ -431,44 +431,44 @@ public class floatGeneratorTests
 
             var lin = arena.floatLinspace((float)(-2), (float)3, N);
             var linRef = arena.floatVec(N);
-            floatGenOP.linspace(ref linRef, (float)(-2), (float)3);
+            floatGen_OP.linspace(ref linRef, (float)(-2), (float)3);
             EqVec(in lin, in linRef, N);
 
             var ar = arena.floatArange((float)5, (float)(-2), N);
             var arRef = arena.floatVec(N);
-            floatGenOP.arange(ref arRef, (float)5, (float)(-2));
+            floatGen_OP.arange(ref arRef, (float)5, (float)(-2));
             EqVec(in ar, in arRef, N);
 
             var quad = new floatEasing.EaseInQuad();
             var smp = arena.floatSample(ref quad, N, (float)(-1), (float)2);
             var smpRef = arena.floatVec(N);
-            floatGenOP.sample(ref quad, ref smpRef, (float)(-1), (float)2);
+            floatGen_OP.sample(ref quad, ref smpRef, (float)(-1), (float)2);
             EqVec(in smp, in smpRef, N);
 
             var gk = arena.floatGaussianKernel(N, (float)1.5);
             var gkRef = arena.floatVec(N);
-            floatGenOP.gaussianKernel(ref gkRef, (float)1.5);
+            floatGen_OP.gaussianKernel(ref gkRef, (float)1.5);
             EqVec(in gk, in gkRef, N);
 
             var bk = arena.floatBoxKernel(N);
             var bkRef = arena.floatVec(N);
-            floatGenOP.boxKernel(ref bkRef);
+            floatGen_OP.boxKernel(ref bkRef);
             EqVec(in bk, in bkRef, N);
 
             var tk = arena.floatTentKernel(N);
             var tkRef = arena.floatVec(N);
-            floatGenOP.tentKernel(ref tkRef);
+            floatGen_OP.tentKernel(ref tkRef);
             EqVec(in tk, in tkRef, N);
 
             var win = arena.floatWindow(N, WindowType.Blackman);
             var winRef = arena.floatVec(N);
-            floatGenOP.window(ref winRef, WindowType.Blackman);
+            floatGen_OP.window(ref winRef, WindowType.Blackman);
             EqVec(in win, in winRef, N);
 
             var ease = new floatEasing.SmoothStep();
             var lut = arena.floatEasingLUT(ref ease, N);
             var lutRef = arena.floatVec(N);
-            floatGenOP.sample(ref ease, ref lutRef, (float)0, (float)1);
+            floatGen_OP.sample(ref ease, ref lutRef, (float)0, (float)1);
             EqVec(in lut, in lutRef, N);
 
             // outer wrapper vs primitive
@@ -476,14 +476,14 @@ public class floatGeneratorTests
             var v = arena.floatLinspace((float)0, (float)2, 3);
             var O = arena.floatOuter(in u, in v);
             var Oref = arena.floatMat(4, 3);
-            floatGenOP.outer(in u, in v, ref Oref);
+            floatGen_OP.outer(in u, in v, ref Oref);
             for (int i = 0; i < 4; i++)
                 for (int j = 0; j < 3; j++)
                     AssertClose(O[i, j], Oref[i, j], 1E-5f);
 
             var Sm = arena.floatOuterSum(in u, in v);
             var SmRef = arena.floatMat(4, 3);
-            floatGenOP.outerSum(in u, in v, ref SmRef);
+            floatGen_OP.outerSum(in u, in v, ref SmRef);
             for (int i = 0; i < 4; i++)
                 for (int j = 0; j < 3; j++)
                     AssertClose(Sm[i, j], SmRef[i, j], 1E-5f);
@@ -491,7 +491,7 @@ public class floatGeneratorTests
             // gaussianKernel2D wrapper vs primitive
             var K = arena.floatGaussianKernel2D(5, (float)1.3);
             var Kref = arena.floatMat(5, 5);
-            floatGenOP.gaussianKernel2D(ref Kref, (float)1.3);
+            floatGen_OP.gaussianKernel2D(ref Kref, (float)1.3);
             for (int i = 0; i < 5; i++)
                 for (int j = 0; j < 5; j++)
                     AssertClose(K[i, j], Kref[i, j], 1E-5f);
@@ -572,8 +572,8 @@ public class floatGeneratorTests
     {
         var arena = new Arena(Allocator.Persistent);
         var v = arena.floatVec(5);
-        Assert.Throws<ArgumentException>(() => floatGenOP.gaussianKernel(ref v, (float)0));
-        Assert.Throws<ArgumentException>(() => floatGenOP.gaussianKernel(ref v, (float)(-1)));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.gaussianKernel(ref v, (float)0));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.gaussianKernel(ref v, (float)(-1)));
         arena.Dispose();
     }
 
@@ -584,8 +584,8 @@ public class floatGeneratorTests
         var u = arena.floatVec(3);
         var w = arena.floatVec(2);
         var bad = arena.floatMat(2, 2);
-        Assert.Throws<ArgumentException>(() => floatGenOP.outer(in u, in w, ref bad));
-        Assert.Throws<ArgumentException>(() => floatGenOP.outerSum(in u, in w, ref bad));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.outer(in u, in w, ref bad));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.outerSum(in u, in w, ref bad));
         arena.Dispose();
     }
 
@@ -594,11 +594,11 @@ public class floatGeneratorTests
     {
         var arena = new Arena(Allocator.Persistent);
         var bad = arena.floatMat(3, 4);
-        Assert.Throws<ArgumentException>(() => floatGenOP.gaussianKernel2D(ref bad, (float)1));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.gaussianKernel2D(ref bad, (float)1));
         // sigma guard fires before the internal Temp alloc (no leak on the throw path)
         var sq = arena.floatMat(4, 4);
-        Assert.Throws<ArgumentException>(() => floatGenOP.gaussianKernel2D(ref sq, (float)0));
-        Assert.Throws<ArgumentException>(() => floatGenOP.gaussianKernel2D(ref sq, (float)(-2)));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.gaussianKernel2D(ref sq, (float)0));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.gaussianKernel2D(ref sq, (float)(-2)));
         arena.Dispose();
     }
 
@@ -608,13 +608,13 @@ public class floatGeneratorTests
         var arena = new Arena(Allocator.Persistent);
         var v0 = arena.floatVec(0);
         var quad = new floatEasing.EaseInQuad();
-        Assert.Throws<ArgumentException>(() => floatGenOP.linspace(ref v0, (float)0, (float)1));
-        Assert.Throws<ArgumentException>(() => floatGenOP.arange(ref v0, (float)0, (float)1));
-        Assert.Throws<ArgumentException>(() => floatGenOP.sample(ref quad, ref v0));
-        Assert.Throws<ArgumentException>(() => floatGenOP.boxKernel(ref v0));
-        Assert.Throws<ArgumentException>(() => floatGenOP.tentKernel(ref v0));
-        Assert.Throws<ArgumentException>(() => floatGenOP.gaussianKernel(ref v0, (float)1));
-        Assert.Throws<ArgumentException>(() => floatGenOP.window(ref v0, WindowType.Hann));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.linspace(ref v0, (float)0, (float)1));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.arange(ref v0, (float)0, (float)1));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.sample(ref quad, ref v0));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.boxKernel(ref v0));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.tentKernel(ref v0));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.gaussianKernel(ref v0, (float)1));
+        Assert.Throws<ArgumentException>(() => floatGen_OP.window(ref v0, WindowType.Hann));
         arena.Dispose();
     }
 }
