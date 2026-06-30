@@ -3,6 +3,7 @@
 using System;
 
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
 using Random = Unity.Mathematics.Random;
@@ -16,8 +17,17 @@ namespace LinearAlgebra
         // bidiagonalization (p = min(k + oversample, n)) on A directly (NOT on AᵀA — avoids κ²
         // accuracy loss), then solving the small p×p bidiagonal SVD exactly via svdThin. DGKS double
         // reorthogonalization (Daniel-Gragg-Kaufman-Stewart) is applied to BOTH u and v bases at
-        // every step for numerical stability. Matvecs and the final map-back use double-precision
-        // accumulation for accuracy in the float variant.
+        // every step for numerical stability.
+        //
+        // Performance implementation notes:
+        //   - UL is stored as p×m (Lanczos u-vectors as contiguous ROWS) and VL as (p+1)×n
+        //     (Lanczos v-vectors as contiguous ROWS) so every GEMV (A·v and Aᵀ·u) hits unit-stride
+        //     memory in both the matrix and the vector.
+        //   - Matvecs route through UnsafeOP.matVecDot / vecMatDot (cache-coherent, Burst-vectorized).
+        //   - DGKS reortho is expressed as matVecDot (to gather all dot-products in one sweep) + j
+        //     axpy calls (unit-stride over UL/VL rows), eliminating strided column gathers.
+        //   - All arithmetic uses native double precision; stability comes from the two-pass DGKS
+        //     reorthogonalization, not from higher-precision accumulation.
         //
         // lowRankApprox still uses svdThin (full SVD + slice) internally — it stays EXACT (Eckart-Young).
         //
@@ -69,156 +79,108 @@ namespace LinearAlgebra
             if (n == 0 || k == 0)
                 return;
 
-            // --- Zero-initialize UL, VL, and B so reuse is safe (early-stop leaves tails zeroed) ---
-            for (int i = 0; i < m; i++)
-                for (int j = 0; j < p; j++)
-                    ws.UL[i, j] = (double)0;
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j <= p; j++)
-                    ws.VL[i, j] = (double)0;
-            for (int i = 0; i < p; i++)
-                for (int j = 0; j < p; j++)
-                    ws.B[i, j] = (double)0;
-
-            // --- Seed v1: deterministic pseudo-random unit vector in R^n ---
-            var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
-            {
-                double norm2 = 0;
-                for (int i = 0; i < n; i++)
-                {
-                    double val = (double)(rng.NextFloat() * 2f - 1f);
-                    ws.VL[i, 0] = val;
-                    norm2 += (double)val * (double)val;
-                }
-                if (norm2 > 0)
-                {
-                    double invNorm = 1.0 / math.sqrt(norm2);
-                    for (int i = 0; i < n; i++)
-                        ws.VL[i, 0] = (double)((double)ws.VL[i, 0] * invNorm);
-                }
-                else
-                {
-                    // Degenerate: use e1
-                    ws.VL[0, 0] = (double)1;
-                }
-            }
-
-            double scaleEps = Consts.doubleEpsilon; // updated after first matvec
+            double scaleEps = Consts.doubleEpsilon;
             int pDone = 0;
-            bool alphaBreakdown = false; // true when Krylov exhausted via alpha ≈ 0 (not beta ≈ 0)
+            bool alphaBreakdown = false;
 
-            for (int j = 0; j < p; j++)
+            unsafe
             {
-                // ----- u = A * VL[:,j] − beta_{j-1} * UL[:,j-1] -----
-                // A·v_j with double accumulation
-                for (int i = 0; i < m; i++)
-                {
-                    double acc = 0;
-                    for (int l = 0; l < n; l++)
-                        acc += (double)A[i, l] * (double)ws.VL[l, j];
-                    ws.uBuf[i] = (double)acc;
-                }
-                // Subtract beta_{j-1} * u_{j-1}  (skipped at j=0: beta_0 = 0)
-                if (j > 0)
-                {
-                    double bPrev = ws.beta[j - 1];
-                    for (int i = 0; i < m; i++)
-                        ws.uBuf[i] -= bPrev * ws.UL[i, j - 1];
-                }
+                double* UL_ptr   = ws.UL.Data.Ptr;   // layout: p×m — row j = u_j (m-vector, contiguous)
+                double* VL_ptr   = ws.VL.Data.Ptr;   // layout: (p+1)×n — row j = v_j (n-vector, contiguous)
+                double* uBuf_ptr = ws.uBuf.Data.Ptr; // m-vector scratch (also used as coeff temp in v-reortho)
+                double* vBuf_ptr = ws.vBuf.Data.Ptr; // n-vector scratch (also used as coeff temp in u-reortho)
+                double* A_ptr    = A.Data.Ptr;        // m×n row-major
 
-                // DGKS double reorthogonalize uBuf against UL[:,0..j-1]
-                for (int pass = 0; pass < 2; pass++)
-                {
-                    for (int l = 0; l < j; l++)
-                    {
-                        double dot = 0;
-                        for (int i = 0; i < m; i++)
-                            dot += (double)ws.uBuf[i] * (double)ws.UL[i, l];
-                        double dotF = (double)dot;
-                        for (int i = 0; i < m; i++)
-                            ws.uBuf[i] -= dotF * ws.UL[i, l];
-                    }
-                }
+                // --- Zero-initialize UL (p×m), VL ((p+1)×n), B (p×p) ---
+                UnsafeUtility.MemClear(UL_ptr, (long)ws.UL.Data.Length * UnsafeUtility.SizeOf<double>());
+                UnsafeUtility.MemClear(VL_ptr, (long)ws.VL.Data.Length * UnsafeUtility.SizeOf<double>());
+                UnsafeUtility.MemClear(ws.B.Data.Ptr, (long)ws.B.Data.Length * UnsafeUtility.SizeOf<double>());
 
-                // Compute alpha_j = ||uBuf||
-                {
-                    double norm2 = 0;
-                    for (int i = 0; i < m; i++)
-                        norm2 += (double)ws.uBuf[i] * (double)ws.uBuf[i];
-                    ws.alpha[j] = (double)math.sqrt(norm2);
-                }
-
-                // Update scale estimate after first step
-                if (j == 0)
-                    scaleEps = Consts.doubleEpsilon * math.max((double)1, ws.alpha[0]);
-
-                // Early stop: Krylov space exhausted (alpha ≈ 0 → stop at j steps done so far).
-                // The j produced triplets are EXACT: beta_j (which would come after u[j]) is ~0
-                // because A*v[j] lies in span(U_j). We track this separately so the residual check
-                // below does NOT misuse beta[j-1] (the previous step's coupling) as the residual.
-                if (ws.alpha[j] <= scaleEps)
-                {
-                    alphaBreakdown = true;
-                    pDone = j;
-                    break;
-                }
-
-                // UL[:,j] = uBuf / alpha_j
-                {
-                    double invA = (double)1 / ws.alpha[j];
-                    for (int i = 0; i < m; i++)
-                        ws.UL[i, j] = ws.uBuf[i] * invA;
-                }
-
-                // ----- w = A^T * UL[:,j] − alpha_j * VL[:,j] -----
-                // A^T · u_j with double accumulation
+                // --- Seed v_0: deterministic pseudo-random unit vector in R^n → stored as VL[0,:] ---
+                var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
+                double* v0 = VL_ptr;  // VL[0,:] at offset 0 (contiguous n-vector)
                 for (int i = 0; i < n; i++)
-                {
-                    double acc = 0;
-                    for (int l = 0; l < m; l++)
-                        acc += (double)A[l, i] * (double)ws.UL[l, j];
-                    ws.vBuf[i] = (double)acc;
-                }
-                // Subtract alpha_j * v_j
-                {
-                    double aJ = ws.alpha[j];
-                    for (int i = 0; i < n; i++)
-                        ws.vBuf[i] -= aJ * ws.VL[i, j];
-                }
+                    v0[i] = (double)(rng.NextFloat() * 2f - 1f);
+                double seedNorm2 = UnsafeOP.vecDot(v0, v0, n);
+                if (seedNorm2 > (double)0)
+                    UnsafeOP.scalMul(v0, n, (double)1 / math.sqrt(seedNorm2));
+                else
+                    v0[0] = (double)1;
 
-                // DGKS double reorthogonalize vBuf against VL[:,0..j]
-                for (int pass = 0; pass < 2; pass++)
+                for (int j = 0; j < p; j++)
                 {
-                    for (int l = 0; l <= j; l++)
+                    // ----- uBuf = A * VL[j,:] -----
+                    // matVecDot accumulates (+=); zero uBuf first. VL[j,:] is at VL_ptr + j*n (contiguous).
+                    UnsafeUtility.MemClear(uBuf_ptr, (long)m * UnsafeUtility.SizeOf<double>());
+                    UnsafeOP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
+
+                    // Subtract beta_{j-1} * UL[j-1,:]  (skipped at j=0)
+                    if (j > 0)
+                        UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
+
+                    // DGKS double reorthogonalize uBuf against UL[0..j-1,:]
+                    // Use vBuf[0..j-1] as coefficient temp (n >= p >= j, so always in-bounds).
+                    // matVecDot(UL_first_j x m, uBuf, vBuf_coeffs, j, m) = UL_j * uBuf → j dot-products.
+                    if (j > 0)
                     {
-                        double dot = 0;
-                        for (int i = 0; i < n; i++)
-                            dot += (double)ws.vBuf[i] * (double)ws.VL[i, l];
-                        double dotF = (double)dot;
-                        for (int i = 0; i < n; i++)
-                            ws.vBuf[i] -= dotF * ws.VL[i, l];
+                        for (int pass = 0; pass < 2; pass++)
+                        {
+                            UnsafeUtility.MemClear(vBuf_ptr, (long)j * UnsafeUtility.SizeOf<double>());
+                            UnsafeOP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
+                            for (int l = 0; l < j; l++)
+                                UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
+                        }
                     }
-                }
 
-                // beta_j = ||vBuf||
-                {
-                    double norm2 = 0;
-                    for (int i = 0; i < n; i++)
-                        norm2 += (double)ws.vBuf[i] * (double)ws.vBuf[i];
-                    ws.beta[j] = (double)math.sqrt(norm2);
-                }
+                    // alpha_j = ||uBuf||
+                    ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
 
-                pDone = j + 1;
+                    // Update scale estimate after first step
+                    if (j == 0)
+                        scaleEps = Consts.doubleEpsilon * math.max((double)1, ws.alpha[0]);
 
-                // Early stop: beta ≈ 0 → invariant subspace reached
-                if (ws.beta[j] <= scaleEps)
-                    break;
+                    // Early stop: Krylov space exhausted (alpha ≈ 0)
+                    if (ws.alpha[j] <= scaleEps)
+                    {
+                        alphaBreakdown = true;
+                        pDone = j;
+                        break;
+                    }
 
-                // VL[:,j+1] = vBuf / beta_j  (always safe: VL is n x (p+1))
-                {
+                    // UL[j,:] = uBuf / alpha_j  (scale in-place, then copy to UL row j)
+                    double invA = (double)1 / ws.alpha[j];
+                    UnsafeOP.scalMul(uBuf_ptr, m, invA);
+                    UnsafeUtility.MemCpy(UL_ptr + j * m, uBuf_ptr, (long)m * UnsafeUtility.SizeOf<double>());
+
+                    // ----- vBuf = Aᵀ * UL[j,:] - alpha_j * VL[j,:] -----
+                    // vecMatDot zeros vBuf internally then accumulates. UL[j,:] is at UL_ptr + j*m (contiguous).
+                    UnsafeOP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
+                    UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
+
+                    // DGKS double reorthogonalize vBuf against VL[0..j,:]
+                    // Use uBuf[0..j] as coefficient temp (m >= n >= p >= j+1, so always in-bounds).
+                    // matVecDot(VL_first_j+1 x n, vBuf, uBuf_coeffs, j+1, n) = VL_{j+1} * vBuf → j+1 dots.
+                    for (int pass = 0; pass < 2; pass++)
+                    {
+                        UnsafeUtility.MemClear(uBuf_ptr, (long)(j + 1) * UnsafeUtility.SizeOf<double>());
+                        UnsafeOP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
+                        for (int l = 0; l <= j; l++)
+                            UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
+                    }
+
+                    // beta_j = ||vBuf||
+                    ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
+
+                    pDone = j + 1;
+
+                    // Early stop: invariant subspace reached (beta ≈ 0)
+                    if (ws.beta[j] <= scaleEps)
+                        break;
+
+                    // VL[j+1,:] = vBuf / beta_j  (scale in-place, then copy to VL row j+1)
                     double invB = (double)1 / ws.beta[j];
-                    for (int i = 0; i < n; i++)
-                        ws.VL[i, j + 1] = ws.vBuf[i] * invB;
+                    UnsafeOP.scalMul(vBuf_ptr, n, invB);
+                    UnsafeUtility.MemCpy(VL_ptr + (j + 1) * n, vBuf_ptr, (long)n * UnsafeUtility.SizeOf<double>());
                 }
             }
 
@@ -241,12 +203,6 @@ namespace LinearAlgebra
 
             // --- Residual-based convergence check ---
             // res_t = |β_last · P[pDone-1, t]|  where P = BsvdWs.U (LEFT singular vectors of B).
-            // Derivation: Aᵀ·x_t − σ_t·y_t = β_last·P[pDone-1,t]·v_{pDone+1}, so the residual
-            // norm is |β_last·P[pDone-1,t]|.  β_last = ws.beta[pDone-1] is the Lanczos beta that
-            // drives v_{pDone+1}; for p=n (full Krylov) or after beta-breakdown, β_last ≈ 0.
-            // FIX 1: must index BsvdWs.U (not .V which are the RIGHT singular vectors of B).
-            // FIX 2: after alpha-breakdown the Krylov space is exhausted so β_last = 0 (exact
-            // triplets); ws.beta[pDone-1] is the previous step's coupling, NOT the residual.
             {
                 double betaLast = alphaBreakdown ? (double)0
                                 : (pDone > 0)    ? ws.beta[pDone - 1]
@@ -256,34 +212,39 @@ namespace LinearAlgebra
                 double maxRelRes = (double)0;
                 for (int t = 0; t < kOut; t++)
                 {
-                    double res = math.abs(betaLast * ws.BsvdWs.U[pDone - 1, t]); // FIX 1: U not V
+                    double res = math.abs(betaLast * ws.BsvdWs.U[pDone - 1, t]);
                     double relRes = res / (sigma0 + Consts.doubleEpsilon);
                     if (relRes > maxRelRes) maxRelRes = relRes;
                 }
                 converged = (maxRelRes < resTol);
             }
 
-            // Fill top kOut triplets
-            for (int t = 0; t < kOut; t++)
+            // Fill top kOut triplets.
+            // Uk[:,t] = UL^T · P[:,t] = sum_l P[l,t] * UL[l,:]   (UL is p×m, P is p×p)
+            // Vk[:,t] = VL^T · Q[:,t] = sum_l Q[l,t] * VL[l,:]   (VL is (p+1)×n, Q is p×p)
+            // Use uBuf / vBuf as accumulators (they are free; main loop is done).
+            unsafe
             {
-                Sk[t] = ws.BsvdWs.S[t];
+                double* UL_ptr   = ws.UL.Data.Ptr;
+                double* VL_ptr   = ws.VL.Data.Ptr;
+                double* uBuf_ptr = ws.uBuf.Data.Ptr;
+                double* vBuf_ptr = ws.vBuf.Data.Ptr;
 
-                // Uk[:,t] = UL * P[:,t]  (m-vector, double-precision accumulation)
-                for (int i = 0; i < m; i++)
+                for (int t = 0; t < kOut; t++)
                 {
-                    double acc = 0;
-                    for (int l = 0; l < p; l++)
-                        acc += (double)ws.UL[i, l] * (double)ws.BsvdWs.U[l, t];
-                    Uk[i, t] = (double)acc;
-                }
+                    Sk[t] = ws.BsvdWs.S[t];
 
-                // Vk[:,t] = VL[:,0..p-1] * Q[:,t]  (n-vector, double-precision accumulation)
-                for (int i = 0; i < n; i++)
-                {
-                    double acc = 0;
-                    for (int l = 0; l < p; l++)
-                        acc += (double)ws.VL[i, l] * (double)ws.BsvdWs.V[l, t];
-                    Vk[i, t] = (double)acc;
+                    // uBuf = sum_l P[l,t] * UL[l,:]
+                    UnsafeUtility.MemClear(uBuf_ptr, (long)m * UnsafeUtility.SizeOf<double>());
+                    for (int l = 0; l < pDone; l++)
+                        UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, ws.BsvdWs.U[l, t], m);
+                    for (int i = 0; i < m; i++) Uk[i, t] = uBuf_ptr[i];
+
+                    // vBuf = sum_l Q[l,t] * VL[l,:]
+                    UnsafeUtility.MemClear(vBuf_ptr, (long)n * UnsafeUtility.SizeOf<double>());
+                    for (int l = 0; l < pDone; l++)
+                        UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, ws.BsvdWs.V[l, t], n);
+                    for (int i = 0; i < n; i++) Vk[i, t] = vBuf_ptr[i];
                 }
             }
 
@@ -335,8 +296,8 @@ namespace LinearAlgebra
             int p = math.min(k + oversample, n);
             var ws = new doubleSvdTruncatedWorkspace
             {
-                UL     = A.tempdoubleMat(m, p),
-                VL     = A.tempdoubleMat(n, p + 1),
+                UL     = A.tempdoubleMat(p, m),
+                VL     = A.tempdoubleMat(p + 1, n),
                 B      = A.tempdoubleMat(p, p),
                 BsvdWs = new doubleSvdFullWorkspace
                 {
@@ -365,8 +326,8 @@ namespace LinearAlgebra
             int p = math.min(n, math.max(2 * k, k + 12));
             var ws = new doubleSvdTruncatedWorkspace
             {
-                UL     = A.tempdoubleMat(m, p),
-                VL     = A.tempdoubleMat(n, p + 1),
+                UL     = A.tempdoubleMat(p, m),
+                VL     = A.tempdoubleMat(p + 1, n),
                 B      = A.tempdoubleMat(p, p),
                 BsvdWs = new doubleSvdFullWorkspace
                 {

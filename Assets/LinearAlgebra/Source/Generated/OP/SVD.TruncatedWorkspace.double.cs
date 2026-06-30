@@ -8,8 +8,8 @@ namespace LinearAlgebra
         static void RequireSvdTruncatedWorkspace(in doubleSvdTruncatedWorkspace ws, int m, int n, int p, string who)
         {
             bool ok =
-                ws.UL.M_Rows == m && ws.UL.N_Cols == p &&
-                ws.VL.M_Rows == n && ws.VL.N_Cols == p + 1 &&
+                ws.UL.M_Rows == p && ws.UL.N_Cols == m &&
+                ws.VL.M_Rows == p + 1 && ws.VL.N_Cols == n &&
                 ws.B.M_Rows == p && ws.B.N_Cols == p &&
                 ws.BsvdWs.U.M_Rows == p && ws.BsvdWs.U.N_Cols == p &&
                 ws.BsvdWs.S.N == p &&
@@ -29,11 +29,13 @@ namespace LinearAlgebra
     /// Reusable scratch storage for svdTruncated (Golub-Kahan-Lanczos). Allocate ONCE via
     /// Arena.doubleSvdTruncatedWorkspace(m, n, k, oversample) and reuse across same-shape calls.
     ///
-    /// Layout (p = min(k+oversample, n)): UL (m x p) holds the left Lanczos basis u1..up;
-    /// VL (n x (p+1)) holds v1..v_{p+1} (the extra column absorbs the last step's v_{p+1} without
-    /// overflow); B (p x p) holds the upper-bidiagonal reduction; BsvdWs (p x p U/S/V) is the
-    /// inner svdThin scratch; uBuf/vBuf are m/n matvec temporaries; alpha/beta (length p each)
-    /// hold the Lanczos diagonal and superdiagonal (beta[p-1] used only for early-stop check).
+    /// Layout (p = min(k+oversample, n)): UL (p x m) holds the left Lanczos basis u_1..u_p as
+    /// ROWS (each u_j is a contiguous row of length m, enabling cache-coherent GEMV); VL ((p+1) x n)
+    /// holds v_1..v_{p+1} as ROWS (each v_j is a contiguous row of length n; the extra row absorbs
+    /// the last step's v_{p+1} without overflow); B (p x p) holds the upper-bidiagonal reduction;
+    /// BsvdWs (p x p U/S/V) is the inner svdThin scratch; uBuf/vBuf are m/n matvec temporaries
+    /// (also reused as coefficient buffers in DGKS reorthogonalization); alpha/beta (length p each)
+    /// hold the Lanczos diagonal and superdiagonal.
     ///
     /// NOTE: this workspace avoids the large O(m·p + n·p) Lanczos-basis allocations on each call,
     /// but the inner bidiagonal SVD (svdThin called on the p×p B matrix) still allocates a small
@@ -65,8 +67,8 @@ namespace LinearAlgebra
             int p = math.min(k + oversample, n);
             return new doubleSvdTruncatedWorkspace
             {
-                UL     = doubleMat(m, p),
-                VL     = doubleMat(n, p + 1),
+                UL     = doubleMat(p, m),
+                VL     = doubleMat(p + 1, n),
                 B      = doubleMat(p, p),
                 BsvdWs = new doubleSvdFullWorkspace
                 {
@@ -91,8 +93,8 @@ namespace LinearAlgebra
             int p = math.min(n, math.max(2 * k, k + 12));
             return new doubleSvdTruncatedWorkspace
             {
-                UL     = doubleMat(m, p),
-                VL     = doubleMat(n, p + 1),
+                UL     = doubleMat(p, m),
+                VL     = doubleMat(p + 1, n),
                 B      = doubleMat(p, p),
                 BsvdWs = new doubleSvdFullWorkspace
                 {
