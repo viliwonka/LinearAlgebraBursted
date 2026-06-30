@@ -130,7 +130,7 @@ Here's a simple example:
 - ✅ Statistics: mean, variance/std, median, min/max, argmin/argmax, row/col reductions, covariance, correlation
 - ✅ Transforms: unit-length normalize (L1/L2/L∞) and distribution transforms (standardize/z-score, rescale to [0,1] or [lo,hi], center, max-abs, softmax, clamp) — per-vector, per-row, per-column, or whole-matrix
 - ✅ Generators: linspace/arange, sample any curve functor, easing & wave (LFO) functor libraries, Gaussian/box/tent convolution kernels, DSP windows (Hann/Hamming/Blackman), and rank-1 (1D×1D) outer / outer-sum matrices
-- ✅ 1D Fourier transform: radix-2 FFT/IFFT (power-of-two) and direct DFT/IDFT (any N), real-input rfft, magnitude/phase/power-spectrum (split real/imag, no complex type)
+- ✅ 1D Fourier transform: power-of-two FFT/IFFT and real-input rfft/irfft with auto-dispatching radix-4 / mixed-radix via a reusable twiddle-table workspace (zero-alloc on reuse) — plus a table-free radix-4 recurrence for one-shot calls and direct DFT/IDFT for any N; magnitude/phase/power-spectrum (split real/imag, no complex type). See [docs/fft.md](docs/fft.md)
 - ✅ Realtime: fixed-capacity rolling window (ring buffer of feature vectors) with O(1) push, time-ordered AsMatrix, and zero-alloc moving-average / covariance — the per-frame front-end for the matrix ops (covariance → eigendecomposition = PCA)
 - ✅ Condition number, determinant, trace, rank, vector/matrix norms
 - ✅ Zero-allocation variants of the ops and solvers for hot loops (preallocated outputs, reusable workspaces)
