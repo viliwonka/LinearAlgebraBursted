@@ -120,38 +120,36 @@ Here's a simple example:
 
 ## Features
 
-- ✅ float, double, int, short, long and bool vectors and matrices
-- ✅ Element-wise and linear-algebra ops: dot, matrix multiply, transpose, outer product, select, comparisons
-- ✅ LU (partial pivoting), QR and Cholesky decompositions and solvers; QR also solves over-determined (least-squares) systems
-- ✅ SVD, pseudo-inverse and minimum-norm least squares (rank-deficient tolerant)
-- ✅ Conjugate Gradient — matrix-free iterative solver for SPD systems
-- ✅ Eigen: dominant eigenpair (power iteration), full symmetric eigendecomposition (Jacobi), and non-symmetric eigenvalues (Francis double-shift QR, real + complex spectra)
-- ✅ Optimizers: 1D root-finding, 1D minimization, gradient descent
-- ✅ Statistics: mean, variance/std, median, min/max, argmin/argmax, row/col reductions, covariance, correlation
-- ✅ Transforms: unit-length normalize (L1/L2/L∞) and distribution transforms (standardize/z-score, rescale to [0,1] or [lo,hi], center, max-abs, softmax, clamp) — per-vector, per-row, per-column, or whole-matrix
-- ✅ Generators: linspace/arange, sample any curve functor, easing & wave (LFO) functor libraries, Gaussian/box/tent convolution kernels, DSP windows (Hann/Hamming/Blackman), and rank-1 (1D×1D) outer / outer-sum matrices
-- ✅ 1D Fourier transform: power-of-two FFT/IFFT and real-input rfft/irfft with auto-dispatching radix-4 / mixed-radix via a reusable twiddle-table workspace (zero-alloc on reuse) — plus a table-free radix-4 recurrence for one-shot calls and direct DFT/IDFT for any N; magnitude/phase/power-spectrum (split real/imag, no complex type). See [docs/fft.md](docs/fft.md)
-- ✅ Realtime: fixed-capacity rolling window (ring buffer of feature vectors) with O(1) push, time-ordered AsMatrix, and zero-alloc moving-average / covariance — the per-frame front-end for the matrix ops (covariance → eigendecomposition = PCA)
-- ✅ Condition number, determinant, trace, rank, vector/matrix norms
-- ✅ Zero-allocation variants of the ops and solvers for hot loops (preallocated outputs, reusable workspaces)
-- ✅ Find/query: arg-min/max (per-row/col and abs), nearest/farthest and k-nearest rows/columns by metric (Manhattan/Euclidean/Chebyshev/cosine/dot), within-radius selection, find-value and nonzero — for float, double, int, short and long
-- ✅ Random: in-place caller-stream refill; distribution samplers (`IfProxySampler`) by inverse-transform — uniform, exponential, Rayleigh, Weibull, Cauchy, logistic, Pareto, triangular — plus Gaussian (Box–Muller); integer/bool/Bernoulli refill; weighted pick, shuffle/permutation, sample-without-replacement; and structured matrices — multivariate Normal (via Cholesky), Haar-orthogonal, SPD/condition-controlled, fixed-rank, row-stochastic
-- ✅ Histogram: equal-width binning (counts, normalized density, empirical CDF) with NaN-drop and closed-upper-edge handling, auto-range, and 2D joint histograms (heatmaps) — counts feed the weighted-pick sampler for sampling-from-data
-- ✅ Resampling / interpolation: evaluate a vector as a continuous function (`sampleAt`), gather at arbitrary positions, and resize vectors (1D) or matrices (2D, separable) to any dimension — nearest / linear / Catmull-Rom cubic, with clamp / wrap / mirror edge modes
+- **Types** — float, double, int, short, long, bool vectors & matrices
+- **Core ops** — dot, matrix multiply, transpose, outer product, element-wise, select, comparisons
+- **Decompositions** — LU, Cholesky, QR (all with pivoted variants), SVD
+- **Solvers** — direct, least-squares (over-determined), min-norm (under-determined), iterative (conjugate gradient)
+- **Eigen** — dominant eigenpair (power iteration), full symmetric (Jacobi), non-symmetric eigenvalues (Francis QR)
+- **Numerical LA** — norms, condition number, determinant, trace, rank
+- **Statistics** — mean, var/std, median, min/max, argmin/max, row/col reductions, covariance, correlation
+- **Random** — distribution samplers + structured/multivariate matrix generators (Gaussian, orthogonal, SPD, …)
+- **Histogram** — binning, density, CDF, 2D heatmaps — feeds the weighted sampler
+- **Transforms** — normalize (L1/L2/L∞), standardize, rescale, center, softmax, clamp
+- **Generators** — linspace/arange, curve / easing / LFO functors, convolution kernels, DSP windows
+- **FFT** — power-of-two FFT/IFFT & real-input rfft/irfft (radix-4 workspace) + direct DFT for any N · [docs](docs/fft.md)
+- **Find / query** — arg-min/max, nearest / k-nearest by metric, within-radius, find-value
+- **Resampling** — sample vectors/matrices as continuous functions, resize 1D/2D (nearest / linear / Catmull-Rom)
+- **Optimizers** — 1D root-finding, 1D minimization, gradient descent
+- **Zero-allocation** — preallocated-output / reusable-workspace variants of ops & solvers for hot loops
 
-## TODO
-- Better arena management and standalone vec/mat management (without arena allocation)
-- Refactor, unify the names / simplify
-- More safety checks
-- Documentation
+## WIP / TODO
 
-### Candidate directions (not yet scheduled)
-- Predicate-based queries (Burst struct-functor row predicates + masked query ops)
-- K-means / clustering (Lloyd's algorithm over the arena)
-- Realtime: Kalman filter, PCA convenience on the rolling window
-- Sparse matrix (BSR)
+**Polish & cleanup**
+- Better arena management + standalone (non-arena) vec/mat lifetime
+- Name unification & simplification
+- More safety checks, fuller docs
+
+**Not yet built / under design**
+- **Realtime** — a rolling window (ring buffer + zero-alloc moving average/covariance) exists, but the broader design is unsettled: frame-amortized solvers, resumable iterative state (CG/PCG stepping), online covariance / PCA, Kalman
+- **PCA convenience** — covariance → symmetric eigen → sorted components + explained variance
+- **Sparse matrix** (BSR)
 
 Vector/matrix views (slicing) were evaluated and intentionally dropped: a non-owning
 view can't feed the contiguous Burst kernels directly, so callers materialize anyway —
-the query ops above cover the real need.
+the query ops cover the real need.
 
