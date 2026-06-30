@@ -39,7 +39,7 @@ namespace LinearAlgebra
                                    //             (stores 0/1 flags via float; [0,size) used per call)
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a twiddle-table FFT workspace for an n-point transform (n must be a power of two,
@@ -55,16 +55,16 @@ namespace LinearAlgebra
         /// outside a hot loop and pass it to the table overloads. One table serves fft/ifft of length
         /// exactly n and rfft/irfft of real signal length exactly n.
         /// </summary>
-        public floatFft_WS floatFft_WS(int n)
+        public static floatFft_WS floatFft_WS(this ref Arena arena, int n)
         {
             if (n < 2 || (n & (n - 1)) != 0)
                 throw new ArgumentException("floatFft_WS: n must be a power of two and >= 2");
 
             int half = n >> 1;
-            var twRe     = floatVec(half);
-            var twIm     = floatVec(half);
-            var twReFull = floatVec(n);
-            var twImFull = floatVec(n);
+            var twRe     = arena.floatVec(half);
+            var twIm     = arena.floatVec(half);
+            var twReFull = arena.floatVec(n);
+            var twImFull = arena.floatVec(n);
 
             // Build at double precision for accuracy; direct per-entry cos/sin, no recurrence drift.
             double twoPiOverN = -2.0 * System.Math.PI / n;
@@ -87,9 +87,9 @@ namespace LinearAlgebra
             // cz/sz are the two-for-one packing temporaries for rfft/irfft (length n/2 = M).
             // visited is the cycle-following scratch for FftCoreRadix4Mixed (length n; [0,M) used
             // when called from the rfft/irfft inner M-point sub-FFT, still within bounds).
-            var cz      = floatVec(half, uninit: true);
-            var sz      = floatVec(half, uninit: true);
-            var visited = floatVec(n,    uninit: true);
+            var cz      = arena.floatVec(half, uninit: true);
+            var sz      = arena.floatVec(half, uninit: true);
+            var visited = arena.floatVec(n,    uninit: true);
 
             return new floatFft_WS
             {

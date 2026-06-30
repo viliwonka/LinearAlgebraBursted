@@ -37,7 +37,7 @@ namespace LinearAlgebra
         public fProxyMxN V;
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a full-SVD-family workspace sized for an m x n (m >= n) system: U is m x n,
@@ -45,13 +45,13 @@ namespace LinearAlgebra
         /// create the workspace once outside a hot loop and pass it to the workspace overloads of
         /// svdTruncated / lowRankApprox / nullspaceBasis / rangeBasis.
         /// </summary>
-        public fProxySvdFull_WS fProxySvdFull_WS(int m, int n)
+        public static fProxySvdFull_WS fProxySvdFull_WS(this ref Arena arena, int m, int n)
         {
             return new fProxySvdFull_WS
             {
-                U = fProxyMat(m, n),
-                S = fProxyVec(n),
-                V = fProxyMat(n, n)
+                U = arena.fProxyMat(m, n),
+                S = arena.fProxyVec(n),
+                V = arena.fProxyMat(n, n)
             };
         }
     }

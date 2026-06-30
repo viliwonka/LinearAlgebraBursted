@@ -39,7 +39,7 @@ namespace LinearAlgebra
                                    //             (stores 0/1 flags via double; [0,size) used per call)
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a twiddle-table FFT workspace for an n-point transform (n must be a power of two,
@@ -55,16 +55,16 @@ namespace LinearAlgebra
         /// outside a hot loop and pass it to the table overloads. One table serves fft/ifft of length
         /// exactly n and rfft/irfft of real signal length exactly n.
         /// </summary>
-        public doubleFft_WS doubleFft_WS(int n)
+        public static doubleFft_WS doubleFft_WS(this ref Arena arena, int n)
         {
             if (n < 2 || (n & (n - 1)) != 0)
                 throw new ArgumentException("doubleFft_WS: n must be a power of two and >= 2");
 
             int half = n >> 1;
-            var twRe     = doubleVec(half);
-            var twIm     = doubleVec(half);
-            var twReFull = doubleVec(n);
-            var twImFull = doubleVec(n);
+            var twRe     = arena.doubleVec(half);
+            var twIm     = arena.doubleVec(half);
+            var twReFull = arena.doubleVec(n);
+            var twImFull = arena.doubleVec(n);
 
             // Build at double precision for accuracy; direct per-entry cos/sin, no recurrence drift.
             double twoPiOverN = -2.0 * System.Math.PI / n;
@@ -87,9 +87,9 @@ namespace LinearAlgebra
             // cz/sz are the two-for-one packing temporaries for rfft/irfft (length n/2 = M).
             // visited is the cycle-following scratch for FftCoreRadix4Mixed (length n; [0,M) used
             // when called from the rfft/irfft inner M-point sub-FFT, still within bounds).
-            var cz      = doubleVec(half, uninit: true);
-            var sz      = doubleVec(half, uninit: true);
-            var visited = doubleVec(n,    uninit: true);
+            var cz      = arena.doubleVec(half, uninit: true);
+            var sz      = arena.doubleVec(half, uninit: true);
+            var visited = arena.doubleVec(n,    uninit: true);
 
             return new doubleFft_WS
             {

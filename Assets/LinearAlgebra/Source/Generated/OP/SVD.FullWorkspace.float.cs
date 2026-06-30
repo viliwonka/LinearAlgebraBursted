@@ -37,7 +37,7 @@ namespace LinearAlgebra
         public floatMxN V;
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a full-SVD-family workspace sized for an m x n (m >= n) system: U is m x n,
@@ -45,13 +45,13 @@ namespace LinearAlgebra
         /// create the workspace once outside a hot loop and pass it to the workspace overloads of
         /// svdTruncated / lowRankApprox / nullspaceBasis / rangeBasis.
         /// </summary>
-        public floatSvdFull_WS floatSvdFull_WS(int m, int n)
+        public static floatSvdFull_WS floatSvdFull_WS(this ref Arena arena, int m, int n)
         {
             return new floatSvdFull_WS
             {
-                U = floatMat(m, n),
-                S = floatVec(n),
-                V = floatMat(n, n)
+                U = arena.floatMat(m, n),
+                S = arena.floatVec(n),
+                V = arena.floatMat(n, n)
             };
         }
     }

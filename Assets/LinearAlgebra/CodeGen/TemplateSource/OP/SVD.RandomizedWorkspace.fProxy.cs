@@ -89,7 +89,7 @@ namespace LinearAlgebra
         public fProxyMxN UA;
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a randomized-SVD workspace for an m x n (m >= n) matrix with target rank k and
@@ -97,23 +97,23 @@ namespace LinearAlgebra
         /// oversample to svdRandomized's ref-workspace overload. The buffers are persistent in this
         /// arena (disposed with it), so create the workspace once outside a hot loop.
         /// </summary>
-        public fProxySvdRandomized_WS fProxySvdRandomized_WS(int m, int n, int k, int oversample)
+        public static fProxySvdRandomized_WS fProxySvdRandomized_WS(this ref Arena arena, int m, int n, int k, int oversample)
         {
             int l = math.min(k + oversample, n);
             return new fProxySvdRandomized_WS
             {
-                Omega = fProxyMat(n, l),
-                Y = fProxyMat(m, l),
-                R = fProxyMat(l, l),
-                qu = fProxyVec(m),
-                qw = fProxyVec(l),
-                Z = fProxyMat(n, l),
-                B = fProxyMat(l, n),
-                Bt = fProxyMat(n, l),
-                Up = fProxyMat(n, l),
-                Sb = fProxyVec(l),
-                Vp = fProxyMat(l, l),
-                UA = fProxyMat(m, l)
+                Omega = arena.fProxyMat(n, l),
+                Y = arena.fProxyMat(m, l),
+                R = arena.fProxyMat(l, l),
+                qu = arena.fProxyVec(m),
+                qw = arena.fProxyVec(l),
+                Z = arena.fProxyMat(n, l),
+                B = arena.fProxyMat(l, n),
+                Bt = arena.fProxyMat(n, l),
+                Up = arena.fProxyMat(n, l),
+                Sb = arena.fProxyVec(l),
+                Vp = arena.fProxyMat(l, l),
+                UA = arena.fProxyMat(m, l)
             };
         }
 
@@ -121,7 +121,7 @@ namespace LinearAlgebra
         /// Allocates a randomized-SVD workspace with the default oversample (10) — matches the
         /// svdRandomized convenience overloads (oversample 10, powerIters 2, maxIter 75).
         /// </summary>
-        public fProxySvdRandomized_WS fProxySvdRandomized_WS(int m, int n, int k)
-            => fProxySvdRandomized_WS(m, n, k, 10);
+        public static fProxySvdRandomized_WS fProxySvdRandomized_WS(this ref Arena arena, int m, int n, int k)
+            => arena.fProxySvdRandomized_WS(m, n, k, 10);
     }
 }

@@ -32,7 +32,7 @@ namespace LinearAlgebra.ML
 
 namespace LinearAlgebra
 {
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a k-means workspace sized for <paramref name="N"/> points,
@@ -40,18 +40,18 @@ namespace LinearAlgebra
         /// All buffers are persistent in this arena (disposed with it).
         /// Create once outside hot loops and reuse for same-shape calls.
         /// </summary>
-        public LinearAlgebra.ML.fProxyKMeans_WS fProxyKMeans_WS(int N, int D, int k)
+        public static LinearAlgebra.ML.fProxyKMeans_WS fProxyKMeans_WS(this ref Arena arena, int N, int D, int k)
         {
             return new LinearAlgebra.ML.fProxyKMeans_WS
             {
-                Gram           = fProxyMat(N, k),
-                Ct             = fProxyMat(D, k),
-                PointNormSq    = fProxyVec(N),
-                CentNormSq     = fProxyVec(k),
-                PrevAssignment = Indices(N),
-                NewCentroids   = fProxyMat(k, D),
-                ClusterCounts  = Indices(k),
-                D2Weights      = fProxyVec(N)
+                Gram           = arena.fProxyMat(N, k),
+                Ct             = arena.fProxyMat(D, k),
+                PointNormSq    = arena.fProxyVec(N),
+                CentNormSq     = arena.fProxyVec(k),
+                PrevAssignment = arena.Indices(N),
+                NewCentroids   = arena.fProxyMat(k, D),
+                ClusterCounts  = arena.Indices(k),
+                D2Weights      = arena.fProxyVec(N)
             };
         }
     }

@@ -28,20 +28,20 @@ namespace LinearAlgebra
         public floatN pVec;
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a symmetric-eigenvalue workspace for an n x n matrix: three length-n vectors.
         /// The buffers are persistent in this arena (disposed with it), so create the workspace once
         /// outside a hot loop and pass it to the ref-workspace overload of eigenvaluesSymmetric.
         /// </summary>
-        public floatEigenSym_WS floatEigenSym_WS(int n)
+        public static floatEigenSym_WS floatEigenSym_WS(this ref Arena arena, int n)
         {
             return new floatEigenSym_WS
             {
-                eVec = floatVec(n),
-                vVec = floatVec(n),
-                pVec = floatVec(n)
+                eVec = arena.floatVec(n),
+                vVec = arena.floatVec(n),
+                pVec = arena.floatVec(n)
             };
         }
     }

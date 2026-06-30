@@ -64,7 +64,7 @@ namespace LinearAlgebra
         public fProxyN nu;   // length p+1: ν estimates ⟨v̂_j, v̂_i⟩ for partial reorth ω-recurrence
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a GKL-truncated-SVD workspace for an m x n (m >= n) matrix with target rank k
@@ -72,29 +72,29 @@ namespace LinearAlgebra
         /// oversample to svdTruncated's ref-workspace overload. The buffers are persistent in this
         /// arena (disposed with it), so create the workspace once outside a hot loop.
         /// </summary>
-        public fProxySvdTruncated_WS fProxySvdTruncated_WS(int m, int n, int k, int oversample)
+        public static fProxySvdTruncated_WS fProxySvdTruncated_WS(this ref Arena arena, int m, int n, int k, int oversample)
         {
             int p = math.min(k + oversample, n);
             return new fProxySvdTruncated_WS
             {
-                UL     = fProxyMat(p, m),
-                VL     = fProxyMat(p + 1, n),
-                dB     = fProxyVec(p),
-                eB     = fProxyVec(p),
-                UtB    = fProxyMat(p, p),
-                VtB    = fProxyMat(p, p),
+                UL     = arena.fProxyMat(p, m),
+                VL     = arena.fProxyMat(p + 1, n),
+                dB     = arena.fProxyVec(p),
+                eB     = arena.fProxyVec(p),
+                UtB    = arena.fProxyMat(p, p),
+                VtB    = arena.fProxyMat(p, p),
                 BsvdWs = new fProxySvdFull_WS
                 {
-                    U = fProxyMat(p, p),
-                    S = fProxyVec(p),
-                    V = fProxyMat(p, p)
+                    U = arena.fProxyMat(p, p),
+                    S = arena.fProxyVec(p),
+                    V = arena.fProxyMat(p, p)
                 },
-                uBuf  = fProxyVec(m),
-                vBuf  = fProxyVec(n),
-                alpha = fProxyVec(p),
-                beta  = fProxyVec(p),
-                mu    = fProxyVec(p + 1),
-                nu    = fProxyVec(p + 1)
+                uBuf  = arena.fProxyVec(m),
+                vBuf  = arena.fProxyVec(n),
+                alpha = arena.fProxyVec(p),
+                beta  = arena.fProxyVec(p),
+                mu    = arena.fProxyVec(p + 1),
+                nu    = arena.fProxyVec(p + 1)
             };
         }
 
@@ -103,29 +103,29 @@ namespace LinearAlgebra
         /// p = min(n, max(2*k, k+12)) — matches the svdTruncated convenience overloads that do
         /// not take an explicit oversample. For k in [1,12], p >= k+12; for k > 12, p >= 2*k.
         /// </summary>
-        public fProxySvdTruncated_WS fProxySvdTruncated_WS(int m, int n, int k)
+        public static fProxySvdTruncated_WS fProxySvdTruncated_WS(this ref Arena arena, int m, int n, int k)
         {
             int p = math.min(n, math.max(2 * k, k + 12));
             return new fProxySvdTruncated_WS
             {
-                UL     = fProxyMat(p, m),
-                VL     = fProxyMat(p + 1, n),
-                dB     = fProxyVec(p),
-                eB     = fProxyVec(p),
-                UtB    = fProxyMat(p, p),
-                VtB    = fProxyMat(p, p),
+                UL     = arena.fProxyMat(p, m),
+                VL     = arena.fProxyMat(p + 1, n),
+                dB     = arena.fProxyVec(p),
+                eB     = arena.fProxyVec(p),
+                UtB    = arena.fProxyMat(p, p),
+                VtB    = arena.fProxyMat(p, p),
                 BsvdWs = new fProxySvdFull_WS
                 {
-                    U = fProxyMat(p, p),
-                    S = fProxyVec(p),
-                    V = fProxyMat(p, p)
+                    U = arena.fProxyMat(p, p),
+                    S = arena.fProxyVec(p),
+                    V = arena.fProxyMat(p, p)
                 },
-                uBuf  = fProxyVec(m),
-                vBuf  = fProxyVec(n),
-                alpha = fProxyVec(p),
-                beta  = fProxyVec(p),
-                mu    = fProxyVec(p + 1),
-                nu    = fProxyVec(p + 1)
+                uBuf  = arena.fProxyVec(m),
+                vBuf  = arena.fProxyVec(n),
+                alpha = arena.fProxyVec(p),
+                beta  = arena.fProxyVec(p),
+                mu    = arena.fProxyVec(p + 1),
+                nu    = arena.fProxyVec(p + 1)
             };
         }
     }

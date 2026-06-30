@@ -19,7 +19,7 @@ namespace LinearAlgebra
         public doubleMxN At;
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates an SVD-solver workspace sized for an m x n system. With k = min(m, n):
@@ -28,16 +28,16 @@ namespace LinearAlgebra
         /// are persistent in this arena (disposed with it), so create the workspace once outside a
         /// hot loop and pass it to the workspace overloads of pinvSolve / pseudoInverse.
         /// </summary>
-        public doubleSvd_WS doubleSvd_WS(int m, int n)
+        public static doubleSvd_WS doubleSvd_WS(this ref Arena arena, int m, int n)
         {
             int k   = m < n ? m : n;
             int big = m < n ? n : m;
             return new doubleSvd_WS
             {
-                S  = doubleVec(k),
-                M  = doubleMat(k, k),
-                U  = doubleMat(big, k),
-                At = (m < n) ? doubleMat(n, m) : default
+                S  = arena.doubleVec(k),
+                M  = arena.doubleMat(k, k),
+                U  = arena.doubleMat(big, k),
+                At = (m < n) ? arena.doubleMat(n, m) : default
             };
         }
     }

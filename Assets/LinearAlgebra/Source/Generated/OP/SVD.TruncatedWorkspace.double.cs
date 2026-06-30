@@ -64,7 +64,7 @@ namespace LinearAlgebra
         public doubleN nu;   // length p+1: ν estimates ⟨v̂_j, v̂_i⟩ for partial reorth ω-recurrence
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a GKL-truncated-SVD workspace for an m x n (m >= n) matrix with target rank k
@@ -72,29 +72,29 @@ namespace LinearAlgebra
         /// oversample to svdTruncated's ref-workspace overload. The buffers are persistent in this
         /// arena (disposed with it), so create the workspace once outside a hot loop.
         /// </summary>
-        public doubleSvdTruncated_WS doubleSvdTruncated_WS(int m, int n, int k, int oversample)
+        public static doubleSvdTruncated_WS doubleSvdTruncated_WS(this ref Arena arena, int m, int n, int k, int oversample)
         {
             int p = math.min(k + oversample, n);
             return new doubleSvdTruncated_WS
             {
-                UL     = doubleMat(p, m),
-                VL     = doubleMat(p + 1, n),
-                dB     = doubleVec(p),
-                eB     = doubleVec(p),
-                UtB    = doubleMat(p, p),
-                VtB    = doubleMat(p, p),
+                UL     = arena.doubleMat(p, m),
+                VL     = arena.doubleMat(p + 1, n),
+                dB     = arena.doubleVec(p),
+                eB     = arena.doubleVec(p),
+                UtB    = arena.doubleMat(p, p),
+                VtB    = arena.doubleMat(p, p),
                 BsvdWs = new doubleSvdFull_WS
                 {
-                    U = doubleMat(p, p),
-                    S = doubleVec(p),
-                    V = doubleMat(p, p)
+                    U = arena.doubleMat(p, p),
+                    S = arena.doubleVec(p),
+                    V = arena.doubleMat(p, p)
                 },
-                uBuf  = doubleVec(m),
-                vBuf  = doubleVec(n),
-                alpha = doubleVec(p),
-                beta  = doubleVec(p),
-                mu    = doubleVec(p + 1),
-                nu    = doubleVec(p + 1)
+                uBuf  = arena.doubleVec(m),
+                vBuf  = arena.doubleVec(n),
+                alpha = arena.doubleVec(p),
+                beta  = arena.doubleVec(p),
+                mu    = arena.doubleVec(p + 1),
+                nu    = arena.doubleVec(p + 1)
             };
         }
 
@@ -103,29 +103,29 @@ namespace LinearAlgebra
         /// p = min(n, max(2*k, k+12)) — matches the svdTruncated convenience overloads that do
         /// not take an explicit oversample. For k in [1,12], p >= k+12; for k > 12, p >= 2*k.
         /// </summary>
-        public doubleSvdTruncated_WS doubleSvdTruncated_WS(int m, int n, int k)
+        public static doubleSvdTruncated_WS doubleSvdTruncated_WS(this ref Arena arena, int m, int n, int k)
         {
             int p = math.min(n, math.max(2 * k, k + 12));
             return new doubleSvdTruncated_WS
             {
-                UL     = doubleMat(p, m),
-                VL     = doubleMat(p + 1, n),
-                dB     = doubleVec(p),
-                eB     = doubleVec(p),
-                UtB    = doubleMat(p, p),
-                VtB    = doubleMat(p, p),
+                UL     = arena.doubleMat(p, m),
+                VL     = arena.doubleMat(p + 1, n),
+                dB     = arena.doubleVec(p),
+                eB     = arena.doubleVec(p),
+                UtB    = arena.doubleMat(p, p),
+                VtB    = arena.doubleMat(p, p),
                 BsvdWs = new doubleSvdFull_WS
                 {
-                    U = doubleMat(p, p),
-                    S = doubleVec(p),
-                    V = doubleMat(p, p)
+                    U = arena.doubleMat(p, p),
+                    S = arena.doubleVec(p),
+                    V = arena.doubleMat(p, p)
                 },
-                uBuf  = doubleVec(m),
-                vBuf  = doubleVec(n),
-                alpha = doubleVec(p),
-                beta  = doubleVec(p),
-                mu    = doubleVec(p + 1),
-                nu    = doubleVec(p + 1)
+                uBuf  = arena.doubleVec(m),
+                vBuf  = arena.doubleVec(n),
+                alpha = arena.doubleVec(p),
+                beta  = arena.doubleVec(p),
+                mu    = arena.doubleVec(p + 1),
+                nu    = arena.doubleVec(p + 1)
             };
         }
     }

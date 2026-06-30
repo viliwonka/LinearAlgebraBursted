@@ -32,7 +32,7 @@ namespace LinearAlgebra.ML
 
 namespace LinearAlgebra
 {
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a k-means workspace sized for <paramref name="N"/> points,
@@ -40,18 +40,18 @@ namespace LinearAlgebra
         /// All buffers are persistent in this arena (disposed with it).
         /// Create once outside hot loops and reuse for same-shape calls.
         /// </summary>
-        public LinearAlgebra.ML.doubleKMeans_WS doubleKMeans_WS(int N, int D, int k)
+        public static LinearAlgebra.ML.doubleKMeans_WS doubleKMeans_WS(this ref Arena arena, int N, int D, int k)
         {
             return new LinearAlgebra.ML.doubleKMeans_WS
             {
-                Gram           = doubleMat(N, k),
-                Ct             = doubleMat(D, k),
-                PointNormSq    = doubleVec(N),
-                CentNormSq     = doubleVec(k),
-                PrevAssignment = Indices(N),
-                NewCentroids   = doubleMat(k, D),
-                ClusterCounts  = Indices(k),
-                D2Weights      = doubleVec(N)
+                Gram           = arena.doubleMat(N, k),
+                Ct             = arena.doubleMat(D, k),
+                PointNormSq    = arena.doubleVec(N),
+                CentNormSq     = arena.doubleVec(k),
+                PrevAssignment = arena.Indices(N),
+                NewCentroids   = arena.doubleMat(k, D),
+                ClusterCounts  = arena.Indices(k),
+                D2Weights      = arena.doubleVec(N)
             };
         }
     }

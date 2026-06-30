@@ -36,7 +36,7 @@ namespace LinearAlgebra
         public doubleN bt;
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a pivoted-Cholesky workspace for an n x n matrix: W (n x n) and bt (n). The buffers
@@ -44,12 +44,12 @@ namespace LinearAlgebra
         /// loop and pass it to the ref-workspace overloads of choleskyDecompositionPivot /
         /// choleskyPivotSolve.
         /// </summary>
-        public doubleCholeskyPivot_WS doubleCholeskyPivot_WS(int n)
+        public static doubleCholeskyPivot_WS doubleCholeskyPivot_WS(this ref Arena arena, int n)
         {
             return new doubleCholeskyPivot_WS
             {
-                W = doubleMat(n, n),
-                bt = doubleVec(n)
+                W = arena.doubleMat(n, n),
+                bt = arena.doubleVec(n)
             };
         }
     }

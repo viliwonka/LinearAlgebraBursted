@@ -89,7 +89,7 @@ namespace LinearAlgebra
         public doubleMxN UA;
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a randomized-SVD workspace for an m x n (m >= n) matrix with target rank k and
@@ -97,23 +97,23 @@ namespace LinearAlgebra
         /// oversample to svdRandomized's ref-workspace overload. The buffers are persistent in this
         /// arena (disposed with it), so create the workspace once outside a hot loop.
         /// </summary>
-        public doubleSvdRandomized_WS doubleSvdRandomized_WS(int m, int n, int k, int oversample)
+        public static doubleSvdRandomized_WS doubleSvdRandomized_WS(this ref Arena arena, int m, int n, int k, int oversample)
         {
             int l = math.min(k + oversample, n);
             return new doubleSvdRandomized_WS
             {
-                Omega = doubleMat(n, l),
-                Y = doubleMat(m, l),
-                R = doubleMat(l, l),
-                qu = doubleVec(m),
-                qw = doubleVec(l),
-                Z = doubleMat(n, l),
-                B = doubleMat(l, n),
-                Bt = doubleMat(n, l),
-                Up = doubleMat(n, l),
-                Sb = doubleVec(l),
-                Vp = doubleMat(l, l),
-                UA = doubleMat(m, l)
+                Omega = arena.doubleMat(n, l),
+                Y = arena.doubleMat(m, l),
+                R = arena.doubleMat(l, l),
+                qu = arena.doubleVec(m),
+                qw = arena.doubleVec(l),
+                Z = arena.doubleMat(n, l),
+                B = arena.doubleMat(l, n),
+                Bt = arena.doubleMat(n, l),
+                Up = arena.doubleMat(n, l),
+                Sb = arena.doubleVec(l),
+                Vp = arena.doubleMat(l, l),
+                UA = arena.doubleMat(m, l)
             };
         }
 
@@ -121,7 +121,7 @@ namespace LinearAlgebra
         /// Allocates a randomized-SVD workspace with the default oversample (10) — matches the
         /// svdRandomized convenience overloads (oversample 10, powerIters 2, maxIter 75).
         /// </summary>
-        public doubleSvdRandomized_WS doubleSvdRandomized_WS(int m, int n, int k)
-            => doubleSvdRandomized_WS(m, n, k, 10);
+        public static doubleSvdRandomized_WS doubleSvdRandomized_WS(this ref Arena arena, int m, int n, int k)
+            => arena.doubleSvdRandomized_WS(m, n, k, 10);
     }
 }

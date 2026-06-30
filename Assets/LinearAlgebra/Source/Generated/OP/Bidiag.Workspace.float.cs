@@ -42,7 +42,7 @@ namespace LinearAlgebra
         public floatN wScratch;
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a bidiagonalization workspace for an m x n (m >= n) matrix: W (m x n),
@@ -50,15 +50,15 @@ namespace LinearAlgebra
         /// (disposed with it), so create the workspace once outside a hot loop and pass it to the
         /// ref-workspace overloads of bidiagonalize / bidiagonalizeValues.
         /// </summary>
-        public floatBidiag_WS floatBidiag_WS(int m, int n)
+        public static floatBidiag_WS floatBidiag_WS(this ref Arena arena, int m, int n)
         {
             return new floatBidiag_WS
             {
-                W = floatMat(m, n),
-                leftU = floatMat(m, n),
-                uVec = floatVec(m),
-                vVec = floatVec(n),
-                wScratch = floatVec(n)
+                W = arena.floatMat(m, n),
+                leftU = arena.floatMat(m, n),
+                uVec = arena.floatVec(m),
+                vVec = arena.floatVec(n),
+                wScratch = arena.floatVec(n)
             };
         }
     }

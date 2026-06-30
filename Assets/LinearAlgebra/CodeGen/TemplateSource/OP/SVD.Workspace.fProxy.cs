@@ -19,7 +19,7 @@ namespace LinearAlgebra
         public fProxyMxN At;
     }
 
-    public partial struct Arena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates an SVD-solver workspace sized for an m x n system. With k = min(m, n):
@@ -28,16 +28,16 @@ namespace LinearAlgebra
         /// are persistent in this arena (disposed with it), so create the workspace once outside a
         /// hot loop and pass it to the workspace overloads of pinvSolve / pseudoInverse.
         /// </summary>
-        public fProxySvd_WS fProxySvd_WS(int m, int n)
+        public static fProxySvd_WS fProxySvd_WS(this ref Arena arena, int m, int n)
         {
             int k   = m < n ? m : n;
             int big = m < n ? n : m;
             return new fProxySvd_WS
             {
-                S  = fProxyVec(k),
-                M  = fProxyMat(k, k),
-                U  = fProxyMat(big, k),
-                At = (m < n) ? fProxyMat(n, m) : default
+                S  = arena.fProxyVec(k),
+                M  = arena.fProxyMat(k, k),
+                U  = arena.fProxyMat(big, k),
+                At = (m < n) ? arena.fProxyMat(n, m) : default
             };
         }
     }
