@@ -133,92 +133,6 @@ namespace LinearAlgebra
                     who + ": workspace must have full-circle twiddle table (use Arena.floatFftWorkspace(n))");
         }
 
-        // ---- table-indexed FFT core ----
-        // Identical to FftCore (same bit-reversal, same inverse conjugate trick, same 1/N scale) EXCEPT
-        // the butterfly twiddle W_len^k is read from the table as twRe[k*(tableN/len)],
-        // twIm[k*(tableN/len)] — no per-stage cos/sin, no per-element recurrence.
-        //
-        // KEY INSIGHT: the size-tableN table T[j] = exp(-2πij/tableN) contains every twiddle any
-        // radix-2 stage needs: W_len^k = exp(-2πik/len) = exp(-2πi·k·(tableN/len)/tableN) = T[k*(tableN/len)].
-        // The index k*(tableN/len) is always an integer in [0, tableN/2) when len ≤ n ≤ tableN and k < len/2.
-        //
-        // re.N may be ≤ tableN (rfft passes the inner half-size M = tableN/2 as the data; the table
-        // is full-N). re.N must divide tableN (both powers of two, enforced by workspace guard on callers).
-
-        static void FftCoreTable(ref floatN re, ref floatN im,
-                                 ref floatN twRe, ref floatN twIm,
-                                 int tableN, bool inverse)
-        {
-            int n = re.N;
-            if (im.N != n)
-                throw new ArgumentException("fft: re and im must have the same length");
-            if (!IsPow2(n))
-                throw new ArgumentException("fft: length must be a power of two (use dft for arbitrary N)");
-            if (n == 1)
-                return;
-
-            // For the inverse, conjugate the input; we conjugate again and scale at the end.
-            if (inverse)
-                for (int i = 0; i < n; i++)
-                    im[i] = -im[i];
-
-            // Bit-reversal permutation (in place).
-            for (int i = 1, j = 0; i < n; i++)
-            {
-                int bit = n >> 1;
-                for (; (j & bit) != 0; bit >>= 1)
-                    j &= ~bit;
-                j |= bit;
-
-                if (i < j)
-                {
-                    float tr = re[i]; re[i] = re[j]; re[j] = tr;
-                    float ti = im[i]; im[i] = im[j]; im[j] = ti;
-                }
-            }
-
-            // Butterfly stages: W_len^k = T[k*(tableN/len)], reading directly from the table.
-            // For the inverse path the data is already conjugated, so the forward twiddle is correct.
-            for (int len = 2; len <= n; len <<= 1)
-            {
-                int step = tableN / len;   // stride into the twiddle table for this stage
-                int half = len >> 1;
-
-                for (int i = 0; i < n; i += len)
-                {
-                    for (int k = 0; k < half; k++)
-                    {
-                        int a = i + k;
-                        int b = a + half;
-
-                        int twIdx = k * step;
-                        float wr = twRe[twIdx];
-                        float wi = twIm[twIdx];
-
-                        float bRe = re[b];
-                        float bIm = im[b];
-                        float vRe = wr * bRe - wi * bIm;
-                        float vIm = wr * bIm + wi * bRe;
-
-                        float aRe = re[a];
-                        float aIm = im[a];
-                        re[a] = aRe + vRe; im[a] = aIm + vIm;
-                        re[b] = aRe - vRe; im[b] = aIm - vIm;
-                    }
-                }
-            }
-
-            if (inverse)
-            {
-                float invN = (float)1 / (float)n;
-                for (int i = 0; i < n; i++)
-                {
-                    re[i] = re[i] * invN;
-                    im[i] = -im[i] * invN;   // undo the input conjugation, with the 1/N scale
-                }
-            }
-        }
-
         // ---- table-indexed overloads ----
 
         /// <summary>
@@ -226,8 +140,8 @@ namespace LinearAlgebra
         ///   IsPowerOf4(n)     → FftCoreRadix4      (true radix-4, log4(N) passes)
         ///   else IsPow2(n)    → FftCoreRadix4Mixed (one radix-2 stage + two radix-4 sub-FFTs)
         /// These two cases cover EVERY power of two, so there is no plain-radix-2 size class here.
-        /// The final else is reached only by a non-power-of-two length (not a valid FFT size);
-        /// FftCoreTable then throws "length must be a power of two".
+        /// The final else is reached only by a non-power-of-two length (not a valid FFT size)
+        /// and throws — use dft for arbitrary N.
         /// ws must be sized for re.N (build via Arena.floatFftWorkspace(N)); it must contain the
         /// full-circle twiddle table required by the radix-4 paths. Both arrays must have the same
         /// length, which must be a power of two.
@@ -252,11 +166,9 @@ namespace LinearAlgebra
             }
             else
             {
-                // Not a power of two: radix-4 ∪ mixed already cover every valid (power-of-two)
-                // length, so this is the invalid-input guard — FftCoreTable rejects it.
-                var twRe = ws.twRe;
-                var twIm = ws.twIm;
-                FftCoreTable(ref re, ref im, ref twRe, ref twIm, ws.n, false);
+                // radix-4 ∪ mixed cover every power of two, so this is reached only by a
+                // non-power-of-two length, which Cooley-Tukey cannot handle.
+                throw new ArgumentException("fft: length must be a power of two (use dft for arbitrary N)");
             }
         }
 
@@ -264,7 +176,7 @@ namespace LinearAlgebra
         /// In-place inverse FFT using a precomputed twiddle table. Auto-dispatches by length,
         /// same as fft: IsPowerOf4(n) → FftCoreRadix4; else IsPow2(n) → FftCoreRadix4Mixed.
         /// Those two cover every power of two; the final else is the non-power-of-two guard
-        /// (FftCoreTable throws "length must be a power of two").
+        /// (throws — use idft for arbitrary N).
         /// Divides by N so that ifft(fft(x, ws), ws) == x. ws must be sized for re.N.
         /// </summary>
         public static void ifft(ref floatN re, ref floatN im, in floatFftWorkspace ws)
@@ -287,11 +199,9 @@ namespace LinearAlgebra
             }
             else
             {
-                // Not a power of two: radix-4 ∪ mixed already cover every valid (power-of-two)
-                // length, so this is the invalid-input guard — FftCoreTable rejects it.
-                var twRe = ws.twRe;
-                var twIm = ws.twIm;
-                FftCoreTable(ref re, ref im, ref twRe, ref twIm, ws.n, true);
+                // radix-4 ∪ mixed cover every power of two, so this is reached only by a
+                // non-power-of-two length, which Cooley-Tukey cannot handle.
+                throw new ArgumentException("ifft: length must be a power of two (use idft for arbitrary N)");
             }
         }
 
@@ -299,8 +209,8 @@ namespace LinearAlgebra
         /// Real-input forward FFT using a precomputed twiddle table. ws must be sized for real.N
         /// (the full real signal length N — not the half-spectrum length N/2+1).
         /// Identical two-for-one packing as the recurrence rfft, but the inner M-point FFT uses
-        /// FftCoreTable and the unpack twiddle W_N^k = (ws.twRe[k], ws.twIm[k]) is read directly
-        /// — no cos/sin in the hot loop.
+        /// the radix-4/mixed dispatch and the unpack twiddle W_N^k = (ws.twRe[k], ws.twIm[k]) is
+        /// read directly — no cos/sin in the hot loop.
         /// </summary>
         public static void rfft(in floatN real, ref floatN re, ref floatN im, in floatFftWorkspace ws)
         {
