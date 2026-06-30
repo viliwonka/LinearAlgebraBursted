@@ -295,6 +295,20 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float svdSign(float a, float b) => b >= (float)0 ? math.abs(a) : -math.abs(a);
 
+        // sqrt(a^2 + b^2 + a*b) (a,b >= 0), an upper bound on the spectral norm of a 2x2 upper-
+        // bidiagonal block, scaled to avoid overflow (mirrors lanbpro's FUDGE*sqrt(a^2+b^2+a*b)
+        // ||A||_2 estimate). Used only to size the round-off floor in the partial-reorth
+        // omega-recurrence — an order-of-magnitude estimate, so the cross term must not be dropped.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float svdAnormBlock(float a, float b)
+        {
+            float aa = math.abs(a), ab = math.abs(b);
+            float mx = math.max(aa, ab);
+            if (mx == (float)0) return (float)0;
+            float ra = aa / mx, rb = ab / mx;
+            return mx * math.sqrt(ra * ra + rb * rb + ra * rb);
+        }
+
         /// <summary>
         /// Full SVD A = U * diag(S) * Vᵀ via Golub-Kahan: Householder bidiagonalization
         /// (Bidiag.bidiagonalize) followed by the implicit-shift bidiagonal QR (Golub-Reinsch).

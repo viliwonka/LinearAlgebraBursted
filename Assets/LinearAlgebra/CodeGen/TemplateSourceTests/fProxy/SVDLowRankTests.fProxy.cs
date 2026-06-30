@@ -38,6 +38,15 @@ public class fProxySVDLowRankTests
             GklFlatCliffTrunc_70x25,         // Σ=[100,80,60,1e-3,…], k=3, p=9<25
             GklOneSmallTrunc_50x20,          // Σ=[1,…,1,1e-4] (κ=1e4), k=3 inside flat top, full Krylov
             GklClusterProjector_50x24,       // cluster Σ=[10,10,10,…], k=3 → rank-3 PROJECTOR matches oracle
+            // --- partial reorthogonalization (de74c48): partial≡full + no ghost singular values ---
+            PartialVsFull_Geometric_80x30,   // partialReorth true vs false on geometric Σ, both Eckart-Young
+            PartialVsFull_FlatCliff_70x25,   // partialReorth true vs false on flat-then-cliff Σ
+            NoGhost_Geometric_80x30,         // every returned σ (partial) matches SOME true σ (k=3,4,5)
+            PartialOrthonormal_70x25,        // UkᵀUk≈I, VkᵀVk≈I under partial reorth (broken recurrence shows here)
+            PartialClustered_50x30,          // stress: tight σ cluster (hardest case for reorth), p=15<30
+            PartialIllConditioned_60x20,     // stress: κ≈1e4 one-small spectrum, p=7<20
+            PartialLargeP_120x60,            // stress: k=15 on 120×60 → p=35<60, reorth fires repeatedly
+            PartialCloseClusterSeeds_64x24,  // stress: close-but-resolvable top cluster × 8 seeds → no ghost
         }
 
         public TestType Type;
@@ -67,6 +76,14 @@ public class fProxySVDLowRankTests
                 case TestType.GklFlatCliffTrunc_70x25:     GklFlatCliffTrunc_70x25();      break;
                 case TestType.GklOneSmallTrunc_50x20:      GklOneSmallTrunc_50x20();       break;
                 case TestType.GklClusterProjector_50x24:   GklClusterProjector_50x24();    break;
+                case TestType.PartialVsFull_Geometric_80x30: PartialVsFull_Geometric_80x30(); break;
+                case TestType.PartialVsFull_FlatCliff_70x25: PartialVsFull_FlatCliff_70x25(); break;
+                case TestType.NoGhost_Geometric_80x30:     NoGhost_Geometric_80x30();      break;
+                case TestType.PartialOrthonormal_70x25:    PartialOrthonormal_70x25();     break;
+                case TestType.PartialClustered_50x30:      PartialClustered_50x30();       break;
+                case TestType.PartialIllConditioned_60x20: PartialIllConditioned_60x20();  break;
+                case TestType.PartialLargeP_120x60:        PartialLargeP_120x60();         break;
+                case TestType.PartialCloseClusterSeeds_64x24: PartialCloseClusterSeeds_64x24(); break;
             }
         }
 
@@ -788,6 +805,298 @@ public class fProxySVDLowRankTests
                     for (int t = 0; t < k; t++) { pb += B[i, t] * B[j, t]; pr += Ref[i, t] * Ref[j, t]; }
                     AssertClose(pb, pr, tol);
                 }
+        }
+
+        // ====================================================================================
+        // PARTIAL REORTHOGONALIZATION (de74c48). The bool partialReorth on the core overload
+        // selects the ω-recurrence/ELR path (true, default) vs the original full-DGKS path
+        // (false). Both must return the EXACT top-k triplets with no spurious ("ghost")
+        // singular values and orthonormal factors. All matrices below use genuine p < n
+        // truncation (NOT p == n) so the Lanczos recurrence is actually exercised.
+        // Tolerances reuse the GklTruncated style: svTol = 8·√ε·(σ₀+1), orthoTol = 1e-3.
+        // ====================================================================================
+
+        // Run svdTruncated with an explicit partialReorth flag against a prescribed (oracle) Σ.
+        // Asserts converged, per-index σ match, orthonormal Uk/Vk, and the Eckart-Young optimum
+        // ‖A − UkΣkVkᵀ‖_F² == Σ_{i≥k} σ_i². Recovered Sk are copied into SkOut for cross-compare.
+        void RunTruncWithReorth(in fProxyMxN A, in fProxyN sigmaTrue, int k, int oversample, uint seed,
+                                bool partialReorth, ref fProxyN SkOut, int m, int n,
+                                fProxy svTol, ref Arena arena)
+        {
+            var Uk = arena.fProxyMat(m, k);
+            var Sk = arena.fProxyVec(k);
+            var Vk = arena.fProxyMat(n, k);
+            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, partialReorth, out bool cT);
+            Assert.IsTrue(cT);
+
+            for (int t = 0; t < k; t++) { AssertClose(Sk[t], sigmaTrue[t], svTol); SkOut[t] = Sk[t]; }
+
+            AssertOrthoCols(in Uk, m, k, (fProxy)1E-3f);
+            AssertOrthoCols(in Vk, n, k, (fProxy)1E-3f);
+
+            // Eckart-Young: rank-k Frobenius error squared equals the spectral tail.
+            fProxy err2 = (fProxy)0;
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    fProxy recon = (fProxy)0;
+                    for (int t = 0; t < k; t++) recon += Uk[i, t] * Sk[t] * Vk[j, t];
+                    fProxy d = A[i, j] - recon;
+                    err2 += d * d;
+                }
+            fProxy tail = (fProxy)0;
+            for (int i = k; i < n; i++) tail += sigmaTrue[i] * sigmaTrue[i];
+            AssertLE(math.abs(err2 - tail), (fProxy)1E-2f * (tail + (fProxy)1));
+        }
+
+        // partialReorth=true: assert converged, per-index σ match to oracle, no ghost (each
+        // returned σ_t is within svTol of SOME true σ), and orthonormal Uk/Vk.
+        void CheckPartialReorth(in fProxyMxN A, in fProxyN sigmaTrue, int k, int oversample, uint seed,
+                                int m, int n, fProxy svTol, ref Arena arena)
+        {
+            var Uk = arena.fProxyMat(m, k);
+            var Sk = arena.fProxyVec(k);
+            var Vk = arena.fProxyMat(n, k);
+            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, out bool cT);
+            Assert.IsTrue(cT);
+
+            for (int t = 0; t < k; t++) AssertClose(Sk[t], sigmaTrue[t], svTol);
+
+            // No ghost: every recovered σ matches some true σ.
+            for (int t = 0; t < k; t++)
+            {
+                fProxy best = math.abs(Sk[t] - sigmaTrue[0]);
+                for (int i = 1; i < n; i++)
+                {
+                    fProxy d = math.abs(Sk[t] - sigmaTrue[i]);
+                    if (d < best) best = d;
+                }
+                AssertLE(best, svTol);
+            }
+
+            AssertOrthoCols(in Uk, m, k, (fProxy)1E-3f);
+            AssertOrthoCols(in Vk, n, k, (fProxy)1E-3f);
+        }
+
+        // Test A: partial≡full on a geometric spectrum Σ_i = 0.5^i. k=3, oversample=20 → p=23<30.
+        // Both paths must recover the top-3 to oracle tol AND agree with each other; both hit the
+        // Eckart-Young optimum. (Mirrors the proven GklGeometricTrunc_80x30 oversampling.)
+        void PartialVsFull_Geometric_80x30()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 80, n = 30, k = 3;
+
+            var sigma = arena.fProxyVec(n);
+            double s = 1.0;
+            for (int i = 0; i < n; i++) { sigma[i] = (fProxy)s; s *= 0.5; }
+
+            var A = arena.fProxyMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x5A1B0C0Du);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            fProxy svTol = (fProxy)8 * Consts.fProxySqrtEps * (sigma[0] + (fProxy)1);
+
+            var SkP = arena.fProxyVec(k);
+            var SkF = arena.fProxyVec(k);
+            RunTruncWithReorth(in A, in sigma, k, 20, 0xA11CE001u, true,  ref SkP, m, n, svTol, ref arena);
+            RunTruncWithReorth(in A, in sigma, k, 20, 0xA11CE001u, false, ref SkF, m, n, svTol, ref arena);
+
+            // Partial and full agree to the SAME tolerance.
+            for (int t = 0; t < k; t++) AssertClose(SkP[t], SkF[t], svTol);
+
+            arena.Dispose();
+        }
+
+        // Test B: partial≡full on a flat-then-cliff spectrum Σ=[100,80,60,1e-3,…]. k=3, oversample=6
+        // → p=9<25. Huge gap at index 3 → both paths converge immediately and must agree.
+        void PartialVsFull_FlatCliff_70x25()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 70, n = 25, k = 3;
+
+            var sigma = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++)
+                sigma[i] = (i == 0) ? (fProxy)100 : (i == 1) ? (fProxy)80 : (i == 2) ? (fProxy)60 : (fProxy)1E-3f;
+
+            var A = arena.fProxyMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xB22DEEF1u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            fProxy svTol = (fProxy)8 * Consts.fProxySqrtEps * (sigma[0] + (fProxy)1);
+
+            var SkP = arena.fProxyVec(k);
+            var SkF = arena.fProxyVec(k);
+            RunTruncWithReorth(in A, in sigma, k, 6, 0xB22DEEF1u, true,  ref SkP, m, n, svTol, ref arena);
+            RunTruncWithReorth(in A, in sigma, k, 6, 0xB22DEEF1u, false, ref SkF, m, n, svTol, ref arena);
+
+            for (int t = 0; t < k; t++) AssertClose(SkP[t], SkF[t], svTol);
+
+            arena.Dispose();
+        }
+
+        // Test C: no ghost. Geometric Σ (distinct values) → any spurious / in-between σ would fail the
+        // nearest-true-σ check. Checked at k=3,4,5, all with oversample=20 (p=23,24,25 < n=30).
+        void NoGhost_Geometric_80x30()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 80, n = 30;
+
+            var sigma = arena.fProxyVec(n);
+            double s = 1.0;
+            for (int i = 0; i < n; i++) { sigma[i] = (fProxy)s; s *= 0.5; }
+
+            var A = arena.fProxyMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xC33FACE2u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            fProxy svTol = (fProxy)8 * Consts.fProxySqrtEps * (sigma[0] + (fProxy)1);
+            CheckPartialReorth(in A, in sigma, 3, 20, 0x0BADF00Du, m, n, svTol, ref arena);
+            CheckPartialReorth(in A, in sigma, 4, 20, 0x0BADF00Eu, m, n, svTol, ref arena);
+            CheckPartialReorth(in A, in sigma, 5, 20, 0x0BADF00Fu, m, n, svTol, ref arena);
+
+            arena.Dispose();
+        }
+
+        // Test D: orthonormality under partial reorth. Σ=[100,80,60,40,1e-2,…], k=4, oversample=8
+        // → p=12<25. A broken ω-recurrence first manifests as loss of orthonormality in Uk/Vk.
+        void PartialOrthonormal_70x25()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 70, n = 25, k = 4;
+
+            var sigma = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++)
+                sigma[i] = (i == 0) ? (fProxy)100 : (i == 1) ? (fProxy)80 : (i == 2) ? (fProxy)60 :
+                           (i == 3) ? (fProxy)40 : (fProxy)1E-2f;
+
+            var A = arena.fProxyMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xD44B0B0Du);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            var Uk = arena.fProxyMat(m, k);
+            var Sk = arena.fProxyVec(k);
+            var Vk = arena.fProxyMat(n, k);
+            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, 8, 0xD44B0B0Du, 75, true, out bool cT);
+            Assert.IsTrue(cT);
+
+            AssertOrthoCols(in Uk, m, k, (fProxy)1E-3f);
+            AssertOrthoCols(in Vk, n, k, (fProxy)1E-3f);
+
+            // Sk non-negative, descending.
+            for (int t = 0; t < k; t++)
+            {
+                bool nonNeg = Sk[t] >= (fProxy)0;
+                if (!nonNeg) Record(Sk[t], (fProxy)0, Sk[t]);
+                Assert.IsTrue(nonNeg);
+                if (t > 0)
+                {
+                    bool desc = Sk[t] <= Sk[t - 1] + (fProxy)1E-4f;
+                    if (!desc) Record(Sk[t], Sk[t - 1], Sk[t] - Sk[t - 1]);
+                    Assert.IsTrue(desc);
+                }
+            }
+
+            arena.Dispose();
+        }
+
+        // Test E (stress a): clustered spectrum σ₀=σ₁=σ₂=10 — the hardest case for reorth, where a
+        // broken recurrence spawns ghost copies of the converged value. k=3, oversample=12 → p=15<30.
+        void PartialClustered_50x30()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 50, n = 30, k = 3;
+
+            var sigma = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++)
+            {
+                double sg;
+                if (i < 3) sg = 10.0;
+                else if (i == 3) sg = 3.0;
+                else if (i == 4) sg = 2.0;
+                else if (i == 5) sg = 1.5;
+                else if (i == 6) sg = 1.0;
+                else sg = 0.5 / (i - 5);
+                sigma[i] = (fProxy)sg;
+            }
+
+            var A = arena.fProxyMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xE55C1A57u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            // Cluster: individual σ recovered to ~10 within 0.05 (matches GklClusteredSpectrum tol).
+            CheckPartialReorth(in A, in sigma, k, 12, 0xC1057E12u, m, n, (fProxy)0.05f, ref arena);
+
+            arena.Dispose();
+        }
+
+        // Test E (stress b): ill-conditioned κ≈1e4, Σ=[1000,500,200,0.1,…]. k=3, oversample=4 → p=7<20.
+        void PartialIllConditioned_60x20()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 60, n = 20, k = 3;
+
+            var sigma = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++)
+                sigma[i] = (i == 0) ? (fProxy)1000 : (i == 1) ? (fProxy)500 : (i == 2) ? (fProxy)200 : (fProxy)0.1f;
+
+            var A = arena.fProxyMat(m, n);
+            var rng = new Unity.Mathematics.Random(0xF66D1A60u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            // svTol=5 mirrors GklIllConditioned_60x20; distinct top values are far apart.
+            CheckPartialReorth(in A, in sigma, k, 4, 0x111C0AD3u, m, n, (fProxy)5f, ref arena);
+
+            arena.Dispose();
+        }
+
+        // Test E (stress c): LARGE p so reorth fires repeatedly. k=15 (≈n/4) on 120×60, oversample=20
+        // → p=35<60. Top-15 distinct (Σ_i = 100−2i) then a cliff to 1e-2, so the wanted block has a
+        // clean gap and converges; the 35-step Lanczos run reorthogonalizes many times.
+        void PartialLargeP_120x60()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 120, n = 60, k = 15;
+
+            var sigma = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++)
+                sigma[i] = (i < 15) ? (fProxy)(100.0 - 2.0 * i) : (fProxy)1E-2f;
+
+            var A = arena.fProxyMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x12A6E057u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+
+            fProxy svTol = (fProxy)8 * Consts.fProxySqrtEps * (sigma[0] + (fProxy)1);
+            CheckPartialReorth(in A, in sigma, k, 20, 0x1A36E099u, m, n, svTol, ref arena);
+
+            arena.Dispose();
+        }
+
+        // Test E (stress d): close-but-RESOLVABLE top cluster σ=[10,9.7,9.4] then a clean drop, swept
+        // over 8 (matrix, start-vector) seeds. Close Ritz values are exactly where Lanczos is prone to
+        // emit a "ghost" (a spurious duplicate of a converged σ). The svTol = 8·√ε·(σ₀+1) is SMALLER
+        // than the 0.3 intra-cluster gap, so CheckPartialReorth's per-index AssertClose(Sk[t],σ[t])
+        // genuinely catches a duplicate (a ghost copy of σ₀ at index 1 fails the 9.7 match), unlike an
+        // exactly-equal cluster. Recovers cleanly because the wanted block has a large gap to the tail.
+        void PartialCloseClusterSeeds_64x24()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 64, n = 24, k = 3;
+
+            var sigma = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++)
+                sigma[i] = (i < 3) ? (fProxy)(10.0 - 0.3 * i) : (fProxy)(0.5 / (i - 1));
+
+            var A = arena.fProxyMat(m, n);
+            fProxy svTol = (fProxy)8 * Consts.fProxySqrtEps * (sigma[0] + (fProxy)1);
+
+            for (uint g = 0; g < 8; g++)
+            {
+                var rng = new Unity.Mathematics.Random(0x5EED0001u + g * 0x9E3779B1u);
+                BuildRandSvd(ref rng, m, n, in sigma, ref A);
+                CheckPartialReorth(in A, in sigma, k, 12, 0x57A27000u + g, m, n, svTol, ref arena);
+            }
+
+            arena.Dispose();
         }
     }
 

@@ -12,12 +12,18 @@ namespace LinearAlgebra
 {
     public static partial class SVD {
 
-        // Truncated SVD via Golub-Kahan-Lanczos (GKL) bidiagonalization with full reorthogonalization.
+        // Truncated SVD via Golub-Kahan-Lanczos (GKL) bidiagonalization.
         // Computes the top-k singular triplets of A (m x n, m >= n) by building a p-step Lanczos
         // bidiagonalization (p = min(k + oversample, n)) on A directly (NOT on AᵀA — avoids κ²
-        // accuracy loss), then solving the small p×p bidiagonal SVD exactly via svdThin. DGKS double
-        // reorthogonalization (Daniel-Gragg-Kaufman-Stewart) is applied to BOTH u and v bases at
-        // every step for numerical stability.
+        // accuracy loss), then solving the small p×p bidiagonal SVD exactly via svdThin.
+        //
+        // Two reorthogonalization strategies are available via the `partialReorth` toggle:
+        //   false — DGKS double reorthogonalization (Daniel-Gragg-Kaufman-Stewart) applied to BOTH
+        //           u and v bases at EVERY step (full reorth). Maximum stability, O(p²(m+n)) cost.
+        //   true  — Partial reorthogonalization via the ω-recurrence (Larsen/PROPACK lanbpro):
+        //           maintain scalar μ/ν estimates of orthogonality loss; only trigger a full DGKS
+        //           sweep when the estimate exceeds δ = sqrt(ε/p). Cuts cost at large p.
+        //           Extended Local Reorthogonalization (ELR) is always applied.
         //
         // Performance implementation notes:
         //   - UL is stored as p×m (Lanczos u-vectors as contiguous ROWS) and VL as (p+1)×n
@@ -26,8 +32,8 @@ namespace LinearAlgebra
         //   - Matvecs route through UnsafeOP.matVecDot / vecMatDot (cache-coherent, Burst-vectorized).
         //   - DGKS reortho is expressed as matVecDot (to gather all dot-products in one sweep) + j
         //     axpy calls (unit-stride over UL/VL rows), eliminating strided column gathers.
-        //   - All arithmetic uses native double precision; stability comes from the two-pass DGKS
-        //     reorthogonalization, not from higher-precision accumulation.
+        //   - All arithmetic uses native double precision; stability comes from reorthogonalization,
+        //     not from higher-precision accumulation.
         //
         // lowRankApprox still uses svdThin (full SVD + slice) internally — it stays EXACT (Eckart-Young).
         //
@@ -36,22 +42,24 @@ namespace LinearAlgebra
 
         /// <summary>
         /// GKL truncated SVD: the top-k singular triplets of A (m x n, m >= n) via Golub-Kahan-Lanczos
-        /// bidiagonalization with full reorthogonalization. Uk (m x k), Sk (length k, descending),
-        /// Vk (n x k) are caller-allocated; 0 &lt;= k &lt;= n. A is NOT modified.
+        /// bidiagonalization. Uk (m x k), Sk (length k, descending), Vk (n x k) are caller-allocated;
+        /// 0 &lt;= k &lt;= n. A is NOT modified.
         ///
         /// <paramref name="oversample"/> extra Lanczos steps (p = min(k+oversample, n)) improve accuracy.
         /// <paramref name="seed"/> seeds the starting vector (0 → default seed, reproducible).
+        /// <paramref name="partialReorth"/> selects the reorthogonalization strategy: true = partial
+        /// reorth via ω-recurrence (faster at large p), false = full DGKS at every step (maximum stability).
+        /// Default is true. Existing call sites without this parameter receive partialReorth = true.
         /// <paramref name="converged"/> is false if the inner bidiagonal QR did not converge, or if the
         /// Krylov space was exhausted before k triplets could be formed (rank-deficient A); remaining Sk
         /// are set to 0, Uk/Vk columns zeroed. The residual |β_last·P[p-1,t]| / (σ₀+ε) is also checked
-        /// against 8·√ε; if it exceeds this tolerance, converged is set false. Here P = BsvdWs.U (left
-        /// singular vectors of B); the residual norm is |β_last·P[p-1,t]| from Aᵀ·x_t − σ_t·y_t = β_last·P[p-1,t]·v_{p+1}.
+        /// against 8·√ε; if it exceeds this tolerance, converged is set false.
         /// <paramref name="ws"/> is the GKL scratch; size it with
         /// Arena.doubleSvdTruncatedWorkspace(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
-                                        ref doubleSvdTruncatedWorkspace ws, out bool converged)
+                                        bool partialReorth, ref doubleSvdTruncatedWorkspace ws, out bool converged)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -87,13 +95,18 @@ namespace LinearAlgebra
             {
                 double* UL_ptr   = ws.UL.Data.Ptr;   // layout: p×m — row j = u_j (m-vector, contiguous)
                 double* VL_ptr   = ws.VL.Data.Ptr;   // layout: (p+1)×n — row j = v_j (n-vector, contiguous)
-                double* uBuf_ptr = ws.uBuf.Data.Ptr; // m-vector scratch (also used as coeff temp in v-reortho)
-                double* vBuf_ptr = ws.vBuf.Data.Ptr; // n-vector scratch (also used as coeff temp in u-reortho)
+                double* uBuf_ptr = ws.uBuf.Data.Ptr; // m-vector scratch (also reused as coeff temp in v-reortho)
+                double* vBuf_ptr = ws.vBuf.Data.Ptr; // n-vector scratch (also reused as coeff temp in u-reortho)
                 double* A_ptr    = A.Data.Ptr;        // m×n row-major
+                double* mu_ptr   = ws.mu.Data.Ptr;   // length p+1: μ orthogonality estimates for U basis
+                double* nu_ptr   = ws.nu.Data.Ptr;   // length p+1: ν orthogonality estimates for V basis
+                int     szdouble = UnsafeUtility.SizeOf<double>();
 
-                // --- Zero-initialize UL (p×m) and VL ((p+1)×n) ---
-                UnsafeUtility.MemClear(UL_ptr, (long)ws.UL.Data.Length * UnsafeUtility.SizeOf<double>());
-                UnsafeUtility.MemClear(VL_ptr, (long)ws.VL.Data.Length * UnsafeUtility.SizeOf<double>());
+                // --- Zero-initialize UL (p×m), VL ((p+1)×n), mu, nu ---
+                UnsafeUtility.MemClear(UL_ptr, (long)ws.UL.Data.Length * szdouble);
+                UnsafeUtility.MemClear(VL_ptr, (long)ws.VL.Data.Length * szdouble);
+                UnsafeUtility.MemClear(mu_ptr, (long)ws.mu.N * szdouble);
+                UnsafeUtility.MemClear(nu_ptr, (long)ws.nu.N * szdouble);
 
                 // --- Seed v_0: deterministic pseudo-random unit vector in R^n → stored as VL[0,:] ---
                 var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
@@ -106,94 +119,341 @@ namespace LinearAlgebra
                 else
                     v0[0] = (double)1;
 
-                for (int j = 0; j < p; j++)
+                if (partialReorth)
                 {
-                    // ----- uBuf = A * VL[j,:] -----
-                    // matVecDot accumulates (+=); zero uBuf first. VL[j,:] is at VL_ptr + j*n (contiguous).
-                    UnsafeUtility.MemClear(uBuf_ptr, (long)m * UnsafeUtility.SizeOf<double>());
-                    UnsafeOP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
+                    // ================================================================
+                    // PARTIAL REORTHOGONALIZATION via ω-recurrence (Larsen/PROPACK)
+                    // ================================================================
+                    // Maintain scalar μ_j(i) ≈ ⟨û_j,û_i⟩ and ν_{j+1}(i) ≈ ⟨v̂_{j+1},v̂_i⟩
+                    // estimates. Trigger FULL DGKS sweep when max|ω| > δ or forceReorth.
+                    // Extended Local Reorthogonalization (ELR) applied every step.
+                    // Reference: Larsen Ph.D. 1998, lanbpro.m (PROPACK).
+                    //
+                    // Convention (0-based upper-bidiagonal):
+                    //   û_j = (A v̂_j − β_{j-1} û_{j-1}) / α_j
+                    //   v̂_{j+1} = (Aᵀ û_j − α_j v̂_j) / β_j
+                    //   α_j = ws.alpha[j], β_j = ws.beta[j]
+                    //
+                    // METHOD-LOCAL constants (no class-level const — codegen limitation):
+                    double eps      = Consts.doubleEpsilon;
+                    double eps1     = (double)50 * eps;                           // 100*eps/2
+                    double delta    = math.sqrt(eps / (double)p);                 // semiorthogonality trigger
+                    // FUTURE: double eta = math.pow(eps, (double)0.75f) / math.sqrt((double)p);
+                    // assert delta >= eta (holds for p >= 1)
+                    double gamma    = (double)1 / math.sqrt((double)2);           // ELR ratio (1/√2)
+                    double epsFloor = (double)1.5f * eps;                         // reset level for orthogonalized ω
+                    double anorm    = (double)0;                                  // running ‖A‖₂ estimate (order-of-mag)
+                    bool forceReorth = false;                                     // interlock: force next half-step reorth
 
-                    // Subtract beta_{j-1} * UL[j-1,:]  (skipped at j=0)
-                    if (j > 0)
-                        UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
-
-                    // DGKS double reorthogonalize uBuf against UL[0..j-1,:]
-                    // Use vBuf[0..j-1] as coefficient temp (n >= p >= j, so always in-bounds).
-                    // matVecDot(UL_first_j x m, uBuf, vBuf_coeffs, j, m) = UL_j * uBuf → j dot-products.
-                    if (j > 0)
+                    for (int j = 0; j < p; j++)
                     {
+                        // ---- U-half: compute û_j ----
+
+                        // Step 1: uBuf = A·v̂_j − β_{j-1}·û_{j-1}   (β_{-1} term absent at j=0)
+                        UnsafeUtility.MemClear(uBuf_ptr, (long)m * szdouble);
+                        UnsafeOP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
+                        if (j > 0)
+                            UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
+
+                        // Step 2: α_j = ‖uBuf‖ (tentative)
+                        ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
+
+                        // Update scale estimate after first step
+                        if (j == 0)
+                            scaleEps = Consts.doubleEpsilon * math.max((double)1, ws.alpha[0]);
+
+                        // Step 3: ELR-U — if α_j < γ·β_{j-1}, reortho uBuf against û_{j-1}
+                        // and fold the projection back into the bidiagonal (lanbpro line 327).
+                        // uNbrClean tracks whether the immediate neighbor was actually cleaned: true
+                        // if ELR was unnecessary OR converged; false if the cap was hit while still
+                        // shrinking (then the recurrence value must stand, NOT the eps floor).
+                        bool uNbrClean = true;
+                        if (j > 0 && ws.alpha[j] < gamma * ws.beta[j - 1])
+                        {
+                            uNbrClean = false;
+                            double normold = ws.alpha[j];
+                            for (int it = 0; it < 4; it++)
+                            {
+                                double t = UnsafeOP.vecDot(UL_ptr + (j - 1) * m, uBuf_ptr, m);
+                                UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -t, m);
+                                ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                                ws.beta[j - 1] += t;   // fold projection into bidiagonal
+                                if (ws.alpha[j] >= gamma * normold) { uNbrClean = true; break; }
+                                normold = ws.alpha[j];
+                            }
+                        }
+
+                        // Step 4: anorm update (monotone running max; feeds T perturbation only).
+                        // svdAnormBlock keeps lanbpro's α·β cross term so ‖A‖ is not underestimated.
+                        anorm = math.max(anorm, (double)1.01f * svdAnormBlock(ws.alpha[j], j > 0 ? ws.beta[j - 1] : (double)0));
+
+                        // Step 5: μ-recurrence — estimate ⟨û_j, û_i⟩ for i = 0..j-1 (in-place safe).
+                        // Convention: ν_j(i+1) for i=j-1 uses self-term ν_j(j)=1 (v̂_j is unit norm).
+                        // After recurrence, set μ_j(j-1) = epsFloor (ELR immediate-neighbor floor).
+                        double mumax = (double)0;
+                        if (j > 0 && ws.alpha[j] > (double)0)
+                        {
+                            for (int i = 0; i < j; i++)
+                            {
+                                // ν_j(i+1): self-term = 1 when i+1 == j; else stored nu[i+1]
+                                double nu_j_ip1 = (i + 1 == j) ? (double)1 : nu_ptr[i + 1];
+                                double intermediate = ws.alpha[i] * nu_ptr[i] + ws.beta[i] * nu_j_ip1
+                                                    - ws.beta[j - 1] * mu_ptr[i];
+                                double signI = (intermediate >= (double)0) ? (double)1 : (double)(-1);
+                                double Tu = eps1 * (svdPythag(ws.alpha[j], ws.beta[j - 1])
+                                                  + svdPythag(ws.alpha[i], ws.beta[i]))
+                                          + eps1 * anorm;
+                                mu_ptr[i] = (intermediate + signI * Tu) / ws.alpha[j];
+                            }
+                            // ELR immediate-neighbor floor — only when ELR actually cleaned û_{j-1}
+                            // (else leave the recurrence estimate so the true loss can trigger reorth).
+                            if (uNbrClean) mu_ptr[j - 1] = epsFloor;
+                            for (int i = 0; i < j; i++)
+                            {
+                                double absMu = math.abs(mu_ptr[i]);
+                                if (absMu > mumax) mumax = absMu;
+                            }
+                        }
+                        // Self-term μ_j(j) = 1 (for V-recurrence to read as mu_ptr[j])
+                        mu_ptr[j] = (double)1;
+
+                        // Step 6: reorth trigger U
+                        bool reorthTriggerU = (j > 0) && (mumax > delta || forceReorth);
+                        if (reorthTriggerU)
+                        {
+                            // FUTURE: windowing (compute_int strategy 0) to reorth vs subset only.
+                            // Iterated classical GS vs ALL previous û_0..û_{j-1} ("twice is enough",
+                            // Kahan/Parlett; lanbpro reorth.m): sweep, and keep sweeping only WHILE the
+                            // norm still drops by more than γ (so the vector is not yet orthogonal),
+                            // capped at 4. Only after it stops shrinking is the epsFloor reset honest.
+                            // (vBuf is the j-length coefficient scratch.)
+                            double normrU = ws.alpha[j];
+                            int nreU = 0;
+                            while (true)
+                            {
+                                UnsafeUtility.MemClear(vBuf_ptr, (long)j * szdouble);
+                                UnsafeOP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
+                                for (int l = 0; l < j; l++)
+                                    UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
+                                double normrOldU = normrU;
+                                normrU = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                                nreU++;
+                                if (nreU > 4)
+                                {
+                                    // uBuf is numerically in span(UL): accept r = 0 (→ breakdown below).
+                                    UnsafeUtility.MemClear(uBuf_ptr, (long)m * szdouble);
+                                    normrU = (double)0;
+                                    break;
+                                }
+                                if (normrU >= gamma * normrOldU) break;   // stopped shrinking → orthogonal
+                            }
+                            ws.alpha[j] = normrU;
+                            for (int i = 0; i < j; i++) mu_ptr[i] = epsFloor;
+                            forceReorth = !forceReorth;   // toggle: force next half-step (V-side)
+                        }
+
+                        // Step 7: alpha breakdown — Krylov space exhausted
+                        if (ws.alpha[j] <= scaleEps)
+                        {
+                            alphaBreakdown = true;
+                            pDone = j;
+                            break;
+                        }
+
+                        // Step 8: UL[j,:] = uBuf / α_j
+                        double invA = (double)1 / ws.alpha[j];
+                        UnsafeOP.scalMul(uBuf_ptr, m, invA);
+                        UnsafeUtility.MemCpy(UL_ptr + j * m, uBuf_ptr, (long)m * szdouble);
+
+                        // ---- V-half: compute v̂_{j+1} ----
+
+                        // Step 9: vBuf = Aᵀ·û_j − α_j·v̂_j
+                        UnsafeOP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
+                        UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
+
+                        // Step 10: β_j = ‖vBuf‖ (tentative)
+                        ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
+
+                        // Step 11: ELR-V — if β_j < γ·α_j, reortho vBuf against v̂_j
+                        // and fold projection into bidiagonal (lanbpro line 471). vNbrClean as in ELR-U.
+                        bool vNbrClean = true;
+                        if (ws.beta[j] < gamma * ws.alpha[j])
+                        {
+                            vNbrClean = false;
+                            double normold = ws.beta[j];
+                            for (int it = 0; it < 4; it++)
+                            {
+                                double t = UnsafeOP.vecDot(VL_ptr + j * n, vBuf_ptr, n);
+                                UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -t, n);
+                                ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                                ws.alpha[j] += t;   // fold projection into bidiagonal
+                                if (ws.beta[j] >= gamma * normold) { vNbrClean = true; break; }
+                                normold = ws.beta[j];
+                            }
+                        }
+
+                        // Step 12: anorm update (post-ELR; α·β cross term retained — see Step 4).
+                        anorm = math.max(anorm, (double)1.01f * svdAnormBlock(ws.alpha[j], ws.beta[j]));
+
+                        // Step 13: ν-recurrence — estimate ⟨v̂_{j+1}, v̂_i⟩ for i = 0..j (in-place safe).
+                        // Convention: ν_j(i) for i==j uses self-term ν_j(j)=1 (v̂_j is unit norm).
+                        // After recurrence, set ν_{j+1}(j) = epsFloor (ELR immediate-neighbor floor).
+                        double numax = (double)0;
+                        if (ws.beta[j] > (double)0)
+                        {
+                            for (int i = 0; i <= j; i++)
+                            {
+                                // ν_j(i): self-term = 1 when i == j; else stored nu[i]
+                                double nu_j_i = (i == j) ? (double)1 : nu_ptr[i];
+                                // β_{i-1}·μ_j(i-1): dropped for i=0 (β_{-1}=0)
+                                double beta_im1_mu_im1 = (i > 0) ? ws.beta[i - 1] * mu_ptr[i - 1] : (double)0;
+                                double intermediate = ws.alpha[i] * mu_ptr[i] + beta_im1_mu_im1
+                                                    - ws.alpha[j] * nu_j_i;
+                                double signI = (intermediate >= (double)0) ? (double)1 : (double)(-1);
+                                double beta_im1_T = (i > 0) ? ws.beta[i - 1] : (double)0;
+                                double Tv = eps1 * (svdPythag(ws.alpha[j], ws.beta[j])
+                                                  + svdPythag(ws.alpha[i], beta_im1_T))
+                                          + eps1 * anorm;
+                                nu_ptr[i] = (intermediate + signI * Tv) / ws.beta[j];
+                            }
+                            // ELR immediate-neighbor floor — only when ELR actually cleaned v̂_j.
+                            if (vNbrClean) nu_ptr[j] = epsFloor;
+                            for (int i = 0; i <= j; i++)
+                            {
+                                double absNu = math.abs(nu_ptr[i]);
+                                if (absNu > numax) numax = absNu;
+                            }
+                        }
+
+                        // Step 14: reorth trigger V
+                        bool reorthTriggerV = (numax > delta || forceReorth);
+                        if (reorthTriggerV)
+                        {
+                            // FUTURE: windowing (compute_int strategy 0) to reorth vs subset only.
+                            // Iterated classical GS vs ALL previous v̂_0..v̂_j (twice-is-enough; see
+                            // the U-side block). uBuf is the (j+1)-length coefficient scratch.
+                            double normrV = ws.beta[j];
+                            int nreV = 0;
+                            while (true)
+                            {
+                                UnsafeUtility.MemClear(uBuf_ptr, (long)(j + 1) * szdouble);
+                                UnsafeOP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
+                                for (int l = 0; l <= j; l++)
+                                    UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
+                                double normrOldV = normrV;
+                                normrV = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                                nreV++;
+                                if (nreV > 4)
+                                {
+                                    // vBuf is numerically in span(VL): accept r = 0 (→ breakdown below).
+                                    UnsafeUtility.MemClear(vBuf_ptr, (long)n * szdouble);
+                                    normrV = (double)0;
+                                    break;
+                                }
+                                if (normrV >= gamma * normrOldV) break;   // stopped shrinking → orthogonal
+                            }
+                            ws.beta[j] = normrV;
+                            for (int i = 0; i <= j; i++) nu_ptr[i] = epsFloor;
+                            forceReorth = !forceReorth;   // toggle: force next half-step (U-side)
+                        }
+
+                        // Step 15: record Lanczos steps completed
+                        pDone = j + 1;
+
+                        // Step 16: beta breakdown — invariant subspace reached
+                        if (ws.beta[j] <= scaleEps)
+                            break;
+
+                        // Step 17: VL[j+1,:] = vBuf / β_j
+                        double invB = (double)1 / ws.beta[j];
+                        UnsafeOP.scalMul(vBuf_ptr, n, invB);
+                        UnsafeUtility.MemCpy(VL_ptr + (j + 1) * n, vBuf_ptr, (long)n * szdouble);
+                    }
+                }
+                else
+                {
+                    // ================================================================
+                    // partialReorth == false: FULL DGKS double-reorthogonalization
+                    // (byte-identical to the pre-change code path)
+                    // ================================================================
+                    for (int j = 0; j < p; j++)
+                    {
+                        // ----- uBuf = A * VL[j,:] -----
+                        UnsafeUtility.MemClear(uBuf_ptr, (long)m * szdouble);
+                        UnsafeOP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
+
+                        // Subtract beta_{j-1} * UL[j-1,:]  (skipped at j=0)
+                        if (j > 0)
+                            UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
+
+                        // DGKS double reorthogonalize uBuf against UL[0..j-1,:]
+                        if (j > 0)
+                        {
+                            for (int pass = 0; pass < 2; pass++)
+                            {
+                                UnsafeUtility.MemClear(vBuf_ptr, (long)j * szdouble);
+                                UnsafeOP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
+                                for (int l = 0; l < j; l++)
+                                    UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
+                            }
+                        }
+
+                        // alpha_j = ||uBuf||
+                        ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
+
+                        // Update scale estimate after first step
+                        if (j == 0)
+                            scaleEps = Consts.doubleEpsilon * math.max((double)1, ws.alpha[0]);
+
+                        // Early stop: Krylov space exhausted (alpha ≈ 0)
+                        if (ws.alpha[j] <= scaleEps)
+                        {
+                            alphaBreakdown = true;
+                            pDone = j;
+                            break;
+                        }
+
+                        // UL[j,:] = uBuf / alpha_j
+                        double invA = (double)1 / ws.alpha[j];
+                        UnsafeOP.scalMul(uBuf_ptr, m, invA);
+                        UnsafeUtility.MemCpy(UL_ptr + j * m, uBuf_ptr, (long)m * szdouble);
+
+                        // ----- vBuf = Aᵀ * UL[j,:] - alpha_j * VL[j,:] -----
+                        UnsafeOP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
+                        UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
+
+                        // DGKS double reorthogonalize vBuf against VL[0..j,:]
                         for (int pass = 0; pass < 2; pass++)
                         {
-                            UnsafeUtility.MemClear(vBuf_ptr, (long)j * UnsafeUtility.SizeOf<double>());
-                            UnsafeOP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
-                            for (int l = 0; l < j; l++)
-                                UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
+                            UnsafeUtility.MemClear(uBuf_ptr, (long)(j + 1) * szdouble);
+                            UnsafeOP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
+                            for (int l = 0; l <= j; l++)
+                                UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
                         }
+
+                        // beta_j = ||vBuf||
+                        ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
+
+                        pDone = j + 1;
+
+                        // Early stop: invariant subspace reached (beta ≈ 0)
+                        if (ws.beta[j] <= scaleEps)
+                            break;
+
+                        // VL[j+1,:] = vBuf / beta_j
+                        double invB = (double)1 / ws.beta[j];
+                        UnsafeOP.scalMul(vBuf_ptr, n, invB);
+                        UnsafeUtility.MemCpy(VL_ptr + (j + 1) * n, vBuf_ptr, (long)n * szdouble);
                     }
-
-                    // alpha_j = ||uBuf||
-                    ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
-
-                    // Update scale estimate after first step
-                    if (j == 0)
-                        scaleEps = Consts.doubleEpsilon * math.max((double)1, ws.alpha[0]);
-
-                    // Early stop: Krylov space exhausted (alpha ≈ 0)
-                    if (ws.alpha[j] <= scaleEps)
-                    {
-                        alphaBreakdown = true;
-                        pDone = j;
-                        break;
-                    }
-
-                    // UL[j,:] = uBuf / alpha_j  (scale in-place, then copy to UL row j)
-                    double invA = (double)1 / ws.alpha[j];
-                    UnsafeOP.scalMul(uBuf_ptr, m, invA);
-                    UnsafeUtility.MemCpy(UL_ptr + j * m, uBuf_ptr, (long)m * UnsafeUtility.SizeOf<double>());
-
-                    // ----- vBuf = Aᵀ * UL[j,:] - alpha_j * VL[j,:] -----
-                    // vecMatDot zeros vBuf internally then accumulates. UL[j,:] is at UL_ptr + j*m (contiguous).
-                    UnsafeOP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
-                    UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
-
-                    // DGKS double reorthogonalize vBuf against VL[0..j,:]
-                    // Use uBuf[0..j] as coefficient temp (m >= n >= p >= j+1, so always in-bounds).
-                    // matVecDot(VL_first_j+1 x n, vBuf, uBuf_coeffs, j+1, n) = VL_{j+1} * vBuf → j+1 dots.
-                    for (int pass = 0; pass < 2; pass++)
-                    {
-                        UnsafeUtility.MemClear(uBuf_ptr, (long)(j + 1) * UnsafeUtility.SizeOf<double>());
-                        UnsafeOP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
-                        for (int l = 0; l <= j; l++)
-                            UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
-                    }
-
-                    // beta_j = ||vBuf||
-                    ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
-
-                    pDone = j + 1;
-
-                    // Early stop: invariant subspace reached (beta ≈ 0)
-                    if (ws.beta[j] <= scaleEps)
-                        break;
-
-                    // VL[j+1,:] = vBuf / beta_j  (scale in-place, then copy to VL row j+1)
-                    double invB = (double)1 / ws.beta[j];
-                    UnsafeOP.scalMul(vBuf_ptr, n, invB);
-                    UnsafeUtility.MemCpy(VL_ptr + (j + 1) * n, vBuf_ptr, (long)n * UnsafeUtility.SizeOf<double>());
                 }
             }
 
             // --- Fill Lanczos bidiagonal d/e at full size p (zero-padded beyond pDone) ---
-            // Running the inner SVD on the full p×p zero-padded bidiagonal exactly reproduces the
-            // previous behaviour (where ws.B was p×p with zeros beyond pDone). The trailing zero
-            // singular values sort to the end and are never read by the map-back code.
             for (int j = 0; j < p; j++)        ws.dB[j] = (j < pDone) ? ws.alpha[j] : (double)0;
             ws.eB[0] = (double)0;
             for (int j = 1; j < p; j++)        ws.eB[j] = (j < pDone) ? ws.beta[j - 1] : (double)0;
 
-            // --- Inner SVD of the tiny p×p bidiagonal: skip Householder re-bidiagonalization ---
-            // BsvdWs.U receives P (p x p), BsvdWs.S sigma (sorted desc), BsvdWs.V receives Q (p x p).
-            // dB/eB are destroyed by bidiagonalSvdFromDE (filled again on every call above, so fine).
+            // --- Inner SVD of the tiny p×p bidiagonal ---
             if (!bidiagonalSvdFromDE(ref ws.dB, ref ws.eB, ref ws.UtB, ref ws.VtB,
                                      ref ws.BsvdWs.U, ref ws.BsvdWs.S, ref ws.BsvdWs.V, p, maxIter))
             {
@@ -205,7 +465,6 @@ namespace LinearAlgebra
             int kOut = math.min(k, pDone);
 
             // --- Residual-based convergence check ---
-            // res_t = |β_last · P[pDone-1, t]|  where P = BsvdWs.U (LEFT singular vectors of B).
             {
                 double betaLast = alphaBreakdown ? (double)0
                                 : (pDone > 0)    ? ws.beta[pDone - 1]
@@ -223,9 +482,6 @@ namespace LinearAlgebra
             }
 
             // Fill top kOut triplets.
-            // Uk[:,t] = UL^T · P[:,t] = sum_l P[l,t] * UL[l,:]   (UL is p×m, P is p×p)
-            // Vk[:,t] = VL^T · Q[:,t] = sum_l Q[l,t] * VL[l,:]   (VL is (p+1)×n, Q is p×p)
-            // Use uBuf / vBuf as accumulators (they are free; main loop is done).
             unsafe
             {
                 double* UL_ptr   = ws.UL.Data.Ptr;
@@ -264,29 +520,73 @@ namespace LinearAlgebra
             }
         }
 
-        /// <summary>svdTruncated (ref workspace) with default maxIter (75).</summary>
+        /// <summary>svdTruncated (ref workspace) with default partialReorth=true.</summary>
+        public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                        int k, int oversample, uint seed, int maxIter,
+                                        ref doubleSvdTruncatedWorkspace ws, out bool converged)
+            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
+
+        /// <summary>svdTruncated (ref workspace) with default maxIter (75) and partialReorth=true.</summary>
         public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, int oversample, uint seed,
                                         ref doubleSvdTruncatedWorkspace ws, out bool converged)
-            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, ref ws, out converged);
+            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, ref ws, out converged);
 
-        /// <summary>svdTruncated (ref workspace) with default seed and maxIter (75).</summary>
+        /// <summary>svdTruncated (ref workspace) with default seed and maxIter (75) and partialReorth=true.</summary>
         public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, int oversample,
                                         ref doubleSvdTruncatedWorkspace ws, out bool converged)
-            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x9E3779B1u, 75, ref ws, out converged);
+            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
-        /// svdTruncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12)).
+        /// svdTruncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12))
+        /// and partialReorth=true.
         /// Pass a workspace from Arena.doubleSvdTruncatedWorkspace(m, n, k) (no oversample overload)
         /// which uses the same generous formula.
         /// </summary>
         public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, ref doubleSvdTruncatedWorkspace ws, out bool converged)
-            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, ref ws, out converged);
+            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
-        /// svdTruncated allocating all scratch from A's arena (explicit oversample/seed/maxIter).
+        /// svdTruncated allocating all scratch from A's arena (explicit oversample/seed/maxIter/partialReorth).
+        /// See the ref-workspace overload for semantics.
+        /// </summary>
+        public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                        int k, int oversample, uint seed, int maxIter, bool partialReorth, out bool converged)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
+            if (oversample < 0) throw new ArgumentException("svdTruncated: oversample must be >= 0");
+            int p = math.min(k + oversample, n);
+            var ws = new doubleSvdTruncatedWorkspace
+            {
+                UL     = A.tempdoubleMat(p, m),
+                VL     = A.tempdoubleMat(p + 1, n),
+                dB     = A.tempdoubleVec(p),
+                eB     = A.tempdoubleVec(p),
+                UtB    = A.tempdoubleMat(p, p),
+                VtB    = A.tempdoubleMat(p, p),
+                BsvdWs = new doubleSvdFullWorkspace
+                {
+                    U = A.tempdoubleMat(p, p),
+                    S = A.tempdoubleVec(p),
+                    V = A.tempdoubleMat(p, p)
+                },
+                uBuf  = A.tempdoubleVec(m),
+                vBuf  = A.tempdoubleVec(n),
+                alpha = A.tempdoubleVec(p),
+                beta  = A.tempdoubleVec(p),
+                mu    = A.tempdoubleVec(p + 1),
+                nu    = A.tempdoubleVec(p + 1)
+            };
+            svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, partialReorth, ref ws, out converged);
+        }
+
+        /// <summary>
+        /// svdTruncated allocating all scratch from A's arena (explicit oversample/seed/maxIter),
+        /// with default partialReorth=true.
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
@@ -314,14 +614,16 @@ namespace LinearAlgebra
                 uBuf  = A.tempdoubleVec(m),
                 vBuf  = A.tempdoubleVec(n),
                 alpha = A.tempdoubleVec(p),
-                beta  = A.tempdoubleVec(p)
+                beta  = A.tempdoubleVec(p),
+                mu    = A.tempdoubleVec(p + 1),
+                nu    = A.tempdoubleVec(p + 1)
             };
-            svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, ref ws, out converged);
+            svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
         }
 
         /// <summary>
         /// svdTruncated (allocating) with generous default Krylov width p = min(n, max(2k, k+12)),
-        /// default seed (0x9E3779B1u), and default maxIter (75).
+        /// default seed (0x9E3779B1u), default maxIter (75), and default partialReorth=true.
         /// </summary>
         public static void svdTruncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, out bool converged)
@@ -347,10 +649,12 @@ namespace LinearAlgebra
                 uBuf  = A.tempdoubleVec(m),
                 vBuf  = A.tempdoubleVec(n),
                 alpha = A.tempdoubleVec(p),
-                beta  = A.tempdoubleVec(p)
+                beta  = A.tempdoubleVec(p),
+                mu    = A.tempdoubleVec(p + 1),
+                nu    = A.tempdoubleVec(p + 1)
             };
             // Use oversample = max(k, 12) which gives p = min(k + max(k,12), n) = min(max(2k,k+12), n)
-            svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, ref ws, out converged);
+            svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
         }
 
         /// <summary>
@@ -392,8 +696,7 @@ namespace LinearAlgebra
             if (!converged)
                 return;
 
-            // Ak += σ_t · u_t v_tᵀ for t < k (rank-1 accumulation; inner row update is unit-stride
-            // in the Ak row, V column gathered per t).
+            // Ak += σ_t · u_t v_tᵀ for t < k
             for (int t = 0; t < k; t++)
             {
                 double s = ws.S[t];

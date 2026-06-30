@@ -19,7 +19,9 @@ namespace LinearAlgebra
                 ws.uBuf.N == m &&
                 ws.vBuf.N == n &&
                 ws.alpha.N == p &&
-                ws.beta.N == p;
+                ws.beta.N == p &&
+                ws.mu.N == p + 1 &&
+                ws.nu.N == p + 1;
             if (!ok)
                 throw new ArgumentException(
                     who + ": workspace must be sized for this (m, n, k, oversample) — use " +
@@ -39,7 +41,8 @@ namespace LinearAlgebra
     /// scratch for bidiagonalSvdFromDE; BsvdWs (p x p U/S/V) receives the output singular triplets
     /// of the inner bidiagonal SVD; uBuf/vBuf are m/n matvec temporaries (also reused as coefficient
     /// buffers in DGKS reorthogonalization); alpha/beta (length p each) hold the Lanczos diagonal
-    /// and superdiagonal.
+    /// and superdiagonal; mu/nu (length p+1 each) hold the ω-recurrence estimates of orthogonality
+    /// loss among the left/right Lanczos bases (used by the partial-reorth path; inert otherwise).
     ///
     /// svdTruncated is FULLY zero-alloc on workspace reuse: the inner bidiagonal SVD runs entirely
     /// in dB/eB/UtB/VtB + BsvdWs (all persistent arena memory), with no Allocator.Temp usage.
@@ -57,6 +60,8 @@ namespace LinearAlgebra
         public doubleN vBuf;
         public doubleN alpha;
         public doubleN beta;
+        public doubleN mu;   // length p+1: μ estimates ⟨û_j, û_i⟩ for partial reorth ω-recurrence
+        public doubleN nu;   // length p+1: ν estimates ⟨v̂_j, v̂_i⟩ for partial reorth ω-recurrence
     }
 
     public partial struct Arena
@@ -87,7 +92,9 @@ namespace LinearAlgebra
                 uBuf  = doubleVec(m),
                 vBuf  = doubleVec(n),
                 alpha = doubleVec(p),
-                beta  = doubleVec(p)
+                beta  = doubleVec(p),
+                mu    = doubleVec(p + 1),
+                nu    = doubleVec(p + 1)
             };
         }
 
@@ -116,7 +123,9 @@ namespace LinearAlgebra
                 uBuf  = doubleVec(m),
                 vBuf  = doubleVec(n),
                 alpha = doubleVec(p),
-                beta  = doubleVec(p)
+                beta  = doubleVec(p),
+                mu    = doubleVec(p + 1),
+                nu    = doubleVec(p + 1)
             };
         }
     }
