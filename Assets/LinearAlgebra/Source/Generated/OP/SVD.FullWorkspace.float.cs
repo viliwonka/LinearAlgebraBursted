@@ -21,7 +21,7 @@ namespace LinearAlgebra
     /// Allocate ONCE (sized for the matrix shape) via Arena.floatSvdFullWorkspace(m, n) and reuse it
     /// across many same-shape calls to avoid the per-call temp allocations.
     ///
-    /// Layout matches the (U, S, V) factors svdGolubKahan writes: U is m x n (left singular vectors),
+    /// Layout matches the (U, S, V) factors svdThin writes: U is m x n (left singular vectors),
     /// S is length n (singular values), V is n x n (right singular vectors). These are exactly the
     /// three scratch buffers the workspace overloads of the family ops expect, bundled so callers
     /// don't size them by hand.

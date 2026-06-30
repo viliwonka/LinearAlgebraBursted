@@ -70,7 +70,7 @@ namespace LinearAlgebra
     /// B (l x n), Bt (n x l), Up (n x l), Sb (l), Vp (l x l), UA (m x l).
     ///
     /// NOTE: this removes svdRandomized's dozen per-call temp-pool allocations; the inner exact
-    /// svdGolubKahan on the small Bt still uses a little Allocator.Temp scratch of its own, so the op
+    /// svdThin on the small Bt still uses a little Allocator.Temp scratch of its own, so the op
     /// is low-alloc rather than strictly zero-alloc.
     /// </summary>
     public struct fProxySvdRandomizedWorkspace

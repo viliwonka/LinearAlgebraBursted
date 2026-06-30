@@ -149,12 +149,12 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SvdGKJobFloat : IJob
     {
-        public floatMxN A;     // input, not modified (svdGolubKahan takes A `in`)
+        public floatMxN A;     // input, not modified (svdThin takes A `in`)
         public floatMxN U;
         public floatN S;
         public floatMxN V;
 
-        public void Execute() => SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+        public void Execute() => SVD.svdThin(in A, ref U, ref S, ref V);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -165,7 +165,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN S;
         public doubleMxN V;
 
-        public void Execute() => SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+        public void Execute() => SVD.svdThin(in A, ref U, ref S, ref V);
     }
 
     public static class EigenSvdBenchmark
@@ -174,7 +174,7 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== Golub-Kahan full SVD (svdGolubKahan; bidiag + implicit-shift QR, ms) ===");
+            sb.AppendLine("=== Golub-Kahan full SVD (svdThin; bidiag + implicit-shift QR, ms) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Bench.Sizes) sb.AppendLine(SvdGK(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(SvdGKD(n));

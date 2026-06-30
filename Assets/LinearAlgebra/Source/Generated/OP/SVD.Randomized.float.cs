@@ -85,7 +85,7 @@ namespace LinearAlgebra
             floatOP.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
             floatOP.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
 
-            bool ok = svdGolubKahan(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
+            bool ok = svdThin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
             if (!ok)
                 return false;
 

@@ -6,17 +6,19 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Workspace-overload tests for the full-SVD-family ops that share doubleSvdFullWorkspace
-// (Arena.doubleSvdFullWorkspace(m, n)): nullspaceBasis, rangeBasis, svdTruncated, lowRankApprox.
+// Workspace-overload tests for SVD family ops with reusable workspaces.
 //
-// Each op now has a `ref doubleSvdFullWorkspace ws` overload (the real body, caller-owned U/S/V
-// scratch) PLUS the original allocating overload (delegates with temp scratch). They run the SAME
-// Golub-Kahan kernel, so for identical inputs the outputs are bit-identical.
+// nullspaceBasis, rangeBasis, and lowRankApprox share doubleSvdFullWorkspace.
+// svdTruncated (GKL bidiagonalization) uses its own doubleSvdTruncatedWorkspace.
+//
+// Each op has a `ref <WorkspaceType> ws` overload (caller-owned scratch) PLUS an allocating
+// overload. They run the same kernel with the same seed, so for identical inputs the outputs
+// are bit-identical.
 //
 // Three kinds of test per op (mirrors SVDWorkspaceTests):
 //   (a) EQUIVALENCE — allocating vs ws on the SAME matrix, outputs identical.
-//   (b) REUSE       — ONE workspace reused across two different (same-shape) inputs; the 2nd result
-//                     equals a fresh allocating call (proves no stale U/S/V carries over).
+//   (b) REUSE       — workspace reused across two different (same-shape) inputs; the 2nd result
+//                     equals a fresh allocating call (proves no stale data carries over).
 //   (c) MIS-SIZED   — a workspace sized for the wrong dimension throws ArgumentException (managed).
 public class doubleSvdFullWorkspaceTests
 {
@@ -107,7 +109,7 @@ public class doubleSvdFullWorkspaceTests
             var UkA = arena.doubleMat(m, k); var SkA = arena.doubleVec(k); var VkA = arena.doubleMat(n, k);
             SVD.svdTruncated(in A, ref UkA, ref SkA, ref VkA, k, out bool cA);
 
-            var ws = arena.doubleSvdFullWorkspace(m, n);
+            var ws = arena.doubleSvdTruncatedWorkspace(m, n, k);
             var UkW = arena.doubleMat(m, k); var SkW = arena.doubleVec(k); var VkW = arena.doubleMat(n, k);
             SVD.svdTruncated(in A, ref UkW, ref SkW, ref VkW, k, ref ws, out bool cW);
 
@@ -138,8 +140,8 @@ public class doubleSvdFullWorkspaceTests
             arena.Dispose();
         }
 
-        // Reuse ONE workspace across two different (same-shape) inputs and every family op; each
-        // second-input result must match a fresh allocating call -> no stale U/S/V survives reuse.
+        // Reuse workspaces across two different (same-shape) inputs and every family op; each
+        // second-input result must match a fresh allocating call -> no stale data survives reuse.
         void ReuseAllOps()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -148,7 +150,8 @@ public class doubleSvdFullWorkspaceTests
             var A1 = RankDeficient(ref arena, m, n, 2, 5005);
             var A2 = RankDeficient(ref arena, m, n, 3, 6006);
 
-            var ws = arena.doubleSvdFullWorkspace(m, n);   // allocated ONCE
+            var ws = arena.doubleSvdFullWorkspace(m, n);           // for nullspace / range / lowRank
+            var wsTrunc = arena.doubleSvdTruncatedWorkspace(m, n, k);  // for svdTruncated (GKL)
 
             // ---- nullspace ----
             var nb1 = arena.doubleMat(n, n);
@@ -172,9 +175,9 @@ public class doubleSvdFullWorkspaceTests
 
             // ---- truncated ----
             var U1 = arena.doubleMat(m, k); var S1 = arena.doubleVec(k); var V1 = arena.doubleMat(n, k);
-            SVD.svdTruncated(in A1, ref U1, ref S1, ref V1, k, ref ws, out bool _);
+            SVD.svdTruncated(in A1, ref U1, ref S1, ref V1, k, ref wsTrunc, out bool _);
             var UW = arena.doubleMat(m, k); var SW = arena.doubleVec(k); var VW = arena.doubleMat(n, k);
-            SVD.svdTruncated(in A2, ref UW, ref SW, ref VW, k, ref ws, out bool _);
+            SVD.svdTruncated(in A2, ref UW, ref SW, ref VW, k, ref wsTrunc, out bool _);
             var UA = arena.doubleMat(m, k); var SA = arena.doubleVec(k); var VA = arena.doubleMat(n, k);
             SVD.svdTruncated(in A2, ref UA, ref SA, ref VA, k, out bool _);
             Assert.IsTrue(Analysis.IsZero(SW - SA, Tol()));
@@ -242,7 +245,7 @@ public class doubleSvdFullWorkspaceTests
         {
             var A = arena.doubleMat(6, 4);
             var Uk = arena.doubleMat(6, 2); var Sk = arena.doubleVec(2); var Vk = arena.doubleMat(4, 2);
-            var ws = arena.doubleSvdFullWorkspace(7, 4);   // wrong m
+            var ws = arena.doubleSvdTruncatedWorkspace(7, 4, 2);   // wrong m (7 vs A's 6)
             Assert.Throws<ArgumentException>(
                 () => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, 2, ref ws, out bool _));
         }

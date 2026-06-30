@@ -30,10 +30,10 @@ namespace LinearAlgebra
         /// SIMD-vectorize the inner plane-rotation loops; same algorithm, unit-stride rows
         /// instead of strided columns).
         /// </summary>
-        /// <remarks>DEPRECATED: prefer <see cref="svdGolubKahan(in fProxyMxN, ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/>
+        /// <remarks>DEPRECATED: prefer <see cref="svdThin(in fProxyMxN, ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/>
         /// (Golub-Kahan bidiagonal SVD, ~3x faster and does not modify its input) for the full SVD, or
         /// <see cref="svdValues(in fProxyMxN, ref fProxyN)"/> for singular values only. Retained for reference.</remarks>
-        [System.Obsolete("Prefer SVD.svdGolubKahan (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
+        [System.Obsolete("Prefer SVD.svdThin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
                                             int maxSweeps, fProxy eps)
         {
@@ -208,13 +208,13 @@ namespace LinearAlgebra
         // self-referential obsolete warning (618) on the forwarding calls.
 #pragma warning disable 618
         /// <summary>svdDecomposition with default eps (Consts.fProxyZeroThreshold).</summary>
-        [System.Obsolete("Prefer SVD.svdGolubKahan (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
+        [System.Obsolete("Prefer SVD.svdThin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
                                             int maxSweeps)
             => svdDecomposition(ref U, ref S, ref V, maxSweeps, Consts.fProxyZeroThreshold);
 
         /// <summary>svdDecomposition with default maxSweeps (30) and eps (Consts.fProxyZeroThreshold).</summary>
-        [System.Obsolete("Prefer SVD.svdGolubKahan (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
+        [System.Obsolete("Prefer SVD.svdThin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V)
             => svdDecomposition(ref U, ref S, ref V, 30, Consts.fProxyZeroThreshold);
 #pragma warning restore 618
@@ -222,7 +222,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Singular VALUES only of A (m x n, m >= n), via the Golub-Kahan bidiagonal path: reduce A to
         /// upper bidiagonal form with Householder reflectors (NOT forming U/V) and diagonalize the
-        /// bidiagonal with the rotation-free implicit-shift QR. Like the full svdGolubKahan it operates
+        /// bidiagonal with the rotation-free implicit-shift QR. Like the full svdThin it operates
         /// on A directly, so it keeps the condition number κ(A) (not κ(A)²) — small singular values are
         /// not lost — but it skips ALL the orthogonal-factor work, making it the fast values-only path.
         ///
@@ -304,24 +304,24 @@ namespace LinearAlgebra
         /// the bidiagonal QR hit maxIter (outputs then undefined). Allocates an n x n + 2*n Temp
         /// workspace (plus whatever Bidiag.bidiagonalize uses). For m &lt; n, transpose A and swap U/V.
         /// </summary>
-        public static bool svdGolubKahan(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
-                                         int maxIter, fProxy eps)
+        public static bool svdThin(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
+                                   int maxIter, fProxy eps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("svdGolubKahan: A must have m >= n (more rows than columns)");
+                throw new ArgumentException("svdThin: A must have m >= n (more rows than columns)");
             if (U.M_Rows != m || U.N_Cols != n)
-                throw new ArgumentException("svdGolubKahan: U must be m x n");
+                throw new ArgumentException("svdThin: U must be m x n");
             if (S.N != n)
-                throw new ArgumentException("svdGolubKahan: S.N must equal A.N_Cols");
+                throw new ArgumentException("svdThin: S.N must equal A.N_Cols");
             if (!V.IsSquare || V.M_Rows != n)
-                throw new ArgumentException("svdGolubKahan: V must be square with side equal to A.N_Cols");
+                throw new ArgumentException("svdThin: V must be square with side equal to A.N_Cols");
             if (maxIter < 1)
-                throw new ArgumentException("svdGolubKahan: maxIter must be >= 1");
+                throw new ArgumentException("svdThin: maxIter must be >= 1");
             if (eps <= (fProxy)0)
-                throw new ArgumentException("svdGolubKahan: eps must be > 0");
+                throw new ArgumentException("svdThin: eps must be > 0");
 
             if (n == 0)
                 return true;
@@ -393,14 +393,14 @@ namespace LinearAlgebra
             return ok;
         }
 
-        /// <summary>svdGolubKahan with default eps (Consts.fProxyZeroThreshold).</summary>
-        public static bool svdGolubKahan(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
-                                         int maxIter)
-            => svdGolubKahan(in A, ref U, ref S, ref V, maxIter, Consts.fProxyZeroThreshold);
+        /// <summary>svdThin with default eps (Consts.fProxyZeroThreshold).</summary>
+        public static bool svdThin(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
+                                   int maxIter)
+            => svdThin(in A, ref U, ref S, ref V, maxIter, Consts.fProxyZeroThreshold);
 
-        /// <summary>svdGolubKahan with default maxIter (75) and eps (Consts.fProxyZeroThreshold).</summary>
-        public static bool svdGolubKahan(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V)
-            => svdGolubKahan(in A, ref U, ref S, ref V, 75, Consts.fProxyZeroThreshold);
+        /// <summary>svdThin with default maxIter (75) and eps (Consts.fProxyZeroThreshold).</summary>
+        public static bool svdThin(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V)
+            => svdThin(in A, ref U, ref S, ref V, 75, Consts.fProxyZeroThreshold);
 
         // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (diagonal d, superdiagonal e
         // with e[0]=0), accumulating left rotations into Ut (n x m) ROWS and right rotations into Vt

@@ -703,7 +703,7 @@ public class fProxySVDTests
             var U = arena.fProxyMat(m, n);
             var S = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
 
             Assert.IsFalse(Analysis.IsAnyNan(in S));
@@ -745,7 +745,7 @@ public class fProxySVDTests
             var U = arena.fProxyMat(n, n);
             var S = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in S));
 
@@ -777,7 +777,7 @@ public class fProxySVDTests
             var U = arena.fProxyMat(n, n);
             var S = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in S));
 
@@ -803,7 +803,7 @@ public class fProxySVDTests
             var U = arena.fProxyMat(n, n);
             var S = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in S));
             for (int i = 0; i < n; i++)
@@ -842,7 +842,7 @@ public class fProxySVDTests
             var U = arena.fProxyMat(n, n);
             var S = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            bool ok = SVD.svdGolubKahan(in A, ref U, ref S, ref V);
+            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.IsAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
