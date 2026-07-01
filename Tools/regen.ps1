@@ -24,6 +24,12 @@ $ErrorActionPreference = "Stop"
 $root = Get-ProjectRoot
 $Log  = Join-Path $root "TestResults\codegen.log"
 
+# Prune generated files whose source template was renamed/moved/deleted since the last
+# run - these orphans would otherwise sit alongside fresh output and either duplicate a
+# class (CS0111) or block compilation outright, which then blocks codegen from running
+# at all (it needs the project to compile first). See prune-orphaned-generated.ps1.
+& "$PSScriptRoot\prune-orphaned-generated.ps1"
+
 Write-Host "Running codegen (UnityCodeGen.UnityCodeGenUtility.Generate)..."
 $exit = Invoke-Unity `
   -Arguments @("-nographics", "-quit", "-executeMethod", "UnityCodeGen.UnityCodeGenUtility.Generate") `
