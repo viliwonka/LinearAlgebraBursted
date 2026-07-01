@@ -77,5 +77,64 @@ namespace LinearAlgebra.Internal
                 }
             }
         }
+
+        // Symmetric BR x BR block-CSR matvec: y = A * x where A is stored as its UPPER block-
+        // triangle only (ColInd >= blockRow for every stored block) and the strictly-lower triangle
+        // is IMPLICIT (block (bj,bi) == transpose of stored block (bi,bj)). y must already be zeroed
+        // by the caller (accumulates into y). For each stored block K at (bi,bj):
+        //   - diagonal (bi==bj): y_i += K * x_j   (once -- K is used as the full BR x BR block as
+        //     given, no packing/half-storage assumption; see fProxyBSM.Symmetric doc)
+        //   - off-diagonal (bi<bj, guaranteed since only the upper triangle is stored): y_i += K * x_j
+        //     AND y_j += K^T * x_i (the implicit mirrored lower block)
+        // Single-threaded caller (IJob.Run, no parallel-for) -> the y_j scatter write from an
+        // off-diagonal block is race-free, matching every other kernel in this file. Correctness-first
+        // general kernel (BR==BC by construction, no size specialization yet) -- same perf-follow-up
+        // note as bsmMatVec/bsmMatVecT (Phase-7 register-tile specialization is future work, not this
+        // change).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsmMatVecSym([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] fProxy* values,
+                                         [NoAlias] fProxy* x, [NoAlias] fProxy* y,
+                                         int blockRows, int BR)
+        {
+            int blockLen = BR * BR;
+
+            for (int bi = 0; bi < blockRows; bi++)
+            {
+                int rowStart = rowPtr[bi];
+                int rowEnd = rowPtr[bi + 1];
+                int yBaseI = bi * BR;
+
+                for (int k = rowStart; k < rowEnd; k++)
+                {
+                    int bj = colInd[k];
+                    int xBaseJ = bj * BR;
+                    fProxy* block = values + k * blockLen;
+
+                    // y_i += K * x_j  (always -- diagonal or off-diagonal)
+                    for (int r = 0; r < BR; r++)
+                    {
+                        fProxy sum = 0;
+                        int rowOff = r * BR;
+                        for (int c = 0; c < BR; c++)
+                            sum += block[rowOff + c] * x[xBaseJ + c];
+                        y[yBaseI + r] += sum;
+                    }
+
+                    if (bi != bj)
+                    {
+                        // y_j += K^T * x_i  (the implicit mirrored lower block)
+                        int yBaseJ = bj * BR;
+                        int xBaseI = bi * BR;
+                        for (int c = 0; c < BR; c++)
+                        {
+                            fProxy sum = 0;
+                            for (int r = 0; r < BR; r++)
+                                sum += block[r * BR + c] * x[xBaseI + r];
+                            y[yBaseJ + c] += sum;
+                        }
+                    }
+                }
+            }
+        }
     }
 }

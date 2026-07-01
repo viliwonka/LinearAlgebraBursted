@@ -189,7 +189,32 @@ namespace LinearAlgebra.Sparse
         /// matching comment on fProxyBSM.ToDense: Arena is now a thin copyable handle to a
         /// heap-allocated ArenaCore, so `in Arena` would resolve correctly here too.
         /// </summary>
-        public unsafe fProxyBSM ToBSM(ref Arena arena)
+        public unsafe fProxyBSM ToBSM(ref Arena arena) => ToBSMCore(ref arena, symmetric: false);
+
+        /// <summary>
+        /// Same as ToBSM, but builds SYMMETRIC upper-block storage (see fProxyBSM.Symmetric / spec
+        /// §2.3): requires BR==BC and BlockRows==BlockCols, and requires every accumulated triplet's
+        /// blockCol >= blockRow (upper triangle + diagonal only). A lower-triangle triplet
+        /// (blockCol < blockRow) throws immediately -- we do NOT silently fold it into its transpose
+        /// position, because that would mask caller bugs (e.g. accidentally adding both A_ij and A_ji
+        /// for what the caller believes is a symmetric matrix, when they actually differ). Callers
+        /// building a symmetric matrix must AddBlock/AddValue only at (blockRow, blockCol) with
+        /// blockCol >= blockRow.
+        /// </summary>
+        public unsafe fProxyBSM ToBSMSymmetric(ref Arena arena)
+        {
+            if (BR != BC || BlockRows != BlockCols)
+                throw new ArgumentException("ToBSMSymmetric: requires BR==BC and BlockRows==BlockCols (square blocks on a square block grid)");
+
+            int n = TripletCount;
+            for (int t = 0; t < n; t++)
+                if (_state->triBlockCol[t] < _state->triBlockRow[t])
+                    throw new ArgumentException("ToBSMSymmetric: found a lower-triangle triplet (blockCol < blockRow); symmetric build only accepts blocks with blockCol >= blockRow (upper triangle + diagonal). Add the block at its transpose position (blockRow<->blockCol swapped) instead, or use ToBSM() for full storage.");
+
+            return ToBSMCore(ref arena, symmetric: true);
+        }
+
+        private unsafe fProxyBSM ToBSMCore(ref Arena arena, bool symmetric)
         {
             int n = TripletCount;
             int blockLen = BR * BC;
@@ -246,7 +271,7 @@ namespace LinearAlgebra.Sparse
                 }
             }
 
-            var bsm = arena.fProxyBSM(BlockRows, BlockCols, BR, BC, nnzb, true);
+            var bsm = arena.fProxyBSM(BlockRows, BlockCols, BR, BC, nnzb, true, symmetric);
 
             // 4. Fill RowPtr/ColInd/Values, summing consecutive same-column entries.
             int outIdx = 0;

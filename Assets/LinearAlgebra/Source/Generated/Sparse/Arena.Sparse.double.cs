@@ -21,9 +21,9 @@ namespace LinearAlgebra
         /// and stored-block capacity (nnzb). Typically produced by doubleBSMBuilder.ToBSM
         /// rather than called directly. Arena-owned: disposed with the arena.
         /// </summary>
-        public doubleBSM doubleBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false)
+        public doubleBSM doubleBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false, bool symmetric = false)
         {
-            var mat = new doubleBSM(blockRows, blockCols, BR, BC, nnzb, in this, uninit);
+            var mat = new doubleBSM(blockRows, blockCols, BR, BC, nnzb, in this, uninit, symmetric);
             _core->doubleBSMs.Add(in mat);
             return mat;
         }

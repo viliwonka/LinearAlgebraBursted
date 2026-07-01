@@ -33,8 +33,11 @@ namespace LinearAlgebra.Sparse
                 // bsmMatVec accumulates (+=), so the destination must start zeroed.
                 UnsafeUtility.MemClear(y.Data.Ptr, (long)y.Data.Length * UnsafeUtility.SizeOf<double>());
 
-                Unsafe_OP.bsmMatVec(A.RowPtr.Ptr, A.ColInd.Ptr, A.Values.Ptr, x.Data.Ptr, y.Data.Ptr,
-                                     A.BlockRows, A.BR, A.BC);
+                if (A.Symmetric)
+                    Unsafe_OP.bsmMatVecSym(A.RowPtr.Ptr, A.ColInd.Ptr, A.Values.Ptr, x.Data.Ptr, y.Data.Ptr, A.BlockRows, A.BR);
+                else
+                    Unsafe_OP.bsmMatVec(A.RowPtr.Ptr, A.ColInd.Ptr, A.Values.Ptr, x.Data.Ptr, y.Data.Ptr,
+                                         A.BlockRows, A.BR, A.BC);
             }
         }
 
@@ -53,6 +56,16 @@ namespace LinearAlgebra.Sparse
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void spMVT(in doubleBSM A, in doubleN x, ref doubleN y)
         {
+            if (A.Symmetric)
+            {
+                // A == A^T for symmetric upper-block storage -- forward straight to spMV. Its guards
+                // (Assume.SameDim(A.N_Cols, x.N), y.N != A.M_Rows) are equivalent to spMVT's own
+                // (Assume.SameDim(A.M_Rows, x.N), y.N != A.N_Cols) here because Symmetric implies
+                // A.M_Rows == A.N_Cols.
+                spMV(in A, in x, ref y);
+                return;
+            }
+
             Assume.SameDim(A.M_Rows, x.N);
 
             if (y.N != A.N_Cols)

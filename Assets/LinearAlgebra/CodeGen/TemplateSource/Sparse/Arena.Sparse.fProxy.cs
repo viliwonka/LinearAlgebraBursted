@@ -21,9 +21,9 @@ namespace LinearAlgebra
         /// and stored-block capacity (nnzb). Typically produced by fProxyBSMBuilder.ToBSM
         /// rather than called directly. Arena-owned: disposed with the arena.
         /// </summary>
-        public fProxyBSM fProxyBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false)
+        public fProxyBSM fProxyBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false, bool symmetric = false)
         {
-            var mat = new fProxyBSM(blockRows, blockCols, BR, BC, nnzb, in this, uninit);
+            var mat = new fProxyBSM(blockRows, blockCols, BR, BC, nnzb, in this, uninit, symmetric);
             _core->fProxyBSMs.Add(in mat);
             return mat;
         }

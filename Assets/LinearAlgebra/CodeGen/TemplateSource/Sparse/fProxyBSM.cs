@@ -15,8 +15,10 @@ namespace LinearAlgebra.Sparse
     /// in ascending ColInd (enables transpose-SpMV and future binary-search block lookup).
     ///
     /// Logical scalar dims: M_Rows = BlockRows*BR, N_Cols = BlockCols*BC. Rectangular blocks
-    /// (BR != BC) are supported. Phase 1 ships FULL storage only -- no symmetric-upper-block
-    /// mode yet (see docs/spec-sparse-bsm.md).
+    /// (BR != BC) are supported. Set Symmetric=true to opt into upper-block-triangle-only
+    /// storage (halves memory and single-threaded matvec FLOPs for symmetric matrices) --
+    /// requires BR==BC and a square block grid (BlockRows==BlockCols). See spec-sparse-bsm.md
+    /// §2.3.
     ///
     /// Lifecycle: build via fProxyBSMBuilder.ToBSM(arena). This type is the compressed,
     /// matvec-ready form -- there is no cheap incremental pattern edit after compression; go
@@ -28,6 +30,8 @@ namespace LinearAlgebra.Sparse
         public int BlockCols;  // nb: number of block-cols
         public int BR;         // rows per block
         public int BC;         // cols per block
+
+        public bool Symmetric;  // true => only the upper block-triangle (ColInd >= blockRow) is stored
 
         public int M_Rows => BlockRows * BR;
         public int N_Cols => BlockCols * BC;
@@ -51,13 +55,17 @@ namespace LinearAlgebra.Sparse
         /// number of stored blocks (nnzb). Typically produced by fProxyBSMBuilder.ToBSM
         /// rather than called directly -- the caller is expected to fill RowPtr/ColInd/Values.
         /// </summary>
-        public unsafe fProxyBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, Allocator allocator, bool uninit = false)
+        public unsafe fProxyBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, Allocator allocator, bool uninit = false, bool symmetric = false)
         {
             _arena = default;
             BlockRows = blockRows;
             BlockCols = blockCols;
             this.BR = BR;
             this.BC = BC;
+
+            if (symmetric && (BR != BC || blockRows != blockCols))
+                throw new ArgumentException("fProxyBSM: symmetric storage requires BR==BC and blockRows==blockCols");
+            Symmetric = symmetric;
 
             var options = uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory;
 
@@ -79,7 +87,7 @@ namespace LinearAlgebra.Sparse
         /// Creates a new BSR matrix of the given shape from an arena. Same allocation shape
         /// as the Allocator overload, but tracked by the arena for disposal.
         /// </summary>
-        public unsafe fProxyBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, in Arena arena, bool uninit = false)
+        public unsafe fProxyBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, in Arena arena, bool uninit = false, bool symmetric = false)
         {
             _arena = arena;
 
@@ -87,6 +95,10 @@ namespace LinearAlgebra.Sparse
             BlockCols = blockCols;
             this.BR = BR;
             this.BC = BC;
+
+            if (symmetric && (BR != BC || blockRows != blockCols))
+                throw new ArgumentException("fProxyBSM: symmetric storage requires BR==BC and blockRows==blockCols");
+            Symmetric = symmetric;
 
             var allocator = arena.Allocator;
             var options = uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory;
@@ -149,6 +161,13 @@ namespace LinearAlgebra.Sparse
                         {
                             dense[baseRow + r, baseCol + c] = Values[blockOffset + r * BC + c];
                         }
+                    }
+
+                    if (Symmetric && bc != br)
+                    {
+                        for (int r = 0; r < BR; r++)
+                            for (int c = 0; c < BC; c++)
+                                dense[baseCol + c, baseRow + r] = Values[blockOffset + r * BC + c];
                     }
                 }
             }
