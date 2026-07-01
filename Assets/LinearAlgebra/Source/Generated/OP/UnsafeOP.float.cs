@@ -132,19 +132,158 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // Register-tiled GEMM: an MR x NR block of C is held in NAMED SCALAR LOCALS (NOT an array —
+        // arrays don't reliably register-promote) across the WHOLE k-reduction (p = 0..n-1), so each
+        // A value is reused NR times and each B value MR times, and each C element is written ONCE at
+        // the end instead of being read-modified-written every p (the untiled fallback below re-touches
+        // a whole C row per p, AND re-streams the whole of matB once per output row — that double
+        // re-streaming, not the FLOP count, is why the untiled kernel is bandwidth- not compute-bound).
+        //
+        // Determinism (see the matMatDot spec / docs/level3-blocking-guide.md): every C[i,j] is STILL
+        // exactly one running accumulator summing p ascending 0..n-1 with the SAME `c += a*b`
+        // expression as the fallback. Tiling only changes WHICH independent accumulators run
+        // interleaved (ILP across the MR*NR chains) — never how any ONE accumulator sums (no
+        // k-splitting) — so results are bit-identical to the fallback at every tile size and on every
+        // SIMD width (SIMD, if any, runs across the NR/column axis, never across the p-reduction).
+        //
+        // Tile constants are METHOD-LOCAL (a class-level const collides across the float/double
+        // partial-class generated files -> CS0102). MR/NR are the SAME for float and double: the
+        // //+choose codegen marker only substitutes literal VALUES, not the number of unrolled named
+        // locals, and this template's text is emitted verbatim for both the float and double outputs
+        // — so one tile shape has to serve both.
+        //
+        // Tile-size sweep (float/double, square N, GemmBenchmark): 4x4 -> 4x8 -> 8x8 -> 6x16 -> 8x16.
+        // There is NO cache-level (k-panel) blocking here — the hard determinism rule above forbids
+        // splitting one element's k-reduction into partial sums, which is exactly what k-panel
+        // blocking would do — so B re-streaming is controlled purely by MR (B is re-read m/MR times).
+        // 4x8 won in-cache (N<=256) but REGRESSED 2.2x vs the untiled fallback at N=1024 (69 -> 31
+        // GFLOP/s, float) once that re-streamed strip of B stopped fitting in cache. A bigger MR is
+        // the only lever without adding k-panel blocking: 8x16 (MR=8, NR=16 => 8*ceil(16/8) = 16
+        // AVX2 accumulator vectors — the upper edge before spilling; do not go to 16x16, that's 32) won
+        // at every measured size up to N=2048 for both types (float 1024: 86 vs baseline's 69 GFLOP/s;
+        // float 2048: 71 vs baseline's 54; double tracks the same shape) and is what's left in place —
+        // no size gate needed. See docs/level3-blocking-guide.md for the general blocking background.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDot([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
         {
             // matA = m x n
             // matB = n x k
-            // matC = outMat = m x k, needs to be initialized to zero
+            // matC = outMat = m x k, needs to be initialized to zero (this kernel ACCUMULATES, +=)
 
-            for (int r = 0; r < m; r++)
+            const int MR = 8;
+            const int NR = 16;
+
+            int mTiles = (m / MR) * MR;
+            int kTiles = (k / NR) * NR;
+
+            for (int i = 0; i < mTiles; i += MR)
+            {
+                float* Arow0 = matA + (long)(i + 0) * n;
+                float* Arow1 = matA + (long)(i + 1) * n;
+                float* Arow2 = matA + (long)(i + 2) * n;
+                float* Arow3 = matA + (long)(i + 3) * n;
+                float* Arow4 = matA + (long)(i + 4) * n;
+                float* Arow5 = matA + (long)(i + 5) * n;
+                float* Arow6 = matA + (long)(i + 6) * n;
+                float* Arow7 = matA + (long)(i + 7) * n;
+
+                for (int j = 0; j < kTiles; j += NR)
+                {
+                    float c000 = 0f, c001 = 0f, c002 = 0f, c003 = 0f, c004 = 0f, c005 = 0f, c006 = 0f, c007 = 0f, c008 = 0f, c009 = 0f, c010 = 0f, c011 = 0f, c012 = 0f, c013 = 0f, c014 = 0f, c015 = 0f;
+                    float c100 = 0f, c101 = 0f, c102 = 0f, c103 = 0f, c104 = 0f, c105 = 0f, c106 = 0f, c107 = 0f, c108 = 0f, c109 = 0f, c110 = 0f, c111 = 0f, c112 = 0f, c113 = 0f, c114 = 0f, c115 = 0f;
+                    float c200 = 0f, c201 = 0f, c202 = 0f, c203 = 0f, c204 = 0f, c205 = 0f, c206 = 0f, c207 = 0f, c208 = 0f, c209 = 0f, c210 = 0f, c211 = 0f, c212 = 0f, c213 = 0f, c214 = 0f, c215 = 0f;
+                    float c300 = 0f, c301 = 0f, c302 = 0f, c303 = 0f, c304 = 0f, c305 = 0f, c306 = 0f, c307 = 0f, c308 = 0f, c309 = 0f, c310 = 0f, c311 = 0f, c312 = 0f, c313 = 0f, c314 = 0f, c315 = 0f;
+                    float c400 = 0f, c401 = 0f, c402 = 0f, c403 = 0f, c404 = 0f, c405 = 0f, c406 = 0f, c407 = 0f, c408 = 0f, c409 = 0f, c410 = 0f, c411 = 0f, c412 = 0f, c413 = 0f, c414 = 0f, c415 = 0f;
+                    float c500 = 0f, c501 = 0f, c502 = 0f, c503 = 0f, c504 = 0f, c505 = 0f, c506 = 0f, c507 = 0f, c508 = 0f, c509 = 0f, c510 = 0f, c511 = 0f, c512 = 0f, c513 = 0f, c514 = 0f, c515 = 0f;
+                    float c600 = 0f, c601 = 0f, c602 = 0f, c603 = 0f, c604 = 0f, c605 = 0f, c606 = 0f, c607 = 0f, c608 = 0f, c609 = 0f, c610 = 0f, c611 = 0f, c612 = 0f, c613 = 0f, c614 = 0f, c615 = 0f;
+                    float c700 = 0f, c701 = 0f, c702 = 0f, c703 = 0f, c704 = 0f, c705 = 0f, c706 = 0f, c707 = 0f, c708 = 0f, c709 = 0f, c710 = 0f, c711 = 0f, c712 = 0f, c713 = 0f, c714 = 0f, c715 = 0f;
+
+                    for (int p = 0; p < n; p++)
+                    {
+                        float a0 = Arow0[p];
+                        float a1 = Arow1[p];
+                        float a2 = Arow2[p];
+                        float a3 = Arow3[p];
+                        float a4 = Arow4[p];
+                        float a5 = Arow5[p];
+                        float a6 = Arow6[p];
+                        float a7 = Arow7[p];
+
+                        float* Brow = matB + (long)p * k + j;
+                        float b0 = Brow[0];
+                        float b1 = Brow[1];
+                        float b2 = Brow[2];
+                        float b3 = Brow[3];
+                        float b4 = Brow[4];
+                        float b5 = Brow[5];
+                        float b6 = Brow[6];
+                        float b7 = Brow[7];
+                        float b8 = Brow[8];
+                        float b9 = Brow[9];
+                        float b10 = Brow[10];
+                        float b11 = Brow[11];
+                        float b12 = Brow[12];
+                        float b13 = Brow[13];
+                        float b14 = Brow[14];
+                        float b15 = Brow[15];
+
+                        c000 += a0 * b0; c001 += a0 * b1; c002 += a0 * b2; c003 += a0 * b3; c004 += a0 * b4; c005 += a0 * b5; c006 += a0 * b6; c007 += a0 * b7; c008 += a0 * b8; c009 += a0 * b9; c010 += a0 * b10; c011 += a0 * b11; c012 += a0 * b12; c013 += a0 * b13; c014 += a0 * b14; c015 += a0 * b15;
+                        c100 += a1 * b0; c101 += a1 * b1; c102 += a1 * b2; c103 += a1 * b3; c104 += a1 * b4; c105 += a1 * b5; c106 += a1 * b6; c107 += a1 * b7; c108 += a1 * b8; c109 += a1 * b9; c110 += a1 * b10; c111 += a1 * b11; c112 += a1 * b12; c113 += a1 * b13; c114 += a1 * b14; c115 += a1 * b15;
+                        c200 += a2 * b0; c201 += a2 * b1; c202 += a2 * b2; c203 += a2 * b3; c204 += a2 * b4; c205 += a2 * b5; c206 += a2 * b6; c207 += a2 * b7; c208 += a2 * b8; c209 += a2 * b9; c210 += a2 * b10; c211 += a2 * b11; c212 += a2 * b12; c213 += a2 * b13; c214 += a2 * b14; c215 += a2 * b15;
+                        c300 += a3 * b0; c301 += a3 * b1; c302 += a3 * b2; c303 += a3 * b3; c304 += a3 * b4; c305 += a3 * b5; c306 += a3 * b6; c307 += a3 * b7; c308 += a3 * b8; c309 += a3 * b9; c310 += a3 * b10; c311 += a3 * b11; c312 += a3 * b12; c313 += a3 * b13; c314 += a3 * b14; c315 += a3 * b15;
+                        c400 += a4 * b0; c401 += a4 * b1; c402 += a4 * b2; c403 += a4 * b3; c404 += a4 * b4; c405 += a4 * b5; c406 += a4 * b6; c407 += a4 * b7; c408 += a4 * b8; c409 += a4 * b9; c410 += a4 * b10; c411 += a4 * b11; c412 += a4 * b12; c413 += a4 * b13; c414 += a4 * b14; c415 += a4 * b15;
+                        c500 += a5 * b0; c501 += a5 * b1; c502 += a5 * b2; c503 += a5 * b3; c504 += a5 * b4; c505 += a5 * b5; c506 += a5 * b6; c507 += a5 * b7; c508 += a5 * b8; c509 += a5 * b9; c510 += a5 * b10; c511 += a5 * b11; c512 += a5 * b12; c513 += a5 * b13; c514 += a5 * b14; c515 += a5 * b15;
+                        c600 += a6 * b0; c601 += a6 * b1; c602 += a6 * b2; c603 += a6 * b3; c604 += a6 * b4; c605 += a6 * b5; c606 += a6 * b6; c607 += a6 * b7; c608 += a6 * b8; c609 += a6 * b9; c610 += a6 * b10; c611 += a6 * b11; c612 += a6 * b12; c613 += a6 * b13; c614 += a6 * b14; c615 += a6 * b15;
+                        c700 += a7 * b0; c701 += a7 * b1; c702 += a7 * b2; c703 += a7 * b3; c704 += a7 * b4; c705 += a7 * b5; c706 += a7 * b6; c707 += a7 * b7; c708 += a7 * b8; c709 += a7 * b9; c710 += a7 * b10; c711 += a7 * b11; c712 += a7 * b12; c713 += a7 * b13; c714 += a7 * b14; c715 += a7 * b15;
+                    }
+
+                    float* Crow0 = matC + (long)(i + 0) * k + j;
+                    float* Crow1 = matC + (long)(i + 1) * k + j;
+                    float* Crow2 = matC + (long)(i + 2) * k + j;
+                    float* Crow3 = matC + (long)(i + 3) * k + j;
+                    float* Crow4 = matC + (long)(i + 4) * k + j;
+                    float* Crow5 = matC + (long)(i + 5) * k + j;
+                    float* Crow6 = matC + (long)(i + 6) * k + j;
+                    float* Crow7 = matC + (long)(i + 7) * k + j;
+
+                    Crow0[0] += c000; Crow0[1] += c001; Crow0[2] += c002; Crow0[3] += c003; Crow0[4] += c004; Crow0[5] += c005; Crow0[6] += c006; Crow0[7] += c007; Crow0[8] += c008; Crow0[9] += c009; Crow0[10] += c010; Crow0[11] += c011; Crow0[12] += c012; Crow0[13] += c013; Crow0[14] += c014; Crow0[15] += c015;
+                    Crow1[0] += c100; Crow1[1] += c101; Crow1[2] += c102; Crow1[3] += c103; Crow1[4] += c104; Crow1[5] += c105; Crow1[6] += c106; Crow1[7] += c107; Crow1[8] += c108; Crow1[9] += c109; Crow1[10] += c110; Crow1[11] += c111; Crow1[12] += c112; Crow1[13] += c113; Crow1[14] += c114; Crow1[15] += c115;
+                    Crow2[0] += c200; Crow2[1] += c201; Crow2[2] += c202; Crow2[3] += c203; Crow2[4] += c204; Crow2[5] += c205; Crow2[6] += c206; Crow2[7] += c207; Crow2[8] += c208; Crow2[9] += c209; Crow2[10] += c210; Crow2[11] += c211; Crow2[12] += c212; Crow2[13] += c213; Crow2[14] += c214; Crow2[15] += c215;
+                    Crow3[0] += c300; Crow3[1] += c301; Crow3[2] += c302; Crow3[3] += c303; Crow3[4] += c304; Crow3[5] += c305; Crow3[6] += c306; Crow3[7] += c307; Crow3[8] += c308; Crow3[9] += c309; Crow3[10] += c310; Crow3[11] += c311; Crow3[12] += c312; Crow3[13] += c313; Crow3[14] += c314; Crow3[15] += c315;
+                    Crow4[0] += c400; Crow4[1] += c401; Crow4[2] += c402; Crow4[3] += c403; Crow4[4] += c404; Crow4[5] += c405; Crow4[6] += c406; Crow4[7] += c407; Crow4[8] += c408; Crow4[9] += c409; Crow4[10] += c410; Crow4[11] += c411; Crow4[12] += c412; Crow4[13] += c413; Crow4[14] += c414; Crow4[15] += c415;
+                    Crow5[0] += c500; Crow5[1] += c501; Crow5[2] += c502; Crow5[3] += c503; Crow5[4] += c504; Crow5[5] += c505; Crow5[6] += c506; Crow5[7] += c507; Crow5[8] += c508; Crow5[9] += c509; Crow5[10] += c510; Crow5[11] += c511; Crow5[12] += c512; Crow5[13] += c513; Crow5[14] += c514; Crow5[15] += c515;
+                    Crow6[0] += c600; Crow6[1] += c601; Crow6[2] += c602; Crow6[3] += c603; Crow6[4] += c604; Crow6[5] += c605; Crow6[6] += c606; Crow6[7] += c607; Crow6[8] += c608; Crow6[9] += c609; Crow6[10] += c610; Crow6[11] += c611; Crow6[12] += c612; Crow6[13] += c613; Crow6[14] += c614; Crow6[15] += c615;
+                    Crow7[0] += c700; Crow7[1] += c701; Crow7[2] += c702; Crow7[3] += c703; Crow7[4] += c704; Crow7[5] += c705; Crow7[6] += c706; Crow7[7] += c707; Crow7[8] += c708; Crow7[9] += c709; Crow7[10] += c710; Crow7[11] += c711; Crow7[12] += c712; Crow7[13] += c713; Crow7[14] += c714; Crow7[15] += c715;
+                }
+
+                // Remainder columns [kTiles, k) for these MR rows: same p-ascending order, plain fallback.
+                if (kTiles < k)
+                    matMatDotRange(matA, matB, matC, i, i + MR, n, k, kTiles, k);
+            }
+
+            // Remainder rows [mTiles, m) — and, when m < MR, the WHOLE matrix (mTiles == 0 routes
+            // every row through here): plain fallback, zero seam risk vs the tiled bulk above.
+            if (mTiles < m)
+                matMatDotRange(matA, matB, matC, mTiles, m, n, k, 0, k);
+        }
+
+        // Plain (untiled) GEMM restricted to an explicit row/column sub-range, in the SAME
+        // p-ascending accumulation order as matMatDot's tiled bulk above (this literally IS the
+        // pre-tiling kernel, just row/col-bounded) — used both for the remainder rows/cols the
+        // MR x NR tiling doesn't evenly cover, and as the whole-matrix path for matrices smaller than
+        // one tile (mTiles==0 or kTiles==0 routes every row/col through here), so there is zero risk
+        // of a seam between the tiled and fallback regions, and small matrices provably do not regress
+        // (they take exactly the pre-existing kernel).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void matMatDotRange([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC,
+                                    int rowStart, int rowEnd, int n, int k, int colStart, int colEnd)
+        {
+            for (int r = rowStart; r < rowEnd; r++)
             {
                 for (int nCols = 0; nCols < n; nCols++)
                 {
                     float temp = matA[r * n + nCols]; // Cache the value from matA
-                    for (int kCols = 0; kCols < k; kCols++)
+                    for (int kCols = colStart; kCols < colEnd; kCols++)
                     {
                         matC[r * k + kCols] += temp * matB[nCols * k + kCols];
                     }
@@ -152,18 +291,120 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // Same register-tile treatment as matMatDot, applied to the transposed-A read (Aᵀ·B). Only
+        // the A access pattern differs: A[p, i+t] rather than A[i+t, p], because A is stored m x n but
+        // read as n x m here. The MR row-values for a fixed p are CONTIGUOUS
+        // (matA[p*m + i .. i+MR-1]) — an even better load pattern than matMatDot's per-row strided
+        // reads. Same determinism argument and same MR/NR-shared-across-types constraint as above.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDotTransA([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
         {
             // matA = m x n, but treated as n x m due to transposition
             // matB = n x k
-            // matC = outMat = m x k, needs to be initialized to zero
-            for (int r = 0; r < m; r++)
+            // matC = outMat = m x k, needs to be initialized to zero (this kernel ACCUMULATES, +=)
+
+            const int MR = 8;
+            const int NR = 16;
+
+            int mTiles = (m / MR) * MR;
+            int kTiles = (k / NR) * NR;
+
+            for (int i = 0; i < mTiles; i += MR)
+            {
+                for (int j = 0; j < kTiles; j += NR)
+                {
+                    float c000 = 0f, c001 = 0f, c002 = 0f, c003 = 0f, c004 = 0f, c005 = 0f, c006 = 0f, c007 = 0f, c008 = 0f, c009 = 0f, c010 = 0f, c011 = 0f, c012 = 0f, c013 = 0f, c014 = 0f, c015 = 0f;
+                    float c100 = 0f, c101 = 0f, c102 = 0f, c103 = 0f, c104 = 0f, c105 = 0f, c106 = 0f, c107 = 0f, c108 = 0f, c109 = 0f, c110 = 0f, c111 = 0f, c112 = 0f, c113 = 0f, c114 = 0f, c115 = 0f;
+                    float c200 = 0f, c201 = 0f, c202 = 0f, c203 = 0f, c204 = 0f, c205 = 0f, c206 = 0f, c207 = 0f, c208 = 0f, c209 = 0f, c210 = 0f, c211 = 0f, c212 = 0f, c213 = 0f, c214 = 0f, c215 = 0f;
+                    float c300 = 0f, c301 = 0f, c302 = 0f, c303 = 0f, c304 = 0f, c305 = 0f, c306 = 0f, c307 = 0f, c308 = 0f, c309 = 0f, c310 = 0f, c311 = 0f, c312 = 0f, c313 = 0f, c314 = 0f, c315 = 0f;
+                    float c400 = 0f, c401 = 0f, c402 = 0f, c403 = 0f, c404 = 0f, c405 = 0f, c406 = 0f, c407 = 0f, c408 = 0f, c409 = 0f, c410 = 0f, c411 = 0f, c412 = 0f, c413 = 0f, c414 = 0f, c415 = 0f;
+                    float c500 = 0f, c501 = 0f, c502 = 0f, c503 = 0f, c504 = 0f, c505 = 0f, c506 = 0f, c507 = 0f, c508 = 0f, c509 = 0f, c510 = 0f, c511 = 0f, c512 = 0f, c513 = 0f, c514 = 0f, c515 = 0f;
+                    float c600 = 0f, c601 = 0f, c602 = 0f, c603 = 0f, c604 = 0f, c605 = 0f, c606 = 0f, c607 = 0f, c608 = 0f, c609 = 0f, c610 = 0f, c611 = 0f, c612 = 0f, c613 = 0f, c614 = 0f, c615 = 0f;
+                    float c700 = 0f, c701 = 0f, c702 = 0f, c703 = 0f, c704 = 0f, c705 = 0f, c706 = 0f, c707 = 0f, c708 = 0f, c709 = 0f, c710 = 0f, c711 = 0f, c712 = 0f, c713 = 0f, c714 = 0f, c715 = 0f;
+
+                    for (int p = 0; p < n; p++)
+                    {
+                        float* Ap = matA + (long)p * m + i;
+                        float a0 = Ap[0];
+                        float a1 = Ap[1];
+                        float a2 = Ap[2];
+                        float a3 = Ap[3];
+                        float a4 = Ap[4];
+                        float a5 = Ap[5];
+                        float a6 = Ap[6];
+                        float a7 = Ap[7];
+
+                        float* Brow = matB + (long)p * k + j;
+                        float b0 = Brow[0];
+                        float b1 = Brow[1];
+                        float b2 = Brow[2];
+                        float b3 = Brow[3];
+                        float b4 = Brow[4];
+                        float b5 = Brow[5];
+                        float b6 = Brow[6];
+                        float b7 = Brow[7];
+                        float b8 = Brow[8];
+                        float b9 = Brow[9];
+                        float b10 = Brow[10];
+                        float b11 = Brow[11];
+                        float b12 = Brow[12];
+                        float b13 = Brow[13];
+                        float b14 = Brow[14];
+                        float b15 = Brow[15];
+
+                        c000 += a0 * b0; c001 += a0 * b1; c002 += a0 * b2; c003 += a0 * b3; c004 += a0 * b4; c005 += a0 * b5; c006 += a0 * b6; c007 += a0 * b7; c008 += a0 * b8; c009 += a0 * b9; c010 += a0 * b10; c011 += a0 * b11; c012 += a0 * b12; c013 += a0 * b13; c014 += a0 * b14; c015 += a0 * b15;
+                        c100 += a1 * b0; c101 += a1 * b1; c102 += a1 * b2; c103 += a1 * b3; c104 += a1 * b4; c105 += a1 * b5; c106 += a1 * b6; c107 += a1 * b7; c108 += a1 * b8; c109 += a1 * b9; c110 += a1 * b10; c111 += a1 * b11; c112 += a1 * b12; c113 += a1 * b13; c114 += a1 * b14; c115 += a1 * b15;
+                        c200 += a2 * b0; c201 += a2 * b1; c202 += a2 * b2; c203 += a2 * b3; c204 += a2 * b4; c205 += a2 * b5; c206 += a2 * b6; c207 += a2 * b7; c208 += a2 * b8; c209 += a2 * b9; c210 += a2 * b10; c211 += a2 * b11; c212 += a2 * b12; c213 += a2 * b13; c214 += a2 * b14; c215 += a2 * b15;
+                        c300 += a3 * b0; c301 += a3 * b1; c302 += a3 * b2; c303 += a3 * b3; c304 += a3 * b4; c305 += a3 * b5; c306 += a3 * b6; c307 += a3 * b7; c308 += a3 * b8; c309 += a3 * b9; c310 += a3 * b10; c311 += a3 * b11; c312 += a3 * b12; c313 += a3 * b13; c314 += a3 * b14; c315 += a3 * b15;
+                        c400 += a4 * b0; c401 += a4 * b1; c402 += a4 * b2; c403 += a4 * b3; c404 += a4 * b4; c405 += a4 * b5; c406 += a4 * b6; c407 += a4 * b7; c408 += a4 * b8; c409 += a4 * b9; c410 += a4 * b10; c411 += a4 * b11; c412 += a4 * b12; c413 += a4 * b13; c414 += a4 * b14; c415 += a4 * b15;
+                        c500 += a5 * b0; c501 += a5 * b1; c502 += a5 * b2; c503 += a5 * b3; c504 += a5 * b4; c505 += a5 * b5; c506 += a5 * b6; c507 += a5 * b7; c508 += a5 * b8; c509 += a5 * b9; c510 += a5 * b10; c511 += a5 * b11; c512 += a5 * b12; c513 += a5 * b13; c514 += a5 * b14; c515 += a5 * b15;
+                        c600 += a6 * b0; c601 += a6 * b1; c602 += a6 * b2; c603 += a6 * b3; c604 += a6 * b4; c605 += a6 * b5; c606 += a6 * b6; c607 += a6 * b7; c608 += a6 * b8; c609 += a6 * b9; c610 += a6 * b10; c611 += a6 * b11; c612 += a6 * b12; c613 += a6 * b13; c614 += a6 * b14; c615 += a6 * b15;
+                        c700 += a7 * b0; c701 += a7 * b1; c702 += a7 * b2; c703 += a7 * b3; c704 += a7 * b4; c705 += a7 * b5; c706 += a7 * b6; c707 += a7 * b7; c708 += a7 * b8; c709 += a7 * b9; c710 += a7 * b10; c711 += a7 * b11; c712 += a7 * b12; c713 += a7 * b13; c714 += a7 * b14; c715 += a7 * b15;
+                    }
+
+                    float* Crow0 = matC + (long)(i + 0) * k + j;
+                    float* Crow1 = matC + (long)(i + 1) * k + j;
+                    float* Crow2 = matC + (long)(i + 2) * k + j;
+                    float* Crow3 = matC + (long)(i + 3) * k + j;
+                    float* Crow4 = matC + (long)(i + 4) * k + j;
+                    float* Crow5 = matC + (long)(i + 5) * k + j;
+                    float* Crow6 = matC + (long)(i + 6) * k + j;
+                    float* Crow7 = matC + (long)(i + 7) * k + j;
+
+                    Crow0[0] += c000; Crow0[1] += c001; Crow0[2] += c002; Crow0[3] += c003; Crow0[4] += c004; Crow0[5] += c005; Crow0[6] += c006; Crow0[7] += c007; Crow0[8] += c008; Crow0[9] += c009; Crow0[10] += c010; Crow0[11] += c011; Crow0[12] += c012; Crow0[13] += c013; Crow0[14] += c014; Crow0[15] += c015;
+                    Crow1[0] += c100; Crow1[1] += c101; Crow1[2] += c102; Crow1[3] += c103; Crow1[4] += c104; Crow1[5] += c105; Crow1[6] += c106; Crow1[7] += c107; Crow1[8] += c108; Crow1[9] += c109; Crow1[10] += c110; Crow1[11] += c111; Crow1[12] += c112; Crow1[13] += c113; Crow1[14] += c114; Crow1[15] += c115;
+                    Crow2[0] += c200; Crow2[1] += c201; Crow2[2] += c202; Crow2[3] += c203; Crow2[4] += c204; Crow2[5] += c205; Crow2[6] += c206; Crow2[7] += c207; Crow2[8] += c208; Crow2[9] += c209; Crow2[10] += c210; Crow2[11] += c211; Crow2[12] += c212; Crow2[13] += c213; Crow2[14] += c214; Crow2[15] += c215;
+                    Crow3[0] += c300; Crow3[1] += c301; Crow3[2] += c302; Crow3[3] += c303; Crow3[4] += c304; Crow3[5] += c305; Crow3[6] += c306; Crow3[7] += c307; Crow3[8] += c308; Crow3[9] += c309; Crow3[10] += c310; Crow3[11] += c311; Crow3[12] += c312; Crow3[13] += c313; Crow3[14] += c314; Crow3[15] += c315;
+                    Crow4[0] += c400; Crow4[1] += c401; Crow4[2] += c402; Crow4[3] += c403; Crow4[4] += c404; Crow4[5] += c405; Crow4[6] += c406; Crow4[7] += c407; Crow4[8] += c408; Crow4[9] += c409; Crow4[10] += c410; Crow4[11] += c411; Crow4[12] += c412; Crow4[13] += c413; Crow4[14] += c414; Crow4[15] += c415;
+                    Crow5[0] += c500; Crow5[1] += c501; Crow5[2] += c502; Crow5[3] += c503; Crow5[4] += c504; Crow5[5] += c505; Crow5[6] += c506; Crow5[7] += c507; Crow5[8] += c508; Crow5[9] += c509; Crow5[10] += c510; Crow5[11] += c511; Crow5[12] += c512; Crow5[13] += c513; Crow5[14] += c514; Crow5[15] += c515;
+                    Crow6[0] += c600; Crow6[1] += c601; Crow6[2] += c602; Crow6[3] += c603; Crow6[4] += c604; Crow6[5] += c605; Crow6[6] += c606; Crow6[7] += c607; Crow6[8] += c608; Crow6[9] += c609; Crow6[10] += c610; Crow6[11] += c611; Crow6[12] += c612; Crow6[13] += c613; Crow6[14] += c614; Crow6[15] += c615;
+                    Crow7[0] += c700; Crow7[1] += c701; Crow7[2] += c702; Crow7[3] += c703; Crow7[4] += c704; Crow7[5] += c705; Crow7[6] += c706; Crow7[7] += c707; Crow7[8] += c708; Crow7[9] += c709; Crow7[10] += c710; Crow7[11] += c711; Crow7[12] += c712; Crow7[13] += c713; Crow7[14] += c714; Crow7[15] += c715;
+                }
+
+                // Remainder columns [kTiles, k) for these MR rows: same p-ascending order, plain fallback.
+                if (kTiles < k)
+                    matMatDotTransARange(matA, matB, matC, i, i + MR, m, n, k, kTiles, k);
+            }
+
+            // Remainder rows [mTiles, m) — and, when m < MR, the WHOLE matrix: plain fallback, zero
+            // seam risk vs the tiled bulk above.
+            if (mTiles < m)
+                matMatDotTransARange(matA, matB, matC, mTiles, m, m, n, k, 0, k);
+        }
+
+        // Plain (untiled) Aᵀ·B restricted to an explicit row/column sub-range — the transposed-A
+        // mirror of matMatDotRange, same rationale (remainder coverage + whole-matrix small-size
+        // fallback with zero seam risk).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void matMatDotTransARange([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC,
+                                          int rowStart, int rowEnd, int m, int n, int k, int colStart, int colEnd)
+        {
+            for (int r = rowStart; r < rowEnd; r++)
             {
                 for (int nCols = 0; nCols < n; nCols++)
                 {
                     float temp = matA[nCols * m + r];
-                    for (int kCols = 0; kCols < k; kCols++)
+                    for (int kCols = colStart; kCols < colEnd; kCols++)
                     {
                         matC[r * k + kCols] += temp * matB[nCols * k + kCols];
                     }
