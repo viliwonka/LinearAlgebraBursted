@@ -68,13 +68,17 @@ namespace LinearAlgebra
             return sum;
         }
 
-        // Apply Householder G = I - v*vᵀ from the RIGHT to M[rowStart:, colStart:]:
-        //   M[r, colStart:] -= (M[r, colStart:] · v[colStart:]) · v[colStart:]  for each r >= rowStart
+        // Apply Householder G = I - v*vᵀ from the RIGHT to M[rowStart:rowEnd, colStart:]:
+        //   M[r, colStart:] -= (M[r, colStart:] · v[colStart:]) · v[colStart:]  for rowStart <= r < rowEnd
         // v[0..colStart-1] are treated as zero (not accessed). Per-row dot4 + axpy.
+        //
+        // rowEnd lets the blocked (compact-WY) factorization restrict the per-row reflector apply to
+        // just its own panel (rows [d, p0+pb)) instead of the whole trailing matrix — the panel's
+        // remaining rows [p0+pb, M) are updated once per PANEL as a block GEMM instead of once per
+        // ROW; see lqDecompositionBlockedCore.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe void applyHouseholderRight(ref doubleMxN M, ref doubleN v, int rowStart, int colStart)
+        private static unsafe void applyHouseholderRightRows(ref doubleMxN M, ref doubleN v, int rowStart, int rowEnd, int colStart)
         {
-            int rows = M.M_Rows;
             int cols = M.N_Cols;
             int L = cols - colStart;
             if (L <= 0) return;
@@ -82,12 +86,21 @@ namespace LinearAlgebra
             double* mp = M.Data.Ptr;
             double* vp = v.Data.Ptr + colStart;
 
-            for (int r = rowStart; r < rows; r++)
+            for (int r = rowStart; r < rowEnd; r++)
             {
                 double* rowPtr = mp + (long)r * cols + colStart;
                 double dot = dot4(rowPtr, vp, L);
                 Unsafe_OP.axpy(rowPtr, vp, -dot, L);
             }
+        }
+
+        // Un-restricted form: applies to the full trailing block [rowStart, M_Rows). Used by every
+        // path that has not been raised to the blocked (compact-WY) factorization — the zero-alloc
+        // lqDecomposition overload and the unblocked lqKernel.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void applyHouseholderRight(ref doubleMxN M, ref doubleN v, int rowStart, int colStart)
+        {
+            applyHouseholderRightRows(ref M, ref v, rowStart, M.M_Rows, colStart);
         }
 
         // ---- LQ decomposition ----
@@ -149,6 +162,226 @@ namespace LinearAlgebra
             }
         }
 
+        // Build the pb×pb compact-WY T factor (τ≡1 convention: T[i,i] = 1, NOT LAPACK's τ-scaled
+        // diagonal) from a clean panel V (passed here as its TRANSPOSE Vt — see
+        // lqDecompositionBlockedCore's folding trick), so the pb reflectors' combined block product
+        // is exactly (I - Vᵀ T V). Forward, columnwise (LAPACK dlarft-style, adapted for τ≡1).
+        //
+        // This is an exact duplicate of QR.formT (same algorithm — it only ever contracts a Gram
+        // matrix from a clean, masked panel, so it is direction-agnostic between QR's left-multiply
+        // and LQ's right-multiply). It is NOT called cross-class because QR's copy is private and
+        // QR is not to be modified for this change; duplicating a ~30-line pure-math helper is
+        // cheaper than widening QR's visibility surface.
+        //
+        // A pairwise-dot4 Gram formulation (no Vt, reading Vpanel's rows directly) was tried as an
+        // alternative to the transpose below and measured MUCH slower (~2x) than this — see
+        // lqYeqCVt's doc comment for the same finding on the fold step; formT's cost is small next to
+        // the fold/apply GEMMs, but the two share Vt so the transpose is built once and reused by both.
+        //
+        //   Vp    panel base pointer, row-major, leading dimension Vld == pb.
+        //   rows  number of panel rows (local index t = 0..rows-1); v_i occupies Vp[t*Vld+i].
+        //   pb    number of reflectors in this panel (<= LQ_BLOCK).
+        //   T     pb×pb contiguous output, row-major (T[i,k] at T[i*pb+k]), upper-triangular.
+        //   tcol  scratch, length >= pb.
+        //   G     pb×pb scratch for the Gram matrix VᵀV.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void formT(double* Vp, int Vld, int rows, int pb, double* T, double* tcol, double* G)
+        {
+            UnsafeUtility.MemClear(G, (long)pb * pb * UnsafeUtility.SizeOf<double>());
+            for (int t = 0; t < rows; t++)
+            {
+                double* Vrow = Vp + (long)t * Vld;
+                for (int i = 0; i < pb; i++)
+                {
+                    double temp = Vrow[i];
+                    double* Gi = G + (long)i * pb;
+                    for (int j = 0; j < pb; j++)
+                        Gi[j] += temp * Vrow[j];
+                }
+            }
+
+            for (int i = 0; i < pb; i++)
+            {
+                T[i * pb + i] = 1;
+                if (i > 0)
+                {
+                    // tcol[k] = -G[k,i] = -(v_k · v_i), k in [0, i)
+                    for (int k = 0; k < i; k++)
+                        tcol[k] = -G[k * pb + i];
+                    // T[k,i] = Σ_{l=k..i-1} T[k,l] * tcol[l], k in [0, i)  (T[0:i,0:i] · tcol)
+                    for (int k = 0; k < i; k++)
+                    {
+                        double sum = 0;
+                        for (int l = k; l < i; l++)
+                            sum += T[k * pb + l] * tcol[l];
+                        T[k * pb + i] = sum;
+                    }
+                }
+            }
+        }
+
+        // Blocked (level-3 / compact-WY, GEMM trailing-update) factorization+reconstruction core.
+        // τ≡1 convention throughout (see genHouseholderRow / applyHouseholderRight): each
+        // G_i = I - v_i v_iᵀ, so the compact-WY T has T[i,i] = 1 (not LAPACK's τ-scaled diagonal).
+        //
+        // LQ right-multiplies (unlike QR's left-multiply), so panels are ROW blocks and the T-vs-Tᵀ
+        // usage is FLIPPED relative to QR:
+        //   factorization applies   C := C·(I - Vᵀ T V)   = C - (C·Vᵀ)·(T·V)     → wyTriMul   (T)
+        //   reconstruction applies  Q := Q·(I - Vᵀ Tᵀ V)  = Q - (Q·Vᵀ)·(Tᵀ·V)    → wyTriTransMul (Tᵀ)
+        // (QR was the opposite: factorization used Tᵀ, reconstruction used T — see QR's blocked core.)
+        //
+        // Here V is the pb×(n-p0) panel whose ROWS are the reflectors (v_i occupies local columns
+        // c' >= i, masked to zero for c' < i); Vt is its (n-p0)×pb transpose, built once per panel so
+        // both the Gram contraction (formT) and the C·Vᵀ folding step (Unsafe_OP.lqYeqCVt) can walk
+        // it with a unit-stride inner loop. Vt MUST be built, and Y = C·Vᵀ computed, BEFORE the
+        // in-place wyTriMul/wyTriTransMul overwrites Vpanel with T·V (or Tᵀ·V) — Vt is a separate,
+        // untouched buffer, but Vpanel itself is the one that gets clobbered in place.
+        //
+        // Reflectors are stashed into W (the working copy of A, upper-right of each processed row);
+        // Q is a SEPARATE m×n buffer seeded to [I_m | 0] before reconstruction — unlike QR, which
+        // reconstructs in place over the same buffer that stores the reflectors, LQ needs no
+        // clean-snapshot copy (nothing here overwrites W while reconstruction is still reading it).
+        //
+        // Scratch (all caller-provided, sized by the lqDecomposition(A,L,Q) allocating wrapper):
+        //   v       length N_Cols        — Householder vector (per-row panel factor step).
+        //   Vpanel  length LQ_BLOCK*N_Cols — clean contiguous panel (pb x (n-p0)), reused for
+        //           factor+reconstruct; leading dimension == the CURRENT (n-p0), not N_Cols.
+        //   Vt      length N_Cols*LQ_BLOCK — transpose of Vpanel ((n-p0) x pb), leading dim == pb.
+        //   Tbuf    length LQ_BLOCK*LQ_BLOCK — compact-WY T, reused per panel.
+        //   Y       length M_Rows*LQ_BLOCK — C·Vᵀ folding buffer AND formT's Gram scratch (reused
+        //           sequentially within a panel: formT's G write happens before Y's C·Vᵀ write).
+        //   tcolBuf length LQ_BLOCK      — formT scratch.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void lqDecompositionBlockedCore(ref doubleMxN W, ref doubleMxN L, ref doubleMxN Q,
+            ref doubleN v, ref doubleN Vpanel, ref doubleN Vt, ref doubleN Tbuf, ref doubleN Y, ref doubleN tcolBuf,
+            double zeroThreshold)
+        {
+            // Panel width for the blocked (level-3 / compact-WY) factorization path. A method-local
+            // const (not a class field) — LQ is a partial class shared by the float/double generated
+            // files, so a class-level const of the same name would collide (CS0102). Matches QR_BLOCK.
+            const int LQ_BLOCK = 64;
+
+            int m = W.M_Rows;
+            int n = W.N_Cols;
+
+            double* Wp = W.Data.Ptr;
+            double* Vp = Vpanel.Data.Ptr;
+            double* Vtp = Vt.Data.Ptr;
+            double* T = Tbuf.Data.Ptr;
+            double* Yp = Y.Data.Ptr;
+            double* tcol = tcolBuf.Data.Ptr;
+
+            // ---- factorization: row panels top to bottom ----
+            for (int p0 = 0; p0 < m; p0 += LQ_BLOCK)
+            {
+                int pb = math.min(LQ_BLOCK, m - p0);
+
+                // (1) factor panel rows d in [p0, p0+pb); reflector apply restricted to the panel's
+                //     OWN remaining rows [d, p0+pb) — rows beyond the panel are updated once below as
+                //     a single block GEMM instead of once per row.
+                for (int d = p0; d < p0 + pb; d++)
+                {
+                    genHouseholderRow(ref W, ref v, d, d, zeroThreshold);
+                    applyHouseholderRightRows(ref W, ref v, d, p0 + pb, d);
+
+                    L[d, d] = W[d, d];
+                    for (int c = d; c < n; c++)
+                        W[d, c] = v[c];
+                }
+
+                // (2) gather the clean panel V (pb x (n-p0)): local row i (global row p0+i), local
+                //     col c' (global col p0+c'); masked to zero left of each reflector's own diagonal
+                //     (c' < i).
+                int cn = n - p0;
+                for (int i = 0; i < pb; i++)
+                {
+                    int r = p0 + i;
+                    double* Vrow = Vp + (long)i * cn;
+                    double* Wrow = Wp + (long)r * n + p0;
+                    for (int c = 0; c < cn; c++)
+                        Vrow[c] = (c >= i) ? Wrow[c] : (double)0;
+                }
+
+                // (3) Vt = transpose(Vpanel): Vt[c'*pb + i] = Vpanel[i*cn + c']   ((n-p0) x pb).
+                for (int i = 0; i < pb; i++)
+                {
+                    double* Vrow = Vp + (long)i * cn;
+                    for (int c = 0; c < cn; c++)
+                        Vtp[(long)c * pb + i] = Vrow[c];
+                }
+
+                // (4) form the pb x pb compact-WY T (τ≡1) from the panel, via its transpose Vt.
+                formT(Vtp, pb, cn, pb, T, tcol, Yp);
+
+                // (5) trailing block update, rows [p0+pb, m): C := C·(I - Vᵀ T V) = C - Y·(T·V),
+                //     where Y = C·Vᵀ. Y and Vt MUST be built/read before wyTriMul overwrites Vpanel.
+                int rowsTrail = m - (p0 + pb);
+                if (rowsTrail > 0)
+                {
+                    double* Cp = Wp + (long)(p0 + pb) * n + p0;
+                    UnsafeUtility.MemClear(Yp, (long)rowsTrail * pb * UnsafeUtility.SizeOf<double>());
+                    Unsafe_OP.lqYeqCVt(Cp, n, Vtp, cn, rowsTrail, pb, Yp);
+                    Unsafe_OP.wyTriMul(T, pb, Vp, cn);                        // T — factorization direction
+                    Unsafe_OP.wySubVW(Yp, pb, Cp, n, rowsTrail, pb, cn, Vp);
+                }
+            }
+
+            // L extraction (unchanged from lqKernel).
+            for (int r = 0; r < m; r++)
+            {
+                for (int c = 0; c < r; c++)
+                    L[r, c] = W[r, c];
+                for (int c = r + 1; c < m; c++)
+                    L[r, c] = (double)0;
+            }
+
+            // ---- reconstruct Q from the stored reflectors, panels bottom to top ----
+            // Q is a SEPARATE buffer from W, so no clean-snapshot copy is needed — W's stashed
+            // reflector rows are never overwritten by this reconstruction (see file-header notes).
+            UnsafeUtility.MemClear(Q.Data.Ptr, (long)m * n * UnsafeUtility.SizeOf<double>());
+            for (int i = 0; i < m; i++)
+                Q[i, i] = (double)1;
+
+            double* Qp = Q.Data.Ptr;
+
+            int lastP0 = ((m - 1) / LQ_BLOCK) * LQ_BLOCK;
+            for (int p0 = lastP0; p0 >= 0; p0 -= LQ_BLOCK)
+            {
+                int pb = math.min(LQ_BLOCK, m - p0);
+                int cn = n - p0;
+
+                // Gather Vpanel from W (masked c' < i -> 0; same as factorization step 2).
+                for (int i = 0; i < pb; i++)
+                {
+                    int r = p0 + i;
+                    double* Vrow = Vp + (long)i * cn;
+                    double* Wrow = Wp + (long)r * n + p0;
+                    for (int c = 0; c < cn; c++)
+                        Vrow[c] = (c >= i) ? Wrow[c] : (double)0;
+                }
+
+                // Build Vt and form T (same as factorization steps 3-4).
+                for (int i = 0; i < pb; i++)
+                {
+                    double* Vrow = Vp + (long)i * cn;
+                    for (int c = 0; c < cn; c++)
+                        Vtp[(long)c * pb + i] = Vrow[c];
+                }
+                formT(Vtp, pb, cn, pb, T, tcol, Yp);
+
+                // Apply the block to Q rows [p0, m), cols [p0, n): Q := Q·(I - Vᵀ Tᵀ V)
+                // = Q - Y·(Tᵀ·V). Row restriction [p0, m) is valid by the same e_t induction the
+                // unblocked lqKernel already used (see its doc comment): rows < p0 are still their
+                // seed e_r, whose dot with Vᵀ is provably zero.
+                int rows = m - p0;
+                double* Cp = Qp + (long)p0 * n + p0;
+                UnsafeUtility.MemClear(Yp, (long)rows * pb * UnsafeUtility.SizeOf<double>());
+                Unsafe_OP.lqYeqCVt(Cp, n, Vtp, cn, rows, pb, Yp);
+                Unsafe_OP.wyTriTransMul(T, pb, Vp, cn);                       // Tᵀ — reconstruction direction
+                Unsafe_OP.wySubVW(Yp, pb, Cp, n, rows, pb, cn, Vp);
+            }
+        }
+
         /// <summary>
         /// LQ decomposition of A (m × n, m ≤ n): A = L · Q where L is m × m lower-triangular
         /// and Q is m × n with orthonormal rows (Q Qᵀ = I_m). Direct row-Householder reduction
@@ -160,9 +393,31 @@ namespace LinearAlgebra
         /// <param name="A">Input m × n matrix (m ≤ n). Not modified.</param>
         /// <param name="L">Output m × m lower-triangular factor (caller-allocated, m × m).</param>
         /// <param name="Q">Output m × n row-orthonormal factor (caller-allocated, m × n).</param>
+        // Allocating wrapper: allocates scratch (Allocator.Temp) and delegates. This is the fast
+        // path — it routes to the BLOCKED (level-3 / compact-WY) factorization core once M_Rows is
+        // large enough to amortise the extra panel bookkeeping; smaller matrices fall back to the
+        // plain rank-1 sweep (lqKernel), which has no panel/GEMM overhead and is already fast enough
+        // at that size. The zero-alloc ws overload is NOT blocked — it keeps calling lqKernel to
+        // preserve its workspace contract; only this allocating convenience wrapper (used by, e.g.,
+        // the benchmark and lqMinNormSolve's allocating overload) gets the speedup.
+        //
+        // LQ_BLOCK_MIN_M is a measured (not derived) crossover, unlike QR's simple ">= 2*QR_BLOCK"
+        // gate: LQ's fold step (Unsafe_OP.lqYeqCVt) is reduction-shaped rather than axpy-shaped (see
+        // its doc comment), so its per-panel overhead amortises more slowly, and double's crossover
+        // measured LATER than float's — a matrix that already pays off for float can still REGRESS
+        // for double (measured: k=256 was a ~9% win for float but a ~20% loss for double). Since the
+        // routing gate is shared by both generated types (this is a proxy template), it must be
+        // conservative enough for the SLOWER-to-cross type. Measured on TallWideSolveBenchmark
+        // (A is k x 2k): k=256 (4 row-panels) regressed for double; k=512 (8 row-panels) was a clear
+        // win for both float (~30%) and double (~7%) at N=512, and both improved further at N=1024
+        // (float ~39%, double ~19%) — so this gate gives every blocked size a verified improvement.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void lqDecomposition(ref doubleMxN A, ref doubleMxN L, ref doubleMxN Q)
         {
+            // See lqDecompositionBlockedCore for why this is a method-local const, not a class field.
+            const int LQ_BLOCK = 64;
+            const int LQ_BLOCK_MIN_M = 512;
+
             int m = A.M_Rows;
             int n = A.N_Cols;
 
@@ -182,7 +437,26 @@ namespace LinearAlgebra
             W.Data.CopyFrom(A.Data);
             double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in A);
 
-            lqKernel(ref W, ref L, ref Q, ref v, zeroThreshold);
+            if (m < LQ_BLOCK_MIN_M)
+            {
+                lqKernel(ref W, ref L, ref Q, ref v, zeroThreshold);
+            }
+            else
+            {
+                var Vpanel = new doubleN(LQ_BLOCK * n, Allocator.Temp, true);
+                var Vt = new doubleN(n * LQ_BLOCK, Allocator.Temp, true);
+                var Tbuf = new doubleN(LQ_BLOCK * LQ_BLOCK, Allocator.Temp, true);
+                var Y = new doubleN(m * LQ_BLOCK, Allocator.Temp, true);
+                var tcolBuf = new doubleN(LQ_BLOCK, Allocator.Temp, true);
+
+                lqDecompositionBlockedCore(ref W, ref L, ref Q, ref v, ref Vpanel, ref Vt, ref Tbuf, ref Y, ref tcolBuf, zeroThreshold);
+
+                tcolBuf.Dispose();
+                Y.Dispose();
+                Tbuf.Dispose();
+                Vt.Dispose();
+                Vpanel.Dispose();
+            }
 
             v.Dispose();
             W.Dispose();

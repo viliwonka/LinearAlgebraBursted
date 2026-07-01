@@ -220,6 +220,43 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // Used by LQ's blocked (level-3) factorization/reconstruction to compute the "folding" term
+        // Y = C·Vᵀ needed for a RIGHT-multiply block reflector update  C -= Y·(T·V)  (equivalently
+        // C·(I - Vᵀ T V)) — see LQ.lqDecompositionBlockedCore. This is the right-multiply mirror of
+        // wyVtC's left-multiply W = Vᵀ·C. Vt is the TRANSPOSE of the clean reflector panel V (shape
+        // cn x pb, contiguous, row stride pb) rather than V itself (shape pb x cn): computing Y = C·Vᵀ
+        // needs to walk Vᵀ's rows (== V's columns) contiguously, so the caller pre-transposes V into
+        // Vt once per panel. C is a strided sub-block of the matrix being updated (leading dimension
+        // Cld). Y is dense contiguous rows×pb (row stride pb).
+        //
+        // An alternative that skipped the Vt transpose and instead computed each Y[t,i] as a direct
+        // (4-accumulator) dot product of C's row t against Vpanel's row i was tried and measured ~2x
+        // SLOWER — despite matching "row-major right-multiply is reduction-bound" (see LQ.dot4's doc
+        // comment), the huge (rows*cn) outer trip count of that formulation, each doing only a
+        // pb=32-wide reduction, lost badly to this version's more moderate (rows*cn) outer trip count
+        // whose innermost pass is a long (pb-wide) UNIT-STRIDE accumulation with no reduction
+        // dependency chain — the same axpy-shaped pattern QR's wyVtC already exploits.
+        //
+        // Y[t,i] += Σ_{c=0..cn-1} Cp[t*Cld+c] * Vt[c*pb+i]   (t in [0,rows), i in [0,pb)).
+        // Caller must zero Y first. Loop order t (outer) / c (middle) / i (inner): the i loop walks
+        // Vtrow and Yrow left-to-right (unit stride in both), the same "walk rows" trick as wyVtC.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void lqYeqCVt([NoAlias] double* Cp, int Cld, [NoAlias] double* Vt, int cn, int rows, int pb, [NoAlias] double* Y)
+        {
+            for (int t = 0; t < rows; t++)
+            {
+                double* Crow = Cp + (long)t * Cld;
+                double* Yrow = Y + (long)t * pb;
+                for (int c = 0; c < cn; c++)
+                {
+                    double temp = Crow[c];
+                    double* Vtrow = Vt + (long)c * pb;
+                    for (int i = 0; i < pb; i++)
+                        Yrow[i] += temp * Vtrow[i];
+                }
+            }
+        }
+
         // W := Tᵀ · W in place (QR's FACTORIZATION direction — applies the block product in
         // reverse reflector order, H_{pb-1}···H_0). T is pb×pb upper-triangular contiguous
         // (row-major, T[i,k] at T[i*pb+k]), diagonal T[i,i] = 1 (τ≡1 convention, not LAPACK's

@@ -815,6 +815,18 @@ public class floatOrthoOpTests
             LQDecompRandomWide_4x9,
             LQDecompRandomWide_8x16,
             LQDecompDiagonalWide,
+            // BLOCKED path (engaged only when M_Rows >= LQ_BLOCK_MIN_M = 512; below that
+            // lqDecomposition falls back to the unblocked lqKernel). LQ_BLOCK = 64, so to also
+            // exercise the "last panel narrower than LQ_BLOCK" branch we include m values that are
+            // NOT multiples of 64 (513 -> pb=1, 700 -> pb=60) alongside exact multiples (512, 576,
+            // 640). Wide-or-square shapes (M_Rows <= N_Cols), boosted diagonal for full-row-rank
+            // conditioning, matching the QR blocked-non-aligned tests. These are the ONLY tests that
+            // reach the blocked LQ core.
+            LQDecompBlockedAligned_512x1024,
+            LQDecompBlockedLastPanel_513x1030,
+            LQDecompBlockedNearSquare_700x701,
+            LQDecompBlockedAligned_576x1200,
+            LQDecompBlockedNearSquare_640x641,
         }
 
         public TestType Type;
@@ -831,6 +843,11 @@ public class floatOrthoOpTests
                 case TestType.LQDecompRandomWide_4x9:   LQDecompRandomWide_4x9();   break;
                 case TestType.LQDecompRandomWide_8x16:  LQDecompRandomWide_8x16();  break;
                 case TestType.LQDecompDiagonalWide:      LQDecompDiagonalWide();      break;
+                case TestType.LQDecompBlockedAligned_512x1024:  LQDecompBlockedRandom(512, 1024, 800512); break;
+                case TestType.LQDecompBlockedLastPanel_513x1030: LQDecompBlockedRandom(513, 1030, 800513); break;
+                case TestType.LQDecompBlockedNearSquare_700x701: LQDecompBlockedRandom(700, 701, 800700); break;
+                case TestType.LQDecompBlockedAligned_576x1200:  LQDecompBlockedRandom(576, 1200, 800576); break;
+                case TestType.LQDecompBlockedNearSquare_640x641: LQDecompBlockedRandom(640, 641, 800640); break;
             }
         }
 
@@ -899,6 +916,36 @@ public class floatOrthoOpTests
             var Q    = arena.floatMat(m, n);
             LQ.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
+            arena.Dispose();
+        }
+
+        // Exercises the BLOCKED LQ path (engaged only when m = M_Rows >= LQ_BLOCK_MIN_M = 512; the
+        // whole existing suite tops out at 8x16 and so only ever hits the unblocked lqKernel). Uses
+        // wide-or-square shapes (m <= n) with a boosted diagonal so A stays full-row-rank and well
+        // conditioned — exactly as the QR blocked-non-aligned tests do. AssertLQ checks all three
+        // invariants: A ≈ L*Q (reconstruction), L lower-triangular, Q has orthonormal ROWS (QQᵀ=I_m).
+        // Tolerance is scale-appropriate for these large sizes (see AssertLQ callsite): at m up to
+        // 700 with entries up to ~15 the float reconstruction error is ~1e-3 absolute; a tiny 1e-4
+        // bound would false-fail purely on float rounding, so 1e-2 is used (double is far tighter but
+        // shares the same bound). A genuine blocked-core bug (non-triangular L, non-orthonormal Q, or
+        // reconstruction off by O(1)) still trips this bound loudly.
+        void LQDecompBlockedRandom(int m, int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var random = new Unity.Mathematics.Random(seed);
+            var A = arena.floatRandomMat(m, n, -5f, 5f, seed);
+            for (int d = 0; d < m; d++)
+                A[d, d] += 5.1f + 10f * random.NextFloat();
+
+            var origA = A.Copy();
+            var L = arena.floatMat(m, m);
+            var Q = arena.floatMat(m, n);
+
+            LQ.lqDecomposition(ref A, ref L, ref Q);
+
+            AssertLQ(in origA, in L, in Q, 1E-2f);
+
             arena.Dispose();
         }
 
