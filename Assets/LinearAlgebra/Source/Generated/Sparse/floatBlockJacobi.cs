@@ -37,8 +37,11 @@ namespace LinearAlgebra.Sparse
         /// holds (A_ii⁻¹)[r,c]. Length nb*BR*BR.</summary>
         public readonly UnsafeList<float> DInv;
 
-        [NativeDisableUnsafePtrRestriction]
-        private readonly unsafe Arena* _arenaPtr;
+        // Value handle, not a pointer: copying a floatBlockJacobi (including compiler-inserted
+        // defensive copies of `in` parameters) copies this 8-byte handle, which still resolves
+        // to the SAME heap-allocated ArenaCore. This retired the old "arena identity captures a
+        // dangling stack address" failure mode (docs/rfc-memory-model.md FM2) -- see Arena.cs.
+        private readonly Arena _arena;
 
         /// <summary>
         /// Builds the preconditioner from A's diagonal blocks. A must be square
@@ -47,7 +50,7 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe floatBlockJacobi(in floatBSM A, Allocator allocator)
         {
-            _arenaPtr = null;
+            _arena = default;
 
             if (A.BlockRows != A.BlockCols || A.BR != A.BC)
                 throw new ArgumentException("floatBlockJacobi: A must be square (BlockRows==BlockCols, BR==BC)");
@@ -120,18 +123,15 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Same construction, tracked by an arena (disposed with the arena). Takes the arena by
-        /// `in` here because -- unlike floatBSM.ToDense/floatBSMBuilder.ToBSM -- this
-        /// constructor does NOT call a mutating Arena allocator method; it only reads
-        /// arena.Allocator and captures the arena's address for the (currently unused, future-
-        /// proofing) `_arenaPtr` field, matching the floatBSM/floatBSMBuilder constructor
-        /// pair's own `in Arena` constructor. The arena-OWNING factory that actually registers
-        /// this instance for disposal is `Arena.floatBlockJacobi(in floatBSM)`, which takes
-        /// `ref Arena` per the Phase-1 dangling-pointer lesson (see floatBSM.ToDense).
+        /// `in`: it only reads arena.Allocator and stores the (currently unused, future-
+        /// proofing) `_arena` handle -- a plain value copy, safe regardless of `in`/`ref` now
+        /// that Arena is a thin copyable handle to a heap-allocated ArenaCore (see Arena.cs).
+        /// The arena-OWNING factory that actually registers this instance for disposal is
+        /// `Arena.floatBlockJacobi(in floatBSM)`.
         /// </summary>
         public unsafe floatBlockJacobi(in floatBSM A, in Arena arena) : this(in A, arena.Allocator)
         {
-            fixed (Arena* arenaPtr = &arena)
-                _arenaPtr = arenaPtr;
+            _arena = arena;
         }
 
         /// <summary>

@@ -2,20 +2,22 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace LinearAlgebra
 {
-    public partial struct Arena {
+    internal partial struct ArenaCore
+    {
+        internal UnsafeList<intN> intVectors;
+        internal UnsafeList<intMxN> intMatrices;
+        internal UnsafeList<intN> tempintVectors;
+        internal UnsafeList<intMxN> tempintMatrices;
+    }
 
-        private UnsafeList<intN> intVectors;
-        private UnsafeList<intMxN> intMatrices;
-        private UnsafeList<intN> tempintVectors;
-        private UnsafeList<intMxN> tempintMatrices;
-
+    public unsafe partial struct Arena {
 
         #region VECTOR
-        
+
         public intN intVec(int N, bool uninit = false) {
 
             var vec = new intN(N, in this, uninit);
-            intVectors.Add(in vec);
+            _core->intVectors.Add(in vec);
             return vec;
         }
 
@@ -23,7 +25,7 @@ namespace LinearAlgebra
         public intN intVec(int N, int s)
         {
             var vec = new intN(N, in this, true);
-            intVectors.Add(in vec);
+            _core->intVectors.Add(in vec);
             unsafe {
                 mathUnsafeint.setAll(vec.Data.Ptr, N, s);
             }
@@ -33,21 +35,21 @@ namespace LinearAlgebra
         internal intN intVec(in intN orig)
         {
             var vec = new intN(in orig);
-            intVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
+            _core->intVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
             return vec;
         }
 
         internal intN tempintVec(int N, bool uninit = false)
         {
             var vec = new intN(N, in this, uninit);
-            tempintVectors.Add(in vec);
+            _core->tempintVectors.Add(in vec);
             return vec;
         }
 
         internal intN tempintVec(in intN orig)
         {
             var vec = new intN(in orig);
-            tempintVectors.Add(in vec);
+            _core->tempintVectors.Add(in vec);
             return vec;
         }
         #endregion
@@ -62,7 +64,7 @@ namespace LinearAlgebra
         public intMxN intMat(int M_rows, int N_cols, bool uninit = false)
         {
             var matrix = new intMxN(M_rows, N_cols, in this, uninit);
-            intMatrices.Add(in matrix);
+            _core->intMatrices.Add(in matrix);
             return matrix;
         }
 
@@ -70,7 +72,7 @@ namespace LinearAlgebra
         public intMxN intMat(int M_rows, int N_cols, int s)
         {
             var matrix = new intMxN(M_rows, N_cols, in this, false);
-            intMatrices.Add(in matrix);
+            _core->intMatrices.Add(in matrix);
             unsafe
             {
                 mathUnsafeint.setAll(matrix.Data.Ptr, matrix.Length, s);
@@ -81,40 +83,40 @@ namespace LinearAlgebra
         public intMxN intMat(in intMxN orig)
         {
             var matrix = new intMxN(in orig);
-            intMatrices.Add(in matrix);
+            _core->intMatrices.Add(in matrix);
             return matrix;
-        }   
+        }
 
         internal intMxN tempintMat(int M_rows, int M_cols, bool uninit = false)
         {
             var matrix = new intMxN(M_rows, M_cols, in this, uninit);
-            tempintMatrices.Add(in matrix);
+            _core->tempintMatrices.Add(in matrix);
             return matrix;
         }
 
         internal intMxN tempintMat(in intMxN orig)
         {
             var matrix = new intMxN(orig);
-            tempintMatrices.Add(in matrix);
+            _core->tempintMatrices.Add(in matrix);
             return matrix;
         }
         #endregion
 
         // --- debug pool checks (see Arena.fProxy) ---
-        public unsafe bool isPersistent(in intN v) {
-            for (int i = 0; i < intVectors.Length; i++) if (intVectors[i].Data.Ptr == v.Data.Ptr) return true;
+        public bool isPersistent(in intN v) {
+            for (int i = 0; i < _core->intVectors.Length; i++) if (_core->intVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
-        public unsafe bool isTemp(in intN v) {
-            for (int i = 0; i < tempintVectors.Length; i++) if (tempintVectors[i].Data.Ptr == v.Data.Ptr) return true;
+        public bool isTemp(in intN v) {
+            for (int i = 0; i < _core->tempintVectors.Length; i++) if (_core->tempintVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
-        public unsafe bool isPersistent(in intMxN m) {
-            for (int i = 0; i < intMatrices.Length; i++) if (intMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+        public bool isPersistent(in intMxN m) {
+            for (int i = 0; i < _core->intMatrices.Length; i++) if (_core->intMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
-        public unsafe bool isTemp(in intMxN m) {
-            for (int i = 0; i < tempintMatrices.Length; i++) if (tempintMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+        public bool isTemp(in intMxN m) {
+            for (int i = 0; i < _core->tempintMatrices.Length; i++) if (_core->tempintMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
 

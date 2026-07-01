@@ -9,11 +9,14 @@ namespace LinearAlgebra
     [StructLayout(LayoutKind.Sequential)]
     public partial struct boolN : IDisposable, IUnsafeBoolArray {
 
-        [NativeDisableUnsafePtrRestriction]
-        private unsafe Arena* _arenaPtr;
+        // Value handle, not a pointer: copying a boolN (including compiler-inserted defensive
+        // copies of `in` parameters) copies this 8-byte handle, which still resolves to the SAME
+        // heap-allocated ArenaCore. This retired the old "arena identity captures a dangling
+        // stack address" failure mode (docs/rfc-memory-model.md FM2) -- see Arena.cs.
+        private Arena _arena;
 
         public int N => Data.Length;
-        
+
         public UnsafeList<bool> Data { get; private set; }
 
         /// <summary>
@@ -23,8 +26,7 @@ namespace LinearAlgebra
         /// <param name="allocator"></param>
         public unsafe boolN(int n, in Arena arena, bool uninit = false) {
 
-            fixed (Arena* arenaPtr = &arena)
-                _arenaPtr = arenaPtr;
+            _arena = arena;
 
             var allocator = arena.Allocator;
 
@@ -40,11 +42,11 @@ namespace LinearAlgebra
         /// <param name="orig"></param>
         public unsafe boolN(in boolN orig, Allocator allocator = Allocator.Invalid)
         {
-            _arenaPtr = orig._arenaPtr;
+            _arena = orig._arena;
 
             // guard a standalone (null-arena) source — was dereferencing null for the default allocator
             if (allocator == Allocator.Invalid)
-                allocator = _arenaPtr != null ? _arenaPtr->Allocator : Allocator.Temp;
+                allocator = _arena.HasCore ? _arena.Allocator : Allocator.Temp;
 
             var data = new UnsafeList<bool>(orig.N, allocator, NativeArrayOptions.UninitializedMemory);
             data.Resize(orig.N, NativeArrayOptions.UninitializedMemory);
@@ -53,9 +55,21 @@ namespace LinearAlgebra
             Data = data;
         }
 
-        public unsafe boolN Copy() => _arenaPtr->boolVec(in this);
-        
-        public unsafe boolN TempCopy() => _arenaPtr->tempBoolVec(in this);
+        public unsafe boolN Copy()
+        {
+            if (!_arena.HasCore)
+                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
+
+            return _arena.boolVec(in this);
+        }
+
+        public unsafe boolN TempCopy()
+        {
+            if (!_arena.HasCore)
+                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
+
+            return _arena.tempBoolVec(in this);
+        }
 
         public void Dispose() {
 

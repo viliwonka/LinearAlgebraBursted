@@ -175,13 +175,14 @@ public class BoolIndexingTests
 
         // boolMxN HAS a standalone (null-arena) ctor, so fully exercise the copy-constructor guard's
         // null branch: copying a standalone matrix with the DEFAULT allocator previously dereferenced
-        // a null _arenaPtr; it must now fall back to Allocator.Temp without crashing and copy equally.
+        // a null arena core (the old _arenaPtr field, now the _arena handle's _core); it must now
+        // fall back to Allocator.Temp without crashing and copy equally.
         void MatrixCopyNullArenaGuard(ref Arena arena)
         {
             int rows = 4;
             int cols = 6;
 
-            // Standalone matrix: the non-arena ctor leaves _arenaPtr null.
+            // Standalone matrix: the non-arena ctor leaves _arena as default (HasCore == false).
             boolMxN standalone = new boolMxN(rows, cols, Allocator.Temp);
             for (int i = 0; i < standalone.Length; i++)
                 standalone[i] = (i % 2 == 0);

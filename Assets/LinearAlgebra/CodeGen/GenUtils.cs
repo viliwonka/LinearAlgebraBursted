@@ -44,9 +44,6 @@ namespace LinearAlgebra.CodeGen
         public const string generatedFolder = "Assets/LinearAlgebra/Source/Generated/";
         public const string generatedTestsFolder = "Assets/LinearAlgebra/SourceTests/Generated/";
 
-        public const string shortcutsTemplateFile = "Assets/LinearAlgebra/CodeGen/Templates/shortcuts.template.txt";
-        public const string constructorsTemplateFile = "Assets/LinearAlgebra/CodeGen/Templates/constructors.template.txt";
-
         public const string copyMarkerStart = "//+copyReplace";
         public const string copyMarkerEnd   = "//-copyReplace";
         public static int copyMarkerLen = copyMarkerStart.Length;

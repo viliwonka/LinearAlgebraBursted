@@ -8,11 +8,14 @@ namespace LinearAlgebra
     [StructLayout(LayoutKind.Sequential)]
     public partial struct fProxyN : IDisposable, IUnsafefProxyArray {
 
-        [NativeDisableUnsafePtrRestriction]
-        private unsafe Arena* _arenaPtr;
+        // Value handle, not a pointer: copying a fProxyN (including compiler-inserted defensive
+        // copies of `in` parameters) copies this 8-byte handle, which still resolves to the SAME
+        // heap-allocated ArenaCore. This retired the old "arena identity captures a dangling
+        // stack address" failure mode (docs/rfc-memory-model.md FM2) -- see Arena.cs.
+        private Arena _arena;
 
         public int N => Data.Length;
-        
+
         public UnsafeList<fProxy> Data { get; private set; }
 
         /// <summary>
@@ -20,15 +23,11 @@ namespace LinearAlgebra
         /// </summary>
         /// <param name="n"></param>
         /// <param name="allocator"></param>
-        public unsafe fProxyN(int n, in Arena arena, bool uninit = false) { 
+        public unsafe fProxyN(int n, in Arena arena, bool uninit = false) {
 
-            fixed (Arena* arenaPtr = &arena)
-                _arenaPtr = arenaPtr;
+            _arena = arena;
 
             var allocator = arena.Allocator;
-            //var allocator1 = _arenaPtr->Allocator;
-            //UnityEngine.Debug.Log($"Vector: {allocator}");
-            //UnityEngine.Debug.Log($"Vector: {allocator1}");
 
             var data = new UnsafeList<fProxy>(n, allocator, uninit? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
             data.Resize(n, NativeArrayOptions.UninitializedMemory);
@@ -42,15 +41,11 @@ namespace LinearAlgebra
         /// <param name="orig"></param>
         public unsafe fProxyN(in fProxyN orig, Allocator allocator = Allocator.Invalid) {
 
-            _arenaPtr = orig._arenaPtr;
+            _arena = orig._arena;
 
             // guard a standalone (null-arena) source — was dereferencing null for the default allocator
             if(allocator == Allocator.Invalid)
-                allocator = _arenaPtr != null ? _arenaPtr->Allocator : Allocator.Temp;
-
-            //var allocator1 = _arenaPtr->Allocator;
-            //UnityEngine.Debug.Log($"Vector: {allocator}");
-            //UnityEngine.Debug.Log($"Vector: {allocator1}");
+                allocator = _arena.HasCore ? _arena.Allocator : Allocator.Temp;
 
             var data = new UnsafeList<fProxy>(orig.N, allocator, NativeArrayOptions.UninitializedMemory);
             data.Resize(orig.N, NativeArrayOptions.UninitializedMemory);
@@ -65,27 +60,32 @@ namespace LinearAlgebra
         /// <param name="orig"></param>
         public unsafe fProxyN(int n, Allocator allocator = Allocator.Invalid, bool uninit = false)
         {
-            _arenaPtr = null;
+            _arena = default;
 
-            // standalone (non-arena) vector — fall back to Temp instead of dereferencing the null
-            // _arenaPtr (which crashed for the default Allocator.Invalid).
+            // standalone (non-arena) vector — fall back to Temp instead of dereferencing a null core.
             if (allocator == Allocator.Invalid)
                 allocator = Allocator.Temp;
 
             var data = new UnsafeList<fProxy>(n, allocator, NativeArrayOptions.UninitializedMemory);
             data.Resize(n, uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
-            
+
             Data = data;
         }
 
         public unsafe fProxyN Copy()
         {
-            return _arenaPtr->fProxyVec(in this);
+            if (!_arena.HasCore)
+                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
+
+            return _arena.fProxyVec(in this);
         }
 
         public unsafe fProxyN TempCopy()
         {
-            return _arenaPtr->tempfProxyVec(in this);   // temp pool (was wrongly the persistent Copy path)
+            if (!_arena.HasCore)
+                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
+
+            return _arena.tempfProxyVec(in this);   // temp pool (was wrongly the persistent Copy path)
         }
 
         public void CopyTo(in fProxyN vec)

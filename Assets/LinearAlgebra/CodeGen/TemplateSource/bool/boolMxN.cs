@@ -14,8 +14,11 @@ namespace LinearAlgebra
 
         public UnsafeList<bool> Data { get; private set; }
 
-        [NativeDisableUnsafePtrRestriction]
-        private unsafe Arena* _arenaPtr;
+        // Value handle, not a pointer: copying a boolMxN (including compiler-inserted defensive
+        // copies of `in` parameters) copies this 8-byte handle, which still resolves to the SAME
+        // heap-allocated ArenaCore. This retired the old "arena identity captures a dangling
+        // stack address" failure mode (docs/rfc-memory-model.md FM2) -- see Arena.cs.
+        private Arena _arena;
 
         public readonly int Length;
 
@@ -23,7 +26,7 @@ namespace LinearAlgebra
 
         public unsafe boolMxN(int M_rows, int N_cols, Allocator allocator, bool uninit = false)
         {
-            _arenaPtr = null;
+            _arena = default;
 
             M_Rows = M_rows;
             N_Cols = N_cols;
@@ -35,13 +38,12 @@ namespace LinearAlgebra
 
         public unsafe boolMxN(int M_rows, int N_cols, in Arena arena, bool uninit = false)
         {
-            fixed (Arena* arenaPtr = &arena)
-                _arenaPtr = arenaPtr;
+            _arena = arena;
 
             M_Rows = M_rows;
             N_Cols = N_cols;
             Length = M_Rows * N_Cols;
-            var data = new UnsafeList<bool>(Length, _arenaPtr->Allocator, uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
+            var data = new UnsafeList<bool>(Length, _arena.Allocator, uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory);
             data.Resize(Length, NativeArrayOptions.UninitializedMemory);
             Data = data;
         }
@@ -50,9 +52,9 @@ namespace LinearAlgebra
         {
             // guard a standalone (null-arena) source — was dereferencing null for the default allocator
             if (allocator == Allocator.Invalid)
-                allocator = orig._arenaPtr != null ? orig._arenaPtr->Allocator : Allocator.Temp;
+                allocator = orig._arena.HasCore ? orig._arena.Allocator : Allocator.Temp;
 
-            _arenaPtr = orig._arenaPtr;
+            _arena = orig._arena;
             M_Rows = orig.M_Rows;
             N_Cols = orig.N_Cols;
             Length = orig.Length;
@@ -64,12 +66,18 @@ namespace LinearAlgebra
 
         public unsafe boolMxN Copy()
         {
-            return _arenaPtr->boolMat(in this);
+            if (!_arena.HasCore)
+                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
+
+            return _arena.boolMat(in this);
         }
 
         public unsafe boolMxN TempCopy()
         {
-            return _arenaPtr->tempBoolMat(in this);
+            if (!_arena.HasCore)
+                throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
+
+            return _arena.tempBoolMat(in this);
         }
 
         public void Dispose()

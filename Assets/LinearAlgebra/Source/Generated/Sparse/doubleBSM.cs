@@ -40,8 +40,11 @@ namespace LinearAlgebra.Sparse
         public UnsafeList<int> ColInd;     // length nnzb (block-column of each stored block)
         public UnsafeList<double> Values;  // length nnzb*BR*BC (flat, row-major per block)
 
-        [NativeDisableUnsafePtrRestriction]
-        private unsafe Arena* _arenaPtr;
+        // Value handle, not a pointer: copying a doubleBSM (including compiler-inserted
+        // defensive copies of `in` parameters) copies this 8-byte handle, which still resolves
+        // to the SAME heap-allocated ArenaCore. This retired the old "arena identity captures a
+        // dangling stack address" failure mode (docs/rfc-memory-model.md FM2) -- see Arena.cs.
+        private Arena _arena;
 
         /// <summary>
         /// Allocates a compressed BSR matrix with the given block-grid shape and a fixed
@@ -50,7 +53,7 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe doubleBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, Allocator allocator, bool uninit = false)
         {
-            _arenaPtr = null;
+            _arena = default;
             BlockRows = blockRows;
             BlockCols = blockCols;
             this.BR = BR;
@@ -78,8 +81,7 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe doubleBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, in Arena arena, bool uninit = false)
         {
-            fixed (Arena* arenaPtr = &arena)
-                _arenaPtr = arenaPtr;
+            _arena = arena;
 
             BlockRows = blockRows;
             BlockCols = blockCols;
@@ -118,13 +120,12 @@ namespace LinearAlgebra.Sparse
         /// Expands this BSM to a dense M_Rows x N_Cols matrix: zero-filled, then every stored
         /// block scattered into place. Used by tests and as a general-purpose densify helper.
         ///
-        /// Takes the arena by `ref`, NOT `in`: it calls the mutating arena.doubleMat(...)
-        /// allocator internally, and `Arena`'s allocator methods are not `readonly` -- an `in`
-        /// parameter here would force the compiler to defensively copy the arena before that
-        /// call, so the returned matrix's internal arena pointer would capture the address of a
-        /// dead temporary instead of the caller's real arena (a dangling-pointer bug caught by
-        /// the test suite). Same reasoning as why ArenaExtensions factory methods take
-        /// `this ref Arena`, not `this in Arena`.
+        /// Kept as `ref Arena` for API stability, but this is no longer load-bearing: since
+        /// Arena is now a thin copyable handle to a heap-allocated ArenaCore (see Arena.cs),
+        /// even a compiler-inserted defensive copy of an `in Arena` parameter would still
+        /// resolve to the same live core, so `in` would work correctly too (the old dangling-
+        /// pointer hazard this comment used to describe is structurally gone -- see
+        /// docs/rfc-memory-model.md, failure mode 2).
         /// </summary>
         public doubleMxN ToDense(ref Arena arena)
         {

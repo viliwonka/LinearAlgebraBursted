@@ -4,15 +4,18 @@ using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
+    internal partial struct ArenaCore
+    {
+        internal UnsafeList<floatBSM> floatBSMs;
+        internal UnsafeList<floatBSMBuilder> floatBSMBuilders;
+        internal UnsafeList<floatBlockJacobi> floatBlockJacobis;
+    }
+
     // Core bump-allocator primitives for the block-sparse matrix type, mirroring how
     // floatVec/floatMat are declared directly on the Arena struct (see Arena.float.cs).
-    // Lifecycle wiring (AllocationsCount / Clear / Dispose) lives in Arena.cs.
-    public partial struct Arena
+    // Lifecycle wiring (AllocationsCount / Clear / Dispose) lives in Arena.cs / ArenaCore.
+    public unsafe partial struct Arena
     {
-        private UnsafeList<floatBSM> floatBSMs;
-        private UnsafeList<floatBSMBuilder> floatBSMBuilders;
-        private UnsafeList<floatBlockJacobi> floatBlockJacobis;
-
         /// <summary>
         /// Allocates a compressed block-sparse (BSR) matrix with the given block-grid shape
         /// and stored-block capacity (nnzb). Typically produced by floatBSMBuilder.ToBSM
@@ -21,7 +24,7 @@ namespace LinearAlgebra
         public floatBSM floatBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false)
         {
             var mat = new floatBSM(blockRows, blockCols, BR, BC, nnzb, in this, uninit);
-            floatBSMs.Add(in mat);
+            _core->floatBSMs.Add(in mat);
             return mat;
         }
 
@@ -33,25 +36,18 @@ namespace LinearAlgebra
         public floatBSMBuilder floatBSMBuilder(int blockRows, int blockCols, int BR, int BC, int capacityHint = 8)
         {
             var builder = new floatBSMBuilder(blockRows, blockCols, BR, BC, in this, capacityHint);
-            floatBSMBuilders.Add(in builder);
+            _core->floatBSMBuilders.Add(in builder);
             return builder;
         }
 
         /// <summary>
         /// Builds a block-Jacobi preconditioner from A's diagonal blocks (A must be square:
         /// BlockRows==BlockCols, BR==BC). Arena-owned: disposed with the arena.
-        ///
-        /// Takes A by `in` (read-only source) but is itself called on a mutable arena
-        /// receiver -- an instance method on `partial struct Arena`, same as floatBSM/
-        /// floatBSMBuilder above, so `this` is the caller's real arena, not a defensive copy
-        /// (the "ref Arena" lesson from floatBSM.ToDense/floatBSMBuilder.ToBSM applies to
-        /// extension-method-shaped factories; here it is naturally satisfied because the
-        /// factory lives directly on Arena).
         /// </summary>
         public floatBlockJacobi floatBlockJacobi(in floatBSM A)
         {
             var pc = new floatBlockJacobi(in A, in this);
-            floatBlockJacobis.Add(in pc);
+            _core->floatBlockJacobis.Add(in pc);
             return pc;
         }
     }

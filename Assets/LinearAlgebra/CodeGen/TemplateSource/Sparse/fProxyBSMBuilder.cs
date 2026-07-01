@@ -26,11 +26,12 @@ namespace LinearAlgebra.Sparse
     /// capacityHint triplets, e.g. via AddValue, then disposing the arena). Fixed by moving the
     /// growable triplet state behind a single heap-allocated State* that every value-copy of
     /// fProxyBSMBuilder shares (the pointer VALUE is copied around; there is exactly one
-    /// pointee) -- mirrors the Arena* idiom already used by fProxyMxN/fProxyBSM/etc, except the
-    /// pointee here has to be heap-owned by the builder itself (Malloc'd once in the
-    /// constructor, Free'd once in Dispose) rather than pointing at an already-stable address:
-    /// unlike an Arena instance (which the caller keeps in one stable location for the lifetime
-    /// of the pointer), nothing else owns a persistent home for this mutable triplet state. A
+    /// pointee) -- mirrors the ArenaCore* idiom Arena itself now uses internally (see Arena.cs:
+    /// Arena is a thin handle around a heap-allocated ArenaCore, so copying the handle can never
+    /// diverge from the one shared core), except the pointee here has to be heap-owned by the
+    /// builder itself (Malloc'd once in the constructor, Free'd once in Dispose) rather than
+    /// pointing at an already-stable address owned by someone else: nothing else owns a
+    /// persistent home for this mutable triplet state. A
     /// NativeReference&lt;State&gt; wrapper would be an equivalent alternative; raw Malloc/Free
     /// was chosen to avoid pulling in a second allocation-owning collection type for one field,
     /// and keeps Dispose symmetric with the constructor's Malloc. Public API is unchanged --
@@ -77,12 +78,17 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe int TripletCount => _state->triBlockRow.Length;
 
-        [NativeDisableUnsafePtrRestriction]
-        private unsafe Arena* _arenaPtr;
+        // Value handle, not a pointer: copying a fProxyBSMBuilder (including compiler-inserted
+        // defensive copies of `in` parameters) copies this 8-byte handle, which still resolves
+        // to the SAME heap-allocated ArenaCore. This retired the old "arena identity captures a
+        // dangling stack address" failure mode (docs/rfc-memory-model.md FM2) -- see Arena.cs.
+        // Unrelated to the _state indirection above, which fixes failure mode 1 (growable-list
+        // relocation), not FM2.
+        private Arena _arena;
 
         public unsafe fProxyBSMBuilder(int blockRows, int blockCols, int BR, int BC, Allocator allocator, int capacityHint = 8)
         {
-            _arenaPtr = null;
+            _arena = default;
 
             _state = (State*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<State>(), UnsafeUtility.AlignOf<State>(), allocator);
             _state->BlockRows = blockRows;
@@ -98,8 +104,7 @@ namespace LinearAlgebra.Sparse
 
         public unsafe fProxyBSMBuilder(int blockRows, int blockCols, int BR, int BC, in Arena arena, int capacityHint = 8)
         {
-            fixed (Arena* arenaPtr = &arena)
-                _arenaPtr = arenaPtr;
+            _arena = arena;
 
             var allocator = arena.Allocator;
 
@@ -180,10 +185,9 @@ namespace LinearAlgebra.Sparse
         /// transition this represents (Phase 1 has no incremental re-pattern path; re-stamping
         /// values on a fixed pattern is a later phase).
         ///
-        /// Takes the arena by `ref`, NOT `in`: it calls the mutating arena.fProxyBSM(...)
-        /// allocator internally, and `Arena`'s allocator methods are not `readonly` -- see the
-        /// matching comment on fProxyBSM.ToDense for why an `in Arena` parameter here would
-        /// produce a dangling internal arena pointer on the returned fProxyBSM.
+        /// Kept as `ref Arena` for API stability, but this is no longer load-bearing -- see the
+        /// matching comment on fProxyBSM.ToDense: Arena is now a thin copyable handle to a
+        /// heap-allocated ArenaCore, so `in Arena` would resolve correctly here too.
         /// </summary>
         public unsafe fProxyBSM ToBSM(ref Arena arena)
         {

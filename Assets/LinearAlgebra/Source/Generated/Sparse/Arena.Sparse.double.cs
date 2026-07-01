@@ -4,15 +4,18 @@ using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
+    internal partial struct ArenaCore
+    {
+        internal UnsafeList<doubleBSM> doubleBSMs;
+        internal UnsafeList<doubleBSMBuilder> doubleBSMBuilders;
+        internal UnsafeList<doubleBlockJacobi> doubleBlockJacobis;
+    }
+
     // Core bump-allocator primitives for the block-sparse matrix type, mirroring how
     // doubleVec/doubleMat are declared directly on the Arena struct (see Arena.double.cs).
-    // Lifecycle wiring (AllocationsCount / Clear / Dispose) lives in Arena.cs.
-    public partial struct Arena
+    // Lifecycle wiring (AllocationsCount / Clear / Dispose) lives in Arena.cs / ArenaCore.
+    public unsafe partial struct Arena
     {
-        private UnsafeList<doubleBSM> doubleBSMs;
-        private UnsafeList<doubleBSMBuilder> doubleBSMBuilders;
-        private UnsafeList<doubleBlockJacobi> doubleBlockJacobis;
-
         /// <summary>
         /// Allocates a compressed block-sparse (BSR) matrix with the given block-grid shape
         /// and stored-block capacity (nnzb). Typically produced by doubleBSMBuilder.ToBSM
@@ -21,7 +24,7 @@ namespace LinearAlgebra
         public doubleBSM doubleBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false)
         {
             var mat = new doubleBSM(blockRows, blockCols, BR, BC, nnzb, in this, uninit);
-            doubleBSMs.Add(in mat);
+            _core->doubleBSMs.Add(in mat);
             return mat;
         }
 
@@ -33,25 +36,18 @@ namespace LinearAlgebra
         public doubleBSMBuilder doubleBSMBuilder(int blockRows, int blockCols, int BR, int BC, int capacityHint = 8)
         {
             var builder = new doubleBSMBuilder(blockRows, blockCols, BR, BC, in this, capacityHint);
-            doubleBSMBuilders.Add(in builder);
+            _core->doubleBSMBuilders.Add(in builder);
             return builder;
         }
 
         /// <summary>
         /// Builds a block-Jacobi preconditioner from A's diagonal blocks (A must be square:
         /// BlockRows==BlockCols, BR==BC). Arena-owned: disposed with the arena.
-        ///
-        /// Takes A by `in` (read-only source) but is itself called on a mutable arena
-        /// receiver -- an instance method on `partial struct Arena`, same as doubleBSM/
-        /// doubleBSMBuilder above, so `this` is the caller's real arena, not a defensive copy
-        /// (the "ref Arena" lesson from doubleBSM.ToDense/doubleBSMBuilder.ToBSM applies to
-        /// extension-method-shaped factories; here it is naturally satisfied because the
-        /// factory lives directly on Arena).
         /// </summary>
         public doubleBlockJacobi doubleBlockJacobi(in doubleBSM A)
         {
             var pc = new doubleBlockJacobi(in A, in this);
-            doubleBlockJacobis.Add(in pc);
+            _core->doubleBlockJacobis.Add(in pc);
             return pc;
         }
     }

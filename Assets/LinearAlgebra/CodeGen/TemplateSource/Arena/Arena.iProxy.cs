@@ -2,20 +2,22 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace LinearAlgebra
 {
-    public partial struct Arena {
+    internal partial struct ArenaCore
+    {
+        internal UnsafeList<iProxyN> iProxyVectors;
+        internal UnsafeList<iProxyMxN> iProxyMatrices;
+        internal UnsafeList<iProxyN> tempiProxyVectors;
+        internal UnsafeList<iProxyMxN> tempiProxyMatrices;
+    }
 
-        private UnsafeList<iProxyN> iProxyVectors;
-        private UnsafeList<iProxyMxN> iProxyMatrices;
-        private UnsafeList<iProxyN> tempiProxyVectors;
-        private UnsafeList<iProxyMxN> tempiProxyMatrices;
-
+    public unsafe partial struct Arena {
 
         #region VECTOR
-        
+
         public iProxyN iProxyVec(int N, bool uninit = false) {
 
             var vec = new iProxyN(N, in this, uninit);
-            iProxyVectors.Add(in vec);
+            _core->iProxyVectors.Add(in vec);
             return vec;
         }
 
@@ -23,7 +25,7 @@ namespace LinearAlgebra
         public iProxyN iProxyVec(int N, iProxy s)
         {
             var vec = new iProxyN(N, in this, true);
-            iProxyVectors.Add(in vec);
+            _core->iProxyVectors.Add(in vec);
             unsafe {
                 mathUnsafeiProxy.setAll(vec.Data.Ptr, N, s);
             }
@@ -33,21 +35,21 @@ namespace LinearAlgebra
         internal iProxyN iProxyVec(in iProxyN orig)
         {
             var vec = new iProxyN(in orig);
-            iProxyVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
+            _core->iProxyVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
             return vec;
         }
 
         internal iProxyN tempiProxyVec(int N, bool uninit = false)
         {
             var vec = new iProxyN(N, in this, uninit);
-            tempiProxyVectors.Add(in vec);
+            _core->tempiProxyVectors.Add(in vec);
             return vec;
         }
 
         internal iProxyN tempiProxyVec(in iProxyN orig)
         {
             var vec = new iProxyN(in orig);
-            tempiProxyVectors.Add(in vec);
+            _core->tempiProxyVectors.Add(in vec);
             return vec;
         }
         #endregion
@@ -62,7 +64,7 @@ namespace LinearAlgebra
         public iProxyMxN iProxyMat(int M_rows, int N_cols, bool uninit = false)
         {
             var matrix = new iProxyMxN(M_rows, N_cols, in this, uninit);
-            iProxyMatrices.Add(in matrix);
+            _core->iProxyMatrices.Add(in matrix);
             return matrix;
         }
 
@@ -70,7 +72,7 @@ namespace LinearAlgebra
         public iProxyMxN iProxyMat(int M_rows, int N_cols, iProxy s)
         {
             var matrix = new iProxyMxN(M_rows, N_cols, in this, false);
-            iProxyMatrices.Add(in matrix);
+            _core->iProxyMatrices.Add(in matrix);
             unsafe
             {
                 mathUnsafeiProxy.setAll(matrix.Data.Ptr, matrix.Length, s);
@@ -81,40 +83,40 @@ namespace LinearAlgebra
         public iProxyMxN iProxyMat(in iProxyMxN orig)
         {
             var matrix = new iProxyMxN(in orig);
-            iProxyMatrices.Add(in matrix);
+            _core->iProxyMatrices.Add(in matrix);
             return matrix;
-        }   
+        }
 
         internal iProxyMxN tempiProxyMat(int M_rows, int M_cols, bool uninit = false)
         {
             var matrix = new iProxyMxN(M_rows, M_cols, in this, uninit);
-            tempiProxyMatrices.Add(in matrix);
+            _core->tempiProxyMatrices.Add(in matrix);
             return matrix;
         }
 
         internal iProxyMxN tempiProxyMat(in iProxyMxN orig)
         {
             var matrix = new iProxyMxN(orig);
-            tempiProxyMatrices.Add(in matrix);
+            _core->tempiProxyMatrices.Add(in matrix);
             return matrix;
         }
         #endregion
 
         // --- debug pool checks (see Arena.fProxy) ---
-        public unsafe bool isPersistent(in iProxyN v) {
-            for (int i = 0; i < iProxyVectors.Length; i++) if (iProxyVectors[i].Data.Ptr == v.Data.Ptr) return true;
+        public bool isPersistent(in iProxyN v) {
+            for (int i = 0; i < _core->iProxyVectors.Length; i++) if (_core->iProxyVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
-        public unsafe bool isTemp(in iProxyN v) {
-            for (int i = 0; i < tempiProxyVectors.Length; i++) if (tempiProxyVectors[i].Data.Ptr == v.Data.Ptr) return true;
+        public bool isTemp(in iProxyN v) {
+            for (int i = 0; i < _core->tempiProxyVectors.Length; i++) if (_core->tempiProxyVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
-        public unsafe bool isPersistent(in iProxyMxN m) {
-            for (int i = 0; i < iProxyMatrices.Length; i++) if (iProxyMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+        public bool isPersistent(in iProxyMxN m) {
+            for (int i = 0; i < _core->iProxyMatrices.Length; i++) if (_core->iProxyMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
-        public unsafe bool isTemp(in iProxyMxN m) {
-            for (int i = 0; i < tempiProxyMatrices.Length; i++) if (tempiProxyMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+        public bool isTemp(in iProxyMxN m) {
+            for (int i = 0; i < _core->tempiProxyMatrices.Length; i++) if (_core->tempiProxyMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
 
