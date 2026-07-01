@@ -42,6 +42,12 @@ public class doubleSparseSolverTests
             CglsInconsistentMatchesQR,
             LsqrInconsistentMatchesQR,
             CglsLsqrUnderdeterminedConsistent,
+
+            // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
+            MinresWarmStart,
+            BiCGStabWarmStart,
+            CglsWarmStart,
+            LsqrWarmStart,
         }
 
         public TestType Type;
@@ -72,7 +78,7 @@ public class doubleSparseSolverTests
             var atb = Linear_OP.dot(b, A);    // A^T b           (scale reference)
             double atrNorm = math.sqrt(Linear_OP.dot(atr, atr));
             double atbNorm = math.sqrt(Linear_OP.dot(atb, atb));
-            Assert.IsTrue(atrNorm <= relTol * atbNorm + relTol);
+            Assert.IsTrue(atrNorm <= relTol * atbNorm);
         }
 
         public void Execute()
@@ -96,6 +102,11 @@ public class doubleSparseSolverTests
                 case TestType.CglsInconsistentMatchesQR: CglsInconsistentMatchesQR(); break;
                 case TestType.LsqrInconsistentMatchesQR: LsqrInconsistentMatchesQR(); break;
                 case TestType.CglsLsqrUnderdeterminedConsistent: CglsLsqrUnderdeterminedConsistent(); break;
+
+                case TestType.MinresWarmStart: MinresWarmStart(); break;
+                case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
+                case TestType.CglsWarmStart: CglsWarmStart(); break;
+                case TestType.LsqrWarmStart: LsqrWarmStart(); break;
             }
         }
 
@@ -481,6 +492,20 @@ public class doubleSparseSolverTests
             var Ax = Linear_OP.dot(A, xDense);
             AssertVecEq(in Ax, in b, LooseTol());          // A nonsingular -> unique solution, A x ~= b
 
+            // Independent cross-check against a DIRECT LU solve on the SAME indefinite matrix
+            // (no Krylov/MINRES involvement) -- pins the iterative solution to a truly independent
+            // reference, not just the self-consistent A x ~= b residual. luDecompositionInpl +
+            // luSolve are DESTRUCTIVE, so they run on COPIES. The shifted Laplacian above is
+            // constructed to be nonsingular (odd n+1 -> no exactly-zero eigenvalue), so LU succeeds.
+            var LUcopy = A.Copy();
+            var pivot = new Pivot(dim, Allocator.Temp);
+            bool okLU = LU.luDecompositionInpl(ref LUcopy, ref pivot);
+            Assert.IsTrue(okLU);
+            var xLU = b.Copy();
+            LU.luSolve(ref LUcopy, in pivot, ref xLU);
+            AssertVecEq(in xDense, in xLU, LooseTol());
+            pivot.Dispose();
+
             // Same system as a 1x1-block BSM: minres(BSM) must agree with minres(dense).
             var bsm = DenseToBSM1x1(ref arena, in A, 3 * dim);   // tridiagonal (shifted diag=0 dropped)
             var xBsm = arena.doubleVec(dim);
@@ -726,6 +751,110 @@ public class doubleSparseSolverTests
 
             arena.Dispose();
         }
+
+        // =================================================================================
+        // Phase 3 warm-start plumbing
+        //
+        // Every OTHER Phase-3 test starts from a zero-initialized x, so b - A*x0 == b always --
+        // a regression that dropped the initial-residual subtraction (r = b - A*x0 silently
+        // becoming r = b) would pass all of them. These four seed x with the ALREADY-converged
+        // solution and re-solve with maxIterations=1: each solver computes r = b - A*x from the
+        // CALLER-supplied x and checks it against tolerance in its PRE-LOOP check (minres ~L595,
+        // biCGStab ~L797, cgls ~L999, lsqr ~L1175 of Solvers.double.cs), so an already-converged x
+        // must report true WITHOUT spending the single iteration -- and x must come back unchanged.
+        // Mirrors the CG/PCG WarmStart test above.
+        // =================================================================================
+
+        // ---- MINRES warm start (SPD system, sufficient for the warm-start plumbing) ----
+        void MinresWarmStart()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 12;
+            var A = BuildDenseSPD(ref arena, dim, 41001);
+            var b = arena.doubleRandomVec(dim, -1f, 1f, 41002);
+
+            var x = arena.doubleVec(dim);
+            bool ok = Solvers.minres(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
+            Assert.IsTrue(ok);
+
+            // Seed the converged solution back; a single iteration's budget must still report
+            // convergence via the pre-loop residual check, and leave x untouched.
+            var xWarm = x.Copy();
+            bool okWarm = Solvers.minres(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(okWarm);
+            AssertVecEq(in x, in xWarm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- BiCGSTAB warm start (random diagonally-dominant non-symmetric A) ----
+        void BiCGStabWarmStart()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 8;
+            var A = arena.doubleRandomMat(dim, dim, -1f, 1f, 41101);
+            for (int i = 0; i < dim; i++)
+                A[i, i] += (double)(dim + 1);   // strict diagonal dominance
+
+            var b = arena.doubleRandomVec(dim, -1f, 1f, 41102);
+
+            var x = arena.doubleVec(dim);
+            bool ok = Solvers.biCGStab(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
+            Assert.IsTrue(ok);
+
+            var xWarm = x.Copy();
+            bool okWarm = Solvers.biCGStab(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(okWarm);
+            AssertVecEq(in x, in xWarm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- CGLS warm start (overdetermined m>n CONSISTENT system, b = A*xTrue) ----
+        void CglsWarmStart()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.doubleRandomMat(m, n, -1f, 1f, 41201);
+            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 41202);
+            var b = Linear_OP.dot(A, xTrue);      // consistent
+
+            var x = arena.doubleVec(n);
+            bool ok = Solvers.cgls(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(ok);
+
+            var xWarm = x.Copy();
+            bool okWarm = Solvers.cgls(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(okWarm);
+            AssertVecEq(in x, in xWarm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- LSQR warm start (overdetermined m>n CONSISTENT system, b = A*xTrue) ----
+        void LsqrWarmStart()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.doubleRandomMat(m, n, -1f, 1f, 41301);
+            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 41302);
+            var b = Linear_OP.dot(A, xTrue);      // consistent
+
+            var x = arena.doubleVec(n);
+            bool ok = Solvers.lsqr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(ok);
+
+            var xWarm = x.Copy();
+            bool okWarm = Solvers.lsqr(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(okWarm);
+            AssertVecEq(in x, in xWarm, LooseTol());
+
+            arena.Dispose();
+        }
     }
 
     // Deliberately non-SPD test-double preconditioner: z = M^-1 r := -r, so <r,z> = -||r||^2 <= 0.
@@ -806,6 +935,24 @@ public class doubleSparseSolverTests
     [Test]
     public void CglsLsqrUnderdeterminedConsistentTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsLsqrUnderdeterminedConsistent }.Run();
+
+    // ---- Phase 3 warm-start entry points ----
+
+    [Test]
+    public void MinresWarmStartTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.MinresWarmStart }.Run();
+
+    [Test]
+    public void BiCGStabWarmStartTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.BiCGStabWarmStart }.Run();
+
+    [Test]
+    public void CglsWarmStartTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsWarmStart }.Run();
+
+    [Test]
+    public void LsqrWarmStartTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsqrWarmStart }.Run();
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
 

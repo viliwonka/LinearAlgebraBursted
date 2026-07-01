@@ -808,7 +808,7 @@ namespace LinearAlgebra
             {
                 fProxy rhoNew = Linear_OP.dot(rHat0, r);
 
-                if (rhoNew == (fProxy)0)
+                if (rhoNew == (fProxy)0 || math.isnan(rhoNew))
                     return false; // serious breakdown: r has gone orthogonal to the shadow residual
 
                 fProxy beta = (rhoNew / rho) * (alpha / omega);
@@ -820,7 +820,7 @@ namespace LinearAlgebra
 
                 fProxy rv = Linear_OP.dot(rHat0, v);
 
-                if (rv == (fProxy)0)
+                if (rv == (fProxy)0 || math.isnan(rv))
                     return false; // breakdown: alpha undefined
 
                 alpha = rhoNew / rv;
@@ -841,12 +841,12 @@ namespace LinearAlgebra
 
                 fProxy tt = Linear_OP.dot(t, t);
 
-                if (tt == (fProxy)0)
+                if (!(tt > (fProxy)0))                       // NaN-safe: tt is a norm^2, nonnegative
                     return false; // breakdown: omega undefined
 
                 omega = Linear_OP.dot(t, r) / tt;
 
-                if (omega == (fProxy)0)
+                if (omega == (fProxy)0 || math.isnan(omega))
                     return false; // breakdown: next iteration's beta would divide by zero
 
                 x.addScaledInpl(alpha, p);
@@ -1215,7 +1215,7 @@ namespace LinearAlgebra
                 if (arnorm * arnorm <= threshold)
                     return true;
 
-                if (beta == (fProxy)0 || alpha == (fProxy)0)
+                if (!(beta > (fProxy)0) || !(alpha > (fProxy)0)) // NaN-safe: both are norms, nonnegative
                     break; // bidiagonalization breakdown: Krylov space exhausted, no further progress
             }
 

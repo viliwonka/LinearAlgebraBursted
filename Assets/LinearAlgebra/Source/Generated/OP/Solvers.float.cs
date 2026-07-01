@@ -808,7 +808,7 @@ namespace LinearAlgebra
             {
                 float rhoNew = Linear_OP.dot(rHat0, r);
 
-                if (rhoNew == (float)0)
+                if (rhoNew == (float)0 || math.isnan(rhoNew))
                     return false; // serious breakdown: r has gone orthogonal to the shadow residual
 
                 float beta = (rhoNew / rho) * (alpha / omega);
@@ -820,7 +820,7 @@ namespace LinearAlgebra
 
                 float rv = Linear_OP.dot(rHat0, v);
 
-                if (rv == (float)0)
+                if (rv == (float)0 || math.isnan(rv))
                     return false; // breakdown: alpha undefined
 
                 alpha = rhoNew / rv;
@@ -841,12 +841,12 @@ namespace LinearAlgebra
 
                 float tt = Linear_OP.dot(t, t);
 
-                if (tt == (float)0)
+                if (!(tt > (float)0))                       // NaN-safe: tt is a norm^2, nonnegative
                     return false; // breakdown: omega undefined
 
                 omega = Linear_OP.dot(t, r) / tt;
 
-                if (omega == (float)0)
+                if (omega == (float)0 || math.isnan(omega))
                     return false; // breakdown: next iteration's beta would divide by zero
 
                 x.addScaledInpl(alpha, p);
@@ -1215,7 +1215,7 @@ namespace LinearAlgebra
                 if (arnorm * arnorm <= threshold)
                     return true;
 
-                if (beta == (float)0 || alpha == (float)0)
+                if (!(beta > (float)0) || !(alpha > (float)0)) // NaN-safe: both are norms, nonnegative
                     break; // bidiagonalization breakdown: Krylov space exhausted, no further progress
             }
 
