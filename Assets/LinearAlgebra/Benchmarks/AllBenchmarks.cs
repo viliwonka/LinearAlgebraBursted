@@ -24,6 +24,7 @@ namespace LinearAlgebra.Benchmarks
                 EigenSvdBenchmark.Section(sb);
                 SvdSolversBenchmark.Section(sb);
                 IterativeBenchmark.Section(sb);
+                SparseSolverBenchmark.Section(sb);
                 KMeansBenchmark.Section(sb);
                 FFTBenchmark.Section(sb);
 

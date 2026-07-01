@@ -1,0 +1,1273 @@
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+using LinearAlgebra;
+using LinearAlgebra.Sparse;
+
+namespace LinearAlgebra.Benchmarks
+{
+    // ================================================================================================
+    // Dense-vs-sparse iterative solver benchmark + numerical cross-check.
+    //
+    // The core method: for every case, ONE matrix is built with a block-sparsity pattern (block size
+    // b=3, the FEM/cloth/PD workhorse) and materialized in BOTH storage forms -- a dense NxN
+    // floatMxN/doubleMxN with zeros in the absent blocks, AND a floatBSM/doubleBSM (block-CSR) holding
+    // exactly the nonzero blocks. Because both forms encode the IDENTICAL matrix:
+    //   (a) dense-vs-sparse solve TIME is a fair, apples-to-apples comparison (same math, only the
+    //       storage/traversal differs), and
+    //   (b) dense-vs-sparse solve RESULTS must agree numerically -- the residual column is exactly
+    //       that cross-check (always computed from the DENSE reference matrix/rhs).
+    //
+    // maxIterations is FIXED with tolerance=0, so every sample runs exactly K iterations -- deterministic
+    // timing, mirroring IterativeBenchmark.cs's convention. Reporting the residual alongside the timing
+    // shows both "how fast" and "how converged" (not just one or the other).
+    //
+    // Block density is at the BLOCK level (nb x nb block grid, b=3 scalar-per-side blocks): ~7% and
+    // ~33% of blocks nonzero, always including every diagonal block (needed for conditioning /
+    // solvability). Off-diagonal block magnitudes are kept small relative to the (diagonally-boosted)
+    // diagonal blocks so the assembled systems stay diagonally dominant -- SPD for section 1, general
+    // square for section 2, well-conditioned rectangular for section 3.
+    // ================================================================================================
+
+    // ---- CG scratch: r, p, Ap (all A.Rows length) --------------------------------------------------
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CGDenseJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatN b, x, r, p, Ap;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CGSparseJobFloat : IJob
+    {
+        public floatBSM A;
+        public floatN b, x, r, p, Ap;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CGDenseJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN b, x, r, p, Ap;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CGSparseJobDouble : IJob
+    {
+        public doubleBSM A;
+        public doubleN b, x, r, p, Ap;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
+        }
+    }
+
+    // ---- MINRES scratch: y, r1, r2, v, w, w1, w2 (all A.Rows length) -------------------------------
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct MinresDenseJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatN b, x, y, r1, r2, v, w, w1, w2;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct MinresSparseJobFloat : IJob
+    {
+        public floatBSM A;
+        public floatN b, x, y, r1, r2, v, w, w1, w2;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct MinresDenseJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN b, x, y, r1, r2, v, w, w1, w2;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0.0);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct MinresSparseJobDouble : IJob
+    {
+        public doubleBSM A;
+        public doubleN b, x, y, r1, r2, v, w, w1, w2;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0.0);
+        }
+    }
+
+    // ---- BiCGSTAB scratch: r, rHat0, p, v, t (all A.Rows length) -----------------------------------
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct BiCGStabDenseJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatN b, x, r, rHat0, p, v, t;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct BiCGStabSparseJobFloat : IJob
+    {
+        public floatBSM A;
+        public floatN b, x, r, rHat0, p, v, t;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct BiCGStabDenseJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN b, x, r, rHat0, p, v, t;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0.0);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct BiCGStabSparseJobDouble : IJob
+    {
+        public doubleBSM A;
+        public doubleN b, x, r, rHat0, p, v, t;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0.0);
+        }
+    }
+
+    // ---- CGLS scratch: r, q (A.Rows length), s, p (A.Cols length) ----------------------------------
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CglsDenseJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatN b, x, r, s, p, q;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CglsSparseJobFloat : IJob
+    {
+        public floatBSM A;
+        public floatN b, x, r, s, p, q;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CglsDenseJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN b, x, r, s, p, q;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0.0);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CglsSparseJobDouble : IJob
+    {
+        public doubleBSM A;
+        public doubleN b, x, r, s, p, q;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0.0);
+        }
+    }
+
+    // ---- LSQR scratch: u, tmpM (A.Rows length), v, w, tmpN (A.Cols length) ------------------------
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LsqrDenseJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatN b, x, u, v, w, tmpM, tmpN;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LsqrSparseJobFloat : IJob
+    {
+        public floatBSM A;
+        public floatN b, x, u, v, w, tmpM, tmpN;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LsqrDenseJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN b, x, u, v, w, tmpM, tmpN;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0.0);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LsqrSparseJobDouble : IJob
+    {
+        public doubleBSM A;
+        public doubleN b, x, u, v, w, tmpM, tmpN;
+        public int K;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0.0);
+        }
+    }
+
+    // ---- Section 4: hand-inlined dense CG (no IfloatLinearOperator/IdoubleLinearOperator, no cg<TOp>
+    //      generic dispatch -- a raw GEMV loop + axpy/dot written directly in Execute()). Same algorithm
+    //      as Solvers.cg<TOp> (see Solvers.fProxy.cs), just with every step spelled out inline against
+    //      raw pointers instead of going through fProxyDenseOperator.Apply / the generic solver loop.
+    //      x is reset to zero and tol is effectively 0 (K fixed iterations), matching the other jobs. ---
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CGHandInlinedJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatN b, x, r, p, Ap;
+        public int K;
+
+        public unsafe void Execute()
+        {
+            int n = x.N;
+            float* Ad = A.Data.Ptr;
+            float* bd = b.Data.Ptr;
+            float* xd = x.Data.Ptr;
+            float* rd = r.Data.Ptr;
+            float* pd = p.Data.Ptr;
+            float* Apd = Ap.Data.Ptr;
+
+            for (int i = 0; i < n; i++) xd[i] = 0f;
+            for (int i = 0; i < n; i++) rd[i] = bd[i];       // r = b - A*0 = b
+            for (int i = 0; i < n; i++) pd[i] = rd[i];       // p = r
+
+            float rsold = 0f;
+            for (int i = 0; i < n; i++) rsold += rd[i] * rd[i];
+
+            for (int k = 0; k < K; k++)
+            {
+                for (int row = 0; row < n; row++)
+                {
+                    float sum = 0f;
+                    int baseIdx = row * n;
+                    for (int col = 0; col < n; col++)
+                        sum += Ad[baseIdx + col] * pd[col];
+                    Apd[row] = sum;
+                }
+
+                float pAp = 0f;
+                for (int i = 0; i < n; i++) pAp += pd[i] * Apd[i];
+                if (!(pAp > 0f)) break;
+
+                float alpha = rsold / pAp;
+                for (int i = 0; i < n; i++) xd[i] += alpha * pd[i];
+                for (int i = 0; i < n; i++) rd[i] -= alpha * Apd[i];
+
+                float rsnew = 0f;
+                for (int i = 0; i < n; i++) rsnew += rd[i] * rd[i];
+
+                float beta = rsnew / rsold;
+                for (int i = 0; i < n; i++) pd[i] = beta * pd[i] + rd[i];
+
+                rsold = rsnew;
+            }
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CGHandInlinedJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN b, x, r, p, Ap;
+        public int K;
+
+        public unsafe void Execute()
+        {
+            int n = x.N;
+            double* Ad = A.Data.Ptr;
+            double* bd = b.Data.Ptr;
+            double* xd = x.Data.Ptr;
+            double* rd = r.Data.Ptr;
+            double* pd = p.Data.Ptr;
+            double* Apd = Ap.Data.Ptr;
+
+            for (int i = 0; i < n; i++) xd[i] = 0.0;
+            for (int i = 0; i < n; i++) rd[i] = bd[i];
+            for (int i = 0; i < n; i++) pd[i] = rd[i];
+
+            double rsold = 0.0;
+            for (int i = 0; i < n; i++) rsold += rd[i] * rd[i];
+
+            for (int k = 0; k < K; k++)
+            {
+                for (int row = 0; row < n; row++)
+                {
+                    double sum = 0.0;
+                    int baseIdx = row * n;
+                    for (int col = 0; col < n; col++)
+                        sum += Ad[baseIdx + col] * pd[col];
+                    Apd[row] = sum;
+                }
+
+                double pAp = 0.0;
+                for (int i = 0; i < n; i++) pAp += pd[i] * Apd[i];
+                if (!(pAp > 0.0)) break;
+
+                double alpha = rsold / pAp;
+                for (int i = 0; i < n; i++) xd[i] += alpha * pd[i];
+                for (int i = 0; i < n; i++) rd[i] -= alpha * Apd[i];
+
+                double rsnew = 0.0;
+                for (int i = 0; i < n; i++) rsnew += rd[i] * rd[i];
+
+                double beta = rsnew / rsold;
+                for (int i = 0; i < n; i++) pd[i] = beta * pd[i] + rd[i];
+
+                rsold = rsnew;
+            }
+        }
+    }
+
+    public static class SparseSolverBenchmark
+    {
+        public static void Run() => Bench.WriteReport("benchmark-sparse-solvers.txt", Section);
+
+        // Block-aligned sizes (N = nb * BR). All three sizes fit comfortably within a few minutes for
+        // this section (see the report's own timings); if a future change makes this section too slow,
+        // drop 768 or lower Bench.Runs for just this section and note it here.
+        static readonly int[] BlockSizesN = { 192, 384, 768 };
+        const int BR = 3; // block size b=3 (the FEM/cloth/PD workhorse)
+        static readonly float[] Densities = { 0.07f, 0.33f }; // ~7% / ~33% of BLOCKS nonzero
+
+        const int K_CG = 40;        // CG / MINRES iteration budget (fixed, tol=0)
+        const int K_BICGSTAB = 40;  // BiCGSTAB iteration budget
+        const int K_LS = 24;        // CGLS / LSQR iteration budget
+
+        // ---- small position record used by the block-pattern choosers below (avoids depending on
+        //      ValueTuple support one way or the other) ----
+        readonly struct BlockPos
+        {
+            public readonly int Bi, Bj;
+            public BlockPos(int bi, int bj) { Bi = bi; Bj = bj; }
+        }
+
+        static uint Seed(int n, float density, int tag)
+        {
+            unchecked
+            {
+                int d = (int)math.round(density * 10000f);
+                uint s = (uint)(n * 100003 + d * 131 + tag * 7919 + 12345);
+                return s == 0 ? 1u : s;
+            }
+        }
+
+        public static void Section(StringBuilder sb)
+        {
+            sb.AppendLine("=== Dense vs Sparse (BSM) iterative solvers: timing + numerical cross-check ===");
+            sb.AppendLine("Same matrix, two storage forms: a dense NxN floatMxN/doubleMxN with zeros in the");
+            sb.AppendLine("absent blocks, and a floatBSM/doubleBSM (block-CSR) holding exactly the nonzero");
+            sb.AppendLine("b=3 blocks. Because both encode the IDENTICAL matrix, (a) dense-vs-sparse time is");
+            sb.AppendLine("directly comparable (same math, only storage/traversal differs), and (b) dense-vs-");
+            sb.AppendLine("sparse SOLUTIONS must agree numerically -- the residual column is that cross-check,");
+            sb.AppendLine("always computed from the DENSE reference matrix. maxIterations is FIXED with");
+            sb.AppendLine("tolerance=0, so every sample runs exactly K iterations (deterministic timing,");
+            sb.AppendLine("mirroring IterativeBenchmark.cs); residual after K iterations shows how converged");
+            sb.AppendLine("(not just how fast) each path is. Block density is at the BLOCK level (nb x nb");
+            sb.AppendLine("block grid): ~7% / ~33% of blocks nonzero, always including every diagonal block.");
+            sb.AppendLine();
+
+            Section1Float(sb);
+            Section1Double(sb);
+            Section2Float(sb);
+            Section2Double(sb);
+            Section3Float(sb);
+            Section3Double(sb);
+            Section4Float(sb);
+            Section4Double(sb);
+        }
+
+        static string RowHeader() => string.Format("{0,-7} {1,-6} {2,7} {3,-20} {4,11} {5,11} {6,14}",
+            "dtype", "N", "dens%", "path", "med(ms)", "min(ms)", "residual");
+
+        static string Row(string dtype, int n, float density, string path, Bench.Stat st, double residual) =>
+            string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,7:F1} {3,-20} {4,11:F4} {5,11:F4} {6,14:E3}",
+                dtype, n, density * 100f, path, st.Median, st.Min, residual);
+
+        // ==== residual helpers (always evaluated against the DENSE reference matrix) ===================
+
+        static double ResidualLinSys(in floatMxN A, in floatN x, in floatN b)
+        {
+            var Ax = Linear_OP.dot(A, x);
+            double num = 0, den = 0;
+            for (int i = 0; i < b.N; i++)
+            {
+                double diff = (double)Ax[i] - (double)b[i];
+                num += diff * diff;
+                den += (double)b[i] * (double)b[i];
+            }
+            return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
+        }
+
+        static double ResidualLinSys(in doubleMxN A, in doubleN x, in doubleN b)
+        {
+            var Ax = Linear_OP.dot(A, x);
+            double num = 0, den = 0;
+            for (int i = 0; i < b.N; i++)
+            {
+                double diff = Ax[i] - b[i];
+                num += diff * diff;
+                den += b[i] * b[i];
+            }
+            return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
+        }
+
+        // Least-squares optimality: ||A^T(Ax-b)|| / ||A^T b|| -- the correct acceptance criterion for
+        // a (possibly inconsistent) rectangular system, NOT ||Ax-b|| (nonzero even at the LS optimum).
+        static double ResidualLS(in floatMxN A, in floatN x, in floatN b)
+        {
+            var Ax = Linear_OP.dot(A, x);
+            var res = Ax - b;
+            var atr = Linear_OP.dot(res, A);
+            var atb = Linear_OP.dot(b, A);
+            double num = 0, den = 0;
+            for (int i = 0; i < atr.N; i++) num += (double)atr[i] * (double)atr[i];
+            for (int i = 0; i < atb.N; i++) den += (double)atb[i] * (double)atb[i];
+            return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
+        }
+
+        static double ResidualLS(in doubleMxN A, in doubleN x, in doubleN b)
+        {
+            var Ax = Linear_OP.dot(A, x);
+            var res = Ax - b;
+            var atr = Linear_OP.dot(res, A);
+            var atb = Linear_OP.dot(b, A);
+            double num = 0, den = 0;
+            for (int i = 0; i < atr.N; i++) num += atr[i] * atr[i];
+            for (int i = 0; i < atb.N; i++) den += atb[i] * atb[i];
+            return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
+        }
+
+        // ==== block-pattern choosers (dtype-independent: index/count logic only) =======================
+
+        // Symmetric off-diagonal pairs (bi<bj); caller mirrors each into (bj,bi) via the transposed
+        // block, so nnzb = nb (diagonal) + 2*pairs.Count.
+        static List<BlockPos> ChooseOffDiagPairsSymmetric(int nb, float density, uint seed, out int nnzb)
+        {
+            int nnzTarget = math.max(nb, (int)math.round(density * nb * nb));
+            int offDiagTarget = math.max(0, nnzTarget - nb);
+            int totalPairs = nb * (nb - 1) / 2;
+            int pairsWanted = math.min(offDiagTarget / 2, totalPairs);
+
+            var rng = new Random(seed);
+            var seen = new HashSet<long>();
+            var list = new List<BlockPos>(pairsWanted);
+            while (list.Count < pairsWanted)
+            {
+                int bi = rng.NextInt(0, nb);
+                int bj = rng.NextInt(0, nb);
+                if (bi == bj) continue;
+                if (bi > bj) { int t = bi; bi = bj; bj = t; }
+                if (seen.Add((long)bi * nb + bj)) list.Add(new BlockPos(bi, bj));
+            }
+
+            nnzb = nb + list.Count * 2;
+            return list;
+        }
+
+        // Ordered off-diagonal pairs, NOT mirrored -- yields a non-symmetric matrix.
+        static List<BlockPos> ChooseOffDiagPairsAsymmetric(int nb, float density, uint seed, out int nnzb)
+        {
+            int nnzTarget = math.max(nb, (int)math.round(density * nb * nb));
+            int offDiagTarget = math.max(0, nnzTarget - nb);
+            int totalOffDiag = nb * (nb - 1);
+            offDiagTarget = math.min(offDiagTarget, totalOffDiag);
+
+            var rng = new Random(seed);
+            var seen = new HashSet<long>();
+            var list = new List<BlockPos>(offDiagTarget);
+            while (list.Count < offDiagTarget)
+            {
+                int bi = rng.NextInt(0, nb);
+                int bj = rng.NextInt(0, nb);
+                if (bi == bj) continue;
+                if (seen.Add((long)bi * nb + bj)) list.Add(new BlockPos(bi, bj));
+            }
+
+            nnzb = nb + list.Count;
+            return list;
+        }
+
+        // Rectangular mb x nb block grid; "diagonal" = (i,i) for i in [0, min(mb,nb)).
+        static List<BlockPos> ChooseOffDiagPairsRect(int mb, int nb, float density, uint seed, out int nnzb)
+        {
+            int diagCount = math.min(mb, nb);
+            int nnzTarget = math.max(diagCount, (int)math.round(density * mb * nb));
+            int offDiagTarget = math.max(0, nnzTarget - diagCount);
+            int totalOffDiag = mb * nb - diagCount;
+            offDiagTarget = math.min(offDiagTarget, totalOffDiag);
+
+            var rng = new Random(seed);
+            var seen = new HashSet<long>();
+            var list = new List<BlockPos>(offDiagTarget);
+            while (list.Count < offDiagTarget)
+            {
+                int bi = rng.NextInt(0, mb);
+                int bj = rng.NextInt(0, nb);
+                if (bi == bj && bi < diagCount) continue; // part of the guaranteed diagonal set
+                if (seen.Add((long)bi * nb + bj)) list.Add(new BlockPos(bi, bj));
+            }
+
+            nnzb = diagCount + list.Count;
+            return list;
+        }
+
+        // ==== block-matrix builders (float) =============================================================
+
+        static void BuildBlockSPDFloat(ref Arena arena, int nb, float density, uint seed, out floatMxN dense, out floatBSM sparse)
+        {
+            int dim = nb * BR;
+            dense = arena.floatMat(dim, dim);
+            var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzb);
+            var builder = arena.floatBSMBuilder(nb, nb, BR, BR, nnzb);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+            float strong = dim;
+            const float offScale = 0.3f;
+
+            for (int i = 0; i < nb; i++)
+            {
+                var Mi = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        Mi[r, c] = rng.NextFloat(-1f, 1f);
+                var Di = Linear_OP.dot(Mi, Mi, true);
+                for (int d = 0; d < BR; d++) Di[d, d] += strong;
+
+                builder.AddBlock(i, i, in Di);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[i * BR + r, i * BR + c] = Di[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = rng.NextFloat(-offScale, offScale);
+
+                builder.AddBlock(bi, bj, in block);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bi * BR + r, bj * BR + c] = block[r, c];
+
+                var blockT = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        blockT[r, c] = block[c, r];
+
+                builder.AddBlock(bj, bi, in blockT);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bj * BR + r, bi * BR + c] = blockT[r, c];
+            }
+
+            sparse = builder.ToBSM(ref arena);
+        }
+
+        static void BuildBlockNonSymFloat(ref Arena arena, int nb, float density, uint seed, out floatMxN dense, out floatBSM sparse)
+        {
+            int dim = nb * BR;
+            dense = arena.floatMat(dim, dim);
+            var pairs = ChooseOffDiagPairsAsymmetric(nb, density, seed, out int nnzb);
+            var builder = arena.floatBSMBuilder(nb, nb, BR, BR, nnzb);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+            float strong = dim;
+            const float offScale = 0.3f;
+
+            for (int i = 0; i < nb; i++)
+            {
+                var Mi = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        Mi[r, c] = rng.NextFloat(-1f, 1f);
+                var Di = Linear_OP.dot(Mi, Mi, true);
+                for (int d = 0; d < BR; d++) Di[d, d] += strong;
+
+                builder.AddBlock(i, i, in Di);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[i * BR + r, i * BR + c] = Di[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = rng.NextFloat(-offScale, offScale);
+
+                builder.AddBlock(bi, bj, in block);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bi * BR + r, bj * BR + c] = block[r, c];
+            }
+
+            sparse = builder.ToBSM(ref arena);
+        }
+
+        static void BuildBlockRectFloat(ref Arena arena, int mb, int nb, float density, uint seed, out floatMxN dense, out floatBSM sparse)
+        {
+            int rows = mb * BR, cols = nb * BR;
+            dense = arena.floatMat(rows, cols);
+            int diagCount = math.min(mb, nb);
+            var pairs = ChooseOffDiagPairsRect(mb, nb, density, seed, out int nnzb);
+            var builder = arena.floatBSMBuilder(mb, nb, BR, BR, nnzb);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+
+            for (int i = 0; i < diagCount; i++)
+            {
+                var block = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = (r == c ? 2f : 0f) + rng.NextFloat(-0.2f, 0.2f);
+
+                builder.AddBlock(i, i, in block);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[i * BR + r, i * BR + c] = block[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = rng.NextFloat(-0.3f, 0.3f);
+
+                builder.AddBlock(bi, bj, in block);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bi * BR + r, bj * BR + c] = block[r, c];
+            }
+
+            sparse = builder.ToBSM(ref arena);
+        }
+
+        // ==== block-matrix builders (double) =============================================================
+
+        static void BuildBlockSPDDouble(ref Arena arena, int nb, float density, uint seed, out doubleMxN dense, out doubleBSM sparse)
+        {
+            int dim = nb * BR;
+            dense = arena.doubleMat(dim, dim);
+            var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzb);
+            var builder = arena.doubleBSMBuilder(nb, nb, BR, BR, nnzb);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+            double strong = dim;
+            const double offScale = 0.3;
+
+            for (int i = 0; i < nb; i++)
+            {
+                var Mi = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        Mi[r, c] = rng.NextDouble(-1.0, 1.0);
+                var Di = Linear_OP.dot(Mi, Mi, true);
+                for (int d = 0; d < BR; d++) Di[d, d] += strong;
+
+                builder.AddBlock(i, i, in Di);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[i * BR + r, i * BR + c] = Di[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = rng.NextDouble(-offScale, offScale);
+
+                builder.AddBlock(bi, bj, in block);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bi * BR + r, bj * BR + c] = block[r, c];
+
+                var blockT = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        blockT[r, c] = block[c, r];
+
+                builder.AddBlock(bj, bi, in blockT);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bj * BR + r, bi * BR + c] = blockT[r, c];
+            }
+
+            sparse = builder.ToBSM(ref arena);
+        }
+
+        static void BuildBlockNonSymDouble(ref Arena arena, int nb, float density, uint seed, out doubleMxN dense, out doubleBSM sparse)
+        {
+            int dim = nb * BR;
+            dense = arena.doubleMat(dim, dim);
+            var pairs = ChooseOffDiagPairsAsymmetric(nb, density, seed, out int nnzb);
+            var builder = arena.doubleBSMBuilder(nb, nb, BR, BR, nnzb);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+            double strong = dim;
+            const double offScale = 0.3;
+
+            for (int i = 0; i < nb; i++)
+            {
+                var Mi = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        Mi[r, c] = rng.NextDouble(-1.0, 1.0);
+                var Di = Linear_OP.dot(Mi, Mi, true);
+                for (int d = 0; d < BR; d++) Di[d, d] += strong;
+
+                builder.AddBlock(i, i, in Di);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[i * BR + r, i * BR + c] = Di[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = rng.NextDouble(-offScale, offScale);
+
+                builder.AddBlock(bi, bj, in block);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bi * BR + r, bj * BR + c] = block[r, c];
+            }
+
+            sparse = builder.ToBSM(ref arena);
+        }
+
+        static void BuildBlockRectDouble(ref Arena arena, int mb, int nb, float density, uint seed, out doubleMxN dense, out doubleBSM sparse)
+        {
+            int rows = mb * BR, cols = nb * BR;
+            dense = arena.doubleMat(rows, cols);
+            int diagCount = math.min(mb, nb);
+            var pairs = ChooseOffDiagPairsRect(mb, nb, density, seed, out int nnzb);
+            var builder = arena.doubleBSMBuilder(mb, nb, BR, BR, nnzb);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+
+            for (int i = 0; i < diagCount; i++)
+            {
+                var block = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = (r == c ? 2.0 : 0.0) + rng.NextDouble(-0.2, 0.2);
+
+                builder.AddBlock(i, i, in block);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[i * BR + r, i * BR + c] = block[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = rng.NextDouble(-0.3, 0.3);
+
+                builder.AddBlock(bi, bj, in block);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bi * BR + r, bj * BR + c] = block[r, c];
+            }
+
+            sparse = builder.ToBSM(ref arena);
+        }
+
+        // ==== Section 1: SPD -> conjugateGradient & minres ==============================================
+
+        static void Section1Float(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 1. SPD block-sparse (b={0}): conjugateGradient & minres, K={1}, tol=0 [float] ---", BR, K_CG));
+            sb.AppendLine(RowHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb = n / BR;
+                foreach (var density in Densities)
+                {
+                    var arena = new Arena(Allocator.Persistent);
+                    BuildBlockSPDFloat(ref arena, nb, density, Seed(n, density, 11), out var dense, out var sparse);
+                    var b = arena.floatRandomVec(n, -1f, 1f, Seed(n, density, 12));
+
+                    var xCgD = arena.floatVec(n); var rCgD = arena.floatVec(n); var pCgD = arena.floatVec(n); var ApCgD = arena.floatVec(n);
+                    var cgDenseJob = new CGDenseJobFloat { A = dense, b = b, x = xCgD, r = rCgD, p = pCgD, Ap = ApCgD, K = K_CG };
+                    var cgDenseStat = Bench.Time(() => cgDenseJob.Run());
+                    sb.AppendLine(Row("float", n, density, "CG-dense", cgDenseStat, ResidualLinSys(in dense, in xCgD, in b)));
+
+                    var xCgS = arena.floatVec(n); var rCgS = arena.floatVec(n); var pCgS = arena.floatVec(n); var ApCgS = arena.floatVec(n);
+                    var cgSparseJob = new CGSparseJobFloat { A = sparse, b = b, x = xCgS, r = rCgS, p = pCgS, Ap = ApCgS, K = K_CG };
+                    var cgSparseStat = Bench.Time(() => cgSparseJob.Run());
+                    sb.AppendLine(Row("float", n, density, "CG-sparse", cgSparseStat, ResidualLinSys(in dense, in xCgS, in b)));
+
+                    var xMrD = arena.floatVec(n);
+                    var yD = arena.floatVec(n); var r1D = arena.floatVec(n); var r2D = arena.floatVec(n); var vD = arena.floatVec(n);
+                    var wD = arena.floatVec(n); var w1D = arena.floatVec(n); var w2D = arena.floatVec(n);
+                    var mrDenseJob = new MinresDenseJobFloat { A = dense, b = b, x = xMrD, y = yD, r1 = r1D, r2 = r2D, v = vD, w = wD, w1 = w1D, w2 = w2D, K = K_CG };
+                    var mrDenseStat = Bench.Time(() => mrDenseJob.Run());
+                    sb.AppendLine(Row("float", n, density, "MINRES-dense", mrDenseStat, ResidualLinSys(in dense, in xMrD, in b)));
+
+                    var xMrS = arena.floatVec(n);
+                    var yS = arena.floatVec(n); var r1S = arena.floatVec(n); var r2S = arena.floatVec(n); var vS = arena.floatVec(n);
+                    var wS = arena.floatVec(n); var w1S = arena.floatVec(n); var w2S = arena.floatVec(n);
+                    var mrSparseJob = new MinresSparseJobFloat { A = sparse, b = b, x = xMrS, y = yS, r1 = r1S, r2 = r2S, v = vS, w = wS, w1 = w1S, w2 = w2S, K = K_CG };
+                    var mrSparseStat = Bench.Time(() => mrSparseJob.Run());
+                    sb.AppendLine(Row("float", n, density, "MINRES-sparse", mrSparseStat, ResidualLinSys(in dense, in xMrS, in b)));
+
+                    arena.Dispose();
+                }
+            }
+        }
+
+        static void Section1Double(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 1. SPD block-sparse (b={0}): conjugateGradient & minres, K={1}, tol=0 [double] ---", BR, K_CG));
+            sb.AppendLine(RowHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb = n / BR;
+                foreach (var density in Densities)
+                {
+                    var arena = new Arena(Allocator.Persistent);
+                    BuildBlockSPDDouble(ref arena, nb, density, Seed(n, density, 13), out var dense, out var sparse);
+                    var b = arena.doubleRandomVec(n, -1.0, 1.0, Seed(n, density, 14));
+
+                    var xCgD = arena.doubleVec(n); var rCgD = arena.doubleVec(n); var pCgD = arena.doubleVec(n); var ApCgD = arena.doubleVec(n);
+                    var cgDenseJob = new CGDenseJobDouble { A = dense, b = b, x = xCgD, r = rCgD, p = pCgD, Ap = ApCgD, K = K_CG };
+                    var cgDenseStat = Bench.Time(() => cgDenseJob.Run());
+                    sb.AppendLine(Row("double", n, density, "CG-dense", cgDenseStat, ResidualLinSys(in dense, in xCgD, in b)));
+
+                    var xCgS = arena.doubleVec(n); var rCgS = arena.doubleVec(n); var pCgS = arena.doubleVec(n); var ApCgS = arena.doubleVec(n);
+                    var cgSparseJob = new CGSparseJobDouble { A = sparse, b = b, x = xCgS, r = rCgS, p = pCgS, Ap = ApCgS, K = K_CG };
+                    var cgSparseStat = Bench.Time(() => cgSparseJob.Run());
+                    sb.AppendLine(Row("double", n, density, "CG-sparse", cgSparseStat, ResidualLinSys(in dense, in xCgS, in b)));
+
+                    var xMrD = arena.doubleVec(n);
+                    var yD = arena.doubleVec(n); var r1D = arena.doubleVec(n); var r2D = arena.doubleVec(n); var vD = arena.doubleVec(n);
+                    var wD = arena.doubleVec(n); var w1D = arena.doubleVec(n); var w2D = arena.doubleVec(n);
+                    var mrDenseJob = new MinresDenseJobDouble { A = dense, b = b, x = xMrD, y = yD, r1 = r1D, r2 = r2D, v = vD, w = wD, w1 = w1D, w2 = w2D, K = K_CG };
+                    var mrDenseStat = Bench.Time(() => mrDenseJob.Run());
+                    sb.AppendLine(Row("double", n, density, "MINRES-dense", mrDenseStat, ResidualLinSys(in dense, in xMrD, in b)));
+
+                    var xMrS = arena.doubleVec(n);
+                    var yS = arena.doubleVec(n); var r1S = arena.doubleVec(n); var r2S = arena.doubleVec(n); var vS = arena.doubleVec(n);
+                    var wS = arena.doubleVec(n); var w1S = arena.doubleVec(n); var w2S = arena.doubleVec(n);
+                    var mrSparseJob = new MinresSparseJobDouble { A = sparse, b = b, x = xMrS, y = yS, r1 = r1S, r2 = r2S, v = vS, w = wS, w1 = w1S, w2 = w2S, K = K_CG };
+                    var mrSparseStat = Bench.Time(() => mrSparseJob.Run());
+                    sb.AppendLine(Row("double", n, density, "MINRES-sparse", mrSparseStat, ResidualLinSys(in dense, in xMrS, in b)));
+
+                    arena.Dispose();
+                }
+            }
+        }
+
+        // ==== Section 2: non-symmetric -> biCGStab =======================================================
+
+        static void Section2Float(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 2. Non-symmetric block-sparse (b={0}): biCGStab, K={1}, tol=0 [float] ---", BR, K_BICGSTAB));
+            sb.AppendLine(RowHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb = n / BR;
+                foreach (var density in Densities)
+                {
+                    var arena = new Arena(Allocator.Persistent);
+                    BuildBlockNonSymFloat(ref arena, nb, density, Seed(n, density, 21), out var dense, out var sparse);
+                    var b = arena.floatRandomVec(n, -1f, 1f, Seed(n, density, 22));
+
+                    var xD = arena.floatVec(n); var rD = arena.floatVec(n); var rh0D = arena.floatVec(n);
+                    var pD = arena.floatVec(n); var vD = arena.floatVec(n); var tD = arena.floatVec(n);
+                    var jobD = new BiCGStabDenseJobFloat { A = dense, b = b, x = xD, r = rD, rHat0 = rh0D, p = pD, v = vD, t = tD, K = K_BICGSTAB };
+                    var statD = Bench.Time(() => jobD.Run());
+                    sb.AppendLine(Row("float", n, density, "BiCGStab-dense", statD, ResidualLinSys(in dense, in xD, in b)));
+
+                    var xS = arena.floatVec(n); var rS = arena.floatVec(n); var rh0S = arena.floatVec(n);
+                    var pS = arena.floatVec(n); var vS = arena.floatVec(n); var tS = arena.floatVec(n);
+                    var jobS = new BiCGStabSparseJobFloat { A = sparse, b = b, x = xS, r = rS, rHat0 = rh0S, p = pS, v = vS, t = tS, K = K_BICGSTAB };
+                    var statS = Bench.Time(() => jobS.Run());
+                    sb.AppendLine(Row("float", n, density, "BiCGStab-sparse", statS, ResidualLinSys(in dense, in xS, in b)));
+
+                    arena.Dispose();
+                }
+            }
+        }
+
+        static void Section2Double(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 2. Non-symmetric block-sparse (b={0}): biCGStab, K={1}, tol=0 [double] ---", BR, K_BICGSTAB));
+            sb.AppendLine(RowHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb = n / BR;
+                foreach (var density in Densities)
+                {
+                    var arena = new Arena(Allocator.Persistent);
+                    BuildBlockNonSymDouble(ref arena, nb, density, Seed(n, density, 23), out var dense, out var sparse);
+                    var b = arena.doubleRandomVec(n, -1.0, 1.0, Seed(n, density, 24));
+
+                    var xD = arena.doubleVec(n); var rD = arena.doubleVec(n); var rh0D = arena.doubleVec(n);
+                    var pD = arena.doubleVec(n); var vD = arena.doubleVec(n); var tD = arena.doubleVec(n);
+                    var jobD = new BiCGStabDenseJobDouble { A = dense, b = b, x = xD, r = rD, rHat0 = rh0D, p = pD, v = vD, t = tD, K = K_BICGSTAB };
+                    var statD = Bench.Time(() => jobD.Run());
+                    sb.AppendLine(Row("double", n, density, "BiCGStab-dense", statD, ResidualLinSys(in dense, in xD, in b)));
+
+                    var xS = arena.doubleVec(n); var rS = arena.doubleVec(n); var rh0S = arena.doubleVec(n);
+                    var pS = arena.doubleVec(n); var vS = arena.doubleVec(n); var tS = arena.doubleVec(n);
+                    var jobS = new BiCGStabSparseJobDouble { A = sparse, b = b, x = xS, r = rS, rHat0 = rh0S, p = pS, v = vS, t = tS, K = K_BICGSTAB };
+                    var statS = Bench.Time(() => jobS.Run());
+                    sb.AppendLine(Row("double", n, density, "BiCGStab-sparse", statS, ResidualLinSys(in dense, in xS, in b)));
+
+                    arena.Dispose();
+                }
+            }
+        }
+
+        // ==== Section 3: rectangular -> cgls & lsqr (over- and under-determined) ========================
+
+        static void RunRectCaseFloat(int nRef, int mb, int nb, float density, string tag, int tagSeed, StringBuilder sb)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildBlockRectFloat(ref arena, mb, nb, density, Seed(nRef, density, tagSeed), out var dense, out var sparse);
+            int rows = mb * BR, cols = nb * BR;
+            var b = arena.floatRandomVec(rows, -1f, 1f, Seed(nRef, density, tagSeed + 1));
+
+            var xCD = arena.floatVec(cols); var rCD = arena.floatVec(rows); var sCD = arena.floatVec(cols); var pCD = arena.floatVec(cols); var qCD = arena.floatVec(rows);
+            var cglsDenseJob = new CglsDenseJobFloat { A = dense, b = b, x = xCD, r = rCD, s = sCD, p = pCD, q = qCD, K = K_LS };
+            var cglsDenseStat = Bench.Time(() => cglsDenseJob.Run());
+            sb.AppendLine(Row("float", nRef, density, "CGLS-dense-" + tag, cglsDenseStat, ResidualLS(in dense, in xCD, in b)));
+
+            var xCS = arena.floatVec(cols); var rCS = arena.floatVec(rows); var sCS = arena.floatVec(cols); var pCS = arena.floatVec(cols); var qCS = arena.floatVec(rows);
+            var cglsSparseJob = new CglsSparseJobFloat { A = sparse, b = b, x = xCS, r = rCS, s = sCS, p = pCS, q = qCS, K = K_LS };
+            var cglsSparseStat = Bench.Time(() => cglsSparseJob.Run());
+            sb.AppendLine(Row("float", nRef, density, "CGLS-sparse-" + tag, cglsSparseStat, ResidualLS(in dense, in xCS, in b)));
+
+            var xLD = arena.floatVec(cols); var uLD = arena.floatVec(rows); var vLD = arena.floatVec(cols); var wLD = arena.floatVec(cols);
+            var tmMLD = arena.floatVec(rows); var tmNLD = arena.floatVec(cols);
+            var lsqrDenseJob = new LsqrDenseJobFloat { A = dense, b = b, x = xLD, u = uLD, v = vLD, w = wLD, tmpM = tmMLD, tmpN = tmNLD, K = K_LS };
+            var lsqrDenseStat = Bench.Time(() => lsqrDenseJob.Run());
+            sb.AppendLine(Row("float", nRef, density, "LSQR-dense-" + tag, lsqrDenseStat, ResidualLS(in dense, in xLD, in b)));
+
+            var xLS = arena.floatVec(cols); var uLS = arena.floatVec(rows); var vLS = arena.floatVec(cols); var wLS = arena.floatVec(cols);
+            var tmMLS = arena.floatVec(rows); var tmNLS = arena.floatVec(cols);
+            var lsqrSparseJob = new LsqrSparseJobFloat { A = sparse, b = b, x = xLS, u = uLS, v = vLS, w = wLS, tmpM = tmMLS, tmpN = tmNLS, K = K_LS };
+            var lsqrSparseStat = Bench.Time(() => lsqrSparseJob.Run());
+            sb.AppendLine(Row("float", nRef, density, "LSQR-sparse-" + tag, lsqrSparseStat, ResidualLS(in dense, in xLS, in b)));
+
+            arena.Dispose();
+        }
+
+        static void RunRectCaseDouble(int nRef, int mb, int nb, float density, string tag, int tagSeed, StringBuilder sb)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildBlockRectDouble(ref arena, mb, nb, density, Seed(nRef, density, tagSeed), out var dense, out var sparse);
+            int rows = mb * BR, cols = nb * BR;
+            var b = arena.doubleRandomVec(rows, -1.0, 1.0, Seed(nRef, density, tagSeed + 1));
+
+            var xCD = arena.doubleVec(cols); var rCD = arena.doubleVec(rows); var sCD = arena.doubleVec(cols); var pCD = arena.doubleVec(cols); var qCD = arena.doubleVec(rows);
+            var cglsDenseJob = new CglsDenseJobDouble { A = dense, b = b, x = xCD, r = rCD, s = sCD, p = pCD, q = qCD, K = K_LS };
+            var cglsDenseStat = Bench.Time(() => cglsDenseJob.Run());
+            sb.AppendLine(Row("double", nRef, density, "CGLS-dense-" + tag, cglsDenseStat, ResidualLS(in dense, in xCD, in b)));
+
+            var xCS = arena.doubleVec(cols); var rCS = arena.doubleVec(rows); var sCS = arena.doubleVec(cols); var pCS = arena.doubleVec(cols); var qCS = arena.doubleVec(rows);
+            var cglsSparseJob = new CglsSparseJobDouble { A = sparse, b = b, x = xCS, r = rCS, s = sCS, p = pCS, q = qCS, K = K_LS };
+            var cglsSparseStat = Bench.Time(() => cglsSparseJob.Run());
+            sb.AppendLine(Row("double", nRef, density, "CGLS-sparse-" + tag, cglsSparseStat, ResidualLS(in dense, in xCS, in b)));
+
+            var xLD = arena.doubleVec(cols); var uLD = arena.doubleVec(rows); var vLD = arena.doubleVec(cols); var wLD = arena.doubleVec(cols);
+            var tmMLD = arena.doubleVec(rows); var tmNLD = arena.doubleVec(cols);
+            var lsqrDenseJob = new LsqrDenseJobDouble { A = dense, b = b, x = xLD, u = uLD, v = vLD, w = wLD, tmpM = tmMLD, tmpN = tmNLD, K = K_LS };
+            var lsqrDenseStat = Bench.Time(() => lsqrDenseJob.Run());
+            sb.AppendLine(Row("double", nRef, density, "LSQR-dense-" + tag, lsqrDenseStat, ResidualLS(in dense, in xLD, in b)));
+
+            var xLS = arena.doubleVec(cols); var uLS = arena.doubleVec(rows); var vLS = arena.doubleVec(cols); var wLS = arena.doubleVec(cols);
+            var tmMLS = arena.doubleVec(rows); var tmNLS = arena.doubleVec(cols);
+            var lsqrSparseJob = new LsqrSparseJobDouble { A = sparse, b = b, x = xLS, u = uLS, v = vLS, w = wLS, tmpM = tmMLS, tmpN = tmNLS, K = K_LS };
+            var lsqrSparseStat = Bench.Time(() => lsqrSparseJob.Run());
+            sb.AppendLine(Row("double", nRef, density, "LSQR-sparse-" + tag, lsqrSparseStat, ResidualLS(in dense, in xLS, in b)));
+
+            arena.Dispose();
+        }
+
+        static void Section3Float(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 3. Rectangular block-sparse (b={0}): cgls & lsqr, K={1}, tol=0 [float] ---", BR, K_LS));
+            sb.AppendLine("    over: rows=2xcols block grid (m=2n, overdetermined); under: cols=2xrows block grid (m=n/2, underdetermined).");
+            sb.AppendLine("    residual = ||A^T(Ax-b)|| / ||A^T b|| (least-squares optimality, not ||Ax-b||).");
+            sb.AppendLine(RowHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb0 = n / BR;
+                foreach (var density in Densities)
+                {
+                    RunRectCaseFloat(n, 2 * nb0, nb0, density, "over", 31, sb);
+                    RunRectCaseFloat(n, nb0, 2 * nb0, density, "under", 33, sb);
+                }
+            }
+        }
+
+        static void Section3Double(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 3. Rectangular block-sparse (b={0}): cgls & lsqr, K={1}, tol=0 [double] ---", BR, K_LS));
+            sb.AppendLine("    over: rows=2xcols block grid (m=2n, overdetermined); under: cols=2xrows block grid (m=n/2, underdetermined).");
+            sb.AppendLine("    residual = ||A^T(Ax-b)|| / ||A^T b|| (least-squares optimality, not ||Ax-b||).");
+            sb.AppendLine(RowHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb0 = n / BR;
+                foreach (var density in Densities)
+                {
+                    RunRectCaseDouble(n, 2 * nb0, nb0, density, "over", 35, sb);
+                    RunRectCaseDouble(n, nb0, 2 * nb0, density, "under", 37, sb);
+                }
+            }
+        }
+
+        // ==== Section 4: zero-cost-abstraction probe (THE fork datapoint) ===============================
+        //
+        // Generic Solvers.conjugateGradient(in floatMxN/doubleMxN,...) -- which internally wraps A in
+        // floatDenseOperator/doubleDenseOperator and calls the generic cg<TOp> loop -- vs a hand-inlined
+        // dense CG written directly against raw pointers in CGHandInlinedJobFloat/Double (see above), no
+        // IfloatLinearOperator/IdoubleLinearOperator, no generic dispatch. Same matrix, same K, same
+        // algorithm. If Burst fully monomorphizes/inlines the generic operator call, the two times should
+        // be ~equal (ratio ~1) -- the operator abstraction is then free, and there is no perf case for
+        // forking dense-specific vs sparse-specific solver bodies. A material gap would argue otherwise.
+
+        static void Section4Float(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 4. Zero-cost-abstraction probe (dense SPD, K={0}, tol=0) [float] ---", K_CG));
+            sb.AppendLine("    generic = Solvers.conjugateGradient(in floatMxN,...) via cg<floatDenseOperator>;");
+            sb.AppendLine("    hand-inlined = raw-pointer GEMV/axpy/dot written directly in the job, no operator interface.");
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11} {4,11} {5,10}",
+                "dtype", "N", "path", "med(ms)", "min(ms)", "ratio"));
+
+            foreach (var n in BlockSizesN)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var M = arena.floatRandomMat(n, n, -1f, 1f, Seed(n, 0f, 41));
+                var A = Linear_OP.dot(M, M, true);
+                for (int d = 0; d < n; d++) A[d, d] += n;
+                var b = arena.floatRandomVec(n, -1f, 1f, Seed(n, 0f, 42));
+
+                var xG = arena.floatVec(n); var rG = arena.floatVec(n); var pG = arena.floatVec(n); var ApG = arena.floatVec(n);
+                var genericJob = new CGDenseJobFloat { A = A, b = b, x = xG, r = rG, p = pG, Ap = ApG, K = K_CG };
+                var genericStat = Bench.Time(() => genericJob.Run());
+
+                var xH = arena.floatVec(n); var rH = arena.floatVec(n); var pH = arena.floatVec(n); var ApH = arena.floatVec(n);
+                var handJob = new CGHandInlinedJobFloat { A = A, b = b, x = xH, r = rH, p = pH, Ap = ApH, K = K_CG };
+                var handStat = Bench.Time(() => handJob.Run());
+
+                double ratio = genericStat.Median / math.max(handStat.Median, 1e-9);
+                sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11:F4} {4,11:F4} {5,10:F3}",
+                    "float", n, "generic", genericStat.Median, genericStat.Min, ratio));
+                sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11:F4} {4,11:F4} {5,10}",
+                    "float", n, "hand-inlined", handStat.Median, handStat.Min, "--"));
+
+                arena.Dispose();
+            }
+        }
+
+        static void Section4Double(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 4. Zero-cost-abstraction probe (dense SPD, K={0}, tol=0) [double] ---", K_CG));
+            sb.AppendLine("    generic = Solvers.conjugateGradient(in doubleMxN,...) via cg<doubleDenseOperator>;");
+            sb.AppendLine("    hand-inlined = raw-pointer GEMV/axpy/dot written directly in the job, no operator interface.");
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11} {4,11} {5,10}",
+                "dtype", "N", "path", "med(ms)", "min(ms)", "ratio"));
+
+            foreach (var n in BlockSizesN)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var M = arena.doubleRandomMat(n, n, -1.0, 1.0, Seed(n, 0f, 43));
+                var A = Linear_OP.dot(M, M, true);
+                for (int d = 0; d < n; d++) A[d, d] += n;
+                var b = arena.doubleRandomVec(n, -1.0, 1.0, Seed(n, 0f, 44));
+
+                var xG = arena.doubleVec(n); var rG = arena.doubleVec(n); var pG = arena.doubleVec(n); var ApG = arena.doubleVec(n);
+                var genericJob = new CGDenseJobDouble { A = A, b = b, x = xG, r = rG, p = pG, Ap = ApG, K = K_CG };
+                var genericStat = Bench.Time(() => genericJob.Run());
+
+                var xH = arena.doubleVec(n); var rH = arena.doubleVec(n); var pH = arena.doubleVec(n); var ApH = arena.doubleVec(n);
+                var handJob = new CGHandInlinedJobDouble { A = A, b = b, x = xH, r = rH, p = pH, Ap = ApH, K = K_CG };
+                var handStat = Bench.Time(() => handJob.Run());
+
+                double ratio = genericStat.Median / math.max(handStat.Median, 1e-9);
+                sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11:F4} {4,11:F4} {5,10:F3}",
+                    "double", n, "generic", genericStat.Median, genericStat.Min, ratio));
+                sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11:F4} {4,11:F4} {5,10}",
+                    "double", n, "hand-inlined", handStat.Median, handStat.Min, "--"));
+
+                arena.Dispose();
+            }
+        }
+    }
+}
