@@ -78,6 +78,7 @@ namespace LinearAlgebra.CodeGen {
 
                     var targetSource = sourceCode.Replace(proxy, typeStr);
                     targetSource = targetSource.Replace(capsProxy, capsTypeStr);
+                    targetSource = ChooseReplace(targetSource, i, relativePath);
 
                     context.AddCode(targetPath, targetSource);
                 }
@@ -221,6 +222,60 @@ namespace LinearAlgebra.CodeGen {
 
             if (infinityGuard == 0)
                 Debug.LogError($"Infinity guard triggered, deleteThis syntax is bad: {filePathDebug}");
+
+            return targetSource;
+        }
+
+        // Resolves /*+choose[v0|v1|...]*/placeholder/*-choose*/ to v(typeIndex) for the type currently
+        // being generated (typeIndex indexes the SAME types[] array the per-type loop in Execute uses,
+        // so v0/v1/v2 line up with float/double or int/short/long in that order). Unlike CopyReplace's
+        // family this runs ONCE PER GENERATED TYPE (inside the per-type loop, on targetSource), not
+        // once on the shared sourceCode before the loop - it needs to know which type is being emitted.
+        string ChooseReplace(string targetSource, int typeIndex, string filePathDebug) {
+
+            int infinityGuard = 100;
+
+            while (targetSource.Contains(GenUtils.chooseMarkerStart) && infinityGuard > 0) {
+
+                int startIndex = targetSource.IndexOf(GenUtils.chooseMarkerStart);
+                int valuesStart = startIndex + GenUtils.chooseMarkerStart.Length;
+                int valuesEnd = targetSource.IndexOf("]", valuesStart);
+
+                if (valuesEnd < 0) {
+                    Debug.LogError($"choose marker missing closing ']': {filePathDebug}");
+                    break;
+                }
+
+                string[] values = targetSource.Substring(valuesStart, valuesEnd - valuesStart).Split('|');
+
+                int markerCommentClose = targetSource.IndexOf("*/", valuesEnd);
+                if (markerCommentClose < 0) {
+                    Debug.LogError($"choose marker missing closing '*/': {filePathDebug}");
+                    break;
+                }
+                markerCommentClose += 2;
+
+                int endMarkerIndex = targetSource.IndexOf(GenUtils.chooseMarkerEnd, markerCommentClose);
+                if (endMarkerIndex < 0) {
+                    Debug.LogError($"choose marker missing matching -choose: {filePathDebug}");
+                    break;
+                }
+                int endIndex = endMarkerIndex + GenUtils.chooseMarkerEnd.Length;
+
+                if (typeIndex < 0 || typeIndex >= values.Length) {
+                    Debug.LogError($"choose marker has {values.Length} value(s) but type index {typeIndex} was requested: {filePathDebug}");
+                    break;
+                }
+
+                string chosen = values[typeIndex].Trim();
+
+                targetSource = targetSource.Remove(startIndex, endIndex - startIndex);
+                targetSource = targetSource.Insert(startIndex, chosen);
+                --infinityGuard;
+            }
+
+            if (infinityGuard == 0)
+                Debug.LogError($"Infinity guard triggered, choose syntax is bad: {filePathDebug}");
 
             return targetSource;
         }

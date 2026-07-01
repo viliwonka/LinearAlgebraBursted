@@ -1,0 +1,19 @@
+using LinearAlgebra;
+using NUnit.Framework;
+
+// Verifies the //+choose[...] codegen marker (see GenUtils.cs) resolves to the correct per-type
+// literal: v0 for the first type in the file's types[] array (float), v1 for the second (double).
+public class doubleChooseMarkerTests
+{
+    [Test]
+    public void ChooseMarker_ResolvesToCorrectPerTypeLiteral()
+    {
+        // doubleChooseMarkerDemo.DemoThreshold is declared in the template as
+        //   1e-14
+        // which must resolve to 1e-6f in this (float) file and 1e-14 in the double file - use the
+        // SAME marker for the expected value so both generated tests compare against the right one
+        // (a hardcoded "1e-6f" here would be wrong once cast to double: it isn't 1e-14).
+        double expected = 1e-14;
+        Assert.AreEqual(expected, doubleChooseMarkerDemo.DemoThreshold);
+    }
+}

@@ -15,6 +15,11 @@ namespace LinearAlgebra.CodeGen
         //(+/-)copyReplace are markers for code generator to replace the code with concrete types
         //(+/-)copyReplaceFill[symbol] are markers for code generator to replace the code with concrete types and fills inbetween with symbols
         //(+/-)deleteThis are markers for code generator to delete the code segment
+        //+choose[v0|v1|...] ... -choose are INLINE markers, block-commented (not line-commented like
+        //the markers above) so they can sit mid-statement: the wrapped placeholder value is replaced
+        //with v0 for the first generated type, v1 for the second, etc. (float|double for an fProxy
+        //file; int|short|long for an iProxy file). Lets a magic-number constant differ per generated
+        //type - see ChooseMarkerDemo.fProxy.cs / ChooseMarkerDemo.iProxy.cs for worked examples.
     */
     public static class GenUtils
     {
@@ -59,6 +64,12 @@ namespace LinearAlgebra.CodeGen
         public const string deleteMarkerStart = "//+deleteThis";
         public const string deleteMarkerEnd = "//-deleteThis";
         public static int deleteMarkerLen = deleteMarkerStart.Length;
+
+        // Inline per-generated-type literal substitution: /*+choose[v0|v1|...]*/placeholder/*-choose*/
+        // resolves to v(typeIndex) - v0 for the first type in the file's types[] array, v1 for the
+        // second, etc. Block comments (not // line comments) so the marker can sit mid-statement.
+        public const string chooseMarkerStart = "/*+choose[";
+        public const string chooseMarkerEnd = "/*-choose*/";
 
         // tells compiler that file is singular and should not be copied for each type
         public const string singularFileMarker = "//singularFile//";

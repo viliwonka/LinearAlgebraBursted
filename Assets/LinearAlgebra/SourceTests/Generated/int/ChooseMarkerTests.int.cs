@@ -1,0 +1,17 @@
+using LinearAlgebra;
+using NUnit.Framework;
+
+// Verifies the //+choose[...] codegen marker (see GenUtils.cs) resolves to the correct per-type
+// literal on the int side: v0 for int, v1 for short, v2 for long - exercising the trickier
+// literal-suffix rules (short needs an explicit cast, long needs the L suffix).
+public class intChooseMarkerTests
+{
+    [Test]
+    public void ChooseMarker_ResolvesToCorrectPerTypeLiteral()
+    {
+        // intChooseMarkerDemo.DemoValue is declared in the template as
+        //   100
+        // which must resolve to 100 in this file regardless of which int type (int/short/long).
+        Assert.AreEqual((int)100, intChooseMarkerDemo.DemoValue);
+    }
+}
