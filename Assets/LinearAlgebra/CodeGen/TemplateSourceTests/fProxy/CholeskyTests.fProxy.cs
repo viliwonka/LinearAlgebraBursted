@@ -25,6 +25,18 @@ public class fProxyCholeskyTests
             GalleryMinIJ,
             GalleryGCD,
             GalleryFiedlerRejects,
+            // Blocked (level-3 / TRSM+SYRK trailing-update) path, engaged when
+            // n >= CHOL_BLOCK_MIN_N = 8*CHOL_BLOCK = 256 (a measured crossover, not the naive
+            // 2*CHOL_BLOCK — see the size-gate comment at the call site). The rest of the suite above
+            // tops out at dim=12, so these are the ONLY tests that reach the blocked core. 300 and 400
+            // are NOT multiples of CHOL_BLOCK=32, so their last panel is narrower than a full block
+            // (300 % 32 = 12, 400 % 32 = 16); 256 and 320 are aligned.
+            BlockedRoundTrip256,
+            BlockedRoundTrip300,
+            BlockedRoundTrip320,
+            BlockedRoundTrip400,
+            BlockedNotSPD,
+            BlockedAliasing,
         }
 
         public TestType Type;
@@ -72,6 +84,24 @@ public class fProxyCholeskyTests
                     break;
                 case TestType.GalleryFiedlerRejects:
                     GalleryFiedlerRejects();
+                    break;
+                case TestType.BlockedRoundTrip256:
+                    BlockedRoundTripAt(256, 2560001);
+                    break;
+                case TestType.BlockedRoundTrip300:
+                    BlockedRoundTripAt(300, 3000001);
+                    break;
+                case TestType.BlockedRoundTrip320:
+                    BlockedRoundTripAt(320, 3200001);
+                    break;
+                case TestType.BlockedRoundTrip400:
+                    BlockedRoundTripAt(400, 4000001);
+                    break;
+                case TestType.BlockedNotSPD:
+                    BlockedNotSPD();
+                    break;
+                case TestType.BlockedAliasing:
+                    BlockedAliasing();
                     break;
             }
         }
@@ -415,6 +445,71 @@ public class fProxyCholeskyTests
 
             arena.Dispose();
         }
+
+        // Round-trip at sizes that reach the BLOCKED (level-3 / TRSM+SYRK trailing-update) path
+        // (n >= CHOL_BLOCK_MIN_N = 256). Same invariants as RoundTrip: L lower-triangular, A ≈ L·Lᵀ.
+        void BlockedRoundTripAt(int dim, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = BuildSPD(ref arena, dim, seed);
+            var L = arena.fProxyMat(dim, dim);
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+
+            Assert.IsTrue(Analysis_OP.isLowerTriangular(L, Tol()));
+
+            var Lt = Linear_OP.trans(L);
+            var recon = Linear_OP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis_OP.isZero(A - recon, Tol()));
+
+            arena.Dispose();
+        }
+
+        // Non-PD rejection WITHIN the blocked path, past the first panel/TRSM/SYRK trailing update
+        // (dim=300 -> panels [0,32) [32,64) ... [256,288) [288,300); index 260 sits in the ninth
+        // panel). The rank-1/SYRK updates only ever SUBTRACT squares from a diagonal entry, so
+        // seeding it very negative guarantees the running pivot stays non-positive however earlier
+        // panels' deferred trailing updates land on it — verifying the !(d>0) check still fires at
+        // the right column when the SYRK update has been deferred across whole panels.
+        void BlockedNotSPD()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 300;
+            var A = BuildSPD(ref arena, dim, 555555);
+            A[260, 260] = -1000000f;
+
+            var L = arena.fProxyMat(dim, dim);
+
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsFalse(ok);
+            Assert.IsFalse(Analysis_OP.isAnyNan(in L));
+
+            arena.Dispose();
+        }
+
+        // In-place (L aliases A) factorization through the BLOCKED path (dim=288 = 9*CHOL_BLOCK).
+        void BlockedAliasing()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 288;
+            var A = BuildSPD(ref arena, dim, 909090);
+            var Aorig = A.Copy();
+
+            // L and A are distinct handles over the SAME underlying data.
+            var L = A;
+            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(ok);
+
+            var Lt = Linear_OP.trans(L);
+            var recon = Linear_OP.dot(L, Lt, false);
+            Assert.IsTrue(Analysis_OP.isZero(Aorig - recon, Tol()));
+
+            arena.Dispose();
+        }
     }
 
     [Test]
@@ -487,5 +582,41 @@ public class fProxyCholeskyTests
     public void GalleryFiedlerRejectsTest()
     {
         new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryFiedlerRejects }.Run();
+    }
+
+    [Test]
+    public void BlockedRoundTrip256Test()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip256 }.Run();
+    }
+
+    [Test]
+    public void BlockedRoundTrip300Test()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip300 }.Run();
+    }
+
+    [Test]
+    public void BlockedRoundTrip320Test()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip320 }.Run();
+    }
+
+    [Test]
+    public void BlockedRoundTrip400Test()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip400 }.Run();
+    }
+
+    [Test]
+    public void BlockedNotSPDTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedNotSPD }.Run();
+    }
+
+    [Test]
+    public void BlockedAliasingTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedAliasing }.Run();
     }
 }

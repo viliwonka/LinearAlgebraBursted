@@ -171,6 +171,66 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // Row-wise forward substitution ("TRSM", lower-triangular panel solve, applied one row at a
+        // time): for every row t of B, solve L11 * B[t,:]ᵀ = B[t,:]ᵀ_old for B[t,:] IN PLACE, where
+        // L11 is the jb x jb lower-triangular block at leading dimension Lld (row-major,
+        // L11[p,k] at L11[p*Lld+k]). B is nrows x jb, row-major, leading dimension Bld; B[t,p] is
+        // only read for k<p at the point column p is solved (forward substitution), so each row can
+        // be overwritten in place left-to-right. Used by Cholesky's blocked (level-3) factorization
+        // to compute the below-panel strip L21 from the already-factored diagonal block L11 (DTRSM):
+        // ONE call solves every below-panel row for the whole panel, instead of a rank-1 update per
+        // (row, column) pair — the latter keeps the same O(n^2) NoInlining-call count as the
+        // unblocked sweep it's replacing (just doing less work per call), which was measured to eat
+        // the paired SYRK's savings at mid-range n. [NoAlias] is truthful: L11 (rows [j0,j0+jb)) and
+        // B (rows [rStart,n), rStart=j0+jb) are disjoint row ranges of the same underlying L matrix.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void trsmLowerPanel([NoAlias] double* L11, int Lld, [NoAlias] double* B, int Bld, int nrows, int jb)
+        {
+            for (int t = 0; t < nrows; t++)
+            {
+                double* Brow = B + (long)t * Bld;
+                for (int p = 0; p < jb; p++)
+                {
+                    double s = Brow[p];
+                    double* L11row = L11 + (long)p * Lld;
+                    for (int k = 0; k < p; k++)
+                        s -= L11row[k] * Brow[k];
+                    Brow[p] = s / L11row[p];
+                }
+            }
+        }
+
+        // Lower-triangular SYRK subtract into the trailing diagonal block of a row-major n x n
+        // matrix L:
+        //   L[i,k] -= Σ_{p=0..jb-1} P[i',p] * PT[p,k']   for rStart <= k <= i < n   (i'=i-rStart, k'=k-rStart)
+        // P = the panel strip L[rStart:n, j0:j0+jb] read in place from L (strided, cols j0..j0+jb-1).
+        // PT = transpose of P, contiguous jb x ntrail (ntrail = n-rStart): PT[p*ntrail + k'] = P[k',p].
+        // Inner loop over k' is unit-stride in both L's row and PT's row p, and TRIANGULAR (k' in
+        // [0,i']), so it costs the SYRK's n^3/6, not a full-rectangular n^3/3 — do NOT extend it to
+        // the strict upper triangle (that would double the flops and write past L's diagonal). Used
+        // by Cholesky's blocked (level-3) factorization for the trailing-block update A22 -= L21*L21ᵀ.
+        // [NoAlias] is truthful: PT is a separate Temp buffer; the P read-region (cols [j0,j0+jb)) and
+        // the write-region (cols [rStart=j0+jb, i]) are disjoint column ranges of L, and the P entry is
+        // loaded into `temp` before any write in that same iteration.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void syrkLowerSub([NoAlias] double* Lp, int n, int rStart, int j0, int jb, [NoAlias] double* PT)
+        {
+            int ntrail = n - rStart;
+            for (int ip = 0; ip < ntrail; ip++)          // i' ; i = rStart+ip
+            {
+                int i = rStart + ip;
+                double* Lrow = Lp + (long)i * n;         // write cols [rStart, i]
+                double* Pi = Lp + (long)i * n + j0;      // P[ip, 0..jb)
+                for (int p = 0; p < jb; p++)
+                {
+                    double temp = Pi[p];                  // scalar, loaded before the k' write loop (no hazard)
+                    double* PTp = PT + (long)p * ntrail;
+                    for (int kp = 0; kp <= ip; kp++)      // unit stride, lower triangle incl diagonal
+                        Lrow[rStart + kp] -= temp * PTp[kp];
+                }
+            }
+        }
+
         // ---- Compact-WY (block-reflector) helpers, τ≡1 convention (H_i = I - u_i u_iᵀ) ----
         // Used by QR's blocked (level-3) factorization/reconstruction to batch nb reflectors into
         // one GEMM-shaped trailing update  C -= V·(T·(Vᵀ·C))  instead of nb rank-1 passes. V is a

@@ -56,6 +56,21 @@ namespace LinearAlgebra
             // The active column j is gathered into a contiguous buffer `lj` (one strided pass) so both
             // axpy operands are unit-stride. Results differ from the old left-looking form by rounding
             // only (a different, equally-valid summation order); A = L*Lᵀ to working precision.
+            //
+            // Above a size threshold this is further raised to LEVEL-3 (blocked, right-looking POTRF;
+            // see docs/level3-blocking-guide.md recipe B), mirroring LAPACK's DPOTRF: a CHOL_BLOCK-wide
+            // diagonal block L11 is factored with the same rank-1 sweep above (narrowed to the panel's
+            // own jb rows/cols — DPOTF2), the below-panel strip L21 is then solved for in one shot by
+            // forward substitution against L11 (Unsafe_OP.trsmLowerPanel — DTRSM), and finally the whole
+            // trailing lower triangle is updated ONCE per panel with a triangular SYRK
+            // (Unsafe_OP.syrkLowerSub, A22 -= L21*L21ᵀ) instead of one rank-1 pass per column — trading
+            // O(n) re-streams of the trailing matrix for O(n/CHOL_BLOCK), the memory-bandwidth-bound
+            // part of the algorithm. (An earlier version computed L21 by extending the panel's rank-1
+            // sweep to the below-panel rows with a narrowed column width; it was measurably WORSE at
+            // mid-range n — same O(n^2) small-call count as the unblocked sweep, just doing less work
+            // per call — which is why L21 is a dedicated forward-substitution pass instead.) Below the
+            // threshold the panel/TRSM/SYRK bookkeeping isn't worth it, so the plain per-column sweep is
+            // used unchanged.
             unsafe
             {
                 double* lp = L.Data.Ptr;
@@ -72,30 +87,122 @@ namespace LinearAlgebra
                 var lj = new doubleN(n, Allocator.Temp, false);
                 double* ljp = lj.Data.Ptr;
 
-                for (int j = 0; j < n; j++)
+                // Panel width for the blocked (level-3) path. Method-local const — Cholesky is a
+                // partial class shared by the float/double generated files, so a class-level const of
+                // the same name would collide across them (CS0102; see QR_BLOCK).
+                const int CHOL_BLOCK = 32;
+
+                // Size gate: MEASURED crossover, not the naive 2*CHOL_BLOCK (see
+                // docs/level3-blocking-guide.md landmine "size gate" — LQ needed the same kind of
+                // margin, LQ_BLOCK=64 but gate m>=512, i.e. 8x the block width). Benchmarked: n=128
+                // (4 panels) is measurably SLOWER than the plain sweep — the panel/TRSM/SYRK
+                // bookkeeping isn't amortised yet — while n=256 (8 panels) is the first size that wins
+                // for both float and double. A shared float/double threshold uses the slower type's
+                // crossover.
+                const int CHOL_BLOCK_MIN_N = 8 * CHOL_BLOCK;
+
+                if (n < CHOL_BLOCK_MIN_N)
                 {
-                    // L[j,j] already holds A[j,j] - sum_{k<j} L[j,k]^2 (applied by earlier rank-1
-                    // updates). Not positive-definite -> reject; !(d > 0) also catches NaN, before sqrt.
-                    double d = L[j, j];
-                    if (!(d > (double)0)) { lj.Dispose(); return false; }
-
-                    double Ljj = math.sqrt(d);
-                    L[j, j] = Ljj;
-                    double inv = (double)1 / Ljj;
-
-                    // Scale column j below the diagonal and gather it contiguously into lj.
-                    for (int i = j + 1; i < n; i++)
+                    // Small matrix: plain per-column right-looking sweep, unchanged.
+                    for (int j = 0; j < n; j++)
                     {
-                        double v = L[i, j] * inv;
-                        L[i, j] = v;
-                        ljp[i] = v;
+                        // L[j,j] already holds A[j,j] - sum_{k<j} L[j,k]^2 (applied by earlier rank-1
+                        // updates). Not positive-definite -> reject; !(d > 0) also catches NaN, before
+                        // sqrt.
+                        double d = L[j, j];
+                        if (!(d > (double)0)) { lj.Dispose(); return false; }
+
+                        double Ljj = math.sqrt(d);
+                        L[j, j] = Ljj;
+                        double inv = (double)1 / Ljj;
+
+                        // Scale column j below the diagonal and gather it contiguously into lj.
+                        for (int i = j + 1; i < n; i++)
+                        {
+                            double v = L[i, j] * inv;
+                            L[i, j] = v;
+                            ljp[i] = v;
+                        }
+
+                        // Rank-1 update of the trailing lower triangle, one row-axpy per row.
+                        for (int i = j + 1; i < n; i++)
+                            Unsafe_OP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
                     }
 
-                    // Rank-1 update of the trailing lower triangle, one row-axpy per row.
-                    for (int i = j + 1; i < n; i++)
-                        Unsafe_OP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
+                    lj.Dispose();
+                    return true;
                 }
 
+                // ---- blocked (level-3) path ----
+                // PT holds the transpose of the current panel's below-diagonal strip L21 (jb x ntrail,
+                // contiguous), sized for the worst case (first panel, j0=0: jb=CHOL_BLOCK, ntrail<=n).
+                var PT = new doubleN(CHOL_BLOCK * n, Allocator.Temp, false);
+                double* ptp = PT.Data.Ptr;
+
+                for (int j0 = 0; j0 < n; j0 += CHOL_BLOCK)
+                {
+                    int jb = math.min(CHOL_BLOCK, n - j0);
+                    int panelEnd = j0 + jb;
+
+                    // (1) factor the jb x jb diagonal block L11 (DPOTF2-style): EXACTLY the small-n
+                    //     loop above, just with its row/col bound narrowed from n to panelEnd — this
+                    //     factors ONLY the panel's own rows, so it costs O(jb^3), not O(jb*n^2). The
+                    //     below-panel strip is handled separately by the TRSM step (2): it is NOT
+                    //     touched here (unlike a naive column-by-column extension would do), which is
+                    //     what keeps this cheap regardless of panel position.
+                    for (int j = j0; j < panelEnd; j++)
+                    {
+                        double d = L[j, j];
+                        if (!(d > (double)0)) { PT.Dispose(); lj.Dispose(); return false; }
+
+                        double Ljj = math.sqrt(d);
+                        L[j, j] = Ljj;
+                        double inv = (double)1 / Ljj;
+
+                        for (int i = j + 1; i < panelEnd; i++)
+                        {
+                            double v = L[i, j] * inv;
+                            L[i, j] = v;
+                            ljp[i] = v;
+                        }
+
+                        for (int i = j + 1; i < panelEnd; i++)
+                            Unsafe_OP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
+                    }
+
+                    int rStart = panelEnd;
+                    if (rStart < n)
+                    {
+                        int ntrail = n - rStart;
+
+                        // (2) TRSM: solve L11 * L21[i,:]ᵀ = A21[i,:]ᵀ for every below-panel row i
+                        //     (forward substitution against the just-factored L11), writing L21 in
+                        //     place into L[rStart:n, j0:j0+jb). A21[i,:] is exactly the CURRENT
+                        //     L[i, j0:j0+jb) — untouched since the last panel's SYRK, because step (1)
+                        //     above never wrote to rows >= panelEnd. ONE call for the whole panel
+                        //     (Unsafe_OP.trsmLowerPanel) instead of a rank-1 update per (row, column)
+                        //     pair — the earlier per-column-per-row formulation was measured to keep
+                        //     O(n^2) tiny NoInlining calls (same call count as the unblocked sweep,
+                        //     just each doing less work), which ate the SYRK's savings at n up to ~512;
+                        //     this collapses that to O(n/CHOL_BLOCK) calls, one per panel.
+                        Unsafe_OP.trsmLowerPanel(lp + (long)j0 * n + j0, n, lp + (long)rStart * n + j0, n, ntrail, jb);
+
+                        // (3) SYRK trailing update: A22 -= L21*L21ᵀ, L21 = L[j0+jb:n, j0:j0+jb]. Touches
+                        //     ONLY the lower triangle of the trailing block (see syrkLowerSub) — a full
+                        //     rectangular update would double the flops and write past L's diagonal.
+                        // PT[p*ntrail + kp] = L21[kp, p] = L[rStart+kp, j0+p].
+                        for (int kp = 0; kp < ntrail; kp++)
+                        {
+                            int row = rStart + kp;
+                            for (int p = 0; p < jb; p++)
+                                ptp[p * ntrail + kp] = L[row, j0 + p];
+                        }
+
+                        Unsafe_OP.syrkLowerSub(lp, n, rStart, j0, jb, ptp);
+                    }
+                }
+
+                PT.Dispose();
                 lj.Dispose();
             }
 
