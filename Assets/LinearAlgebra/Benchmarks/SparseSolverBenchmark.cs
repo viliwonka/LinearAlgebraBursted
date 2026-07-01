@@ -582,11 +582,16 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("(not just how fast) each path is. Block density is at the BLOCK level (nb x nb");
             sb.AppendLine("block grid): ~7% / ~33% of blocks nonzero, always including every diagonal block.");
             sb.AppendLine("Section 0 first isolates the pure per-iteration operator cost (dense GEMV vs sparse");
-            sb.AppendLine("spMV) that dominates every solver -- the cleanest dense-vs-sparse signal.");
+            sb.AppendLine("spMV) that dominates every solver -- the cleanest dense-vs-sparse signal. Section 0b");
+            sb.AppendLine("goes one level deeper: symmetric upper-block storage (Symmetric=true, ToBSMSymmetric)");
+            sb.AppendLine("vs full block-CSR storage on the IDENTICAL SPD matrix -- bsmMatVecSym touches half as");
+            sb.AppendLine("many stored blocks as the full traversal, so this isolates that ~2x memory/FLOP win.");
             sb.AppendLine();
 
             Section0Float(sb);
             Section0Double(sb);
+            Section0bFloat(sb);
+            Section0bDouble(sb);
             Section1Float(sb);
             Section1Double(sb);
             Section2Float(sb);
@@ -786,6 +791,71 @@ namespace LinearAlgebra.Benchmarks
             sparse = builder.ToBSM(ref arena);
         }
 
+        // Same recipe as BuildBlockSPDFloat (identical rng sequence: diagonal blocks Di = Mi^T Mi +
+        // strong*I, then off-diagonal pairs at offScale), but assembles TWO block-CSR encodings of
+        // the SAME dense SPD matrix side by side: `full` (every stored block, incl. the explicit
+        // mirrored lower block bj,bi) and `sym` (upper-triangle + diagonal ONLY, via
+        // ToBSMSymmetric -- the lower triangle is implicit). Used by Section 0b to isolate the
+        // symmetric-storage spMV win (bsmMatVecSym does half the stored-block work of bsmMatVec)
+        // on a matrix that is byte-for-byte identical between the two storage forms.
+        static void BuildBlockSPDPairFloat(ref Arena arena, int nb, float density, uint seed,
+                                           out floatMxN dense, out floatBSM full, out floatBSM sym)
+        {
+            int dim = nb * BR;
+            dense = arena.floatMat(dim, dim);
+            var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzbFull);
+            int nnzbSym = nb + pairs.Count;
+            var fullBuilder = arena.floatBSMBuilder(nb, nb, BR, BR, nnzbFull);
+            var symBuilder = arena.floatBSMBuilder(nb, nb, BR, BR, nnzbSym);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+            float strong = dim;
+            const float offScale = 0.3f;
+
+            for (int i = 0; i < nb; i++)
+            {
+                var Mi = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        Mi[r, c] = rng.NextFloat(-1f, 1f);
+                var Di = Linear_OP.dot(Mi, Mi, true);
+                for (int d = 0; d < BR; d++) Di[d, d] += strong;
+
+                fullBuilder.AddBlock(i, i, in Di);
+                symBuilder.AddBlock(i, i, in Di);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[i * BR + r, i * BR + c] = Di[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = rng.NextFloat(-offScale, offScale);
+
+                fullBuilder.AddBlock(bi, bj, in block);
+                symBuilder.AddBlock(bi, bj, in block);   // upper only -- sym never sees the mirror
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bi * BR + r, bj * BR + c] = block[r, c];
+
+                var blockT = arena.floatMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        blockT[r, c] = block[c, r];
+
+                fullBuilder.AddBlock(bj, bi, in blockT); // mirrored lower block -- FULL storage only
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bj * BR + r, bi * BR + c] = blockT[r, c];
+            }
+
+            full = fullBuilder.ToBSM(ref arena);
+            sym = symBuilder.ToBSMSymmetric(ref arena);
+        }
+
         static void BuildBlockNonSymFloat(ref Arena arena, int nb, float density, uint seed, out floatMxN dense, out floatBSM sparse)
         {
             int dim = nb * BR;
@@ -919,6 +989,65 @@ namespace LinearAlgebra.Benchmarks
             }
 
             sparse = builder.ToBSM(ref arena);
+        }
+
+        // Double counterpart of BuildBlockSPDPairFloat -- see that method's doc comment.
+        static void BuildBlockSPDPairDouble(ref Arena arena, int nb, float density, uint seed,
+                                            out doubleMxN dense, out doubleBSM full, out doubleBSM sym)
+        {
+            int dim = nb * BR;
+            dense = arena.doubleMat(dim, dim);
+            var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzbFull);
+            int nnzbSym = nb + pairs.Count;
+            var fullBuilder = arena.doubleBSMBuilder(nb, nb, BR, BR, nnzbFull);
+            var symBuilder = arena.doubleBSMBuilder(nb, nb, BR, BR, nnzbSym);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+            double strong = dim;
+            const double offScale = 0.3;
+
+            for (int i = 0; i < nb; i++)
+            {
+                var Mi = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        Mi[r, c] = rng.NextDouble(-1.0, 1.0);
+                var Di = Linear_OP.dot(Mi, Mi, true);
+                for (int d = 0; d < BR; d++) Di[d, d] += strong;
+
+                fullBuilder.AddBlock(i, i, in Di);
+                symBuilder.AddBlock(i, i, in Di);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[i * BR + r, i * BR + c] = Di[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        block[r, c] = rng.NextDouble(-offScale, offScale);
+
+                fullBuilder.AddBlock(bi, bj, in block);
+                symBuilder.AddBlock(bi, bj, in block);   // upper only -- sym never sees the mirror
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bi * BR + r, bj * BR + c] = block[r, c];
+
+                var blockT = arena.doubleMat(BR, BR);
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        blockT[r, c] = block[c, r];
+
+                fullBuilder.AddBlock(bj, bi, in blockT); // mirrored lower block -- FULL storage only
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        dense[bj * BR + r, bi * BR + c] = blockT[r, c];
+            }
+
+            full = fullBuilder.ToBSM(ref arena);
+            sym = symBuilder.ToBSMSymmetric(ref arena);
         }
 
         static void BuildBlockNonSymDouble(ref Arena arena, int nb, float density, uint seed, out doubleMxN dense, out doubleBSM sparse)
@@ -1096,6 +1225,100 @@ namespace LinearAlgebra.Benchmarks
                     for (int i = 0; i < n; i++) md = math.max(md, math.abs(yDc[i] - ySc[i]));
                     double speedup = denseStat.Median / math.max(sparseStat.Median, 1e-30);
                     sb.AppendLine(MatvecRow("double", n, density, "spMV-sparse", sparseStat, speedup, md));
+
+                    arena.Dispose();
+                }
+            }
+        }
+
+        // ==== Section 0b: symmetric-storage spMV vs full-storage spMV on the SAME SPD matrix ============
+        //
+        // Section 0 already compares dense GEMV vs sparse spMV; this isolates the OTHER half of the
+        // Milestone-A story -- storing a genuinely symmetric matrix as upper-triangle-only
+        // (Symmetric=true, built via ToBSMSymmetric) vs full block-CSR (every block, incl. the
+        // explicit mirrored lower block), on the identical matrix (BuildBlockSPDPairFloat/Double pins
+        // the rng sequence so `full` and `sym` encode byte-for-byte the same SPD system). bsmMatVecSym
+        // does one accumulate per stored block for the diagonal and TWO (K*x_j and K^T*x_i) for each
+        // off-diagonal, touching half as many STORED blocks as bsmMatVec's full traversal for the same
+        // logical matrix -- expected speedup ~2x with denser off-diagonal fill (dense%=33) and less
+        // pronounced at sparse fill (dense%=7, where per-block/per-row overhead dominates more).
+        // maxAbsDiff cross-checks spMV(full) against spMV(sym) on a clean untimed matvec -- must be ~0.
+
+        static void Section0bFloat(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 0b. Symmetric-storage spMV vs full-storage spMV, SAME SPD matrix (b={0}), REPS={1} [float] ---", BR, REPS_MATVEC));
+            sb.AppendLine(MatvecHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb = n / BR;
+                foreach (var density in Densities)
+                {
+                    var arena = new Arena(Allocator.Persistent);
+                    BuildBlockSPDPairFloat(ref arena, nb, density, Seed(n, density, 95), out _, out var full, out var sym);
+                    uint sx = Seed(n, density, 96);
+
+                    var xf = arena.floatRandomVec(n, -1f, 1f, sx);
+                    var yf = arena.floatVec(n);
+                    var fullJob = new MatvecSparseJobFloat { A = full, x = xf, y = yf, reps = REPS_MATVEC };
+                    var fullStat = Bench.Time(() => fullJob.Run());
+                    sb.AppendLine(MatvecRow("float", n, density, "spMV-full", fullStat, 1.0, null));
+
+                    var xs = arena.floatRandomVec(n, -1f, 1f, sx);   // identical contents to xf
+                    var ys = arena.floatVec(n);
+                    var symJob = new MatvecSparseJobFloat { A = sym, x = xs, y = ys, reps = REPS_MATVEC };
+                    var symStat = Bench.Time(() => symJob.Run());
+
+                    // clean single-matvec numerical cross-check (untimed; identical input)
+                    var xc = arena.floatRandomVec(n, -1f, 1f, sx);
+                    var yFc = Sparse_OP.spMV(full, xc);
+                    var ySc = Sparse_OP.spMV(sym, xc);
+                    double md = 0;
+                    for (int i = 0; i < n; i++) md = math.max(md, math.abs((double)yFc[i] - (double)ySc[i]));
+                    double speedup = fullStat.Median / math.max(symStat.Median, 1e-30);
+                    sb.AppendLine(MatvecRow("float", n, density, "spMV-sym", symStat, speedup, md));
+
+                    arena.Dispose();
+                }
+            }
+        }
+
+        static void Section0bDouble(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 0b. Symmetric-storage spMV vs full-storage spMV, SAME SPD matrix (b={0}), REPS={1} [double] ---", BR, REPS_MATVEC));
+            sb.AppendLine(MatvecHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb = n / BR;
+                foreach (var density in Densities)
+                {
+                    var arena = new Arena(Allocator.Persistent);
+                    BuildBlockSPDPairDouble(ref arena, nb, density, Seed(n, density, 97), out _, out var full, out var sym);
+                    uint sx = Seed(n, density, 98);
+
+                    var xf = arena.doubleRandomVec(n, -1.0, 1.0, sx);
+                    var yf = arena.doubleVec(n);
+                    var fullJob = new MatvecSparseJobDouble { A = full, x = xf, y = yf, reps = REPS_MATVEC };
+                    var fullStat = Bench.Time(() => fullJob.Run());
+                    sb.AppendLine(MatvecRow("double", n, density, "spMV-full", fullStat, 1.0, null));
+
+                    var xs = arena.doubleRandomVec(n, -1.0, 1.0, sx);
+                    var ys = arena.doubleVec(n);
+                    var symJob = new MatvecSparseJobDouble { A = sym, x = xs, y = ys, reps = REPS_MATVEC };
+                    var symStat = Bench.Time(() => symJob.Run());
+
+                    var xc = arena.doubleRandomVec(n, -1.0, 1.0, sx);
+                    var yFc = Sparse_OP.spMV(full, xc);
+                    var ySc = Sparse_OP.spMV(sym, xc);
+                    double md = 0;
+                    for (int i = 0; i < n; i++) md = math.max(md, math.abs(yFc[i] - ySc[i]));
+                    double speedup = fullStat.Median / math.max(symStat.Median, 1e-30);
+                    sb.AppendLine(MatvecRow("double", n, density, "spMV-sym", symStat, speedup, md));
 
                     arena.Dispose();
                 }
