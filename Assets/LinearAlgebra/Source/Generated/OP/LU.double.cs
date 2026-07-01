@@ -164,7 +164,7 @@ namespace LinearAlgebra
         /// Returns true on success; false if a zero pivot is encountered (singular matrix).
         /// On false: no NaN/Inf is written, P remains a valid permutation.
         /// </summary>
-        public static bool luDecompositionInplace(ref doubleMxN LU, ref Pivot P) {
+        public static bool luDecompositionInpl(ref doubleMxN LU, ref Pivot P) {
 
             if (!LU.IsSquare)
                 throw new System.ArgumentException("luDecomposition: LU (A) needs to be square");
@@ -235,23 +235,23 @@ namespace LinearAlgebra
         /// b is overwritten with x.
         /// Throws ArgumentException if dimensions are inconsistent.
         /// </summary>
-        public static void LUSolve(ref doubleMxN LU, in Pivot pivot, ref doubleN b) {
+        public static void luSolve(ref doubleMxN LU, in Pivot pivot, ref doubleN b) {
 
             if (!LU.IsSquare)
-                throw new System.ArgumentException("LUSolve: LU must be square");
+                throw new System.ArgumentException("luSolve: LU must be square");
 
             if (b.N != LU.M_Rows)
-                throw new System.ArgumentException("LUSolve: b.N must equal LU.M_Rows");
+                throw new System.ArgumentException("luSolve: b.N must equal LU.M_Rows");
 
             if (pivot.N != b.N)
-                throw new System.ArgumentException("LUSolve: pivot.N must equal b.N");
+                throw new System.ArgumentException("luSolve: pivot.N must equal b.N");
 
             pivot.ApplyInverseVec(ref b);
 
             // Solve Ly = b
-            Solvers.SolveLowerTriangularLU(ref LU, in pivot, ref b);
+            Solvers.solveLowerTriangularLU(ref LU, in pivot, ref b);
             // Solve Ux = y
-            Solvers.SolveUpperTriangularLU(ref LU, in pivot, ref b);
+            Solvers.solveUpperTriangularLU(ref LU, in pivot, ref b);
 
         }
 
@@ -260,16 +260,16 @@ namespace LinearAlgebra
         /// b is overwritten with x.
         /// Throws ArgumentException if dimensions are inconsistent.
         /// </summary>
-        public static void LUSolve(ref doubleMxN L, ref doubleMxN U, in Pivot pivot, ref doubleN b) {
+        public static void luSolve(ref doubleMxN L, ref doubleMxN U, in Pivot pivot, ref doubleN b) {
 
             if (!U.IsSquare)
-                throw new System.ArgumentException("LUSolve: U must be square");
+                throw new System.ArgumentException("luSolve: U must be square");
 
             if (b.N != U.M_Rows)
-                throw new System.ArgumentException("LUSolve: b.N must equal U.M_Rows");
+                throw new System.ArgumentException("luSolve: b.N must equal U.M_Rows");
 
             if (pivot.N != b.N)
-                throw new System.ArgumentException("LUSolve: pivot.N must equal b.N");
+                throw new System.ArgumentException("luSolve: pivot.N must equal b.N");
 
             // apply pivot to b
             pivot.ApplyInverseVec(ref b);
@@ -277,9 +277,9 @@ namespace LinearAlgebra
             // Solver linear system LUx = b, b is overwritten with x
 
             // Solve Ly = b
-            Solvers.SolveLowerTriangular(ref L, ref b);
+            Solvers.solveLowerTriangular(ref L, ref b);
             // Solve Ux = y
-            Solvers.SolveUpperTriangular(ref U, ref b);
+            Solvers.solveUpperTriangular(ref U, ref b);
 
         }
 

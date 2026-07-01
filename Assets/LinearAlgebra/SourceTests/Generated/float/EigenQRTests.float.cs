@@ -30,7 +30,7 @@ public class floatEigenQRTests
         public void Execute()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(6, 6, -2f, 2f, 12345);
+            var A = arena.floatRandomMat(6, 6, -2f, 2f, 12345);
             var re = arena.floatVec(6);
             var im = arena.floatVec(6);
             Eigen.eigenvaluesQR(ref A, ref re, ref im);
@@ -235,7 +235,7 @@ public class floatEigenQRTests
             for (uint t = 0; t < 8; t++)
             {
                 int n = 6;
-                var A = arena.floatRandomMatrix(n, n, -3f, 3f, 30000 + t * 13);
+                var A = arena.floatRandomMat(n, n, -3f, 3f, 30000 + t * 13);
                 for (int i = 0; i < n; i++)
                     for (int j = i + 1; j < n; j++)
                     {
@@ -278,7 +278,7 @@ public class floatEigenQRTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7;
-                var A = arena.floatRandomMatrix(n, n, -2f, 2f, 40000 + t * 17);
+                var A = arena.floatRandomMat(n, n, -2f, 2f, 40000 + t * 17);
                 float trace = 0;
                 for (int i = 0; i < n; i++) trace += A[i, i];
 

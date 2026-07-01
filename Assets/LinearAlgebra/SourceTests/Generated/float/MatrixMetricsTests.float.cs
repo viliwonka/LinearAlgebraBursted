@@ -176,7 +176,7 @@ public class floatMatrixMetricsTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.floatIdentityMatrix(3);
+            var A = arena.floatIdentityMat(3);
             AssertClose(float_OP.cond(in A), (float)1, (float)1E-4);
 
             arena.Dispose();

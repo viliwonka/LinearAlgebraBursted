@@ -295,7 +295,7 @@ public class doubleQueryPredicateTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 6, N = 3;
-            var A = arena.doubleRandomMatrix(M, N, -3f, 3f, 424242);
+            var A = arena.doubleRandomMat(M, N, -3f, 3f, 424242);
             var q = arena.doubleVec(N);
             q[0] = (double)0.5; q[1] = (double)(-1); q[2] = (double)2;
 
@@ -359,7 +359,7 @@ public class doubleQueryPredicateTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 4, N = 3;
-            var A = arena.doubleRandomMatrix(M, N, -2f, 2f, 555);
+            var A = arena.doubleRandomMat(M, N, -2f, 2f, 555);
             var q = arena.doubleVec(N);
             q[0] = (double)1; q[1] = (double)0; q[2] = (double)(-1);
 
@@ -427,7 +427,7 @@ public class doubleQueryPredicateTests
             AssertEqI(cmi, doubleQuery_OP.argMaxColNorm(in H, Norm.L2));
 
             // Random equivalence: argMaxRowBy == argMaxRowNorm(L2); argMaxColBy == argMaxColNorm(L2).
-            var R = arena.doubleRandomMatrix(7, 4, -3f, 3f, 909090);
+            var R = arena.doubleRandomMat(7, 4, -3f, 3f, 909090);
             var rrs = new RowL2Score();
             doubleQuery_OP.argMaxRowBy(in R, ref rrs, out int rmi, out double _);
             AssertEqI(rmi, doubleQuery_OP.argMaxRowNorm(in R, Norm.L2));
@@ -447,7 +447,7 @@ public class doubleQueryPredicateTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 5, N = 4;
-            var A = arena.doubleRandomMatrix(M, N, -3f, 3f, 20240628);
+            var A = arena.doubleRandomMat(M, N, -3f, 3f, 20240628);
             var At = double_OP.trans(A);   // N x M; column j of A == row j of At.
 
             // Column query length = A.M_Rows = M = At.N_Cols.

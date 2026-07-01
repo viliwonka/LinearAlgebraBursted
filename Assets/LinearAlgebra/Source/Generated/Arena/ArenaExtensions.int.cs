@@ -7,7 +7,7 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions {
 
         #region VECTOR
-        public static intN intIndexZeroVector(this ref Arena arena, int N)
+        public static intN intIndexZeroVec(this ref Arena arena, int N)
         {
             var vec = arena.intVec(N, true);
 
@@ -18,7 +18,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static intN intIndexOneVector(this ref Arena arena, int N)
+        public static intN intIndexOneVec(this ref Arena arena, int N)
         {
             var vec = arena.intVec(N, true);
 
@@ -29,7 +29,7 @@ namespace LinearAlgebra
         }
 
         // all zero but the index is one
-        public static intN intBasisVector(this ref Arena arena, int N, int index)
+        public static intN intBasisVec(this ref Arena arena, int N, int index)
         {
             var vec = arena.intVec(N);
 
@@ -41,7 +41,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static intN intRandomVector(this ref Arena arena, int N, int min, int max, uint seed = 84115)
+        public static intN intRandomVec(this ref Arena arena, int N, int min, int max, uint seed = 84115)
         {
             var vec = arena.intVec(N, true);
 
@@ -63,7 +63,7 @@ namespace LinearAlgebra
         }
 
         //linspace
-        public static intN intLinVector(this ref Arena arena, int N, int start, int end)
+        public static intN intLinVec(this ref Arena arena, int N, int start, int end)
         {
             var vec = arena.intVec(N);
 
@@ -87,7 +87,7 @@ namespace LinearAlgebra
 
         #region MATRIX
         // constructs identity matrix
-        public static intMxN intIdentityMatrix(this ref Arena arena, int N)
+        public static intMxN intIdentityMat(this ref Arena arena, int N)
         {
             var matrix = arena.intMat(N, N);
 
@@ -98,7 +98,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static intMxN intDiagonalMatrix(this ref Arena arena, int N, int s)
+        public static intMxN intDiagonalMat(this ref Arena arena, int N, int s)
         {
             var matrix = arena.intMat(N, N);
 
@@ -109,7 +109,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix based on vector
-        public static intMxN intDiagonalMatrix(this ref Arena arena, in intN vec)
+        public static intMxN intDiagonalMat(this ref Arena arena, in intN vec)
         {
             var matrix = arena.intMat(vec.N, vec.N);
 
@@ -120,7 +120,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 0
-        public static intMxN intIndexZeroMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static intMxN intIndexZeroMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.intMat(M_rows, N_cols, true);
 
@@ -135,7 +135,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 1
-        public static intMxN intIndexOneMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static intMxN intIndexOneMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.intMat(M_rows, N_cols, true);
 
@@ -151,13 +151,13 @@ namespace LinearAlgebra
 
         // random matrix
 
-        public static intMxN intRandomMatrix(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
+        public static intMxN intRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
-            return intRandomMatrix(ref arena, M_rows, N_cols, -1, 1, seed);
+            return intRandomMat(ref arena, M_rows, N_cols, -1, 1, seed);
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static intMxN intRandomDiagonalMatrix(this ref Arena arena, int N, int min, int max, uint seed = 65792)
+        public static intMxN intRandomDiagonalMat(this ref Arena arena, int N, int min, int max, uint seed = 65792)
         {
             var matrix = arena.intMat(N, N);
 
@@ -176,7 +176,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        public static intMxN intRandomMatrix(this ref Arena arena, int M_rows, int N_cols, int min, int max, uint seed = 121312)
+        public static intMxN intRandomMat(this ref Arena arena, int M_rows, int N_cols, int min, int max, uint seed = 121312)
         {
             var matrix = arena.intMat(M_rows, N_cols, true);
 
@@ -198,9 +198,9 @@ namespace LinearAlgebra
         }
 
         // i and j are axis indexes to swap
-        public static intMxN intPermutationMatrix(this ref Arena arena, int M, int i, int j)
+        public static intMxN intPermutationMat(this ref Arena arena, int M, int i, int j)
         {
-            var matrix = arena.intIdentityMatrix(M);
+            var matrix = arena.intIdentityMat(M);
 
             if (M < 2)
                 throw new System.Exception("PermutationMatrix: Matrix must be at least 2x2");

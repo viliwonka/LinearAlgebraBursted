@@ -72,7 +72,7 @@ public class doubleBidiagTests
                 Fail[2] = tol;
                 Fail[3] = err - tol;
             }
-            Assert.IsTrue(Analysis_OP.IsZero(in M, tol));
+            Assert.IsTrue(Analysis_OP.isZero(in M, tol));
         }
 
         // Check B is upper bidiagonal: zero everywhere except B[k,k] and B[k,k+1]
@@ -115,7 +115,7 @@ public class doubleBidiagTests
             var UBVt = double_OP.dot(UB, Vt);
             var diff = A - UBVt;
 
-            if (Analysis_OP.IsAnyNan(in diff))
+            if (Analysis_OP.isAnyNan(in diff))
                 throw new System.Exception("BidiagTests: NaN in reconstruction");
 
             AssertNearZero(in diff, tol, "reconstruction");
@@ -123,11 +123,11 @@ public class doubleBidiagTests
             // 2. B is upper bidiagonal
             AssertUpperBidiagonal(in B, tol);
 
-            // 3. UᵀU ≈ I_n  (Analysis_OP.IsOrthogonal handles thin U: computes AᵀA = I_n)
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in U, tol));
+            // 3. UᵀU ≈ I_n  (Analysis_OP.isOrthogonal handles thin U: computes AᵀA = I_n)
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in U, tol));
 
             // 4. VᵀV ≈ I_n  (V is square)
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in V, tol));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in V, tol));
         }
 
         // ---- test cases ----
@@ -136,7 +136,7 @@ public class doubleBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.doubleIdentityMatrix(n);
+            var A = arena.doubleIdentityMat(n);
             var U = arena.doubleMat(n, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
@@ -169,7 +169,7 @@ public class doubleBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.doubleRandomMatrix(n, n, (double)(-2f), (double)2f, 314159);
+            var A = arena.doubleRandomMat(n, n, (double)(-2f), (double)2f, 314159);
             var U = arena.doubleMat(n, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
@@ -182,7 +182,7 @@ public class doubleBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 8;
-            var A = arena.doubleRandomMatrix(n, n, (double)(-5f), (double)5f, 271828);
+            var A = arena.doubleRandomMat(n, n, (double)(-5f), (double)5f, 271828);
             var U = arena.doubleMat(n, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
@@ -195,7 +195,7 @@ public class doubleBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 10, n = 6;
-            var A = arena.doubleRandomMatrix(m, n, (double)(-3f), (double)3f, 112358);
+            var A = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, 112358);
             var U = arena.doubleMat(m, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
@@ -208,7 +208,7 @@ public class doubleBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 12, n = 4;
-            var A = arena.doubleRandomMatrix(m, n, (double)(-1f), (double)1f, 999421);
+            var A = arena.doubleRandomMat(m, n, (double)(-1f), (double)1f, 999421);
             var U = arena.doubleMat(m, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
@@ -222,7 +222,7 @@ public class doubleBidiagTests
         void CheckValuesMatchFull(int m, int n, double lo, double hi, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(m, n, lo, hi, seed);
+            var A = arena.doubleRandomMat(m, n, lo, hi, seed);
             var U = arena.doubleMat(m, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
@@ -246,7 +246,7 @@ public class doubleBidiagTests
             // Single column: B is 1x1, U is 5x1 unit vector, V is 1x1 = [[±1]]
             var arena = new Arena(Allocator.Persistent);
             int m = 5, n = 1;
-            var A = arena.doubleRandomMatrix(m, n, (double)(-2f), (double)2f, 77777);
+            var A = arena.doubleRandomMat(m, n, (double)(-2f), (double)2f, 77777);
             var U = arena.doubleMat(m, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);

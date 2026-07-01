@@ -85,7 +85,7 @@ public class doubleLUTests
 
         private doubleMxN GetRandomMatrix(ref Arena arena, int dim, double min, double max, uint seed) {
 
-            var mat = arena.doubleRandomMatrix(dim, dim, min, max, seed);
+            var mat = arena.doubleRandomMat(dim, dim, min, max, seed);
 
             return mat;
         }
@@ -96,8 +96,8 @@ public class doubleLUTests
 
             int dim = 8;
 
-            var U = arena.doubleIdentityMatrix(dim);
-            var L = arena.doubleIdentityMatrix(dim);
+            var U = arena.doubleIdentityMat(dim);
+            var L = arena.doubleIdentityMat(dim);
 
             var A = U.Copy();
 
@@ -115,8 +115,8 @@ public class doubleLUTests
 
             int dim = 8;
 
-            var U = arena.doubleRandomDiagonalMatrix(dim, 1f, 3f);
-            var L = arena.doubleIdentityMatrix(dim);
+            var U = arena.doubleRandomDiagonalMat(dim, 1f, 3f);
+            var L = arena.doubleIdentityMat(dim);
 
             var A = U.Copy();
 
@@ -136,7 +136,7 @@ public class doubleLUTests
             var dim = 5;
 
             var U = arena.doubleMat(dim);
-            var L = arena.doubleIdentityMatrix(dim);
+            var L = arena.doubleIdentityMat(dim);
 
             U[0] = -2f;
             U[1] = 1f;
@@ -192,8 +192,8 @@ public class doubleLUTests
 
             int dim = 18;
 
-            var U = arena.doubleRandomMatrix(dim, dim, 1f, 10f, 314221);
-            var L = arena.doubleIdentityMatrix(dim);
+            var U = arena.doubleRandomMat(dim, dim, 1f, 10f, 314221);
+            var L = arena.doubleIdentityMat(dim);
 
             // add to diagonals of U
             for(int d = 0; d < dim; d++)
@@ -225,32 +225,32 @@ public class doubleLUTests
             // Case 1: zero matrix is singular -> all variants must return false.
             {
                 var U = arena.doubleMat(dim, dim);
-                var L = arena.doubleIdentityMatrix(dim);
+                var L = arena.doubleIdentityMat(dim);
 
                 bool noPivot = LU.luDecompositionNoPivot(ref U, ref L);
                 Assert.IsFalse(noPivot);
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in U));
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in L));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in U));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in L));
 
                 var Up = arena.doubleMat(dim, dim);
-                var Lp = arena.doubleIdentityMatrix(dim);
+                var Lp = arena.doubleIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool pivoted = LU.luDecomposition(ref Up, ref Lp, ref pivot);
                 Assert.IsFalse(pivoted);
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in Up));
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in Lp));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in Up));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in Lp));
 
                 var LUmat = arena.doubleMat(dim, dim);
-                bool inplace = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                bool inplace = LU.luDecompositionInpl(ref LUmat, ref pivot);
                 Assert.IsFalse(inplace);
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in LUmat));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in LUmat));
 
                 pivot.Dispose();
             }
 
             // Case 2: two identical rows -> rank deficient -> all variants return false.
             {
-                var U = arena.doubleRandomMatrix(dim, dim, 1f, 10f, 8821);
+                var U = arena.doubleRandomMat(dim, dim, 1f, 10f, 8821);
                 // force diagonal dominance so only the duplicated rows cause singularity
                 for (int d = 0; d < dim; d++)
                     U[d, d] += 20f;
@@ -259,25 +259,25 @@ public class doubleLUTests
                     U[5, c] = U[2, c];
 
                 var A = U.Copy();
-                var L = arena.doubleIdentityMatrix(dim);
+                var L = arena.doubleIdentityMat(dim);
 
                 bool noPivot = LU.luDecompositionNoPivot(ref U, ref L);
                 Assert.IsFalse(noPivot);
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in U));
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in L));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in U));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in L));
 
                 var Up = A.Copy();
-                var Lp = arena.doubleIdentityMatrix(dim);
+                var Lp = arena.doubleIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool pivoted = LU.luDecomposition(ref Up, ref Lp, ref pivot);
                 Assert.IsFalse(pivoted);
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in Up));
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in Lp));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in Up));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in Lp));
 
                 var LUmat = A.Copy();
-                bool inplace = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                bool inplace = LU.luDecompositionInpl(ref LUmat, ref pivot);
                 Assert.IsFalse(inplace);
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in LUmat));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in LUmat));
 
                 pivot.Dispose();
             }
@@ -289,7 +289,7 @@ public class doubleLUTests
                 U[0, 0] = 0f; U[0, 1] = 1f;
                 U[1, 0] = 1f; U[1, 1] = 0f;
 
-                var L = arena.doubleIdentityMatrix(2);
+                var L = arena.doubleIdentityMat(2);
 
                 var Unp = U.Copy();
                 bool noPivot = LU.luDecompositionNoPivot(ref Unp, ref L);
@@ -297,9 +297,9 @@ public class doubleLUTests
 
                 var LUmat = U.Copy();
                 var pivot = new Pivot(2, Allocator.Temp);
-                bool inplace = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                bool inplace = LU.luDecompositionInpl(ref LUmat, ref pivot);
                 Assert.IsTrue(inplace);
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in LUmat));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in LUmat));
 
                 pivot.Dispose();
             }
@@ -328,13 +328,13 @@ public class doubleLUTests
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
 
-                bool success = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                bool success = LU.luDecompositionInpl(ref LUmat, ref pivot);
                 Assert.IsTrue(success);
 
                 var x_Solved = b.Copy();
-                LU.LUSolve(ref LUmat, in pivot, ref x_Solved);
+                LU.luSolve(ref LUmat, in pivot, ref x_Solved);
 
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in x_Solved));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in x_Solved));
 
                 AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
 
@@ -361,7 +361,7 @@ public class doubleLUTests
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
 
-                bool success = LU.luDecompositionInplace(ref LUmat, ref pivot);
+                bool success = LU.luDecompositionInpl(ref LUmat, ref pivot);
                 Assert.IsTrue(success);
 
                 // Verify the permutation is not a simple involution (P applied twice != identity),
@@ -373,9 +373,9 @@ public class doubleLUTests
                 Assert.IsFalse(isInvolution);
 
                 var x_Solved = b.Copy();
-                LU.LUSolve(ref LUmat, in pivot, ref x_Solved);
+                LU.luSolve(ref LUmat, in pivot, ref x_Solved);
 
-                Assert.IsFalse(Analysis_OP.IsAnyNan(in x_Solved));
+                Assert.IsFalse(Analysis_OP.isAnyNan(in x_Solved));
 
                 AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
 
@@ -392,10 +392,10 @@ public class doubleLUTests
             // identity -> det = 1
             {
                 int dim = 6;
-                var I = arena.doubleIdentityMatrix(dim);
+                var I = arena.doubleIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
 
-                bool success = LU.luDecompositionInplace(ref I, ref pivot);
+                bool success = LU.luDecompositionInpl(ref I, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in I, in pivot);
@@ -415,7 +415,7 @@ public class doubleLUTests
                 double expected = 2f * -3f * 0.5f * 4f; // -12
 
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInplace(ref D, ref pivot);
+                bool success = LU.luDecompositionInpl(ref D, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in D, in pivot);
@@ -434,7 +434,7 @@ public class doubleLUTests
                 A[2, 0] = 2f; A[2, 1] = 1f; A[2, 2] = 0f;
 
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInplace(ref A, ref pivot);
+                bool success = LU.luDecompositionInpl(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in A, in pivot);
@@ -453,7 +453,7 @@ public class doubleLUTests
                 P[2, 0] = 1f;
 
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInplace(ref P, ref pivot);
+                bool success = LU.luDecompositionInpl(ref P, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in P, in pivot);
@@ -466,7 +466,7 @@ public class doubleLUTests
         }
 
         // GALLERY KNOWN-ANSWER: famous unit-determinant matrices. det is computed via
-        // luDecompositionInplace + LU.determinant (the file's established sequence).
+        // luDecompositionInpl + LU.determinant (the file's established sequence).
         //  - Pascal(5):  symmetric Pascal, det = 1.
         //  - MinIJ(5):   A[i,j]=min(i,j)+1, det = 1.
         //  - Frank(5):   upper-Hessenberg Frank, det = 1 (ill-conditioned but integer-valued, so
@@ -480,7 +480,7 @@ public class doubleLUTests
                 int dim = 5;
                 var A = arena.doublePascal(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInplace(ref A, ref pivot);
+                bool success = LU.luDecompositionInpl(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in A, in pivot);
@@ -494,7 +494,7 @@ public class doubleLUTests
                 int dim = 5;
                 var A = arena.doubleMinIJ(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInplace(ref A, ref pivot);
+                bool success = LU.luDecompositionInpl(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in A, in pivot);
@@ -508,7 +508,7 @@ public class doubleLUTests
                 int dim = 5;
                 var A = arena.doubleFrank(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInplace(ref A, ref pivot);
+                bool success = LU.luDecompositionInpl(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in A, in pivot);
@@ -529,15 +529,15 @@ public class doubleLUTests
             var pivot = new Pivot(dim, Allocator.Temp);
 
             // First decomposition with the pivot - permutes it.
-            var A1 = arena.doubleRandomMatrix(dim, dim, -5f, 5f, 7777);
+            var A1 = arena.doubleRandomMat(dim, dim, -5f, 5f, 7777);
             for (int d = 0; d < dim; d++)
                 A1[d, d] += 15f;
             var LU1 = A1.Copy();
-            bool s1 = LU.luDecompositionInplace(ref LU1, ref pivot);
+            bool s1 = LU.luDecompositionInpl(ref LU1, ref pivot);
             Assert.IsTrue(s1);
 
             // Second decomposition reuses the SAME pivot object; Reset() must clean it.
-            var A2 = arena.doubleRandomMatrix(dim, dim, -5f, 5f, 9999);
+            var A2 = arena.doubleRandomMat(dim, dim, -5f, 5f, 9999);
             for (int d = 0; d < dim; d++)
                 A2[d, d] += 15f;
 
@@ -548,13 +548,13 @@ public class doubleLUTests
             var b = double_OP.dot(A2, x_Known);
 
             var LU2 = A2.Copy();
-            bool s2 = LU.luDecompositionInplace(ref LU2, ref pivot);
+            bool s2 = LU.luDecompositionInpl(ref LU2, ref pivot);
             Assert.IsTrue(s2);
 
             var x_Solved = b.Copy();
-            LU.LUSolve(ref LU2, in pivot, ref x_Solved);
+            LU.luSolve(ref LU2, in pivot, ref x_Solved);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in x_Solved));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in x_Solved));
 
             AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
 
@@ -622,7 +622,7 @@ public class doubleLUTests
 
             int dim = 512;
 
-            var A = arena.doubleRandomMatrix(dim, dim, -10f, 10f, 314221);
+            var A = arena.doubleRandomMat(dim, dim, -10f, 10f, 314221);
 
             for (int d = 0; d < dim; d++) {
                 A[d, d] *= 2f;
@@ -630,12 +630,12 @@ public class doubleLUTests
                     A[d, d] *= 10f;
             }
 
-            var x_Known = arena.doubleRandomVector(dim, 1f, 10f, 901);
+            var x_Known = arena.doubleRandomVec(dim, 1f, 10f, 901);
 
             var b = double_OP.dot(A, x_Known);
 
             var U = A.Copy();
-            var L = arena.doubleIdentityMatrix(dim);
+            var L = arena.doubleIdentityMat(dim);
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
@@ -645,9 +645,9 @@ public class doubleLUTests
 
             var x_Solved = b.Copy();
 
-            LU.LUSolve(ref L, ref U, in pivot, ref x_Solved);
+            LU.luSolve(ref L, ref U, in pivot, ref x_Solved);
 
-            if (Analysis_OP.IsAnyNan(in x_Solved))
+            if (Analysis_OP.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
 
             var zeroError = Analysis_OP.MaxZeroError(x_Known - x_Solved);
@@ -673,7 +673,7 @@ public class doubleLUTests
 
             int dim = 512;
 
-            var A = arena.doubleRandomMatrix(dim, dim, -10f, 10f, 314221);
+            var A = arena.doubleRandomMat(dim, dim, -10f, 10f, 314221);
 
             for (int d = 0; d < dim; d++) {
                 A[d, d] *= 2f;
@@ -681,7 +681,7 @@ public class doubleLUTests
                     A[d, d] *= 10f;
             }
 
-            var x_Known = arena.doubleRandomVector(dim, 1f, 10f, 901);
+            var x_Known = arena.doubleRandomVec(dim, 1f, 10f, 901);
 
             var b = double_OP.dot(A, x_Known);
 
@@ -689,15 +689,15 @@ public class doubleLUTests
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.luDecompositionInplace(ref LUmat, ref pivot);
+            bool success = LU.luDecompositionInpl(ref LUmat, ref pivot);
 
             Assert.IsTrue(success);
 
             var x_Solved = b.Copy();
 
-            LU.LUSolve(ref LUmat, in pivot, ref x_Solved);
+            LU.luSolve(ref LUmat, in pivot, ref x_Solved);
 
-            if (Analysis_OP.IsAnyNan(in x_Solved))
+            if (Analysis_OP.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
 
             var zeroError = Analysis_OP.MaxZeroError(x_Known - x_Solved);
@@ -764,7 +764,7 @@ public class doubleLUTests
         {
             doubleMxN shouldBeZero = A - double_OP.dot(L, U);
 
-            if (Analysis_OP.IsAnyNan(in shouldBeZero))
+            if (Analysis_OP.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
             // Fail layout: [1]=maxZeroError, [2]=precision, [3]=diff
@@ -776,9 +776,9 @@ public class doubleLUTests
                 Fail[2] = precision;
                 Fail[3] = zeroError - precision;
             }
-            Assert.IsTrue(Analysis_OP.IsZero(in shouldBeZero, precision));
-            Assert.IsTrue(Analysis_OP.IsLowerTriangular(L, precision));
-            Assert.IsTrue(Analysis_OP.IsUpperTriangular(U, precision));
+            Assert.IsTrue(Analysis_OP.isZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis_OP.isLowerTriangular(L, precision));
+            Assert.IsTrue(Analysis_OP.isUpperTriangular(U, precision));
 
             if(pivoted)
             unsafe {

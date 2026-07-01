@@ -206,7 +206,7 @@ public class floatStatsTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 5, n = 4;
-            var A = arena.floatRandomMatrix(m, n, -3f, 3f, 778899);
+            var A = arena.floatRandomMat(m, n, -3f, 3f, 778899);
 
             var rDest = arena.floatVec(m);
             var cDest = arena.floatVec(n);

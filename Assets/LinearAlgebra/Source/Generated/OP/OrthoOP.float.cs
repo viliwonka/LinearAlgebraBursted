@@ -449,7 +449,7 @@ namespace LinearAlgebra
             // b was transformed to y, where y = Q^T b
             // Solve Rx = y
 
-            Solvers.SolveUpperTriangular(ref A, ref x);
+            Solvers.solveUpperTriangular(ref A, ref x);
         }
 
         // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
@@ -702,10 +702,10 @@ namespace LinearAlgebra
 
             lqDecomposition(ref A, ref L, ref Q);
 
-            // Step 1: forward-solve L y = b.  y starts as a copy of b (SolveLowerTriangular is in-place).
+            // Step 1: forward-solve L y = b.  y starts as a copy of b (solveLowerTriangular is in-place).
             var y = new floatN(m, Allocator.Temp, false);
             y.Data.CopyFrom(b.Data);
-            Solvers.SolveLowerTriangular(ref L, ref y);
+            Solvers.solveLowerTriangular(ref L, ref y);
 
             // Step 2: x = Qᵀ y.  dot(in y, in Q, ref x) computes yᵀ Q = (Qᵀ y)ᵀ → n-vector.
             float_OP.dot(in y, in Q, ref x);

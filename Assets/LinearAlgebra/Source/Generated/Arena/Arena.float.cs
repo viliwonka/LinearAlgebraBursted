@@ -103,19 +103,19 @@ namespace LinearAlgebra
 
         // --- debug pool checks: confirm a buffer lives in the expected (persistent vs temp) list,
         //     e.g. to assert an op didn't silently move a persistent input into the temp pool ---
-        public unsafe bool DB_isPersistent(in floatN v) {
+        public unsafe bool isPersistent(in floatN v) {
             for (int i = 0; i < floatVectors.Length; i++) if (floatVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
-        public unsafe bool DB_isTemp(in floatN v) {
+        public unsafe bool isTemp(in floatN v) {
             for (int i = 0; i < tempfloatVectors.Length; i++) if (tempfloatVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
-        public unsafe bool DB_isPersistent(in floatMxN m) {
+        public unsafe bool isPersistent(in floatMxN m) {
             for (int i = 0; i < floatMatrices.Length; i++) if (floatMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
-        public unsafe bool DB_isTemp(in floatMxN m) {
+        public unsafe bool isTemp(in floatMxN m) {
             for (int i = 0; i < tempfloatMatrices.Length; i++) if (tempfloatMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }

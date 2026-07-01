@@ -435,7 +435,7 @@ public class iProxyQueryTests
 
             // Small range keeps integer SqEuclidean/Dot inside short.MaxValue.
             int M = 6, N = 3;
-            var A = arena.iProxyRandomMatrix(M, N, (iProxy)(-3), (iProxy)4, 424242);
+            var A = arena.iProxyRandomMat(M, N, (iProxy)(-3), (iProxy)4, 424242);
             var q = arena.iProxyVec(N);
             q[0] = (iProxy)1; q[1] = (iProxy)(-2); q[2] = (iProxy)2;
 
@@ -542,7 +542,7 @@ public class iProxyQueryTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 5, N = 2;
-            var A = arena.iProxyRandomMatrix(M, N, (iProxy)(-2), (iProxy)3, 99887);
+            var A = arena.iProxyRandomMat(M, N, (iProxy)(-2), (iProxy)3, 99887);
             var q = arena.iProxyVec(N);
             q[0] = (iProxy)1; q[1] = (iProxy)(-1);
 
@@ -732,7 +732,7 @@ public class iProxyQueryTests
 
             // Small range keeps integer SqEuclidean inside short.MaxValue.
             int M = 6, N = 4;
-            var A = arena.iProxyRandomMatrix(M, N, (iProxy)(-2), (iProxy)3, 7777);
+            var A = arena.iProxyRandomMat(M, N, (iProxy)(-2), (iProxy)3, 7777);
             var q = arena.iProxyVec(N);
             for (int i = 0; i < N; i++) q[i] = (iProxy)(i - 2);
 

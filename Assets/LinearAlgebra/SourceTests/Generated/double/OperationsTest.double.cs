@@ -279,15 +279,15 @@ public class doubleOperationsTest {
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)2d);
 
-            a = arena.doubleIndexZeroVector(vecLen);
+            a = arena.doubleIndexZeroVec(vecLen);
 
             a *= 2f;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)(2d*i));
 
-            a = arena.doubleIndexZeroVector(vecLen);
-            doubleN b = arena.doubleIndexZeroVector(vecLen);
+            a = arena.doubleIndexZeroVec(vecLen);
+            doubleN b = arena.doubleIndexZeroVec(vecLen);
 
             var c = a * b;
 
@@ -315,15 +315,15 @@ public class doubleOperationsTest {
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)0.5f);
 
-            a = arena.doubleIndexZeroVector(vecLen);
+            a = arena.doubleIndexZeroVec(vecLen);
 
             a /= 2f;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)0.5f * i);
 
-            a = arena.doubleIndexZeroVector(vecLen);
-            doubleN b = arena.doubleIndexZeroVector(vecLen);
+            a = arena.doubleIndexZeroVec(vecLen);
+            doubleN b = arena.doubleIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
             a += 1f;
@@ -364,15 +364,15 @@ public class doubleOperationsTest {
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)0f);
 
-            a = arena.doubleIndexZeroVector(vecLen);
+            a = arena.doubleIndexZeroVec(vecLen);
 
             a %= 2f;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (double)(i % (double)2d));
 
-            a = arena.doubleIndexZeroVector(vecLen);
-            doubleN b = arena.doubleIndexZeroVector(vecLen);
+            a = arena.doubleIndexZeroVec(vecLen);
+            doubleN b = arena.doubleIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
             a += 1f;

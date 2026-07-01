@@ -39,7 +39,7 @@ public class iProxyTransposeTests
 
             int dim = 16;
             
-            iProxyMxN A = arena.iProxyRandomMatrix(dim, dim);
+            iProxyMxN A = arena.iProxyRandomMat(dim, dim);
 
             iProxyMxN B = iProxy_OP.trans(A);
 
@@ -60,7 +60,7 @@ public class iProxyTransposeTests
             int rows = 8; 
             int cols = 32;
 
-            iProxyMxN A = arena.iProxyRandomMatrix(rows, cols);
+            iProxyMxN A = arena.iProxyRandomMat(rows, cols);
 
             iProxyMxN B = iProxy_OP.trans(A);
 

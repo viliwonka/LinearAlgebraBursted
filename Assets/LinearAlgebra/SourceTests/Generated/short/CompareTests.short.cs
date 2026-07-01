@@ -337,7 +337,7 @@ public class shortCompareTests
         {
             int dim = 64;
 
-            shortN v = arena.shortRandomVector(dim, -100, 100, 1451);
+            shortN v = arena.shortRandomVec(dim, -100, 100, 1451);
             // set first element to zero
             v[0] = 0;
 
@@ -365,7 +365,7 @@ public class shortCompareTests
         {
             int dim = 32;
 
-            shortMxN m = arena.shortRandomMatrix(dim, dim, -100, 100, 1451);
+            shortMxN m = arena.shortRandomMat(dim, dim, -100, 100, 1451);
             // set first element to zero
             m[0,0] = 0;
 
@@ -393,11 +393,11 @@ public class shortCompareTests
         {
             int dim = 32;
 
-            shortMxN m0 = arena.shortDiagonalMatrix(dim, 1);
+            shortMxN m0 = arena.shortDiagonalMat(dim, 1);
             
             var boolMat = m0 == 1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsDiagonal(boolMat));
+            Assert.IsTrue(BoolAnalysis_OP.isDiagonal(boolMat));
             Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
             Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
         }
@@ -406,8 +406,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortN v0 = arena.shortLinVector(dim, 0, 100);
-            shortN v1 = arena.shortLinVector(dim, 0, 100);
+            shortN v0 = arena.shortLinVec(dim, 0, 100);
+            shortN v1 = arena.shortLinVec(dim, 0, 100);
 
             var boolVec = v0 == v1;
 
@@ -424,8 +424,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortN v0 = arena.shortLinVector(dim, 0, 100);
-            shortN v1 = arena.shortLinVector(dim, 200, 300);
+            shortN v0 = arena.shortLinVec(dim, 0, 100);
+            shortN v1 = arena.shortLinVec(dim, 200, 300);
 
             var boolVec = v0 != v1;
 
@@ -443,8 +443,8 @@ public class shortCompareTests
 
             int dim = 16;
             
-            shortN v0 = arena.shortLinVector(dim, 0, 100);
-            shortN v1 = arena.shortLinVector(dim, 200, 300);
+            shortN v0 = arena.shortLinVec(dim, 0, 100);
+            shortN v1 = arena.shortLinVec(dim, 200, 300);
 
             var boolVec = v0 < v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
@@ -459,8 +459,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortN v0 = arena.shortLinVector(dim, 0, 100);
-            shortN v1 = arena.shortLinVector(dim, 200, 300);
+            shortN v0 = arena.shortLinVec(dim, 0, 100);
+            shortN v1 = arena.shortLinVec(dim, 200, 300);
 
             var boolVec = v0 <= v1;
 
@@ -472,8 +472,8 @@ public class shortCompareTests
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.shortLinVector(dim, 0, 100);
-            v1 = arena.shortLinVector(dim, 100, 0);
+            v0 = arena.shortLinVec(dim, 0, 100);
+            v1 = arena.shortLinVec(dim, 100, 0);
 
             boolVec = v0 <= v1;
 
@@ -484,8 +484,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortN v0 = arena.shortLinVector(dim, 0, 100);
-            shortN v1 = arena.shortLinVector(dim, 200, 300);
+            shortN v0 = arena.shortLinVec(dim, 0, 100);
+            shortN v1 = arena.shortLinVec(dim, 200, 300);
 
             var boolVec = v0 > v1;
 
@@ -497,8 +497,8 @@ public class shortCompareTests
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
 
-            v0 = arena.shortLinVector(dim, 100, 0);
-            v1 = arena.shortLinVector(dim, 0, 100);
+            v0 = arena.shortLinVec(dim, 100, 0);
+            v1 = arena.shortLinVec(dim, 0, 100);
 
             boolVec = v0 > v1;
             Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
@@ -511,8 +511,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortN v0 = arena.shortLinVector(dim, 0, 100);
-            shortN v1 = arena.shortLinVector(dim, 200, 300);
+            shortN v0 = arena.shortLinVec(dim, 0, 100);
+            shortN v1 = arena.shortLinVec(dim, 200, 300);
 
             var boolVec = v0 >= v1;
 
@@ -522,7 +522,7 @@ public class shortCompareTests
             boolVec = v0 >= v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.shortLinVector(dim, 1, 0);
+            v0 = arena.shortLinVec(dim, 1, 0);
 
             boolVec = v0 >= v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolVec));
@@ -532,8 +532,8 @@ public class shortCompareTests
         {
             int dim = 64;
 
-            shortN v0 = arena.shortRandomVector(dim, -100, 100, 1451);
-            shortN v1 = arena.shortRandomVector(dim, -100, 100, 6421);
+            shortN v0 = arena.shortRandomVec(dim, -100, 100, 1451);
+            shortN v1 = arena.shortRandomVec(dim, -100, 100, 6421);
 
             v0[0] = v1[0];
             v0[1] = (short)(1-v1[1]);
@@ -561,8 +561,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortMxN m0 = arena.shortRandomMatrix(dim, dim, 0, 100);
-            shortMxN m1 = arena.shortRandomMatrix(dim, dim, 0, 100);
+            shortMxN m0 = arena.shortRandomMat(dim, dim, 0, 100);
+            shortMxN m1 = arena.shortRandomMat(dim, dim, 0, 100);
 
             var boolMat = m0 == m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -580,13 +580,13 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortMxN m0 = arena.shortRandomMatrix(dim, dim, 0, 100, 2131);
-            shortMxN m1 = arena.shortRandomMatrix(dim, dim, 0, 100, 2131);
+            shortMxN m0 = arena.shortRandomMat(dim, dim, 0, 100, 2131);
+            shortMxN m1 = arena.shortRandomMat(dim, dim, 0, 100, 2131);
 
             var boolMat = m0 != m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
-            m1 = arena.shortRandomMatrix(dim, dim, 200, 300, 2131);
+            m1 = arena.shortRandomMat(dim, dim, 200, 300, 2131);
 
             boolMat = m0 != m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -596,8 +596,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortMxN m0 = arena.shortRandomMatrix(dim, dim, 000, 100, 2131);
-            shortMxN m1 = arena.shortRandomMatrix(dim, dim, 200, 300, 2131);
+            shortMxN m0 = arena.shortRandomMat(dim, dim, 000, 100, 2131);
+            shortMxN m1 = arena.shortRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 < m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -612,8 +612,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortMxN m0 = arena.shortRandomMatrix(dim, dim, 0, 100, 2131);
-            shortMxN m1 = arena.shortRandomMatrix(dim, dim, 200, 300, 2131);
+            shortMxN m0 = arena.shortRandomMat(dim, dim, 0, 100, 2131);
+            shortMxN m1 = arena.shortRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 <= m1;
 
@@ -624,8 +624,8 @@ public class shortCompareTests
             boolMat = m0 <= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
-            m0 = arena.shortRandomMatrix(dim, dim, 100, 0, 2131);
-            m1 = arena.shortRandomMatrix(dim, dim, 0, 100, 2131);
+            m0 = arena.shortRandomMat(dim, dim, 100, 0, 2131);
+            m1 = arena.shortRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 <= m1;
 
@@ -636,8 +636,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortMxN m0 = arena.shortRandomMatrix(dim, dim, 0, 100, 2131);
-            shortMxN m1 = arena.shortRandomMatrix(dim, dim, 200, 300, 2131);
+            shortMxN m0 = arena.shortRandomMat(dim, dim, 0, 100, 2131);
+            shortMxN m1 = arena.shortRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 > m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
@@ -647,8 +647,8 @@ public class shortCompareTests
             boolMat = m0 > m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
-            m0 = arena.shortRandomMatrix(dim, dim, 100, 0, 2131);
-            m1 = arena.shortRandomMatrix(dim, dim, 0, 100, 2131);
+            m0 = arena.shortRandomMat(dim, dim, 100, 0, 2131);
+            m1 = arena.shortRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 > m1;
             Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
@@ -661,8 +661,8 @@ public class shortCompareTests
         {
             int dim = 16;
             
-            shortMxN m0 = arena.shortRandomMatrix(dim, dim, 0, 100, 2131);
-            shortMxN m1 = arena.shortRandomMatrix(dim, dim, 200, 300, 2131);
+            shortMxN m0 = arena.shortRandomMat(dim, dim, 0, 100, 2131);
+            shortMxN m1 = arena.shortRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 >= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
@@ -672,7 +672,7 @@ public class shortCompareTests
             boolMat = m0 >= m1;
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
-            m0 = arena.shortRandomMatrix(dim, dim, 100, 0, 2131);
+            m0 = arena.shortRandomMat(dim, dim, 100, 0, 2131);
 
             boolMat = m0 >= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolMat));
@@ -682,8 +682,8 @@ public class shortCompareTests
         {
             int dim = 32;
 
-            shortMxN m0 = arena.shortRandomMatrix(dim, dim, -100, 100, 1451);
-            shortMxN m1 = arena.shortRandomMatrix(dim, dim, -100, 100, 6421);
+            shortMxN m0 = arena.shortRandomMat(dim, dim, -100, 100, 1451);
+            shortMxN m1 = arena.shortRandomMat(dim, dim, -100, 100, 6421);
 
             m0[0,0] = m1[0,0];
             m0[0,1] = (short)(1 - m1[0,1]);

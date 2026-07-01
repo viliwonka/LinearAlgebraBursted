@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Workspace-overload tests for SVD.svdRandomized (Halko-Martinsson-Tropp) and its workspace
-// doubleSvdRandomized_WS (Arena.doubleSvdRandomized_WS(m, n, k, oversample) and the
+// doubleSVDRandomized_WS (Arena.doubleSVDRandomized_WS(m, n, k, oversample) and the
 // default-oversample (m, n, k) factory).
 //
 // The allocating overload and the ref-workspace overload run the SAME sketch/QR/exact-SVD pipeline;
@@ -47,8 +47,8 @@ public class doubleSvdRandomizedWorkspaceTests
         // A = B (m x r) * C (r x n): exactly rank r, so svdRandomized with k >= r is well determined.
         static doubleMxN RankR(ref Arena arena, int m, int n, int r, uint seed)
         {
-            var B = arena.doubleRandomMatrix(m, r, (double)(-2f), (double)2f, seed);
-            var C = arena.doubleRandomMatrix(r, n, (double)(-2f), (double)2f, seed + 13u);
+            var B = arena.doubleRandomMat(m, r, (double)(-2f), (double)2f, seed);
+            var C = arena.doubleRandomMat(r, n, (double)(-2f), (double)2f, seed + 13u);
             return double_OP.dot(B, C);
         }
 
@@ -63,14 +63,14 @@ public class doubleSvdRandomizedWorkspaceTests
             var UkA = arena.doubleMat(m, k); var SkA = arena.doubleVec(k); var VkA = arena.doubleMat(n, k);
             bool okA = SVD.svdRandomized(in A, ref UkA, ref SkA, ref VkA, k, oversample, powerIters, seed, maxIter);
 
-            var ws = arena.doubleSvdRandomized_WS(m, n, k, oversample);
+            var ws = arena.doubleSVDRandomized_WS(m, n, k, oversample);
             var UkW = arena.doubleMat(m, k); var SkW = arena.doubleVec(k); var VkW = arena.doubleMat(n, k);
             bool okW = SVD.svdRandomized(in A, ref UkW, ref SkW, ref VkW, k, oversample, powerIters, seed, maxIter, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.IsZero(SkA - SkW, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(UkA - UkW, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(VkA - VkW, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(SkA - SkW, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(UkA - UkW, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(VkA - VkW, Tol()));
 
             arena.Dispose();
         }
@@ -87,14 +87,14 @@ public class doubleSvdRandomizedWorkspaceTests
             var UkA = arena.doubleMat(m, k); var SkA = arena.doubleVec(k); var VkA = arena.doubleMat(n, k);
             bool okA = SVD.svdRandomized(in A, ref UkA, ref SkA, ref VkA, k, seed);
 
-            var ws = arena.doubleSvdRandomized_WS(m, n, k);   // default oversample 10
+            var ws = arena.doubleSVDRandomized_WS(m, n, k);   // default oversample 10
             var UkW = arena.doubleMat(m, k); var SkW = arena.doubleVec(k); var VkW = arena.doubleMat(n, k);
             bool okW = SVD.svdRandomized(in A, ref UkW, ref SkW, ref VkW, k, seed, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.IsZero(SkA - SkW, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(UkA - UkW, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(VkA - VkW, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(SkA - SkW, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(UkA - UkW, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(VkA - VkW, Tol()));
 
             arena.Dispose();
         }
@@ -110,7 +110,7 @@ public class doubleSvdRandomizedWorkspaceTests
             var A1 = RankR(ref arena, m, n, 5, 7001);
             var A2 = RankR(ref arena, m, n, 4, 8002);
 
-            var ws = arena.doubleSvdRandomized_WS(m, n, k, oversample);   // ONCE
+            var ws = arena.doubleSVDRandomized_WS(m, n, k, oversample);   // ONCE
 
             // warm the workspace on A1
             var U1 = arena.doubleMat(m, k); var S1 = arena.doubleVec(k); var V1 = arena.doubleMat(n, k);
@@ -125,9 +125,9 @@ public class doubleSvdRandomizedWorkspaceTests
             bool okA = SVD.svdRandomized(in A2, ref UA, ref SA, ref VA, k, oversample, powerIters, seed, maxIter);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis_OP.IsZero(SW - SA, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(UW - UA, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(VW - VA, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(SW - SA, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(UW - UA, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(VW - VA, Tol()));
 
             arena.Dispose();
         }
@@ -152,7 +152,7 @@ public class doubleSvdRandomizedWorkspaceTests
             int m = 14, n = 6, k = 3, oversample = 4;
             var A = arena.doubleMat(m, n);
             var Uk = arena.doubleMat(m, k); var Sk = arena.doubleVec(k); var Vk = arena.doubleMat(n, k);
-            var ws = arena.doubleSvdRandomized_WS(m + 1, n, k, oversample);   // wrong m
+            var ws = arena.doubleSVDRandomized_WS(m + 1, n, k, oversample);   // wrong m
             Assert.Throws<ArgumentException>(
                 () => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, 2, 123u, 75, ref ws));
         }
@@ -169,14 +169,14 @@ public class doubleSvdRandomizedWorkspaceTests
             var A = arena.doubleMat(m, n);
             var Uk = arena.doubleMat(m, k); var Sk = arena.doubleVec(k); var Vk = arena.doubleMat(n, k);
             // ws sketch width l = min(3 + 0, 6) = 3, but the call uses oversample 2 -> l = min(5, 6) = 5.
-            var ws = arena.doubleSvdRandomized_WS(m, n, k, 0);
+            var ws = arena.doubleSVDRandomized_WS(m, n, k, 0);
             Assert.Throws<ArgumentException>(
                 () => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 2, 2, 123u, 75, ref ws));
         }
         finally { arena.Dispose(); }
     }
 
-    // Arena.doubleSvdRandomized_WS(m, n, k, oversample) sizes everything by l = min(k+p, n).
+    // Arena.doubleSVDRandomized_WS(m, n, k, oversample) sizes everything by l = min(k+p, n).
     [Test]
     public void SvdRandomizedWorkspace_Factory_SizesCorrectly()
     {
@@ -185,7 +185,7 @@ public class doubleSvdRandomizedWorkspaceTests
         {
             int m = 14, n = 6, k = 3, oversample = 4;   // l = min(7, 6) = 6
             int l = 6;
-            var ws = arena.doubleSvdRandomized_WS(m, n, k, oversample);
+            var ws = arena.doubleSVDRandomized_WS(m, n, k, oversample);
             Assert.AreEqual(n, ws.Omega.M_Rows); Assert.AreEqual(l, ws.Omega.N_Cols);
             Assert.AreEqual(m, ws.Y.M_Rows);     Assert.AreEqual(l, ws.Y.N_Cols);
             Assert.AreEqual(l, ws.R.M_Rows);     Assert.AreEqual(l, ws.R.N_Cols);
@@ -197,7 +197,7 @@ public class doubleSvdRandomizedWorkspaceTests
             Assert.AreEqual(m, ws.UA.M_Rows);    Assert.AreEqual(l, ws.UA.N_Cols);
 
             // default-oversample factory: l = min(3 + 10, 6) = 6 as well
-            var wsDef = arena.doubleSvdRandomized_WS(m, n, k);
+            var wsDef = arena.doubleSVDRandomized_WS(m, n, k);
             Assert.AreEqual(l, wsDef.Omega.N_Cols);
         }
         finally { arena.Dispose(); }

@@ -337,7 +337,7 @@ public class longCompareTests
         {
             int dim = 64;
 
-            longN v = arena.longRandomVector(dim, -100, 100, 1451);
+            longN v = arena.longRandomVec(dim, -100, 100, 1451);
             // set first element to zero
             v[0] = 0;
 
@@ -365,7 +365,7 @@ public class longCompareTests
         {
             int dim = 32;
 
-            longMxN m = arena.longRandomMatrix(dim, dim, -100, 100, 1451);
+            longMxN m = arena.longRandomMat(dim, dim, -100, 100, 1451);
             // set first element to zero
             m[0,0] = 0;
 
@@ -393,11 +393,11 @@ public class longCompareTests
         {
             int dim = 32;
 
-            longMxN m0 = arena.longDiagonalMatrix(dim, 1);
+            longMxN m0 = arena.longDiagonalMat(dim, 1);
             
             var boolMat = m0 == 1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsDiagonal(boolMat));
+            Assert.IsTrue(BoolAnalysis_OP.isDiagonal(boolMat));
             Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
             Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
         }
@@ -406,8 +406,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longN v0 = arena.longLinVector(dim, 0, 100);
-            longN v1 = arena.longLinVector(dim, 0, 100);
+            longN v0 = arena.longLinVec(dim, 0, 100);
+            longN v1 = arena.longLinVec(dim, 0, 100);
 
             var boolVec = v0 == v1;
 
@@ -424,8 +424,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longN v0 = arena.longLinVector(dim, 0, 100);
-            longN v1 = arena.longLinVector(dim, 200, 300);
+            longN v0 = arena.longLinVec(dim, 0, 100);
+            longN v1 = arena.longLinVec(dim, 200, 300);
 
             var boolVec = v0 != v1;
 
@@ -443,8 +443,8 @@ public class longCompareTests
 
             int dim = 16;
             
-            longN v0 = arena.longLinVector(dim, 0, 100);
-            longN v1 = arena.longLinVector(dim, 200, 300);
+            longN v0 = arena.longLinVec(dim, 0, 100);
+            longN v1 = arena.longLinVec(dim, 200, 300);
 
             var boolVec = v0 < v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
@@ -459,8 +459,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longN v0 = arena.longLinVector(dim, 0, 100);
-            longN v1 = arena.longLinVector(dim, 200, 300);
+            longN v0 = arena.longLinVec(dim, 0, 100);
+            longN v1 = arena.longLinVec(dim, 200, 300);
 
             var boolVec = v0 <= v1;
 
@@ -472,8 +472,8 @@ public class longCompareTests
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.longLinVector(dim, 0, 100);
-            v1 = arena.longLinVector(dim, 100, 0);
+            v0 = arena.longLinVec(dim, 0, 100);
+            v1 = arena.longLinVec(dim, 100, 0);
 
             boolVec = v0 <= v1;
 
@@ -484,8 +484,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longN v0 = arena.longLinVector(dim, 0, 100);
-            longN v1 = arena.longLinVector(dim, 200, 300);
+            longN v0 = arena.longLinVec(dim, 0, 100);
+            longN v1 = arena.longLinVec(dim, 200, 300);
 
             var boolVec = v0 > v1;
 
@@ -497,8 +497,8 @@ public class longCompareTests
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
 
-            v0 = arena.longLinVector(dim, 100, 0);
-            v1 = arena.longLinVector(dim, 0, 100);
+            v0 = arena.longLinVec(dim, 100, 0);
+            v1 = arena.longLinVec(dim, 0, 100);
 
             boolVec = v0 > v1;
             Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
@@ -511,8 +511,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longN v0 = arena.longLinVector(dim, 0, 100);
-            longN v1 = arena.longLinVector(dim, 200, 300);
+            longN v0 = arena.longLinVec(dim, 0, 100);
+            longN v1 = arena.longLinVec(dim, 200, 300);
 
             var boolVec = v0 >= v1;
 
@@ -522,7 +522,7 @@ public class longCompareTests
             boolVec = v0 >= v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.longLinVector(dim, 1, 0);
+            v0 = arena.longLinVec(dim, 1, 0);
 
             boolVec = v0 >= v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolVec));
@@ -532,8 +532,8 @@ public class longCompareTests
         {
             int dim = 64;
 
-            longN v0 = arena.longRandomVector(dim, -100, 100, 1451);
-            longN v1 = arena.longRandomVector(dim, -100, 100, 6421);
+            longN v0 = arena.longRandomVec(dim, -100, 100, 1451);
+            longN v1 = arena.longRandomVec(dim, -100, 100, 6421);
 
             v0[0] = v1[0];
             v0[1] = (long)(1-v1[1]);
@@ -561,8 +561,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longMxN m0 = arena.longRandomMatrix(dim, dim, 0, 100);
-            longMxN m1 = arena.longRandomMatrix(dim, dim, 0, 100);
+            longMxN m0 = arena.longRandomMat(dim, dim, 0, 100);
+            longMxN m1 = arena.longRandomMat(dim, dim, 0, 100);
 
             var boolMat = m0 == m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -580,13 +580,13 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longMxN m0 = arena.longRandomMatrix(dim, dim, 0, 100, 2131);
-            longMxN m1 = arena.longRandomMatrix(dim, dim, 0, 100, 2131);
+            longMxN m0 = arena.longRandomMat(dim, dim, 0, 100, 2131);
+            longMxN m1 = arena.longRandomMat(dim, dim, 0, 100, 2131);
 
             var boolMat = m0 != m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
-            m1 = arena.longRandomMatrix(dim, dim, 200, 300, 2131);
+            m1 = arena.longRandomMat(dim, dim, 200, 300, 2131);
 
             boolMat = m0 != m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -596,8 +596,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longMxN m0 = arena.longRandomMatrix(dim, dim, 000, 100, 2131);
-            longMxN m1 = arena.longRandomMatrix(dim, dim, 200, 300, 2131);
+            longMxN m0 = arena.longRandomMat(dim, dim, 000, 100, 2131);
+            longMxN m1 = arena.longRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 < m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -612,8 +612,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longMxN m0 = arena.longRandomMatrix(dim, dim, 0, 100, 2131);
-            longMxN m1 = arena.longRandomMatrix(dim, dim, 200, 300, 2131);
+            longMxN m0 = arena.longRandomMat(dim, dim, 0, 100, 2131);
+            longMxN m1 = arena.longRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 <= m1;
 
@@ -624,8 +624,8 @@ public class longCompareTests
             boolMat = m0 <= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
-            m0 = arena.longRandomMatrix(dim, dim, 100, 0, 2131);
-            m1 = arena.longRandomMatrix(dim, dim, 0, 100, 2131);
+            m0 = arena.longRandomMat(dim, dim, 100, 0, 2131);
+            m1 = arena.longRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 <= m1;
 
@@ -636,8 +636,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longMxN m0 = arena.longRandomMatrix(dim, dim, 0, 100, 2131);
-            longMxN m1 = arena.longRandomMatrix(dim, dim, 200, 300, 2131);
+            longMxN m0 = arena.longRandomMat(dim, dim, 0, 100, 2131);
+            longMxN m1 = arena.longRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 > m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
@@ -647,8 +647,8 @@ public class longCompareTests
             boolMat = m0 > m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
-            m0 = arena.longRandomMatrix(dim, dim, 100, 0, 2131);
-            m1 = arena.longRandomMatrix(dim, dim, 0, 100, 2131);
+            m0 = arena.longRandomMat(dim, dim, 100, 0, 2131);
+            m1 = arena.longRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 > m1;
             Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
@@ -661,8 +661,8 @@ public class longCompareTests
         {
             int dim = 16;
             
-            longMxN m0 = arena.longRandomMatrix(dim, dim, 0, 100, 2131);
-            longMxN m1 = arena.longRandomMatrix(dim, dim, 200, 300, 2131);
+            longMxN m0 = arena.longRandomMat(dim, dim, 0, 100, 2131);
+            longMxN m1 = arena.longRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 >= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
@@ -672,7 +672,7 @@ public class longCompareTests
             boolMat = m0 >= m1;
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
-            m0 = arena.longRandomMatrix(dim, dim, 100, 0, 2131);
+            m0 = arena.longRandomMat(dim, dim, 100, 0, 2131);
 
             boolMat = m0 >= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolMat));
@@ -682,8 +682,8 @@ public class longCompareTests
         {
             int dim = 32;
 
-            longMxN m0 = arena.longRandomMatrix(dim, dim, -100, 100, 1451);
-            longMxN m1 = arena.longRandomMatrix(dim, dim, -100, 100, 6421);
+            longMxN m0 = arena.longRandomMat(dim, dim, -100, 100, 1451);
+            longMxN m1 = arena.longRandomMat(dim, dim, -100, 100, 6421);
 
             m0[0,0] = m1[0,0];
             m0[0,1] = (long)(1 - m1[0,1]);

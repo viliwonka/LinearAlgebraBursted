@@ -51,7 +51,7 @@ namespace LinearAlgebra
             int dimRows = m.M_Rows;
             int dimCols = m.N_Cols;
 
-            FixedString128Bytes printName = $"BoolMatrix sparsity print\n";
+            FixedString128Bytes printName = $"boolMat sparsity print\n";
             FixedString128Bytes dimStr = $"Dim | Rows:{dimRows} Cols:{dimCols} \n";
 
             str.Append(printName);

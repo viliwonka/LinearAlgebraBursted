@@ -42,24 +42,24 @@ public class floatSolversTests {
 
             int dim = 8;
 
-            var Q = arena.floatIdentityMatrix(dim);
+            var Q = arena.floatIdentityMat(dim);
             var R = arena.floatMat(dim);
 
             var A = Q.Copy();
 
             Ortho_OP.qrDecomposition(ref Q, ref R);
 
-            var b = arena.floatRandomVector(dim, -1f, 1f);
+            var b = arena.floatRandomVec(dim, -1f, 1f);
 
             var y = float_OP.dot(b, Q);
             
             //var x = arena.Vector(dim);
 
-            Solvers.SolveUpperTriangular(ref R, ref y);
+            Solvers.solveUpperTriangular(ref R, ref y);
 
             var Ax = float_OP.dot(A, y);
 
-            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, 1E-6f));
+            Assert.IsTrue(Analysis_OP.isZero(b - Ax, 1E-6f));
             /*Print.Log(A);
             Print.Log(Q);
             Print.Log(R);

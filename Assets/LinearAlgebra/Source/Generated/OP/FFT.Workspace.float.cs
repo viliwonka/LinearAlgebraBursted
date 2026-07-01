@@ -13,7 +13,7 @@ namespace LinearAlgebra
     /// Precomputed twiddle table for floatFFT_OP. One size-n table serves every radix-2 transform of
     /// length ≤ n: the stage-len butterfly twiddle W_len^k is indexed as twRe[k*(n/len)],
     /// twIm[k*(n/len)], eliminating per-element cos/sin from the hot loop. Build once via
-    /// Arena.floatFft_WS(n) and reuse across many transforms of the same size.
+    /// Arena.floatFFT_WS(n) and reuse across many transforms of the same size.
     ///
     /// The table is computed at double precision and cast to the element type (float or double),
     /// so accuracy is maximized regardless of the transform element type.
@@ -23,7 +23,7 @@ namespace LinearAlgebra
     /// boundary. Bandwidth tradeoff: full table uses ~2× twiddle memory (~16 MB at N=1M for
     /// float), offset by halving the number of full-array passes (log4(N) vs log2(N) passes).
     /// </summary>
-    public struct floatFft_WS
+    public struct floatFFT_WS
     {
         public floatN twRe;       // length n/2: cos(-2π·j/n), j = 0..n/2-1  (half circle, radix-2)
         public floatN twIm;       // length n/2: sin(-2π·j/n)
@@ -55,10 +55,10 @@ namespace LinearAlgebra
         /// outside a hot loop and pass it to the table overloads. One table serves fft/ifft of length
         /// exactly n and rfft/irfft of real signal length exactly n.
         /// </summary>
-        public static floatFft_WS floatFft_WS(this ref Arena arena, int n)
+        public static floatFFT_WS floatFFT_WS(this ref Arena arena, int n)
         {
             if (n < 2 || (n & (n - 1)) != 0)
-                throw new ArgumentException("floatFft_WS: n must be a power of two and >= 2");
+                throw new ArgumentException("floatFFT_WS: n must be a power of two and >= 2");
 
             int half = n >> 1;
             var twRe     = arena.floatVec(half);
@@ -91,7 +91,7 @@ namespace LinearAlgebra
             var sz      = arena.floatVec(half, uninit: true);
             var visited = arena.floatVec(n,    uninit: true);
 
-            return new floatFft_WS
+            return new floatFFT_WS
             {
                 twRe     = twRe,
                 twIm     = twIm,
@@ -111,26 +111,26 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n-point FFT. Matches the layout
-        /// produced by Arena.floatFft_WS(n): ws.n == n and table lengths == n/2.
+        /// produced by Arena.floatFFT_WS(n): ws.n == n and table lengths == n/2.
         /// </summary>
-        static void RequireFftWorkspace(in floatFft_WS ws, int n, string who)
+        static void RequireFftWorkspace(in floatFFT_WS ws, int n, string who)
         {
             if (ws.n != n || ws.twRe.N != n >> 1 || ws.twIm.N != n >> 1 ||
                 ws.cz.N != n >> 1 || ws.sz.N != n >> 1 || ws.visited.N != n)
                 throw new ArgumentException(
-                    who + ": workspace must be sized for an n-point FFT (use Arena.floatFft_WS(n))");
+                    who + ": workspace must be sized for an n-point FFT (use Arena.floatFFT_WS(n))");
         }
 
         /// <summary>
         /// Throws if the workspace is missing the full-circle twiddle table required by the
         /// radix-4 dispatch paths. Extends <see cref="RequireFftWorkspace"/>.
         /// </summary>
-        static void RequireRadix4Workspace(in floatFft_WS ws, int n, string who)
+        static void RequireRadix4Workspace(in floatFFT_WS ws, int n, string who)
         {
             RequireFftWorkspace(in ws, n, who);
             if (ws.twReFull.N != n || ws.twImFull.N != n)
                 throw new ArgumentException(
-                    who + ": workspace must have full-circle twiddle table (use Arena.floatFft_WS(n))");
+                    who + ": workspace must have full-circle twiddle table (use Arena.floatFFT_WS(n))");
         }
 
         // ---- table-indexed overloads ----
@@ -142,11 +142,11 @@ namespace LinearAlgebra
         /// These two cases cover EVERY power of two, so there is no plain-radix-2 size class here.
         /// The final else is reached only by a non-power-of-two length (not a valid FFT size)
         /// and throws — use dft for arbitrary N.
-        /// ws must be sized for re.N (build via Arena.floatFft_WS(N)); it must contain the
+        /// ws must be sized for re.N (build via Arena.floatFFT_WS(N)); it must contain the
         /// full-circle twiddle table required by the radix-4 paths. Both arrays must have the same
         /// length, which must be a power of two.
         /// </summary>
-        public static void fft(ref floatN re, ref floatN im, in floatFft_WS ws)
+        public static void fft(ref floatN re, ref floatN im, in floatFFT_WS ws)
         {
             int n = re.N;
             RequireRadix4Workspace(in ws, n, "fft");
@@ -179,7 +179,7 @@ namespace LinearAlgebra
         /// (throws — use idft for arbitrary N).
         /// Divides by N so that ifft(fft(x, ws), ws) == x. ws must be sized for re.N.
         /// </summary>
-        public static void ifft(ref floatN re, ref floatN im, in floatFft_WS ws)
+        public static void ifft(ref floatN re, ref floatN im, in floatFFT_WS ws)
         {
             int n = re.N;
             RequireRadix4Workspace(in ws, n, "ifft");
@@ -212,7 +212,7 @@ namespace LinearAlgebra
         /// the radix-4/mixed dispatch and the unpack twiddle W_N^k = (ws.twRe[k], ws.twIm[k]) is
         /// read directly — no cos/sin in the hot loop.
         /// </summary>
-        public static void rfft(in floatN real, ref floatN re, ref floatN im, in floatFft_WS ws)
+        public static void rfft(in floatN real, ref floatN re, ref floatN im, in floatFFT_WS ws)
         {
             int n = real.N;
             RequireFftWorkspace(in ws, n, "rfft");
@@ -293,7 +293,7 @@ namespace LinearAlgebra
         /// (ws.twRe[k], -ws.twIm[k]) — no cos/sin in the hot loop.
         /// irfft(rfft(x, ws), ws) == x to floating-point precision.
         /// </summary>
-        public static void irfft(in floatN re, in floatN im, ref floatN real, in floatFft_WS ws)
+        public static void irfft(in floatN re, in floatN im, ref floatN real, in floatFFT_WS ws)
         {
             int halfSpec = re.N;
             if (im.N != halfSpec)

@@ -6,7 +6,7 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions {
 
         #region VECTOR
-        public static fProxyN fProxyIndexZeroVector(this ref Arena arena, int N)
+        public static fProxyN fProxyIndexZeroVec(this ref Arena arena, int N)
         {
             var vec = arena.fProxyVec(N, true);
 
@@ -28,7 +28,7 @@ namespace LinearAlgebra
         }
 
         // all zero but the index is one
-        public static fProxyN fProxyBasisVector(this ref Arena arena, int N, int index)
+        public static fProxyN fProxyBasisVec(this ref Arena arena, int N, int index)
         {
             var vec = arena.fProxyVec(N);
 
@@ -40,7 +40,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static fProxyN fProxyRandomUnitVector(this ref Arena arena, int N, uint seed = 34215)
+        public static fProxyN fProxyRandomUnitVec(this ref Arena arena, int N, uint seed = 34215)
         {
             var vec = arena.fProxyVec(N, true);
 
@@ -61,7 +61,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static fProxyN fProxyRandomVector(this ref Arena arena, int N, fProxy min, fProxy max, uint seed = 34215)
+        public static fProxyN fProxyRandomVec(this ref Arena arena, int N, fProxy min, fProxy max, uint seed = 34215)
         {
             var vec = arena.fProxyVec(N, true);
 
@@ -76,7 +76,7 @@ namespace LinearAlgebra
         // linspace. Prefer fProxyLinspace(a, b, N) for new code; this older name is kept for existing
         // callers and now delegates to the guarded fProxyGen_OP.linspace (handles N==1 instead of
         // dividing by zero, and pins both endpoints exactly).
-        public static fProxyN fProxyLinVector(this ref Arena arena, int N, fProxy start, fProxy end)
+        public static fProxyN fProxyLinVec(this ref Arena arena, int N, fProxy start, fProxy end)
         {
             var vec = arena.fProxyVec(N);
             fProxyGen_OP.linspace(ref vec, start, end);
@@ -87,7 +87,7 @@ namespace LinearAlgebra
 
         #region MATRIX
         // constructs identity matrix
-        public static fProxyMxN fProxyIdentityMatrix(this ref Arena arena, int N)
+        public static fProxyMxN fProxyIdentityMat(this ref Arena arena, int N)
         {
             var matrix = arena.fProxyMat(N, N);
 
@@ -99,7 +99,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static fProxyMxN fProxyDiagonalMatrix(this ref Arena arena, int N, fProxy s)
+        public static fProxyMxN fProxyDiagonalMat(this ref Arena arena, int N, fProxy s)
         {
             var matrix = arena.fProxyMat(N, N);
 
@@ -110,7 +110,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix based on vector
-        public static fProxyMxN fProxyDiagonalMatrix(this ref Arena arena, in fProxyN vec)
+        public static fProxyMxN fProxyDiagonalMat(this ref Arena arena, in fProxyN vec)
         {
             var matrix = arena.fProxyMat(vec.N, vec.N);
 
@@ -121,7 +121,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 0
-        public static fProxyMxN fProxyIndexZeroMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static fProxyMxN fProxyIndexZeroMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.fProxyMat(M_rows, N_cols, true);
 
@@ -136,7 +136,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 1
-        public static fProxyMxN fProxyIndexOneMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static fProxyMxN fProxyIndexOneMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.fProxyMat(M_rows, N_cols, true);
 
@@ -152,13 +152,13 @@ namespace LinearAlgebra
 
         // random matrix
 
-        public static fProxyMxN fProxyRandomMatrix(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
+        public static fProxyMxN fProxyRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
-            return fProxyRandomMatrix(ref arena, M_rows, N_cols, -1, 1, seed);
+            return fProxyRandomMat(ref arena, M_rows, N_cols, -1, 1, seed);
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static fProxyMxN fProxyRandomDiagonalMatrix(this ref Arena arena, int N, fProxy min, fProxy max, uint seed = 65792)
+        public static fProxyMxN fProxyRandomDiagonalMat(this ref Arena arena, int N, fProxy min, fProxy max, uint seed = 65792)
         {
             var matrix = arena.fProxyMat(N, N);
 
@@ -170,7 +170,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        public static fProxyMxN fProxyRandomMatrix(this ref Arena arena, int M_rows, int N_cols, fProxy min, fProxy max, uint seed = 121312)
+        public static fProxyMxN fProxyRandomMat(this ref Arena arena, int M_rows, int N_cols, fProxy min, fProxy max, uint seed = 121312)
         {
             var matrix = arena.fProxyMat(M_rows, N_cols, true);
 
@@ -184,9 +184,9 @@ namespace LinearAlgebra
         }
 
         // i and j are axis indexes to rotate
-        public static fProxyMxN fProxyRotationMatrix(this ref Arena arena, int M, int i, int j, fProxy radians)
+        public static fProxyMxN fProxyRotationMat(this ref Arena arena, int M, int i, int j, fProxy radians)
         {
-            var matrix = arena.fProxyIdentityMatrix(M);
+            var matrix = arena.fProxyIdentityMat(M);
 
             if (M < 2)
                 throw new System.Exception("RotationMatrix: Matrix must be at least 2x2");
@@ -210,9 +210,9 @@ namespace LinearAlgebra
         }
 
         // i and j are axis indexes to swap
-        public static fProxyMxN fProxyPermutationMatrix(this ref Arena arena, int M, int i, int j)
+        public static fProxyMxN fProxyPermutationMat(this ref Arena arena, int M, int i, int j)
         {
-            var matrix = arena.fProxyIdentityMatrix(M);
+            var matrix = arena.fProxyIdentityMat(M);
 
             if (M < 2)
                 throw new System.Exception("PermutationMatrix: Matrix must be at least 2x2");
@@ -233,7 +233,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        public static fProxyMxN fProxyHouseholderMatrix(this ref Arena arena, int M, in fProxyN v)
+        public static fProxyMxN fProxyHouseholderMat(this ref Arena arena, int M, in fProxyN v)
         {
             if(M < 2)
                 throw new System.Exception("HouseholderMatrix: Matrix must be at least 2x2");
@@ -242,7 +242,7 @@ namespace LinearAlgebra
             if (v.N != M)
                 throw new System.Exception("HouseholderMatrix: Vector length must match matrix dimension.");
 
-            var matrix = arena.fProxyIdentityMatrix(M);
+            var matrix = arena.fProxyIdentityMat(M);
 
             // Compute the outer product of v
             fProxy vTv = fProxy_OP.dot(v, v);
@@ -263,7 +263,7 @@ namespace LinearAlgebra
         }
 
         // very ill conditioned matrix, used for testing numerical stability
-        public static fProxyMxN fProxyHilbertMatrix(this ref Arena arena, int M)
+        public static fProxyMxN fProxyHilbertMat(this ref Arena arena, int M)
         {
             if (M < 2)
                 throw new System.Exception("HilbertMatrix: Matrix must be at least 2x2");

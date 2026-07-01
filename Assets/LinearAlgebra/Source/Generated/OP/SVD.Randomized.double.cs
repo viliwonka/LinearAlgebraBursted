@@ -25,8 +25,8 @@ namespace LinearAlgebra
         // The leading k columns of (U, Σ, W) are the approximate top-k SVD.
         //
         // The dozen intermediate buffers come either from A's temp pool (the allocating overloads) or
-        // from a caller-provided doubleSvdRandomized_WS (the ref-workspace overloads) for
-        // zero-alloc repeated calls — size the latter with Arena.doubleSvdRandomized_WS(m, n, k,
+        // from a caller-provided doubleSVDRandomized_WS (the ref-workspace overloads) for
+        // zero-alloc repeated calls — size the latter with Arena.doubleSVDRandomized_WS(m, n, k,
         // oversample).
 
         // Default sketch seed (golden-ratio constant). Inlined rather than a const field because this
@@ -48,11 +48,11 @@ namespace LinearAlgebra
         /// flag (false -&gt; outputs undefined). A is NOT modified.
         ///
         /// <paramref name="ws"/> holds all scratch; size it with
-        /// Arena.doubleSvdRandomized_WS(m, n, k, oversample) using the SAME k and oversample.
+        /// Arena.doubleSVDRandomized_WS(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static bool svdRandomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter,
-                                         ref doubleSvdRandomized_WS ws)
+                                         ref doubleSVDRandomized_WS ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -102,12 +102,12 @@ namespace LinearAlgebra
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
         public static bool svdRandomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
-                                         int k, uint seed, ref doubleSvdRandomized_WS ws)
+                                         int k, uint seed, ref doubleSVDRandomized_WS ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75, ref ws);
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
         public static bool svdRandomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
-                                         int k, ref doubleSvdRandomized_WS ws)
+                                         int k, ref doubleSVDRandomized_WS ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
 
         /// <summary>
@@ -123,7 +123,7 @@ namespace LinearAlgebra
             RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIter);
 
             int l = math.min(k + oversample, n);
-            var ws = new doubleSvdRandomized_WS
+            var ws = new doubleSVDRandomized_WS
             {
                 Omega = A.tempdoubleMat(n, l),
                 Y = A.tempdoubleMat(m, l),

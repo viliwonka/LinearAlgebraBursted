@@ -99,7 +99,7 @@ public class fProxyDotOperationTests
             int outVecLen = 5;
 
             fProxyN x = arena.fProxyVec(inVecLen, 1f);
-            fProxyMxN A = arena.fProxyRandomMatrix(outVecLen, inVecLen, -0.01f, 0.01f);
+            fProxyMxN A = arena.fProxyRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
             fProxyN b = fProxy_OP.dot(A, x);
 
@@ -114,8 +114,8 @@ public class fProxyDotOperationTests
 
             int vecLen = 20;
 
-            fProxyN x = arena.fProxyRandomUnitVector(vecLen);
-            fProxyMxN A = arena.fProxyIdentityMatrix(vecLen);
+            fProxyN x = arena.fProxyRandomUnitVec(vecLen);
+            fProxyMxN A = arena.fProxyIdentityMat(vecLen);
 
             fProxyN b = fProxy_OP.dot(x, A);
 
@@ -124,7 +124,7 @@ public class fProxyDotOperationTests
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == x[i]);
 
-            x = arena.fProxyIndexZeroVector(vecLen);
+            x = arena.fProxyIndexZeroVec(vecLen);
 
             b = fProxy_OP.dot(x, A);
 
@@ -140,8 +140,8 @@ public class fProxyDotOperationTests
 
             int matLen = 16;
 
-            fProxyMxN A = arena.fProxyIdentityMatrix(matLen);
-            fProxyMxN B = arena.fProxyIdentityMatrix(matLen);
+            fProxyMxN A = arena.fProxyIdentityMat(matLen);
+            fProxyMxN B = arena.fProxyIdentityMat(matLen);
 
             fProxyMxN C = fProxy_OP.dot(A, B);
 
@@ -154,7 +154,7 @@ public class fProxyDotOperationTests
                     Assert.IsTrue(C[i, j] == (fProxy)0f);
             }
 
-            fProxyMxN R = arena.fProxyRandomMatrix(matLen, matLen);
+            fProxyMxN R = arena.fProxyRandomMat(matLen, matLen);
 
             C = fProxy_OP.dot(A, R);
 
@@ -164,7 +164,7 @@ public class fProxyDotOperationTests
                 Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
-            C = arena.fProxyIdentityMatrix(matLen);
+            C = arena.fProxyIdentityMat(matLen);
 
             fProxyMxN D = fProxy_OP.dot(C, C);
 
@@ -188,7 +188,7 @@ public class fProxyDotOperationTests
             int outVecLen = 16;
 
             fProxyN x = arena.fProxyVec(inVecLen, 1f);
-            fProxyMxN A = arena.fProxyRandomMatrix(outVecLen, inVecLen, -0.01f, 0.01f);
+            fProxyMxN A = arena.fProxyRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
             fProxyN b = fProxy_OP.dot(A, x);
 
@@ -205,7 +205,7 @@ public class fProxyDotOperationTests
             int outVecLen = 16;
 
             fProxyN x = arena.fProxyVec(inVecLen, 1f);
-            fProxyMxN A = arena.fProxyRandomMatrix(inVecLen, outVecLen, -0.01f, 0.01f);
+            fProxyMxN A = arena.fProxyRandomMat(inVecLen, outVecLen, -0.01f, 0.01f);
 
             fProxyN b = fProxy_OP.dot(x, A);
             
@@ -245,8 +245,8 @@ public class fProxyDotOperationTests
             for (int i = 0; i < B.Length; i++)
                 Assert.IsTrue(B[i] == (fProxy)1f);
 
-            x = arena.fProxyLinVector(vecM, 0f, 2f);
-            y = arena.fProxyLinVector(vecN, 0f, 2f);
+            x = arena.fProxyLinVec(vecM, 0f, 2f);
+            y = arena.fProxyLinVec(vecN, 0f, 2f);
 
             fProxyMxN C = fProxy_OP.outerDot(x, y);
 

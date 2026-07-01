@@ -31,10 +31,10 @@ op work (`docs/zero-alloc-ops.md`) and the Conjugate Gradient primitive+convenie
       (`OrthoWorkspaceTests.fProxy` — equiv + mis-sized guard, ×2 float/double; Ortho_OP suite 60/60).
       bug-hunter audit: CLEAN (math byte-identical to original; exact-size guard confirmed load-bearing —
       oversized u would OOB-read Q/A; wrappers preserve allocator/dispose/inlining).
-- [x] `OP/Solvers.fProxy.cs` — `SolveQR` internal `y = dot(b, Q)` temp eliminated. Old dead
-      `out`-overload (0 callers) → zero-alloc ref-dest primitive `SolveQR(ref Q, ref R, ref b, ref x)`
-      (computes `dot(in b, in Q, ref x)` then in-place `SolveUpperTriangular`; guard `x.N != Q.N_Cols`)
-      + returning convenience `fProxyN SolveQR(ref Q, ref R, ref b)`. (ref/out can't coexist — CS0663 —
+- [x] `OP/Solvers.fProxy.cs` — `solveQR` internal `y = dot(b, Q)` temp eliminated. Old dead
+      `out`-overload (0 callers) → zero-alloc ref-dest primitive `solveQR(ref Q, ref R, ref b, ref x)`
+      (computes `dot(in b, in Q, ref x)` then in-place `solveUpperTriangular`; guard `x.N != Q.N_Cols`)
+      + returning convenience `fProxyN solveQR(ref Q, ref R, ref b)`. (ref/out can't coexist — CS0663 —
       so the convenience returns instead of using `out`.) Tests `SolveQRSolve` (square + tall/
       overdetermined) + alias-b/bad-size guard throws; suite 72/72. bug-hunter: production code CLEAN
       (dot(in b,in Q,ref x) == old dot(b,Q); in-place back-sub correct; guards complete). Flagged test
@@ -69,7 +69,7 @@ in the OP templates were the Ortho_OP QR `new fProxyN(...Allocator.Temp...)` (no
 Cholesky, Eigen, and the SVD core (`svdDecomposition`) were already zero-alloc (operate on
 caller-provided `ref` outputs); CG was done in the phase-1.5 batch.
 - [x] Tests: `OrthoWorkspaceTests.fProxy.cs` — QR scratch≡alloc equivalence + mis-sized guard +
-      SolveQR solve(square/tall) + SolveQR alias-b/bad-size guards. (SVD tests pending with chunk 3.)
+      solveQR solve(square/tall) + solveQR alias-b/bad-size guards. (SVD tests pending with chunk 3.)
 
 Done = every box checked, suite green, allocating forms delegate to scratch forms.
 

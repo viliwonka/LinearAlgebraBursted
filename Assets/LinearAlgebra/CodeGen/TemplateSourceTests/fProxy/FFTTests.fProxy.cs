@@ -138,8 +138,8 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
-            var sigRe = arena.fProxyRandomVector(N, -2f, 2f, 9911);
-            var sigIm = arena.fProxyRandomVector(N, -2f, 2f, 2244);
+            var sigRe = arena.fProxyRandomVec(N, -2f, 2f, 9911);
+            var sigIm = arena.fProxyRandomVec(N, -2f, 2f, 2244);
 
             // fft path (in-place on copies)
             var fRe = sigRe.Copy();
@@ -164,8 +164,8 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 16;
-            var re0 = arena.fProxyRandomVector(N, -3f, 3f, 5150);
-            var im0 = arena.fProxyRandomVector(N, -3f, 3f, 6160);
+            var re0 = arena.fProxyRandomVec(N, -3f, 3f, 5150);
+            var im0 = arena.fProxyRandomVec(N, -3f, 3f, 6160);
 
             var re = re0.Copy();
             var im = im0.Copy();
@@ -185,8 +185,8 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 5;
-            var re0 = arena.fProxyRandomVector(N, -3f, 3f, 7007);
-            var im0 = arena.fProxyRandomVector(N, -3f, 3f, 8008);
+            var re0 = arena.fProxyRandomVec(N, -3f, 3f, 7007);
+            var im0 = arena.fProxyRandomVec(N, -3f, 3f, 8008);
 
             var fRe = arena.fProxyVec(N);
             var fIm = arena.fProxyVec(N);
@@ -212,7 +212,7 @@ public class fProxyFFTTests
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
             int halfSpec = (N >> 1) + 1; // 5
-            var real = arena.fProxyRandomVector(N, -2f, 2f, 1234);
+            var real = arena.fProxyRandomVec(N, -2f, 2f, 1234);
 
             // half-spectrum output
             var rRe = arena.fProxyVec(halfSpec);
@@ -381,7 +381,7 @@ public class fProxyFFTTests
             {
                 int N = 8;
                 int halfSpec = (N >> 1) + 1;
-                var real0 = arena.fProxyRandomVector(N, -3f, 3f, 5555);
+                var real0 = arena.fProxyRandomVec(N, -3f, 3f, 5555);
                 var rRe = arena.fProxyVec(halfSpec);
                 var rIm = arena.fProxyVec(halfSpec);
                 var real2 = arena.fProxyVec(N);
@@ -395,7 +395,7 @@ public class fProxyFFTTests
             {
                 int N = 16;
                 int halfSpec = (N >> 1) + 1;
-                var real0 = arena.fProxyRandomVector(N, -3f, 3f, 6666);
+                var real0 = arena.fProxyRandomVec(N, -3f, 3f, 6666);
                 var rRe = arena.fProxyVec(halfSpec);
                 var rIm = arena.fProxyVec(halfSpec);
                 var real2 = arena.fProxyVec(N);
@@ -409,7 +409,7 @@ public class fProxyFFTTests
             {
                 int N = 64;
                 int halfSpec = (N >> 1) + 1;
-                var real0 = arena.fProxyRandomVector(N, -3f, 3f, 7777);
+                var real0 = arena.fProxyRandomVec(N, -3f, 3f, 7777);
                 var rRe = arena.fProxyVec(halfSpec);
                 var rIm = arena.fProxyVec(halfSpec);
                 var real2 = arena.fProxyVec(N);
@@ -423,7 +423,7 @@ public class fProxyFFTTests
             {
                 int N = 8;
                 int halfSpec = (N >> 1) + 1;
-                var real0 = arena.fProxyRandomVector(N, -3f, 3f, 8888);
+                var real0 = arena.fProxyRandomVec(N, -3f, 3f, 8888);
                 var rRe = arena.fProxyVec(halfSpec);
                 var rIm = arena.fProxyVec(halfSpec);
                 fProxyFFT_OP.rfft(in real0, ref rRe, ref rIm);
@@ -527,9 +527,9 @@ public class fProxyFFTTests
         void TableFftVsRecurrence(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFft_WS(N);
-            var re0 = arena.fProxyRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVector(N, -2f, 2f, seedIm);
+            var ws = arena.fProxyFFT_WS(N);
+            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
 
             var reR = re0.Copy(); var imR = im0.Copy();
             fProxyFFT_OP.fft(ref reR, ref imR);
@@ -564,9 +564,9 @@ public class fProxyFFTTests
         void TableIfftVsRecurrence(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFft_WS(N);
-            var re0 = arena.fProxyRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVector(N, -2f, 2f, seedIm);
+            var ws = arena.fProxyFFT_WS(N);
+            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
 
             var reR = re0.Copy(); var imR = im0.Copy();
             fProxyFFT_OP.ifft(ref reR, ref imR);
@@ -603,8 +603,8 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.fProxyFft_WS(N);
-            var real = arena.fProxyRandomVector(N, -2f, 2f, seed);
+            var ws = arena.fProxyFFT_WS(N);
+            var real = arena.fProxyRandomVec(N, -2f, 2f, seed);
 
             var reR = arena.fProxyVec(halfSpec);
             var imR = arena.fProxyVec(halfSpec);
@@ -648,8 +648,8 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.fProxyFft_WS(N);
-            var real0 = arena.fProxyRandomVector(N, -2f, 2f, seed);
+            var ws = arena.fProxyFFT_WS(N);
+            var real0 = arena.fProxyRandomVec(N, -2f, 2f, seed);
 
             var specRe = arena.fProxyVec(halfSpec);
             var specIm = arena.fProxyVec(halfSpec);
@@ -687,10 +687,10 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 64;
-            var ws = arena.fProxyFft_WS(N);
+            var ws = arena.fProxyFFT_WS(N);
 
-            var re0 = arena.fProxyRandomVector(N, -3f, 3f, 6543u);
-            var im0 = arena.fProxyRandomVector(N, -3f, 3f, 7654u);
+            var re0 = arena.fProxyRandomVec(N, -3f, 3f, 6543u);
+            var im0 = arena.fProxyRandomVec(N, -3f, 3f, 7654u);
 
             var re = re0.Copy(); var im = im0.Copy();
             fProxyFFT_OP.fft(ref re, ref im, in ws);
@@ -710,8 +710,8 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.fProxyFft_WS(N);
-            var real0 = arena.fProxyRandomVector(N, -3f, 3f, seed);
+            var ws = arena.fProxyFFT_WS(N);
+            var real0 = arena.fProxyRandomVec(N, -3f, 3f, seed);
 
             var rRe = arena.fProxyVec(halfSpec);
             var rIm = arena.fProxyVec(halfSpec);
@@ -763,10 +763,10 @@ public class fProxyFFTTests
         void Radix4VsOracleOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.fProxyFft_WS(N);
+            var ws    = arena.fProxyFFT_WS(N);
 
-            var re0 = arena.fProxyRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVector(N, -2f, 2f, seedIm);
+            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
 
             if (N <= 256)
             {
@@ -829,10 +829,10 @@ public class fProxyFFTTests
         void Radix4RoundTripOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.fProxyFft_WS(N);
+            var ws    = arena.fProxyFFT_WS(N);
 
-            var re0 = arena.fProxyRandomVector(N, -3f, 3f, seedRe);
-            var im0 = arena.fProxyRandomVector(N, -3f, 3f, seedIm);
+            var re0 = arena.fProxyRandomVec(N, -3f, 3f, seedRe);
+            var im0 = arena.fProxyRandomVec(N, -3f, 3f, seedIm);
 
             var re = re0.Copy(); var im = im0.Copy();
             fProxyFFT_OP.fft(ref re, ref im, in ws);
@@ -893,9 +893,9 @@ public class fProxyFFTTests
         void FftVsDftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFft_WS(N);
-            var re0 = arena.fProxyRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVector(N, -2f, 2f, seedIm);
+            var ws = arena.fProxyFFT_WS(N);
+            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
 
             // Ground truth: direct DFT.
             var dRe = arena.fProxyVec(N);
@@ -937,9 +937,9 @@ public class fProxyFFTTests
         void ParsevalFftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFft_WS(N);
-            var re0 = arena.fProxyRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVector(N, -2f, 2f, seedIm);
+            var ws = arena.fProxyFFT_WS(N);
+            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
 
             fProxy timeE = Energy(in re0, in im0);
             fProxy relTol = (fProxy)1E-2f;   // robust scalar-energy bound (float summation at large N)
@@ -960,8 +960,8 @@ public class fProxyFFTTests
         void ParsevalDftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var re0 = arena.fProxyRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.fProxyRandomVector(N, -2f, 2f, seedIm);
+            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
 
             fProxy timeE = Energy(in re0, in im0);
             var dRe = arena.fProxyVec(N);
@@ -976,10 +976,10 @@ public class fProxyFFTTests
         void ParsevalRfftOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFft_WS(N);
+            var ws = arena.fProxyFFT_WS(N);
             int halfSpec = (N >> 1) + 1;
             int M = N >> 1;
-            var real = arena.fProxyRandomVector(N, -2f, 2f, seed);
+            var real = arena.fProxyRandomVec(N, -2f, 2f, seed);
 
             fProxy timeE = (fProxy)0;
             for (int i = 0; i < N; i++) timeE += real[i] * real[i];
@@ -1022,12 +1022,12 @@ public class fProxyFFTTests
         void FftLinearityOneSize(int N, uint sx, uint sy)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFft_WS(N);
+            var ws = arena.fProxyFFT_WS(N);
 
-            var xr = arena.fProxyRandomVector(N, -2f, 2f, sx);
-            var xi = arena.fProxyRandomVector(N, -2f, 2f, sx + 17u);
-            var yr = arena.fProxyRandomVector(N, -2f, 2f, sy);
-            var yi = arena.fProxyRandomVector(N, -2f, 2f, sy + 17u);
+            var xr = arena.fProxyRandomVec(N, -2f, 2f, sx);
+            var xi = arena.fProxyRandomVec(N, -2f, 2f, sx + 17u);
+            var yr = arena.fProxyRandomVec(N, -2f, 2f, sy);
+            var yi = arena.fProxyRandomVec(N, -2f, 2f, sy + 17u);
 
             fProxy aRe = (fProxy)1.5f, aIm = (fProxy)(-0.5f);
             fProxy bRe = (fProxy)(-2.0f), bIm = (fProxy)0.75f;
@@ -1087,7 +1087,7 @@ public class fProxyFFTTests
         //   constant c          -> X[0] = c·N, else 0
         //   exp(+2πi·k0·n/N)    -> X[k0] = N, else 0
         // Runs the input through BOTH fft(ws) and dft and compares each to the analytic expectation.
-        void KnownRunBoth(in fProxyFft_WS ws, int N,
+        void KnownRunBoth(in fProxyFFT_WS ws, int N,
                           in fProxyN inRe, in fProxyN inIm,
                           in fProxyN expRe, in fProxyN expIm, fProxy relTol)
         {
@@ -1104,7 +1104,7 @@ public class fProxyFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 16;
-            var ws = arena.fProxyFft_WS(N);
+            var ws = arena.fProxyFFT_WS(N);
             fProxy twoPi = (fProxy)(2.0 * System.Math.PI);
             fProxy relTol = (fProxy)2E-3f;
 
@@ -1196,9 +1196,9 @@ public class fProxyFFTTests
         void RoundTripFftWsOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFft_WS(N);
-            var re0 = arena.fProxyRandomVector(N, -3f, 3f, seedRe);
-            var im0 = arena.fProxyRandomVector(N, -3f, 3f, seedIm);
+            var ws = arena.fProxyFFT_WS(N);
+            var re0 = arena.fProxyRandomVec(N, -3f, 3f, seedRe);
+            var im0 = arena.fProxyRandomVec(N, -3f, 3f, seedIm);
 
             var re = re0.Copy(); var im = im0.Copy();
             fProxyFFT_OP.fft(ref re, ref im, in ws);
@@ -1216,9 +1216,9 @@ public class fProxyFFTTests
         void RoundTripRfftWsOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFft_WS(N);
+            var ws = arena.fProxyFFT_WS(N);
             int halfSpec = (N >> 1) + 1;
-            var real0 = arena.fProxyRandomVector(N, -3f, 3f, seed);
+            var real0 = arena.fProxyRandomVec(N, -3f, 3f, seed);
 
             var rRe = arena.fProxyVec(halfSpec);
             var rIm = arena.fProxyVec(halfSpec);
@@ -1236,8 +1236,8 @@ public class fProxyFFTTests
         void RoundTripDftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var re0 = arena.fProxyRandomVector(N, -3f, 3f, seedRe);
-            var im0 = arena.fProxyRandomVector(N, -3f, 3f, seedIm);
+            var re0 = arena.fProxyRandomVec(N, -3f, 3f, seedRe);
+            var im0 = arena.fProxyRandomVec(N, -3f, 3f, seedIm);
 
             var fRe = arena.fProxyVec(N); var fIm = arena.fProxyVec(N);
             fProxyFFT_OP.dft(in re0, in im0, ref fRe, ref fIm);
@@ -1273,11 +1273,11 @@ public class fProxyFFTTests
         void WorkspaceReuseOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.fProxyFft_WS(N);
+            var ws = arena.fProxyFFT_WS(N);
             int halfSpec = (N >> 1) + 1;
 
-            var re0 = arena.fProxyRandomVector(N, -2f, 2f, seed);
-            var im0 = arena.fProxyRandomVector(N, -2f, 2f, seed + 1u);
+            var re0 = arena.fProxyRandomVec(N, -2f, 2f, seed);
+            var im0 = arena.fProxyRandomVec(N, -2f, 2f, seed + 1u);
 
             // (a) fft(ws) on the fresh workspace, validated against dft.
             var dRe = arena.fProxyVec(N); var dIm = arena.fProxyVec(N);
@@ -1292,7 +1292,7 @@ public class fProxyFFTTests
             }
 
             // (b) rfft(ws) on the SAME workspace (touches cz/sz/visited) — compare to no-ws rfft.
-            var real = arena.fProxyRandomVector(N, -2f, 2f, seed + 2u);
+            var real = arena.fProxyRandomVec(N, -2f, 2f, seed + 2u);
             var rRe = arena.fProxyVec(halfSpec); var rIm = arena.fProxyVec(halfSpec);
             fProxyFFT_OP.rfft(in real, ref rRe, ref rIm, in ws);
             var oRe = arena.fProxyVec(halfSpec); var oIm = arena.fProxyVec(halfSpec);
@@ -1526,11 +1526,11 @@ public class fProxyFFTTests
     public void FftWorkspaceFactoryNonPow2Throws()
     {
         var arena = new Arena(Allocator.Persistent);
-        Assert.Throws<ArgumentException>(() => arena.fProxyFft_WS(0));
-        Assert.Throws<ArgumentException>(() => arena.fProxyFft_WS(1));
-        Assert.Throws<ArgumentException>(() => arena.fProxyFft_WS(3));
-        Assert.Throws<ArgumentException>(() => arena.fProxyFft_WS(5));
-        Assert.Throws<ArgumentException>(() => arena.fProxyFft_WS(6));
+        Assert.Throws<ArgumentException>(() => arena.fProxyFFT_WS(0));
+        Assert.Throws<ArgumentException>(() => arena.fProxyFFT_WS(1));
+        Assert.Throws<ArgumentException>(() => arena.fProxyFFT_WS(3));
+        Assert.Throws<ArgumentException>(() => arena.fProxyFFT_WS(5));
+        Assert.Throws<ArgumentException>(() => arena.fProxyFFT_WS(6));
         arena.Dispose();
     }
 
@@ -1540,7 +1540,7 @@ public class fProxyFFTTests
         var arena = new Arena(Allocator.Persistent);
         var re8  = arena.fProxyVec(8);
         var im8  = arena.fProxyVec(8);
-        var ws16 = arena.fProxyFft_WS(16);   // sized for 16, not 8
+        var ws16 = arena.fProxyFFT_WS(16);   // sized for 16, not 8
 
         // fft and ifft with mismatched workspace
         Assert.Throws<ArgumentException>(() => fProxyFFT_OP.fft(ref re8, ref im8, in ws16));
@@ -1562,7 +1562,7 @@ public class fProxyFFTTests
     public void RfftTableWrongOutputLengthThrows()
     {
         var arena = new Arena(Allocator.Persistent);
-        var ws = arena.fProxyFft_WS(8);
+        var ws = arena.fProxyFFT_WS(8);
         var real = arena.fProxyVec(8);
         var re5  = arena.fProxyVec(5);    // correct N/2+1
         var im5  = arena.fProxyVec(5);    // correct

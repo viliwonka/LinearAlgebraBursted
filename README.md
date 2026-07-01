@@ -66,7 +66,7 @@ Here's a simple example:
     Ortho_OP.qrDirectSolve(ref A, ref b, ref x_result);
 
     // calculate L1 norm
-    float norm = floatNorms_OP.L1(x_result);
+    float norm = Norms_OP.L1(x_result);
 
     // prints C matrix, although it will be cutoff because of big dimensions
     Print.Log(C);

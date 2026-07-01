@@ -62,7 +62,7 @@ public class doubleQRLeastSquaresResidualTests
 
             Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-            if (Analysis_OP.IsAnyNan(in x))
+            if (Analysis_OP.isAnyNan(in x))
                 throw new System.Exception("TestJob: NaN detected");
 
             // x == [5, -3]
@@ -91,9 +91,9 @@ public class doubleQRLeastSquaresResidualTests
             for (uint t = 0; t < 24; t++)
             {
                 int m = 24, n = 6;
-                var A = arena.doubleRandomMatrix(m, n, -2f, 2f, 5500 + t * 17);
+                var A = arena.doubleRandomMat(m, n, -2f, 2f, 5500 + t * 17);
                 // b is independent random — generically NOT in the column space => non-zero residual.
-                var b = arena.doubleRandomVector(m, -2f, 2f, 99000 + t * 23);
+                var b = arena.doubleRandomVec(m, -2f, 2f, 99000 + t * 23);
 
                 var Awork = A.Copy();
                 var bwork = b.Copy();
@@ -101,7 +101,7 @@ public class doubleQRLeastSquaresResidualTests
 
                 Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis_OP.IsAnyNan(in x))
+                if (Analysis_OP.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
                 doubleN r = b - double_OP.dot(A, x);
@@ -137,8 +137,8 @@ public class doubleQRLeastSquaresResidualTests
             for (uint t = 0; t < 12; t++)
             {
                 int m = 16, n = 4;
-                var A = arena.doubleRandomMatrix(m, n, -2f, 2f, 1200 + t * 11);
-                var b = arena.doubleRandomVector(m, -2f, 2f, 64000 + t * 29);
+                var A = arena.doubleRandomMat(m, n, -2f, 2f, 1200 + t * 11);
+                var b = arena.doubleRandomVec(m, -2f, 2f, 64000 + t * 29);
 
                 var Awork = A.Copy();
                 var bwork = b.Copy();
@@ -146,7 +146,7 @@ public class doubleQRLeastSquaresResidualTests
 
                 Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis_OP.IsAnyNan(in x))
+                if (Analysis_OP.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
                 double r0 = SumSq(b - double_OP.dot(A, x));

@@ -64,12 +64,12 @@ namespace LinearAlgebra
 
         public unsafe boolMxN Copy()
         {
-            return _arenaPtr->BoolMatrix(in this);
+            return _arenaPtr->boolMat(in this);
         }
 
         public unsafe boolMxN TempCopy()
         {
-            return _arenaPtr->TempBoolMatrix(in this);
+            return _arenaPtr->tempBoolMat(in this);
         }
 
         public void Dispose()

@@ -72,7 +72,7 @@ public class fProxyBidiagTests
                 Fail[2] = tol;
                 Fail[3] = err - tol;
             }
-            Assert.IsTrue(Analysis_OP.IsZero(in M, tol));
+            Assert.IsTrue(Analysis_OP.isZero(in M, tol));
         }
 
         // Check B is upper bidiagonal: zero everywhere except B[k,k] and B[k,k+1]
@@ -115,7 +115,7 @@ public class fProxyBidiagTests
             var UBVt = fProxy_OP.dot(UB, Vt);
             var diff = A - UBVt;
 
-            if (Analysis_OP.IsAnyNan(in diff))
+            if (Analysis_OP.isAnyNan(in diff))
                 throw new System.Exception("BidiagTests: NaN in reconstruction");
 
             AssertNearZero(in diff, tol, "reconstruction");
@@ -123,11 +123,11 @@ public class fProxyBidiagTests
             // 2. B is upper bidiagonal
             AssertUpperBidiagonal(in B, tol);
 
-            // 3. UᵀU ≈ I_n  (Analysis_OP.IsOrthogonal handles thin U: computes AᵀA = I_n)
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in U, tol));
+            // 3. UᵀU ≈ I_n  (Analysis_OP.isOrthogonal handles thin U: computes AᵀA = I_n)
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in U, tol));
 
             // 4. VᵀV ≈ I_n  (V is square)
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in V, tol));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in V, tol));
         }
 
         // ---- test cases ----
@@ -136,7 +136,7 @@ public class fProxyBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.fProxyIdentityMatrix(n);
+            var A = arena.fProxyIdentityMat(n);
             var U = arena.fProxyMat(n, n);
             var B = arena.fProxyMat(n, n);
             var V = arena.fProxyMat(n, n);
@@ -169,7 +169,7 @@ public class fProxyBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-2f), (fProxy)2f, 314159);
+            var A = arena.fProxyRandomMat(n, n, (fProxy)(-2f), (fProxy)2f, 314159);
             var U = arena.fProxyMat(n, n);
             var B = arena.fProxyMat(n, n);
             var V = arena.fProxyMat(n, n);
@@ -182,7 +182,7 @@ public class fProxyBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 8;
-            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-5f), (fProxy)5f, 271828);
+            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5f), (fProxy)5f, 271828);
             var U = arena.fProxyMat(n, n);
             var B = arena.fProxyMat(n, n);
             var V = arena.fProxyMat(n, n);
@@ -195,7 +195,7 @@ public class fProxyBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 10, n = 6;
-            var A = arena.fProxyRandomMatrix(m, n, (fProxy)(-3f), (fProxy)3f, 112358);
+            var A = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, 112358);
             var U = arena.fProxyMat(m, n);
             var B = arena.fProxyMat(n, n);
             var V = arena.fProxyMat(n, n);
@@ -208,7 +208,7 @@ public class fProxyBidiagTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 12, n = 4;
-            var A = arena.fProxyRandomMatrix(m, n, (fProxy)(-1f), (fProxy)1f, 999421);
+            var A = arena.fProxyRandomMat(m, n, (fProxy)(-1f), (fProxy)1f, 999421);
             var U = arena.fProxyMat(m, n);
             var B = arena.fProxyMat(n, n);
             var V = arena.fProxyMat(n, n);
@@ -222,7 +222,7 @@ public class fProxyBidiagTests
         void CheckValuesMatchFull(int m, int n, fProxy lo, fProxy hi, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(m, n, lo, hi, seed);
+            var A = arena.fProxyRandomMat(m, n, lo, hi, seed);
             var U = arena.fProxyMat(m, n);
             var B = arena.fProxyMat(n, n);
             var V = arena.fProxyMat(n, n);
@@ -246,7 +246,7 @@ public class fProxyBidiagTests
             // Single column: B is 1x1, U is 5x1 unit vector, V is 1x1 = [[±1]]
             var arena = new Arena(Allocator.Persistent);
             int m = 5, n = 1;
-            var A = arena.fProxyRandomMatrix(m, n, (fProxy)(-2f), (fProxy)2f, 77777);
+            var A = arena.fProxyRandomMat(m, n, (fProxy)(-2f), (fProxy)2f, 77777);
             var U = arena.fProxyMat(m, n);
             var B = arena.fProxyMat(n, n);
             var V = arena.fProxyMat(n, n);

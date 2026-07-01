@@ -228,10 +228,10 @@ public class fProxySolverBatteryTests
 
             var LUm = A.Copy();
             var P = new Pivot(n, Allocator.Temp);
-            AssertTrue(LU.luDecompositionInplace(ref LUm, ref P));
+            AssertTrue(LU.luDecompositionInpl(ref LUm, ref P));
 
-            var x = b.Copy();                 // LUSolve overwrites b with x
-            LU.LUSolve(ref LUm, in P, ref x);
+            var x = b.Copy();                 // luSolve overwrites b with x
+            LU.luSolve(ref LUm, in P, ref x);
 
             // residual ‖A x − b‖ with the ORIGINAL A,b (backward-stable ⇒ tiny)
             fProxy resTol = (MatMaxAbs(in A) + (fProxy)1) * (fProxy)100 * Consts.fProxySqrtEps;
@@ -247,7 +247,7 @@ public class fProxySolverBatteryTests
         // QR (Householder) — square solve + overdetermined least squares.
         // =====================================================================
 
-        // Well-conditioned square systems solved via qrDirectSolve (Solvers.SolveQR): residual small.
+        // Well-conditioned square systems solved via qrDirectSolve (Solvers.solveQR): residual small.
         // Laplacian1D(8) (cond ≈ 41) and Pei(5,2) (eigenvalues {7,2,2,2,2}, cond ≈ 3.5).
         void QRDirectSolveSquare()
         {
@@ -274,7 +274,7 @@ public class fProxySolverBatteryTests
             var Aw = A.Copy();   // qrDirectSolve destroys A and b
             var bw = b.Copy();
             var x = arena.fProxyVec(n);
-            Solvers.SolveQR(ref Aw, ref bw, ref x);
+            Solvers.solveQR(ref Aw, ref bw, ref x);
 
             fProxy resTol = (MatMaxAbs(in A) + (fProxy)1) * (fProxy)100 * Consts.fProxySqrtEps;
             AssertTrue(ResidualNorm(in A, in x, in b) <= resTol);
@@ -301,7 +301,7 @@ public class fProxySolverBatteryTests
             var Aw = A.Copy();
             var bw = b.Copy();
             var x = arena.fProxyVec(n);
-            Solvers.SolveQR(ref Aw, ref bw, ref x);   // x has length A.N_Cols = 3
+            Solvers.solveQR(ref Aw, ref bw, ref x);   // x has length A.N_Cols = 3
 
             fProxy xtol = (fProxy)50 * Consts.fProxySqrtEps;
             for (int i = 0; i < n; i++)
@@ -780,13 +780,13 @@ public class fProxySolverBatteryTests
         // helpers
         // =====================================================================
 
-        // det via LU on a copy (luDecompositionInplace destroys its input).
+        // det via LU on a copy (luDecompositionInpl destroys its input).
         fProxy Determinant(in fProxyMxN M)
         {
             int n = M.M_Rows;
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInplace(ref LUmat, ref pivot);
+            LU.luDecompositionInpl(ref LUmat, ref pivot);
             fProxy det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;

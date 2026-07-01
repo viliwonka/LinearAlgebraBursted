@@ -87,7 +87,7 @@ fProxyGen_OP.outerSum(in u, in v, ref destMat)   // M[i,j] = u[i]+v[j]   (additi
 Field2.PlaneX (→x)   PlaneY (→y)   Diagonal (→x+y)   Radial { Cx,Cy } (→√((x-Cx)²+(y-Cy)²))
 Field2.Gaussian2D { Sigma }   Ripple { Freq }(=sin(Freq·r))   Checker { Sx,Sy }
 ```
-So a radial gradient is `sample2D(new Field2.Radial(), …)`; a horizontal gradient is `PlaneX`; a height field is the user's own struct. **Diagonal from a curve** needs no new API — `arena.fProxyDiagonalMatrix(arena.fProxySample(ref ease, n))`.
+So a radial gradient is `sample2D(new Field2.Radial(), …)`; a horizontal gradient is `PlaneX`; a height field is the user's own struct. **Diagonal from a curve** needs no new API — `arena.fProxyDiagonalMat(arena.fProxySample(ref ease, n))`.
 
 > Separable (`outer` of two 1D samples) is O(rows·cols) with two cheap 1D passes; full `sample2D` evaluates the functor per cell. Use `outer` when the field factorizes, `sample2D` otherwise.
 
@@ -102,7 +102,7 @@ Pairs with the windows (§6) and wavetables (§4). Plan when built:
 
 ## Placement
 - `fProxyGen_OP` (new static class) — the ref-dest primitives + `sample<F>` / `sample2D<F>` / `outer`.
-- `Arena` extensions (`ArenaExtensions.fProxy.cs`) — the allocating `fProxyXxx` wrappers, beside `fProxyIdentityMatrix`/`fProxyDiagonalMatrix`.
+- `Arena` extensions (`ArenaExtensions.fProxy.cs`) — the allocating `fProxyXxx` wrappers, beside `fProxyIdentityMat`/`fProxyDiagonalMat`.
 - `IfProxyBivariateFunction` — new, beside `IfProxyScalarFunction` (Optimize.fProxy.cs).
 - `Easing` / `Wave` (univariate) and `Field2` (bivariate) — small structs implementing the functor interfaces.
 

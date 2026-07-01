@@ -184,7 +184,7 @@ public class fProxyTransformsTests
         void StandardizeRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(4, 5, -3f, 3f, 12345);
+            var A = arena.fProxyRandomMat(4, 5, -3f, 3f, 12345);
             fProxyStats_OP.standardizeRows(ref A);
 
             var rMean = fProxyStats_OP.rowMean(in A);
@@ -201,7 +201,7 @@ public class fProxyTransformsTests
         void StandardizeColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(5, 4, -3f, 3f, 67890);
+            var A = arena.fProxyRandomMat(5, 4, -3f, 3f, 67890);
             fProxyStats_OP.standardizeColumns(ref A);
 
             var cMean = fProxyStats_OP.colMean(in A);
@@ -289,7 +289,7 @@ public class fProxyTransformsTests
         void RescaleRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(4, 5, -3f, 3f, 222);
+            var A = arena.fProxyRandomMat(4, 5, -3f, 3f, 222);
             fProxyStats_OP.rescaleRows(ref A);
             var rMin = fProxyStats_OP.rowMin(in A);
             var rMax = fProxyStats_OP.rowMax(in A);
@@ -305,7 +305,7 @@ public class fProxyTransformsTests
         void RescaleColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(5, 4, -3f, 3f, 333);
+            var A = arena.fProxyRandomMat(5, 4, -3f, 3f, 333);
             fProxy lo = 1f, hi = 3f;
             fProxyStats_OP.rescaleColumns(ref A, lo, hi);
             var cMin = fProxyStats_OP.colMin(in A);
@@ -338,7 +338,7 @@ public class fProxyTransformsTests
         void CenterRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(4, 5, -5f, 5f, 444);
+            var A = arena.fProxyRandomMat(4, 5, -5f, 5f, 444);
             fProxyStats_OP.centerRows(ref A);
             var rMean = fProxyStats_OP.rowMean(in A);
             for (int r = 0; r < 4; r++)
@@ -349,7 +349,7 @@ public class fProxyTransformsTests
         void CenterColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(5, 4, -5f, 5f, 555);
+            var A = arena.fProxyRandomMat(5, 4, -5f, 5f, 555);
             fProxyStats_OP.centerColumns(ref A);
             var cMean = fProxyStats_OP.colMean(in A);
             for (int c = 0; c < 4; c++)
@@ -394,7 +394,7 @@ public class fProxyTransformsTests
         void MaxAbsRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(4, 5, -3f, 3f, 666);
+            var A = arena.fProxyRandomMat(4, 5, -3f, 3f, 666);
             fProxyStats_OP.maxAbsRows(ref A);
             for (int r = 0; r < 4; r++)
             {
@@ -408,7 +408,7 @@ public class fProxyTransformsTests
         void MaxAbsColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(5, 4, -3f, 3f, 777);
+            var A = arena.fProxyRandomMat(5, 4, -3f, 3f, 777);
             fProxyStats_OP.maxAbsColumns(ref A);
             for (int c = 0; c < 4; c++)
             {
@@ -494,7 +494,7 @@ public class fProxyTransformsTests
         void SoftmaxRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(4, 5, -2f, 2f, 888);
+            var A = arena.fProxyRandomMat(4, 5, -2f, 2f, 888);
             fProxyStats_OP.softmaxRows(ref A);
             var rSum = fProxyStats_OP.rowSum(in A);
             for (int r = 0; r < 4; r++)
@@ -510,7 +510,7 @@ public class fProxyTransformsTests
         void SoftmaxColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(5, 4, -2f, 2f, 999);
+            var A = arena.fProxyRandomMat(5, 4, -2f, 2f, 999);
             fProxyStats_OP.softmaxColumns(ref A);
             var cSum = fProxyStats_OP.colSum(in A);
             for (int c = 0; c < 4; c++)
@@ -551,7 +551,7 @@ public class fProxyTransformsTests
         void NormalizeRowsL2()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(4, 5, -3f, 3f, 1212);
+            var A = arena.fProxyRandomMat(4, 5, -3f, 3f, 1212);
             fProxyNorms_OP.NormalizeRows(ref A, Norm.L2);
             var rL2 = fProxyStats_OP.rowNormL2(in A);
             for (int r = 0; r < 4; r++)
@@ -563,7 +563,7 @@ public class fProxyTransformsTests
         void NormalizeColumnsL1()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(5, 4, -3f, 3f, 3434);
+            var A = arena.fProxyRandomMat(5, 4, -3f, 3f, 3434);
             fProxyNorms_OP.NormalizeColumns(ref A, Norm.L1);
             var cL1 = fProxyStats_OP.colNormL1(in A);
             for (int c = 0; c < 4; c++)

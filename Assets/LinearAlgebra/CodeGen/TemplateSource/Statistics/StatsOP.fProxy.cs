@@ -10,7 +10,7 @@ namespace LinearAlgebra.Stats
 {
 
     // just a prototype, needs matrices handling too
-    public static partial class fProxyStats_OP  {
+    public static partial class fProxyStats_OP {
 
         public static fProxy sum<T>(in T x) where T : unmanaged, IUnsafefProxyArray {
 

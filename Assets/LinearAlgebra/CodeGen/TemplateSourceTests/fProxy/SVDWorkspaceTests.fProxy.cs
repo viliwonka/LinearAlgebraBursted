@@ -48,11 +48,11 @@ public class fProxySVDWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
             int k = m < n ? m : n;
 
-            var A0 = arena.fProxyRandomMatrix(m, n, -5f, 5f, 778231);
+            var A0 = arena.fProxyRandomMat(m, n, -5f, 5f, 778231);
             for (int d = 0; d < k; d++)   // boost leading diagonal block for conditioning
                 A0[d, d] += (fProxy)10f;
 
-            var b = arena.fProxyRandomVector(m, -5f, 5f, 9090);   // read-only in pinvSolve
+            var b = arena.fProxyRandomVec(m, -5f, 5f, 9090);   // read-only in pinvSolve
 
             // allocating reference (A is no longer modified, but keep per-call copies for clarity)
             var Aa = A0.Copy();
@@ -72,17 +72,17 @@ public class fProxySVDWorkspaceTests
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
-            Assert.IsTrue(Analysis_OP.IsZero(xa - xb, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(xa - xb, Tol()));
 
             // workspace-struct form (default relTol/maxSweeps) must match the raw-scratch form
             var Aw = A0.Copy();
             var xw = arena.fProxyVec(n);
-            var ws = arena.fProxySvd_WS(m, n);
+            var ws = arena.fProxySVD_WS(m, n);
             int rw = SVD.pinvSolve(ref Aw, in b, ref xw, out bool cw, ref ws);
 
             Assert.IsTrue(rw == rb);
             Assert.IsTrue(cw == cb);
-            Assert.IsTrue(Analysis_OP.IsZero(xw - xb, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(xw - xb, Tol()));
 
             arena.Dispose();
         }
@@ -93,7 +93,7 @@ public class fProxySVDWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
             int k = m < n ? m : n;
 
-            var A0 = arena.fProxyRandomMatrix(m, n, -5f, 5f, 314221);
+            var A0 = arena.fProxyRandomMat(m, n, -5f, 5f, 314221);
             for (int d = 0; d < k; d++)
                 A0[d, d] += (fProxy)10f;
 
@@ -115,17 +115,17 @@ public class fProxySVDWorkspaceTests
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
-            Assert.IsTrue(Analysis_OP.IsZero(Pa - Pb, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Pa - Pb, Tol()));
 
             // workspace-struct form (default relTol/maxSweeps) must match the raw-scratch form
             var Aw = A0.Copy();
             var Pw = arena.fProxyMat(n, m);
-            var ws = arena.fProxySvd_WS(m, n);
+            var ws = arena.fProxySVD_WS(m, n);
             int rw = SVD.pseudoInverse(ref Aw, ref Pw, out bool cw, ref ws);
 
             Assert.IsTrue(rw == rb);
             Assert.IsTrue(cw == cb);
-            Assert.IsTrue(Analysis_OP.IsZero(Pw - Pb, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Pw - Pb, Tol()));
 
             arena.Dispose();
         }
@@ -137,15 +137,15 @@ public class fProxySVDWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 4;
 
-            var A0 = arena.fProxyRandomMatrix(m, n, -5f, 5f, 24681);
+            var A0 = arena.fProxyRandomMat(m, n, -5f, 5f, 24681);
             for (int d = 0; d < n; d++)
                 A0[d, d] += (fProxy)10f;
 
-            var ws = arena.fProxySvd_WS(m, n);   // allocated ONCE, reused below
+            var ws = arena.fProxySVD_WS(m, n);   // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
-                var b = arena.fProxyRandomVector(m, -5f, 5f, (uint)(1000 + t * 7));
+                var b = arena.fProxyRandomVec(m, -5f, 5f, (uint)(1000 + t * 7));
 
                 // allocating reference (fresh internal scratch each call)
                 var Aa = A0.Copy();
@@ -157,7 +157,7 @@ public class fProxySVDWorkspaceTests
                 var xw = arena.fProxyVec(n);
                 SVD.pinvSolve(ref Aw, in b, ref xw, out bool _, ref ws);
 
-                Assert.IsTrue(Analysis_OP.IsZero(xa - xw, Tol()));
+                Assert.IsTrue(Analysis_OP.isZero(xa - xw, Tol()));
             }
 
             arena.Dispose();
@@ -250,7 +250,7 @@ public class fProxySVDWorkspaceTests
         finally { arena.Dispose(); }
     }
 
-    // Arena.fProxySvd_WS(m, n) must size S (k), M (k x k), and At (n x m only when wide).
+    // Arena.fProxySVD_WS(m, n) must size S (k), M (k x k), and At (n x m only when wide).
     [Test]
     public void SvdWorkspace_Factory_SizesCorrectly()
     {
@@ -258,7 +258,7 @@ public class fProxySVDWorkspaceTests
         try
         {
             // tall: k = n, big = m; U = big x k = 7 x 4; At unused (left default).
-            var wsTall = arena.fProxySvd_WS(7, 4);
+            var wsTall = arena.fProxySVD_WS(7, 4);
             Assert.AreEqual(4, wsTall.S.N);
             Assert.AreEqual(4, wsTall.M.M_Rows);
             Assert.AreEqual(4, wsTall.M.N_Cols);
@@ -266,7 +266,7 @@ public class fProxySVDWorkspaceTests
             Assert.AreEqual(4, wsTall.U.N_Cols);
 
             // wide: k = m, big = n; U = big x k = 8 x 3; At = n x m
-            var wsWide = arena.fProxySvd_WS(3, 8);
+            var wsWide = arena.fProxySVD_WS(3, 8);
             Assert.AreEqual(3, wsWide.S.N);
             Assert.AreEqual(3, wsWide.M.M_Rows);
             Assert.AreEqual(3, wsWide.M.N_Cols);

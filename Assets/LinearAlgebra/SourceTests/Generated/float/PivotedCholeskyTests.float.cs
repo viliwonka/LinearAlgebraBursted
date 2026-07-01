@@ -28,7 +28,7 @@ public class floatPivotedCholeskyTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var B = arena.floatRandomMatrix(6, 4);
+            var B = arena.floatRandomMat(6, 4);
             var A = Gram(in arena, in B);
             var L = arena.floatMat(6);
             var P = new Pivot(6, Allocator.Persistent);
@@ -103,7 +103,7 @@ public class floatPivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 8;
-                var B = arena.floatRandomMatrix(n, n, -1f, 1f, 6100 + t * 13);
+                var B = arena.floatRandomMat(n, n, -1f, 1f, 6100 + t * 13);
                 var A = Gram(in arena, in B);
                 for (int d = 0; d < n; d++) A[d, d] += (float)n; // diagonal boost: well-conditioned SPD
 
@@ -121,7 +121,7 @@ public class floatPivotedCholeskyTests
                 RecordEq(P[0], argmaxDiag);
 
                 // exact solve: b = A xOrig => x == xOrig.
-                var xOrig = arena.floatRandomVector(n, -3f, 3f, 71000 + t * 7);
+                var xOrig = arena.floatRandomVec(n, -3f, 3f, 71000 + t * 7);
                 var b = float_OP.dot(A, xOrig);
                 var Lc = arena.floatMat(n);
                 var Pc = new Pivot(n, Allocator.Persistent);
@@ -170,7 +170,7 @@ public class floatPivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 4;
-                var B = arena.floatRandomMatrix(n, r, -1f, 1f, 8200 + t * 11);
+                var B = arena.floatRandomMat(n, r, -1f, 1f, 8200 + t * 11);
                 var A = Gram(in arena, in B);
 
                 var L = arena.floatMat(n);
@@ -182,7 +182,7 @@ public class floatPivotedCholeskyTests
                 AssertReconstruct(in A, in L, in P, rank, (float)1E-4f);
 
                 // xRange = A·w ∈ range(A); b = A·xRange => min-norm solution == xRange.
-                var w = arena.floatRandomVector(n, -2f, 2f, 51000 + t * 5);
+                var w = arena.floatRandomVec(n, -2f, 2f, 51000 + t * 5);
                 var xRange = float_OP.dot(A, w);
                 var b = float_OP.dot(A, xRange);
 
@@ -213,10 +213,10 @@ public class floatPivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 3;
-                var B = arena.floatRandomMatrix(n, r, -1f, 1f, 3300 + t * 17);
+                var B = arena.floatRandomMat(n, r, -1f, 1f, 3300 + t * 17);
                 var A = Gram(in arena, in B);
 
-                var xOrig = arena.floatRandomVector(n, -2f, 2f, 42000 + t * 9);
+                var xOrig = arena.floatRandomVec(n, -2f, 2f, 42000 + t * 9);
                 var b = float_OP.dot(A, xOrig);     // b ∈ range(A)
                 var bForResidual = b.Copy();
 
@@ -303,7 +303,7 @@ public class floatPivotedCholeskyTests
             RecordEq(rank, 0);
 
             // solve: x = 0 for any b.
-            var b = arena.floatRandomVector(n, -1f, 1f, 999);
+            var b = arena.floatRandomVec(n, -1f, 1f, 999);
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b);
             RecordBound(floatNorms_OP.L2(in b), (float)1E-6f);
 
@@ -394,11 +394,11 @@ public class floatPivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 3;
-                var B = arena.floatRandomMatrix(n, r, -1f, 1f, 2600 + t * 19);
+                var B = arena.floatRandomMat(n, r, -1f, 1f, 2600 + t * 19);
                 var A = Gram(in arena, in B);
 
                 // arbitrary b, generically NOT in range(A) since rank r < n.
-                var b = arena.floatRandomVector(n, -2f, 2f, 77000 + t * 13);
+                var b = arena.floatRandomVec(n, -2f, 2f, 77000 + t * 13);
 
                 var L = arena.floatMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
@@ -409,7 +409,7 @@ public class floatPivotedCholeskyTests
                 var Ax = float_OP.dot(A, b);
                 var AAx = float_OP.dot(A, Ax);
                 // recompute A b — b now holds x, so rebuild b from the same seed.
-                var bOrig = arena.floatRandomVector(n, -2f, 2f, 77000 + t * 13);
+                var bOrig = arena.floatRandomVec(n, -2f, 2f, 77000 + t * 13);
                 var Ab = float_OP.dot(A, bOrig);
 
                 float scale = floatNorms_OP.L2(in Ab) + (float)1f;

@@ -99,7 +99,7 @@ public class doubleDotOperationTests
             int outVecLen = 5;
 
             doubleN x = arena.doubleVec(inVecLen, 1f);
-            doubleMxN A = arena.doubleRandomMatrix(outVecLen, inVecLen, -0.01f, 0.01f);
+            doubleMxN A = arena.doubleRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
             doubleN b = double_OP.dot(A, x);
 
@@ -114,8 +114,8 @@ public class doubleDotOperationTests
 
             int vecLen = 20;
 
-            doubleN x = arena.doubleRandomUnitVector(vecLen);
-            doubleMxN A = arena.doubleIdentityMatrix(vecLen);
+            doubleN x = arena.doubleRandomUnitVec(vecLen);
+            doubleMxN A = arena.doubleIdentityMat(vecLen);
 
             doubleN b = double_OP.dot(x, A);
 
@@ -124,7 +124,7 @@ public class doubleDotOperationTests
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == x[i]);
 
-            x = arena.doubleIndexZeroVector(vecLen);
+            x = arena.doubleIndexZeroVec(vecLen);
 
             b = double_OP.dot(x, A);
 
@@ -140,8 +140,8 @@ public class doubleDotOperationTests
 
             int matLen = 16;
 
-            doubleMxN A = arena.doubleIdentityMatrix(matLen);
-            doubleMxN B = arena.doubleIdentityMatrix(matLen);
+            doubleMxN A = arena.doubleIdentityMat(matLen);
+            doubleMxN B = arena.doubleIdentityMat(matLen);
 
             doubleMxN C = double_OP.dot(A, B);
 
@@ -154,7 +154,7 @@ public class doubleDotOperationTests
                     Assert.IsTrue(C[i, j] == (double)0f);
             }
 
-            doubleMxN R = arena.doubleRandomMatrix(matLen, matLen);
+            doubleMxN R = arena.doubleRandomMat(matLen, matLen);
 
             C = double_OP.dot(A, R);
 
@@ -164,7 +164,7 @@ public class doubleDotOperationTests
                 Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
-            C = arena.doubleIdentityMatrix(matLen);
+            C = arena.doubleIdentityMat(matLen);
 
             doubleMxN D = double_OP.dot(C, C);
 
@@ -188,7 +188,7 @@ public class doubleDotOperationTests
             int outVecLen = 16;
 
             doubleN x = arena.doubleVec(inVecLen, 1f);
-            doubleMxN A = arena.doubleRandomMatrix(outVecLen, inVecLen, -0.01f, 0.01f);
+            doubleMxN A = arena.doubleRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
             doubleN b = double_OP.dot(A, x);
 
@@ -205,7 +205,7 @@ public class doubleDotOperationTests
             int outVecLen = 16;
 
             doubleN x = arena.doubleVec(inVecLen, 1f);
-            doubleMxN A = arena.doubleRandomMatrix(inVecLen, outVecLen, -0.01f, 0.01f);
+            doubleMxN A = arena.doubleRandomMat(inVecLen, outVecLen, -0.01f, 0.01f);
 
             doubleN b = double_OP.dot(x, A);
             
@@ -245,8 +245,8 @@ public class doubleDotOperationTests
             for (int i = 0; i < B.Length; i++)
                 Assert.IsTrue(B[i] == (double)1f);
 
-            x = arena.doubleLinVector(vecM, 0f, 2f);
-            y = arena.doubleLinVector(vecN, 0f, 2f);
+            x = arena.doubleLinVec(vecM, 0f, 2f);
+            y = arena.doubleLinVec(vecN, 0f, 2f);
 
             doubleMxN C = double_OP.outerDot(x, y);
 

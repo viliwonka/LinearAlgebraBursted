@@ -146,7 +146,7 @@ public class fProxySVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-2f), (fProxy)2f, 9001);
+            var A = arena.fProxyRandomMat(n, n, (fProxy)(-2f), (fProxy)2f, 9001);
             for (int d = 0; d < n; d++) A[d, d] += (fProxy)8f;   // ensure full rank / conditioning
             CheckSubspaces(in A, n, ref arena, (fProxy)1E-3f);
             arena.Dispose();
@@ -156,8 +156,8 @@ public class fProxySVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5;
-            var u = arena.fProxyRandomVector(m, (fProxy)(-2f), (fProxy)2f, 4242);
-            var v = arena.fProxyRandomVector(n, (fProxy)(-2f), (fProxy)2f, 2424);
+            var u = arena.fProxyRandomVec(m, (fProxy)(-2f), (fProxy)2f, 4242);
+            var v = arena.fProxyRandomVec(n, (fProxy)(-2f), (fProxy)2f, 2424);
             var A = arena.fProxyMat(m, n);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
@@ -170,8 +170,8 @@ public class fProxySVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5, r = 3;
-            var B = arena.fProxyRandomMatrix(m, r, (fProxy)(-2f), (fProxy)2f, 13579);
-            var C = arena.fProxyRandomMatrix(r, n, (fProxy)(-2f), (fProxy)2f, 24680);
+            var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 13579);
+            var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 24680);
             var A = fProxy_OP.dot(B, C);   // m x n, rank r (generic)
             CheckSubspaces(in A, r, ref arena, (fProxy)1E-3f);
             arena.Dispose();
@@ -190,7 +190,7 @@ public class fProxySVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.fProxyIdentityMatrix(n);
+            var A = arena.fProxyIdentityMat(n);
             CheckSubspaces(in A, n, ref arena, (fProxy)1E-3f);
             arena.Dispose();
         }
@@ -199,7 +199,7 @@ public class fProxySVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 10, n = 4;
-            var A = arena.fProxyRandomMatrix(m, n, (fProxy)(-3f), (fProxy)3f, 271828);
+            var A = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, 271828);
             CheckSubspaces(in A, n, ref arena, (fProxy)1E-3f);
             arena.Dispose();
         }

@@ -103,21 +103,21 @@ public class fProxyPivotTests
             pivot.Swap(0, 1);
             pivot.Swap(2, 3);
 
-            var identity = arena.fProxyIdentityMatrix(4);
+            var identity = arena.fProxyIdentityMat(4);
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.isIdentity(identity));
 
             pivot.ApplyInverseRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.Dispose();
         }
@@ -134,25 +134,25 @@ public class fProxyPivotTests
                 pivot.Swap(rand.NextInt(0, dim), rand.NextInt(0, dim));
             }
 
-            var identity = arena.fProxyIdentityMatrix(dim);
+            var identity = arena.fProxyIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.ApplyRow(ref identity);
             pivot.ApplyRow(ref identity);
 
-            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.isIdentity(identity));
 
             pivot.ApplyInverseRow(ref identity);
             pivot.ApplyInverseRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.Dispose();
         }
@@ -164,21 +164,21 @@ public class fProxyPivotTests
             pivot.Swap(0, 1);
             pivot.Swap(2, 3);
 
-            var identity = arena.fProxyIdentityMatrix(4);
+            var identity = arena.fProxyIdentityMat(4);
 
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.isIdentity(identity));
 
             pivot.ApplyInverseColumn(ref identity);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.Dispose();
         }
@@ -195,36 +195,36 @@ public class fProxyPivotTests
                 pivot.Swap(rand.NextInt(0, dim), rand.NextInt(0, dim));
             }
 
-            var identity = arena.fProxyIdentityMatrix(dim);
+            var identity = arena.fProxyIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.ApplyColumn(ref identity);
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.isIdentity(identity));
 
             pivot.ApplyInverseColumn(ref identity);
             pivot.ApplyInverseColumn(ref identity);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             pivot.Dispose();
         }
 
         void RowPermutationMatTest(ref Arena arena) {
 
-            var permutationMatrix = arena.fProxyPermutationMatrix(8, 2, 3);
+            var permutationMatrix = arena.fProxyPermutationMat(8, 2, 3);
 
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMatrix(8, 3, 6));
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMatrix(8, 6, 7));
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMatrix(8, 1, 4));
+            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 3, 6));
+            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 6, 7));
+            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 1, 4));
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 
@@ -236,18 +236,18 @@ public class fProxyPivotTests
             // applying inverse pivot operation to permutation matrix should form identity matrix
             pivot.ApplyInverseRow(ref permutationMatrix);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(permutationMatrix));
+            Assert.IsTrue(Analysis_OP.isIdentity(permutationMatrix));
 
             pivot.Dispose();
         }
 
         void ColumnPermutationMatTest(ref Arena arena) {
 
-            var permutationMatrix = arena.fProxyPermutationMatrix(8, 2, 3);
+            var permutationMatrix = arena.fProxyPermutationMat(8, 2, 3);
 
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMatrix(8, 3, 6));
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMatrix(8, 6, 7));
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMatrix(8, 1, 4));
+            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 3, 6));
+            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 6, 7));
+            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 1, 4));
 
             permutationMatrix = fProxy_OP.trans(permutationMatrix);
 
@@ -261,7 +261,7 @@ public class fProxyPivotTests
             // applying inverse pivot operation to permutation matrix should form identity matrix
             pivot.ApplyInverseColumn(ref permutationMatrix);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(permutationMatrix));
+            Assert.IsTrue(Analysis_OP.isIdentity(permutationMatrix));
               
             pivot.Dispose();
         }
@@ -273,7 +273,7 @@ public class fProxyPivotTests
             pivot.Swap(1, 2);
 
             // [1, 0, 0, 0]
-            var vec = arena.fProxyBasisVector(4, 0);
+            var vec = arena.fProxyBasisVec(4, 0);
 
             Print.Log(vec);
 
@@ -352,15 +352,15 @@ public class fProxyPivotTests
             pivot.Swap(1, 5);
             pivot.Swap(2, 7);
 
-            var identity = arena.fProxyIdentityMatrix(8);
+            var identity = arena.fProxyIdentityMat(8);
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsFalse(Analysis_OP.IsIdentity(identity));
+            Assert.IsFalse(Analysis_OP.isIdentity(identity));
 
             pivot.ApplyInverseRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(identity));
+            Assert.IsTrue(Analysis_OP.isIdentity(identity));
 
             // intentionally NOT disposing pivot - arena.Dispose() owns it (in Execute's finally).
         }

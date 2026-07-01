@@ -39,7 +39,7 @@ public class intTransposeTests
 
             int dim = 16;
             
-            intMxN A = arena.intRandomMatrix(dim, dim);
+            intMxN A = arena.intRandomMat(dim, dim);
 
             intMxN B = int_OP.trans(A);
 
@@ -60,7 +60,7 @@ public class intTransposeTests
             int rows = 8; 
             int cols = 32;
 
-            intMxN A = arena.intRandomMatrix(rows, cols);
+            intMxN A = arena.intRandomMat(rows, cols);
 
             intMxN B = int_OP.trans(A);
 

@@ -179,7 +179,7 @@ public class fProxyEigenTests
 
             int n = 4;
 
-            var A = arena.fProxyIdentityMatrix(n);
+            var A = arena.fProxyIdentityMat(n);
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
 
@@ -190,7 +190,7 @@ public class fProxyEigenTests
             for (int i = 0; i < n; i++)
                 AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -223,7 +223,7 @@ public class fProxyEigenTests
 
             AssertDescending(in eig, n);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -258,7 +258,7 @@ public class fProxyEigenTests
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
             // V orthogonal
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -273,7 +273,7 @@ public class fProxyEigenTests
 
             int n = 8;
 
-            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-5), (fProxy)5, 8123451);
+            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, 8123451);
             // symmetrize in place
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
@@ -292,10 +292,10 @@ public class fProxyEigenTests
 
             Assert.IsTrue(converged);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (fProxy)1000 * Consts.fProxyZeroThreshold));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)1000 * Consts.fProxyZeroThreshold));
 
             AssertDescending(in eig, n);
 
@@ -323,7 +323,7 @@ public class fProxyEigenTests
 
             int n = 8;
 
-            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-5), (fProxy)5, 5571903);
+            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, 5571903);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -342,14 +342,14 @@ public class fProxyEigenTests
             Assert.IsTrue(converged);
 
             // Reconstruct: recon = V * diag(eig) * V^T
-            var diagE = arena.fProxyDiagonalMatrix(in eig);
+            var diagE = arena.fProxyDiagonalMat(in eig);
             var Vd = fProxy_OP.dot(V, diagE);
             var Vt = fProxy_OP.trans(V);
             var recon = fProxy_OP.dot(Vd, Vt);
 
             fProxyMxN shouldBeZero = Aorig - recon;
 
-            if (Analysis_OP.IsAnyNan(in shouldBeZero))
+            if (Analysis_OP.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
             fProxy precision = (fProxy)1000 * Consts.fProxyZeroThreshold;
@@ -361,7 +361,7 @@ public class fProxyEigenTests
                 Fail[2] = precision;
                 Fail[3] = zeroError - precision;
             }
-            Assert.IsTrue(Analysis_OP.IsZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis_OP.isZero(in shouldBeZero, precision));
 
             arena.Dispose();
         }
@@ -376,7 +376,7 @@ public class fProxyEigenTests
 
             int n = 6;
 
-            var B = arena.fProxyRandomMatrix(n, n, (fProxy)(-3), (fProxy)3, 9920017);
+            var B = arena.fProxyRandomMat(n, n, (fProxy)(-3), (fProxy)3, 9920017);
 
             // A = B^T B (manual), symmetric PSD
             var A = arena.fProxyMat(n, n);
@@ -462,13 +462,13 @@ public class fProxyEigenTests
 
             Assert.IsTrue(converged);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             for (int i = 0; i < n; i++)
                 AssertClose(eig[i], (fProxy)0, (fProxy)100 * Consts.fProxyZeroThreshold);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -500,8 +500,8 @@ public class fProxyEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             fProxy tol = (fProxy)100 * Consts.fProxyZeroThreshold;
             // dominant eigenvalue == ‖v‖² = 15; the other three are exactly zero.
@@ -511,7 +511,7 @@ public class fProxyEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, tol));
 
             arena.Dispose();
         }
@@ -536,7 +536,7 @@ public class fProxyEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
 
             fProxy tol = (fProxy)100 * Consts.fProxyZeroThreshold;
             AssertClose(eig[0], (fProxy)3, tol * (fProxy)4);
@@ -545,7 +545,7 @@ public class fProxyEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, tol));
 
             arena.Dispose();
         }
@@ -568,8 +568,8 @@ public class fProxyEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold;
             AssertClose(eig[0], (fProxy)4, tol);
@@ -580,7 +580,7 @@ public class fProxyEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, tol));
 
             arena.Dispose();
         }
@@ -604,8 +604,8 @@ public class fProxyEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             fProxy band = (fProxy)1E-2f;
 
@@ -636,7 +636,7 @@ public class fProxyEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (fProxy)1000 * Consts.fProxyZeroThreshold));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)1000 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -659,8 +659,8 @@ public class fProxyEigenTests
 
             bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             fProxy half = (fProxy)(Unity.Mathematics.math.PI_DBL * 0.5);
             fProxy margin = (fProxy)1000 * Consts.fProxyZeroThreshold;
@@ -680,7 +680,7 @@ public class fProxyEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, margin));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, margin));
 
             arena.Dispose();
         }
@@ -693,15 +693,15 @@ public class fProxyEigenTests
 
             int n = 8;
 
-            var A = arena.fProxyHilbertMatrix(n);
+            var A = arena.fProxyHilbertMat(n);
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
 
             // maxSweeps = 1: convergence not asserted.
             Eigen.eigenDecomposition(ref A, ref eig, ref V, 1);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             AssertDescending(in eig, n);
 
@@ -781,7 +781,7 @@ public class fProxyEigenTests
 
             int n = 6;
 
-            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-4), (fProxy)4, 4471123);
+            var A = arena.fProxyRandomMat(n, n, (fProxy)(-4), (fProxy)4, 4471123);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -882,13 +882,13 @@ public class fProxyEigenTests
 
             int n = 5;
 
-            var A = arena.fProxyIdentityMatrix(n);
+            var A = arena.fProxyIdentityMat(n);
             var eig = arena.fProxyVec(n);
 
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
 
             for (int i = 0; i < n; i++)
                 AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
@@ -920,7 +920,7 @@ public class fProxyEigenTests
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
 
             fProxy tol = (fProxy)100 * Consts.fProxyZeroThreshold;
             AssertClose(eig[0], (fProxy)5, tol);
@@ -951,7 +951,7 @@ public class fProxyEigenTests
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
 
             AssertClose(eig[0], (fProxy)3, (fProxy)100 * Consts.fProxyZeroThreshold);
             AssertClose(eig[1], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
@@ -995,7 +995,7 @@ public class fProxyEigenTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-5), (fProxy)5, seed);
+            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, seed);
             // symmetrize in place
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
@@ -1017,7 +1017,7 @@ public class fProxyEigenTests
             bool qlOk = Eigen.eigenvaluesSymmetric(ref Aql, ref eigQL);
             Assert.IsTrue(qlOk);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eigQL));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eigQL));
             AssertDescending(in eigQL, n);
 
             // both sorted descending -> compare elementwise.
@@ -1065,7 +1065,7 @@ public class fProxyEigenTests
             bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
 
             fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold;
             // descending order: eig[i] corresponds to k = n - i.
@@ -1093,22 +1093,22 @@ public class fProxyEigenTests
 
             int n = 5;
 
-            var A = arena.fProxyIdentityMatrix(n);
+            var A = arena.fProxyIdentityMat(n);
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
 
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             for (int i = 0; i < n; i++)
                 AssertClose(eig[i], (fProxy)1, (fProxy)100 * Consts.fProxyZeroThreshold);
 
             AssertDescending(in eig, n);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -1138,8 +1138,8 @@ public class fProxyEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             fProxy tol = (fProxy)100 * Consts.fProxyZeroThreshold;
             AssertClose(eig[0], (fProxy)5, tol);
@@ -1153,7 +1153,7 @@ public class fProxyEigenTests
             // V a permutation of identity -> check A = V diag(eig) V^T rather than exact V.
             AssertReconstruction(in Aorig, in V, in eig, n, (fProxy)1000 * Consts.fProxyZeroThreshold);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, tol));
 
             arena.Dispose();
         }
@@ -1186,7 +1186,7 @@ public class fProxyEigenTests
 
             AssertEigenResidual(in Aorig, in V, in eig, n);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)100 * Consts.fProxyZeroThreshold));
 
             arena.Dispose();
         }
@@ -1212,8 +1212,8 @@ public class fProxyEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             AssertReconstruction(in Aorig, in V, in eig, n, (fProxy)1000 * Consts.fProxyZeroThreshold);
 
@@ -1239,9 +1239,9 @@ public class fProxyEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
-            // Explicit ||V^T V - I||_max check (Analysis_OP.IsOrthogonal also asserted for parity).
+            // Explicit ||V^T V - I||_max check (Analysis_OP.isOrthogonal also asserted for parity).
             fProxy precision = (fProxy)1000 * Consts.fProxyZeroThreshold;
             fProxy maxErr = (fProxy)0;
             for (int i = 0; i < n; i++)
@@ -1264,7 +1264,7 @@ public class fProxyEigenTests
             }
             Assert.IsTrue(maxErr <= precision);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, precision));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, precision));
 
             arena.Dispose();
         }
@@ -1290,8 +1290,8 @@ public class fProxyEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
@@ -1326,7 +1326,7 @@ public class fProxyEigenTests
             bool valOk = Eigen.eigenvaluesSymmetric(ref Aval, ref eigVal);
             Assert.IsTrue(valOk);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eigSym));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eigSym));
             AssertDescending(in eigSym, n);
 
             for (int i = 0; i < n; i++)
@@ -1376,8 +1376,8 @@ public class fProxyEigenTests
             bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in eig));
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in V));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in eig));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
 
             fProxy tol = (fProxy)1000 * Consts.fProxyZeroThreshold;
             for (int i = 0; i < n; i++)
@@ -1389,7 +1389,7 @@ public class fProxyEigenTests
 
             AssertDescending(in eig, n);
             AssertEigenResidual(in Aorig, in V, in eig, n);
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(V, tol));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(V, tol));
 
             arena.Dispose();
         }
@@ -1401,7 +1401,7 @@ public class fProxyEigenTests
         // Allocate a random matrix (entries ~ +-5) and symmetrize it in place.
         private fProxyMxN MakeRandomSymmetric(ref Arena arena, int n, uint seed)
         {
-            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-5), (fProxy)5, seed);
+            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5), (fProxy)5, seed);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {

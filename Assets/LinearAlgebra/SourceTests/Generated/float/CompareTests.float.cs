@@ -337,7 +337,7 @@ public class floatCompareTests
         {
             int dim = 64;
 
-            floatN v = arena.floatRandomVector(dim, -1f, 1f, 1451);
+            floatN v = arena.floatRandomVec(dim, -1f, 1f, 1451);
             // set first element to zero
             v[0] = 0f;
 
@@ -365,7 +365,7 @@ public class floatCompareTests
         {
             int dim = 32;
 
-            floatMxN m = arena.floatRandomMatrix(dim, dim, -1f, 1f, 1451);
+            floatMxN m = arena.floatRandomMat(dim, dim, -1f, 1f, 1451);
             // set first element to zero
             m[0,0] = 0f;
 
@@ -393,11 +393,11 @@ public class floatCompareTests
         {
             int dim = 32;
 
-            floatMxN m0 = arena.floatDiagonalMatrix(dim, 1f);
+            floatMxN m0 = arena.floatDiagonalMat(dim, 1f);
             
             var boolMat = m0 == 1f;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsDiagonal(boolMat));
+            Assert.IsTrue(BoolAnalysis_OP.isDiagonal(boolMat));
             Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
             Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
         }
@@ -406,8 +406,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatN v0 = arena.floatLinVector(dim, 0f, 1f);
-            floatN v1 = arena.floatLinVector(dim, 0f, 1f);
+            floatN v0 = arena.floatLinVec(dim, 0f, 1f);
+            floatN v1 = arena.floatLinVec(dim, 0f, 1f);
 
             var boolVec = v0 == v1;
 
@@ -424,8 +424,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatN v0 = arena.floatLinVector(dim, 0f, 1f);
-            floatN v1 = arena.floatLinVector(dim, 2f, 3f);
+            floatN v0 = arena.floatLinVec(dim, 0f, 1f);
+            floatN v1 = arena.floatLinVec(dim, 2f, 3f);
 
             var boolVec = v0 != v1;
 
@@ -443,8 +443,8 @@ public class floatCompareTests
 
             int dim = 16;
             
-            floatN v0 = arena.floatLinVector(dim, 0f, 1f);
-            floatN v1 = arena.floatLinVector(dim, 2f, 3f);
+            floatN v0 = arena.floatLinVec(dim, 0f, 1f);
+            floatN v1 = arena.floatLinVec(dim, 2f, 3f);
 
             var boolVec = v0 < v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
@@ -459,8 +459,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatN v0 = arena.floatLinVector(dim, 0f, 1f);
-            floatN v1 = arena.floatLinVector(dim, 2f, 3f);
+            floatN v0 = arena.floatLinVec(dim, 0f, 1f);
+            floatN v1 = arena.floatLinVec(dim, 2f, 3f);
 
             var boolVec = v0 <= v1;
 
@@ -472,8 +472,8 @@ public class floatCompareTests
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.floatLinVector(dim, 0f, 1f);
-            v1 = arena.floatLinVector(dim, 1f, 0f);
+            v0 = arena.floatLinVec(dim, 0f, 1f);
+            v1 = arena.floatLinVec(dim, 1f, 0f);
 
             boolVec = v0 <= v1;
 
@@ -484,8 +484,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatN v0 = arena.floatLinVector(dim, 0f, 1f);
-            floatN v1 = arena.floatLinVector(dim, 2f, 3f);
+            floatN v0 = arena.floatLinVec(dim, 0f, 1f);
+            floatN v1 = arena.floatLinVec(dim, 2f, 3f);
 
             var boolVec = v0 > v1;
 
@@ -497,8 +497,8 @@ public class floatCompareTests
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
 
-            v0 = arena.floatLinVector(dim, 1f, 0f);
-            v1 = arena.floatLinVector(dim, 0f, 1f);
+            v0 = arena.floatLinVec(dim, 1f, 0f);
+            v1 = arena.floatLinVec(dim, 0f, 1f);
 
             boolVec = v0 > v1;
             Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
@@ -511,8 +511,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatN v0 = arena.floatLinVector(dim, 0f, 1f);
-            floatN v1 = arena.floatLinVector(dim, 2f, 3f);
+            floatN v0 = arena.floatLinVec(dim, 0f, 1f);
+            floatN v1 = arena.floatLinVec(dim, 2f, 3f);
 
             var boolVec = v0 >= v1;
 
@@ -522,7 +522,7 @@ public class floatCompareTests
             boolVec = v0 >= v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.floatLinVector(dim, 1f, 0f);
+            v0 = arena.floatLinVec(dim, 1f, 0f);
 
             boolVec = v0 >= v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolVec));
@@ -532,8 +532,8 @@ public class floatCompareTests
         {
             int dim = 64;
 
-            floatN v0 = arena.floatRandomVector(dim, -1f, 1f, 1451);
-            floatN v1 = arena.floatRandomVector(dim, -1f, 1f, 6421);
+            floatN v0 = arena.floatRandomVec(dim, -1f, 1f, 1451);
+            floatN v1 = arena.floatRandomVec(dim, -1f, 1f, 6421);
 
             v0[0] = v1[0];
             v0[1] = 1f-v1[1];
@@ -561,8 +561,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatMxN m0 = arena.floatRandomMatrix(dim, dim, 0f, 1f);
-            floatMxN m1 = arena.floatRandomMatrix(dim, dim, 0f, 1f);
+            floatMxN m0 = arena.floatRandomMat(dim, dim, 0f, 1f);
+            floatMxN m1 = arena.floatRandomMat(dim, dim, 0f, 1f);
 
             var boolMat = m0 == m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -580,13 +580,13 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatMxN m0 = arena.floatRandomMatrix(dim, dim, 0f, 1f, 2131);
-            floatMxN m1 = arena.floatRandomMatrix(dim, dim, 0f, 1f, 2131);
+            floatMxN m0 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
+            floatMxN m1 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
 
             var boolMat = m0 != m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
-            m1 = arena.floatRandomMatrix(dim, dim, 2f, 3f, 2131);
+            m1 = arena.floatRandomMat(dim, dim, 2f, 3f, 2131);
 
             boolMat = m0 != m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -596,8 +596,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatMxN m0 = arena.floatRandomMatrix(dim, dim, 0f, 1f, 2131);
-            floatMxN m1 = arena.floatRandomMatrix(dim, dim, 2f, 3f, 2131);
+            floatMxN m0 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
+            floatMxN m1 = arena.floatRandomMat(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 < m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -612,8 +612,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatMxN m0 = arena.floatRandomMatrix(dim, dim, 0f, 1f, 2131);
-            floatMxN m1 = arena.floatRandomMatrix(dim, dim, 2f, 3f, 2131);
+            floatMxN m0 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
+            floatMxN m1 = arena.floatRandomMat(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 <= m1;
 
@@ -624,8 +624,8 @@ public class floatCompareTests
             boolMat = m0 <= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
-            m0 = arena.floatRandomMatrix(dim, dim, 1f, 0f, 2131);
-            m1 = arena.floatRandomMatrix(dim, dim, 0f, 1f, 2131);
+            m0 = arena.floatRandomMat(dim, dim, 1f, 0f, 2131);
+            m1 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
 
             boolMat = m0 <= m1;
 
@@ -636,8 +636,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatMxN m0 = arena.floatRandomMatrix(dim, dim, 0f, 1f, 2131);
-            floatMxN m1 = arena.floatRandomMatrix(dim, dim, 2f, 3f, 2131);
+            floatMxN m0 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
+            floatMxN m1 = arena.floatRandomMat(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 > m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
@@ -647,8 +647,8 @@ public class floatCompareTests
             boolMat = m0 > m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
-            m0 = arena.floatRandomMatrix(dim, dim, 1f, 0f, 2131);
-            m1 = arena.floatRandomMatrix(dim, dim, 0f, 1f, 2131);
+            m0 = arena.floatRandomMat(dim, dim, 1f, 0f, 2131);
+            m1 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
 
             boolMat = m0 > m1;
             Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
@@ -661,8 +661,8 @@ public class floatCompareTests
         {
             int dim = 16;
             
-            floatMxN m0 = arena.floatRandomMatrix(dim, dim, 0f, 1f, 2131);
-            floatMxN m1 = arena.floatRandomMatrix(dim, dim, 2f, 3f, 2131);
+            floatMxN m0 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
+            floatMxN m1 = arena.floatRandomMat(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 >= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
@@ -672,7 +672,7 @@ public class floatCompareTests
             boolMat = m0 >= m1;
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
-            m0 = arena.floatRandomMatrix(dim, dim, 1f, 0f, 2131);
+            m0 = arena.floatRandomMat(dim, dim, 1f, 0f, 2131);
 
             boolMat = m0 >= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolMat));
@@ -682,8 +682,8 @@ public class floatCompareTests
         {
             int dim = 32;
 
-            floatMxN m0 = arena.floatRandomMatrix(dim, dim, -1f, 1f, 1451);
-            floatMxN m1 = arena.floatRandomMatrix(dim, dim, -1f, 1f, 6421);
+            floatMxN m0 = arena.floatRandomMat(dim, dim, -1f, 1f, 1451);
+            floatMxN m1 = arena.floatRandomMat(dim, dim, -1f, 1f, 6421);
 
             m0[0,0] = m1[0,0];
             m0[0,1] = 1f - m1[0,1];

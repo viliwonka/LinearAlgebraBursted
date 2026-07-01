@@ -39,7 +39,7 @@ public class shortTransposeTests
 
             int dim = 16;
             
-            shortMxN A = arena.shortRandomMatrix(dim, dim);
+            shortMxN A = arena.shortRandomMat(dim, dim);
 
             shortMxN B = short_OP.trans(A);
 
@@ -60,7 +60,7 @@ public class shortTransposeTests
             int rows = 8; 
             int cols = 32;
 
-            shortMxN A = arena.shortRandomMatrix(rows, cols);
+            shortMxN A = arena.shortRandomMat(rows, cols);
 
             shortMxN B = short_OP.trans(A);
 

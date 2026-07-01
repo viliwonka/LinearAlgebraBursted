@@ -52,7 +52,7 @@ public class floatCholeskyPivotWorkspaceTests
         // A = B Bᵀ (B is n x r): symmetric PSD of generic rank min(r, n).
         static floatMxN Gram(ref Arena arena, int n, int r, uint seed)
         {
-            var B = arena.floatRandomMatrix(n, r, (float)(-1f), (float)1f, seed);
+            var B = arena.floatRandomMat(n, r, (float)(-1f), (float)1f, seed);
             var A = arena.floatMat(n, n);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
@@ -92,7 +92,7 @@ public class floatCholeskyPivotWorkspaceTests
             Assert.IsTrue(okA == okW);
             Assert.IsTrue(rankA == rankW);
             for (int i = 0; i < n; i++) Assert.IsTrue(Pa[i] == Pw[i]);
-            Assert.IsTrue(Analysis_OP.IsZero(La - Lw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(La - Lw, Tol()));
 
             Pw.Dispose();
             Pa.Dispose();
@@ -111,7 +111,7 @@ public class floatCholeskyPivotWorkspaceTests
             var P = new Pivot(n, Allocator.Persistent);
             Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
 
-            var b = arena.floatRandomVector(n, (float)(-3f), (float)3f, 4004);
+            var b = arena.floatRandomVec(n, (float)(-3f), (float)3f, 4004);
 
             var ba = b.Copy();
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref ba);
@@ -120,7 +120,7 @@ public class floatCholeskyPivotWorkspaceTests
             var bw = b.Copy();
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref bw, ref ws);
 
-            Assert.IsTrue(Analysis_OP.IsZero(ba - bw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(ba - bw, Tol()));
 
             P.Dispose();
             arena.Dispose();
@@ -133,7 +133,7 @@ public class floatCholeskyPivotWorkspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = (r >= n) ? SPD(ref arena, n, seed) : Gram(ref arena, n, r, seed);
-            var b = arena.floatRandomVector(n, (float)(-2f), (float)2f, seed + 100u);
+            var b = arena.floatRandomVec(n, (float)(-2f), (float)2f, seed + 100u);
 
             var La = arena.floatMat(n, n);
             var Pa = new Pivot(n, Allocator.Persistent);
@@ -147,7 +147,7 @@ public class floatCholeskyPivotWorkspaceTests
             bool okW = Cholesky.choleskyPivotSolve(in A, ref Lw, ref Pw, ref bw, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.IsZero(ba - bw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(ba - bw, Tol()));
 
             Pw.Dispose();
             Pa.Dispose();
@@ -163,8 +163,8 @@ public class floatCholeskyPivotWorkspaceTests
 
             var A1 = SPD(ref arena, n, 7007);
             var A2 = SPD(ref arena, n, 8008);
-            var b1 = arena.floatRandomVector(n, (float)(-2f), (float)2f, 1111);
-            var b2 = arena.floatRandomVector(n, (float)(-2f), (float)2f, 2222);
+            var b1 = arena.floatRandomVec(n, (float)(-2f), (float)2f, 1111);
+            var b2 = arena.floatRandomVec(n, (float)(-2f), (float)2f, 2222);
 
             var ws = arena.floatCholeskyPivot_WS(n);   // allocated ONCE
 
@@ -187,7 +187,7 @@ public class floatCholeskyPivotWorkspaceTests
             bool okA = Cholesky.choleskyPivotSolve(in A2, ref La, ref Pa, ref b2a);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis_OP.IsZero(b2w - b2a, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(b2w - b2a, Tol()));
 
             Pa.Dispose();
             Pw.Dispose();

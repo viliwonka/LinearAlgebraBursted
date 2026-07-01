@@ -7,7 +7,7 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions {
 
         #region VECTOR
-        public static longN longIndexZeroVector(this ref Arena arena, int N)
+        public static longN longIndexZeroVec(this ref Arena arena, int N)
         {
             var vec = arena.longVec(N, true);
 
@@ -18,7 +18,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static longN longIndexOneVector(this ref Arena arena, int N)
+        public static longN longIndexOneVec(this ref Arena arena, int N)
         {
             var vec = arena.longVec(N, true);
 
@@ -29,7 +29,7 @@ namespace LinearAlgebra
         }
 
         // all zero but the index is one
-        public static longN longBasisVector(this ref Arena arena, int N, int index)
+        public static longN longBasisVec(this ref Arena arena, int N, int index)
         {
             var vec = arena.longVec(N);
 
@@ -41,7 +41,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static longN longRandomVector(this ref Arena arena, int N, long min, long max, uint seed = 84115)
+        public static longN longRandomVec(this ref Arena arena, int N, long min, long max, uint seed = 84115)
         {
             var vec = arena.longVec(N, true);
 
@@ -63,7 +63,7 @@ namespace LinearAlgebra
         }
 
         //linspace
-        public static longN longLinVector(this ref Arena arena, int N, long start, long end)
+        public static longN longLinVec(this ref Arena arena, int N, long start, long end)
         {
             var vec = arena.longVec(N);
 
@@ -87,7 +87,7 @@ namespace LinearAlgebra
 
         #region MATRIX
         // constructs identity matrix
-        public static longMxN longIdentityMatrix(this ref Arena arena, int N)
+        public static longMxN longIdentityMat(this ref Arena arena, int N)
         {
             var matrix = arena.longMat(N, N);
 
@@ -98,7 +98,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static longMxN longDiagonalMatrix(this ref Arena arena, int N, long s)
+        public static longMxN longDiagonalMat(this ref Arena arena, int N, long s)
         {
             var matrix = arena.longMat(N, N);
 
@@ -109,7 +109,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix based on vector
-        public static longMxN longDiagonalMatrix(this ref Arena arena, in longN vec)
+        public static longMxN longDiagonalMat(this ref Arena arena, in longN vec)
         {
             var matrix = arena.longMat(vec.N, vec.N);
 
@@ -120,7 +120,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 0
-        public static longMxN longIndexZeroMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static longMxN longIndexZeroMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.longMat(M_rows, N_cols, true);
 
@@ -135,7 +135,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 1
-        public static longMxN longIndexOneMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static longMxN longIndexOneMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.longMat(M_rows, N_cols, true);
 
@@ -151,13 +151,13 @@ namespace LinearAlgebra
 
         // random matrix
 
-        public static longMxN longRandomMatrix(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
+        public static longMxN longRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
-            return longRandomMatrix(ref arena, M_rows, N_cols, -1, 1, seed);
+            return longRandomMat(ref arena, M_rows, N_cols, -1, 1, seed);
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static longMxN longRandomDiagonalMatrix(this ref Arena arena, int N, long min, long max, uint seed = 65792)
+        public static longMxN longRandomDiagonalMat(this ref Arena arena, int N, long min, long max, uint seed = 65792)
         {
             var matrix = arena.longMat(N, N);
 
@@ -176,7 +176,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        public static longMxN longRandomMatrix(this ref Arena arena, int M_rows, int N_cols, long min, long max, uint seed = 121312)
+        public static longMxN longRandomMat(this ref Arena arena, int M_rows, int N_cols, long min, long max, uint seed = 121312)
         {
             var matrix = arena.longMat(M_rows, N_cols, true);
 
@@ -198,9 +198,9 @@ namespace LinearAlgebra
         }
 
         // i and j are axis indexes to swap
-        public static longMxN longPermutationMatrix(this ref Arena arena, int M, int i, int j)
+        public static longMxN longPermutationMat(this ref Arena arena, int M, int i, int j)
         {
-            var matrix = arena.longIdentityMatrix(M);
+            var matrix = arena.longIdentityMat(M);
 
             if (M < 2)
                 throw new System.Exception("PermutationMatrix: Matrix must be at least 2x2");

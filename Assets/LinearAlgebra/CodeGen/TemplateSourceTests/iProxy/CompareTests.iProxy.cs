@@ -337,7 +337,7 @@ public class iProxyCompareTests
         {
             int dim = 64;
 
-            iProxyN v = arena.iProxyRandomVector(dim, -100, 100, 1451);
+            iProxyN v = arena.iProxyRandomVec(dim, -100, 100, 1451);
             // set first element to zero
             v[0] = 0;
 
@@ -365,7 +365,7 @@ public class iProxyCompareTests
         {
             int dim = 32;
 
-            iProxyMxN m = arena.iProxyRandomMatrix(dim, dim, -100, 100, 1451);
+            iProxyMxN m = arena.iProxyRandomMat(dim, dim, -100, 100, 1451);
             // set first element to zero
             m[0,0] = 0;
 
@@ -393,11 +393,11 @@ public class iProxyCompareTests
         {
             int dim = 32;
 
-            iProxyMxN m0 = arena.iProxyDiagonalMatrix(dim, 1);
+            iProxyMxN m0 = arena.iProxyDiagonalMat(dim, 1);
             
             var boolMat = m0 == 1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsDiagonal(boolMat));
+            Assert.IsTrue(BoolAnalysis_OP.isDiagonal(boolMat));
             Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
             Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
         }
@@ -406,8 +406,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyN v0 = arena.iProxyLinVector(dim, 0, 100);
-            iProxyN v1 = arena.iProxyLinVector(dim, 0, 100);
+            iProxyN v0 = arena.iProxyLinVec(dim, 0, 100);
+            iProxyN v1 = arena.iProxyLinVec(dim, 0, 100);
 
             var boolVec = v0 == v1;
 
@@ -424,8 +424,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyN v0 = arena.iProxyLinVector(dim, 0, 100);
-            iProxyN v1 = arena.iProxyLinVector(dim, 200, 300);
+            iProxyN v0 = arena.iProxyLinVec(dim, 0, 100);
+            iProxyN v1 = arena.iProxyLinVec(dim, 200, 300);
 
             var boolVec = v0 != v1;
 
@@ -443,8 +443,8 @@ public class iProxyCompareTests
 
             int dim = 16;
             
-            iProxyN v0 = arena.iProxyLinVector(dim, 0, 100);
-            iProxyN v1 = arena.iProxyLinVector(dim, 200, 300);
+            iProxyN v0 = arena.iProxyLinVec(dim, 0, 100);
+            iProxyN v1 = arena.iProxyLinVec(dim, 200, 300);
 
             var boolVec = v0 < v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
@@ -459,8 +459,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyN v0 = arena.iProxyLinVector(dim, 0, 100);
-            iProxyN v1 = arena.iProxyLinVector(dim, 200, 300);
+            iProxyN v0 = arena.iProxyLinVec(dim, 0, 100);
+            iProxyN v1 = arena.iProxyLinVec(dim, 200, 300);
 
             var boolVec = v0 <= v1;
 
@@ -472,8 +472,8 @@ public class iProxyCompareTests
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.iProxyLinVector(dim, 0, 100);
-            v1 = arena.iProxyLinVector(dim, 100, 0);
+            v0 = arena.iProxyLinVec(dim, 0, 100);
+            v1 = arena.iProxyLinVec(dim, 100, 0);
 
             boolVec = v0 <= v1;
 
@@ -484,8 +484,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyN v0 = arena.iProxyLinVector(dim, 0, 100);
-            iProxyN v1 = arena.iProxyLinVector(dim, 200, 300);
+            iProxyN v0 = arena.iProxyLinVec(dim, 0, 100);
+            iProxyN v1 = arena.iProxyLinVec(dim, 200, 300);
 
             var boolVec = v0 > v1;
 
@@ -497,8 +497,8 @@ public class iProxyCompareTests
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
 
-            v0 = arena.iProxyLinVector(dim, 100, 0);
-            v1 = arena.iProxyLinVector(dim, 0, 100);
+            v0 = arena.iProxyLinVec(dim, 100, 0);
+            v1 = arena.iProxyLinVec(dim, 0, 100);
 
             boolVec = v0 > v1;
             Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
@@ -511,8 +511,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyN v0 = arena.iProxyLinVector(dim, 0, 100);
-            iProxyN v1 = arena.iProxyLinVector(dim, 200, 300);
+            iProxyN v0 = arena.iProxyLinVec(dim, 0, 100);
+            iProxyN v1 = arena.iProxyLinVec(dim, 200, 300);
 
             var boolVec = v0 >= v1;
 
@@ -522,7 +522,7 @@ public class iProxyCompareTests
             boolVec = v0 >= v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
 
-            v0 = arena.iProxyLinVector(dim, 1, 0);
+            v0 = arena.iProxyLinVec(dim, 1, 0);
 
             boolVec = v0 >= v1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolVec));
@@ -532,8 +532,8 @@ public class iProxyCompareTests
         {
             int dim = 64;
 
-            iProxyN v0 = arena.iProxyRandomVector(dim, -100, 100, 1451);
-            iProxyN v1 = arena.iProxyRandomVector(dim, -100, 100, 6421);
+            iProxyN v0 = arena.iProxyRandomVec(dim, -100, 100, 1451);
+            iProxyN v1 = arena.iProxyRandomVec(dim, -100, 100, 6421);
 
             v0[0] = v1[0];
             v0[1] = (iProxy)(1-v1[1]);
@@ -561,8 +561,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyMxN m0 = arena.iProxyRandomMatrix(dim, dim, 0, 100);
-            iProxyMxN m1 = arena.iProxyRandomMatrix(dim, dim, 0, 100);
+            iProxyMxN m0 = arena.iProxyRandomMat(dim, dim, 0, 100);
+            iProxyMxN m1 = arena.iProxyRandomMat(dim, dim, 0, 100);
 
             var boolMat = m0 == m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -580,13 +580,13 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyMxN m0 = arena.iProxyRandomMatrix(dim, dim, 0, 100, 2131);
-            iProxyMxN m1 = arena.iProxyRandomMatrix(dim, dim, 0, 100, 2131);
+            iProxyMxN m0 = arena.iProxyRandomMat(dim, dim, 0, 100, 2131);
+            iProxyMxN m1 = arena.iProxyRandomMat(dim, dim, 0, 100, 2131);
 
             var boolMat = m0 != m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
-            m1 = arena.iProxyRandomMatrix(dim, dim, 200, 300, 2131);
+            m1 = arena.iProxyRandomMat(dim, dim, 200, 300, 2131);
 
             boolMat = m0 != m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -596,8 +596,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyMxN m0 = arena.iProxyRandomMatrix(dim, dim, 000, 100, 2131);
-            iProxyMxN m1 = arena.iProxyRandomMatrix(dim, dim, 200, 300, 2131);
+            iProxyMxN m0 = arena.iProxyRandomMat(dim, dim, 000, 100, 2131);
+            iProxyMxN m1 = arena.iProxyRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 < m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
@@ -612,8 +612,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyMxN m0 = arena.iProxyRandomMatrix(dim, dim, 0, 100, 2131);
-            iProxyMxN m1 = arena.iProxyRandomMatrix(dim, dim, 200, 300, 2131);
+            iProxyMxN m0 = arena.iProxyRandomMat(dim, dim, 0, 100, 2131);
+            iProxyMxN m1 = arena.iProxyRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 <= m1;
 
@@ -624,8 +624,8 @@ public class iProxyCompareTests
             boolMat = m0 <= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
 
-            m0 = arena.iProxyRandomMatrix(dim, dim, 100, 0, 2131);
-            m1 = arena.iProxyRandomMatrix(dim, dim, 0, 100, 2131);
+            m0 = arena.iProxyRandomMat(dim, dim, 100, 0, 2131);
+            m1 = arena.iProxyRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 <= m1;
 
@@ -636,8 +636,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyMxN m0 = arena.iProxyRandomMatrix(dim, dim, 0, 100, 2131);
-            iProxyMxN m1 = arena.iProxyRandomMatrix(dim, dim, 200, 300, 2131);
+            iProxyMxN m0 = arena.iProxyRandomMat(dim, dim, 0, 100, 2131);
+            iProxyMxN m1 = arena.iProxyRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 > m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
@@ -647,8 +647,8 @@ public class iProxyCompareTests
             boolMat = m0 > m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
 
-            m0 = arena.iProxyRandomMatrix(dim, dim, 100, 0, 2131);
-            m1 = arena.iProxyRandomMatrix(dim, dim, 0, 100, 2131);
+            m0 = arena.iProxyRandomMat(dim, dim, 100, 0, 2131);
+            m1 = arena.iProxyRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 > m1;
             Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
@@ -661,8 +661,8 @@ public class iProxyCompareTests
         {
             int dim = 16;
             
-            iProxyMxN m0 = arena.iProxyRandomMatrix(dim, dim, 0, 100, 2131);
-            iProxyMxN m1 = arena.iProxyRandomMatrix(dim, dim, 200, 300, 2131);
+            iProxyMxN m0 = arena.iProxyRandomMat(dim, dim, 0, 100, 2131);
+            iProxyMxN m1 = arena.iProxyRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 >= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
@@ -672,7 +672,7 @@ public class iProxyCompareTests
             boolMat = m0 >= m1;
 
             Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
-            m0 = arena.iProxyRandomMatrix(dim, dim, 100, 0, 2131);
+            m0 = arena.iProxyRandomMat(dim, dim, 100, 0, 2131);
 
             boolMat = m0 >= m1;
             Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolMat));
@@ -682,8 +682,8 @@ public class iProxyCompareTests
         {
             int dim = 32;
 
-            iProxyMxN m0 = arena.iProxyRandomMatrix(dim, dim, -100, 100, 1451);
-            iProxyMxN m1 = arena.iProxyRandomMatrix(dim, dim, -100, 100, 6421);
+            iProxyMxN m0 = arena.iProxyRandomMat(dim, dim, -100, 100, 1451);
+            iProxyMxN m1 = arena.iProxyRandomMat(dim, dim, -100, 100, 6421);
 
             m0[0,0] = m1[0,0];
             m0[0,1] = (iProxy)(1 - m1[0,1]);

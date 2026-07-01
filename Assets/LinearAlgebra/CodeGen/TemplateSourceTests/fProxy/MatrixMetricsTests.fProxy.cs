@@ -176,7 +176,7 @@ public class fProxyMatrixMetricsTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.fProxyIdentityMatrix(3);
+            var A = arena.fProxyIdentityMat(3);
             AssertClose(fProxy_OP.cond(in A), (fProxy)1, (fProxy)1E-4);
 
             arena.Dispose();

@@ -58,15 +58,15 @@ namespace LinearAlgebra {
         
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolN boolVec(int n, bool uninit = false) => _arenaPtr->BoolVector(n, uninit);
+        public unsafe boolN boolVec(int n, bool uninit = false) => _arenaPtr->boolVec(n, uninit);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolN tempBoolVec(int n, bool uninit = false) => _arenaPtr->TempBoolVector(n, uninit);
+        public unsafe boolN tempBoolVec(int n, bool uninit = false) => _arenaPtr->tempBoolVec(n, uninit);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolMxN boolMat(int M_rows, int N_cols, bool uninit = false) => _arenaPtr->BoolMatrix(M_rows, N_cols, uninit);
+        public unsafe boolMxN boolMat(int M_rows, int N_cols, bool uninit = false) => _arenaPtr->boolMat(M_rows, N_cols, uninit);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolMxN tempBoolMat(int M_rows, int N_cols, bool uninit = false) => _arenaPtr->TempBoolMatrix(M_rows, N_cols, uninit);
+        public unsafe boolMxN tempBoolMat(int M_rows, int N_cols, bool uninit = false) => _arenaPtr->tempBoolMat(M_rows, N_cols, uninit);
     }
 }

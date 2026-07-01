@@ -17,13 +17,13 @@ namespace LinearAlgebra
         // (a singular/rank-deficient triangular factor) divides by zero and yields Inf/NaN; this
         // primitive does not guard it. For rank-deficient systems use the rank-revealing paths
         // (Ortho_OP.qrDecompositionColumnPivot, SVD.pinvSolve, or Cholesky.choleskyPivotSolve).
-        public static void SolveUpperTriangular(ref fProxyMxN U, ref fProxyN x)
+        public static void solveUpperTriangular(ref fProxyMxN U, ref fProxyN x)
         {
             if(U.M_Rows < U.N_Cols)
-                throw new System.Exception("Solvers.SolveUpperTriangular: Matrix must be square or tall (M_Rows >= N_Cols)");
+                throw new System.Exception("Solvers.solveUpperTriangular: Matrix must be square or tall (M_Rows >= N_Cols)");
 
             if(U.N_Cols != x.N)
-                throw new System.Exception("Solvers.SolveUpperTriangular: Matrix and vector must have same number of columns");
+                throw new System.Exception("Solvers.solveUpperTriangular: Matrix and vector must have same number of columns");
 
             for (int r = U.N_Cols - 1; r >= 0; r--)
             {
@@ -38,14 +38,14 @@ namespace LinearAlgebra
 
         // Solve Lx = b for x
         // PRECONDITION: L is non-singular — every diagonal L[r,r] must be nonzero (see
-        // SolveUpperTriangular; a zero diagonal divides by zero -> Inf/NaN, unguarded).
-        public static void SolveLowerTriangular(ref fProxyMxN L, ref fProxyN x)
+        // solveUpperTriangular; a zero diagonal divides by zero -> Inf/NaN, unguarded).
+        public static void solveLowerTriangular(ref fProxyMxN L, ref fProxyN x)
         {
             if (L.IsSquare == false)
-                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix must be square");
+                throw new System.Exception("Solvers.solveLowerTriangular: Matrix must be square");
 
             if (L.M_Rows != x.N)
-                throw new System.Exception("Solvers.SolveLowerTriangular: Matrix and vector must have same number of rows");
+                throw new System.Exception("Solvers.solveLowerTriangular: Matrix and vector must have same number of rows");
 
             for (int r = 0; r < L.M_Rows; r++)
             {
@@ -60,12 +60,12 @@ namespace LinearAlgebra
 
         // Solve Ly = b for, where y = Ux
         // RP = Row Pivot
-        public static void SolveLowerTriangularLU(ref fProxyMxN L, in Pivot RP, ref fProxyN x) {
+        public static void solveLowerTriangularLU(ref fProxyMxN L, in Pivot RP, ref fProxyN x) {
             if (L.IsSquare == false)
-                throw new System.Exception("Solvers.SolveLowerTriangularLU: Matrix must be square");
+                throw new System.Exception("Solvers.solveLowerTriangularLU: Matrix must be square");
 
             if (L.M_Rows != x.N)
-                throw new System.Exception("Solvers.SolveLowerTriangularLU: Matrix and vector must have same number of rows");
+                throw new System.Exception("Solvers.solveLowerTriangularLU: Matrix and vector must have same number of rows");
 
             for (int r = 0; r < L.M_Rows; r++) {
                 fProxy sum = 0;
@@ -77,12 +77,12 @@ namespace LinearAlgebra
             }
         }
 
-        public static void SolveUpperTriangularLU(ref fProxyMxN U, in Pivot RP, ref fProxyN x) {
+        public static void solveUpperTriangularLU(ref fProxyMxN U, in Pivot RP, ref fProxyN x) {
             if(U.IsSquare == false)
-                throw new System.Exception("Solvers.SolveUpperTriangularLU: Matrix must be square");
+                throw new System.Exception("Solvers.solveUpperTriangularLU: Matrix must be square");
 
             if (U.N_Cols != x.N)
-                throw new System.Exception("Solvers.SolveUpperTriangularLU: Matrix and vector must have same number of columns");
+                throw new System.Exception("Solvers.solveUpperTriangularLU: Matrix and vector must have same number of columns");
 
             for (int r = U.N_Cols - 1; r >= 0; r--) {
                 fProxy sum = 0;
@@ -104,7 +104,7 @@ namespace LinearAlgebra
         /// <param name="R">Upper triangular matrix R from QR decomposition</param>
         /// <param name="b">Known vector (length Q.M_Rows)</param>
         /// <param name="x">Solution destination (length Q.N_Cols), must not alias b</param>
-        public static void SolveQR(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN b, ref fProxyN x) {
+        public static void solveQR(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN b, ref fProxyN x) {
             // Solve Ax = b for x
             // A = QR
             // QRx = b
@@ -112,26 +112,26 @@ namespace LinearAlgebra
             // x = R^-1 Q^T b
 
             if (x.N != Q.N_Cols)
-                throw new ArgumentException("SolveQR: x.N must equal Q.N_Cols");
+                throw new ArgumentException("solveQR: x.N must equal Q.N_Cols");
 
             // x = Q^T b (or b^T Q). The ref-dest dot guards x-aliases-b and zeroes x first.
             fProxy_OP.dot(in b, in Q, ref x);
             // Solve Rx = Q^T b for x, in place
-            SolveUpperTriangular(ref R, ref x);
+            solveUpperTriangular(ref R, ref x);
         }
 
         /// <summary>
-        /// SolveQR convenience: allocates the solution vector x (length Q.N_Cols) from the arena
+        /// solveQR convenience: allocates the solution vector x (length Q.N_Cols) from the arena
         /// and returns it. Use the ref-destination overload in hot loops to avoid the allocation.
         /// </summary>
-        public static fProxyN SolveQR(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN b) {
+        public static fProxyN solveQR(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN b) {
             fProxyN x = b.tempfProxyVec(Q.N_Cols);
-            SolveQR(ref Q, ref R, ref b, ref x);
+            solveQR(ref Q, ref R, ref b, ref x);
             return x;
         }
 
         // Solve Ax = b for x
-        public static void SolveQR(ref fProxyMxN A, ref fProxyN b, ref fProxyN x)
+        public static void solveQR(ref fProxyMxN A, ref fProxyN b, ref fProxyN x)
         {
             Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
 

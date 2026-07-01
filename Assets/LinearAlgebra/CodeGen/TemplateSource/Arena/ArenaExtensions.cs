@@ -9,7 +9,7 @@ namespace LinearAlgebra
         
         public static boolN boolRandomVec(this ref Arena arena, int N, uint seed = 34215)
         {
-            var vec = arena.BoolVector(N, true);
+            var vec = arena.boolVec(N, true);
 
             Random random = new Random(seed);
 
@@ -25,7 +25,7 @@ namespace LinearAlgebra
 
         public static boolMxN boolRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
-            var matrix = arena.BoolMatrix(M_rows, N_cols, true);
+            var matrix = arena.boolMat(M_rows, N_cols, true);
 
             Random random = new Random(seed);
 

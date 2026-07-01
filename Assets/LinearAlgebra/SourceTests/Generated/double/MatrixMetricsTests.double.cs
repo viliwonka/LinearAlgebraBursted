@@ -176,7 +176,7 @@ public class doubleMatrixMetricsTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.doubleIdentityMatrix(3);
+            var A = arena.doubleIdentityMat(3);
             AssertClose(double_OP.cond(in A), (double)1, (double)1E-4);
 
             arena.Dispose();

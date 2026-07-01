@@ -47,7 +47,7 @@ public class doubleBidiagWorkspaceTests
         void BidiagEquiv(int m, int n, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(m, n, (double)(-3f), (double)3f, seed);
+            var A = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, seed);
 
             var Ua = arena.doubleMat(m, n); var Ba = arena.doubleMat(n, n); var Va = arena.doubleMat(n, n);
             Bidiag.bidiagonalize(in A, ref Ua, ref Ba, ref Va);
@@ -56,9 +56,9 @@ public class doubleBidiagWorkspaceTests
             var Uw = arena.doubleMat(m, n); var Bw = arena.doubleMat(n, n); var Vw = arena.doubleMat(n, n);
             Bidiag.bidiagonalize(in A, ref Uw, ref Bw, ref Vw, ref ws);
 
-            Assert.IsTrue(Analysis_OP.IsZero(Ua - Uw, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(Ba - Bw, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(Va - Vw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Ua - Uw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Ba - Bw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Va - Vw, Tol()));
 
             arena.Dispose();
         }
@@ -66,7 +66,7 @@ public class doubleBidiagWorkspaceTests
         void ValuesEquiv(int m, int n, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(m, n, (double)(-3f), (double)3f, seed);
+            var A = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, seed);
 
             var da = arena.doubleVec(n); var ea = arena.doubleVec(n);
             Bidiag.bidiagonalizeValues(in A, ref da, ref ea);
@@ -75,8 +75,8 @@ public class doubleBidiagWorkspaceTests
             var dw = arena.doubleVec(n); var ew = arena.doubleVec(n);
             Bidiag.bidiagonalizeValues(in A, ref dw, ref ew, ref ws);
 
-            Assert.IsTrue(Analysis_OP.IsZero(da - dw, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(ea - ew, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(da - dw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(ea - ew, Tol()));
 
             arena.Dispose();
         }
@@ -86,8 +86,8 @@ public class doubleBidiagWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5;
 
-            var A1 = arena.doubleRandomMatrix(m, n, (double)(-3f), (double)3f, 4004);
-            var A2 = arena.doubleRandomMatrix(m, n, (double)(-2f), (double)2f, 5005);
+            var A1 = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, 4004);
+            var A2 = arena.doubleRandomMat(m, n, (double)(-2f), (double)2f, 5005);
 
             var ws = arena.doubleBidiag_WS(m, n);   // allocated ONCE
 
@@ -98,9 +98,9 @@ public class doubleBidiagWorkspaceTests
             Bidiag.bidiagonalize(in A2, ref Uw, ref Bw, ref Vw, ref ws);
             var Ua = arena.doubleMat(m, n); var Ba = arena.doubleMat(n, n); var Va = arena.doubleMat(n, n);
             Bidiag.bidiagonalize(in A2, ref Ua, ref Ba, ref Va);
-            Assert.IsTrue(Analysis_OP.IsZero(Uw - Ua, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(Bw - Ba, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(Vw - Va, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Uw - Ua, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Bw - Ba, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Vw - Va, Tol()));
 
             // values: same reused workspace.
             var d1 = arena.doubleVec(n); var e1 = arena.doubleVec(n);
@@ -109,8 +109,8 @@ public class doubleBidiagWorkspaceTests
             Bidiag.bidiagonalizeValues(in A2, ref dw, ref ew, ref ws);
             var da = arena.doubleVec(n); var ea = arena.doubleVec(n);
             Bidiag.bidiagonalizeValues(in A2, ref da, ref ea);
-            Assert.IsTrue(Analysis_OP.IsZero(dw - da, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(ew - ea, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(dw - da, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(ew - ea, Tol()));
 
             arena.Dispose();
         }
@@ -168,7 +168,7 @@ public class doubleBidiagWorkspaceTests
         try
         {
             int m = 6, n = 4;
-            var A = arena.doubleRandomMatrix(m, n, (double)(-2f), (double)2f, 6006);
+            var A = arena.doubleRandomMat(m, n, (double)(-2f), (double)2f, 6006);
 
             var ws = new doubleBidiag_WS
             {

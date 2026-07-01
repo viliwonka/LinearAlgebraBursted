@@ -197,7 +197,7 @@ public class fProxySVDLowRankTests
         void RandomTall12x5()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(12, 5, (fProxy)(-2f), (fProxy)2f, 555111);
+            var A = arena.fProxyRandomMat(12, 5, (fProxy)(-2f), (fProxy)2f, 555111);
             var fullS = Spectrum(in A, ref arena, out fProxy normA2);
             CheckAtK(in A, in fullS, 1, normA2, ref arena);
             CheckAtK(in A, in fullS, 2, normA2, ref arena);
@@ -209,7 +209,7 @@ public class fProxySVDLowRankTests
         void RandomSquare8()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(8, 8, (fProxy)(-3f), (fProxy)3f, 909090);
+            var A = arena.fProxyRandomMat(8, 8, (fProxy)(-3f), (fProxy)3f, 909090);
             var fullS = Spectrum(in A, ref arena, out fProxy normA2);
             CheckAtK(in A, in fullS, 1, normA2, ref arena);
             CheckAtK(in A, in fullS, 4, normA2, ref arena);
@@ -221,8 +221,8 @@ public class fProxySVDLowRankTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 10, n = 6, r = 3;
-            var B = arena.fProxyRandomMatrix(m, r, (fProxy)(-2f), (fProxy)2f, 121212);
-            var C = arena.fProxyRandomMatrix(r, n, (fProxy)(-2f), (fProxy)2f, 343434);
+            var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 121212);
+            var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 343434);
             var A = fProxy_OP.dot(B, C);   // rank 3
             var fullS = Spectrum(in A, ref arena, out fProxy normA2);
             // k=3 captures all energy (tail ~ 0); k=2 leaves σ_2. k > rank(A) is not tested here —
@@ -239,7 +239,7 @@ public class fProxySVDLowRankTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 40, n = 12;
-            var A = arena.fProxyRandomMatrix(m, n, (fProxy)(-2f), (fProxy)2f, 777111);
+            var A = arena.fProxyRandomMat(m, n, (fProxy)(-2f), (fProxy)2f, 777111);
 
             // Full thin SVD as oracle
             var Ufull = arena.fProxyMat(m, n);
@@ -290,8 +290,8 @@ public class fProxySVDLowRankTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 24, n = 8, r = 4;
-            var B = arena.fProxyRandomMatrix(m, r, (fProxy)(-2f), (fProxy)2f, 8881);
-            var C = arena.fProxyRandomMatrix(r, n, (fProxy)(-2f), (fProxy)2f, 9992);
+            var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 8881);
+            var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 9992);
             var A = fProxy_OP.dot(B, C);   // exactly rank 4
 
             // Full spectrum oracle
@@ -323,7 +323,7 @@ public class fProxySVDLowRankTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 30, n = 10;
-            var A = arena.fProxyRandomMatrix(m, n, (fProxy)(-3f), (fProxy)3f, 313131);
+            var A = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, 313131);
 
             // Full spectrum oracle
             var Sfull = arena.fProxyVec(n);
@@ -363,7 +363,7 @@ public class fProxySVDLowRankTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 20, n = 7;
-            var A = arena.fProxyRandomMatrix(m, n, (fProxy)(-4f), (fProxy)4f, 202020);
+            var A = arena.fProxyRandomMat(m, n, (fProxy)(-4f), (fProxy)4f, 202020);
 
             int k = 4;
             int oversample = 3;  // p = min(7,7) = 7 = n: full Krylov
@@ -590,8 +590,8 @@ public class fProxySVDLowRankTests
             var arena = new Arena(Allocator.Persistent);
             int m = 30, n = 20, r = 3;
             // k=5, oversample=5 → p = min(10, 20) = 10 < n=20.
-            var B = arena.fProxyRandomMatrix(m, r, (fProxy)(-2f), (fProxy)2f, 0xBADC0DE0u);
-            var C = arena.fProxyRandomMatrix(r, n, (fProxy)(-2f), (fProxy)2f, 0xBADC0DE1u);
+            var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 0xBADC0DE0u);
+            var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 0xBADC0DE1u);
             var A = fProxy_OP.dot(B, C);  // exactly rank 3
 
             // True top-r singular values (oracle)
@@ -627,7 +627,7 @@ public class fProxySVDLowRankTests
             int m = 80, n = 30;
             // k=3, oversample=0 → p = min(3+0, 30) = 3. p=k with ZERO oversampling.
             // betaLast·|U[2,t]|/σ₀ ≈ σ₄/σ₀ ≈ 0.8 ≫ 8·√ε → converged=false guaranteed.
-            var A = arena.fProxyRandomMatrix(m, n, (fProxy)(-2f), (fProxy)2f, 0x55AA77BBu);
+            var A = arena.fProxyRandomMat(m, n, (fProxy)(-2f), (fProxy)2f, 0x55AA77BBu);
 
             int k = 3, oversample = 0;
             var Uk = arena.fProxyMat(m, k);
@@ -649,7 +649,7 @@ public class fProxySVDLowRankTests
             int m = 40, n = 20;
             // k=5, oversample=5 → p = min(10, 20) = 10. Confirmed p=10 < n=20.
             // maxIter=1: the inner 10×10 bidiagonal QR almost certainly needs > 1 sweep.
-            var A = arena.fProxyRandomMatrix(m, n, (fProxy)(-3f), (fProxy)3f, 0xDEADBEEFu);
+            var A = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, 0xDEADBEEFu);
 
             int k = 5, oversample = 5;
             var Uk = arena.fProxyMat(m, k);

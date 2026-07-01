@@ -8,7 +8,7 @@ using Unity.Collections;
 //  - addInpl(place, from) must mutate `place` (place += from), NOT `from`. The internal compAdd
 //    operands were reversed, so the method used to mutate the wrong operand — masked end-to-end
 //    only because the + operators also called it backwards.
-//  - the DB_isPersistent / DB_isTemp pool checks, used to assert ops don't move a persistent
+//  - the isPersistent / isTemp pool checks, used to assert ops don't move a persistent
 //    buffer into the temp pool.
 // Managed [Test] (arena on a normal C# thread) — reads the arena's debug pool checks.
 public class floatInplaceOpTests
@@ -62,19 +62,19 @@ public class floatInplaceOpTests
         try
         {
             var v = arena.floatVec(3);
-            Assert.IsTrue(arena.DB_isPersistent(in v));
-            Assert.IsFalse(arena.DB_isTemp(in v));
+            Assert.IsTrue(arena.isPersistent(in v));
+            Assert.IsFalse(arena.isTemp(in v));
 
             var t = v.TempCopy();
-            Assert.IsTrue(arena.DB_isTemp(in t));
-            Assert.IsFalse(arena.DB_isPersistent(in t));
+            Assert.IsTrue(arena.isTemp(in t));
+            Assert.IsFalse(arena.isPersistent(in t));
 
             // operator + must leave its operands persistent and return a temp result.
             var a = arena.floatVec(2); var b = arena.floatVec(2);
             var sum = a + b;
-            Assert.IsTrue(arena.DB_isPersistent(in a));
-            Assert.IsTrue(arena.DB_isPersistent(in b));
-            Assert.IsTrue(arena.DB_isTemp(in sum));
+            Assert.IsTrue(arena.isPersistent(in a));
+            Assert.IsTrue(arena.isPersistent(in b));
+            Assert.IsTrue(arena.isTemp(in sum));
         }
         finally { arena.Dispose(); }
     }

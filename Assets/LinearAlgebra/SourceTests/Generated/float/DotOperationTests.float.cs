@@ -99,7 +99,7 @@ public class floatDotOperationTests
             int outVecLen = 5;
 
             floatN x = arena.floatVec(inVecLen, 1f);
-            floatMxN A = arena.floatRandomMatrix(outVecLen, inVecLen, -0.01f, 0.01f);
+            floatMxN A = arena.floatRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
             floatN b = float_OP.dot(A, x);
 
@@ -114,8 +114,8 @@ public class floatDotOperationTests
 
             int vecLen = 20;
 
-            floatN x = arena.floatRandomUnitVector(vecLen);
-            floatMxN A = arena.floatIdentityMatrix(vecLen);
+            floatN x = arena.floatRandomUnitVec(vecLen);
+            floatMxN A = arena.floatIdentityMat(vecLen);
 
             floatN b = float_OP.dot(x, A);
 
@@ -124,7 +124,7 @@ public class floatDotOperationTests
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == x[i]);
 
-            x = arena.floatIndexZeroVector(vecLen);
+            x = arena.floatIndexZeroVec(vecLen);
 
             b = float_OP.dot(x, A);
 
@@ -140,8 +140,8 @@ public class floatDotOperationTests
 
             int matLen = 16;
 
-            floatMxN A = arena.floatIdentityMatrix(matLen);
-            floatMxN B = arena.floatIdentityMatrix(matLen);
+            floatMxN A = arena.floatIdentityMat(matLen);
+            floatMxN B = arena.floatIdentityMat(matLen);
 
             floatMxN C = float_OP.dot(A, B);
 
@@ -154,7 +154,7 @@ public class floatDotOperationTests
                     Assert.IsTrue(C[i, j] == (float)0f);
             }
 
-            floatMxN R = arena.floatRandomMatrix(matLen, matLen);
+            floatMxN R = arena.floatRandomMat(matLen, matLen);
 
             C = float_OP.dot(A, R);
 
@@ -164,7 +164,7 @@ public class floatDotOperationTests
                 Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
-            C = arena.floatIdentityMatrix(matLen);
+            C = arena.floatIdentityMat(matLen);
 
             floatMxN D = float_OP.dot(C, C);
 
@@ -188,7 +188,7 @@ public class floatDotOperationTests
             int outVecLen = 16;
 
             floatN x = arena.floatVec(inVecLen, 1f);
-            floatMxN A = arena.floatRandomMatrix(outVecLen, inVecLen, -0.01f, 0.01f);
+            floatMxN A = arena.floatRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
             floatN b = float_OP.dot(A, x);
 
@@ -205,7 +205,7 @@ public class floatDotOperationTests
             int outVecLen = 16;
 
             floatN x = arena.floatVec(inVecLen, 1f);
-            floatMxN A = arena.floatRandomMatrix(inVecLen, outVecLen, -0.01f, 0.01f);
+            floatMxN A = arena.floatRandomMat(inVecLen, outVecLen, -0.01f, 0.01f);
 
             floatN b = float_OP.dot(x, A);
             
@@ -245,8 +245,8 @@ public class floatDotOperationTests
             for (int i = 0; i < B.Length; i++)
                 Assert.IsTrue(B[i] == (float)1f);
 
-            x = arena.floatLinVector(vecM, 0f, 2f);
-            y = arena.floatLinVector(vecN, 0f, 2f);
+            x = arena.floatLinVec(vecM, 0f, 2f);
+            y = arena.floatLinVec(vecN, 0f, 2f);
 
             floatMxN C = float_OP.outerDot(x, y);
 

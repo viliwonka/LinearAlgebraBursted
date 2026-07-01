@@ -14,7 +14,7 @@ public class BoolAnalysisTests
     {
         public enum TestType
         {
-            IsDiagonal,
+            isDiagonal,
             IsAllSame,
             IsAllEqualTo,
             IsAnyEqualTo,
@@ -29,8 +29,8 @@ public class BoolAnalysisTests
             {
                 switch (Type) 
                 {
-                    case TestType.IsDiagonal:
-                        IsDiagonal(ref arena);
+                    case TestType.isDiagonal:
+                        isDiagonal(ref arena);
                         break;
                     case TestType.IsAllSame:
                         IsAllSame(ref arena);
@@ -51,17 +51,17 @@ public class BoolAnalysisTests
             }
         }
 
-        void IsDiagonal(ref Arena arena)
+        void isDiagonal(ref Arena arena)
         {
             int dim = 4;
-            boolMxN m = arena.BoolMatrix(dim, dim);
+            boolMxN m = arena.boolMat(dim, dim);
 
-            Assert.IsFalse(BoolAnalysis_OP.IsDiagonal(m));
+            Assert.IsFalse(BoolAnalysis_OP.isDiagonal(m));
             
             for (int i = 0; i < dim; i++)
                 m[i, i] = true;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsDiagonal(m));
+            Assert.IsTrue(BoolAnalysis_OP.isDiagonal(m));
         }
 
         void IsAllSame(ref Arena arena)
@@ -92,7 +92,7 @@ public class BoolAnalysisTests
         void IsAnyEqualTo(ref Arena arena)
         {
             int dim = 64;
-            boolN v = arena.BoolVector(dim);
+            boolN v = arena.boolVec(dim);
 
             Assert.IsFalse(BoolAnalysis_OP.IsAnyEqualTo(v, true));
 

@@ -53,9 +53,9 @@ namespace LinearAlgebra
             Data = data;
         }
 
-        public unsafe boolN Copy() => _arenaPtr->BoolVector(in this);
+        public unsafe boolN Copy() => _arenaPtr->boolVec(in this);
         
-        public unsafe boolN TempCopy() => _arenaPtr->TempBoolVector(in this);
+        public unsafe boolN TempCopy() => _arenaPtr->tempBoolVec(in this);
 
         public void Dispose() {
 

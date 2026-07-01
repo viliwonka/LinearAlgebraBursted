@@ -295,7 +295,7 @@ public class floatQueryPredicateTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 6, N = 3;
-            var A = arena.floatRandomMatrix(M, N, -3f, 3f, 424242);
+            var A = arena.floatRandomMat(M, N, -3f, 3f, 424242);
             var q = arena.floatVec(N);
             q[0] = (float)0.5; q[1] = (float)(-1); q[2] = (float)2;
 
@@ -359,7 +359,7 @@ public class floatQueryPredicateTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 4, N = 3;
-            var A = arena.floatRandomMatrix(M, N, -2f, 2f, 555);
+            var A = arena.floatRandomMat(M, N, -2f, 2f, 555);
             var q = arena.floatVec(N);
             q[0] = (float)1; q[1] = (float)0; q[2] = (float)(-1);
 
@@ -427,7 +427,7 @@ public class floatQueryPredicateTests
             AssertEqI(cmi, floatQuery_OP.argMaxColNorm(in H, Norm.L2));
 
             // Random equivalence: argMaxRowBy == argMaxRowNorm(L2); argMaxColBy == argMaxColNorm(L2).
-            var R = arena.floatRandomMatrix(7, 4, -3f, 3f, 909090);
+            var R = arena.floatRandomMat(7, 4, -3f, 3f, 909090);
             var rrs = new RowL2Score();
             floatQuery_OP.argMaxRowBy(in R, ref rrs, out int rmi, out float _);
             AssertEqI(rmi, floatQuery_OP.argMaxRowNorm(in R, Norm.L2));
@@ -447,7 +447,7 @@ public class floatQueryPredicateTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 5, N = 4;
-            var A = arena.floatRandomMatrix(M, N, -3f, 3f, 20240628);
+            var A = arena.floatRandomMat(M, N, -3f, 3f, 20240628);
             var At = float_OP.trans(A);   // N x M; column j of A == row j of At.
 
             // Column query length = A.M_Rows = M = At.N_Cols.

@@ -70,38 +70,38 @@ public class fProxyDotRefTests
 
             // mat·vec
             {
-                var A = arena.fProxyRandomMatrix(M, N, -1f, 1f, 12321);
-                var x = arena.fProxyRandomVector(N, -1f, 1f, 45654);
+                var A = arena.fProxyRandomMat(M, N, -1f, 1f, 12321);
+                var x = arena.fProxyRandomVec(N, -1f, 1f, 45654);
                 var R = fProxy_OP.dot(A, x);
 
                 var D = arena.fProxyVec(M);
                 fProxy_OP.addInpl(D, (fProxy)999);   // dirty the destination
                 fProxy_OP.dot(in A, in x, ref D);
-                Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
+                Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
             }
 
             // vec·mat
             {
-                var y = arena.fProxyRandomVector(M, -1f, 1f, 11221);
-                var A = arena.fProxyRandomMatrix(M, N, -1f, 1f, 33443);
+                var y = arena.fProxyRandomVec(M, -1f, 1f, 11221);
+                var A = arena.fProxyRandomMat(M, N, -1f, 1f, 33443);
                 var R = fProxy_OP.dot(y, A);
 
                 var D = arena.fProxyVec(N);
                 fProxy_OP.addInpl(D, (fProxy)999);
                 fProxy_OP.dot(in y, in A, ref D);
-                Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
+                Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
             }
 
             // mat·mat
             {
-                var a = arena.fProxyRandomMatrix(M, K, -1f, 1f, 32123);
-                var b = arena.fProxyRandomMatrix(K, N, -1f, 1f, 65456);
+                var a = arena.fProxyRandomMat(M, K, -1f, 1f, 32123);
+                var b = arena.fProxyRandomMat(K, N, -1f, 1f, 65456);
                 var R = fProxy_OP.dot(a, b, false);
 
                 var D = arena.fProxyMat(M, N);
                 fProxy_OP.addInpl(D, (fProxy)999);
                 fProxy_OP.dot(in a, in b, ref D, false);
-                Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
+                Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
             }
 
             arena.Dispose();
@@ -115,8 +115,8 @@ public class fProxyDotRefTests
             int M = 5;
             int N = 7;
 
-            var a = arena.fProxyRandomVector(M, -1f, 1f, 11111);
-            var b = arena.fProxyRandomVector(N, -1f, 1f, 22222);
+            var a = arena.fProxyRandomVec(M, -1f, 1f, 11111);
+            var b = arena.fProxyRandomVec(N, -1f, 1f, 22222);
 
             // allocating reference
             var R = fProxy_OP.outerDot(a, b);
@@ -125,7 +125,7 @@ public class fProxyDotRefTests
             var D = arena.fProxyMat(M, N);
             fProxy_OP.outerDot(in a, in b, ref D);
 
-            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -138,15 +138,15 @@ public class fProxyDotRefTests
             int M = 6;
             int N = 4;
 
-            var A = arena.fProxyRandomMatrix(M, N, -1f, 1f, 33333);
-            var x = arena.fProxyRandomVector(N, -1f, 1f, 44444);
+            var A = arena.fProxyRandomMat(M, N, -1f, 1f, 33333);
+            var x = arena.fProxyRandomVec(N, -1f, 1f, 44444);
 
             var R = fProxy_OP.dot(A, x);
 
             var D = arena.fProxyVec(M);
             fProxy_OP.dot(in A, in x, ref D);
 
-            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -159,15 +159,15 @@ public class fProxyDotRefTests
             int M = 6;
             int N = 4;
 
-            var y = arena.fProxyRandomVector(M, -1f, 1f, 55555);
-            var A = arena.fProxyRandomMatrix(M, N, -1f, 1f, 66666);
+            var y = arena.fProxyRandomVec(M, -1f, 1f, 55555);
+            var A = arena.fProxyRandomMat(M, N, -1f, 1f, 66666);
 
             var R = fProxy_OP.dot(y, A);
 
             var D = arena.fProxyVec(N);
             fProxy_OP.dot(in y, in A, ref D);
 
-            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -181,15 +181,15 @@ public class fProxyDotRefTests
             int K = 3;
             int N = 7;
 
-            var a = arena.fProxyRandomMatrix(M, K, -1f, 1f, 77777);
-            var b = arena.fProxyRandomMatrix(K, N, -1f, 1f, 88888);
+            var a = arena.fProxyRandomMat(M, K, -1f, 1f, 77777);
+            var b = arena.fProxyRandomMat(K, N, -1f, 1f, 88888);
 
             var R = fProxy_OP.dot(a, b, false);
 
             var D = arena.fProxyMat(M, N);
             fProxy_OP.dot(in a, in b, ref D, false);
 
-            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -203,8 +203,8 @@ public class fProxyDotRefTests
             int M = 5;
             int N = 6;
 
-            var a = arena.fProxyRandomMatrix(K, M, -1f, 1f, 99999);
-            var b = arena.fProxyRandomMatrix(K, N, -1f, 1f, 10101);
+            var a = arena.fProxyRandomMat(K, M, -1f, 1f, 99999);
+            var b = arena.fProxyRandomMat(K, N, -1f, 1f, 10101);
 
             var R = fProxy_OP.dot(a, b, true);
 
@@ -213,12 +213,12 @@ public class fProxyDotRefTests
             fProxy_OP.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
-            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
             // Independent oracle: Aᵀ·B computed via an explicit transpose + plain matmul,
             // which exercises a different code path than the fused transposeA kernel.
             var oracle = fProxy_OP.dot(fProxy_OP.trans(a), b);
-            Assert.IsTrue(Analysis_OP.IsZero(R - oracle, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(R - oracle, Tol()));
 
             arena.Dispose();
         }
@@ -231,14 +231,14 @@ public class fProxyDotRefTests
             int M = 5;
             int N = 8;
 
-            var A = arena.fProxyRandomMatrix(M, N, -1f, 1f, 20202);
+            var A = arena.fProxyRandomMat(M, N, -1f, 1f, 20202);
 
             var R = fProxy_OP.trans(A);
 
             var D = arena.fProxyMat(N, M);
             fProxy_OP.trans(in A, ref D);
 
-            Assert.IsTrue(Analysis_OP.IsZero(R - D, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
             arena.Dispose();
         }

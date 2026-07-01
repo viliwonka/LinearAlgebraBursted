@@ -146,7 +146,7 @@ public class floatSVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.floatRandomMatrix(n, n, (float)(-2f), (float)2f, 9001);
+            var A = arena.floatRandomMat(n, n, (float)(-2f), (float)2f, 9001);
             for (int d = 0; d < n; d++) A[d, d] += (float)8f;   // ensure full rank / conditioning
             CheckSubspaces(in A, n, ref arena, (float)1E-3f);
             arena.Dispose();
@@ -156,8 +156,8 @@ public class floatSVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5;
-            var u = arena.floatRandomVector(m, (float)(-2f), (float)2f, 4242);
-            var v = arena.floatRandomVector(n, (float)(-2f), (float)2f, 2424);
+            var u = arena.floatRandomVec(m, (float)(-2f), (float)2f, 4242);
+            var v = arena.floatRandomVec(n, (float)(-2f), (float)2f, 2424);
             var A = arena.floatMat(m, n);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
@@ -170,8 +170,8 @@ public class floatSVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 5, r = 3;
-            var B = arena.floatRandomMatrix(m, r, (float)(-2f), (float)2f, 13579);
-            var C = arena.floatRandomMatrix(r, n, (float)(-2f), (float)2f, 24680);
+            var B = arena.floatRandomMat(m, r, (float)(-2f), (float)2f, 13579);
+            var C = arena.floatRandomMat(r, n, (float)(-2f), (float)2f, 24680);
             var A = float_OP.dot(B, C);   // m x n, rank r (generic)
             CheckSubspaces(in A, r, ref arena, (float)1E-3f);
             arena.Dispose();
@@ -190,7 +190,7 @@ public class floatSVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 6;
-            var A = arena.floatIdentityMatrix(n);
+            var A = arena.floatIdentityMat(n);
             CheckSubspaces(in A, n, ref arena, (float)1E-3f);
             arena.Dispose();
         }
@@ -199,7 +199,7 @@ public class floatSVDSubspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             int m = 10, n = 4;
-            var A = arena.floatRandomMatrix(m, n, (float)(-3f), (float)3f, 271828);
+            var A = arena.floatRandomMat(m, n, (float)(-3f), (float)3f, 271828);
             CheckSubspaces(in A, n, ref arena, (float)1E-3f);
             arena.Dispose();
         }

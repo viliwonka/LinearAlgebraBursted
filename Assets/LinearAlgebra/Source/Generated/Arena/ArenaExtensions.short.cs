@@ -7,7 +7,7 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions {
 
         #region VECTOR
-        public static shortN shortIndexZeroVector(this ref Arena arena, int N)
+        public static shortN shortIndexZeroVec(this ref Arena arena, int N)
         {
             var vec = arena.shortVec(N, true);
 
@@ -18,7 +18,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static shortN shortIndexOneVector(this ref Arena arena, int N)
+        public static shortN shortIndexOneVec(this ref Arena arena, int N)
         {
             var vec = arena.shortVec(N, true);
 
@@ -29,7 +29,7 @@ namespace LinearAlgebra
         }
 
         // all zero but the index is one
-        public static shortN shortBasisVector(this ref Arena arena, int N, int index)
+        public static shortN shortBasisVec(this ref Arena arena, int N, int index)
         {
             var vec = arena.shortVec(N);
 
@@ -41,7 +41,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static shortN shortRandomVector(this ref Arena arena, int N, short min, short max, uint seed = 84115)
+        public static shortN shortRandomVec(this ref Arena arena, int N, short min, short max, uint seed = 84115)
         {
             var vec = arena.shortVec(N, true);
 
@@ -63,7 +63,7 @@ namespace LinearAlgebra
         }
 
         //linspace
-        public static shortN shortLinVector(this ref Arena arena, int N, short start, short end)
+        public static shortN shortLinVec(this ref Arena arena, int N, short start, short end)
         {
             var vec = arena.shortVec(N);
 
@@ -87,7 +87,7 @@ namespace LinearAlgebra
 
         #region MATRIX
         // constructs identity matrix
-        public static shortMxN shortIdentityMatrix(this ref Arena arena, int N)
+        public static shortMxN shortIdentityMat(this ref Arena arena, int N)
         {
             var matrix = arena.shortMat(N, N);
 
@@ -98,7 +98,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static shortMxN shortDiagonalMatrix(this ref Arena arena, int N, short s)
+        public static shortMxN shortDiagonalMat(this ref Arena arena, int N, short s)
         {
             var matrix = arena.shortMat(N, N);
 
@@ -109,7 +109,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix based on vector
-        public static shortMxN shortDiagonalMatrix(this ref Arena arena, in shortN vec)
+        public static shortMxN shortDiagonalMat(this ref Arena arena, in shortN vec)
         {
             var matrix = arena.shortMat(vec.N, vec.N);
 
@@ -120,7 +120,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 0
-        public static shortMxN shortIndexZeroMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static shortMxN shortIndexZeroMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.shortMat(M_rows, N_cols, true);
 
@@ -135,7 +135,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 1
-        public static shortMxN shortIndexOneMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static shortMxN shortIndexOneMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.shortMat(M_rows, N_cols, true);
 
@@ -151,13 +151,13 @@ namespace LinearAlgebra
 
         // random matrix
 
-        public static shortMxN shortRandomMatrix(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
+        public static shortMxN shortRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
-            return shortRandomMatrix(ref arena, M_rows, N_cols, -1, 1, seed);
+            return shortRandomMat(ref arena, M_rows, N_cols, -1, 1, seed);
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static shortMxN shortRandomDiagonalMatrix(this ref Arena arena, int N, short min, short max, uint seed = 65792)
+        public static shortMxN shortRandomDiagonalMat(this ref Arena arena, int N, short min, short max, uint seed = 65792)
         {
             var matrix = arena.shortMat(N, N);
 
@@ -176,7 +176,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        public static shortMxN shortRandomMatrix(this ref Arena arena, int M_rows, int N_cols, short min, short max, uint seed = 121312)
+        public static shortMxN shortRandomMat(this ref Arena arena, int M_rows, int N_cols, short min, short max, uint seed = 121312)
         {
             var matrix = arena.shortMat(M_rows, N_cols, true);
 
@@ -198,9 +198,9 @@ namespace LinearAlgebra
         }
 
         // i and j are axis indexes to swap
-        public static shortMxN shortPermutationMatrix(this ref Arena arena, int M, int i, int j)
+        public static shortMxN shortPermutationMat(this ref Arena arena, int M, int i, int j)
         {
-            var matrix = arena.shortIdentityMatrix(M);
+            var matrix = arena.shortIdentityMat(M);
 
             if (M < 2)
                 throw new System.Exception("PermutationMatrix: Matrix must be at least 2x2");

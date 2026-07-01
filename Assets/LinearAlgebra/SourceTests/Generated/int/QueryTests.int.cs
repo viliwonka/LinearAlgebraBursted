@@ -435,7 +435,7 @@ public class intQueryTests
 
             // Small range keeps integer SqEuclidean/Dot inside short.MaxValue.
             int M = 6, N = 3;
-            var A = arena.intRandomMatrix(M, N, (int)(-3), (int)4, 424242);
+            var A = arena.intRandomMat(M, N, (int)(-3), (int)4, 424242);
             var q = arena.intVec(N);
             q[0] = (int)1; q[1] = (int)(-2); q[2] = (int)2;
 
@@ -542,7 +542,7 @@ public class intQueryTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 5, N = 2;
-            var A = arena.intRandomMatrix(M, N, (int)(-2), (int)3, 99887);
+            var A = arena.intRandomMat(M, N, (int)(-2), (int)3, 99887);
             var q = arena.intVec(N);
             q[0] = (int)1; q[1] = (int)(-1);
 
@@ -732,7 +732,7 @@ public class intQueryTests
 
             // Small range keeps integer SqEuclidean inside short.MaxValue.
             int M = 6, N = 4;
-            var A = arena.intRandomMatrix(M, N, (int)(-2), (int)3, 7777);
+            var A = arena.intRandomMat(M, N, (int)(-2), (int)3, 7777);
             var q = arena.intVec(N);
             for (int i = 0; i < N; i++) q[i] = (int)(i - 2);
 

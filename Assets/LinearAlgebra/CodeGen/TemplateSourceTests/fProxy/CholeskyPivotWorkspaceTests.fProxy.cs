@@ -52,7 +52,7 @@ public class fProxyCholeskyPivotWorkspaceTests
         // A = B Bᵀ (B is n x r): symmetric PSD of generic rank min(r, n).
         static fProxyMxN Gram(ref Arena arena, int n, int r, uint seed)
         {
-            var B = arena.fProxyRandomMatrix(n, r, (fProxy)(-1f), (fProxy)1f, seed);
+            var B = arena.fProxyRandomMat(n, r, (fProxy)(-1f), (fProxy)1f, seed);
             var A = arena.fProxyMat(n, n);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
@@ -92,7 +92,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             Assert.IsTrue(okA == okW);
             Assert.IsTrue(rankA == rankW);
             for (int i = 0; i < n; i++) Assert.IsTrue(Pa[i] == Pw[i]);
-            Assert.IsTrue(Analysis_OP.IsZero(La - Lw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(La - Lw, Tol()));
 
             Pw.Dispose();
             Pa.Dispose();
@@ -111,7 +111,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             var P = new Pivot(n, Allocator.Persistent);
             Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
 
-            var b = arena.fProxyRandomVector(n, (fProxy)(-3f), (fProxy)3f, 4004);
+            var b = arena.fProxyRandomVec(n, (fProxy)(-3f), (fProxy)3f, 4004);
 
             var ba = b.Copy();
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref ba);
@@ -120,7 +120,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             var bw = b.Copy();
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref bw, ref ws);
 
-            Assert.IsTrue(Analysis_OP.IsZero(ba - bw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(ba - bw, Tol()));
 
             P.Dispose();
             arena.Dispose();
@@ -133,7 +133,7 @@ public class fProxyCholeskyPivotWorkspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = (r >= n) ? SPD(ref arena, n, seed) : Gram(ref arena, n, r, seed);
-            var b = arena.fProxyRandomVector(n, (fProxy)(-2f), (fProxy)2f, seed + 100u);
+            var b = arena.fProxyRandomVec(n, (fProxy)(-2f), (fProxy)2f, seed + 100u);
 
             var La = arena.fProxyMat(n, n);
             var Pa = new Pivot(n, Allocator.Persistent);
@@ -147,7 +147,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             bool okW = Cholesky.choleskyPivotSolve(in A, ref Lw, ref Pw, ref bw, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.IsZero(ba - bw, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(ba - bw, Tol()));
 
             Pw.Dispose();
             Pa.Dispose();
@@ -163,8 +163,8 @@ public class fProxyCholeskyPivotWorkspaceTests
 
             var A1 = SPD(ref arena, n, 7007);
             var A2 = SPD(ref arena, n, 8008);
-            var b1 = arena.fProxyRandomVector(n, (fProxy)(-2f), (fProxy)2f, 1111);
-            var b2 = arena.fProxyRandomVector(n, (fProxy)(-2f), (fProxy)2f, 2222);
+            var b1 = arena.fProxyRandomVec(n, (fProxy)(-2f), (fProxy)2f, 1111);
+            var b2 = arena.fProxyRandomVec(n, (fProxy)(-2f), (fProxy)2f, 2222);
 
             var ws = arena.fProxyCholeskyPivot_WS(n);   // allocated ONCE
 
@@ -187,7 +187,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             bool okA = Cholesky.choleskyPivotSolve(in A2, ref La, ref Pa, ref b2a);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis_OP.IsZero(b2w - b2a, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(b2w - b2a, Tol()));
 
             Pa.Dispose();
             Pw.Dispose();

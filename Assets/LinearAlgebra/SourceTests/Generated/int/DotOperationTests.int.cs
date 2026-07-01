@@ -99,7 +99,7 @@ public class intDotOperationTests
             int outVecLen = 5;
 
             intN x = arena.intVec(inVecLen, 1);
-            intMxN A = arena.intRandomMatrix(outVecLen, inVecLen, -100, +100);
+            intMxN A = arena.intRandomMat(outVecLen, inVecLen, -100, +100);
 
             intN b = int_OP.dot(A, x);
 
@@ -114,8 +114,8 @@ public class intDotOperationTests
 
             int vecLen = 20;
 
-            intN x = arena.intIndexOneVector(vecLen);
-            intMxN A = arena.intIdentityMatrix(vecLen);
+            intN x = arena.intIndexOneVec(vecLen);
+            intMxN A = arena.intIdentityMat(vecLen);
 
             intN b = int_OP.dot(x, A);
 
@@ -124,7 +124,7 @@ public class intDotOperationTests
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == x[i]);
 
-            x = arena.intIndexZeroVector(vecLen);
+            x = arena.intIndexZeroVec(vecLen);
 
             b = int_OP.dot(x, A);
 
@@ -140,8 +140,8 @@ public class intDotOperationTests
 
             int matLen = 16;
 
-            intMxN A = arena.intIdentityMatrix(matLen);
-            intMxN B = arena.intIdentityMatrix(matLen);
+            intMxN A = arena.intIdentityMat(matLen);
+            intMxN B = arena.intIdentityMat(matLen);
 
             intMxN C = int_OP.dot(A, B);
 
@@ -154,7 +154,7 @@ public class intDotOperationTests
                     Assert.IsTrue(C[i, j] == (int)0f);
             }
 
-            intMxN R = arena.intRandomMatrix(matLen, matLen);
+            intMxN R = arena.intRandomMat(matLen, matLen);
 
             C = int_OP.dot(A, R);
 
@@ -164,7 +164,7 @@ public class intDotOperationTests
                 Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
-            C = arena.intIdentityMatrix(matLen);
+            C = arena.intIdentityMat(matLen);
 
             intMxN D = int_OP.dot(C, C);
 
@@ -188,7 +188,7 @@ public class intDotOperationTests
             int outVecLen = 16;
 
             intN x = arena.intVec(inVecLen, 1);
-            intMxN A = arena.intRandomMatrix(outVecLen, inVecLen, -100, +100);
+            intMxN A = arena.intRandomMat(outVecLen, inVecLen, -100, +100);
 
             intN b = int_OP.dot(A, x);
 
@@ -205,7 +205,7 @@ public class intDotOperationTests
             int outVecLen = 16;
 
             intN x = arena.intVec(inVecLen, 1);
-            intMxN A = arena.intRandomMatrix(inVecLen, outVecLen, -100, +100);
+            intMxN A = arena.intRandomMat(inVecLen, outVecLen, -100, +100);
 
             intN b = int_OP.dot(x, A);
             
@@ -245,8 +245,8 @@ public class intDotOperationTests
             for (int i = 0; i < B.Length; i++)
                 Assert.IsTrue(B[i] == (int)1);
 
-            x = arena.intLinVector(vecM, 0, 20);
-            y = arena.intLinVector(vecN, 0, 20);
+            x = arena.intLinVec(vecM, 0, 20);
+            y = arena.intLinVec(vecN, 0, 20);
 
             intMxN C = int_OP.outerDot(x, y);
 

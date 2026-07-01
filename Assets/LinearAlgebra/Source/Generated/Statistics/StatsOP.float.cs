@@ -10,7 +10,7 @@ namespace LinearAlgebra.Stats
 {
 
     // just a prototype, needs matrices handling too
-    public static partial class floatStats_OP  {
+    public static partial class floatStats_OP {
 
         public static float sum<T>(in T x) where T : unmanaged, IUnsafefloatArray {
 

@@ -437,13 +437,13 @@ public class floatGalleryPhase2Tests
             return p;
         }
 
-        // det via LU on a copy (luDecompositionInplace destroys its input).
+        // det via LU on a copy (luDecompositionInpl destroys its input).
         float Determinant(in floatMxN M)
         {
             int n = M.M_Rows;
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInplace(ref LUmat, ref pivot);
+            LU.luDecompositionInpl(ref LUmat, ref pivot);
             float det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;

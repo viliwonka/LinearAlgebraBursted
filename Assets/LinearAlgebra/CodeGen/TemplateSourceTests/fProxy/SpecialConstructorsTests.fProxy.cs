@@ -95,7 +95,7 @@ public class fProxySpecialConstructorsTests {
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var v = arena.fProxyBasisVector(10, 0);
+            var v = arena.fProxyBasisVec(10, 0);
 
             Assert.IsTrue(v[0] == (fProxy)1);
 
@@ -103,7 +103,7 @@ public class fProxySpecialConstructorsTests {
                 Assert.IsTrue(v[i] == (fProxy)0);
             }
 
-            v = arena.fProxyBasisVector(10, 9);
+            v = arena.fProxyBasisVec(10, 9);
 
             Assert.IsTrue(v[9] == (fProxy)1);
 
@@ -118,7 +118,7 @@ public class fProxySpecialConstructorsTests {
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var v = arena.fProxyIndexZeroVector(16);
+            var v = arena.fProxyIndexZeroVec(16);
 
             for(int i = 0; i < v.N; i++) {
                 Assert.IsTrue(v[i] == (fProxy)i);
@@ -145,7 +145,7 @@ public class fProxySpecialConstructorsTests {
 
             for (uint seed = 0; seed < 16; seed++)
             {
-                var v = arena.fProxyRandomUnitVector(16, 332*seed+17);
+                var v = arena.fProxyRandomUnitVec(16, 332*seed+17);
 
                 var len = fProxyNorms_OP.L2(in v);
 
@@ -161,7 +161,7 @@ public class fProxySpecialConstructorsTests {
 
             for (uint seed = 0; seed < 16; seed++)
             {
-                var v = arena.fProxyRandomVector(16, -3f, 3f, 351*seed+19);
+                var v = arena.fProxyRandomVec(16, -3f, 3f, 351*seed+19);
 
                 for (int i = 0; i < v.N; i++)
                     Assert.IsFalse(v[i] < -(fProxy)3 || v[i] > (fProxy)3);
@@ -173,12 +173,12 @@ public class fProxySpecialConstructorsTests {
         public void LinVec()
         {
             var arena = new Arena(Allocator.Persistent);
-            var v = arena.fProxyLinVector(16, (fProxy)0, (fProxy)15);
+            var v = arena.fProxyLinVec(16, (fProxy)0, (fProxy)15);
 
             for (int i = 0; i < v.N; i++)
                 Assert.IsTrue(math.abs(i- v[i]) < 0.0001f);
 
-            v = arena.fProxyLinVector(16, 15, 0);
+            v = arena.fProxyLinVec(16, 15, 0);
 
             for (int i = 0; i < v.N; i++)
                 Assert.IsTrue(math.abs((15f-i) - v[i]) < 0.0001f);
@@ -190,7 +190,7 @@ public class fProxySpecialConstructorsTests {
         public void IndexZeroMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.fProxyIndexZeroMatrix(16, 16);
+            var m = arena.fProxyIndexZeroMat(16, 16);
 
             for(int i = 0; i < m.Length; i++)
                 Assert.IsTrue(m[i] == (fProxy)i);
@@ -199,7 +199,7 @@ public class fProxySpecialConstructorsTests {
         public void IndexOneMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.fProxyIndexOneMatrix(16, 16);
+            var m = arena.fProxyIndexOneMat(16, 16);
 
             for (int i = 0; i < m.Length; i++)
                 Assert.IsTrue(m[i] == (fProxy)i + 1);
@@ -209,10 +209,10 @@ public class fProxySpecialConstructorsTests {
         public void IdentityMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.fProxyIdentityMatrix(16);
+            var m = arena.fProxyIdentityMat(16);
 
-            Assert.IsTrue(Analysis_OP.IsDiagonal(in m));
-            Assert.IsTrue(Analysis_OP.IsIdentity(in m));
+            Assert.IsTrue(Analysis_OP.isDiagonal(in m));
+            Assert.IsTrue(Analysis_OP.isIdentity(in m));
 
             for (int i = 0; i < m.M_Rows; i++)
             for(int j = 0; j < m.N_Cols; j++)
@@ -229,9 +229,9 @@ public class fProxySpecialConstructorsTests {
         public void DiagonalMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.fProxyDiagonalMatrix(16, 2f);
+            var m = arena.fProxyDiagonalMat(16, 2f);
             
-            Assert.IsTrue(Analysis_OP.IsDiagonal(in m));
+            Assert.IsTrue(Analysis_OP.isDiagonal(in m));
 
             for (int i = 0; i < m.M_Rows; i++)
             for (int j = 0; j < m.N_Cols; j++)
@@ -248,9 +248,9 @@ public class fProxySpecialConstructorsTests {
         public void RandomDiagonalMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.fProxyRandomDiagonalMatrix(16, -3f, 3f);
+            var m = arena.fProxyRandomDiagonalMat(16, -3f, 3f);
 
-            Assert.IsTrue(Analysis_OP.IsDiagonal(in m));
+            Assert.IsTrue(Analysis_OP.isDiagonal(in m));
 
             for (int i = 0; i < m.M_Rows; i++)
             for (int j = 0; j < m.N_Cols; j++)
@@ -267,7 +267,7 @@ public class fProxySpecialConstructorsTests {
         public void RandomMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.fProxyRandomMatrix(16, 16);
+            var m = arena.fProxyRandomMat(16, 16);
 
             for (int i = 0; i < m.M_Rows; i++)
             for (int j = 0; j < m.N_Cols; j++)
@@ -279,7 +279,7 @@ public class fProxySpecialConstructorsTests {
         public void RandomRangeMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.fProxyRandomMatrix(16, 16, -6f, 6f);
+            var m = arena.fProxyRandomMat(16, 16, -6f, 6f);
 
             for (int i = 0; i < m.M_Rows; i++)
             for (int j = 0; j < m.N_Cols; j++)
@@ -291,15 +291,15 @@ public class fProxySpecialConstructorsTests {
         public void RotationMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.fProxyRotationMatrix(16, 1, 14, math.PI/4f);
+            var m = arena.fProxyRotationMat(16, 1, 14, math.PI/4f);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in m, 0.00001f));
-            Assert.IsFalse(Analysis_OP.IsIdentity(in m, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
+            Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
             
             var mTm = fProxy_OP.dot(m, m, true);
-            Analysis_OP.IsIdentity(in mTm, 0.00001f);
+            Analysis_OP.isIdentity(in mTm, 0.00001f);
 
-            m = arena.fProxyRotationMatrix(2, 0, 1, math.PI/4f);
+            m = arena.fProxyRotationMat(2, 0, 1, math.PI/4f);
 
             Assert.IsTrue(math.abs((fProxy)0.70710678118654752440084436210485d - m[0, 0]) < 0.00001f);
             Assert.IsTrue(math.abs((fProxy)0.70710678118654752440084436210485d - m[1, 1]) < 0.00001f);
@@ -312,15 +312,15 @@ public class fProxySpecialConstructorsTests {
         public void PermutationMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.fProxyPermutationMatrix(16, 1, 14);
+            var m = arena.fProxyPermutationMat(16, 1, 14);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in m, 0.00001f));
-            Assert.IsFalse(Analysis_OP.IsIdentity(in m, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
+            Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
 
             var mTm = fProxy_OP.dot(m, m, true);
-            Analysis_OP.IsIdentity(in mTm, 0.00001f);
+            Analysis_OP.isIdentity(in mTm, 0.00001f);
 
-            m = arena.fProxyPermutationMatrix(2, 0, 1);
+            m = arena.fProxyPermutationMat(2, 0, 1);
 
             Assert.IsTrue(m[0, 0] == (fProxy)0);
             Assert.IsTrue(m[1, 1] == (fProxy)0);
@@ -333,17 +333,17 @@ public class fProxySpecialConstructorsTests {
         public void HouseholderMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var v = arena.fProxyRandomUnitVector(16);
-            var m = arena.fProxyHouseholderMatrix(16, v);
+            var v = arena.fProxyRandomUnitVec(16);
+            var m = arena.fProxyHouseholderMat(16, v);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in m, 0.00001f));
-            Assert.IsFalse(Analysis_OP.IsIdentity(in m, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
+            Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
 
             var mTm = fProxy_OP.dot(m, m, true);
-            Analysis_OP.IsIdentity(in mTm, 0.00001f);
+            Analysis_OP.isIdentity(in mTm, 0.00001f);
 
-            v = arena.fProxyBasisVector(2, 0);
-            m = arena.fProxyHouseholderMatrix(2, v);
+            v = arena.fProxyBasisVec(2, 0);
+            m = arena.fProxyHouseholderMat(2, v);
 
 
 

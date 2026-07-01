@@ -39,7 +39,7 @@ public class floatTransposeTests
 
             int dim = 16;
             
-            floatMxN A = arena.floatRandomMatrix(dim, dim);
+            floatMxN A = arena.floatRandomMat(dim, dim);
 
             floatMxN B = float_OP.trans(A);
 
@@ -60,7 +60,7 @@ public class floatTransposeTests
             int rows = 8; 
             int cols = 32;
 
-            floatMxN A = arena.floatRandomMatrix(rows, cols);
+            floatMxN A = arena.floatRandomMat(rows, cols);
 
             floatMxN B = float_OP.trans(A);
 

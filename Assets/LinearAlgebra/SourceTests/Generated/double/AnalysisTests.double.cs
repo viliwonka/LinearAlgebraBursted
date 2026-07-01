@@ -11,17 +11,17 @@ public class doubleAnalysisTests
     {
         public enum TestType
         {
-            IsIdentity,
+            isIdentity,
             IsIdentityEpsilon,
-            IsSymmetric,
+            isSymmetric,
             IsSymmetricEpsilon,
-            IsDiagonal,
+            isDiagonal,
             IsDiagonalEpsilon,
-            IsUpperTriangular,
+            isUpperTriangular,
             IsUpperTriangularEpsilon,
-            IsLowerTriangular,
+            isLowerTriangular,
             IsLowerTriangularEpsilon,
-            IsOrthogonal,
+            isOrthogonal,
         }
 
         public TestType Type;
@@ -30,51 +30,51 @@ public class doubleAnalysisTests
         {
             switch(Type)
             {
-                case TestType.IsIdentity:
-                    IsIdentity();
+                case TestType.isIdentity:
+                    isIdentity();
                     break;
                 case TestType.IsIdentityEpsilon:
                     IsIdentityEpsilon();
                     break;
-                case TestType.IsSymmetric:
-                    IsSymmetric();
+                case TestType.isSymmetric:
+                    isSymmetric();
                     break;
                 case TestType.IsSymmetricEpsilon:
                     IsSymmetricEpsilon();
                     break;
-                case TestType.IsDiagonal:
-                    IsDiagonal();
+                case TestType.isDiagonal:
+                    isDiagonal();
                     break;
                 case TestType.IsDiagonalEpsilon:
                     IsDiagonalEpsilon();
                     break;
-                case TestType.IsUpperTriangular:
-                    IsUpperTriangular();
+                case TestType.isUpperTriangular:
+                    isUpperTriangular();
                     break;
                 case TestType.IsUpperTriangularEpsilon:
                     IsUpperTriangularEpsilon();
                     break;
-                case TestType.IsLowerTriangular:
-                    IsLowerTriangular();
+                case TestType.isLowerTriangular:
+                    isLowerTriangular();
                     break;
                 case TestType.IsLowerTriangularEpsilon:
                     IsLowerTriangularEpsilon();
                     break;
-                case TestType.IsOrthogonal:
-                    IsOrthogonal();
+                case TestType.isOrthogonal:
+                    isOrthogonal();
                     break;
             }
         }
 
-        void IsIdentity()
+        void isIdentity()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 16;
             
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(A));
+            Assert.IsTrue(Analysis_OP.isIdentity(A));
 
             arena.Dispose();
         }
@@ -85,32 +85,32 @@ public class doubleAnalysisTests
 
             int dim = 16;
             
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(A, 0.0001f));
+            Assert.IsTrue(Analysis_OP.isIdentity(A, 0.0001f));
 
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(A, 0.002f));
+            Assert.IsTrue(Analysis_OP.isIdentity(A, 0.002f));
 
             arena.Dispose();
         }
 
-        void IsSymmetric()
+        void isSymmetric()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
             
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsSymmetric(A));
+            Assert.IsTrue(Analysis_OP.isSymmetric(A));
 
-            A = arena.doubleRandomMatrix(dim, dim * 2);
+            A = arena.doubleRandomMat(dim, dim * 2);
 
             doubleMxN C = double_OP.dot(A, A, true);
 
-            Assert.IsTrue(Analysis_OP.IsSymmetric(C));
+            Assert.IsTrue(Analysis_OP.isSymmetric(C));
 
             arena.Dispose();
         }
@@ -121,36 +121,36 @@ public class doubleAnalysisTests
 
             int dim = 16;
             
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsSymmetric(A, 0.000001f));
+            Assert.IsTrue(Analysis_OP.isSymmetric(A, 0.000001f));
 
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.IsSymmetric(A, 0.002f));
+            Assert.IsTrue(Analysis_OP.isSymmetric(A, 0.002f));
 
             doubleMxN C = double_OP.dot(A, A, true);
 
-            C += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
+            C += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.IsSymmetric(C, 0.002f));
+            Assert.IsTrue(Analysis_OP.isSymmetric(C, 0.002f));
 
             arena.Dispose();
         }
         
-        void IsDiagonal()
+        void isDiagonal()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 16;
             
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsDiagonal(A));
+            Assert.IsTrue(Analysis_OP.isDiagonal(A));
 
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsFalse(Analysis_OP.IsDiagonal(A));
+            Assert.IsFalse(Analysis_OP.isDiagonal(A));
 
             arena.Dispose();
         }
@@ -161,42 +161,42 @@ public class doubleAnalysisTests
 
             int dim = 16;
             
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsDiagonal(A, 0.000001f));
+            Assert.IsTrue(Analysis_OP.isDiagonal(A, 0.000001f));
 
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.IsDiagonal(A, 0.002f));
+            Assert.IsTrue(Analysis_OP.isDiagonal(A, 0.002f));
 
-            A = arena.doubleRandomDiagonalMatrix(dim, -1f, -1f);
+            A = arena.doubleRandomDiagonalMat(dim, -1f, -1f);
 
-            Assert.IsTrue(Analysis_OP.IsDiagonal(A, 0.000001f));
+            Assert.IsTrue(Analysis_OP.isDiagonal(A, 0.000001f));
 
             arena.Dispose();
         }
 
-        void IsUpperTriangular()
+        void isUpperTriangular()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 16;
             
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsUpperTriangular(A));
+            Assert.IsTrue(Analysis_OP.isUpperTriangular(A));
             
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsFalse(Analysis_OP.IsUpperTriangular(A));
+            Assert.IsFalse(Analysis_OP.isUpperTriangular(A));
 
-            A = arena.doubleIdentityMatrix(dim);
+            A = arena.doubleIdentityMat(dim);
 
             for (int c = 1; c < dim; c++)
             for (int r = 0; r < c; r++)
                 A[r, c] = 5f;
 
-            Assert.IsTrue(Analysis_OP.IsUpperTriangular(A));
+            Assert.IsTrue(Analysis_OP.isUpperTriangular(A));
 
             arena.Dispose();
         }
@@ -207,42 +207,42 @@ public class doubleAnalysisTests
 
             int dim = 16;
             
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsUpperTriangular(A, 0.000001f));
+            Assert.IsTrue(Analysis_OP.isUpperTriangular(A, 0.000001f));
 
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.IsUpperTriangular(A, 0.002f));
+            Assert.IsTrue(Analysis_OP.isUpperTriangular(A, 0.002f));
 
-            A = arena.doubleIdentityMatrix(dim);
+            A = arena.doubleIdentityMat(dim);
 
             for(int c = 1; c < dim; c++)
             for(int r = 0; r < c; r++)
                 A[r, c] = 5f;
 
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.IsUpperTriangular(A, 0.002f));
+            Assert.IsTrue(Analysis_OP.isUpperTriangular(A, 0.002f));
                         
             arena.Dispose();   
         }
 
-        void IsLowerTriangular()
+        void isLowerTriangular()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 16;
 
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsLowerTriangular(A));
+            Assert.IsTrue(Analysis_OP.isLowerTriangular(A));
 
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
-            Assert.IsFalse(Analysis_OP.IsLowerTriangular(A));
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
+            Assert.IsFalse(Analysis_OP.isLowerTriangular(A));
 
             // Reset A to the identity matrix
-            A = arena.doubleIdentityMatrix(dim);
+            A = arena.doubleIdentityMat(dim);
 
             // Fill elements above the diagonal with a non-zero value and check if it's still lower triangular (it shouldn't be)
             for (int r = 1; r < dim; r++)
@@ -250,7 +250,7 @@ public class doubleAnalysisTests
                     A[r, c] = 5f;
 
             // The matrix is now lower triangular
-            Assert.IsTrue(Analysis_OP.IsLowerTriangular(A));
+            Assert.IsTrue(Analysis_OP.isLowerTriangular(A));
 
             arena.Dispose();
         }
@@ -261,17 +261,17 @@ public class doubleAnalysisTests
 
             int dim = 16;
 
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
             // Test if an identity matrix is lower triangular within the epsilon tolerance
-            Assert.IsTrue(Analysis_OP.IsLowerTriangular(A, 0.000001f));
+            Assert.IsTrue(Analysis_OP.isLowerTriangular(A, 0.000001f));
 
             // Add small random values and test if it's still lower triangular within a higher tolerance
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
-            Assert.IsTrue(Analysis_OP.IsLowerTriangular(A, 0.002f));
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
+            Assert.IsTrue(Analysis_OP.isLowerTriangular(A, 0.002f));
 
             // Reset A to the identity matrix
-            A = arena.doubleIdentityMatrix(dim);
+            A = arena.doubleIdentityMat(dim);
 
             // Fill elements above the diagonal with a non-zero value
             for (int r = 1; r < dim; r++)
@@ -279,52 +279,52 @@ public class doubleAnalysisTests
                     A[r, c] = 5f;
 
             // Add small random values again
-            A += arena.doubleRandomMatrix(dim, dim, -0.001f, 0.001f);
+            A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
             // Test if the modified matrix is still lower triangular within the higher epsilon tolerance
-            Assert.IsTrue(Analysis_OP.IsLowerTriangular(A, 0.002f));
+            Assert.IsTrue(Analysis_OP.isLowerTriangular(A, 0.002f));
 
             arena.Dispose();
         }
 
-        void IsOrthogonal()
+        void isOrthogonal()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 16;
 
-            doubleMxN A = arena.doubleIdentityMatrix(dim);
+            doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            A = double_OP.dot(arena.doublePermutationMatrix(dim, 5, 13), A);
+            A = double_OP.dot(arena.doublePermutationMat(dim, 5, 13), A);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            A = double_OP.dot(arena.doubleRotationMatrix(dim, 3, 15, math.PI/4f ), A);
+            A = double_OP.dot(arena.doubleRotationMat(dim, 3, 15, math.PI/4f ), A);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            doubleN reflect = arena.doubleRandomVector(dim, -1f, 1f);
+            doubleN reflect = arena.doubleRandomVec(dim, -1f, 1f);
 
-            A = double_OP.dot(arena.doubleHouseholderMatrix(dim, reflect), A);
+            A = double_OP.dot(arena.doubleHouseholderMat(dim, reflect), A);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            reflect = arena.doubleRandomVector(dim, -1f, 1f, 50301);
-            A = double_OP.dot(arena.doubleHouseholderMatrix(dim, reflect), A);
+            reflect = arena.doubleRandomVec(dim, -1f, 1f, 50301);
+            A = double_OP.dot(arena.doubleHouseholderMat(dim, reflect), A);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             // self multiply
             A = double_OP.dot(A, A);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             // testing inverse
             A = double_OP.dot(A, A, true);
 
-            Assert.IsTrue(Analysis_OP.IsIdentity(A, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isIdentity(A, 0.00001f));
 
             arena.Dispose();
         }
@@ -334,7 +334,7 @@ public class doubleAnalysisTests
     [Test]
     public void IsIdentityTest()
     {
-        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.IsIdentity }.Run();
+        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.isIdentity }.Run();
     }
 
     [Test]
@@ -346,7 +346,7 @@ public class doubleAnalysisTests
     [Test]
     public void IsSymmetricTest()
     {
-        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.IsSymmetric }.Run();
+        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.isSymmetric }.Run();
     }
 
     [Test]
@@ -358,7 +358,7 @@ public class doubleAnalysisTests
     [Test]
     public void IsDiagonalTest()
     {
-        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.IsDiagonal }.Run();
+        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.isDiagonal }.Run();
     }
 
     [Test]
@@ -370,7 +370,7 @@ public class doubleAnalysisTests
     [Test]
     public void IsUpperTriangularTest()
     {
-        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.IsUpperTriangular }.Run();
+        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.isUpperTriangular }.Run();
     }
 
     [Test]
@@ -382,7 +382,7 @@ public class doubleAnalysisTests
     [Test]
     public void IsLowerTriangularTest()
     {
-        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.IsLowerTriangular }.Run();
+        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.isLowerTriangular }.Run();
     }
 
     [Test]
@@ -394,7 +394,7 @@ public class doubleAnalysisTests
     [Test]
     public void IsOrthogonalTest()
     {
-        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.IsOrthogonal }.Run();
+        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.isOrthogonal }.Run();
     }
 
 

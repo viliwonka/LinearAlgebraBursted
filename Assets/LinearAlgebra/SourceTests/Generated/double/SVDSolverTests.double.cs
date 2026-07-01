@@ -78,14 +78,14 @@ public class doubleSVDSolverTests
 
             int dim = 8;
 
-            var A = arena.doubleRandomMatrix(dim, dim, -5f, 5f, 314221);
+            var A = arena.doubleRandomMat(dim, dim, -5f, 5f, 314221);
             // boost the diagonal to ensure good conditioning (see OrthoOpTests / SolversTests)
             for (int d = 0; d < dim; d++)
                 A[d, d] += (double)10f;
 
             var A_copy = A.Copy();
 
-            var xOrig = arena.doubleRandomVector(dim, -3f, 3f, 1337);
+            var xOrig = arena.doubleRandomVec(dim, -3f, 3f, 1337);
             var b = double_OP.dot(A_copy, xOrig);
 
             var x = arena.doubleVec(dim);
@@ -95,7 +95,7 @@ public class doubleSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(8, rank);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in x));
 
             for (int k = 0; k < dim; k++)
                 AssertClose(x[k], xOrig[k], 1E-3f);
@@ -111,14 +111,14 @@ public class doubleSVDSolverTests
             int m = 12;
             int n = 4;
 
-            var A = arena.doubleRandomMatrix(m, n, -5f, 5f, 778231);
+            var A = arena.doubleRandomMat(m, n, -5f, 5f, 778231);
             // boost the leading diagonal block to ensure full column rank / conditioning
             for (int d = 0; d < n; d++)
                 A[d, d] += (double)10f;
 
             var A_copy = A.Copy();
 
-            var xOrig = arena.doubleRandomVector(n, -3f, 3f, 4242);
+            var xOrig = arena.doubleRandomVec(n, -3f, 3f, 4242);
             var b = double_OP.dot(A_copy, xOrig);
 
             var x = arena.doubleVec(n);
@@ -128,7 +128,7 @@ public class doubleSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(4, rank);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in x));
 
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], xOrig[k], 1E-3f);
@@ -145,14 +145,14 @@ public class doubleSVDSolverTests
             int m = 12;
             int n = 4;
 
-            var A = arena.doubleRandomMatrix(m, n, -5f, 5f, 778231);
+            var A = arena.doubleRandomMat(m, n, -5f, 5f, 778231);
             for (int d = 0; d < n; d++)
                 A[d, d] += (double)10f;
 
             var A_copy = A.Copy();
 
             // b is a generic random vector in R^m, almost surely not in range(A)
-            var b = arena.doubleRandomVector(m, -5f, 5f, 9090);
+            var b = arena.doubleRandomVec(m, -5f, 5f, 9090);
             var b_copy = b.Copy();
 
             var x = arena.doubleVec(n);
@@ -162,7 +162,7 @@ public class doubleSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(4, rank);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in x));
 
             // residual r = A x - b   (length m), using the saved copy of A
             var Ax = double_OP.dot(A_copy, x);
@@ -219,7 +219,7 @@ public class doubleSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(1, rank);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in x));
 
             AssertClose(x[0], (double)0.5f, 1E-4f);
             AssertClose(x[1], (double)0.5f, 1E-4f);
@@ -251,7 +251,7 @@ public class doubleSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(2, rank);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in x));
 
             AssertClose(x[0], (double)2f, 1E-4f);
             AssertClose(x[1], (double)3f, 1E-4f);
@@ -270,7 +270,7 @@ public class doubleSVDSolverTests
 
             var A = arena.doubleMat(m, n);
 
-            var b = arena.doubleRandomVector(m, -5f, 5f, 5151);
+            var b = arena.doubleRandomVec(m, -5f, 5f, 5151);
 
             var x = arena.doubleVec(n);
 
@@ -279,7 +279,7 @@ public class doubleSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(0, rank);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in x));
 
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], (double)0f, 1E-4f);
@@ -310,10 +310,10 @@ public class doubleSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(3, rank);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in Aplus));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in Aplus));
 
             var prod = double_OP.dot(A_copy, Aplus);
-            Assert.IsTrue(Analysis_OP.IsIdentity(in prod, 1E-3f));
+            Assert.IsTrue(Analysis_OP.isIdentity(in prod, 1E-3f));
 
             arena.Dispose();
         }
@@ -336,7 +336,7 @@ public class doubleSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(1, rank);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in Aplus));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in Aplus));
 
             AssertClose(Aplus[0, 0], (double)0.5f, 1E-4f);
             AssertClose(Aplus[0, 1], (double)0f, 1E-4f);
@@ -372,14 +372,14 @@ public class doubleSVDSolverTests
             Assert.IsTrue(converged);
             Assert.AreEqual(1, rank);
 
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in Aplus));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in Aplus));
 
             // Aplus * A_copy * Aplus  (n x m)
             var AplusA = double_OP.dot(Aplus, A_copy);          // n x n
             var AplusAAplus = double_OP.dot(AplusA, Aplus);     // n x m
 
             doubleMxN shouldBeZero = Aplus - AplusAAplus;
-            Assert.IsTrue(Analysis_OP.IsZero(in shouldBeZero, 1E-3f));
+            Assert.IsTrue(Analysis_OP.isZero(in shouldBeZero, 1E-3f));
 
             arena.Dispose();
         }

@@ -83,7 +83,7 @@ public class floatConjugateGradientTests
         // strictly positive-definite and diagonally dominant, so CG must converge.
         static floatMxN BuildSPD(ref Arena arena, int dim, uint seed)
         {
-            var M = arena.floatRandomMatrix(dim, dim, -1f, 1f, seed);
+            var M = arena.floatRandomMat(dim, dim, -1f, 1f, seed);
 
             // dot(M, M, transposeA:true) == Mᵀ·M
             var A = float_OP.dot(M, M, true);
@@ -103,8 +103,8 @@ public class floatConjugateGradientTests
 
             int n = 16;
 
-            var y = arena.floatRandomVector(n, -1f, 1f, 11111);
-            var x = arena.floatRandomVector(n, -1f, 1f, 22222);
+            var y = arena.floatRandomVec(n, -1f, 1f, 11111);
+            var x = arena.floatRandomVec(n, -1f, 1f, 22222);
             float a = (float)(-0.75f);
 
             // Snapshot of the original y before the in-place update.
@@ -129,8 +129,8 @@ public class floatConjugateGradientTests
 
             int n = 16;
 
-            var y = arena.floatRandomVector(n, -1f, 1f, 33333);
-            var x = arena.floatRandomVector(n, -1f, 1f, 44444);
+            var y = arena.floatRandomVec(n, -1f, 1f, 33333);
+            var x = arena.floatRandomVec(n, -1f, 1f, 44444);
             float a = (float)1.5f;
 
             var y0 = y.Copy();
@@ -157,7 +157,7 @@ public class floatConjugateGradientTests
             int dim = 12;
 
             var A = BuildSPD(ref arena, dim, 90125);
-            var b = arena.floatRandomVector(dim, -1f, 1f, 4242);
+            var b = arena.floatRandomVec(dim, -1f, 1f, 4242);
 
             var x = arena.floatVec(dim); // zero initial guess
 
@@ -165,7 +165,7 @@ public class floatConjugateGradientTests
             Assert.IsTrue(ok);
 
             var Ax = float_OP.dot(A, x);
-            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -178,7 +178,7 @@ public class floatConjugateGradientTests
             int dim = 11;
 
             var A = BuildSPD(ref arena, dim, 707070);
-            var b = arena.floatRandomVector(dim, -1f, 1f, 8181);
+            var b = arena.floatRandomVec(dim, -1f, 1f, 8181);
 
             // CG solve
             var xCG = arena.floatVec(dim);
@@ -191,7 +191,7 @@ public class floatConjugateGradientTests
             bool cholOk = Cholesky.choleskySolve(in A, ref L, ref bChol);
             Assert.IsTrue(cholOk);
 
-            Assert.IsTrue(Analysis_OP.IsZero(xCG - bChol, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(xCG - bChol, Tol()));
 
             arena.Dispose();
         }
@@ -205,7 +205,7 @@ public class floatConjugateGradientTests
             int dim = 10;
 
             var A = BuildSPD(ref arena, dim, 271828);
-            var b = arena.floatRandomVector(dim, -1f, 1f, 5151);
+            var b = arena.floatRandomVec(dim, -1f, 1f, 5151);
 
             // Reference: defaults overload.
             var xDef = arena.floatVec(dim);
@@ -216,7 +216,7 @@ public class floatConjugateGradientTests
             var xExpl = arena.floatVec(dim);
             bool okExpl = Solvers.conjugateGradient(in A, in b, ref xExpl, dim, Consts.floatSqrtEps);
             Assert.IsTrue(okExpl);
-            Assert.IsTrue(Analysis_OP.IsZero(xDef - xExpl, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(xDef - xExpl, Tol()));
 
             // Zero-alloc primitive with caller-provided scratch r, p, Ap.
             var xPrim = arena.floatVec(dim);
@@ -227,7 +227,7 @@ public class floatConjugateGradientTests
                                                     ref r, ref p, ref Ap,
                                                     dim, Consts.floatSqrtEps);
             Assert.IsTrue(okPrim);
-            Assert.IsTrue(Analysis_OP.IsZero(xDef - xPrim, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(xDef - xPrim, Tol()));
 
             arena.Dispose();
         }
@@ -243,11 +243,11 @@ public class floatConjugateGradientTests
             var b = arena.floatVec(dim); // zero vector
 
             // Non-zero initial guess must still be driven to zero.
-            var x = arena.floatRandomVector(dim, -1f, 1f, 9999);
+            var x = arena.floatRandomVec(dim, -1f, 1f, 9999);
 
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
             Assert.IsTrue(ok);
-            Assert.IsTrue(Analysis_OP.IsZero(in x, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(in x, Tol()));
 
             arena.Dispose();
         }
@@ -261,7 +261,7 @@ public class floatConjugateGradientTests
             A[0, 0] = 1f; A[0, 1] = 2f;
             A[1, 0] = 2f; A[1, 1] = 1f;
 
-            var b = arena.floatRandomVector(2, -1f, 1f, 13);
+            var b = arena.floatRandomVec(2, -1f, 1f, 13);
             var x = arena.floatVec(2);
 
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
@@ -290,12 +290,12 @@ public class floatConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
 
             // never produces NaN/Inf on the rank-deficient input...
-            Assert.IsFalse(Analysis_OP.IsAnyNan(in x));
+            Assert.IsFalse(Analysis_OP.isAnyNan(in x));
             // ...and a reported convergence must be a genuine solution.
             if (ok)
             {
                 var Ax = float_OP.dot(A, x);
-                Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
+                Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
             }
 
             arena.Dispose();
@@ -310,7 +310,7 @@ public class floatConjugateGradientTests
             int dim = 9;
 
             var A = BuildSPD(ref arena, dim, 31337);
-            var b = arena.floatRandomVector(dim, -1f, 1f, 6363);
+            var b = arena.floatRandomVec(dim, -1f, 1f, 6363);
 
             // First solve from zero.
             var x = arena.floatVec(dim);
@@ -323,10 +323,10 @@ public class floatConjugateGradientTests
             Assert.IsTrue(ok2);
 
             // x must be unchanged (still solves the system).
-            Assert.IsTrue(Analysis_OP.IsZero(x - xWarm, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(x - xWarm, Tol()));
 
             var Ax = float_OP.dot(A, xWarm);
-            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -339,14 +339,14 @@ public class floatConjugateGradientTests
             var A = arena.floatMat(1, 1);
             A[0, 0] = 4f;
 
-            var b = arena.floatRandomVector(1, -1f, 1f, 77);
+            var b = arena.floatRandomVec(1, -1f, 1f, 77);
             var x = arena.floatVec(1);
 
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             var Ax = float_OP.dot(A, x);
-            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -361,7 +361,7 @@ public class floatConjugateGradientTests
             int dim = 16;
 
             var A = arena.floatLaplacian1D(dim);
-            var b = arena.floatRandomVector(dim, -1f, 1f, 4242);
+            var b = arena.floatRandomVec(dim, -1f, 1f, 4242);
 
             var x = arena.floatVec(dim); // zero initial guess
 
@@ -369,7 +369,7 @@ public class floatConjugateGradientTests
             Assert.IsTrue(ok);
 
             var Ax = float_OP.dot(A, x);
-            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
         }
@@ -383,7 +383,7 @@ public class floatConjugateGradientTests
             int dim = 10;
 
             var A = arena.floatMinIJ(dim);
-            var b = arena.floatRandomVector(dim, -1f, 1f, 8181);
+            var b = arena.floatRandomVec(dim, -1f, 1f, 8181);
 
             var x = arena.floatVec(dim);
 
@@ -391,7 +391,7 @@ public class floatConjugateGradientTests
             Assert.IsTrue(ok);
 
             var Ax = float_OP.dot(A, x);
-            Assert.IsTrue(Analysis_OP.IsZero(b - Ax, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
         }

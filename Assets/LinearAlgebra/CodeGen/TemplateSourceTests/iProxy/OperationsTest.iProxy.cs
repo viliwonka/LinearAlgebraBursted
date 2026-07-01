@@ -297,15 +297,15 @@ public class iProxyOperationsTest {
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)2d);
 
-            a = arena.iProxyIndexZeroVector(vecLen);
+            a = arena.iProxyIndexZeroVec(vecLen);
 
             a *= 2;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)(2d*i));
 
-            a = arena.iProxyIndexZeroVector(vecLen);
-            iProxyN b = arena.iProxyIndexZeroVector(vecLen);
+            a = arena.iProxyIndexZeroVec(vecLen);
+            iProxyN b = arena.iProxyIndexZeroVec(vecLen);
 
             var c = a * b;
 
@@ -333,15 +333,15 @@ public class iProxyOperationsTest {
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)1);
 
-            a = arena.iProxyIndexZeroVector(vecLen);
+            a = arena.iProxyIndexZeroVec(vecLen);
 
             a /= 2;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)(0.5 * i));
 
-            a = arena.iProxyIndexZeroVector(vecLen);
-            iProxyN b = arena.iProxyIndexZeroVector(vecLen);
+            a = arena.iProxyIndexZeroVec(vecLen);
+            iProxyN b = arena.iProxyIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
             a += 1;
@@ -382,15 +382,15 @@ public class iProxyOperationsTest {
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)0);
 
-            a = arena.iProxyIndexZeroVector(vecLen);
+            a = arena.iProxyIndexZeroVec(vecLen);
 
             a %= 2;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (iProxy)(i % (iProxy)2));
 
-            a = arena.iProxyIndexZeroVector(vecLen);
-            iProxyN b = arena.iProxyIndexZeroVector(vecLen);
+            a = arena.iProxyIndexZeroVec(vecLen);
+            iProxyN b = arena.iProxyIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
             a += 1;

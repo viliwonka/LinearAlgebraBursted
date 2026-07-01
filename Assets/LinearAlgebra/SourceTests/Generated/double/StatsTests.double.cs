@@ -206,7 +206,7 @@ public class doubleStatsTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 5, n = 4;
-            var A = arena.doubleRandomMatrix(m, n, -3f, 3f, 778899);
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 778899);
 
             var rDest = arena.doubleVec(m);
             var cDest = arena.doubleVec(n);

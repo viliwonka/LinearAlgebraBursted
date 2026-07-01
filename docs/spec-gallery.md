@@ -15,16 +15,16 @@ MatrixDepot.jl, Higham's test-matrix collection.
   `using LinearAlgebra.Gallery;`. Tucked away, fully accessible, fluent. (MATLAB's `gallery(...)` model.)
 - Method names keep the `fProxy` token (→ `floatPascal`/`doublePascal`): required because two arena
   extensions `Pascal(this ref Arena)` returning `floatMxN` vs `doubleMxN` would be a return-type-overload
-  collision. Same reason the existing `fProxyHilbertMatrix` is type-prefixed.
+  collision. Same reason the existing `fProxyHilbertMat` is type-prefixed.
 - Split across two files (one partial class) to keep the two build batches conflict-free:
   `Arena/Gallery.SPD.fProxy.cs` and `Arena/Gallery.Special.fProxy.cs`.
-- The legacy `arena.fProxyHilbertMatrix` (main namespace) is left untouched for back-compat; the gallery
+- The legacy `arena.fProxyHilbertMat` (main namespace) is left untouched for back-compat; the gallery
   adds its own `fProxyHilbert`. (Legacy can be deprecated later.)
 - fProxy-only for v1 (float+double). Integer-valued matrices (Pascal, MinIJ, magic, …) still emit
   fProxy entries — exact for the small sizes used. Int variants deferred.
 
 ## Conventions
-- Allocating, arena-backed (like the existing `fProxyHilbertMatrix` / generators): each returns a fresh
+- Allocating, arena-backed (like the existing `fProxyHilbertMat` / generators): each returns a fresh
   `fProxyMxN` (persistent arena alloc). `(fProxy)` casts, `ArgumentException("fProxyName: msg")` on bad args.
 - 0-based indices in code; formulas below give the 0-based entry. Where a matrix is parametrized
   (nodes / α / ρ / ε), it takes those args.

@@ -7,7 +7,7 @@ namespace LinearAlgebra
     [BurstCompile]
     public static partial class BoolAnalysis_OP {
         
-        public static bool IsDiagonal(in boolMxN bm, bool compare = true)
+        public static bool isDiagonal(in boolMxN bm, bool compare = true)
         {
             compare = !compare;
             for (int i = 0; i < bm.M_Rows; i++)

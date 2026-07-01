@@ -118,7 +118,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("choleskySolve: b.N must equal L.M_Rows");
 
             // L y = b
-            Solvers.SolveLowerTriangular(ref L, ref b);
+            Solvers.solveLowerTriangular(ref L, ref b);
             // Lᵀ x = y
             SolveUpperTriangularTransposed(ref L, ref b);
         }
@@ -346,7 +346,7 @@ namespace LinearAlgebra
 
             if (rank == n) {
                 // full rank: L z = b̃, then Lᵀ x̃ = z, then scatter x[P[i]] = x̃[i].
-                Solvers.SolveLowerTriangular(ref L, ref bt);
+                Solvers.solveLowerTriangular(ref L, ref bt);
                 SolveUpperTriangularTransposed(ref L, ref bt);
                 for (int i = 0; i < n; i++)
                     b[P[i]] = bt[i];

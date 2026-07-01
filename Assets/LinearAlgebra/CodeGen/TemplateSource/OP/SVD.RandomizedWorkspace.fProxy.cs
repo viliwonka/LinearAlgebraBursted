@@ -34,9 +34,9 @@ namespace LinearAlgebra
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an m x n randomized SVD with sketch width
         /// l = min(k + oversample, n) — the layout produced by
-        /// Arena.fProxySvdRandomized_WS(m, n, k, oversample).
+        /// Arena.fProxySVDRandomized_WS(m, n, k, oversample).
         /// </summary>
-        static void RequireSvdRandomizedWorkspace(in fProxySvdRandomized_WS ws, int m, int n, int l)
+        static void RequireSvdRandomizedWorkspace(in fProxySVDRandomized_WS ws, int m, int n, int l)
         {
             bool ok =
                 ws.Omega.M_Rows == n && ws.Omega.N_Cols == l &&
@@ -55,14 +55,14 @@ namespace LinearAlgebra
             if (!ok)
                 throw new ArgumentException(
                     "svdRandomized: workspace must be sized for this (m, n, k, oversample) — use " +
-                    "Arena.fProxySvdRandomized_WS(m, n, k, oversample) with the SAME k and oversample");
+                    "Arena.fProxySVDRandomized_WS(m, n, k, oversample) with the SAME k and oversample");
         }
     }
 
     /// <summary>
     /// Reusable scratch storage for svdRandomized (Halko-Martinsson-Tropp). The randomized SVD
     /// allocates a dozen intermediate buffers per call; allocate this ONCE via
-    /// Arena.fProxySvdRandomized_WS(m, n, k, oversample) and reuse it across same-shape calls
+    /// Arena.fProxySVDRandomized_WS(m, n, k, oversample) and reuse it across same-shape calls
     /// (SAME k and oversample) to make repeated randomized SVDs zero-alloc.
     ///
     /// All buffers are sized by the sketch width l = min(k + oversample, n): Omega (n x l), Y (m x l,
@@ -73,7 +73,7 @@ namespace LinearAlgebra
     /// svdThin on the small Bt still uses a little Allocator.Temp scratch of its own, so the op
     /// is low-alloc rather than strictly zero-alloc.
     /// </summary>
-    public struct fProxySvdRandomized_WS
+    public struct fProxySVDRandomized_WS
     {
         public fProxyMxN Omega;
         public fProxyMxN Y;
@@ -97,10 +97,10 @@ namespace LinearAlgebra
         /// oversample to svdRandomized's ref-workspace overload. The buffers are persistent in this
         /// arena (disposed with it), so create the workspace once outside a hot loop.
         /// </summary>
-        public static fProxySvdRandomized_WS fProxySvdRandomized_WS(this ref Arena arena, int m, int n, int k, int oversample)
+        public static fProxySVDRandomized_WS fProxySVDRandomized_WS(this ref Arena arena, int m, int n, int k, int oversample)
         {
             int l = math.min(k + oversample, n);
-            return new fProxySvdRandomized_WS
+            return new fProxySVDRandomized_WS
             {
                 Omega = arena.fProxyMat(n, l),
                 Y = arena.fProxyMat(m, l),
@@ -121,7 +121,7 @@ namespace LinearAlgebra
         /// Allocates a randomized-SVD workspace with the default oversample (10) — matches the
         /// svdRandomized convenience overloads (oversample 10, powerIters 2, maxIter 75).
         /// </summary>
-        public static fProxySvdRandomized_WS fProxySvdRandomized_WS(this ref Arena arena, int m, int n, int k)
-            => arena.fProxySvdRandomized_WS(m, n, k, 10);
+        public static fProxySVDRandomized_WS fProxySVDRandomized_WS(this ref Arena arena, int m, int n, int k)
+            => arena.fProxySVDRandomized_WS(m, n, k, 10);
     }
 }

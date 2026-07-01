@@ -25,7 +25,7 @@ public class intDotRefTests
 
         // Integer arithmetic is EXACT: the ref-dest form runs the same kernel as the
         // allocating form, so the two results must be bit-for-bit identical. There is no
-        // int Analysis_OP.IsZero, so assert exact elementwise equality directly.
+        // int Analysis_OP.isZero, so assert exact elementwise equality directly.
         static bool ExactEqual(in intN x, in intN y)
         {
             if (x.N != y.N)
@@ -88,8 +88,8 @@ public class intDotRefTests
 
             // mat·vec
             {
-                var A = arena.intRandomMatrix(M, N, -9, 9, 12321);
-                var x = arena.intRandomVector(N, -9, 9, 45654);
+                var A = arena.intRandomMat(M, N, -9, 9, 12321);
+                var x = arena.intRandomVec(N, -9, 9, 45654);
                 var R = int_OP.dot(A, x);
 
                 var D = arena.intVec(M);
@@ -100,8 +100,8 @@ public class intDotRefTests
 
             // vec·mat
             {
-                var y = arena.intRandomVector(M, -9, 9, 11221);
-                var A = arena.intRandomMatrix(M, N, -9, 9, 33443);
+                var y = arena.intRandomVec(M, -9, 9, 11221);
+                var A = arena.intRandomMat(M, N, -9, 9, 33443);
                 var R = int_OP.dot(y, A);
 
                 var D = arena.intVec(N);
@@ -112,8 +112,8 @@ public class intDotRefTests
 
             // mat·mat
             {
-                var a = arena.intRandomMatrix(M, K, -9, 9, 32123);
-                var b = arena.intRandomMatrix(K, N, -9, 9, 65456);
+                var a = arena.intRandomMat(M, K, -9, 9, 32123);
+                var b = arena.intRandomMat(K, N, -9, 9, 65456);
                 var R = int_OP.dot(a, b, false);
 
                 var D = arena.intMat(M, N);
@@ -133,8 +133,8 @@ public class intDotRefTests
             int M = 5;
             int N = 7;
 
-            var a = arena.intRandomVector(M, -9, 9, 11111);
-            var b = arena.intRandomVector(N, -9, 9, 22222);
+            var a = arena.intRandomVec(M, -9, 9, 11111);
+            var b = arena.intRandomVec(N, -9, 9, 22222);
 
             // allocating reference
             var R = int_OP.outerDot(a, b);
@@ -156,8 +156,8 @@ public class intDotRefTests
             int M = 6;
             int N = 4;
 
-            var A = arena.intRandomMatrix(M, N, -9, 9, 33333);
-            var x = arena.intRandomVector(N, -9, 9, 44444);
+            var A = arena.intRandomMat(M, N, -9, 9, 33333);
+            var x = arena.intRandomVec(N, -9, 9, 44444);
 
             var R = int_OP.dot(A, x);
 
@@ -177,8 +177,8 @@ public class intDotRefTests
             int M = 6;
             int N = 4;
 
-            var y = arena.intRandomVector(M, -9, 9, 55555);
-            var A = arena.intRandomMatrix(M, N, -9, 9, 66666);
+            var y = arena.intRandomVec(M, -9, 9, 55555);
+            var A = arena.intRandomMat(M, N, -9, 9, 66666);
 
             var R = int_OP.dot(y, A);
 
@@ -199,8 +199,8 @@ public class intDotRefTests
             int K = 3;
             int N = 7;
 
-            var a = arena.intRandomMatrix(M, K, -9, 9, 77777);
-            var b = arena.intRandomMatrix(K, N, -9, 9, 88888);
+            var a = arena.intRandomMat(M, K, -9, 9, 77777);
+            var b = arena.intRandomMat(K, N, -9, 9, 88888);
 
             var R = int_OP.dot(a, b, false);
 
@@ -222,8 +222,8 @@ public class intDotRefTests
             int M = 5;
             int N = 6;
 
-            var a = arena.intRandomMatrix(K, M, -9, 9, 99999);
-            var b = arena.intRandomMatrix(K, N, -9, 9, 10101);
+            var a = arena.intRandomMat(K, M, -9, 9, 99999);
+            var b = arena.intRandomMat(K, N, -9, 9, 10101);
 
             var R = int_OP.dot(a, b, true);
 
@@ -250,7 +250,7 @@ public class intDotRefTests
             int M = 5;
             int N = 8;
 
-            var A = arena.intRandomMatrix(M, N, -9, 9, 20202);
+            var A = arena.intRandomMat(M, N, -9, 9, 20202);
 
             var R = int_OP.trans(A);
 

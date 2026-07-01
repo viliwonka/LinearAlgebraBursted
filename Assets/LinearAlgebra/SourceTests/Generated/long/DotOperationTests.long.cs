@@ -99,7 +99,7 @@ public class longDotOperationTests
             int outVecLen = 5;
 
             longN x = arena.longVec(inVecLen, 1);
-            longMxN A = arena.longRandomMatrix(outVecLen, inVecLen, -100, +100);
+            longMxN A = arena.longRandomMat(outVecLen, inVecLen, -100, +100);
 
             longN b = long_OP.dot(A, x);
 
@@ -114,8 +114,8 @@ public class longDotOperationTests
 
             int vecLen = 20;
 
-            longN x = arena.longIndexOneVector(vecLen);
-            longMxN A = arena.longIdentityMatrix(vecLen);
+            longN x = arena.longIndexOneVec(vecLen);
+            longMxN A = arena.longIdentityMat(vecLen);
 
             longN b = long_OP.dot(x, A);
 
@@ -124,7 +124,7 @@ public class longDotOperationTests
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == x[i]);
 
-            x = arena.longIndexZeroVector(vecLen);
+            x = arena.longIndexZeroVec(vecLen);
 
             b = long_OP.dot(x, A);
 
@@ -140,8 +140,8 @@ public class longDotOperationTests
 
             int matLen = 16;
 
-            longMxN A = arena.longIdentityMatrix(matLen);
-            longMxN B = arena.longIdentityMatrix(matLen);
+            longMxN A = arena.longIdentityMat(matLen);
+            longMxN B = arena.longIdentityMat(matLen);
 
             longMxN C = long_OP.dot(A, B);
 
@@ -154,7 +154,7 @@ public class longDotOperationTests
                     Assert.IsTrue(C[i, j] == (long)0f);
             }
 
-            longMxN R = arena.longRandomMatrix(matLen, matLen);
+            longMxN R = arena.longRandomMat(matLen, matLen);
 
             C = long_OP.dot(A, R);
 
@@ -164,7 +164,7 @@ public class longDotOperationTests
                 Assert.IsTrue(C[i, j] == R[i, j]);
             }
 
-            C = arena.longIdentityMatrix(matLen);
+            C = arena.longIdentityMat(matLen);
 
             longMxN D = long_OP.dot(C, C);
 
@@ -188,7 +188,7 @@ public class longDotOperationTests
             int outVecLen = 16;
 
             longN x = arena.longVec(inVecLen, 1);
-            longMxN A = arena.longRandomMatrix(outVecLen, inVecLen, -100, +100);
+            longMxN A = arena.longRandomMat(outVecLen, inVecLen, -100, +100);
 
             longN b = long_OP.dot(A, x);
 
@@ -205,7 +205,7 @@ public class longDotOperationTests
             int outVecLen = 16;
 
             longN x = arena.longVec(inVecLen, 1);
-            longMxN A = arena.longRandomMatrix(inVecLen, outVecLen, -100, +100);
+            longMxN A = arena.longRandomMat(inVecLen, outVecLen, -100, +100);
 
             longN b = long_OP.dot(x, A);
             
@@ -245,8 +245,8 @@ public class longDotOperationTests
             for (int i = 0; i < B.Length; i++)
                 Assert.IsTrue(B[i] == (long)1);
 
-            x = arena.longLinVector(vecM, 0, 20);
-            y = arena.longLinVector(vecN, 0, 20);
+            x = arena.longLinVec(vecM, 0, 20);
+            y = arena.longLinVec(vecN, 0, 20);
 
             longMxN C = long_OP.outerDot(x, y);
 

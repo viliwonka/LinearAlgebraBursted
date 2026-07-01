@@ -297,15 +297,15 @@ public class longOperationsTest {
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (long)2d);
 
-            a = arena.longIndexZeroVector(vecLen);
+            a = arena.longIndexZeroVec(vecLen);
 
             a *= 2;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (long)(2d*i));
 
-            a = arena.longIndexZeroVector(vecLen);
-            longN b = arena.longIndexZeroVector(vecLen);
+            a = arena.longIndexZeroVec(vecLen);
+            longN b = arena.longIndexZeroVec(vecLen);
 
             var c = a * b;
 
@@ -333,15 +333,15 @@ public class longOperationsTest {
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (long)1);
 
-            a = arena.longIndexZeroVector(vecLen);
+            a = arena.longIndexZeroVec(vecLen);
 
             a /= 2;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (long)(0.5 * i));
 
-            a = arena.longIndexZeroVector(vecLen);
-            longN b = arena.longIndexZeroVector(vecLen);
+            a = arena.longIndexZeroVec(vecLen);
+            longN b = arena.longIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
             a += 1;
@@ -382,15 +382,15 @@ public class longOperationsTest {
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (long)0);
 
-            a = arena.longIndexZeroVector(vecLen);
+            a = arena.longIndexZeroVec(vecLen);
 
             a %= 2;
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(a[i] == (long)(i % (long)2));
 
-            a = arena.longIndexZeroVector(vecLen);
-            longN b = arena.longIndexZeroVector(vecLen);
+            a = arena.longIndexZeroVec(vecLen);
+            longN b = arena.longIndexZeroVec(vecLen);
 
             // add 1 so no division by zero
             a += 1;

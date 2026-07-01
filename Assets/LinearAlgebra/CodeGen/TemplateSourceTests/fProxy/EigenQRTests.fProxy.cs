@@ -30,7 +30,7 @@ public class fProxyEigenQRTests
         public void Execute()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.fProxyRandomMatrix(6, 6, -2f, 2f, 12345);
+            var A = arena.fProxyRandomMat(6, 6, -2f, 2f, 12345);
             var re = arena.fProxyVec(6);
             var im = arena.fProxyVec(6);
             Eigen.eigenvaluesQR(ref A, ref re, ref im);
@@ -235,7 +235,7 @@ public class fProxyEigenQRTests
             for (uint t = 0; t < 8; t++)
             {
                 int n = 6;
-                var A = arena.fProxyRandomMatrix(n, n, -3f, 3f, 30000 + t * 13);
+                var A = arena.fProxyRandomMat(n, n, -3f, 3f, 30000 + t * 13);
                 for (int i = 0; i < n; i++)
                     for (int j = i + 1; j < n; j++)
                     {
@@ -278,7 +278,7 @@ public class fProxyEigenQRTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7;
-                var A = arena.fProxyRandomMatrix(n, n, -2f, 2f, 40000 + t * 17);
+                var A = arena.fProxyRandomMat(n, n, -2f, 2f, 40000 + t * 17);
                 fProxy trace = 0;
                 for (int i = 0; i < n; i++) trace += A[i, i];
 

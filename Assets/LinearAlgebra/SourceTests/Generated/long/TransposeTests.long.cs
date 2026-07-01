@@ -39,7 +39,7 @@ public class longTransposeTests
 
             int dim = 16;
             
-            longMxN A = arena.longRandomMatrix(dim, dim);
+            longMxN A = arena.longRandomMat(dim, dim);
 
             longMxN B = long_OP.trans(A);
 
@@ -60,7 +60,7 @@ public class longTransposeTests
             int rows = 8; 
             int cols = 32;
 
-            longMxN A = arena.longRandomMatrix(rows, cols);
+            longMxN A = arena.longRandomMat(rows, cols);
 
             longMxN B = long_OP.trans(A);
 

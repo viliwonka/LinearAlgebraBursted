@@ -45,7 +45,7 @@ public class floatEigenSymWorkspaceTests
         // n x n random symmetric matrix.
         static floatMxN Symmetric(ref Arena arena, int n, uint seed)
         {
-            var A = arena.floatRandomMatrix(n, n, (float)(-5f), (float)5f, seed);
+            var A = arena.floatRandomMat(n, n, (float)(-5f), (float)5f, seed);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -71,7 +71,7 @@ public class floatEigenSymWorkspaceTests
             bool okW = Eigen.eigenvaluesSymmetric(ref Aw, ref eigW, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.IsZero(eigA - eigW, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(eigA - eigW, Tol()));
 
             arena.Dispose();
         }
@@ -102,7 +102,7 @@ public class floatEigenSymWorkspaceTests
             bool okA = Eigen.eigenvaluesSymmetric(ref A2a, ref eigA);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis_OP.IsZero(eigW - eigA, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(eigW - eigA, Tol()));
 
             arena.Dispose();
         }
@@ -125,7 +125,7 @@ public class floatEigenSymWorkspaceTests
         try
         {
             int n = 5;
-            var A = arena.floatIdentityMatrix(n);   // symmetric -> passes the symmetry guard
+            var A = arena.floatIdentityMat(n);   // symmetric -> passes the symmetry guard
             var eig = arena.floatVec(n);
             var ws = arena.floatEigenSym_WS(n + 1);   // wrong n
             Assert.Throws<ArgumentException>(

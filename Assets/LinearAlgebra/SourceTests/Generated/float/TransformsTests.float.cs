@@ -184,7 +184,7 @@ public class floatTransformsTests
         void StandardizeRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(4, 5, -3f, 3f, 12345);
+            var A = arena.floatRandomMat(4, 5, -3f, 3f, 12345);
             floatStats_OP.standardizeRows(ref A);
 
             var rMean = floatStats_OP.rowMean(in A);
@@ -201,7 +201,7 @@ public class floatTransformsTests
         void StandardizeColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(5, 4, -3f, 3f, 67890);
+            var A = arena.floatRandomMat(5, 4, -3f, 3f, 67890);
             floatStats_OP.standardizeColumns(ref A);
 
             var cMean = floatStats_OP.colMean(in A);
@@ -289,7 +289,7 @@ public class floatTransformsTests
         void RescaleRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(4, 5, -3f, 3f, 222);
+            var A = arena.floatRandomMat(4, 5, -3f, 3f, 222);
             floatStats_OP.rescaleRows(ref A);
             var rMin = floatStats_OP.rowMin(in A);
             var rMax = floatStats_OP.rowMax(in A);
@@ -305,7 +305,7 @@ public class floatTransformsTests
         void RescaleColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(5, 4, -3f, 3f, 333);
+            var A = arena.floatRandomMat(5, 4, -3f, 3f, 333);
             float lo = 1f, hi = 3f;
             floatStats_OP.rescaleColumns(ref A, lo, hi);
             var cMin = floatStats_OP.colMin(in A);
@@ -338,7 +338,7 @@ public class floatTransformsTests
         void CenterRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(4, 5, -5f, 5f, 444);
+            var A = arena.floatRandomMat(4, 5, -5f, 5f, 444);
             floatStats_OP.centerRows(ref A);
             var rMean = floatStats_OP.rowMean(in A);
             for (int r = 0; r < 4; r++)
@@ -349,7 +349,7 @@ public class floatTransformsTests
         void CenterColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(5, 4, -5f, 5f, 555);
+            var A = arena.floatRandomMat(5, 4, -5f, 5f, 555);
             floatStats_OP.centerColumns(ref A);
             var cMean = floatStats_OP.colMean(in A);
             for (int c = 0; c < 4; c++)
@@ -394,7 +394,7 @@ public class floatTransformsTests
         void MaxAbsRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(4, 5, -3f, 3f, 666);
+            var A = arena.floatRandomMat(4, 5, -3f, 3f, 666);
             floatStats_OP.maxAbsRows(ref A);
             for (int r = 0; r < 4; r++)
             {
@@ -408,7 +408,7 @@ public class floatTransformsTests
         void MaxAbsColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(5, 4, -3f, 3f, 777);
+            var A = arena.floatRandomMat(5, 4, -3f, 3f, 777);
             floatStats_OP.maxAbsColumns(ref A);
             for (int c = 0; c < 4; c++)
             {
@@ -494,7 +494,7 @@ public class floatTransformsTests
         void SoftmaxRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(4, 5, -2f, 2f, 888);
+            var A = arena.floatRandomMat(4, 5, -2f, 2f, 888);
             floatStats_OP.softmaxRows(ref A);
             var rSum = floatStats_OP.rowSum(in A);
             for (int r = 0; r < 4; r++)
@@ -510,7 +510,7 @@ public class floatTransformsTests
         void SoftmaxColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(5, 4, -2f, 2f, 999);
+            var A = arena.floatRandomMat(5, 4, -2f, 2f, 999);
             floatStats_OP.softmaxColumns(ref A);
             var cSum = floatStats_OP.colSum(in A);
             for (int c = 0; c < 4; c++)
@@ -551,7 +551,7 @@ public class floatTransformsTests
         void NormalizeRowsL2()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(4, 5, -3f, 3f, 1212);
+            var A = arena.floatRandomMat(4, 5, -3f, 3f, 1212);
             floatNorms_OP.NormalizeRows(ref A, Norm.L2);
             var rL2 = floatStats_OP.rowNormL2(in A);
             for (int r = 0; r < 4; r++)
@@ -563,7 +563,7 @@ public class floatTransformsTests
         void NormalizeColumnsL1()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.floatRandomMatrix(5, 4, -3f, 3f, 3434);
+            var A = arena.floatRandomMat(5, 4, -3f, 3f, 3434);
             floatNorms_OP.NormalizeColumns(ref A, Norm.L1);
             var cL1 = floatStats_OP.colNormL1(in A);
             for (int c = 0; c < 4; c++)

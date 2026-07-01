@@ -478,7 +478,7 @@ public class floatQueryTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 6, N = 3;
-            var A = arena.floatRandomMatrix(M, N, -3f, 3f, 424242);
+            var A = arena.floatRandomMat(M, N, -3f, 3f, 424242);
             var q = arena.floatVec(N);
             q[0] = (float)0.5; q[1] = (float)(-1); q[2] = (float)2;
 
@@ -569,7 +569,7 @@ public class floatQueryTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 5, N = 2;
-            var A = arena.floatRandomMatrix(M, N, -2f, 2f, 99887);
+            var A = arena.floatRandomMat(M, N, -2f, 2f, 99887);
             var q = arena.floatVec(N);
             q[0] = (float)1; q[1] = (float)(-1);
 
@@ -718,7 +718,7 @@ public class floatQueryTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 5, N = 4;
-            var A = arena.floatRandomMatrix(M, N, -3f, 3f, 20240625);
+            var A = arena.floatRandomMat(M, N, -3f, 3f, 20240625);
             var At = float_OP.trans(A);   // N x M
 
             // For a column op on A, the query length is M_Rows = M; this same q is the row query
@@ -808,7 +808,7 @@ public class floatQueryTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 4, N = 3;
-            var A = arena.floatRandomMatrix(M, N, -3f, 3f, 13572468);
+            var A = arena.floatRandomMat(M, N, -3f, 3f, 13572468);
             var q = arena.floatVec(N);
             q[0] = (float)0.5; q[1] = (float)(-1.5); q[2] = (float)1;
             var qc = arena.floatVec(M);
@@ -858,7 +858,7 @@ public class floatQueryTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 6, N = 4;
-            var A = arena.floatRandomMatrix(M, N, -2f, 2f, 7777);
+            var A = arena.floatRandomMat(M, N, -2f, 2f, 7777);
             var q = arena.floatVec(N);
             for (int i = 0; i < N; i++) q[i] = (float)(i) * (float)0.3 - (float)0.5;
 
@@ -1028,7 +1028,7 @@ public class floatQueryTests
     {
         var arena = new Arena(Allocator.Persistent);
 
-        var mask = arena.BoolVector(6);
+        var mask = arena.boolVec(6);
         mask[0] = false; mask[1] = true; mask[2] = false;
         mask[3] = true;  mask[4] = true; mask[5] = false;
 
@@ -1057,7 +1057,7 @@ public class floatQueryTests
         // 2x3 mask, flat indices of true elements.
         //  T F T
         //  F F T   -> flat true at 0, 2, 5
-        var mask = arena.BoolMatrix(2, 3);
+        var mask = arena.boolMat(2, 3);
         mask[0] = true;  mask[1] = false; mask[2] = true;
         mask[3] = false; mask[4] = false; mask[5] = true;
 

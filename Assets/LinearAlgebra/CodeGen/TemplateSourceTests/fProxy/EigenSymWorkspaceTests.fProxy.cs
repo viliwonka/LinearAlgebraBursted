@@ -45,7 +45,7 @@ public class fProxyEigenSymWorkspaceTests
         // n x n random symmetric matrix.
         static fProxyMxN Symmetric(ref Arena arena, int n, uint seed)
         {
-            var A = arena.fProxyRandomMatrix(n, n, (fProxy)(-5f), (fProxy)5f, seed);
+            var A = arena.fProxyRandomMat(n, n, (fProxy)(-5f), (fProxy)5f, seed);
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -71,7 +71,7 @@ public class fProxyEigenSymWorkspaceTests
             bool okW = Eigen.eigenvaluesSymmetric(ref Aw, ref eigW, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.IsZero(eigA - eigW, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(eigA - eigW, Tol()));
 
             arena.Dispose();
         }
@@ -102,7 +102,7 @@ public class fProxyEigenSymWorkspaceTests
             bool okA = Eigen.eigenvaluesSymmetric(ref A2a, ref eigA);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis_OP.IsZero(eigW - eigA, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(eigW - eigA, Tol()));
 
             arena.Dispose();
         }
@@ -125,7 +125,7 @@ public class fProxyEigenSymWorkspaceTests
         try
         {
             int n = 5;
-            var A = arena.fProxyIdentityMatrix(n);   // symmetric -> passes the symmetry guard
+            var A = arena.fProxyIdentityMat(n);   // symmetric -> passes the symmetry guard
             var eig = arena.fProxyVec(n);
             var ws = arena.fProxyEigenSym_WS(n + 1);   // wrong n
             Assert.Throws<ArgumentException>(

@@ -138,8 +138,8 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
-            var sigRe = arena.floatRandomVector(N, -2f, 2f, 9911);
-            var sigIm = arena.floatRandomVector(N, -2f, 2f, 2244);
+            var sigRe = arena.floatRandomVec(N, -2f, 2f, 9911);
+            var sigIm = arena.floatRandomVec(N, -2f, 2f, 2244);
 
             // fft path (in-place on copies)
             var fRe = sigRe.Copy();
@@ -164,8 +164,8 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 16;
-            var re0 = arena.floatRandomVector(N, -3f, 3f, 5150);
-            var im0 = arena.floatRandomVector(N, -3f, 3f, 6160);
+            var re0 = arena.floatRandomVec(N, -3f, 3f, 5150);
+            var im0 = arena.floatRandomVec(N, -3f, 3f, 6160);
 
             var re = re0.Copy();
             var im = im0.Copy();
@@ -185,8 +185,8 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 5;
-            var re0 = arena.floatRandomVector(N, -3f, 3f, 7007);
-            var im0 = arena.floatRandomVector(N, -3f, 3f, 8008);
+            var re0 = arena.floatRandomVec(N, -3f, 3f, 7007);
+            var im0 = arena.floatRandomVec(N, -3f, 3f, 8008);
 
             var fRe = arena.floatVec(N);
             var fIm = arena.floatVec(N);
@@ -212,7 +212,7 @@ public class floatFFTTests
             var arena = new Arena(Allocator.Persistent);
             int N = 8;
             int halfSpec = (N >> 1) + 1; // 5
-            var real = arena.floatRandomVector(N, -2f, 2f, 1234);
+            var real = arena.floatRandomVec(N, -2f, 2f, 1234);
 
             // half-spectrum output
             var rRe = arena.floatVec(halfSpec);
@@ -381,7 +381,7 @@ public class floatFFTTests
             {
                 int N = 8;
                 int halfSpec = (N >> 1) + 1;
-                var real0 = arena.floatRandomVector(N, -3f, 3f, 5555);
+                var real0 = arena.floatRandomVec(N, -3f, 3f, 5555);
                 var rRe = arena.floatVec(halfSpec);
                 var rIm = arena.floatVec(halfSpec);
                 var real2 = arena.floatVec(N);
@@ -395,7 +395,7 @@ public class floatFFTTests
             {
                 int N = 16;
                 int halfSpec = (N >> 1) + 1;
-                var real0 = arena.floatRandomVector(N, -3f, 3f, 6666);
+                var real0 = arena.floatRandomVec(N, -3f, 3f, 6666);
                 var rRe = arena.floatVec(halfSpec);
                 var rIm = arena.floatVec(halfSpec);
                 var real2 = arena.floatVec(N);
@@ -409,7 +409,7 @@ public class floatFFTTests
             {
                 int N = 64;
                 int halfSpec = (N >> 1) + 1;
-                var real0 = arena.floatRandomVector(N, -3f, 3f, 7777);
+                var real0 = arena.floatRandomVec(N, -3f, 3f, 7777);
                 var rRe = arena.floatVec(halfSpec);
                 var rIm = arena.floatVec(halfSpec);
                 var real2 = arena.floatVec(N);
@@ -423,7 +423,7 @@ public class floatFFTTests
             {
                 int N = 8;
                 int halfSpec = (N >> 1) + 1;
-                var real0 = arena.floatRandomVector(N, -3f, 3f, 8888);
+                var real0 = arena.floatRandomVec(N, -3f, 3f, 8888);
                 var rRe = arena.floatVec(halfSpec);
                 var rIm = arena.floatVec(halfSpec);
                 floatFFT_OP.rfft(in real0, ref rRe, ref rIm);
@@ -527,9 +527,9 @@ public class floatFFTTests
         void TableFftVsRecurrence(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFft_WS(N);
-            var re0 = arena.floatRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.floatRandomVector(N, -2f, 2f, seedIm);
+            var ws = arena.floatFFT_WS(N);
+            var re0 = arena.floatRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.floatRandomVec(N, -2f, 2f, seedIm);
 
             var reR = re0.Copy(); var imR = im0.Copy();
             floatFFT_OP.fft(ref reR, ref imR);
@@ -564,9 +564,9 @@ public class floatFFTTests
         void TableIfftVsRecurrence(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFft_WS(N);
-            var re0 = arena.floatRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.floatRandomVector(N, -2f, 2f, seedIm);
+            var ws = arena.floatFFT_WS(N);
+            var re0 = arena.floatRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.floatRandomVec(N, -2f, 2f, seedIm);
 
             var reR = re0.Copy(); var imR = im0.Copy();
             floatFFT_OP.ifft(ref reR, ref imR);
@@ -603,8 +603,8 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.floatFft_WS(N);
-            var real = arena.floatRandomVector(N, -2f, 2f, seed);
+            var ws = arena.floatFFT_WS(N);
+            var real = arena.floatRandomVec(N, -2f, 2f, seed);
 
             var reR = arena.floatVec(halfSpec);
             var imR = arena.floatVec(halfSpec);
@@ -648,8 +648,8 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.floatFft_WS(N);
-            var real0 = arena.floatRandomVector(N, -2f, 2f, seed);
+            var ws = arena.floatFFT_WS(N);
+            var real0 = arena.floatRandomVec(N, -2f, 2f, seed);
 
             var specRe = arena.floatVec(halfSpec);
             var specIm = arena.floatVec(halfSpec);
@@ -687,10 +687,10 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 64;
-            var ws = arena.floatFft_WS(N);
+            var ws = arena.floatFFT_WS(N);
 
-            var re0 = arena.floatRandomVector(N, -3f, 3f, 6543u);
-            var im0 = arena.floatRandomVector(N, -3f, 3f, 7654u);
+            var re0 = arena.floatRandomVec(N, -3f, 3f, 6543u);
+            var im0 = arena.floatRandomVec(N, -3f, 3f, 7654u);
 
             var re = re0.Copy(); var im = im0.Copy();
             floatFFT_OP.fft(ref re, ref im, in ws);
@@ -710,8 +710,8 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.floatFft_WS(N);
-            var real0 = arena.floatRandomVector(N, -3f, 3f, seed);
+            var ws = arena.floatFFT_WS(N);
+            var real0 = arena.floatRandomVec(N, -3f, 3f, seed);
 
             var rRe = arena.floatVec(halfSpec);
             var rIm = arena.floatVec(halfSpec);
@@ -763,10 +763,10 @@ public class floatFFTTests
         void Radix4VsOracleOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.floatFft_WS(N);
+            var ws    = arena.floatFFT_WS(N);
 
-            var re0 = arena.floatRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.floatRandomVector(N, -2f, 2f, seedIm);
+            var re0 = arena.floatRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.floatRandomVec(N, -2f, 2f, seedIm);
 
             if (N <= 256)
             {
@@ -829,10 +829,10 @@ public class floatFFTTests
         void Radix4RoundTripOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.floatFft_WS(N);
+            var ws    = arena.floatFFT_WS(N);
 
-            var re0 = arena.floatRandomVector(N, -3f, 3f, seedRe);
-            var im0 = arena.floatRandomVector(N, -3f, 3f, seedIm);
+            var re0 = arena.floatRandomVec(N, -3f, 3f, seedRe);
+            var im0 = arena.floatRandomVec(N, -3f, 3f, seedIm);
 
             var re = re0.Copy(); var im = im0.Copy();
             floatFFT_OP.fft(ref re, ref im, in ws);
@@ -893,9 +893,9 @@ public class floatFFTTests
         void FftVsDftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFft_WS(N);
-            var re0 = arena.floatRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.floatRandomVector(N, -2f, 2f, seedIm);
+            var ws = arena.floatFFT_WS(N);
+            var re0 = arena.floatRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.floatRandomVec(N, -2f, 2f, seedIm);
 
             // Ground truth: direct DFT.
             var dRe = arena.floatVec(N);
@@ -937,9 +937,9 @@ public class floatFFTTests
         void ParsevalFftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFft_WS(N);
-            var re0 = arena.floatRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.floatRandomVector(N, -2f, 2f, seedIm);
+            var ws = arena.floatFFT_WS(N);
+            var re0 = arena.floatRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.floatRandomVec(N, -2f, 2f, seedIm);
 
             float timeE = Energy(in re0, in im0);
             float relTol = (float)1E-2f;   // robust scalar-energy bound (float summation at large N)
@@ -960,8 +960,8 @@ public class floatFFTTests
         void ParsevalDftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var re0 = arena.floatRandomVector(N, -2f, 2f, seedRe);
-            var im0 = arena.floatRandomVector(N, -2f, 2f, seedIm);
+            var re0 = arena.floatRandomVec(N, -2f, 2f, seedRe);
+            var im0 = arena.floatRandomVec(N, -2f, 2f, seedIm);
 
             float timeE = Energy(in re0, in im0);
             var dRe = arena.floatVec(N);
@@ -976,10 +976,10 @@ public class floatFFTTests
         void ParsevalRfftOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFft_WS(N);
+            var ws = arena.floatFFT_WS(N);
             int halfSpec = (N >> 1) + 1;
             int M = N >> 1;
-            var real = arena.floatRandomVector(N, -2f, 2f, seed);
+            var real = arena.floatRandomVec(N, -2f, 2f, seed);
 
             float timeE = (float)0;
             for (int i = 0; i < N; i++) timeE += real[i] * real[i];
@@ -1022,12 +1022,12 @@ public class floatFFTTests
         void FftLinearityOneSize(int N, uint sx, uint sy)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFft_WS(N);
+            var ws = arena.floatFFT_WS(N);
 
-            var xr = arena.floatRandomVector(N, -2f, 2f, sx);
-            var xi = arena.floatRandomVector(N, -2f, 2f, sx + 17u);
-            var yr = arena.floatRandomVector(N, -2f, 2f, sy);
-            var yi = arena.floatRandomVector(N, -2f, 2f, sy + 17u);
+            var xr = arena.floatRandomVec(N, -2f, 2f, sx);
+            var xi = arena.floatRandomVec(N, -2f, 2f, sx + 17u);
+            var yr = arena.floatRandomVec(N, -2f, 2f, sy);
+            var yi = arena.floatRandomVec(N, -2f, 2f, sy + 17u);
 
             float aRe = (float)1.5f, aIm = (float)(-0.5f);
             float bRe = (float)(-2.0f), bIm = (float)0.75f;
@@ -1087,7 +1087,7 @@ public class floatFFTTests
         //   constant c          -> X[0] = c·N, else 0
         //   exp(+2πi·k0·n/N)    -> X[k0] = N, else 0
         // Runs the input through BOTH fft(ws) and dft and compares each to the analytic expectation.
-        void KnownRunBoth(in floatFft_WS ws, int N,
+        void KnownRunBoth(in floatFFT_WS ws, int N,
                           in floatN inRe, in floatN inIm,
                           in floatN expRe, in floatN expIm, float relTol)
         {
@@ -1104,7 +1104,7 @@ public class floatFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 16;
-            var ws = arena.floatFft_WS(N);
+            var ws = arena.floatFFT_WS(N);
             float twoPi = (float)(2.0 * System.Math.PI);
             float relTol = (float)2E-3f;
 
@@ -1196,9 +1196,9 @@ public class floatFFTTests
         void RoundTripFftWsOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFft_WS(N);
-            var re0 = arena.floatRandomVector(N, -3f, 3f, seedRe);
-            var im0 = arena.floatRandomVector(N, -3f, 3f, seedIm);
+            var ws = arena.floatFFT_WS(N);
+            var re0 = arena.floatRandomVec(N, -3f, 3f, seedRe);
+            var im0 = arena.floatRandomVec(N, -3f, 3f, seedIm);
 
             var re = re0.Copy(); var im = im0.Copy();
             floatFFT_OP.fft(ref re, ref im, in ws);
@@ -1216,9 +1216,9 @@ public class floatFFTTests
         void RoundTripRfftWsOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFft_WS(N);
+            var ws = arena.floatFFT_WS(N);
             int halfSpec = (N >> 1) + 1;
-            var real0 = arena.floatRandomVector(N, -3f, 3f, seed);
+            var real0 = arena.floatRandomVec(N, -3f, 3f, seed);
 
             var rRe = arena.floatVec(halfSpec);
             var rIm = arena.floatVec(halfSpec);
@@ -1236,8 +1236,8 @@ public class floatFFTTests
         void RoundTripDftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var re0 = arena.floatRandomVector(N, -3f, 3f, seedRe);
-            var im0 = arena.floatRandomVector(N, -3f, 3f, seedIm);
+            var re0 = arena.floatRandomVec(N, -3f, 3f, seedRe);
+            var im0 = arena.floatRandomVec(N, -3f, 3f, seedIm);
 
             var fRe = arena.floatVec(N); var fIm = arena.floatVec(N);
             floatFFT_OP.dft(in re0, in im0, ref fRe, ref fIm);
@@ -1273,11 +1273,11 @@ public class floatFFTTests
         void WorkspaceReuseOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.floatFft_WS(N);
+            var ws = arena.floatFFT_WS(N);
             int halfSpec = (N >> 1) + 1;
 
-            var re0 = arena.floatRandomVector(N, -2f, 2f, seed);
-            var im0 = arena.floatRandomVector(N, -2f, 2f, seed + 1u);
+            var re0 = arena.floatRandomVec(N, -2f, 2f, seed);
+            var im0 = arena.floatRandomVec(N, -2f, 2f, seed + 1u);
 
             // (a) fft(ws) on the fresh workspace, validated against dft.
             var dRe = arena.floatVec(N); var dIm = arena.floatVec(N);
@@ -1292,7 +1292,7 @@ public class floatFFTTests
             }
 
             // (b) rfft(ws) on the SAME workspace (touches cz/sz/visited) — compare to no-ws rfft.
-            var real = arena.floatRandomVector(N, -2f, 2f, seed + 2u);
+            var real = arena.floatRandomVec(N, -2f, 2f, seed + 2u);
             var rRe = arena.floatVec(halfSpec); var rIm = arena.floatVec(halfSpec);
             floatFFT_OP.rfft(in real, ref rRe, ref rIm, in ws);
             var oRe = arena.floatVec(halfSpec); var oIm = arena.floatVec(halfSpec);
@@ -1526,11 +1526,11 @@ public class floatFFTTests
     public void FftWorkspaceFactoryNonPow2Throws()
     {
         var arena = new Arena(Allocator.Persistent);
-        Assert.Throws<ArgumentException>(() => arena.floatFft_WS(0));
-        Assert.Throws<ArgumentException>(() => arena.floatFft_WS(1));
-        Assert.Throws<ArgumentException>(() => arena.floatFft_WS(3));
-        Assert.Throws<ArgumentException>(() => arena.floatFft_WS(5));
-        Assert.Throws<ArgumentException>(() => arena.floatFft_WS(6));
+        Assert.Throws<ArgumentException>(() => arena.floatFFT_WS(0));
+        Assert.Throws<ArgumentException>(() => arena.floatFFT_WS(1));
+        Assert.Throws<ArgumentException>(() => arena.floatFFT_WS(3));
+        Assert.Throws<ArgumentException>(() => arena.floatFFT_WS(5));
+        Assert.Throws<ArgumentException>(() => arena.floatFFT_WS(6));
         arena.Dispose();
     }
 
@@ -1540,7 +1540,7 @@ public class floatFFTTests
         var arena = new Arena(Allocator.Persistent);
         var re8  = arena.floatVec(8);
         var im8  = arena.floatVec(8);
-        var ws16 = arena.floatFft_WS(16);   // sized for 16, not 8
+        var ws16 = arena.floatFFT_WS(16);   // sized for 16, not 8
 
         // fft and ifft with mismatched workspace
         Assert.Throws<ArgumentException>(() => floatFFT_OP.fft(ref re8, ref im8, in ws16));
@@ -1562,7 +1562,7 @@ public class floatFFTTests
     public void RfftTableWrongOutputLengthThrows()
     {
         var arena = new Arena(Allocator.Persistent);
-        var ws = arena.floatFft_WS(8);
+        var ws = arena.floatFFT_WS(8);
         var real = arena.floatVec(8);
         var re5  = arena.floatVec(5);    // correct N/2+1
         var im5  = arena.floatVec(5);    // correct

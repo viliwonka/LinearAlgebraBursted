@@ -295,7 +295,7 @@ public class fProxyQueryPredicateTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 6, N = 3;
-            var A = arena.fProxyRandomMatrix(M, N, -3f, 3f, 424242);
+            var A = arena.fProxyRandomMat(M, N, -3f, 3f, 424242);
             var q = arena.fProxyVec(N);
             q[0] = (fProxy)0.5; q[1] = (fProxy)(-1); q[2] = (fProxy)2;
 
@@ -359,7 +359,7 @@ public class fProxyQueryPredicateTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 4, N = 3;
-            var A = arena.fProxyRandomMatrix(M, N, -2f, 2f, 555);
+            var A = arena.fProxyRandomMat(M, N, -2f, 2f, 555);
             var q = arena.fProxyVec(N);
             q[0] = (fProxy)1; q[1] = (fProxy)0; q[2] = (fProxy)(-1);
 
@@ -427,7 +427,7 @@ public class fProxyQueryPredicateTests
             AssertEqI(cmi, fProxyQuery_OP.argMaxColNorm(in H, Norm.L2));
 
             // Random equivalence: argMaxRowBy == argMaxRowNorm(L2); argMaxColBy == argMaxColNorm(L2).
-            var R = arena.fProxyRandomMatrix(7, 4, -3f, 3f, 909090);
+            var R = arena.fProxyRandomMat(7, 4, -3f, 3f, 909090);
             var rrs = new RowL2Score();
             fProxyQuery_OP.argMaxRowBy(in R, ref rrs, out int rmi, out fProxy _);
             AssertEqI(rmi, fProxyQuery_OP.argMaxRowNorm(in R, Norm.L2));
@@ -447,7 +447,7 @@ public class fProxyQueryPredicateTests
             var arena = new Arena(Allocator.Persistent);
 
             int M = 5, N = 4;
-            var A = arena.fProxyRandomMatrix(M, N, -3f, 3f, 20240628);
+            var A = arena.fProxyRandomMat(M, N, -3f, 3f, 20240628);
             var At = fProxy_OP.trans(A);   // N x M; column j of A == row j of At.
 
             // Column query length = A.M_Rows = M = At.N_Cols.

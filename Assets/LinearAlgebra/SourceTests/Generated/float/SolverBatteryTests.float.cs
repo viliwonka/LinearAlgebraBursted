@@ -228,10 +228,10 @@ public class floatSolverBatteryTests
 
             var LUm = A.Copy();
             var P = new Pivot(n, Allocator.Temp);
-            AssertTrue(LU.luDecompositionInplace(ref LUm, ref P));
+            AssertTrue(LU.luDecompositionInpl(ref LUm, ref P));
 
-            var x = b.Copy();                 // LUSolve overwrites b with x
-            LU.LUSolve(ref LUm, in P, ref x);
+            var x = b.Copy();                 // luSolve overwrites b with x
+            LU.luSolve(ref LUm, in P, ref x);
 
             // residual ‖A x − b‖ with the ORIGINAL A,b (backward-stable ⇒ tiny)
             float resTol = (MatMaxAbs(in A) + (float)1) * (float)100 * Consts.floatSqrtEps;
@@ -247,7 +247,7 @@ public class floatSolverBatteryTests
         // QR (Householder) — square solve + overdetermined least squares.
         // =====================================================================
 
-        // Well-conditioned square systems solved via qrDirectSolve (Solvers.SolveQR): residual small.
+        // Well-conditioned square systems solved via qrDirectSolve (Solvers.solveQR): residual small.
         // Laplacian1D(8) (cond ≈ 41) and Pei(5,2) (eigenvalues {7,2,2,2,2}, cond ≈ 3.5).
         void QRDirectSolveSquare()
         {
@@ -274,7 +274,7 @@ public class floatSolverBatteryTests
             var Aw = A.Copy();   // qrDirectSolve destroys A and b
             var bw = b.Copy();
             var x = arena.floatVec(n);
-            Solvers.SolveQR(ref Aw, ref bw, ref x);
+            Solvers.solveQR(ref Aw, ref bw, ref x);
 
             float resTol = (MatMaxAbs(in A) + (float)1) * (float)100 * Consts.floatSqrtEps;
             AssertTrue(ResidualNorm(in A, in x, in b) <= resTol);
@@ -301,7 +301,7 @@ public class floatSolverBatteryTests
             var Aw = A.Copy();
             var bw = b.Copy();
             var x = arena.floatVec(n);
-            Solvers.SolveQR(ref Aw, ref bw, ref x);   // x has length A.N_Cols = 3
+            Solvers.solveQR(ref Aw, ref bw, ref x);   // x has length A.N_Cols = 3
 
             float xtol = (float)50 * Consts.floatSqrtEps;
             for (int i = 0; i < n; i++)
@@ -780,13 +780,13 @@ public class floatSolverBatteryTests
         // helpers
         // =====================================================================
 
-        // det via LU on a copy (luDecompositionInplace destroys its input).
+        // det via LU on a copy (luDecompositionInpl destroys its input).
         float Determinant(in floatMxN M)
         {
             int n = M.M_Rows;
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInplace(ref LUmat, ref pivot);
+            LU.luDecompositionInpl(ref LUmat, ref pivot);
             float det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;

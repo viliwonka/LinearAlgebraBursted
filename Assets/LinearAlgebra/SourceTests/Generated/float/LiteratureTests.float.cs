@@ -64,7 +64,7 @@ public class floatLiteratureTests
 
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInplace(ref LUmat, ref pivot);
+            LU.luDecompositionInpl(ref LUmat, ref pivot);
             float det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -143,7 +143,7 @@ public class floatLiteratureTests
             // det(Pascal) = 1 (LU destroys its input, so factor a copy)
             var LUmat = P.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInplace(ref LUmat, ref pivot);
+            LU.luDecompositionInpl(ref LUmat, ref pivot);
             float det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -182,7 +182,7 @@ public class floatLiteratureTests
             AssertTrue(Eigen.eigenDecomposition(ref W, ref eig, ref V, 100));   // destroys W; must converge
 
             // eigenvectors orthonormal
-            AssertTrue(Analysis_OP.IsOrthogonal(V, (float)1E-3));
+            AssertTrue(Analysis_OP.isOrthogonal(V, (float)1E-3));
 
             // two spectral invariants over ALL eigenvalues (so corrupted middle ones can't hide):
             //   Σλ = trace = 2*(1+..+10) = 110;   Σλ² = ‖W‖_F² = 2*(1²+..+10²) + 40 = 810
@@ -226,7 +226,7 @@ public class floatLiteratureTests
             AssertTrue(Eigen.eigenDecomposition(ref Tc, ref eig, ref V));   // must converge
 
             // eigenvectors must be orthonormal
-            AssertTrue(Analysis_OP.IsOrthogonal(V, (float)1E-3));
+            AssertTrue(Analysis_OP.isOrthogonal(V, (float)1E-3));
 
             for (int i = 0; i < n; i++)
             {
@@ -247,7 +247,7 @@ public class floatLiteratureTests
             int n = 6;
             float scale = (float)1E-7;
 
-            var A = arena.floatRandomMatrix(n, n, -1f, 1f, 90211);
+            var A = arena.floatRandomMat(n, n, -1f, 1f, 90211);
             float_OP.mulInpl(A, scale);   // entries now ~1e-7
 
             var Q = A.Copy();

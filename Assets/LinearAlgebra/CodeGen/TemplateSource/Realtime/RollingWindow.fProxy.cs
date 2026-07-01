@@ -193,7 +193,7 @@ namespace LinearAlgebra.Realtime
     }
 
     /// <summary>Arena factory for <see cref="fProxyRollingWindow"/>.</summary>
-    public static partial class fProxyRealtimeArena
+    public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a rolling window holding up to <paramref name="capacity"/> samples of

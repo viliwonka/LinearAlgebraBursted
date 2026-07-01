@@ -6,7 +6,7 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions {
 
         #region VECTOR
-        public static floatN floatIndexZeroVector(this ref Arena arena, int N)
+        public static floatN floatIndexZeroVec(this ref Arena arena, int N)
         {
             var vec = arena.floatVec(N, true);
 
@@ -28,7 +28,7 @@ namespace LinearAlgebra
         }
 
         // all zero but the index is one
-        public static floatN floatBasisVector(this ref Arena arena, int N, int index)
+        public static floatN floatBasisVec(this ref Arena arena, int N, int index)
         {
             var vec = arena.floatVec(N);
 
@@ -40,7 +40,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static floatN floatRandomUnitVector(this ref Arena arena, int N, uint seed = 34215)
+        public static floatN floatRandomUnitVec(this ref Arena arena, int N, uint seed = 34215)
         {
             var vec = arena.floatVec(N, true);
 
@@ -61,7 +61,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static floatN floatRandomVector(this ref Arena arena, int N, float min, float max, uint seed = 34215)
+        public static floatN floatRandomVec(this ref Arena arena, int N, float min, float max, uint seed = 34215)
         {
             var vec = arena.floatVec(N, true);
 
@@ -76,7 +76,7 @@ namespace LinearAlgebra
         // linspace. Prefer floatLinspace(a, b, N) for new code; this older name is kept for existing
         // callers and now delegates to the guarded floatGen_OP.linspace (handles N==1 instead of
         // dividing by zero, and pins both endpoints exactly).
-        public static floatN floatLinVector(this ref Arena arena, int N, float start, float end)
+        public static floatN floatLinVec(this ref Arena arena, int N, float start, float end)
         {
             var vec = arena.floatVec(N);
             floatGen_OP.linspace(ref vec, start, end);
@@ -87,7 +87,7 @@ namespace LinearAlgebra
 
         #region MATRIX
         // constructs identity matrix
-        public static floatMxN floatIdentityMatrix(this ref Arena arena, int N)
+        public static floatMxN floatIdentityMat(this ref Arena arena, int N)
         {
             var matrix = arena.floatMat(N, N);
 
@@ -99,7 +99,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static floatMxN floatDiagonalMatrix(this ref Arena arena, int N, float s)
+        public static floatMxN floatDiagonalMat(this ref Arena arena, int N, float s)
         {
             var matrix = arena.floatMat(N, N);
 
@@ -110,7 +110,7 @@ namespace LinearAlgebra
         }
 
         // constructs diagonal matrix based on vector
-        public static floatMxN floatDiagonalMatrix(this ref Arena arena, in floatN vec)
+        public static floatMxN floatDiagonalMat(this ref Arena arena, in floatN vec)
         {
             var matrix = arena.floatMat(vec.N, vec.N);
 
@@ -121,7 +121,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 0
-        public static floatMxN floatIndexZeroMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static floatMxN floatIndexZeroMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.floatMat(M_rows, N_cols, true);
 
@@ -136,7 +136,7 @@ namespace LinearAlgebra
         }
 
         // constructs matrix with indexes that start at 1
-        public static floatMxN floatIndexOneMatrix(this ref Arena arena, int M_rows, int N_cols)
+        public static floatMxN floatIndexOneMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.floatMat(M_rows, N_cols, true);
 
@@ -152,13 +152,13 @@ namespace LinearAlgebra
 
         // random matrix
 
-        public static floatMxN floatRandomMatrix(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
+        public static floatMxN floatRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
-            return floatRandomMatrix(ref arena, M_rows, N_cols, -1, 1, seed);
+            return floatRandomMat(ref arena, M_rows, N_cols, -1, 1, seed);
         }
 
         // constructs diagonal matrix with scalar s on diagonal
-        public static floatMxN floatRandomDiagonalMatrix(this ref Arena arena, int N, float min, float max, uint seed = 65792)
+        public static floatMxN floatRandomDiagonalMat(this ref Arena arena, int N, float min, float max, uint seed = 65792)
         {
             var matrix = arena.floatMat(N, N);
 
@@ -170,7 +170,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        public static floatMxN floatRandomMatrix(this ref Arena arena, int M_rows, int N_cols, float min, float max, uint seed = 121312)
+        public static floatMxN floatRandomMat(this ref Arena arena, int M_rows, int N_cols, float min, float max, uint seed = 121312)
         {
             var matrix = arena.floatMat(M_rows, N_cols, true);
 
@@ -184,9 +184,9 @@ namespace LinearAlgebra
         }
 
         // i and j are axis indexes to rotate
-        public static floatMxN floatRotationMatrix(this ref Arena arena, int M, int i, int j, float radians)
+        public static floatMxN floatRotationMat(this ref Arena arena, int M, int i, int j, float radians)
         {
-            var matrix = arena.floatIdentityMatrix(M);
+            var matrix = arena.floatIdentityMat(M);
 
             if (M < 2)
                 throw new System.Exception("RotationMatrix: Matrix must be at least 2x2");
@@ -210,9 +210,9 @@ namespace LinearAlgebra
         }
 
         // i and j are axis indexes to swap
-        public static floatMxN floatPermutationMatrix(this ref Arena arena, int M, int i, int j)
+        public static floatMxN floatPermutationMat(this ref Arena arena, int M, int i, int j)
         {
-            var matrix = arena.floatIdentityMatrix(M);
+            var matrix = arena.floatIdentityMat(M);
 
             if (M < 2)
                 throw new System.Exception("PermutationMatrix: Matrix must be at least 2x2");
@@ -233,7 +233,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        public static floatMxN floatHouseholderMatrix(this ref Arena arena, int M, in floatN v)
+        public static floatMxN floatHouseholderMat(this ref Arena arena, int M, in floatN v)
         {
             if(M < 2)
                 throw new System.Exception("HouseholderMatrix: Matrix must be at least 2x2");
@@ -242,7 +242,7 @@ namespace LinearAlgebra
             if (v.N != M)
                 throw new System.Exception("HouseholderMatrix: Vector length must match matrix dimension.");
 
-            var matrix = arena.floatIdentityMatrix(M);
+            var matrix = arena.floatIdentityMat(M);
 
             // Compute the outer product of v
             float vTv = float_OP.dot(v, v);
@@ -263,7 +263,7 @@ namespace LinearAlgebra
         }
 
         // very ill conditioned matrix, used for testing numerical stability
-        public static floatMxN floatHilbertMatrix(this ref Arena arena, int M)
+        public static floatMxN floatHilbertMat(this ref Arena arena, int M)
         {
             if (M < 2)
                 throw new System.Exception("HilbertMatrix: Matrix must be at least 2x2");

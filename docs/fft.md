@@ -29,15 +29,15 @@ All FFT/IFFT/rfft lengths must be a **power of two** — use `dft` for arbitrary
   any repeated use.
 
 ```csharp
-var ws = arena.floatFft_WS(1024);     // builds the twiddle table on creation
+var ws = arena.floatFFT_WS(1024);     // builds the twiddle table on creation
 for (int f = 0; f < frames; f++)
     floatFFT_OP.fft(ref re, ref im, in ws);    // zero-alloc, reuses the plan
 ```
 
 ## Workspace notes
 
-- Built on creation by the arena factory (`arena.floatFft_WS(n)`); disposed with the arena —
-  no manual `Dispose`. This matches every other workspace in the library (`floatSvd_WS`, …).
+- Built on creation by the arena factory (`arena.floatFFT_WS(n)`); disposed with the arena —
+  no manual `Dispose`. This matches every other workspace in the library (`floatSVD_WS`, …).
 - Holds the twiddle tables plus the rfft/mixed-radix scratch, so repeated `fft/ifft/rfft/irfft(ws)`
   allocate nothing.
 - **Single-use-at-a-time**: the scratch is shared, so use one workspace per thread for parallel

@@ -59,7 +59,7 @@ public class BoolIndexingTests
         {
             int dim = 17;
 
-            boolN vec = arena.BoolVector(dim);
+            boolN vec = arena.boolVec(dim);
 
             // Forward-fill a distinct-enough pattern via the plain int indexer (oracle).
             for (int i = 0; i < dim; i++)
@@ -85,7 +85,7 @@ public class BoolIndexingTests
             int rows = 5;
             int cols = 7;
 
-            boolMxN mat = arena.BoolMatrix(rows, cols);
+            boolMxN mat = arena.boolMat(rows, cols);
 
             int len = rows * cols;
 
@@ -113,7 +113,7 @@ public class BoolIndexingTests
             int rows = 5;
             int cols = 7;
 
-            boolMxN mat = arena.BoolMatrix(rows, cols);
+            boolMxN mat = arena.boolMat(rows, cols);
 
             // Forward-fill a distinct-enough pattern via the plain [r, c] oracle.
             for (int r = 0; r < rows; r++)
@@ -155,7 +155,7 @@ public class BoolIndexingTests
         {
             int dim = 16;
 
-            boolN orig = arena.BoolVector(dim);
+            boolN orig = arena.boolVec(dim);
             for (int i = 0; i < dim; i++)
                 orig[i] = (i % 2 == 0);
 

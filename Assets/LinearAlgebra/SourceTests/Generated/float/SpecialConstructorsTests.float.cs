@@ -95,7 +95,7 @@ public class floatSpecialConstructorsTests {
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var v = arena.floatBasisVector(10, 0);
+            var v = arena.floatBasisVec(10, 0);
 
             Assert.IsTrue(v[0] == (float)1);
 
@@ -103,7 +103,7 @@ public class floatSpecialConstructorsTests {
                 Assert.IsTrue(v[i] == (float)0);
             }
 
-            v = arena.floatBasisVector(10, 9);
+            v = arena.floatBasisVec(10, 9);
 
             Assert.IsTrue(v[9] == (float)1);
 
@@ -118,7 +118,7 @@ public class floatSpecialConstructorsTests {
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var v = arena.floatIndexZeroVector(16);
+            var v = arena.floatIndexZeroVec(16);
 
             for(int i = 0; i < v.N; i++) {
                 Assert.IsTrue(v[i] == (float)i);
@@ -145,7 +145,7 @@ public class floatSpecialConstructorsTests {
 
             for (uint seed = 0; seed < 16; seed++)
             {
-                var v = arena.floatRandomUnitVector(16, 332*seed+17);
+                var v = arena.floatRandomUnitVec(16, 332*seed+17);
 
                 var len = floatNorms_OP.L2(in v);
 
@@ -161,7 +161,7 @@ public class floatSpecialConstructorsTests {
 
             for (uint seed = 0; seed < 16; seed++)
             {
-                var v = arena.floatRandomVector(16, -3f, 3f, 351*seed+19);
+                var v = arena.floatRandomVec(16, -3f, 3f, 351*seed+19);
 
                 for (int i = 0; i < v.N; i++)
                     Assert.IsFalse(v[i] < -(float)3 || v[i] > (float)3);
@@ -173,12 +173,12 @@ public class floatSpecialConstructorsTests {
         public void LinVec()
         {
             var arena = new Arena(Allocator.Persistent);
-            var v = arena.floatLinVector(16, (float)0, (float)15);
+            var v = arena.floatLinVec(16, (float)0, (float)15);
 
             for (int i = 0; i < v.N; i++)
                 Assert.IsTrue(math.abs(i- v[i]) < 0.0001f);
 
-            v = arena.floatLinVector(16, 15, 0);
+            v = arena.floatLinVec(16, 15, 0);
 
             for (int i = 0; i < v.N; i++)
                 Assert.IsTrue(math.abs((15f-i) - v[i]) < 0.0001f);
@@ -190,7 +190,7 @@ public class floatSpecialConstructorsTests {
         public void IndexZeroMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.floatIndexZeroMatrix(16, 16);
+            var m = arena.floatIndexZeroMat(16, 16);
 
             for(int i = 0; i < m.Length; i++)
                 Assert.IsTrue(m[i] == (float)i);
@@ -199,7 +199,7 @@ public class floatSpecialConstructorsTests {
         public void IndexOneMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.floatIndexOneMatrix(16, 16);
+            var m = arena.floatIndexOneMat(16, 16);
 
             for (int i = 0; i < m.Length; i++)
                 Assert.IsTrue(m[i] == (float)i + 1);
@@ -209,10 +209,10 @@ public class floatSpecialConstructorsTests {
         public void IdentityMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.floatIdentityMatrix(16);
+            var m = arena.floatIdentityMat(16);
 
-            Assert.IsTrue(Analysis_OP.IsDiagonal(in m));
-            Assert.IsTrue(Analysis_OP.IsIdentity(in m));
+            Assert.IsTrue(Analysis_OP.isDiagonal(in m));
+            Assert.IsTrue(Analysis_OP.isIdentity(in m));
 
             for (int i = 0; i < m.M_Rows; i++)
             for(int j = 0; j < m.N_Cols; j++)
@@ -229,9 +229,9 @@ public class floatSpecialConstructorsTests {
         public void DiagonalMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.floatDiagonalMatrix(16, 2f);
+            var m = arena.floatDiagonalMat(16, 2f);
             
-            Assert.IsTrue(Analysis_OP.IsDiagonal(in m));
+            Assert.IsTrue(Analysis_OP.isDiagonal(in m));
 
             for (int i = 0; i < m.M_Rows; i++)
             for (int j = 0; j < m.N_Cols; j++)
@@ -248,9 +248,9 @@ public class floatSpecialConstructorsTests {
         public void RandomDiagonalMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.floatRandomDiagonalMatrix(16, -3f, 3f);
+            var m = arena.floatRandomDiagonalMat(16, -3f, 3f);
 
-            Assert.IsTrue(Analysis_OP.IsDiagonal(in m));
+            Assert.IsTrue(Analysis_OP.isDiagonal(in m));
 
             for (int i = 0; i < m.M_Rows; i++)
             for (int j = 0; j < m.N_Cols; j++)
@@ -267,7 +267,7 @@ public class floatSpecialConstructorsTests {
         public void RandomMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.floatRandomMatrix(16, 16);
+            var m = arena.floatRandomMat(16, 16);
 
             for (int i = 0; i < m.M_Rows; i++)
             for (int j = 0; j < m.N_Cols; j++)
@@ -279,7 +279,7 @@ public class floatSpecialConstructorsTests {
         public void RandomRangeMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.floatRandomMatrix(16, 16, -6f, 6f);
+            var m = arena.floatRandomMat(16, 16, -6f, 6f);
 
             for (int i = 0; i < m.M_Rows; i++)
             for (int j = 0; j < m.N_Cols; j++)
@@ -291,15 +291,15 @@ public class floatSpecialConstructorsTests {
         public void RotationMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.floatRotationMatrix(16, 1, 14, math.PI/4f);
+            var m = arena.floatRotationMat(16, 1, 14, math.PI/4f);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in m, 0.00001f));
-            Assert.IsFalse(Analysis_OP.IsIdentity(in m, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
+            Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
             
             var mTm = float_OP.dot(m, m, true);
-            Analysis_OP.IsIdentity(in mTm, 0.00001f);
+            Analysis_OP.isIdentity(in mTm, 0.00001f);
 
-            m = arena.floatRotationMatrix(2, 0, 1, math.PI/4f);
+            m = arena.floatRotationMat(2, 0, 1, math.PI/4f);
 
             Assert.IsTrue(math.abs((float)0.70710678118654752440084436210485d - m[0, 0]) < 0.00001f);
             Assert.IsTrue(math.abs((float)0.70710678118654752440084436210485d - m[1, 1]) < 0.00001f);
@@ -312,15 +312,15 @@ public class floatSpecialConstructorsTests {
         public void PermutationMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var m = arena.floatPermutationMatrix(16, 1, 14);
+            var m = arena.floatPermutationMat(16, 1, 14);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in m, 0.00001f));
-            Assert.IsFalse(Analysis_OP.IsIdentity(in m, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
+            Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
 
             var mTm = float_OP.dot(m, m, true);
-            Analysis_OP.IsIdentity(in mTm, 0.00001f);
+            Analysis_OP.isIdentity(in mTm, 0.00001f);
 
-            m = arena.floatPermutationMatrix(2, 0, 1);
+            m = arena.floatPermutationMat(2, 0, 1);
 
             Assert.IsTrue(m[0, 0] == (float)0);
             Assert.IsTrue(m[1, 1] == (float)0);
@@ -333,17 +333,17 @@ public class floatSpecialConstructorsTests {
         public void HouseholderMat()
         {
             var arena = new Arena(Allocator.Persistent);
-            var v = arena.floatRandomUnitVector(16);
-            var m = arena.floatHouseholderMatrix(16, v);
+            var v = arena.floatRandomUnitVec(16);
+            var m = arena.floatHouseholderMat(16, v);
 
-            Assert.IsTrue(Analysis_OP.IsOrthogonal(in m, 0.00001f));
-            Assert.IsFalse(Analysis_OP.IsIdentity(in m, 0.00001f));
+            Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
+            Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
 
             var mTm = float_OP.dot(m, m, true);
-            Analysis_OP.IsIdentity(in mTm, 0.00001f);
+            Analysis_OP.isIdentity(in mTm, 0.00001f);
 
-            v = arena.floatBasisVector(2, 0);
-            m = arena.floatHouseholderMatrix(2, v);
+            v = arena.floatBasisVec(2, 0);
+            m = arena.floatHouseholderMat(2, v);
 
 
 

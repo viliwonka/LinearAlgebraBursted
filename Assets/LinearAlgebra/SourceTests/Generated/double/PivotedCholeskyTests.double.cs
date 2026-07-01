@@ -28,7 +28,7 @@ public class doublePivotedCholeskyTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var B = arena.doubleRandomMatrix(6, 4);
+            var B = arena.doubleRandomMat(6, 4);
             var A = Gram(in arena, in B);
             var L = arena.doubleMat(6);
             var P = new Pivot(6, Allocator.Persistent);
@@ -103,7 +103,7 @@ public class doublePivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 8;
-                var B = arena.doubleRandomMatrix(n, n, -1f, 1f, 6100 + t * 13);
+                var B = arena.doubleRandomMat(n, n, -1f, 1f, 6100 + t * 13);
                 var A = Gram(in arena, in B);
                 for (int d = 0; d < n; d++) A[d, d] += (double)n; // diagonal boost: well-conditioned SPD
 
@@ -121,7 +121,7 @@ public class doublePivotedCholeskyTests
                 RecordEq(P[0], argmaxDiag);
 
                 // exact solve: b = A xOrig => x == xOrig.
-                var xOrig = arena.doubleRandomVector(n, -3f, 3f, 71000 + t * 7);
+                var xOrig = arena.doubleRandomVec(n, -3f, 3f, 71000 + t * 7);
                 var b = double_OP.dot(A, xOrig);
                 var Lc = arena.doubleMat(n);
                 var Pc = new Pivot(n, Allocator.Persistent);
@@ -170,7 +170,7 @@ public class doublePivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 4;
-                var B = arena.doubleRandomMatrix(n, r, -1f, 1f, 8200 + t * 11);
+                var B = arena.doubleRandomMat(n, r, -1f, 1f, 8200 + t * 11);
                 var A = Gram(in arena, in B);
 
                 var L = arena.doubleMat(n);
@@ -182,7 +182,7 @@ public class doublePivotedCholeskyTests
                 AssertReconstruct(in A, in L, in P, rank, (double)1E-4f);
 
                 // xRange = A·w ∈ range(A); b = A·xRange => min-norm solution == xRange.
-                var w = arena.doubleRandomVector(n, -2f, 2f, 51000 + t * 5);
+                var w = arena.doubleRandomVec(n, -2f, 2f, 51000 + t * 5);
                 var xRange = double_OP.dot(A, w);
                 var b = double_OP.dot(A, xRange);
 
@@ -213,10 +213,10 @@ public class doublePivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 3;
-                var B = arena.doubleRandomMatrix(n, r, -1f, 1f, 3300 + t * 17);
+                var B = arena.doubleRandomMat(n, r, -1f, 1f, 3300 + t * 17);
                 var A = Gram(in arena, in B);
 
-                var xOrig = arena.doubleRandomVector(n, -2f, 2f, 42000 + t * 9);
+                var xOrig = arena.doubleRandomVec(n, -2f, 2f, 42000 + t * 9);
                 var b = double_OP.dot(A, xOrig);     // b ∈ range(A)
                 var bForResidual = b.Copy();
 
@@ -303,7 +303,7 @@ public class doublePivotedCholeskyTests
             RecordEq(rank, 0);
 
             // solve: x = 0 for any b.
-            var b = arena.doubleRandomVector(n, -1f, 1f, 999);
+            var b = arena.doubleRandomVec(n, -1f, 1f, 999);
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b);
             RecordBound(doubleNorms_OP.L2(in b), (double)1E-6f);
 
@@ -394,11 +394,11 @@ public class doublePivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 3;
-                var B = arena.doubleRandomMatrix(n, r, -1f, 1f, 2600 + t * 19);
+                var B = arena.doubleRandomMat(n, r, -1f, 1f, 2600 + t * 19);
                 var A = Gram(in arena, in B);
 
                 // arbitrary b, generically NOT in range(A) since rank r < n.
-                var b = arena.doubleRandomVector(n, -2f, 2f, 77000 + t * 13);
+                var b = arena.doubleRandomVec(n, -2f, 2f, 77000 + t * 13);
 
                 var L = arena.doubleMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
@@ -409,7 +409,7 @@ public class doublePivotedCholeskyTests
                 var Ax = double_OP.dot(A, b);
                 var AAx = double_OP.dot(A, Ax);
                 // recompute A b — b now holds x, so rebuild b from the same seed.
-                var bOrig = arena.doubleRandomVector(n, -2f, 2f, 77000 + t * 13);
+                var bOrig = arena.doubleRandomVec(n, -2f, 2f, 77000 + t * 13);
                 var Ab = double_OP.dot(A, bOrig);
 
                 double scale = doubleNorms_OP.L2(in Ab) + (double)1f;

@@ -206,7 +206,7 @@ public class fProxyStatsTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 5, n = 4;
-            var A = arena.fProxyRandomMatrix(m, n, -3f, 3f, 778899);
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 778899);
 
             var rDest = arena.fProxyVec(m);
             var cDest = arena.fProxyVec(n);

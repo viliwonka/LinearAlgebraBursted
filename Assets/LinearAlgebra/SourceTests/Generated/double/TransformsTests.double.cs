@@ -184,7 +184,7 @@ public class doubleTransformsTests
         void StandardizeRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(4, 5, -3f, 3f, 12345);
+            var A = arena.doubleRandomMat(4, 5, -3f, 3f, 12345);
             doubleStats_OP.standardizeRows(ref A);
 
             var rMean = doubleStats_OP.rowMean(in A);
@@ -201,7 +201,7 @@ public class doubleTransformsTests
         void StandardizeColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(5, 4, -3f, 3f, 67890);
+            var A = arena.doubleRandomMat(5, 4, -3f, 3f, 67890);
             doubleStats_OP.standardizeColumns(ref A);
 
             var cMean = doubleStats_OP.colMean(in A);
@@ -289,7 +289,7 @@ public class doubleTransformsTests
         void RescaleRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(4, 5, -3f, 3f, 222);
+            var A = arena.doubleRandomMat(4, 5, -3f, 3f, 222);
             doubleStats_OP.rescaleRows(ref A);
             var rMin = doubleStats_OP.rowMin(in A);
             var rMax = doubleStats_OP.rowMax(in A);
@@ -305,7 +305,7 @@ public class doubleTransformsTests
         void RescaleColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(5, 4, -3f, 3f, 333);
+            var A = arena.doubleRandomMat(5, 4, -3f, 3f, 333);
             double lo = 1f, hi = 3f;
             doubleStats_OP.rescaleColumns(ref A, lo, hi);
             var cMin = doubleStats_OP.colMin(in A);
@@ -338,7 +338,7 @@ public class doubleTransformsTests
         void CenterRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(4, 5, -5f, 5f, 444);
+            var A = arena.doubleRandomMat(4, 5, -5f, 5f, 444);
             doubleStats_OP.centerRows(ref A);
             var rMean = doubleStats_OP.rowMean(in A);
             for (int r = 0; r < 4; r++)
@@ -349,7 +349,7 @@ public class doubleTransformsTests
         void CenterColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(5, 4, -5f, 5f, 555);
+            var A = arena.doubleRandomMat(5, 4, -5f, 5f, 555);
             doubleStats_OP.centerColumns(ref A);
             var cMean = doubleStats_OP.colMean(in A);
             for (int c = 0; c < 4; c++)
@@ -394,7 +394,7 @@ public class doubleTransformsTests
         void MaxAbsRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(4, 5, -3f, 3f, 666);
+            var A = arena.doubleRandomMat(4, 5, -3f, 3f, 666);
             doubleStats_OP.maxAbsRows(ref A);
             for (int r = 0; r < 4; r++)
             {
@@ -408,7 +408,7 @@ public class doubleTransformsTests
         void MaxAbsColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(5, 4, -3f, 3f, 777);
+            var A = arena.doubleRandomMat(5, 4, -3f, 3f, 777);
             doubleStats_OP.maxAbsColumns(ref A);
             for (int c = 0; c < 4; c++)
             {
@@ -494,7 +494,7 @@ public class doubleTransformsTests
         void SoftmaxRows()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(4, 5, -2f, 2f, 888);
+            var A = arena.doubleRandomMat(4, 5, -2f, 2f, 888);
             doubleStats_OP.softmaxRows(ref A);
             var rSum = doubleStats_OP.rowSum(in A);
             for (int r = 0; r < 4; r++)
@@ -510,7 +510,7 @@ public class doubleTransformsTests
         void SoftmaxColumns()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(5, 4, -2f, 2f, 999);
+            var A = arena.doubleRandomMat(5, 4, -2f, 2f, 999);
             doubleStats_OP.softmaxColumns(ref A);
             var cSum = doubleStats_OP.colSum(in A);
             for (int c = 0; c < 4; c++)
@@ -551,7 +551,7 @@ public class doubleTransformsTests
         void NormalizeRowsL2()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(4, 5, -3f, 3f, 1212);
+            var A = arena.doubleRandomMat(4, 5, -3f, 3f, 1212);
             doubleNorms_OP.NormalizeRows(ref A, Norm.L2);
             var rL2 = doubleStats_OP.rowNormL2(in A);
             for (int r = 0; r < 4; r++)
@@ -563,7 +563,7 @@ public class doubleTransformsTests
         void NormalizeColumnsL1()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = arena.doubleRandomMatrix(5, 4, -3f, 3f, 3434);
+            var A = arena.doubleRandomMat(5, 4, -3f, 3f, 3434);
             doubleNorms_OP.NormalizeColumns(ref A, Norm.L1);
             var cL1 = doubleStats_OP.colNormL1(in A);
             for (int c = 0; c < 4; c++)

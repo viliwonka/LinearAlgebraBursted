@@ -37,8 +37,8 @@ namespace LinearAlgebra
         //
         // lowRankApprox still uses svdThin (full SVD + slice) internally — it stays EXACT (Eckart-Young).
         //
-        // The workspace (fProxySvdTruncated_WS) bundles all scratch; allocate ONCE via
-        // Arena.fProxySvdTruncated_WS(m, n, k, oversample) and reuse across same-shape calls.
+        // The workspace (fProxySVDTruncated_WS) bundles all scratch; allocate ONCE via
+        // Arena.fProxySVDTruncated_WS(m, n, k, oversample) and reuse across same-shape calls.
 
         /// <summary>
         /// GKL truncated SVD: the top-k singular triplets of A (m x n, m >= n) via Golub-Kahan-Lanczos
@@ -55,11 +55,11 @@ namespace LinearAlgebra
         /// are set to 0, Uk/Vk columns zeroed. The residual |β_last·P[p-1,t]| / (σ₀+ε) is also checked
         /// against 8·√ε; if it exceeds this tolerance, converged is set false.
         /// <paramref name="ws"/> is the GKL scratch; size it with
-        /// Arena.fProxySvdTruncated_WS(m, n, k, oversample) using the SAME k and oversample.
+        /// Arena.fProxySVDTruncated_WS(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
-                                        bool partialReorth, ref fProxySvdTruncated_WS ws, out bool converged)
+                                        bool partialReorth, ref fProxySVDTruncated_WS ws, out bool converged)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -523,29 +523,29 @@ namespace LinearAlgebra
         /// <summary>svdTruncated (ref workspace) with default partialReorth=true.</summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
-                                        ref fProxySvdTruncated_WS ws, out bool converged)
+                                        ref fProxySVDTruncated_WS ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
 
         /// <summary>svdTruncated (ref workspace) with default maxIter (75) and partialReorth=true.</summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed,
-                                        ref fProxySvdTruncated_WS ws, out bool converged)
+                                        ref fProxySVDTruncated_WS ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, ref ws, out converged);
 
         /// <summary>svdTruncated (ref workspace) with default seed and maxIter (75) and partialReorth=true.</summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample,
-                                        ref fProxySvdTruncated_WS ws, out bool converged)
+                                        ref fProxySVDTruncated_WS ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
         /// svdTruncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12))
         /// and partialReorth=true.
-        /// Pass a workspace from Arena.fProxySvdTruncated_WS(m, n, k) (no oversample overload)
+        /// Pass a workspace from Arena.fProxySVDTruncated_WS(m, n, k) (no oversample overload)
         /// which uses the same generous formula.
         /// </summary>
         public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
-                                        int k, ref fProxySvdTruncated_WS ws, out bool converged)
+                                        int k, ref fProxySVDTruncated_WS ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
@@ -560,7 +560,7 @@ namespace LinearAlgebra
             if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
             if (oversample < 0) throw new ArgumentException("svdTruncated: oversample must be >= 0");
             int p = math.min(k + oversample, n);
-            var ws = new fProxySvdTruncated_WS
+            var ws = new fProxySVDTruncated_WS
             {
                 UL     = A.tempfProxyMat(p, m),
                 VL     = A.tempfProxyMat(p + 1, n),
@@ -568,7 +568,7 @@ namespace LinearAlgebra
                 eB     = A.tempfProxyVec(p),
                 UtB    = A.tempfProxyMat(p, p),
                 VtB    = A.tempfProxyMat(p, p),
-                BsvdWs = new fProxySvdFull_WS
+                BsvdWs = new fProxySVDFull_WS
                 {
                     U = A.tempfProxyMat(p, p),
                     S = A.tempfProxyVec(p),
@@ -597,7 +597,7 @@ namespace LinearAlgebra
             if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
             if (oversample < 0) throw new ArgumentException("svdTruncated: oversample must be >= 0");
             int p = math.min(k + oversample, n);
-            var ws = new fProxySvdTruncated_WS
+            var ws = new fProxySVDTruncated_WS
             {
                 UL     = A.tempfProxyMat(p, m),
                 VL     = A.tempfProxyMat(p + 1, n),
@@ -605,7 +605,7 @@ namespace LinearAlgebra
                 eB     = A.tempfProxyVec(p),
                 UtB    = A.tempfProxyMat(p, p),
                 VtB    = A.tempfProxyMat(p, p),
-                BsvdWs = new fProxySvdFull_WS
+                BsvdWs = new fProxySVDFull_WS
                 {
                     U = A.tempfProxyMat(p, p),
                     S = A.tempfProxyVec(p),
@@ -632,7 +632,7 @@ namespace LinearAlgebra
             int n = A.N_Cols;
             if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
             int p = math.min(n, math.max(2 * k, k + 12));
-            var ws = new fProxySvdTruncated_WS
+            var ws = new fProxySVDTruncated_WS
             {
                 UL     = A.tempfProxyMat(p, m),
                 VL     = A.tempfProxyMat(p + 1, n),
@@ -640,7 +640,7 @@ namespace LinearAlgebra
                 eB     = A.tempfProxyVec(p),
                 UtB    = A.tempfProxyMat(p, p),
                 VtB    = A.tempfProxyMat(p, p),
-                BsvdWs = new fProxySvdFull_WS
+                BsvdWs = new fProxySVDFull_WS
                 {
                     U = A.tempfProxyMat(p, p),
                     S = A.tempfProxyVec(p),
@@ -664,10 +664,10 @@ namespace LinearAlgebra
         /// Uses the FULL Golub-Kahan SVD (svdThin) internally — EXACT, not approximate. 0 &lt;= k &lt;= n.
         /// A is NOT modified. <paramref name="converged"/> is the SVD's flag (when false Ak is undefined).
         /// <paramref name="ws"/> is full-SVD scratch reused across calls; size it with
-        /// Arena.fProxySvdFull_WS(m, n).
+        /// Arena.fProxySVDFull_WS(m, n).
         /// </summary>
         public static void lowRankApprox(in fProxyMxN A, ref fProxyMxN Ak, int k,
-                                         ref fProxySvdFull_WS ws, out bool converged, int maxIter)
+                                         ref fProxySVDFull_WS ws, out bool converged, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -711,7 +711,7 @@ namespace LinearAlgebra
 
         /// <summary>lowRankApprox (ref workspace) with default maxIter (75).</summary>
         public static void lowRankApprox(in fProxyMxN A, ref fProxyMxN Ak, int k,
-                                         ref fProxySvdFull_WS ws, out bool converged)
+                                         ref fProxySVDFull_WS ws, out bool converged)
             => lowRankApprox(in A, ref Ak, k, ref ws, out converged, 75);
 
         /// <summary>
@@ -722,7 +722,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new fProxySvdFull_WS
+            var ws = new fProxySVDFull_WS
             {
                 U = A.tempfProxyMat(m, n),
                 S = A.tempfProxyVec(n),

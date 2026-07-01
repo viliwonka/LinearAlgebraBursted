@@ -49,7 +49,7 @@ public class doubleOrthoWorkspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.doubleRandomMatrix(M, N, -1f, 1f, 73101);
+            var A = arena.doubleRandomMat(M, N, -1f, 1f, 73101);
 
             // allocating reference
             var Qa = A.Copy();
@@ -62,8 +62,8 @@ public class doubleOrthoWorkspaceTests
             var u = arena.doubleVec(M);
             Ortho_OP.qrDecomposition(ref Qb, ref Rb, ref u);
 
-            Assert.IsTrue(Analysis_OP.IsZero(Qa - Qb, Tol()));
-            Assert.IsTrue(Analysis_OP.IsZero(Ra - Rb, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Qa - Qb, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(Ra - Rb, Tol()));
 
             arena.Dispose();
         }
@@ -74,12 +74,12 @@ public class doubleOrthoWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 16;
-            var A0 = arena.doubleRandomMatrix(dim, dim, -1f, 1f, 51237);
+            var A0 = arena.doubleRandomMat(dim, dim, -1f, 1f, 51237);
             // make well-conditioned
             for (int d = 0; d < dim; d++)
                 A0[d, d] += 5f;
 
-            var xOrig = arena.doubleRandomVector(dim, -3f, 3f, 99001);
+            var xOrig = arena.doubleRandomVec(dim, -3f, 3f, 99001);
 
             // allocating reference (qrDirectSolve destroys A and b, so use fresh copies)
             var Aa = A0.Copy();
@@ -94,24 +94,24 @@ public class doubleOrthoWorkspaceTests
             var u = arena.doubleVec(dim);
             Ortho_OP.qrDirectSolve(ref Ab, ref bb, ref xb, ref u);
 
-            Assert.IsTrue(Analysis_OP.IsZero(xa - xb, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(xa - xb, Tol()));
 
             arena.Dispose();
         }
 
-        // Solvers.SolveQR (precomputed-QR path): the ref-dest overload must recover xOrig from a
+        // Solvers.solveQR (precomputed-QR path): the ref-dest overload must recover xOrig from a
         // consistent b = A xOrig (square M==N, or tall/overdetermined M>N), and the allocating
         // convenience must agree with it bit-for-bit. xOrig has length N (= Q.N_Cols).
         void SolveQRSolve(int M, int N)
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.doubleRandomMatrix(M, N, -1f, 1f, 33417);
+            var A = arena.doubleRandomMat(M, N, -1f, 1f, 33417);
             for (int d = 0; d < N; d++)   // well-conditioned columns
                 A[d, d] += 5f;
 
-            var xOrig = arena.doubleRandomVector(N, -3f, 3f, 60221);
-            var b = double_OP.dot(A, xOrig);   // consistent RHS; read-only in SolveQR, reusable
+            var xOrig = arena.doubleRandomVec(N, -3f, 3f, 60221);
+            var b = double_OP.dot(A, xOrig);   // consistent RHS; read-only in solveQR, reusable
 
             // Precompute QR of A (qrDecomposition overwrites Q with the orthogonal factor)
             var Q = A.Copy();
@@ -120,12 +120,12 @@ public class doubleOrthoWorkspaceTests
 
             // ref-destination overload recovers x (length N)
             var x = arena.doubleVec(N);
-            Solvers.SolveQR(ref Q, ref R, ref b, ref x);
-            Assert.IsTrue(Analysis_OP.IsZero(x - xOrig, SolveTol()));
+            Solvers.solveQR(ref Q, ref R, ref b, ref x);
+            Assert.IsTrue(Analysis_OP.isZero(x - xOrig, SolveTol()));
 
             // allocating convenience must match the ref form exactly (same kernel)
-            var xc = Solvers.SolveQR(ref Q, ref R, ref b);
-            Assert.IsTrue(Analysis_OP.IsZero(xc - x, Tol()));
+            var xc = Solvers.solveQR(ref Q, ref R, ref b);
+            Assert.IsTrue(Analysis_OP.isZero(xc - x, Tol()));
 
             arena.Dispose();
         }
@@ -170,7 +170,7 @@ public class doubleOrthoWorkspaceTests
         finally { arena.Dispose(); }
     }
 
-    // SolveQR ref-dest: destination x of the wrong length must throw (Solvers guard x.N != Q.N_Cols).
+    // solveQR ref-dest: destination x of the wrong length must throw (Solvers guard x.N != Q.N_Cols).
     [Test]
     public void SolveQR_BadDestSize_Throws()
     {
@@ -185,12 +185,12 @@ public class doubleOrthoWorkspaceTests
 
             var b = arena.doubleVec(4);
             var badX = arena.doubleVec(3);   // must be length 4 (Q.N_Cols)
-            Assert.Throws<ArgumentException>(() => Solvers.SolveQR(ref Q, ref R, ref b, ref badX));
+            Assert.Throws<ArgumentException>(() => Solvers.solveQR(ref Q, ref R, ref b, ref badX));
         }
         finally { arena.Dispose(); }
     }
 
-    // SolveQR ref-dest: x must not alias b (the underlying ref-dest vec·mat dot guards this).
+    // solveQR ref-dest: x must not alias b (the underlying ref-dest vec·mat dot guards this).
     [Test]
     public void SolveQR_DestAliasesB_Throws()
     {
@@ -205,7 +205,7 @@ public class doubleOrthoWorkspaceTests
 
             var b = arena.doubleVec(4);
             var aliasB = b;   // shares b's buffer; length 4 == Q.N_Cols so it passes the dim guard
-            Assert.Throws<ArgumentException>(() => Solvers.SolveQR(ref Q, ref R, ref b, ref aliasB));
+            Assert.Throws<ArgumentException>(() => Solvers.solveQR(ref Q, ref R, ref b, ref aliasB));
         }
         finally { arena.Dispose(); }
     }
