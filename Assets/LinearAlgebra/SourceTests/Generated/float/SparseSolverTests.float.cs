@@ -32,6 +32,16 @@ public class floatSparseSolverTests
             BlockJacobiApplyHandComputed,
             WarmStart,
             PcgNonSpdPreconditionerBreaksDown,
+
+            // ---- Phase 3: MINRES / BiCGSTAB / CGLS / LSQR ----
+            MinresIndefiniteDenseAndBSM,
+            MinresSpdMatchesCG,
+            BiCGStabNonSymmetricMatchesLU,
+            CglsOverdeterminedConsistentDenseAndBSM,
+            LsqrOverdeterminedConsistentDenseAndBSM,
+            CglsInconsistentMatchesQR,
+            LsqrInconsistentMatchesQR,
+            CglsLsqrUnderdeterminedConsistent,
         }
 
         public TestType Type;
@@ -41,6 +51,29 @@ public class floatSparseSolverTests
         // that comparing two INDEPENDENTLY-converged solutions (each accurate only to about
         // Consts.floatSqrtEps, not machine epsilon) doesn't false-fail.
         static float Tol() => 1e-3f;
+
+        // Looser threshold for the Phase-3 solvers' cross-checks. These compare TWO
+        // independently-converged iterative solutions (or an iterative solution against a direct
+        // one) on INDEFINITE / RECTANGULAR / ILL-conditioned systems, whose per-component absolute
+        // error can be a few times Consts.floatSqrtEps*scale -- looser than the SPD-CG cases above.
+        // The spec explicitly allows loosening to 1e-2f|1e-5 for exactly these iterative-vs-direct
+        // comparisons rather than fighting flaky tolerances.
+        static float LooseTol() => 1e-2f;
+
+        // Least-squares optimality: the NORMAL-EQUATION residual ||A^T(A x - b)|| must vanish
+        // relative to the fixed scale ||A^T b|| (mirrors cgls/lsqr's own convergence reference).
+        // This -- NOT ||A x - b|| ~= 0 -- is the correct acceptance criterion for an inconsistent
+        // (overdetermined) system, whose residual A x - b is left orthogonal to range(A), nonzero.
+        static void AssertLeastSquaresOptimal(in floatMxN A, in floatN x, in floatN b, float relTol)
+        {
+            var Ax  = Linear_OP.dot(A, x);
+            var res = Ax - b;                 // r = A x - b     (length m)
+            var atr = Linear_OP.dot(res, A);  // A^T r           (length n)  -- vector*matrix == A^T r
+            var atb = Linear_OP.dot(b, A);    // A^T b           (scale reference)
+            float atrNorm = math.sqrt(Linear_OP.dot(atr, atr));
+            float atbNorm = math.sqrt(Linear_OP.dot(atb, atb));
+            Assert.IsTrue(atrNorm <= relTol * atbNorm + relTol);
+        }
 
         public void Execute()
         {
@@ -54,6 +87,15 @@ public class floatSparseSolverTests
                 case TestType.BlockJacobiApplyHandComputed: BlockJacobiApplyHandComputed(); break;
                 case TestType.WarmStart: WarmStart(); break;
                 case TestType.PcgNonSpdPreconditionerBreaksDown: PcgNonSpdPreconditionerBreaksDown(); break;
+
+                case TestType.MinresIndefiniteDenseAndBSM: MinresIndefiniteDenseAndBSM(); break;
+                case TestType.MinresSpdMatchesCG: MinresSpdMatchesCG(); break;
+                case TestType.BiCGStabNonSymmetricMatchesLU: BiCGStabNonSymmetricMatchesLU(); break;
+                case TestType.CglsOverdeterminedConsistentDenseAndBSM: CglsOverdeterminedConsistentDenseAndBSM(); break;
+                case TestType.LsqrOverdeterminedConsistentDenseAndBSM: LsqrOverdeterminedConsistentDenseAndBSM(); break;
+                case TestType.CglsInconsistentMatchesQR: CglsInconsistentMatchesQR(); break;
+                case TestType.LsqrInconsistentMatchesQR: LsqrInconsistentMatchesQR(); break;
+                case TestType.CglsLsqrUnderdeterminedConsistent: CglsLsqrUnderdeterminedConsistent(); break;
             }
         }
 
@@ -409,6 +451,281 @@ public class floatSparseSolverTests
 
             arena.Dispose();
         }
+
+        // =================================================================================
+        // Phase 3 correctness cases
+        // =================================================================================
+
+        // ---- MINRES on a symmetric INDEFINITE system (dense + BSM agree) -----------------
+        //
+        // Laplacian1D (SPD, diag 2 / off-diag -1) shifted by -2 on the diagonal: eigenvalues
+        // become 2-2cos(k*pi/(n+1)) - 2 = -2cos(k*pi/(n+1)) for k=1..n, which straddle 0 -> a
+        // genuinely mixed-sign (symmetric indefinite) A. dim=16 -> n+1=17 is odd, so k=(n+1)/2
+        // is non-integer and NO eigenvalue is exactly 0 (A stays nonsingular). MINRES handles
+        // this cleanly where CG's p.Ap>0 curvature requirement would break down.
+        void MinresIndefiniteDenseAndBSM()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 16;
+            var A = arena.floatLaplacian1D(dim);
+            for (int i = 0; i < dim; i++)
+                A[i, i] -= (float)2;          // shift diag 2 -> 0: mixed-sign spectrum, indefinite
+
+            var b = arena.floatRandomVec(dim, -1f, 1f, 31001);
+
+            var xDense = arena.floatVec(dim);
+            bool okDense = Solvers.minres(in A, in b, ref xDense, 4 * dim, Consts.floatSqrtEps);
+            Assert.IsTrue(okDense);
+
+            var Ax = Linear_OP.dot(A, xDense);
+            AssertVecEq(in Ax, in b, LooseTol());          // A nonsingular -> unique solution, A x ~= b
+
+            // Same system as a 1x1-block BSM: minres(BSM) must agree with minres(dense).
+            var bsm = DenseToBSM1x1(ref arena, in A, 3 * dim);   // tridiagonal (shifted diag=0 dropped)
+            var xBsm = arena.floatVec(dim);
+            bool okBsm = Solvers.minres(in bsm, in b, ref xBsm, 4 * dim, Consts.floatSqrtEps);
+            Assert.IsTrue(okBsm);
+            AssertVecEq(in xDense, in xBsm, LooseTol());
+
+            var AxBsm = Sparse_OP.spMV(in bsm, in xBsm);
+            AssertVecEq(in AxBsm, in b, LooseTol());
+
+            // NOTE (spec nice-to-have, NOT asserted): plain CG on this SAME indefinite A breaks
+            // down -- Solvers.conjugateGradient's p.Ap>0 curvature guard fails / returns a much
+            // worse residual. MINRES succeeding where CG cannot is the whole point of this case;
+            // asserting CG's failure mode is fiddly and left as a documented expectation.
+
+            arena.Dispose();
+        }
+
+        // ---- MINRES on a plain SPD system agrees with CG (dense + BSM) --------------------
+        void MinresSpdMatchesCG()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 12;
+            var A = BuildDenseSPD(ref arena, dim, 32001);
+            var b = arena.floatRandomVec(dim, -1f, 1f, 32002);
+
+            var xCG = arena.floatVec(dim);
+            bool okCG = Solvers.conjugateGradient(in A, in b, ref xCG, 4 * dim, Consts.floatSqrtEps);
+            Assert.IsTrue(okCG);
+
+            var xMin = arena.floatVec(dim);
+            bool okMin = Solvers.minres(in A, in b, ref xMin, 4 * dim, Consts.floatSqrtEps);
+            Assert.IsTrue(okMin);
+            AssertVecEq(in xCG, in xMin, LooseTol());       // MINRES == CG on an SPD system
+
+            var Ax = Linear_OP.dot(A, xMin);
+            AssertVecEq(in Ax, in b, LooseTol());
+
+            // BSM minres agrees with dense minres.
+            var bsm = DenseToBSM1x1(ref arena, in A, dim * dim);
+            var xMinBsm = arena.floatVec(dim);
+            bool okMinBsm = Solvers.minres(in bsm, in b, ref xMinBsm, 4 * dim, Consts.floatSqrtEps);
+            Assert.IsTrue(okMinBsm);
+            AssertVecEq(in xMin, in xMinBsm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- BiCGSTAB on a NON-symmetric (diagonally-dominant) system --------------------
+        //
+        // Random off-diagonals in [-1,1], diagonal boosted to dim+1 so |A_ii| > sum_{j!=i}|A_ij|
+        // strictly -> nonsingular, unconditionally BiCGSTAB-friendly, and deliberately NOT
+        // symmetrized. Cross-checked against a dense DIRECT LU solve on the SAME matrix.
+        void BiCGStabNonSymmetricMatchesLU()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 8;
+            var A = arena.floatRandomMat(dim, dim, -1f, 1f, 33001);
+            for (int i = 0; i < dim; i++)
+                A[i, i] += (float)(dim + 1);   // strict diagonal dominance
+
+            var b = arena.floatRandomVec(dim, -1f, 1f, 33002);
+
+            var xBcg = arena.floatVec(dim);
+            bool okBcg = Solvers.biCGStab(in A, in b, ref xBcg, 4 * dim, Consts.floatSqrtEps);
+            Assert.IsTrue(okBcg);
+            var Ax = Linear_OP.dot(A, xBcg);
+            AssertVecEq(in Ax, in b, LooseTol());
+
+            // Direct LU reference on COPIES (luDecompositionInpl + luSolve are DESTRUCTIVE).
+            var LUcopy = A.Copy();
+            var pivot = new Pivot(dim, Allocator.Temp);
+            bool okLU = LU.luDecompositionInpl(ref LUcopy, ref pivot);
+            Assert.IsTrue(okLU);
+            var xLU = b.Copy();
+            LU.luSolve(ref LUcopy, in pivot, ref xLU);
+            AssertVecEq(in xBcg, in xLU, LooseTol());
+            pivot.Dispose();
+
+            // BSM form agrees with the dense BiCGSTAB solve.
+            var bsm = DenseToBSM1x1(ref arena, in A, dim * dim);
+            var xBcgBsm = arena.floatVec(dim);
+            bool okBcgBsm = Solvers.biCGStab(in bsm, in b, ref xBcgBsm, 4 * dim, Consts.floatSqrtEps);
+            Assert.IsTrue(okBcgBsm);
+            AssertVecEq(in xBcg, in xBcgBsm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- CGLS on an overdetermined CONSISTENT least-squares problem (dense + BSM) -----
+        //
+        // b = A*x_true exactly (b in range(A)) -> the least-squares solution is x_true, recovered
+        // exactly (within tolerance). m > n.
+        void CglsOverdeterminedConsistentDenseAndBSM()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.floatRandomMat(m, n, -1f, 1f, 34001);
+            var xTrue = arena.floatRandomVec(n, -1f, 1f, 34002);
+            var b = Linear_OP.dot(A, xTrue);      // consistent
+
+            var x = arena.floatVec(n);
+            bool ok = Solvers.cgls(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(ok);
+            AssertVecEq(in x, in xTrue, LooseTol());
+
+            var Ax = Linear_OP.dot(A, x);
+            AssertVecEq(in Ax, in b, LooseTol());
+
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var xBsm = arena.floatVec(n);
+            bool okBsm = Solvers.cgls(in bsm, in b, ref xBsm, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(okBsm);
+            AssertVecEq(in x, in xBsm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- LSQR on an overdetermined CONSISTENT least-squares problem (dense + BSM) ------
+        void LsqrOverdeterminedConsistentDenseAndBSM()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.floatRandomMat(m, n, -1f, 1f, 35001);
+            var xTrue = arena.floatRandomVec(n, -1f, 1f, 35002);
+            var b = Linear_OP.dot(A, xTrue);      // consistent
+
+            var x = arena.floatVec(n);
+            bool ok = Solvers.lsqr(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(ok);
+            AssertVecEq(in x, in xTrue, LooseTol());
+
+            var Ax = Linear_OP.dot(A, x);
+            AssertVecEq(in Ax, in b, LooseTol());
+
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var xBsm = arena.floatVec(n);
+            bool okBsm = Solvers.lsqr(in bsm, in b, ref xBsm, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(okBsm);
+            AssertVecEq(in x, in xBsm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- CGLS on an overdetermined INCONSISTENT problem: normal-equation optimality ---
+        //
+        // Random b generally NOT in range(A) -> ||A x - b|| does NOT go to 0. The correct
+        // acceptance criterion is ||A^T(A x - b)|| ~= 0 (residual orthogonal to range(A)),
+        // cross-checked against a dense QR least-squares solve on the SAME system.
+        void CglsInconsistentMatchesQR()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.floatRandomMat(m, n, -1f, 1f, 36001);
+            var b = arena.floatRandomVec(m, -1f, 1f, 36002);   // inconsistent
+
+            var x = arena.floatVec(n);
+            bool ok = Solvers.cgls(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(ok);
+
+            AssertLeastSquaresOptimal(in A, in x, in b, LooseTol());
+
+            // Dense QR least-squares reference on COPIES (qrDirectSolve is DESTRUCTIVE).
+            var A2 = A.Copy();
+            var b2 = b.Copy();
+            var xQR = arena.floatVec(n);
+            QR.qrDirectSolve(ref A2, ref b2, ref xQR);
+            AssertVecEq(in x, in xQR, LooseTol());
+
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var xBsm = arena.floatVec(n);
+            bool okBsm = Solvers.cgls(in bsm, in b, ref xBsm, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(okBsm);
+            AssertVecEq(in x, in xBsm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- LSQR on an overdetermined INCONSISTENT problem: normal-equation optimality ----
+        void LsqrInconsistentMatchesQR()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.floatRandomMat(m, n, -1f, 1f, 37001);
+            var b = arena.floatRandomVec(m, -1f, 1f, 37002);   // inconsistent
+
+            var x = arena.floatVec(n);
+            bool ok = Solvers.lsqr(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(ok);
+
+            AssertLeastSquaresOptimal(in A, in x, in b, LooseTol());
+
+            var A2 = A.Copy();
+            var b2 = b.Copy();
+            var xQR = arena.floatVec(n);
+            QR.qrDirectSolve(ref A2, ref b2, ref xQR);
+            AssertVecEq(in x, in xQR, LooseTol());
+
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var xBsm = arena.floatVec(n);
+            bool okBsm = Solvers.lsqr(in bsm, in b, ref xBsm, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(okBsm);
+            AssertVecEq(in x, in xBsm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- CGLS & LSQR on an underdetermined (m < n) CONSISTENT problem (nice-to-have) ---
+        //
+        // Wide A, b = A*x_gen (consistent) -> infinitely many exact solutions. Starting from
+        // x0 = 0, both CGLS and LSQR converge to the SAME (minimum-norm) solution. We assert the
+        // easy-to-verify properties -- A x ~= b and both solvers agree -- rather than the min-norm
+        // optimality itself (that weaker check is all this nice-to-have case claims).
+        void CglsLsqrUnderdeterminedConsistent()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 4, n = 10;
+            var A = arena.floatRandomMat(m, n, -1f, 1f, 38001);
+            var xGen = arena.floatRandomVec(n, -1f, 1f, 38002);
+            var b = Linear_OP.dot(A, xGen);      // consistent
+
+            var xC = arena.floatVec(n);
+            bool okC = Solvers.cgls(in A, in b, ref xC, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(okC);
+            var AxC = Linear_OP.dot(A, xC);
+            AssertVecEq(in AxC, in b, LooseTol());
+
+            var xL = arena.floatVec(n);
+            bool okL = Solvers.lsqr(in A, in b, ref xL, 8 * n, Consts.floatSqrtEps);
+            Assert.IsTrue(okL);
+            var AxL = Linear_OP.dot(A, xL);
+            AssertVecEq(in AxL, in b, LooseTol());
+
+            // Both start from x0=0 -> both land on the unique minimum-norm solution -> they agree.
+            AssertVecEq(in xC, in xL, LooseTol());
+
+            arena.Dispose();
+        }
     }
 
     // Deliberately non-SPD test-double preconditioner: z = M^-1 r := -r, so <r,z> = -||r||^2 <= 0.
@@ -455,6 +772,40 @@ public class floatSparseSolverTests
     [Test]
     public void PcgNonSpdPreconditionerBreaksDownTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.PcgNonSpdPreconditionerBreaksDown }.Run();
+
+    // ---- Phase 3 correctness entry points ----
+
+    [Test]
+    public void MinresIndefiniteDenseAndBSMTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.MinresIndefiniteDenseAndBSM }.Run();
+
+    [Test]
+    public void MinresSpdMatchesCGTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.MinresSpdMatchesCG }.Run();
+
+    [Test]
+    public void BiCGStabNonSymmetricMatchesLUTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.BiCGStabNonSymmetricMatchesLU }.Run();
+
+    [Test]
+    public void CglsOverdeterminedConsistentDenseAndBSMTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsOverdeterminedConsistentDenseAndBSM }.Run();
+
+    [Test]
+    public void LsqrOverdeterminedConsistentDenseAndBSMTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsqrOverdeterminedConsistentDenseAndBSM }.Run();
+
+    [Test]
+    public void CglsInconsistentMatchesQRTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsInconsistentMatchesQR }.Run();
+
+    [Test]
+    public void LsqrInconsistentMatchesQRTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsqrInconsistentMatchesQR }.Run();
+
+    [Test]
+    public void CglsLsqrUnderdeterminedConsistentTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsLsqrUnderdeterminedConsistent }.Run();
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
 
@@ -651,6 +1002,114 @@ public class floatSparseSolverTests
             var z = arena.floatVec(dim);
             Assert.Throws<ArgumentException>(() =>
                 Solvers.pcg(in A, in M, in b, ref xAlias, ref r, ref p, ref Ap, ref z, dim, Consts.floatSqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // ---- Phase 3 guard / aliasing cases (managed thread; Assert.Throws can't run in Burst) ----
+    //
+    // MINRES/BiCGSTAB/CGLS/LSQR share cg/pcg's "every vector argument must be a distinct buffer"
+    // contract, enforced up front by RequireDistinctBuffers before any computation -- so the
+    // operator matrix's contents are irrelevant and a bare zeroed floatMat suffices. 1-2 aliasing
+    // cases per solver (matching Phase 2's coverage) prove the guard fires; exhaustive pairwise
+    // coverage is not attempted.
+
+    [Test]
+    public void Minres_NonSquareDense_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.floatMat(3, 4); // non-square -> minres's A.Rows!=A.Cols guard fires first
+            var b = arena.floatVec(3);
+            var x = arena.floatVec(3);
+            var y  = arena.floatVec(3); var r1 = arena.floatVec(3); var r2 = arena.floatVec(3);
+            var v  = arena.floatVec(3); var w  = arena.floatVec(3);
+            var w1 = arena.floatVec(3); var w2 = arena.floatVec(3);
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, 3, Consts.floatSqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Minres_AliasingR1AndR2_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int dim = 4;
+            var A = arena.floatMat(dim, dim); // square; guard fires before A is read
+            var b = arena.floatRandomVec(dim, -1f, 1f, 39001);
+            var x = arena.floatVec(dim);
+            var y  = arena.floatVec(dim);
+            var r1 = arena.floatVec(dim);
+            var v  = arena.floatVec(dim);
+            var w  = arena.floatVec(dim);
+            var w1 = arena.floatVec(dim);
+            var w2 = arena.floatVec(dim);
+            var r2Alias = r1; // r2 aliases r1
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2Alias, ref v, ref w, ref w1, ref w2, dim, Consts.floatSqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void BiCGStab_AliasingXAndB_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int dim = 4;
+            var A = arena.floatMat(dim, dim);
+            var b = arena.floatRandomVec(dim, -1f, 1f, 39101);
+            var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
+            var r = arena.floatVec(dim); var rHat0 = arena.floatVec(dim); var p = arena.floatVec(dim);
+            var v = arena.floatVec(dim); var t = arena.floatVec(dim);
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.biCGStab(in A, in b, ref xAlias, ref r, ref rHat0, ref p, ref v, ref t, dim, Consts.floatSqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Cgls_AliasingRAndQ_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            int m = 5, n = 3;
+            var A = arena.floatMat(m, n);      // rectangular; guard fires before A is read
+            var b = arena.floatRandomVec(m, -1f, 1f, 39201);
+            var x = arena.floatVec(n);
+            var r = arena.floatVec(m);
+            var s = arena.floatVec(n);
+            var p = arena.floatVec(n);
+            var qAlias = r; // q aliases r (both length m -> passes the dimension checks, trips the guard)
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.cgls(in A, in b, ref x, ref r, ref s, ref p, ref qAlias, n, Consts.floatSqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Lsqr_AliasingUAndTmpM_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            int m = 5, n = 3;
+            var A = arena.floatMat(m, n);
+            var b = arena.floatRandomVec(m, -1f, 1f, 39301);
+            var x = arena.floatVec(n);
+            var u = arena.floatVec(m);
+            var v = arena.floatVec(n);
+            var w = arena.floatVec(n);
+            var tmpN = arena.floatVec(n);
+            var tmpMAlias = u; // tmpM aliases u (both length m)
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpMAlias, ref tmpN, n, Consts.floatSqrtEps));
         }
         finally { arena.Dispose(); }
     }

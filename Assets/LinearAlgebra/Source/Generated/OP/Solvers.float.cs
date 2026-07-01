@@ -2,6 +2,7 @@
 
 using System;
 using Unity.Collections;
+using Unity.Mathematics;
 using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
@@ -507,6 +508,779 @@ namespace LinearAlgebra
         public static bool pcg(in floatBSM A, in floatBlockJacobi M, in floatN b, ref floatN x)
         {
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+        }
+
+        // ===================================================================================
+        // Phase 3: MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), CGLS/LSQR
+        // (rectangular least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/
+        // pcg&lt;TOp,TPre&gt; above -- see cg&lt;TOp&gt;'s doc comment for the shared "why an
+        // up-front aliasing guard" rationale. These four solvers carry more scratch vectors than
+        // cg/pcg (6-9 vs 3-4), so their guards use RequireDistinctBuffers (a small loop-based
+        // helper) instead of a hand-expanded OR chain -- see that helper's doc comment.
+        // ===================================================================================
+
+        /// <summary>
+        /// Zero-alloc MINRES (Paige-Saunders) solver for symmetric systems A x = b, generic over
+        /// <see cref="IfloatLinearOperator"/> (Burst-monomorphized static dispatch, no vtable).
+        /// Unlike <see cref="cg{TOp}"/>, A need NOT be positive definite -- MINRES minimizes the
+        /// 2-norm residual ‖b-Ax‖ over the same Krylov subspace via a short Lanczos recurrence
+        /// plus an incrementally-updated QR factorization (Givens rotations) of the resulting
+        /// tridiagonal system, so it converges cleanly on symmetric INDEFINITE (and singular/
+        /// semidefinite) systems where CG's p·Ap&gt;0 curvature requirement breaks down. A MUST
+        /// be symmetric -- this is a caller precondition, not verified at runtime (same contract
+        /// as CG's "A must be SPD").
+        ///
+        /// Caller provides x (initial guess, overwritten with solution -- WARM-STARTABLE) and
+        /// seven scratch vectors (y, r1, r2, v, w, w1, w2, all length A.Rows) matching the
+        /// classic MINRES variable names (Paige &amp; Saunders 1975; Choi/Saunders' minres.m).
+        /// y/r1/r2 carry the 3-term Lanczos recurrence; v is the current normalized Lanczos
+        /// vector; w/w1/w2 carry the 3-term search-direction recurrence driven by the
+        /// Givens-rotated tridiagonal system. A well-known MINRES identity means the true
+        /// residual norm ‖b-Ax‖ falls out of the recurrence for free (the running <c>phibar</c>
+        /// variable) -- no extra dot product or matvec is needed to test convergence.
+        ///
+        /// Returns true if the residual falls within the relative tolerance (‖r‖ &lt;=
+        /// tolerance*‖b‖) inside maxIterations; false if not converged, or if the Lanczos
+        /// recurrence exactly exhausts the Krylov subspace short of tolerance (beta==0, an
+        /// exact-arithmetic invariant-subspace breakdown). On a false return x is undefined (it
+        /// may have been partially updated) -- only read x when the call returns true.
+        /// </summary>
+        public static bool minres<TOp>(in TOp A, in floatN b, ref floatN x,
+                                       ref floatN y, ref floatN r1, ref floatN r2, ref floatN v,
+                                       ref floatN w, ref floatN w1, ref floatN w2,
+                                       int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
+        {
+            if (A.Rows != A.Cols)
+                throw new ArgumentException("minres: A must be square");
+
+            if (b.N != A.Rows) throw new ArgumentException("minres: b.N must equal A.Rows");
+            if (x.N != A.Rows) throw new ArgumentException("minres: x.N must equal A.Rows");
+            if (y.N != A.Rows) throw new ArgumentException("minres: y.N must equal A.Rows");
+            if (r1.N != A.Rows) throw new ArgumentException("minres: r1.N must equal A.Rows");
+            if (r2.N != A.Rows) throw new ArgumentException("minres: r2.N must equal A.Rows");
+            if (v.N != A.Rows) throw new ArgumentException("minres: v.N must equal A.Rows");
+            if (w.N != A.Rows) throw new ArgumentException("minres: w.N must equal A.Rows");
+            if (w1.N != A.Rows) throw new ArgumentException("minres: w1.N must equal A.Rows");
+            if (w2.N != A.Rows) throw new ArgumentException("minres: w2.N must equal A.Rows");
+
+            if (maxIterations < 1)
+                throw new ArgumentException("minres: maxIterations must be >= 1");
+
+            unsafe
+            {
+                long* ptrs = stackalloc long[9];
+                ptrs[0] = (long)y.Data.Ptr;  ptrs[1] = (long)r1.Data.Ptr; ptrs[2] = (long)r2.Data.Ptr;
+                ptrs[3] = (long)v.Data.Ptr;  ptrs[4] = (long)w.Data.Ptr;  ptrs[5] = (long)w1.Data.Ptr;
+                ptrs[6] = (long)w2.Data.Ptr; ptrs[7] = (long)x.Data.Ptr;  ptrs[8] = (long)b.Data.Ptr;
+                RequireDistinctBuffers("minres: y/r1/r2/v/w/w1/w2/x/b must be distinct", ptrs, 9);
+            }
+
+            float bb = Linear_OP.dot(b, b);
+
+            if (bb == (float)0)
+            {
+                x.Data.CopyFrom(b.Data);
+                return true;
+            }
+
+            // r1 = b - A x
+            A.Apply(in x, ref y);                       // y = A x (temp use of y)
+            r1.Data.CopyFrom(b.Data);
+            r1.addScaledInpl((float)(-1), y);           // r1 = b - A x
+
+            float beta1 = math.sqrt(Linear_OP.dot(r1, r1));
+            float threshold = tolerance * tolerance * bb;
+
+            if (beta1 * beta1 <= threshold)
+                return true;
+
+            r2.Data.CopyFrom(r1.Data);
+
+            // Zero the 3-term search-direction history (w/w1/w2 start at 0 in exact MINRES).
+            for (int i = 0; i < A.Rows; i++) { w[i] = (float)0; w1[i] = (float)0; w2[i] = (float)0; }
+
+            float oldb = (float)0;
+            float beta = beta1;
+            float dbar = (float)0;
+            float epsln = (float)0;
+            float phibar = beta1;
+            float cs = (float)(-1);
+            float sn = (float)0;
+            float gammaFloor = Consts.floatEpsilon;
+
+            for (int k = 0; k < maxIterations; k++)
+            {
+                // ---- Lanczos step: extend the tridiagonalization by one vector ----
+                v.Data.CopyFrom(r2.Data);
+                v.divInpl(beta);                          // v = r2 / beta
+
+                A.Apply(in v, ref y);                      // y = A v
+
+                if (k >= 1)
+                    y.addScaledInpl(-(beta / oldb), r1);   // y -= (beta/oldb) r1
+
+                float alfa = Linear_OP.dot(v, y);
+                y.addScaledInpl(-(alfa / beta), r2);       // y -= (alfa/beta) r2
+
+                r1.Data.CopyFrom(r2.Data);
+                r2.Data.CopyFrom(y.Data);
+
+                oldb = beta;
+                beta = math.sqrt(Linear_OP.dot(r2, r2));
+
+                // ---- apply the PREVIOUS Givens rotation (cs,sn) to the new tridiagonal column ----
+                float oldeps = epsln;
+                float delta = cs * dbar + sn * alfa;
+                float gbar = sn * dbar - cs * alfa;
+                epsln = sn * beta;
+                dbar = -cs * beta;
+
+                // ---- compute the NEW Givens rotation that zeros the subdiagonal entry ----
+                float gamma = math.sqrt(gbar * gbar + beta * beta);
+                gamma = math.max(gamma, gammaFloor);
+                cs = gbar / gamma;
+                sn = beta / gamma;
+                float phi = cs * phibar;
+                phibar = sn * phibar;
+
+                // ---- update the 3-term search direction, then the solution ----
+                w1.Data.CopyFrom(w2.Data);
+                w2.Data.CopyFrom(w.Data);
+
+                w.Data.CopyFrom(v.Data);
+                w.addScaledInpl(-oldeps, w1);
+                w.addScaledInpl(-delta, w2);
+                w.divInpl(gamma);                          // w = (v - oldeps*w1 - delta*w2) / gamma
+
+                x.addScaledInpl(phi, w);
+
+                // phibar IS the true residual norm ‖b-Ax‖ at this step (MINRES identity) --
+                // no extra dot product needed.
+                if (phibar * phibar <= threshold)
+                    return true;
+
+                if (!(beta > (float)0))
+                    break; // Lanczos breakdown: invariant subspace exhausted, no further progress possible
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// MINRES over a dense <see cref="floatMxN"/> -- zero-alloc primitive. Forwards into
+        /// <see cref="minres{TOp}"/> via <see cref="floatDenseOperator"/>. See that method for
+        /// the actual loop and buffer semantics.
+        /// </summary>
+        public static bool minres(in floatMxN A, in floatN b, ref floatN x,
+                                  ref floatN y, ref floatN r1, ref floatN r2, ref floatN v,
+                                  ref floatN w, ref floatN w1, ref floatN w2,
+                                  int maxIterations, float tolerance)
+        {
+            return minres(new floatDenseOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+        }
+
+        /// <summary>MINRES over a dense matrix -- allocates seven scratch vectors from the arena.</summary>
+        public static bool minres(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        {
+            floatN y  = b.tempfloatVec(A.M_Rows);
+            floatN r1 = b.tempfloatVec(A.M_Rows);
+            floatN r2 = b.tempfloatVec(A.M_Rows);
+            floatN v  = b.tempfloatVec(A.M_Rows);
+            floatN w  = b.tempfloatVec(A.M_Rows);
+            floatN w1 = b.tempfloatVec(A.M_Rows);
+            floatN w2 = b.tempfloatVec(A.M_Rows);
+            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+        }
+
+        /// <summary>MINRES over a dense matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
+        public static bool minres(in floatMxN A, in floatN b, ref floatN x)
+        {
+            return minres(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// MINRES over a symmetric block-sparse (BSR) matrix -- zero-alloc primitive. Forwards
+        /// into <see cref="minres{TOp}"/> via <c>floatBSMOperator</c>.
+        /// </summary>
+        public static bool minres(in floatBSM A, in floatN b, ref floatN x,
+                                  ref floatN y, ref floatN r1, ref floatN r2, ref floatN v,
+                                  ref floatN w, ref floatN w1, ref floatN w2,
+                                  int maxIterations, float tolerance)
+        {
+            return minres(new floatBSMOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+        }
+
+        /// <summary>MINRES over a BSR matrix -- allocates seven scratch vectors from the arena.</summary>
+        public static bool minres(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        {
+            floatN y  = b.tempfloatVec(A.M_Rows);
+            floatN r1 = b.tempfloatVec(A.M_Rows);
+            floatN r2 = b.tempfloatVec(A.M_Rows);
+            floatN v  = b.tempfloatVec(A.M_Rows);
+            floatN w  = b.tempfloatVec(A.M_Rows);
+            floatN w1 = b.tempfloatVec(A.M_Rows);
+            floatN w2 = b.tempfloatVec(A.M_Rows);
+            return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+        }
+
+        /// <summary>MINRES over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
+        public static bool minres(in floatBSM A, in floatN b, ref floatN x)
+        {
+            return minres(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// Zero-alloc BiCGSTAB (van der Vorst 1992, stabilized Bi-Conjugate Gradient) solver for
+        /// NON-symmetric (general) square systems A x = b, generic over
+        /// <see cref="IfloatLinearOperator"/>. Short two-sided recurrence, flat O(n) memory (no
+        /// growing Krylov basis like GMRES) -- the non-symmetric counterpart to CG/MINRES, for
+        /// e.g. frictional-LCP or MNA-circuit operators.
+        ///
+        /// Caller provides x (initial guess, overwritten with solution -- WARM-STARTABLE) and
+        /// five scratch vectors r, rHat0, p, v, t (all length A.Rows). r doubles as the
+        /// intermediate "s" half-step residual from the classic two-half-step presentation (s = r
+        /// - alpha*v, updated into r in place -- the standard buffer-count reduction); rHat0 is
+        /// the fixed "shadow" residual (rHat0 = r0, chosen once at the start and never mutated
+        /// after).
+        ///
+        /// Returns true if the residual falls within the relative tolerance (‖r‖ &lt;=
+        /// tolerance*‖b‖) inside maxIterations; false on non-convergence or one of the standard
+        /// BiCGSTAB breakdowns (rho == 0, rHat0·v == 0, or omega == 0 -- A not amenable to
+        /// BiCGSTAB from this shadow residual, or numerical breakdown). On a false return x is
+        /// undefined (it may have been partially updated) -- only read x when the call returns
+        /// true.
+        /// </summary>
+        public static bool biCGStab<TOp>(in TOp A, in floatN b, ref floatN x,
+                                         ref floatN r, ref floatN rHat0, ref floatN p, ref floatN v, ref floatN t,
+                                         int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
+        {
+            if (A.Rows != A.Cols)
+                throw new ArgumentException("biCGStab: A must be square");
+
+            if (b.N != A.Rows) throw new ArgumentException("biCGStab: b.N must equal A.Rows");
+            if (x.N != A.Rows) throw new ArgumentException("biCGStab: x.N must equal A.Rows");
+            if (r.N != A.Rows) throw new ArgumentException("biCGStab: r.N must equal A.Rows");
+            if (rHat0.N != A.Rows) throw new ArgumentException("biCGStab: rHat0.N must equal A.Rows");
+            if (p.N != A.Rows) throw new ArgumentException("biCGStab: p.N must equal A.Rows");
+            if (v.N != A.Rows) throw new ArgumentException("biCGStab: v.N must equal A.Rows");
+            if (t.N != A.Rows) throw new ArgumentException("biCGStab: t.N must equal A.Rows");
+
+            if (maxIterations < 1)
+                throw new ArgumentException("biCGStab: maxIterations must be >= 1");
+
+            unsafe
+            {
+                long* ptrs = stackalloc long[7];
+                ptrs[0] = (long)r.Data.Ptr; ptrs[1] = (long)rHat0.Data.Ptr; ptrs[2] = (long)p.Data.Ptr;
+                ptrs[3] = (long)v.Data.Ptr; ptrs[4] = (long)t.Data.Ptr;
+                ptrs[5] = (long)x.Data.Ptr; ptrs[6] = (long)b.Data.Ptr;
+                RequireDistinctBuffers("biCGStab: r/rHat0/p/v/t/x/b must be distinct", ptrs, 7);
+            }
+
+            float bb = Linear_OP.dot(b, b);
+
+            if (bb == (float)0)
+            {
+                x.Data.CopyFrom(b.Data);
+                return true;
+            }
+
+            // r = b - A x
+            A.Apply(in x, ref v);                          // v = A x (temp use, overwritten below)
+            r.Data.CopyFrom(b.Data);
+            r.addScaledInpl((float)(-1), v);
+
+            float threshold = tolerance * tolerance * bb;
+
+            if (Linear_OP.dot(r, r) <= threshold)
+                return true;
+
+            rHat0.Data.CopyFrom(r.Data);
+
+            // p_0 = v_0 = 0 (standard BiCGSTAB init).
+            for (int i = 0; i < A.Rows; i++) { p[i] = (float)0; v[i] = (float)0; }
+
+            float rho = (float)1, alpha = (float)1, omega = (float)1;
+
+            for (int k = 0; k < maxIterations; k++)
+            {
+                float rhoNew = Linear_OP.dot(rHat0, r);
+
+                if (rhoNew == (float)0)
+                    return false; // serious breakdown: r has gone orthogonal to the shadow residual
+
+                float beta = (rhoNew / rho) * (alpha / omega);
+
+                p.addScaledInpl(-omega, v);                // p -= omega v      (still old p, old v)
+                p.scaleAddInpl(beta, r);                    // p = beta p + r
+
+                A.Apply(in p, ref v);                       // v = A p
+
+                float rv = Linear_OP.dot(rHat0, v);
+
+                if (rv == (float)0)
+                    return false; // breakdown: alpha undefined
+
+                alpha = rhoNew / rv;
+
+                r.addScaledInpl(-alpha, v);                 // r := s = r - alpha v
+
+                float ss = Linear_OP.dot(r, r);
+
+                if (ss <= threshold)
+                {
+                    // Early exit: the half-step residual s is already small enough -- finish
+                    // with x += alpha p (skipping the t = A s stabilization matvec entirely).
+                    x.addScaledInpl(alpha, p);
+                    return true;
+                }
+
+                A.Apply(in r, ref t);                       // t = A s   (r currently holds s)
+
+                float tt = Linear_OP.dot(t, t);
+
+                if (tt == (float)0)
+                    return false; // breakdown: omega undefined
+
+                omega = Linear_OP.dot(t, r) / tt;
+
+                if (omega == (float)0)
+                    return false; // breakdown: next iteration's beta would divide by zero
+
+                x.addScaledInpl(alpha, p);
+                x.addScaledInpl(omega, r);                  // r still holds s here
+
+                r.addScaledInpl(-omega, t);                 // r := s - omega t   (new residual)
+
+                float rr = Linear_OP.dot(r, r);
+
+                if (rr <= threshold)
+                    return true;
+
+                rho = rhoNew;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// BiCGSTAB over a dense <see cref="floatMxN"/> -- zero-alloc primitive. Forwards into
+        /// <see cref="biCGStab{TOp}"/> via <see cref="floatDenseOperator"/>.
+        /// </summary>
+        public static bool biCGStab(in floatMxN A, in floatN b, ref floatN x,
+                                    ref floatN r, ref floatN rHat0, ref floatN p, ref floatN v, ref floatN t,
+                                    int maxIterations, float tolerance)
+        {
+            return biCGStab(new floatDenseOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+        }
+
+        /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from the arena.</summary>
+        public static bool biCGStab(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        {
+            floatN r     = b.tempfloatVec(A.M_Rows);
+            floatN rHat0 = b.tempfloatVec(A.M_Rows);
+            floatN p     = b.tempfloatVec(A.M_Rows);
+            floatN v     = b.tempfloatVec(A.M_Rows);
+            floatN t     = b.tempfloatVec(A.M_Rows);
+            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+        }
+
+        /// <summary>BiCGSTAB over a dense matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
+        public static bool biCGStab(in floatMxN A, in floatN b, ref floatN x)
+        {
+            return biCGStab(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// BiCGSTAB over a block-sparse (BSR) matrix -- zero-alloc primitive. Forwards into
+        /// <see cref="biCGStab{TOp}"/> via <c>floatBSMOperator</c>.
+        /// </summary>
+        public static bool biCGStab(in floatBSM A, in floatN b, ref floatN x,
+                                    ref floatN r, ref floatN rHat0, ref floatN p, ref floatN v, ref floatN t,
+                                    int maxIterations, float tolerance)
+        {
+            return biCGStab(new floatBSMOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+        }
+
+        /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
+        public static bool biCGStab(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        {
+            floatN r     = b.tempfloatVec(A.M_Rows);
+            floatN rHat0 = b.tempfloatVec(A.M_Rows);
+            floatN p     = b.tempfloatVec(A.M_Rows);
+            floatN v     = b.tempfloatVec(A.M_Rows);
+            floatN t     = b.tempfloatVec(A.M_Rows);
+            return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+        }
+
+        /// <summary>BiCGSTAB over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
+        public static bool biCGStab(in floatBSM A, in floatN b, ref floatN x)
+        {
+            return biCGStab(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// Zero-alloc CGLS solver for RECTANGULAR least-squares systems: minimizes ‖Ax-b‖₂ for
+        /// possibly non-square A (over- or under-determined), generic over
+        /// <see cref="IfloatLinearOperator"/>. This is CG applied to the normal equations
+        /// AᵀA x = Aᵀb, but NEVER explicitly forms AᵀA -- every AᵀA-vector product is one
+        /// <see cref="IfloatLinearOperator.Apply"/> plus one
+        /// <see cref="IfloatLinearOperator.ApplyT"/>. The normal-equation residual s = Aᵀr is
+        /// recomputed FRESH from r = b-Ax every iteration (rather than updated incrementally via
+        /// s -= alpha·Aᵀq), the numerically-stable "CGLS" variant (Björck, "Numerical Methods for
+        /// Least Squares Problems", Algorithm 7.17) rather than the classic-but-drift-prone CGNR
+        /// update -- same op count (1 Apply + 1 ApplyT/iteration), just recomputed instead of
+        /// incrementally accumulated.
+        ///
+        /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
+        /// STARTABLE) and four scratch vectors: r, q (length A.Rows) and s, p (length A.Cols).
+        /// Converges when the normal-equation residual ‖Aᵀr‖ falls within the relative tolerance
+        /// (‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖, a fixed scale reference independent of x0, mirroring cg's
+        /// ‖b‖ reference). For a CONSISTENT system (b in range(A)) this drives r itself to zero
+        /// (exact recovery); for an INCONSISTENT system it converges to the least-squares
+        /// solution with r left orthogonal to range(A) (‖Aᵀr‖≈0, ‖r‖ generally nonzero -- the
+        /// normal-equations optimality condition).
+        ///
+        /// Returns false on non-convergence or non-positive curvature ‖Ap‖²&lt;=0 (breakdown,
+        /// mirrors cg's p·Ap&lt;=0 guard: p is in null(A), or p==0). On a false return x is
+        /// undefined -- only read x when the call returns true.
+        /// </summary>
+        public static bool cgls<TOp>(in TOp A, in floatN b, ref floatN x,
+                                     ref floatN r, ref floatN s, ref floatN p, ref floatN q,
+                                     int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
+        {
+            if (b.N != A.Rows) throw new ArgumentException("cgls: b.N must equal A.Rows");
+            if (x.N != A.Cols) throw new ArgumentException("cgls: x.N must equal A.Cols");
+            if (r.N != A.Rows) throw new ArgumentException("cgls: r.N must equal A.Rows");
+            if (q.N != A.Rows) throw new ArgumentException("cgls: q.N must equal A.Rows");
+            if (s.N != A.Cols) throw new ArgumentException("cgls: s.N must equal A.Cols");
+            if (p.N != A.Cols) throw new ArgumentException("cgls: p.N must equal A.Cols");
+
+            if (maxIterations < 1)
+                throw new ArgumentException("cgls: maxIterations must be >= 1");
+
+            unsafe
+            {
+                long* ptrs = stackalloc long[6];
+                ptrs[0] = (long)r.Data.Ptr; ptrs[1] = (long)s.Data.Ptr; ptrs[2] = (long)p.Data.Ptr;
+                ptrs[3] = (long)q.Data.Ptr; ptrs[4] = (long)x.Data.Ptr; ptrs[5] = (long)b.Data.Ptr;
+                RequireDistinctBuffers("cgls: r/s/p/q/x/b must be distinct", ptrs, 6);
+            }
+
+            // Fixed scale reference for the relative tolerance, independent of x0 (mirrors cg's
+            // bb = dot(b,b)): AtB = A^T b, atbSq = ||AtB||^2. s doubles as scratch for this
+            // one-off computation -- the main loop overwrites it every iteration from here on.
+            A.ApplyT(in b, ref s);
+            float atbSq = Linear_OP.dot(s, s);
+
+            if (atbSq == (float)0)
+            {
+                // A^T b == 0 -> x=0 is a valid least-squares minimizer regardless of warm start
+                // (mirrors cg's bb==0 shortcut: a deterministic, NaN-sanitizing exact answer).
+                for (int i = 0; i < x.N; i++) x[i] = (float)0;
+                return true;
+            }
+
+            float threshold = tolerance * tolerance * atbSq;
+
+            // r = b - A x
+            A.Apply(in x, ref q);                          // q = A x (temp use of q)
+            r.Data.CopyFrom(b.Data);
+            r.addScaledInpl((float)(-1), q);
+
+            // s = A^T r
+            A.ApplyT(in r, ref s);
+
+            float gamma = Linear_OP.dot(s, s);
+
+            if (gamma <= threshold)
+                return true;
+
+            p.Data.CopyFrom(s.Data);
+
+            for (int k = 0; k < maxIterations; k++)
+            {
+                A.Apply(in p, ref q);                       // q = A p
+
+                float delta = Linear_OP.dot(q, q);
+
+                if (!(delta > (float)0))                   // NaN-safe: also catches breakdown
+                    return false;
+
+                float alpha = gamma / delta;
+
+                x.addScaledInpl(alpha, p);
+                r.addScaledInpl(-alpha, q);
+
+                A.ApplyT(in r, ref s);                       // s = A^T r, recomputed fresh (stability)
+
+                float gammaNew = Linear_OP.dot(s, s);
+
+                if (gammaNew <= threshold)
+                    return true;
+
+                float beta = gammaNew / gamma;
+
+                p.scaleAddInpl(beta, s);                     // p = beta p + s
+
+                gamma = gammaNew;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// CGLS over a dense <see cref="floatMxN"/> (possibly rectangular) -- zero-alloc
+        /// primitive. Forwards into <see cref="cgls{TOp}"/> via <see cref="floatDenseOperator"/>.
+        /// </summary>
+        public static bool cgls(in floatMxN A, in floatN b, ref floatN x,
+                                ref floatN r, ref floatN s, ref floatN p, ref floatN q,
+                                int maxIterations, float tolerance)
+        {
+            return cgls(new floatDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+        }
+
+        /// <summary>CGLS over a dense matrix -- allocates four scratch vectors from the arena.</summary>
+        public static bool cgls(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        {
+            floatN r = b.tempfloatVec(A.M_Rows);
+            floatN s = b.tempfloatVec(A.N_Cols);
+            floatN p = b.tempfloatVec(A.N_Cols);
+            floatN q = b.tempfloatVec(A.M_Rows);
+            return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+        }
+
+        /// <summary>CGLS over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        public static bool cgls(in floatMxN A, in floatN b, ref floatN x)
+        {
+            return cgls(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
+        /// Forwards into <see cref="cgls{TOp}"/> via <c>floatBSMOperator</c>. This is the payoff
+        /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
+        /// operator, never forming AᵀA.
+        /// </summary>
+        public static bool cgls(in floatBSM A, in floatN b, ref floatN x,
+                                ref floatN r, ref floatN s, ref floatN p, ref floatN q,
+                                int maxIterations, float tolerance)
+        {
+            return cgls(new floatBSMOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+        }
+
+        /// <summary>CGLS over a BSR matrix -- allocates four scratch vectors from the arena.</summary>
+        public static bool cgls(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        {
+            floatN r = b.tempfloatVec(A.M_Rows);
+            floatN s = b.tempfloatVec(A.N_Cols);
+            floatN p = b.tempfloatVec(A.N_Cols);
+            floatN q = b.tempfloatVec(A.M_Rows);
+            return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+        }
+
+        /// <summary>CGLS over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        public static bool cgls(in floatBSM A, in floatN b, ref floatN x)
+        {
+            return cgls(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// Zero-alloc LSQR (Paige-Saunders 1982) solver for RECTANGULAR least-squares systems:
+        /// minimizes ‖Ax-b‖₂ for possibly non-square A, generic over
+        /// <see cref="IfloatLinearOperator"/>. Builds an implicit bidiagonalization of A via the
+        /// Golub-Kahan process (alternating <see cref="IfloatLinearOperator.Apply"/> /
+        /// <see cref="IfloatLinearOperator.ApplyT"/> calls) and folds it through an incremental
+        /// Givens-rotated QR factorization -- the same "short recurrence + running rotation"
+        /// shape as <see cref="minres{TOp}"/>, generalized to rectangular A. More robust than
+        /// <see cref="cgls{TOp}"/> on ill-conditioned A (the bidiagonalization never squares A's
+        /// condition number the way the normal equations implicitly do), at the same O(n+m)
+        /// memory and per-iteration cost (1 Apply + 1 ApplyT).
+        ///
+        /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
+        /// STARTABLE) and five scratch vectors: u, tmpM (length A.Rows) and v, w, tmpN (length
+        /// A.Cols). The normal-equation residual norm ‖Aᵀr‖ (arnorm) falls out of the recurrence
+        /// for free (no extra ApplyT call, a well-known LSQR identity) -- same convergence
+        /// contract as <see cref="cgls{TOp}"/>: converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖.
+        ///
+        /// Returns false on non-convergence or a total bidiagonalization breakdown (the current
+        /// alpha and beta both collapse to zero in the same step -- the Golub-Kahan recurrence
+        /// exhausted). On a false return x is undefined -- only read x when the call returns
+        /// true.
+        /// </summary>
+        public static bool lsqr<TOp>(in TOp A, in floatN b, ref floatN x,
+                                     ref floatN u, ref floatN v, ref floatN w,
+                                     ref floatN tmpM, ref floatN tmpN,
+                                     int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
+        {
+            if (b.N != A.Rows) throw new ArgumentException("lsqr: b.N must equal A.Rows");
+            if (x.N != A.Cols) throw new ArgumentException("lsqr: x.N must equal A.Cols");
+            if (u.N != A.Rows) throw new ArgumentException("lsqr: u.N must equal A.Rows");
+            if (tmpM.N != A.Rows) throw new ArgumentException("lsqr: tmpM.N must equal A.Rows");
+            if (v.N != A.Cols) throw new ArgumentException("lsqr: v.N must equal A.Cols");
+            if (w.N != A.Cols) throw new ArgumentException("lsqr: w.N must equal A.Cols");
+            if (tmpN.N != A.Cols) throw new ArgumentException("lsqr: tmpN.N must equal A.Cols");
+
+            if (maxIterations < 1)
+                throw new ArgumentException("lsqr: maxIterations must be >= 1");
+
+            unsafe
+            {
+                long* ptrs = stackalloc long[7];
+                ptrs[0] = (long)u.Data.Ptr; ptrs[1] = (long)v.Data.Ptr; ptrs[2] = (long)w.Data.Ptr;
+                ptrs[3] = (long)tmpM.Data.Ptr; ptrs[4] = (long)tmpN.Data.Ptr;
+                ptrs[5] = (long)x.Data.Ptr; ptrs[6] = (long)b.Data.Ptr;
+                RequireDistinctBuffers("lsqr: u/v/w/tmpM/tmpN/x/b must be distinct", ptrs, 7);
+            }
+
+            // Fixed scale reference for the relative tolerance (mirrors cgls's atbSq).
+            A.ApplyT(in b, ref tmpN);
+            float atbSq = Linear_OP.dot(tmpN, tmpN);
+
+            if (atbSq == (float)0)
+            {
+                for (int i = 0; i < x.N; i++) x[i] = (float)0;
+                return true;
+            }
+
+            float threshold = tolerance * tolerance * atbSq;
+
+            // u = b - A x ; beta = ||u||
+            A.Apply(in x, ref tmpM);
+            u.Data.CopyFrom(b.Data);
+            u.addScaledInpl((float)(-1), tmpM);
+
+            float beta = math.sqrt(Linear_OP.dot(u, u));
+
+            if (beta == (float)0)
+                return true; // x already exact (r = 0)
+
+            u.divInpl(beta);
+
+            // v = A^T u ; alpha = ||v||
+            A.ApplyT(in u, ref tmpN);
+            v.Data.CopyFrom(tmpN.Data);
+
+            float alpha = math.sqrt(Linear_OP.dot(v, v));
+
+            if (alpha == (float)0)
+                return true; // x already least-squares-stationary (A^T r = 0)
+
+            v.divInpl(alpha);
+
+            if ((alpha * beta) * (alpha * beta) <= threshold)
+                return true; // already within tolerance before the first bidiagonalization step
+
+            w.Data.CopyFrom(v.Data);
+
+            float phibar = beta;
+            float rhobar = alpha;
+
+            for (int k = 0; k < maxIterations; k++)
+            {
+                // ---- bidiagonalization step (Golub-Kahan) ----
+                A.Apply(in v, ref tmpM);
+                u.scaleAddInpl(-alpha, tmpM);              // u = -alpha*u + tmpM = A v - alpha u
+                beta = math.sqrt(Linear_OP.dot(u, u));
+                if (beta > (float)0) u.divInpl(beta);
+
+                A.ApplyT(in u, ref tmpN);
+                v.scaleAddInpl(-beta, tmpN);                // v = -beta*v + tmpN = A^T u - beta v
+                alpha = math.sqrt(Linear_OP.dot(v, v));
+                if (alpha > (float)0) v.divInpl(alpha);
+
+                // ---- Givens rotation folding (rhobar, beta) -> (rho, 0) ----
+                float rho = math.sqrt(rhobar * rhobar + beta * beta);
+
+                if (!(rho > (float)0))
+                    break; // total breakdown: rhobar and beta both zero
+
+                float c = rhobar / rho;
+                float sn = beta / rho;
+                float theta = sn * alpha;
+                rhobar = -c * alpha;
+                float phi = c * phibar;
+                phibar = sn * phibar;
+
+                // ---- update x using the OLD w, then update w ----
+                x.addScaledInpl(phi / rho, w);
+                w.scaleAddInpl(-theta / rho, v);             // w = -(theta/rho)*w + v
+
+                float arnorm = phibar * alpha * math.abs(c);
+
+                if (arnorm * arnorm <= threshold)
+                    return true;
+
+                if (beta == (float)0 || alpha == (float)0)
+                    break; // bidiagonalization breakdown: Krylov space exhausted, no further progress
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// LSQR over a dense <see cref="floatMxN"/> (possibly rectangular) -- zero-alloc
+        /// primitive. Forwards into <see cref="lsqr{TOp}"/> via <see cref="floatDenseOperator"/>.
+        /// </summary>
+        public static bool lsqr(in floatMxN A, in floatN b, ref floatN x,
+                                ref floatN u, ref floatN v, ref floatN w,
+                                ref floatN tmpM, ref floatN tmpN,
+                                int maxIterations, float tolerance)
+        {
+            return lsqr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>LSQR over a dense matrix -- allocates five scratch vectors from the arena.</summary>
+        public static bool lsqr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        {
+            floatN u    = b.tempfloatVec(A.M_Rows);
+            floatN v    = b.tempfloatVec(A.N_Cols);
+            floatN w    = b.tempfloatVec(A.N_Cols);
+            floatN tmpM = b.tempfloatVec(A.M_Rows);
+            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>LSQR over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        public static bool lsqr(in floatMxN A, in floatN b, ref floatN x)
+        {
+            return lsqr(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
+        /// Forwards into <see cref="lsqr{TOp}"/> via <c>floatBSMOperator</c>. This is the payoff
+        /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
+        /// operator, never forming AᵀA, with better ill-conditioned behavior than <see
+        /// cref="cgls{TOp}"/>.
+        /// </summary>
+        public static bool lsqr(in floatBSM A, in floatN b, ref floatN x,
+                                ref floatN u, ref floatN v, ref floatN w,
+                                ref floatN tmpM, ref floatN tmpN,
+                                int maxIterations, float tolerance)
+        {
+            return lsqr(new floatBSMOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>LSQR over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
+        public static bool lsqr(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        {
+            floatN u    = b.tempfloatVec(A.M_Rows);
+            floatN v    = b.tempfloatVec(A.N_Cols);
+            floatN w    = b.tempfloatVec(A.N_Cols);
+            floatN tmpM = b.tempfloatVec(A.M_Rows);
+            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>LSQR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
+        public static bool lsqr(in floatBSM A, in floatN b, ref floatN x)
+        {
+            return lsqr(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
         }
     }
 

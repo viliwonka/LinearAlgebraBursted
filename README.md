@@ -123,8 +123,9 @@ Here's a simple example:
 - **Types** — float, double, int, short, long, bool vectors & matrices
 - **Core ops** — dot, matrix multiply, transpose, outer product, element-wise, select, comparisons
 - **Decompositions** — LU, Cholesky, QR (all with pivoted variants), SVD
-- **Solvers** — direct, least-squares (over-determined), min-norm (under-determined), iterative (conjugate gradient)
+- **Solvers** — direct, least-squares (over-determined), min-norm (under-determined), iterative (CG/PCG, MINRES, BiCGSTAB, CGLS/LSQR)
 - **Eigen** — dominant eigenpair (power iteration), full symmetric (Jacobi), non-symmetric eigenvalues (Francis QR)
+- **Sparse** — block-sparse (BSR) matrices with rectangular blocks + a COO builder; block-Jacobi preconditioner; the iterative solvers run matrix-free on dense *or* sparse operands through a shared linear-operator interface
 - **Numerical LA** — norms, condition number, determinant, trace, rank
 - **Statistics** — mean, var/std, median, min/max, argmin/max, row/col reductions, covariance, correlation
 - **Random** — distribution samplers + structured/multivariate matrix generators (Gaussian, orthogonal, SPD, …)
@@ -147,7 +148,7 @@ Here's a simple example:
 **Not yet built / under design**
 - **Realtime** — a rolling window (ring buffer + zero-alloc moving average/covariance) exists, but the broader design is unsettled: frame-amortized solvers, resumable iterative state (CG/PCG stepping), online covariance / PCA, Kalman
 - **PCA convenience** — covariance → symmetric eigen → sorted components + explained variance
-- **Sparse matrix** (BSR)
+- **Sparse eigensolvers** — sparse power iteration / LOBPCG (Fiedler vector, low vibration modes, λ_min); symmetric upper-block BSR storage
 
 Vector/matrix views (slicing) were evaluated and intentionally dropped: a non-owning
 view can't feed the contiguous Burst kernels directly, so callers materialize anyway —

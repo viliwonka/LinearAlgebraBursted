@@ -4,10 +4,11 @@ namespace LinearAlgebra
     /// A linear operator y = A x, abstracted behind a Burst-friendly generic struct
     /// constraint (NOT a managed interface dispatch/vtable -- solvers are generic over
     /// <c>TOp : struct, IdoubleLinearOperator</c>, so Burst monomorphizes each concrete
-    /// operator into its own zero-cost specialization). Lets Krylov solvers (CG, and later
-    /// MINRES/BiCGSTAB/CGLS) be written ONCE and reused over both dense (<see
-    /// cref="doubleDenseOperator"/>) and block-sparse (<c>LinearAlgebra.Sparse.doubleBSMOperator</c>)
-    /// matrices without duplicating the solver loop.
+    /// operator into its own zero-cost specialization). Lets Krylov solvers (CG, PCG, MINRES,
+    /// BiCGSTAB, CGLS, LSQR -- see <c>Solvers</c>) be written ONCE and reused over both dense
+    /// (<see cref="doubleDenseOperator"/>) and block-sparse
+    /// (<c>LinearAlgebra.Sparse.doubleBSMOperator</c>) matrices without duplicating the solver
+    /// loop.
     /// Implement on a small, ideally-readonly struct holding only blittable fields (a value
     /// copy of the wrapped matrix/BSM struct) -- same Burst-functor contract as
     /// <see cref="IdoubleScalarFunction"/> / <see cref="IdoubleSampler"/>.
