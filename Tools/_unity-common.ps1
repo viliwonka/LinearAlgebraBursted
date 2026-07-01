@@ -53,12 +53,20 @@ function Clear-StaleLock {
 }
 
 function Invoke-Unity {
-  # Launches Unity in batchmode and BLOCKS until it exits. Uses Start-Process
-  # -Wait because the call operator (&) does not reliably wait on Unity.exe
-  # (a Windows GUI-subsystem app) and can race ahead of file writes.
+  # Launches Unity in batchmode and BLOCKS until it exits. We start WITHOUT
+  # -Wait (so we can optionally pin CPU affinity on the live process) and then
+  # WaitForExit() ourselves -- the call operator (&) does not reliably wait on
+  # Unity.exe (a Windows GUI-subsystem app) and can race ahead of file writes.
+  #
+  # AffinityMask (optional): a CPU affinity bitmask (over logical processors) to
+  # pin the Unity process to. 0 = don't pin (default; tests/regen use all cores).
+  # benchmark.ps1 passes a mask that keeps timing runs on ONE CCD, so single-
+  # thread numbers don't wobble between the V-Cache and frequency dies on a
+  # dual-CCD X3D part (results are unaffected -- this only stabilises timing).
   param(
     [Parameter(Mandatory)][string[]]$Arguments,
-    [Parameter(Mandatory)][string]$LogFile
+    [Parameter(Mandatory)][string]$LogFile,
+    [long]$AffinityMask = 0
   )
   $unity = Get-UnityPath
   Clear-StaleLock
@@ -69,7 +77,16 @@ function Invoke-Unity {
   $all = @("-batchmode", "-projectPath", $root, "-logFile", $LogFile) + $Arguments
   # -WindowStyle Hidden keeps the launched Unity.exe from grabbing foreground focus,
   # which otherwise kicks an exclusive-fullscreen game (e.g. CS2) out to the desktop.
-  $proc = Start-Process -FilePath $unity -ArgumentList $all -PassThru -Wait -WindowStyle Hidden
+  $proc = Start-Process -FilePath $unity -ArgumentList $all -PassThru -WindowStyle Hidden
+  if ($AffinityMask -ne 0) {
+    try {
+      $proc.ProcessorAffinity = [IntPtr][long]$AffinityMask
+      Write-Host ("Pinned Unity (PID {0}) to CPU affinity 0x{1:X}" -f $proc.Id, $AffinityMask)
+    } catch {
+      Write-Host "WARN: could not set processor affinity (0x$($AffinityMask.ToString('X'))): $_"
+    }
+  }
+  $proc.WaitForExit()
   return [int]$proc.ExitCode
 }
 
