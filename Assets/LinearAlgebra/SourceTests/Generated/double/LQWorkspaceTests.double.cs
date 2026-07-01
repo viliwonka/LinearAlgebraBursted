@@ -152,7 +152,7 @@ public class doubleLQWorkspaceTests
     // ---- mis-sized scratch guards (managed [Test]; run on a normal C# thread, outside a job) ----
 
     [Test]
-    public void LqDecomp_BadScratchT_Throws()
+    public void LqDecomp_BadScratchW_Throws()
     {
         var arena = new Arena(Allocator.Persistent);
         try
@@ -161,14 +161,14 @@ public class doubleLQWorkspaceTests
             var L = arena.doubleMat(4, 4);
             var Q = arena.doubleMat(4, 8);
             var ws = arena.doubleLQ_WS(4, 8);
-            ws.T = arena.doubleMat(8, 3);   // wrong: must be n x m = 8 x 4
+            ws.W = arena.doubleMat(3, 8);   // wrong: must be m x n = 4 x 8
             Assert.Throws<ArgumentException>(() => LQ.lqDecomposition(ref A, ref L, ref Q, ref ws));
         }
         finally { arena.Dispose(); }
     }
 
     [Test]
-    public void LqDecomp_BadScratchQrU_Throws()
+    public void LqDecomp_BadScratchV_Throws()
     {
         var arena = new Arena(Allocator.Persistent);
         try
@@ -177,7 +177,7 @@ public class doubleLQWorkspaceTests
             var L = arena.doubleMat(4, 4);
             var Q = arena.doubleMat(4, 8);
             var ws = arena.doubleLQ_WS(4, 8);
-            ws.qrU = arena.doubleVec(5);    // wrong: must be length n = 8
+            ws.v = arena.doubleVec(5);    // wrong: must be length n = 8
             Assert.Throws<ArgumentException>(() => LQ.lqDecomposition(ref A, ref L, ref Q, ref ws));
         }
         finally { arena.Dispose(); }
@@ -207,12 +207,9 @@ public class doubleLQWorkspaceTests
         try
         {
             var lqWs = arena.doubleLQ_WS(4, 8);
-            Assert.AreEqual(8, lqWs.T.M_Rows);
-            Assert.AreEqual(4, lqWs.T.N_Cols);
-            Assert.AreEqual(4, lqWs.Rqr.M_Rows);
-            Assert.AreEqual(4, lqWs.Rqr.N_Cols);
-            Assert.AreEqual(8, lqWs.qrU.N);
-            Assert.AreEqual(4, lqWs.qrW.N);
+            Assert.AreEqual(4, lqWs.W.M_Rows);
+            Assert.AreEqual(8, lqWs.W.N_Cols);
+            Assert.AreEqual(8, lqWs.v.N);
 
             var solveWs = arena.doubleLQMinNormSolve_WS(4, 8);
             Assert.AreEqual(4, solveWs.L.M_Rows);
@@ -220,8 +217,8 @@ public class doubleLQWorkspaceTests
             Assert.AreEqual(4, solveWs.Q.M_Rows);
             Assert.AreEqual(8, solveWs.Q.N_Cols);
             Assert.AreEqual(4, solveWs.y.N);
-            Assert.AreEqual(8, solveWs.LQWs.T.M_Rows);
-            Assert.AreEqual(4, solveWs.LQWs.T.N_Cols);
+            Assert.AreEqual(4, solveWs.LQWs.W.M_Rows);
+            Assert.AreEqual(8, solveWs.LQWs.W.N_Cols);
         }
         finally { arena.Dispose(); }
     }
