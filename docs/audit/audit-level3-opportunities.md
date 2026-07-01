@@ -3,6 +3,12 @@
 Scan of every dense kernel EXCEPT QR/LQ (both now blocked compact-WY, commits 4f04e76 / cc087c9).
 Ranked by payoff/effort. Line numbers are from `Assets/LinearAlgebra/CodeGen/TemplateSource/OP`.
 
+> **STATUS 2026-07-01.** SHIPPED since this scan: Cholesky POTRF (#2, d286658), LU GETRF (#4, 921bcc9),
+> and `formT` (compact-WY LARFT) consolidated into `Unsafe_OP` (e7b8ff2) so reductions can reuse it.
+> Also banked: accuracy sweep (7ef51bd) + small/non-square benchmarks (b7400f0). IN PROGRESS: SYTRD (#1,
+> values path first). NEXT per owner ("full send"): SYTRD eigenvector variant → GEBRD (#6, values path
+> first). Finding #6's original "off hot path" claim is CORRECTED below.
+
 ## Framing (two distinct wins)
 - **GEMM-amortization (~3-4×):** even where level-2 already vectorizes (rank-1 axpy in Cholesky/LU),
   the trailing update re-streams the whole trailing matrix each step; blocking amortizes into GEMM.
@@ -38,14 +44,27 @@ Already level-3 (no action): svdRandomized, StatsOP.covarianceInto, kmeans GEMM-
    `Eigen.fProxy.cs` `eigenvaluesQR` elmhes 897-942; the strided column update 937-938 (stride-N
    scalar, SIMD-hostile) is a smaller independent cleanup worth doing regardless. Full fix = algorithm
    swap (elmhes → Householder), nonsymmetric-eigenvalue path only.
-6. **Bidiag → GEBRD** — HIGH intrinsic / LOW real payoff (OFF HOT PATH) / HIGH effort.
-   `Bidiag.fProxy.cs` `applyHouseholderRight` 106-122 (the `Mv` reduction). BUT svdThin/svdValues/
-   svdTruncated do NOT use `Bidiag.bidiagonalize` — it's wired only to its own tests. Defer until it's
-   on a shipping path.
+6. **Bidiag → GEBRD** — HIGH intrinsic / MEDIUM real payoff (ON THE HOT PATH) / HIGH effort.
+   `Bidiag.fProxy.cs` `applyHouseholderRight` 106-122 (the `Mv` reduction).
+   ⚠️ **CORRECTION 2026-07-01:** the original claim here ("svdThin/svdValues do NOT use Bidiag — wired
+   only to tests") is WRONG — it conflated the `[Obsolete]` one-sided-Jacobi `svdDecomposition` with
+   `svdThin`. Verified from code: `svdThin` Phase 1 = `Bidiag.bidiagonalize` (SVD.fProxy.cs:401, both
+   alloc + workspace overloads); `svdValues` = `Bidiag.bidiagonalizeValues` (SVD.fProxy.cs:254). Both
+   are on the SVD hot path, and every full-SVD consumer (Solvers/Subspace/lowRankApprox, and
+   svdRandomized's small dense SVD) routes through `svdThin`. Only `svdTruncated` (GKL-Lanczos) genuinely
+   does not use Bidiag. So GEBRD (compact-WY blocking of the bidiagonalization, LABRD-style) IS a real
+   win: BEST on the VALUES path (bidiag ≈ 90% of `svdValues` runtime → the ~1.3× lands nearly whole ≈
+   25-30%, clears a 20% bar); MARGINAL on `svdThin` alone (~10-15% — the un-blockable implicit-shift
+   bidiagonal QR is co-dominant) but rides the same machinery and lifts every full-SVD consumer. GEBRD
+   is the hardest reduction to block (interleaved left+right reflectors; each panel column needs
+   on-the-fly matvec corrections), so ~half the flops recast as GEMM.
 7. **powerIteration matvec** — LOW. `Eigen.fProxy.cs` 94-99 — route through `matVecDot` for
    consistency/vectorization (not a level-3 target; single-vector iteration).
 
 ## Suggested order
-Cholesky POTRF → pseudoInverse/lowRankApprox GEMM routing → symmetric SYTRD → LU GETRF →
-(defer GEHRD/GEBRD). Consider register-tiling `matMatDot` first if a broad perf lift is wanted — it
-raises the ceiling for QR/LQ (already blocked) and every kernel above.
+Original: Cholesky POTRF → pseudoInverse/lowRankApprox → SYTRD → LU GETRF → (defer GEHRD/GEBRD).
+ACTUAL (2026-07-01): Cholesky ✅ → LU ✅ → formT consolidation ✅ → SYTRD (in progress) → GEBRD
+values-path (next, corrected up from "deferred"). Still open/low-priority: pseudoInverse/lowRankApprox
+GEMM routing (#3, quick), GEHRD (#5, nonsymmetric path). Register-tiling `matMatDot` remains the
+highest-leverage cross-cutting perf task — it raises the ~70 GFLOP/s ceiling for EVERY blocked kernel
+(all of the above are capped by it), and would convert the current ~1.3× gains toward the theoretical 2-3×.
