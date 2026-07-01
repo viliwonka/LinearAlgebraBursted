@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.InteropServices;
+using LinearAlgebra.Sparse;
 //singularFile//
 namespace LinearAlgebra
 {
@@ -8,11 +9,11 @@ namespace LinearAlgebra
     [StructLayout(LayoutKind.Sequential)]
     public partial struct Arena : System.IDisposable {
 
-        public int AllocationsCount => 
+        public int AllocationsCount =>
             
-            floatVectors.Length + floatMatrices.Length
+            floatVectors.Length + floatMatrices.Length + floatBSMs.Length + floatBSMBuilders.Length + floatBlockJacobis.Length
             +
-            doubleVectors.Length + doubleMatrices.Length
+            doubleVectors.Length + doubleMatrices.Length + doubleBSMs.Length + doubleBSMBuilders.Length + doubleBlockJacobis.Length
             
             +
             
@@ -63,11 +64,17 @@ namespace LinearAlgebra
             floatMatrices = new UnsafeList<floatMxN>(8, Allocator);
             tempfloatVectors = new UnsafeList<floatN>(8, Allocator);
             tempfloatMatrices = new UnsafeList<floatMxN>(8, Allocator);
+            floatBSMs = new UnsafeList<floatBSM>(4, Allocator);
+            floatBSMBuilders = new UnsafeList<floatBSMBuilder>(4, Allocator);
+            floatBlockJacobis = new UnsafeList<floatBlockJacobi>(4, Allocator);
             
             doubleVectors = new UnsafeList<doubleN>(8, Allocator);
             doubleMatrices = new UnsafeList<doubleMxN>(8, Allocator);
             tempdoubleVectors = new UnsafeList<doubleN>(8, Allocator);
             tempdoubleMatrices = new UnsafeList<doubleMxN>(8, Allocator);
+            doubleBSMs = new UnsafeList<doubleBSM>(4, Allocator);
+            doubleBSMBuilders = new UnsafeList<doubleBSMBuilder>(4, Allocator);
+            doubleBlockJacobis = new UnsafeList<doubleBlockJacobi>(4, Allocator);
             
 
             
@@ -124,6 +131,18 @@ namespace LinearAlgebra
             for(int i = 0; i < floatMatrices.Length; i++)
                 floatMatrices[i].Dispose();
             floatMatrices.Clear();
+
+            for (int i = 0; i < floatBSMs.Length; i++)
+                floatBSMs[i].Dispose();
+            floatBSMs.Clear();
+
+            for (int i = 0; i < floatBSMBuilders.Length; i++)
+                floatBSMBuilders[i].Dispose();
+            floatBSMBuilders.Clear();
+
+            for (int i = 0; i < floatBlockJacobis.Length; i++)
+                floatBlockJacobis[i].Dispose();
+            floatBlockJacobis.Clear();
             
             for (int i = 0; i < doubleVectors.Length; i++)
                 doubleVectors[i].Dispose();
@@ -132,6 +151,18 @@ namespace LinearAlgebra
             for(int i = 0; i < doubleMatrices.Length; i++)
                 doubleMatrices[i].Dispose();
             doubleMatrices.Clear();
+
+            for (int i = 0; i < doubleBSMs.Length; i++)
+                doubleBSMs[i].Dispose();
+            doubleBSMs.Clear();
+
+            for (int i = 0; i < doubleBSMBuilders.Length; i++)
+                doubleBSMBuilders[i].Dispose();
+            doubleBSMBuilders.Clear();
+
+            for (int i = 0; i < doubleBlockJacobis.Length; i++)
+                doubleBlockJacobis[i].Dispose();
+            doubleBlockJacobis.Clear();
             
 
             
@@ -246,11 +277,17 @@ namespace LinearAlgebra
             floatMatrices.Dispose();
             tempfloatMatrices.Dispose();
             tempfloatVectors.Dispose();
+            floatBSMs.Dispose();
+            floatBSMBuilders.Dispose();
+            floatBlockJacobis.Dispose();
             
             doubleVectors.Dispose();
             doubleMatrices.Dispose();
             tempdoubleMatrices.Dispose();
             tempdoubleVectors.Dispose();
+            doubleBSMs.Dispose();
+            doubleBSMBuilders.Dispose();
+            doubleBlockJacobis.Dispose();
             
 
             

@@ -1,0 +1,311 @@
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Burst;
+using System;
+
+namespace LinearAlgebra.Sparse
+{
+    /// <summary>
+    /// COO-of-blocks assembly builder for doubleBSM. Accumulates (blockRow, blockCol, BR x BC
+    /// block) triplets in growable allocator-backed lists; call ToBSM(arena) ONCE to sort and
+    /// compress into block-CSR. Duplicate triplets at the same (blockRow, blockCol) are summed
+    /// on compression -- this is the "sparse matrix is a graph" editable phase (add/remove a
+    /// node = add/remove triplets).
+    ///
+    /// Editing the pattern after compression is out of scope for Phase 1 -- go back through the
+    /// builder (re-stamping VALUES on a fixed pattern without a rebuild is a later phase).
+    ///
+    /// MUTABLE-STATE INDIRECTION (fixes a use-after-free): the arena's doubleBSMBuilder(...)
+    /// factory (see Arena.Sparse.double.cs) registers a VALUE COPY of this struct in its own
+    /// tracking list so it can dispose it later. AddBlock/AddValue append to the triplet lists
+    /// via UnsafeList.Add, which reallocates the backing buffer once the initial capacityHint is
+    /// exceeded. If the three UnsafeLists were plain struct fields (as they used to be), that
+    /// reallocation would only be visible on the CALLER's copy of the builder -- the arena's
+    /// tracked copy would keep pointing at the freed pre-growth buffer, so arena.Dispose()/
+    /// Clear() would double-free / use-after-free it (reliably reproducible by adding more than
+    /// capacityHint triplets, e.g. via AddValue, then disposing the arena). Fixed by moving the
+    /// growable triplet state behind a single heap-allocated State* that every value-copy of
+    /// doubleBSMBuilder shares (the pointer VALUE is copied around; there is exactly one
+    /// pointee) -- mirrors the Arena* idiom already used by doubleMxN/doubleBSM/etc, except the
+    /// pointee here has to be heap-owned by the builder itself (Malloc'd once in the
+    /// constructor, Free'd once in Dispose) rather than pointing at an already-stable address:
+    /// unlike an Arena instance (which the caller keeps in one stable location for the lifetime
+    /// of the pointer), nothing else owns a persistent home for this mutable triplet state. A
+    /// NativeReference&lt;State&gt; wrapper would be an equivalent alternative; raw Malloc/Free
+    /// was chosen to avoid pulling in a second allocation-owning collection type for one field,
+    /// and keeps Dispose symmetric with the constructor's Malloc. Public API is unchanged --
+    /// AddBlock/AddValue mutate through _state, so growth is visible to every copy, including
+    /// the arena's.
+    /// </summary>
+    public partial struct doubleBSMBuilder : IDisposable
+    {
+        // Heap-owned, single-identity mutable state -- see the type doc above. Every
+        // doubleBSMBuilder value-copy (this instance, the arena's tracked copy, the caller's
+        // copy, ...) shares the SAME pointee, so UnsafeList growth from AddBlock/AddValue is
+        // visible everywhere, including to the arena's own bookkeeping copy.
+        private struct State
+        {
+            public int BlockRows;  // mb: number of block-rows
+            public int BlockCols;  // nb: number of block-cols
+            public int BR;         // rows per block
+            public int BC;         // cols per block
+
+            public Allocator Allocator;
+
+            public UnsafeList<int> triBlockRow;
+            public UnsafeList<int> triBlockCol;
+
+            // flat, row-major per block: triplet t's block occupies
+            // triValues[t*BR*BC .. t*BR*BC + BR*BC)
+            public UnsafeList<double> triValues;
+        }
+
+        [NativeDisableUnsafePtrRestriction]
+        private unsafe State* _state;
+
+        public unsafe int BlockRows => _state->BlockRows;
+        public unsafe int BlockCols => _state->BlockCols;
+        public unsafe int BR => _state->BR;
+        public unsafe int BC => _state->BC;
+
+        public int M_Rows => BlockRows * BR;
+        public int N_Cols => BlockCols * BC;
+
+        /// <summary>
+        /// Number of accumulated (blockRow, blockCol, block) triplets PRE-compression --
+        /// duplicates at the same (blockRow, blockCol) are still separate entries here.
+        /// </summary>
+        public unsafe int TripletCount => _state->triBlockRow.Length;
+
+        [NativeDisableUnsafePtrRestriction]
+        private unsafe Arena* _arenaPtr;
+
+        public unsafe doubleBSMBuilder(int blockRows, int blockCols, int BR, int BC, Allocator allocator, int capacityHint = 8)
+        {
+            _arenaPtr = null;
+
+            _state = (State*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<State>(), UnsafeUtility.AlignOf<State>(), allocator);
+            _state->BlockRows = blockRows;
+            _state->BlockCols = blockCols;
+            _state->BR = BR;
+            _state->BC = BC;
+            _state->Allocator = allocator;
+
+            _state->triBlockRow = new UnsafeList<int>(capacityHint, allocator);
+            _state->triBlockCol = new UnsafeList<int>(capacityHint, allocator);
+            _state->triValues = new UnsafeList<double>(capacityHint * BR * BC, allocator);
+        }
+
+        public unsafe doubleBSMBuilder(int blockRows, int blockCols, int BR, int BC, in Arena arena, int capacityHint = 8)
+        {
+            fixed (Arena* arenaPtr = &arena)
+                _arenaPtr = arenaPtr;
+
+            var allocator = arena.Allocator;
+
+            _state = (State*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<State>(), UnsafeUtility.AlignOf<State>(), allocator);
+            _state->BlockRows = blockRows;
+            _state->BlockCols = blockCols;
+            _state->BR = BR;
+            _state->BC = BC;
+            _state->Allocator = allocator;
+
+            _state->triBlockRow = new UnsafeList<int>(capacityHint, allocator);
+            _state->triBlockCol = new UnsafeList<int>(capacityHint, allocator);
+            _state->triValues = new UnsafeList<double>(capacityHint * BR * BC, allocator);
+        }
+
+        /// <summary>
+        /// Appends a (br, bc, block) triplet. block must point to BR*BC values in row-major
+        /// order (block[r*BC+c]). Multiple triplets at the same (br, bc) are summed on ToBSM.
+        /// </summary>
+        public unsafe void AddBlock(int br, int bc, [NoAlias] double* block)
+        {
+            if (br < 0 || br >= BlockRows)
+                throw new ArgumentException("AddBlock: blockRow out of bounds");
+            if (bc < 0 || bc >= BlockCols)
+                throw new ArgumentException("AddBlock: blockCol out of bounds");
+
+            _state->triBlockRow.Add(br);
+            _state->triBlockCol.Add(bc);
+
+            int blockLen = BR * BC;
+            for (int i = 0; i < blockLen; i++)
+                _state->triValues.Add(block[i]);
+        }
+
+        /// <summary>
+        /// Appends a (br, bc, block) triplet from a dense BR x BC view.
+        /// </summary>
+        public unsafe void AddBlock(int br, int bc, in doubleMxN block)
+        {
+            if (block.M_Rows != BR || block.N_Cols != BC)
+                throw new ArgumentException("AddBlock: block dimensions must be BR x BC");
+
+            AddBlock(br, bc, block.Data.Ptr);
+        }
+
+        /// <summary>
+        /// Convenience: routes a single scalar at global (row, col) into its owning block,
+        /// appending a fresh triplet that is zero everywhere except that one entry. Summed
+        /// with any other triplet touching the same block on ToBSM -- fine for occasional
+        /// edits, wasteful for many scalar adds into the same block (prefer AddBlock for that).
+        /// </summary>
+        public unsafe void AddValue(int globalRow, int globalCol, double v)
+        {
+            if (globalRow < 0 || globalRow >= M_Rows)
+                throw new ArgumentException("AddValue: globalRow out of bounds");
+            if (globalCol < 0 || globalCol >= N_Cols)
+                throw new ArgumentException("AddValue: globalCol out of bounds");
+
+            int br = globalRow / BR;
+            int localR = globalRow % BR;
+            int bc = globalCol / BC;
+            int localC = globalCol % BC;
+
+            _state->triBlockRow.Add(br);
+            _state->triBlockCol.Add(bc);
+
+            int targetIdx = localR * BC + localC;
+            int blockLen = BR * BC;
+            for (int i = 0; i < blockLen; i++)
+                _state->triValues.Add(i == targetIdx ? v : (double)0);
+        }
+
+        /// <summary>
+        /// Sorts triplets by (blockRow, blockCol), sums duplicates at the same (blockRow,
+        /// blockCol), and builds the compressed doubleBSM (RowPtr/ColInd/Values). Counting-sort
+        /// by block-row + insertion-sort by block-col within each row bucket: deterministic,
+        /// O(nnz + sum of row-degree^2) -- fine for the one-time assembly->compressed
+        /// transition this represents (Phase 1 has no incremental re-pattern path; re-stamping
+        /// values on a fixed pattern is a later phase).
+        ///
+        /// Takes the arena by `ref`, NOT `in`: it calls the mutating arena.doubleBSM(...)
+        /// allocator internally, and `Arena`'s allocator methods are not `readonly` -- see the
+        /// matching comment on doubleBSM.ToDense for why an `in Arena` parameter here would
+        /// produce a dangling internal arena pointer on the returned doubleBSM.
+        /// </summary>
+        public unsafe doubleBSM ToBSM(ref Arena arena)
+        {
+            int n = TripletCount;
+            int blockLen = BR * BC;
+
+            // 1. Counting-sort triplet indices into per-block-row buckets (rowStart[i] is the
+            //    bucket boundary, à la CSR construction from COO).
+            var rowStart = new NativeArray<int>(BlockRows + 1, Allocator.Temp, NativeArrayOptions.ClearMemory);
+            for (int t = 0; t < n; t++)
+                rowStart[_state->triBlockRow[t] + 1]++;
+            for (int i = 0; i < BlockRows; i++)
+                rowStart[i + 1] += rowStart[i];
+
+            var order = new NativeArray<int>(n, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            var cursor = new NativeArray<int>(BlockRows, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            for (int i = 0; i < BlockRows; i++) cursor[i] = rowStart[i];
+            for (int t = 0; t < n; t++)
+            {
+                int row = _state->triBlockRow[t];
+                order[cursor[row]] = t;
+                cursor[row]++;
+            }
+            cursor.Dispose();
+
+            // 2. Insertion-sort each row bucket by blockCol (row degree is small in practice).
+            for (int row = 0; row < BlockRows; row++)
+            {
+                int s = rowStart[row];
+                int e = rowStart[row + 1];
+                for (int i = s + 1; i < e; i++)
+                {
+                    int cur = order[i];
+                    int curCol = _state->triBlockCol[cur];
+                    int j = i - 1;
+                    while (j >= s && _state->triBlockCol[order[j]] > curCol)
+                    {
+                        order[j + 1] = order[j];
+                        j--;
+                    }
+                    order[j + 1] = cur;
+                }
+            }
+
+            // 3. Count distinct stored blocks (nnzb) after de-duplication.
+            int nnzb = 0;
+            for (int row = 0; row < BlockRows; row++)
+            {
+                int s = rowStart[row];
+                int e = rowStart[row + 1];
+                int prevCol = -1;
+                for (int i = s; i < e; i++)
+                {
+                    int col = _state->triBlockCol[order[i]];
+                    if (col != prevCol) { nnzb++; prevCol = col; }
+                }
+            }
+
+            var bsm = arena.doubleBSM(BlockRows, BlockCols, BR, BC, nnzb, true);
+
+            // 4. Fill RowPtr/ColInd/Values, summing consecutive same-column entries.
+            int outIdx = 0;
+            for (int row = 0; row < BlockRows; row++)
+            {
+                bsm.RowPtr[row] = outIdx;
+                int s = rowStart[row];
+                int e = rowStart[row + 1];
+                int prevCol = -1;
+
+                for (int i = s; i < e; i++)
+                {
+                    int t = order[i];
+                    int col = _state->triBlockCol[t];
+                    int srcOff = t * blockLen;
+
+                    if (col != prevCol)
+                    {
+                        bsm.ColInd[outIdx] = col;
+                        int dstOff = outIdx * blockLen;
+                        for (int k = 0; k < blockLen; k++)
+                            bsm.Values[dstOff + k] = _state->triValues[srcOff + k];
+                        prevCol = col;
+                        outIdx++;
+                    }
+                    else
+                    {
+                        int dstOff = (outIdx - 1) * blockLen;
+                        for (int k = 0; k < blockLen; k++)
+                            bsm.Values[dstOff + k] += _state->triValues[srcOff + k];
+                    }
+                }
+            }
+            bsm.RowPtr[BlockRows] = outIdx;
+
+            order.Dispose();
+            rowStart.Dispose();
+
+            return bsm;
+        }
+
+        /// <summary>
+        /// Frees the shared triplet state and the State block itself. Safe to call more than
+        /// once on the SAME struct copy -- becomes a no-op after the first call, matching
+        /// UnsafeList's own idempotent Dispose -- which is what guards e.g. arena.Clear()
+        /// followed by arena.Dispose()'s own trailing Clear() pass. This guard is NOT designed
+        /// to protect against two DIFFERENT copies of this struct independently calling Dispose
+        /// on the same shared _state: the arena-owns-everything convention means only the
+        /// arena's own tracked copy ever does that (callers are not expected to dispose the
+        /// value returned by arena.doubleBSMBuilder(...) themselves, same as doubleMxN/
+        /// doubleBSM/etc).
+        /// </summary>
+        public unsafe void Dispose()
+        {
+            if (_state == null)
+                return;
+
+            _state->triBlockRow.Dispose();
+            _state->triBlockCol.Dispose();
+            _state->triValues.Dispose();
+
+            UnsafeUtility.Free(_state, _state->Allocator);
+            _state = null;
+        }
+    }
+}

@@ -1,0 +1,172 @@
+using System;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using LinearAlgebra;
+
+namespace LinearAlgebra.Sparse
+{
+    /// <summary>
+    /// Block-Jacobi preconditioner for a square BSM (<c>BlockRows==BlockCols</c>, <c>BR==BC</c>):
+    /// z = M⁻¹ r where M = blockdiag(A_00, A_11, ..., A_{nb-1,nb-1}), i.e. each diagonal block
+    /// inverted independently and applied block-wise. The <c>BR==1</c> case degenerates to
+    /// point-Jacobi (z_i = r_i / A_ii) -- no special-cased code path is needed, the general
+    /// BR x BR inverse-and-multiply reduces to that automatically for BR=1.
+    ///
+    /// Built ONCE from a compressed <see cref="fProxyBSM"/> (an O(nb * BR^3) one-time cost via
+    /// LU decomposition on each tiny diagonal block -- reuses <see cref="LU.luDecompositionInpl"/>
+    /// / <see cref="LU.luSolve(ref fProxyMxN, in Pivot, ref fProxyN)"/>, no new inverse
+    /// primitive), then <see cref="Apply"/> is a zero-alloc block-diagonal matvec every PCG
+    /// iteration.
+    /// </summary>
+    public partial struct fProxyBlockJacobi : IfProxyPreconditioner, IDisposable
+    {
+        public int BlockRows;  // nb: number of diagonal blocks (== BlockCols of the source BSM)
+        public int BR;         // block dimension (== BC of the source BSM)
+
+        public int Rows => BlockRows * BR;
+
+        /// <summary>Inverted diagonal blocks, flat row-major per block: DInv[i*BR*BR + r*BR + c]
+        /// holds (A_ii⁻¹)[r,c]. Length nb*BR*BR.</summary>
+        public UnsafeList<fProxy> DInv;
+
+        [NativeDisableUnsafePtrRestriction]
+        private unsafe Arena* _arenaPtr;
+
+        /// <summary>
+        /// Builds the preconditioner from A's diagonal blocks. A must be square
+        /// (BlockRows==BlockCols, BR==BC). Throws ArgumentException if a diagonal block is
+        /// missing from the stored pattern or is singular.
+        /// </summary>
+        public unsafe fProxyBlockJacobi(in fProxyBSM A, Allocator allocator)
+        {
+            _arenaPtr = null;
+
+            if (A.BlockRows != A.BlockCols || A.BR != A.BC)
+                throw new ArgumentException("fProxyBlockJacobi: A must be square (BlockRows==BlockCols, BR==BC)");
+
+            BlockRows = A.BlockRows;
+            BR = A.BR;
+
+            int blockLen = BR * BR;
+            var dinv = new UnsafeList<fProxy>(BlockRows * blockLen, allocator, NativeArrayOptions.ClearMemory);
+            dinv.Resize(BlockRows * blockLen, NativeArrayOptions.ClearMemory);
+
+            for (int i = 0; i < BlockRows; i++)
+            {
+                // Blocks within a block-row are stored in ascending ColInd (BSR invariant) --
+                // scan forward and stop as soon as we pass column i.
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                int found = -1;
+                for (int k = s; k < e; k++)
+                {
+                    int blockCol = A.ColInd[k];
+                    if (blockCol == i) { found = k; break; }
+                    if (blockCol > i) break;
+                }
+
+                if (found < 0)
+                {
+                    dinv.Dispose();
+                    throw new ArgumentException("fProxyBlockJacobi: missing diagonal block in A");
+                }
+
+                // Copy the diagonal block into scratch (LU factorization is destructive).
+                var Dcopy = new fProxyMxN(BR, BR, Allocator.Temp, true);
+                int srcOff = found * blockLen;
+                for (int r = 0; r < BR; r++)
+                    for (int c = 0; c < BR; c++)
+                        Dcopy[r, c] = A.Values[srcOff + r * BR + c];
+
+                var P = new Pivot(BR, Allocator.Temp);
+                bool ok = LU.luDecompositionInpl(ref Dcopy, ref P);
+
+                if (!ok)
+                {
+                    P.Dispose();
+                    Dcopy.Dispose();
+                    dinv.Dispose();
+                    throw new ArgumentException("fProxyBlockJacobi: diagonal block is singular");
+                }
+
+                // Column-by-column solve against unit vectors -> the explicit BR x BR inverse.
+                int dstOff = i * blockLen;
+                var col = new fProxyN(BR, Allocator.Temp, true);
+                for (int c = 0; c < BR; c++)
+                {
+                    for (int r = 0; r < BR; r++)
+                        col[r] = (r == c) ? (fProxy)1 : (fProxy)0;
+
+                    LU.luSolve(ref Dcopy, in P, ref col);
+
+                    for (int r = 0; r < BR; r++)
+                        dinv[dstOff + r * BR + c] = col[r];
+                }
+
+                col.Dispose();
+                P.Dispose();
+                Dcopy.Dispose();
+            }
+
+            DInv = dinv;
+        }
+
+        /// <summary>
+        /// Same construction, tracked by an arena (disposed with the arena). Takes the arena by
+        /// `in` here because -- unlike fProxyBSM.ToDense/fProxyBSMBuilder.ToBSM -- this
+        /// constructor does NOT call a mutating Arena allocator method; it only reads
+        /// arena.Allocator and captures the arena's address for the (currently unused, future-
+        /// proofing) `_arenaPtr` field, matching the fProxyBSM/fProxyBSMBuilder constructor
+        /// pair's own `in Arena` constructor. The arena-OWNING factory that actually registers
+        /// this instance for disposal is `Arena.fProxyBlockJacobi(in fProxyBSM)`, which takes
+        /// `ref Arena` per the Phase-1 dangling-pointer lesson (see fProxyBSM.ToDense).
+        /// </summary>
+        public unsafe fProxyBlockJacobi(in fProxyBSM A, in Arena arena) : this(in A, arena.Allocator)
+        {
+            fixed (Arena* arenaPtr = &arena)
+                _arenaPtr = arenaPtr;
+        }
+
+        /// <summary>
+        /// z = M⁻¹ r, applied block-wise: z_i = A_ii⁻¹ · r_i. z must not alias r (each z_i read
+        /// draws on the full r_i block; overwriting r in place mid-block would corrupt later
+        /// rows of the same block's product).
+        /// </summary>
+        public unsafe void Apply(in fProxyN r, ref fProxyN z)
+        {
+            int n = Rows;
+
+            if (r.N != n)
+                throw new ArgumentException("fProxyBlockJacobi.Apply: r.N must equal Rows");
+            if (z.N != n)
+                throw new ArgumentException("fProxyBlockJacobi.Apply: z.N must equal Rows");
+
+            if (z.Data.Ptr == r.Data.Ptr)
+                throw new ArgumentException("fProxyBlockJacobi.Apply: z must not alias r");
+
+            fProxy* rp = r.Data.Ptr;
+            fProxy* zp = z.Data.Ptr;
+            fProxy* dp = DInv.Ptr;
+
+            int blockLen = BR * BR;
+
+            for (int i = 0; i < BlockRows; i++)
+            {
+                int rowBase = i * BR;
+                int blockOff = i * blockLen;
+
+                for (int lr = 0; lr < BR; lr++)
+                {
+                    fProxy sum = 0;
+                    for (int lc = 0; lc < BR; lc++)
+                        sum += dp[blockOff + lr * BR + lc] * rp[rowBase + lc];
+                    zp[rowBase + lr] = sum;
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            DInv.Dispose();
+        }
+    }
+}

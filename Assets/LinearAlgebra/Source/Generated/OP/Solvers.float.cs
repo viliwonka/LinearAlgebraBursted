@@ -2,6 +2,7 @@
 
 using System;
 using Unity.Collections;
+using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
@@ -138,37 +139,46 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b.
-        /// Caller provides x (initial guess, overwritten with solution) and three scratch vectors
-        /// r, p, Ap (all length A.M_Rows). Returns true if converged within maxIterations to the
-        /// relative residual tolerance; false if not converged or non-positive curvature p·Ap <= 0
-        /// is encountered (A not SPD or numerical breakdown). On a false return x is undefined
-        /// (it may have been partially updated) — only read x when the call returns true.
+        /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b,
+        /// generic over any <see cref="IfloatLinearOperator"/> (Burst-monomorphized static
+        /// dispatch, no vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the CG
+        /// loop — the concrete dense (<c>conjugateGradient(in floatMxN, ...)</c>) and BSM
+        /// (<c>conjugateGradient(in floatBSM, ...)</c>) overloads below are thin forwarders that
+        /// wrap their matrix in <see cref="floatDenseOperator"/> / <c>floatBSMOperator</c> and
+        /// call this method.
+        ///
+        /// Caller provides x (initial guess, overwritten with solution — WARM-STARTABLE: seed x
+        /// with a previous solution to resume/refine) and three scratch vectors r, p, Ap (all
+        /// length A.Rows). Returns true if converged within maxIterations to the relative residual
+        /// tolerance; false if not converged or non-positive curvature p·Ap <= 0 is encountered (A
+        /// not SPD or numerical breakdown). On a false return x is undefined (it may have been
+        /// partially updated) — only read x when the call returns true.
         /// </summary>
-        public static bool conjugateGradient(in floatMxN A, in floatN b, ref floatN x,
-                                             ref floatN r, ref floatN p, ref floatN Ap,
-                                             int maxIterations, float tolerance)
+        public static bool cg<TOp>(in TOp A, in floatN b, ref floatN x,
+                                   ref floatN r, ref floatN p, ref floatN Ap,
+                                   int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
         {
-            if (!A.IsSquare)
-                throw new ArgumentException("conjugateGradient: A must be square");
+            if (A.Rows != A.Cols)
+                throw new ArgumentException("cg: A must be square");
 
-            if (b.N != A.M_Rows)
-                throw new ArgumentException("conjugateGradient: b.N must equal A.M_Rows");
+            if (b.N != A.Rows)
+                throw new ArgumentException("cg: b.N must equal A.Rows");
 
-            if (x.N != A.M_Rows)
-                throw new ArgumentException("conjugateGradient: x.N must equal A.M_Rows");
+            if (x.N != A.Rows)
+                throw new ArgumentException("cg: x.N must equal A.Rows");
 
-            if (r.N != A.M_Rows)
-                throw new ArgumentException("conjugateGradient: r.N must equal A.M_Rows");
+            if (r.N != A.Rows)
+                throw new ArgumentException("cg: r.N must equal A.Rows");
 
-            if (p.N != A.M_Rows)
-                throw new ArgumentException("conjugateGradient: p.N must equal A.M_Rows");
+            if (p.N != A.Rows)
+                throw new ArgumentException("cg: p.N must equal A.Rows");
 
-            if (Ap.N != A.M_Rows)
-                throw new ArgumentException("conjugateGradient: Ap.N must equal A.M_Rows");
+            if (Ap.N != A.Rows)
+                throw new ArgumentException("cg: Ap.N must equal A.Rows");
 
             if (maxIterations < 1)
-                throw new ArgumentException("conjugateGradient: maxIterations must be >= 1");
+                throw new ArgumentException("cg: maxIterations must be >= 1");
 
             float bb = Linear_OP.dot(b, b);
 
@@ -182,7 +192,7 @@ namespace LinearAlgebra
             }
 
             // r = b - A x
-            Linear_OP.dot(in A, in x, ref Ap);           // Ap = A x (temp use of Ap)
+            A.Apply(in x, ref Ap);                       // Ap = A x (temp use of Ap)
             r.Data.CopyFrom(b.Data);                     // r  = b
             r.addScaledInpl((float)(-1), Ap);           // r -= Ap  =>  r = b - A x
 
@@ -197,7 +207,7 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
-                Linear_OP.dot(in A, in p, ref Ap);        // Ap = A p
+                A.Apply(in p, ref Ap);                    // Ap = A p
 
                 float pAp = Linear_OP.dot(p, Ap);
 
@@ -225,6 +235,23 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b.
+        /// Caller provides x (initial guess, overwritten with solution) and three scratch vectors
+        /// r, p, Ap (all length A.M_Rows). Returns true if converged within maxIterations to the
+        /// relative residual tolerance; false if not converged or non-positive curvature p·Ap <= 0
+        /// is encountered (A not SPD or numerical breakdown). On a false return x is undefined
+        /// (it may have been partially updated) — only read x when the call returns true.
+        /// Forwards into <see cref="cg{TOp}"/> via <see cref="floatDenseOperator"/> — see that
+        /// method for the actual loop.
+        /// </summary>
+        public static bool conjugateGradient(in floatMxN A, in floatN b, ref floatN x,
+                                             ref floatN r, ref floatN p, ref floatN Ap,
+                                             int maxIterations, float tolerance)
+        {
+            return cg(new floatDenseOperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+        }
+
+        /// <summary>
         /// Conjugate Gradient solver — allocates three scratch vectors from the arena and calls
         /// the zero-alloc primitive. x is overwritten with the solution on convergence.
         /// </summary>
@@ -244,6 +271,201 @@ namespace LinearAlgebra
         public static bool conjugateGradient(in floatMxN A, in floatN b, ref floatN x)
         {
             return conjugateGradient(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix. Same semantics as
+        /// the dense overload — see <see cref="conjugateGradient(in floatMxN, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>.
+        /// Forwards into <see cref="cg{TOp}"/> via <c>floatBSMOperator</c>.
+        /// </summary>
+        public static bool conjugateGradient(in floatBSM A, in floatN b, ref floatN x,
+                                             ref floatN r, ref floatN p, ref floatN Ap,
+                                             int maxIterations, float tolerance)
+        {
+            return cg(new floatBSMOperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix — allocates three
+        /// scratch vectors from the arena and calls the zero-alloc primitive.
+        /// </summary>
+        public static bool conjugateGradient(in floatBSM A, in floatN b, ref floatN x,
+                                             int maxIterations, float tolerance)
+        {
+            floatN r  = b.tempfloatVec(A.M_Rows);
+            floatN p  = b.tempfloatVec(A.M_Rows);
+            floatN Ap = b.tempfloatVec(A.M_Rows);
+            return conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix, with default
+        /// maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).
+        /// </summary>
+        public static bool conjugateGradient(in floatBSM A, in floatN b, ref floatN x)
+        {
+            return conjugateGradient(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// Zero-alloc Preconditioned Conjugate Gradient solver for SPD systems A x = b, generic
+        /// over both the operator (<see cref="IfloatLinearOperator"/>) and the preconditioner
+        /// (<see cref="IfloatPreconditioner"/>) — same Burst static-dispatch shape as
+        /// <see cref="cg{TOp}"/>. Standard PCG: p is combined with z = M⁻¹r (not r), and β uses
+        /// ⟨r,z⟩ instead of ⟨r,r⟩.
+        ///
+        /// Caller provides x (initial guess, overwritten with solution — warm-startable) and four
+        /// scratch vectors r, p, Ap, z (all length A.Rows). The convergence test compares the
+        /// TRUE (unpreconditioned) residual ||r||² against tolerance²·||b||² — the same criterion
+        /// as <see cref="cg{TOp}"/> — so iteration counts between cg and pcg on the same system are
+        /// directly comparable. Returns true if converged within maxIterations; false if not
+        /// converged or non-positive curvature p·Ap <= 0 is encountered. On a false return x is
+        /// undefined — only read x when the call returns true.
+        /// </summary>
+        public static bool pcg<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x,
+                                          ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
+                                          int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
+            where TPre : struct, IfloatPreconditioner
+        {
+            if (A.Rows != A.Cols)
+                throw new ArgumentException("pcg: A must be square");
+
+            if (b.N != A.Rows)
+                throw new ArgumentException("pcg: b.N must equal A.Rows");
+
+            if (x.N != A.Rows)
+                throw new ArgumentException("pcg: x.N must equal A.Rows");
+
+            if (r.N != A.Rows)
+                throw new ArgumentException("pcg: r.N must equal A.Rows");
+
+            if (p.N != A.Rows)
+                throw new ArgumentException("pcg: p.N must equal A.Rows");
+
+            if (Ap.N != A.Rows)
+                throw new ArgumentException("pcg: Ap.N must equal A.Rows");
+
+            if (z.N != A.Rows)
+                throw new ArgumentException("pcg: z.N must equal A.Rows");
+
+            if (maxIterations < 1)
+                throw new ArgumentException("pcg: maxIterations must be >= 1");
+
+            float bb = Linear_OP.dot(b, b);
+
+            if (bb == (float)0)
+            {
+                x.Data.CopyFrom(b.Data);
+                return true;
+            }
+
+            // r = b - A x
+            A.Apply(in x, ref Ap);
+            r.Data.CopyFrom(b.Data);
+            r.addScaledInpl((float)(-1), Ap);
+
+            float threshold = tolerance * tolerance * bb;
+
+            if (Linear_OP.dot(r, r) <= threshold)
+                return true;
+
+            // z = M^-1 r ; p = z
+            M.Apply(in r, ref z);
+            p.Data.CopyFrom(z.Data);
+
+            float rzold = Linear_OP.dot(r, z);
+
+            for (int k = 0; k < maxIterations; k++)
+            {
+                A.Apply(in p, ref Ap);                    // Ap = A p
+
+                float pAp = Linear_OP.dot(p, Ap);
+
+                if (!(pAp > (float)0))                  // NaN-safe: also catches breakdown
+                    return false;
+
+                float alpha = rzold / pAp;
+
+                x.addScaledInpl(alpha, p);               // x += alpha p
+                r.addScaledInpl(-alpha, Ap);             // r -= alpha Ap
+
+                if (Linear_OP.dot(r, r) <= threshold)
+                    return true;
+
+                M.Apply(in r, ref z);                     // z = M^-1 r
+
+                float rznew = Linear_OP.dot(r, z);
+                float beta = rznew / rzold;
+
+                p.scaleAddInpl(beta, z);                 // p = beta p + z
+
+                rzold = rznew;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Preconditioned Conjugate Gradient solver — allocates four scratch vectors from the
+        /// arena and calls the zero-alloc primitive.
+        /// </summary>
+        public static bool pcg<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x,
+                                          int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
+            where TPre : struct, IfloatPreconditioner
+        {
+            floatN r  = b.tempfloatVec(A.Rows);
+            floatN p  = b.tempfloatVec(A.Rows);
+            floatN Ap = b.tempfloatVec(A.Rows);
+            floatN z  = b.tempfloatVec(A.Rows);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Preconditioned Conjugate Gradient solver with default maxIterations (A.Rows) and
+        /// tolerance (Consts.floatSqrtEps).
+        /// </summary>
+        public static bool pcg<TOp, TPre>(in TOp A, in TPre M, in floatN b, ref floatN x)
+            where TOp : struct, IfloatLinearOperator
+            where TPre : struct, IfloatPreconditioner
+        {
+            return pcg(in A, in M, in b, ref x, A.Rows, Consts.floatSqrtEps);
+        }
+
+        /// <summary>
+        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
+        /// matching block-Jacobi preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// <c>floatBSMOperator</c>.
+        /// </summary>
+        public static bool pcg(in floatBSM A, in floatBlockJacobi M, in floatN b, ref floatN x,
+                               ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
+                               int maxIterations, float tolerance)
+        {
+            return pcg(new floatBSMOperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix — allocates four
+        /// scratch vectors from the arena and calls the zero-alloc primitive.
+        /// </summary>
+        public static bool pcg(in floatBSM A, in floatBlockJacobi M, in floatN b, ref floatN x,
+                               int maxIterations, float tolerance)
+        {
+            floatN r  = b.tempfloatVec(A.M_Rows);
+            floatN p  = b.tempfloatVec(A.M_Rows);
+            floatN Ap = b.tempfloatVec(A.M_Rows);
+            floatN z  = b.tempfloatVec(A.M_Rows);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
+        /// maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).
+        /// </summary>
+        public static bool pcg(in floatBSM A, in floatBlockJacobi M, in floatN b, ref floatN x)
+        {
+            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
     }
 

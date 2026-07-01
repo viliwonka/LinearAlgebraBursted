@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.InteropServices;
+using LinearAlgebra.Sparse;
 //singularFile//
 namespace LinearAlgebra
 {
@@ -8,9 +9,9 @@ namespace LinearAlgebra
     [StructLayout(LayoutKind.Sequential)]
     public partial struct Arena : System.IDisposable {
 
-        public int AllocationsCount => 
+        public int AllocationsCount =>
             //+copyReplaceFill[+]
-            fProxyVectors.Length + fProxyMatrices.Length
+            fProxyVectors.Length + fProxyMatrices.Length + fProxyBSMs.Length + fProxyBSMBuilders.Length + fProxyBlockJacobis.Length
             //-copyReplaceFill
             +
             //+copyReplaceFill[+]
@@ -51,6 +52,9 @@ namespace LinearAlgebra
             fProxyMatrices = new UnsafeList<fProxyMxN>(8, Allocator);
             tempfProxyVectors = new UnsafeList<fProxyN>(8, Allocator);
             tempfProxyMatrices = new UnsafeList<fProxyMxN>(8, Allocator);
+            fProxyBSMs = new UnsafeList<fProxyBSM>(4, Allocator);
+            fProxyBSMBuilders = new UnsafeList<fProxyBSMBuilder>(4, Allocator);
+            fProxyBlockJacobis = new UnsafeList<fProxyBlockJacobi>(4, Allocator);
             //-copyReplace
 
             //+copyReplace
@@ -97,6 +101,18 @@ namespace LinearAlgebra
             for(int i = 0; i < fProxyMatrices.Length; i++)
                 fProxyMatrices[i].Dispose();
             fProxyMatrices.Clear();
+
+            for (int i = 0; i < fProxyBSMs.Length; i++)
+                fProxyBSMs[i].Dispose();
+            fProxyBSMs.Clear();
+
+            for (int i = 0; i < fProxyBSMBuilders.Length; i++)
+                fProxyBSMBuilders[i].Dispose();
+            fProxyBSMBuilders.Clear();
+
+            for (int i = 0; i < fProxyBlockJacobis.Length; i++)
+                fProxyBlockJacobis[i].Dispose();
+            fProxyBlockJacobis.Clear();
             //-copyReplace
 
             //+copyReplace
@@ -171,6 +187,9 @@ namespace LinearAlgebra
             fProxyMatrices.Dispose();
             tempfProxyMatrices.Dispose();
             tempfProxyVectors.Dispose();
+            fProxyBSMs.Dispose();
+            fProxyBSMBuilders.Dispose();
+            fProxyBlockJacobis.Dispose();
             //-copyReplace
 
             //+copyReplace
