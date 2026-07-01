@@ -17,20 +17,28 @@ namespace LinearAlgebra.Sparse
     /// / <see cref="LU.luSolve(ref floatMxN, in Pivot, ref floatN)"/>, no new inverse
     /// primitive), then <see cref="Apply"/> is a zero-alloc block-diagonal matvec every PCG
     /// iteration.
+    ///
+    /// Readonly: nothing mutates after the constructor fills DInv (it is never grown/resized).
+    /// The two IfloatLinearOperator wrappers (floatBSMOperator/floatDenseOperator) are
+    /// already readonly structs, so passing them through `in TOp` in the generic solvers makes
+    /// no defensive copy; being non-readonly here would force the compiler to snapshot-copy the
+    /// whole preconditioner (the DInv UnsafeList header, at least) on every `M.Apply(in r, ref
+    /// z)` call inside pcg -- undermining the zero-cost-dispatch claim. See floatBSMOperator's
+    /// own doc comment for the same reasoning.
     /// </summary>
-    public partial struct floatBlockJacobi : IfloatPreconditioner, IDisposable
+    public readonly partial struct floatBlockJacobi : IfloatPreconditioner, IDisposable
     {
-        public int BlockRows;  // nb: number of diagonal blocks (== BlockCols of the source BSM)
-        public int BR;         // block dimension (== BC of the source BSM)
+        public readonly int BlockRows;  // nb: number of diagonal blocks (== BlockCols of the source BSM)
+        public readonly int BR;         // block dimension (== BC of the source BSM)
 
         public int Rows => BlockRows * BR;
 
         /// <summary>Inverted diagonal blocks, flat row-major per block: DInv[i*BR*BR + r*BR + c]
         /// holds (A_ii⁻¹)[r,c]. Length nb*BR*BR.</summary>
-        public UnsafeList<float> DInv;
+        public readonly UnsafeList<float> DInv;
 
         [NativeDisableUnsafePtrRestriction]
-        private unsafe Arena* _arenaPtr;
+        private readonly unsafe Arena* _arenaPtr;
 
         /// <summary>
         /// Builds the preconditioner from A's diagonal blocks. A must be square
@@ -166,6 +174,10 @@ namespace LinearAlgebra.Sparse
 
         public void Dispose()
         {
+#if LINALG_DEBUG
+            // poison the buffer so a read-after-dispose surfaces as NaN instead of stale data
+            for (int i = 0; i < DInv.Length; i++) DInv[i] = float.NaN;
+#endif
             DInv.Dispose();
         }
     }

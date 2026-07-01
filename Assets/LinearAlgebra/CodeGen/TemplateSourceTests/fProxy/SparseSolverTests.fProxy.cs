@@ -31,6 +31,7 @@ public class fProxySparseSolverTests
             PCGBeatsCGIllConditioned,
             BlockJacobiApplyHandComputed,
             WarmStart,
+            PcgNonSpdPreconditionerBreaksDown,
         }
 
         public TestType Type;
@@ -52,6 +53,7 @@ public class fProxySparseSolverTests
                 case TestType.PCGBeatsCGIllConditioned: PCGBeatsCGIllConditioned(); break;
                 case TestType.BlockJacobiApplyHandComputed: BlockJacobiApplyHandComputed(); break;
                 case TestType.WarmStart: WarmStart(); break;
+                case TestType.PcgNonSpdPreconditionerBreaksDown: PcgNonSpdPreconditionerBreaksDown(); break;
             }
         }
 
@@ -208,6 +210,17 @@ public class fProxySparseSolverTests
 
             var Ax = Linear_OP.dot(A, xConcrete);
             AssertVecEq(in Ax, in b, Tol());
+
+            // Independent cross-check against a DIRECT solver on a completely different code path
+            // (Householder QR, no Krylov/CG involvement). The xConcrete-vs-xGeneric check above is
+            // circular now that both funnel through the same cg<TOp> loop; this pins the CG
+            // solution to a truly independent reference. qrDirectSolve is DESTRUCTIVE (destroys
+            // Q/A and b), so it MUST run on fresh copies, not the A/b the CG calls used.
+            var A2 = A.Copy();
+            var b2 = b.Copy();
+            var xQR = arena.fProxyVec(dim);
+            QR.qrDirectSolve(ref A2, ref b2, ref xQR);
+            AssertVecEq(in xConcrete, in xQR, Tol());
 
             arena.Dispose();
         }
@@ -371,6 +384,42 @@ public class fProxySparseSolverTests
 
             arena.Dispose();
         }
+
+        // ---- 8. pcg breakdown guard: a non-SPD preconditioner bails out (returns false) -------
+        //
+        // The preconditioned inner product <r,z> must stay positive for PCG to be well-defined.
+        // fProxyNegatePreconditioner deliberately returns z = -r, so rzold = <r,-r> = -||r||^2 < 0
+        // -- the pcg `if (!(rzold > 0)) return false;` guard (added this pass) must catch it and
+        // return false, rather than looping with a wrong-signed alpha/beta (silent divergence /
+        // NaN). A itself is a genuine SPD system so the failure is attributable to the
+        // preconditioner, not the operator.
+        void PcgNonSpdPreconditionerBreaksDown()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 8;
+            var A = BuildDenseSPD(ref arena, dim, 5501);
+            var op = new fProxyDenseOperator(in A);
+            var pre = new fProxyNegatePreconditioner();
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 5502); // nonzero rhs -> not the b==0 shortcut
+
+            var x = arena.fProxyVec(dim);
+            bool ok = Solvers.pcg(in op, in pre, in b, ref x, dim, Consts.fProxySqrtEps);
+            Assert.IsFalse(ok);
+
+            arena.Dispose();
+        }
+    }
+
+    // Deliberately non-SPD test-double preconditioner: z = M^-1 r := -r, so <r,z> = -||r||^2 <= 0.
+    // Used only by PcgNonSpdPreconditionerBreaksDown to exercise pcg's rzold>0 breakdown guard.
+    public struct fProxyNegatePreconditioner : IfProxyPreconditioner
+    {
+        public void Apply(in fProxyN r, ref fProxyN z)
+        {
+            for (int i = 0; i < r.N; i++)
+                z[i] = -r[i];
+        }
     }
 
     // ---- correctness cases (Burst) -------------------------------------------------------
@@ -402,6 +451,10 @@ public class fProxySparseSolverTests
     [Test]
     public void WarmStartTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.WarmStart }.Run();
+
+    [Test]
+    public void PcgNonSpdPreconditionerBreaksDownTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.PcgNonSpdPreconditionerBreaksDown }.Run();
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
 
@@ -463,6 +516,141 @@ public class fProxySparseSolverTests
 
             Assert.Throws<ArgumentException>(() =>
                 Solvers.cg(in op, in b, ref x, ref r, ref p, ref Ap, 4, Consts.fProxySqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // ---- scratch-aliasing guards for cg / pcg --------------------------------------------
+    //
+    // cg/pcg throw if ANY two of their vector arguments share a Data.Ptr (the elementwise axpy
+    // scratch updates silently corrupt on aliasing rather than self-checking). The pairs below
+    // are chosen to be ones NOT already caught by a downstream Apply/dot guard, so each proves
+    // the up-front distinctness check is doing real work. The guard runs before any computation,
+    // so the operator matrix's contents are irrelevant -- a bare square fProxyMat suffices for cg.
+
+    [Test]
+    public void Cg_AliasingRAndAp_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int dim = 4;
+            var A = arena.fProxyMat(dim, dim); // square; guard fires before A is read
+            var op = new fProxyDenseOperator(in A);
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6501);
+            var x = arena.fProxyVec(dim);
+            var p = arena.fProxyVec(dim);
+            var Ap = arena.fProxyVec(dim);
+            var rAlias = Ap; // r aliases Ap (would turn r -= Ap into r -= r == 0: false convergence)
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.fProxySqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Cg_AliasingRAndX_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int dim = 4;
+            var A = arena.fProxyMat(dim, dim);
+            var op = new fProxyDenseOperator(in A);
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6511);
+            var x = arena.fProxyVec(dim);
+            var p = arena.fProxyVec(dim);
+            var Ap = arena.fProxyVec(dim);
+            var rAlias = x; // r aliases x (r.CopyFrom(b) would silently clobber the initial guess)
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.cg(in op, in b, ref x, ref rAlias, ref p, ref Ap, dim, Consts.fProxySqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Pcg_AliasingRAndX_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = BuildSquareBSM(ref arena);       // 4 x 4, both diagonal blocks present
+            var M = arena.fProxyBlockJacobi(in A);
+            int dim = A.M_Rows;
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6521);
+            var x = arena.fProxyVec(dim);
+            var p = arena.fProxyVec(dim);
+            var Ap = arena.fProxyVec(dim);
+            var z = arena.fProxyVec(dim);
+            var rAlias = x; // r aliases x
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.pcg(in A, in M, in b, ref x, ref rAlias, ref p, ref Ap, ref z, dim, Consts.fProxySqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Pcg_AliasingZAndX_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = BuildSquareBSM(ref arena);
+            var M = arena.fProxyBlockJacobi(in A);
+            int dim = A.M_Rows;
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6531);
+            var x = arena.fProxyVec(dim);
+            var r = arena.fProxyVec(dim);
+            var p = arena.fProxyVec(dim);
+            var Ap = arena.fProxyVec(dim);
+            var zAlias = x; // z aliases x (not caught by M.Apply's own r/z guard)
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref zAlias, dim, Consts.fProxySqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // x aliasing b: the final pair among {r,p,Ap,x,b} / {r,p,Ap,z,x,b}. Benign in the current loop
+    // (b isn't reread after the initial residual), but the guard is documented as ALL-pairs-distinct
+    // so it must still throw. xAlias is a struct-copy of b (shares Data.Ptr) -- passing them as two
+    // distinct locals keeps b as `in` and x as `ref` without an in/ref same-variable conflict.
+    [Test]
+    public void Cg_AliasingXAndB_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int dim = 4;
+            var A = arena.fProxyMat(dim, dim); // square; guard fires before A is read
+            var op = new fProxyDenseOperator(in A);
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6541);
+            var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
+            var r = arena.fProxyVec(dim);
+            var p = arena.fProxyVec(dim);
+            var Ap = arena.fProxyVec(dim);
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.cg(in op, in b, ref xAlias, ref r, ref p, ref Ap, dim, Consts.fProxySqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Pcg_AliasingXAndB_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = BuildSquareBSM(ref arena);
+            var M = arena.fProxyBlockJacobi(in A);
+            int dim = A.M_Rows;
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 6551);
+            var xAlias = b; // x aliases b (struct copy shares Data.Ptr)
+            var r = arena.fProxyVec(dim);
+            var p = arena.fProxyVec(dim);
+            var Ap = arena.fProxyVec(dim);
+            var z = arena.fProxyVec(dim);
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.pcg(in A, in M, in b, ref xAlias, ref r, ref p, ref Ap, ref z, dim, Consts.fProxySqrtEps));
         }
         finally { arena.Dispose(); }
     }

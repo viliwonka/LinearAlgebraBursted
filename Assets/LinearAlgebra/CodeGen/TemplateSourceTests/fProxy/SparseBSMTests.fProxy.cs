@@ -33,6 +33,7 @@ public class fProxySparseBSMTests
             OneByOneBlocks,
             GrowthThenDispose,
             ClearThenReallocate,
+            EmptyBSMRoundTrip,
         }
 
         public TestType Type;
@@ -55,6 +56,7 @@ public class fProxySparseBSMTests
                 case TestType.OneByOneBlocks: OneByOneBlocks(); break;
                 case TestType.GrowthThenDispose: GrowthThenDispose(); break;
                 case TestType.ClearThenReallocate: ClearThenReallocate(); break;
+                case TestType.EmptyBSMRoundTrip: EmptyBSMRoundTrip(); break;
             }
         }
 
@@ -458,6 +460,65 @@ public class fProxySparseBSMTests
 
             arena.Dispose();
         }
+
+        // ---- 10. empty BSM (zero triplets) + minimal 1x1 single-element BSM round-trip -------
+        //
+        // A builder with a nonzero block-grid shape but ZERO triplets ToBSM's to a valid empty
+        // BSM (Nnzb == 0): every block-row's RowPtr range is empty so bsmMatVec/bsmMatVecT never
+        // dereference the (possibly-null-Ptr) zero-length ColInd/Values buffers. ToDense must
+        // produce the all-zero matrix and spMV/spMVT the zero vector for any x. Mirrors the
+        // codebase's established zero-length-vector pattern (arena.fProxyVec(0) etc.). Also folds
+        // in the smallest non-empty edge: a 1x1-grid, 1x1-block, single-triplet BSM (one scalar).
+        void EmptyBSMRoundTrip()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // --- empty BSM: 3x3 block grid of 2x2 blocks (6x6 dense) with NO triplets ---
+            const int BR = 2, BC = 2;
+            var builder = arena.fProxyBSMBuilder(3, 3, BR, BC);
+            var A = builder.ToBSM(ref arena);
+
+            Assert.IsTrue(A.Nnzb == 0);
+            Assert.IsTrue(A.M_Rows == 6);
+            Assert.IsTrue(A.N_Cols == 6);
+
+            // ToDense of an empty BSM == the all-zero matrix of the right dims.
+            var dense = A.ToDense(ref arena);
+            var zero = arena.fProxyMat(6, 6);
+            AssertMatEq(in dense, in zero, Tol());
+
+            // spMV of an empty BSM == the zero vector, for a random nonzero x.
+            var x = arena.fProxyRandomVec(A.N_Cols, (fProxy)(-1f), (fProxy)1f, 9201);
+            var y = arena.fProxyVec(A.M_Rows);
+            Sparse_OP.spMV(in A, in x, ref y);
+            Assert.IsTrue(Analysis_OP.isZero(y, Tol()));
+
+            // spMVT too (transpose path's empty-row loop is separate code).
+            var xt = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 9202);
+            var yt = arena.fProxyVec(A.N_Cols);
+            Sparse_OP.spMVT(in A, in xt, ref yt);
+            Assert.IsTrue(Analysis_OP.isZero(yt, Tol()));
+
+            // --- minimal non-empty edge: 1x1 grid, 1x1 block, one triplet == a single scalar ---
+            var oneBuilder = arena.fProxyBSMBuilder(1, 1, 1, 1);
+            oneBuilder.AddValue(0, 0, (fProxy)7);
+            var one = oneBuilder.ToBSM(ref arena);
+
+            Assert.IsTrue(one.Nnzb == 1);
+            Assert.IsTrue(one.M_Rows == 1);
+            Assert.IsTrue(one.N_Cols == 1);
+
+            var oneDense = one.ToDense(ref arena);
+            Assert.IsTrue(math.abs(oneDense[0, 0] - (fProxy)7) < Tol());
+
+            var ox = arena.fProxyVec(1);
+            ox[0] = (fProxy)3;
+            var oy = arena.fProxyVec(1);
+            Sparse_OP.spMV(in one, in ox, ref oy);
+            Assert.IsTrue(math.abs(oy[0] - (fProxy)21) < Tol()); // 7 * 3
+
+            arena.Dispose();
+        }
     }
 
     // ---- correctness cases (Burst) -------------------------------------------------------
@@ -500,6 +561,11 @@ public class fProxySparseBSMTests
     [Test]
     public void ClearThenReallocateTest()
         => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.ClearThenReallocate }.Run();
+
+    // Empty BSM (zero triplets) round-trips to zero dense / zero matvec; + minimal 1x1 scalar BSM.
+    [Test]
+    public void EmptyBSMRoundTripTest()
+        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.EmptyBSMRoundTrip }.Run();
 
     // ---- Regression test: ToDense/ToBSM dangling-arena-pointer bug (fixed) ----------------
     //
@@ -651,6 +717,23 @@ public class fProxySparseBSMTests
             var x = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 9002);
             var yAlias = x;
             Assert.Throws<ArgumentException>(() => Sparse_OP.spMVT(in A, in x, ref yAlias));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // fProxyBlockJacobi.Apply's z-must-not-alias-r guard (each z_i draws on the full r_i block;
+    // overwriting r in place mid-block would corrupt later rows of the same block's product).
+    [Test]
+    public void BlockJacobiApply_AliasingZ_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = BuildSquare(ref arena);          // square BSM, both diagonal blocks present
+            var M = arena.fProxyBlockJacobi(in A);
+            var r = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 9003);
+            var zAlias = r;                          // struct copy shares Data.Ptr with r
+            Assert.Throws<ArgumentException>(() => M.Apply(in r, ref zAlias));
         }
         finally { arena.Dispose(); }
     }

@@ -107,7 +107,7 @@ namespace LinearAlgebra
         public void Dispose() {
 #if LINALG_DEBUG
             // poison the buffer so a read-after-dispose surfaces as NaN instead of stale data
-            for (int i = 0; i < N; i++) this[i] = float.NaN;
+            for (int i = 0; i < N; i++) this[i] = fProxy.NaN;
 #endif
             Data.Dispose();
         }

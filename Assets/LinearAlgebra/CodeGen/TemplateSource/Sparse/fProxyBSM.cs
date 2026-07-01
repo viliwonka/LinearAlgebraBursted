@@ -107,7 +107,7 @@ namespace LinearAlgebra.Sparse
         {
 #if LINALG_DEBUG
             // poison the buffer so a read-after-dispose surfaces as NaN instead of stale data
-            for (int i = 0; i < Values.Length; i++) Values[i] = float.NaN;
+            for (int i = 0; i < Values.Length; i++) Values[i] = fProxy.NaN;
 #endif
             RowPtr.Dispose();
             ColInd.Dispose();

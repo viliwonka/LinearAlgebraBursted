@@ -180,6 +180,22 @@ namespace LinearAlgebra
             if (maxIterations < 1)
                 throw new ArgumentException("cg: maxIterations must be >= 1");
 
+            // Aliasing guard: the loop below mixes plain elementwise scratch updates
+            // (addScaledInpl/scaleAddInpl) with reads of "old" values, and those primitives do
+            // NOT self-check aliasing the way A.Apply's own dot/spMV call does. E.g. r aliasing
+            // Ap turns `r.addScaledInpl(-1, Ap)` (r -= Ap) into r -= r == 0 elementwise -- a
+            // silent false convergence instead of a thrown exception. Check every pair up front.
+            unsafe
+            {
+                float* rPtr = r.Data.Ptr, pPtr = p.Data.Ptr, ApPtr = Ap.Data.Ptr, xPtr = x.Data.Ptr, bPtr = b.Data.Ptr;
+
+                if (rPtr == pPtr || rPtr == ApPtr || rPtr == xPtr || rPtr == bPtr ||
+                    pPtr == ApPtr || pPtr == xPtr || pPtr == bPtr ||
+                    ApPtr == xPtr || ApPtr == bPtr ||
+                    xPtr == bPtr)
+                    throw new ArgumentException("cg: r/p/Ap/x/b must be distinct");
+            }
+
             float bb = Linear_OP.dot(b, b);
 
             // b is the zero vector — x = 0 is the exact solution. Copy b (all zeros)
@@ -352,6 +368,20 @@ namespace LinearAlgebra
             if (maxIterations < 1)
                 throw new ArgumentException("pcg: maxIterations must be >= 1");
 
+            // Aliasing guard -- see the matching comment in cg<TOp>. z joins the set here since
+            // PCG additionally mixes p/r into the preconditioned residual via M.Apply / axpy.
+            unsafe
+            {
+                float* rPtr = r.Data.Ptr, pPtr = p.Data.Ptr, ApPtr = Ap.Data.Ptr, zPtr = z.Data.Ptr, xPtr = x.Data.Ptr, bPtr = b.Data.Ptr;
+
+                if (rPtr == pPtr || rPtr == ApPtr || rPtr == zPtr || rPtr == xPtr || rPtr == bPtr ||
+                    pPtr == ApPtr || pPtr == zPtr || pPtr == xPtr || pPtr == bPtr ||
+                    ApPtr == zPtr || ApPtr == xPtr || ApPtr == bPtr ||
+                    zPtr == xPtr || zPtr == bPtr ||
+                    xPtr == bPtr)
+                    throw new ArgumentException("pcg: r/p/Ap/z/x/b must be distinct");
+            }
+
             float bb = Linear_OP.dot(b, b);
 
             if (bb == (float)0)
@@ -376,6 +406,13 @@ namespace LinearAlgebra
 
             float rzold = Linear_OP.dot(r, z);
 
+            // Block-Jacobi is SPD so this never trips on the shipped path, but a user-supplied
+            // preconditioner is not guaranteed SPD; a non-positive <r,z> yields a wrong-signed
+            // alpha/beta and silent divergence instead of a clean bailout. Mirrors cg's
+            // NaN-safe !(pAp > 0) breakdown guard.
+            if (!(rzold > (float)0))
+                return false;
+
             for (int k = 0; k < maxIterations; k++)
             {
                 A.Apply(in p, ref Ap);                    // Ap = A p
@@ -396,6 +433,10 @@ namespace LinearAlgebra
                 M.Apply(in r, ref z);                     // z = M^-1 r
 
                 float rznew = Linear_OP.dot(r, z);
+
+                if (!(rznew > (float)0))                 // NaN-safe: same breakdown guard, fresh <r,z>
+                    return false;
+
                 float beta = rznew / rzold;
 
                 p.scaleAddInpl(beta, z);                 // p = beta p + z
