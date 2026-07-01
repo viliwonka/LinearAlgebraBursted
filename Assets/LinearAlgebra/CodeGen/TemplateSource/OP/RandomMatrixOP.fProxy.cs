@@ -64,7 +64,7 @@ namespace LinearAlgebra
             fProxyRandom_OP.randomInpl(ref rng, ref zScratch, ref gauss);
 
             // dest = cholL · zScratch
-            fProxy_OP.dot(in cholL, in zScratch, ref dest);
+            Linear_OP.dot(in cholL, in zScratch, ref dest);
 
             // dest += mean
             for (int i = 0; i < n; i++)
@@ -125,7 +125,7 @@ namespace LinearAlgebra
             for (int r = 0; r < count; r++)
             {
                 fProxyRandom_OP.randomInpl(ref rng, ref z, ref gauss);
-                fProxy_OP.dot(in cholL, in z, ref row);
+                Linear_OP.dot(in cholL, in z, ref row);
                 for (int c = 0; c < n; c++)
                     destRows[r, c] = row[c] + mean[c];
             }
@@ -174,7 +174,7 @@ namespace LinearAlgebra
             fProxyRandom_OP.randomInpl(ref rng, ref G, ref gauss);
 
             // Step 2: QR decomposition — G is overwritten with Q, R holds upper-triangular factor
-            Ortho_OP.qrDecomposition(ref G, ref R);
+            QR.qrDecomposition(ref G, ref R);
 
             // Step 3: Haar sign fix (Mezzadri 2007)
             //   Multiply column i of Q by sign(R[i,i]).  sign(0) = +1 (no flip needed).
@@ -238,7 +238,7 @@ namespace LinearAlgebra
             randomOrthogonalInpl(ref rng, ref Q);
 
             // Qt = Qᵀ — must be computed BEFORE we scale Q's columns (otherwise Qt = (QΛ)ᵀ = ΛQᵀ)
-            fProxy_OP.trans(in Q, ref Qt);
+            Linear_OP.trans(in Q, ref Qt);
 
             // Scale column i of Q by λᵢ ~ Uniform(minEig, maxEig) → QΛ in-place
             for (int i = 0; i < n; i++)
@@ -249,7 +249,7 @@ namespace LinearAlgebra
             }
 
             // dest = QΛ · Qᵀ  (= Q_orig · Λ · Q_origᵀ)
-            fProxy_OP.dot(in Q, in Qt, ref dest);
+            Linear_OP.dot(in Q, in Qt, ref dest);
 
             // Enforce exact symmetry: dest ← (dest + destᵀ) / 2
             // Operates only on the upper-triangle pairs to avoid redundant work.
@@ -307,7 +307,7 @@ namespace LinearAlgebra
             var V  = new fProxyMxN(n, n, Allocator.Temp);
             var Vt = new fProxyMxN(n, n, Allocator.Temp);
             randomOrthogonalInpl(ref rng, ref V);
-            fProxy_OP.trans(in V, ref Vt);
+            Linear_OP.trans(in V, ref Vt);
             V.Dispose();
 
             // Build UΣ (m×n): column i of U scaled by σᵢ; remaining columns zero.
@@ -336,7 +336,7 @@ namespace LinearAlgebra
             }
 
             // dest = UΣ · Vᵀ
-            fProxy_OP.dot(in US, in Vt, ref dest);
+            Linear_OP.dot(in US, in Vt, ref dest);
 
             US.Dispose();
             Vt.Dispose();
@@ -385,7 +385,7 @@ namespace LinearAlgebra
             fProxyRandom_OP.randomInpl(ref rng, ref B, ref gauss);
 
             // dest = A·B   (dot clears dest before accumulating)
-            fProxy_OP.dot(in A, in B, ref dest);
+            Linear_OP.dot(in A, in B, ref dest);
 
             B.Dispose();
             A.Dispose();

@@ -222,9 +222,9 @@ public class floatPivotTests
 
             var permutationMatrix = arena.floatPermutationMat(8, 2, 3);
 
-            permutationMatrix = float_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 3, 6));
-            permutationMatrix = float_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 6, 7));
-            permutationMatrix = float_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 1, 4));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 3, 6));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 6, 7));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 1, 4));
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 
@@ -245,11 +245,11 @@ public class floatPivotTests
 
             var permutationMatrix = arena.floatPermutationMat(8, 2, 3);
 
-            permutationMatrix = float_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 3, 6));
-            permutationMatrix = float_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 6, 7));
-            permutationMatrix = float_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 1, 4));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 3, 6));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 6, 7));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 1, 4));
 
-            permutationMatrix = float_OP.trans(permutationMatrix);
+            permutationMatrix = Linear_OP.trans(permutationMatrix);
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 

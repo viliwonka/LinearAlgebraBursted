@@ -84,7 +84,7 @@ public class floatCholeskyTests
             var M = arena.floatRandomMat(dim, dim, -1f, 1f, seed);
 
             // dot(M, M, transposeA:true) == Mᵀ·M
-            var A = float_OP.dot(M, M, true);
+            var A = Linear_OP.dot(M, M, true);
 
             for (int d = 0; d < dim; d++)
                 A[d, d] += dim;
@@ -108,8 +108,8 @@ public class floatCholeskyTests
             Assert.IsTrue(Analysis_OP.isLowerTriangular(L, Tol()));
 
             // Reconstruct A = L·Lᵀ and compare. Build Lᵀ explicitly then L·Lᵀ.
-            var Lt = float_OP.trans(L);
-            var recon = float_OP.dot(L, Lt, false);
+            var Lt = Linear_OP.trans(L);
+            var recon = Linear_OP.dot(L, Lt, false);
 
             Assert.IsTrue(Analysis_OP.isZero(A - recon, Tol()));
 
@@ -133,7 +133,7 @@ public class floatCholeskyTests
             Assert.IsTrue(ok);
 
             // Verify A·x ≈ bOrig
-            var Ax = float_OP.dot(A, b);
+            var Ax = Linear_OP.dot(A, b);
             Assert.IsTrue(Analysis_OP.isZero(bOrig - Ax, Tol()));
 
             arena.Dispose();
@@ -157,7 +157,7 @@ public class floatCholeskyTests
             // Solve using the pre-computed factor.
             Cholesky.choleskySolve(ref L, ref b);
 
-            var Ax = float_OP.dot(A, b);
+            var Ax = Linear_OP.dot(A, b);
             Assert.IsTrue(Analysis_OP.isZero(bOrig - Ax, Tol()));
 
             arena.Dispose();
@@ -184,8 +184,8 @@ public class floatCholeskyTests
             Assert.IsTrue(math.abs(L[1, 1] - math.sqrt((float)2f)) < tol);
 
             // Reconstruct as a second check.
-            var Lt = float_OP.trans(L);
-            var recon = float_OP.dot(L, Lt, false);
+            var Lt = Linear_OP.trans(L);
+            var recon = Linear_OP.dot(L, Lt, false);
             Assert.IsTrue(Analysis_OP.isZero(A - recon, tol));
 
             arena.Dispose();
@@ -316,7 +316,7 @@ public class floatCholeskyTests
             var b = arena.floatRandomVec(1, -1f, 1f, 77);
             var bOrig = b.Copy();
             Cholesky.choleskySolve(ref L, ref b);
-            var Ax = float_OP.dot(A, b);
+            var Ax = Linear_OP.dot(A, b);
             Assert.IsTrue(Analysis_OP.isZero(bOrig - Ax, Tol()));
 
             arena.Dispose();
@@ -339,8 +339,8 @@ public class floatCholeskyTests
             Assert.IsTrue(ok);
 
             // Reconstruct L·Lᵀ and compare against the ORIGINAL A.
-            var Lt = float_OP.trans(L);
-            var recon = float_OP.dot(L, Lt, false);
+            var Lt = Linear_OP.trans(L);
+            var recon = Linear_OP.dot(L, Lt, false);
             Assert.IsTrue(Analysis_OP.isZero(Aorig - recon, Tol()));
 
             arena.Dispose();
@@ -362,8 +362,8 @@ public class floatCholeskyTests
 
             Assert.IsTrue(Analysis_OP.isLowerTriangular(L, Tol()));
 
-            var Lt = float_OP.trans(L);
-            var recon = float_OP.dot(L, Lt, false);
+            var Lt = Linear_OP.trans(L);
+            var recon = Linear_OP.dot(L, Lt, false);
             Assert.IsTrue(Analysis_OP.isZero(A - recon, Tol()));
 
             arena.Dispose();
@@ -385,8 +385,8 @@ public class floatCholeskyTests
 
             Assert.IsTrue(Analysis_OP.isLowerTriangular(L, Tol()));
 
-            var Lt = float_OP.trans(L);
-            var recon = float_OP.dot(L, Lt, false);
+            var Lt = Linear_OP.trans(L);
+            var recon = Linear_OP.dot(L, Lt, false);
             Assert.IsTrue(Analysis_OP.isZero(A - recon, Tol()));
 
             arena.Dispose();

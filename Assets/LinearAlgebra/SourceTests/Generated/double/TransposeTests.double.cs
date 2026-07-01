@@ -41,7 +41,7 @@ public class doubleTransposeTests
             
             doubleMxN A = arena.doubleRandomMat(dim, dim);
 
-            doubleMxN B = double_OP.trans(A);
+            doubleMxN B = Linear_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, dim);
             Assert.AreEqual(B.N_Cols, dim);
@@ -62,7 +62,7 @@ public class doubleTransposeTests
 
             doubleMxN A = arena.doubleRandomMat(rows, cols);
 
-            doubleMxN B = double_OP.trans(A);
+            doubleMxN B = Linear_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, cols);
             Assert.AreEqual(B.N_Cols, rows);

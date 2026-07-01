@@ -4,13 +4,14 @@ using System.Runtime.CompilerServices;
 using System;
 
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
     /// <summary>
     /// Inpl = inplace
     /// </summary>
-    public static partial class float_OP {
+    public static partial class Linear_OP {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float dot(floatN a, floatN b)
@@ -199,6 +200,41 @@ namespace LinearAlgebra
             var T = A.tempfloatMat(A.N_Cols, A.M_Rows, true);
             trans(in A, ref T);
             return T;
+        }
+
+        // Applies a single Householder reflection matrix -style transform directly to `matrix`:
+        // matrix -= (2 / uᵀu) · u·uᵀ · matrix. Standalone primitive (not part of QR's internal
+        // incremental reflector pipeline — see QR.applyReflectorRight for that).
+        public static void householderInpl(ref floatMxN matrix, in floatN u)
+        {
+            if(matrix.IsSquare == false)
+                throw new System.Exception("Linear_OP.householderInpl: Matrix must be square");
+
+            if(matrix.M_Rows < matrix.N_Cols)
+                throw new System.Exception("Linear_OP.householderInpl: Matrix must be square or tall (more or equal rows than cols)");
+
+            var maxDim = math.max(matrix.M_Rows, matrix.N_Cols);
+
+            if(u.N < maxDim)
+                throw new System.Exception("Linear_OP.householderInpl: Vector must be at least as long as the largest dimension of the matrix");
+
+            float vTv = dot(u, u); // Inline dot product calculation
+
+            // Degenerate (zero / near-zero) reflector -> identity transform; leave matrix unchanged.
+            // NaN-safe (!(vTv > t) is true for NaN); avoids 2/0 = Inf poisoning the matrix.
+            if (!(vTv > Consts.floatZeroThreshold))
+                return;
+
+            float scaleFactor = 2 / vTv;
+
+            for (int i = 0; i < matrix.M_Rows; i++)
+            {
+                for (int j = 0; j < matrix.N_Cols; j++)
+                {
+                    float vvT_element = scaleFactor * u[i] * u[j];
+                    matrix[i, j] -= vvT_element; // Apply directly to matrix
+                }
+            }
         }
     }
 }

@@ -296,7 +296,7 @@ public class doubleSpecialConstructorsTests {
             Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
             Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
             
-            var mTm = double_OP.dot(m, m, true);
+            var mTm = Linear_OP.dot(m, m, true);
             Analysis_OP.isIdentity(in mTm, 0.00001f);
 
             m = arena.doubleRotationMat(2, 0, 1, math.PI/4f);
@@ -317,7 +317,7 @@ public class doubleSpecialConstructorsTests {
             Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
             Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
 
-            var mTm = double_OP.dot(m, m, true);
+            var mTm = Linear_OP.dot(m, m, true);
             Analysis_OP.isIdentity(in mTm, 0.00001f);
 
             m = arena.doublePermutationMat(2, 0, 1);
@@ -339,7 +339,7 @@ public class doubleSpecialConstructorsTests {
             Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
             Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
 
-            var mTm = double_OP.dot(m, m, true);
+            var mTm = Linear_OP.dot(m, m, true);
             Analysis_OP.isIdentity(in mTm, 0.00001f);
 
             v = arena.doubleBasisVec(2, 0);

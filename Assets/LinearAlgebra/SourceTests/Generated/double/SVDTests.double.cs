@@ -1102,9 +1102,9 @@ public class doubleSVDTests
         {
             // A ~= U * diag(S) * V^T
             var diagS = arena.doubleDiagonalMat(in S);
-            var US = double_OP.dot(U, diagS);
-            var Vt = double_OP.trans(V);
-            var recon = double_OP.dot(US, Vt);
+            var US = Linear_OP.dot(U, diagS);
+            var Vt = Linear_OP.trans(V);
+            var recon = Linear_OP.dot(US, Vt);
 
             doubleMxN shouldBeZero = A - recon;
 

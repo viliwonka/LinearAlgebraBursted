@@ -72,11 +72,11 @@ public class doubleDotRefTests
             {
                 var A = arena.doubleRandomMat(M, N, -1f, 1f, 12321);
                 var x = arena.doubleRandomVec(N, -1f, 1f, 45654);
-                var R = double_OP.dot(A, x);
+                var R = Linear_OP.dot(A, x);
 
                 var D = arena.doubleVec(M);
-                double_OP.addInpl(D, (double)999);   // dirty the destination
-                double_OP.dot(in A, in x, ref D);
+                doubleElem_OP.addInpl(D, (double)999);   // dirty the destination
+                Linear_OP.dot(in A, in x, ref D);
                 Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
             }
 
@@ -84,11 +84,11 @@ public class doubleDotRefTests
             {
                 var y = arena.doubleRandomVec(M, -1f, 1f, 11221);
                 var A = arena.doubleRandomMat(M, N, -1f, 1f, 33443);
-                var R = double_OP.dot(y, A);
+                var R = Linear_OP.dot(y, A);
 
                 var D = arena.doubleVec(N);
-                double_OP.addInpl(D, (double)999);
-                double_OP.dot(in y, in A, ref D);
+                doubleElem_OP.addInpl(D, (double)999);
+                Linear_OP.dot(in y, in A, ref D);
                 Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
             }
 
@@ -96,11 +96,11 @@ public class doubleDotRefTests
             {
                 var a = arena.doubleRandomMat(M, K, -1f, 1f, 32123);
                 var b = arena.doubleRandomMat(K, N, -1f, 1f, 65456);
-                var R = double_OP.dot(a, b, false);
+                var R = Linear_OP.dot(a, b, false);
 
                 var D = arena.doubleMat(M, N);
-                double_OP.addInpl(D, (double)999);
-                double_OP.dot(in a, in b, ref D, false);
+                doubleElem_OP.addInpl(D, (double)999);
+                Linear_OP.dot(in a, in b, ref D, false);
                 Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
             }
 
@@ -119,11 +119,11 @@ public class doubleDotRefTests
             var b = arena.doubleRandomVec(N, -1f, 1f, 22222);
 
             // allocating reference
-            var R = double_OP.outerDot(a, b);
+            var R = Linear_OP.outerDot(a, b);
 
             // ref-dest into a preallocated M x N destination
             var D = arena.doubleMat(M, N);
-            double_OP.outerDot(in a, in b, ref D);
+            Linear_OP.outerDot(in a, in b, ref D);
 
             Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
@@ -141,10 +141,10 @@ public class doubleDotRefTests
             var A = arena.doubleRandomMat(M, N, -1f, 1f, 33333);
             var x = arena.doubleRandomVec(N, -1f, 1f, 44444);
 
-            var R = double_OP.dot(A, x);
+            var R = Linear_OP.dot(A, x);
 
             var D = arena.doubleVec(M);
-            double_OP.dot(in A, in x, ref D);
+            Linear_OP.dot(in A, in x, ref D);
 
             Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
@@ -162,10 +162,10 @@ public class doubleDotRefTests
             var y = arena.doubleRandomVec(M, -1f, 1f, 55555);
             var A = arena.doubleRandomMat(M, N, -1f, 1f, 66666);
 
-            var R = double_OP.dot(y, A);
+            var R = Linear_OP.dot(y, A);
 
             var D = arena.doubleVec(N);
-            double_OP.dot(in y, in A, ref D);
+            Linear_OP.dot(in y, in A, ref D);
 
             Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
@@ -184,10 +184,10 @@ public class doubleDotRefTests
             var a = arena.doubleRandomMat(M, K, -1f, 1f, 77777);
             var b = arena.doubleRandomMat(K, N, -1f, 1f, 88888);
 
-            var R = double_OP.dot(a, b, false);
+            var R = Linear_OP.dot(a, b, false);
 
             var D = arena.doubleMat(M, N);
-            double_OP.dot(in a, in b, ref D, false);
+            Linear_OP.dot(in a, in b, ref D, false);
 
             Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
@@ -206,18 +206,18 @@ public class doubleDotRefTests
             var a = arena.doubleRandomMat(K, M, -1f, 1f, 99999);
             var b = arena.doubleRandomMat(K, N, -1f, 1f, 10101);
 
-            var R = double_OP.dot(a, b, true);
+            var R = Linear_OP.dot(a, b, true);
 
             // result is M x N (a.N_Cols x b.N_Cols)
             var D = arena.doubleMat(M, N);
-            double_OP.dot(in a, in b, ref D, true);
+            Linear_OP.dot(in a, in b, ref D, true);
 
             // ref == allocating (delegation check)
             Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 
             // Independent oracle: Aᵀ·B computed via an explicit transpose + plain matmul,
             // which exercises a different code path than the fused transposeA kernel.
-            var oracle = double_OP.dot(double_OP.trans(a), b);
+            var oracle = Linear_OP.dot(Linear_OP.trans(a), b);
             Assert.IsTrue(Analysis_OP.isZero(R - oracle, Tol()));
 
             arena.Dispose();
@@ -233,10 +233,10 @@ public class doubleDotRefTests
 
             var A = arena.doubleRandomMat(M, N, -1f, 1f, 20202);
 
-            var R = double_OP.trans(A);
+            var R = Linear_OP.trans(A);
 
             var D = arena.doubleMat(N, M);
-            double_OP.trans(in A, ref D);
+            Linear_OP.trans(in A, ref D);
 
             Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
 

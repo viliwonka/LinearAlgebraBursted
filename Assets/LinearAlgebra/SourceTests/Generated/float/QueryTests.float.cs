@@ -719,7 +719,7 @@ public class floatQueryTests
 
             int M = 5, N = 4;
             var A = arena.floatRandomMat(M, N, -3f, 3f, 20240625);
-            var At = float_OP.trans(A);   // N x M
+            var At = Linear_OP.trans(A);   // N x M
 
             // For a column op on A, the query length is M_Rows = M; this same q is the row query
             // for At (whose N_Cols = M). So nearestColumn(A,q) == nearestRow(At,q).

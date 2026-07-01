@@ -296,7 +296,7 @@ public class floatSpecialConstructorsTests {
             Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
             Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
             
-            var mTm = float_OP.dot(m, m, true);
+            var mTm = Linear_OP.dot(m, m, true);
             Analysis_OP.isIdentity(in mTm, 0.00001f);
 
             m = arena.floatRotationMat(2, 0, 1, math.PI/4f);
@@ -317,7 +317,7 @@ public class floatSpecialConstructorsTests {
             Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
             Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
 
-            var mTm = float_OP.dot(m, m, true);
+            var mTm = Linear_OP.dot(m, m, true);
             Analysis_OP.isIdentity(in mTm, 0.00001f);
 
             m = arena.floatPermutationMat(2, 0, 1);
@@ -339,7 +339,7 @@ public class floatSpecialConstructorsTests {
             Assert.IsTrue(Analysis_OP.isOrthogonal(in m, 0.00001f));
             Assert.IsFalse(Analysis_OP.isIdentity(in m, 0.00001f));
 
-            var mTm = float_OP.dot(m, m, true);
+            var mTm = Linear_OP.dot(m, m, true);
             Analysis_OP.isIdentity(in mTm, 0.00001f);
 
             v = arena.floatBasisVec(2, 0);

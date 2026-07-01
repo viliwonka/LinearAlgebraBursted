@@ -343,9 +343,9 @@ public class fProxyEigenTests
 
             // Reconstruct: recon = V * diag(eig) * V^T
             var diagE = arena.fProxyDiagonalMat(in eig);
-            var Vd = fProxy_OP.dot(V, diagE);
-            var Vt = fProxy_OP.trans(V);
-            var recon = fProxy_OP.dot(Vd, Vt);
+            var Vd = Linear_OP.dot(V, diagE);
+            var Vt = Linear_OP.trans(V);
+            var recon = Linear_OP.dot(Vd, Vt);
 
             fProxyMxN shouldBeZero = Aorig - recon;
 

@@ -16,7 +16,7 @@ namespace LinearAlgebra
         // PRECONDITION: U is non-singular — every diagonal U[r,r] must be nonzero. A zero diagonal
         // (a singular/rank-deficient triangular factor) divides by zero and yields Inf/NaN; this
         // primitive does not guard it. For rank-deficient systems use the rank-revealing paths
-        // (Ortho_OP.qrDecompositionColumnPivot, SVD.pinvSolve, or Cholesky.choleskyPivotSolve).
+        // (QR.qrDecompositionColumnPivot, SVD.pinvSolve, or Cholesky.choleskyPivotSolve).
         public static void solveUpperTriangular(ref doubleMxN U, ref doubleN x)
         {
             if(U.M_Rows < U.N_Cols)
@@ -115,7 +115,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("solveQR: x.N must equal Q.N_Cols");
 
             // x = Q^T b (or b^T Q). The ref-dest dot guards x-aliases-b and zeroes x first.
-            double_OP.dot(in b, in Q, ref x);
+            Linear_OP.dot(in b, in Q, ref x);
             // Solve Rx = Q^T b for x, in place
             solveUpperTriangular(ref R, ref x);
         }
@@ -133,7 +133,7 @@ namespace LinearAlgebra
         // Solve Ax = b for x
         public static void solveQR(ref doubleMxN A, ref doubleN b, ref doubleN x)
         {
-            Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
+            QR.qrDirectSolve(ref A, ref b, ref x);
 
         }
 
@@ -170,7 +170,7 @@ namespace LinearAlgebra
             if (maxIterations < 1)
                 throw new ArgumentException("conjugateGradient: maxIterations must be >= 1");
 
-            double bb = double_OP.dot(b, b);
+            double bb = Linear_OP.dot(b, b);
 
             // b is the zero vector — x = 0 is the exact solution. Copy b (all zeros)
             // rather than multiplying by 0, so a NaN/Inf initial guess is sanitized
@@ -182,14 +182,14 @@ namespace LinearAlgebra
             }
 
             // r = b - A x
-            double_OP.dot(in A, in x, ref Ap);           // Ap = A x (temp use of Ap)
+            Linear_OP.dot(in A, in x, ref Ap);           // Ap = A x (temp use of Ap)
             r.Data.CopyFrom(b.Data);                     // r  = b
             r.addScaledInpl((double)(-1), Ap);           // r -= Ap  =>  r = b - A x
 
             // p = r
             p.Data.CopyFrom(r.Data);
 
-            double rsold = double_OP.dot(r, r);
+            double rsold = Linear_OP.dot(r, r);
             double threshold = tolerance * tolerance * bb;
 
             if (rsold <= threshold)
@@ -197,9 +197,9 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
-                double_OP.dot(in A, in p, ref Ap);        // Ap = A p
+                Linear_OP.dot(in A, in p, ref Ap);        // Ap = A p
 
-                double pAp = double_OP.dot(p, Ap);
+                double pAp = Linear_OP.dot(p, Ap);
 
                 if (!(pAp > (double)0))                  // NaN-safe: also catches breakdown
                     return false;
@@ -209,7 +209,7 @@ namespace LinearAlgebra
                 x.addScaledInpl(alpha, p);               // x += alpha p
                 r.addScaledInpl(-alpha, Ap);             // r -= alpha Ap
 
-                double rsnew = double_OP.dot(r, r);
+                double rsnew = Linear_OP.dot(r, r);
 
                 if (rsnew <= threshold)
                     return true;

@@ -616,7 +616,7 @@ public class floatTransformsTests
             var v = arena.floatVec(5);
             v[0] = -5f; v[1] = -1f; v[2] = 0f; v[3] = 3f; v[4] = 9f;
 
-            float_OP.clampInpl(in v, (float)(-1f), (float)4f);
+            floatElem_OP.clampInpl(in v, (float)(-1f), (float)4f);
             AssertClose(v[0], (float)(-1f), (float)EPS); // below lo
             AssertClose(v[1], (float)(-1f), (float)EPS); // at lo
             AssertClose(v[2], (float)0f, (float)EPS);    // in range
@@ -632,7 +632,7 @@ public class floatTransformsTests
             A[0, 0] = -10f; A[0, 1] = 0.5f;
             A[1, 0] = 2f;   A[1, 1] = 100f;
 
-            float_OP.clampInpl(in A, (float)0f, (float)1f);
+            floatElem_OP.clampInpl(in A, (float)0f, (float)1f);
             AssertClose(A[0, 0], (float)0f, (float)EPS);
             AssertClose(A[0, 1], (float)0.5f, (float)EPS);
             AssertClose(A[1, 0], (float)1f, (float)EPS);
@@ -702,7 +702,7 @@ public class floatTransformsTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.floatVec(3);
         v[0] = -5f; v[1] = 0f; v[2] = 5f;
-        Assert.Throws<ArgumentException>(() => float_OP.clampInpl(in v, (float)4f, (float)(-1f)));
+        Assert.Throws<ArgumentException>(() => floatElem_OP.clampInpl(in v, (float)4f, (float)(-1f)));
         arena.Dispose();
     }
 }

@@ -47,17 +47,17 @@ public class fProxySolversTests {
 
             var A = Q.Copy();
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             var b = arena.fProxyRandomVec(dim, -1f, 1f);
 
-            var y = fProxy_OP.dot(b, Q);
+            var y = Linear_OP.dot(b, Q);
             
             //var x = arena.Vector(dim);
 
             Solvers.solveUpperTriangular(ref R, ref y);
 
-            var Ax = fProxy_OP.dot(A, y);
+            var Ax = Linear_OP.dot(A, y);
 
             Assert.IsTrue(Analysis_OP.isZero(b - Ax, 1E-6f));
             /*Print.Log(A);

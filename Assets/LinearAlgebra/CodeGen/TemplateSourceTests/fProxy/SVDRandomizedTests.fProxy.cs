@@ -154,7 +154,7 @@ public class fProxySVDRandomizedTests
             int m = 24, n = 12, r = 3;
             var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 1001);
             var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 2002);
-            var A = fProxy_OP.dot(B, C);   // rank 3
+            var A = Linear_OP.dot(B, C);   // rank 3
             CheckRandomized(in A, 3, 6, 2, 12345u, true, ref arena);
             arena.Dispose();
         }
@@ -165,7 +165,7 @@ public class fProxySVDRandomizedTests
             int m = 40, n = 16, r = 5;
             var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 3003);
             var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 4004);
-            var A = fProxy_OP.dot(B, C);   // rank 5
+            var A = Linear_OP.dot(B, C);   // rank 5
             CheckRandomized(in A, 5, 8, 2, 67890u, true, ref arena);
             arena.Dispose();
         }

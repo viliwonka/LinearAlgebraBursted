@@ -34,7 +34,7 @@ namespace LinearAlgebra
             }
             else {
                 // Wide: decompose Aᵀ (n x m, tall); same singular values as A.
-                floatMxN At = float_OP.trans(A);
+                floatMxN At = Linear_OP.trans(A);
                 svdValues(in At, ref S);
             }
 

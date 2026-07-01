@@ -90,7 +90,7 @@ public class fProxyLiteratureTests
             AssertClose(S[1], (fProxy)1, (fProxy)1E-4);
 
             AssertClose(fProxyNorms_OP.matrixL2(in A), (fProxy)2, (fProxy)1E-4);
-            AssertClose(fProxy_OP.cond(in A), (fProxy)2, (fProxy)1E-4);
+            AssertClose(Linear_OP.cond(in A), (fProxy)2, (fProxy)1E-4);
 
             arena.Dispose();
         }
@@ -109,7 +109,7 @@ public class fProxyLiteratureTests
 
             // --- SVD pseudo-inverse solve (pinvSolve no longer modifies A or b) ---
             var A1 = arena.fProxyLauchli(3, eps);   // (3+1)x3 = 4x3
-            var b1 = fProxy_OP.dot(A1, xTrue);   // length 4, exactly in range(A)
+            var b1 = Linear_OP.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.fProxyVec(3);
             SVD.pinvSolve(ref A1, in b1, ref xSvd, out bool converged);
             AssertTrue(converged);
@@ -118,9 +118,9 @@ public class fProxyLiteratureTests
 
             // --- QR direct solve (destroys A and b) ---
             var A2 = arena.fProxyLauchli(3, eps);   // (3+1)x3 = 4x3
-            var b2 = fProxy_OP.dot(A2, xTrue);
+            var b2 = Linear_OP.dot(A2, xTrue);
             var xQr = arena.fProxyVec(3);
-            Ortho_OP.qrDirectSolve(ref A2, ref b2, ref xQr);
+            QR.qrDirectSolve(ref A2, ref b2, ref xQr);
             for (int k = 0; k < 3; k++)
                 AssertClose(xQr[k], xTrue[k], (fProxy)1E-2);
 
@@ -159,10 +159,10 @@ public class fProxyLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             var H3 = arena.fProxyHilbert(3);
-            AssertClose(fProxy_OP.cond(in H3), (fProxy)524.0568, (fProxy)5);
+            AssertClose(Linear_OP.cond(in H3), (fProxy)524.0568, (fProxy)5);
 
             var H5 = arena.fProxyHilbert(5);
-            AssertBelow((fProxy)1E5, fProxy_OP.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
+            AssertBelow((fProxy)1E5, Linear_OP.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
 
             arena.Dispose();
         }
@@ -213,7 +213,7 @@ public class fProxyLiteratureTests
             fProxy lamMin = (fProxy)2 - (fProxy)2 * math.cos(pi / (fProxy)(n + 1));
 
             // condition number (read-only on T)
-            AssertClose(fProxy_OP.cond(in T), lamMax / lamMin, (fProxy)1E-2);
+            AssertClose(Linear_OP.cond(in T), lamMax / lamMin, (fProxy)1E-2);
 
             // SPD -> Cholesky succeeds (read-only on T)
             var L = arena.fProxyMat(n, n);
@@ -248,13 +248,13 @@ public class fProxyLiteratureTests
             fProxy scale = (fProxy)1E-7;
 
             var A = arena.fProxyRandomMat(n, n, -1f, 1f, 90211);
-            fProxy_OP.mulInpl(A, scale);   // entries now ~1e-7
+            fProxyElem_OP.mulInpl(A, scale);   // entries now ~1e-7
 
             var Q = A.Copy();
             var R = arena.fProxyMat(n, n);
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
-            fProxyMxN recon = fProxy_OP.dot(Q, R);
+            fProxyMxN recon = Linear_OP.dot(Q, R);
             fProxy err = Analysis_OP.MaxZeroError(A - recon);
 
             // relative to the matrix scale; pre-fix this was O(scale) (total garbage)

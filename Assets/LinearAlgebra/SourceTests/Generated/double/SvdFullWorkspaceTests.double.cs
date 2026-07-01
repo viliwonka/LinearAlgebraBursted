@@ -57,7 +57,7 @@ public class doubleSvdFullWorkspaceTests
         {
             var B = arena.doubleRandomMat(m, r, (double)(-2f), (double)2f, seed);
             var C = arena.doubleRandomMat(r, n, (double)(-2f), (double)2f, seed + 7u);
-            return double_OP.dot(B, C);
+            return Linear_OP.dot(B, C);
         }
 
         void NullspaceEquiv()

@@ -343,9 +343,9 @@ public class doubleEigenTests
 
             // Reconstruct: recon = V * diag(eig) * V^T
             var diagE = arena.doubleDiagonalMat(in eig);
-            var Vd = double_OP.dot(V, diagE);
-            var Vt = double_OP.trans(V);
-            var recon = double_OP.dot(Vd, Vt);
+            var Vd = Linear_OP.dot(V, diagE);
+            var Vt = Linear_OP.trans(V);
+            var recon = Linear_OP.dot(Vd, Vt);
 
             doubleMxN shouldBeZero = Aorig - recon;
 

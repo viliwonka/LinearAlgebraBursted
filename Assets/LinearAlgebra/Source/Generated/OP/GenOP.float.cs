@@ -209,12 +209,12 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Outer product M[i,j] = u[i]*v[j] (a u.N × v.N rank-1 matrix). Forwards to
-        /// <see cref="float_OP.outerDot(in floatN, in floatN, ref floatMxN)"/>. Use for separable
+        /// <see cref="Linear_OP.outerDot(in floatN, in floatN, ref floatMxN)"/>. Use for separable
         /// fields — e.g. a 2D Gaussian is outer(g, g) of a 1D Gaussian.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void outer(in floatN u, in floatN v, ref floatMxN dest)
-            => float_OP.outerDot(in u, in v, ref dest);
+            => Linear_OP.outerDot(in u, in v, ref dest);
 
         /// <summary>
         /// Additive outer "sum" M[i,j] = u[i]+v[j] (a u.N × v.N matrix). The separable building block for
@@ -253,7 +253,7 @@ namespace LinearAlgebra
 
             var g = new floatN(N, Allocator.Temp);
             gaussianKernel(ref g, sigma);
-            float_OP.outerDot(in g, in g, ref dest);
+            Linear_OP.outerDot(in g, in g, ref dest);
             g.Dispose();
         }
     }

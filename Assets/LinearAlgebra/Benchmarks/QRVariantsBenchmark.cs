@@ -27,7 +27,7 @@ namespace LinearAlgebra.Benchmarks
                     Q[r, c] = Src[r, c];
 
             var P = new Pivot(Q.N_Cols, Allocator.Temp);
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
             P.Dispose();
         }
     }
@@ -47,7 +47,7 @@ namespace LinearAlgebra.Benchmarks
                     Q[r, c] = Src[r, c];
 
             var P = new Pivot(Q.N_Cols, Allocator.Temp);
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
             P.Dispose();
         }
     }
@@ -70,7 +70,7 @@ namespace LinearAlgebra.Benchmarks
             for (int i = 0; i < rows; i++)
                 b[i] = bSrc[i];
 
-            Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
+            QR.qrDirectSolve(ref A, ref b, ref x);
         }
     }
 
@@ -92,7 +92,7 @@ namespace LinearAlgebra.Benchmarks
             for (int i = 0; i < rows; i++)
                 b[i] = bSrc[i];
 
-            Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
+            QR.qrDirectSolve(ref A, ref b, ref x);
         }
     }
 
@@ -113,7 +113,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var P = new Pivot(A.N_Cols, Allocator.Temp);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int _);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int _);
             P.Dispose();
         }
     }
@@ -131,7 +131,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var P = new Pivot(A.N_Cols, Allocator.Temp);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int _);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int _);
             P.Dispose();
         }
     }

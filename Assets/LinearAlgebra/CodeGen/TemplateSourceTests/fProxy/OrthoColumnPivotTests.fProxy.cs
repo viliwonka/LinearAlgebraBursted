@@ -8,7 +8,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for column-pivoted (rank-revealing) QR: Ortho_OP.qrDecompositionColumnPivot.
+// Tests for column-pivoted (rank-revealing) QR: QR.qrDecompositionColumnPivot.
 // A*P = Q*R with the pivot chosen greedily (Businger–Golub) so |R[d,d]| is non-increasing.
 //
 // Test vectors / properties sourced from the literature:
@@ -35,7 +35,7 @@ public class fProxyOrthoColumnPivotTests
             var R = arena.fProxyMat(6);
             var P = new Pivot(6, Allocator.Persistent);
 
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             P.Dispose();
             arena.Dispose();
@@ -95,7 +95,7 @@ public class fProxyOrthoColumnPivotTests
                     var R = arena.fProxyMat(n);
                     var A = Q.Copy();
 
-                    Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+                    QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
                     AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
 
@@ -119,7 +119,7 @@ public class fProxyOrthoColumnPivotTests
                     var R = arena.fProxyMat(dim);
                     var A = Q.Copy();
 
-                    Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+                    QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
                     AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
 
@@ -150,7 +150,7 @@ public class fProxyOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             // Reconstruction must still hold...
             AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
@@ -182,7 +182,7 @@ public class fProxyOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
 
@@ -228,7 +228,7 @@ public class fProxyOrthoColumnPivotTests
             var P = new Pivot(dim, Allocator.Persistent);
             var A = Q.Copy();
 
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
 
@@ -257,7 +257,7 @@ public class fProxyOrthoColumnPivotTests
             var P = new Pivot(dim, Allocator.Persistent);
             var A = Q.Copy();
 
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
 
@@ -276,7 +276,7 @@ public class fProxyOrthoColumnPivotTests
             var P = new Pivot(1, Allocator.Persistent);
             var A = Q.Copy();
 
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
             RecordEq(P[0], 0);
@@ -298,7 +298,7 @@ public class fProxyOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
             for (int d = 0; d < n; d++)
@@ -327,7 +327,7 @@ public class fProxyOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
             RecordEq(P[0], 0); // largest stays first
@@ -352,7 +352,7 @@ public class fProxyOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            Ortho_OP.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
 
@@ -382,7 +382,7 @@ public class fProxyOrthoColumnPivotTests
                 for (int j = 0; j < n; j++)
                     Aperm[r, j] = A[r, P[j]];
 
-            fProxyMxN shouldBeZero = Aperm - fProxy_OP.dot(Q, R);
+            fProxyMxN shouldBeZero = Aperm - Linear_OP.dot(Q, R);
 
             if (Analysis_OP.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
@@ -464,7 +464,7 @@ public class fProxyOrthoColumnPivotTests
     }
 
     // ────────────────────────────────────────────────────────────────────────────────
-    // SOLVER: Ortho_OP.qrcpDirectSolve — QRCP-based rank-safe least-squares (BASIC / truncated
+    // SOLVER: QR.qrcpDirectSolve — QRCP-based rank-safe least-squares (BASIC / truncated
     // solution). Solves min‖A x − b‖ for a possibly rank-deficient A (m >= n). Returns the
     // detected numerical rank and the basic solution (≤ rank nonzeros in permuted order):
     // minimal RESIDUAL but NOT minimum norm. At full column rank it reduces to ordinary QR-LS.
@@ -526,7 +526,7 @@ public class fProxyOrthoColumnPivotTests
             var b = arena.fProxyRandomVec(m, -5f, 5f, 9091);
 
             var x = arena.fProxyVec(n);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank); // qrcp leaves A,b intact
+            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank); // qrcp leaves A,b intact
 
             RecordEq(rank, n);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(0, 0); return; }
@@ -535,7 +535,7 @@ public class fProxyOrthoColumnPivotTests
             var Aqr = A.Copy();
             var bqr = b.Copy();
             var xRef = arena.fProxyVec(n);
-            Ortho_OP.qrDirectSolve(ref Aqr, ref bqr, ref xRef);
+            QR.qrDirectSolve(ref Aqr, ref bqr, ref xRef);
 
             fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
             for (int k = 0; k < n; k++)
@@ -556,7 +556,7 @@ public class fProxyOrthoColumnPivotTests
                 A[d, d] += (fProxy)10f;
 
             var xOrig = arena.fProxyRandomVec(dim, -3f, 3f, 1337);
-            var b = fProxy_OP.dot(A, xOrig); // b in range(A) -> exact solution exists
+            var b = Linear_OP.dot(A, xOrig); // b in range(A) -> exact solution exists
             var A_copy = A.Copy();          // for residual check after the solve
 
             var Q = arena.fProxyMat(dim, dim);
@@ -565,7 +565,7 @@ public class fProxyOrthoColumnPivotTests
             var u = arena.fProxyVec(dim);
             var x = arena.fProxyVec(dim);
 
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank);
 
             RecordEq(rank, dim);
             if (!Analysis_OP.isAnyNan(in x))
@@ -600,7 +600,7 @@ public class fProxyOrthoColumnPivotTests
             var b = arena.fProxyRandomVec(m, -3f, 3f, 5511);
 
             var x = arena.fProxyVec(n);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
 
             RecordEq(rank, 3);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -647,13 +647,13 @@ public class fProxyOrthoColumnPivotTests
             mean /= (fProxy)dim;
 
             var x = arena.fProxyVec(dim);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
 
             RecordEq(rank, 1);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
 
             // reconstruction A x must be the projection of b onto span(ones) = mean(b)*ones
-            var Ax = fProxy_OP.dot(A_copy, x);
+            var Ax = Linear_OP.dot(A_copy, x);
             fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
             for (int i = 0; i < dim; i++)
                 AssertClose(Ax[i], mean, tol * (math.abs(mean) + (fProxy)1));
@@ -700,7 +700,7 @@ public class fProxyOrthoColumnPivotTests
             var x = arena.fProxyVec(n);
 
             fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroThreshold;
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, explicitTol);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, explicitTol);
 
             RecordEq(rank, 3);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -733,7 +733,7 @@ public class fProxyOrthoColumnPivotTests
             var b = arena.fProxyRandomVec(m, -5f, 5f, 5151);
 
             var x = arena.fProxyVec(n);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
 
             RecordEq(rank, 0);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -757,7 +757,7 @@ public class fProxyOrthoColumnPivotTests
             b[0] = (fProxy)10f;
 
             var x = arena.fProxyVec(1);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
 
             RecordEq(rank, 1);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -783,14 +783,14 @@ public class fProxyOrthoColumnPivotTests
             var b = arena.fProxyRandomVec(m, -3f, 3f, 2424);
 
             var xAuto = arena.fProxyVec(n);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref xAuto, out int rankAuto); // default overload
+            QR.qrcpDirectSolve(ref A, ref b, ref xAuto, out int rankAuto); // default overload
 
             var xNeg = arena.fProxyVec(n);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref xNeg, out int rankNeg, (fProxy)(-1)); // sentinel
+            QR.qrcpDirectSolve(ref A, ref b, ref xNeg, out int rankNeg, (fProxy)(-1)); // sentinel
 
             fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroThreshold;
             var xExpl = arena.fProxyVec(n);
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref xExpl, out int rankExpl, explicitTol);
+            QR.qrcpDirectSolve(ref A, ref b, ref xExpl, out int rankExpl, explicitTol);
 
             RecordEq(rankNeg, rankAuto);
             RecordEq(rankExpl, rankAuto);
@@ -828,7 +828,7 @@ public class fProxyOrthoColumnPivotTests
             var u = arena.fProxyVec(m);
             var x = arena.fProxyVec(n);
 
-            Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, (fProxy)(-1));
+            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, (fProxy)(-1));
 
             RecordEq(rank, 1);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -849,7 +849,7 @@ public class fProxyOrthoColumnPivotTests
         // ‖A x − b‖2 using an UNMODIFIED copy of A (the live A may be consumed by a solver).
         fProxy ResidualNorm(in fProxyMxN A, in fProxyN x, in fProxyN b)
         {
-            var Ax = fProxy_OP.dot(A, x);
+            var Ax = Linear_OP.dot(A, x);
             fProxy s = (fProxy)0;
             for (int i = 0; i < b.N; i++)
             {
@@ -955,7 +955,7 @@ public class fProxyOrthoColumnPivotTests
         var A = arena.fProxyMat(2, 3);
         var b = arena.fProxyVec(2);
         var x = arena.fProxyVec(3);
-        Assert.Catch<ArgumentException>(() => Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
+        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
         arena.Dispose();
     }
 
@@ -966,7 +966,7 @@ public class fProxyOrthoColumnPivotTests
         var A = arena.fProxyMat(4, 3);
         var b = arena.fProxyVec(3); // should be 4
         var x = arena.fProxyVec(3);
-        Assert.Catch<ArgumentException>(() => Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
+        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
         arena.Dispose();
     }
 
@@ -977,7 +977,7 @@ public class fProxyOrthoColumnPivotTests
         var A = arena.fProxyMat(4, 3);
         var b = arena.fProxyVec(4);
         var x = arena.fProxyVec(2); // should be 3
-        Assert.Catch<ArgumentException>(() => Ortho_OP.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
+        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
         arena.Dispose();
     }
 }

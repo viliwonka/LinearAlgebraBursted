@@ -40,7 +40,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
         }
     }
 
@@ -58,7 +58,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
         }
     }
 
@@ -81,7 +81,7 @@ namespace LinearAlgebra.Benchmarks
                     A[r, c] = Src[r, c];
             }
 
-            Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
+            QR.qrDirectSolve(ref A, ref b, ref x);
         }
     }
 
@@ -104,7 +104,7 @@ namespace LinearAlgebra.Benchmarks
                     A[r, c] = Src[r, c];
             }
 
-            Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
+            QR.qrDirectSolve(ref A, ref b, ref x);
         }
     }
 
@@ -115,7 +115,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN L;     // m x m
         public floatMxN Q;     // m x n
 
-        public void Execute() => Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
+        public void Execute() => LQ.lqDecomposition(ref A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -125,7 +125,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN L;
         public doubleMxN Q;
 
-        public void Execute() => Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
+        public void Execute() => LQ.lqDecomposition(ref A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -135,7 +135,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN b;       // length m; not modified (copied internally)
         public floatN x;       // length n, min-norm solution
 
-        public void Execute() => Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
+        public void Execute() => LQ.lqMinNormSolve(ref A, ref b, ref x);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -145,7 +145,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN b;
         public doubleN x;
 
-        public void Execute() => Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
+        public void Execute() => LQ.lqMinNormSolve(ref A, ref b, ref x);
     }
 
     public static class TallWideSolveBenchmark

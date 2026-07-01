@@ -49,7 +49,7 @@ public class fProxySvdRandomizedWorkspaceTests
         {
             var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, seed);
             var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, seed + 13u);
-            return fProxy_OP.dot(B, C);
+            return Linear_OP.dot(B, C);
         }
 
         // Explicit oversample/powerIters/seed/maxIter: ws overload == allocating overload exactly.

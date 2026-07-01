@@ -110,9 +110,9 @@ public class floatBidiagTests
             int n = A.N_Cols;
 
             // 1. Reconstruction: A ≈ U * B * Vᵀ
-            var Vt   = float_OP.trans(V);
-            var UB   = float_OP.dot(U, B);
-            var UBVt = float_OP.dot(UB, Vt);
+            var Vt   = Linear_OP.trans(V);
+            var UB   = Linear_OP.dot(U, B);
+            var UBVt = Linear_OP.dot(UB, Vt);
             var diff = A - UBVt;
 
             if (Analysis_OP.isAnyNan(in diff))

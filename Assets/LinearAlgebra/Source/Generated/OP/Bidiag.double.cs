@@ -20,7 +20,7 @@ namespace LinearAlgebra
 
         // Build a Householder reflector from COLUMN k of matrix M (rows k..M_Rows-1).
         // Stores result in u[k..M_Rows-1]; entries u[0..k-1] are not accessed.
-        // Convention: H = I - u*uᵀ with ||u||² = 2, matching Ortho_OP.genHouseholderPete.
+        // Convention: H = I - u*uᵀ with ||u||² = 2, matching QR.genHouseholderPete.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void genHouseholderCol(ref doubleMxN M, ref doubleN u, int k, double zeroThreshold)
         {
@@ -74,7 +74,7 @@ namespace LinearAlgebra
         // Apply Householder H = I - u*uᵀ from the LEFT to the trailing block M[d:, d:]:
         //   M[d:, d:] -= u · (uᵀ · M[d:, d:])
         // w is scratch of length >= M.N_Cols - d (zeroed by MemClear inside).
-        // Identical in semantics to Ortho_OP.applyReflectorRight (which is a left-apply).
+        // Identical in semantics to QR.applyReflectorRight (which is a left-apply).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe void applyHouseholderLeft(ref doubleMxN M, ref doubleN u, ref doubleN w, int d)
         {

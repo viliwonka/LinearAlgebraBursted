@@ -14,7 +14,7 @@ namespace LinearAlgebra
         public static intN operator -(in intN a) {
 
             intN vec = a.TempCopy();
-            int_OP.signFlipInpl(vec);
+            intElem_OP.signFlipInpl(vec);
 
             return vec;
         }
@@ -23,7 +23,7 @@ namespace LinearAlgebra
         public static intN operator +(in intN a, int s) {
 
             intN vec = a.TempCopy();
-            int_OP.addInpl(vec, s);
+            intElem_OP.addInpl(vec, s);
 
             return vec; 
         }
@@ -35,7 +35,7 @@ namespace LinearAlgebra
         public static intN operator -(in intN a, int s) {
             
             intN vec = a.TempCopy();
-            int_OP.addInpl(vec, (int)(-s));
+            intElem_OP.addInpl(vec, (int)(-s));
             
             return vec;
         }
@@ -44,7 +44,7 @@ namespace LinearAlgebra
         public static intN operator -(int s, in intN a)
         {
             intN vec = a.TempCopy();
-            int_OP.subInpl(s, vec);
+            intElem_OP.subInpl(s, vec);
             return vec;
         }
 
@@ -53,7 +53,7 @@ namespace LinearAlgebra
             
             intN vec = a.TempCopy();
 
-            int_OP.mulInpl(vec, s);
+            intElem_OP.mulInpl(vec, s);
 
             return vec;
         }
@@ -69,7 +69,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            int_OP.divInpl(vec, s);
+            intElem_OP.divInpl(vec, s);
 
             return vec;
         }
@@ -79,7 +79,7 @@ namespace LinearAlgebra
         {
             intN vec = a.TempCopy();
 
-            int_OP.divInpl(s, vec);
+            intElem_OP.divInpl(s, vec);
 
             return vec;
         }
@@ -92,7 +92,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            int_OP.modInpl(vec, s);
+            intElem_OP.modInpl(vec, s);
 
             return vec;
         }
@@ -102,7 +102,7 @@ namespace LinearAlgebra
         {
             intN vec = a.TempCopy();
 
-            int_OP.modInpl(s, vec);
+            intElem_OP.modInpl(s, vec);
 
             return vec;
         }
@@ -113,7 +113,7 @@ namespace LinearAlgebra
 
             intN matrix = a.TempCopy();
 
-            int_OP.bitwiseComplementInpl(matrix);
+            intElem_OP.bitwiseComplementInpl(matrix);
 
             return matrix;
         }
@@ -122,7 +122,7 @@ namespace LinearAlgebra
         public static intN operator &(in intN a, in int s) {
 
             intN matrix = a.TempCopy();
-            int_OP.bitwiseAndInpl(matrix, s);
+            intElem_OP.bitwiseAndInpl(matrix, s);
             return matrix;
         }
         public static intN operator &(in int s, in intN a) => a & s;
@@ -131,7 +131,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static intN operator |(in intN a, in int s) {
             intN matrix = a.TempCopy();
-            int_OP.bitwiseOrInpl(matrix, s);
+            intElem_OP.bitwiseOrInpl(matrix, s);
             return matrix;
         }
         public static intN operator |(in int s, in intN a) => a | s;
@@ -140,7 +140,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static intN operator ^(in intN a, in int b) {
             intN matrix = a.TempCopy();
-            int_OP.bitwiseXorInpl(matrix, b);
+            intElem_OP.bitwiseXorInpl(matrix, b);
             return matrix;
         }
         public static intN operator ^(in int s, in intN a) => a ^ s;
@@ -149,14 +149,14 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static intN operator <<(in intN a, int shift) {
             intN matrix = a.TempCopy();
-            int_OP.bitwiseLeftShiftInpl(matrix, shift);
+            intElem_OP.bitwiseLeftShiftInpl(matrix, shift);
             return matrix;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static intN operator >>(in intN a, int shift) {
             intN matrix = a.TempCopy();
-            int_OP.bitwiseRightShiftInpl(matrix, shift);
+            intElem_OP.bitwiseRightShiftInpl(matrix, shift);
             return matrix;
         }
 
@@ -176,7 +176,7 @@ namespace LinearAlgebra
 
             intN vec = a.TempCopy();
 
-            int_OP.addInpl(vec, b);   // vec += b  (vec is the copy of a)
+            intElem_OP.addInpl(vec, b);   // vec += b  (vec is the copy of a)
 
             return vec;
         }
@@ -192,7 +192,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             intN vec = a.TempCopy();
-            int_OP.subInpl(vec, b);
+            intElem_OP.subInpl(vec, b);
             
             return vec;
         }
@@ -209,7 +209,7 @@ namespace LinearAlgebra
 
             intN vec = a.TempCopy();
 
-            int_OP.compMulInpl(b, vec);
+            intElem_OP.mulInpl(b, vec);
 
             return vec;
         }
@@ -226,7 +226,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             intN newDividendVec = dividend.TempCopy();
-            int_OP.compDivInpl(newDividendVec, divisor);
+            intElem_OP.divInpl(newDividendVec, divisor);
 
             return newDividendVec;
         }
@@ -243,7 +243,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             intN newDividendVec = dividend.TempCopy();
-            int_OP.compModDiv(newDividendVec, divisor);
+            intElem_OP.modInpl(newDividendVec, divisor);
 
             return newDividendVec;
         }
@@ -254,7 +254,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             intN matrix = a.TempCopy();
-            int_OP.bitwiseAndInpl(matrix, b);
+            intElem_OP.bitwiseAndInpl(matrix, b);
             return matrix;
         }
         
@@ -264,7 +264,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             intN matrix = a.TempCopy();
-            int_OP.bitwiseOrInpl(matrix, b);
+            intElem_OP.bitwiseOrInpl(matrix, b);
             return matrix;
         }
         
@@ -275,7 +275,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             intN matrix = a.TempCopy();
-            int_OP.bitwiseXorInpl(matrix, b);
+            intElem_OP.bitwiseXorInpl(matrix, b);
             return matrix;
         }
         

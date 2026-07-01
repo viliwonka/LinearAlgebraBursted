@@ -423,7 +423,7 @@ public class floatGalleryTests
 
             // HᵀH
             var HtH = arena.floatMat(n, n);
-            float_OP.dot(in H, in H, ref HtH, transposeA: true);
+            Linear_OP.dot(in H, in H, ref HtH, transposeA: true);
 
             float tol = (float)1E-4;   // exact arithmetic; tiny tolerance
             for (int r = 0; r < n; r++)
@@ -573,7 +573,7 @@ public class floatGalleryTests
             var xTrue = arena.floatVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);   // 1,2,...,n
 
-            var b = float_OP.dot(A, xTrue);   // consistent RHS
+            var b = Linear_OP.dot(A, xTrue);   // consistent RHS
 
             var x = arena.floatVec(n);
             bool conv = Solvers.conjugateGradient(in A, in b, ref x, 200, Consts.floatSqrtEps);

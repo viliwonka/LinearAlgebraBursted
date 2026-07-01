@@ -1102,9 +1102,9 @@ public class fProxySVDTests
         {
             // A ~= U * diag(S) * V^T
             var diagS = arena.fProxyDiagonalMat(in S);
-            var US = fProxy_OP.dot(U, diagS);
-            var Vt = fProxy_OP.trans(V);
-            var recon = fProxy_OP.dot(US, Vt);
+            var US = Linear_OP.dot(U, diagS);
+            var Vt = Linear_OP.trans(V);
+            var recon = Linear_OP.dot(US, Vt);
 
             fProxyMxN shouldBeZero = A - recon;
 

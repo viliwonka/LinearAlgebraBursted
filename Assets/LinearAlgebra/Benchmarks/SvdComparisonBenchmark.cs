@@ -60,7 +60,7 @@ namespace LinearAlgebra.Benchmarks
             var R = new floatMxN(n, n, Allocator.Temp, false);
             var gauss = new floatGaussian(0f, 1f);
             floatRandom_OP.randomInpl(ref rng, ref G, ref gauss);
-            Ortho_OP.qrDecomposition(ref G, ref R);   // G → Q in-place
+            QR.qrDecomposition(ref G, ref R);   // G → Q in-place
 
             // V (n x n) Haar-uniform orthogonal
             var V = new floatMxN(n, n, Allocator.Temp, false);
@@ -100,7 +100,7 @@ namespace LinearAlgebra.Benchmarks
             var R = new doubleMxN(n, n, Allocator.Temp, false);
             var gauss = new doubleGaussian(0.0, 1.0);
             doubleRandom_OP.randomInpl(ref rng, ref G, ref gauss);
-            Ortho_OP.qrDecomposition(ref G, ref R);
+            QR.qrDecomposition(ref G, ref R);
 
             var V = new doubleMxN(n, n, Allocator.Temp, false);
             doubleRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref V);

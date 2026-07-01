@@ -49,7 +49,7 @@ public class floatSvdRandomizedWorkspaceTests
         {
             var B = arena.floatRandomMat(m, r, (float)(-2f), (float)2f, seed);
             var C = arena.floatRandomMat(r, n, (float)(-2f), (float)2f, seed + 13u);
-            return float_OP.dot(B, C);
+            return Linear_OP.dot(B, C);
         }
 
         // Explicit oversample/powerIters/seed/maxIter: ws overload == allocating overload exactly.

@@ -108,7 +108,7 @@ public class fProxyAnalysisTests
 
             A = arena.fProxyRandomMat(dim, dim * 2);
 
-            fProxyMxN C = fProxy_OP.dot(A, A, true);
+            fProxyMxN C = Linear_OP.dot(A, A, true);
 
             Assert.IsTrue(Analysis_OP.isSymmetric(C));
 
@@ -129,7 +129,7 @@ public class fProxyAnalysisTests
 
             Assert.IsTrue(Analysis_OP.isSymmetric(A, 0.002f));
 
-            fProxyMxN C = fProxy_OP.dot(A, A, true);
+            fProxyMxN C = Linear_OP.dot(A, A, true);
 
             C += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
 
@@ -297,32 +297,32 @@ public class fProxyAnalysisTests
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            A = fProxy_OP.dot(arena.fProxyPermutationMat(dim, 5, 13), A);
+            A = Linear_OP.dot(arena.fProxyPermutationMat(dim, 5, 13), A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            A = fProxy_OP.dot(arena.fProxyRotationMat(dim, 3, 15, math.PI/4f ), A);
+            A = Linear_OP.dot(arena.fProxyRotationMat(dim, 3, 15, math.PI/4f ), A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             fProxyN reflect = arena.fProxyRandomVec(dim, -1f, 1f);
 
-            A = fProxy_OP.dot(arena.fProxyHouseholderMat(dim, reflect), A);
+            A = Linear_OP.dot(arena.fProxyHouseholderMat(dim, reflect), A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             reflect = arena.fProxyRandomVec(dim, -1f, 1f, 50301);
-            A = fProxy_OP.dot(arena.fProxyHouseholderMat(dim, reflect), A);
+            A = Linear_OP.dot(arena.fProxyHouseholderMat(dim, reflect), A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             // self multiply
-            A = fProxy_OP.dot(A, A);
+            A = Linear_OP.dot(A, A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             // testing inverse
-            A = fProxy_OP.dot(A, A, true);
+            A = Linear_OP.dot(A, A, true);
 
             Assert.IsTrue(Analysis_OP.isIdentity(A, 0.00001f));
 

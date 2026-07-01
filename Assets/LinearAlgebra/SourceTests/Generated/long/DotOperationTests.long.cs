@@ -71,7 +71,7 @@ public class longDotOperationTests
             longN x = arena.longVec(vecLen, 1);
             longN y = arena.longVec(vecLen, 1);
 
-            long b = long_OP.dot(x, y);
+            long b = Linear_OP.dot(x, y);
 
             Assert.IsTrue(b == (long)vecLen);
 
@@ -84,7 +84,7 @@ public class longDotOperationTests
                 y[i] = (long) ((i+1) % 2);
             }
 
-            b = long_OP.dot(x, y);
+            b = Linear_OP.dot(x, y);
 
             Assert.IsTrue(b == (long)0f);
 
@@ -101,7 +101,7 @@ public class longDotOperationTests
             longN x = arena.longVec(inVecLen, 1);
             longMxN A = arena.longRandomMat(outVecLen, inVecLen, -100, +100);
 
-            longN b = long_OP.dot(A, x);
+            longN b = Linear_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -117,7 +117,7 @@ public class longDotOperationTests
             longN x = arena.longIndexOneVec(vecLen);
             longMxN A = arena.longIdentityMat(vecLen);
 
-            longN b = long_OP.dot(x, A);
+            longN b = Linear_OP.dot(x, A);
 
             Assert.AreEqual(vecLen, b.N);
             
@@ -126,7 +126,7 @@ public class longDotOperationTests
 
             x = arena.longIndexZeroVec(vecLen);
 
-            b = long_OP.dot(x, A);
+            b = Linear_OP.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == (long)i);
@@ -143,7 +143,7 @@ public class longDotOperationTests
             longMxN A = arena.longIdentityMat(matLen);
             longMxN B = arena.longIdentityMat(matLen);
 
-            longMxN C = long_OP.dot(A, B);
+            longMxN C = Linear_OP.dot(A, B);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -156,7 +156,7 @@ public class longDotOperationTests
 
             longMxN R = arena.longRandomMat(matLen, matLen);
 
-            C = long_OP.dot(A, R);
+            C = Linear_OP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -166,7 +166,7 @@ public class longDotOperationTests
 
             C = arena.longIdentityMat(matLen);
 
-            longMxN D = long_OP.dot(C, C);
+            longMxN D = Linear_OP.dot(C, C);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -190,7 +190,7 @@ public class longDotOperationTests
             longN x = arena.longVec(inVecLen, 1);
             longMxN A = arena.longRandomMat(outVecLen, inVecLen, -100, +100);
 
-            longN b = long_OP.dot(A, x);
+            longN b = Linear_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -207,7 +207,7 @@ public class longDotOperationTests
             longN x = arena.longVec(inVecLen, 1);
             longMxN A = arena.longRandomMat(inVecLen, outVecLen, -100, +100);
 
-            longN b = long_OP.dot(x, A);
+            longN b = Linear_OP.dot(x, A);
             
             Assert.AreEqual(outVecLen, b.N);
 
@@ -229,12 +229,12 @@ public class longDotOperationTests
             longN x = arena.longVec(vecM, 1);
             longN y = arena.longVec(vecN, 1);
 
-            longMxN A = long_OP.outerDot(x, y);
+            longMxN A = Linear_OP.outerDot(x, y);
 
             Assert.AreEqual(vecM, A.M_Rows);
             Assert.AreEqual(vecN, A.N_Cols);
 
-            longMxN B = long_OP.outerDot(y, x);
+            longMxN B = Linear_OP.outerDot(y, x);
 
             for (int i = 0; i < A.Length; i++)
                 Assert.IsTrue(A[i] == (long)1);
@@ -248,7 +248,7 @@ public class longDotOperationTests
             x = arena.longLinVec(vecM, 0, 20);
             y = arena.longLinVec(vecN, 0, 20);
 
-            longMxN C = long_OP.outerDot(x, y);
+            longMxN C = Linear_OP.outerDot(x, y);
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)

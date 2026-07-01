@@ -71,7 +71,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(vecLen, 1f);
             fProxyN y = arena.fProxyVec(vecLen, 1f);
 
-            fProxy b = fProxy_OP.dot(x, y);
+            fProxy b = Linear_OP.dot(x, y);
 
             Assert.IsTrue(b == (fProxy)vecLen);
 
@@ -84,7 +84,7 @@ public class fProxyDotOperationTests
                 y[i] = (i+1f) % 2f;
             }
 
-            b = fProxy_OP.dot(x, y);
+            b = Linear_OP.dot(x, y);
 
             Assert.IsTrue(b == (fProxy)0f);
 
@@ -101,7 +101,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(inVecLen, 1f);
             fProxyMxN A = arena.fProxyRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
-            fProxyN b = fProxy_OP.dot(A, x);
+            fProxyN b = Linear_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -117,7 +117,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyRandomUnitVec(vecLen);
             fProxyMxN A = arena.fProxyIdentityMat(vecLen);
 
-            fProxyN b = fProxy_OP.dot(x, A);
+            fProxyN b = Linear_OP.dot(x, A);
 
             Assert.AreEqual(vecLen, b.N);
             
@@ -126,7 +126,7 @@ public class fProxyDotOperationTests
 
             x = arena.fProxyIndexZeroVec(vecLen);
 
-            b = fProxy_OP.dot(x, A);
+            b = Linear_OP.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == (fProxy)i);
@@ -143,7 +143,7 @@ public class fProxyDotOperationTests
             fProxyMxN A = arena.fProxyIdentityMat(matLen);
             fProxyMxN B = arena.fProxyIdentityMat(matLen);
 
-            fProxyMxN C = fProxy_OP.dot(A, B);
+            fProxyMxN C = Linear_OP.dot(A, B);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -156,7 +156,7 @@ public class fProxyDotOperationTests
 
             fProxyMxN R = arena.fProxyRandomMat(matLen, matLen);
 
-            C = fProxy_OP.dot(A, R);
+            C = Linear_OP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -166,7 +166,7 @@ public class fProxyDotOperationTests
 
             C = arena.fProxyIdentityMat(matLen);
 
-            fProxyMxN D = fProxy_OP.dot(C, C);
+            fProxyMxN D = Linear_OP.dot(C, C);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -190,7 +190,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(inVecLen, 1f);
             fProxyMxN A = arena.fProxyRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
-            fProxyN b = fProxy_OP.dot(A, x);
+            fProxyN b = Linear_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -207,7 +207,7 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(inVecLen, 1f);
             fProxyMxN A = arena.fProxyRandomMat(inVecLen, outVecLen, -0.01f, 0.01f);
 
-            fProxyN b = fProxy_OP.dot(x, A);
+            fProxyN b = Linear_OP.dot(x, A);
             
             Assert.AreEqual(outVecLen, b.N);
 
@@ -229,12 +229,12 @@ public class fProxyDotOperationTests
             fProxyN x = arena.fProxyVec(vecM, 1f);
             fProxyN y = arena.fProxyVec(vecN, 1f);
 
-            fProxyMxN A = fProxy_OP.outerDot(x, y);
+            fProxyMxN A = Linear_OP.outerDot(x, y);
 
             Assert.AreEqual(vecM, A.M_Rows);
             Assert.AreEqual(vecN, A.N_Cols);
 
-            fProxyMxN B = fProxy_OP.outerDot(y, x);
+            fProxyMxN B = Linear_OP.outerDot(y, x);
 
             for (int i = 0; i < A.Length; i++)
                 Assert.IsTrue(A[i] == (fProxy)1f);
@@ -248,7 +248,7 @@ public class fProxyDotOperationTests
             x = arena.fProxyLinVec(vecM, 0f, 2f);
             y = arena.fProxyLinVec(vecN, 0f, 2f);
 
-            fProxyMxN C = fProxy_OP.outerDot(x, y);
+            fProxyMxN C = Linear_OP.outerDot(x, y);
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)

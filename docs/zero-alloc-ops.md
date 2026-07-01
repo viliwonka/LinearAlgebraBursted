@@ -8,7 +8,7 @@ can run without per-call arena allocations. Source of truth for the loop doing t
 - **Scope (phase 1): arithmetic ops only.** The `dot` family, `outerDot`, `trans`, `select`.
   Decompositions/solvers already take preallocated `ref` outputs; eliminating *their*
   internal temporaries (workspace structs) is a separate later phase.
-- **Component ops are already done** — `fProxy_OP.addInpl/mulInpl/subInpl/compMulInpl/...`
+- **Component ops are already done** — `fProxyElem_OP.addInpl/mulInpl/subInpl/compMulInpl/...`
   are generic in-place forms over `IUnsafefProxyArray`, with operator sugar (`+`,`*`,…)
   for the allocating path. Do NOT touch them.
 - **Naming:** overload the existing method with a trailing `ref <dest>` parameter

@@ -616,7 +616,7 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(5);
             v[0] = -5f; v[1] = -1f; v[2] = 0f; v[3] = 3f; v[4] = 9f;
 
-            fProxy_OP.clampInpl(in v, (fProxy)(-1f), (fProxy)4f);
+            fProxyElem_OP.clampInpl(in v, (fProxy)(-1f), (fProxy)4f);
             AssertClose(v[0], (fProxy)(-1f), (fProxy)EPS); // below lo
             AssertClose(v[1], (fProxy)(-1f), (fProxy)EPS); // at lo
             AssertClose(v[2], (fProxy)0f, (fProxy)EPS);    // in range
@@ -632,7 +632,7 @@ public class fProxyTransformsTests
             A[0, 0] = -10f; A[0, 1] = 0.5f;
             A[1, 0] = 2f;   A[1, 1] = 100f;
 
-            fProxy_OP.clampInpl(in A, (fProxy)0f, (fProxy)1f);
+            fProxyElem_OP.clampInpl(in A, (fProxy)0f, (fProxy)1f);
             AssertClose(A[0, 0], (fProxy)0f, (fProxy)EPS);
             AssertClose(A[0, 1], (fProxy)0.5f, (fProxy)EPS);
             AssertClose(A[1, 0], (fProxy)1f, (fProxy)EPS);
@@ -702,7 +702,7 @@ public class fProxyTransformsTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.fProxyVec(3);
         v[0] = -5f; v[1] = 0f; v[2] = 5f;
-        Assert.Throws<ArgumentException>(() => fProxy_OP.clampInpl(in v, (fProxy)4f, (fProxy)(-1f)));
+        Assert.Throws<ArgumentException>(() => fProxyElem_OP.clampInpl(in v, (fProxy)4f, (fProxy)(-1f)));
         arena.Dispose();
     }
 }

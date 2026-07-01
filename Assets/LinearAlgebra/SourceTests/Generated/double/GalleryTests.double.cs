@@ -423,7 +423,7 @@ public class doubleGalleryTests
 
             // HᵀH
             var HtH = arena.doubleMat(n, n);
-            double_OP.dot(in H, in H, ref HtH, transposeA: true);
+            Linear_OP.dot(in H, in H, ref HtH, transposeA: true);
 
             double tol = (double)1E-4;   // exact arithmetic; tiny tolerance
             for (int r = 0; r < n; r++)
@@ -573,7 +573,7 @@ public class doubleGalleryTests
             var xTrue = arena.doubleVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (double)(i + 1);   // 1,2,...,n
 
-            var b = double_OP.dot(A, xTrue);   // consistent RHS
+            var b = Linear_OP.dot(A, xTrue);   // consistent RHS
 
             var x = arena.doubleVec(n);
             bool conv = Solvers.conjugateGradient(in A, in b, ref x, 200, Consts.doubleSqrtEps);

@@ -56,7 +56,7 @@ namespace LinearAlgebra
 
             float scale = 1 / math.sqrt(sum);
 
-            float_OP.mulInpl(vec, scale);
+            floatElem_OP.mulInpl(vec, scale);
 
             return vec;
         }
@@ -245,7 +245,7 @@ namespace LinearAlgebra
             var matrix = arena.floatIdentityMat(M);
 
             // Compute the outer product of v
-            float vTv = float_OP.dot(v, v);
+            float vTv = Linear_OP.dot(v, v);
             
             float scaleFactor = 2 / vTv;
             

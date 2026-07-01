@@ -42,7 +42,7 @@ op work (`docs/zero-alloc-ops.md`) and the Conjugate Gradient primitive+convenie
 - [x] `OP/SVD.Solvers.fProxy.cs` — `pinvSolve` / `pseudoInverse` scratch overloads. KEY: with
       k=min(m,n), `S` is len k and `M` is k×k in BOTH branches (M = V when tall, W when wide);
       only `At` (n×m) is wide-specific (pass `default(fProxyMxN)` for m>=n). Wide branch fills At via
-      phase-1 ref-dest `fProxy_OP.trans(in A, ref At)`. Inner loop var `k`→`kk` (method-scope k now).
+      phase-1 ref-dest `Linear_OP.trans(in A, ref At)`. Inner loop var `k`→`kk` (method-scope k now).
       Wrappers temp-alloc S(k), M(k×k), At(n×m only if m<n) + delegate. Tests `SVDWorkspaceTests.fProxy`
       (pinv/pseudo equiv tall+wide ×2, + 4 mis-sized guards). SVD suite 111/111. bug-hunter audit:
       CLEAN on all 7 concerns (k-unification, kk-rename, M-as-V/W, trans, default-At, guards, codegen).

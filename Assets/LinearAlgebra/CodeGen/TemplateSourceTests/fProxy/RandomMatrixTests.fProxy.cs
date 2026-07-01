@@ -98,7 +98,7 @@ public class fProxyRandomMatrixTests
 
             // QᵀQ
             var QtQ = arena.fProxyMat(n, n);
-            fProxy_OP.dot(in Q, in Q, ref QtQ, transposeA: true);
+            Linear_OP.dot(in Q, in Q, ref QtQ, transposeA: true);
 
             // off-diagonal orthonormality error scales with n; this bound is loose for float,
             // tight for double, but still far above the true ~n·eps backward error.

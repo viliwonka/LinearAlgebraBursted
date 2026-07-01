@@ -103,7 +103,7 @@ namespace LinearAlgebra
                 if (At.M_Rows != n || At.N_Cols != m)
                     throw new ArgumentException("pinvSolve: At scratch must be A.N_Cols x A.M_Rows for the wide (m < n) case");
 
-                float_OP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
+                Linear_OP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
 
                 converged = svdThin(in At, ref U, ref S, ref M, maxSweeps);
 
@@ -273,7 +273,7 @@ namespace LinearAlgebra
                 if (At.M_Rows != n || At.N_Cols != m)
                     throw new ArgumentException("pseudoInverse: At scratch must be A.N_Cols x A.M_Rows for the wide (m < n) case");
 
-                float_OP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
+                Linear_OP.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
 
                 converged = svdThin(in At, ref U, ref S, ref M, maxSweeps);
 

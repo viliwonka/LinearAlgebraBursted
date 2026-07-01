@@ -22,7 +22,7 @@ public class floatInplaceOpTests
             var a = arena.floatVec(3); a[0] = (float)1; a[1] = (float)2; a[2] = (float)3;
             var b = arena.floatVec(3); b[0] = (float)10; b[1] = (float)20; b[2] = (float)30;
 
-            float_OP.addInpl(a, b);   // a += b
+            floatElem_OP.addInpl(a, b);   // a += b
 
             // a updated...
             Assert.AreEqual(11.0, (double)a[0], 1e-6);
@@ -45,7 +45,7 @@ public class floatInplaceOpTests
             var a = arena.floatVec(2); a[0] = (float)10; a[1] = (float)20;
             var b = arena.floatVec(2); b[0] = (float)3;  b[1] = (float)5;
 
-            float_OP.subInpl(a, b);   // a -= b
+            floatElem_OP.subInpl(a, b);   // a -= b
 
             Assert.AreEqual(7.0, (double)a[0], 1e-6);
             Assert.AreEqual(15.0, (double)a[1], 1e-6);

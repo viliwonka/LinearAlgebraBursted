@@ -86,7 +86,7 @@ public class floatSVDSolverTests
             var A_copy = A.Copy();
 
             var xOrig = arena.floatRandomVec(dim, -3f, 3f, 1337);
-            var b = float_OP.dot(A_copy, xOrig);
+            var b = Linear_OP.dot(A_copy, xOrig);
 
             var x = arena.floatVec(dim);
 
@@ -119,7 +119,7 @@ public class floatSVDSolverTests
             var A_copy = A.Copy();
 
             var xOrig = arena.floatRandomVec(n, -3f, 3f, 4242);
-            var b = float_OP.dot(A_copy, xOrig);
+            var b = Linear_OP.dot(A_copy, xOrig);
 
             var x = arena.floatVec(n);
 
@@ -165,13 +165,13 @@ public class floatSVDSolverTests
             Assert.IsFalse(Analysis_OP.isAnyNan(in x));
 
             // residual r = A x - b   (length m), using the saved copy of A
-            var Ax = float_OP.dot(A_copy, x);
+            var Ax = Linear_OP.dot(A_copy, x);
             floatN r = arena.floatVec(m);
             for (int i = 0; i < m; i++)
                 r[i] = Ax[i] - b_copy[i];
 
             // A^T r  (length n): vecMatDot computes r^T A = A^T r
-            var Atr = float_OP.dot(r, A_copy);
+            var Atr = Linear_OP.dot(r, A_copy);
 
             float maxAbs = (float)0f;
             for (int k = 0; k < n; k++)
@@ -312,7 +312,7 @@ public class floatSVDSolverTests
 
             Assert.IsFalse(Analysis_OP.isAnyNan(in Aplus));
 
-            var prod = float_OP.dot(A_copy, Aplus);
+            var prod = Linear_OP.dot(A_copy, Aplus);
             Assert.IsTrue(Analysis_OP.isIdentity(in prod, 1E-3f));
 
             arena.Dispose();
@@ -375,8 +375,8 @@ public class floatSVDSolverTests
             Assert.IsFalse(Analysis_OP.isAnyNan(in Aplus));
 
             // Aplus * A_copy * Aplus  (n x m)
-            var AplusA = float_OP.dot(Aplus, A_copy);          // n x n
-            var AplusAAplus = float_OP.dot(AplusA, Aplus);     // n x m
+            var AplusA = Linear_OP.dot(Aplus, A_copy);          // n x n
+            var AplusAAplus = Linear_OP.dot(AplusA, Aplus);     // n x m
 
             floatMxN shouldBeZero = Aplus - AplusAAplus;
             Assert.IsTrue(Analysis_OP.isZero(in shouldBeZero, 1E-3f));

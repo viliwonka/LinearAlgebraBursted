@@ -10,7 +10,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Inpl = inplace
     /// </summary>
-    public static partial class iProxy_OP {
+    public static partial class Linear_OP {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static iProxy dot(iProxyN a, iProxyN b)

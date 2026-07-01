@@ -71,7 +71,7 @@ public class floatDotOperationTests
             floatN x = arena.floatVec(vecLen, 1f);
             floatN y = arena.floatVec(vecLen, 1f);
 
-            float b = float_OP.dot(x, y);
+            float b = Linear_OP.dot(x, y);
 
             Assert.IsTrue(b == (float)vecLen);
 
@@ -84,7 +84,7 @@ public class floatDotOperationTests
                 y[i] = (i+1f) % 2f;
             }
 
-            b = float_OP.dot(x, y);
+            b = Linear_OP.dot(x, y);
 
             Assert.IsTrue(b == (float)0f);
 
@@ -101,7 +101,7 @@ public class floatDotOperationTests
             floatN x = arena.floatVec(inVecLen, 1f);
             floatMxN A = arena.floatRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
-            floatN b = float_OP.dot(A, x);
+            floatN b = Linear_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -117,7 +117,7 @@ public class floatDotOperationTests
             floatN x = arena.floatRandomUnitVec(vecLen);
             floatMxN A = arena.floatIdentityMat(vecLen);
 
-            floatN b = float_OP.dot(x, A);
+            floatN b = Linear_OP.dot(x, A);
 
             Assert.AreEqual(vecLen, b.N);
             
@@ -126,7 +126,7 @@ public class floatDotOperationTests
 
             x = arena.floatIndexZeroVec(vecLen);
 
-            b = float_OP.dot(x, A);
+            b = Linear_OP.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == (float)i);
@@ -143,7 +143,7 @@ public class floatDotOperationTests
             floatMxN A = arena.floatIdentityMat(matLen);
             floatMxN B = arena.floatIdentityMat(matLen);
 
-            floatMxN C = float_OP.dot(A, B);
+            floatMxN C = Linear_OP.dot(A, B);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -156,7 +156,7 @@ public class floatDotOperationTests
 
             floatMxN R = arena.floatRandomMat(matLen, matLen);
 
-            C = float_OP.dot(A, R);
+            C = Linear_OP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -166,7 +166,7 @@ public class floatDotOperationTests
 
             C = arena.floatIdentityMat(matLen);
 
-            floatMxN D = float_OP.dot(C, C);
+            floatMxN D = Linear_OP.dot(C, C);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -190,7 +190,7 @@ public class floatDotOperationTests
             floatN x = arena.floatVec(inVecLen, 1f);
             floatMxN A = arena.floatRandomMat(outVecLen, inVecLen, -0.01f, 0.01f);
 
-            floatN b = float_OP.dot(A, x);
+            floatN b = Linear_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -207,7 +207,7 @@ public class floatDotOperationTests
             floatN x = arena.floatVec(inVecLen, 1f);
             floatMxN A = arena.floatRandomMat(inVecLen, outVecLen, -0.01f, 0.01f);
 
-            floatN b = float_OP.dot(x, A);
+            floatN b = Linear_OP.dot(x, A);
             
             Assert.AreEqual(outVecLen, b.N);
 
@@ -229,12 +229,12 @@ public class floatDotOperationTests
             floatN x = arena.floatVec(vecM, 1f);
             floatN y = arena.floatVec(vecN, 1f);
 
-            floatMxN A = float_OP.outerDot(x, y);
+            floatMxN A = Linear_OP.outerDot(x, y);
 
             Assert.AreEqual(vecM, A.M_Rows);
             Assert.AreEqual(vecN, A.N_Cols);
 
-            floatMxN B = float_OP.outerDot(y, x);
+            floatMxN B = Linear_OP.outerDot(y, x);
 
             for (int i = 0; i < A.Length; i++)
                 Assert.IsTrue(A[i] == (float)1f);
@@ -248,7 +248,7 @@ public class floatDotOperationTests
             x = arena.floatLinVec(vecM, 0f, 2f);
             y = arena.floatLinVec(vecN, 0f, 2f);
 
-            floatMxN C = float_OP.outerDot(x, y);
+            floatMxN C = Linear_OP.outerDot(x, y);
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)

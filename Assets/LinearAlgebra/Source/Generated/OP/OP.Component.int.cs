@@ -12,7 +12,7 @@ namespace LinearAlgebra
     /// <summary>           
     /// Inpl = inplace
     /// </summary>
-    public static partial class int_OP {
+    public static partial class intElem_OP {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void addInpl<T>(T place, int s) where T : unmanaged, IUnsafeintArray {
@@ -83,24 +83,28 @@ namespace LinearAlgebra
             }
         }
 
+        // (T,T) buffer-pairwise overload of mulInpl, matching addInpl/subInpl's existing pattern
+        // of overloading a single name across a scalar (T, int) and a buffer (T, T) form.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void compMulInpl<T>(this T from, T to) where T : unmanaged, IUnsafeintArray
+        public static void mulInpl<T>(this T from, T to) where T : unmanaged, IUnsafeintArray
         {
             unsafe {
                 Unsafe_OP.compMul(from.Data.Ptr, to.Data.Ptr, from.Data.Length);
             }
         }
 
+        // (T,T) buffer-pairwise overload of divInpl.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void compDivInpl<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafeintArray
+        public static void divInpl<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafeintArray
         {
             unsafe {
                 Unsafe_OP.compDiv(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
             }
         }
 
+        // (T,T) buffer-pairwise overload of modInpl.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void compModDiv<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafeintArray
+        public static void modInpl<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafeintArray
         {
             unsafe {
                 Unsafe_OP.compMod(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);

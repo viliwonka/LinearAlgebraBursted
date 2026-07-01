@@ -1102,9 +1102,9 @@ public class floatSVDTests
         {
             // A ~= U * diag(S) * V^T
             var diagS = arena.floatDiagonalMat(in S);
-            var US = float_OP.dot(U, diagS);
-            var Vt = float_OP.trans(V);
-            var recon = float_OP.dot(US, Vt);
+            var US = Linear_OP.dot(U, diagS);
+            var Vt = Linear_OP.trans(V);
+            var recon = Linear_OP.dot(US, Vt);
 
             floatMxN shouldBeZero = A - recon;
 

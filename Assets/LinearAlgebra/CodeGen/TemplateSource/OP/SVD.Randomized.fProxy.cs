@@ -67,29 +67,29 @@ namespace LinearAlgebra
             var gauss = new fProxyGaussian((fProxy)0, (fProxy)1);
             fProxyRandom_OP.randomInpl(ref rng, ref ws.Omega, ref gauss);
 
-            fProxy_OP.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
+            Linear_OP.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
 
             // Q = orth(Y): qrDecomposition overwrites Y with the thin orthonormal Q (m x ℓ).
-            Ortho_OP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+            QR.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
 
             // Subspace iteration: Y = A (Aᵀ Q), re-orthonormalize.
             for (int it = 0; it < powerIters; it++)
             {
-                fProxy_OP.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
-                fProxy_OP.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
-                Ortho_OP.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+                Linear_OP.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
+                Linear_OP.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
+                QR.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
             }
 
             // B = Qᵀ A (ℓ x n); solve its SVD exactly via Bᵀ (n x ℓ, tall): Bᵀ = Up Σ Vpᵀ, so
             // B = Vp Σ Upᵀ -> A ≈ Q B = (Q Vp) Σ Upᵀ.
-            fProxy_OP.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
-            fProxy_OP.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
+            Linear_OP.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
+            Linear_OP.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
 
             bool ok = svdThin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
             if (!ok)
                 return false;
 
-            fProxy_OP.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
+            Linear_OP.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
 
             for (int t = 0; t < k; t++)
             {

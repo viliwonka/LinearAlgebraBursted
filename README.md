@@ -42,17 +42,17 @@ Here's a simple example:
     floatMxN compSumMat = matI + matRand;
 
     // adds 1f to compSumMat inplace, allocating nothing
-    float_OP.addInpl(compSumMat, 1f);
+    floatElem_OP.addInpl(compSumMat, 1f);
 
     // mulls matI into compSumMat inplace, allocating nothing 
-    float_OP.compMulInpl(compSumMat, matI);
+    floatElem_OP.mulInpl(compSumMat, matI);
 
     // creates random matrix with range from -3f to 3f
     floatMxN A = arena.floatRandomDiagonalMatrix(dim, -3f, 3f);
     floatMxN B = arena.floatRandomDiagonalMatrix(dim, -3f, 3f);
 
     // dot multiply A and B, will allocate new matrix
-    floatMxN C = float_OP.dot(A, B);
+    floatMxN C = Linear_OP.dot(A, B);
 
     // adds 5f to element on [0, 0] coords
     C[0, 0] += 5f;
@@ -63,7 +63,7 @@ Here's a simple example:
 
     // solves linear system Ax = b inplace using QR, will allocate nothing permament
     // but will modify A and b
-    Ortho_OP.qrDirectSolve(ref A, ref b, ref x_result);
+    QR.qrDirectSolve(ref A, ref b, ref x_result);
 
     // calculate L1 norm
     float norm = Norms_OP.L1(x_result);

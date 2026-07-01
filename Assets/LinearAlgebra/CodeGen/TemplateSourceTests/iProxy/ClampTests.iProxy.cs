@@ -43,7 +43,7 @@ public class iProxyClampTests
             v[0] = (iProxy)(-5); v[1] = (iProxy)(-2); v[2] = (iProxy)0;
             v[3] = (iProxy)2;    v[4] = (iProxy)7;    v[5] = (iProxy)2;
 
-            iProxy_OP.clampInpl(in v, (iProxy)(-2), (iProxy)5);
+            iProxyElem_OP.clampInpl(in v, (iProxy)(-2), (iProxy)5);
 
             Assert.IsTrue(v[0] == (iProxy)(-2)); // below lo → lo
             Assert.IsTrue(v[1] == (iProxy)(-2)); // at lo
@@ -61,7 +61,7 @@ public class iProxyClampTests
             A[0, 0] = (iProxy)(-10); A[0, 1] = (iProxy)3;
             A[1, 0] = (iProxy)5;     A[1, 1] = (iProxy)20;
 
-            iProxy_OP.clampInpl(in A, (iProxy)0, (iProxy)10);
+            iProxyElem_OP.clampInpl(in A, (iProxy)0, (iProxy)10);
 
             Assert.IsTrue(A[0, 0] == (iProxy)0);  // below lo
             Assert.IsTrue(A[0, 1] == (iProxy)3);  // in range
@@ -75,7 +75,7 @@ public class iProxyClampTests
         {
             var arena = new Arena(Allocator.Persistent);
             var v = arena.iProxyVec(4, 3); // all 3, inside [0,5]
-            iProxy_OP.clampInpl(in v, (iProxy)0, (iProxy)5);
+            iProxyElem_OP.clampInpl(in v, (iProxy)0, (iProxy)5);
             for (int i = 0; i < 4; i++)
                 Assert.IsTrue(v[i] == (iProxy)3);
             arena.Dispose();
@@ -97,7 +97,7 @@ public class iProxyClampTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.iProxyVec(3, 0);
         v[0] = (iProxy)(-4); v[1] = (iProxy)0; v[2] = (iProxy)9;
-        Assert.Throws<ArgumentException>(() => iProxy_OP.clampInpl(in v, (iProxy)6, (iProxy)(-1)));
+        Assert.Throws<ArgumentException>(() => iProxyElem_OP.clampInpl(in v, (iProxy)6, (iProxy)(-1)));
         arena.Dispose();
     }
 }

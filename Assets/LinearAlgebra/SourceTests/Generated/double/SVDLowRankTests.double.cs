@@ -223,7 +223,7 @@ public class doubleSVDLowRankTests
             int m = 10, n = 6, r = 3;
             var B = arena.doubleRandomMat(m, r, (double)(-2f), (double)2f, 121212);
             var C = arena.doubleRandomMat(r, n, (double)(-2f), (double)2f, 343434);
-            var A = double_OP.dot(B, C);   // rank 3
+            var A = Linear_OP.dot(B, C);   // rank 3
             var fullS = Spectrum(in A, ref arena, out double normA2);
             // k=3 captures all energy (tail ~ 0); k=2 leaves σ_2. k > rank(A) is not tested here —
             // GKL correctly signals converged=false for k > rank (rank-deficiency detected via Krylov
@@ -292,7 +292,7 @@ public class doubleSVDLowRankTests
             int m = 24, n = 8, r = 4;
             var B = arena.doubleRandomMat(m, r, (double)(-2f), (double)2f, 8881);
             var C = arena.doubleRandomMat(r, n, (double)(-2f), (double)2f, 9992);
-            var A = double_OP.dot(B, C);   // exactly rank 4
+            var A = Linear_OP.dot(B, C);   // exactly rank 4
 
             // Full spectrum oracle
             var Sfull = arena.doubleVec(n);
@@ -592,7 +592,7 @@ public class doubleSVDLowRankTests
             // k=5, oversample=5 → p = min(10, 20) = 10 < n=20.
             var B = arena.doubleRandomMat(m, r, (double)(-2f), (double)2f, 0xBADC0DE0u);
             var C = arena.doubleRandomMat(r, n, (double)(-2f), (double)2f, 0xBADC0DE1u);
-            var A = double_OP.dot(B, C);  // exactly rank 3
+            var A = Linear_OP.dot(B, C);  // exactly rank 3
 
             // True top-r singular values (oracle)
             var Sfull = arena.doubleVec(n);

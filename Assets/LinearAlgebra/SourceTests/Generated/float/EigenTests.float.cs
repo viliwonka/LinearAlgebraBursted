@@ -343,9 +343,9 @@ public class floatEigenTests
 
             // Reconstruct: recon = V * diag(eig) * V^T
             var diagE = arena.floatDiagonalMat(in eig);
-            var Vd = float_OP.dot(V, diagE);
-            var Vt = float_OP.trans(V);
-            var recon = float_OP.dot(Vd, Vt);
+            var Vd = Linear_OP.dot(V, diagE);
+            var Vt = Linear_OP.trans(V);
+            var recon = Linear_OP.dot(Vd, Vt);
 
             floatMxN shouldBeZero = Aorig - recon;
 

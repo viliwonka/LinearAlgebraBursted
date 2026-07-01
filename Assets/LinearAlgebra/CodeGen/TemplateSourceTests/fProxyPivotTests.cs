@@ -222,9 +222,9 @@ public class fProxyPivotTests
 
             var permutationMatrix = arena.fProxyPermutationMat(8, 2, 3);
 
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 3, 6));
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 6, 7));
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 1, 4));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 3, 6));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 6, 7));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 1, 4));
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 
@@ -245,11 +245,11 @@ public class fProxyPivotTests
 
             var permutationMatrix = arena.fProxyPermutationMat(8, 2, 3);
 
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 3, 6));
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 6, 7));
-            permutationMatrix = fProxy_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 1, 4));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 3, 6));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 6, 7));
+            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.fProxyPermutationMat(8, 1, 4));
 
-            permutationMatrix = fProxy_OP.trans(permutationMatrix);
+            permutationMatrix = Linear_OP.trans(permutationMatrix);
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 

@@ -323,7 +323,7 @@ public class fProxyLUTests
                 var x_Known = arena.fProxyVec(dim);
                 x_Known[0] = 3f; x_Known[1] = -2f; x_Known[2] = 5f;
 
-                var b = fProxy_OP.dot(A, x_Known);
+                var b = Linear_OP.dot(A, x_Known);
 
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
@@ -356,7 +356,7 @@ public class fProxyLUTests
                 var x_Known = arena.fProxyVec(dim);
                 x_Known[0] = 1f; x_Known[1] = -3f; x_Known[2] = 2f; x_Known[3] = 4f;
 
-                var b = fProxy_OP.dot(A, x_Known);
+                var b = Linear_OP.dot(A, x_Known);
 
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
@@ -545,7 +545,7 @@ public class fProxyLUTests
             for (int i = 0; i < dim; i++)
                 x_Known[i] = (fProxy)(i + 1);
 
-            var b = fProxy_OP.dot(A2, x_Known);
+            var b = Linear_OP.dot(A2, x_Known);
 
             var LU2 = A2.Copy();
             bool s2 = LU.luDecompositionInpl(ref LU2, ref pivot);
@@ -632,7 +632,7 @@ public class fProxyLUTests
 
             var x_Known = arena.fProxyRandomVec(dim, 1f, 10f, 901);
 
-            var b = fProxy_OP.dot(A, x_Known);
+            var b = Linear_OP.dot(A, x_Known);
 
             var U = A.Copy();
             var L = arena.fProxyIdentityMat(dim);
@@ -683,7 +683,7 @@ public class fProxyLUTests
 
             var x_Known = arena.fProxyRandomVec(dim, 1f, 10f, 901);
 
-            var b = fProxy_OP.dot(A, x_Known);
+            var b = Linear_OP.dot(A, x_Known);
 
             var LUmat = A.Copy();
 
@@ -762,7 +762,7 @@ public class fProxyLUTests
         private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, bool pivoted) => AssertLU(in A, in L, in U, pivoted, 1E-6f);
         private void AssertLU(in fProxyMxN A, in fProxyMxN L, in fProxyMxN U, bool pivoted, fProxy precision)
         {
-            fProxyMxN shouldBeZero = A - fProxy_OP.dot(L, U);
+            fProxyMxN shouldBeZero = A - Linear_OP.dot(L, U);
 
             if (Analysis_OP.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");

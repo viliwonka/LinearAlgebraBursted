@@ -10,7 +10,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Inpl = inplace
     /// </summary>
-    public static partial class int_OP {
+    public static partial class Linear_OP {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int dot(intN a, intN b)

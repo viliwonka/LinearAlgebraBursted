@@ -20,7 +20,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN B;
         public floatMxN C;
 
-        public void Execute() => float_OP.dot(in A, in B, ref C);
+        public void Execute() => Linear_OP.dot(in A, in B, ref C);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -30,7 +30,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN B;
         public doubleMxN C;
 
-        public void Execute() => double_OP.dot(in A, in B, ref C);
+        public void Execute() => Linear_OP.dot(in A, in B, ref C);
     }
 
     public static class GemmBenchmark

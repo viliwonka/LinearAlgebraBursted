@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Least-squares residual tests for the (un-pivoted) Householder QR solver Ortho_OP.qrDirectSolve.
+// Least-squares residual tests for the (un-pivoted) Householder QR solver QR.qrDirectSolve.
 // The existing QR solve tests only cover CONSISTENT right-hand sides (b = A*xOrig, zero residual).
 // These add genuinely INCONSISTENT overdetermined systems, where min ||Ax - b|| has a non-zero
 // residual r = b - Ax, and verify the defining least-squares property: r is orthogonal to the
@@ -60,7 +60,7 @@ public class doubleQRLeastSquaresResidualTests
             var bwork = b.Copy();
             var x = arena.doubleVec(2);
 
-            Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
+            QR.qrDirectSolve(ref Awork, ref bwork, ref x);
 
             if (Analysis_OP.isAnyNan(in x))
                 throw new System.Exception("TestJob: NaN detected");
@@ -70,13 +70,13 @@ public class doubleQRLeastSquaresResidualTests
             RecordBound(math.abs(x[1] - (double)(-3f)), (double)1E-4f);
 
             // residual r = b - A x == [1, -2, 1]
-            doubleN r = b - double_OP.dot(A, x);
+            doubleN r = b - Linear_OP.dot(A, x);
             RecordBound(math.abs(r[0] - (double)1f), (double)1E-4f);
             RecordBound(math.abs(r[1] - (double)(-2f)), (double)1E-4f);
             RecordBound(math.abs(r[2] - (double)1f), (double)1E-4f);
 
             // normal equations: Aᵀr == 0
-            doubleN AtR = double_OP.dot(r, A);
+            doubleN AtR = Linear_OP.dot(r, A);
             RecordBound(Analysis_OP.MaxZeroError(AtR), (double)1E-4f);
 
             arena.Dispose();
@@ -99,16 +99,16 @@ public class doubleQRLeastSquaresResidualTests
                 var bwork = b.Copy();
                 var x = arena.doubleVec(n);
 
-                Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
+                QR.qrDirectSolve(ref Awork, ref bwork, ref x);
 
                 if (Analysis_OP.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                doubleN r = b - double_OP.dot(A, x);
-                doubleN AtR = double_OP.dot(r, A);
+                doubleN r = b - Linear_OP.dot(A, x);
+                doubleN AtR = Linear_OP.dot(r, A);
 
                 // scale-relative: ||Aᵀr||_inf small vs ||Aᵀb||_inf (the un-projected scale).
-                doubleN AtB = double_OP.dot(b, A);
+                doubleN AtB = Linear_OP.dot(b, A);
                 double scale = Analysis_OP.MaxZeroError(AtB) + (double)1f;
                 RecordBound(Analysis_OP.MaxZeroError(AtR), (double)1E-3f * scale);
 
@@ -144,12 +144,12 @@ public class doubleQRLeastSquaresResidualTests
                 var bwork = b.Copy();
                 var x = arena.doubleVec(n);
 
-                Ortho_OP.qrDirectSolve(ref Awork, ref bwork, ref x);
+                QR.qrDirectSolve(ref Awork, ref bwork, ref x);
 
                 if (Analysis_OP.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                double r0 = SumSq(b - double_OP.dot(A, x));
+                double r0 = SumSq(b - Linear_OP.dot(A, x));
 
                 double delta = (double)0.05f;
                 for (int k = 0; k < n; k++)
@@ -157,9 +157,9 @@ public class doubleQRLeastSquaresResidualTests
                     double saved = x[k];
 
                     x[k] = saved + delta;
-                    double rp = SumSq(b - double_OP.dot(A, x));
+                    double rp = SumSq(b - Linear_OP.dot(A, x));
                     x[k] = saved - delta;
-                    double rm = SumSq(b - double_OP.dot(A, x));
+                    double rm = SumSq(b - Linear_OP.dot(A, x));
                     x[k] = saved;
 
                     // both perturbations must be >= the optimum (minus tiny float slack).

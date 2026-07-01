@@ -148,10 +148,10 @@ namespace LinearAlgebra.ML
                 }
 
                 // 5.4.2  Transpose centroids (k×D) -> ws.Ct (D×k)
-                fProxy_OP.trans(in centroids, ref ws.Ct);
+                Linear_OP.trans(in centroids, ref ws.Ct);
 
                 // 5.4.3  GEMM: ws.Gram = X * ws.Ct  (N×k); dot zero-clears before accumulating.
-                fProxy_OP.dot(in X, in ws.Ct, ref ws.Gram);
+                Linear_OP.dot(in X, in ws.Ct, ref ws.Gram);
 
                 // 5.4.4  Patch Gram in-place: score[n,j] = cn[j] - 2*G[n,j]
                 //   pn[n] omitted (constant over j — no effect on argmin).
@@ -254,8 +254,8 @@ namespace LinearAlgebra.ML
                     for (int f = 0; f < D; f++) { fProxy v = centroids[j, f]; s += v * v; }
                     ws.CentNormSq[j] = s;
                 }
-                fProxy_OP.trans(in centroids, ref ws.Ct);
-                fProxy_OP.dot(in X, in ws.Ct, ref ws.Gram);
+                Linear_OP.trans(in centroids, ref ws.Ct);
+                Linear_OP.dot(in X, in ws.Ct, ref ws.Gram);
                 for (int n = 0; n < N; n++)
                     for (int j = 0; j < k; j++)
                         ws.Gram[n, j] = ws.CentNormSq[j] - (fProxy)2 * ws.Gram[n, j];

@@ -1,4 +1,4 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using System;
 using System.Runtime.CompilerServices;
@@ -9,60 +9,25 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    /// <summary>           
-    /// Inpl = inplace
-    /// </summary>
-    public static partial class Ortho_OP {
+    public static partial class QR {
 
-        public static void householderInpl(ref fProxyMxN matrix, in fProxyN u)
-        {
-            if(matrix.IsSquare == false)
-                throw new System.Exception("Ortho_OP.householder: Matrix must be square");
-
-            if(matrix.M_Rows < matrix.N_Cols)
-                throw new System.Exception("Ortho_OP.householder: Matrix must be square or tall (more or equal rows than cols)");
-
-            var maxDim = math.max(matrix.M_Rows, matrix.N_Cols);
-
-            if(u.N < maxDim)
-                throw new System.Exception("Ortho_OP.householder: Vector must be at least as long as the largest dimension of the matrix");
-
-            fProxy vTv = fProxy_OP.dot(u, u); // Inline dot product calculation
-
-            // Degenerate (zero / near-zero) reflector -> identity transform; leave matrix unchanged.
-            // NaN-safe (!(vTv > t) is true for NaN); avoids 2/0 = Inf poisoning the matrix.
-            if (!(vTv > Consts.fProxyZeroThreshold))
-                return;
-
-            fProxy scaleFactor = 2 / vTv;
-
-            for (int i = 0; i < matrix.M_Rows; i++)
-            {
-                for (int j = 0; j < matrix.N_Cols; j++)
-                {
-                    fProxy vvT_element = scaleFactor * u[i] * u[j];
-                    matrix[i, j] -= vvT_element; // Apply directly to matrix
-                }
-            }
-        }
-
-        static fProxy sign(fProxy x) {
+        static float sign(float x) {
             return x < 0 ? -1 : 1;
         }
 
         // zeroThreshold is the ABSOLUTE column-norm below which a column is treated as zero. Callers
-        // pass a SCALE-RELATIVE value (Consts.fProxyZeroThreshold * matrix magnitude) so QR is
+        // pass a SCALE-RELATIVE value (Consts.floatZeroThreshold * matrix magnitude) so QR is
         // scale-invariant — a fixed absolute constant mis-classifies every column of a uniformly
         // tiny-magnitude matrix as a zero column and silently produces a garbage decomposition.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void genHouseholderPete(ref fProxyMxN Q, ref fProxyN u, int k, fProxy zeroThreshold) {
+        private static void genHouseholderPete(ref floatMxN Q, ref floatN u, int k, float zeroThreshold) {
 
             // copy column d of A into u
             // here we are forming x vector
             for (int r = k; r < u.N; r++)
                 u[r] = Q[r, k];
 
-            fProxy xNorm = fProxyNorms_OP.L2Range(u, k, u.N);
+            float xNorm = floatNorms_OP.L2Range(u, k, u.N);
 
             if (math.abs(xNorm) > zeroThreshold) {
 
@@ -97,7 +62,7 @@ namespace LinearAlgebra
         // ascending order, and pass 2's (-u[r])·w[i] added to Q[r,c] equals Q[r,c] - u[r]·w[i]
         // exactly in IEEE (negation and sign-symmetric multiply are exact).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe void applyReflectorRight(ref fProxyMxN Q, ref fProxyN u, ref fProxyN w, int d)
+        private static unsafe void applyReflectorRight(ref floatMxN Q, ref floatN u, ref floatN w, int d)
         {
             int M = Q.M_Rows;
             int N = Q.N_Cols;
@@ -105,12 +70,12 @@ namespace LinearAlgebra
             if (L <= 0)
                 return;
 
-            fProxy* qp = Q.Data.Ptr;
-            fProxy* up = u.Data.Ptr;
-            fProxy* wp = w.Data.Ptr;
+            float* qp = Q.Data.Ptr;
+            float* up = u.Data.Ptr;
+            float* wp = w.Data.Ptr;
 
             // pass 1: w[0..L) = Σ_{r=d}^{M-1} u[r] · Q[r, d..N)   (row segments are unit-stride)
-            UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<fProxy>());
+            UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<float>());
             for (int r = d; r < M; r++)
                 Unsafe_OP.axpy(wp, qp + (long)r * N + d, up[r], L);
 
@@ -125,22 +90,22 @@ namespace LinearAlgebra
         // EXACTLY Q.M_Rows; w is a workspace vector of length >= Q.N_Cols (the reflector-apply
         // accumulator). Hoist both out of a hot loop to skip the per-call Allocator.Temp allocs.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN u, ref fProxyN w)
+        public static void qrDecomposition(ref floatMxN Q, ref floatMxN R, ref floatN u, ref floatN w)
         {
             if (Q.M_Rows < Q.N_Cols)
-                throw new System.Exception("Ortho_OP.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
+                throw new System.Exception("QR.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
 
             if (u.N != Q.M_Rows)
-                throw new System.Exception("Ortho_OP.qrDecomposition: scratch vector u.N must equal Q.M_Rows");
+                throw new System.Exception("QR.qrDecomposition: scratch vector u.N must equal Q.M_Rows");
 
             if (w.N < Q.N_Cols)
-                throw new System.Exception("Ortho_OP.qrDecomposition: scratch vector w.N must be at least Q.N_Cols");
+                throw new System.Exception("QR.qrDecomposition: scratch vector w.N must be at least Q.N_Cols");
 
             int qrSteps = Q.N_Cols;
 
             // scale-relative zero-column threshold (see genHouseholderPete): keyed off the original
             // matrix magnitude so QR is scale-invariant. LInf(Q) == max |entry|.
-            fProxy zeroThreshold = Consts.fProxyZeroThreshold * fProxyNorms_OP.LInf(in Q);
+            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
 
             // forming R inside Q (will be copied into R later)
             // d = step and diagonal index
@@ -189,16 +154,16 @@ namespace LinearAlgebra
                 {
                     // On and above diagonal
                     if (c > r)
-                    {   
+                    {
                         Q[r, c] = 0;
                     }
                 }
             }
-            
+
             // Apply Householder transformations in reverse order
             // Reconstruct the Householder vector v from the original Q
             for (int d = Q.N_Cols - 1; d >= 0; d--)
-            {               
+            {
                 // includes diagonal elements
                 for (int i = d; i < Q.M_Rows; i++)
                 {
@@ -217,19 +182,19 @@ namespace LinearAlgebra
         // the small w accumulator (length Q.N_Cols) from Allocator.Temp. Behaviour is identical to
         // the 4-arg primitive; use that one to be fully zero-alloc in a hot loop.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN u)
+        public static void qrDecomposition(ref floatMxN Q, ref floatMxN R, ref floatN u)
         {
-            var w = new fProxyN(Q.N_Cols, Allocator.Temp, false);
+            var w = new floatN(Q.N_Cols, Allocator.Temp, false);
             qrDecomposition(ref Q, ref R, ref u, ref w);
             w.Dispose();
         }
 
         // Allocating wrapper: allocates both scratch vectors (Allocator.Temp) and delegates.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R)
+        public static void qrDecomposition(ref floatMxN Q, ref floatMxN R)
         {
-            var u = new fProxyN(Q.M_Rows, Allocator.Temp, false);
-            var w = new fProxyN(Q.N_Cols, Allocator.Temp, false);
+            var u = new floatN(Q.M_Rows, Allocator.Temp, false);
+            var w = new floatN(Q.N_Cols, Allocator.Temp, false);
             qrDecomposition(ref Q, ref R, ref u, ref w);
             w.Dispose();
             u.Dispose();
@@ -255,19 +220,19 @@ namespace LinearAlgebra
         // deficiency) — for the modest matrices this library targets, exact recompute is both
         // simpler and unconditionally robust.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecompositionColumnPivot(ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u)
+        public static void qrDecompositionColumnPivot(ref floatMxN Q, ref floatMxN R, ref Pivot P, ref floatN u)
         {
             if (Q.M_Rows < Q.N_Cols)
-                throw new System.Exception("Ortho_OP.qrDecompositionColumnPivot: Matrix must be square or tall (M_Rows >= N_Cols)");
+                throw new System.Exception("QR.qrDecompositionColumnPivot: Matrix must be square or tall (M_Rows >= N_Cols)");
 
             if (u.N != Q.M_Rows)
-                throw new System.Exception("Ortho_OP.qrDecompositionColumnPivot: scratch vector u.N must equal Q.M_Rows");
+                throw new System.Exception("QR.qrDecompositionColumnPivot: scratch vector u.N must equal Q.M_Rows");
 
             if (P.N != Q.N_Cols)
-                throw new System.Exception("Ortho_OP.qrDecompositionColumnPivot: pivot P.N must equal Q.N_Cols");
+                throw new System.Exception("QR.qrDecompositionColumnPivot: pivot P.N must equal Q.N_Cols");
 
             if (R.M_Rows != Q.N_Cols || R.N_Cols != Q.N_Cols)
-                throw new System.Exception("Ortho_OP.qrDecompositionColumnPivot: R must be N_Cols x N_Cols");
+                throw new System.Exception("QR.qrDecompositionColumnPivot: R must be N_Cols x N_Cols");
 
             P.Reset();
 
@@ -277,11 +242,11 @@ namespace LinearAlgebra
             // Reflector-apply accumulator (length n) + per-column squared-norm buffer for pivoting.
             // Allocated once per call (O(n) « O(n³)); this path has no zero-alloc w contract, unlike
             // qrDecomposition's 4-arg overload.
-            var w = new fProxyN(n, Allocator.Temp, false);
-            var colNorm2 = new fProxyN(n, Allocator.Temp, false);
+            var w = new floatN(n, Allocator.Temp, false);
+            var colNorm2 = new floatN(n, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholderPete); LInf(Q) == max |entry|.
-            fProxy zeroThreshold = Consts.fProxyZeroThreshold * fProxyNorms_OP.LInf(in Q);
+            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
 
             for (int d = 0; d < n; d++)
             {
@@ -295,17 +260,17 @@ namespace LinearAlgebra
                 // same ascending order.
                 unsafe
                 {
-                    fProxy* qp = Q.Data.Ptr;
-                    fProxy* cn = colNorm2.Data.Ptr;
+                    float* qp = Q.Data.Ptr;
+                    float* cn = colNorm2.Data.Ptr;
                     int L = n - d;
-                    UnsafeUtility.MemClear(cn + d, (long)L * UnsafeUtility.SizeOf<fProxy>());
+                    UnsafeUtility.MemClear(cn + d, (long)L * UnsafeUtility.SizeOf<float>());
                     for (int r = d; r < m; r++)
                         Unsafe_OP.addSquares(cn + d, qp + (long)r * n + d, L);
                 }
 
-                fProxy diagNorm2 = colNorm2[d];
+                float diagNorm2 = colNorm2[d];
                 int pivotCol = d;
-                fProxy maxNorm2 = diagNorm2;
+                float maxNorm2 = diagNorm2;
                 for (int c = d + 1; c < n; c++)
                 {
                     if (colNorm2[c] > maxNorm2)
@@ -320,8 +285,8 @@ namespace LinearAlgebra
                 // columns in place — notably the Kahan matrix, whose columns all have norm exactly 1
                 // and which is provably invariant under column pivoting; a bare `>` would let a
                 // ~1 ulp difference induce a spurious (and non-reproducible) permutation.
-                fProxy pivotRelTol = (fProxy)(8 * m) * Consts.fProxyEpsilon;
-                if (pivotCol != d && maxNorm2 > diagNorm2 * ((fProxy)1 + pivotRelTol))
+                float pivotRelTol = (float)(8 * m) * Consts.floatEpsilon;
+                if (pivotCol != d && maxNorm2 > diagNorm2 * ((float)1 + pivotRelTol))
                 {
                     // Full-column swap (all rows): rows < d hold finished R entries that must travel
                     // with the column; rows >= d hold the live sub-matrix. Stored Householder vectors
@@ -379,9 +344,9 @@ namespace LinearAlgebra
         // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
         // The caller still owns P (its size carries the column count and it is reset internally).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecompositionColumnPivot(ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P)
+        public static void qrDecompositionColumnPivot(ref floatMxN Q, ref floatMxN R, ref Pivot P)
         {
-            var u = new fProxyN(Q.M_Rows, Allocator.Temp, false);
+            var u = new floatN(Q.M_Rows, Allocator.Temp, false);
             qrDecompositionColumnPivot(ref Q, ref R, ref P, ref u);
             u.Dispose();
         }
@@ -394,33 +359,33 @@ namespace LinearAlgebra
         // PRECONDITION: A has FULL COLUMN RANK. This un-pivoted solve back-substitutes through R's
         // diagonal; a rank-deficient A produces a zero on that diagonal and the result x is then
         // Inf/NaN (no guard). For rank-deficient / least-norm problems use the rank-revealing paths
-        // instead: Ortho_OP.qrDecompositionColumnPivot (QRCP), SVD.pinvSolve, or
+        // instead: QR.qrDecompositionColumnPivot (QRCP), SVD.pinvSolve, or
         // Cholesky.choleskyPivotSolve.
         // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
         // EXACTLY A.M_Rows. Hoist u out of a hot loop to skip the per-call Allocator.Temp alloc.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, ref fProxyN u) {
+        public static void qrDirectSolve(ref floatMxN A, ref floatN b, ref floatN x, ref floatN u) {
             if (A.M_Rows < A.N_Cols)
-                throw new System.Exception("Ortho_OP.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
+                throw new System.Exception("QR.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
 
             if (b.N != A.M_Rows)
-                throw new System.Exception("Ortho_OP.qrDirectSolve: b.N must equal A.M_Rows");
+                throw new System.Exception("QR.qrDirectSolve: b.N must equal A.M_Rows");
 
             if (x.N != A.N_Cols)
-                throw new System.Exception("Ortho_OP.qrDirectSolve: x.N must equal A.N_Cols");
+                throw new System.Exception("QR.qrDirectSolve: x.N must equal A.N_Cols");
 
             if (u.N != A.M_Rows)
-                throw new System.Exception("Ortho_OP.qrDirectSolve: scratch vector u.N must equal A.M_Rows");
+                throw new System.Exception("QR.qrDirectSolve: scratch vector u.N must equal A.M_Rows");
 
             int qrSteps = A.N_Cols;
 
             // Reflector-apply accumulator (length N_Cols). Allocated once per call (O(n) « O(n³)).
-            var w = new fProxyN(A.N_Cols, Allocator.Temp, false);
+            var w = new floatN(A.N_Cols, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholderPete); LInf(A) == max |entry|.
-            fProxy zeroThreshold = Consts.fProxyZeroThreshold * fProxyNorms_OP.LInf(in A);
+            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in A);
 
-            fProxy dotProduct = 0;
+            float dotProduct = 0;
             // forming R inside Q (will be copied into R later)
             // d = step and diagonal index
             for (int d = 0; d < qrSteps; d++) {
@@ -454,8 +419,8 @@ namespace LinearAlgebra
 
         // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x) {
-            var u = new fProxyN(A.M_Rows, Allocator.Temp, false);
+        public static void qrDirectSolve(ref floatMxN A, ref floatN b, ref floatN x) {
+            var u = new floatN(A.M_Rows, Allocator.Temp, false);
             qrDirectSolve(ref A, ref b, ref x, ref u);
             u.Dispose();
         }
@@ -466,7 +431,7 @@ namespace LinearAlgebra
         // (Businger-Golub, A·P = Q·R) to expose the numerical rank r: the R diagonal is
         // non-increasing, so r = count of leading entries with |R[i,i]| > tol where
         //     tol = relTol * |R[0,0]|
-        // and relTol defaults to max(m,n) * Consts.fProxyZeroThreshold (matching SVD.pinvSolve /
+        // and relTol defaults to max(m,n) * Consts.floatZeroThreshold (matching SVD.pinvSolve /
         // MatrixMetrics.rank, so rank detection agrees across the library). A negative relTol is
         // an "auto" sentinel that selects that same default.
         //
@@ -493,33 +458,33 @@ namespace LinearAlgebra
         /// The full-rank path (r == n) is divide-safe by construction (all used R diagonals exceed tol).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
-                                           ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P,
-                                           ref fProxyN u, out int rank, fProxy relTol)
+        public static void qrcpDirectSolve(ref floatMxN A, ref floatN b, ref floatN x,
+                                           ref floatMxN Q, ref floatMxN R, ref Pivot P,
+                                           ref floatN u, out int rank, float relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: A must be square or tall (M_Rows >= N_Cols)");
+                throw new ArgumentException("QR.qrcpDirectSolve: A must be square or tall (M_Rows >= N_Cols)");
             if (b.N != m)
-                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: b.N must equal A.M_Rows");
+                throw new ArgumentException("QR.qrcpDirectSolve: b.N must equal A.M_Rows");
             if (x.N != n)
-                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: x.N must equal A.N_Cols");
+                throw new ArgumentException("QR.qrcpDirectSolve: x.N must equal A.N_Cols");
             if (Q.M_Rows != m || Q.N_Cols != n)
-                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: Q must be M_Rows x N_Cols");
+                throw new ArgumentException("QR.qrcpDirectSolve: Q must be M_Rows x N_Cols");
             if (R.M_Rows != n || R.N_Cols != n)
-                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: R must be N_Cols x N_Cols");
+                throw new ArgumentException("QR.qrcpDirectSolve: R must be N_Cols x N_Cols");
             if (P.N != n)
-                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: P.N must equal A.N_Cols");
+                throw new ArgumentException("QR.qrcpDirectSolve: P.N must equal A.N_Cols");
             if (u.N != m)
-                throw new ArgumentException("Ortho_OP.qrcpDirectSolve: u.N must equal A.M_Rows");
+                throw new ArgumentException("QR.qrcpDirectSolve: u.N must equal A.M_Rows");
 
             // Negative relTol is an "auto" sentinel: use the library-standard rank threshold
             // (same default as SVD.pinvSolve / MatrixMetrics.rank). This also makes the threshold
             // divide-safe (tol >= 0), so a stray negative can never inflate rank into a divide-by-tiny.
-            if (relTol < (fProxy)0)
-                relTol = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
+            if (relTol < (float)0)
+                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
 
             // Degenerate: zero-column system.
             if (n == 0) { rank = 0; return; }
@@ -533,7 +498,7 @@ namespace LinearAlgebra
             // Step 3: determine numerical rank r from R's non-increasing diagonal.
             // tol = relTol * |R[0,0]|. When R[0,0] == 0 tol == 0, and |R[0,0]| > 0 is false
             // → rank stays 0. NaN in R[0,0] → tol = NaN → all comparisons false → rank = 0.
-            fProxy tol = relTol * math.abs(R[0, 0]);
+            float tol = relTol * math.abs(R[0, 0]);
             rank = 0;
             for (int i = 0; i < n; i++)
             {
@@ -547,7 +512,7 @@ namespace LinearAlgebra
             if (rank == 0)
             {
                 for (int j = 0; j < n; j++)
-                    x[j] = (fProxy)0;
+                    x[j] = (float)0;
                 return;
             }
 
@@ -557,21 +522,21 @@ namespace LinearAlgebra
             // dot(in b, in Q, ref x) computes x[j] = Σ_i Q[i,j]·b[i] = (Qᵀb)[j].
             // dot zeroes x via MemClear before accumulating, so x needs no prior initialisation.
             // Guard: x must not alias b (enforced inside dot by pointer comparison).
-            fProxy_OP.dot(in b, in Q, ref x);
+            Linear_OP.dot(in b, in Q, ref x);
 
             // Step 6: back-solve the leading r×r block of R in place.
             // x holds c = Qᵀb; overwrite x[0..r-1] with the triangular solution.
             // Every R[i,i] for i < r satisfies |R[i,i]| > tol, so no divide-by-zero.
             for (int i = r - 1; i >= 0; i--)
             {
-                fProxy sum = (fProxy)0;
+                float sum = (float)0;
                 for (int j = i + 1; j < r; j++)
                     sum += R[i, j] * x[j];
                 x[i] = (x[i] - sum) / R[i, i];
             }
             // Zero the free variables (columns beyond the numerical rank).
             for (int j = r; j < n; j++)
-                x[j] = (fProxy)0;
+                x[j] = (float)0;
 
             // Step 7: un-permute — scatter from permuted ordering back to original column ordering.
             // QRCP gives A·P = Q·R where P[j] = original column index promoted to position j.
@@ -584,13 +549,13 @@ namespace LinearAlgebra
         }
 
         // Default-tolerance overload: passes the auto sentinel (relTol < 0), so the primitive
-        // uses max(m,n) * Consts.fProxyZeroThreshold (consistent with SVD.pinvSolve / MatrixMetrics.rank).
+        // uses max(m,n) * Consts.floatZeroThreshold (consistent with SVD.pinvSolve / MatrixMetrics.rank).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
-                                           ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P,
-                                           ref fProxyN u, out int rank)
+        public static void qrcpDirectSolve(ref floatMxN A, ref floatN b, ref floatN x,
+                                           ref floatMxN Q, ref floatMxN R, ref Pivot P,
+                                           ref floatN u, out int rank)
         {
-            qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out rank, (fProxy)(-1));
+            qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out rank, (float)(-1));
         }
 
         /// <summary>
@@ -599,15 +564,15 @@ namespace LinearAlgebra
         /// hot loops to avoid repeated Temp allocs.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
-                                           out int rank, fProxy relTol)
+        public static void qrcpDirectSolve(ref floatMxN A, ref floatN b, ref floatN x,
+                                           out int rank, float relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var Q = new fProxyMxN(m, n, Allocator.Temp, false);
-            var R = new fProxyMxN(n, n, Allocator.Temp, false);
+            var Q = new floatMxN(m, n, Allocator.Temp, false);
+            var R = new floatMxN(n, n, Allocator.Temp, false);
             var P = new Pivot(n, Allocator.Temp);
-            var u = new fProxyN(m, Allocator.Temp, false);
+            var u = new floatN(m, Allocator.Temp, false);
             qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out rank, relTol);
             u.Dispose();
             P.Dispose();
@@ -616,104 +581,14 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Allocating convenience wrapper with default tolerance (max(m,n) * Consts.fProxyZeroThreshold,
+        /// Allocating convenience wrapper with default tolerance (max(m,n) * Consts.floatZeroThreshold,
         /// matching SVD.pinvSolve / MatrixMetrics.rank).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
+        public static void qrcpDirectSolve(ref floatMxN A, ref floatN b, ref floatN x,
                                            out int rank)
         {
-            qrcpDirectSolve(ref A, ref b, ref x, out rank, (fProxy)(-1));
-        }
-
-        // ---- LQ decomposition ----
-
-        /// <summary>
-        /// LQ decomposition of A (m × n, m ≤ n): A = L · Q where L is m × m lower-triangular
-        /// and Q is m × n with orthonormal rows (Q Qᵀ = I_m). Implemented via the
-        /// transpose-of-QR identity: QR(Aᵀ) = Q_qr · R_qr gives A = R_qrᵀ · Q_qrᵀ, so
-        /// L = R_qrᵀ (lower-tri) and Q = Q_qrᵀ (orthonormal rows).
-        /// A is not modified. Allocates Allocator.Temp scratch internally.
-        /// </summary>
-        /// <param name="A">Input m × n matrix (m ≤ n). Not modified.</param>
-        /// <param name="L">Output m × m lower-triangular factor (caller-allocated, m × m).</param>
-        /// <param name="Q">Output m × n row-orthonormal factor (caller-allocated, m × n).</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void lqDecomposition(ref fProxyMxN A, ref fProxyMxN L, ref fProxyMxN Q)
-        {
-            int m = A.M_Rows;
-            int n = A.N_Cols;
-
-            if (m > n)
-                throw new ArgumentException("Ortho_OP.lqDecomposition: A must be wide or square (M_Rows <= N_Cols)");
-            if (L.M_Rows != m || L.N_Cols != m)
-                throw new ArgumentException("Ortho_OP.lqDecomposition: L must be m x m");
-            if (Q.M_Rows != m || Q.N_Cols != n)
-                throw new ArgumentException("Ortho_OP.lqDecomposition: Q must be m x n");
-
-            if (m == 0 || n == 0)
-                return;
-
-            // T = Aᵀ (n × m). Since n >= m, T satisfies M_Rows >= N_Cols for QR.
-            var T   = new fProxyMxN(n, m, Allocator.Temp, false);
-            var Rqr = new fProxyMxN(m, m, Allocator.Temp, false);
-
-            fProxy_OP.trans(in A, ref T);
-
-            // QR(T): destroys T → Q_qr (n × m, orthonormal columns); fills Rqr (m × m, upper-tri).
-            qrDecomposition(ref T, ref Rqr);
-
-            // L = Rqrᵀ  (m × m, lower-triangular).
-            fProxy_OP.trans(in Rqr, ref L);
-
-            // Q_lq = Q_qrᵀ = Tᵀ  (m × n, orthonormal rows).
-            fProxy_OP.trans(in T, ref Q);
-
-            Rqr.Dispose();
-            T.Dispose();
-        }
-
-        // ---- LQ minimum-norm solver ----
-
-        /// <summary>
-        /// Minimum-2-norm solution to the underdetermined system A x = b (m ≤ n, A full row rank).
-        /// Uses LQ: A = L Q, so x = Qᵀ L⁻¹ b.
-        /// Steps: (1) forward-solve L y = b for y (m-vector); (2) x = Qᵀ y (n-vector).
-        /// A is not modified. Allocates Allocator.Temp for L, Q, and y.
-        /// </summary>
-        /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). Not modified.</param>
-        /// <param name="b">Right-hand side vector, length m.</param>
-        /// <param name="x">Solution output (min-2-norm), length n. Must not alias b.</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void lqMinNormSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x)
-        {
-            int m = A.M_Rows;
-            int n = A.N_Cols;
-
-            if (m > n)
-                throw new ArgumentException("Ortho_OP.lqMinNormSolve: A must be wide or square (M_Rows <= N_Cols)");
-            if (b.N != m)
-                throw new ArgumentException("Ortho_OP.lqMinNormSolve: b.N must equal A.M_Rows");
-            if (x.N != n)
-                throw new ArgumentException("Ortho_OP.lqMinNormSolve: x.N must equal A.N_Cols");
-
-            var L = new fProxyMxN(m, m, Allocator.Temp, false);
-            var Q = new fProxyMxN(m, n, Allocator.Temp, false);
-
-            lqDecomposition(ref A, ref L, ref Q);
-
-            // Step 1: forward-solve L y = b.  y starts as a copy of b (solveLowerTriangular is in-place).
-            var y = new fProxyN(m, Allocator.Temp, false);
-            y.Data.CopyFrom(b.Data);
-            Solvers.solveLowerTriangular(ref L, ref y);
-
-            // Step 2: x = Qᵀ y.  dot(in y, in Q, ref x) computes yᵀ Q = (Qᵀ y)ᵀ → n-vector.
-            fProxy_OP.dot(in y, in Q, ref x);
-
-            y.Dispose();
-            Q.Dispose();
-            L.Dispose();
+            qrcpDirectSolve(ref A, ref b, ref x, out rank, (float)(-1));
         }
     }
-
 }

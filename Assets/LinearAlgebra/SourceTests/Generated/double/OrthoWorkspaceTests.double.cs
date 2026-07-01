@@ -6,7 +6,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Phase-2 solver-workspace tests for Ortho_OP: the caller-provided-scratch QR overloads
+// Phase-2 solver-workspace tests for QR: the caller-provided-scratch QR overloads
 // (qrDecomposition(...,ref u) / qrDirectSolve(...,ref u)) must produce results identical
 // to the allocating wrappers (they run the SAME kernel), and a mis-sized scratch must throw.
 public class doubleOrthoWorkspaceTests
@@ -54,13 +54,13 @@ public class doubleOrthoWorkspaceTests
             // allocating reference
             var Qa = A.Copy();
             var Ra = arena.doubleMat(N);
-            Ortho_OP.qrDecomposition(ref Qa, ref Ra);
+            QR.qrDecomposition(ref Qa, ref Ra);
 
             // caller-scratch form
             var Qb = A.Copy();
             var Rb = arena.doubleMat(N);
             var u = arena.doubleVec(M);
-            Ortho_OP.qrDecomposition(ref Qb, ref Rb, ref u);
+            QR.qrDecomposition(ref Qb, ref Rb, ref u);
 
             Assert.IsTrue(Analysis_OP.isZero(Qa - Qb, Tol()));
             Assert.IsTrue(Analysis_OP.isZero(Ra - Rb, Tol()));
@@ -83,16 +83,16 @@ public class doubleOrthoWorkspaceTests
 
             // allocating reference (qrDirectSolve destroys A and b, so use fresh copies)
             var Aa = A0.Copy();
-            var ba = double_OP.dot(A0, xOrig);
+            var ba = Linear_OP.dot(A0, xOrig);
             var xa = arena.doubleVec(dim);
-            Ortho_OP.qrDirectSolve(ref Aa, ref ba, ref xa);
+            QR.qrDirectSolve(ref Aa, ref ba, ref xa);
 
             // caller-scratch form
             var Ab = A0.Copy();
-            var bb = double_OP.dot(A0, xOrig);
+            var bb = Linear_OP.dot(A0, xOrig);
             var xb = arena.doubleVec(dim);
             var u = arena.doubleVec(dim);
-            Ortho_OP.qrDirectSolve(ref Ab, ref bb, ref xb, ref u);
+            QR.qrDirectSolve(ref Ab, ref bb, ref xb, ref u);
 
             Assert.IsTrue(Analysis_OP.isZero(xa - xb, Tol()));
 
@@ -111,12 +111,12 @@ public class doubleOrthoWorkspaceTests
                 A[d, d] += 5f;
 
             var xOrig = arena.doubleRandomVec(N, -3f, 3f, 60221);
-            var b = double_OP.dot(A, xOrig);   // consistent RHS; read-only in solveQR, reusable
+            var b = Linear_OP.dot(A, xOrig);   // consistent RHS; read-only in solveQR, reusable
 
             // Precompute QR of A (qrDecomposition overwrites Q with the orthogonal factor)
             var Q = A.Copy();
             var R = arena.doubleMat(N);
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             // ref-destination overload recovers x (length N)
             var x = arena.doubleVec(N);
@@ -150,7 +150,7 @@ public class doubleOrthoWorkspaceTests
             var Q = arena.doubleMat(6, 4);
             var R = arena.doubleMat(4);
             var badU = arena.doubleVec(3);   // must be length 6 (Q.M_Rows)
-            Assert.Throws<Exception>(() => Ortho_OP.qrDecomposition(ref Q, ref R, ref badU));
+            Assert.Throws<Exception>(() => QR.qrDecomposition(ref Q, ref R, ref badU));
         }
         finally { arena.Dispose(); }
     }
@@ -165,7 +165,7 @@ public class doubleOrthoWorkspaceTests
             var b = arena.doubleVec(6);
             var x = arena.doubleVec(4);
             var badU = arena.doubleVec(4);   // must be length 6 (A.M_Rows)
-            Assert.Throws<Exception>(() => Ortho_OP.qrDirectSolve(ref A, ref b, ref x, ref badU));
+            Assert.Throws<Exception>(() => QR.qrDirectSolve(ref A, ref b, ref x, ref badU));
         }
         finally { arena.Dispose(); }
     }
@@ -181,7 +181,7 @@ public class doubleOrthoWorkspaceTests
             for (int d = 0; d < 4; d++) A[d, d] = 2f;   // nonsingular so QR is well-defined
             var Q = A.Copy();
             var R = arena.doubleMat(4);
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             var b = arena.doubleVec(4);
             var badX = arena.doubleVec(3);   // must be length 4 (Q.N_Cols)
@@ -201,7 +201,7 @@ public class doubleOrthoWorkspaceTests
             for (int d = 0; d < 4; d++) A[d, d] = 2f;
             var Q = A.Copy();
             var R = arena.doubleMat(4);
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             var b = arena.doubleVec(4);
             var aliasB = b;   // shares b's buffer; length 4 == Q.N_Cols so it passes the dim guard

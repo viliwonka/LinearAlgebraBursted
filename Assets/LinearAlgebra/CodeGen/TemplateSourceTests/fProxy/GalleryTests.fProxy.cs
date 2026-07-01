@@ -423,7 +423,7 @@ public class fProxyGalleryTests
 
             // HᵀH
             var HtH = arena.fProxyMat(n, n);
-            fProxy_OP.dot(in H, in H, ref HtH, transposeA: true);
+            Linear_OP.dot(in H, in H, ref HtH, transposeA: true);
 
             fProxy tol = (fProxy)1E-4;   // exact arithmetic; tiny tolerance
             for (int r = 0; r < n; r++)
@@ -573,7 +573,7 @@ public class fProxyGalleryTests
             var xTrue = arena.fProxyVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (fProxy)(i + 1);   // 1,2,...,n
 
-            var b = fProxy_OP.dot(A, xTrue);   // consistent RHS
+            var b = Linear_OP.dot(A, xTrue);   // consistent RHS
 
             var x = arena.fProxyVec(n);
             bool conv = Solvers.conjugateGradient(in A, in b, ref x, 200, Consts.fProxySqrtEps);

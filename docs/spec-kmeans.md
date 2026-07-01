@@ -68,16 +68,16 @@ It does NOT affect argmin and need not enter the score matrix.
 ### Implementing G = X * C^T using existing GEMM
 
 OP.Dot.fProxy.cs exposes:
-- fProxy_OP.dot(in fProxyMxN a, in fProxyMxN b, ref fProxyMxN c, bool transposeA = false)
+- Linear_OP.dot(in fProxyMxN a, in fProxyMxN b, ref fProxyMxN c, bool transposeA = false)
   (line 128)  -- C = A*B; transposeA=true gives A^T*B
-- fProxy_OP.trans(in fProxyMxN A, ref fProxyMxN T) (line 183) -- explicit transpose
+- Linear_OP.trans(in fProxyMxN A, ref fProxyMxN T) (line 183) -- explicit transpose
 
 The existing dot API has only transposeA (not transposeB). To compute G = X * C^T
 where X is N x D and centroids C is k x D:
 
-  Step 1: fProxy_OP.trans(in centroids, ref ws.Ct)
+  Step 1: Linear_OP.trans(in centroids, ref ws.Ct)
           -- transposes C (k x D) into ws.Ct (D x k)
-  Step 2: fProxy_OP.dot(in X, in ws.Ct, ref ws.Gram)
+  Step 2: Linear_OP.dot(in X, in ws.Ct, ref ws.Gram)
           -- X (N x D) * Ct (D x k) = Gram (N x k)
 
 Both use ref-dest primitives. Gram must not alias X or Ct -- guaranteed by distinct workspace
@@ -269,11 +269,11 @@ Seeding cost: O(k^2 * N * D). Acceptable for k << N. See OQ2 for uniform-random 
             ws.CentNormSq[j] = s
 
         // 5.4.2  Transpose centroids (k x D) -> ws.Ct (D x k)
-        fProxy_OP.trans(in centroids, ref ws.Ct)
+        Linear_OP.trans(in centroids, ref ws.Ct)
         // OP.Dot.fProxy.cs line 183; Ct must not alias centroids (guaranteed by workspace)
 
         // 5.4.3  GEMM: ws.Gram = X * ws.Ct  (N x k)
-        fProxy_OP.dot(in X, in ws.Ct, ref ws.Gram)
+        Linear_OP.dot(in X, in ws.Ct, ref ws.Gram)
         // OP.Dot.fProxy.cs line 128, transposeA=false
         // dot zero-clears Gram before accumulating (OP.Dot.fProxy.cs line 156)
 

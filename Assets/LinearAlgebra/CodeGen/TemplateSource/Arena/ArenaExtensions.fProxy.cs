@@ -56,7 +56,7 @@ namespace LinearAlgebra
 
             fProxy scale = 1 / math.sqrt(sum);
 
-            fProxy_OP.mulInpl(vec, scale);
+            fProxyElem_OP.mulInpl(vec, scale);
 
             return vec;
         }
@@ -245,7 +245,7 @@ namespace LinearAlgebra
             var matrix = arena.fProxyIdentityMat(M);
 
             // Compute the outer product of v
-            fProxy vTv = fProxy_OP.dot(v, v);
+            fProxy vTv = Linear_OP.dot(v, v);
             
             fProxy scaleFactor = 2 / vTv;
             

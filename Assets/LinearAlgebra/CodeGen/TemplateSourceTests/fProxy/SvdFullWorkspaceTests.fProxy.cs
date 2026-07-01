@@ -57,7 +57,7 @@ public class fProxySvdFullWorkspaceTests
         {
             var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, seed);
             var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, seed + 7u);
-            return fProxy_OP.dot(B, C);
+            return Linear_OP.dot(B, C);
         }
 
         void NullspaceEquiv()

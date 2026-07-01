@@ -315,7 +315,7 @@ namespace LinearAlgebra.Stats
         public static void rowMean(in floatMxN A, ref floatN dest)
         {
             rowSum(in A, ref dest);
-            float_OP.divInpl(dest, A.N_Cols);
+            floatElem_OP.divInpl(dest, A.N_Cols);
         }
 
         public static floatN rowMean(in floatMxN A)
@@ -329,7 +329,7 @@ namespace LinearAlgebra.Stats
         public static void colMean(in floatMxN A, ref floatN dest)
         {
             colSum(in A, ref dest);
-            float_OP.divInpl(dest, A.M_Rows);
+            floatElem_OP.divInpl(dest, A.M_Rows);
         }
 
         public static floatN colMean(in floatMxN A)
@@ -482,7 +482,7 @@ namespace LinearAlgebra.Stats
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     means[c] += A[r, c];
-            float_OP.divInpl(means, A.M_Rows);
+            floatElem_OP.divInpl(means, A.M_Rows);
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = 0f;
@@ -494,7 +494,7 @@ namespace LinearAlgebra.Stats
                     dest[c] += d * d;
                 }
 
-            float_OP.divInpl(dest, A.M_Rows);
+            floatElem_OP.divInpl(dest, A.M_Rows);
 
             means.Dispose();
         }
@@ -667,7 +667,7 @@ namespace LinearAlgebra.Stats
 
             // C = centeredᵀ · centered (Gram formulation). dot(..., transposeA:true) dispatches
             // to matMatDotTransA; inner read is unit-stride over columns of centered. Zeros C first.
-            float_OP.dot(in centered, in centered, ref C, transposeA: true);
+            Linear_OP.dot(in centered, in centered, ref C, transposeA: true);
 
             // Scale by 1/(M−1) (Bessel correction). The Gram matrix is exactly symmetric under
             // IEEE 754 (mul(a,b)==mul(b,a)), so no explicit symmetrization pass is needed.

@@ -41,7 +41,7 @@ public class fProxyTransposeTests
             
             fProxyMxN A = arena.fProxyRandomMat(dim, dim);
 
-            fProxyMxN B = fProxy_OP.trans(A);
+            fProxyMxN B = Linear_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, dim);
             Assert.AreEqual(B.N_Cols, dim);
@@ -62,7 +62,7 @@ public class fProxyTransposeTests
 
             fProxyMxN A = arena.fProxyRandomMat(rows, cols);
 
-            fProxyMxN B = fProxy_OP.trans(A);
+            fProxyMxN B = Linear_OP.trans(A);
 
             Assert.AreEqual(B.M_Rows, cols);
             Assert.AreEqual(B.N_Cols, rows);

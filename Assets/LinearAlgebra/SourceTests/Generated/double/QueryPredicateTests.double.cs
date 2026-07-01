@@ -448,7 +448,7 @@ public class doubleQueryPredicateTests
 
             int M = 5, N = 4;
             var A = arena.doubleRandomMat(M, N, -3f, 3f, 20240628);
-            var At = double_OP.trans(A);   // N x M; column j of A == row j of At.
+            var At = Linear_OP.trans(A);   // N x M; column j of A == row j of At.
 
             // Column query length = A.M_Rows = M = At.N_Cols.
             var q = arena.doubleVec(M);

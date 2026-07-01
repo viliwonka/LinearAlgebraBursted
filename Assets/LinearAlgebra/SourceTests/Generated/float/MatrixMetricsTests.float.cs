@@ -87,7 +87,7 @@ public class floatMatrixMetricsTests
             A[0, 0] = (float)1; A[0, 1] = (float)2;
             A[1, 0] = (float)3; A[1, 1] = (float)4;
 
-            AssertClose(float_OP.trace(in A), (float)5, (float)1E-5);
+            AssertClose(Linear_OP.trace(in A), (float)5, (float)1E-5);
 
             arena.Dispose();
         }
@@ -149,8 +149,8 @@ public class floatMatrixMetricsTests
             A[1, 1] = (float)4;
 
             AssertClose(floatNorms_OP.matrixL2(in A), (float)4, (float)1E-4);
-            AssertIntEqual(float_OP.rank(in A), 2);
-            AssertClose(float_OP.cond(in A), (float)4 / (float)3, (float)1E-4);
+            AssertIntEqual(Linear_OP.rank(in A), 2);
+            AssertClose(Linear_OP.cond(in A), (float)4 / (float)3, (float)1E-4);
 
             AssertClose(A[0, 0], (float)3, (float)1E-6);
             AssertClose(A[1, 1], (float)4, (float)1E-6);
@@ -166,7 +166,7 @@ public class floatMatrixMetricsTests
             var A = arena.floatMat(2, 2);
             A[0, 0] = (float)4; A[1, 1] = (float)1;
 
-            AssertClose(float_OP.cond(in A), (float)4, (float)1E-4);
+            AssertClose(Linear_OP.cond(in A), (float)4, (float)1E-4);
 
             arena.Dispose();
         }
@@ -177,7 +177,7 @@ public class floatMatrixMetricsTests
             var arena = new Arena(Allocator.Persistent);
 
             var A = arena.floatIdentityMat(3);
-            AssertClose(float_OP.cond(in A), (float)1, (float)1E-4);
+            AssertClose(Linear_OP.cond(in A), (float)1, (float)1E-4);
 
             arena.Dispose();
         }
@@ -189,7 +189,7 @@ public class floatMatrixMetricsTests
             var arena = new Arena(Allocator.Persistent);
 
             var A = arena.floatMat(2, 2);   // all zeros
-            AssertGreater(float_OP.cond(in A), (float)1E6);
+            AssertGreater(Linear_OP.cond(in A), (float)1E6);
 
             arena.Dispose();
         }
@@ -219,7 +219,7 @@ public class floatMatrixMetricsTests
             var A = arena.floatMat(2, 2);
             A[0, 0] = (float)3; A[1, 0] = (float)4;   // column 1 is zero
 
-            float c = float_OP.cond(in A);
+            float c = Linear_OP.cond(in A);
             // true value is +inf; accept anything astronomically large (NaN-safe via the record below)
             AssertGreater(c, (float)1E6);
 
@@ -256,7 +256,7 @@ public class floatMatrixMetricsTests
                 expected = 0;
             }
 
-            int r = float_OP.rank(in A);
+            int r = Linear_OP.rank(in A);
             AssertIntEqual(r, expected);
 
             arena.Dispose();
@@ -273,7 +273,7 @@ public class floatMatrixMetricsTests
             A[0, 0] = (float)2; A[0, 1] = (float)1;
             A[1, 0] = (float)1; A[1, 1] = (float)2;
 
-            AssertClose(float_OP.cond(in A), (float)3, (float)1E-4);
+            AssertClose(Linear_OP.cond(in A), (float)3, (float)1E-4);
             AssertClose(floatNorms_OP.matrixL2(in A), (float)3, (float)1E-4);
 
             arena.Dispose();
@@ -288,9 +288,9 @@ public class floatMatrixMetricsTests
             var A = arena.floatMat(1, 1);
             A[0, 0] = (float)7;
 
-            AssertClose(float_OP.trace(in A), (float)7, (float)1E-5);
-            AssertClose(float_OP.cond(in A), (float)1, (float)1E-4);
-            AssertIntEqual(float_OP.rank(in A), 1);
+            AssertClose(Linear_OP.trace(in A), (float)7, (float)1E-5);
+            AssertClose(Linear_OP.cond(in A), (float)1, (float)1E-4);
+            AssertIntEqual(Linear_OP.rank(in A), 1);
             AssertClose(floatNorms_OP.matrixL2(in A), (float)7, (float)1E-4);
 
             arena.Dispose();
@@ -305,8 +305,8 @@ public class floatMatrixMetricsTests
             var A = arena.floatMat(2, 2);
             A[0, 0] = (float)1; A[1, 1] = (float)1E-5;
 
-            AssertIntEqual(float_OP.rank(in A), 2);                       // auto tol
-            AssertIntEqual(float_OP.rank(in A, (float)1E-2), 1);         // loose tol drops σ=1e-5
+            AssertIntEqual(Linear_OP.rank(in A), 2);                       // auto tol
+            AssertIntEqual(Linear_OP.rank(in A, (float)1E-2), 1);         // loose tol drops σ=1e-5
 
             arena.Dispose();
         }
@@ -371,7 +371,7 @@ public class floatMatrixMetricsTests
         try
         {
             var A = arena.floatMat(2, 3);
-            Assert.Throws<ArgumentException>(() => float_OP.trace(in A));
+            Assert.Throws<ArgumentException>(() => Linear_OP.trace(in A));
         }
         finally { arena.Dispose(); }
     }

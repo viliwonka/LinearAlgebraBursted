@@ -22,7 +22,7 @@ public class fProxyInplaceOpTests
             var a = arena.fProxyVec(3); a[0] = (fProxy)1; a[1] = (fProxy)2; a[2] = (fProxy)3;
             var b = arena.fProxyVec(3); b[0] = (fProxy)10; b[1] = (fProxy)20; b[2] = (fProxy)30;
 
-            fProxy_OP.addInpl(a, b);   // a += b
+            fProxyElem_OP.addInpl(a, b);   // a += b
 
             // a updated...
             Assert.AreEqual(11.0, (double)a[0], 1e-6);
@@ -45,7 +45,7 @@ public class fProxyInplaceOpTests
             var a = arena.fProxyVec(2); a[0] = (fProxy)10; a[1] = (fProxy)20;
             var b = arena.fProxyVec(2); b[0] = (fProxy)3;  b[1] = (fProxy)5;
 
-            fProxy_OP.subInpl(a, b);   // a -= b
+            fProxyElem_OP.subInpl(a, b);   // a -= b
 
             Assert.AreEqual(7.0, (double)a[0], 1e-6);
             Assert.AreEqual(15.0, (double)a[1], 1e-6);

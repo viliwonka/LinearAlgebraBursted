@@ -23,7 +23,7 @@ public class doubleOrthoOpTests
             var Q = arena.doubleRandomMat(dim*2, dim);
             var R = arena.doubleMat(dim);
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             arena.Dispose();
         }
@@ -95,7 +95,7 @@ public class doubleOrthoOpTests
 
             var A = Q.Copy();
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             //Print.Log(A);
             //Print.Log(Q);
@@ -120,7 +120,7 @@ public class doubleOrthoOpTests
 
             var A = Q.Copy();
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
 
             AssertQR(in A, in Q, in R);
@@ -139,7 +139,7 @@ public class doubleOrthoOpTests
 
             var A = Q.Copy();
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             /*Print.Log(A);
             Print.Log(Q);
@@ -161,7 +161,7 @@ public class doubleOrthoOpTests
 
             var A = Q.Copy();
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             //Print.Log(R);
 
@@ -181,7 +181,7 @@ public class doubleOrthoOpTests
 
             var A = Q.Copy();
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-03f);
 
@@ -199,7 +199,7 @@ public class doubleOrthoOpTests
 
             var A = Q.Copy();
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             //Print.Log(A);
             //Print.Log(Q);
@@ -236,13 +236,13 @@ public class doubleOrthoOpTests
                     p1 = rand.NextInt(0, dim);
                 }
 
-                Q = double_OP.dot(arena.doublePermutationMat(dim, p0, p1), Q);
+                Q = Linear_OP.dot(arena.doublePermutationMat(dim, p0, p1), Q);
 
                 var R = arena.doubleMat(dim);
 
                 var A = Q.Copy();
 
-                Ortho_OP.qrDecomposition(ref Q, ref R);
+                QR.qrDecomposition(ref Q, ref R);
 
                 //Print.Log(A);
                 //Print.Log(Q);
@@ -263,7 +263,7 @@ public class doubleOrthoOpTests
 
             var A = Q.Copy();
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             //Print.Log(A);
             //Print.Log(Q);
@@ -290,7 +290,7 @@ public class doubleOrthoOpTests
             var R = arena.doubleMat(n);
             var A = Q.Copy();
 
-            Ortho_OP.qrDecomposition(ref Q, ref R);
+            QR.qrDecomposition(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-4f);
 
@@ -300,7 +300,7 @@ public class doubleOrthoOpTests
         private void AssertQR(in doubleMxN A, in doubleMxN Q, in doubleMxN R) => AssertQR(in A, in Q, in R, 1E-6f);
         private void AssertQR(in doubleMxN A, in doubleMxN Q, in doubleMxN R, double precision)
         {
-            doubleMxN shouldBeZero = A - double_OP.dot(Q, R);
+            doubleMxN shouldBeZero = A - Linear_OP.dot(Q, R);
 
             var zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
 
@@ -352,7 +352,7 @@ public class doubleOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.doubleMat(dim);
 
-                Ortho_OP.qrDecomposition(ref Q, ref R);
+                QR.qrDecomposition(ref Q, ref R);
 
                 //Print.Log(Q);
                 //Print.Log(R);
@@ -369,7 +369,7 @@ public class doubleOrthoOpTests
 
         private double ErrorCheckQR(in doubleMxN A, in doubleMxN Q, in doubleMxN R) {
 
-            doubleMxN shouldBeZero = A - double_OP.dot(Q, R);
+            doubleMxN shouldBeZero = A - Linear_OP.dot(Q, R);
 
             if(Analysis_OP.isAnyNan(in shouldBeZero))
                 throw new System.Exception("PrecisionReconstructTestJob: NaN detected");
@@ -438,13 +438,13 @@ public class doubleOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.doubleMat(systemDim);
 
-                Ortho_OP.qrDecomposition(ref Q, ref R);
+                QR.qrDecomposition(ref Q, ref R);
 
                 for(uint j = 0; j < randomVecTests; j++) {
 
                     doubleN xOrig = arena.doubleRandomVec(systemDim, -25, +25, 1337 + i * i + j * 5);
-                    doubleN b = double_OP.dot(A, xOrig);
-                    doubleN y = double_OP.dot(b, Q);
+                    doubleN b = Linear_OP.dot(A, xOrig);
+                    doubleN y = Linear_OP.dot(b, Q);
 
                     Solvers.solveUpperTriangular(ref R, ref y);
 
@@ -493,13 +493,13 @@ public class doubleOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.doubleMat(sysDimN);
 
-                Ortho_OP.qrDecomposition(ref Q, ref R);
+                QR.qrDecomposition(ref Q, ref R);
 
                 for (uint j = 0; j < randomVecTests; j++) {
 
                     doubleN xOrig = arena.doubleRandomVec(sysDimN, -25, +25, 1337 + i * i + j * 5);
-                    doubleN b = double_OP.dot(A, xOrig);
-                    doubleN y = double_OP.dot(b, Q);
+                    doubleN b = Linear_OP.dot(A, xOrig);
+                    doubleN y = Linear_OP.dot(b, Q);
 
                     Solvers.solveUpperTriangular(ref R, ref y);
 
@@ -543,10 +543,10 @@ public class doubleOrthoOpTests
                     A[d, d] += 5.1f + 10f * random.NextDouble();
 
                 doubleN xOrig = arena.doubleRandomVec(systemDim, -25, +25, 1337 + i * i + i * 5);
-                doubleN b = double_OP.dot(A, xOrig);
+                doubleN b = Linear_OP.dot(A, xOrig);
                 doubleN x = arena.doubleVec(systemDim);
 
-                Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
+                QR.qrDirectSolve(ref A, ref b, ref x);
 
                 if (Analysis_OP.isAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
@@ -591,10 +591,10 @@ public class doubleOrthoOpTests
                     A[d, d] += 5.1f + 10f * random.NextDouble();
 
                 doubleN xOrig = arena.doubleRandomVec(sysDimN, -25, +25, 1337 + i * i + i * 5);
-                doubleN b = double_OP.dot(A, xOrig);
+                doubleN b = Linear_OP.dot(A, xOrig);
                 doubleN x = arena.doubleVec(sysDimN);
 
-                Ortho_OP.qrDirectSolve(ref A, ref b, ref x);
+                QR.qrDirectSolve(ref A, ref b, ref x);
 
                 if (Analysis_OP.isAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
@@ -791,7 +791,7 @@ public class doubleOrthoOpTests
             var origA = A.Copy();
             var L    = arena.doubleMat(dim, dim);
             var Q    = arena.doubleMat(dim, dim);
-            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
+            LQ.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-6f);
             arena.Dispose();
         }
@@ -804,7 +804,7 @@ public class doubleOrthoOpTests
             var origA = A.Copy();
             var L    = arena.doubleMat(dim, dim);
             var Q    = arena.doubleMat(dim, dim);
-            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
+            LQ.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -817,7 +817,7 @@ public class doubleOrthoOpTests
             var origA = A.Copy();
             var L    = arena.doubleMat(m, m);
             var Q    = arena.doubleMat(m, n);
-            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
+            LQ.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -830,7 +830,7 @@ public class doubleOrthoOpTests
             var origA = A.Copy();
             var L    = arena.doubleMat(m, m);
             var Q    = arena.doubleMat(m, n);
-            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
+            LQ.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -846,7 +846,7 @@ public class doubleOrthoOpTests
             var origA = A.Copy();
             var L    = arena.doubleMat(m, m);
             var Q    = arena.doubleMat(m, n);
-            Ortho_OP.lqDecomposition(ref A, ref L, ref Q);
+            LQ.lqDecomposition(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -855,8 +855,8 @@ public class doubleOrthoOpTests
         private void AssertLQ(in doubleMxN A, in doubleMxN L, in doubleMxN Q, double precision)
         {
             // 1. Reconstruction: A ≈ L * Q
-            doubleMxN LQ   = double_OP.dot(L, Q);
-            doubleMxN diff = A - LQ;
+            doubleMxN LQProduct = Linear_OP.dot(L, Q);
+            doubleMxN diff = A - LQProduct;
 
             if (Analysis_OP.isAnyNan(in diff))
                 throw new System.Exception("AssertLQ: NaN in reconstruction");
@@ -876,7 +876,7 @@ public class doubleOrthoOpTests
 
             // 3. Q has orthonormal rows: QQᵀ = I_m.
             //    isOrthogonal(Qᵀ) checks (Qᵀ)ᵀ(Qᵀ) = QQᵀ = I_m.
-            doubleMxN Qt = double_OP.trans(Q);
+            doubleMxN Qt = Linear_OP.trans(Q);
             Assert.IsTrue(Analysis_OP.isOrthogonal(in Qt, precision));
         }
     }
@@ -920,13 +920,13 @@ public class doubleOrthoOpTests
             var c    = arena.doubleRandomVec(m, -1f, 1f, 22222);
             // x_true = Aᵀ c  (dot(c, A) computes cᵀA = (Aᵀc)ᵀ → same n-vector values)
             var xTrue = arena.doubleVec(n);
-            double_OP.dot(in c, in A, ref xTrue);
+            Linear_OP.dot(in c, in A, ref xTrue);
             // b = A x_true
             var b = arena.doubleVec(m);
-            double_OP.dot(in A, in xTrue, ref b);
+            Linear_OP.dot(in A, in xTrue, ref b);
             // solve
             var x = arena.doubleVec(n);
-            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
+            LQ.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -938,11 +938,11 @@ public class doubleOrthoOpTests
             var A    = arena.doubleRandomMat(m, n, -1f, 1f, 33333);
             var c    = arena.doubleRandomVec(m, -1f, 1f, 44444);
             var xTrue = arena.doubleVec(n);
-            double_OP.dot(in c, in A, ref xTrue);
+            Linear_OP.dot(in c, in A, ref xTrue);
             var b = arena.doubleVec(m);
-            double_OP.dot(in A, in xTrue, ref b);
+            Linear_OP.dot(in A, in xTrue, ref b);
             var x = arena.doubleVec(n);
-            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
+            LQ.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -954,11 +954,11 @@ public class doubleOrthoOpTests
             var A    = arena.doubleRandomMat(m, n, -1f, 1f, 55555);
             var c    = arena.doubleRandomVec(m, -1f, 1f, 66666);
             var xTrue = arena.doubleVec(n);
-            double_OP.dot(in c, in A, ref xTrue);
+            Linear_OP.dot(in c, in A, ref xTrue);
             var b = arena.doubleVec(m);
-            double_OP.dot(in A, in xTrue, ref b);
+            Linear_OP.dot(in A, in xTrue, ref b);
             var x = arena.doubleVec(n);
-            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
+            LQ.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -971,10 +971,10 @@ public class doubleOrthoOpTests
             var A = arena.doubleRandomMat(m, n, -2f, 2f, 77777);
             var b = arena.doubleRandomVec(m, -1f, 1f, 88888);
             var x = arena.doubleVec(n);
-            Ortho_OP.lqMinNormSolve(ref A, ref b, ref x);
+            LQ.lqMinNormSolve(ref A, ref b, ref x);
             // residual = A x - b
             var Ax   = arena.doubleVec(m);
-            double_OP.dot(in A, in x, ref Ax);
+            Linear_OP.dot(in A, in x, ref Ax);
             Ax.subInpl(b);
             double residual = Analysis_OP.MaxZeroError(Ax);
             if (!(residual <= (double)1E-4f) && Fail[0] == (double)0)

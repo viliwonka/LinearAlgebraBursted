@@ -71,7 +71,7 @@ public class iProxyDotOperationTests
             iProxyN x = arena.iProxyVec(vecLen, 1);
             iProxyN y = arena.iProxyVec(vecLen, 1);
 
-            iProxy b = iProxy_OP.dot(x, y);
+            iProxy b = Linear_OP.dot(x, y);
 
             Assert.IsTrue(b == (iProxy)vecLen);
 
@@ -84,7 +84,7 @@ public class iProxyDotOperationTests
                 y[i] = (iProxy) ((i+1) % 2);
             }
 
-            b = iProxy_OP.dot(x, y);
+            b = Linear_OP.dot(x, y);
 
             Assert.IsTrue(b == (iProxy)0f);
 
@@ -101,7 +101,7 @@ public class iProxyDotOperationTests
             iProxyN x = arena.iProxyVec(inVecLen, 1);
             iProxyMxN A = arena.iProxyRandomMat(outVecLen, inVecLen, -100, +100);
 
-            iProxyN b = iProxy_OP.dot(A, x);
+            iProxyN b = Linear_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -117,7 +117,7 @@ public class iProxyDotOperationTests
             iProxyN x = arena.iProxyIndexOneVec(vecLen);
             iProxyMxN A = arena.iProxyIdentityMat(vecLen);
 
-            iProxyN b = iProxy_OP.dot(x, A);
+            iProxyN b = Linear_OP.dot(x, A);
 
             Assert.AreEqual(vecLen, b.N);
             
@@ -126,7 +126,7 @@ public class iProxyDotOperationTests
 
             x = arena.iProxyIndexZeroVec(vecLen);
 
-            b = iProxy_OP.dot(x, A);
+            b = Linear_OP.dot(x, A);
 
             for (int i = 0; i < vecLen; i++)
                 Assert.IsTrue(b[i] == (iProxy)i);
@@ -143,7 +143,7 @@ public class iProxyDotOperationTests
             iProxyMxN A = arena.iProxyIdentityMat(matLen);
             iProxyMxN B = arena.iProxyIdentityMat(matLen);
 
-            iProxyMxN C = iProxy_OP.dot(A, B);
+            iProxyMxN C = Linear_OP.dot(A, B);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -156,7 +156,7 @@ public class iProxyDotOperationTests
 
             iProxyMxN R = arena.iProxyRandomMat(matLen, matLen);
 
-            C = iProxy_OP.dot(A, R);
+            C = Linear_OP.dot(A, R);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -166,7 +166,7 @@ public class iProxyDotOperationTests
 
             C = arena.iProxyIdentityMat(matLen);
 
-            iProxyMxN D = iProxy_OP.dot(C, C);
+            iProxyMxN D = Linear_OP.dot(C, C);
 
             for (int i = 0; i < matLen; i++)
             for (int j = 0; j < matLen; j++)
@@ -190,7 +190,7 @@ public class iProxyDotOperationTests
             iProxyN x = arena.iProxyVec(inVecLen, 1);
             iProxyMxN A = arena.iProxyRandomMat(outVecLen, inVecLen, -100, +100);
 
-            iProxyN b = iProxy_OP.dot(A, x);
+            iProxyN b = Linear_OP.dot(A, x);
 
             Assert.AreEqual(outVecLen, b.N);
 
@@ -207,7 +207,7 @@ public class iProxyDotOperationTests
             iProxyN x = arena.iProxyVec(inVecLen, 1);
             iProxyMxN A = arena.iProxyRandomMat(inVecLen, outVecLen, -100, +100);
 
-            iProxyN b = iProxy_OP.dot(x, A);
+            iProxyN b = Linear_OP.dot(x, A);
             
             Assert.AreEqual(outVecLen, b.N);
 
@@ -229,12 +229,12 @@ public class iProxyDotOperationTests
             iProxyN x = arena.iProxyVec(vecM, 1);
             iProxyN y = arena.iProxyVec(vecN, 1);
 
-            iProxyMxN A = iProxy_OP.outerDot(x, y);
+            iProxyMxN A = Linear_OP.outerDot(x, y);
 
             Assert.AreEqual(vecM, A.M_Rows);
             Assert.AreEqual(vecN, A.N_Cols);
 
-            iProxyMxN B = iProxy_OP.outerDot(y, x);
+            iProxyMxN B = Linear_OP.outerDot(y, x);
 
             for (int i = 0; i < A.Length; i++)
                 Assert.IsTrue(A[i] == (iProxy)1);
@@ -248,7 +248,7 @@ public class iProxyDotOperationTests
             x = arena.iProxyLinVec(vecM, 0, 20);
             y = arena.iProxyLinVec(vecN, 0, 20);
 
-            iProxyMxN C = iProxy_OP.outerDot(x, y);
+            iProxyMxN C = Linear_OP.outerDot(x, y);
 
             for (int i = 0; i < vecM; i++)
                 for (int j = 0; j < vecN; j++)

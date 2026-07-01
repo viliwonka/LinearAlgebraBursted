@@ -108,7 +108,7 @@ public class floatAnalysisTests
 
             A = arena.floatRandomMat(dim, dim * 2);
 
-            floatMxN C = float_OP.dot(A, A, true);
+            floatMxN C = Linear_OP.dot(A, A, true);
 
             Assert.IsTrue(Analysis_OP.isSymmetric(C));
 
@@ -129,7 +129,7 @@ public class floatAnalysisTests
 
             Assert.IsTrue(Analysis_OP.isSymmetric(A, 0.002f));
 
-            floatMxN C = float_OP.dot(A, A, true);
+            floatMxN C = Linear_OP.dot(A, A, true);
 
             C += arena.floatRandomMat(dim, dim, -0.001f, 0.001f);
 
@@ -297,32 +297,32 @@ public class floatAnalysisTests
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            A = float_OP.dot(arena.floatPermutationMat(dim, 5, 13), A);
+            A = Linear_OP.dot(arena.floatPermutationMat(dim, 5, 13), A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            A = float_OP.dot(arena.floatRotationMat(dim, 3, 15, math.PI/4f ), A);
+            A = Linear_OP.dot(arena.floatRotationMat(dim, 3, 15, math.PI/4f ), A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             floatN reflect = arena.floatRandomVec(dim, -1f, 1f);
 
-            A = float_OP.dot(arena.floatHouseholderMat(dim, reflect), A);
+            A = Linear_OP.dot(arena.floatHouseholderMat(dim, reflect), A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             reflect = arena.floatRandomVec(dim, -1f, 1f, 50301);
-            A = float_OP.dot(arena.floatHouseholderMat(dim, reflect), A);
+            A = Linear_OP.dot(arena.floatHouseholderMat(dim, reflect), A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             // self multiply
-            A = float_OP.dot(A, A);
+            A = Linear_OP.dot(A, A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
             // testing inverse
-            A = float_OP.dot(A, A, true);
+            A = Linear_OP.dot(A, A, true);
 
             Assert.IsTrue(Analysis_OP.isIdentity(A, 0.00001f));
 

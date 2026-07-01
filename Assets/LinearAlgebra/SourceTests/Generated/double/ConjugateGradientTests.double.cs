@@ -86,7 +86,7 @@ public class doubleConjugateGradientTests
             var M = arena.doubleRandomMat(dim, dim, -1f, 1f, seed);
 
             // dot(M, M, transposeA:true) == Mᵀ·M
-            var A = double_OP.dot(M, M, true);
+            var A = Linear_OP.dot(M, M, true);
 
             for (int d = 0; d < dim; d++)
                 A[d, d] += dim;
@@ -164,7 +164,7 @@ public class doubleConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
             Assert.IsTrue(ok);
 
-            var Ax = double_OP.dot(A, x);
+            var Ax = Linear_OP.dot(A, x);
             Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
@@ -294,7 +294,7 @@ public class doubleConjugateGradientTests
             // ...and a reported convergence must be a genuine solution.
             if (ok)
             {
-                var Ax = double_OP.dot(A, x);
+                var Ax = Linear_OP.dot(A, x);
                 Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
             }
 
@@ -325,7 +325,7 @@ public class doubleConjugateGradientTests
             // x must be unchanged (still solves the system).
             Assert.IsTrue(Analysis_OP.isZero(x - xWarm, Tol()));
 
-            var Ax = double_OP.dot(A, xWarm);
+            var Ax = Linear_OP.dot(A, xWarm);
             Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
@@ -345,7 +345,7 @@ public class doubleConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x);
             Assert.IsTrue(ok);
 
-            var Ax = double_OP.dot(A, x);
+            var Ax = Linear_OP.dot(A, x);
             Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
@@ -368,7 +368,7 @@ public class doubleConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
-            var Ax = double_OP.dot(A, x);
+            var Ax = Linear_OP.dot(A, x);
             Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
@@ -390,7 +390,7 @@ public class doubleConjugateGradientTests
             bool ok = Solvers.conjugateGradient(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
-            var Ax = double_OP.dot(A, x);
+            var Ax = Linear_OP.dot(A, x);
             Assert.IsTrue(Analysis_OP.isZero(b - Ax, Tol()));
 
             arena.Dispose();
