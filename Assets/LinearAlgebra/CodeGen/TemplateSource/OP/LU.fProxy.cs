@@ -95,61 +95,218 @@ namespace LinearAlgebra
 
             if (m == 0) return true;
 
-            for (int k = 0; k < m - 1; k++) {
+            // Panel width for the blocked (level-3) path. Method-local const — LU is a partial class
+            // shared by the float/double generated files, so a class-level const of the same name
+            // would collide across them (CS0102; see QR_BLOCK / CHOL_BLOCK).
+            const int LU_BLOCK = 32;
 
-                int pivotIndex = k;
-                fProxy pivotValue = math.abs(U[k, k]);
+            // Size gate: MEASURED crossover, not the naive 4*LU_BLOCK (see docs/level3-blocking-guide.md
+            // "size gate" — Cholesky needed the same kind of margin, CHOL_BLOCK=32 but gate n>=256, i.e.
+            // 8x the block width). Benchmarked: n=128 (4 panels) is a wash/slightly slower for float —
+            // the panel/TRSM/GEMM bookkeeping isn't amortised yet — while n=256 (8 panels) is the first
+            // size that clearly wins for both float and double. Below this, the plain per-column sweep
+            // is used unchanged.
+            const int LU_BLOCK_MIN_N = 8 * LU_BLOCK;
 
-                // Find largest pivot in rows
-                for(int r = k + 1; r < m; r++) {
-                    fProxy absValue = math.abs(U[r, k]);
-                    if(absValue > pivotValue) {
-                        pivotIndex = r;
-                        pivotValue = absValue;
+            if (m < LU_BLOCK_MIN_N) {
+                // Small matrix: plain right-looking rank-1 sweep with partial pivoting, unchanged.
+                for (int k = 0; k < m - 1; k++) {
+
+                    int pivotIndex = k;
+                    fProxy pivotValue = math.abs(U[k, k]);
+
+                    // Find largest pivot in rows
+                    for(int r = k + 1; r < m; r++) {
+                        fProxy absValue = math.abs(U[r, k]);
+                        if(absValue > pivotValue) {
+                            pivotIndex = r;
+                            pivotValue = absValue;
+                        }
+                    }
+
+                    // Check for zero pivot before any division
+                    if (pivotValue == 0)
+                        return false;
+
+                    // Swap rows
+                    P.Swap(k, pivotIndex);
+
+                    // swap submatrix U rows
+                    Swap_OP.Rows(ref U, k, pivotIndex, k, m);
+
+                    // swap already calculated L rows
+                    Swap_OP.Rows(ref L, k, pivotIndex, 0, k);
+
+                    // Calculate L and U. The trailing-row elimination U[j, k+1:] -= Ljk * U[k, k+1:] is
+                    // an axpy over two DISTINCT rows (j > k) along the unit-stride column axis; routed
+                    // through the vectorising Unsafe_OP.axpy ([NoAlias], the GEMM pointer path) so Burst
+                    // SIMD-vectorises this O(n^3) hot loop (float ~2x double). Bitwise identical to the
+                    // scalar form: each column i is updated independently, and (-Ljk)*U[k,i] added to
+                    // U[j,i] equals U[j,i] - Ljk*U[k,i] exactly in IEEE.
+                    fProxy Ukk = U[k, k];
+                    unsafe
+                    {
+                        fProxy* up = U.Data.Ptr;
+                        fProxy* rowK = up + (long)k * m;
+                        int len = m - (k + 1);
+                        for (int j = k + 1; j < m; j++) {
+
+                            fProxy Ljk = U[j, k] / Ukk;
+
+                            L[j, k] = Ljk;
+
+                            fProxy* rowJ = up + (long)j * m;
+                            Unsafe_OP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
+
+                            // U is exactly upper-triangular
+                            U[j, k] = 0;
+                        }
                     }
                 }
 
-                // Check for zero pivot before any division
-                if (pivotValue == 0)
+                // Check last diagonal
+                if (U[m - 1, m - 1] == 0)
                     return false;
 
-                // Swap rows
-                P.Swap(k, pivotIndex);
-
-                // swap submatrix U rows
-                Swap_OP.Rows(ref U, k, pivotIndex, k, m);
-
-                // swap already calculated L rows
-                Swap_OP.Rows(ref L, k, pivotIndex, 0, k);
-
-                // Calculate L and U. The trailing-row elimination U[j, k+1:] -= Ljk * U[k, k+1:] is
-                // an axpy over two DISTINCT rows (j > k) along the unit-stride column axis; routed
-                // through the vectorising Unsafe_OP.axpy ([NoAlias], the GEMM pointer path) so Burst
-                // SIMD-vectorises this O(n^3) hot loop (float ~2x double). Bitwise identical to the
-                // scalar form: each column i is updated independently, and (-Ljk)*U[k,i] added to
-                // U[j,i] equals U[j,i] - Ljk*U[k,i] exactly in IEEE.
-                fProxy Ukk = U[k, k];
-                unsafe
-                {
-                    fProxy* up = U.Data.Ptr;
-                    fProxy* rowK = up + (long)k * m;
-                    int len = m - (k + 1);
-                    for (int j = k + 1; j < m; j++) {
-
-                        fProxy Ljk = U[j, k] / Ukk;
-
-                        L[j, k] = Ljk;
-
-                        fProxy* rowJ = up + (long)j * m;
-                        Unsafe_OP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
-
-                        // U is exactly upper-triangular
-                        U[j, k] = 0;
-                    }
-                }
+                return true;
             }
 
-            // Check last diagonal
+            // ---- blocked (level-3) path — LAPACK-style right-looking GETRF ----
+            // Each LU_BLOCK-wide panel is factored with the SAME rank-1 sweep as the small-matrix
+            // path above (partial pivoting over the FULL remaining column height, so the pivot
+            // sequence is bit-identical to the unblocked form — see "why the pivot sequence stays
+            // identical" below, and docs/level3-blocking-guide.md recipe B), but its elimination axpy
+            // is narrowed to the panel's own columns (DGETF2-style). The panel's contribution to the
+            // columns to its right is then applied ONCE per panel as a level-3 TRSM (U12 = L11^-1 *
+            // A12, unit-lower forward substitution) followed by a single GEMM trailing update
+            // (A22 -= L21*U12, via Unsafe_OP.wySubVW) instead of one rank-1 update per panel column —
+            // trading O(n) re-streams of the trailing matrix for O(n/LU_BLOCK), the memory-bandwidth-
+            // bound part of the algorithm.
+            //
+            // WHY THE PIVOT SEQUENCE STAYS IDENTICAL: at panel step k, column k has already been
+            // fully updated by (a) every earlier panel's trailing GEMM, which updates the WHOLE
+            // trailing block (all columns from that panel's right edge through m, not just the next
+            // panel) and (b) the within-panel eliminations for this panel's own earlier columns. So
+            // the max-|abs| search over rows [k,m) sees exactly the values the unblocked algorithm
+            // would see at the same step -> identical pivot, identical P. L and U differ from the
+            // unblocked result only by GEMM summation-order rounding.
+            //
+            // LAST COLUMN: the unblocked sweep above never pivots column m-1 (its k loop stops at
+            // m-2) and only diagonal-checks it at the end. The panel loop below reproduces this by
+            // capping its own k-loop at min(panelEnd, m-1) — column m-1 is only ever ELIMINATED (via
+            // within-panel axpy, when a panel's own width reaches exactly to m, or via an earlier
+            // panel's TRSM+GEMM trailing update otherwise), never pivot-SEARCHED. The final
+            // `if (U[m-1,m-1]==0)` check after the loop matches the unblocked form exactly.
+            unsafe
+            {
+                fProxy* up = U.Data.Ptr;
+                fProxy* lp = L.Data.Ptr;
+
+                // Ubuf: contiguous copy of the strided U12 panel block (kb x ntrail, row stride
+                // ntrail), sized for the worst case (first panel, k0=0: kb=LU_BLOCK, ntrail<=m).
+                // wySubVW's W operand must be contiguous; U12 lives strided in U (leading dim m).
+                var Ubuf = new fProxyN(LU_BLOCK * m, Allocator.Temp, false);
+                fProxy* ubufp = Ubuf.Data.Ptr;
+
+                for (int k0 = 0; k0 < m - 1; k0 += LU_BLOCK) {
+
+                    int kb = math.min(LU_BLOCK, m - k0);
+                    int panelEnd = k0 + kb;
+                    // Never pivot-search/select-as-pivot column m-1 (matches unblocked's k<m-1 bound).
+                    int kMax = math.min(panelEnd, m - 1);
+
+                    // (1) PANEL FACTOR columns [k0, kMax) with partial pivoting over the FULL column
+                    //     height [k,m) — same rank-1 sweep as the small-matrix path, just narrowed to
+                    //     this panel's own columns for the elimination width.
+                    for (int k = k0; k < kMax; k++) {
+
+                        int pivotIndex = k;
+                        fProxy pivotValue = math.abs(U[k, k]);
+
+                        for (int r = k + 1; r < m; r++) {
+                            fProxy absValue = math.abs(U[r, k]);
+                            if (absValue > pivotValue) {
+                                pivotIndex = r;
+                                pivotValue = absValue;
+                            }
+                        }
+
+                        // Check for zero pivot before any division
+                        if (pivotValue == 0) {
+                            Ubuf.Dispose();
+                            return false;
+                        }
+
+                        // Swap rows
+                        P.Swap(k, pivotIndex);
+
+                        // swap FULL trailing width [k,m) — not just the panel — so the trailing block
+                        // A22 is already pre-permuted when the GEMM below runs.
+                        Swap_OP.Rows(ref U, k, pivotIndex, k, m);
+
+                        // swap already calculated L rows (multipliers already computed travel too)
+                        Swap_OP.Rows(ref L, k, pivotIndex, 0, k);
+
+                        fProxy Ukk = U[k, k];
+                        fProxy* rowK = up + (long)k * m;
+                        int len = panelEnd - (k + 1);
+                        for (int j = k + 1; j < m; j++) {
+
+                            fProxy Ljk = U[j, k] / Ukk;
+
+                            L[j, k] = Ljk;
+
+                            if (len > 0) {
+                                fProxy* rowJ = up + (long)j * m;
+                                Unsafe_OP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
+                            }
+
+                            // U is exactly upper-triangular
+                            U[j, k] = 0;
+                        }
+                    }
+
+                    int rStart = panelEnd;
+                    if (rStart < m) {
+                        int ntrail = m - rStart;
+
+                        // (2) TRSM: U12 = L11^-1 * A12 in place in U[k0:rStart, rStart:m]. L11 =
+                        //     L[k0:rStart, k0:rStart] is unit-lower (implicit diagonal = 1), so this is
+                        //     forward substitution with no divide — row r of U12 is corrected by the
+                        //     already-solved rows 0..r-1 of U12, scaled by L11's strict-lower entries.
+                        for (int r = 1; r < kb; r++) {
+                            fProxy* uR = up + (long)(k0 + r) * m + rStart;
+                            for (int p = 0; p < r; p++) {
+                                fProxy Lrp = L[k0 + r, k0 + p];
+                                fProxy* uP = up + (long)(k0 + p) * m + rStart;
+                                Unsafe_OP.axpy(uR, uP, -Lrp, ntrail);
+                            }
+                        }
+
+                        // (3) copy U12 (strided, leading dim m) into contiguous Ubuf (kb x ntrail,
+                        //     leading dim ntrail) — wySubVW's W operand must be contiguous.
+                        for (int r = 0; r < kb; r++) {
+                            fProxy* uR = up + (long)(k0 + r) * m + rStart;
+                            fProxy* bufR = ubufp + (long)r * ntrail;
+                            for (int c = 0; c < ntrail; c++)
+                                bufR[c] = uR[c];
+                        }
+
+                        // (4) GEMM trailing update: A22 -= L21 * U12, one level-3 call per panel
+                        //     instead of kb rank-1 axpy passes over the trailing block. L21 =
+                        //     L[rStart:m, k0:rStart] (ntrail x kb, strided leading dim m), A22 =
+                        //     U[rStart:m, rStart:m] (strided leading dim m). [NoAlias] is truthful:
+                        //     Ubuf is a separate Temp buffer; L21 (in L) and A22 (in U) are different
+                        //     matrices.
+                        Unsafe_OP.wySubVW(lp + (long)rStart * m + k0, m, up + (long)rStart * m + rStart, m, ntrail, kb, ntrail, ubufp);
+                    }
+                }
+
+                Ubuf.Dispose();
+            }
+
+            // Check last diagonal (mirrors the unblocked form's final check; the blocked k-loop above
+            // never pivot-searches column m-1, matching the unblocked k<m-1 bound).
             if (U[m - 1, m - 1] == 0)
                 return false;
 
