@@ -459,6 +459,81 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- operator matvec microbench jobs (REPS back-to-back matvecs, zero-alloc) -------------------
+    //
+    // Isolate the per-iteration operator cost -- dense GEMV (Linear_OP.dot) vs sparse spMV -- that
+    // dominates every Krylov iteration, with NO convergence/breakdown variability. The reps loop
+    // PING-PONGS x<->y (each matvec feeds the next) specifically to defeat Burst dead-store
+    // elimination: if every rep just overwrote the same y that nothing reads between reps, the
+    // optimizer could collapse REPS matvecs down to one. Values may diverge to Inf across the chain
+    // (the SPD system is diagonally dominant, radius >> 1) -- irrelevant to TIMING (Inf/NaN float ops
+    // cost the same), and the numerical cross-check (maxAbsDiff) is computed separately from a clean
+    // single untimed matvec, not from these buffers.
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct MatvecDenseJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatN x, y;
+        public int reps;
+        public void Execute()
+        {
+            for (int k = 0; k < reps; k++)
+            {
+                if ((k & 1) == 0) Linear_OP.dot(in A, in x, ref y);
+                else              Linear_OP.dot(in A, in y, ref x);
+            }
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct MatvecSparseJobFloat : IJob
+    {
+        public floatBSM A;
+        public floatN x, y;
+        public int reps;
+        public void Execute()
+        {
+            for (int k = 0; k < reps; k++)
+            {
+                if ((k & 1) == 0) Sparse_OP.spMV(in A, in x, ref y);
+                else              Sparse_OP.spMV(in A, in y, ref x);
+            }
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct MatvecDenseJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN x, y;
+        public int reps;
+        public void Execute()
+        {
+            for (int k = 0; k < reps; k++)
+            {
+                if ((k & 1) == 0) Linear_OP.dot(in A, in x, ref y);
+                else              Linear_OP.dot(in A, in y, ref x);
+            }
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct MatvecSparseJobDouble : IJob
+    {
+        public doubleBSM A;
+        public doubleN x, y;
+        public int reps;
+        public void Execute()
+        {
+            for (int k = 0; k < reps; k++)
+            {
+                if ((k & 1) == 0) Sparse_OP.spMV(in A, in x, ref y);
+                else              Sparse_OP.spMV(in A, in y, ref x);
+            }
+        }
+    }
+
     public static class SparseSolverBenchmark
     {
         public static void Run() => Bench.WriteReport("benchmark-sparse-solvers.txt", Section);
@@ -473,6 +548,7 @@ namespace LinearAlgebra.Benchmarks
         const int K_CG = 40;        // CG / MINRES iteration budget (fixed, tol=0)
         const int K_BICGSTAB = 40;  // BiCGSTAB iteration budget
         const int K_LS = 24;        // CGLS / LSQR iteration budget
+        const int REPS_MATVEC = 64; // operator microbench: back-to-back matvecs per timed sample
 
         // ---- small position record used by the block-pattern choosers below (avoids depending on
         //      ValueTuple support one way or the other) ----
@@ -505,8 +581,12 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("mirroring IterativeBenchmark.cs); residual after K iterations shows how converged");
             sb.AppendLine("(not just how fast) each path is. Block density is at the BLOCK level (nb x nb");
             sb.AppendLine("block grid): ~7% / ~33% of blocks nonzero, always including every diagonal block.");
+            sb.AppendLine("Section 0 first isolates the pure per-iteration operator cost (dense GEMV vs sparse");
+            sb.AppendLine("spMV) that dominates every solver -- the cleanest dense-vs-sparse signal.");
             sb.AppendLine();
 
+            Section0Float(sb);
+            Section0Double(sb);
             Section1Float(sb);
             Section1Double(sb);
             Section2Float(sb);
@@ -920,6 +1000,106 @@ namespace LinearAlgebra.Benchmarks
             }
 
             sparse = builder.ToBSM(ref arena);
+        }
+
+        // ==== Section 0: operator matvec throughput (dense GEMV vs sparse spMV) =========================
+        //
+        // The purest dense-vs-sparse signal: REPS back-to-back matvecs y = A x in each storage form on
+        // the SAME SPD system Section 1 uses. This is the per-iteration operator cost that dominates
+        // every Krylov solver, isolated from convergence. speedup = dense_med / this_row_med (dense row
+        // = 1.00x baseline; >1 means sparse is faster). maxAbsDiff = max_i |y_dense - y_sparse| from a
+        // clean single untimed matvec on identical input -- must be ~0 (both forms encode one matrix).
+
+        static string MatvecHeader() => string.Format("{0,-7} {1,-6} {2,7} {3,-12} {4,11} {5,11} {6,9} {7,12}",
+            "dtype", "N", "dens%", "path", "med(ms)", "min(ms)", "speedup", "maxAbsDiff");
+
+        static string MatvecRow(string dtype, int n, float density, string path, Bench.Stat st, double speedup, double? maxAbsDiff)
+        {
+            string sp = string.Format(CultureInfo.InvariantCulture, "{0:F2}x", speedup);
+            string md = maxAbsDiff.HasValue ? maxAbsDiff.Value.ToString("E2", CultureInfo.InvariantCulture) : "-";
+            return string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,7:F1} {3,-12} {4,11:F4} {5,11:F4} {6,9} {7,12}",
+                dtype, n, density * 100f, path, st.Median, st.Min, sp, md);
+        }
+
+        static void Section0Float(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 0. Operator matvec throughput (b={0}): dense GEMV vs sparse spMV, REPS={1} ---", BR, REPS_MATVEC));
+            sb.AppendLine(MatvecHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb = n / BR;
+                foreach (var density in Densities)
+                {
+                    var arena = new Arena(Allocator.Persistent);
+                    BuildBlockSPDFloat(ref arena, nb, density, Seed(n, density, 91), out var dense, out var sparse);
+                    uint sx = Seed(n, density, 92);
+
+                    var xd = arena.floatRandomVec(n, -1f, 1f, sx);   // ping-pong clobbers input -> fresh copy per timing
+                    var yd = arena.floatVec(n);
+                    var denseJob = new MatvecDenseJobFloat { A = dense, x = xd, y = yd, reps = REPS_MATVEC };
+                    var denseStat = Bench.Time(() => denseJob.Run());
+                    sb.AppendLine(MatvecRow("float", n, density, "GEMV-dense", denseStat, 1.0, null));
+
+                    var xs = arena.floatRandomVec(n, -1f, 1f, sx);   // identical contents to xd
+                    var ys = arena.floatVec(n);
+                    var sparseJob = new MatvecSparseJobFloat { A = sparse, x = xs, y = ys, reps = REPS_MATVEC };
+                    var sparseStat = Bench.Time(() => sparseJob.Run());
+
+                    // clean single-matvec numerical cross-check (untimed; identical input)
+                    var xc = arena.floatRandomVec(n, -1f, 1f, sx);
+                    var yDc = Linear_OP.dot(dense, xc);
+                    var ySc = Sparse_OP.spMV(sparse, xc);
+                    double md = 0;
+                    for (int i = 0; i < n; i++) md = math.max(md, math.abs((double)yDc[i] - (double)ySc[i]));
+                    double speedup = denseStat.Median / math.max(sparseStat.Median, 1e-30);
+                    sb.AppendLine(MatvecRow("float", n, density, "spMV-sparse", sparseStat, speedup, md));
+
+                    arena.Dispose();
+                }
+            }
+        }
+
+        static void Section0Double(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 0. Operator matvec throughput (b={0}): dense GEMV vs sparse spMV, REPS={1} [double] ---", BR, REPS_MATVEC));
+            sb.AppendLine(MatvecHeader());
+
+            foreach (var n in BlockSizesN)
+            {
+                int nb = n / BR;
+                foreach (var density in Densities)
+                {
+                    var arena = new Arena(Allocator.Persistent);
+                    BuildBlockSPDDouble(ref arena, nb, density, Seed(n, density, 93), out var dense, out var sparse);
+                    uint sx = Seed(n, density, 94);
+
+                    var xd = arena.doubleRandomVec(n, -1.0, 1.0, sx);
+                    var yd = arena.doubleVec(n);
+                    var denseJob = new MatvecDenseJobDouble { A = dense, x = xd, y = yd, reps = REPS_MATVEC };
+                    var denseStat = Bench.Time(() => denseJob.Run());
+                    sb.AppendLine(MatvecRow("double", n, density, "GEMV-dense", denseStat, 1.0, null));
+
+                    var xs = arena.doubleRandomVec(n, -1.0, 1.0, sx);
+                    var ys = arena.doubleVec(n);
+                    var sparseJob = new MatvecSparseJobDouble { A = sparse, x = xs, y = ys, reps = REPS_MATVEC };
+                    var sparseStat = Bench.Time(() => sparseJob.Run());
+
+                    var xc = arena.doubleRandomVec(n, -1.0, 1.0, sx);
+                    var yDc = Linear_OP.dot(dense, xc);
+                    var ySc = Sparse_OP.spMV(sparse, xc);
+                    double md = 0;
+                    for (int i = 0; i < n; i++) md = math.max(md, math.abs(yDc[i] - ySc[i]));
+                    double speedup = denseStat.Median / math.max(sparseStat.Median, 1e-30);
+                    sb.AppendLine(MatvecRow("double", n, density, "spMV-sparse", sparseStat, speedup, md));
+
+                    arena.Dispose();
+                }
+            }
         }
 
         // ==== Section 1: SPD -> conjugateGradient & minres ==============================================
