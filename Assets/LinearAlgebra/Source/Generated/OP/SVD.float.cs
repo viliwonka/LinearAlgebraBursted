@@ -282,6 +282,61 @@ namespace LinearAlgebra
         public static bool svdValues(in floatMxN A, ref floatN S)
             => svdValues(in A, ref S, 75, Consts.floatZeroThreshold);
 
+        /// <summary>
+        /// svdValues using a reusable workspace (Arena.floatSVDValues_WS(m, n)) — zero-alloc.
+        /// Semantics identical to the allocating overload; see that one for full documentation.
+        /// </summary>
+        public static bool svdValues(in floatMxN A, ref floatN S, ref floatSVDValues_WS ws,
+                                     int maxIter, float eps)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("svdValues: A must have m >= n (more rows than columns)");
+            if (S.N != n)
+                throw new ArgumentException("svdValues: S.N must equal A.N_Cols");
+            if (maxIter < 1)
+                throw new ArgumentException("svdValues: maxIter must be >= 1");
+            if (eps <= (float)0)
+                throw new ArgumentException("svdValues: eps must be > 0");
+            RequireSvdValuesWorkspace(in ws, n);
+
+            if (n == 0)
+                return true;
+
+            var dVec = ws.dVec;
+            var eVec = ws.eVec;
+
+            Bidiag.bidiagonalizeValues(in A, ref dVec, ref eVec, ref ws.BidiagWs);
+            bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIter);
+
+            if (ok)
+            {
+                for (int i = 0; i < n; i++) S[i] = dVec[i];
+
+                // Sort descending (selection sort; no factors to carry).
+                for (int j = 0; j < n; j++)
+                {
+                    int maxIdx = j;
+                    float maxVal = S[j];
+                    for (int k = j + 1; k < n; k++)
+                        if (S[k] > maxVal) { maxIdx = k; maxVal = S[k]; }
+                    if (maxIdx != j)
+                    {
+                        S[maxIdx] = S[j];
+                        S[j] = maxVal;
+                    }
+                }
+            }
+
+            return ok;
+        }
+
+        /// <summary>svdValues (workspace) with default maxIter (75) and eps (Consts.floatZeroThreshold).</summary>
+        public static bool svdValues(in floatMxN A, ref floatN S, ref floatSVDValues_WS ws)
+            => svdValues(in A, ref S, ref ws, 75, Consts.floatZeroThreshold);
+
         // pythag(a,b) = sqrt(a^2 + b^2) without destructive under/overflow.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float svdPythag(float a, float b)
@@ -416,6 +471,106 @@ namespace LinearAlgebra
         /// <summary>svdThin with default maxIter (75) and eps (Consts.floatZeroThreshold).</summary>
         public static bool svdThin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V)
             => svdThin(in A, ref U, ref S, ref V, 75, Consts.floatZeroThreshold);
+
+        /// <summary>
+        /// svdThin using a reusable workspace (Arena.floatSVDThin_WS(m, n)) — zero-alloc (including
+        /// the inner Bidiag.bidiagonalize call, via the workspace's nested BidiagWs). Semantics
+        /// identical to the allocating overload; see that one for full documentation.
+        /// </summary>
+        public static bool svdThin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
+                                   ref floatSVDThin_WS ws, int maxIter, float eps)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("svdThin: A must have m >= n (more rows than columns)");
+            if (U.M_Rows != m || U.N_Cols != n)
+                throw new ArgumentException("svdThin: U must be m x n");
+            if (S.N != n)
+                throw new ArgumentException("svdThin: S.N must equal A.N_Cols");
+            if (!V.IsSquare || V.M_Rows != n)
+                throw new ArgumentException("svdThin: V must be square with side equal to A.N_Cols");
+            if (maxIter < 1)
+                throw new ArgumentException("svdThin: maxIter must be >= 1");
+            if (eps <= (float)0)
+                throw new ArgumentException("svdThin: eps must be > 0");
+            RequireSvdThinWorkspace(in ws, m, n);
+
+            if (n == 0)
+                return true;
+
+            // Phase 1: A = U * B * Vᵀ, B upper bidiagonal (caller-workspace scratch, zero-alloc).
+            var B = ws.B;
+            Bidiag.bidiagonalize(in A, ref U, ref B, ref V, ref ws.BidiagWs);
+
+            // Extract the bidiagonal in NR convention: d = diagonal, e the superdiagonal with
+            // e[0] = 0 and e[i] = B[i-1, i] for i = 1..n-1.
+            var dVec = ws.dVec;
+            var eVec = ws.eVec;
+            for (int i = 0; i < n; i++) dVec[i] = B[i, i];
+            eVec[0] = (float)0;
+            for (int i = 1; i < n; i++) eVec[i] = B[i - 1, i];
+
+            // Transpose U (m x n) -> Ut (n x m) and V (n x n) -> Vt (n x n) so the bidiagonal QR's
+            // plane rotations hit CONTIGUOUS rows (unit-stride, SIMD via Unsafe_OP.jacobiRotate)
+            // instead of strided columns — same trick that vectorized eigenSymmetric / svdDecomposition.
+            bool ok;
+            {
+                var Ut = ws.Ut;
+                var Vt = ws.Vt;
+                for (int i = 0; i < m; i++)
+                    for (int j = 0; j < n; j++)
+                        Ut[j, i] = U[i, j];
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < n; j++)
+                        Vt[j, i] = V[i, j];
+
+                ok = bidiagonalQR(ref Ut, ref dVec, ref eVec, ref Vt, m, n, maxIter);
+
+                if (ok)
+                {
+                    for (int i = 0; i < m; i++)
+                        for (int j = 0; j < n; j++)
+                            U[i, j] = Ut[j, i];
+                    for (int i = 0; i < n; i++)
+                        for (int j = 0; j < n; j++)
+                            V[i, j] = Vt[j, i];
+                }
+            }
+
+            if (ok)
+            {
+                for (int i = 0; i < n; i++) S[i] = dVec[i];
+
+                // sort descending, carrying the matching U and V columns
+                for (int j = 0; j < n; j++)
+                {
+                    int maxIdx = j;
+                    float maxVal = S[j];
+                    for (int k = j + 1; k < n; k++)
+                        if (S[k] > maxVal) { maxIdx = k; maxVal = S[k]; }
+                    if (maxIdx != j)
+                    {
+                        float tmp = S[j]; S[j] = S[maxIdx]; S[maxIdx] = tmp;
+                        Swap_OP.Columns(ref U, j, maxIdx);
+                        Swap_OP.Columns(ref V, j, maxIdx);
+                    }
+                }
+            }
+
+            return ok;
+        }
+
+        /// <summary>svdThin (workspace) with default eps (Consts.floatZeroThreshold).</summary>
+        public static bool svdThin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
+                                   ref floatSVDThin_WS ws, int maxIter)
+            => svdThin(in A, ref U, ref S, ref V, ref ws, maxIter, Consts.floatZeroThreshold);
+
+        /// <summary>svdThin (workspace) with default maxIter (75) and eps (Consts.floatZeroThreshold).</summary>
+        public static bool svdThin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
+                                   ref floatSVDThin_WS ws)
+            => svdThin(in A, ref U, ref S, ref V, ref ws, 75, Consts.floatZeroThreshold);
 
         // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (diagonal d, superdiagonal e
         // with e[0]=0), accumulating left rotations into Ut (n x m) ROWS and right rotations into Vt
