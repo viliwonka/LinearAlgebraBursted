@@ -171,6 +171,103 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // ---- Compact-WY (block-reflector) helpers, τ≡1 convention (H_i = I - u_i u_iᵀ) ----
+        // Used by QR's blocked (level-3) factorization/reconstruction to batch nb reflectors into
+        // one GEMM-shaped trailing update  C -= V·(T·(Vᵀ·C))  instead of nb rank-1 passes. V is a
+        // clean contiguous panel (rows masked to zero above each reflector's own diagonal), leading
+        // dimension Vld == the panel's CURRENT pb (not necessarily QR_BLOCK — the last panel of a
+        // matrix can be narrower). C is a strided sub-block of the matrix being updated (leading
+        // dimension Cld == that matrix's N_Cols). W is a dense contiguous pb×cw scratch buffer (row
+        // stride cw).
+
+        // W[i,j] += Σ_{t=0..rows-1} Vp[t*Vld+i] * Cp[t*Cld+j]   (i in [0,pb), j in [0,cw)).
+        // Caller must zero W first. Loop order t (outer) / i (middle) / j (inner): the j loop walks
+        // Crow and Wi left-to-right (unit stride in both), the same "walk rows" trick as
+        // applyReflectorRight/vecMatDot, so Burst vectorises it.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void wyVtC([NoAlias] fProxy* Vp, int Vld, [NoAlias] fProxy* Cp, int Cld, int rows, int pb, int cw, [NoAlias] fProxy* W)
+        {
+            for (int t = 0; t < rows; t++)
+            {
+                fProxy* Vrow = Vp + (long)t * Vld;
+                fProxy* Crow = Cp + (long)t * Cld;
+                for (int i = 0; i < pb; i++)
+                {
+                    fProxy temp = Vrow[i];
+                    fProxy* Wi = W + (long)i * cw;
+                    for (int j = 0; j < cw; j++)
+                        Wi[j] += temp * Crow[j];
+                }
+            }
+        }
+
+        // C[t,j] -= Σ_{i=0..pb-1} Vp[t*Vld+i] * W[i,j]   — the second GEMM half of the block
+        // reflector apply, C -= V·W. Same unit-stride-j vectorisation shape as wyVtC.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void wySubVW([NoAlias] fProxy* Vp, int Vld, [NoAlias] fProxy* Cp, int Cld, int rows, int pb, int cw, [NoAlias] fProxy* W)
+        {
+            for (int t = 0; t < rows; t++)
+            {
+                fProxy* Vrow = Vp + (long)t * Vld;
+                fProxy* Crow = Cp + (long)t * Cld;
+                for (int i = 0; i < pb; i++)
+                {
+                    fProxy temp = Vrow[i];
+                    fProxy* Wi = W + (long)i * cw;
+                    for (int j = 0; j < cw; j++)
+                        Crow[j] -= temp * Wi[j];
+                }
+            }
+        }
+
+        // W := Tᵀ · W in place (QR's FACTORIZATION direction — applies the block product in
+        // reverse reflector order, H_{pb-1}···H_0). T is pb×pb upper-triangular contiguous
+        // (row-major, T[i,k] at T[i*pb+k]), diagonal T[i,i] = 1 (τ≡1 convention, not LAPACK's
+        // τ-scaled diagonal). (Tᵀ)[i,k] = T[k,i], nonzero only for k <= i, so row i of the result
+        // only needs W's rows 0..i — iterate i DOWNWARD so W[k] for k < i hasn't been overwritten
+        // yet when it's read.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void wyTriTransMul([NoAlias] fProxy* T, int pb, [NoAlias] fProxy* W, int cw)
+        {
+            for (int i = pb - 1; i >= 0; i--)
+            {
+                fProxy* Wi = W + (long)i * cw;
+                fProxy tii = T[i * pb + i];
+                for (int j = 0; j < cw; j++)
+                    Wi[j] = tii * Wi[j];
+                for (int k = 0; k < i; k++)
+                {
+                    fProxy tki = T[k * pb + i];
+                    fProxy* Wk = W + (long)k * cw;
+                    for (int j = 0; j < cw; j++)
+                        Wi[j] += tki * Wk[j];
+                }
+            }
+        }
+
+        // W := T · W in place (QR's RECONSTRUCTION direction — applies the block product in
+        // forward reflector order, H_0···H_{pb-1}, un-transposed). (T·W)[i] = Σ_{k>=i} T[i,k]·W[k],
+        // so row i needs rows i..pb-1 — iterate i UPWARD so W[k] for k > i hasn't been overwritten
+        // yet when it's read.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void wyTriMul([NoAlias] fProxy* T, int pb, [NoAlias] fProxy* W, int cw)
+        {
+            for (int i = 0; i < pb; i++)
+            {
+                fProxy* Wi = W + (long)i * cw;
+                fProxy tii = T[i * pb + i];
+                for (int j = 0; j < cw; j++)
+                    Wi[j] = tii * Wi[j];
+                for (int k = i + 1; k < pb; k++)
+                {
+                    fProxy tik = T[i * pb + k];
+                    fProxy* Wk = W + (long)k * cw;
+                    for (int j = 0; j < cw; j++)
+                        Wi[j] += tik * Wk[j];
+                }
+            }
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void signFlip([NoAlias] fProxy* target, [NoAlias] fProxy* from, int n) {
 

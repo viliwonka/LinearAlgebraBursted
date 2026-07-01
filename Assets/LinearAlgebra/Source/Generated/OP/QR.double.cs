@@ -50,24 +50,30 @@ namespace LinearAlgebra
             }
         }
 
-        // Apply a Householder reflector to the trailing submatrix in place:
-        //     Q[d:, d:] -= u · (uᵀ · Q[d:, d:]).
+        // Apply a Householder reflector to the trailing submatrix in place, restricted to columns
+        // [d, colEnd):
+        //     Q[d:, d:colEnd] -= u · (uᵀ · Q[d:, d:colEnd]).
         // Two contiguous-memory passes through the vectorising Unsafe_OP.axpy ([NoAlias]) — the same
         // raw-pointer path GEMM uses, so Burst SIMD-vectorises the inner work (float runs ~2x double).
         // The previous formulation looped over rows r (stride N_Cols when indexing Q[r, c]), which
         // Burst cannot vectorise — it vectorises loops, and the unit-stride axis here is the columns,
         // not r. Walking each row left-to-right instead lets axpy run at GEMM speed.
         //
-        // w is scratch of length >= (N - d); only w[0..L) is used. Bitwise identical to the prior
-        // per-column scalar form: pass 1 accumulates each w[i] over rows r = d..M-1 in the SAME
+        // w is scratch of length >= (colEnd - d); only w[0..L) is used. Bitwise identical to the
+        // prior per-column scalar form: pass 1 accumulates each w[i] over rows r = d..M-1 in the SAME
         // ascending order, and pass 2's (-u[r])·w[i] added to Q[r,c] equals Q[r,c] - u[r]·w[i]
         // exactly in IEEE (negation and sign-symmetric multiply are exact).
+        //
+        // colEnd lets the blocked (compact-WY) factorization restrict the per-column reflector apply
+        // to just its own panel (cols [d, p0+pb)) instead of the whole trailing matrix — the panel's
+        // remaining columns [p0+pb, N) are updated once per PANEL as a block GEMM instead of once per
+        // COLUMN; see qrDecompositionBlockedCore.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe void applyReflectorRight(ref doubleMxN Q, ref doubleN u, ref doubleN w, int d)
+        private static unsafe void applyReflectorRightCols(ref doubleMxN Q, ref doubleN u, ref doubleN w, int d, int colEnd)
         {
             int M = Q.M_Rows;
             int N = Q.N_Cols;
-            int L = N - d;                          // width of the trailing column block
+            int L = colEnd - d;                     // width of the (restricted) trailing column block
             if (L <= 0)
                 return;
 
@@ -75,14 +81,86 @@ namespace LinearAlgebra
             double* up = u.Data.Ptr;
             double* wp = w.Data.Ptr;
 
-            // pass 1: w[0..L) = Σ_{r=d}^{M-1} u[r] · Q[r, d..N)   (row segments are unit-stride)
+            // pass 1: w[0..L) = Σ_{r=d}^{M-1} u[r] · Q[r, d..colEnd)   (row segments are unit-stride)
             UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<double>());
             for (int r = d; r < M; r++)
                 Unsafe_OP.axpy(wp, qp + (long)r * N + d, up[r], L);
 
-            // pass 2: Q[r, d..N) += (-u[r]) · w[0..L)  ==  Q[r, d..N) -= u[r] · w
+            // pass 2: Q[r, d..colEnd) += (-u[r]) · w[0..L)  ==  Q[r, d..colEnd) -= u[r] · w
             for (int r = d; r < M; r++)
                 Unsafe_OP.axpy(qp + (long)r * N + d, wp, -up[r], L);
+        }
+
+        // Un-restricted form: applies to the full trailing block [d, N_Cols). Used by every path
+        // that has not been raised to the blocked (compact-WY) factorization — the zero-alloc
+        // qrDecomposition overload, qrDecompositionColumnPivot, qrDirectSolve, and Q-reconstruction.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void applyReflectorRight(ref doubleMxN Q, ref doubleN u, ref doubleN w, int d)
+        {
+            applyReflectorRightCols(ref Q, ref u, ref w, d, Q.N_Cols);
+        }
+
+        // Build the pb×pb compact-WY T factor (τ≡1 convention: T[i,i] = 1, NOT LAPACK's τ-scaled
+        // diagonal) from a clean panel V, so the pb reflectors' combined block product is exactly
+        // (I - V T Vᵀ). Forward, columnwise (LAPACK dlarft-style, adapted for τ≡1).
+        //
+        //   Vp    panel base pointer, row-major, leading dimension Vld == pb (see callers — the
+        //         panel buffer is reused across differently-sized panels, so its stride is the
+        //         CURRENT pb, not the QR_BLOCK allocation width).
+        //   rows  number of panel rows (local index t = 0..rows-1); v_i occupies Vp[t*Vld+i].
+        //   pb    number of reflectors in this panel (<= QR_BLOCK).
+        //   T     pb×pb contiguous output, row-major (T[i,k] at T[i*pb+k]), upper-triangular.
+        //   tcol  scratch, length >= pb.
+        //   G     pb×pb scratch for the Gram matrix VᵀV (see below) — callers pass the panel's own
+        //         Wmat buffer (unused at this point in the panel; big enough since it is sized
+        //         QR_BLOCK*N_Cols >= QR_BLOCK*QR_BLOCK).
+        //
+        // v_i is masked to zero for local rows t < i (see callers), so a dot v_k·v_i (k < i) summed
+        // over the FULL row range [0,rows) automatically restricts to the rows where both are
+        // nonzero (t >= i) — no explicit range restriction needed.
+        //
+        // Computed in two passes rather than pb²/2 direct dot products:
+        //   1) G = VᵀV via a GEMM-shaped unit-stride loop (same shape as Unsafe_OP.wyVtC: t outer,
+        //      i middle, j INNER unit-stride) — reaches GEMM throughput (~70 GFLOP/s, matched
+        //      matMatDot/wyVtC in measurement). The naive per-(k,i)-pair dot product form (looping
+        //      t as the reduction axis with stride Vld between consecutive t) does NOT vectorise —
+        //      it was measured to cost ~10ms total per qrDecomposition phase at k=1024 (A is 2048 x
+        //      1024), a meaningful chunk of total wall time, purely from this one strided loop.
+        //   2) The T recursion reads G's entries instead of recomputing dots — O(pb³/6), negligible.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void formT(double* Vp, int Vld, int rows, int pb, double* T, double* tcol, double* G)
+        {
+            UnsafeUtility.MemClear(G, (long)pb * pb * UnsafeUtility.SizeOf<double>());
+            for (int t = 0; t < rows; t++)
+            {
+                double* Vrow = Vp + (long)t * Vld;
+                for (int i = 0; i < pb; i++)
+                {
+                    double temp = Vrow[i];
+                    double* Gi = G + (long)i * pb;
+                    for (int j = 0; j < pb; j++)
+                        Gi[j] += temp * Vrow[j];
+                }
+            }
+
+            for (int i = 0; i < pb; i++)
+            {
+                T[i * pb + i] = 1;
+                if (i > 0)
+                {
+                    // tcol[k] = -G[k,i] = -(v_k · v_i), k in [0, i)
+                    for (int k = 0; k < i; k++)
+                        tcol[k] = -G[k * pb + i];
+                    // T[k,i] = Σ_{l=k..i-1} T[k,l] * tcol[l], k in [0, i)  (T[0:i,0:i] · tcol)
+                    for (int k = 0; k < i; k++)
+                    {
+                        double sum = 0;
+                        for (int l = k; l < i; l++)
+                            sum += T[k * pb + l] * tcol[l];
+                        T[k * pb + i] = sum;
+                    }
+                }
+            }
         }
 
         // Q is original matrix A, R is identity matrix
@@ -179,6 +257,171 @@ namespace LinearAlgebra
 
         }
 
+        // Blocked (level-3 / compact-WY, GEMM trailing-update) factorization core. τ≡1 convention
+        // throughout (see file-header notes on genHouseholderPete / applyReflectorRight): each
+        // H_i = I - u_i u_iᵀ, so the compact-WY T has T[i,i] = 1 (not LAPACK's τ-scaled diagonal).
+        //
+        // Panels of QR_BLOCK columns are factored with the existing rank-1 sweep (cheap — pb is
+        // small), but their combined effect on the REST of the matrix is applied once per panel as
+        // two GEMM-shaped passes (Unsafe_OP.wyVtC / wySubVW, unit-stride inner loop) instead of pb
+        // separate rank-1 (applyReflectorRight) passes — the memory-traffic-bound part of the
+        // algorithm. Reconstruction of Q is similarly batched, applying panels right-to-left.
+        //
+        // Direction matters and is easy to get backwards (see spec landmines):
+        //   factorization applies (I - V T Vᵀ)ᵀ = I - V Tᵀ Vᵀ   → wyTriTransMul (Tᵀ)
+        //   reconstruction applies  I - V T Vᵀ  (un-transposed)  → wyTriMul (T)
+        //
+        // Scratch (all caller-provided, sized by the qrDecomposition(Q,R) allocating wrapper):
+        //   u       length M_Rows        — Householder vector (per-column panel factor step).
+        //   w       length N_Cols        — per-column reflector-apply accumulator (panel-local).
+        //   Vpanel  length M_Rows*QR_BLOCK — clean contiguous panel, reused for factor+reconstruct;
+        //           accessed with leading dimension == the CURRENT pb (<= QR_BLOCK), not QR_BLOCK.
+        //   Tbuf    length QR_BLOCK*QR_BLOCK — compact-WY T, reused per panel.
+        //   Wbuf    length QR_BLOCK*N_Cols — block-apply GEMM scratch. Worst case is reconstruction's
+        //           LAST-processed panel (p0 = 0), whose column range [p0, n) is the full N_Cols width.
+        //   tcolBuf length QR_BLOCK      — formT scratch.
+        //   VfullBuf length M_Rows*N_Cols — clean masked copy of the stored reflectors, needed
+        //           because reconstruction overwrites Q in place while still reading V.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void qrDecompositionBlockedCore(ref doubleMxN Q, ref doubleMxN R,
+            ref doubleN u, ref doubleN w,
+            ref doubleN Vpanel, ref doubleN Tbuf, ref doubleN Wbuf, ref doubleN tcolBuf, ref doubleN VfullBuf)
+        {
+            // Panel width for the blocked (level-3 / compact-WY) factorization path. 32 columns
+            // keeps the panel (and its T factor) tiny relative to cache while still amortising the
+            // trailing-update GEMM over enough columns to reach GEMM-shaped throughput. A method-
+            // local const (not a class field) — QR is a partial class shared by the float/double
+            // generated files, so a class-level const of the same name would collide (CS0102).
+            const int QR_BLOCK = 32;
+
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+
+            // scale-relative zero-column threshold (see genHouseholderPete); LInf(Q) == max |entry|.
+            double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in Q);
+
+            double* Qp = Q.Data.Ptr;
+            double* Vp = Vpanel.Data.Ptr;
+            double* T = Tbuf.Data.Ptr;
+            double* Wmat = Wbuf.Data.Ptr;
+            double* tcol = tcolBuf.Data.Ptr;
+
+            // ---- factorization: panels left to right ----
+            for (int p0 = 0; p0 < n; p0 += QR_BLOCK)
+            {
+                int pb = math.min(QR_BLOCK, n - p0);
+
+                // (1) factor panel columns d in [p0, p0+pb); reflector apply restricted to the
+                //     panel's OWN remaining columns [d, p0+pb) — cols beyond the panel are updated
+                //     once below as a single block GEMM instead of once per column.
+                for (int d = p0; d < p0 + pb; d++)
+                {
+                    genHouseholderPete(ref Q, ref u, d, zeroThreshold);
+                    applyReflectorRightCols(ref Q, ref u, ref w, d, p0 + pb);
+
+                    R[d, d] = Q[d, d];
+
+                    for (int i = d; i < m; i++)
+                        Q[i, d] = u[i];
+                }
+
+                // (2) gather the clean panel V: local row t (global row p0+t), local col i (global
+                //     col p0+i); masked to zero above each reflector's own diagonal (t < i).
+                int rows = m - p0;
+                for (int t = 0; t < rows; t++)
+                {
+                    int r = p0 + t;
+                    double* Vrow = Vp + (long)t * pb;
+                    for (int i = 0; i < pb; i++)
+                        Vrow[i] = (t >= i) ? Qp[(long)r * n + (p0 + i)] : (double)0;
+                }
+
+                // (3) form the pb x pb compact-WY T (τ≡1) from the panel.
+                formT(Vp, pb, rows, pb, T, tcol, Wmat);
+
+                // (4) trailing block update on cols [p0+pb, n): C -= V*(Tᵀ*(Vᵀ*C)). One untiled
+                //     GEMM call per panel — Unsafe_OP.wyVtC/wySubVW already reach full GEMM
+                //     throughput (~70 GFLOP/s, matched matMatDot) at this width without tiling;
+                //     column-tiling was tried and measured SLOWER (added MemClear/call overhead
+                //     for no cache-locality benefit), so it is deliberately not done here.
+                int cStart = p0 + pb;
+                int cw = n - cStart;
+                if (cw > 0)
+                {
+                    double* Cp = Qp + (long)p0 * n + cStart;
+                    UnsafeUtility.MemClear(Wmat, (long)pb * cw * UnsafeUtility.SizeOf<double>());
+                    Unsafe_OP.wyVtC(Vp, pb, Cp, n, rows, pb, cw, Wmat);
+                    Unsafe_OP.wyTriTransMul(T, pb, Wmat, cw);      // Tᵀ — factorization direction
+                    Unsafe_OP.wySubVW(Vp, pb, Cp, n, rows, pb, cw, Wmat);
+                }
+            }
+
+            // Copy the upper triangular part of Q into R (unchanged from the unblocked path).
+            for (int r = 0; r < R.M_Rows; r++)
+            for (int c = 0; c < R.N_Cols; c++)
+            {
+                if (c < r)
+                    R[r, c] = 0;
+                else if (c > r)
+                    R[r, c] = Q[r, c];
+            }
+
+            // ---- reconstruct Q from the stored reflectors, panels right to left ----
+
+            // Snapshot the stored reflectors into a clean, masked (r >= c ? Q[r,c] : 0) full copy
+            // BEFORE Q is overwritten below — reconstruction both reads V and writes Q in place.
+            double* Vfull = VfullBuf.Data.Ptr;
+            for (int r = 0; r < m; r++)
+            {
+                double* qrow = Qp + (long)r * n;
+                double* vrow = Vfull + (long)r * n;
+                for (int c = 0; c < n; c++)
+                    vrow[c] = (r >= c) ? qrow[c] : (double)0;
+            }
+
+            // Seed Q = [I_n; 0] (m x n).
+            UnsafeUtility.MemClear(Qp, (long)m * n * UnsafeUtility.SizeOf<double>());
+            for (int i = 0; i < n; i++)
+                Q[i, i] = 1;
+
+            // Largest multiple of QR_BLOCK that is < n (the last, possibly-narrower, panel).
+            int lastP0 = ((n - 1) / QR_BLOCK) * QR_BLOCK;
+            for (int p0 = lastP0; p0 >= 0; p0 -= QR_BLOCK)
+            {
+                int pb = math.min(QR_BLOCK, n - p0);
+                int rows = m - p0;
+
+                // Gather Vpanel from the clean snapshot. Vfull is already masked (r >= c ? .. : 0),
+                // so no extra masking is needed here — copying directly reproduces it.
+                for (int t = 0; t < rows; t++)
+                {
+                    int r = p0 + t;
+                    double* Vrow = Vp + (long)t * pb;
+                    double* Vfrow = Vfull + (long)r * n;
+                    for (int i = 0; i < pb; i++)
+                        Vrow[i] = Vfrow[p0 + i];
+                }
+
+                formT(Vp, pb, rows, pb, T, tcol, Wmat);
+
+                // Apply the block to columns [p0, n) of Q, rows [p0, m): Q -= V*(T*(Vᵀ*Q)).
+                // NOT columns [0, n): columns < p0 are PROVABLY still their original seeded unit
+                // vectors at this point (every reflector processed so far — panel-starts >= p0 —
+                // has V nonzero only for rows >= p0 > c for any column c < p0, and the seeded
+                // column c is nonzero only at row c < p0, so Vᵀ·(column c) is always exactly 0;
+                // the block reflector is a no-op on it). This is the SAME invariant the unblocked
+                // reconstruction already exploited via applyReflectorRight's cols-[d,N) restriction
+                // — skipping columns < p0 here roughly HALVES reconstruction's work (was redoing
+                // full-width n every panel).
+                int cw = n - p0;
+                double* Cp = Qp + (long)p0 * n + p0;
+                UnsafeUtility.MemClear(Wmat, (long)pb * cw * UnsafeUtility.SizeOf<double>());
+                Unsafe_OP.wyVtC(Vp, pb, Cp, n, rows, pb, cw, Wmat);
+                Unsafe_OP.wyTriMul(T, pb, Wmat, cw);               // T — reconstruction direction
+                Unsafe_OP.wySubVW(Vp, pb, Cp, n, rows, pb, cw, Wmat);
+            }
+        }
+
         // Back-compat workspace overload: takes only the u scratch (length Q.M_Rows) and allocates
         // the small w accumulator (length Q.N_Cols) from Allocator.Temp. Behaviour is identical to
         // the 4-arg primitive; use that one to be fully zero-alloc in a hot loop.
@@ -190,13 +433,51 @@ namespace LinearAlgebra
             w.Dispose();
         }
 
-        // Allocating wrapper: allocates both scratch vectors (Allocator.Temp) and delegates.
+        // Allocating wrapper: allocates scratch (Allocator.Temp) and delegates. This is the fast
+        // path — it routes to the BLOCKED (level-3 / compact-WY) factorization core once N_Cols is
+        // large enough to amortise the extra panel bookkeeping (>= 2*QR_BLOCK columns); smaller
+        // matrices fall back to the plain rank-1 sweep, which has no panel/GEMM overhead and is
+        // already fast enough at that size. The zero-alloc overloads (ref u / ref u, w) are NOT
+        // blocked — they keep the original zero-alloc contract; only this allocating convenience
+        // wrapper (used by, e.g., the benchmark and most call sites that don't hoist scratch) gets
+        // the speedup.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void qrDecomposition(ref doubleMxN Q, ref doubleMxN R)
         {
-            var u = new doubleN(Q.M_Rows, Allocator.Temp, false);
-            var w = new doubleN(Q.N_Cols, Allocator.Temp, false);
-            qrDecomposition(ref Q, ref R, ref u, ref w);
+            // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
+            const int QR_BLOCK = 32;
+
+            if (Q.M_Rows < Q.N_Cols)
+                throw new ArgumentException("QR.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
+
+            if (Q.N_Cols < 2 * QR_BLOCK)
+            {
+                var uSmall = new doubleN(Q.M_Rows, Allocator.Temp, false);
+                var wSmall = new doubleN(Q.N_Cols, Allocator.Temp, false);
+                qrDecomposition(ref Q, ref R, ref uSmall, ref wSmall);
+                wSmall.Dispose();
+                uSmall.Dispose();
+                return;
+            }
+
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+
+            var u = new doubleN(m, Allocator.Temp, true);
+            var w = new doubleN(n, Allocator.Temp, true);
+            var Vpanel = new doubleN(m * QR_BLOCK, Allocator.Temp, true);
+            var Tbuf = new doubleN(QR_BLOCK * QR_BLOCK, Allocator.Temp, true);
+            var Wbuf = new doubleN(QR_BLOCK * n, Allocator.Temp, true);
+            var tcolBuf = new doubleN(QR_BLOCK, Allocator.Temp, true);
+            var VfullBuf = new doubleN(m * n, Allocator.Temp, true);
+
+            qrDecompositionBlockedCore(ref Q, ref R, ref u, ref w, ref Vpanel, ref Tbuf, ref Wbuf, ref tcolBuf, ref VfullBuf);
+
+            VfullBuf.Dispose();
+            tcolBuf.Dispose();
+            Wbuf.Dispose();
+            Tbuf.Dispose();
+            Vpanel.Dispose();
             w.Dispose();
             u.Dispose();
         }

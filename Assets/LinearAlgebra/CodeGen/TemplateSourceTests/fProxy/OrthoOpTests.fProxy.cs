@@ -43,6 +43,14 @@ public class fProxyOrthoOpTests
             QRDecompPermutation,
             QRDecompZero,
             QRDecompRankDeficient,
+            // Blocked path (N_Cols >= 2*QR_BLOCK = 64) with a LAST panel that is NARROWER than
+            // QR_BLOCK (=32): N_Cols >= 64 and NOT a multiple of 32. Tall (M_Rows >= N_Cols).
+            QRDecompBlockedNonAligned_200x100,
+            QRDecompBlockedNonAligned_130x65,
+            QRDecompBlockedNonAligned_150x70,
+            QRDecompBlockedNonAligned_200x127,
+            QRDecompBlockedNonAligned_160x96,
+            QRDecompBlockedNonAligned_256x150,
         }
 
         public TestType Type;
@@ -80,6 +88,24 @@ public class fProxyOrthoOpTests
                     break;
                 case TestType.QRDecompRankDeficient:
                     QRDecompRankDeficient();
+                    break;
+                case TestType.QRDecompBlockedNonAligned_200x100:
+                    QRDecompBlockedNonAligned(200, 100, 700011);
+                    break;
+                case TestType.QRDecompBlockedNonAligned_130x65:
+                    QRDecompBlockedNonAligned(130, 65, 700065);
+                    break;
+                case TestType.QRDecompBlockedNonAligned_150x70:
+                    QRDecompBlockedNonAligned(150, 70, 700070);
+                    break;
+                case TestType.QRDecompBlockedNonAligned_200x127:
+                    QRDecompBlockedNonAligned(200, 127, 700127);
+                    break;
+                case TestType.QRDecompBlockedNonAligned_160x96:
+                    QRDecompBlockedNonAligned(160, 96, 700096);
+                    break;
+                case TestType.QRDecompBlockedNonAligned_256x150:
+                    QRDecompBlockedNonAligned(256, 150, 700150);
                     break;
             }
         }
@@ -293,6 +319,31 @@ public class fProxyOrthoOpTests
             QR.qrDecomposition(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-4f);
+
+            arena.Dispose();
+        }
+
+        // Exercises the BLOCKED QR path (engaged when N_Cols >= 2*QR_BLOCK = 64) at column counts
+        // that are NOT multiples of the block width QR_BLOCK (=32), so the trailing panel is
+        // narrower than a full block (n mod 32 != 0). The aligned suite (64/128/.../512/1024) never
+        // hits this "short last panel" branch. Tall shapes (M_Rows >= N_Cols) with a boosted diagonal
+        // to stay well-conditioned/full-rank, matching the solver tests. AssertQR verifies all three
+        // invariants: A ≈ Q*R (reconstruction), QᵀQ ≈ I (orthonormal columns), R upper-triangular.
+        void QRDecompBlockedNonAligned(int m, int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var random = new Unity.Mathematics.Random(seed);
+            var Q = arena.fProxyRandomMat(m, n, -5f, 5f, seed);
+            for (int d = 0; d < n; d++)
+                Q[d, d] += 5.1f + 10f * random.NextFProxy();
+
+            var R = arena.fProxyMat(n);
+            var A = Q.Copy();
+
+            QR.qrDecomposition(ref Q, ref R);
+
+            AssertQR(in A, in Q, in R, 1E-3f);
 
             arena.Dispose();
         }
