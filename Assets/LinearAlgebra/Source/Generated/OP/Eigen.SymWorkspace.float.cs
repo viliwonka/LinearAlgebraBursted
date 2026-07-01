@@ -8,10 +8,10 @@ namespace LinearAlgebra
         /// Throws if <paramref name="ws"/> is not sized for an n x n symmetric eigenvalue problem
         /// (three length-n vectors) — the layout produced by Arena.floatEigenSym_WS(n).
         /// </summary>
-        static void RequireEigenSymWorkspace(in floatEigenSym_WS ws, int n, string who = "eigenvaluesSymmetric")
+        static void RequireEigenSymWorkspace(in floatEigenSym_WS ws, int n)
         {
             if (ws.eVec.N != n || ws.vVec.N != n || ws.pVec.N != n)
-                throw new ArgumentException(who + ": workspace must be sized for n (use Arena.floatEigenSym_WS(n))");
+                throw new ArgumentException("Eigen.eigenvaluesSymmetric: workspace must be sized for n (use Arena.floatEigenSym_WS(n))");
         }
     }
 

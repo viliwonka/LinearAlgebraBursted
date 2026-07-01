@@ -681,7 +681,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("lowRankApprox: Ak must be m x n");
             if (maxIter < 1)
                 throw new ArgumentException("lowRankApprox: maxIter must be >= 1");
-            RequireSvdFullWorkspace(in ws, m, n, "lowRankApprox");
+            RequireSvdFullWorkspace(in ws, m, n);
 
             converged = true;
 

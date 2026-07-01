@@ -169,7 +169,7 @@ namespace LinearAlgebra
 
             if (P.N != n)
                 throw new ArgumentException("choleskyDecompositionPivot: P.N must equal A dimension");
-            RequireCholeskyPivotWorkspace(in ws, n, true, false, "choleskyDecompositionPivot");
+            RequireCholeskyPivotWorkspace(in ws, n, true, false);
 
             P.Reset();
             rank = n;
@@ -331,7 +331,7 @@ namespace LinearAlgebra
 
             if (rank < 0 || rank > n)
                 throw new ArgumentException("choleskyPivotSolve: rank must be in [0, n]");
-            RequireCholeskyPivotWorkspace(in ws, n, false, true, "choleskyPivotSolve");
+            RequireCholeskyPivotWorkspace(in ws, n, false, true);
 
             // x = A⁺b = 0 for the zero matrix.
             if (rank == 0) {

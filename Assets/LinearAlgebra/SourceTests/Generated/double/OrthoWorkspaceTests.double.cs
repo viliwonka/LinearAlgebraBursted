@@ -150,7 +150,7 @@ public class doubleOrthoWorkspaceTests
             var Q = arena.doubleMat(6, 4);
             var R = arena.doubleMat(4);
             var badU = arena.doubleVec(3);   // must be length 6 (Q.M_Rows)
-            Assert.Throws<Exception>(() => QR.qrDecomposition(ref Q, ref R, ref badU));
+            Assert.Throws<ArgumentException>(() => QR.qrDecomposition(ref Q, ref R, ref badU));
         }
         finally { arena.Dispose(); }
     }
@@ -165,7 +165,7 @@ public class doubleOrthoWorkspaceTests
             var b = arena.doubleVec(6);
             var x = arena.doubleVec(4);
             var badU = arena.doubleVec(4);   // must be length 6 (A.M_Rows)
-            Assert.Throws<Exception>(() => QR.qrDirectSolve(ref A, ref b, ref x, ref badU));
+            Assert.Throws<ArgumentException>(() => QR.qrDirectSolve(ref A, ref b, ref x, ref badU));
         }
         finally { arena.Dispose(); }
     }

@@ -133,20 +133,20 @@ namespace LinearAlgebra
 
         // Shared validation + summation used by both public entry points.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static double weightedPickValidateAndSum(in doubleN weights, string callerName)
+        static double weightedPickValidateAndSum(in doubleN weights)
         {
             int n = weights.N;
             if (n == 0)
-                throw new ArgumentException(callerName + ": weights must be non-empty");
+                throw new ArgumentException("weightedPick: weights must be non-empty");
             double total = (double)0;
             for (int i = 0; i < n; i++)
             {
                 if (!math.isfinite(weights[i]) || !(weights[i] >= (double)0))
-                    throw new ArgumentException(callerName + ": all weights must be finite and >= 0");
+                    throw new ArgumentException("weightedPick: all weights must be finite and >= 0");
                 total += weights[i];
             }
             if (!(total > (double)0))
-                throw new ArgumentException(callerName + ": total weight must be > 0");
+                throw new ArgumentException("weightedPick: total weight must be > 0");
             return total;
         }
 
@@ -163,7 +163,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int weightedPick(in doubleN weights, ref Random rng)
         {
-            double total = weightedPickValidateAndSum(in weights, "doubleRandom_OP.weightedPick");
+            double total = weightedPickValidateAndSum(in weights);
             return weightedPickFromTotal(in weights, total, ref rng);
         }
 
@@ -180,7 +180,7 @@ namespace LinearAlgebra
         {
             // Validate + sum once before the draw loop so bad weights throw
             // even when dest.N == 0 (empty destination).
-            double total = weightedPickValidateAndSum(in weights, "doubleRandom_OP.weightedPickInpl");
+            double total = weightedPickValidateAndSum(in weights);
             int k = dest.N;
             for (int i = 0; i < k; i++)
                 dest[i] = weightedPickFromTotal(in weights, total, ref rng);

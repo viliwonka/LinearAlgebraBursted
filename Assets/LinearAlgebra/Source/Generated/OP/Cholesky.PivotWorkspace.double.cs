@@ -10,12 +10,12 @@ namespace LinearAlgebra
         /// by choleskyPivotSolve. Matches Arena.doubleCholeskyPivot_WS(n).
         /// </summary>
         static void RequireCholeskyPivotWorkspace(in doubleCholeskyPivot_WS ws, int n,
-                                                  bool needW, bool needBt, string who)
+                                                  bool needW, bool needBt)
         {
             if (needW && (ws.W.M_Rows != n || ws.W.N_Cols != n))
-                throw new ArgumentException(who + ": workspace W must be n x n (use Arena.doubleCholeskyPivot_WS(n))");
+                throw new ArgumentException("Cholesky: workspace W must be n x n (use Arena.doubleCholeskyPivot_WS(n))");
             if (needBt && ws.bt.N != n)
-                throw new ArgumentException(who + ": workspace bt must have length n (use Arena.doubleCholeskyPivot_WS(n))");
+                throw new ArgumentException("Cholesky: workspace bt must have length n (use Arena.doubleCholeskyPivot_WS(n))");
         }
     }
 

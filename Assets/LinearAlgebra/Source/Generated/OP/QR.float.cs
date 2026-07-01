@@ -94,13 +94,13 @@ namespace LinearAlgebra
         public static void qrDecomposition(ref floatMxN Q, ref floatMxN R, ref floatN u, ref floatN w)
         {
             if (Q.M_Rows < Q.N_Cols)
-                throw new System.Exception("QR.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
+                throw new ArgumentException("QR.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
 
             if (u.N != Q.M_Rows)
-                throw new System.Exception("QR.qrDecomposition: scratch vector u.N must equal Q.M_Rows");
+                throw new ArgumentException("QR.qrDecomposition: scratch vector u.N must equal Q.M_Rows");
 
             if (w.N < Q.N_Cols)
-                throw new System.Exception("QR.qrDecomposition: scratch vector w.N must be at least Q.N_Cols");
+                throw new ArgumentException("QR.qrDecomposition: scratch vector w.N must be at least Q.N_Cols");
 
             int qrSteps = Q.N_Cols;
 
@@ -224,16 +224,16 @@ namespace LinearAlgebra
         public static void qrDecompositionColumnPivot(ref floatMxN Q, ref floatMxN R, ref Pivot P, ref floatN u)
         {
             if (Q.M_Rows < Q.N_Cols)
-                throw new System.Exception("QR.qrDecompositionColumnPivot: Matrix must be square or tall (M_Rows >= N_Cols)");
+                throw new ArgumentException("QR.qrDecompositionColumnPivot: Matrix must be square or tall (M_Rows >= N_Cols)");
 
             if (u.N != Q.M_Rows)
-                throw new System.Exception("QR.qrDecompositionColumnPivot: scratch vector u.N must equal Q.M_Rows");
+                throw new ArgumentException("QR.qrDecompositionColumnPivot: scratch vector u.N must equal Q.M_Rows");
 
             if (P.N != Q.N_Cols)
-                throw new System.Exception("QR.qrDecompositionColumnPivot: pivot P.N must equal Q.N_Cols");
+                throw new ArgumentException("QR.qrDecompositionColumnPivot: pivot P.N must equal Q.N_Cols");
 
             if (R.M_Rows != Q.N_Cols || R.N_Cols != Q.N_Cols)
-                throw new System.Exception("QR.qrDecompositionColumnPivot: R must be N_Cols x N_Cols");
+                throw new ArgumentException("QR.qrDecompositionColumnPivot: R must be N_Cols x N_Cols");
 
             P.Reset();
 
@@ -367,16 +367,16 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void qrDirectSolve(ref floatMxN A, ref floatN b, ref floatN x, ref floatN u) {
             if (A.M_Rows < A.N_Cols)
-                throw new System.Exception("QR.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
+                throw new ArgumentException("QR.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
 
             if (b.N != A.M_Rows)
-                throw new System.Exception("QR.qrDirectSolve: b.N must equal A.M_Rows");
+                throw new ArgumentException("QR.qrDirectSolve: b.N must equal A.M_Rows");
 
             if (x.N != A.N_Cols)
-                throw new System.Exception("QR.qrDirectSolve: x.N must equal A.N_Cols");
+                throw new ArgumentException("QR.qrDirectSolve: x.N must equal A.N_Cols");
 
             if (u.N != A.M_Rows)
-                throw new System.Exception("QR.qrDirectSolve: scratch vector u.N must equal A.M_Rows");
+                throw new ArgumentException("QR.qrDirectSolve: scratch vector u.N must equal A.M_Rows");
 
             int qrSteps = A.N_Cols;
 

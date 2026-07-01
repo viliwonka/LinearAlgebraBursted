@@ -1,5 +1,6 @@
 #define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
 
+using System;
 using Unity.Mathematics;
 using Unity.Burst;
 using System.Runtime.CompilerServices;
@@ -42,10 +43,10 @@ namespace LinearAlgebra
         public static fProxy L2Range(in fProxyN a, int start, int end)
         {
             if (start >= end)
-                throw new System.Exception("NormsOP.L2: start must be less than end");
+                throw new ArgumentException("NormsOP.L2: start must be less than end");
 
             if (start < 0 || end > a.Data.Length)
-                throw new System.Exception("NormsOP.L2: start and end must be within bounds of vector");
+                throw new ArgumentOutOfRangeException("NormsOP.L2: start and end must be within bounds of vector");
 
             unsafe
             {
@@ -67,10 +68,10 @@ namespace LinearAlgebra
         public static fProxy NormalizeL2<T>(in T x, int start, int end) where T : unmanaged, IUnsafefProxyArray
         {
             if (start >= end)
-                throw new System.Exception("NormalizeL2: start must be less than end");
+                throw new ArgumentException("NormalizeL2: start must be less than end");
 
             if (start < 0 || end > x.Data.Length)
-                throw new System.Exception("NormalizeL2: start and end must be within bounds of vector");
+                throw new ArgumentOutOfRangeException("NormalizeL2: start and end must be within bounds of vector");
 
             unsafe
             {
@@ -91,10 +92,10 @@ namespace LinearAlgebra
         public static fProxy NormalizeL1<T>(in T x, int start, int end) where T : unmanaged, IUnsafefProxyArray
         {
             if (start >= end)
-                throw new System.Exception("NormalizeL1: start must be less than end");
+                throw new ArgumentException("NormalizeL1: start must be less than end");
 
             if (start < 0 || end > x.Data.Length)
-                throw new System.Exception("NormalizeL1: start and end must be within bounds of vector");
+                throw new ArgumentOutOfRangeException("NormalizeL1: start and end must be within bounds of vector");
 
             unsafe
             {
@@ -115,10 +116,10 @@ namespace LinearAlgebra
         public static fProxy NormalizeLMax<T>(in T x, int start, int end) where T : unmanaged, IUnsafefProxyArray
         {
             if (start >= end)
-                throw new System.Exception("NormalizeLMax: start must be less than end");
+                throw new ArgumentException("NormalizeLMax: start must be less than end");
 
             if (start < 0 || end > x.Data.Length)
-                throw new System.Exception("NormalizeLMax: start and end must be within bounds of vector");
+                throw new ArgumentOutOfRangeException("NormalizeLMax: start and end must be within bounds of vector");
 
             unsafe
             {
@@ -139,10 +140,10 @@ namespace LinearAlgebra
         public static fProxy NormalizeLP<T>(in T x, int start, int end, fProxy p) where T : unmanaged, IUnsafefProxyArray
         {
             if (start >= end)
-                throw new System.Exception("NormalizeLP: start must be less than end");
+                throw new ArgumentException("NormalizeLP: start must be less than end");
 
             if (start < 0 || end > x.Data.Length)
-                throw new System.Exception("NormalizeLP: start and end must be within bounds of vector");
+                throw new ArgumentOutOfRangeException("NormalizeLP: start and end must be within bounds of vector");
 
             unsafe
             {

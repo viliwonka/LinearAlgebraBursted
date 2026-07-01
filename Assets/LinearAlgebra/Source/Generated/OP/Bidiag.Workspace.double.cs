@@ -10,7 +10,7 @@ namespace LinearAlgebra
         /// only by the full <see cref="bidiagonalize"/> (which reconstructs U), not by
         /// <see cref="bidiagonalizeValues"/>. Matches Arena.doubleBidiag_WS(m, n).
         /// </summary>
-        static void RequireBidiagWorkspace(in doubleBidiag_WS ws, int m, int n, bool needLeftU, string who)
+        static void RequireBidiagWorkspace(in doubleBidiag_WS ws, int m, int n, bool needLeftU)
         {
             bool ok =
                 ws.W.M_Rows == m && ws.W.N_Cols == n &&
@@ -20,7 +20,7 @@ namespace LinearAlgebra
                 (!needLeftU || (ws.leftU.M_Rows == m && ws.leftU.N_Cols == n));
 
             if (!ok)
-                throw new ArgumentException(who + ": workspace must be sized for m x n (use Arena.doubleBidiag_WS(m, n))");
+                throw new ArgumentException("Bidiag: workspace must be sized for m x n (use Arena.doubleBidiag_WS(m, n))");
         }
     }
 

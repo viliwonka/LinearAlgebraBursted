@@ -209,15 +209,15 @@ namespace LinearAlgebra
         public static void householderInpl(ref fProxyMxN matrix, in fProxyN u)
         {
             if(matrix.IsSquare == false)
-                throw new System.Exception("Linear_OP.householderInpl: Matrix must be square");
+                throw new ArgumentException("Linear_OP.householderInpl: Matrix must be square");
 
             if(matrix.M_Rows < matrix.N_Cols)
-                throw new System.Exception("Linear_OP.householderInpl: Matrix must be square or tall (more or equal rows than cols)");
+                throw new ArgumentException("Linear_OP.householderInpl: Matrix must be square or tall (more or equal rows than cols)");
 
             var maxDim = math.max(matrix.M_Rows, matrix.N_Cols);
 
             if(u.N < maxDim)
-                throw new System.Exception("Linear_OP.householderInpl: Vector must be at least as long as the largest dimension of the matrix");
+                throw new ArgumentException("Linear_OP.householderInpl: Vector must be at least as long as the largest dimension of the matrix");
 
             fProxy vTv = dot(u, u); // Inline dot product calculation
 

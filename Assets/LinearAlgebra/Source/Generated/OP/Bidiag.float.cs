@@ -148,7 +148,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("Bidiag.bidiagonalize: B must be n x n");
             if (V.M_Rows != n || V.N_Cols != n)
                 throw new ArgumentException("Bidiag.bidiagonalize: V must be n x n");
-            RequireBidiagWorkspace(in ws, m, n, true, "Bidiag.bidiagonalize");
+            RequireBidiagWorkspace(in ws, m, n, true);
 
             // Initialize V = I_n, B = 0 (will fill bands at end)
             unsafe
@@ -284,7 +284,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("Bidiag.bidiagonalizeValues: d.N must equal A.N_Cols");
             if (e.N != n)
                 throw new ArgumentException("Bidiag.bidiagonalizeValues: e.N must equal A.N_Cols");
-            RequireBidiagWorkspace(in ws, m, n, false, "Bidiag.bidiagonalizeValues");
+            RequireBidiagWorkspace(in ws, m, n, false);
 
             if (n == 0)
                 return;

@@ -1,5 +1,6 @@
 #define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
 
+using System;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.CompilerServices;
 using LinearAlgebra.Internal;
@@ -16,11 +17,11 @@ namespace LinearAlgebra
         public static void Vec(ref floatN vec, int i, int j) {
 
             if (i < 0 || i >= vec.N) {
-                throw new System.Exception("i and j must be bounded inside vector dimensions");
+                throw new ArgumentOutOfRangeException("i and j must be bounded inside vector dimensions");
             }
 
             if (j < 0 || j >= vec.N) {
-                throw new System.Exception("i and j must be bounded inside vector dimensions");
+                throw new ArgumentOutOfRangeException("i and j must be bounded inside vector dimensions");
             }
 
             if (i == j) {
@@ -86,11 +87,11 @@ namespace LinearAlgebra
         public static void Vec(ref doubleN vec, int i, int j) {
 
             if (i < 0 || i >= vec.N) {
-                throw new System.Exception("i and j must be bounded inside vector dimensions");
+                throw new ArgumentOutOfRangeException("i and j must be bounded inside vector dimensions");
             }
 
             if (j < 0 || j >= vec.N) {
-                throw new System.Exception("i and j must be bounded inside vector dimensions");
+                throw new ArgumentOutOfRangeException("i and j must be bounded inside vector dimensions");
             }
 
             if (i == j) {

@@ -91,7 +91,7 @@ namespace LinearAlgebra
         public void CopyTo(in floatN vec)
         {
             if (this.N != vec.N)
-                throw new Exception("CopyTo: dimensions do not match!");
+                throw new ArgumentException("CopyTo: dimensions do not match!");
 
             vec.Data.CopyFrom(Data);
         }
@@ -99,7 +99,7 @@ namespace LinearAlgebra
         public void CopyFrom(in floatN vec) {
 
             if (this.N != vec.N)
-                throw new Exception("CopyFrom: dimensions do not match!");
+                throw new ArgumentException("CopyFrom: dimensions do not match!");
 
             Data.CopyFrom(vec.Data);
         }

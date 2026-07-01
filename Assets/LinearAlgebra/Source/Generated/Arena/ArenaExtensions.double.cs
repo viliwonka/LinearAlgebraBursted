@@ -33,7 +33,7 @@ namespace LinearAlgebra
             var vec = arena.doubleVec(N);
 
             if(index < 0 || index >= N)
-                throw new System.Exception("BasisVector: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("BasisVector: Index out of bounds");
 
             vec[index] = 1f;
 
@@ -189,10 +189,10 @@ namespace LinearAlgebra
             var matrix = arena.doubleIdentityMat(M);
 
             if (M < 2)
-                throw new System.Exception("RotationMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("RotationMatrix: Matrix must be at least 2x2");
 
             if(i < 0 || i >= M || j < 0 || j >= M)
-                throw new System.Exception("RotationMatrix: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("RotationMatrix: Index out of bounds");
 
             if(i == j) {
                 return matrix;
@@ -215,10 +215,10 @@ namespace LinearAlgebra
             var matrix = arena.doubleIdentityMat(M);
 
             if (M < 2)
-                throw new System.Exception("PermutationMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("PermutationMatrix: Matrix must be at least 2x2");
 
             if (i < 0 || i >= M || j < 0 || j >= M)
-                throw new System.Exception("PermutationMatrix: Index out of bounds");
+                throw new System.ArgumentOutOfRangeException("PermutationMatrix: Index out of bounds");
 
             if (i == j)
             {
@@ -236,11 +236,11 @@ namespace LinearAlgebra
         public static doubleMxN doubleHouseholderMat(this ref Arena arena, int M, in doubleN v)
         {
             if(M < 2)
-                throw new System.Exception("HouseholderMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("HouseholderMatrix: Matrix must be at least 2x2");
 
             // Compute the Householder matrix: H = I - 2 * vvT / (vTv)
             if (v.N != M)
-                throw new System.Exception("HouseholderMatrix: Vector length must match matrix dimension.");
+                throw new System.ArgumentException("HouseholderMatrix: Vector length must match matrix dimension.");
 
             var matrix = arena.doubleIdentityMat(M);
 
@@ -266,7 +266,7 @@ namespace LinearAlgebra
         public static doubleMxN doubleHilbertMat(this ref Arena arena, int M)
         {
             if (M < 2)
-                throw new System.Exception("HilbertMatrix: Matrix must be at least 2x2");
+                throw new System.ArgumentException("HilbertMatrix: Matrix must be at least 2x2");
 
             var hilbert = arena.doubleMat(M, true);
 

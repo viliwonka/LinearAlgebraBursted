@@ -44,7 +44,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("nullspaceBasis: basis must be n x n");
             if (maxIter < 1)
                 throw new ArgumentException("nullspaceBasis: maxIter must be >= 1");
-            RequireSvdFullWorkspace(in ws, m, n, "nullspaceBasis");
+            RequireSvdFullWorkspace(in ws, m, n);
 
             converged = true;
             if (n == 0)
@@ -131,7 +131,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("rangeBasis: basis must be m x n");
             if (maxIter < 1)
                 throw new ArgumentException("rangeBasis: maxIter must be >= 1");
-            RequireSvdFullWorkspace(in ws, m, n, "rangeBasis");
+            RequireSvdFullWorkspace(in ws, m, n);
 
             converged = true;
             if (n == 0)

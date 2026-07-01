@@ -6,6 +6,10 @@ namespace LinearAlgebra {
 
     public static class Consts {
 
+        // Needed as literal members (not just deleteThis-stripped scratch): TemplateSource compiles
+        // the raw .fProxy.cs files as-is, pre-substitution, as its own assembly - callers there write
+        // Consts.fProxyZeroThreshold literally, so it must exist for THAT compile, even though codegen
+        // strips this block from the generated (float/double) output in favor of the members below.
         //+deleteThis
         public const float fProxyZeroThreshold = 1e-6f;
         public const float fProxyEpsilon = 1.1920929e-7f;

@@ -8,10 +8,10 @@ namespace LinearAlgebra
         /// Throws if <paramref name="ws"/> is not sized for an m x n full SVD (U m x n, S length n,
         /// V n x n) — the layout produced by Arena.doubleSVDFull_WS(m, n).
         /// </summary>
-        static void RequireSvdFullWorkspace(in doubleSVDFull_WS ws, int m, int n, string who)
+        static void RequireSvdFullWorkspace(in doubleSVDFull_WS ws, int m, int n)
         {
             if (ws.U.M_Rows != m || ws.U.N_Cols != n || ws.S.N != n || ws.V.M_Rows != n || ws.V.N_Cols != n)
-                throw new ArgumentException(who + ": workspace must be sized for m x n (use Arena.doubleSVDFull_WS(m, n))");
+                throw new ArgumentException("SVD: workspace must be sized for m x n (use Arena.doubleSVDFull_WS(m, n))");
         }
     }
 

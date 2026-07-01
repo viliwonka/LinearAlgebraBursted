@@ -150,7 +150,7 @@ public class fProxyOrthoWorkspaceTests
             var Q = arena.fProxyMat(6, 4);
             var R = arena.fProxyMat(4);
             var badU = arena.fProxyVec(3);   // must be length 6 (Q.M_Rows)
-            Assert.Throws<Exception>(() => QR.qrDecomposition(ref Q, ref R, ref badU));
+            Assert.Throws<ArgumentException>(() => QR.qrDecomposition(ref Q, ref R, ref badU));
         }
         finally { arena.Dispose(); }
     }
@@ -165,7 +165,7 @@ public class fProxyOrthoWorkspaceTests
             var b = arena.fProxyVec(6);
             var x = arena.fProxyVec(4);
             var badU = arena.fProxyVec(4);   // must be length 6 (A.M_Rows)
-            Assert.Throws<Exception>(() => QR.qrDirectSolve(ref A, ref b, ref x, ref badU));
+            Assert.Throws<ArgumentException>(() => QR.qrDirectSolve(ref A, ref b, ref x, ref badU));
         }
         finally { arena.Dispose(); }
     }
