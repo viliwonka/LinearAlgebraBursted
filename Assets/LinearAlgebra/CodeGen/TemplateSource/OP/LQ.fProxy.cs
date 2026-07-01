@@ -162,64 +162,6 @@ namespace LinearAlgebra
             }
         }
 
-        // Build the pb×pb compact-WY T factor (τ≡1 convention: T[i,i] = 1, NOT LAPACK's τ-scaled
-        // diagonal) from a clean panel V (passed here as its TRANSPOSE Vt — see
-        // lqDecompositionBlockedCore's folding trick), so the pb reflectors' combined block product
-        // is exactly (I - Vᵀ T V). Forward, columnwise (LAPACK dlarft-style, adapted for τ≡1).
-        //
-        // This is an exact duplicate of QR.formT (same algorithm — it only ever contracts a Gram
-        // matrix from a clean, masked panel, so it is direction-agnostic between QR's left-multiply
-        // and LQ's right-multiply). It is NOT called cross-class because QR's copy is private and
-        // QR is not to be modified for this change; duplicating a ~30-line pure-math helper is
-        // cheaper than widening QR's visibility surface.
-        //
-        // A pairwise-dot4 Gram formulation (no Vt, reading Vpanel's rows directly) was tried as an
-        // alternative to the transpose below and measured MUCH slower (~2x) than this — see
-        // lqYeqCVt's doc comment for the same finding on the fold step; formT's cost is small next to
-        // the fold/apply GEMMs, but the two share Vt so the transpose is built once and reused by both.
-        //
-        //   Vp    panel base pointer, row-major, leading dimension Vld == pb.
-        //   rows  number of panel rows (local index t = 0..rows-1); v_i occupies Vp[t*Vld+i].
-        //   pb    number of reflectors in this panel (<= LQ_BLOCK).
-        //   T     pb×pb contiguous output, row-major (T[i,k] at T[i*pb+k]), upper-triangular.
-        //   tcol  scratch, length >= pb.
-        //   G     pb×pb scratch for the Gram matrix VᵀV.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe void formT(fProxy* Vp, int Vld, int rows, int pb, fProxy* T, fProxy* tcol, fProxy* G)
-        {
-            UnsafeUtility.MemClear(G, (long)pb * pb * UnsafeUtility.SizeOf<fProxy>());
-            for (int t = 0; t < rows; t++)
-            {
-                fProxy* Vrow = Vp + (long)t * Vld;
-                for (int i = 0; i < pb; i++)
-                {
-                    fProxy temp = Vrow[i];
-                    fProxy* Gi = G + (long)i * pb;
-                    for (int j = 0; j < pb; j++)
-                        Gi[j] += temp * Vrow[j];
-                }
-            }
-
-            for (int i = 0; i < pb; i++)
-            {
-                T[i * pb + i] = 1;
-                if (i > 0)
-                {
-                    // tcol[k] = -G[k,i] = -(v_k · v_i), k in [0, i)
-                    for (int k = 0; k < i; k++)
-                        tcol[k] = -G[k * pb + i];
-                    // T[k,i] = Σ_{l=k..i-1} T[k,l] * tcol[l], k in [0, i)  (T[0:i,0:i] · tcol)
-                    for (int k = 0; k < i; k++)
-                    {
-                        fProxy sum = 0;
-                        for (int l = k; l < i; l++)
-                            sum += T[k * pb + l] * tcol[l];
-                        T[k * pb + i] = sum;
-                    }
-                }
-            }
-        }
-
         // Blocked (level-3 / compact-WY, GEMM trailing-update) factorization+reconstruction core.
         // τ≡1 convention throughout (see genHouseholderRow / applyHouseholderRight): each
         // G_i = I - v_i v_iᵀ, so the compact-WY T has T[i,i] = 1 (not LAPACK's τ-scaled diagonal).
@@ -311,7 +253,7 @@ namespace LinearAlgebra
                 }
 
                 // (4) form the pb x pb compact-WY T (τ≡1) from the panel, via its transpose Vt.
-                formT(Vtp, pb, cn, pb, T, tcol, Yp);
+                Unsafe_OP.formT(Vtp, pb, cn, pb, T, tcol, Yp);
 
                 // (5) trailing block update, rows [p0+pb, m): C := C·(I - Vᵀ T V) = C - Y·(T·V),
                 //     where Y = C·Vᵀ. Y and Vt MUST be built/read before wyTriMul overwrites Vpanel.
@@ -367,7 +309,7 @@ namespace LinearAlgebra
                     for (int c = 0; c < cn; c++)
                         Vtp[(long)c * pb + i] = Vrow[c];
                 }
-                formT(Vtp, pb, cn, pb, T, tcol, Yp);
+                Unsafe_OP.formT(Vtp, pb, cn, pb, T, tcol, Yp);
 
                 // Apply the block to Q rows [p0, m), cols [p0, n): Q := Q·(I - Vᵀ Tᵀ V)
                 // = Q - Y·(Tᵀ·V). Row restriction [p0, m) is valid by the same e_t induction the

@@ -100,69 +100,6 @@ namespace LinearAlgebra
             applyReflectorRightCols(ref Q, ref u, ref w, d, Q.N_Cols);
         }
 
-        // Build the pb×pb compact-WY T factor (τ≡1 convention: T[i,i] = 1, NOT LAPACK's τ-scaled
-        // diagonal) from a clean panel V, so the pb reflectors' combined block product is exactly
-        // (I - V T Vᵀ). Forward, columnwise (LAPACK dlarft-style, adapted for τ≡1).
-        //
-        //   Vp    panel base pointer, row-major, leading dimension Vld == pb (see callers — the
-        //         panel buffer is reused across differently-sized panels, so its stride is the
-        //         CURRENT pb, not the QR_BLOCK allocation width).
-        //   rows  number of panel rows (local index t = 0..rows-1); v_i occupies Vp[t*Vld+i].
-        //   pb    number of reflectors in this panel (<= QR_BLOCK).
-        //   T     pb×pb contiguous output, row-major (T[i,k] at T[i*pb+k]), upper-triangular.
-        //   tcol  scratch, length >= pb.
-        //   G     pb×pb scratch for the Gram matrix VᵀV (see below) — callers pass the panel's own
-        //         Wmat buffer (unused at this point in the panel; big enough since it is sized
-        //         QR_BLOCK*N_Cols >= QR_BLOCK*QR_BLOCK).
-        //
-        // v_i is masked to zero for local rows t < i (see callers), so a dot v_k·v_i (k < i) summed
-        // over the FULL row range [0,rows) automatically restricts to the rows where both are
-        // nonzero (t >= i) — no explicit range restriction needed.
-        //
-        // Computed in two passes rather than pb²/2 direct dot products:
-        //   1) G = VᵀV via a GEMM-shaped unit-stride loop (same shape as Unsafe_OP.wyVtC: t outer,
-        //      i middle, j INNER unit-stride) — reaches GEMM throughput (~70 GFLOP/s, matched
-        //      matMatDot/wyVtC in measurement). The naive per-(k,i)-pair dot product form (looping
-        //      t as the reduction axis with stride Vld between consecutive t) does NOT vectorise —
-        //      it was measured to cost ~10ms total per qrDecomposition phase at k=1024 (A is 2048 x
-        //      1024), a meaningful chunk of total wall time, purely from this one strided loop.
-        //   2) The T recursion reads G's entries instead of recomputing dots — O(pb³/6), negligible.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe void formT(float* Vp, int Vld, int rows, int pb, float* T, float* tcol, float* G)
-        {
-            UnsafeUtility.MemClear(G, (long)pb * pb * UnsafeUtility.SizeOf<float>());
-            for (int t = 0; t < rows; t++)
-            {
-                float* Vrow = Vp + (long)t * Vld;
-                for (int i = 0; i < pb; i++)
-                {
-                    float temp = Vrow[i];
-                    float* Gi = G + (long)i * pb;
-                    for (int j = 0; j < pb; j++)
-                        Gi[j] += temp * Vrow[j];
-                }
-            }
-
-            for (int i = 0; i < pb; i++)
-            {
-                T[i * pb + i] = 1;
-                if (i > 0)
-                {
-                    // tcol[k] = -G[k,i] = -(v_k · v_i), k in [0, i)
-                    for (int k = 0; k < i; k++)
-                        tcol[k] = -G[k * pb + i];
-                    // T[k,i] = Σ_{l=k..i-1} T[k,l] * tcol[l], k in [0, i)  (T[0:i,0:i] · tcol)
-                    for (int k = 0; k < i; k++)
-                    {
-                        float sum = 0;
-                        for (int l = k; l < i; l++)
-                            sum += T[k * pb + l] * tcol[l];
-                        T[k * pb + i] = sum;
-                    }
-                }
-            }
-        }
-
         // Q is original matrix A, R is identity matrix
         // Q becomes orthogonal matrix, R becomes upper triangular matrix
         // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
@@ -337,7 +274,7 @@ namespace LinearAlgebra
                 }
 
                 // (3) form the pb x pb compact-WY T (τ≡1) from the panel.
-                formT(Vp, pb, rows, pb, T, tcol, Wmat);
+                Unsafe_OP.formT(Vp, pb, rows, pb, T, tcol, Wmat);
 
                 // (4) trailing block update on cols [p0+pb, n): C -= V*(Tᵀ*(Vᵀ*C)). One untiled
                 //     GEMM call per panel — Unsafe_OP.wyVtC/wySubVW already reach full GEMM
@@ -402,7 +339,7 @@ namespace LinearAlgebra
                         Vrow[i] = Vfrow[p0 + i];
                 }
 
-                formT(Vp, pb, rows, pb, T, tcol, Wmat);
+                Unsafe_OP.formT(Vp, pb, rows, pb, T, tcol, Wmat);
 
                 // Apply the block to columns [p0, n) of Q, rows [p0, m): Q -= V*(T*(Vᵀ*Q)).
                 // NOT columns [0, n): columns < p0 are PROVABLY still their original seeded unit

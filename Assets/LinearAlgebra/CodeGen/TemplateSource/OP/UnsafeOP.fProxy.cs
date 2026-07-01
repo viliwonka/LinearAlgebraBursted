@@ -365,6 +365,63 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // Compact-WY block-reflector T factor (LARFT). Builds the pb×pb upper-triangular T from the
+        // panel V (pb reflectors) so a batch of Householder reflectors applies as one GEMM-shaped block
+        // update  (I - V T Vᵀ). τ≡1 folded-reflector convention → T[i,i] = 1 (NOT LAPACK's τ-scaled
+        // diagonal). Direction-agnostic (it only contracts a Gram matrix from a clean, masked panel),
+        // so it is shared by QR (left-multiply) and LQ (right-multiply) — and reused by the blocked
+        // symmetric/bidiagonal reductions.
+        //
+        //   Vp    panel base pointer, row-major, leading dimension Vld; reflector v_i in column i.
+        //         v_i is masked to zero for local rows t < i (callers guarantee this), so a dot
+        //         v_k·v_i (k < i) over the FULL row range [0,rows) restricts itself to t >= i.
+        //   rows  panel row count (local t = 0..rows-1); v_i occupies Vp[t*Vld+i].
+        //   pb    number of reflectors in the panel.
+        //   T     pb×pb contiguous output, row-major (T[i,k] at T[i*pb+k]), upper-triangular.
+        //   tcol  scratch, length >= pb.
+        //   G     pb×pb scratch for the Gram matrix VᵀV.
+        //
+        // Two passes rather than pb²/2 direct dot products:
+        //   1) G = VᵀV via a GEMM-shaped unit-stride loop (t outer, i middle, j INNER unit-stride) —
+        //      reaches GEMM throughput. The naive per-(k,i) dot form (t as the reduction axis, stride
+        //      Vld between consecutive t) does NOT vectorise and was measured far slower.
+        //   2) The T recursion reads G's entries instead of recomputing dots — O(pb³/6), negligible.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void formT([NoAlias] fProxy* Vp, int Vld, int rows, int pb, [NoAlias] fProxy* T, [NoAlias] fProxy* tcol, [NoAlias] fProxy* G)
+        {
+            UnsafeUtility.MemClear(G, (long)pb * pb * UnsafeUtility.SizeOf<fProxy>());
+            for (int t = 0; t < rows; t++)
+            {
+                fProxy* Vrow = Vp + (long)t * Vld;
+                for (int i = 0; i < pb; i++)
+                {
+                    fProxy temp = Vrow[i];
+                    fProxy* Gi = G + (long)i * pb;
+                    for (int j = 0; j < pb; j++)
+                        Gi[j] += temp * Vrow[j];
+                }
+            }
+
+            for (int i = 0; i < pb; i++)
+            {
+                T[i * pb + i] = 1;
+                if (i > 0)
+                {
+                    // tcol[k] = -G[k,i] = -(v_k · v_i), k in [0, i)
+                    for (int k = 0; k < i; k++)
+                        tcol[k] = -G[k * pb + i];
+                    // T[k,i] = Σ_{l=k..i-1} T[k,l] * tcol[l], k in [0, i)  (T[0:i,0:i] · tcol)
+                    for (int k = 0; k < i; k++)
+                    {
+                        fProxy sum = 0;
+                        for (int l = k; l < i; l++)
+                            sum += T[k * pb + l] * tcol[l];
+                        T[k * pb + i] = sum;
+                    }
+                }
+            }
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void signFlip([NoAlias] fProxy* target, [NoAlias] fProxy* from, int n) {
 
