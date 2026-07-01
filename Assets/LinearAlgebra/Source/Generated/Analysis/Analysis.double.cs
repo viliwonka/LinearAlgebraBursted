@@ -2,6 +2,7 @@
 
 using Unity.Mathematics;
 using Unity.Burst;
+using LinearAlgebra.Internal;
 namespace LinearAlgebra
 {
 

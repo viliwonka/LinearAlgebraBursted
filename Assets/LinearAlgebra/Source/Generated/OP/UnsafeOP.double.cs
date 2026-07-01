@@ -6,7 +6,7 @@ using Unity.Burst;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Collections;
 
-namespace LinearAlgebra
+namespace LinearAlgebra.Internal
 {
     public static unsafe partial class Unsafe_OP {
 

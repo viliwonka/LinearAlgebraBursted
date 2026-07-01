@@ -3,6 +3,7 @@
 using Unity.Mathematics;
 using Unity.Burst;
 using System.Runtime.CompilerServices;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {

@@ -1,6 +1,7 @@
 #define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
 
 using Unity.Burst;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -56,7 +57,10 @@ namespace LinearAlgebra
             return c ? b.TempCopy() : a.TempCopy();
         }
     }
+}
 
+namespace LinearAlgebra.Internal
+{
     public static unsafe partial class UnsafeSelect_OP
     {
         public static void selectBool([NoAlias] bool* a, [NoAlias] bool* b, [NoAlias] bool* c, bool* target, int n)

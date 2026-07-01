@@ -4,6 +4,7 @@ using System;
 
 using Unity.Collections;
 using Unity.Mathematics;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {

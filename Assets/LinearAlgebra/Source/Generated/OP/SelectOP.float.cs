@@ -2,6 +2,7 @@
 
 using System;
 using Unity.Burst;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -96,7 +97,10 @@ namespace LinearAlgebra
             return c ? b.TempCopy() : a.TempCopy();
         }
     }
+}
 
+namespace LinearAlgebra.Internal
+{
     public static unsafe partial class UnsafeSelect_OP
     {
         public static void selectfloat([NoAlias] float* a, [NoAlias] float* b, [NoAlias] bool* c, float* target, int n)

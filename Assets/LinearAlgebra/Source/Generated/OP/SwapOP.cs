@@ -2,6 +2,7 @@
 
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.CompilerServices;
+using LinearAlgebra.Internal;
 //singularFile//
 
 namespace LinearAlgebra

@@ -4,7 +4,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 
-namespace LinearAlgebra
+namespace LinearAlgebra.Internal
 {
     
     public static unsafe partial class UnsafeBool_OP

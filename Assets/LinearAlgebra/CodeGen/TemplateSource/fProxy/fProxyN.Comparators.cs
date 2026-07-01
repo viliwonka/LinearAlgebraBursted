@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {

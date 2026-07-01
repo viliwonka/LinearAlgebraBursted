@@ -11,6 +11,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.TestTools;
+using LinearAlgebra.Internal;
 
 public class doubleLUTests
 {
@@ -782,7 +783,7 @@ public class doubleLUTests
 
             if(pivoted)
             unsafe {
-                var maxAbs = LinearAlgebra.Unsafe_OP.maxAbs(L.Data.Ptr, L.Length);
+                var maxAbs = LinearAlgebra.Internal.Unsafe_OP.maxAbs(L.Data.Ptr, L.Length);
 
                 if(maxAbs > 1f)
                     throw new System.Exception("TestJob: L has values greater than 1f");
