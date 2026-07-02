@@ -208,6 +208,290 @@ namespace LinearAlgebra
             => powerIteration(in A, ref v, ref w, out lambda, Consts.fProxyZeroThreshold, 1000);
 
         /// <summary>
+        /// Inverse power iteration for the SMALLEST eigenpair (lambda_min, v) of a symmetric
+        /// positive-definite (SPD) operator A (A.Rows == A.Cols), generic over any
+        /// <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static dispatch, no
+        /// vtable/managed delegate) -- same shape as <see cref="powerIteration{TOp}"/>. This is
+        /// the SINGLE SOURCE OF TRUTH for the inverse-iteration loop -- the concrete dense
+        /// (<c>inversePowerIteration(in fProxyMxN, ...)</c>) and BSM
+        /// (<c>inversePowerIteration(in fProxyBSM, ...)</c>) overloads below are thin forwarders
+        /// that wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSMOperator</c>
+        /// and call this method (mirrors <see cref="powerIteration{TOp}"/>).
+        ///
+        /// A^-1 amplifies the SMALLEST-magnitude eigencomponent of A, so ordinary power iteration
+        /// on A^-1 converges to the eigenvector of A's smallest eigenvalue -- this is the roadmap's
+        /// lambda_min capability (e.g. the Fiedler vector of a graph Laplacian, or the lowest
+        /// vibration mode of a stiffness matrix). Rather than forming/factoring A^-1, each outer
+        /// iteration solves A y = v with the zero-alloc generic <see cref="Solvers.cg{TOp}"/> (A
+        /// must be SPD and nonsingular for CG to converge -- e.g.
+        /// <c>LinearAlgebra.Gallery.fProxyGallery.fProxyLaplacian1D</c> qualifies), then normalizes
+        /// y into v.
+        ///
+        /// PRECONDITION (caller responsibility, not verified at runtime -- same contract as CG's
+        /// "A must be SPD"): A is symmetric positive-definite and nonsingular (lambda_min &gt; 0).
+        ///
+        /// Scratch layout: v (length A.Rows) is the eigenvector estimate, in/out -- WARM-STARTABLE
+        /// and, like <see cref="powerIteration{TOp}"/>, deterministically seeded as
+        /// v[i] = 1 + (i &amp; 3) then normalized if the caller supplies the zero vector. y is the
+        /// inner solve's solution scratch (A y = v). r, p, Ap are <see cref="Solvers.cg{TOp}"/>'s
+        /// own scratch, reused across every outer iteration -- zero-alloc overall. No extra scratch
+        /// vector is needed for the Rayleigh-quotient recompute: once CG returns, r/p/Ap are free,
+        /// so Ap doubles as the A*v scratch for that step.
+        ///
+        /// On output: v is the unit eigenvector estimate for A's smallest eigenvalue; lambda is the
+        /// Rayleigh quotient v^T A v / v^T v (recomputed via A.Apply -- not carried over from CG).
+        ///
+        /// Convergence (checked once per outer iteration, OR'd): (1) the eigenvector settles -- the
+        /// infinity norm of v_new - v_old is &lt;= tol, where v_new is sign-aligned against v_old
+        /// first (inverse iteration, like power iteration, can flip the eigenvector's sign between
+        /// iterations); or (2) the Rayleigh quotient stabilizes -- |lambda_new - lambda_old| &lt;=
+        /// tol * max(1, |lambda_new|). Returns true on convergence within maxIter outer iterations.
+        ///
+        /// IMPORTANT: pick tol no tighter than (and ideally a small multiple of) cgTol. Every outer
+        /// iteration's v/y comes from a FRESH CG solve accurate only to ~cgTol -- consecutive
+        /// eigenpair estimates stop shrinking once that noise floor is reached (further outer
+        /// iterations do not refine it further, unlike <see cref="powerIteration{TOp}"/>'s pure
+        /// matvecs, which can drive the residual to machine precision). A tol tighter than cgTol's
+        /// noise floor may never be satisfied, spinning to maxIter and returning false even though
+        /// the eigenpair estimate is already as good as this cgTol allows.
+        ///
+        /// If the inner CG solve fails to converge within cgMaxIter iterations to cgTol (A not SPD,
+        /// or numerical breakdown -- see <see cref="Solvers.cg{TOp}"/>), this method bails out
+        /// immediately and returns false; lambda is then set to 0 (undefined) and v holds whatever
+        /// CG last produced (partially updated) -- only read v/lambda when the call returns true.
+        ///
+        /// Does not allocate.
+        /// </summary>
+        public static bool inversePowerIteration<TOp>(in TOp A, ref fProxyN v, ref fProxyN y,
+                                                      ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
+                                                      out fProxy lambda,
+                                                      fProxy tol, int maxIter, int cgMaxIter, fProxy cgTol)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            if (A.Rows != A.Cols)
+                throw new ArgumentException("inversePowerIteration: A must be square");
+
+            int n = A.Rows;
+
+            if (v.N != n)
+                throw new ArgumentException("inversePowerIteration: v.N must equal A.Rows");
+
+            if (y.N != n)
+                throw new ArgumentException("inversePowerIteration: y.N must equal A.Rows");
+
+            if (r.N != n)
+                throw new ArgumentException("inversePowerIteration: r.N must equal A.Rows");
+
+            if (p.N != n)
+                throw new ArgumentException("inversePowerIteration: p.N must equal A.Rows");
+
+            if (Ap.N != n)
+                throw new ArgumentException("inversePowerIteration: Ap.N must equal A.Rows");
+
+            if (maxIter < 1)
+                throw new ArgumentException("inversePowerIteration: maxIter must be >= 1");
+
+            if (tol <= (fProxy)0)
+                throw new ArgumentException("inversePowerIteration: tol must be > 0");
+
+            // Aliasing guard: v/y/r/p/Ap must all be distinct buffers -- same rationale as
+            // cg<TOp>'s guard (the loop below, and cg's own loop, mix elementwise scratch updates
+            // that don't self-check aliasing, so silent corruption would replace a thrown
+            // exception). Five buffers -> a hand-expanded OR chain, same style as cg<TOp>.
+            unsafe
+            {
+                fProxy* vPtr = v.Data.Ptr, yPtr = y.Data.Ptr, rPtr = r.Data.Ptr, pPtr = p.Data.Ptr, ApPtr = Ap.Data.Ptr;
+
+                if (vPtr == yPtr || vPtr == rPtr || vPtr == pPtr || vPtr == ApPtr ||
+                    yPtr == rPtr || yPtr == pPtr || yPtr == ApPtr ||
+                    rPtr == pPtr || rPtr == ApPtr ||
+                    pPtr == ApPtr)
+                    throw new ArgumentException("inversePowerIteration: v/y/r/p/Ap must be distinct");
+            }
+
+            // Seed v deterministically if the caller supplied the zero vector (mirrors powerIteration).
+            fProxy vNormSq = (fProxy)0;
+            for (int i = 0; i < n; i++)
+                vNormSq += v[i] * v[i];
+
+            if (vNormSq == (fProxy)0) {
+                for (int i = 0; i < n; i++)
+                    v[i] = (fProxy)(1 + (i & 3));
+                vNormSq = (fProxy)0;
+                for (int i = 0; i < n; i++)
+                    vNormSq += v[i] * v[i];
+            }
+
+            fProxy vNorm = math.sqrt(vNormSq);
+            fProxy invVNorm = (fProxy)1 / vNorm;
+            for (int i = 0; i < n; i++)
+                v[i] = v[i] * invVNorm;
+
+            lambda = (fProxy)0;
+            fProxy lambdaPrev = fProxy.NaN;   // sentinel: no previous estimate yet (NaN-safe compare below)
+
+            for (int iter = 0; iter < maxIter; iter++) {
+
+                // Step 1: solve A y = v via CG (reuses r/p/Ap as CG's own scratch every outer
+                // iteration -- zero additional allocation). A false return means CG broke down
+                // (A not SPD from this v, or numerical breakdown); bail out immediately.
+                bool cgOk = Solvers.cg(in A, in v, ref y, ref r, ref p, ref Ap, cgMaxIter, cgTol);
+                if (!cgOk) {
+                    lambda = (fProxy)0;
+                    return false;
+                }
+
+                // Step 2: ||y|| for normalization. y == 0 can only happen if v == 0, which cannot
+                // occur here (v is unit-norm going into CG) -- guarded anyway rather than dividing
+                // by zero into Inf/NaN.
+                fProxy yNormSq = (fProxy)0;
+                for (int i = 0; i < n; i++)
+                    yNormSq += y[i] * y[i];
+
+                if (yNormSq == (fProxy)0) {
+                    lambda = (fProxy)0;
+                    return false;
+                }
+
+                fProxy invYNorm = (fProxy)1 / math.sqrt(yNormSq);
+
+                // Step 3: sign-aware convergence check against the PREVIOUS v (before it is
+                // overwritten). Align the new candidate's sign to the old v via their dot product
+                // (mirrors powerIteration's note: the eigenvector may flip sign between
+                // iterations), then commit the sign-aligned, normalized candidate as the new v.
+                fProxy alignDot = (fProxy)0;
+                for (int i = 0; i < n; i++)
+                    alignDot += v[i] * (y[i] * invYNorm);
+                fProxy sign = alignDot >= (fProxy)0 ? (fProxy)1 : (fProxy)(-1);
+
+                fProxy vecDiff = (fProxy)0;
+                for (int i = 0; i < n; i++) {
+                    fProxy vNew = sign * y[i] * invYNorm;
+                    fProxy di = math.abs(vNew - v[i]);
+                    if (di > vecDiff) vecDiff = di;
+                    v[i] = vNew;
+                }
+
+                // Step 4: Rayleigh quotient lambda = v^T A v / v^T v. v is unit-norm by
+                // construction, but v^T v is recomputed (not assumed exactly 1) to absorb
+                // roundoff. Ap is free here -- CG's own use of it ended when CG returned above --
+                // so it doubles as the A*v scratch; no extra scratch vector is needed.
+                A.Apply(in v, ref Ap);
+
+                fProxy vtv = (fProxy)0, vtAv = (fProxy)0;
+                for (int i = 0; i < n; i++) {
+                    vtv += v[i] * v[i];
+                    vtAv += v[i] * Ap[i];
+                }
+                lambda = vtAv / vtv;
+
+                // Step 5: convergence -- eigenvector settled OR Rayleigh quotient stabilized.
+                fProxy lambdaScale = math.abs(lambda);
+                if (lambdaScale < (fProxy)1) lambdaScale = (fProxy)1;
+                fProxy lambdaChange = math.abs(lambda - lambdaPrev);   // NaN on iter 0 -> false below
+
+                if (vecDiff <= tol || lambdaChange <= tol * lambdaScale)
+                    return true;
+
+                lambdaPrev = lambda;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Inverse power iteration for the smallest eigenpair of a SPD dense
+        /// <see cref="fProxyMxN"/>. Forwards into <see cref="inversePowerIteration{TOp}"/> via
+        /// <see cref="fProxyDenseOperator"/> -- see that method for the actual loop and the full
+        /// algorithm documentation (deterministic seeding, convergence criteria, scratch layout,
+        /// SPD/nonsingular precondition).
+        /// </summary>
+        public static bool inversePowerIteration(in fProxyMxN A, ref fProxyN v, ref fProxyN y,
+                                                 ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
+                                                 out fProxy lambda,
+                                                 fProxy tol, int maxIter, int cgMaxIter, fProxy cgTol)
+        {
+            return inversePowerIteration(new fProxyDenseOperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
+        }
+
+        /// <summary>inversePowerIteration with default cgMaxIter (A.M_Rows) and cgTol (Consts.fProxySqrtEps).</summary>
+        public static bool inversePowerIteration(in fProxyMxN A, ref fProxyN v, ref fProxyN y,
+                                                 ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
+                                                 out fProxy lambda, fProxy tol, int maxIter)
+            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.fProxySqrtEps);
+
+        /// <summary>
+        /// Inverse power iteration over a dense SPD matrix -- allocates the inner-solve scratch
+        /// (y, r, p, Ap; all length A.M_Rows) from the arena that <paramref name="v"/> carries and
+        /// calls the zero-alloc primitive. Use the ref-scratch overload in hot loops to avoid the
+        /// allocation.
+        /// </summary>
+        public static bool inversePowerIteration(in fProxyMxN A, ref fProxyN v, out fProxy lambda,
+                                                 fProxy tol, int maxIter, int cgMaxIter, fProxy cgTol)
+        {
+            fProxyN y  = v.tempfProxyVec(A.M_Rows);
+            fProxyN r  = v.tempfProxyVec(A.M_Rows);
+            fProxyN p  = v.tempfProxyVec(A.M_Rows);
+            fProxyN Ap = v.tempfProxyVec(A.M_Rows);
+            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
+        }
+
+        /// <summary>
+        /// inversePowerIteration (allocating) with default tol (10 * Consts.fProxySqrtEps),
+        /// maxIter (1000), cgMaxIter (A.M_Rows) and cgTol (Consts.fProxySqrtEps). tol defaults to
+        /// a multiple of cgTol (NOT the much tighter Consts.fProxyZeroThreshold) on purpose: the
+        /// outer convergence checks compare CONSECUTIVE eigenpair estimates, each derived from its
+        /// own fresh CG solve accurate only to ~cgTol -- an outer tolerance tighter than that noise
+        /// floor could spin to maxIter without ever detecting convergence (the residual genuinely
+        /// bottoms out around cgTol, it does not keep shrinking with more outer iterations).
+        /// </summary>
+        public static bool inversePowerIteration(in fProxyMxN A, ref fProxyN v, out fProxy lambda)
+            => inversePowerIteration(in A, ref v, out lambda, (fProxy)10 * Consts.fProxySqrtEps, 1000, A.M_Rows, Consts.fProxySqrtEps);
+
+        /// <summary>
+        /// Inverse power iteration for the smallest eigenpair of a SPD block-sparse (BSR) matrix.
+        /// Same semantics as the dense overload -- see
+        /// <see cref="inversePowerIteration(in fProxyMxN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, out fProxy, fProxy, int, int, fProxy)"/>.
+        /// Forwards into <see cref="inversePowerIteration{TOp}"/> via <c>fProxyBSMOperator</c>.
+        /// </summary>
+        public static bool inversePowerIteration(in fProxyBSM A, ref fProxyN v, ref fProxyN y,
+                                                 ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
+                                                 out fProxy lambda,
+                                                 fProxy tol, int maxIter, int cgMaxIter, fProxy cgTol)
+        {
+            return inversePowerIteration(new fProxyBSMOperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
+        }
+
+        /// <summary>inversePowerIteration over a BSR matrix with default cgMaxIter (A.M_Rows) and cgTol (Consts.fProxySqrtEps).</summary>
+        public static bool inversePowerIteration(in fProxyBSM A, ref fProxyN v, ref fProxyN y,
+                                                 ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
+                                                 out fProxy lambda, fProxy tol, int maxIter)
+            => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.fProxySqrtEps);
+
+        /// <summary>
+        /// Inverse power iteration over a BSR SPD matrix -- allocates the inner-solve scratch from
+        /// the arena that <paramref name="v"/> carries and calls the zero-alloc primitive.
+        /// </summary>
+        public static bool inversePowerIteration(in fProxyBSM A, ref fProxyN v, out fProxy lambda,
+                                                 fProxy tol, int maxIter, int cgMaxIter, fProxy cgTol)
+        {
+            fProxyN y  = v.tempfProxyVec(A.M_Rows);
+            fProxyN r  = v.tempfProxyVec(A.M_Rows);
+            fProxyN p  = v.tempfProxyVec(A.M_Rows);
+            fProxyN Ap = v.tempfProxyVec(A.M_Rows);
+            return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
+        }
+
+        /// <summary>
+        /// inversePowerIteration (allocating) over a BSR matrix with default tol
+        /// (10 * Consts.fProxySqrtEps), maxIter (1000), cgMaxIter (A.M_Rows) and cgTol
+        /// (Consts.fProxySqrtEps). See the dense overload's doc comment for why tol defaults to a
+        /// multiple of cgTol rather than the much tighter Consts.fProxyZeroThreshold.
+        /// </summary>
+        public static bool inversePowerIteration(in fProxyBSM A, ref fProxyN v, out fProxy lambda)
+            => inversePowerIteration(in A, ref v, out lambda, (fProxy)10 * Consts.fProxySqrtEps, 1000, A.M_Rows, Consts.fProxySqrtEps);
+
+        /// <summary>
         /// Full symmetric eigendecomposition via classical two-sided (cyclic) Jacobi iteration.
         /// Computes A = V * diag(eigenvalues) * V^T where V is orthonormal.
         ///

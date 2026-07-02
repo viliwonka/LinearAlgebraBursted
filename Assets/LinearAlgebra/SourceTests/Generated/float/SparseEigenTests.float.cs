@@ -30,6 +30,8 @@ public class floatSparseEigenTests
         {
             DenseVsSparseCrossCheck,
             LaplacianKnownSpectrum,
+            InverseLaplacianCrossCheck,
+            InverseVsEigenvaluesSymmetric,
         }
 
         public TestType Type;
@@ -48,6 +50,8 @@ public class floatSparseEigenTests
             {
                 case TestType.DenseVsSparseCrossCheck: DenseVsSparseCrossCheck(); break;
                 case TestType.LaplacianKnownSpectrum: LaplacianKnownSpectrum(); break;
+                case TestType.InverseLaplacianCrossCheck: InverseLaplacianCrossCheck(); break;
+                case TestType.InverseVsEigenvaluesSymmetric: InverseVsEigenvaluesSymmetric(); break;
             }
         }
 
@@ -235,6 +239,110 @@ public class floatSparseEigenTests
 
             arena.Dispose();
         }
+
+        // ---- Milestone C2: Eigen.inversePowerIteration<TOp> (smallest eigenpair, generic over
+        // IfloatLinearOperator, inner solve via Solvers.cg<TOp>) -----------------------------
+        //
+        // (a)+(b) literature known-spectrum AND dense-vs-BSM cross-check on the 1D Laplacian.
+        //
+        // The 1D Laplacian's SMALLEST eigenvalues are well-separated (lambda_2/lambda_1 ~= 4 for
+        // small k, since lambda_k ~= (k*pi/(n+1))^2 for small k/n), so inverse iteration converges
+        // quickly and reliably. This is deliberately NOT built from BuildDenseSPD (M^T M + dim*I):
+        // that construction is great for the DOMINANT-eigenvalue powerIteration tests above (the
+        // largest eigenvalues of a square Wishart-like M^T M are well separated) but is a poor
+        // fixture for inverse iteration -- a square Wishart matrix's smallest eigenvalues cluster
+        // near zero, so the ratio driving inverse iteration's convergence rate is close to 1 and
+        // convergence can be arbitrarily slow. The Laplacian avoids that pitfall entirely.
+        //
+        // Runs inversePowerIteration on BOTH the dense matrix and an equivalent 1x1-block BSM
+        // (same recipe as LaplacianKnownSpectrum/DenseVsSparseCrossCheck above): asserts both
+        // converge, both match the closed-form smallest eigenvalue
+        // lambda_1 = 2 - 2*cos(pi/(n+1)), the two eigenvector estimates agree up to an overall
+        // sign, and the BSM path's own residual A*v ~= lambda*v holds via Sparse_OP.spMV.
+        //
+        // Tolerances here use LooseTol() (NOT the tight "1000*zeroThreshold"/"100*zeroThreshold"
+        // constants LaplacianKnownSpectrum uses for pure-matvec powerIteration): inverse iteration
+        // is mediated by an INEXACT inner CG solve (bounded by cgTol, not machine epsilon), so its
+        // eigenpair floor is many orders coarser than a solver that only ever does matvecs.
+        void InverseLaplacianCrossCheck()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 12;
+            var Adense = arena.floatLaplacian1D(n);
+            var bsm = DenseToBSM1x1(ref arena, in Adense, 3 * n);
+
+            // tol is a multiple of cgTol (not the much tighter Consts.floatZeroThreshold): the
+            // outer convergence checks compare consecutive eigenpair estimates, each from its own
+            // fresh CG solve accurate only to ~cgTol, so an outer tolerance tighter than that noise
+            // floor could spin to maxIter without ever detecting convergence (see
+            // Eigen.inversePowerIteration's no-scratch convenience overload doc comment).
+            float cgTol = Consts.floatSqrtEps;
+            float tol = (float)10 * cgTol;
+
+            // Closed-form smallest eigenvalue (k = 1), computed in double precision then cast.
+            double lamD = 2.0 - 2.0 * math.cos(1.0 * math.PI_DBL / (n + 1));
+            float scale = (float)1 + math.abs((float)lamD);
+
+            // Dense inverse power iteration (v starts at zero -> deterministic seeding).
+            var vDense = arena.floatVec(n);
+            bool okDense = Eigen.inversePowerIteration(in Adense, ref vDense, out float lamDense, tol, 200, n, cgTol);
+            AssertTrue(okDense, (float)1);
+            AssertClose(lamDense, (float)lamD, LooseTol() * scale);
+
+            // Sparse (BSM) inverse power iteration, from an identically zero-seeded v.
+            var vSparse = arena.floatVec(n);
+            bool okSparse = Eigen.inversePowerIteration(in bsm, ref vSparse, out float lamSparse, tol, 200, n, cgTol);
+            AssertTrue(okSparse, (float)2);
+            AssertClose(lamSparse, (float)lamD, LooseTol() * scale);
+
+            // Dense-vs-BSM agreement: two INDEPENDENTLY-converged eigenvectors, up to overall sign.
+            AssertVecEqUpToSign(in vDense, in vSparse, n, LooseTol());
+
+            // Residual property on the BSM operator: A*v ~= lambda*v (A*v via spMV on the BSM).
+            var Av = Sparse_OP.spMV(in bsm, in vSparse);
+            AssertResidual(in Av, in vSparse, lamSparse, LooseTol(), n);
+
+            arena.Dispose();
+        }
+
+        // ---- (c) cross-check inversePowerIteration's lambda_min against the dense full-spectrum
+        // eigenvaluesSymmetric (Householder tridiagonalization + QL) on the SAME operator.
+        // eigenvaluesSymmetric DESTROYS its input matrix, so it runs on an independently-built
+        // copy of the Laplacian -- floatLaplacian1D is a pure generator, so calling it twice
+        // yields two separate floatMxN instances encoding the identical numeric operator.
+        void InverseVsEigenvaluesSymmetric()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 10;
+            var A = arena.floatLaplacian1D(n);
+            var ARef = arena.floatLaplacian1D(n);   // independent copy; destroyed below
+
+            // tol is a multiple of cgTol (not the much tighter Consts.floatZeroThreshold): the
+            // outer convergence checks compare consecutive eigenpair estimates, each from its own
+            // fresh CG solve accurate only to ~cgTol, so an outer tolerance tighter than that noise
+            // floor could spin to maxIter without ever detecting convergence (see
+            // Eigen.inversePowerIteration's no-scratch convenience overload doc comment).
+            float cgTol = Consts.floatSqrtEps;
+            float tol = (float)10 * cgTol;
+
+            var v = arena.floatVec(n);   // zero -> deterministic seeding
+            bool ok = Eigen.inversePowerIteration(in A, ref v, out float lambda, tol, 200, n, cgTol);
+            AssertTrue(ok, (float)1);
+
+            var eigenvalues = arena.floatVec(n);
+            bool okEig = Eigen.eigenvaluesSymmetric(ref ARef, ref eigenvalues);
+            AssertTrue(okEig, (float)2);
+
+            // eigenvaluesSymmetric sorts DESCENDING -> the smallest eigenvalue is the last entry.
+            float smallestRef = eigenvalues[n - 1];
+
+            float scale = (float)1 + math.abs(smallestRef);
+            AssertClose(lambda, smallestRef, LooseTol() * scale);
+
+            arena.Dispose();
+        }
     }
 
     // ---- correctness entry points (Burst job + Fail-array surfacing) ----------------------
@@ -266,6 +374,14 @@ public class floatSparseEigenTests
     [Test]
     public void LaplacianKnownSpectrumTest()
         => RunCase(SparseEigenTestJob.TestType.LaplacianKnownSpectrum);
+
+    [Test]
+    public void InverseLaplacianCrossCheckTest()
+        => RunCase(SparseEigenTestJob.TestType.InverseLaplacianCrossCheck);
+
+    [Test]
+    public void InverseVsEigenvaluesSymmetricTest()
+        => RunCase(SparseEigenTestJob.TestType.InverseVsEigenvaluesSymmetric);
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
     //
@@ -346,6 +462,81 @@ public class floatSparseEigenTests
             var w = arena.floatVec(A.M_Rows);
             Assert.Throws<ArgumentException>(() =>
                 Eigen.powerIteration(in A, ref v, ref w, out float lambda, Consts.floatZeroThreshold, 0));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // ---- inversePowerIteration guard / exception cases (managed thread) -------------------
+    //
+    // The BSM overloads forward into the same generic inversePowerIteration<TOp> core, whose
+    // argument guards throw ArgumentException on: A.Rows != A.Cols, v/y/r/p/Ap length mismatch,
+    // v/y/r/p/Ap aliasing, and maxIter < 1. Not exhaustive -- these just prove each guard fires
+    // on the BSM entry point (mirrors the Power_*_Throws tests above).
+
+    [Test]
+    public void InversePower_NonSquareBSM_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            // 2x3 block grid of 2x2 blocks -> 4x6 (Rows != Cols). One block suffices; the
+            // Rows != Cols guard fires before v is examined.
+            const int BR = 2, BC = 2;
+            var builder = arena.floatBSMBuilder(2, 3, BR, BC, 1);
+            builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, -1f, 1f, 71201));
+            var A = builder.ToBSM(ref arena);
+
+            var v = arena.floatVec(A.M_Rows);
+            Assert.Throws<ArgumentException>(() =>
+                Eigen.inversePowerIteration(in A, ref v, out float lambda));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void InversePower_WrongVLength_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = BuildSquareBSM(ref arena);      // 4x4
+            var v = arena.floatVec(A.M_Rows - 1);  // wrong length
+            Assert.Throws<ArgumentException>(() =>
+                Eigen.inversePowerIteration(in A, ref v, out float lambda));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void InversePower_AliasingVAndY_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = BuildSquareBSM(ref arena);   // 4x4
+            var v  = arena.floatVec(A.M_Rows);
+            var r  = arena.floatVec(A.M_Rows);
+            var p  = arena.floatVec(A.M_Rows);
+            var Ap = arena.floatVec(A.M_Rows);
+            var yAlias = v; // y aliases v (struct copy shares Data.Ptr) -> guard must fire
+            Assert.Throws<ArgumentException>(() =>
+                Eigen.inversePowerIteration(in A, ref v, ref yAlias, ref r, ref p, ref Ap, out float lambda,
+                    Consts.floatZeroThreshold, 1000, A.M_Rows, Consts.floatSqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void InversePower_BadMaxIter_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = BuildSquareBSM(ref arena);   // 4x4
+            var v = arena.floatVec(A.M_Rows);
+            Assert.Throws<ArgumentException>(() =>
+                Eigen.inversePowerIteration(in A, ref v, out float lambda,
+                    Consts.floatZeroThreshold, 0, A.M_Rows, Consts.floatSqrtEps));
         }
         finally { arena.Dispose(); }
     }
