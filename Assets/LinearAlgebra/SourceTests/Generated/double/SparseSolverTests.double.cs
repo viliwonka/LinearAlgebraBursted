@@ -55,6 +55,7 @@ public class doubleSparseSolverTests
             // ---- CGNE / Craig: minimum-norm solve for consistent under-determined systems ----
             CgneUnderdeterminedMinNormMatchesLsqr,
             CgneWarmStart,
+            CgneInconsistentDoesNotConverge,
 
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
             MinresWarmStart,
@@ -126,6 +127,7 @@ public class doubleSparseSolverTests
 
                 case TestType.CgneUnderdeterminedMinNormMatchesLsqr: CgneUnderdeterminedMinNormMatchesLsqr(); break;
                 case TestType.CgneWarmStart: CgneWarmStart(); break;
+                case TestType.CgneInconsistentDoesNotConverge: CgneInconsistentDoesNotConverge(); break;
 
                 case TestType.MinresWarmStart: MinresWarmStart(); break;
                 case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
@@ -1131,6 +1133,33 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
+        // ---- CGNE on an INCONSISTENT system: b not in range(A) ----
+        // An over-determined (m > n) A with a random b is generically inconsistent (b has a
+        // component orthogonal to range(A)). CGNE drives r = b - Ax toward zero, which is
+        // impossible here -- ||r|| stalls at the nonzero least-squares residual -- so it runs out
+        // of iterations (or breaks down on A^T r == 0 at the LS point) and returns false. CGLS on
+        // the SAME system converges to the least-squares minimizer. This pins the behavioral
+        // contract that CGNE is for consistent systems only and exercises the false-return path.
+        void CgneInconsistentDoesNotConverge()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;                                 // over-determined
+            var A = arena.doubleRandomMat(m, n, -1f, 1f, 44201);
+            var b = arena.doubleRandomVec(m, -1f, 1f, 44202);  // random rhs: generically NOT in range(A)
+
+            var xC = arena.doubleVec(n);
+            bool okCgne = Solvers.cgne(in A, in b, ref xC, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsFalse(okCgne);                            // cannot reach zero residual -> false
+
+            // CGLS solves the same system in the least-squares sense (normal equations A^T r = 0).
+            var xLs = arena.doubleVec(n);
+            Assert.IsTrue(Solvers.cgls(in A, in b, ref xLs, 8 * n, Consts.doubleSqrtEps));
+            AssertLeastSquaresOptimal(in A, in xLs, in b, LooseTol());
+
+            arena.Dispose();
+        }
+
         // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
         // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. qrDirectSolve
         // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
@@ -1263,6 +1292,10 @@ public class doubleSparseSolverTests
     [Test]
     public void CgneWarmStartTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CgneWarmStart }.Run();
+
+    [Test]
+    public void CgneInconsistentDoesNotConvergeTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CgneInconsistentDoesNotConverge }.Run();
 
     // ---- Phase 3 warm-start entry points ----
 

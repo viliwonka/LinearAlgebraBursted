@@ -1766,9 +1766,12 @@ namespace LinearAlgebra
         /// INCONSISTENT system (b not in range(A)) the residual cannot reach zero -- CGNE then runs
         /// to maxIterations and returns false; use cgls/lsqr/lsmr for least-squares instead.
         ///
-        /// Returns false on non-convergence or breakdown (‖p‖² &lt;= 0, i.e. Aᵀr = 0 while r != 0 --
-        /// r is orthogonal to range(A), which for a consistent system means r is already 0). On a
-        /// false return x is undefined -- only read x when the call returns true.
+        /// Returns false on non-convergence or breakdown (‖p‖² &lt;= 0, i.e. Aᵀr = 0 while r is
+        /// still above tolerance). For a CONSISTENT system r lies in range(A), so Aᵀr = 0 forces
+        /// r = 0 in exact arithmetic -- a breakdown here therefore means the iteration has reached
+        /// the exact solution (to floating-point precision) or the system is inconsistent (r has
+        /// stalled orthogonal to range(A) at the least-squares residual). On a false return x is
+        /// undefined -- only read x when the call returns true.
         /// </summary>
         public static bool cgne<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
@@ -1798,7 +1801,8 @@ namespace LinearAlgebra
 
             if (bb == (fProxy)0)
             {
-                // b == 0 -> the minimum-norm solution of A x = 0 is x = 0.
+                // b == 0 -> the unique minimum-norm solution of A x = 0 is x = 0 (any warm start
+                // in x is discarded: x = 0 is the exact answer, matching cg's bb==0 shortcut).
                 for (int i = 0; i < x.N; i++) x[i] = (fProxy)0;
                 return true;
             }
