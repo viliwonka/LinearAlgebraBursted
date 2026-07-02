@@ -113,7 +113,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var P = new Pivot(A.N_Cols, Allocator.Temp);
-            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int _);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u);
             P.Dispose();
         }
     }
@@ -131,7 +131,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var P = new Pivot(A.N_Cols, Allocator.Temp);
-            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int _);
+            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u);
             P.Dispose();
         }
     }

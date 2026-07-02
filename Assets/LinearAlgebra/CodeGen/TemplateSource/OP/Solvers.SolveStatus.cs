@@ -24,4 +24,41 @@ namespace LinearAlgebra
         /// no further progress. On a breakdown the solution is undefined.</summary>
         Breakdown = 2,
     }
+
+    /// <summary>
+    /// Outcome of a DIRECT (non-iterative, factorization-based) solver call, carried by the result
+    /// structs <see cref="DirectSolveInfo"/> / <see cref="RankRevealingInfo"/>. Mirrors
+    /// <see cref="IterativeSolveStatus"/>'s role for the Krylov solvers: their <c>Solved</c>
+    /// convenience property (and implicit bool conversion) means <c>if (solver(...))</c> keeps
+    /// reading as "did it succeed" while the enum preserves WHY a factorization failed.
+    ///
+    /// Type-agnostic (no fProxy) on purpose -- lives in a non-templated file so codegen does not
+    /// emit a duplicate definition into both the float and double partials (CS0102).
+    /// </summary>
+    public enum DirectSolveStatus
+    {
+        /// <summary>The factorization/solve completed normally (full rank, positive-definite as
+        /// required, non-singular).</summary>
+        Success = 0,
+
+        /// <summary>A zero (or numerically-zero) pivot was encountered during an un-pivoted or
+        /// partial-pivoting factorization (LU) -- the matrix is exactly singular. No usable factor
+        /// or solution was produced.</summary>
+        Singular = 1,
+
+        /// <summary>A Cholesky factorization rejected the input because a diagonal pivot was
+        /// non-positive (or NaN) -- the matrix is not symmetric positive-definite. No usable factor
+        /// or solution was produced.</summary>
+        NotPositiveDefinite = 2,
+
+        /// <summary>A rank-revealing (pivoted) Cholesky factorization found a Schur-complement
+        /// diagonal that went significantly negative -- the matrix is not even positive-SEMI-definite
+        /// (indefinite). No usable factor or solution was produced.</summary>
+        Indefinite = 3,
+
+        /// <summary>A rank-revealing factorization (QRCP, pivoted Cholesky) completed but detected
+        /// numerical rank below the full dimension. Unlike the other failure statuses, this still
+        /// carries a USABLE result -- see <see cref="RankRevealingInfo"/>.</summary>
+        RankDeficient = 4,
+    }
 }

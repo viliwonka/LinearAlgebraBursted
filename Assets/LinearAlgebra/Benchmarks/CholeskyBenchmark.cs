@@ -46,7 +46,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var P = new Pivot(A.M_Rows, Allocator.Temp);
-            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank, ref ws);
+            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, ref ws);
             P.Dispose();
         }
     }
@@ -61,7 +61,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var P = new Pivot(A.M_Rows, Allocator.Temp);
-            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank, ref ws);
+            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, ref ws);
             P.Dispose();
         }
     }

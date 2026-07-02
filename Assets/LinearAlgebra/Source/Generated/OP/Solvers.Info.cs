@@ -91,4 +91,73 @@ namespace LinearAlgebra
         /// <summary>Implicit success test so <c>if (solve(...))</c> keeps compiling.</summary>
         public static implicit operator bool(SolveInfo info) => info.status == IterativeSolveStatus.Converged;
     }
+
+    /// <summary>
+    /// Result of a DIRECT (non-iterative, factorization-based) solver or decomposition call that
+    /// has no notion of "rank" to report -- LU, plain (un-pivoted) Cholesky, un-pivoted QR/LQ, and
+    /// the triangular-solve primitives. Every converted direct solver/decomposition RETURNS this by
+    /// value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>) means old success-test
+    /// call shapes still compile unchanged:
+    /// <code>
+    ///   if (LU.luDecomposition(ref U, ref L, ref P)) { ... }   // implicit bool -> "did it succeed?"
+    ///   bool ok = Cholesky.choleskyDecomposition(in A, ref L); // same
+    ///   var info = LU.luDecompositionInpl(ref LU, ref P);
+    ///   if (!info.Solved) { /* singular */ }
+    /// </code>
+    ///
+    /// The <see cref="status"/> field is filled ONLY from what the solver already determined during
+    /// its normal control flow (an existing bool return, an existing early-return condition) --
+    /// never from a new check. Most direct solves that don't factorize (e.g. luSolve given an
+    /// already-valid factor, the triangular-solve primitives) always report
+    /// <see cref="DirectSolveStatus.Success"/>: they have no failure mode of their own, and do not
+    /// re-verify a factor's validity.
+    /// </summary>
+    public struct DirectSolveInfo
+    {
+        /// <summary>Why the solve/decomposition stopped -- see <see cref="DirectSolveStatus"/>.</summary>
+        public DirectSolveStatus status;
+
+        /// <summary>True iff the solve/decomposition completed normally
+        /// (<c>status == DirectSolveStatus.Success</c>).</summary>
+        public bool Solved => status == DirectSolveStatus.Success;
+
+        /// <summary>Implicit success test, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
+        /// keep compiling after the return type changed from bool/void to this struct.</summary>
+        public static implicit operator bool(DirectSolveInfo i) => i.status == DirectSolveStatus.Success;
+    }
+
+    /// <summary>
+    /// Result of a RANK-REVEALING direct solver or decomposition call -- QRCP
+    /// (<see cref="QR.qrcpDirectSolve"/>) and pivoted Cholesky
+    /// (<see cref="Cholesky.choleskyDecompositionPivot"/> / <see cref="Cholesky.choleskyPivotSolve"/>).
+    /// Unlike <see cref="DirectSolveInfo"/>, a rank-deficient input is NOT a hard failure here: both
+    /// algorithms still produce a usable (least-squares / minimum-norm) result when the detected
+    /// rank is below the full dimension, so <see cref="Solved"/> is true for
+    /// <see cref="DirectSolveStatus.Success"/> AND <see cref="DirectSolveStatus.RankDeficient"/> --
+    /// only <see cref="DirectSolveStatus.Singular"/> / <see cref="DirectSolveStatus.NotPositiveDefinite"/>
+    /// / <see cref="DirectSolveStatus.Indefinite"/> are true failures.
+    ///
+    /// Both fields are filled ONLY from values the solver already computes (the detected numerical
+    /// rank it already counts, the status its existing control flow already determines) -- no new
+    /// passes over the factor.
+    /// </summary>
+    public struct RankRevealingInfo
+    {
+        /// <summary>Why the solve/decomposition stopped -- see <see cref="DirectSolveStatus"/>.</summary>
+        public DirectSolveStatus status;
+
+        /// <summary>Detected numerical rank (0..n). Meaningful whenever <see cref="Solved"/> is
+        /// true; undefined on a hard failure (Singular / NotPositiveDefinite / Indefinite).</summary>
+        public int rank;
+
+        /// <summary>True iff the result is usable -- either full rank
+        /// (<c>status == DirectSolveStatus.Success</c>) or a still-usable rank-deficient result
+        /// (<c>status == DirectSolveStatus.RankDeficient</c>).</summary>
+        public bool Solved => status == DirectSolveStatus.Success || status == DirectSolveStatus.RankDeficient;
+
+        /// <summary>Implicit success test, so <c>if (solve(...))</c> keeps compiling; true for both
+        /// full-rank and (still-usable) rank-deficient results.</summary>
+        public static implicit operator bool(RankRevealingInfo i) =>
+            i.status == DirectSolveStatus.Success || i.status == DirectSolveStatus.RankDeficient;
+    }
 }

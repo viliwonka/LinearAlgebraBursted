@@ -105,8 +105,11 @@ namespace LinearAlgebra
         // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
         // EXACTLY Q.M_Rows; w is a workspace vector of length >= Q.N_Cols (the reflector-apply
         // accumulator). Hoist both out of a hot loop to skip the per-call Allocator.Temp allocs.
+        // Always reports DirectSolveStatus.Success — this factorization has no failure mode (a
+        // zero-norm column is handled via the sign-convention fallback in genHouseholderPete, not
+        // rejected).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN u, ref fProxyN w)
+        public static DirectSolveInfo qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN u, ref fProxyN w)
         {
             if (Q.M_Rows < Q.N_Cols)
                 throw new ArgumentException("QR.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
@@ -192,6 +195,7 @@ namespace LinearAlgebra
                 applyReflectorRight(ref Q, ref u, ref w, d);
             }
 
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         // Blocked (level-3 / compact-WY, GEMM trailing-update) factorization core. τ≡1 convention
@@ -363,11 +367,12 @@ namespace LinearAlgebra
         // the small w accumulator (length Q.N_Cols) from Allocator.Temp. Behaviour is identical to
         // the 4-arg primitive; use that one to be fully zero-alloc in a hot loop.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN u)
+        public static DirectSolveInfo qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN u)
         {
             var w = new fProxyN(Q.N_Cols, Allocator.Temp, false);
-            qrDecomposition(ref Q, ref R, ref u, ref w);
+            var info = qrDecomposition(ref Q, ref R, ref u, ref w);
             w.Dispose();
+            return info;
         }
 
         // Allocating wrapper: allocates scratch (Allocator.Temp) and delegates. This is the fast
@@ -379,7 +384,7 @@ namespace LinearAlgebra
         // wrapper (used by, e.g., the benchmark and most call sites that don't hoist scratch) gets
         // the speedup.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R)
+        public static DirectSolveInfo qrDecomposition(ref fProxyMxN Q, ref fProxyMxN R)
         {
             // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
             const int QR_BLOCK = 32;
@@ -391,10 +396,10 @@ namespace LinearAlgebra
             {
                 var uSmall = new fProxyN(Q.M_Rows, Allocator.Temp, false);
                 var wSmall = new fProxyN(Q.N_Cols, Allocator.Temp, false);
-                qrDecomposition(ref Q, ref R, ref uSmall, ref wSmall);
+                var infoSmall = qrDecomposition(ref Q, ref R, ref uSmall, ref wSmall);
                 wSmall.Dispose();
                 uSmall.Dispose();
-                return;
+                return infoSmall;
             }
 
             int m = Q.M_Rows;
@@ -417,6 +422,8 @@ namespace LinearAlgebra
             Vpanel.Dispose();
             w.Dispose();
             u.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         // Column-pivoted (rank-revealing) QR — Businger–Golub. Factorizes A·P = Q·R, where the
@@ -438,8 +445,10 @@ namespace LinearAlgebra
         // recompute guard precisely because the cheap downdate loses all accuracy near rank
         // deficiency) — for the modest matrices this library targets, exact recompute is both
         // simpler and unconditionally robust.
+        // Always reports DirectSolveStatus.Success — this factorization has no failure mode; it does
+        // NOT itself compute an integer rank (see qrcpDirectSolve for the rank-revealing consumer).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecompositionColumnPivot(ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u)
+        public static DirectSolveInfo qrDecompositionColumnPivot(ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u)
         {
             if (Q.M_Rows < Q.N_Cols)
                 throw new ArgumentException("QR.qrDecompositionColumnPivot: Matrix must be square or tall (M_Rows >= N_Cols)");
@@ -558,16 +567,19 @@ namespace LinearAlgebra
 
             colNorm2.Dispose();
             w.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
         // The caller still owns P (its size carries the column count and it is reset internally).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDecompositionColumnPivot(ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P)
+        public static DirectSolveInfo qrDecompositionColumnPivot(ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P)
         {
             var u = new fProxyN(Q.M_Rows, Allocator.Temp, false);
-            qrDecompositionColumnPivot(ref Q, ref R, ref P, ref u);
+            var info = qrDecompositionColumnPivot(ref Q, ref R, ref P, ref u);
             u.Dispose();
+            return info;
         }
 
         // Q is original matrix A that will be turned into R (upper triangular) non square matrix
@@ -582,8 +594,10 @@ namespace LinearAlgebra
         // Cholesky.choleskyPivotSolve.
         // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
         // EXACTLY A.M_Rows. Hoist u out of a hot loop to skip the per-call Allocator.Temp alloc.
+        // Always reports DirectSolveStatus.Success — see the PRECONDITION note above: a
+        // rank-deficient A silently divides by a zero R diagonal instead of being detected here.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, ref fProxyN u) {
+        public static DirectSolveInfo qrDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, ref fProxyN u) {
             if (A.M_Rows < A.N_Cols)
                 throw new ArgumentException("QR.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
 
@@ -633,15 +647,16 @@ namespace LinearAlgebra
             // b was transformed to y, where y = Q^T b
             // Solve Rx = y
 
-            Solvers.solveUpperTriangular(ref A, ref x);
+            return Solvers.solveUpperTriangular(ref A, ref x);
         }
 
         // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x) {
+        public static DirectSolveInfo qrDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x) {
             var u = new fProxyN(A.M_Rows, Allocator.Temp, false);
-            qrDirectSolve(ref A, ref b, ref x, ref u);
+            var info = qrDirectSolve(ref A, ref b, ref x, ref u);
             u.Dispose();
+            return info;
         }
 
         // QRCP-based rank-safe least-squares: basic (truncated) solution.
@@ -668,18 +683,21 @@ namespace LinearAlgebra
         //   P   scratch: column Pivot of size n (reset internally).
         //   u   scratch: length EXACTLY m (Householder workspace; first n entries are
         //                repurposed for the un-permute scatter after the decomposition).
-        //   rank out: detected numerical rank r.
         //   relTol:  rank threshold ratio; tol = relTol * |R[0,0]|. Negative = auto default.
+        //   returns: RankRevealingInfo — status is Success (r == n, full rank) or RankDeficient
+        //            (r &lt; n, still a usable truncated least-squares solution); rank = detected r.
         /// <summary>
         /// QRCP-based rank-safe least-squares: basic (truncated) solution. Returns the least-squares
         /// solution x with at most r nonzeros in the permuted ordering, where r is the detected
-        /// numerical rank. This is NOT the minimum-norm solution; see SVD.pinvSolve for that.
-        /// The full-rank path (r == n) is divide-safe by construction (all used R diagonals exceed tol).
+        /// numerical rank (reported in the returned <see cref="RankRevealingInfo"/>). This is NOT
+        /// the minimum-norm solution; see SVD.pinvSolve for that. The full-rank path (r == n) is
+        /// divide-safe by construction (all used R diagonals exceed tol). A rank-deficient result
+        /// (r &lt; n) is still usable — see <see cref="RankRevealingInfo.Solved"/>.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
+        public static RankRevealingInfo qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
                                            ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P,
-                                           ref fProxyN u, out int rank, fProxy relTol)
+                                           ref fProxyN u, fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -706,7 +724,7 @@ namespace LinearAlgebra
                 relTol = (fProxy)(math.max(m, n)) * Consts.fProxyZeroThreshold;
 
             // Degenerate: zero-column system.
-            if (n == 0) { rank = 0; return; }
+            if (n == 0) return new RankRevealingInfo { status = DirectSolveStatus.Success, rank = 0 };
 
             // Step 1: copy A into Q (qrDecompositionColumnPivot destroys its input).
             Q.Data.CopyFrom(A.Data);
@@ -718,7 +736,7 @@ namespace LinearAlgebra
             // tol = relTol * |R[0,0]|. When R[0,0] == 0 tol == 0, and |R[0,0]| > 0 is false
             // → rank stays 0. NaN in R[0,0] → tol = NaN → all comparisons false → rank = 0.
             fProxy tol = relTol * math.abs(R[0, 0]);
-            rank = 0;
+            int rank = 0;
             for (int i = 0; i < n; i++)
             {
                 if (math.abs(R[i, i]) > tol)
@@ -732,7 +750,7 @@ namespace LinearAlgebra
             {
                 for (int j = 0; j < n; j++)
                     x[j] = (fProxy)0;
-                return;
+                return new RankRevealingInfo { status = DirectSolveStatus.RankDeficient, rank = 0 };
             }
 
             int r = rank;
@@ -765,16 +783,22 @@ namespace LinearAlgebra
                 u[j] = x[j];
             for (int j = 0; j < n; j++)
                 x[P[j]] = u[j];
+
+            return new RankRevealingInfo
+            {
+                status = (r < n) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,
+                rank = r
+            };
         }
 
         // Default-tolerance overload: passes the auto sentinel (relTol < 0), so the primitive
         // uses max(m,n) * Consts.fProxyZeroThreshold (consistent with SVD.pinvSolve / MatrixMetrics.rank).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
+        public static RankRevealingInfo qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
                                            ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P,
-                                           ref fProxyN u, out int rank)
+                                           ref fProxyN u)
         {
-            qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out rank, (fProxy)(-1));
+            return qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, (fProxy)(-1));
         }
 
         /// <summary>
@@ -783,8 +807,8 @@ namespace LinearAlgebra
         /// hot loops to avoid repeated Temp allocs.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
-                                           out int rank, fProxy relTol)
+        public static RankRevealingInfo qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
+                                           fProxy relTol)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -792,11 +816,12 @@ namespace LinearAlgebra
             var R = new fProxyMxN(n, n, Allocator.Temp, false);
             var P = new Pivot(n, Allocator.Temp);
             var u = new fProxyN(m, Allocator.Temp, false);
-            qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out rank, relTol);
+            var info = qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, relTol);
             u.Dispose();
             P.Dispose();
             R.Dispose();
             Q.Dispose();
+            return info;
         }
 
         /// <summary>
@@ -804,10 +829,9 @@ namespace LinearAlgebra
         /// matching SVD.pinvSolve / MatrixMetrics.rank).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
-                                           out int rank)
+        public static RankRevealingInfo qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x)
         {
-            qrcpDirectSolve(ref A, ref b, ref x, out rank, (fProxy)(-1));
+            return qrcpDirectSolve(ref A, ref b, ref x, (fProxy)(-1));
         }
     }
 }

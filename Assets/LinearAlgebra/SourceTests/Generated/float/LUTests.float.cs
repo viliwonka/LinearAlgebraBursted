@@ -26,6 +26,7 @@ public class floatLUTests
             LUDecompRandomDiagonal,
             LUDecompRandom,
             LUDecompSingular,
+            LUDecompSingularStatus,
             LUDecompPivotRequired,
             LUDeterminant,
             LUDeterminantGallery,
@@ -64,6 +65,9 @@ public class floatLUTests
                 break;
                 case TestType.LUDecompSingular:
                     LUDecompSingular();
+                break;
+                case TestType.LUDecompSingularStatus:
+                    LUDecompSingularStatus();
                 break;
                 case TestType.LUDecompPivotRequired:
                     LUDecompPivotRequired();
@@ -326,6 +330,38 @@ public class floatLUTests
                 pivot.Dispose();
             }
 
+            arena.Dispose();
+        }
+
+        // Stage-3 direct-solve-status coverage: a singular matrix must report
+        // DirectSolveStatus.Singular (not just a falsy implicit-bool) from all three LU
+        // decomposition entry points, and DirectSolveInfo.Solved must be false.
+        public void LUDecompSingularStatus()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 8;
+            var U = arena.floatMat(dim, dim); // zero matrix -> singular
+            var L = arena.floatIdentityMat(dim);
+
+            DirectSolveInfo noPivotInfo = LU.luDecompositionNoPivot(ref U, ref L);
+            Assert.IsTrue(noPivotInfo.status == DirectSolveStatus.Singular);
+            Assert.IsFalse(noPivotInfo.Solved);
+            Assert.IsFalse(noPivotInfo);
+
+            var Up = arena.floatMat(dim, dim);
+            var Lp = arena.floatIdentityMat(dim);
+            var pivot = new Pivot(dim, Allocator.Temp);
+            DirectSolveInfo pivotedInfo = LU.luDecomposition(ref Up, ref Lp, ref pivot);
+            Assert.IsTrue(pivotedInfo.status == DirectSolveStatus.Singular);
+            Assert.IsFalse(pivotedInfo.Solved);
+
+            var LUmat = arena.floatMat(dim, dim);
+            DirectSolveInfo inplaceInfo = LU.luDecompositionInpl(ref LUmat, ref pivot);
+            Assert.IsTrue(inplaceInfo.status == DirectSolveStatus.Singular);
+            Assert.IsFalse(inplaceInfo.Solved);
+
+            pivot.Dispose();
             arena.Dispose();
         }
 

@@ -19,7 +19,9 @@ namespace LinearAlgebra
         // (a singular/rank-deficient triangular factor) divides by zero and yields Inf/NaN; this
         // primitive does not guard it. For rank-deficient systems use the rank-revealing paths
         // (QR.qrDecompositionColumnPivot, SVD.pinvSolve, or Cholesky.choleskyPivotSolve).
-        public static void solveUpperTriangular(ref floatMxN U, ref floatN x)
+        // Always reports DirectSolveStatus.Success — this primitive assumes a valid (non-singular)
+        // triangular factor and does not itself detect a bad one.
+        public static DirectSolveInfo solveUpperTriangular(ref floatMxN U, ref floatN x)
         {
             if(U.M_Rows < U.N_Cols)
                 throw new ArgumentException("Solvers.solveUpperTriangular: Matrix must be square or tall (M_Rows >= N_Cols)");
@@ -36,12 +38,15 @@ namespace LinearAlgebra
 
                 x[r] = (x[r] - sum) / U[r, r];
             }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         // Solve Lx = b for x
         // PRECONDITION: L is non-singular — every diagonal L[r,r] must be nonzero (see
         // solveUpperTriangular; a zero diagonal divides by zero -> Inf/NaN, unguarded).
-        public static void solveLowerTriangular(ref floatMxN L, ref floatN x)
+        // Always reports DirectSolveStatus.Success — see solveUpperTriangular.
+        public static DirectSolveInfo solveLowerTriangular(ref floatMxN L, ref floatN x)
         {
             if (L.IsSquare == false)
                 throw new ArgumentException("Solvers.solveLowerTriangular: Matrix must be square");
@@ -58,11 +63,14 @@ namespace LinearAlgebra
 
                 x[r] = (x[r] - sum) / L[r, r];
             }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         // Solve Ly = b for, where y = Ux
         // RP = Row Pivot
-        public static void solveLowerTriangularLU(ref floatMxN L, in Pivot RP, ref floatN x) {
+        // Always reports DirectSolveStatus.Success — see solveUpperTriangular.
+        public static DirectSolveInfo solveLowerTriangularLU(ref floatMxN L, in Pivot RP, ref floatN x) {
             if (L.IsSquare == false)
                 throw new ArgumentException("Solvers.solveLowerTriangularLU: Matrix must be square");
 
@@ -77,9 +85,12 @@ namespace LinearAlgebra
 
                 x[r] = (x[r] - sum);
             }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
-        public static void solveUpperTriangularLU(ref floatMxN U, in Pivot RP, ref floatN x) {
+        // Always reports DirectSolveStatus.Success — see solveUpperTriangular.
+        public static DirectSolveInfo solveUpperTriangularLU(ref floatMxN U, in Pivot RP, ref floatN x) {
             if(U.IsSquare == false)
                 throw new ArgumentException("Solvers.solveUpperTriangularLU: Matrix must be square");
 
@@ -94,6 +105,8 @@ namespace LinearAlgebra
 
                 x[r] = (x[r] - sum) / U[RP[r], r];
             }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>
@@ -101,12 +114,13 @@ namespace LinearAlgebra
         /// b vectors reusing one decomposition). Caller provides the destination x (length
         /// Q.N_Cols); x must be distinct from b. Zero-alloc: Qᵀb is formed directly into x with
         /// the ref-dest dot — no internal temporary. dim(b) = Q.M_Rows >= dim(x) = Q.N_Cols.
+        /// Always reports DirectSolveStatus.Success — see solveUpperTriangular.
         /// </summary>
         /// <param name="Q">Ortho matrix Q from QR decomposition</param>
         /// <param name="R">Upper triangular matrix R from QR decomposition</param>
         /// <param name="b">Known vector (length Q.M_Rows)</param>
         /// <param name="x">Solution destination (length Q.N_Cols), must not alias b</param>
-        public static void solveQR(ref floatMxN Q, ref floatMxN R, ref floatN b, ref floatN x) {
+        public static DirectSolveInfo solveQR(ref floatMxN Q, ref floatMxN R, ref floatN b, ref floatN x) {
             // Solve Ax = b for x
             // A = QR
             // QRx = b
@@ -119,7 +133,7 @@ namespace LinearAlgebra
             // x = Q^T b (or b^T Q). The ref-dest dot guards x-aliases-b and zeroes x first.
             Linear_OP.dot(in b, in Q, ref x);
             // Solve Rx = Q^T b for x, in place
-            solveUpperTriangular(ref R, ref x);
+            return solveUpperTriangular(ref R, ref x);
         }
 
         /// <summary>
@@ -133,10 +147,9 @@ namespace LinearAlgebra
         }
 
         // Solve Ax = b for x
-        public static void solveQR(ref floatMxN A, ref floatN b, ref floatN x)
+        public static DirectSolveInfo solveQR(ref floatMxN A, ref floatN b, ref floatN x)
         {
-            QR.qrDirectSolve(ref A, ref b, ref x);
-
+            return QR.qrDirectSolve(ref A, ref b, ref x);
         }
 
         // Shared factory for the square-solver diagnostics struct (cg/pcg/minres/biCGStab/cgne).

@@ -33,7 +33,7 @@ public class fProxyPivotedCholeskyTests
             var L = arena.fProxyMat(6);
             var P = new Pivot(6, Allocator.Persistent);
 
-            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
 
             P.Dispose();
             arena.Dispose();
@@ -66,6 +66,7 @@ public class fProxyPivotedCholeskyTests
             MinNormCertificate,
             Indefinite2x2,
             Indefinite3x3,
+            IndefiniteStatus,
             ZeroDiagonalIndefinite,
             ZeroMatrix,
             Rank1Outer,
@@ -88,6 +89,7 @@ public class fProxyPivotedCholeskyTests
                 case TestType.MinNormCertificate:               MinNormCertificate();               break;
                 case TestType.Indefinite2x2:                    Indefinite2x2();                    break;
                 case TestType.Indefinite3x3:                    Indefinite3x3();                    break;
+                case TestType.IndefiniteStatus:                 IndefiniteStatus();                 break;
                 case TestType.ZeroDiagonalIndefinite:           ZeroDiagonalIndefinite();           break;
                 case TestType.ZeroMatrix:                       ZeroMatrix();                       break;
                 case TestType.Rank1Outer:                       Rank1Outer();                       break;
@@ -110,7 +112,8 @@ public class fProxyPivotedCholeskyTests
                 var L = arena.fProxyMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
 
-                bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+                var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+                bool ok = pivInfo; int rank = pivInfo.rank;
                 RecordEq(ok ? 1 : 0, 1);
                 RecordEq(rank, n);
                 AssertReconstruct(in A, in L, in P, rank, (fProxy)1E-4f);
@@ -149,7 +152,8 @@ public class fProxyPivotedCholeskyTests
             var L = arena.fProxyMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 3);
             RecordEq(P[0], 2);
@@ -176,7 +180,8 @@ public class fProxyPivotedCholeskyTests
                 var L = arena.fProxyMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
 
-                bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+                var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+                bool ok = pivInfo; int rank = pivInfo.rank;
                 RecordEq(ok ? 1 : 0, 1);
                 RecordEq(rank, r);
                 AssertReconstruct(in A, in L, in P, rank, (fProxy)1E-4f);
@@ -260,7 +265,7 @@ public class fProxyPivotedCholeskyTests
             var L = arena.fProxyMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
             RecordEq(ok ? 1 : 0, 0); // indefinite => false
 
             P.Dispose();
@@ -282,8 +287,31 @@ public class fProxyPivotedCholeskyTests
             var L = arena.fProxyMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
             RecordEq(ok ? 1 : 0, 0);
+
+            P.Dispose();
+            arena.Dispose();
+        }
+
+        // Stage-3 direct-solve-status coverage: an indefinite matrix must report
+        // DirectSolveStatus.Indefinite (not just a falsy implicit-bool) from
+        // choleskyDecompositionPivot, and RankRevealingInfo.Solved must be false.
+        void IndefiniteStatus()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 2;
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = 1f; A[0, 1] = 2f; A[1, 0] = 2f; A[1, 1] = 1f; // eigenvalues 3, -1
+
+            var L = arena.fProxyMat(n);
+            var P = new Pivot(n, Allocator.Persistent);
+
+            RankRevealingInfo info = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            RecordEq((int)info.status, (int)DirectSolveStatus.Indefinite);
+            RecordEq(info.Solved ? 1 : 0, 0);
+            RecordEq(info ? 1 : 0, 0);
 
             P.Dispose();
             arena.Dispose();
@@ -298,7 +326,8 @@ public class fProxyPivotedCholeskyTests
             var L = arena.fProxyMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 0);
 
@@ -327,7 +356,8 @@ public class fProxyPivotedCholeskyTests
             var L = arena.fProxyMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 1);
             AssertReconstruct(in A, in L, in P, rank, (fProxy)1E-4f);
@@ -350,7 +380,7 @@ public class fProxyPivotedCholeskyTests
             var L = arena.fProxyMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
             RecordEq(ok ? 1 : 0, 0); // indefinite => false
 
             P.Dispose();
@@ -369,7 +399,8 @@ public class fProxyPivotedCholeskyTests
             var L = arena.fProxyMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 1);
             AssertReconstruct(in A, in L, in P, rank, (fProxy)1E-5f);

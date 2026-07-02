@@ -82,12 +82,16 @@ public class fProxyCholeskyPivotWorkspaceTests
 
             var La = arena.fProxyMat(n, n);
             var Pa = new Pivot(n, Allocator.Persistent);
-            bool okA = Cholesky.choleskyDecompositionPivot(in A, ref La, ref Pa, out int rankA);
+            var infoA = Cholesky.choleskyDecompositionPivot(in A, ref La, ref Pa);
+            bool okA = infoA.Solved;
+            int rankA = infoA.rank;
 
             var ws = arena.fProxyCholeskyPivot_WS(n);
             var Lw = arena.fProxyMat(n, n);
             var Pw = new Pivot(n, Allocator.Persistent);
-            bool okW = Cholesky.choleskyDecompositionPivot(in A, ref Lw, ref Pw, out int rankW, ref ws);
+            var infoW = Cholesky.choleskyDecompositionPivot(in A, ref Lw, ref Pw, ref ws);
+            bool okW = infoW.Solved;
+            int rankW = infoW.rank;
 
             Assert.IsTrue(okA == okW);
             Assert.IsTrue(rankA == rankW);
@@ -109,7 +113,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             // shared factor (allocating decomposition; L/P/rank fed to both solve forms).
             var L = arena.fProxyMat(n, n);
             var P = new Pivot(n, Allocator.Persistent);
-            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            int rank = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P).rank;
 
             var b = arena.fProxyRandomVec(n, (fProxy)(-3f), (fProxy)3f, 4004);
 
@@ -225,7 +229,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             var L = arena.fProxyMat(n, n);
             var ws = arena.fProxyCholeskyPivot_WS(n + 1);   // W wrong (needW)
             Assert.Throws<ArgumentException>(
-                () => Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int _, ref ws));
+                () => Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, ref ws));
         }
         finally { P.Dispose(); arena.Dispose(); }
     }
@@ -240,7 +244,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             int n = 6;
             var A = ManagedSPD(ref arena, n);
             var L = arena.fProxyMat(n, n);
-            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            int rank = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P).rank;
 
             var b = arena.fProxyVec(n);
             // bt wrong length (needBt) while W is fine.
@@ -267,9 +271,9 @@ public class fProxyCholeskyPivotWorkspaceTests
             // decomposition with W only (bt = default) must succeed.
             var wsNoBt = new fProxyCholeskyPivot_WS { W = arena.fProxyMat(n, n), bt = default };
             Assert.DoesNotThrow(
-                () => Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int _, ref wsNoBt));
+                () => Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, ref wsNoBt));
 
-            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, out int rank);
+            int rank = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P).rank;
 
             // solve with bt only (W = default) must succeed.
             var b = arena.fProxyVec(n);

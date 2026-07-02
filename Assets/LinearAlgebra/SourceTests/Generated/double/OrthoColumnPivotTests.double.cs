@@ -487,6 +487,7 @@ public class doubleOrthoColumnPivotTests
             OneByOne,               // (7) 1x1 system: x == b/a (projection formula)
             AutoSentinel,           // (8) relTol=-1 == default overload == explicit default tol
             KnownValueRegression,   // (9) hand-computable rank-deficient basic solution
+            RankRevealingInfoStatus,// (10) Stage-3: RankRevealingInfo.status/rank/Solved on rank-deficient A
         }
 
         public TestType Type;
@@ -507,6 +508,7 @@ public class doubleOrthoColumnPivotTests
                 case TestType.OneByOne:                OneByOne();                break;
                 case TestType.AutoSentinel:            AutoSentinel();            break;
                 case TestType.KnownValueRegression:    KnownValueRegression();    break;
+                case TestType.RankRevealingInfoStatus: RankRevealingInfoStatus(); break;
             }
         }
 
@@ -526,7 +528,7 @@ public class doubleOrthoColumnPivotTests
             var b = arena.doubleRandomVec(m, -5f, 5f, 9091);
 
             var x = arena.doubleVec(n);
-            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank); // qrcp leaves A,b intact
+            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank; // qrcp leaves A,b intact
 
             RecordEq(rank, n);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(0, 0); return; }
@@ -565,7 +567,7 @@ public class doubleOrthoColumnPivotTests
             var u = arena.doubleVec(dim);
             var x = arena.doubleVec(dim);
 
-            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank);
+            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u).rank;
 
             RecordEq(rank, dim);
             if (!Analysis_OP.isAnyNan(in x))
@@ -600,7 +602,7 @@ public class doubleOrthoColumnPivotTests
             var b = arena.doubleRandomVec(m, -3f, 3f, 5511);
 
             var x = arena.doubleVec(n);
-            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 3);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -647,7 +649,7 @@ public class doubleOrthoColumnPivotTests
             mean /= (double)dim;
 
             var x = arena.doubleVec(dim);
-            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -700,7 +702,7 @@ public class doubleOrthoColumnPivotTests
             var x = arena.doubleVec(n);
 
             double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
-            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, explicitTol);
+            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, explicitTol).rank;
 
             RecordEq(rank, 3);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -733,7 +735,7 @@ public class doubleOrthoColumnPivotTests
             var b = arena.doubleRandomVec(m, -5f, 5f, 5151);
 
             var x = arena.doubleVec(n);
-            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 0);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -757,7 +759,7 @@ public class doubleOrthoColumnPivotTests
             b[0] = (double)10f;
 
             var x = arena.doubleVec(1);
-            QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank);
+            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -783,14 +785,14 @@ public class doubleOrthoColumnPivotTests
             var b = arena.doubleRandomVec(m, -3f, 3f, 2424);
 
             var xAuto = arena.doubleVec(n);
-            QR.qrcpDirectSolve(ref A, ref b, ref xAuto, out int rankAuto); // default overload
+            int rankAuto = QR.qrcpDirectSolve(ref A, ref b, ref xAuto).rank; // default overload
 
             var xNeg = arena.doubleVec(n);
-            QR.qrcpDirectSolve(ref A, ref b, ref xNeg, out int rankNeg, (double)(-1)); // sentinel
+            int rankNeg = QR.qrcpDirectSolve(ref A, ref b, ref xNeg, (double)(-1)).rank; // sentinel
 
             double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
             var xExpl = arena.doubleVec(n);
-            QR.qrcpDirectSolve(ref A, ref b, ref xExpl, out int rankExpl, explicitTol);
+            int rankExpl = QR.qrcpDirectSolve(ref A, ref b, ref xExpl, explicitTol).rank;
 
             RecordEq(rankNeg, rankAuto);
             RecordEq(rankExpl, rankAuto);
@@ -828,7 +830,7 @@ public class doubleOrthoColumnPivotTests
             var u = arena.doubleVec(m);
             var x = arena.doubleVec(n);
 
-            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, out int rank, (double)(-1));
+            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, (double)(-1)).rank;
 
             RecordEq(rank, 1);
             if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -841,6 +843,32 @@ public class doubleOrthoColumnPivotTests
             AssertClose(res, math.sqrt((double)2f), tol);
 
             P.Dispose();
+            arena.Dispose();
+        }
+
+        // (10) Stage-3 direct-solve-status coverage: on a rank-deficient A (exact linear
+        // dependency, true rank 3 of 4), qrcpDirectSolve must return a RankRevealingInfo with
+        // status == RankDeficient, rank == the detected reduced rank, and Solved == true (a
+        // rank-deficient basic solution is still usable) -- distinct from a hard failure.
+        void RankRevealingInfoStatus()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 6, n = 4;
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 90211);
+            for (int r = 0; r < m; r++)
+                A[r, 3] = A[r, 0] + A[r, 1]; // exact dependency -> true rank 3
+
+            var b = arena.doubleRandomVec(m, -3f, 3f, 5511);
+            var x = arena.doubleVec(n);
+
+            RankRevealingInfo info = QR.qrcpDirectSolve(ref A, ref b, ref x);
+
+            RecordEq(info.rank, 3);
+            RecordEq((int)info.status, (int)DirectSolveStatus.RankDeficient);
+            RecordEq(info.Solved ? 1 : 0, 1);
+            RecordEq(info ? 1 : 0, 1); // implicit bool must also be true
+
             arena.Dispose();
         }
 
@@ -955,7 +983,7 @@ public class doubleOrthoColumnPivotTests
         var A = arena.doubleMat(2, 3);
         var b = arena.doubleVec(2);
         var x = arena.doubleVec(3);
-        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
+        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x));
         arena.Dispose();
     }
 
@@ -966,7 +994,7 @@ public class doubleOrthoColumnPivotTests
         var A = arena.doubleMat(4, 3);
         var b = arena.doubleVec(3); // should be 4
         var x = arena.doubleVec(3);
-        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
+        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x));
         arena.Dispose();
     }
 
@@ -977,7 +1005,7 @@ public class doubleOrthoColumnPivotTests
         var A = arena.doubleMat(4, 3);
         var b = arena.doubleVec(4);
         var x = arena.doubleVec(2); // should be 3
-        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x, out int rank));
+        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x));
         arena.Dispose();
     }
 }

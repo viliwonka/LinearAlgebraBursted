@@ -21,16 +21,16 @@ namespace LinearAlgebra
         /// factor; its strict upper triangle is set to zero. A is read-only — only its lower triangle
         /// is referenced (the matrix is assumed symmetric, so the upper triangle is ignored).
         ///
-        /// Returns true on success; false if A is not positive-definite (a non-positive pivot is
-        /// encountered, which also catches NaN). On false: no NaN/Inf is written, since the check
-        /// happens before the sqrt.
+        /// Returns Success; NotPositiveDefinite if A is not positive-definite (a non-positive pivot
+        /// is encountered, which also catches NaN). On NotPositiveDefinite: no NaN/Inf is written,
+        /// since the check happens before the sqrt.
         ///
         /// L may alias A (in-place factorization): each A entry is read before it is overwritten, so
         /// passing the same matrix as both A and L is safe — but then A's strict upper triangle is
-        /// destroyed (zeroed). On a false (non-PD) return with L aliasing A, the lower triangle is
-        /// left partially overwritten, so treat A as destroyed on failure.
+        /// destroyed (zeroed). On a NotPositiveDefinite return with L aliasing A, the lower triangle
+        /// is left partially overwritten, so treat A as destroyed on failure.
         /// </summary>
-        public static bool choleskyDecomposition(in floatMxN A, ref floatMxN L) {
+        public static DirectSolveInfo choleskyDecomposition(in floatMxN A, ref floatMxN L) {
             if (!A.IsSquare)
                 throw new ArgumentException("choleskyDecomposition: A needs to be square");
 
@@ -42,7 +42,7 @@ namespace LinearAlgebra
 
             int n = A.M_Rows;
 
-            if (n == 0) return true;
+            if (n == 0) return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
             // RIGHT-LOOKING (outer-product) Cholesky. The left-looking form's hot loop is a dot
             // (reduction over already-computed columns), which stays effectively scalar under strict
@@ -110,7 +110,7 @@ namespace LinearAlgebra
                         // updates). Not positive-definite -> reject; !(d > 0) also catches NaN, before
                         // sqrt.
                         float d = L[j, j];
-                        if (!(d > (float)0)) { lj.Dispose(); return false; }
+                        if (!(d > (float)0)) { lj.Dispose(); return new DirectSolveInfo { status = DirectSolveStatus.NotPositiveDefinite }; }
 
                         float Ljj = math.sqrt(d);
                         L[j, j] = Ljj;
@@ -130,7 +130,7 @@ namespace LinearAlgebra
                     }
 
                     lj.Dispose();
-                    return true;
+                    return new DirectSolveInfo { status = DirectSolveStatus.Success };
                 }
 
                 // ---- blocked (level-3) path ----
@@ -153,7 +153,7 @@ namespace LinearAlgebra
                     for (int j = j0; j < panelEnd; j++)
                     {
                         float d = L[j, j];
-                        if (!(d > (float)0)) { PT.Dispose(); lj.Dispose(); return false; }
+                        if (!(d > (float)0)) { PT.Dispose(); lj.Dispose(); return new DirectSolveInfo { status = DirectSolveStatus.NotPositiveDefinite }; }
 
                         float Ljj = math.sqrt(d);
                         L[j, j] = Ljj;
@@ -206,19 +206,22 @@ namespace LinearAlgebra
                 lj.Dispose();
             }
 
-            return true;
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>
         /// Solve A x = b for x given the Cholesky factor L (A = L * Lᵀ) from choleskyDecomposition.
         /// b is overwritten with x. Use this overload to solve for multiple right-hand sides without
         /// refactoring. Solves L y = b (forward substitution), then Lᵀ x = y (back substitution).
+        /// Always reports DirectSolveStatus.Success — this assumes a valid factor from a
+        /// choleskyDecomposition that returned Success; it does not re-verify it.
         ///
-        /// PRECONDITION: L must be a valid factor from a choleskyDecomposition that returned true.
-        /// Passing an invalid or partially-computed L (e.g. from a decomposition that returned false)
-        /// divides by a zero/garbage diagonal and silently produces NaN/Inf — always check the bool.
+        /// PRECONDITION: L must be a valid factor from a choleskyDecomposition that returned Success.
+        /// Passing an invalid or partially-computed L (e.g. from a decomposition that returned
+        /// NotPositiveDefinite) divides by a zero/garbage diagonal and silently produces NaN/Inf —
+        /// always check Solved.
         /// </summary>
-        public static void choleskySolve(ref floatMxN L, ref floatN b) {
+        public static DirectSolveInfo choleskySolve(ref floatMxN L, ref floatN b) {
             if (!L.IsSquare)
                 throw new ArgumentException("choleskySolve: L must be square");
 
@@ -229,18 +232,21 @@ namespace LinearAlgebra
             Solvers.solveLowerTriangular(ref L, ref b);
             // Lᵀ x = y
             SolveUpperTriangularTransposed(ref L, ref b);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>
         /// Factor SPD A = L * Lᵀ into caller-allocated L and solve A x = b in one call.
-        /// b is overwritten with x. Returns false without solving if A is not positive-definite.
+        /// b is overwritten with x. Returns NotPositiveDefinite (forwarded from the decomposition)
+        /// without solving if A is not positive-definite.
         /// </summary>
-        public static bool choleskySolve(in floatMxN A, ref floatMxN L, ref floatN b) {
-            if (!choleskyDecomposition(in A, ref L))
-                return false;
+        public static DirectSolveInfo choleskySolve(in floatMxN A, ref floatMxN L, ref floatN b) {
+            var decompInfo = choleskyDecomposition(in A, ref L);
+            if (!decompInfo.Solved)
+                return decompInfo;
 
-            choleskySolve(ref L, ref b);
-            return true;
+            return choleskySolve(ref L, ref b);
         }
 
         /// <summary>
@@ -257,11 +263,13 @@ namespace LinearAlgebra
         /// L (caller-allocated, square, same dimension as A) receives the factor. P (caller-allocated,
         /// size n) is Reset() internally and ends as the symmetric permutation.
         ///
-        /// Returns true (PSD, any rank 0..n) or FALSE if A is indefinite — a Schur-complement diagonal
-        /// goes significantly negative (below -n·eps·max|diag|). On a false return L/P/rank are
-        /// undefined. Tolerance is scale-relative to the largest |diagonal| so it is scale-invariant.
+        /// Returns a <see cref="RankRevealingInfo"/>: status Success (PSD, full rank n) or
+        /// RankDeficient (PSD, rank &lt; n — still a usable factor, see rank) or Indefinite if A is
+        /// not even positive-semi-definite — a Schur-complement diagonal goes significantly negative
+        /// (below -n·eps·max|diag|). On Indefinite L/P/rank are undefined. Tolerance is
+        /// scale-relative to the largest |diagonal| so it is scale-invariant.
         /// </summary>
-        public static bool choleskyDecompositionPivot(in floatMxN A, ref floatMxN L, ref Pivot P, out int rank,
+        public static RankRevealingInfo choleskyDecompositionPivot(in floatMxN A, ref floatMxN L, ref Pivot P,
                                                        ref floatCholeskyPivot_WS ws) {
             if (!A.IsSquare)
                 throw new ArgumentException("choleskyDecompositionPivot: A needs to be square");
@@ -279,10 +287,10 @@ namespace LinearAlgebra
             RequireCholeskyPivotWorkspace(in ws, n, true, false);
 
             P.Reset();
-            rank = n;
+            int rank = n;
 
             if (n == 0)
-                return true;
+                return new RankRevealingInfo { status = DirectSolveStatus.Success, rank = rank };
 
             // zero L (only the lower-triangle columns 0..rank-1 get written below).
             for (int i = 0; i < n; i++)
@@ -340,7 +348,7 @@ namespace LinearAlgebra
                     if (minDiag < -stopTol) {
                         urow.Dispose();
                         rank = k;
-                        return false;
+                        return new RankRevealingInfo { status = DirectSolveStatus.Indefinite, rank = rank };
                     }
 
                     // largest remaining diagonal is numerically zero (NaN-safe). For a genuine PSD matrix
@@ -354,7 +362,7 @@ namespace LinearAlgebra
                                 if (math.abs(W[i, j]) > stopTol) {
                                     urow.Dispose();
                                     rank = k;
-                                    return false;
+                                    return new RankRevealingInfo { status = DirectSolveStatus.Indefinite, rank = rank };
                                 }
                         rank = k;
                         break;
@@ -391,23 +399,27 @@ namespace LinearAlgebra
             }
 
             urow.Dispose();
-            return true;
+            return new RankRevealingInfo
+            {
+                status = (rank < n) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,
+                rank = rank
+            };
         }
 
         /// <summary>
         /// choleskyDecompositionPivot allocating its n x n symmetric working copy from Allocator.Temp.
         /// See the ref-workspace overload for semantics.
         /// </summary>
-        public static bool choleskyDecompositionPivot(in floatMxN A, ref floatMxN L, ref Pivot P, out int rank) {
+        public static RankRevealingInfo choleskyDecompositionPivot(in floatMxN A, ref floatMxN L, ref Pivot P) {
             int n = A.IsSquare ? A.M_Rows : 0;
             var ws = new floatCholeskyPivot_WS
             {
                 W = new floatMxN(n, n, Allocator.Temp),
                 bt = default
             };
-            bool ok = choleskyDecompositionPivot(in A, ref L, ref P, out rank, ref ws);
+            var info = choleskyDecompositionPivot(in A, ref L, ref P, ref ws);
             ws.W.Dispose();
-            return ok;
+            return info;
         }
 
         /// <summary>
@@ -422,8 +434,11 @@ namespace LinearAlgebra
         ///   A⁺ = M (MᵀM)⁻² Mᵀ; this forms the rank×rank SPD Gram matrix G = L₁ᵀL₁, factors it, and
         ///   applies G⁻¹ twice. If b ∈ range(A) this reproduces the exact solution; otherwise it
         ///   returns the least-squares solution of smallest norm.
+        /// Always reports DirectSolveStatus.Success — this assumes a valid factor and the given
+        /// rank are already known-good (from a choleskyDecompositionPivot that succeeded); it does
+        /// not re-verify them.
         /// </summary>
-        public static void choleskyPivotSolve(ref floatMxN L, in Pivot P, int rank, ref floatN b,
+        public static DirectSolveInfo choleskyPivotSolve(ref floatMxN L, in Pivot P, int rank, ref floatN b,
                                               ref floatCholeskyPivot_WS ws) {
             if (!L.IsSquare)
                 throw new ArgumentException("choleskyPivotSolve: L must be square");
@@ -444,7 +459,7 @@ namespace LinearAlgebra
             if (rank == 0) {
                 for (int i = 0; i < n; i++)
                     b[i] = 0;
-                return;
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
             }
 
             // gather b̃[i] = b[P[i]] (apply the symmetric permutation to the RHS) into the workspace.
@@ -458,7 +473,7 @@ namespace LinearAlgebra
                 SolveUpperTriangularTransposed(ref L, ref bt);
                 for (int i = 0; i < n; i++)
                     b[P[i]] = bt[i];
-                return;
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
             }
 
             // rank-deficient minimum-norm solution.
@@ -517,49 +532,56 @@ namespace LinearAlgebra
             GL.Dispose();
             G.Dispose();
             g.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>
         /// choleskyPivotSolve allocating its permuted-RHS scratch (length n) from Allocator.Temp.
         /// See the ref-workspace overload for semantics (the rank-deficient Gram buffers are per-call
-        /// Temp in both forms).
+        /// Temp in both forms). Always reports DirectSolveStatus.Success — see that overload.
         /// </summary>
-        public static void choleskyPivotSolve(ref floatMxN L, in Pivot P, int rank, ref floatN b) {
+        public static DirectSolveInfo choleskyPivotSolve(ref floatMxN L, in Pivot P, int rank, ref floatN b) {
             int n = L.IsSquare ? L.M_Rows : 0;
             var ws = new floatCholeskyPivot_WS
             {
                 W = default,
                 bt = new floatN(n, Allocator.Temp)
             };
-            choleskyPivotSolve(ref L, in P, rank, ref b, ref ws);
+            var info = choleskyPivotSolve(ref L, in P, rank, ref b, ref ws);
             ws.bt.Dispose();
+            return info;
         }
 
         /// <summary>
         /// Pivoted-Cholesky factor-and-solve in one call: factors A (rank-revealing) and solves
-        /// A x = b, b overwritten with x. Returns false WITHOUT solving if A is indefinite. For a
-        /// rank-deficient (PSD) A this returns the minimum-norm least-squares solution.
+        /// A x = b, b overwritten with x. Returns Indefinite (forwarded from the decomposition)
+        /// WITHOUT solving if A is indefinite. For a rank-deficient (PSD) A this returns
+        /// RankDeficient (with the detected rank) and the minimum-norm least-squares solution.
         /// </summary>
-        public static bool choleskyPivotSolve(in floatMxN A, ref floatMxN L, ref Pivot P, ref floatN b) {
-            if (!choleskyDecompositionPivot(in A, ref L, ref P, out int rank))
-                return false;
+        public static RankRevealingInfo choleskyPivotSolve(in floatMxN A, ref floatMxN L, ref Pivot P, ref floatN b) {
+            var decompInfo = choleskyDecompositionPivot(in A, ref L, ref P);
+            if (!decompInfo.Solved)
+                return decompInfo;
 
-            choleskyPivotSolve(ref L, in P, rank, ref b);
-            return true;
+            choleskyPivotSolve(ref L, in P, decompInfo.rank, ref b);
+            return decompInfo;
         }
 
         /// <summary>
         /// Pivoted-Cholesky factor-and-solve using a caller workspace (W for the factorization, bt for
-        /// the solve). Returns false WITHOUT solving if A is indefinite. For a rank-deficient (PSD) A
-        /// this returns the minimum-norm least-squares solution.
+        /// the solve). Returns Indefinite (forwarded from the decomposition) WITHOUT solving if A is
+        /// indefinite. For a rank-deficient (PSD) A this returns RankDeficient (with the detected
+        /// rank) and the minimum-norm least-squares solution.
         /// </summary>
-        public static bool choleskyPivotSolve(in floatMxN A, ref floatMxN L, ref Pivot P, ref floatN b,
+        public static RankRevealingInfo choleskyPivotSolve(in floatMxN A, ref floatMxN L, ref Pivot P, ref floatN b,
                                               ref floatCholeskyPivot_WS ws) {
-            if (!choleskyDecompositionPivot(in A, ref L, ref P, out int rank, ref ws))
-                return false;
+            var decompInfo = choleskyDecompositionPivot(in A, ref L, ref P, ref ws);
+            if (!decompInfo.Solved)
+                return decompInfo;
 
-            choleskyPivotSolve(ref L, in P, rank, ref b, ref ws);
-            return true;
+            choleskyPivotSolve(ref L, in P, decompInfo.rank, ref b, ref ws);
+            return decompInfo;
         }
 
         // Solve Lᵀ x = b for x in place, where L is lower-triangular (so Lᵀ is upper-triangular).

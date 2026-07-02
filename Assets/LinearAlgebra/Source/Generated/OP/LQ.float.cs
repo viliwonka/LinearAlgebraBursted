@@ -353,8 +353,11 @@ namespace LinearAlgebra
         // (A is k x 2k): k=256 (4 row-panels) regressed for double; k=512 (8 row-panels) was a clear
         // win for both float (~30%) and double (~7%) at N=512, and both improved further at N=1024
         // (float ~39%, double ~19%) — so this gate gives every blocked size a verified improvement.
+        // Always reports DirectSolveStatus.Success — this factorization has no failure mode (a
+        // zero-norm row is handled via the sign-convention fallback in genHouseholderRow, not
+        // rejected).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void lqDecomposition(ref floatMxN A, ref floatMxN L, ref floatMxN Q)
+        public static DirectSolveInfo lqDecomposition(ref floatMxN A, ref floatMxN L, ref floatMxN Q)
         {
             // See lqDecompositionBlockedCore for why this is a method-local const, not a class field.
             const int LQ_BLOCK = 64;
@@ -371,7 +374,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("LQ.lqDecomposition: Q must be m x n");
 
             if (m == 0 || n == 0)
-                return;
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
             var W = new floatMxN(m, n, Allocator.Temp, false);
             var v = new floatN(n, Allocator.Temp, false);
@@ -402,6 +405,8 @@ namespace LinearAlgebra
 
             v.Dispose();
             W.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>
@@ -409,7 +414,7 @@ namespace LinearAlgebra
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void lqDecomposition(ref floatMxN A, ref floatMxN L, ref floatMxN Q, ref floatLQ_WS ws)
+        public static DirectSolveInfo lqDecomposition(ref floatMxN A, ref floatMxN L, ref floatMxN Q, ref floatLQ_WS ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -423,7 +428,7 @@ namespace LinearAlgebra
             RequireLQWorkspace(in ws, m, n);
 
             if (m == 0 || n == 0)
-                return;
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
             var W = ws.W;
             var v = ws.v;
@@ -432,6 +437,8 @@ namespace LinearAlgebra
             float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in A);
 
             lqKernel(ref W, ref L, ref Q, ref v, zeroThreshold);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         // ---- LQ minimum-norm solver ----
@@ -445,8 +452,10 @@ namespace LinearAlgebra
         /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). Not modified.</param>
         /// <param name="b">Right-hand side vector, length m.</param>
         /// <param name="x">Solution output (min-2-norm), length n. Must not alias b.</param>
+        // Always reports DirectSolveStatus.Success — lqDecomposition has no failure mode and this
+        // solve does not itself detect rank deficiency in A (PRECONDITION: A has full row rank).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void lqMinNormSolve(ref floatMxN A, ref floatN b, ref floatN x)
+        public static DirectSolveInfo lqMinNormSolve(ref floatMxN A, ref floatN b, ref floatN x)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -474,6 +483,8 @@ namespace LinearAlgebra
             y.Dispose();
             Q.Dispose();
             L.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>
@@ -481,8 +492,9 @@ namespace LinearAlgebra
         /// zero-alloc end to end (including the nested lqDecomposition call).
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
+        // Always reports DirectSolveStatus.Success — see the allocating overload.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void lqMinNormSolve(ref floatMxN A, ref floatN b, ref floatN x, ref floatLQMinNormSolve_WS ws)
+        public static DirectSolveInfo lqMinNormSolve(ref floatMxN A, ref floatN b, ref floatN x, ref floatLQMinNormSolve_WS ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -507,6 +519,8 @@ namespace LinearAlgebra
 
             // Step 2: x = Qᵀ y.  dot(in y, in Q, ref x) computes yᵀ Q = (Qᵀ y)ᵀ → n-vector.
             Linear_OP.dot(in y, in Q, ref x);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
     }
 }

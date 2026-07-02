@@ -20,10 +20,10 @@ namespace LinearAlgebra
         /// U = A (input matrix, overwritten with upper triangular U)
         /// L = I (identity matrix, overwritten with lower triangular L)
         /// A = L * U
-        /// Returns true on success; false if a zero pivot is encountered (singular matrix).
-        /// On false: no NaN/Inf is written.
+        /// Returns Success; Singular if a zero pivot is encountered (singular matrix).
+        /// On Singular: no NaN/Inf is written.
         /// </summary>
-        public static bool luDecompositionNoPivot(ref floatMxN U, ref floatMxN L)
+        public static DirectSolveInfo luDecompositionNoPivot(ref floatMxN U, ref floatMxN L)
         {
             if (!U.IsSquare)
                 throw new System.ArgumentException("luDecomposition: U (A) needs to be square");
@@ -36,7 +36,7 @@ namespace LinearAlgebra
 
             int m = U.M_Rows;
 
-            if (m == 0) return true;
+            if (m == 0) return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
             for(int k = 0; k < m - 1; k++) {
 
@@ -44,7 +44,7 @@ namespace LinearAlgebra
                 float Ukk = U[k, k];
 
                 if (Ukk == 0)
-                    return false;
+                    return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
                 for(int j = k + 1; j < m; j++) {
 
@@ -63,9 +63,9 @@ namespace LinearAlgebra
 
             // Check last diagonal
             if (U[m - 1, m - 1] == 0)
-                return false;
+                return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
-            return true;
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         // PA = L * U
@@ -74,10 +74,10 @@ namespace LinearAlgebra
         // P is pivot, that is reset, and is modified in place
         /// <summary>
         /// Performs LU decomposition with partial pivoting.
-        /// Returns true on success; false if a zero pivot is encountered (singular matrix).
-        /// On false: no NaN/Inf is written, P remains a valid permutation.
+        /// Returns Success; Singular if a zero pivot is encountered (singular matrix).
+        /// On Singular: no NaN/Inf is written, P remains a valid permutation.
         /// </summary>
-        public static bool luDecomposition(ref floatMxN U, ref floatMxN L, ref Pivot P) {
+        public static DirectSolveInfo luDecomposition(ref floatMxN U, ref floatMxN L, ref Pivot P) {
             if (!U.IsSquare)
                 throw new System.ArgumentException("luDecomposition: U (A) needs to be square");
 
@@ -93,7 +93,7 @@ namespace LinearAlgebra
 
             P.Reset();
 
-            if (m == 0) return true;
+            if (m == 0) return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
             // Panel width for the blocked (level-3) path. Method-local const — LU is a partial class
             // shared by the float/double generated files, so a class-level const of the same name
@@ -126,7 +126,7 @@ namespace LinearAlgebra
 
                     // Check for zero pivot before any division
                     if (pivotValue == 0)
-                        return false;
+                        return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
                     // Swap rows
                     P.Swap(k, pivotIndex);
@@ -166,9 +166,9 @@ namespace LinearAlgebra
 
                 // Check last diagonal
                 if (U[m - 1, m - 1] == 0)
-                    return false;
+                    return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
-                return true;
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
             }
 
             // ---- blocked (level-3) path — LAPACK-style right-looking GETRF ----
@@ -234,7 +234,7 @@ namespace LinearAlgebra
                         // Check for zero pivot before any division
                         if (pivotValue == 0) {
                             Ubuf.Dispose();
-                            return false;
+                            return new DirectSolveInfo { status = DirectSolveStatus.Singular };
                         }
 
                         // Swap rows
@@ -308,9 +308,9 @@ namespace LinearAlgebra
             // Check last diagonal (mirrors the unblocked form's final check; the blocked k-loop above
             // never pivot-searches column m-1, matching the unblocked k<m-1 bound).
             if (U[m - 1, m - 1] == 0)
-                return false;
+                return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
-            return true;
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         // A = LU
@@ -319,10 +319,10 @@ namespace LinearAlgebra
         /// <summary>
         /// Performs LU decomposition inplace with partial pivoting (compact LU form).
         /// Factor row i lives at physical row P[i].
-        /// Returns true on success; false if a zero pivot is encountered (singular matrix).
-        /// On false: no NaN/Inf is written, P remains a valid permutation.
+        /// Returns Success; Singular if a zero pivot is encountered (singular matrix).
+        /// On Singular: no NaN/Inf is written, P remains a valid permutation.
         /// </summary>
-        public static bool luDecompositionInpl(ref floatMxN LU, ref Pivot P) {
+        public static DirectSolveInfo luDecompositionInpl(ref floatMxN LU, ref Pivot P) {
 
             if (!LU.IsSquare)
                 throw new System.ArgumentException("luDecomposition: LU (A) needs to be square");
@@ -333,7 +333,7 @@ namespace LinearAlgebra
 
             P.Reset();
 
-            if (m == 0) return true;
+            if (m == 0) return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
             for (int k = 0; k < m - 1; k++) {
 
@@ -351,7 +351,7 @@ namespace LinearAlgebra
 
                 // Check for zero pivot before any division
                 if (pivotValue == 0)
-                    return false;
+                    return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
                 // Swap rows
                 P.Swap(k, pivotIndex);
@@ -383,17 +383,18 @@ namespace LinearAlgebra
 
             // Check last diagonal (the k < m-1 loop never inspects it)
             if (LU[P[m - 1], m - 1] == 0)
-                return false;
+                return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
-            return true;
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>
         /// Solve LUx = b for x using the compact inplace LU form with pivot.
-        /// b is overwritten with x.
+        /// b is overwritten with x. Always reports DirectSolveStatus.Success — this assumes a
+        /// valid factor from a luDecompositionInpl that returned Success; it does not re-verify it.
         /// Throws ArgumentException if dimensions are inconsistent.
         /// </summary>
-        public static void luSolve(ref floatMxN LU, in Pivot pivot, ref floatN b) {
+        public static DirectSolveInfo luSolve(ref floatMxN LU, in Pivot pivot, ref floatN b) {
 
             if (!LU.IsSquare)
                 throw new System.ArgumentException("luSolve: LU must be square");
@@ -411,14 +412,16 @@ namespace LinearAlgebra
             // Solve Ux = y
             Solvers.solveUpperTriangularLU(ref LU, in pivot, ref b);
 
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>
         /// Solve LUx = Pb for x using separate L and U matrices with pivot.
-        /// b is overwritten with x.
+        /// b is overwritten with x. Always reports DirectSolveStatus.Success — this assumes a
+        /// valid factor from a luDecomposition that returned Success; it does not re-verify it.
         /// Throws ArgumentException if dimensions are inconsistent.
         /// </summary>
-        public static void luSolve(ref floatMxN L, ref floatMxN U, in Pivot pivot, ref floatN b) {
+        public static DirectSolveInfo luSolve(ref floatMxN L, ref floatMxN U, in Pivot pivot, ref floatN b) {
 
             if (!U.IsSquare)
                 throw new System.ArgumentException("luSolve: U must be square");
@@ -439,6 +442,7 @@ namespace LinearAlgebra
             // Solve Ux = y
             Solvers.solveUpperTriangular(ref U, ref b);
 
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
         /// <summary>

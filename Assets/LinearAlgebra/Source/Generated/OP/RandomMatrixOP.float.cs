@@ -16,11 +16,11 @@ namespace LinearAlgebra
     /// normal return path.
     ///
     /// <para><b>Multivariate-normal workflow</b>: factor Σ exactly ONCE via
-    /// <c>Cholesky.choleskyDecomposition(in Sigma, ref L)</c> — check the returned <c>bool</c>
-    /// (false means Σ is not SPD; on a false return L is partially overwritten and must not be
-    /// reused). Then call <c>multivariateNormalInpl</c> or <c>multivariateNormalRowsInpl</c> many
-    /// times with the same L. Σ may be a covariance or a correlation matrix (both SPD). Do NOT
-    /// re-factor per sample.</para>
+    /// <c>Cholesky.choleskyDecomposition(in Sigma, ref L)</c> — check the returned
+    /// <c>DirectSolveInfo.Solved</c> (false means Σ is not SPD; on a failed return L is partially
+    /// overwritten and must not be reused). Then call <c>multivariateNormalInpl</c> or
+    /// <c>multivariateNormalRowsInpl</c> many times with the same L. Σ may be a covariance or a
+    /// correlation matrix (both SPD). Do NOT re-factor per sample.</para>
     ///
     /// float-only.
     /// </summary>

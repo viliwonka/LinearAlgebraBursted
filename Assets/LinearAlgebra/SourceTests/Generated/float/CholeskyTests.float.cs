@@ -19,6 +19,7 @@ public class floatCholeskyTests
             KnownSmall,
             Identity,
             NotSPD,
+            NotSPDStatus,
             CrossCheckLU,
             Tiny,
             Aliasing,
@@ -66,6 +67,9 @@ public class floatCholeskyTests
                     break;
                 case TestType.NotSPD:
                     NotSPD();
+                    break;
+                case TestType.NotSPDStatus:
+                    NotSPDStatus();
                     break;
                 case TestType.CrossCheckLU:
                     CrossCheckLU();
@@ -292,6 +296,31 @@ public class floatCholeskyTests
                 Assert.IsFalse(ok);
                 Assert.IsFalse(Analysis_OP.isAnyNan(in L));
             }
+
+            arena.Dispose();
+        }
+
+        // Stage-3 direct-solve-status coverage: a non-PD matrix must report
+        // DirectSolveStatus.NotPositiveDefinite (not just a falsy implicit-bool) from both
+        // choleskyDecomposition and the factor-and-solve choleskySolve overload.
+        void NotSPDStatus()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.floatMat(2, 2);
+            A[0, 0] = 1f; A[0, 1] = 2f;
+            A[1, 0] = 2f; A[1, 1] = 1f; // eigenvalues 3, -1 -> indefinite
+
+            var L = arena.floatMat(2, 2);
+            DirectSolveInfo decompInfo = Cholesky.choleskyDecomposition(in A, ref L);
+            Assert.IsTrue(decompInfo.status == DirectSolveStatus.NotPositiveDefinite);
+            Assert.IsFalse(decompInfo.Solved);
+            Assert.IsFalse(decompInfo);
+
+            var b = arena.floatRandomVec(2, -1f, 1f, 17);
+            DirectSolveInfo solveInfo = Cholesky.choleskySolve(in A, ref L, ref b);
+            Assert.IsTrue(solveInfo.status == DirectSolveStatus.NotPositiveDefinite);
+            Assert.IsFalse(solveInfo.Solved);
 
             arena.Dispose();
         }
