@@ -93,6 +93,11 @@ namespace LinearAlgebra
 
         public doubleColScaledOperator(in TInner inner, in doubleN d, in doubleN scratch)
         {
+            if (d.N != inner.Cols)
+                throw new System.ArgumentException("doubleColScaledOperator: d.N must equal inner.Cols");
+            if (scratch.N != inner.Cols)
+                throw new System.ArgumentException("doubleColScaledOperator: scratch.N must equal inner.Cols");
+
             Inner = inner;
             D = d;
             Scratch = scratch;

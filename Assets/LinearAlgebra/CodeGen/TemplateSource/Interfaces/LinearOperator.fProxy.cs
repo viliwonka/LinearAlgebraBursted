@@ -93,6 +93,11 @@ namespace LinearAlgebra
 
         public fProxyColScaledOperator(in TInner inner, in fProxyN d, in fProxyN scratch)
         {
+            if (d.N != inner.Cols)
+                throw new System.ArgumentException("fProxyColScaledOperator: d.N must equal inner.Cols");
+            if (scratch.N != inner.Cols)
+                throw new System.ArgumentException("fProxyColScaledOperator: scratch.N must equal inner.Cols");
+
             Inner = inner;
             D = d;
             Scratch = scratch;

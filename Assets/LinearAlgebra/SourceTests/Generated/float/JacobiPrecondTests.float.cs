@@ -103,6 +103,18 @@ public class floatJacobiPrecondTests
             Sparse_OP.columnNormsSquared(in bsm3, ref d2b3);
             for (int c = 0; c < n; c++) AssertClose(d2b3[c], d2Dense[c], Tight());
 
+            // RECTANGULAR blocks BR=2, BC=3 (would catch a BR/BC swap in the block-column indexing
+            // that square blocks cannot). Fresh matrix sized to the block grid: 4x9 -> 2x3 grid.
+            int m2 = 4, n2 = 9;
+            var A2 = arena.floatRandomMat(m2, n2, -1f, 1f, 61102);
+            var d2Dense2 = arena.floatVec(n2);
+            Linear_OP.columnNormsSquared(in A2, ref d2Dense2);
+
+            var bsm23 = DenseToBSM(ref arena, in A2, 2, 3, m2 * n2);
+            var d2b23 = arena.floatVec(n2);
+            Sparse_OP.columnNormsSquared(in bsm23, ref d2b23);
+            for (int c = 0; c < n2; c++) AssertClose(d2b23[c], d2Dense2[c], Tight());
+
             arena.Dispose();
         }
 
