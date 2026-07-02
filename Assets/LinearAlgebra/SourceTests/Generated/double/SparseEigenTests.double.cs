@@ -39,6 +39,7 @@ public class doubleSparseEigenTests
             PowerNegativeDominant,
             LanczosVectorsResidualAndOrthonormal,
             LanczosVectorsDenseVsBSM,
+            LanczosVectorsEarlyBreakdown,
         }
 
         public TestType Type;
@@ -102,6 +103,7 @@ public class doubleSparseEigenTests
                 case TestType.PowerNegativeDominant: PowerNegativeDominant(); break;
                 case TestType.LanczosVectorsResidualAndOrthonormal: LanczosVectorsResidualAndOrthonormal(); break;
                 case TestType.LanczosVectorsDenseVsBSM: LanczosVectorsDenseVsBSM(); break;
+                case TestType.LanczosVectorsEarlyBreakdown: LanczosVectorsEarlyBreakdown(); break;
                 case TestType.LanczosDenseVsBSM: LanczosDenseVsBSM(); break;
             }
         }
@@ -695,6 +697,65 @@ public class doubleSparseEigenTests
 
             arena.Dispose();
         }
+
+        // EARLY-BREAKDOWN Ritz vectors: the diagonal operator with only two distinct eigenvalues
+        // (0.2, 0.7) forces a grade-2 Krylov space, so lanczosVectors breaks down at produced==2 <
+        // steps==4. The two produced Ritz vectors must be EXACT eigenpairs (each eigenspace is
+        // invariant, so the seed's projection onto it is a true eigenvector -> zero residual), and
+        // the padded rows [produced, steps) must now be ZEROED (fail-loud contract) rather than
+        // holding arena garbage. This is the Ritz-vector analogue of LanczosEarlyBreakdownPadding,
+        // which only covered the VALUES path.
+        void LanczosVectorsEarlyBreakdown()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;
+            int steps = 4;
+
+            var A = arena.doubleMat(n, n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = (double)0;
+            for (int i = 0; i < n; i++)
+                A[i, i] = i < 3 ? (double)0.2 : (double)0.7;
+
+            var ws  = arena.doubleLanczos_WS(n, steps);
+            var Yt  = arena.doubleMat(steps, steps);
+            var eig = arena.doubleVec(steps);
+            var ritz = arena.doubleMat(steps, n);
+
+            bool ok = Eigen.lanczosVectors(new doubleDenseOperator(in A), ref ws, ref Yt, ref eig, ref ritz,
+                                           out int produced, steps, BreakdownTol());
+            AssertTrue(ok, (double)1);
+            AssertTrue(produced == 2, (double)2);                 // grade-2 breakdown before steps
+
+            // The two produced Ritz vectors are exact eigenpairs: unit norm + zero residual.
+            var v = arena.doubleVec(n);
+            for (int i = 0; i < produced; i++)
+            {
+                for (int c = 0; c < n; c++) v[c] = ritz[i, c];
+
+                double nrmSq = (double)0;
+                for (int c = 0; c < n; c++) nrmSq += v[c] * v[c];
+                AssertClose(math.sqrt(nrmSq), (double)1, VecTol());
+
+                var Av = Linear_OP.dot(A, v);
+                double maxRes = (double)0;
+                for (int c = 0; c < n; c++)
+                {
+                    double ri = math.abs(Av[c] - eig[i] * v[c]);
+                    if (ri > maxRes) maxRes = ri;
+                }
+                AssertClose(maxRes, (double)0, VecTol());
+            }
+
+            // Fail-loud contract: rows [produced, steps) are zeroed, NOT arena garbage.
+            for (int i = produced; i < steps; i++)
+                for (int c = 0; c < n; c++)
+                    AssertClose(ritz[i, c], (double)0, (double)0);
+
+            arena.Dispose();
+        }
     }
 
     // ---- correctness entry points (Burst job + Fail-array surfacing) ----------------------
@@ -754,6 +815,10 @@ public class doubleSparseEigenTests
     [Test]
     public void LanczosVectorsDenseVsBSMTest()
         => RunCase(SparseEigenTestJob.TestType.LanczosVectorsDenseVsBSM);
+
+    [Test]
+    public void LanczosVectorsEarlyBreakdownTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosVectorsEarlyBreakdown);
 
     [Test]
     public void LanczosEarlyBreakdownPaddingTest()

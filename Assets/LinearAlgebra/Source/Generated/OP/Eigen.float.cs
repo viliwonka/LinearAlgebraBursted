@@ -848,6 +848,14 @@ namespace LinearAlgebra
                     ritz[i, col] = acc;
                 }
 
+            // Rows [produced, steps) belong to the decoupled/padded eigenpairs and carry no
+            // meaning. Zero them so an accidental read of ritz[i >= produced] fails LOUD (a zero
+            // vector trips any unit-norm / residual check) instead of returning plausible arena
+            // garbage that happens to look like an eigenvector.
+            for (int i = produced; i < steps; i++)
+                for (int col = 0; col < n; col++)
+                    ritz[i, col] = (float)0;
+
             return ok;
         }
 
