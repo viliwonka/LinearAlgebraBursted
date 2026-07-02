@@ -43,11 +43,17 @@ public class doubleSparseSolverTests
             LsqrInconsistentMatchesQR,
             CglsLsqrUnderdeterminedConsistent,
 
+            // ---- LSMR (Fong-Saunders): least-squares with monotone ||A^T r|| ----
+            LsmrOverdeterminedConsistentDenseAndBSM,
+            LsmrInconsistentMatchesQR,
+            LsmrUnderdeterminedMatchesLsqr,
+
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
             MinresWarmStart,
             BiCGStabWarmStart,
             CglsWarmStart,
             LsqrWarmStart,
+            LsmrWarmStart,
         }
 
         public TestType Type;
@@ -103,10 +109,15 @@ public class doubleSparseSolverTests
                 case TestType.LsqrInconsistentMatchesQR: LsqrInconsistentMatchesQR(); break;
                 case TestType.CglsLsqrUnderdeterminedConsistent: CglsLsqrUnderdeterminedConsistent(); break;
 
+                case TestType.LsmrOverdeterminedConsistentDenseAndBSM: LsmrOverdeterminedConsistentDenseAndBSM(); break;
+                case TestType.LsmrInconsistentMatchesQR: LsmrInconsistentMatchesQR(); break;
+                case TestType.LsmrUnderdeterminedMatchesLsqr: LsmrUnderdeterminedMatchesLsqr(); break;
+
                 case TestType.MinresWarmStart: MinresWarmStart(); break;
                 case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
                 case TestType.CglsWarmStart: CglsWarmStart(); break;
                 case TestType.LsqrWarmStart: LsqrWarmStart(); break;
+                case TestType.LsmrWarmStart: LsmrWarmStart(); break;
             }
         }
 
@@ -855,6 +866,121 @@ public class doubleSparseSolverTests
 
             arena.Dispose();
         }
+
+        // ---- LSMR on an overdetermined CONSISTENT least-squares problem (dense + BSM) ------
+        //
+        // b = A*x_true exactly (b in range(A)) -> the least-squares solution is x_true, recovered
+        // exactly (within tolerance). Same acceptance criterion as the LSQR twin.
+        void LsmrOverdeterminedConsistentDenseAndBSM()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.doubleRandomMat(m, n, -1f, 1f, 42001);
+            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 42002);
+            var b = Linear_OP.dot(A, xTrue);      // consistent
+
+            var x = arena.doubleVec(n);
+            bool ok = Solvers.lsmr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(ok);
+            AssertVecEq(in x, in xTrue, LooseTol());
+
+            var Ax = Linear_OP.dot(A, x);
+            AssertVecEq(in Ax, in b, LooseTol());
+
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var xBsm = arena.doubleVec(n);
+            bool okBsm = Solvers.lsmr(in bsm, in b, ref xBsm, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(okBsm);
+            AssertVecEq(in x, in xBsm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- LSMR on an overdetermined INCONSISTENT problem: normal-equation optimality ----
+        //
+        // Random b generally NOT in range(A). Correct acceptance = ||A^T(A x - b)|| ~= 0, plus a
+        // cross-check against the dense QR least-squares solution (the unique minimizer) -- the
+        // same oracle as the CGLS/LSQR inconsistent tests, so LSMR must land on the same x.
+        void LsmrInconsistentMatchesQR()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.doubleRandomMat(m, n, -1f, 1f, 42101);
+            var b = arena.doubleRandomVec(m, -1f, 1f, 42102);   // inconsistent
+
+            var x = arena.doubleVec(n);
+            bool ok = Solvers.lsmr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(ok);
+
+            AssertLeastSquaresOptimal(in A, in x, in b, LooseTol());
+
+            var A2 = A.Copy();
+            var b2 = b.Copy();
+            var xQR = arena.doubleVec(n);
+            QR.qrDirectSolve(ref A2, ref b2, ref xQR);
+            AssertVecEq(in x, in xQR, LooseTol());
+
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var xBsm = arena.doubleVec(n);
+            bool okBsm = Solvers.lsmr(in bsm, in b, ref xBsm, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(okBsm);
+            AssertVecEq(in x, in xBsm, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // ---- LSMR on an underdetermined (m < n) CONSISTENT problem: matches LSQR ----
+        //
+        // Wide A, b = A*x_gen (consistent) -> infinitely many exact solutions. From x0 = 0 both
+        // LSMR and LSQR converge to the SAME minimum-norm solution, so assert A x ~= b and that
+        // LSMR agrees with the (already-tested) LSQR solution.
+        void LsmrUnderdeterminedMatchesLsqr()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 4, n = 10;
+            var A = arena.doubleRandomMat(m, n, -1f, 1f, 42201);
+            var xGen = arena.doubleRandomVec(n, -1f, 1f, 42202);
+            var b = Linear_OP.dot(A, xGen);      // consistent
+
+            var xM = arena.doubleVec(n);
+            bool okM = Solvers.lsmr(in A, in b, ref xM, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(okM);
+            var AxM = Linear_OP.dot(A, xM);
+            AssertVecEq(in AxM, in b, LooseTol());
+
+            var xL = arena.doubleVec(n);
+            bool okL = Solvers.lsqr(in A, in b, ref xL, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(okL);
+
+            AssertVecEq(in xM, in xL, LooseTol());   // both land on the unique minimum-norm solution
+
+            arena.Dispose();
+        }
+
+        // ---- LSMR warm start (overdetermined m>n CONSISTENT system, b = A*xTrue) ----
+        void LsmrWarmStart()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.doubleRandomMat(m, n, -1f, 1f, 42301);
+            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 42302);
+            var b = Linear_OP.dot(A, xTrue);      // consistent
+
+            var x = arena.doubleVec(n);
+            bool ok = Solvers.lsmr(in A, in b, ref x, 8 * n, Consts.doubleSqrtEps);
+            Assert.IsTrue(ok);
+
+            var xWarm = x.Copy();
+            bool okWarm = Solvers.lsmr(in A, in b, ref xWarm, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(okWarm);
+            AssertVecEq(in x, in xWarm, LooseTol());
+
+            arena.Dispose();
+        }
     }
 
     // Deliberately non-SPD test-double preconditioner: z = M^-1 r := -r, so <r,z> = -||r||^2 <= 0.
@@ -936,6 +1062,20 @@ public class doubleSparseSolverTests
     public void CglsLsqrUnderdeterminedConsistentTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsLsqrUnderdeterminedConsistent }.Run();
 
+    // ---- LSMR entry points ----
+
+    [Test]
+    public void LsmrOverdeterminedConsistentDenseAndBSMTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrOverdeterminedConsistentDenseAndBSM }.Run();
+
+    [Test]
+    public void LsmrInconsistentMatchesQRTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrInconsistentMatchesQR }.Run();
+
+    [Test]
+    public void LsmrUnderdeterminedMatchesLsqrTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrUnderdeterminedMatchesLsqr }.Run();
+
     // ---- Phase 3 warm-start entry points ----
 
     [Test]
@@ -953,6 +1093,10 @@ public class doubleSparseSolverTests
     [Test]
     public void LsqrWarmStartTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsqrWarmStart }.Run();
+
+    [Test]
+    public void LsmrWarmStartTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrWarmStart }.Run();
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
 
@@ -1257,6 +1401,28 @@ public class doubleSparseSolverTests
             var tmpMAlias = u; // tmpM aliases u (both length m)
             Assert.Throws<ArgumentException>(() =>
                 Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpMAlias, ref tmpN, n, Consts.doubleSqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Lsmr_AliasingHAndHbar_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            int m = 5, n = 3;
+            var A = arena.doubleMat(m, n);
+            var b = arena.doubleRandomVec(m, -1f, 1f, 39401);
+            var x = arena.doubleVec(n);
+            var u = arena.doubleVec(m);
+            var v = arena.doubleVec(n);
+            var h = arena.doubleVec(n);
+            var tmpM = arena.doubleVec(m);
+            var tmpN = arena.doubleVec(n);
+            var hbarAlias = h; // hbar aliases h (both length n)
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbarAlias, ref tmpM, ref tmpN, n, Consts.doubleSqrtEps));
         }
         finally { arena.Dispose(); }
     }

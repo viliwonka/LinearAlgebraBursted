@@ -1348,6 +1348,246 @@ namespace LinearAlgebra
         {
             return lsqr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
         }
+
+        /// <summary>
+        /// Zero-alloc LSMR (Fong-Saunders 2011) solver for RECTANGULAR least-squares systems:
+        /// minimizes ‖Ax-b‖₂ for possibly non-square A, generic over
+        /// <see cref="IfProxyLinearOperator"/>. Built on the SAME Golub-Kahan bidiagonalization as
+        /// <see cref="lsqr{TOp}"/> (alternating <see cref="IfProxyLinearOperator.Apply"/> /
+        /// <see cref="IfProxyLinearOperator.ApplyT"/>), but folds it through a rotation sequence
+        /// equivalent to applying MINRES to the normal equations AᵀA x = Aᵀb -- so the
+        /// normal-equation residual ‖Aᵀrₖ‖ decreases MONOTONICALLY (it equals |ζ̄ₖ₊₁|, produced
+        /// for free by the recurrence). That makes LSMR's stopping test cleaner and its early
+        /// termination safer than LSQR's on ill-conditioned least-squares problems, at the same
+        /// O(n+m) memory and per-iteration cost (1 Apply + 1 ApplyT).
+        ///
+        /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
+        /// STARTABLE) and six scratch vectors: u, tmpM (length A.Rows) and v, h, hbar, tmpN
+        /// (length A.Cols). One more A.Cols-length vector than LSQR: LSMR carries both the
+        /// Golub-Kahan search direction h and the MINRES-folded direction hbar. Same convergence
+        /// contract as <see cref="cgls{TOp}"/> / <see cref="lsqr{TOp}"/>: converges when
+        /// ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖.
+        ///
+        /// Returns false on non-convergence or a bidiagonalization breakdown (a rotation radius
+        /// collapses to zero -- the Golub-Kahan recurrence exhausted). On a false return x is
+        /// undefined -- only read x when the call returns true.
+        /// </summary>
+        public static bool lsmr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                     ref fProxyN u, ref fProxyN v, ref fProxyN h,
+                                     ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
+                                     int maxIterations, fProxy tolerance)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            if (b.N != A.Rows) throw new ArgumentException("lsmr: b.N must equal A.Rows");
+            if (x.N != A.Cols) throw new ArgumentException("lsmr: x.N must equal A.Cols");
+            if (u.N != A.Rows) throw new ArgumentException("lsmr: u.N must equal A.Rows");
+            if (tmpM.N != A.Rows) throw new ArgumentException("lsmr: tmpM.N must equal A.Rows");
+            if (v.N != A.Cols) throw new ArgumentException("lsmr: v.N must equal A.Cols");
+            if (h.N != A.Cols) throw new ArgumentException("lsmr: h.N must equal A.Cols");
+            if (hbar.N != A.Cols) throw new ArgumentException("lsmr: hbar.N must equal A.Cols");
+            if (tmpN.N != A.Cols) throw new ArgumentException("lsmr: tmpN.N must equal A.Cols");
+
+            if (maxIterations < 1)
+                throw new ArgumentException("lsmr: maxIterations must be >= 1");
+
+            unsafe
+            {
+                long* ptrs = stackalloc long[8];
+                ptrs[0] = (long)u.Data.Ptr; ptrs[1] = (long)v.Data.Ptr; ptrs[2] = (long)h.Data.Ptr;
+                ptrs[3] = (long)hbar.Data.Ptr; ptrs[4] = (long)tmpM.Data.Ptr; ptrs[5] = (long)tmpN.Data.Ptr;
+                ptrs[6] = (long)x.Data.Ptr; ptrs[7] = (long)b.Data.Ptr;
+                RequireDistinctBuffers("lsmr: u/v/h/hbar/tmpM/tmpN/x/b must be distinct", ptrs, 8);
+            }
+
+            // Fixed scale reference for the relative tolerance (identical contract to lsqr/cgls).
+            A.ApplyT(in b, ref tmpN);
+            fProxy atbSq = Linear_OP.dot(tmpN, tmpN);
+
+            if (atbSq == (fProxy)0)
+            {
+                for (int i = 0; i < x.N; i++) x[i] = (fProxy)0;
+                return true;
+            }
+
+            fProxy threshold = tolerance * tolerance * atbSq;
+
+            // u = b - A x ; beta = ||u||   (warm-startable: bidiagonalize the residual)
+            A.Apply(in x, ref tmpM);
+            u.Data.CopyFrom(b.Data);
+            u.addScaledInpl((fProxy)(-1), tmpM);
+
+            fProxy beta = math.sqrt(Linear_OP.dot(u, u));
+
+            if (beta == (fProxy)0)
+                return true; // x already exact (r = 0)
+
+            u.divInpl(beta);
+
+            // v = A^T u ; alpha = ||v||
+            A.ApplyT(in u, ref tmpN);
+            v.Data.CopyFrom(tmpN.Data);
+
+            fProxy alpha = math.sqrt(Linear_OP.dot(v, v));
+
+            if (alpha == (fProxy)0)
+                return true; // x already least-squares-stationary (A^T r = 0)
+
+            v.divInpl(alpha);
+
+            // ||A^T r_0|| = alpha*beta = |zetabar_1|; matches lsqr's pre-loop early-out.
+            if ((alpha * beta) * (alpha * beta) <= threshold)
+                return true;
+
+            // h = v ; hbar = 0
+            h.Data.CopyFrom(v.Data);
+            for (int i = 0; i < hbar.N; i++) hbar[i] = (fProxy)0;
+
+            // MINRES-on-normal-equations rotation state.
+            fProxy alphabar = alpha;
+            fProxy zetabar  = alpha * beta;
+            fProxy rho = (fProxy)1, rhobar = (fProxy)1, cbar = (fProxy)1, sbar = (fProxy)0;
+
+            for (int k = 0; k < maxIterations; k++)
+            {
+                // ---- bidiagonalization step (Golub-Kahan) ----
+                A.Apply(in v, ref tmpM);
+                u.scaleAddInpl(-alpha, tmpM);              // u = A v - alpha u
+                beta = math.sqrt(Linear_OP.dot(u, u));
+                if (beta > (fProxy)0)
+                {
+                    u.divInpl(beta);
+                    A.ApplyT(in u, ref tmpN);
+                    v.scaleAddInpl(-beta, tmpN);            // v = A^T u - beta v
+                    alpha = math.sqrt(Linear_OP.dot(v, v));
+                    if (alpha > (fProxy)0) v.divInpl(alpha);
+                }
+
+                // ---- rotation P_k : (alphabar, beta) -> (rho, 0) ----
+                fProxy rhoold = rho;
+                rho = math.sqrt(alphabar * alphabar + beta * beta);
+                if (!(rho > (fProxy)0))
+                    break; // breakdown: alphabar and beta both zero
+                fProxy c = alphabar / rho;
+                fProxy s = beta / rho;
+                fProxy thetanew = s * alpha;
+                alphabar = c * alpha;
+
+                // ---- rotation Pbar_k : fold R^T into Rbar (the MINRES layer) ----
+                fProxy rhobarold = rhobar;
+                fProxy thetabar = sbar * rho;
+                fProxy cbarrho = cbar * rho;
+                rhobar = math.sqrt(cbarrho * cbarrho + thetanew * thetanew);
+                if (!(rhobar > (fProxy)0))
+                    break; // breakdown
+                cbar = cbarrho / rhobar;
+                sbar = thetanew / rhobar;
+                fProxy zeta = cbar * zetabar;
+                zetabar = -sbar * zetabar;
+
+                // ---- updates: hbar, x, h ----
+                // hbar = h - (thetabar*rho / (rhoold*rhobarold)) * hbar
+                fProxy coefHbar = thetabar * rho / (rhoold * rhobarold);
+                hbar.scaleAddInpl(-coefHbar, h);           // hbar = -coefHbar*hbar + h
+                // x = x + (zeta / (rho*rhobar)) * hbar
+                x.addScaledInpl(zeta / (rho * rhobar), hbar);
+                // h = v - (thetanew/rho) * h
+                h.scaleAddInpl(-thetanew / rho, v);         // h = -(thetanew/rho)*h + v
+
+                // ‖A^T r_k‖ = |zetabar| falls out for free and decreases monotonically.
+                if (zetabar * zetabar <= threshold)
+                    return true;
+
+                if (!(beta > (fProxy)0) || !(alpha > (fProxy)0)) // NaN-safe: both are norms, nonnegative
+                    break; // bidiagonalization breakdown: Krylov space exhausted, no further progress
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// LSMR over a dense <see cref="fProxyMxN"/> (possibly rectangular) -- zero-alloc
+        /// primitive. Forwards into <see cref="lsmr{TOp}"/> via <see cref="fProxyDenseOperator"/>.
+        /// </summary>
+        public static bool lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x,
+                                ref fProxyN u, ref fProxyN v, ref fProxyN h,
+                                ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
+                                int maxIterations, fProxy tolerance)
+        {
+            return lsmr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>LSMR over a dense matrix -- allocates six scratch vectors from the arena.</summary>
+        public static bool lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            fProxyN u    = b.tempfProxyVec(A.M_Rows);
+            fProxyN v    = b.tempfProxyVec(A.N_Cols);
+            fProxyN h    = b.tempfProxyVec(A.N_Cols);
+            fProxyN hbar = b.tempfProxyVec(A.N_Cols);
+            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
+            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            return lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>LSMR over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x)
+        {
+            return lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+        }
+
+        /// <summary>
+        /// LSMR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
+        /// Forwards into <see cref="lsmr{TOp}"/> via <c>fProxyBSMOperator</c>. Matrix-free least
+        /// squares over a sparse Jacobian-like operator, never forming AᵀA, with LSMR's monotone
+        /// ‖Aᵀr‖ decrease (see the generic overload).
+        /// </summary>
+        public static bool lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+                                ref fProxyN u, ref fProxyN v, ref fProxyN h,
+                                ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
+                                int maxIterations, fProxy tolerance)
+        {
+            return lsmr(new fProxyBSMOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// LSMR over a (possibly rectangular) BSR matrix -- zero-alloc primitive that takes a
+        /// CALLER-PROVIDED precomputed transpose AT (e.g. <c>arena.fProxyBSMTranspose(in A)</c>
+        /// built once outside a hot loop) and routes every ApplyT through the cache-friendly
+        /// forward spMV(AT, x) instead of on-the-fly spMVT(A, x) -- see
+        /// <see cref="fProxyBSMOperator"/>'s two-arg ctor. Caller is responsible for AT being A's
+        /// transpose; this overload does not verify it.
+        /// </summary>
+        public static bool lsmr(in fProxyBSM A, in fProxyBSM AT, in fProxyN b, ref fProxyN x,
+                                ref fProxyN u, ref fProxyN v, ref fProxyN h,
+                                ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
+                                int maxIterations, fProxy tolerance)
+        {
+            return lsmr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// LSMR over a BSR matrix -- allocates six scratch vectors AND materializes A^T ONCE via
+        /// <c>arena.fProxyBSMTranspose</c>, then drives LSMR with the two-arg
+        /// <see cref="fProxyBSMOperator"/> so every ApplyT routes through a cache-friendly forward
+        /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
+        /// zero-alloc AT overload above with your own scratch vectors.
+        /// </summary>
+        public static bool lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            fProxyN u    = b.tempfProxyVec(A.M_Rows);
+            fProxyN v    = b.tempfProxyVec(A.N_Cols);
+            fProxyN h    = b.tempfProxyVec(A.N_Cols);
+            fProxyN hbar = b.tempfProxyVec(A.N_Cols);
+            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
+            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            return lsmr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>LSMR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        {
+            return lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+        }
     }
 
 }
