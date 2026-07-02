@@ -41,6 +41,11 @@ public class fProxyEigenTests
             PowerSymmetricCrossCheck,
             PowerComplexPair,
             PowerZeroMatrix,
+            // powerIteration / inversePowerIteration EigenSolveInfo field assertions
+            PowerConvergedInfo,
+            PowerMaxIterationsInfo,
+            InversePowerBreakdownInfo,
+            InversePowerConvergedInfo,
             // eigenvaluesSymmetric
             EvSymIdentity,
             EvSymDiagonal,
@@ -121,6 +126,18 @@ public class fProxyEigenTests
                     break;
                 case TestType.PowerZeroMatrix:
                     PowerZeroMatrix();
+                    break;
+                case TestType.PowerConvergedInfo:
+                    PowerConvergedInfo();
+                    break;
+                case TestType.PowerMaxIterationsInfo:
+                    PowerMaxIterationsInfo();
+                    break;
+                case TestType.InversePowerBreakdownInfo:
+                    InversePowerBreakdownInfo();
+                    break;
+                case TestType.InversePowerConvergedInfo:
+                    InversePowerConvergedInfo();
                     break;
                 case TestType.EvSymIdentity:
                     EvSymIdentity();
@@ -871,6 +888,162 @@ public class fProxyEigenTests
         }
 
         // ---------------------------------------------------------------------
+        // EigenSolveInfo field assertions (the NEW diagnostics struct the eigensolvers
+        // now return alongside `out fProxy lambda`). These pin the FIELD VALUES, not just
+        // the implicit-bool success test: status, residual, and iterations. A regression
+        // that hard-coded status = Converged or reported a wrong/NaN residual would slip
+        // past the pre-existing bool-only tests but is caught here.
+        // ---------------------------------------------------------------------
+
+        // powerIteration CONVERGED-field check. Reuses PowerDiagonalDominant's converging setup
+        // (diag(5,3,1,0.5), well-separated dominant eigenvalue 5). Beyond Solved, assert the
+        // reported residual is the SAME infinity-norm the loop's convergence test used -- i.e.
+        // finite, non-negative, and <= tol*max(1,|lambda|) (the exact criterion the algorithm
+        // returns Converged on) -- and that at least one iteration was counted.
+        public void PowerConvergedInfo()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 4;
+
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = (fProxy)5;
+            A[1, 1] = (fProxy)3;
+            A[2, 2] = (fProxy)1;
+            A[3, 3] = (fProxy)0.5;
+
+            var v = arena.fProxyVec(n);   // zero -> deterministic seeding
+            var w = arena.fProxyVec(n);
+
+            fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
+            var info = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 1000);
+
+            // Converged, three equivalent ways (implicit bool, Solved property, status enum).
+            AssertTrue((bool)info, (fProxy)1);
+            AssertTrue(info.Solved, (fProxy)2);
+            AssertTrue(info.status == IterativeSolveStatus.Converged, (fProxy)3);
+
+            // residual is finite, non-negative, and satisfies the documented convergence bound
+            // r <= tol*max(1,|lambda|). Reproduce the scale in fProxy exactly as the algorithm
+            // does, then widen -- so this is bit-for-bit the criterion the Converged return used.
+            AssertTrue(Unity.Mathematics.math.isfinite(info.residual), (fProxy)4);
+            AssertTrue(info.residual >= 0.0, (fProxy)5);
+
+            fProxy fscale = Unity.Mathematics.math.abs(lambda);
+            if (fscale < (fProxy)1) fscale = (fProxy)1;
+            double limit = (double)(tol * fscale);
+            AssertTrue(info.residual <= limit, (fProxy)6);
+
+            // Converged counts the converging iteration too -> iterations >= 1.
+            AssertTrue(info.iterations >= 1, (fProxy)7);
+
+            arena.Dispose();
+        }
+
+        // powerIteration MAX-ITERATIONS field check (deterministic non-convergence). The 2x2 real
+        // rotation [[0,-1],[1,0]] has the complex conjugate pair +-i as its dominant eigenvalue, so
+        // power iteration provably CANNOT converge (documented in powerIteration's XML notes). It
+        // must exhaust maxIter and report MaxIterations -- assert !Solved, status == MaxIterations,
+        // and iterations == maxIter exactly.
+        public void PowerMaxIterationsInfo()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 2;
+
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = (fProxy)0; A[0, 1] = (fProxy)(-1);
+            A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)0;
+
+            var v = arena.fProxyVec(n);
+            var w = arena.fProxyVec(n);
+
+            int maxIter = 200;
+            fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
+            var info = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, maxIter);
+
+            AssertTrue(!info, (fProxy)1);          // implicit bool: false
+            AssertTrue(!info.Solved, (fProxy)2);
+            AssertTrue(info.status == IterativeSolveStatus.MaxIterations, (fProxy)3);
+            AssertTrue(info.iterations == maxIter, (fProxy)4);
+            // residual on a MaxIterations return is still the finite last-iterate residual (NOT NaN).
+            AssertTrue(Unity.Mathematics.math.isfinite(info.residual), (fProxy)5);
+
+            arena.Dispose();
+        }
+
+        // inversePowerIteration BREAKDOWN field check (deterministic). A = diag(1,-1) is INDEFINITE
+        // (not SPD), so the inner CG solve hits non-positive curvature (p.Ap < 0) on its very first
+        // step and breaks down; inverse iteration then bails out reporting Breakdown. The
+        // deterministic seed (1,2)/sqrt5 makes p.Ap = 1/5 - 4/5 = -3/5 < 0 with certainty. Assert
+        // !Solved, status == Breakdown, and residual == NaN (the documented Breakdown residual).
+        public void InversePowerBreakdownInfo()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 2;
+
+            var A = arena.fProxyMat(n, n);
+            A[0, 0] = (fProxy)1; A[1, 1] = (fProxy)(-1);   // indefinite -> CG breakdown
+
+            var v = arena.fProxyVec(n);   // zero -> deterministic (1,2) seeding
+
+            var info = Eigen.inversePowerIteration(in A, ref v, out fProxy lambda);
+
+            AssertTrue(!info, (fProxy)1);          // implicit bool: false
+            AssertTrue(!info.Solved, (fProxy)2);
+            AssertTrue(info.status == IterativeSolveStatus.Breakdown, (fProxy)3);
+            // residual is double.NaN on a Breakdown return. Use the Burst-safe double isnan overload
+            // (self-inequality residual != residual is an equally valid check under FloatMode.Default).
+            AssertTrue(Unity.Mathematics.math.isnan(info.residual), (fProxy)4);
+
+            arena.Dispose();
+        }
+
+        // inversePowerIteration CONVERGED-residual check on an SPD operator that converges. The 1D
+        // Laplacian (tridiagonal 2,-1) is SPD with well-separated small eigenvalues, so inverse
+        // iteration converges reliably (same fixture family the sparse InverseLaplacianCrossCheck
+        // uses). Assert Solved, and that the reported residual is finite, non-negative, and bounded.
+        // Inverse iteration's residual bottoms out near cgTol (the inner CG's floor, not machine
+        // epsilon), so the bound is a generous cgTol-anchored multiple scaled by max(1,|lambda|) --
+        // NOT the tight Consts.fProxyZeroThreshold bands the pure-matvec powerIteration uses. This
+        // still catches an O(1)/NaN residual regression while staying above the honest cgTol floor.
+        public void InversePowerConvergedInfo()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 12;
+
+            var A = arena.fProxyLaplacian1D(n);
+
+            // tol a multiple of cgTol (see inversePowerIteration's doc comment): consecutive
+            // eigenpair estimates each come from a fresh CG solve accurate only to ~cgTol.
+            fProxy cgTol = Consts.fProxySqrtEps;
+            fProxy tol = (fProxy)10 * cgTol;
+
+            var v = arena.fProxyVec(n);   // zero -> deterministic seeding
+
+            var info = Eigen.inversePowerIteration(in A, ref v, out fProxy lambda, tol, 200, n, cgTol);
+
+            AssertTrue(info.Solved, (fProxy)1);
+            AssertTrue(info.status == IterativeSolveStatus.Converged, (fProxy)2);
+
+            AssertTrue(Unity.Mathematics.math.isfinite(info.residual), (fProxy)3);
+            AssertTrue(info.residual >= 0.0, (fProxy)4);
+
+            // residual bottoms near cgTol; bound by a generous cgTol-anchored multiple (auto-scaled
+            // per numeric type via Consts.fProxySqrtEps), scaled by max(1,|lambda|).
+            fProxy fscale = Unity.Mathematics.math.abs(lambda);
+            if (fscale < (fProxy)1) fscale = (fProxy)1;
+            double limit = (double)((fProxy)5000 * cgTol * fscale);
+            AssertTrue(info.residual <= limit, (fProxy)5);
+
+            AssertTrue(info.iterations >= 1, (fProxy)6);
+
+            arena.Dispose();
+        }
+
+        // ---------------------------------------------------------------------
         // eigenvaluesSymmetric tests (Householder tridiagonalization + implicit-shift QL)
         // ---------------------------------------------------------------------
 
@@ -1536,6 +1709,21 @@ public class fProxyEigenTests
                 Fail[3] = (fProxy)0;
             }
             Assert.IsTrue(Unity.Mathematics.math.isfinite(v));
+        }
+
+        // Boolean-condition assert with a distinguishing `code` recorded in Fail[1] (so a silent
+        // Burst abort is still diagnosable). Mirrors fProxySparseEigenTests.AssertTrue; used by the
+        // EigenSolveInfo field checks, where the value under test is an enum/bool, not a magnitude.
+        private void AssertTrue(bool cond, fProxy code)
+        {
+            if (!cond && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = code;
+                Fail[2] = (fProxy)0;
+                Fail[3] = (fProxy)0;
+            }
+            Assert.IsTrue(cond);
         }
 
     }

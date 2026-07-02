@@ -425,13 +425,13 @@ public class fProxySparseEigenTests
             var ARef   = arena.fProxyLaplacian1D(n);   // independent copy; destroyed by eigenvaluesSymmetric below
 
             // Full spectrum: steps == n.
-            var eigDense = Eigen.lanczos(ref arena, in Adense, n, out int producedDense, out bool convDense);
-            AssertTrue(convDense, (fProxy)1);
-            AssertTrue(producedDense == n, (fProxy)2);
+            var eigDense = Eigen.lanczos(ref arena, in Adense, n, out LanczosInfo infoDense);
+            AssertTrue(infoDense, (fProxy)1);
+            AssertTrue(infoDense.produced == n, (fProxy)2);
 
-            var eigBsm = Eigen.lanczos(ref arena, in bsm, n, out int producedBsm, out bool convBsm);
-            AssertTrue(convBsm, (fProxy)3);
-            AssertTrue(producedBsm == n, (fProxy)4);
+            var eigBsm = Eigen.lanczos(ref arena, in bsm, n, out LanczosInfo infoBsm);
+            AssertTrue(infoBsm, (fProxy)3);
+            AssertTrue(infoBsm.produced == n, (fProxy)4);
 
             // Trusted dense reference spectrum on the independent copy.
             var eigRef = arena.fProxyVec(n);
@@ -470,9 +470,9 @@ public class fProxySparseEigenTests
             int steps = n / 2;   // 8
             var A = arena.fProxyLaplacian1D(n);
 
-            var eig = Eigen.lanczos(ref arena, in A, steps, out int produced, out bool converged);
-            AssertTrue(converged, (fProxy)1);
-            AssertTrue(produced == steps, (fProxy)2);
+            var eig = Eigen.lanczos(ref arena, in A, steps, out LanczosInfo info);
+            AssertTrue(info, (fProxy)1);
+            AssertTrue(info.produced == steps, (fProxy)2);
 
             // Largest Ritz value (index 0) vs closed-form k = n.
             double lamMaxD = 2.0 - 2.0 * math.cos(n * math.PI_DBL / (n + 1));
@@ -482,7 +482,7 @@ public class fProxySparseEigenTests
             // Smallest Ritz value (index produced-1) vs closed-form k = 1.
             double lamMinD = 2.0 - 2.0 * math.cos(1.0 * math.PI_DBL / (n + 1));
             fProxy scaleMin = (fProxy)1 + math.abs((fProxy)lamMinD);
-            AssertClose(eig[produced - 1], (fProxy)lamMinD, PartialExtremalTol() * scaleMin);
+            AssertClose(eig[info.produced - 1], (fProxy)lamMinD, PartialExtremalTol() * scaleMin);
 
             arena.Dispose();
         }
@@ -502,15 +502,15 @@ public class fProxySparseEigenTests
             var Adense = arena.fProxyLaplacian1D(n);
             var bsm    = DenseToBSM1x1(ref arena, in Adense, 3 * n);
 
-            var eigDense = Eigen.lanczos(ref arena, in Adense, steps, out int producedDense, out bool convDense);
-            AssertTrue(convDense, (fProxy)1);
+            var eigDense = Eigen.lanczos(ref arena, in Adense, steps, out LanczosInfo infoDense);
+            AssertTrue(infoDense, (fProxy)1);
 
-            var eigBsm = Eigen.lanczos(ref arena, in bsm, steps, out int producedBsm, out bool convBsm);
-            AssertTrue(convBsm, (fProxy)2);
+            var eigBsm = Eigen.lanczos(ref arena, in bsm, steps, out LanczosInfo infoBsm);
+            AssertTrue(infoBsm, (fProxy)2);
 
-            AssertTrue(producedDense == producedBsm, (fProxy)3);
+            AssertTrue(infoDense.produced == infoBsm.produced, (fProxy)3);
 
-            for (int i = 0; i < producedDense; i++)
+            for (int i = 0; i < infoDense.produced; i++)
             {
                 fProxy scale = (fProxy)1 + math.abs(eigDense[i]);
                 AssertClose(eigDense[i], eigBsm[i], LooseTol() * scale);
@@ -548,9 +548,14 @@ public class fProxySparseEigenTests
             fProxy bTol = BreakdownTol();
 
             // --- dense path ---
-            var eig = Eigen.lanczos(ref arena, in A, steps, out int produced, out bool converged, bTol);
+            var eig = Eigen.lanczos(ref arena, in A, steps, out LanczosInfo info, bTol);
 
-            AssertTrue(produced == 2, (fProxy)1);                 // breakdown detected at the true grade
+            AssertTrue(info.produced == 2, (fProxy)1);            // breakdown detected at the true grade
+            // An early invariant-subspace breakdown is NOT a failure: LanczosInfo still reports
+            // Converged (the inner tridiagonal QL converged), only with produced < steps Ritz values.
+            AssertTrue(info, (fProxy)6);                          // implicit bool: Solved
+            AssertTrue(info.status == IterativeSolveStatus.Converged, (fProxy)7);
+            AssertTrue(info.produced < steps, (fProxy)8);         // fewer Ritz values than requested
             AssertClose(eig[0], (fProxy)0.7, BreakdownRitzTol()); // real Ritz values reproduce the
             AssertClose(eig[1], (fProxy)0.2, BreakdownRitzTol()); // two distinct eigenvalues, descending
 
@@ -564,9 +569,12 @@ public class fProxySparseEigenTests
 
             // --- sparse (1x1-BSM) path: same operator, same breakdown, same real Ritz values ---
             var bsm = DenseToBSM1x1(ref arena, in A, n);
-            var eigB = Eigen.lanczos(ref arena, in bsm, steps, out int producedB, out bool convB, bTol);
+            var eigB = Eigen.lanczos(ref arena, in bsm, steps, out LanczosInfo infoB, bTol);
 
-            AssertTrue(producedB == 2, (fProxy)5);
+            AssertTrue(infoB.produced == 2, (fProxy)5);
+            AssertTrue(infoB, (fProxy)9);                         // Solved despite breakdown
+            AssertTrue(infoB.status == IterativeSolveStatus.Converged, (fProxy)10);
+            AssertTrue(infoB.produced < steps, (fProxy)11);
             AssertClose(eigB[0], (fProxy)0.7, BreakdownRitzTol());
             AssertClose(eigB[1], (fProxy)0.2, BreakdownRitzTol());
 
@@ -630,12 +638,12 @@ public class fProxySparseEigenTests
             int n = 12;
             var A = arena.fProxyLaplacian1D(n);
 
-            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out int produced, out bool conv);
-            AssertTrue(conv, (fProxy)1);
-            AssertTrue(produced == n, (fProxy)2);
+            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out LanczosInfo info);
+            AssertTrue(info, (fProxy)1);
+            AssertTrue(info.produced == n, (fProxy)2);
 
             var v = arena.fProxyVec(n);
-            for (int i = 0; i < produced; i++)
+            for (int i = 0; i < info.produced; i++)
             {
                 for (int c = 0; c < n; c++) v[c] = ritz[i, c];
 
@@ -658,8 +666,8 @@ public class fProxySparseEigenTests
             }
 
             // pairwise orthogonality of the Ritz vectors
-            for (int i = 0; i < produced; i++)
-                for (int j = i + 1; j < produced; j++)
+            for (int i = 0; i < info.produced; i++)
+                for (int j = i + 1; j < info.produced; j++)
                 {
                     fProxy d = (fProxy)0;
                     for (int c = 0; c < n; c++) d += ritz[i, c] * ritz[j, c];
@@ -680,15 +688,15 @@ public class fProxySparseEigenTests
             var Adense = arena.fProxyLaplacian1D(n);
             var bsm    = DenseToBSM1x1(ref arena, in Adense, 3 * n);
 
-            var eigD = Eigen.lanczosVectors(ref arena, in Adense, n, out var ritzD, out int prodD, out bool convD);
-            AssertTrue(convD, (fProxy)1);
-            var eigB = Eigen.lanczosVectors(ref arena, in bsm, n, out var ritzB, out int prodB, out bool convB);
-            AssertTrue(convB, (fProxy)2);
-            AssertTrue(prodD == prodB, (fProxy)3);
+            var eigD = Eigen.lanczosVectors(ref arena, in Adense, n, out var ritzD, out LanczosInfo infoD);
+            AssertTrue(infoD, (fProxy)1);
+            var eigB = Eigen.lanczosVectors(ref arena, in bsm, n, out var ritzB, out LanczosInfo infoB);
+            AssertTrue(infoB, (fProxy)2);
+            AssertTrue(infoD.produced == infoB.produced, (fProxy)3);
 
             var vD = arena.fProxyVec(n);
             var vB = arena.fProxyVec(n);
-            for (int i = 0; i < prodD; i++)
+            for (int i = 0; i < infoD.produced; i++)
             {
                 fProxy scale = (fProxy)1 + math.abs(eigD[i]);
                 AssertClose(eigD[i], eigB[i], LooseTol() * scale);
@@ -726,14 +734,14 @@ public class fProxySparseEigenTests
             var eig = arena.fProxyVec(steps);
             var ritz = arena.fProxyMat(steps, n);
 
-            bool ok = Eigen.lanczosVectors(new fProxyDenseOperator(in A), ref ws, ref Yt, ref eig, ref ritz,
-                                           out int produced, steps, BreakdownTol());
-            AssertTrue(ok, (fProxy)1);
-            AssertTrue(produced == 2, (fProxy)2);                 // grade-2 breakdown before steps
+            LanczosInfo info = Eigen.lanczosVectors(new fProxyDenseOperator(in A), ref ws, ref Yt, ref eig, ref ritz,
+                                           steps, BreakdownTol());
+            AssertTrue(info, (fProxy)1);
+            AssertTrue(info.produced == 2, (fProxy)2);            // grade-2 breakdown before steps
 
             // The two produced Ritz vectors are exact eigenpairs: unit norm + zero residual.
             var v = arena.fProxyVec(n);
-            for (int i = 0; i < produced; i++)
+            for (int i = 0; i < info.produced; i++)
             {
                 for (int c = 0; c < n; c++) v[c] = ritz[i, c];
 
@@ -752,7 +760,7 @@ public class fProxySparseEigenTests
             }
 
             // Fail-loud contract: rows [produced, steps) are zeroed, NOT arena garbage.
-            for (int i = produced; i < steps; i++)
+            for (int i = info.produced; i < steps; i++)
                 for (int c = 0; c < n; c++)
                     AssertClose(ritz[i, c], (fProxy)0, (fProxy)0);
 
@@ -773,9 +781,9 @@ public class fProxySparseEigenTests
             int n = 8;
             var A = arena.fProxyLaplacian1D(n);
 
-            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out int produced, out bool conv);
-            AssertTrue(conv, (fProxy)1);
-            AssertTrue(produced == n, (fProxy)2);
+            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out LanczosInfo info);
+            AssertTrue(info, (fProxy)1);
+            AssertTrue(info.produced == n, (fProxy)2);
 
             var vk = arena.fProxyVec(n);   // analytic eigenvector for the current mode
             var vr = arena.fProxyVec(n);   // Ritz vector (row i of ritz)
@@ -1058,7 +1066,7 @@ public class fProxySparseEigenTests
             var eig = arena.fProxyVec(1);
             // Square guard fires before the workspace/eigenvalues shape is examined.
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 1));
+                Eigen.lanczos(in A, ref ws, ref eig, 1));
         }
         finally { arena.Dispose(); }
     }
@@ -1078,7 +1086,7 @@ public class fProxySparseEigenTests
             var ws = arena.fProxyLanczos_WS(A.M_Rows, 1);  // n = 4, steps = 1
             var eig = arena.fProxyVec(1);
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 1));
+                Eigen.lanczos(in A, ref ws, ref eig, 1));
         }
         finally { arena.Dispose(); }
     }
@@ -1094,7 +1102,7 @@ public class fProxySparseEigenTests
             var eig = arena.fProxyVec(1);
             // steps = 0 < 1: the [1, A.Rows] guard fires before workspace/eigenvalues are checked.
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 0));
+                Eigen.lanczos(in A, ref ws, ref eig, 0));
         }
         finally { arena.Dispose(); }
     }
@@ -1110,7 +1118,7 @@ public class fProxySparseEigenTests
             var eig = arena.fProxyVec(5);
             // steps = 5 > A.Rows = 4: the [1, A.Rows] guard fires.
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 5));
+                Eigen.lanczos(in A, ref ws, ref eig, 5));
         }
         finally { arena.Dispose(); }
     }
@@ -1126,7 +1134,7 @@ public class fProxySparseEigenTests
             var eig = arena.fProxyVec(2);
             // breakdownTol < 0: guard fires (this is the breakdownTol-taking overload).
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 2, (fProxy)(-1)));
+                Eigen.lanczos(in A, ref ws, ref eig, 2, (fProxy)(-1)));
         }
         finally { arena.Dispose(); }
     }

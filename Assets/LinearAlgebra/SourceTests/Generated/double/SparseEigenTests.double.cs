@@ -425,13 +425,13 @@ public class doubleSparseEigenTests
             var ARef   = arena.doubleLaplacian1D(n);   // independent copy; destroyed by eigenvaluesSymmetric below
 
             // Full spectrum: steps == n.
-            var eigDense = Eigen.lanczos(ref arena, in Adense, n, out int producedDense, out bool convDense);
-            AssertTrue(convDense, (double)1);
-            AssertTrue(producedDense == n, (double)2);
+            var eigDense = Eigen.lanczos(ref arena, in Adense, n, out LanczosInfo infoDense);
+            AssertTrue(infoDense, (double)1);
+            AssertTrue(infoDense.produced == n, (double)2);
 
-            var eigBsm = Eigen.lanczos(ref arena, in bsm, n, out int producedBsm, out bool convBsm);
-            AssertTrue(convBsm, (double)3);
-            AssertTrue(producedBsm == n, (double)4);
+            var eigBsm = Eigen.lanczos(ref arena, in bsm, n, out LanczosInfo infoBsm);
+            AssertTrue(infoBsm, (double)3);
+            AssertTrue(infoBsm.produced == n, (double)4);
 
             // Trusted dense reference spectrum on the independent copy.
             var eigRef = arena.doubleVec(n);
@@ -470,9 +470,9 @@ public class doubleSparseEigenTests
             int steps = n / 2;   // 8
             var A = arena.doubleLaplacian1D(n);
 
-            var eig = Eigen.lanczos(ref arena, in A, steps, out int produced, out bool converged);
-            AssertTrue(converged, (double)1);
-            AssertTrue(produced == steps, (double)2);
+            var eig = Eigen.lanczos(ref arena, in A, steps, out LanczosInfo info);
+            AssertTrue(info, (double)1);
+            AssertTrue(info.produced == steps, (double)2);
 
             // Largest Ritz value (index 0) vs closed-form k = n.
             double lamMaxD = 2.0 - 2.0 * math.cos(n * math.PI_DBL / (n + 1));
@@ -482,7 +482,7 @@ public class doubleSparseEigenTests
             // Smallest Ritz value (index produced-1) vs closed-form k = 1.
             double lamMinD = 2.0 - 2.0 * math.cos(1.0 * math.PI_DBL / (n + 1));
             double scaleMin = (double)1 + math.abs((double)lamMinD);
-            AssertClose(eig[produced - 1], (double)lamMinD, PartialExtremalTol() * scaleMin);
+            AssertClose(eig[info.produced - 1], (double)lamMinD, PartialExtremalTol() * scaleMin);
 
             arena.Dispose();
         }
@@ -502,15 +502,15 @@ public class doubleSparseEigenTests
             var Adense = arena.doubleLaplacian1D(n);
             var bsm    = DenseToBSM1x1(ref arena, in Adense, 3 * n);
 
-            var eigDense = Eigen.lanczos(ref arena, in Adense, steps, out int producedDense, out bool convDense);
-            AssertTrue(convDense, (double)1);
+            var eigDense = Eigen.lanczos(ref arena, in Adense, steps, out LanczosInfo infoDense);
+            AssertTrue(infoDense, (double)1);
 
-            var eigBsm = Eigen.lanczos(ref arena, in bsm, steps, out int producedBsm, out bool convBsm);
-            AssertTrue(convBsm, (double)2);
+            var eigBsm = Eigen.lanczos(ref arena, in bsm, steps, out LanczosInfo infoBsm);
+            AssertTrue(infoBsm, (double)2);
 
-            AssertTrue(producedDense == producedBsm, (double)3);
+            AssertTrue(infoDense.produced == infoBsm.produced, (double)3);
 
-            for (int i = 0; i < producedDense; i++)
+            for (int i = 0; i < infoDense.produced; i++)
             {
                 double scale = (double)1 + math.abs(eigDense[i]);
                 AssertClose(eigDense[i], eigBsm[i], LooseTol() * scale);
@@ -548,9 +548,14 @@ public class doubleSparseEigenTests
             double bTol = BreakdownTol();
 
             // --- dense path ---
-            var eig = Eigen.lanczos(ref arena, in A, steps, out int produced, out bool converged, bTol);
+            var eig = Eigen.lanczos(ref arena, in A, steps, out LanczosInfo info, bTol);
 
-            AssertTrue(produced == 2, (double)1);                 // breakdown detected at the true grade
+            AssertTrue(info.produced == 2, (double)1);            // breakdown detected at the true grade
+            // An early invariant-subspace breakdown is NOT a failure: LanczosInfo still reports
+            // Converged (the inner tridiagonal QL converged), only with produced < steps Ritz values.
+            AssertTrue(info, (double)6);                          // implicit bool: Solved
+            AssertTrue(info.status == IterativeSolveStatus.Converged, (double)7);
+            AssertTrue(info.produced < steps, (double)8);         // fewer Ritz values than requested
             AssertClose(eig[0], (double)0.7, BreakdownRitzTol()); // real Ritz values reproduce the
             AssertClose(eig[1], (double)0.2, BreakdownRitzTol()); // two distinct eigenvalues, descending
 
@@ -564,9 +569,12 @@ public class doubleSparseEigenTests
 
             // --- sparse (1x1-BSM) path: same operator, same breakdown, same real Ritz values ---
             var bsm = DenseToBSM1x1(ref arena, in A, n);
-            var eigB = Eigen.lanczos(ref arena, in bsm, steps, out int producedB, out bool convB, bTol);
+            var eigB = Eigen.lanczos(ref arena, in bsm, steps, out LanczosInfo infoB, bTol);
 
-            AssertTrue(producedB == 2, (double)5);
+            AssertTrue(infoB.produced == 2, (double)5);
+            AssertTrue(infoB, (double)9);                         // Solved despite breakdown
+            AssertTrue(infoB.status == IterativeSolveStatus.Converged, (double)10);
+            AssertTrue(infoB.produced < steps, (double)11);
             AssertClose(eigB[0], (double)0.7, BreakdownRitzTol());
             AssertClose(eigB[1], (double)0.2, BreakdownRitzTol());
 
@@ -630,12 +638,12 @@ public class doubleSparseEigenTests
             int n = 12;
             var A = arena.doubleLaplacian1D(n);
 
-            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out int produced, out bool conv);
-            AssertTrue(conv, (double)1);
-            AssertTrue(produced == n, (double)2);
+            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out LanczosInfo info);
+            AssertTrue(info, (double)1);
+            AssertTrue(info.produced == n, (double)2);
 
             var v = arena.doubleVec(n);
-            for (int i = 0; i < produced; i++)
+            for (int i = 0; i < info.produced; i++)
             {
                 for (int c = 0; c < n; c++) v[c] = ritz[i, c];
 
@@ -658,8 +666,8 @@ public class doubleSparseEigenTests
             }
 
             // pairwise orthogonality of the Ritz vectors
-            for (int i = 0; i < produced; i++)
-                for (int j = i + 1; j < produced; j++)
+            for (int i = 0; i < info.produced; i++)
+                for (int j = i + 1; j < info.produced; j++)
                 {
                     double d = (double)0;
                     for (int c = 0; c < n; c++) d += ritz[i, c] * ritz[j, c];
@@ -680,15 +688,15 @@ public class doubleSparseEigenTests
             var Adense = arena.doubleLaplacian1D(n);
             var bsm    = DenseToBSM1x1(ref arena, in Adense, 3 * n);
 
-            var eigD = Eigen.lanczosVectors(ref arena, in Adense, n, out var ritzD, out int prodD, out bool convD);
-            AssertTrue(convD, (double)1);
-            var eigB = Eigen.lanczosVectors(ref arena, in bsm, n, out var ritzB, out int prodB, out bool convB);
-            AssertTrue(convB, (double)2);
-            AssertTrue(prodD == prodB, (double)3);
+            var eigD = Eigen.lanczosVectors(ref arena, in Adense, n, out var ritzD, out LanczosInfo infoD);
+            AssertTrue(infoD, (double)1);
+            var eigB = Eigen.lanczosVectors(ref arena, in bsm, n, out var ritzB, out LanczosInfo infoB);
+            AssertTrue(infoB, (double)2);
+            AssertTrue(infoD.produced == infoB.produced, (double)3);
 
             var vD = arena.doubleVec(n);
             var vB = arena.doubleVec(n);
-            for (int i = 0; i < prodD; i++)
+            for (int i = 0; i < infoD.produced; i++)
             {
                 double scale = (double)1 + math.abs(eigD[i]);
                 AssertClose(eigD[i], eigB[i], LooseTol() * scale);
@@ -726,14 +734,14 @@ public class doubleSparseEigenTests
             var eig = arena.doubleVec(steps);
             var ritz = arena.doubleMat(steps, n);
 
-            bool ok = Eigen.lanczosVectors(new doubleDenseOperator(in A), ref ws, ref Yt, ref eig, ref ritz,
-                                           out int produced, steps, BreakdownTol());
-            AssertTrue(ok, (double)1);
-            AssertTrue(produced == 2, (double)2);                 // grade-2 breakdown before steps
+            LanczosInfo info = Eigen.lanczosVectors(new doubleDenseOperator(in A), ref ws, ref Yt, ref eig, ref ritz,
+                                           steps, BreakdownTol());
+            AssertTrue(info, (double)1);
+            AssertTrue(info.produced == 2, (double)2);            // grade-2 breakdown before steps
 
             // The two produced Ritz vectors are exact eigenpairs: unit norm + zero residual.
             var v = arena.doubleVec(n);
-            for (int i = 0; i < produced; i++)
+            for (int i = 0; i < info.produced; i++)
             {
                 for (int c = 0; c < n; c++) v[c] = ritz[i, c];
 
@@ -752,7 +760,7 @@ public class doubleSparseEigenTests
             }
 
             // Fail-loud contract: rows [produced, steps) are zeroed, NOT arena garbage.
-            for (int i = produced; i < steps; i++)
+            for (int i = info.produced; i < steps; i++)
                 for (int c = 0; c < n; c++)
                     AssertClose(ritz[i, c], (double)0, (double)0);
 
@@ -773,9 +781,9 @@ public class doubleSparseEigenTests
             int n = 8;
             var A = arena.doubleLaplacian1D(n);
 
-            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out int produced, out bool conv);
-            AssertTrue(conv, (double)1);
-            AssertTrue(produced == n, (double)2);
+            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out LanczosInfo info);
+            AssertTrue(info, (double)1);
+            AssertTrue(info.produced == n, (double)2);
 
             var vk = arena.doubleVec(n);   // analytic eigenvector for the current mode
             var vr = arena.doubleVec(n);   // Ritz vector (row i of ritz)
@@ -1058,7 +1066,7 @@ public class doubleSparseEigenTests
             var eig = arena.doubleVec(1);
             // Square guard fires before the workspace/eigenvalues shape is examined.
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 1));
+                Eigen.lanczos(in A, ref ws, ref eig, 1));
         }
         finally { arena.Dispose(); }
     }
@@ -1078,7 +1086,7 @@ public class doubleSparseEigenTests
             var ws = arena.doubleLanczos_WS(A.M_Rows, 1);  // n = 4, steps = 1
             var eig = arena.doubleVec(1);
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 1));
+                Eigen.lanczos(in A, ref ws, ref eig, 1));
         }
         finally { arena.Dispose(); }
     }
@@ -1094,7 +1102,7 @@ public class doubleSparseEigenTests
             var eig = arena.doubleVec(1);
             // steps = 0 < 1: the [1, A.Rows] guard fires before workspace/eigenvalues are checked.
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 0));
+                Eigen.lanczos(in A, ref ws, ref eig, 0));
         }
         finally { arena.Dispose(); }
     }
@@ -1110,7 +1118,7 @@ public class doubleSparseEigenTests
             var eig = arena.doubleVec(5);
             // steps = 5 > A.Rows = 4: the [1, A.Rows] guard fires.
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 5));
+                Eigen.lanczos(in A, ref ws, ref eig, 5));
         }
         finally { arena.Dispose(); }
     }
@@ -1126,7 +1134,7 @@ public class doubleSparseEigenTests
             var eig = arena.doubleVec(2);
             // breakdownTol < 0: guard fires (this is the breakdownTol-taking overload).
             Assert.Throws<ArgumentException>(() =>
-                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 2, (double)(-1)));
+                Eigen.lanczos(in A, ref ws, ref eig, 2, (double)(-1)));
         }
         finally { arena.Dispose(); }
     }

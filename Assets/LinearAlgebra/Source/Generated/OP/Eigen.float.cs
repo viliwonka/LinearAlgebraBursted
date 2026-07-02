@@ -36,7 +36,10 @@ namespace LinearAlgebra
         /// v[i] = 1 + (i &amp; 3), then normalized before iterating.
         ///
         /// Convergence criterion: the infinity norm of the residual r = A*v - lambda*v
-        /// satisfies r &lt;= tol * max(1, |lambda|). Returns true on convergence.
+        /// satisfies r &lt;= tol * max(1, |lambda|). Returns an <see cref="EigenSolveInfo"/>
+        /// (implicit-bool == Converged) carrying that residual (widened to double) and the
+        /// iteration count; power iteration has no Breakdown status -- only Converged or
+        /// MaxIterations.
         ///
         /// Notes:
         ///   - Converges to the dominant eigenpair when |lambda_1| &gt; |lambda_2|;
@@ -44,13 +47,13 @@ namespace LinearAlgebra
         ///   - For a negative dominant eigenvalue the eigenvector sign may alternate
         ///     between iterations, but the residual still converges.
         ///   - When the dominant eigenvalue is a complex conjugate pair (e.g. rotation
-        ///     matrices) the iteration cannot converge and the method returns false after
-        ///     maxIter iterations.
+        ///     matrices) the iteration cannot converge and the method reports MaxIterations
+        ///     after maxIter iterations.
         ///   - Inputs of extreme magnitude (entries whose squares overflow the type) are
         ///     not rescaled in this version; keep element magnitudes moderate.
         ///   - Does not allocate.
         /// </summary>
-        public static bool powerIteration<TOp>(in TOp A, ref floatN v, ref floatN w,
+        public static EigenSolveInfo powerIteration<TOp>(in TOp A, ref floatN v, ref floatN w,
                                                out float lambda, float tol, int maxIter)
             where TOp : struct, IfloatLinearOperator
         {
@@ -121,7 +124,7 @@ namespace LinearAlgebra
                 if (scale < (float)1)
                     scale = (float)1;
                 if (residual <= tol * scale)
-                    return true;
+                    return new EigenSolveInfo { iterations = iter + 1, residual = (double)residual, status = IterativeSolveStatus.Converged };
 
                 // Step 5: compute ||w||_2; handle exact null-space case
                 float nw = (float)0;
@@ -131,7 +134,7 @@ namespace LinearAlgebra
 
                 if (nw == (float)0) {
                     lambda = (float)0;
-                    return true;
+                    return new EigenSolveInfo { iterations = iter + 1, residual = 0.0, status = IterativeSolveStatus.Converged };
                 }
 
                 // Step 6: v = w / ||w||
@@ -157,7 +160,13 @@ namespace LinearAlgebra
             float finalScale = math.abs(lambda);
             if (finalScale < (float)1)
                 finalScale = (float)1;
-            return finalResidual <= tol * finalScale;
+
+            bool finalOk = finalResidual <= tol * finalScale;
+            return new EigenSolveInfo {
+                iterations = maxIter,
+                residual = (double)finalResidual,
+                status = finalOk ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations
+            };
         }
 
         /// <summary>
@@ -166,19 +175,19 @@ namespace LinearAlgebra
         /// <see cref="floatDenseOperator"/> — see that method for the actual loop and the full
         /// algorithm documentation (deterministic seeding, convergence criterion, notes).
         /// </summary>
-        public static bool powerIteration(in floatMxN A, ref floatN v, ref floatN w,
+        public static EigenSolveInfo powerIteration(in floatMxN A, ref floatN v, ref floatN w,
                                           out float lambda, float tol, int maxIter)
         {
             return powerIteration(new floatDenseOperator(in A), ref v, ref w, out lambda, tol, maxIter);
         }
 
         /// <summary>powerIteration with default maxIter (1000).</summary>
-        public static bool powerIteration(in floatMxN A, ref floatN v, ref floatN w,
+        public static EigenSolveInfo powerIteration(in floatMxN A, ref floatN v, ref floatN w,
                                           out float lambda, float tol)
             => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
 
         /// <summary>powerIteration with default tol (Consts.floatZeroThreshold) and maxIter (1000).</summary>
-        public static bool powerIteration(in floatMxN A, ref floatN v, ref floatN w,
+        public static EigenSolveInfo powerIteration(in floatMxN A, ref floatN v, ref floatN w,
                                           out float lambda)
             => powerIteration(in A, ref v, ref w, out lambda, Consts.floatZeroThreshold, 1000);
 
@@ -188,14 +197,14 @@ namespace LinearAlgebra
         /// <see cref="powerIteration(in floatMxN, ref floatN, ref floatN, out float, float, int)"/>.
         /// Forwards into <see cref="powerIteration{TOp}"/> via <c>floatBSMOperator</c>.
         /// </summary>
-        public static bool powerIteration(in floatBSM A, ref floatN v, ref floatN w,
+        public static EigenSolveInfo powerIteration(in floatBSM A, ref floatN v, ref floatN w,
                                           out float lambda, float tol, int maxIter)
         {
             return powerIteration(new floatBSMOperator(in A), ref v, ref w, out lambda, tol, maxIter);
         }
 
         /// <summary>powerIteration over a block-sparse (BSR) matrix with default maxIter (1000).</summary>
-        public static bool powerIteration(in floatBSM A, ref floatN v, ref floatN w,
+        public static EigenSolveInfo powerIteration(in floatBSM A, ref floatN v, ref floatN w,
                                           out float lambda, float tol)
             => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
 
@@ -203,7 +212,7 @@ namespace LinearAlgebra
         /// powerIteration over a block-sparse (BSR) matrix with default tol
         /// (Consts.floatZeroThreshold) and maxIter (1000).
         /// </summary>
-        public static bool powerIteration(in floatBSM A, ref floatN v, ref floatN w,
+        public static EigenSolveInfo powerIteration(in floatBSM A, ref floatN v, ref floatN w,
                                           out float lambda)
             => powerIteration(in A, ref v, ref w, out lambda, Consts.floatZeroThreshold, 1000);
 
@@ -245,25 +254,29 @@ namespace LinearAlgebra
         /// infinity norm of v_new - v_old is &lt;= tol, where v_new is sign-aligned against v_old
         /// first (inverse iteration, like power iteration, can flip the eigenvector's sign between
         /// iterations); or (2) the Rayleigh quotient stabilizes -- |lambda_new - lambda_old| &lt;=
-        /// tol * max(1, |lambda_new|). Returns true on convergence within maxIter outer iterations.
+        /// tol * max(1, |lambda_new|). Returns an <see cref="EigenSolveInfo"/> (implicit-bool ==
+        /// Converged); Converged within maxIter outer iterations, MaxIterations if it runs out,
+        /// Breakdown if the inner CG solve fails (see below). On Converged/MaxIterations, residual
+        /// is ‖Av-λv‖∞ computed once from the last outer iteration's already-held A*v (no extra
+        /// matvec); on Breakdown, residual is <see cref="double.NaN"/>.
         ///
         /// IMPORTANT: pick tol no tighter than (and ideally a small multiple of) cgTol. Every outer
         /// iteration's v/y comes from a FRESH CG solve accurate only to ~cgTol -- consecutive
         /// eigenpair estimates stop shrinking once that noise floor is reached (further outer
         /// iterations do not refine it further, unlike <see cref="powerIteration{TOp}"/>'s pure
         /// matvecs, which can drive the residual to machine precision). A tol tighter than cgTol's
-        /// noise floor may never be satisfied, spinning to maxIter and returning false even though
-        /// the eigenpair estimate is already as good as this cgTol allows.
+        /// noise floor may never be satisfied, spinning to maxIter and reporting MaxIterations even
+        /// though the eigenpair estimate is already as good as this cgTol allows.
         ///
         /// If the inner CG solve fails to converge within cgMaxIter iterations to cgTol (A not SPD,
         /// or numerical breakdown -- see <see cref="Solvers.cg{TOp}"/>), this method bails out
-        /// immediately and returns false; lambda is then set to 0 (undefined) and v holds whatever
-        /// CG last produced (partially updated) -- only read v/lambda when the call returns true.
+        /// immediately and reports Breakdown; lambda is then set to 0 (undefined) and v holds
+        /// whatever CG last produced (partially updated) -- only read v/lambda when Solved.
         ///
         /// SEEDING CAVEAT: when the caller passes the zero vector, v is seeded with the fixed
         /// deterministic pattern (1,2,3,4,1,2,3,4,...). If the target smallest eigenvector is
         /// (near-)orthogonal to that pattern -- possible for structured/symmetric matrices -- the
-        /// iteration converges to the next eigenpair and returns true with a WRONG lambda (the
+        /// iteration converges to the next eigenpair and reports Converged with a WRONG lambda (the
         /// Rayleigh quotient stabilizes on the wrong-but-stable pair). Callers with structured A
         /// should pass their own nonzero seed rather than relying on the default pattern. Same
         /// caveat as <see cref="powerIteration{TOp}"/>, but higher risk here: the CG-noise-floor
@@ -271,7 +284,7 @@ namespace LinearAlgebra
         ///
         /// Does not allocate.
         /// </summary>
-        public static bool inversePowerIteration<TOp>(in TOp A, ref floatN v, ref floatN y,
+        public static EigenSolveInfo inversePowerIteration<TOp>(in TOp A, ref floatN v, ref floatN y,
                                                       ref floatN r, ref floatN p, ref floatN Ap,
                                                       out float lambda,
                                                       float tol, int maxIter, int cgMaxIter, float cgTol)
@@ -347,7 +360,7 @@ namespace LinearAlgebra
                 bool cgOk = Solvers.cg(in A, in v, ref y, ref r, ref p, ref Ap, cgMaxIter, cgTol);
                 if (!cgOk) {
                     lambda = (float)0;
-                    return false;
+                    return new EigenSolveInfo { iterations = iter, residual = double.NaN, status = IterativeSolveStatus.Breakdown };
                 }
 
                 // Step 2: ||y|| for normalization. y == 0 can only happen if v == 0, which cannot
@@ -359,7 +372,7 @@ namespace LinearAlgebra
 
                 if (yNormSq == (float)0) {
                     lambda = (float)0;
-                    return false;
+                    return new EigenSolveInfo { iterations = iter, residual = double.NaN, status = IterativeSolveStatus.Breakdown };
                 }
 
                 float invYNorm = (float)1 / math.sqrt(yNormSq);
@@ -400,12 +413,33 @@ namespace LinearAlgebra
                 float lambdaChange = math.abs(lambda - lambdaPrev);   // NaN on iter 0 -> false below
 
                 if (vecDiff <= tol || lambdaChange <= tol * lambdaScale)
-                    return true;
+                    return new EigenSolveInfo {
+                        iterations = iter + 1,
+                        residual = InversePowerResidual(in Ap, in v, lambda, n),
+                        status = IterativeSolveStatus.Converged
+                    };
 
                 lambdaPrev = lambda;
             }
 
-            return false;
+            return new EigenSolveInfo {
+                iterations = maxIter,
+                residual = InversePowerResidual(in Ap, in v, lambda, n),
+                status = IterativeSolveStatus.MaxIterations
+            };
+        }
+
+        // ‖Ap - lambda*v‖_inf -- inversePowerIteration's Converged/MaxIterations returns compute
+        // their residual from here. Ap already holds A*v from the loop's last A.Apply (Step 4), so
+        // this is a single extra O(n) pass at the return site, not an extra matvec.
+        static double InversePowerResidual(in floatN Ap, in floatN v, float lambda, int n)
+        {
+            float residual = (float)0;
+            for (int i = 0; i < n; i++) {
+                float ri = math.abs(Ap[i] - lambda * v[i]);
+                if (ri > residual) residual = ri;
+            }
+            return (double)residual;
         }
 
         /// <summary>
@@ -415,7 +449,7 @@ namespace LinearAlgebra
         /// algorithm documentation (deterministic seeding, convergence criteria, scratch layout,
         /// SPD/nonsingular precondition).
         /// </summary>
-        public static bool inversePowerIteration(in floatMxN A, ref floatN v, ref floatN y,
+        public static EigenSolveInfo inversePowerIteration(in floatMxN A, ref floatN v, ref floatN y,
                                                  ref floatN r, ref floatN p, ref floatN Ap,
                                                  out float lambda,
                                                  float tol, int maxIter, int cgMaxIter, float cgTol)
@@ -424,7 +458,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>inversePowerIteration with default cgMaxIter (A.M_Rows) and cgTol (Consts.floatSqrtEps).</summary>
-        public static bool inversePowerIteration(in floatMxN A, ref floatN v, ref floatN y,
+        public static EigenSolveInfo inversePowerIteration(in floatMxN A, ref floatN v, ref floatN y,
                                                  ref floatN r, ref floatN p, ref floatN Ap,
                                                  out float lambda, float tol, int maxIter)
             => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.floatSqrtEps);
@@ -435,7 +469,7 @@ namespace LinearAlgebra
         /// calls the zero-alloc primitive. Use the ref-scratch overload in hot loops to avoid the
         /// allocation.
         /// </summary>
-        public static bool inversePowerIteration(in floatMxN A, ref floatN v, out float lambda,
+        public static EigenSolveInfo inversePowerIteration(in floatMxN A, ref floatN v, out float lambda,
                                                  float tol, int maxIter, int cgMaxIter, float cgTol)
         {
             floatN y  = v.tempfloatVec(A.M_Rows);
@@ -454,7 +488,7 @@ namespace LinearAlgebra
         /// floor could spin to maxIter without ever detecting convergence (the residual genuinely
         /// bottoms out around cgTol, it does not keep shrinking with more outer iterations).
         /// </summary>
-        public static bool inversePowerIteration(in floatMxN A, ref floatN v, out float lambda)
+        public static EigenSolveInfo inversePowerIteration(in floatMxN A, ref floatN v, out float lambda)
             => inversePowerIteration(in A, ref v, out lambda, (float)10 * Consts.floatSqrtEps, 1000, A.M_Rows, Consts.floatSqrtEps);
 
         /// <summary>
@@ -463,7 +497,7 @@ namespace LinearAlgebra
         /// <see cref="inversePowerIteration(in floatMxN, ref floatN, ref floatN, ref floatN, ref floatN, ref floatN, out float, float, int, int, float)"/>.
         /// Forwards into <see cref="inversePowerIteration{TOp}"/> via <c>floatBSMOperator</c>.
         /// </summary>
-        public static bool inversePowerIteration(in floatBSM A, ref floatN v, ref floatN y,
+        public static EigenSolveInfo inversePowerIteration(in floatBSM A, ref floatN v, ref floatN y,
                                                  ref floatN r, ref floatN p, ref floatN Ap,
                                                  out float lambda,
                                                  float tol, int maxIter, int cgMaxIter, float cgTol)
@@ -472,7 +506,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>inversePowerIteration over a BSR matrix with default cgMaxIter (A.M_Rows) and cgTol (Consts.floatSqrtEps).</summary>
-        public static bool inversePowerIteration(in floatBSM A, ref floatN v, ref floatN y,
+        public static EigenSolveInfo inversePowerIteration(in floatBSM A, ref floatN v, ref floatN y,
                                                  ref floatN r, ref floatN p, ref floatN Ap,
                                                  out float lambda, float tol, int maxIter)
             => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.floatSqrtEps);
@@ -481,7 +515,7 @@ namespace LinearAlgebra
         /// Inverse power iteration over a BSR SPD matrix -- allocates the inner-solve scratch from
         /// the arena that <paramref name="v"/> carries and calls the zero-alloc primitive.
         /// </summary>
-        public static bool inversePowerIteration(in floatBSM A, ref floatN v, out float lambda,
+        public static EigenSolveInfo inversePowerIteration(in floatBSM A, ref floatN v, out float lambda,
                                                  float tol, int maxIter, int cgMaxIter, float cgTol)
         {
             floatN y  = v.tempfloatVec(A.M_Rows);
@@ -497,7 +531,7 @@ namespace LinearAlgebra
         /// (Consts.floatSqrtEps). See the dense overload's doc comment for why tol defaults to a
         /// multiple of cgTol rather than the much tighter Consts.floatZeroThreshold.
         /// </summary>
-        public static bool inversePowerIteration(in floatBSM A, ref floatN v, out float lambda)
+        public static EigenSolveInfo inversePowerIteration(in floatBSM A, ref floatN v, out float lambda)
             => inversePowerIteration(in A, ref v, out lambda, (float)10 * Consts.floatSqrtEps, 1000, A.M_Rows, Consts.floatSqrtEps);
 
         /// <summary>
@@ -547,35 +581,36 @@ namespace LinearAlgebra
         /// <paramref name="breakdownTol"/> or below, an invariant subspace of A has been found --
         /// the j Ritz values already computed are EXACT eigenvalues of A (restricted to that
         /// subspace), and there is no further information to extract, so the process truncates
-        /// there. <paramref name="produced"/> reports how many of the m = <paramref name="steps"/>
-        /// requested vectors were actually produced (produced &lt;= steps; produced == steps unless
-        /// breakdown occurred). To keep the workspace's T/symWs a FIXED steps x steps shape across
-        /// calls (so the same workspace serves every call regardless of whether breakdown occurs),
-        /// the unused steps-produced rows/columns of T are padded with a block that is exactly
-        /// DECOUPLED from the real produced x produced block (the connecting off-diagonal entry is
-        /// left at its zero-initialized value) and whose diagonal entries lie strictly below every
-        /// real Ritz value (offset past a Gershgorin bound on the real block), so the padding can
-        /// never mix into the real spectrum under sorting.
+        /// there. The returned <see cref="LanczosInfo.produced"/> reports how many of the
+        /// m = <paramref name="steps"/> requested vectors were actually produced (produced &lt;=
+        /// steps; produced == steps unless breakdown occurred). To keep the workspace's T/symWs a
+        /// FIXED steps x steps shape across calls (so the same workspace serves every call
+        /// regardless of whether breakdown occurs), the unused steps-produced rows/columns of T are
+        /// padded with a block that is exactly DECOUPLED from the real produced x produced block
+        /// (the connecting off-diagonal entry is left at its zero-initialized value) and whose
+        /// diagonal entries lie strictly below every real Ritz value (offset past a Gershgorin bound
+        /// on the real block), so the padding can never mix into the real spectrum under sorting.
         ///
         /// On output: <paramref name="eigenvalues"/> (length steps, caller-allocated) holds the
         /// Ritz values sorted DESCENDING (same convention as eigenvaluesSymmetric) in its first
-        /// <paramref name="produced"/> entries -- eigenvalues[0] is the largest Ritz value,
+        /// <c>produced</c> entries -- eigenvalues[0] is the largest Ritz value,
         /// eigenvalues[produced-1] the smallest. Entries [produced, steps) are the padding
-        /// described above and are MEANINGLESS -- ignore them. Returns true iff
-        /// eigenvaluesSymmetric's QL iteration converged on the (possibly padded) tridiagonal;
-        /// only trust the eigenvalues when this returns true.
+        /// described above and are MEANINGLESS -- ignore them. The returned
+        /// <see cref="LanczosInfo.status"/> is Converged iff eigenvaluesSymmetric's QL iteration
+        /// converged on the (possibly padded) tridiagonal; only trust the eigenvalues when Solved.
         ///
         /// Does not allocate.
         /// </summary>
-        public static bool lanczos<TOp>(in TOp A, ref floatLanczos_WS ws, ref floatN eigenvalues,
-                                        out int produced, int steps, float breakdownTol)
+        public static LanczosInfo lanczos<TOp>(in TOp A, ref floatLanczos_WS ws, ref floatN eigenvalues,
+                                        int steps, float breakdownTol)
             where TOp : struct, IfloatLinearOperator
         {
             if (eigenvalues.N != steps)
                 throw new ArgumentException("lanczos: eigenvalues.N must equal steps");
 
-            lanczosTridiag(in A, ref ws, out produced, steps, breakdownTol);
-            return eigenvaluesSymmetric(ref ws.T, ref eigenvalues, ref ws.symWs);
+            lanczosTridiag(in A, ref ws, out int produced, steps, breakdownTol);
+            bool ok = eigenvaluesSymmetric(ref ws.T, ref eigenvalues, ref ws.symWs);
+            return new LanczosInfo { produced = produced, status = ok ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations };
         }
 
         // Shared Lanczos front-half used by both lanczos (eigenvalues only) and lanczosVectors
@@ -720,10 +755,10 @@ namespace LinearAlgebra
         }
 
         /// <summary>lanczos with default breakdownTol (Consts.floatZeroThreshold).</summary>
-        public static bool lanczos<TOp>(in TOp A, ref floatLanczos_WS ws, ref floatN eigenvalues,
-                                        out int produced, int steps)
+        public static LanczosInfo lanczos<TOp>(in TOp A, ref floatLanczos_WS ws, ref floatN eigenvalues,
+                                        int steps)
             where TOp : struct, IfloatLinearOperator
-            => lanczos(in A, ref ws, ref eigenvalues, out produced, steps, Consts.floatZeroThreshold);
+            => lanczos(in A, ref ws, ref eigenvalues, steps, Consts.floatZeroThreshold);
 
         /// <summary>
         /// Lanczos tridiagonalization of a SYMMETRIC dense <see cref="floatMxN"/>. Forwards into
@@ -731,72 +766,72 @@ namespace LinearAlgebra
         /// the actual loop and the full algorithm documentation (seeding, full
         /// reorthogonalization, workspace layout, early-breakdown padding, output convention).
         /// </summary>
-        public static bool lanczos(in floatMxN A, ref floatLanczos_WS ws, ref floatN eigenvalues,
-                                   out int produced, int steps, float breakdownTol)
+        public static LanczosInfo lanczos(in floatMxN A, ref floatLanczos_WS ws, ref floatN eigenvalues,
+                                   int steps, float breakdownTol)
         {
-            return lanczos(new floatDenseOperator(in A), ref ws, ref eigenvalues, out produced, steps, breakdownTol);
+            return lanczos(new floatDenseOperator(in A), ref ws, ref eigenvalues, steps, breakdownTol);
         }
 
         /// <summary>lanczos over a dense matrix with default breakdownTol (Consts.floatZeroThreshold).</summary>
-        public static bool lanczos(in floatMxN A, ref floatLanczos_WS ws, ref floatN eigenvalues,
-                                   out int produced, int steps)
-            => lanczos(in A, ref ws, ref eigenvalues, out produced, steps, Consts.floatZeroThreshold);
+        public static LanczosInfo lanczos(in floatMxN A, ref floatLanczos_WS ws, ref floatN eigenvalues,
+                                   int steps)
+            => lanczos(in A, ref ws, ref eigenvalues, steps, Consts.floatZeroThreshold);
 
         /// <summary>
         /// Lanczos over a dense SYMMETRIC matrix -- allocates the workspace (see
         /// <see cref="floatLanczos_WS"/>) and the output eigenvalues buffer (length steps) from
         /// <paramref name="arena"/> and calls the zero-alloc primitive. Returns the Ritz values;
-        /// only the first <paramref name="produced"/> entries are meaningful (see
+        /// only the first <c>info.produced</c> entries are meaningful (see
         /// <see cref="lanczos{TOp}"/>'s doc comment). Use the ref-workspace overload in hot loops
         /// to avoid the allocation.
         /// </summary>
-        public static floatN lanczos(ref Arena arena, in floatMxN A, int steps, out int produced,
-                                      out bool converged, float breakdownTol)
+        public static floatN lanczos(ref Arena arena, in floatMxN A, int steps, out LanczosInfo info,
+                                      float breakdownTol)
         {
             var ws = arena.floatLanczos_WS(A.M_Rows, steps);
             var eigenvalues = arena.floatVec(steps);
-            converged = lanczos(in A, ref ws, ref eigenvalues, out produced, steps, breakdownTol);
+            info = lanczos(in A, ref ws, ref eigenvalues, steps, breakdownTol);
             return eigenvalues;
         }
 
         /// <summary>lanczos (allocating) over a dense matrix with default breakdownTol (Consts.floatZeroThreshold).</summary>
-        public static floatN lanczos(ref Arena arena, in floatMxN A, int steps, out int produced, out bool converged)
-            => lanczos(ref arena, in A, steps, out produced, out converged, Consts.floatZeroThreshold);
+        public static floatN lanczos(ref Arena arena, in floatMxN A, int steps, out LanczosInfo info)
+            => lanczos(ref arena, in A, steps, out info, Consts.floatZeroThreshold);
 
         /// <summary>
         /// Lanczos tridiagonalization of a SYMMETRIC block-sparse (BSR) matrix. Same semantics as
         /// the dense overload -- see
-        /// <see cref="lanczos(in floatMxN, ref floatLanczos_WS, ref floatN, out int, int, float)"/>.
+        /// <see cref="lanczos(in floatMxN, ref floatLanczos_WS, ref floatN, int, float)"/>.
         /// Forwards into <see cref="lanczos{TOp}"/> via <c>floatBSMOperator</c>.
         /// </summary>
-        public static bool lanczos(in floatBSM A, ref floatLanczos_WS ws, ref floatN eigenvalues,
-                                   out int produced, int steps, float breakdownTol)
+        public static LanczosInfo lanczos(in floatBSM A, ref floatLanczos_WS ws, ref floatN eigenvalues,
+                                   int steps, float breakdownTol)
         {
-            return lanczos(new floatBSMOperator(in A), ref ws, ref eigenvalues, out produced, steps, breakdownTol);
+            return lanczos(new floatBSMOperator(in A), ref ws, ref eigenvalues, steps, breakdownTol);
         }
 
         /// <summary>lanczos over a BSR matrix with default breakdownTol (Consts.floatZeroThreshold).</summary>
-        public static bool lanczos(in floatBSM A, ref floatLanczos_WS ws, ref floatN eigenvalues,
-                                   out int produced, int steps)
-            => lanczos(in A, ref ws, ref eigenvalues, out produced, steps, Consts.floatZeroThreshold);
+        public static LanczosInfo lanczos(in floatBSM A, ref floatLanczos_WS ws, ref floatN eigenvalues,
+                                   int steps)
+            => lanczos(in A, ref ws, ref eigenvalues, steps, Consts.floatZeroThreshold);
 
         /// <summary>
         /// Lanczos over a BSR SYMMETRIC matrix -- allocates the workspace and the output
         /// eigenvalues buffer from <paramref name="arena"/> and calls the zero-alloc primitive.
         /// See the dense overload's doc comment for the return-value convention.
         /// </summary>
-        public static floatN lanczos(ref Arena arena, in floatBSM A, int steps, out int produced,
-                                      out bool converged, float breakdownTol)
+        public static floatN lanczos(ref Arena arena, in floatBSM A, int steps, out LanczosInfo info,
+                                      float breakdownTol)
         {
             var ws = arena.floatLanczos_WS(A.M_Rows, steps);
             var eigenvalues = arena.floatVec(steps);
-            converged = lanczos(in A, ref ws, ref eigenvalues, out produced, steps, breakdownTol);
+            info = lanczos(in A, ref ws, ref eigenvalues, steps, breakdownTol);
             return eigenvalues;
         }
 
         /// <summary>lanczos (allocating) over a BSR matrix with default breakdownTol (Consts.floatZeroThreshold).</summary>
-        public static floatN lanczos(ref Arena arena, in floatBSM A, int steps, out int produced, out bool converged)
-            => lanczos(ref arena, in A, steps, out produced, out converged, Consts.floatZeroThreshold);
+        public static floatN lanczos(ref Arena arena, in floatBSM A, int steps, out LanczosInfo info)
+            => lanczos(ref arena, in A, steps, out info, Consts.floatZeroThreshold);
 
         /// <summary>
         /// Lanczos with RITZ VECTORS: same twice-reorthogonalized tridiagonalization as
@@ -808,7 +843,7 @@ namespace LinearAlgebra
         /// ritz[i] = sum_j Yt[j,i]·v_(j+1) -- the i-th approximate eigenvector of A, stored as ROW i
         /// of <paramref name="ritz"/>.
         ///
-        /// Only the first <paramref name="produced"/> rows of ritz / entries of eigenvalues are
+        /// Only the first <c>info.produced</c> rows of ritz / entries of eigenvalues are
         /// meaningful (lanczos's early-breakdown/padding convention): a real Ritz vector has zero
         /// weight on the decoupled padded coordinates, so summing j &lt; produced is exact. The Ritz
         /// vectors are orthonormal to working precision (Yt orthonormal, ws.V rows orthonormal). At
@@ -818,11 +853,12 @@ namespace LinearAlgebra
         /// <paramref name="Yt"/> is steps x steps scratch (T's eigenvectors); <paramref name="ritz"/>
         /// is steps x A.Rows output. NOTE: unlike <see cref="lanczos{TOp}"/> this is NOT zero-alloc --
         /// <see cref="eigenSymmetric(ref floatMxN, ref floatN, ref floatMxN)"/> allocates three
-        /// length-steps Temp vectors internally. Returns eigenSymmetric's convergence flag.
+        /// length-steps Temp vectors internally. Returns a <see cref="LanczosInfo"/> (produced,
+        /// status = eigenSymmetric's convergence flag).
         /// </summary>
-        public static bool lanczosVectors<TOp>(in TOp A, ref floatLanczos_WS ws, ref floatMxN Yt,
+        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref floatLanczos_WS ws, ref floatMxN Yt,
                                                ref floatN eigenvalues, ref floatMxN ritz,
-                                               out int produced, int steps, float breakdownTol)
+                                               int steps, float breakdownTol)
             where TOp : struct, IfloatLinearOperator
         {
             if (eigenvalues.N != steps)
@@ -834,7 +870,7 @@ namespace LinearAlgebra
 
             int n = A.Rows;
 
-            lanczosTridiag(in A, ref ws, out produced, steps, breakdownTol);
+            lanczosTridiag(in A, ref ws, out int produced, steps, breakdownTol);
 
             bool ok = eigenSymmetric(ref ws.T, ref eigenvalues, ref Yt);
 
@@ -856,58 +892,58 @@ namespace LinearAlgebra
                 for (int col = 0; col < n; col++)
                     ritz[i, col] = (float)0;
 
-            return ok;
+            return new LanczosInfo { produced = produced, status = ok ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations };
         }
 
         /// <summary>lanczosVectors with default breakdownTol (Consts.floatZeroThreshold).</summary>
-        public static bool lanczosVectors<TOp>(in TOp A, ref floatLanczos_WS ws, ref floatMxN Yt,
+        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref floatLanczos_WS ws, ref floatMxN Yt,
                                                ref floatN eigenvalues, ref floatMxN ritz,
-                                               out int produced, int steps)
+                                               int steps)
             where TOp : struct, IfloatLinearOperator
-            => lanczosVectors(in A, ref ws, ref Yt, ref eigenvalues, ref ritz, out produced, steps, Consts.floatZeroThreshold);
+            => lanczosVectors(in A, ref ws, ref Yt, ref eigenvalues, ref ritz, steps, Consts.floatZeroThreshold);
 
         /// <summary>
         /// Lanczos with Ritz vectors over a dense SYMMETRIC matrix -- allocates the workspace, T's
         /// eigenvector scratch, the eigenvalues buffer (length steps) and the Ritz-vector matrix
         /// (steps x A.Rows) from <paramref name="arena"/>. Returns the eigenvalues; Ritz vectors are
         /// written to <paramref name="ritz"/> (row i = approximate eigenvector i). Only the first
-        /// <paramref name="produced"/> entries/rows are meaningful. See <see cref="lanczosVectors{TOp}"/>.
+        /// <c>info.produced</c> entries/rows are meaningful. See <see cref="lanczosVectors{TOp}"/>.
         /// </summary>
         public static floatN lanczosVectors(ref Arena arena, in floatMxN A, int steps,
-                                             out floatMxN ritz, out int produced, out bool converged,
+                                             out floatMxN ritz, out LanczosInfo info,
                                              float breakdownTol)
         {
             var ws = arena.floatLanczos_WS(A.M_Rows, steps);
             var Yt = arena.floatMat(steps, steps);
             var eigenvalues = arena.floatVec(steps);
             ritz = arena.floatMat(steps, A.M_Rows);
-            converged = lanczosVectors(new floatDenseOperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, out produced, steps, breakdownTol);
+            info = lanczosVectors(new floatDenseOperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, steps, breakdownTol);
             return eigenvalues;
         }
 
         /// <summary>lanczosVectors (allocating) over a dense matrix with default breakdownTol.</summary>
-        public static floatN lanczosVectors(ref Arena arena, in floatMxN A, int steps, out floatMxN ritz, out int produced, out bool converged)
-            => lanczosVectors(ref arena, in A, steps, out ritz, out produced, out converged, Consts.floatZeroThreshold);
+        public static floatN lanczosVectors(ref Arena arena, in floatMxN A, int steps, out floatMxN ritz, out LanczosInfo info)
+            => lanczosVectors(ref arena, in A, steps, out ritz, out info, Consts.floatZeroThreshold);
 
         /// <summary>
         /// Lanczos with Ritz vectors over a BSR SYMMETRIC matrix -- allocates workspace/scratch and
         /// the eigenvalues + Ritz-vector outputs from <paramref name="arena"/>. See the dense overload.
         /// </summary>
         public static floatN lanczosVectors(ref Arena arena, in floatBSM A, int steps,
-                                             out floatMxN ritz, out int produced, out bool converged,
+                                             out floatMxN ritz, out LanczosInfo info,
                                              float breakdownTol)
         {
             var ws = arena.floatLanczos_WS(A.M_Rows, steps);
             var Yt = arena.floatMat(steps, steps);
             var eigenvalues = arena.floatVec(steps);
             ritz = arena.floatMat(steps, A.M_Rows);
-            converged = lanczosVectors(new floatBSMOperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, out produced, steps, breakdownTol);
+            info = lanczosVectors(new floatBSMOperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, steps, breakdownTol);
             return eigenvalues;
         }
 
         /// <summary>lanczosVectors (allocating) over a BSR matrix with default breakdownTol.</summary>
-        public static floatN lanczosVectors(ref Arena arena, in floatBSM A, int steps, out floatMxN ritz, out int produced, out bool converged)
-            => lanczosVectors(ref arena, in A, steps, out ritz, out produced, out converged, Consts.floatZeroThreshold);
+        public static floatN lanczosVectors(ref Arena arena, in floatBSM A, int steps, out floatMxN ritz, out LanczosInfo info)
+            => lanczosVectors(ref arena, in A, steps, out ritz, out info, Consts.floatZeroThreshold);
 
         /// <summary>
         /// Full symmetric eigendecomposition via classical two-sided (cyclic) Jacobi iteration.
