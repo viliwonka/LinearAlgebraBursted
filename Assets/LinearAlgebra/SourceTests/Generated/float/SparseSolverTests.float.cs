@@ -52,6 +52,10 @@ public class floatSparseSolverTests
             // ---- Tikhonov damping (CGLS/LSQR/LSMR): min ||Ax-b||^2 + damp^2||x||^2 ----
             TikhonovDampingMatchesAugmentedQR,
 
+            // ---- CGNE / Craig: minimum-norm solve for consistent under-determined systems ----
+            CgneUnderdeterminedMinNormMatchesLsqr,
+            CgneWarmStart,
+
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
             MinresWarmStart,
             BiCGStabWarmStart,
@@ -119,6 +123,9 @@ public class floatSparseSolverTests
                 case TestType.LsmrMonotonicArnorm: LsmrMonotonicArnorm(); break;
 
                 case TestType.TikhonovDampingMatchesAugmentedQR: TikhonovDampingMatchesAugmentedQR(); break;
+
+                case TestType.CgneUnderdeterminedMinNormMatchesLsqr: CgneUnderdeterminedMinNormMatchesLsqr(); break;
+                case TestType.CgneWarmStart: CgneWarmStart(); break;
 
                 case TestType.MinresWarmStart: MinresWarmStart(); break;
                 case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
@@ -1072,6 +1079,58 @@ public class floatSparseSolverTests
             arena.Dispose();
         }
 
+        // ---- CGNE / Craig: minimum-norm solution of a consistent under-determined system ----
+        //
+        // Wide A (m < n), b = A*xGen (consistent). CGNE from x0 = 0 converges to the UNIQUE
+        // minimum-norm solution -- the same point LSQR reaches from x0 = 0 -- so assert A x ~= b
+        // and that CGNE agrees with LSQR (already tested), on dense AND 1x1-BSM.
+        void CgneUnderdeterminedMinNormMatchesLsqr()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 4, n = 10;
+            var A = arena.floatRandomMat(m, n, -1f, 1f, 44001);
+            var xGen = arena.floatRandomVec(n, -1f, 1f, 44002);
+            var b = Linear_OP.dot(A, xGen);      // consistent (b in range(A))
+
+            var xC = arena.floatVec(n);
+            Assert.IsTrue(Solvers.cgne(in A, in b, ref xC, 8 * n, Consts.floatSqrtEps));
+            var AxC = Linear_OP.dot(A, xC);
+            AssertVecEq(in AxC, in b, LooseTol());          // solves the consistent system
+
+            var xL = arena.floatVec(n);
+            Assert.IsTrue(Solvers.lsqr(in A, in b, ref xL, 8 * n, Consts.floatSqrtEps));
+            AssertVecEq(in xC, in xL, LooseTol());          // both land on the unique min-norm solution
+
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var xCb = arena.floatVec(n);
+            Assert.IsTrue(Solvers.cgne(in bsm, in b, ref xCb, 8 * n, Consts.floatSqrtEps));
+            AssertVecEq(in xC, in xCb, LooseTol());          // BSM agrees with dense CGNE
+
+            arena.Dispose();
+        }
+
+        // ---- CGNE warm start (consistent under-determined system) ----
+        void CgneWarmStart()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 4, n = 10;
+            var A = arena.floatRandomMat(m, n, -1f, 1f, 44101);
+            var xGen = arena.floatRandomVec(n, -1f, 1f, 44102);
+            var b = Linear_OP.dot(A, xGen);      // consistent
+
+            var x = arena.floatVec(n);
+            Assert.IsTrue(Solvers.cgne(in A, in b, ref x, 8 * n, Consts.floatSqrtEps));
+
+            var xWarm = x.Copy();
+            bool okWarm = Solvers.cgne(in A, in b, ref xWarm, 1, Consts.floatSqrtEps);
+            Assert.IsTrue(okWarm);                            // pre-loop residual check reports convergence
+            AssertVecEq(in x, in xWarm, LooseTol());          // and leaves x untouched
+
+            arena.Dispose();
+        }
+
         // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
         // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. qrDirectSolve
         // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
@@ -1196,6 +1255,14 @@ public class floatSparseSolverTests
     [Test]
     public void TikhonovDampingMatchesAugmentedQRTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.TikhonovDampingMatchesAugmentedQR }.Run();
+
+    [Test]
+    public void CgneUnderdeterminedMinNormMatchesLsqrTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CgneUnderdeterminedMinNormMatchesLsqr }.Run();
+
+    [Test]
+    public void CgneWarmStartTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CgneWarmStart }.Run();
 
     // ---- Phase 3 warm-start entry points ----
 
@@ -1544,6 +1611,26 @@ public class floatSparseSolverTests
             var hbarAlias = h; // hbar aliases h (both length n)
             Assert.Throws<ArgumentException>(() =>
                 Solvers.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbarAlias, ref tmpM, ref tmpN, n, Consts.floatSqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Cgne_AliasingPAndTmpN_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            int m = 4, n = 6;                   // under-determined
+            var A = arena.floatMat(m, n);
+            var b = arena.floatRandomVec(m, -1f, 1f, 39501);
+            var x = arena.floatVec(n);
+            var r = arena.floatVec(m);
+            var p = arena.floatVec(n);
+            var q = arena.floatVec(m);
+            var tmpNAlias = p; // tmpN aliases p (both length n)
+            Assert.Throws<ArgumentException>(() =>
+                Solvers.cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpNAlias, n, Consts.floatSqrtEps));
         }
         finally { arena.Dispose(); }
     }

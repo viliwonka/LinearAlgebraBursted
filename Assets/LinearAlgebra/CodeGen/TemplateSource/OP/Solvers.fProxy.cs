@@ -1749,6 +1749,178 @@ namespace LinearAlgebra
         {
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
         }
+
+        /// <summary>
+        /// Zero-alloc CGNE / Craig's method (Saad Alg. 8.5) for CONSISTENT systems: finds the
+        /// MINIMUM-NORM solution of A x = b (requires b in range(A)) for possibly rectangular
+        /// (typically UNDER-determined, m &lt; n) A, generic over <see cref="IfProxyLinearOperator"/>.
+        /// Mathematically CG applied to A Aᵀ y = b with x = Aᵀ y, but recurred directly on x (no y
+        /// stored): r = b - A x (length A.Rows) is the residual, p (length A.Cols) the search
+        /// direction. Complementary to <see cref="cgls{TOp}"/>: CGLS minimizes ‖Ax-b‖ (OVER-
+        /// determined / inconsistent), CGNE minimizes ‖x‖ subject to A x = b (consistent UNDER-
+        /// determined). One Apply + one ApplyT per iteration, O(n+m) memory.
+        ///
+        /// Caller provides x (initial guess, length A.Cols -- overwritten, warm-startable) and four
+        /// scratch vectors: r, q (length A.Rows) and p, tmpN (length A.Cols). Converges when
+        /// ‖b - A x‖ &lt;= tolerance*‖b‖ (a fixed scale, mirroring cg's ‖b‖ reference). For an
+        /// INCONSISTENT system (b not in range(A)) the residual cannot reach zero -- CGNE then runs
+        /// to maxIterations and returns false; use cgls/lsqr/lsmr for least-squares instead.
+        ///
+        /// Returns false on non-convergence or breakdown (‖p‖² &lt;= 0, i.e. Aᵀr = 0 while r != 0 --
+        /// r is orthogonal to range(A), which for a consistent system means r is already 0). On a
+        /// false return x is undefined -- only read x when the call returns true.
+        /// </summary>
+        public static bool cgne<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                     ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
+                                     int maxIterations, fProxy tolerance)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            if (b.N != A.Rows) throw new ArgumentException("cgne: b.N must equal A.Rows");
+            if (x.N != A.Cols) throw new ArgumentException("cgne: x.N must equal A.Cols");
+            if (r.N != A.Rows) throw new ArgumentException("cgne: r.N must equal A.Rows");
+            if (q.N != A.Rows) throw new ArgumentException("cgne: q.N must equal A.Rows");
+            if (p.N != A.Cols) throw new ArgumentException("cgne: p.N must equal A.Cols");
+            if (tmpN.N != A.Cols) throw new ArgumentException("cgne: tmpN.N must equal A.Cols");
+
+            if (maxIterations < 1)
+                throw new ArgumentException("cgne: maxIterations must be >= 1");
+
+            unsafe
+            {
+                long* ptrs = stackalloc long[6];
+                ptrs[0] = (long)r.Data.Ptr; ptrs[1] = (long)p.Data.Ptr; ptrs[2] = (long)q.Data.Ptr;
+                ptrs[3] = (long)tmpN.Data.Ptr; ptrs[4] = (long)x.Data.Ptr; ptrs[5] = (long)b.Data.Ptr;
+                RequireDistinctBuffers("cgne: r/p/q/tmpN/x/b must be distinct", ptrs, 6);
+            }
+
+            // Fixed scale reference for the relative tolerance, independent of x0 (mirrors cg's bb).
+            fProxy bb = Linear_OP.dot(b, b);
+
+            if (bb == (fProxy)0)
+            {
+                // b == 0 -> the minimum-norm solution of A x = 0 is x = 0.
+                for (int i = 0; i < x.N; i++) x[i] = (fProxy)0;
+                return true;
+            }
+
+            fProxy threshold = tolerance * tolerance * bb;
+
+            // r = b - A x
+            A.Apply(in x, ref q);                          // q = A x (temp use of q)
+            r.Data.CopyFrom(b.Data);
+            r.addScaledInpl((fProxy)(-1), q);
+
+            fProxy rr = Linear_OP.dot(r, r);
+
+            if (rr <= threshold)
+                return true;
+
+            // p = A^T r
+            A.ApplyT(in r, ref p);
+
+            for (int k = 0; k < maxIterations; k++)
+            {
+                fProxy pp = Linear_OP.dot(p, p);
+
+                if (!(pp > (fProxy)0))                      // NaN-safe: A^T r == 0 (r ⟂ range(A)) or p == 0
+                    return false;
+
+                fProxy alpha = rr / pp;
+
+                x.addScaledInpl(alpha, p);                  // x += alpha p
+                A.Apply(in p, ref q);                       // q = A p
+                r.addScaledInpl(-alpha, q);                 // r -= alpha A p
+
+                fProxy rrNew = Linear_OP.dot(r, r);
+
+                if (rrNew <= threshold)
+                    return true;
+
+                fProxy beta = rrNew / rr;
+
+                A.ApplyT(in r, ref tmpN);                   // tmpN = A^T r
+                p.scaleAddInpl(beta, tmpN);                 // p = beta p + A^T r
+
+                rr = rrNew;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// CGNE / Craig over a dense <see cref="fProxyMxN"/> (possibly rectangular) -- zero-alloc
+        /// primitive. Forwards into <see cref="cgne{TOp}"/> via <see cref="fProxyDenseOperator"/>.
+        /// </summary>
+        public static bool cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x,
+                                ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
+                                int maxIterations, fProxy tolerance)
+        {
+            return cgne(new fProxyDenseOperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>CGNE over a dense matrix -- allocates four scratch vectors from the arena.</summary>
+        public static bool cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            fProxyN r    = b.tempfProxyVec(A.M_Rows);
+            fProxyN p    = b.tempfProxyVec(A.N_Cols);
+            fProxyN q    = b.tempfProxyVec(A.M_Rows);
+            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            return cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>CGNE over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x)
+        {
+            return cgne(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+        }
+
+        /// <summary>
+        /// CGNE / Craig over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc
+        /// primitive. Forwards into <see cref="cgne{TOp}"/> via <c>fProxyBSMOperator</c>. Matrix-
+        /// free minimum-norm solve over a sparse Jacobian-like operator, never forming A Aᵀ.
+        /// </summary>
+        public static bool cgne(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+                                ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
+                                int maxIterations, fProxy tolerance)
+        {
+            return cgne(new fProxyBSMOperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// CGNE / Craig over a BSR matrix with a CALLER-PROVIDED precomputed transpose AT (built
+        /// once via <c>arena.fProxyBSMTranspose(in A)</c>), routing every ApplyT through the
+        /// cache-friendly forward spMV(AT, x) instead of on-the-fly spMVT(A, x) -- see
+        /// <see cref="fProxyBSMOperator"/>'s two-arg ctor. Zero-alloc; caller owns AT.
+        /// </summary>
+        public static bool cgne(in fProxyBSM A, in fProxyBSM AT, in fProxyN b, ref fProxyN x,
+                                ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
+                                int maxIterations, fProxy tolerance)
+        {
+            return cgne(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// CGNE over a BSR matrix -- allocates four scratch vectors AND materializes A^T once via
+        /// <c>arena.fProxyBSMTranspose</c>, driving CGNE with the two-arg
+        /// <see cref="fProxyBSMOperator"/> so every ApplyT routes through a cache-friendly forward
+        /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
+        /// caller-AT overload above.
+        /// </summary>
+        public static bool cgne(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            fProxyN r    = b.tempfProxyVec(A.M_Rows);
+            fProxyN p    = b.tempfProxyVec(A.N_Cols);
+            fProxyN q    = b.tempfProxyVec(A.M_Rows);
+            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            return cgne(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>CGNE over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool cgne(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        {
+            return cgne(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+        }
     }
 
 }
