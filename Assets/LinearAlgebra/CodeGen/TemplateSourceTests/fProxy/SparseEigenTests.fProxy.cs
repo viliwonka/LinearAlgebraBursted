@@ -35,6 +35,8 @@ public class fProxySparseEigenTests
             LanczosFullSpectrum,
             LanczosPartialExtremal,
             LanczosDenseVsBSM,
+            LanczosEarlyBreakdownPadding,
+            PowerNegativeDominant,
         }
 
         public TestType Type;
@@ -68,6 +70,17 @@ public class fProxySparseEigenTests
         // convergence accuracy (~0.5%), not a loose catch-all.
         static fProxy PartialExtremalTol() => /*+choose[2e-2f|5e-3]*/2e-2f/*-choose*/;
 
+        // Breakdown-detection threshold for the early-breakdown test's diagonal operator (||A|| < 1).
+        // Must sit ABOVE the reorthogonalization roundoff floor (~eps*||A|| ~ 1e-7 float / 1e-16
+        // double) so the grade-2 residual is recognized as zero, yet FAR BELOW the real off-diagonal
+        // beta_1 (~0.25 here) so the break fires at the true grade, not one step early.
+        static fProxy BreakdownTol() => /*+choose[1e-4f|1e-9]*/1e-4f/*-choose*/;
+
+        // Accuracy band for the two grade-exact Ritz values of that diagonal operator. eigenvaluesSymmetric
+        // on the resulting 2x2 tridiagonal is essentially exact; the only error is the ~eps*||A|| floor
+        // in the Lanczos-produced alpha/beta, so this is tight but not machine-eps.
+        static fProxy BreakdownRitzTol() => /*+choose[1e-4f|1e-9]*/1e-4f/*-choose*/;
+
         public void Execute()
         {
             switch (Type)
@@ -78,6 +91,8 @@ public class fProxySparseEigenTests
                 case TestType.InverseVsEigenvaluesSymmetric: InverseVsEigenvaluesSymmetric(); break;
                 case TestType.LanczosFullSpectrum: LanczosFullSpectrum(); break;
                 case TestType.LanczosPartialExtremal: LanczosPartialExtremal(); break;
+                case TestType.LanczosEarlyBreakdownPadding: LanczosEarlyBreakdownPadding(); break;
+                case TestType.PowerNegativeDominant: PowerNegativeDominant(); break;
                 case TestType.LanczosDenseVsBSM: LanczosDenseVsBSM(); break;
             }
         }
@@ -490,6 +505,103 @@ public class fProxySparseEigenTests
 
             arena.Dispose();
         }
+
+        // (d) EARLY-BREAKDOWN + GERSHGORIN-PADDING PATH. The Laplacian tests always run to
+        // produced == steps and so never exercise lanczos's `produced < steps` branch (the most
+        // numerically subtle new code: it pads T with a decoupled junk block below a Gershgorin
+        // bound so sorting can't mix padding into the real Ritz values). Force it here with a
+        // DIAGONAL operator whose spectrum has only TWO distinct values (0.2 x3, 0.7 x3). Lanczos on
+        // a diagonal matrix has Krylov grade == the count of distinct eigenvalues the seed touches;
+        // the deterministic seed (1,2,3,4,...) is nonzero on both eigenspaces, so grade == 2. With
+        // steps == 4 the process breaks down at produced == 2 and pads slots [2,4). Assert (i) the
+        // break is detected at exactly the grade, (ii) the 2 real Ritz values reproduce the distinct
+        // eigenvalues, and (iii) the padding sorts STRICTLY AFTER every real value and never leaks
+        // into [0, produced) -- the sort-order guarantee the padding construction rests on. Runs on
+        // BOTH the dense and 1x1-BSM encodings so the sparse eigensolver path is covered too.
+        void LanczosEarlyBreakdownPadding()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 6;
+            int steps = 4;
+
+            var A = arena.fProxyMat(n, n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = (fProxy)0;
+            for (int i = 0; i < n; i++)
+                A[i, i] = i < 3 ? (fProxy)0.2 : (fProxy)0.7;
+
+            fProxy bTol = BreakdownTol();
+
+            // --- dense path ---
+            var eig = Eigen.lanczos(ref arena, in A, steps, out int produced, out bool converged, bTol);
+
+            AssertTrue(produced == 2, (fProxy)1);                 // breakdown detected at the true grade
+            AssertClose(eig[0], (fProxy)0.7, BreakdownRitzTol()); // real Ritz values reproduce the
+            AssertClose(eig[1], (fProxy)0.2, BreakdownRitzTol()); // two distinct eigenvalues, descending
+
+            // Padding sort-order guarantee. Real values are both >= 0.2 > 0; padding is
+            // -bound - k*max(1,bound) with bound >= 0.7 (Gershgorin bounds the max real Ritz value),
+            // so every padded slot is <= -1.7. The smallest real value must NOT be displaced, the
+            // first padding value must sort after it (below -bound), and padding slots stay ordered.
+            AssertTrue(eig[1] > (fProxy)0.1, (fProxy)2);          // real min not overwritten by padding
+            AssertTrue(eig[2] < (fProxy)(-0.7), (fProxy)3);       // first padding sorts after reals, below -bound
+            AssertTrue(eig[3] < eig[2], (fProxy)4);               // padding slots strictly, distinctly ordered
+
+            // --- sparse (1x1-BSM) path: same operator, same breakdown, same real Ritz values ---
+            var bsm = DenseToBSM1x1(ref arena, in A, n);
+            var eigB = Eigen.lanczos(ref arena, in bsm, steps, out int producedB, out bool convB, bTol);
+
+            AssertTrue(producedB == 2, (fProxy)5);
+            AssertClose(eigB[0], (fProxy)0.7, BreakdownRitzTol());
+            AssertClose(eigB[1], (fProxy)0.2, BreakdownRitzTol());
+
+            arena.Dispose();
+        }
+
+        // (e) NEGATIVE-DOMINANT POWER ITERATION. Every other power-iteration fixture is SPD
+        // (positive spectrum), so powerIteration's sign-alternation branch -- where the
+        // largest-MAGNITUDE eigenvalue is negative and the iterate flips sign each step -- is never
+        // exercised. Negate a well-separated SPD matrix: A = -(M^T M + dim*I) is symmetric with a
+        // single dominant-magnitude eigenvalue that is NEGATIVE. Assert powerIteration converges,
+        // returns lambda < 0, and matches the most-negative eigenvalue from a trusted
+        // eigenvaluesSymmetric run on an independent copy (descending sort -> index dim-1).
+        void PowerNegativeDominant()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 10;
+            var A = BuildDenseSPD(ref arena, dim, 7714);   // dominant eigenvalue lamMax > 0
+            for (int i = 0; i < dim; i++)
+                for (int j = 0; j < dim; j++)
+                    A[i, j] = -A[i, j];                    // now dominant-magnitude eigenvalue is -lamMax < 0
+
+            // Independent copy for the trusted reference spectrum (eigenvaluesSymmetric destroys it).
+            var ARef = BuildDenseSPD(ref arena, dim, 7714);
+            for (int i = 0; i < dim; i++)
+                for (int j = 0; j < dim; j++)
+                    ARef[i, j] = -ARef[i, j];
+
+            var v = arena.fProxyVec(dim);   // zero -> internal deterministic seeding
+            var w = arena.fProxyVec(dim);
+            fProxy tol = (fProxy)10 * Consts.fProxyZeroThreshold;
+            bool ok = Eigen.powerIteration(in A, ref v, ref w, out fProxy lambda, tol, 4000);
+
+            AssertTrue(ok, (fProxy)1);
+            AssertTrue(lambda < (fProxy)0, (fProxy)2);   // sign branch: dominant eigenvalue is negative
+
+            var eigRef = arena.fProxyVec(dim);
+            bool okEig = Eigen.eigenvaluesSymmetric(ref ARef, ref eigRef);
+            AssertTrue(okEig, (fProxy)3);
+
+            // Descending sort -> the most-negative (largest-magnitude) eigenvalue is at index dim-1.
+            fProxy lamRef = eigRef[dim - 1];
+            fProxy scale = (fProxy)1 + math.abs(lamRef);
+            AssertClose(lambda, lamRef, LooseTol() * scale);
+
+            arena.Dispose();
+        }
     }
 
     // ---- correctness entry points (Burst job + Fail-array surfacing) ----------------------
@@ -541,6 +653,14 @@ public class fProxySparseEigenTests
     [Test]
     public void LanczosDenseVsBSMTest()
         => RunCase(SparseEigenTestJob.TestType.LanczosDenseVsBSM);
+
+    [Test]
+    public void LanczosEarlyBreakdownPaddingTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosEarlyBreakdownPadding);
+
+    [Test]
+    public void PowerNegativeDominantTest()
+        => RunCase(SparseEigenTestJob.TestType.PowerNegativeDominant);
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
     //

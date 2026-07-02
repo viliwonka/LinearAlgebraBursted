@@ -260,6 +260,15 @@ namespace LinearAlgebra
         /// immediately and returns false; lambda is then set to 0 (undefined) and v holds whatever
         /// CG last produced (partially updated) -- only read v/lambda when the call returns true.
         ///
+        /// SEEDING CAVEAT: when the caller passes the zero vector, v is seeded with the fixed
+        /// deterministic pattern (1,2,3,4,1,2,3,4,...). If the target smallest eigenvector is
+        /// (near-)orthogonal to that pattern -- possible for structured/symmetric matrices -- the
+        /// iteration converges to the next eigenpair and returns true with a WRONG lambda (the
+        /// Rayleigh quotient stabilizes on the wrong-but-stable pair). Callers with structured A
+        /// should pass their own nonzero seed rather than relying on the default pattern. Same
+        /// caveat as <see cref="powerIteration{TOp}"/>, but higher risk here: the CG-noise-floor
+        /// convergence branch can accept a wrong pair that pure matvecs would eventually escape.
+        ///
         /// Does not allocate.
         /// </summary>
         public static bool inversePowerIteration<TOp>(in TOp A, ref fProxyN v, ref fProxyN y,
@@ -686,8 +695,14 @@ namespace LinearAlgebra
                     if (radius > bound) bound = radius;
                 }
 
+                // Separation between the real block (all Ritz values >= -bound) and the padding is
+                // scaled by max(1, bound), not a fixed 1: eigenvaluesSymmetric's QL computes each
+                // value with ~eps*||T|| error, so at large ||T|| a fixed unit gap could be swamped
+                // and let a real Ritz value sort below the padding. A relative gap keeps the padding
+                // strictly, robustly below every real value regardless of spectrum magnitude.
+                fProxy pad = bound > (fProxy)1 ? bound : (fProxy)1;
                 for (int i = produced; i < steps; i++)
-                    ws.T[i, i] = -bound - (fProxy)(i - produced + 1);
+                    ws.T[i, i] = -bound - (fProxy)(i - produced + 1) * pad;
             }
 
             return eigenvaluesSymmetric(ref ws.T, ref eigenvalues, ref ws.symWs);
