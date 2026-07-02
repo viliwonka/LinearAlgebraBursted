@@ -492,6 +492,287 @@ namespace LinearAlgebra
             => inversePowerIteration(in A, ref v, out lambda, (fProxy)10 * Consts.fProxySqrtEps, 1000, A.M_Rows, Consts.fProxySqrtEps);
 
         /// <summary>
+        /// Lanczos tridiagonalization of a SYMMETRIC operator A (A.Rows == A.Cols), generic over
+        /// any <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static dispatch, no
+        /// vtable/managed delegate) -- same shape as <see cref="powerIteration{TOp}"/> /
+        /// <see cref="inversePowerIteration{TOp}"/>. This is the SINGLE SOURCE OF TRUTH for the
+        /// Lanczos loop -- the concrete dense (<c>lanczos(in fProxyMxN, ...)</c>) and BSM
+        /// (<c>lanczos(in fProxyBSM, ...)</c>) overloads below are thin forwarders that wrap their
+        /// matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSMOperator</c> and call this
+        /// method.
+        ///
+        /// Builds an orthonormal Krylov basis v_1..v_m (m = <paramref name="steps"/>) via the
+        /// classical 3-term Lanczos recurrence and the corresponding symmetric tridiagonal T (diag
+        /// alpha_1..alpha_m, off-diag beta_2..beta_m), then reuses
+        /// <see cref="eigenvaluesSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyEigenSym_WS)"/> on
+        /// T to obtain the Ritz values -- approximate eigenvalues of A. The EXTREMAL Ritz values
+        /// (largest and smallest) converge fastest and are already accurate for m &lt;&lt; A.Rows;
+        /// with m == A.Rows and full reorthogonalization, T is orthogonally similar to A and the
+        /// Ritz values reproduce A's ENTIRE spectrum.
+        ///
+        /// PRECONDITION (caller responsibility, not verified at runtime -- same contract as
+        /// <see cref="Solvers.minres{TOp}"/>'s "A must be symmetric"): A is symmetric. Lanczos is
+        /// undefined for a non-symmetric operator (the 3-term recurrence assumes it).
+        ///
+        /// FULL REORTHOGONALIZATION (against every previously computed v_1..v_j), performed TWICE
+        /// per iteration: bare/naive Lanczos loses orthogonality among the v_j to rounding error
+        /// after relatively few steps, which manufactures spurious "ghost" duplicate eigenvalues in
+        /// T. A single reorthogonalization pass already restores orthogonality to working
+        /// precision; the second pass ("reorthogonalize twice" -- classical folklore, e.g.
+        /// Parlett's "Symmetric Eigenvalue Problem") is cheap insurance (an extra O(m*n) sweep per
+        /// iteration, negligible next to the O(m^2*n) total the first pass already costs) traded
+        /// for extra robustness -- this implementation prioritizes correctness over the last bit of
+        /// speed, per its purpose as a general-purpose extremal eigensolver.
+        ///
+        /// Workspace (see <see cref="fProxyLanczos_WS"/>, allocate via
+        /// <c>Arena.fProxyLanczos_WS(A.Rows, steps)</c>): <c>ws.V</c> (steps x n) accumulates the
+        /// Krylov basis (row j = v_(j+1)); <c>ws.vCur</c>/<c>ws.w</c> (length n) are the current
+        /// Krylov vector (copied out of V for A.Apply, which requires distinct in/out buffers) and
+        /// the work vector; <c>ws.alpha</c>/<c>ws.beta</c> (length steps) are T's diagonal/off-
+        /// diagonal; <c>ws.T</c> (steps x steps) and <c>ws.symWs</c> back the
+        /// eigenvaluesSymmetric call. On input, row 0 of <c>ws.V</c> is the seed for v_1: if it has
+        /// zero 2-norm it is seeded deterministically as V[0,i] = 1 + (i &amp; 3) (mirrors
+        /// <see cref="powerIteration{TOp}"/>'s seeding), then normalized either way.
+        ///
+        /// EARLY BREAKDOWN: if at some iteration j &lt; steps the residual norm beta_(j+1) falls to
+        /// <paramref name="breakdownTol"/> or below, an invariant subspace of A has been found --
+        /// the j Ritz values already computed are EXACT eigenvalues of A (restricted to that
+        /// subspace), and there is no further information to extract, so the process truncates
+        /// there. <paramref name="produced"/> reports how many of the m = <paramref name="steps"/>
+        /// requested vectors were actually produced (produced &lt;= steps; produced == steps unless
+        /// breakdown occurred). To keep the workspace's T/symWs a FIXED steps x steps shape across
+        /// calls (so the same workspace serves every call regardless of whether breakdown occurs),
+        /// the unused steps-produced rows/columns of T are padded with a block that is exactly
+        /// DECOUPLED from the real produced x produced block (the connecting off-diagonal entry is
+        /// left at its zero-initialized value) and whose diagonal entries lie strictly below every
+        /// real Ritz value (offset past a Gershgorin bound on the real block), so the padding can
+        /// never mix into the real spectrum under sorting.
+        ///
+        /// On output: <paramref name="eigenvalues"/> (length steps, caller-allocated) holds the
+        /// Ritz values sorted DESCENDING (same convention as eigenvaluesSymmetric) in its first
+        /// <paramref name="produced"/> entries -- eigenvalues[0] is the largest Ritz value,
+        /// eigenvalues[produced-1] the smallest. Entries [produced, steps) are the padding
+        /// described above and are MEANINGLESS -- ignore them. Returns true iff
+        /// eigenvaluesSymmetric's QL iteration converged on the (possibly padded) tridiagonal;
+        /// only trust the eigenvalues when this returns true.
+        ///
+        /// Does not allocate.
+        /// </summary>
+        public static bool lanczos<TOp>(in TOp A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+                                        out int produced, int steps, fProxy breakdownTol)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            if (A.Rows != A.Cols)
+                throw new ArgumentException("lanczos: A must be square");
+
+            int n = A.Rows;
+
+            if (steps < 1 || steps > n)
+                throw new ArgumentException("lanczos: steps must be in [1, A.Rows]");
+
+            if (breakdownTol < (fProxy)0)
+                throw new ArgumentException("lanczos: breakdownTol must be >= 0");
+
+            RequireLanczosWorkspace(in ws, n, steps);
+
+            if (eigenvalues.N != steps)
+                throw new ArgumentException("lanczos: eigenvalues.N must equal steps");
+
+            unsafe {
+                if (ws.vCur.Data.Ptr == ws.w.Data.Ptr)
+                    throw new ArgumentException("lanczos: workspace vCur and w must be distinct buffers");
+            }
+
+            // Seed v_1 (row 0 of V) deterministically if the caller left it at zero (mirrors
+            // powerIteration's seeding), then normalize either way.
+            fProxy seedNormSq = (fProxy)0;
+            for (int i = 0; i < n; i++)
+                seedNormSq += ws.V[0, i] * ws.V[0, i];
+
+            if (seedNormSq == (fProxy)0) {
+                for (int i = 0; i < n; i++)
+                    ws.V[0, i] = (fProxy)(1 + (i & 3));
+                seedNormSq = (fProxy)0;
+                for (int i = 0; i < n; i++)
+                    seedNormSq += ws.V[0, i] * ws.V[0, i];
+            }
+
+            fProxy invSeedNorm = (fProxy)1 / math.sqrt(seedNormSq);
+            for (int i = 0; i < n; i++)
+                ws.V[0, i] = ws.V[0, i] * invSeedNorm;
+
+            produced = steps;
+
+            for (int jj = 0; jj < steps; jj++) {
+
+                // vCur = V row jj (A.Apply requires a standalone fProxyN distinct from its output).
+                for (int i = 0; i < n; i++)
+                    ws.vCur[i] = ws.V[jj, i];
+
+                // w = A * v_j
+                A.Apply(in ws.vCur, ref ws.w);
+
+                // Local 3-term recurrence: w -= beta_j * v_(j-1) (skipped for j == 1, i.e. jj == 0).
+                if (jj > 0) {
+                    fProxy bj = ws.beta[jj - 1];
+                    for (int i = 0; i < n; i++)
+                        ws.w[i] = ws.w[i] - bj * ws.V[jj - 1, i];
+                }
+
+                // alpha_j = v_j . w; w -= alpha_j * v_j
+                fProxy alphaJ = (fProxy)0;
+                for (int i = 0; i < n; i++)
+                    alphaJ += ws.vCur[i] * ws.w[i];
+                ws.alpha[jj] = alphaJ;
+
+                for (int i = 0; i < n; i++)
+                    ws.w[i] = ws.w[i] - alphaJ * ws.vCur[i];
+
+                // Full reorthogonalization against v_1..v_j, done TWICE (see doc comment).
+                for (int pass = 0; pass < 2; pass++) {
+                    for (int k = 0; k <= jj; k++) {
+                        fProxy proj = (fProxy)0;
+                        for (int i = 0; i < n; i++)
+                            proj += ws.V[k, i] * ws.w[i];
+                        for (int i = 0; i < n; i++)
+                            ws.w[i] = ws.w[i] - proj * ws.V[k, i];
+                    }
+                }
+
+                fProxy wNormSq = (fProxy)0;
+                for (int i = 0; i < n; i++)
+                    wNormSq += ws.w[i] * ws.w[i];
+                fProxy wNorm = math.sqrt(wNormSq);
+
+                if (wNorm <= breakdownTol) {
+                    // Invariant subspace found: the jj+1 Ritz values already gathered are exact.
+                    produced = jj + 1;
+                    break;
+                }
+
+                ws.beta[jj] = wNorm;
+
+                if (jj + 1 < steps) {
+                    fProxy invW = (fProxy)1 / wNorm;
+                    for (int i = 0; i < n; i++)
+                        ws.V[jj + 1, i] = ws.w[i] * invW;
+                }
+            }
+
+            // Assemble the steps x steps symmetric tridiagonal T from alpha/beta (zeroed first so
+            // a workspace reused from a previous, larger-`produced` call has no stale entries).
+            for (int i = 0; i < steps; i++)
+                for (int j = 0; j < steps; j++)
+                    ws.T[i, j] = (fProxy)0;
+
+            for (int i = 0; i < produced; i++)
+                ws.T[i, i] = ws.alpha[i];
+
+            for (int i = 0; i < produced - 1; i++) {
+                ws.T[i, i + 1] = ws.beta[i];
+                ws.T[i + 1, i] = ws.beta[i];
+            }
+
+            if (produced < steps) {
+                // Pad with a block that is exactly decoupled from the real produced x produced
+                // block (the off-diagonal entry T[produced-1, produced] stays at its zero-init
+                // value) and whose diagonal lies strictly below a Gershgorin bound on the real
+                // block, so sorting can never mix the padding into the real Ritz values.
+                fProxy bound = (fProxy)0;
+                for (int i = 0; i < produced; i++) {
+                    fProxy radius = math.abs(ws.alpha[i]);
+                    if (i > 0) radius += math.abs(ws.beta[i - 1]);
+                    if (i < produced - 1) radius += math.abs(ws.beta[i]);
+                    if (radius > bound) bound = radius;
+                }
+
+                for (int i = produced; i < steps; i++)
+                    ws.T[i, i] = -bound - (fProxy)(i - produced + 1);
+            }
+
+            return eigenvaluesSymmetric(ref ws.T, ref eigenvalues, ref ws.symWs);
+        }
+
+        /// <summary>lanczos with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
+        public static bool lanczos<TOp>(in TOp A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+                                        out int produced, int steps)
+            where TOp : struct, IfProxyLinearOperator
+            => lanczos(in A, ref ws, ref eigenvalues, out produced, steps, Consts.fProxyZeroThreshold);
+
+        /// <summary>
+        /// Lanczos tridiagonalization of a SYMMETRIC dense <see cref="fProxyMxN"/>. Forwards into
+        /// <see cref="lanczos{TOp}"/> via <see cref="fProxyDenseOperator"/> -- see that method for
+        /// the actual loop and the full algorithm documentation (seeding, full
+        /// reorthogonalization, workspace layout, early-breakdown padding, output convention).
+        /// </summary>
+        public static bool lanczos(in fProxyMxN A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+                                   out int produced, int steps, fProxy breakdownTol)
+        {
+            return lanczos(new fProxyDenseOperator(in A), ref ws, ref eigenvalues, out produced, steps, breakdownTol);
+        }
+
+        /// <summary>lanczos over a dense matrix with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
+        public static bool lanczos(in fProxyMxN A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+                                   out int produced, int steps)
+            => lanczos(in A, ref ws, ref eigenvalues, out produced, steps, Consts.fProxyZeroThreshold);
+
+        /// <summary>
+        /// Lanczos over a dense SYMMETRIC matrix -- allocates the workspace (see
+        /// <see cref="fProxyLanczos_WS"/>) and the output eigenvalues buffer (length steps) from
+        /// <paramref name="arena"/> and calls the zero-alloc primitive. Returns the Ritz values;
+        /// only the first <paramref name="produced"/> entries are meaningful (see
+        /// <see cref="lanczos{TOp}"/>'s doc comment). Use the ref-workspace overload in hot loops
+        /// to avoid the allocation.
+        /// </summary>
+        public static fProxyN lanczos(ref Arena arena, in fProxyMxN A, int steps, out int produced,
+                                      out bool converged, fProxy breakdownTol)
+        {
+            var ws = arena.fProxyLanczos_WS(A.M_Rows, steps);
+            var eigenvalues = arena.fProxyVec(steps);
+            converged = lanczos(in A, ref ws, ref eigenvalues, out produced, steps, breakdownTol);
+            return eigenvalues;
+        }
+
+        /// <summary>lanczos (allocating) over a dense matrix with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
+        public static fProxyN lanczos(ref Arena arena, in fProxyMxN A, int steps, out int produced, out bool converged)
+            => lanczos(ref arena, in A, steps, out produced, out converged, Consts.fProxyZeroThreshold);
+
+        /// <summary>
+        /// Lanczos tridiagonalization of a SYMMETRIC block-sparse (BSR) matrix. Same semantics as
+        /// the dense overload -- see
+        /// <see cref="lanczos(in fProxyMxN, ref fProxyLanczos_WS, ref fProxyN, out int, int, fProxy)"/>.
+        /// Forwards into <see cref="lanczos{TOp}"/> via <c>fProxyBSMOperator</c>.
+        /// </summary>
+        public static bool lanczos(in fProxyBSM A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+                                   out int produced, int steps, fProxy breakdownTol)
+        {
+            return lanczos(new fProxyBSMOperator(in A), ref ws, ref eigenvalues, out produced, steps, breakdownTol);
+        }
+
+        /// <summary>lanczos over a BSR matrix with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
+        public static bool lanczos(in fProxyBSM A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+                                   out int produced, int steps)
+            => lanczos(in A, ref ws, ref eigenvalues, out produced, steps, Consts.fProxyZeroThreshold);
+
+        /// <summary>
+        /// Lanczos over a BSR SYMMETRIC matrix -- allocates the workspace and the output
+        /// eigenvalues buffer from <paramref name="arena"/> and calls the zero-alloc primitive.
+        /// See the dense overload's doc comment for the return-value convention.
+        /// </summary>
+        public static fProxyN lanczos(ref Arena arena, in fProxyBSM A, int steps, out int produced,
+                                      out bool converged, fProxy breakdownTol)
+        {
+            var ws = arena.fProxyLanczos_WS(A.M_Rows, steps);
+            var eigenvalues = arena.fProxyVec(steps);
+            converged = lanczos(in A, ref ws, ref eigenvalues, out produced, steps, breakdownTol);
+            return eigenvalues;
+        }
+
+        /// <summary>lanczos (allocating) over a BSR matrix with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
+        public static fProxyN lanczos(ref Arena arena, in fProxyBSM A, int steps, out int produced, out bool converged)
+            => lanczos(ref arena, in A, steps, out produced, out converged, Consts.fProxyZeroThreshold);
+
+        /// <summary>
         /// Full symmetric eigendecomposition via classical two-sided (cyclic) Jacobi iteration.
         /// Computes A = V * diag(eigenvalues) * V^T where V is orthonormal.
         ///

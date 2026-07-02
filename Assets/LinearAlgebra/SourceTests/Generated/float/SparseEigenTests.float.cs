@@ -32,6 +32,9 @@ public class floatSparseEigenTests
             LaplacianKnownSpectrum,
             InverseLaplacianCrossCheck,
             InverseVsEigenvaluesSymmetric,
+            LanczosFullSpectrum,
+            LanczosPartialExtremal,
+            LanczosDenseVsBSM,
         }
 
         public TestType Type;
@@ -44,6 +47,27 @@ public class floatSparseEigenTests
         // choose-marker tolerance for iterative-vs-iterative cross-checks (looser on float).
         static float LooseTol() => 1e-2f;
 
+        // Full-spectrum Lanczos (steps == n, full reorthogonalization TWICE) makes the tridiagonal
+        // T orthogonally similar to A, so its Ritz values are as accurate as running
+        // eigenvaluesSymmetric on A directly -- i.e. bounded by the QL eigensolver's own floor plus
+        // the reorthogonalization roundoff. This is tighter than the iterative LooseTol but a touch
+        // looser than EvSymLaplacian's 1000*ZeroThreshold, to absorb that extra roundoff on the
+        // larger n=16 tridiagonal used here. Applied as a (1+|lambda|)-scaled absolute tolerance.
+        static float FullSpectrumTol() => 1e-2f;
+
+        // Partial-spectrum Lanczos (steps < n): only the EXTREMAL Ritz values (largest at index 0,
+        // smallest at index produced-1) are asserted. Their Kaniel-Paige-Saad convergence in ~n/2
+        // steps on this well-separated Laplacian is fast but NOT machine-exact, so this is
+        // deliberately looser than FullSpectrumTol. Interior Ritz values are not asserted at all.
+        // Applied as a (1+|lambda|)-scaled absolute tolerance (the smallest Laplacian eigenvalue is
+        // ~0.034, so the scale is ~1 there and this stays a meaningful bound, not a free pass).
+        // Partial Lanczos (steps < n) resolves the EXTREMAL Ritz values only approximately -- the
+        // error shrinks as steps->n. At steps=n/2 on the n=16 Laplacian the largest/smallest Ritz
+        // values land ~7e-4 (absolute) from the closed-form extremes, so the double band is 5e-3
+        // (scaled), NOT the ~machine-eps band the FULL-spectrum test can use. This is honest partial-
+        // convergence accuracy (~0.5%), not a loose catch-all.
+        static float PartialExtremalTol() => 2e-2f;
+
         public void Execute()
         {
             switch (Type)
@@ -52,6 +76,9 @@ public class floatSparseEigenTests
                 case TestType.LaplacianKnownSpectrum: LaplacianKnownSpectrum(); break;
                 case TestType.InverseLaplacianCrossCheck: InverseLaplacianCrossCheck(); break;
                 case TestType.InverseVsEigenvaluesSymmetric: InverseVsEigenvaluesSymmetric(); break;
+                case TestType.LanczosFullSpectrum: LanczosFullSpectrum(); break;
+                case TestType.LanczosPartialExtremal: LanczosPartialExtremal(); break;
+                case TestType.LanczosDenseVsBSM: LanczosDenseVsBSM(); break;
             }
         }
 
@@ -343,6 +370,126 @@ public class floatSparseEigenTests
 
             arena.Dispose();
         }
+
+        // ---- Milestone C3: Eigen.lanczos (symmetric Lanczos tridiagonalization + Ritz values via
+        // eigenvaluesSymmetric on the small tridiagonal T), generic over IfloatLinearOperator with
+        // dense (floatMxN) and BSM (floatBSM) forwarders. Same fixture philosophy as the
+        // power/inverse-power suites above: the 1D Laplacian's spectrum is closed-form, and the BSM
+        // path is cross-checked against the dense path encoding the SAME numeric operator.
+        //
+        // (a) FULL-SPECTRUM REPRODUCTION. With steps == n and full reorthogonalization, T is
+        // orthogonally similar to A, so the n Ritz values reproduce A's ENTIRE spectrum. Run lanczos
+        // with steps == n on BOTH the dense Laplacian and its 1x1-block BSM encoding; assert both
+        // produced == n, both converged, and every Ritz value matches the closed-form eigenvalue
+        // lambda_k = 2 - 2*cos(k*pi/(n+1)). lanczos sorts DESCENDING (eigenvaluesSymmetric's
+        // convention) and 2-2cos is INCREASING in k, so descending output index i corresponds to
+        // k = n - i (identical mapping to EvSymLaplacian). ALSO cross-check the dense Ritz values
+        // against the trusted dense eigenvaluesSymmetric run on an INDEPENDENT copy of the same
+        // Laplacian (eigenvaluesSymmetric destroys its input; floatLaplacian1D is a pure generator,
+        // so a second call yields a separate instance encoding the identical operator).
+        void LanczosFullSpectrum()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 16;
+            var Adense = arena.floatLaplacian1D(n);
+            var bsm    = DenseToBSM1x1(ref arena, in Adense, 3 * n);
+            var ARef   = arena.floatLaplacian1D(n);   // independent copy; destroyed by eigenvaluesSymmetric below
+
+            // Full spectrum: steps == n.
+            var eigDense = Eigen.lanczos(ref arena, in Adense, n, out int producedDense, out bool convDense);
+            AssertTrue(convDense, (float)1);
+            AssertTrue(producedDense == n, (float)2);
+
+            var eigBsm = Eigen.lanczos(ref arena, in bsm, n, out int producedBsm, out bool convBsm);
+            AssertTrue(convBsm, (float)3);
+            AssertTrue(producedBsm == n, (float)4);
+
+            // Trusted dense reference spectrum on the independent copy.
+            var eigRef = arena.floatVec(n);
+            bool okEig = Eigen.eigenvaluesSymmetric(ref ARef, ref eigRef);
+            AssertTrue(okEig, (float)5);
+
+            for (int i = 0; i < n; i++)
+            {
+                // Descending output -> index i corresponds to k = n - i.
+                int k = n - i;
+                double lamD = 2.0 - 2.0 * math.cos(k * math.PI_DBL / (n + 1));
+                float scale = (float)1 + math.abs((float)lamD);
+
+                AssertClose(eigDense[i], (float)lamD, FullSpectrumTol() * scale);
+                AssertClose(eigBsm[i], (float)lamD, FullSpectrumTol() * scale);
+
+                // Dense lanczos vs dense eigenvaluesSymmetric: both within FullSpectrumTol of the
+                // closed form, so their mutual difference is bounded by 2x that.
+                AssertClose(eigDense[i], eigRef[i], (float)2 * FullSpectrumTol() * scale);
+            }
+
+            arena.Dispose();
+        }
+
+        // (b) PARTIAL-SPECTRUM EXTREMAL CONVERGENCE. Same Laplacian, but steps ~= n/2 < n. No
+        // breakdown occurs for a generic seed on the Laplacian, so produced == steps. Only the
+        // EXTREMAL Ritz values are expected to have converged: eigenvalues[0] (largest, closed-form
+        // k = n) and eigenvalues[produced-1] (smallest, closed-form k = 1). Interior Ritz values are
+        // NOT asserted. Uses the looser PartialExtremalTol (fewer steps -> coarser floor than the
+        // full-spectrum case).
+        void LanczosPartialExtremal()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 16;
+            int steps = n / 2;   // 8
+            var A = arena.floatLaplacian1D(n);
+
+            var eig = Eigen.lanczos(ref arena, in A, steps, out int produced, out bool converged);
+            AssertTrue(converged, (float)1);
+            AssertTrue(produced == steps, (float)2);
+
+            // Largest Ritz value (index 0) vs closed-form k = n.
+            double lamMaxD = 2.0 - 2.0 * math.cos(n * math.PI_DBL / (n + 1));
+            float scaleMax = (float)1 + math.abs((float)lamMaxD);
+            AssertClose(eig[0], (float)lamMaxD, PartialExtremalTol() * scaleMax);
+
+            // Smallest Ritz value (index produced-1) vs closed-form k = 1.
+            double lamMinD = 2.0 - 2.0 * math.cos(1.0 * math.PI_DBL / (n + 1));
+            float scaleMin = (float)1 + math.abs((float)lamMinD);
+            AssertClose(eig[produced - 1], (float)lamMinD, PartialExtremalTol() * scaleMin);
+
+            arena.Dispose();
+        }
+
+        // (c) DENSE-vs-BSM AGREEMENT on the partial-spectrum run. The dense and BSM forms encode the
+        // SAME numeric operator, run the SAME Lanczos loop from the SAME deterministic zero-seed, so
+        // they differ only by spMV-vs-dense-matvec floating-point reassociation. Every Ritz value
+        // (extremal AND interior) must therefore agree closely -- a stronger cross-check than (b),
+        // matching the DenseVsSparseCrossCheck philosophy. Uses LooseTol (iterative-vs-iterative
+        // cross-check band).
+        void LanczosDenseVsBSM()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 16;
+            int steps = n / 2;   // 8
+            var Adense = arena.floatLaplacian1D(n);
+            var bsm    = DenseToBSM1x1(ref arena, in Adense, 3 * n);
+
+            var eigDense = Eigen.lanczos(ref arena, in Adense, steps, out int producedDense, out bool convDense);
+            AssertTrue(convDense, (float)1);
+
+            var eigBsm = Eigen.lanczos(ref arena, in bsm, steps, out int producedBsm, out bool convBsm);
+            AssertTrue(convBsm, (float)2);
+
+            AssertTrue(producedDense == producedBsm, (float)3);
+
+            for (int i = 0; i < producedDense; i++)
+            {
+                float scale = (float)1 + math.abs(eigDense[i]);
+                AssertClose(eigDense[i], eigBsm[i], LooseTol() * scale);
+            }
+
+            arena.Dispose();
+        }
     }
 
     // ---- correctness entry points (Burst job + Fail-array surfacing) ----------------------
@@ -382,6 +529,18 @@ public class floatSparseEigenTests
     [Test]
     public void InverseVsEigenvaluesSymmetricTest()
         => RunCase(SparseEigenTestJob.TestType.InverseVsEigenvaluesSymmetric);
+
+    [Test]
+    public void LanczosFullSpectrumTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosFullSpectrum);
+
+    [Test]
+    public void LanczosPartialExtremalTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosPartialExtremal);
+
+    [Test]
+    public void LanczosDenseVsBSMTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosDenseVsBSM);
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
     //
@@ -537,6 +696,99 @@ public class floatSparseEigenTests
             Assert.Throws<ArgumentException>(() =>
                 Eigen.inversePowerIteration(in A, ref v, out float lambda,
                     Consts.floatZeroThreshold, 0, A.M_Rows, Consts.floatSqrtEps));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // ---- lanczos guard / exception cases (managed thread; Assert.Throws can't run in Burst) ----
+    //
+    // lanczos<TOp>'s argument guards throw ArgumentException, checked in this order (see the core):
+    // A.Rows != A.Cols  ->  steps not in [1, A.Rows]  ->  breakdownTol < 0  ->  workspace shape  ->
+    // eigenvalues.N != steps  ->  vCur/w aliasing. These tests fire the first four via both the
+    // dense (in floatMxN) and BSM (in floatBSM) entry points where practical, using the
+    // ref-workspace overload with a valid workspace so the intended guard (not workspace shape)
+    // is the one that trips.
+
+    [Test]
+    public void Lanczos_NonSquareDense_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.floatMat(3, 4);                 // Rows != Cols
+            var ws = arena.floatLanczos_WS(A.M_Rows, 1);  // sized for n = 3, steps = 1
+            var eig = arena.floatVec(1);
+            // Square guard fires before the workspace/eigenvalues shape is examined.
+            Assert.Throws<ArgumentException>(() =>
+                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 1));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Lanczos_NonSquareBSM_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            // 2x3 block grid of 2x2 blocks -> 4x6 (Rows != Cols). One block suffices.
+            const int BR = 2, BC = 2;
+            var builder = arena.floatBSMBuilder(2, 3, BR, BC, 1);
+            builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, -1f, 1f, 73001));
+            var A = builder.ToBSM(ref arena);
+
+            var ws = arena.floatLanczos_WS(A.M_Rows, 1);  // n = 4, steps = 1
+            var eig = arena.floatVec(1);
+            Assert.Throws<ArgumentException>(() =>
+                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 1));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Lanczos_StepsTooSmall_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.floatLaplacian1D(4);            // square
+            var ws = arena.floatLanczos_WS(4, 1);
+            var eig = arena.floatVec(1);
+            // steps = 0 < 1: the [1, A.Rows] guard fires before workspace/eigenvalues are checked.
+            Assert.Throws<ArgumentException>(() =>
+                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 0));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Lanczos_StepsTooLarge_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.floatLaplacian1D(4);            // square, n = 4
+            var ws = arena.floatLanczos_WS(4, 5);         // workspace validly sized for steps = 5
+            var eig = arena.floatVec(5);
+            // steps = 5 > A.Rows = 4: the [1, A.Rows] guard fires.
+            Assert.Throws<ArgumentException>(() =>
+                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 5));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Lanczos_NegativeBreakdownTol_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.floatLaplacian1D(4);            // square
+            var ws = arena.floatLanczos_WS(4, 2);
+            var eig = arena.floatVec(2);
+            // breakdownTol < 0: guard fires (this is the breakdownTol-taking overload).
+            Assert.Throws<ArgumentException>(() =>
+                Eigen.lanczos(in A, ref ws, ref eig, out int produced, 2, (float)(-1)));
         }
         finally { arena.Dispose(); }
     }
