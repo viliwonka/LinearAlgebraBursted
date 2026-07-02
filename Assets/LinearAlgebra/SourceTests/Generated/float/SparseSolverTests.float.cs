@@ -57,10 +57,10 @@ public class floatSparseSolverTests
             CgneWarmStart,
             CgneInconsistentDoesNotConverge,
 
-            // ---- LS diagnostics (floatLstsqInfo: rnorm/Arnorm/xnorm/iterations/converged) ----
+            // ---- LS diagnostics (floatLstsqInfo: rnorm/Arnorm/xnorm/iterations/status; free tracked estimates) ----
             LstsqInfoMatchesIndependentRecompute,
             LstsqInfoDampedArnorm,
-            LstsqInfoBitIdenticalToPlainSolve,
+            LsmrRnormMatchesExact,
             LstsqInfoBSMMatchesDense,
 
             // ---- AᵀA-Jacobi preconditioner: fewer iterations, same solution ----
@@ -144,7 +144,7 @@ public class floatSparseSolverTests
 
                 case TestType.LstsqInfoMatchesIndependentRecompute: LstsqInfoMatchesIndependentRecompute(); break;
                 case TestType.LstsqInfoDampedArnorm: LstsqInfoDampedArnorm(); break;
-                case TestType.LstsqInfoBitIdenticalToPlainSolve: LstsqInfoBitIdenticalToPlainSolve(); break;
+                case TestType.LsmrRnormMatchesExact: LsmrRnormMatchesExact(); break;
                 case TestType.LstsqInfoBSMMatchesDense: LstsqInfoBSMMatchesDense(); break;
                 case TestType.JacobiPreconditionerReducesIterations: JacobiPreconditionerReducesIterations(); break;
                 case TestType.JacobiConvenienceSolversLSOptimalDenseAndBSM: JacobiConvenienceSolversLSOptimalDenseAndBSM(); break;
@@ -1186,9 +1186,10 @@ public class floatSparseSolverTests
 
         // ================== LS diagnostics (floatLstsqInfo) ==================
 
-        // Independently recompute rnorm/Arnorm/xnorm from the returned x and assert they match the
-        // info struct. r = b - A x, and A^T(A x - b) = -A^T r so ||A^T(Ax-b)|| == Arnorm; for damp!=0
-        // the reported optimality residual is ||A^T r - damp^2 x|| = ||A^T(Ax-b) + damp^2 x||.
+        // Independently recompute rnorm/Arnorm/xnorm EXACTLY from the returned x (paying a real
+        // matvec) and assert the solver's FREE tracked estimates in the info struct match to within
+        // LooseTol at convergence. r = b - A x, and A^T(A x - b) = -A^T r so ||A^T(Ax-b)|| == Arnorm;
+        // for damp!=0 the reported optimality residual is ||A^T r - damp^2 x|| = ||A^T(Ax-b) + damp^2 x||.
         static void AssertInfoMatches(in floatMxN A, in floatN b, in floatN x, float damp,
                                       in floatLstsqInfo info, float tol)
         {
@@ -1219,23 +1220,20 @@ public class floatSparseSolverTests
             int maxIter = 8 * n;
 
             var xC = arena.floatVec(n);
-            bool okC = Solvers.cgls(in A, in b, ref xC, maxIter, Consts.floatSqrtEps, (float)0, out var infoC);
-            Assert.IsTrue(okC);
-            Assert.IsTrue(infoC.converged);
+            var infoC = Solvers.cgls(in A, in b, ref xC, maxIter, Consts.floatSqrtEps, (float)0);
+            Assert.IsTrue(infoC.Solved);
             Assert.IsTrue(infoC.iterations >= 1 && infoC.iterations <= maxIter);
             AssertInfoMatches(in A, in b, in xC, (float)0, in infoC, LooseTol());
 
             var xL = arena.floatVec(n);
-            bool okL = Solvers.lsqr(in A, in b, ref xL, maxIter, Consts.floatSqrtEps, (float)0, out var infoL);
-            Assert.IsTrue(okL);
-            Assert.IsTrue(infoL.converged);
+            var infoL = Solvers.lsqr(in A, in b, ref xL, maxIter, Consts.floatSqrtEps, (float)0);
+            Assert.IsTrue(infoL.Solved);
             Assert.IsTrue(infoL.iterations >= 1 && infoL.iterations <= maxIter);
             AssertInfoMatches(in A, in b, in xL, (float)0, in infoL, LooseTol());
 
             var xM = arena.floatVec(n);
-            bool okM = Solvers.lsmr(in A, in b, ref xM, maxIter, Consts.floatSqrtEps, (float)0, out var infoM);
-            Assert.IsTrue(okM);
-            Assert.IsTrue(infoM.converged);
+            var infoM = Solvers.lsmr(in A, in b, ref xM, maxIter, Consts.floatSqrtEps, (float)0);
+            Assert.IsTrue(infoM.Solved);
             Assert.IsTrue(infoM.iterations >= 1 && infoM.iterations <= maxIter);
             AssertInfoMatches(in A, in b, in xM, (float)0, in infoM, LooseTol());
 
@@ -1259,55 +1257,68 @@ public class floatSparseSolverTests
             int maxIter = 8 * n;
 
             var xC = arena.floatVec(n);
-            Assert.IsTrue(Solvers.cgls(in A, in b, ref xC, maxIter, Consts.floatSqrtEps, damp, out var infoC));
+            var infoC = Solvers.cgls(in A, in b, ref xC, maxIter, Consts.floatSqrtEps, damp);
+            Assert.IsTrue(infoC.Solved);
             AssertInfoMatches(in A, in b, in xC, damp, in infoC, LooseTol());
 
             var xL = arena.floatVec(n);
-            Assert.IsTrue(Solvers.lsqr(in A, in b, ref xL, maxIter, Consts.floatSqrtEps, damp, out var infoL));
+            var infoL = Solvers.lsqr(in A, in b, ref xL, maxIter, Consts.floatSqrtEps, damp);
+            Assert.IsTrue(infoL.Solved);
             AssertInfoMatches(in A, in b, in xL, damp, in infoL, LooseTol());
 
             var xM = arena.floatVec(n);
-            Assert.IsTrue(Solvers.lsmr(in A, in b, ref xM, maxIter, Consts.floatSqrtEps, damp, out var infoM));
+            var infoM = Solvers.lsmr(in A, in b, ref xM, maxIter, Consts.floatSqrtEps, damp);
+            Assert.IsTrue(infoM.Solved);
             AssertInfoMatches(in A, in b, in xM, damp, in infoM, LooseTol());
 
             arena.Dispose();
         }
 
-        // The diagnostic overload must not perturb the solve: solving with the plain bool overload
-        // and with the out-info overload (same inputs) yields a BIT-IDENTICAL x. This is the
-        // observer-only guarantee for the added iteration counter + post-hoc info.
-        void LstsqInfoBitIdenticalToPlainSolve()
+        // The LSMR ‖r‖ figure is the one genuinely subtle piece of the free diagnostics: LSMR never
+        // holds the residual r = b - A x, so info.rnorm comes from the Fong-Saunders §5.4 scalar
+        // recurrence run over the same rotations (O(1)/iteration, no matvec). Pin it against the
+        // certified-exact residual (Solvers.lstsqResidual, one real Apply+ApplyT) on BOTH a
+        // consistent system (rnorm -> 0) and an inconsistent one (rnorm large) -- the case most
+        // likely to expose a recurrence bug.
+        void LsmrRnormMatchesExact()
         {
             var arena = new Arena(Allocator.Persistent);
 
-            int m = 12, n = 5;
-            var A = arena.floatRandomMat(m, n, -1f, 1f, 51201);
-            var b = arena.floatRandomVec(m, -1f, 1f, 51202);
+            int m = 16, n = 6;
+            var A = arena.floatRandomMat(m, n, -1f, 1f, 51401);
+
+            // (a) consistent: b = A x* for a known x* -> exact recovery, rnorm -> 0.
+            var xStar = arena.floatRandomVec(n, -1f, 1f, 51402);
+            var bCons = Linear_OP.dot(A, xStar);                // bCons = A x*  (consistent)
+
+            // (b) inconsistent: random rhs -> nonzero least-squares residual.
+            var bInc = arena.floatRandomVec(m, -1f, 1f, 51403);
+
             int maxIter = 8 * n;
+            var rS = arena.floatVec(m);
+            var sS = arena.floatVec(n);
 
-            // cgls
-            var xa = arena.floatVec(n);
-            var xb = arena.floatVec(n);
-            bool ra = Solvers.cgls(in A, in b, ref xa, maxIter, Consts.floatSqrtEps);
-            bool rb = Solvers.cgls(in A, in b, ref xb, maxIter, Consts.floatSqrtEps, (float)0, out var ic);
-            Assert.IsTrue(ra == rb && rb == ic.converged);
-            for (int i = 0; i < n; i++) Assert.IsTrue(xa[i] == xb[i]);   // exact
+            var xc = arena.floatVec(n);
+            var ic = Solvers.lsmr(in A, in bCons, ref xc, maxIter, Consts.floatSqrtEps, (float)0);
+            Assert.IsTrue(ic.Solved);
+            var exC = Solvers.lstsqResidual(new floatDenseOperator(in A), in bCons, in xc, (float)0, ref rS, ref sS);
+            AssertClose(ic.rnorm, exC.rnorm, LooseTol());
 
-            // lsqr
-            var ya = arena.floatVec(n);
-            var yb = arena.floatVec(n);
-            bool sa = Solvers.lsqr(in A, in b, ref ya, maxIter, Consts.floatSqrtEps);
-            bool sb = Solvers.lsqr(in A, in b, ref yb, maxIter, Consts.floatSqrtEps, (float)0, out var il);
-            Assert.IsTrue(sa == sb && sb == il.converged);
-            for (int i = 0; i < n; i++) Assert.IsTrue(ya[i] == yb[i]);
+            var xi = arena.floatVec(n);
+            var ii = Solvers.lsmr(in A, in bInc, ref xi, maxIter, Consts.floatSqrtEps, (float)0);
+            Assert.IsTrue(ii.Solved);
+            var exI = Solvers.lstsqResidual(new floatDenseOperator(in A), in bInc, in xi, (float)0, ref rS, ref sS);
+            Assert.IsTrue(exI.rnorm > (float)0.1);             // genuinely inconsistent
+            AssertClose(ii.rnorm, exI.rnorm, LooseTol());
 
-            // lsmr
-            var za = arena.floatVec(n);
-            var zb = arena.floatVec(n);
-            bool ta = Solvers.lsmr(in A, in b, ref za, maxIter, Consts.floatSqrtEps);
-            bool tb = Solvers.lsmr(in A, in b, ref zb, maxIter, Consts.floatSqrtEps, (float)0, out var im);
-            Assert.IsTrue(ta == tb && tb == im.converged);
-            for (int i = 0; i < n; i++) Assert.IsTrue(za[i] == zb[i]);
+            // (c) mid-flight: force MaxIterations (maxIter=2) so the ‖r‖ recurrence is pinned BEFORE
+            // convergence -- where the dnorm += betacheck² accumulation would drift if transcribed
+            // wrong. rnorm must still equal the exact residual of the (un-converged) iterate.
+            var xf = arena.floatVec(n);
+            var if2 = Solvers.lsmr(in A, in bInc, ref xf, 2, Consts.floatSqrtEps, (float)0);
+            Assert.IsTrue(!if2.Solved && if2.iterations == 2);   // genuinely stopped mid-flight
+            var exF = Solvers.lstsqResidual(new floatDenseOperator(in A), in bInc, in xf, (float)0, ref rS, ref sS);
+            AssertClose(if2.rnorm, exF.rnorm, LooseTol());
 
             arena.Dispose();
         }
@@ -1326,10 +1337,12 @@ public class floatSparseSolverTests
             int maxIter = 8 * n;
 
             var xD = arena.floatVec(n);
-            Assert.IsTrue(Solvers.lsqr(in A, in b, ref xD, maxIter, Consts.floatSqrtEps, (float)0, out var infoD));
+            var infoD = Solvers.lsqr(in A, in b, ref xD, maxIter, Consts.floatSqrtEps, (float)0);
+            Assert.IsTrue(infoD.Solved);
 
             var xB = arena.floatVec(n);
-            Assert.IsTrue(Solvers.lsqr(in bsm, in b, ref xB, maxIter, Consts.floatSqrtEps, (float)0, out var infoB));
+            var infoB = Solvers.lsqr(in bsm, in b, ref xB, maxIter, Consts.floatSqrtEps, (float)0);
+            Assert.IsTrue(infoB.Solved);
 
             AssertVecEq(in xD, in xB, LooseTol());
             float sr = (float)1 + infoD.rnorm;
@@ -1375,7 +1388,8 @@ public class floatSparseSolverTests
 
             // plain lsqr with diagnostics
             var xPlain = arena.floatVec(n);
-            Assert.IsTrue(Solvers.lsqr(in A, in b, ref xPlain, maxIter, tol, (float)0, out var infoPlain));
+            var infoPlain = Solvers.lsqr(in A, in b, ref xPlain, maxIter, tol, (float)0);
+            Assert.IsTrue(infoPlain.Solved);
 
             // preconditioned via the composable diagnostic path (to read the iteration count)
             var d2 = arena.floatVec(n); Linear_OP.columnNormsSquared(in A, ref d2);
@@ -1389,7 +1403,8 @@ public class floatSparseSolverTests
             var w    = arena.floatVec(n);
             var tmpM = arena.floatVec(m);
             var tmpN = arena.floatVec(n);
-            Assert.IsTrue(Solvers.lsqr(op, in b, ref y, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, (float)0, out floatLstsqInfo infoJac));
+            var infoJac = Solvers.lsqr(op, in b, ref y, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, (float)0);
+            Assert.IsTrue(infoJac.Solved);
             var xComp = arena.floatVec(n);
             for (int j = 0; j < n; j++) xComp[j] = d[j] * y[j];
 
@@ -1474,18 +1489,16 @@ public class floatSparseSolverTests
             {
                 var x = arena.floatVec(2);
                 floatLstsqInfo info;
-                bool ok;
-                if (which == 0)      ok = Solvers.cgls(in A, in b, ref x, 50, tol, (float)0, out info);
-                else if (which == 1) ok = Solvers.lsqr(in A, in b, ref x, 50, tol, (float)0, out info);
-                else                 ok = Solvers.lsmr(in A, in b, ref x, 50, tol, (float)0, out info);
+                if (which == 0)      info = Solvers.cgls(in A, in b, ref x, 50, tol, (float)0);
+                else if (which == 1) info = Solvers.lsqr(in A, in b, ref x, 50, tol, (float)0);
+                else                 info = Solvers.lsmr(in A, in b, ref x, 50, tol, (float)0);
 
-                Assert.IsTrue(ok);
+                Assert.IsTrue(info.Solved);
                 AssertClose(x[0], (float)5,    LooseTol());
                 AssertClose(x[1], (float)(-3), LooseTol());
                 AssertClose(info.rnorm, expRnorm, LooseTol());
                 Assert.IsTrue(info.Arnorm <= LooseTol() * ((float)1 + expRnorm));   // Aᵀr = 0 exactly
                 AssertClose(info.xnorm, expXnorm, LooseTol());
-                Assert.IsTrue(info.converged);
             }
 
             arena.Dispose();
@@ -1639,8 +1652,8 @@ public class floatSparseSolverTests
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoDampedArnorm }.Run();
 
     [Test]
-    public void LstsqInfoBitIdenticalToPlainSolveTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoBitIdenticalToPlainSolve }.Run();
+    public void LsmrRnormMatchesExactTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrRnormMatchesExact }.Run();
 
     [Test]
     public void LstsqInfoBSMMatchesDenseTest()
