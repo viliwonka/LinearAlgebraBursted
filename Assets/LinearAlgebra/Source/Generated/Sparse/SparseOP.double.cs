@@ -33,11 +33,44 @@ namespace LinearAlgebra.Sparse
                 // bsmMatVec accumulates (+=), so the destination must start zeroed.
                 UnsafeUtility.MemClear(y.Data.Ptr, (long)y.Data.Length * UnsafeUtility.SizeOf<double>());
 
+                int* rowPtr = A.RowPtr.Ptr;
+                int* colInd = A.ColInd.Ptr;
+                double* values = A.Values.Ptr;
+                double* xPtr = x.Data.Ptr;
+                double* yPtr = y.Data.Ptr;
+
                 if (A.Symmetric)
-                    Unsafe_OP.bsmMatVecSym(A.RowPtr.Ptr, A.ColInd.Ptr, A.Values.Ptr, x.Data.Ptr, y.Data.Ptr, A.BlockRows, A.BR);
+                {
+                    // Symmetric storage requires BR==BC by construction (doubleBSM ctor), so
+                    // dispatching on BR alone is sufficient here.
+                    switch (A.BR)
+                    {
+                        case 1: Unsafe_OP.bsmMatVecSymB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 2: Unsafe_OP.bsmMatVecSymB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 3: Unsafe_OP.bsmMatVecSymB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 4: Unsafe_OP.bsmMatVecSymB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 6: Unsafe_OP.bsmMatVecSymB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        default: Unsafe_OP.bsmMatVecSym(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR); break;
+                    }
+                }
+                else if (A.BR == A.BC)
+                {
+                    // Register-tile specializations only apply to square blocks -- rectangular
+                    // BR != BC always falls through to the general kernel below.
+                    switch (A.BR)
+                    {
+                        case 1: Unsafe_OP.bsmMatVecB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 2: Unsafe_OP.bsmMatVecB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 3: Unsafe_OP.bsmMatVecB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 4: Unsafe_OP.bsmMatVecB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 6: Unsafe_OP.bsmMatVecB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        default: Unsafe_OP.bsmMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
+                    }
+                }
                 else
-                    Unsafe_OP.bsmMatVec(A.RowPtr.Ptr, A.ColInd.Ptr, A.Values.Ptr, x.Data.Ptr, y.Data.Ptr,
-                                         A.BlockRows, A.BR, A.BC);
+                {
+                    Unsafe_OP.bsmMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
+                }
             }
         }
 
@@ -79,8 +112,30 @@ namespace LinearAlgebra.Sparse
                 // bsmMatVecT accumulates (+=), so the destination must start zeroed.
                 UnsafeUtility.MemClear(y.Data.Ptr, (long)y.Data.Length * UnsafeUtility.SizeOf<double>());
 
-                Unsafe_OP.bsmMatVecT(A.RowPtr.Ptr, A.ColInd.Ptr, A.Values.Ptr, x.Data.Ptr, y.Data.Ptr,
-                                      A.BlockRows, A.BR, A.BC);
+                int* rowPtr = A.RowPtr.Ptr;
+                int* colInd = A.ColInd.Ptr;
+                double* values = A.Values.Ptr;
+                double* xPtr = x.Data.Ptr;
+                double* yPtr = y.Data.Ptr;
+
+                if (A.BR == A.BC)
+                {
+                    // Register-tile specializations only apply to square blocks -- rectangular
+                    // BR != BC always falls through to the general kernel below.
+                    switch (A.BR)
+                    {
+                        case 1: Unsafe_OP.bsmMatVecTB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 2: Unsafe_OP.bsmMatVecTB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 3: Unsafe_OP.bsmMatVecTB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 4: Unsafe_OP.bsmMatVecTB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 6: Unsafe_OP.bsmMatVecTB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        default: Unsafe_OP.bsmMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
+                    }
+                }
+                else
+                {
+                    Unsafe_OP.bsmMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
+                }
             }
         }
 
