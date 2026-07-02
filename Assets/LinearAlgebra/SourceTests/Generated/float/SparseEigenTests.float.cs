@@ -40,6 +40,7 @@ public class floatSparseEigenTests
             LanczosVectorsResidualAndOrthonormal,
             LanczosVectorsDenseVsBSM,
             LanczosVectorsEarlyBreakdown,
+            LanczosVectorsClosedFormLaplacian,
         }
 
         public TestType Type;
@@ -104,6 +105,7 @@ public class floatSparseEigenTests
                 case TestType.LanczosVectorsResidualAndOrthonormal: LanczosVectorsResidualAndOrthonormal(); break;
                 case TestType.LanczosVectorsDenseVsBSM: LanczosVectorsDenseVsBSM(); break;
                 case TestType.LanczosVectorsEarlyBreakdown: LanczosVectorsEarlyBreakdown(); break;
+                case TestType.LanczosVectorsClosedFormLaplacian: LanczosVectorsClosedFormLaplacian(); break;
                 case TestType.LanczosDenseVsBSM: LanczosDenseVsBSM(); break;
             }
         }
@@ -756,6 +758,52 @@ public class floatSparseEigenTests
 
             arena.Dispose();
         }
+
+        // LITERATURE / ANALYTIC GROUND TRUTH for the Ritz VECTORS. The 1D Dirichlet Laplacian
+        // (tridiagonal 2,-1) has CLOSED-FORM eigenpairs: lambda_k = 2 - 2*cos(k*pi/(n+1)) with
+        // eigenvector v_k[j] = sin(j*k*pi/(n+1)) (1-indexed rows j=1..n). lanczosVectors sorts
+        // DESCENDING and 2-2cos is increasing in k, so Ritz index i <-> k = n - i (same mapping as
+        // LanczosFullSpectrum). This pins each Ritz vector against the analytic sine mode (up to an
+        // overall sign) -- external truth, not a dense-vs-BSM self-check. Closed form evaluated in
+        // DOUBLE (math.PI_DBL) so the float/double reference is full precision.
+        void LanczosVectorsClosedFormLaplacian()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 8;
+            var A = arena.floatLaplacian1D(n);
+
+            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out int produced, out bool conv);
+            AssertTrue(conv, (float)1);
+            AssertTrue(produced == n, (float)2);
+
+            var vk = arena.floatVec(n);   // analytic eigenvector for the current mode
+            var vr = arena.floatVec(n);   // Ritz vector (row i of ritz)
+            for (int i = 0; i < n; i++)
+            {
+                int k = n - i;             // descending eig -> mode k = n - i
+
+                double lamD = 2.0 - 2.0 * math.cos(k * math.PI_DBL / (n + 1));
+                float scale = (float)1 + math.abs((float)lamD);
+                AssertClose(eig[i], (float)lamD, VecTol() * scale);
+
+                // v_k[j] = sin((j+1)*k*pi/(n+1)) (0-indexed j), normalized to unit length.
+                double nrm = 0.0;
+                for (int j = 0; j < n; j++)
+                {
+                    double s = math.sin((j + 1) * k * math.PI_DBL / (n + 1));
+                    vk[j] = (float)s;
+                    nrm += s * s;
+                }
+                float inv = (float)(1.0 / math.sqrt(nrm));
+                for (int j = 0; j < n; j++) vk[j] *= inv;
+
+                for (int j = 0; j < n; j++) vr[j] = ritz[i, j];
+                AssertVecEqUpToSign(in vr, in vk, n, VecTol());
+            }
+
+            arena.Dispose();
+        }
     }
 
     // ---- correctness entry points (Burst job + Fail-array surfacing) ----------------------
@@ -819,6 +867,10 @@ public class floatSparseEigenTests
     [Test]
     public void LanczosVectorsEarlyBreakdownTest()
         => RunCase(SparseEigenTestJob.TestType.LanczosVectorsEarlyBreakdown);
+
+    [Test]
+    public void LanczosVectorsClosedFormLaplacianTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosVectorsClosedFormLaplacian);
 
     [Test]
     public void LanczosEarlyBreakdownPaddingTest()

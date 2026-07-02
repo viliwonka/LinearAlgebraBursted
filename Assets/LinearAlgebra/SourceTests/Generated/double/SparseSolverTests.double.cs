@@ -67,6 +67,9 @@ public class doubleSparseSolverTests
             JacobiPreconditionerReducesIterations,
             JacobiConvenienceSolversLSOptimalDenseAndBSM,
 
+            // ---- literature ground truth: Strang best-fit-line, EXACT diagnostics ----
+            LstsqInfoStrangLineFitExact,
+
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
             MinresWarmStart,
             BiCGStabWarmStart,
@@ -145,6 +148,7 @@ public class doubleSparseSolverTests
                 case TestType.LstsqInfoBSMMatchesDense: LstsqInfoBSMMatchesDense(); break;
                 case TestType.JacobiPreconditionerReducesIterations: JacobiPreconditionerReducesIterations(); break;
                 case TestType.JacobiConvenienceSolversLSOptimalDenseAndBSM: JacobiConvenienceSolversLSOptimalDenseAndBSM(); break;
+                case TestType.LstsqInfoStrangLineFitExact: LstsqInfoStrangLineFitExact(); break;
 
                 case TestType.MinresWarmStart: MinresWarmStart(); break;
                 case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
@@ -190,6 +194,9 @@ public class doubleSparseSolverTests
         {
             Assert.IsTrue(Analysis_OP.isZero(a - b, tol));
         }
+
+        static void AssertClose(double got, double expected, double tol)
+            => Assert.IsTrue(math.abs(got - expected) <= tol * ((double)1 + math.abs(expected)));
 
         // ---- 1. 1D Laplacian tridiagonal as a 1x1-block BSM: CG matches dense CG -----------
         void Laplacian1DBSMCGMatchesDenseCG()
@@ -1441,6 +1448,49 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
+        // LITERATURE GROUND TRUTH (Strang, Introduction to Linear Algebra -- best-fit line):
+        // fit b = C + D t at t = 0,1,2 with data b = (6,0,0). A = [[1,0],[1,1],[1,2]].
+        // Normal equations AᵀA x = Aᵀb -> [[3,3],[3,5]] x = [6,0] -> x = (5, -3) EXACTLY.
+        // Residual r = b - A x = (1,-2,1): rnorm = sqrt(6), Aᵀr = (0,0) so Arnorm = 0, xnorm = sqrt(34).
+        // Pins the diagnostics AND the LS solution against literal hand-computed constants (external
+        // ground truth), not another solver.
+        void LstsqInfoStrangLineFitExact()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.doubleMat(3, 2);
+            A[0, 0] = (double)1; A[0, 1] = (double)0;
+            A[1, 0] = (double)1; A[1, 1] = (double)1;
+            A[2, 0] = (double)1; A[2, 1] = (double)2;
+            var b = arena.doubleVec(3);
+            b[0] = (double)6; b[1] = (double)0; b[2] = (double)0;
+
+            double tol = Consts.doubleSqrtEps;
+            double expRnorm = math.sqrt((double)6);
+            double expXnorm = math.sqrt((double)34);
+
+            // All three solvers must reproduce x = (5,-3) and the exact diagnostics.
+            for (int which = 0; which < 3; which++)
+            {
+                var x = arena.doubleVec(2);
+                doubleLstsqInfo info;
+                bool ok;
+                if (which == 0)      ok = Solvers.cgls(in A, in b, ref x, 50, tol, (double)0, out info);
+                else if (which == 1) ok = Solvers.lsqr(in A, in b, ref x, 50, tol, (double)0, out info);
+                else                 ok = Solvers.lsmr(in A, in b, ref x, 50, tol, (double)0, out info);
+
+                Assert.IsTrue(ok);
+                AssertClose(x[0], (double)5,    LooseTol());
+                AssertClose(x[1], (double)(-3), LooseTol());
+                AssertClose(info.rnorm, expRnorm, LooseTol());
+                Assert.IsTrue(info.Arnorm <= LooseTol() * ((double)1 + expRnorm));   // Aᵀr = 0 exactly
+                AssertClose(info.xnorm, expXnorm, LooseTol());
+                Assert.IsTrue(info.converged);
+            }
+
+            arena.Dispose();
+        }
+
         // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
         // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. qrDirectSolve
         // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
@@ -1603,6 +1653,10 @@ public class doubleSparseSolverTests
     [Test]
     public void JacobiConvenienceSolversLSOptimalDenseAndBSMTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.JacobiConvenienceSolversLSOptimalDenseAndBSM }.Run();
+
+    [Test]
+    public void LstsqInfoStrangLineFitExactTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoStrangLineFitExact }.Run();
 
     // ---- Phase 3 warm-start entry points ----
 
