@@ -14,11 +14,12 @@ using Unity.Jobs;
 // RandomSpMVT already use, just swept across every specialized block size PLUS the two boundary
 // cases that must still fall back to the general kernel: a non-specialized square size (b=5) and
 // a rectangular block (BR != BC, which never dispatches to a specialized kernel regardless of
-// size). Symmetric-storage cases (bsmMatVecSymB{b}) reuse the same recipe: the block used at
-// (br,br) need not be mathematically symmetric for this kernel-vs-ToDense cross-check to be
-// meaningful -- ToDense and bsmMatVecSym both operate on whatever blocks were stored, and the
-// test only asserts they agree with each other, not that the assembled matrix is SPD (that
-// property is already covered separately by doubleSparseSymmetricTests).
+// size). Symmetric-storage cases (bsmMatVecSymB{b}) reuse the same recipe but on a GENUINELY
+// symmetric matrix: ToBSMSymmetric now requires symmetric diagonal blocks (the lower triangle is
+// stored implicitly as the transpose), so the diagonal blocks are built as M^T M. That makes the
+// dense expansion truly symmetric, which lets the spMVT check compare against an INDEPENDENT
+// transpose-matvec of the dense (DenseTransMatVec) rather than tautologically re-using spMV's own
+// output -- genuinely exercising each bsmMatVecSymB{b} across b in {1,2,3,4,5,6}.
 //
 // Runs inside a [BurstCompile] IJob, matching every other Sparse test suite.
 public class doubleSparseUnrollTests
@@ -100,17 +101,29 @@ public class doubleSparseUnrollTests
             return builder.ToBSM(ref arena);
         }
 
-        // 4x4 block grid of b x b blocks, SYMMETRIC (upper-triangle-only) storage: a diagonal
-        // block at every grid position (exercises bsmMatVecSymB{b}'s bi==bj branch) plus three
-        // off-diagonal pairs, including two that both mirror into block-row 3 (exercises bi!=bj
-        // scatter writes landing in the same y-range from different stored blocks).
+        // Symmetric b x b diagonal block D = M^T M: symmetric by construction (bit-exact, since
+        // D[r,c] and D[c,r] sum the identical products in the identical order), so it satisfies
+        // ToBSMSymmetric's diagonal-symmetry contract with zero asymmetry.
+        static doubleMxN SymDiagBlock(ref Arena arena, int b, uint seed)
+        {
+            var M = arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seed);
+            return Linear_OP.dot(M, M, true);   // M^T M
+        }
+
+        // 4x4 block grid of b x b blocks, SYMMETRIC (upper-triangle-only) storage: a SYMMETRIC
+        // diagonal block at every grid position (exercises bsmMatVecSymB{b}'s bi==bj branch) plus
+        // three off-diagonal pairs, including two that both mirror into block-row 3 (exercises
+        // bi!=bj scatter writes landing in the same y-range from different stored blocks). Diagonal
+        // blocks are M^T M so the represented matrix is genuinely symmetric (required by
+        // ToBSMSymmetric); off-diagonal blocks stay arbitrary (their transpose fills the lower
+        // triangle).
         static doubleBSM BuildRandomSymmetric(ref Arena arena, int b, uint seedBase)
         {
             var builder = arena.doubleBSMBuilder(4, 4, b, b);
-            builder.AddBlock(0, 0, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 1u));
-            builder.AddBlock(1, 1, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 2u));
-            builder.AddBlock(2, 2, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 3u));
-            builder.AddBlock(3, 3, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 4u));
+            builder.AddBlock(0, 0, SymDiagBlock(ref arena, b, seedBase + 1u));
+            builder.AddBlock(1, 1, SymDiagBlock(ref arena, b, seedBase + 2u));
+            builder.AddBlock(2, 2, SymDiagBlock(ref arena, b, seedBase + 3u));
+            builder.AddBlock(3, 3, SymDiagBlock(ref arena, b, seedBase + 4u));
             builder.AddBlock(0, 1, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 5u));
             builder.AddBlock(1, 3, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 6u));
             builder.AddBlock(0, 3, arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seedBase + 7u));
@@ -225,10 +238,15 @@ public class doubleSparseUnrollTests
             var yRef = Linear_OP.dot(dense, x);
             Assert.IsTrue(Analysis_OP.isZero(y - yRef, Tol()));
 
-            // spMVT on symmetric storage forwards straight to spMV (A == A^T) -- must agree too.
+            // spMVT on symmetric storage forwards to spMV (A == A^T). Because the matrix is now
+            // GENUINELY symmetric, check spMVT against an INDEPENDENT transpose-matvec of the dense
+            // expansion (not spMV's own output): a true cross-check that A^T*x is computed, which
+            // for the symmetric A must equal A*x.
+            var ytRef = arena.doubleVec(A.N_Cols);
+            DenseTransMatVec(in dense, in x, ref ytRef);
             var yt = arena.doubleVec(A.N_Cols);
             Sparse_OP.spMVT(in A, in x, ref yt);
-            Assert.IsTrue(Analysis_OP.isZero(yt - yRef, Tol()));
+            Assert.IsTrue(Analysis_OP.isZero(yt - ytRef, Tol()));
 
             arena.Dispose();
         }

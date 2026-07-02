@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Burst;
+using Unity.Mathematics;
 using System;
 
 namespace LinearAlgebra.Sparse
@@ -200,6 +201,14 @@ namespace LinearAlgebra.Sparse
         /// for what the caller believes is a symmetric matrix, when they actually differ). Callers
         /// building a symmetric matrix must AddBlock/AddValue only at (blockRow, blockCol) with
         /// blockCol >= blockRow.
+        ///
+        /// Each stored DIAGONAL block must itself be symmetric (block[r,c] == block[c,r]). Upper-block
+        /// storage represents the implicit lower block (bj,bi) as block(bi,bj)^T, so the matrix is
+        /// symmetric ONLY IF the diagonal blocks are -- and spMVT forwards to spMV assuming A==A^T, so
+        /// a non-symmetric diagonal block would silently make spMVT return A*x, not A^T*x. A
+        /// non-symmetric diagonal block therefore throws (same "don't mask caller bugs" stance as the
+        /// lower-triangle guard). The check is on the duplicate-SUMMED diagonal block, so a symmetric
+        /// block assembled from several AddBlock/AddValue contributions is accepted.
         /// </summary>
         public unsafe fProxyBSM ToBSMSymmetric(ref Arena arena)
         {
@@ -211,7 +220,32 @@ namespace LinearAlgebra.Sparse
                 if (_state->triBlockCol[t] < _state->triBlockRow[t])
                     throw new ArgumentException("ToBSMSymmetric: found a lower-triangle triplet (blockCol < blockRow); symmetric build only accepts blocks with blockCol >= blockRow (upper triangle + diagonal). Add the block at its transpose position (blockRow<->blockCol swapped) instead, or use ToBSM() for full storage.");
 
-            return ToBSMCore(ref arena, symmetric: true);
+            var bsm = ToBSMCore(ref arena, symmetric: true);
+
+            // Validate diagonal-block symmetry on the compressed (duplicate-summed) blocks. A
+            // relative tolerance absorbs assembly roundoff while still catching a genuinely
+            // non-symmetric block (whose block[r,c]-block[c,r] is O(block magnitude)).
+            int blockLen = BR * BC;
+            for (int row = 0; row < BlockRows; row++)
+            {
+                int rs = bsm.RowPtr[row], re = bsm.RowPtr[row + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    if (bsm.ColInd[k] != row) continue;   // diagonal blocks only
+                    int off = k * blockLen;
+                    for (int r = 0; r < BR; r++)
+                        for (int c = r + 1; c < BC; c++)
+                        {
+                            fProxy a = bsm.Values[off + r * BC + c];
+                            fProxy b = bsm.Values[off + c * BC + r];
+                            fProxy tolAbs = (fProxy)8 * Consts.fProxyZeroThreshold * ((fProxy)1 + math.abs(a) + math.abs(b));
+                            if (math.abs(a - b) > tolAbs)
+                                throw new ArgumentException("ToBSMSymmetric: a diagonal block is not symmetric (block[r,c] != block[c,r]). Symmetric upper-block storage stores the lower triangle implicitly as the transpose, so diagonal blocks must be symmetric; symmetrize the block (e.g. (K+K^T)/2), or use ToBSM() for full storage.");
+                        }
+                }
+            }
+
+            return bsm;
         }
 
         private unsafe fProxyBSM ToBSMCore(ref Arena arena, bool symmetric)

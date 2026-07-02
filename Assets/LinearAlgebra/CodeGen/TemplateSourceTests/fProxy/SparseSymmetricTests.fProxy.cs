@@ -613,6 +613,49 @@ public class fProxySparseSymmetricTests
         finally { arena.Dispose(); }
     }
 
+    // ToBSMSymmetric rejects a NON-SYMMETRIC diagonal block: upper-block storage represents the
+    // implicit lower block (bj,bi) as block(bi,bj)^T, so the matrix is symmetric only if each
+    // diagonal block is -- and spMVT forwards to spMV assuming A==A^T, so a non-symmetric diagonal
+    // block would silently make spMVT return A*x. The build must refuse it (same stance as the
+    // lower-triangle guard). Uses a 1x1 block grid so a single non-symmetric diagonal block is the
+    // only thing under test.
+    [Test]
+    public void ToBSMSymmetric_NonSymmetricDiagonalBlock_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int BR = 2;
+            var blk = arena.fProxyMat(BR, BR);
+            blk[0, 0] = (fProxy)1; blk[0, 1] = (fProxy)2;
+            blk[1, 0] = (fProxy)3; blk[1, 1] = (fProxy)4;   // blk[0,1]=2 != blk[1,0]=3 -> not symmetric
+            var builder = arena.fProxyBSMBuilder(1, 1, BR, BR, 1);
+            builder.AddBlock(0, 0, in blk);
+            Assert.Throws<ArgumentException>(() => builder.ToBSMSymmetric(ref arena));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // A SYMMETRIC diagonal block is accepted (the guard's tolerance does not false-positive on a
+    // genuinely symmetric block): companion to the throw case above.
+    [Test]
+    public void ToBSMSymmetric_SymmetricDiagonalBlock_Accepted()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int BR = 2;
+            var blk = arena.fProxyMat(BR, BR);
+            blk[0, 0] = (fProxy)1; blk[0, 1] = (fProxy)2;
+            blk[1, 0] = (fProxy)2; blk[1, 1] = (fProxy)4;   // symmetric (2 == 2)
+            var builder = arena.fProxyBSMBuilder(1, 1, BR, BR, 1);
+            builder.AddBlock(0, 0, in blk);
+            var sym = builder.ToBSMSymmetric(ref arena);    // must NOT throw
+            Assert.IsTrue(sym.Symmetric);
+        }
+        finally { arena.Dispose(); }
+    }
+
     // ToBSMSymmetric rejects rectangular blocks (BR != BC) -- this guard fires BEFORE the triplet
     // scan, so it throws even with zero triplets.
     [Test]
