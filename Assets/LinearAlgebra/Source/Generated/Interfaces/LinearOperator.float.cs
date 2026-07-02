@@ -64,4 +64,56 @@ namespace LinearAlgebra
         // Aᵀx via the existing vector*matrix dot: result[j] = sum_i x[i]*A[i,j] == (Aᵀx)[j].
         public void ApplyT(in floatN x, ref floatN y) => Linear_OP.dot(in x, in A, ref y);
     }
+
+    /// <summary>
+    /// Right column-scaling wrapper: presents the operator A·D where D = diag(d) is a diagonal
+    /// scaling of the INPUT (column) space, over any inner <typeparamref name="TInner"/> operator.
+    /// Composes with every generic solver with NO solver change (they are already generic over
+    /// <c>TOp</c>), so passing <c>floatColScaledOperator&lt;floatDenseOperator&gt;</c> (or the BSM
+    /// operator) turns cgls/lsqr/lsmr into their column-preconditioned variants: with
+    /// d[j] = 1/‖A_:,j‖₂ (an AᵀA-Jacobi / column-equilibration preconditioner, built via
+    /// <c>Linear_OP.columnNormsSquared</c> + <c>Linear_OP.buildJacobiScale</c>) the scaled operator
+    /// A·D has a unit-diagonal normal matrix, so an ill-conditioned least-squares problem converges
+    /// in fewer iterations. Solve (A·D) y = b for y, then recover x = D·y (x[j] = d[j]·y[j]).
+    ///
+    /// Holds the inner operator, the diagonal <c>d</c> (length inner.Cols), and one owned
+    /// <c>scratch</c> buffer (length inner.Cols) that <see cref="Apply"/> uses to form d.*x without
+    /// touching the caller's x. <c>d</c> and <c>scratch</c> must be distinct from each other and
+    /// from every vector the solver passes to Apply/ApplyT (the arena convenience overloads
+    /// guarantee this by allocating fresh). Readonly: cheap value copy (only handles). NOTE: with
+    /// Tikhonov damping, damping the SCALED system penalizes ‖y‖ = ‖D⁻¹x‖ (a column-weighted ridge
+    /// on x), NOT ‖x‖ -- a different regularizer; use the composable path if you need that control.
+    /// </summary>
+    public readonly struct floatColScaledOperator<TInner> : IfloatLinearOperator
+        where TInner : struct, IfloatLinearOperator
+    {
+        public readonly TInner Inner;
+        public readonly floatN D;        // length Inner.Cols: the column scale
+        public readonly floatN Scratch;  // length Inner.Cols: workspace for Apply (holds d .* x)
+
+        public floatColScaledOperator(in TInner inner, in floatN d, in floatN scratch)
+        {
+            Inner = inner;
+            D = d;
+            Scratch = scratch;
+        }
+
+        public int Rows => Inner.Rows;
+        public int Cols => Inner.Cols;
+
+        // (A D) x = A (d .* x). Scales into the owned Scratch so the caller's x is untouched.
+        public void Apply(in floatN x, ref floatN y)
+        {
+            for (int j = 0; j < D.N; j++) Scratch[j] = D[j] * x[j];
+            Inner.Apply(in Scratch, ref y);
+        }
+
+        // (A D)ᵀ y = D Aᵀ y = d .* (Aᵀ y). Scales y in place after the inner transpose -- no extra
+        // scratch needed (y is length Cols, the output).
+        public void ApplyT(in floatN x, ref floatN y)
+        {
+            Inner.ApplyT(in x, ref y);
+            for (int j = 0; j < D.N; j++) y[j] *= D[j];
+        }
+    }
 }

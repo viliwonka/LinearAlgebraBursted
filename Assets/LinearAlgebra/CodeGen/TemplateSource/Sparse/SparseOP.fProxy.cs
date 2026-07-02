@@ -82,6 +82,54 @@ namespace LinearAlgebra.Sparse
             return result;
         }
 
+        /// <summary>
+        /// Squared L2 norm of each column of the block-sparse A: d2[j] = Σ_i A[i,j]² = diag(AᵀA)[j],
+        /// computed directly from the stored blocks in a single pass over the nonzeros (no AᵀA
+        /// formed, no transpose-matvecs). Written into the caller's d2 (length A.N_Cols), no
+        /// allocation. Feeds an AᵀA-Jacobi (column-equilibration) least-squares preconditioner
+        /// (see <see cref="fProxyColScaledOperator{TInner}"/> / <c>Linear_OP.buildJacobiScale</c>).
+        ///
+        /// NOT supported for Symmetric (upper-block-triangle-only) storage: the implicit lower
+        /// blocks are not materialized, so a single pass would under-count every column -- throws
+        /// in that case. Jacobi-LS preconditioning targets rectangular / non-symmetric least
+        /// squares, where Symmetric is false.
+        /// </summary>
+        public static void columnNormsSquared(in fProxyBSM A, ref fProxyN d2)
+        {
+            if (d2.N != A.N_Cols)
+                throw new ArgumentException("columnNormsSquared: d2.N must equal A.N_Cols");
+            if (A.Symmetric)
+                throw new ArgumentException("columnNormsSquared: not supported for Symmetric (upper-block-only) storage -- the implicit lower blocks would be under-counted");
+
+            int BR = A.BR, BC = A.BC;
+            int blockSize = BR * BC;
+
+            unsafe
+            {
+                int* rowPtr = A.RowPtr.Ptr;
+                int* colInd = A.ColInd.Ptr;
+                fProxy* values = A.Values.Ptr;
+                fProxy* d2Ptr = d2.Data.Ptr;
+
+                UnsafeUtility.MemClear(d2Ptr, (long)d2.Data.Length * UnsafeUtility.SizeOf<fProxy>());
+
+                for (int bi = 0; bi < A.BlockRows; bi++)
+                {
+                    for (int k = rowPtr[bi]; k < rowPtr[bi + 1]; k++)
+                    {
+                        int colBase = colInd[k] * BC;         // global column of block-interior col 0
+                        fProxy* block = values + (long)k * blockSize;
+                        for (int r = 0; r < BR; r++)
+                            for (int c = 0; c < BC; c++)
+                            {
+                                fProxy v = block[r * BC + c]; // row-major block interior
+                                d2Ptr[colBase + c] += v * v;
+                            }
+                    }
+                }
+            }
+        }
+
         // ---- y = A^T * x ----
 
         // ref-dest primitive. Guard: y must not alias x (each x[k] feeds every block-column
