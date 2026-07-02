@@ -70,6 +70,9 @@ public class doubleSparseSolverTests
             // ---- literature ground truth: Strang best-fit-line, EXACT diagnostics ----
             LstsqInfoStrangLineFitExact,
 
+            // ---- square-solver diagnostics (doubleSolveInfo: rnorm/iterations/status; free tracked ‖r‖) ----
+            SolveInfoRnormMatchesResidual,
+
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
             MinresWarmStart,
             BiCGStabWarmStart,
@@ -149,6 +152,7 @@ public class doubleSparseSolverTests
                 case TestType.JacobiPreconditionerReducesIterations: JacobiPreconditionerReducesIterations(); break;
                 case TestType.JacobiConvenienceSolversLSOptimalDenseAndBSM: JacobiConvenienceSolversLSOptimalDenseAndBSM(); break;
                 case TestType.LstsqInfoStrangLineFitExact: LstsqInfoStrangLineFitExact(); break;
+                case TestType.SolveInfoRnormMatchesResidual: SolveInfoRnormMatchesResidual(); break;
 
                 case TestType.MinresWarmStart: MinresWarmStart(); break;
                 case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
@@ -1504,6 +1508,136 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
+        // Independently recompute ‖b - A x‖ (one real matvec) and check the solver's FREE rnorm
+        // (a value it already tracked -- never a fresh A*x) matches it.
+        static void AssertResidualNorm(in doubleMxN A, in doubleN b, in doubleN x, double rnorm, double tol)
+        {
+            var Ax = Linear_OP.dot(A, x);
+            double acc = (double)0;
+            for (int i = 0; i < b.N; i++) { double e = b[i] - Ax[i]; acc += e * e; }
+            AssertClose(rnorm, math.sqrt(acc), tol);
+        }
+
+        // BSM counterpart: recompute ‖b - A x‖ with the SAME sparse matvec the solver tracked its
+        // residual through (spMV), so the check stays in-arithmetic rather than comparing a BSM-
+        // tracked rnorm against a dense recompute (whose summation order differs).
+        static void AssertResidualNormBSM(in doubleBSM A, in doubleN b, in doubleN x, double rnorm, double tol)
+        {
+            var Ax = Sparse_OP.spMV(in A, in x);
+            double acc = (double)0;
+            for (int i = 0; i < b.N; i++) { double e = b[i] - Ax[i]; acc += e * e; }
+            AssertClose(rnorm, math.sqrt(acc), tol);
+        }
+
+        // STAGE 2: the square solvers (cg/pcg/minres/biCGStab/cgne) now RETURN an doubleSolveInfo
+        // whose rnorm is filled from each solver's already-tracked residual -- cg/pcg/cgne a live
+        // ‖r‖ (√ of the dot they already form for the convergence test), minres its phibar (the
+        // MINRES identity), biCGStab its running ‖r‖ -- never a fresh matvec. Pin that free rnorm
+        // against an INDEPENDENTLY recomputed ‖b - A x‖ for every solver + operator shape, plus a
+        // forced-MaxIterations mid-flight case where rnorm must still equal the exact residual of
+        // the un-converged iterate (that path returns √rsold, the post-update recurrence residual).
+        void SolveInfoRnormMatchesResidual()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            double tol = LooseTol();
+
+            // ---- SPD system: cg, pcg (block-Jacobi over BSM), minres ----
+            int n = 12;
+            var Aspd = BuildDenseSPD(ref arena, n, 52001);
+            var bspd = arena.doubleRandomVec(n, -1f, 1f, 52002);
+            var bsm = DenseToBSM1x1(ref arena, in Aspd, n * n);
+            var M = arena.doubleBlockJacobi(in bsm);
+            int maxIter = 4 * n;
+
+            var xg = arena.doubleVec(n);
+            var ig = Solvers.conjugateGradient(in Aspd, in bspd, ref xg, maxIter, Consts.doubleSqrtEps);
+            Assert.IsTrue(ig.Solved && ig.iterations >= 1 && ig.iterations <= maxIter);
+            AssertResidualNorm(in Aspd, in bspd, in xg, ig.rnorm, tol);
+
+            var xp = arena.doubleVec(n);
+            var ip = Solvers.pcg(in bsm, in M, in bspd, ref xp, maxIter, Consts.doubleSqrtEps);
+            Assert.IsTrue(ip.Solved && ip.iterations >= 1);
+            AssertResidualNormBSM(in bsm, in bspd, in xp, ip.rnorm, tol);   // BSM solve -> BSM recompute
+
+            var xm = arena.doubleVec(n);
+            var im = Solvers.minres(in Aspd, in bspd, ref xm, maxIter, Consts.doubleSqrtEps);
+            Assert.IsTrue(im.Solved && im.iterations >= 1);
+            AssertResidualNorm(in Aspd, in bspd, in xm, im.rnorm, tol);
+
+            // ---- Non-symmetric diagonally-dominant system: biCGStab ----
+            int d = 8;
+            var Ansym = arena.doubleRandomMat(d, d, -1f, 1f, 52101);
+            for (int i = 0; i < d; i++) Ansym[i, i] += (double)(d + 1);   // strict diagonal dominance
+            var bns = arena.doubleRandomVec(d, -1f, 1f, 52102);
+            var xb = arena.doubleVec(d);
+            var ib = Solvers.biCGStab(in Ansym, in bns, ref xb, 4 * d, Consts.doubleSqrtEps);
+            Assert.IsTrue(ib.Solved && ib.iterations >= 1);
+            AssertResidualNorm(in Ansym, in bns, in xb, ib.rnorm, tol);
+
+            // ---- Underdetermined CONSISTENT system (m < n): cgne (min-norm) ----
+            int mm = 6, nn = 10;
+            var Aun = arena.doubleRandomMat(mm, nn, -1f, 1f, 52201);
+            var xStar = arena.doubleRandomVec(nn, -1f, 1f, 52202);
+            var bun = Linear_OP.dot(Aun, xStar);                          // b = A x*  (in range(A))
+            var xn = arena.doubleVec(nn);
+            var inx = Solvers.cgne(in Aun, in bun, ref xn, 4 * nn, Consts.doubleSqrtEps);
+            Assert.IsTrue(inx.Solved && inx.iterations >= 1);
+            AssertResidualNorm(in Aun, in bun, in xn, inx.rnorm, tol);
+
+            // ---- Mid-flight MaxIterations for EVERY square solver: one (or two) step(s) does NOT
+            //      converge, yet rnorm must still equal ‖b - A x‖ of the (updated) un-converged
+            //      iterate -- the contract that on MaxIterations x is a valid last iterate, not
+            //      undefined. Each returns √(tracked residual) with x fully advanced. ----
+            var xh = arena.doubleVec(n);
+            var ih = Solvers.conjugateGradient(in Aspd, in bspd, ref xh, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(!ih.Solved && ih.status == SolveStatus.MaxIterations && ih.iterations == 1);
+            AssertResidualNorm(in Aspd, in bspd, in xh, ih.rnorm, tol);
+
+            var xhp = arena.doubleVec(n);
+            var ihp = Solvers.pcg(in bsm, in M, in bspd, ref xhp, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(ihp.status == SolveStatus.MaxIterations && ihp.iterations == 1);
+            AssertResidualNormBSM(in bsm, in bspd, in xhp, ihp.rnorm, tol);
+
+            var xhm = arena.doubleVec(n);
+            var ihm = Solvers.minres(in Aspd, in bspd, ref xhm, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(ihm.status == SolveStatus.MaxIterations && ihm.iterations == 1);
+            AssertResidualNorm(in Aspd, in bspd, in xhm, ihm.rnorm, tol);
+
+            var xhb = arena.doubleVec(d);
+            var ihb = Solvers.biCGStab(in Ansym, in bns, ref xhb, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(ihb.status == SolveStatus.MaxIterations && ihb.iterations == 1);
+            AssertResidualNorm(in Ansym, in bns, in xhb, ihb.rnorm, tol);
+
+            var xhn = arena.doubleVec(nn);
+            var ihn = Solvers.cgne(in Aun, in bun, ref xhn, 1, Consts.doubleSqrtEps);
+            Assert.IsTrue(ihn.status == SolveStatus.MaxIterations && ihn.iterations == 1);
+            AssertResidualNorm(in Aun, in bun, in xhn, ihn.rnorm, tol);
+
+            // ---- Breakdown path: CG on the indefinite A = diag(1,-1) with b = (1,1) and x₀ = 0
+            //      hits p·Ap = 1·1 + 1·(-1) = 0 on the very first step -> Breakdown at iterations=0,
+            //      x untouched (= 0). rnorm must be the residual of that x: ‖b - A·0‖ = ‖b‖ = √2. ----
+            var Aind = arena.doubleMat(2, 2);
+            Aind[0, 0] = (double)1; Aind[0, 1] = (double)0;
+            Aind[1, 0] = (double)0; Aind[1, 1] = (double)(-1);
+            var bind = arena.doubleVec(2); bind[0] = (double)1; bind[1] = (double)1;
+            var xind = arena.doubleVec(2); xind[0] = (double)0; xind[1] = (double)0;
+            var iind = Solvers.conjugateGradient(in Aind, in bind, ref xind, 10, Consts.doubleSqrtEps);
+            Assert.IsTrue(iind.status == SolveStatus.Breakdown && iind.iterations == 0);
+            AssertResidualNorm(in Aind, in bind, in xind, iind.rnorm, tol);
+            AssertClose(iind.rnorm, math.sqrt((double)2), tol);
+
+            // ---- b == 0 shortcut: the unique solution is x = 0, reported as Converged at
+            //      iterations=0 with rnorm exactly 0 (no matvec, b copied through). ----
+            var bzero = arena.doubleVec(n);
+            for (int i = 0; i < n; i++) bzero[i] = (double)0;
+            var xzero = arena.doubleVec(n);
+            var izero = Solvers.conjugateGradient(in Aspd, in bzero, ref xzero, maxIter, Consts.doubleSqrtEps);
+            Assert.IsTrue(izero.Solved && izero.iterations == 0);
+            AssertClose(izero.rnorm, (double)0, tol);
+
+            arena.Dispose();
+        }
+
         // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
         // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. qrDirectSolve
         // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
@@ -1670,6 +1804,10 @@ public class doubleSparseSolverTests
     [Test]
     public void LstsqInfoStrangLineFitExactTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoStrangLineFitExact }.Run();
+
+    [Test]
+    public void SolveInfoRnormMatchesResidualTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.SolveInfoRnormMatchesResidual }.Run();
 
     // ---- Phase 3 warm-start entry points ----
 

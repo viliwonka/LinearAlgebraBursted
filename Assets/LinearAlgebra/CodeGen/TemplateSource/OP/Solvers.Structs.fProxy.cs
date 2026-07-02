@@ -65,8 +65,10 @@ namespace LinearAlgebra
     /// measure). Filled from each solver's tracked residual (cg/pcg/cgne: a live ‖r‖; minres:
     /// phibar; biCGStab: its running ‖r‖) -- no extra matvec.
     ///
-    /// rnorm is only meaningful when <see cref="Solved"/>; on a Breakdown/MaxIterations return x
-    /// is undefined.
+    /// On a Converged OR MaxIterations return, x is the last iterate and rnorm is its true residual
+    /// ‖b - A x‖ (so on MaxIterations you can inspect how close it got). Only on a Breakdown return
+    /// is x left partially updated / undefined -- there rnorm describes the pre-breakdown iterate,
+    /// not a usable solution.
     /// </summary>
     public struct fProxySolveInfo
     {
