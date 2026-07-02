@@ -37,6 +37,8 @@ public class fProxySparseEigenTests
             LanczosDenseVsBSM,
             LanczosEarlyBreakdownPadding,
             PowerNegativeDominant,
+            LanczosVectorsResidualAndOrthonormal,
+            LanczosVectorsDenseVsBSM,
         }
 
         public TestType Type;
@@ -81,6 +83,11 @@ public class fProxySparseEigenTests
         // in the Lanczos-produced alpha/beta, so this is tight but not machine-eps.
         static fProxy BreakdownRitzTol() => /*+choose[1e-4f|1e-9]*/1e-4f/*-choose*/;
 
+        // Ritz VECTOR accuracy (residual ‖Av-λv‖, unit norm, pairwise orthogonality) at full
+        // steps == n: T is orthogonally similar to A, so the Ritz vectors are A's eigenvectors to
+        // eigenSymmetric's floor plus reorthogonalization roundoff -- comparable to FullSpectrumTol.
+        static fProxy VecTol() => /*+choose[1e-2f|1e-8]*/1e-2f/*-choose*/;
+
         public void Execute()
         {
             switch (Type)
@@ -93,6 +100,8 @@ public class fProxySparseEigenTests
                 case TestType.LanczosPartialExtremal: LanczosPartialExtremal(); break;
                 case TestType.LanczosEarlyBreakdownPadding: LanczosEarlyBreakdownPadding(); break;
                 case TestType.PowerNegativeDominant: PowerNegativeDominant(); break;
+                case TestType.LanczosVectorsResidualAndOrthonormal: LanczosVectorsResidualAndOrthonormal(); break;
+                case TestType.LanczosVectorsDenseVsBSM: LanczosVectorsDenseVsBSM(); break;
                 case TestType.LanczosDenseVsBSM: LanczosDenseVsBSM(); break;
             }
         }
@@ -602,6 +611,90 @@ public class fProxySparseEigenTests
 
             arena.Dispose();
         }
+
+        // ---- Ritz VECTORS (lanczosVectors): approximate eigenvectors ---------------------
+        //
+        // Full-spectrum Lanczos on the Laplacian returns approximate eigenVECTORS. Each must satisfy
+        // the eigenpair residual ‖A v_i - lambda_i v_i‖ ≈ 0, be unit-norm, and be mutually orthogonal
+        // -- the sign-free, closed-form-free correctness criteria for eigenvectors (the Ritz VALUES
+        // are already pinned by LanczosFullSpectrum). Exercises the shared lanczosTridiag +
+        // eigenSymmetric + Ritz-combination path.
+        void LanczosVectorsResidualAndOrthonormal()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 12;
+            var A = arena.fProxyLaplacian1D(n);
+
+            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out int produced, out bool conv);
+            AssertTrue(conv, (fProxy)1);
+            AssertTrue(produced == n, (fProxy)2);
+
+            var v = arena.fProxyVec(n);
+            for (int i = 0; i < produced; i++)
+            {
+                for (int c = 0; c < n; c++) v[c] = ritz[i, c];
+
+                // unit norm
+                fProxy nrmSq = (fProxy)0;
+                for (int c = 0; c < n; c++) nrmSq += v[c] * v[c];
+                AssertClose(math.sqrt(nrmSq), (fProxy)1, VecTol());
+
+                // eigenpair residual ‖A v - lambda v‖_inf, scaled by max(1,|lambda|)
+                var Av = Linear_OP.dot(A, v);
+                fProxy maxRes = (fProxy)0;
+                for (int c = 0; c < n; c++)
+                {
+                    fProxy ri = math.abs(Av[c] - eig[i] * v[c]);
+                    if (ri > maxRes) maxRes = ri;
+                }
+                fProxy scale = math.abs(eig[i]);
+                if (scale < (fProxy)1) scale = (fProxy)1;
+                AssertClose(maxRes, (fProxy)0, VecTol() * scale);
+            }
+
+            // pairwise orthogonality of the Ritz vectors
+            for (int i = 0; i < produced; i++)
+                for (int j = i + 1; j < produced; j++)
+                {
+                    fProxy d = (fProxy)0;
+                    for (int c = 0; c < n; c++) d += ritz[i, c] * ritz[j, c];
+                    AssertClose(d, (fProxy)0, VecTol());
+                }
+
+            arena.Dispose();
+        }
+
+        // Dense and 1x1-BSM encodings of the same Laplacian must yield the SAME Ritz values and
+        // (up to a per-vector sign) the SAME Ritz vectors -- confirms the BSM operator feeds
+        // lanczosVectors identically to the dense path.
+        void LanczosVectorsDenseVsBSM()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 12;
+            var Adense = arena.fProxyLaplacian1D(n);
+            var bsm    = DenseToBSM1x1(ref arena, in Adense, 3 * n);
+
+            var eigD = Eigen.lanczosVectors(ref arena, in Adense, n, out var ritzD, out int prodD, out bool convD);
+            AssertTrue(convD, (fProxy)1);
+            var eigB = Eigen.lanczosVectors(ref arena, in bsm, n, out var ritzB, out int prodB, out bool convB);
+            AssertTrue(convB, (fProxy)2);
+            AssertTrue(prodD == prodB, (fProxy)3);
+
+            var vD = arena.fProxyVec(n);
+            var vB = arena.fProxyVec(n);
+            for (int i = 0; i < prodD; i++)
+            {
+                fProxy scale = (fProxy)1 + math.abs(eigD[i]);
+                AssertClose(eigD[i], eigB[i], LooseTol() * scale);
+
+                for (int c = 0; c < n; c++) { vD[c] = ritzD[i, c]; vB[c] = ritzB[i, c]; }
+                AssertVecEqUpToSign(in vD, in vB, n, LooseTol());
+            }
+
+            arena.Dispose();
+        }
     }
 
     // ---- correctness entry points (Burst job + Fail-array surfacing) ----------------------
@@ -653,6 +746,14 @@ public class fProxySparseEigenTests
     [Test]
     public void LanczosDenseVsBSMTest()
         => RunCase(SparseEigenTestJob.TestType.LanczosDenseVsBSM);
+
+    [Test]
+    public void LanczosVectorsResidualAndOrthonormalTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosVectorsResidualAndOrthonormal);
+
+    [Test]
+    public void LanczosVectorsDenseVsBSMTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosVectorsDenseVsBSM);
 
     [Test]
     public void LanczosEarlyBreakdownPaddingTest()

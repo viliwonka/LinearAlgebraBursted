@@ -571,6 +571,22 @@ namespace LinearAlgebra
                                         out int produced, int steps, double breakdownTol)
             where TOp : struct, IdoubleLinearOperator
         {
+            if (eigenvalues.N != steps)
+                throw new ArgumentException("lanczos: eigenvalues.N must equal steps");
+
+            lanczosTridiag(in A, ref ws, out produced, steps, breakdownTol);
+            return eigenvaluesSymmetric(ref ws.T, ref eigenvalues, ref ws.symWs);
+        }
+
+        // Shared Lanczos front-half used by both lanczos (eigenvalues only) and lanczosVectors
+        // (eigenvalues + Ritz vectors): seed v_1, run the twice-reorthogonalized bidiagonalization
+        // building the Krylov basis ws.V, and assemble the (early-breakdown-padded) symmetric
+        // tridiagonal ws.T. Sets `produced`. Callers then apply their own symmetric eigensolver to
+        // ws.T (eigenvaluesSymmetric for values, eigenSymmetric for values + eigenvectors).
+        static void lanczosTridiag<TOp>(in TOp A, ref doubleLanczos_WS ws, out int produced,
+                                        int steps, double breakdownTol)
+            where TOp : struct, IdoubleLinearOperator
+        {
             if (A.Rows != A.Cols)
                 throw new ArgumentException("lanczos: A must be square");
 
@@ -583,9 +599,6 @@ namespace LinearAlgebra
                 throw new ArgumentException("lanczos: breakdownTol must be >= 0");
 
             RequireLanczosWorkspace(in ws, n, steps);
-
-            if (eigenvalues.N != steps)
-                throw new ArgumentException("lanczos: eigenvalues.N must equal steps");
 
             unsafe {
                 if (ws.vCur.Data.Ptr == ws.w.Data.Ptr)
@@ -704,8 +717,6 @@ namespace LinearAlgebra
                 for (int i = produced; i < steps; i++)
                     ws.T[i, i] = -bound - (double)(i - produced + 1) * pad;
             }
-
-            return eigenvaluesSymmetric(ref ws.T, ref eigenvalues, ref ws.symWs);
         }
 
         /// <summary>lanczos with default breakdownTol (Consts.doubleZeroThreshold).</summary>
@@ -786,6 +797,109 @@ namespace LinearAlgebra
         /// <summary>lanczos (allocating) over a BSR matrix with default breakdownTol (Consts.doubleZeroThreshold).</summary>
         public static doubleN lanczos(ref Arena arena, in doubleBSM A, int steps, out int produced, out bool converged)
             => lanczos(ref arena, in A, steps, out produced, out converged, Consts.doubleZeroThreshold);
+
+        /// <summary>
+        /// Lanczos with RITZ VECTORS: same twice-reorthogonalized tridiagonalization as
+        /// <see cref="lanczos{TOp}"/> (via the shared <c>lanczosTridiag</c>), but also returns
+        /// approximate EIGENVECTORS. After building the Krylov basis ws.V and tridiagonal ws.T, it
+        /// eigendecomposes T with <see cref="eigenSymmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/>
+        /// (eigenvalues DESCENDING into <paramref name="eigenvalues"/>, T's eigenvectors into the
+        /// COLUMNS of <paramref name="Yt"/>), then forms each Ritz vector
+        /// ritz[i] = sum_j Yt[j,i]·v_(j+1) -- the i-th approximate eigenvector of A, stored as ROW i
+        /// of <paramref name="ritz"/>.
+        ///
+        /// Only the first <paramref name="produced"/> rows of ritz / entries of eigenvalues are
+        /// meaningful (lanczos's early-breakdown/padding convention): a real Ritz vector has zero
+        /// weight on the decoupled padded coordinates, so summing j &lt; produced is exact. The Ritz
+        /// vectors are orthonormal to working precision (Yt orthonormal, ws.V rows orthonormal). At
+        /// FULL steps == n they reproduce A's eigenvectors; for partial steps &lt; n only the EXTREMAL
+        /// ones have converged (Kaniel-Paige-Saad), matching the Ritz values.
+        ///
+        /// <paramref name="Yt"/> is steps x steps scratch (T's eigenvectors); <paramref name="ritz"/>
+        /// is steps x A.Rows output. NOTE: unlike <see cref="lanczos{TOp}"/> this is NOT zero-alloc --
+        /// <see cref="eigenSymmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/> allocates three
+        /// length-steps Temp vectors internally. Returns eigenSymmetric's convergence flag.
+        /// </summary>
+        public static bool lanczosVectors<TOp>(in TOp A, ref doubleLanczos_WS ws, ref doubleMxN Yt,
+                                               ref doubleN eigenvalues, ref doubleMxN ritz,
+                                               out int produced, int steps, double breakdownTol)
+            where TOp : struct, IdoubleLinearOperator
+        {
+            if (eigenvalues.N != steps)
+                throw new ArgumentException("lanczosVectors: eigenvalues.N must equal steps");
+            if (!Yt.IsSquare || Yt.M_Rows != steps)
+                throw new ArgumentException("lanczosVectors: Yt must be steps x steps");
+            if (ritz.M_Rows != steps || ritz.N_Cols != A.Rows)
+                throw new ArgumentException("lanczosVectors: ritz must be steps x A.Rows");
+
+            int n = A.Rows;
+
+            lanczosTridiag(in A, ref ws, out produced, steps, breakdownTol);
+
+            bool ok = eigenSymmetric(ref ws.T, ref eigenvalues, ref Yt);
+
+            // Ritz vector i (row i of ritz) = sum_{j < produced} Yt[j,i] * v_(j+1) (row j of ws.V).
+            for (int i = 0; i < produced; i++)
+                for (int col = 0; col < n; col++)
+                {
+                    double acc = (double)0;
+                    for (int j = 0; j < produced; j++)
+                        acc += Yt[j, i] * ws.V[j, col];
+                    ritz[i, col] = acc;
+                }
+
+            return ok;
+        }
+
+        /// <summary>lanczosVectors with default breakdownTol (Consts.doubleZeroThreshold).</summary>
+        public static bool lanczosVectors<TOp>(in TOp A, ref doubleLanczos_WS ws, ref doubleMxN Yt,
+                                               ref doubleN eigenvalues, ref doubleMxN ritz,
+                                               out int produced, int steps)
+            where TOp : struct, IdoubleLinearOperator
+            => lanczosVectors(in A, ref ws, ref Yt, ref eigenvalues, ref ritz, out produced, steps, Consts.doubleZeroThreshold);
+
+        /// <summary>
+        /// Lanczos with Ritz vectors over a dense SYMMETRIC matrix -- allocates the workspace, T's
+        /// eigenvector scratch, the eigenvalues buffer (length steps) and the Ritz-vector matrix
+        /// (steps x A.Rows) from <paramref name="arena"/>. Returns the eigenvalues; Ritz vectors are
+        /// written to <paramref name="ritz"/> (row i = approximate eigenvector i). Only the first
+        /// <paramref name="produced"/> entries/rows are meaningful. See <see cref="lanczosVectors{TOp}"/>.
+        /// </summary>
+        public static doubleN lanczosVectors(ref Arena arena, in doubleMxN A, int steps,
+                                             out doubleMxN ritz, out int produced, out bool converged,
+                                             double breakdownTol)
+        {
+            var ws = arena.doubleLanczos_WS(A.M_Rows, steps);
+            var Yt = arena.doubleMat(steps, steps);
+            var eigenvalues = arena.doubleVec(steps);
+            ritz = arena.doubleMat(steps, A.M_Rows);
+            converged = lanczosVectors(new doubleDenseOperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, out produced, steps, breakdownTol);
+            return eigenvalues;
+        }
+
+        /// <summary>lanczosVectors (allocating) over a dense matrix with default breakdownTol.</summary>
+        public static doubleN lanczosVectors(ref Arena arena, in doubleMxN A, int steps, out doubleMxN ritz, out int produced, out bool converged)
+            => lanczosVectors(ref arena, in A, steps, out ritz, out produced, out converged, Consts.doubleZeroThreshold);
+
+        /// <summary>
+        /// Lanczos with Ritz vectors over a BSR SYMMETRIC matrix -- allocates workspace/scratch and
+        /// the eigenvalues + Ritz-vector outputs from <paramref name="arena"/>. See the dense overload.
+        /// </summary>
+        public static doubleN lanczosVectors(ref Arena arena, in doubleBSM A, int steps,
+                                             out doubleMxN ritz, out int produced, out bool converged,
+                                             double breakdownTol)
+        {
+            var ws = arena.doubleLanczos_WS(A.M_Rows, steps);
+            var Yt = arena.doubleMat(steps, steps);
+            var eigenvalues = arena.doubleVec(steps);
+            ritz = arena.doubleMat(steps, A.M_Rows);
+            converged = lanczosVectors(new doubleBSMOperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, out produced, steps, breakdownTol);
+            return eigenvalues;
+        }
+
+        /// <summary>lanczosVectors (allocating) over a BSR matrix with default breakdownTol.</summary>
+        public static doubleN lanczosVectors(ref Arena arena, in doubleBSM A, int steps, out doubleMxN ritz, out int produced, out bool converged)
+            => lanczosVectors(ref arena, in A, steps, out ritz, out produced, out converged, Consts.doubleZeroThreshold);
 
         /// <summary>
         /// Full symmetric eigendecomposition via classical two-sided (cyclic) Jacobi iteration.

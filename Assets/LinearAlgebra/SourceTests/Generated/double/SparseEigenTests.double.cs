@@ -37,6 +37,8 @@ public class doubleSparseEigenTests
             LanczosDenseVsBSM,
             LanczosEarlyBreakdownPadding,
             PowerNegativeDominant,
+            LanczosVectorsResidualAndOrthonormal,
+            LanczosVectorsDenseVsBSM,
         }
 
         public TestType Type;
@@ -81,6 +83,11 @@ public class doubleSparseEigenTests
         // in the Lanczos-produced alpha/beta, so this is tight but not machine-eps.
         static double BreakdownRitzTol() => 1e-9;
 
+        // Ritz VECTOR accuracy (residual ‖Av-λv‖, unit norm, pairwise orthogonality) at full
+        // steps == n: T is orthogonally similar to A, so the Ritz vectors are A's eigenvectors to
+        // eigenSymmetric's floor plus reorthogonalization roundoff -- comparable to FullSpectrumTol.
+        static double VecTol() => 1e-8;
+
         public void Execute()
         {
             switch (Type)
@@ -93,6 +100,8 @@ public class doubleSparseEigenTests
                 case TestType.LanczosPartialExtremal: LanczosPartialExtremal(); break;
                 case TestType.LanczosEarlyBreakdownPadding: LanczosEarlyBreakdownPadding(); break;
                 case TestType.PowerNegativeDominant: PowerNegativeDominant(); break;
+                case TestType.LanczosVectorsResidualAndOrthonormal: LanczosVectorsResidualAndOrthonormal(); break;
+                case TestType.LanczosVectorsDenseVsBSM: LanczosVectorsDenseVsBSM(); break;
                 case TestType.LanczosDenseVsBSM: LanczosDenseVsBSM(); break;
             }
         }
@@ -602,6 +611,90 @@ public class doubleSparseEigenTests
 
             arena.Dispose();
         }
+
+        // ---- Ritz VECTORS (lanczosVectors): approximate eigenvectors ---------------------
+        //
+        // Full-spectrum Lanczos on the Laplacian returns approximate eigenVECTORS. Each must satisfy
+        // the eigenpair residual ‖A v_i - lambda_i v_i‖ ≈ 0, be unit-norm, and be mutually orthogonal
+        // -- the sign-free, closed-form-free correctness criteria for eigenvectors (the Ritz VALUES
+        // are already pinned by LanczosFullSpectrum). Exercises the shared lanczosTridiag +
+        // eigenSymmetric + Ritz-combination path.
+        void LanczosVectorsResidualAndOrthonormal()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 12;
+            var A = arena.doubleLaplacian1D(n);
+
+            var eig = Eigen.lanczosVectors(ref arena, in A, n, out var ritz, out int produced, out bool conv);
+            AssertTrue(conv, (double)1);
+            AssertTrue(produced == n, (double)2);
+
+            var v = arena.doubleVec(n);
+            for (int i = 0; i < produced; i++)
+            {
+                for (int c = 0; c < n; c++) v[c] = ritz[i, c];
+
+                // unit norm
+                double nrmSq = (double)0;
+                for (int c = 0; c < n; c++) nrmSq += v[c] * v[c];
+                AssertClose(math.sqrt(nrmSq), (double)1, VecTol());
+
+                // eigenpair residual ‖A v - lambda v‖_inf, scaled by max(1,|lambda|)
+                var Av = Linear_OP.dot(A, v);
+                double maxRes = (double)0;
+                for (int c = 0; c < n; c++)
+                {
+                    double ri = math.abs(Av[c] - eig[i] * v[c]);
+                    if (ri > maxRes) maxRes = ri;
+                }
+                double scale = math.abs(eig[i]);
+                if (scale < (double)1) scale = (double)1;
+                AssertClose(maxRes, (double)0, VecTol() * scale);
+            }
+
+            // pairwise orthogonality of the Ritz vectors
+            for (int i = 0; i < produced; i++)
+                for (int j = i + 1; j < produced; j++)
+                {
+                    double d = (double)0;
+                    for (int c = 0; c < n; c++) d += ritz[i, c] * ritz[j, c];
+                    AssertClose(d, (double)0, VecTol());
+                }
+
+            arena.Dispose();
+        }
+
+        // Dense and 1x1-BSM encodings of the same Laplacian must yield the SAME Ritz values and
+        // (up to a per-vector sign) the SAME Ritz vectors -- confirms the BSM operator feeds
+        // lanczosVectors identically to the dense path.
+        void LanczosVectorsDenseVsBSM()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 12;
+            var Adense = arena.doubleLaplacian1D(n);
+            var bsm    = DenseToBSM1x1(ref arena, in Adense, 3 * n);
+
+            var eigD = Eigen.lanczosVectors(ref arena, in Adense, n, out var ritzD, out int prodD, out bool convD);
+            AssertTrue(convD, (double)1);
+            var eigB = Eigen.lanczosVectors(ref arena, in bsm, n, out var ritzB, out int prodB, out bool convB);
+            AssertTrue(convB, (double)2);
+            AssertTrue(prodD == prodB, (double)3);
+
+            var vD = arena.doubleVec(n);
+            var vB = arena.doubleVec(n);
+            for (int i = 0; i < prodD; i++)
+            {
+                double scale = (double)1 + math.abs(eigD[i]);
+                AssertClose(eigD[i], eigB[i], LooseTol() * scale);
+
+                for (int c = 0; c < n; c++) { vD[c] = ritzD[i, c]; vB[c] = ritzB[i, c]; }
+                AssertVecEqUpToSign(in vD, in vB, n, LooseTol());
+            }
+
+            arena.Dispose();
+        }
     }
 
     // ---- correctness entry points (Burst job + Fail-array surfacing) ----------------------
@@ -653,6 +746,14 @@ public class doubleSparseEigenTests
     [Test]
     public void LanczosDenseVsBSMTest()
         => RunCase(SparseEigenTestJob.TestType.LanczosDenseVsBSM);
+
+    [Test]
+    public void LanczosVectorsResidualAndOrthonormalTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosVectorsResidualAndOrthonormal);
+
+    [Test]
+    public void LanczosVectorsDenseVsBSMTest()
+        => RunCase(SparseEigenTestJob.TestType.LanczosVectorsDenseVsBSM);
 
     [Test]
     public void LanczosEarlyBreakdownPaddingTest()
