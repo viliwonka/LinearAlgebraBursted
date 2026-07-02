@@ -7,6 +7,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using LinearAlgebra.Internal;
+using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
@@ -16,12 +17,19 @@ namespace LinearAlgebra
     public static partial class Eigen {
 
         /// <summary>
-        /// Power iteration with Rayleigh-quotient eigenvalue estimate.
-        /// Finds the dominant eigenpair (lambda, v) of a square matrix A.
+        /// Power iteration with Rayleigh-quotient eigenvalue estimate, generic over any
+        /// <see cref="IdoubleLinearOperator"/> (Burst-monomorphized static dispatch, no
+        /// vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the power-iteration
+        /// loop — the concrete dense (<c>powerIteration(in doubleMxN, ...)</c>) and BSM
+        /// (<c>powerIteration(in doubleBSM, ...)</c>) overloads below are thin forwarders that
+        /// wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSMOperator</c> and
+        /// call this method (mirrors <see cref="Solvers.cg{TOp}"/>).
         ///
-        /// On input: v (length n) is the initial guess for the eigenvector; w (length n)
-        /// is caller-provided scratch storage — it is overwritten and must NOT be the same
-        /// array as v. On output: v is the unit eigenvector estimate; lambda is the
+        /// Finds the dominant eigenpair (lambda, v) of a square operator A (A.Rows == A.Cols).
+        ///
+        /// On input: v (length A.Rows) is the initial guess for the eigenvector; w (length
+        /// A.Rows) is caller-provided scratch storage — it is overwritten and must NOT be the
+        /// same array as v. On output: v is the unit eigenvector estimate; lambda is the
         /// Rayleigh quotient estimate (v^T A v).
         ///
         /// If the supplied v has zero 2-norm it is seeded deterministically as
@@ -42,30 +50,31 @@ namespace LinearAlgebra
         ///     not rescaled in this version; keep element magnitudes moderate.
         ///   - Does not allocate.
         /// </summary>
-        public static bool powerIteration(in doubleMxN A, ref doubleN v, ref doubleN w,
-                                          out double lambda, double tol, int maxIter)
+        public static bool powerIteration<TOp>(in TOp A, ref doubleN v, ref doubleN w,
+                                               out double lambda, double tol, int maxIter)
+            where TOp : struct, IdoubleLinearOperator
         {
-            if (!A.IsSquare)
-                throw new ArgumentException("Eigen.powerIteration: A must be square");
+            if (A.Rows != A.Cols)
+                throw new ArgumentException("powerIteration: A must be square");
 
-            if (v.N != A.N_Cols)
-                throw new ArgumentException("Eigen.powerIteration: v.N must equal A.N_Cols");
+            if (v.N != A.Rows)
+                throw new ArgumentException("powerIteration: v.N must equal A.Rows");
 
-            if (w.N != A.N_Cols)
-                throw new ArgumentException("Eigen.powerIteration: w.N must equal A.N_Cols");
+            if (w.N != A.Rows)
+                throw new ArgumentException("powerIteration: w.N must equal A.Rows");
 
             unsafe {
                 if (v.Data.Ptr == w.Data.Ptr)
-                    throw new ArgumentException("Eigen.powerIteration: w must not alias v");
+                    throw new ArgumentException("powerIteration: w must not alias v");
             }
 
             if (maxIter < 1)
-                throw new ArgumentException("Eigen.powerIteration: maxIter must be >= 1");
+                throw new ArgumentException("powerIteration: maxIter must be >= 1");
 
             if (tol <= (double)0)
-                throw new ArgumentException("Eigen.powerIteration: tol must be > 0");
+                throw new ArgumentException("powerIteration: tol must be > 0");
 
-            int n = A.N_Cols;
+            int n = A.Rows;
 
             // Seed v deterministically if the caller supplied the zero vector
             double vNormSq = (double)0;
@@ -90,13 +99,9 @@ namespace LinearAlgebra
 
             for (int iter = 0; iter < maxIter; iter++) {
 
-                // Step 1: w = A * v (manual matvec — no allocation)
-                for (int i = 0; i < n; i++) {
-                    double sum = (double)0;
-                    for (int j = 0; j < n; j++)
-                        sum += A[i, j] * v[j];
-                    w[i] = sum;
-                }
+                // Step 1: w = A * v (no allocation — the operator's own Apply, e.g. a manual
+                // matvec for dense or spMV for a BSM)
+                A.Apply(in v, ref w);
 
                 // Step 2: lambda = v . w (Rayleigh quotient; ||v||_2 = 1)
                 lambda = (double)0;
@@ -136,12 +141,7 @@ namespace LinearAlgebra
             }
 
             // Post-loop: recompute w = A*v, lambda, residual with final v
-            for (int i = 0; i < n; i++) {
-                double sum = (double)0;
-                for (int j = 0; j < n; j++)
-                    sum += A[i, j] * v[j];
-                w[i] = sum;
-            }
+            A.Apply(in v, ref w);
 
             lambda = (double)0;
             for (int i = 0; i < n; i++)
@@ -160,6 +160,18 @@ namespace LinearAlgebra
             return finalResidual <= tol * finalScale;
         }
 
+        /// <summary>
+        /// Power iteration with Rayleigh-quotient eigenvalue estimate over a dense
+        /// <see cref="doubleMxN"/>. Forwards into <see cref="powerIteration{TOp}"/> via
+        /// <see cref="doubleDenseOperator"/> — see that method for the actual loop and the full
+        /// algorithm documentation (deterministic seeding, convergence criterion, notes).
+        /// </summary>
+        public static bool powerIteration(in doubleMxN A, ref doubleN v, ref doubleN w,
+                                          out double lambda, double tol, int maxIter)
+        {
+            return powerIteration(new doubleDenseOperator(in A), ref v, ref w, out lambda, tol, maxIter);
+        }
+
         /// <summary>powerIteration with default maxIter (1000).</summary>
         public static bool powerIteration(in doubleMxN A, ref doubleN v, ref doubleN w,
                                           out double lambda, double tol)
@@ -167,6 +179,31 @@ namespace LinearAlgebra
 
         /// <summary>powerIteration with default tol (Consts.doubleZeroThreshold) and maxIter (1000).</summary>
         public static bool powerIteration(in doubleMxN A, ref doubleN v, ref doubleN w,
+                                          out double lambda)
+            => powerIteration(in A, ref v, ref w, out lambda, Consts.doubleZeroThreshold, 1000);
+
+        /// <summary>
+        /// Power iteration with Rayleigh-quotient eigenvalue estimate over a block-sparse (BSR)
+        /// matrix. Same semantics as the dense overload — see
+        /// <see cref="powerIteration(in doubleMxN, ref doubleN, ref doubleN, out double, double, int)"/>.
+        /// Forwards into <see cref="powerIteration{TOp}"/> via <c>doubleBSMOperator</c>.
+        /// </summary>
+        public static bool powerIteration(in doubleBSM A, ref doubleN v, ref doubleN w,
+                                          out double lambda, double tol, int maxIter)
+        {
+            return powerIteration(new doubleBSMOperator(in A), ref v, ref w, out lambda, tol, maxIter);
+        }
+
+        /// <summary>powerIteration over a block-sparse (BSR) matrix with default maxIter (1000).</summary>
+        public static bool powerIteration(in doubleBSM A, ref doubleN v, ref doubleN w,
+                                          out double lambda, double tol)
+            => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
+
+        /// <summary>
+        /// powerIteration over a block-sparse (BSR) matrix with default tol
+        /// (Consts.doubleZeroThreshold) and maxIter (1000).
+        /// </summary>
+        public static bool powerIteration(in doubleBSM A, ref doubleN v, ref doubleN w,
                                           out double lambda)
             => powerIteration(in A, ref v, ref w, out lambda, Consts.doubleZeroThreshold, 1000);
 
