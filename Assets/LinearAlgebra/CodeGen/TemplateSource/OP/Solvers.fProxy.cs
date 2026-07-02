@@ -946,7 +946,9 @@ namespace LinearAlgebra
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
         /// ‖Ax-b‖² + damp²‖x‖², i.e. runs CG on the SHIFTED normal equations (AᵀA + damp²I)x = Aᵀb
         /// -- the residual becomes s = Aᵀr - damp²x and the curvature ‖Ap‖² + damp²‖p‖², never
-        /// forming AᵀA. damp == 0 is BIT-IDENTICAL to the plain solve.
+        /// forming AᵀA. damp == 0 is BIT-IDENTICAL to the plain solve. Because s uses the FULL x
+        /// (not the residual), cgls regularizes ‖x‖ for ANY initial x -- warm start included --
+        /// unlike lsqr/lsmr, which regularize ‖x - x₀‖ under a nonzero warm start.
         ///
         /// Returns false on non-convergence or non-positive curvature ‖Ap‖²&lt;=0 (breakdown,
         /// mirrors cg's p·Ap&lt;=0 guard: p is in null(A), or p==0). On a false return x is
@@ -1187,6 +1189,11 @@ namespace LinearAlgebra
         /// ‖Ax-b‖² + damp²‖x‖² (equivalently solves (AᵀA + damp²I)x = Aᵀb) via one extra rotation
         /// per step folding damp into the bidiagonal diagonal -- no augmented matrix formed.
         /// damp == 0 is BIT-IDENTICAL to the plain least-squares solve.
+        ///
+        /// WARM START + DAMPING: like <see cref="lsmr{TOp}"/>, lsqr bidiagonalizes the residual
+        /// b - A·x₀, so a NONZERO initial x₀ makes it minimize ‖Ax-b‖² + damp²‖x - x₀‖² (regularizing
+        /// the CORRECTION), not ‖x‖. Start from x = 0 for the ‖x‖-regularized minimizer. (cgls
+        /// regularizes ‖x‖ for any x₀.)
         ///
         /// Returns false on non-convergence or a total bidiagonalization breakdown (the current
         /// alpha and beta both collapse to zero in the same step -- the Golub-Kahan recurrence
@@ -1471,6 +1478,11 @@ namespace LinearAlgebra
         /// damp == 0 is the plain least-squares solve and is BIT-IDENTICAL to the undamped path.
         /// Damping regularizes rank-deficient / ill-posed / noisy systems and stabilizes the
         /// underdetermined minimum-norm solution.
+        ///
+        /// WARM START + DAMPING: the damp²‖x‖² penalty is measured against the COLD start (x = 0).
+        /// Because lsmr bidiagonalizes the residual b - A·x₀, a NONZERO initial x₀ makes it minimize
+        /// ‖Ax-b‖² + damp²‖x - x₀‖² (regularizing the CORRECTION), not ‖x‖. Start from x = 0 for the
+        /// ‖x‖-regularized minimizer. (cgls regularizes ‖x‖ for any x₀; lsqr matches lsmr here.)
         ///
         /// Returns false on non-convergence or a bidiagonalization breakdown (a rotation radius
         /// collapses to zero -- the Golub-Kahan recurrence exhausted). On a false return x is
