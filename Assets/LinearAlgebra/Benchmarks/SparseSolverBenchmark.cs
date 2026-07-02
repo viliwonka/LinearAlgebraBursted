@@ -345,6 +345,67 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- transpose-optimized sparse CGLS/LSQR jobs (Milestone B): use a materialized Aᵀ so ApplyT
+    //      runs as a forward spMV over Aᵀ instead of the cache-unfriendly on-the-fly spMVT. Aᵀ is built
+    //      ONCE outside the timed region (a real solve builds it once and reuses it every iteration),
+    //      so the timing isolates the per-iteration ApplyT improvement from the one-time build cost. ----
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CglsSparseTJobFloat : IJob
+    {
+        public floatBSM A, AT;
+        public floatN b, x, r, s, p, q;
+        public int K;
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.cgls(in A, in AT, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CglsSparseTJobDouble : IJob
+    {
+        public doubleBSM A, AT;
+        public doubleN b, x, r, s, p, q;
+        public int K;
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.cgls(in A, in AT, in b, ref x, ref r, ref s, ref p, ref q, K, 0.0);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LsqrSparseTJobFloat : IJob
+    {
+        public floatBSM A, AT;
+        public floatN b, x, u, v, w, tmpM, tmpN;
+        public int K;
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Solvers.lsqr(in A, in AT, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LsqrSparseTJobDouble : IJob
+    {
+        public doubleBSM A, AT;
+        public doubleN b, x, u, v, w, tmpM, tmpN;
+        public int K;
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0.0;
+            Solvers.lsqr(in A, in AT, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0.0);
+        }
+    }
+
     // ---- Section 4: hand-inlined dense CG (no IfloatLinearOperator/IdoubleLinearOperator, no cg<TOp>
     //      generic dispatch -- a raw GEMV loop + axpy/dot written directly in Execute()). Same algorithm
     //      as Solvers.cg<TOp> (see Solvers.fProxy.cs), just with every step spelled out inline against
@@ -1516,6 +1577,21 @@ namespace LinearAlgebra.Benchmarks
             var lsqrSparseStat = Bench.Time(() => lsqrSparseJob.Run());
             sb.AppendLine(Row("float", nRef, density, "LSQR-sparse-" + tag, lsqrSparseStat, ResidualLS(in dense, in xLS, in b)));
 
+            // Milestone B: transpose-optimized variants -- Aᵀ materialized ONCE (outside timing), ApplyT
+            // becomes a forward spMV over Aᵀ. Compare "sparseT" rows against the "sparse" rows above.
+            var AT = arena.floatBSMTranspose(in sparse);
+
+            var xCST = arena.floatVec(cols); var rCST = arena.floatVec(rows); var sCST = arena.floatVec(cols); var pCST = arena.floatVec(cols); var qCST = arena.floatVec(rows);
+            var cglsSparseTJob = new CglsSparseTJobFloat { A = sparse, AT = AT, b = b, x = xCST, r = rCST, s = sCST, p = pCST, q = qCST, K = K_LS };
+            var cglsSparseTStat = Bench.Time(() => cglsSparseTJob.Run());
+            sb.AppendLine(Row("float", nRef, density, "CGLS-sparseT-" + tag, cglsSparseTStat, ResidualLS(in dense, in xCST, in b)));
+
+            var xLST = arena.floatVec(cols); var uLST = arena.floatVec(rows); var vLST = arena.floatVec(cols); var wLST = arena.floatVec(cols);
+            var tmMLST = arena.floatVec(rows); var tmNLST = arena.floatVec(cols);
+            var lsqrSparseTJob = new LsqrSparseTJobFloat { A = sparse, AT = AT, b = b, x = xLST, u = uLST, v = vLST, w = wLST, tmpM = tmMLST, tmpN = tmNLST, K = K_LS };
+            var lsqrSparseTStat = Bench.Time(() => lsqrSparseTJob.Run());
+            sb.AppendLine(Row("float", nRef, density, "LSQR-sparseT-" + tag, lsqrSparseTStat, ResidualLS(in dense, in xLST, in b)));
+
             arena.Dispose();
         }
 
@@ -1547,6 +1623,21 @@ namespace LinearAlgebra.Benchmarks
             var lsqrSparseJob = new LsqrSparseJobDouble { A = sparse, b = b, x = xLS, u = uLS, v = vLS, w = wLS, tmpM = tmMLS, tmpN = tmNLS, K = K_LS };
             var lsqrSparseStat = Bench.Time(() => lsqrSparseJob.Run());
             sb.AppendLine(Row("double", nRef, density, "LSQR-sparse-" + tag, lsqrSparseStat, ResidualLS(in dense, in xLS, in b)));
+
+            // Milestone B: transpose-optimized variants -- Aᵀ materialized ONCE (outside timing), ApplyT
+            // becomes a forward spMV over Aᵀ. Compare "sparseT" rows against the "sparse" rows above.
+            var AT = arena.doubleBSMTranspose(in sparse);
+
+            var xCST = arena.doubleVec(cols); var rCST = arena.doubleVec(rows); var sCST = arena.doubleVec(cols); var pCST = arena.doubleVec(cols); var qCST = arena.doubleVec(rows);
+            var cglsSparseTJob = new CglsSparseTJobDouble { A = sparse, AT = AT, b = b, x = xCST, r = rCST, s = sCST, p = pCST, q = qCST, K = K_LS };
+            var cglsSparseTStat = Bench.Time(() => cglsSparseTJob.Run());
+            sb.AppendLine(Row("double", nRef, density, "CGLS-sparseT-" + tag, cglsSparseTStat, ResidualLS(in dense, in xCST, in b)));
+
+            var xLST = arena.doubleVec(cols); var uLST = arena.doubleVec(rows); var vLST = arena.doubleVec(cols); var wLST = arena.doubleVec(cols);
+            var tmMLST = arena.doubleVec(rows); var tmNLST = arena.doubleVec(cols);
+            var lsqrSparseTJob = new LsqrSparseTJobDouble { A = sparse, AT = AT, b = b, x = xLST, u = uLST, v = vLST, w = wLST, tmpM = tmMLST, tmpN = tmNLST, K = K_LS };
+            var lsqrSparseTStat = Bench.Time(() => lsqrSparseTJob.Run());
+            sb.AppendLine(Row("double", nRef, density, "LSQR-sparseT-" + tag, lsqrSparseTStat, ResidualLS(in dense, in xLST, in b)));
 
             arena.Dispose();
         }
