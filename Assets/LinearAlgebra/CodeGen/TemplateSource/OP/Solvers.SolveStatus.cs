@@ -2,16 +2,16 @@
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Outcome of a solver call, carried by the solve-result structs (<c>fProxySolveInfo</c> /
-    /// <c>fProxyLstsqInfo</c>). Their <c>Solved</c> convenience property (and implicit bool
-    /// conversion) is exactly <c>status == SolveStatus.Converged</c>, so <c>if (solver(...))</c>
-    /// keeps reading as "did it succeed", while the enum preserves WHY a solve stopped for callers
-    /// that want it.
+    /// Outcome of an ITERATIVE solver call, carried by the result structs (<c>SolveInfo</c> /
+    /// <c>LstsqInfo</c>). Their <c>Solved</c> convenience property (and implicit bool conversion)
+    /// is exactly <c>status == IterativeSolveStatus.Converged</c>, so <c>if (solver(...))</c> keeps
+    /// reading as "did it succeed", while the enum preserves WHY a solve stopped for callers that
+    /// want it. Direct (non-iterative) factorization solves use <see cref="DirectSolveStatus"/>.
     ///
     /// Type-agnostic (no fProxy) on purpose: it lives in a non-templated file so codegen does not
     /// emit a duplicate definition into both the float and double partials (CS0102).
     /// </summary>
-    public enum SolveStatus
+    public enum IterativeSolveStatus
     {
         /// <summary>Reached the requested tolerance.</summary>
         Converged = 0,

@@ -57,7 +57,7 @@ public class doubleSparseSolverTests
             CgneWarmStart,
             CgneInconsistentDoesNotConverge,
 
-            // ---- LS diagnostics (doubleLstsqInfo: rnorm/Arnorm/xnorm/iterations/status; free tracked estimates) ----
+            // ---- LS diagnostics (LstsqInfo: rnorm/Arnorm/xnorm/iterations/status; free tracked estimates) ----
             LstsqInfoMatchesIndependentRecompute,
             LstsqInfoDampedArnorm,
             LsmrRnormMatchesExact,
@@ -70,7 +70,7 @@ public class doubleSparseSolverTests
             // ---- literature ground truth: Strang best-fit-line, EXACT diagnostics ----
             LstsqInfoStrangLineFitExact,
 
-            // ---- square-solver diagnostics (doubleSolveInfo: rnorm/iterations/status; free tracked ‖r‖) ----
+            // ---- square-solver diagnostics (SolveInfo: rnorm/iterations/status; free tracked ‖r‖) ----
             SolveInfoRnormMatchesResidual,
 
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
@@ -199,6 +199,9 @@ public class doubleSparseSolverTests
             Assert.IsTrue(Analysis_OP.isZero(a - b, tol));
         }
 
+        // got/expected are double so the result-struct norm fields (now double regardless of the
+        // solve's precision) pass straight in; double callers just widen. NOT a second double
+        // overload -- that would collide with this one in the double generation (CS0111).
         static void AssertClose(double got, double expected, double tol)
             => Assert.IsTrue(math.abs(got - expected) <= tol * ((double)1 + math.abs(expected)));
 
@@ -1188,14 +1191,14 @@ public class doubleSparseSolverTests
             arena.Dispose();
         }
 
-        // ================== LS diagnostics (doubleLstsqInfo) ==================
+        // ================== LS diagnostics (LstsqInfo) ==================
 
         // Independently recompute rnorm/Arnorm/xnorm EXACTLY from the returned x (paying a real
         // matvec) and assert the solver's FREE tracked estimates in the info struct match to within
         // LooseTol at convergence. r = b - A x, and A^T(A x - b) = -A^T r so ||A^T(Ax-b)|| == Arnorm;
         // for damp!=0 the reported optimality residual is ||A^T r - damp^2 x|| = ||A^T(Ax-b) + damp^2 x||.
         static void AssertInfoMatches(in doubleMxN A, in doubleN b, in doubleN x, double damp,
-                                      in doubleLstsqInfo info, double tol)
+                                      in LstsqInfo info, double tol)
         {
             var Ax  = Linear_OP.dot(A, x);
             var res = Ax - b;                        // Ax - b  (= -r), length m
@@ -1492,7 +1495,7 @@ public class doubleSparseSolverTests
             for (int which = 0; which < 3; which++)
             {
                 var x = arena.doubleVec(2);
-                doubleLstsqInfo info;
+                LstsqInfo info;
                 if (which == 0)      info = Solvers.cgls(in A, in b, ref x, 50, tol, (double)0);
                 else if (which == 1) info = Solvers.lsqr(in A, in b, ref x, 50, tol, (double)0);
                 else                 info = Solvers.lsmr(in A, in b, ref x, 50, tol, (double)0);
@@ -1529,7 +1532,7 @@ public class doubleSparseSolverTests
             AssertClose(rnorm, math.sqrt(acc), tol);
         }
 
-        // STAGE 2: the square solvers (cg/pcg/minres/biCGStab/cgne) now RETURN an doubleSolveInfo
+        // STAGE 2: the square solvers (cg/pcg/minres/biCGStab/cgne) now RETURN an SolveInfo
         // whose rnorm is filled from each solver's already-tracked residual -- cg/pcg/cgne a live
         // ‖r‖ (√ of the dot they already form for the convergence test), minres its phibar (the
         // MINRES identity), biCGStab its running ‖r‖ -- never a fresh matvec. Pin that free rnorm
@@ -1590,27 +1593,27 @@ public class doubleSparseSolverTests
             //      undefined. Each returns √(tracked residual) with x fully advanced. ----
             var xh = arena.doubleVec(n);
             var ih = Solvers.conjugateGradient(in Aspd, in bspd, ref xh, 1, Consts.doubleSqrtEps);
-            Assert.IsTrue(!ih.Solved && ih.status == SolveStatus.MaxIterations && ih.iterations == 1);
+            Assert.IsTrue(!ih.Solved && ih.status == IterativeSolveStatus.MaxIterations && ih.iterations == 1);
             AssertResidualNorm(in Aspd, in bspd, in xh, ih.rnorm, tol);
 
             var xhp = arena.doubleVec(n);
             var ihp = Solvers.pcg(in bsm, in M, in bspd, ref xhp, 1, Consts.doubleSqrtEps);
-            Assert.IsTrue(ihp.status == SolveStatus.MaxIterations && ihp.iterations == 1);
+            Assert.IsTrue(ihp.status == IterativeSolveStatus.MaxIterations && ihp.iterations == 1);
             AssertResidualNormBSM(in bsm, in bspd, in xhp, ihp.rnorm, tol);
 
             var xhm = arena.doubleVec(n);
             var ihm = Solvers.minres(in Aspd, in bspd, ref xhm, 1, Consts.doubleSqrtEps);
-            Assert.IsTrue(ihm.status == SolveStatus.MaxIterations && ihm.iterations == 1);
+            Assert.IsTrue(ihm.status == IterativeSolveStatus.MaxIterations && ihm.iterations == 1);
             AssertResidualNorm(in Aspd, in bspd, in xhm, ihm.rnorm, tol);
 
             var xhb = arena.doubleVec(d);
             var ihb = Solvers.biCGStab(in Ansym, in bns, ref xhb, 1, Consts.doubleSqrtEps);
-            Assert.IsTrue(ihb.status == SolveStatus.MaxIterations && ihb.iterations == 1);
+            Assert.IsTrue(ihb.status == IterativeSolveStatus.MaxIterations && ihb.iterations == 1);
             AssertResidualNorm(in Ansym, in bns, in xhb, ihb.rnorm, tol);
 
             var xhn = arena.doubleVec(nn);
             var ihn = Solvers.cgne(in Aun, in bun, ref xhn, 1, Consts.doubleSqrtEps);
-            Assert.IsTrue(ihn.status == SolveStatus.MaxIterations && ihn.iterations == 1);
+            Assert.IsTrue(ihn.status == IterativeSolveStatus.MaxIterations && ihn.iterations == 1);
             AssertResidualNorm(in Aun, in bun, in xhn, ihn.rnorm, tol);
 
             // ---- Breakdown path: CG on the indefinite A = diag(1,-1) with b = (1,1) and x₀ = 0
@@ -1622,7 +1625,7 @@ public class doubleSparseSolverTests
             var bind = arena.doubleVec(2); bind[0] = (double)1; bind[1] = (double)1;
             var xind = arena.doubleVec(2); xind[0] = (double)0; xind[1] = (double)0;
             var iind = Solvers.conjugateGradient(in Aind, in bind, ref xind, 10, Consts.doubleSqrtEps);
-            Assert.IsTrue(iind.status == SolveStatus.Breakdown && iind.iterations == 0);
+            Assert.IsTrue(iind.status == IterativeSolveStatus.Breakdown && iind.iterations == 0);
             AssertResidualNorm(in Aind, in bind, in xind, iind.rnorm, tol);
             AssertClose(iind.rnorm, math.sqrt((double)2), tol);
 

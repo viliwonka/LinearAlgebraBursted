@@ -57,7 +57,7 @@ public class floatSparseSolverTests
             CgneWarmStart,
             CgneInconsistentDoesNotConverge,
 
-            // ---- LS diagnostics (floatLstsqInfo: rnorm/Arnorm/xnorm/iterations/status; free tracked estimates) ----
+            // ---- LS diagnostics (LstsqInfo: rnorm/Arnorm/xnorm/iterations/status; free tracked estimates) ----
             LstsqInfoMatchesIndependentRecompute,
             LstsqInfoDampedArnorm,
             LsmrRnormMatchesExact,
@@ -70,7 +70,7 @@ public class floatSparseSolverTests
             // ---- literature ground truth: Strang best-fit-line, EXACT diagnostics ----
             LstsqInfoStrangLineFitExact,
 
-            // ---- square-solver diagnostics (floatSolveInfo: rnorm/iterations/status; free tracked ‖r‖) ----
+            // ---- square-solver diagnostics (SolveInfo: rnorm/iterations/status; free tracked ‖r‖) ----
             SolveInfoRnormMatchesResidual,
 
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
@@ -199,7 +199,10 @@ public class floatSparseSolverTests
             Assert.IsTrue(Analysis_OP.isZero(a - b, tol));
         }
 
-        static void AssertClose(float got, float expected, float tol)
+        // got/expected are double so the result-struct norm fields (now double regardless of the
+        // solve's precision) pass straight in; float callers just widen. NOT a second float
+        // overload -- that would collide with this one in the double generation (CS0111).
+        static void AssertClose(double got, double expected, float tol)
             => Assert.IsTrue(math.abs(got - expected) <= tol * ((float)1 + math.abs(expected)));
 
         // ---- 1. 1D Laplacian tridiagonal as a 1x1-block BSM: CG matches dense CG -----------
@@ -1188,14 +1191,14 @@ public class floatSparseSolverTests
             arena.Dispose();
         }
 
-        // ================== LS diagnostics (floatLstsqInfo) ==================
+        // ================== LS diagnostics (LstsqInfo) ==================
 
         // Independently recompute rnorm/Arnorm/xnorm EXACTLY from the returned x (paying a real
         // matvec) and assert the solver's FREE tracked estimates in the info struct match to within
         // LooseTol at convergence. r = b - A x, and A^T(A x - b) = -A^T r so ||A^T(Ax-b)|| == Arnorm;
         // for damp!=0 the reported optimality residual is ||A^T r - damp^2 x|| = ||A^T(Ax-b) + damp^2 x||.
         static void AssertInfoMatches(in floatMxN A, in floatN b, in floatN x, float damp,
-                                      in floatLstsqInfo info, float tol)
+                                      in LstsqInfo info, float tol)
         {
             var Ax  = Linear_OP.dot(A, x);
             var res = Ax - b;                        // Ax - b  (= -r), length m
@@ -1349,7 +1352,7 @@ public class floatSparseSolverTests
             Assert.IsTrue(infoB.Solved);
 
             AssertVecEq(in xD, in xB, LooseTol());
-            float sr = (float)1 + infoD.rnorm;
+            double sr = (float)1 + infoD.rnorm;
             Assert.IsTrue(math.abs(infoD.rnorm  - infoB.rnorm)  <= LooseTol() * sr);
             Assert.IsTrue(math.abs(infoD.Arnorm - infoB.Arnorm) <= LooseTol() * ((float)1 + infoD.Arnorm));
             Assert.IsTrue(math.abs(infoD.xnorm  - infoB.xnorm)  <= LooseTol() * ((float)1 + infoD.xnorm));
@@ -1492,7 +1495,7 @@ public class floatSparseSolverTests
             for (int which = 0; which < 3; which++)
             {
                 var x = arena.floatVec(2);
-                floatLstsqInfo info;
+                LstsqInfo info;
                 if (which == 0)      info = Solvers.cgls(in A, in b, ref x, 50, tol, (float)0);
                 else if (which == 1) info = Solvers.lsqr(in A, in b, ref x, 50, tol, (float)0);
                 else                 info = Solvers.lsmr(in A, in b, ref x, 50, tol, (float)0);
@@ -1510,7 +1513,7 @@ public class floatSparseSolverTests
 
         // Independently recompute ‖b - A x‖ (one real matvec) and check the solver's FREE rnorm
         // (a value it already tracked -- never a fresh A*x) matches it.
-        static void AssertResidualNorm(in floatMxN A, in floatN b, in floatN x, float rnorm, float tol)
+        static void AssertResidualNorm(in floatMxN A, in floatN b, in floatN x, double rnorm, float tol)
         {
             var Ax = Linear_OP.dot(A, x);
             float acc = (float)0;
@@ -1521,7 +1524,7 @@ public class floatSparseSolverTests
         // BSM counterpart: recompute ‖b - A x‖ with the SAME sparse matvec the solver tracked its
         // residual through (spMV), so the check stays in-arithmetic rather than comparing a BSM-
         // tracked rnorm against a dense recompute (whose summation order differs).
-        static void AssertResidualNormBSM(in floatBSM A, in floatN b, in floatN x, float rnorm, float tol)
+        static void AssertResidualNormBSM(in floatBSM A, in floatN b, in floatN x, double rnorm, float tol)
         {
             var Ax = Sparse_OP.spMV(in A, in x);
             float acc = (float)0;
@@ -1529,7 +1532,7 @@ public class floatSparseSolverTests
             AssertClose(rnorm, math.sqrt(acc), tol);
         }
 
-        // STAGE 2: the square solvers (cg/pcg/minres/biCGStab/cgne) now RETURN an floatSolveInfo
+        // STAGE 2: the square solvers (cg/pcg/minres/biCGStab/cgne) now RETURN an SolveInfo
         // whose rnorm is filled from each solver's already-tracked residual -- cg/pcg/cgne a live
         // ‖r‖ (√ of the dot they already form for the convergence test), minres its phibar (the
         // MINRES identity), biCGStab its running ‖r‖ -- never a fresh matvec. Pin that free rnorm
@@ -1590,27 +1593,27 @@ public class floatSparseSolverTests
             //      undefined. Each returns √(tracked residual) with x fully advanced. ----
             var xh = arena.floatVec(n);
             var ih = Solvers.conjugateGradient(in Aspd, in bspd, ref xh, 1, Consts.floatSqrtEps);
-            Assert.IsTrue(!ih.Solved && ih.status == SolveStatus.MaxIterations && ih.iterations == 1);
+            Assert.IsTrue(!ih.Solved && ih.status == IterativeSolveStatus.MaxIterations && ih.iterations == 1);
             AssertResidualNorm(in Aspd, in bspd, in xh, ih.rnorm, tol);
 
             var xhp = arena.floatVec(n);
             var ihp = Solvers.pcg(in bsm, in M, in bspd, ref xhp, 1, Consts.floatSqrtEps);
-            Assert.IsTrue(ihp.status == SolveStatus.MaxIterations && ihp.iterations == 1);
+            Assert.IsTrue(ihp.status == IterativeSolveStatus.MaxIterations && ihp.iterations == 1);
             AssertResidualNormBSM(in bsm, in bspd, in xhp, ihp.rnorm, tol);
 
             var xhm = arena.floatVec(n);
             var ihm = Solvers.minres(in Aspd, in bspd, ref xhm, 1, Consts.floatSqrtEps);
-            Assert.IsTrue(ihm.status == SolveStatus.MaxIterations && ihm.iterations == 1);
+            Assert.IsTrue(ihm.status == IterativeSolveStatus.MaxIterations && ihm.iterations == 1);
             AssertResidualNorm(in Aspd, in bspd, in xhm, ihm.rnorm, tol);
 
             var xhb = arena.floatVec(d);
             var ihb = Solvers.biCGStab(in Ansym, in bns, ref xhb, 1, Consts.floatSqrtEps);
-            Assert.IsTrue(ihb.status == SolveStatus.MaxIterations && ihb.iterations == 1);
+            Assert.IsTrue(ihb.status == IterativeSolveStatus.MaxIterations && ihb.iterations == 1);
             AssertResidualNorm(in Ansym, in bns, in xhb, ihb.rnorm, tol);
 
             var xhn = arena.floatVec(nn);
             var ihn = Solvers.cgne(in Aun, in bun, ref xhn, 1, Consts.floatSqrtEps);
-            Assert.IsTrue(ihn.status == SolveStatus.MaxIterations && ihn.iterations == 1);
+            Assert.IsTrue(ihn.status == IterativeSolveStatus.MaxIterations && ihn.iterations == 1);
             AssertResidualNorm(in Aun, in bun, in xhn, ihn.rnorm, tol);
 
             // ---- Breakdown path: CG on the indefinite A = diag(1,-1) with b = (1,1) and x₀ = 0
@@ -1622,7 +1625,7 @@ public class floatSparseSolverTests
             var bind = arena.floatVec(2); bind[0] = (float)1; bind[1] = (float)1;
             var xind = arena.floatVec(2); xind[0] = (float)0; xind[1] = (float)0;
             var iind = Solvers.conjugateGradient(in Aind, in bind, ref xind, 10, Consts.floatSqrtEps);
-            Assert.IsTrue(iind.status == SolveStatus.Breakdown && iind.iterations == 0);
+            Assert.IsTrue(iind.status == IterativeSolveStatus.Breakdown && iind.iterations == 0);
             AssertResidualNorm(in Aind, in bind, in xind, iind.rnorm, tol);
             AssertClose(iind.rnorm, math.sqrt((float)2), tol);
 

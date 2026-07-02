@@ -1,3 +1,4 @@
+//singularFile//
 namespace LinearAlgebra
 {
     /// <summary>
@@ -11,9 +12,11 @@ namespace LinearAlgebra
     ///   if (info.Solved) Debug.Log(info.iterations);
     /// </code>
     ///
-    /// The three norms are filled from the values the solver ALREADY tracks (or at most a single
-    /// dot on a residual it already holds) at the point it returns -- never a fresh A*x/Aᵀ*r, so
-    /// the struct costs nothing beyond the plain solve:
+    /// The norms are reported as <c>double</c> regardless of the solve's precision (a float solve
+    /// widens its float residual -- diagnostics don't need to be precision-typed, which is why this
+    /// is a plain, unprefixed struct rather than a float/double-generated one). They are filled from
+    /// values the solver ALREADY tracks (or at most a single dot on a residual it already holds) at
+    /// the point it returns -- never a fresh A*x/Aᵀ*r, so the struct costs nothing beyond the solve:
     /// <list type="bullet">
     /// <item>cgls -- rnorm from a dot on its live residual r; Arnorm = √gamma (its tracked ‖Aᵀr‖²).</item>
     /// <item>lsqr -- rnorm = phibar, Arnorm = phibar·alpha·|c|, both produced free by the recurrence.</item>
@@ -23,69 +26,69 @@ namespace LinearAlgebra
     /// For an independently-recomputed, certified-exact residual (one extra Apply + ApplyT) call
     /// <see cref="Solvers.lstsqResidual{TOp}"/> on the returned x instead.
     ///
-    /// The norms describe the CURRENT x at return; they are only meaningful when <see cref="Solved"/>
-    /// (on a Breakdown/MaxIterations return the solver leaves x undefined).
+    /// On a Converged OR MaxIterations return, x is the last iterate and the norms describe it. Only
+    /// on a Breakdown return is x left partially updated / undefined.
     /// </summary>
-    public struct fProxyLstsqInfo
+    public struct LstsqInfo
     {
         /// <summary>Residual norm ‖b - A x‖. Nonzero for an inconsistent (over-determined) system
         /// even at the optimum -- it is the least-squares residual, not an error.</summary>
-        public fProxy rnorm;
+        public double rnorm;
 
         /// <summary>Normal-equation residual ‖Aᵀ(b - A x)‖ -- or, when solved with Tikhonov damping,
         /// ‖Aᵀ(b - A x) - damp²x‖. This is the true least-squares optimality measure: it goes to
         /// zero at the minimizer regardless of whether the system is consistent.</summary>
-        public fProxy Arnorm;
+        public double Arnorm;
 
         /// <summary>Solution norm ‖x‖ (useful for tuning Tikhonov damping / monitoring blow-up on
         /// ill-conditioned problems).</summary>
-        public fProxy xnorm;
+        public double xnorm;
 
         /// <summary>Iterations actually performed (0 when the solver converged before the first
         /// bidiagonalization/CG step; equals maxIterations when it ran out).</summary>
         public int iterations;
 
-        /// <summary>Why the solve stopped -- see <see cref="SolveStatus"/>.</summary>
-        public SolveStatus status;
+        /// <summary>Why the solve stopped -- see <see cref="IterativeSolveStatus"/>.</summary>
+        public IterativeSolveStatus status;
 
-        /// <summary>True iff the solver reached its tolerance (<c>status == SolveStatus.Converged</c>).
+        /// <summary>True iff the solver reached its tolerance (<c>status == IterativeSolveStatus.Converged</c>).
         /// Same value as the implicit bool conversion; use whichever reads better.</summary>
-        public bool Solved => status == SolveStatus.Converged;
+        public bool Solved => status == IterativeSolveStatus.Converged;
 
         /// <summary>Implicit success test, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
         /// keep compiling after the return type changed from bool to this struct.</summary>
-        public static implicit operator bool(fProxyLstsqInfo info) => info.status == SolveStatus.Converged;
+        public static implicit operator bool(LstsqInfo info) => info.status == IterativeSolveStatus.Converged;
     }
 
     /// <summary>
     /// Result of a square-system Krylov solve (<c>cg</c> / <c>conjugateGradient</c> / <c>pcg</c> /
-    /// <c>minres</c> / <c>biCGStab</c> / <c>cgne</c>). Same contract as <see cref="fProxyLstsqInfo"/>
-    /// -- returned by value, implicit <c>bool</c> == <see cref="Solved"/> -- but carries only the
-    /// residual norm ‖b - A x‖ (no Aᵀr / xnorm: for a square solve the residual IS the error
-    /// measure). Filled from each solver's tracked residual (cg/pcg/cgne: a live ‖r‖; minres:
-    /// phibar; biCGStab: its running ‖r‖) -- no extra matvec.
+    /// <c>minres</c> / <c>biCGStab</c> / <c>cgne</c>). Same contract as <see cref="LstsqInfo"/> --
+    /// returned by value, implicit <c>bool</c> == <see cref="Solved"/>, norm reported as <c>double</c>
+    /// -- but carries only the residual norm ‖b - A x‖ (no Aᵀr / xnorm: for a square solve the
+    /// residual IS the error measure). Filled from each solver's tracked residual (cg/pcg/cgne: a
+    /// live ‖r‖; minres: phibar; biCGStab: its running ‖r‖) -- no extra matvec.
     ///
     /// On a Converged OR MaxIterations return, x is the last iterate and rnorm is its true residual
     /// ‖b - A x‖ (so on MaxIterations you can inspect how close it got). Only on a Breakdown return
     /// is x left partially updated / undefined -- there rnorm describes the pre-breakdown iterate,
     /// not a usable solution.
     /// </summary>
-    public struct fProxySolveInfo
+    public struct SolveInfo
     {
         /// <summary>Residual norm ‖b - A x‖ at the returned x.</summary>
-        public fProxy rnorm;
+        public double rnorm;
 
         /// <summary>Iterations actually performed (0 when converged before the first step; equals
         /// maxIterations when it ran out).</summary>
         public int iterations;
 
-        /// <summary>Why the solve stopped -- see <see cref="SolveStatus"/>.</summary>
-        public SolveStatus status;
+        /// <summary>Why the solve stopped -- see <see cref="IterativeSolveStatus"/>.</summary>
+        public IterativeSolveStatus status;
 
-        /// <summary>True iff the solver reached its tolerance (<c>status == SolveStatus.Converged</c>).</summary>
-        public bool Solved => status == SolveStatus.Converged;
+        /// <summary>True iff the solver reached its tolerance (<c>status == IterativeSolveStatus.Converged</c>).</summary>
+        public bool Solved => status == IterativeSolveStatus.Converged;
 
         /// <summary>Implicit success test so <c>if (solve(...))</c> keeps compiling.</summary>
-        public static implicit operator bool(fProxySolveInfo info) => info.status == SolveStatus.Converged;
+        public static implicit operator bool(SolveInfo info) => info.status == IterativeSolveStatus.Converged;
     }
 }
