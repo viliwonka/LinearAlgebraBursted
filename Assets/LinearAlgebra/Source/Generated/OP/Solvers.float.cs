@@ -1072,14 +1072,47 @@ namespace LinearAlgebra
             return cgls(new floatBSMOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
-        /// <summary>CGLS over a BSR matrix -- allocates four scratch vectors from the arena.</summary>
+        /// <summary>
+        /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
+        /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
+        /// <c>arena.floatBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// region) and routes every ApplyT call through the resulting cache-friendly forward
+        /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
+        /// <see cref="floatBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// being A's transpose; this overload does not verify it. Prefer this over the allocating
+        /// <see cref="cgls(in floatBSM, in floatN, ref floatN, int, float)"/> overload when
+        /// solving repeatedly against the same A (build AT once, reuse it across many solves).
+        /// </summary>
+        public static bool cgls(in floatBSM A, in floatBSM AT, in floatN b, ref floatN x,
+                                ref floatN r, ref floatN s, ref floatN p, ref floatN q,
+                                int maxIterations, float tolerance)
+        {
+            return cgls(new floatBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// CGLS over a BSR matrix -- allocates four scratch vectors AND materializes A^T ONCE
+        /// via <c>arena.floatBSMTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives CGLS with the two-arg <see cref="floatBSMOperator"/> so every
+        /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
+        /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- this is the fix for the
+        /// rectangular CGLS/LSQR transpose-matvec cache-unfriendliness (the one-time O(nnz)
+        /// transpose build is amortized over every iteration). For a build-free zero-alloc path
+        /// (e.g. many solves reusing the same A), build A^T yourself once (<c>arena.
+        /// floatBSMTranspose(in A)</c>) and call the zero-alloc <see cref="cgls(in floatBSM,
+        /// in floatBSM, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref
+        /// floatN, int, float)"/> overload above with your own scratch vectors, or the generic
+        /// <see cref="cgls{TOp}"/> overload directly with <c>new floatBSMOperator(in A, in
+        /// AT)</c>.
+        /// </summary>
         public static bool cgls(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
             floatN r = b.tempfloatVec(A.M_Rows);
             floatN s = b.tempfloatVec(A.N_Cols);
             floatN p = b.tempfloatVec(A.N_Cols);
             floatN q = b.tempfloatVec(A.M_Rows);
-            return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            floatBSM AT = b.floatBSMTranspose(in A);
+            return cgls(new floatBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>CGLS over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
@@ -1266,7 +1299,39 @@ namespace LinearAlgebra
             return lsqr(new floatBSMOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
-        /// <summary>LSQR over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
+        /// <summary>
+        /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
+        /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
+        /// <c>arena.floatBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// region) and routes every ApplyT call through the resulting cache-friendly forward
+        /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
+        /// <see cref="floatBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// being A's transpose; this overload does not verify it. Prefer this over the allocating
+        /// <see cref="lsqr(in floatBSM, in floatN, ref floatN, int, float)"/> overload when
+        /// solving repeatedly against the same A (build AT once, reuse it across many solves).
+        /// </summary>
+        public static bool lsqr(in floatBSM A, in floatBSM AT, in floatN b, ref floatN x,
+                                ref floatN u, ref floatN v, ref floatN w,
+                                ref floatN tmpM, ref floatN tmpN,
+                                int maxIterations, float tolerance)
+        {
+            return lsqr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// LSQR over a BSR matrix -- allocates five scratch vectors AND materializes A^T ONCE
+        /// via <c>arena.floatBSMTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives LSQR with the two-arg <see cref="floatBSMOperator"/> so every
+        /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
+        /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- same fix and same tradeoff as
+        /// <see cref="cgls(in floatBSM, in floatN, ref floatN, int, float)"/>: for a
+        /// build-free zero-alloc path, build A^T yourself once (<c>arena.floatBSMTranspose(in
+        /// A)</c>) and call the zero-alloc <see cref="lsqr(in floatBSM, in floatBSM, in
+        /// floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref floatN, int,
+        /// float)"/> overload above with your own scratch vectors, or the generic
+        /// <see cref="lsqr{TOp}"/> overload directly with <c>new floatBSMOperator(in A, in
+        /// AT)</c>.
+        /// </summary>
         public static bool lsqr(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
             floatN u    = b.tempfloatVec(A.M_Rows);
@@ -1274,7 +1339,8 @@ namespace LinearAlgebra
             floatN w    = b.tempfloatVec(A.N_Cols);
             floatN tmpM = b.tempfloatVec(A.M_Rows);
             floatN tmpN = b.tempfloatVec(A.N_Cols);
-            return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            floatBSM AT = b.floatBSMTranspose(in A);
+            return lsqr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>LSQR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>

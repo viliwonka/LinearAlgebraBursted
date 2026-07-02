@@ -3,6 +3,7 @@
 using System.Runtime.CompilerServices;
 
 using LinearAlgebra;
+using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra {
 
@@ -18,6 +19,18 @@ namespace LinearAlgebra {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe fProxyMxN tempfProxyMat(int M_rows, int N_cols, bool uninit = false) => _arena.tempfProxyMat(M_rows, N_cols, uninit);
         //-copyReplace
+
+        // NOT wrapped in copyReplace / not part of IArenaShortcuts: there is no iProxy (int/
+        // short/long) BSM equivalent, so this shortcut only ever needs to exist for the two
+        // fProxy types (float/double) this file itself already generates -- letting the file's
+        // ordinary single fProxy->float/double substitution handle it (same as the class
+        // declaration itself, `fProxyN`, right above). Forwards to the arena that `b` (any
+        // fProxyN, e.g. a solver's `b` parameter) carries, mirroring tempfProxyVec's forwarding
+        // -- lets Solvers.fProxy.cs materialize A^T once per solve (arena.fProxyBSMTranspose)
+        // via `b.fProxyBSMTranspose(in A)` without needing direct access to fProxyN's private
+        // _arena field.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe fProxyBSM fProxyBSMTranspose(in fProxyBSM A) => _arena.fProxyBSMTranspose(in A);
 
         //+copyReplace
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

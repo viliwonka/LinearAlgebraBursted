@@ -50,5 +50,57 @@ namespace LinearAlgebra
             _core->floatBlockJacobis.Add(in pc);
             return pc;
         }
+
+        /// <summary>
+        /// Materializes A^T as its own compressed BSM: every stored block at (blockRow,
+        /// blockCol) becomes a block at (blockCol, blockRow), transposed in place (BR x BC ->
+        /// BC x BR), then re-compressed via <see cref="floatBSMBuilder"/> (the same
+        /// triplet-sort/compress path as ToBSM). One-time O(nnz) cost -- the payoff is a
+        /// cache-friendly FORWARD <see cref="Sparse_OP.spMV(in floatBSM, in floatN, ref floatN)"/>
+        /// over A^T in place of the scatter-heavy on-the-fly <see cref="Sparse_OP.spMVT"/>
+        /// traversal on every Krylov iteration -- see <see cref="floatBSMOperator"/>'s two-arg
+        /// constructor and the cgls/lsqr allocating <see cref="floatBSM"/> overloads in
+        /// Solvers.float.cs, which build A^T once per solve and reuse it every iteration.
+        ///
+        /// If A.Symmetric (implies square, and A == A^T by construction -- see
+        /// floatBSM.Symmetric), returns A itself unchanged: transposing symmetric upper-block
+        /// storage is a no-op, and materializing a redundant copy would only double memory for
+        /// zero benefit. This is safe to feed straight into floatBSMOperator's two-arg ctor:
+        /// Sparse_OP.spMV already special-cases Symmetric internally, exactly matching what
+        /// spMVT itself does for a symmetric A (forwards straight to spMV).
+        /// </summary>
+        public unsafe floatBSM floatBSMTranspose(in floatBSM A)
+        {
+            if (A.Symmetric)
+                return A;
+
+            var builder = floatBSMBuilder(A.BlockCols, A.BlockRows, A.BC, A.BR, A.Nnzb);
+
+            int blockLen = A.BR * A.BC;
+            float* blockT = stackalloc float[blockLen];
+
+            for (int bi = 0; bi < A.BlockRows; bi++)
+            {
+                int rowStart = A.RowPtr[bi];
+                int rowEnd = A.RowPtr[bi + 1];
+
+                for (int k = rowStart; k < rowEnd; k++)
+                {
+                    int bj = A.ColInd[k];
+                    float* block = A.Values.Ptr + k * blockLen;
+
+                    // Transpose the BR x BC block into blockT (BC x BR, row-major): blockT's
+                    // row c, col r == block's row r, col c.
+                    for (int r = 0; r < A.BR; r++)
+                        for (int c = 0; c < A.BC; c++)
+                            blockT[c * A.BR + r] = block[r * A.BC + c];
+
+                    builder.AddBlock(bj, bi, blockT);
+                }
+            }
+
+            Arena self = this;
+            return builder.ToBSM(ref self);
+        }
     }
 }

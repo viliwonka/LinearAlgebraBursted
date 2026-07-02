@@ -1072,14 +1072,47 @@ namespace LinearAlgebra
             return cgls(new fProxyBSMOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
-        /// <summary>CGLS over a BSR matrix -- allocates four scratch vectors from the arena.</summary>
+        /// <summary>
+        /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
+        /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
+        /// <c>arena.fProxyBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// region) and routes every ApplyT call through the resulting cache-friendly forward
+        /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
+        /// <see cref="fProxyBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// being A's transpose; this overload does not verify it. Prefer this over the allocating
+        /// <see cref="cgls(in fProxyBSM, in fProxyN, ref fProxyN, int, fProxy)"/> overload when
+        /// solving repeatedly against the same A (build AT once, reuse it across many solves).
+        /// </summary>
+        public static bool cgls(in fProxyBSM A, in fProxyBSM AT, in fProxyN b, ref fProxyN x,
+                                ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
+                                int maxIterations, fProxy tolerance)
+        {
+            return cgls(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// CGLS over a BSR matrix -- allocates four scratch vectors AND materializes A^T ONCE
+        /// via <c>arena.fProxyBSMTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives CGLS with the two-arg <see cref="fProxyBSMOperator"/> so every
+        /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
+        /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- this is the fix for the
+        /// rectangular CGLS/LSQR transpose-matvec cache-unfriendliness (the one-time O(nnz)
+        /// transpose build is amortized over every iteration). For a build-free zero-alloc path
+        /// (e.g. many solves reusing the same A), build A^T yourself once (<c>arena.
+        /// fProxyBSMTranspose(in A)</c>) and call the zero-alloc <see cref="cgls(in fProxyBSM,
+        /// in fProxyBSM, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref
+        /// fProxyN, int, fProxy)"/> overload above with your own scratch vectors, or the generic
+        /// <see cref="cgls{TOp}"/> overload directly with <c>new fProxyBSMOperator(in A, in
+        /// AT)</c>.
+        /// </summary>
         public static bool cgls(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
             fProxyN r = b.tempfProxyVec(A.M_Rows);
             fProxyN s = b.tempfProxyVec(A.N_Cols);
             fProxyN p = b.tempfProxyVec(A.N_Cols);
             fProxyN q = b.tempfProxyVec(A.M_Rows);
-            return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            return cgls(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>CGLS over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
@@ -1266,7 +1299,39 @@ namespace LinearAlgebra
             return lsqr(new fProxyBSMOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
-        /// <summary>LSQR over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
+        /// <summary>
+        /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
+        /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
+        /// <c>arena.fProxyBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// region) and routes every ApplyT call through the resulting cache-friendly forward
+        /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
+        /// <see cref="fProxyBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// being A's transpose; this overload does not verify it. Prefer this over the allocating
+        /// <see cref="lsqr(in fProxyBSM, in fProxyN, ref fProxyN, int, fProxy)"/> overload when
+        /// solving repeatedly against the same A (build AT once, reuse it across many solves).
+        /// </summary>
+        public static bool lsqr(in fProxyBSM A, in fProxyBSM AT, in fProxyN b, ref fProxyN x,
+                                ref fProxyN u, ref fProxyN v, ref fProxyN w,
+                                ref fProxyN tmpM, ref fProxyN tmpN,
+                                int maxIterations, fProxy tolerance)
+        {
+            return lsqr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// LSQR over a BSR matrix -- allocates five scratch vectors AND materializes A^T ONCE
+        /// via <c>arena.fProxyBSMTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives LSQR with the two-arg <see cref="fProxyBSMOperator"/> so every
+        /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
+        /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- same fix and same tradeoff as
+        /// <see cref="cgls(in fProxyBSM, in fProxyN, ref fProxyN, int, fProxy)"/>: for a
+        /// build-free zero-alloc path, build A^T yourself once (<c>arena.fProxyBSMTranspose(in
+        /// A)</c>) and call the zero-alloc <see cref="lsqr(in fProxyBSM, in fProxyBSM, in
+        /// fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int,
+        /// fProxy)"/> overload above with your own scratch vectors, or the generic
+        /// <see cref="lsqr{TOp}"/> overload directly with <c>new fProxyBSMOperator(in A, in
+        /// AT)</c>.
+        /// </summary>
         public static bool lsqr(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
             fProxyN u    = b.tempfProxyVec(A.M_Rows);
@@ -1274,7 +1339,8 @@ namespace LinearAlgebra
             fProxyN w    = b.tempfProxyVec(A.N_Cols);
             fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
             fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
-            return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            return lsqr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>LSQR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>

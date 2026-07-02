@@ -3,6 +3,7 @@
 using System.Runtime.CompilerServices;
 
 using LinearAlgebra;
+using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra {
 
@@ -27,6 +28,18 @@ namespace LinearAlgebra {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe doubleMxN tempdoubleMat(int M_rows, int N_cols, bool uninit = false) => _arena.tempdoubleMat(M_rows, N_cols, uninit);
         
+
+        // NOT wrapped in copyReplace / not part of IArenaShortcuts: there is no iProxy (int/
+        // short/long) BSM equivalent, so this shortcut only ever needs to exist for the two
+        // float types (float/double) this file itself already generates -- letting the file's
+        // ordinary single float->float/double substitution handle it (same as the class
+        // declaration itself, `floatN`, right above). Forwards to the arena that `b` (any
+        // floatN, e.g. a solver's `b` parameter) carries, mirroring tempfloatVec's forwarding
+        // -- lets Solvers.float.cs materialize A^T once per solve (arena.floatBSMTranspose)
+        // via `b.floatBSMTranspose(in A)` without needing direct access to floatN's private
+        // _arena field.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe floatBSM floatBSMTranspose(in floatBSM A) => _arena.floatBSMTranspose(in A);
 
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
