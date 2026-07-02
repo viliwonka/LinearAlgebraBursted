@@ -57,6 +57,12 @@ public class fProxySparseSolverTests
             CgneWarmStart,
             CgneInconsistentDoesNotConverge,
 
+            // ---- LS diagnostics (fProxyLstsqInfo: rnorm/Arnorm/xnorm/iterations/converged) ----
+            LstsqInfoMatchesIndependentRecompute,
+            LstsqInfoDampedArnorm,
+            LstsqInfoBitIdenticalToPlainSolve,
+            LstsqInfoBSMMatchesDense,
+
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
             MinresWarmStart,
             BiCGStabWarmStart,
@@ -128,6 +134,11 @@ public class fProxySparseSolverTests
                 case TestType.CgneUnderdeterminedMinNormMatchesLsqr: CgneUnderdeterminedMinNormMatchesLsqr(); break;
                 case TestType.CgneWarmStart: CgneWarmStart(); break;
                 case TestType.CgneInconsistentDoesNotConverge: CgneInconsistentDoesNotConverge(); break;
+
+                case TestType.LstsqInfoMatchesIndependentRecompute: LstsqInfoMatchesIndependentRecompute(); break;
+                case TestType.LstsqInfoDampedArnorm: LstsqInfoDampedArnorm(); break;
+                case TestType.LstsqInfoBitIdenticalToPlainSolve: LstsqInfoBitIdenticalToPlainSolve(); break;
+                case TestType.LstsqInfoBSMMatchesDense: LstsqInfoBSMMatchesDense(); break;
 
                 case TestType.MinresWarmStart: MinresWarmStart(); break;
                 case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
@@ -1160,6 +1171,162 @@ public class fProxySparseSolverTests
             arena.Dispose();
         }
 
+        // ================== LS diagnostics (fProxyLstsqInfo) ==================
+
+        // Independently recompute rnorm/Arnorm/xnorm from the returned x and assert they match the
+        // info struct. r = b - A x, and A^T(A x - b) = -A^T r so ||A^T(Ax-b)|| == Arnorm; for damp!=0
+        // the reported optimality residual is ||A^T r - damp^2 x|| = ||A^T(Ax-b) + damp^2 x||.
+        static void AssertInfoMatches(in fProxyMxN A, in fProxyN b, in fProxyN x, fProxy damp,
+                                      in fProxyLstsqInfo info, fProxy tol)
+        {
+            var Ax  = Linear_OP.dot(A, x);
+            var res = Ax - b;                        // Ax - b  (= -r), length m
+            fProxy rnorm = math.sqrt(Linear_OP.dot(res, res));
+            Assert.IsTrue(math.abs(rnorm - info.rnorm) <= tol * ((fProxy)1 + rnorm));
+
+            var g = Linear_OP.dot(res, A);           // A^T(Ax - b), length n  (vector*matrix)
+            if (damp != (fProxy)0)
+                for (int i = 0; i < g.N; i++) g[i] += (damp * damp) * x[i];   // + damp^2 x
+            fProxy arnorm = math.sqrt(Linear_OP.dot(g, g));
+            Assert.IsTrue(math.abs(arnorm - info.Arnorm) <= tol * ((fProxy)1 + arnorm));
+
+            fProxy xnorm = math.sqrt(Linear_OP.dot(x, x));
+            Assert.IsTrue(math.abs(xnorm - info.xnorm) <= tol * ((fProxy)1 + xnorm));
+        }
+
+        // Diagnostics fields match an independent recompute across all three LS solvers, on an
+        // INCONSISTENT over-determined system (so rnorm is meaningfully nonzero while Arnorm -> 0).
+        void LstsqInfoMatchesIndependentRecompute()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 12, n = 5;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 51001);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 51002);   // random rhs -> inconsistent
+            int maxIter = 8 * n;
+
+            var xC = arena.fProxyVec(n);
+            bool okC = Solvers.cgls(in A, in b, ref xC, maxIter, Consts.fProxySqrtEps, (fProxy)0, out var infoC);
+            Assert.IsTrue(okC);
+            Assert.IsTrue(infoC.converged);
+            Assert.IsTrue(infoC.iterations >= 1 && infoC.iterations <= maxIter);
+            AssertInfoMatches(in A, in b, in xC, (fProxy)0, in infoC, LooseTol());
+
+            var xL = arena.fProxyVec(n);
+            bool okL = Solvers.lsqr(in A, in b, ref xL, maxIter, Consts.fProxySqrtEps, (fProxy)0, out var infoL);
+            Assert.IsTrue(okL);
+            Assert.IsTrue(infoL.converged);
+            Assert.IsTrue(infoL.iterations >= 1 && infoL.iterations <= maxIter);
+            AssertInfoMatches(in A, in b, in xL, (fProxy)0, in infoL, LooseTol());
+
+            var xM = arena.fProxyVec(n);
+            bool okM = Solvers.lsmr(in A, in b, ref xM, maxIter, Consts.fProxySqrtEps, (fProxy)0, out var infoM);
+            Assert.IsTrue(okM);
+            Assert.IsTrue(infoM.converged);
+            Assert.IsTrue(infoM.iterations >= 1 && infoM.iterations <= maxIter);
+            AssertInfoMatches(in A, in b, in xM, (fProxy)0, in infoM, LooseTol());
+
+            // Inconsistent system: residual is nonzero but the normal-equation residual vanishes.
+            Assert.IsTrue(infoC.rnorm > (fProxy)0.01);
+            Assert.IsTrue(infoC.Arnorm <= LooseTol() * ((fProxy)1 + infoC.rnorm));
+
+            arena.Dispose();
+        }
+
+        // Damped diagnostics: with damp != 0 the reported Arnorm is the DAMPED normal-equation
+        // residual ||A^T r - damp^2 x||, which the independent recompute must reproduce.
+        void LstsqInfoDampedArnorm()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 12, n = 5;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 51101);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 51102);
+            fProxy damp = (fProxy)0.3;
+            int maxIter = 8 * n;
+
+            var xC = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.cgls(in A, in b, ref xC, maxIter, Consts.fProxySqrtEps, damp, out var infoC));
+            AssertInfoMatches(in A, in b, in xC, damp, in infoC, LooseTol());
+
+            var xL = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqr(in A, in b, ref xL, maxIter, Consts.fProxySqrtEps, damp, out var infoL));
+            AssertInfoMatches(in A, in b, in xL, damp, in infoL, LooseTol());
+
+            var xM = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsmr(in A, in b, ref xM, maxIter, Consts.fProxySqrtEps, damp, out var infoM));
+            AssertInfoMatches(in A, in b, in xM, damp, in infoM, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // The diagnostic overload must not perturb the solve: solving with the plain bool overload
+        // and with the out-info overload (same inputs) yields a BIT-IDENTICAL x. This is the
+        // observer-only guarantee for the added iteration counter + post-hoc info.
+        void LstsqInfoBitIdenticalToPlainSolve()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 12, n = 5;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 51201);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 51202);
+            int maxIter = 8 * n;
+
+            // cgls
+            var xa = arena.fProxyVec(n);
+            var xb = arena.fProxyVec(n);
+            bool ra = Solvers.cgls(in A, in b, ref xa, maxIter, Consts.fProxySqrtEps);
+            bool rb = Solvers.cgls(in A, in b, ref xb, maxIter, Consts.fProxySqrtEps, (fProxy)0, out var ic);
+            Assert.IsTrue(ra == rb && rb == ic.converged);
+            for (int i = 0; i < n; i++) Assert.IsTrue(xa[i] == xb[i]);   // exact
+
+            // lsqr
+            var ya = arena.fProxyVec(n);
+            var yb = arena.fProxyVec(n);
+            bool sa = Solvers.lsqr(in A, in b, ref ya, maxIter, Consts.fProxySqrtEps);
+            bool sb = Solvers.lsqr(in A, in b, ref yb, maxIter, Consts.fProxySqrtEps, (fProxy)0, out var il);
+            Assert.IsTrue(sa == sb && sb == il.converged);
+            for (int i = 0; i < n; i++) Assert.IsTrue(ya[i] == yb[i]);
+
+            // lsmr
+            var za = arena.fProxyVec(n);
+            var zb = arena.fProxyVec(n);
+            bool ta = Solvers.lsmr(in A, in b, ref za, maxIter, Consts.fProxySqrtEps);
+            bool tb = Solvers.lsmr(in A, in b, ref zb, maxIter, Consts.fProxySqrtEps, (fProxy)0, out var im);
+            Assert.IsTrue(ta == tb && tb == im.converged);
+            for (int i = 0; i < n; i++) Assert.IsTrue(za[i] == zb[i]);
+
+            arena.Dispose();
+        }
+
+        // The BSM diagnostic overload reports the same diagnostics (up to iterative tolerance) as the
+        // dense one for the SAME system -- confirms the BSM info path (with A^T materialization) feeds
+        // lstsqInfo identically.
+        void LstsqInfoBSMMatchesDense()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 12, n = 5;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 51301);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 51302);
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            int maxIter = 8 * n;
+
+            var xD = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqr(in A, in b, ref xD, maxIter, Consts.fProxySqrtEps, (fProxy)0, out var infoD));
+
+            var xB = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqr(in bsm, in b, ref xB, maxIter, Consts.fProxySqrtEps, (fProxy)0, out var infoB));
+
+            AssertVecEq(in xD, in xB, LooseTol());
+            fProxy sr = (fProxy)1 + infoD.rnorm;
+            Assert.IsTrue(math.abs(infoD.rnorm  - infoB.rnorm)  <= LooseTol() * sr);
+            Assert.IsTrue(math.abs(infoD.Arnorm - infoB.Arnorm) <= LooseTol() * ((fProxy)1 + infoD.Arnorm));
+            Assert.IsTrue(math.abs(infoD.xnorm  - infoB.xnorm)  <= LooseTol() * ((fProxy)1 + infoD.xnorm));
+
+            arena.Dispose();
+        }
+
         // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
         // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. qrDirectSolve
         // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
@@ -1296,6 +1463,24 @@ public class fProxySparseSolverTests
     [Test]
     public void CgneInconsistentDoesNotConvergeTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CgneInconsistentDoesNotConverge }.Run();
+
+    // ---- LS diagnostics entry points ----
+
+    [Test]
+    public void LstsqInfoMatchesIndependentRecomputeTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoMatchesIndependentRecompute }.Run();
+
+    [Test]
+    public void LstsqInfoDampedArnormTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoDampedArnorm }.Run();
+
+    [Test]
+    public void LstsqInfoBitIdenticalToPlainSolveTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoBitIdenticalToPlainSolve }.Run();
+
+    [Test]
+    public void LstsqInfoBSMMatchesDenseTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoBSMMatchesDense }.Run();
 
     // ---- Phase 3 warm-start entry points ----
 

@@ -922,6 +922,43 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Shared post-solve diagnostics for the least-squares solvers: given a solution x, computes
+        /// rnorm = ‖b - A x‖, Arnorm = ‖Aᵀr - damp²x‖ (the damped normal-equation residual; damp==0
+        /// -> ‖Aᵀr‖), and xnorm = ‖x‖, packaged with the caller-supplied iteration count and
+        /// converged flag into a <see cref="fProxyLstsqInfo"/>. One extra Apply + one ApplyT; reuses
+        /// two caller scratch buffers -- <paramref name="rScratch"/> (length A.Rows) and
+        /// <paramref name="sScratch"/> (length A.Cols) -- so it allocates nothing. Uniform across
+        /// cgls/lsqr/lsmr: the norms are recomputed exactly from x rather than read from any
+        /// solver-specific running estimate.
+        /// </summary>
+        public static fProxyLstsqInfo lstsqInfo<TOp>(in TOp A, in fProxyN b, in fProxyN x, fProxy damp,
+                                                     int iterations, bool converged,
+                                                     ref fProxyN rScratch, ref fProxyN sScratch)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            // r = b - A x
+            A.Apply(in x, ref rScratch);
+            rScratch.scaleAddInpl((fProxy)(-1), b);          // rScratch = -A x + b = b - A x
+            fProxy rnorm = math.sqrt(Linear_OP.dot(rScratch, rScratch));
+
+            // s = Aᵀr - damp²x  (the same optimality residual cgls's loop tracks)
+            A.ApplyT(in rScratch, ref sScratch);
+            if (damp != (fProxy)0) sScratch.addScaledInpl(-(damp * damp), x);
+            fProxy arnorm = math.sqrt(Linear_OP.dot(sScratch, sScratch));
+
+            fProxy xnorm = math.sqrt(Linear_OP.dot(x, x));
+
+            return new fProxyLstsqInfo
+            {
+                rnorm = rnorm,
+                Arnorm = arnorm,
+                xnorm = xnorm,
+                iterations = iterations,
+                converged = converged,
+            };
+        }
+
+        /// <summary>
         /// Zero-alloc CGLS solver for RECTANGULAR least-squares systems: minimizes ‖Ax-b‖₂ for
         /// possibly non-square A (over- or under-determined), generic over
         /// <see cref="IfProxyLinearOperator"/>. This is CG applied to the normal equations
@@ -956,7 +993,7 @@ namespace LinearAlgebra
         /// </summary>
         public static bool cgls<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
-                                     int maxIterations, fProxy tolerance, fProxy damp)
+                                     int maxIterations, fProxy tolerance, fProxy damp, out int iterations)
             where TOp : struct, IfProxyLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("cgls: b.N must equal A.Rows");
@@ -968,6 +1005,12 @@ namespace LinearAlgebra
 
             if (maxIterations < 1)
                 throw new ArgumentException("cgls: maxIterations must be >= 1");
+
+            // Observer-only iteration counter (out int); pure int, never feeds the float recurrence
+            // -> the computed x is bit-identical to the iteration-count-free path. 0 until the first
+            // loop body runs; set to k+1 at the top of each iteration so every return/break reports
+            // the count faithfully.
+            iterations = 0;
 
             unsafe
             {
@@ -1012,6 +1055,8 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
+                iterations = k + 1;
+
                 A.Apply(in p, ref q);                       // q = A p
 
                 fProxy delta = Linear_OP.dot(q, q);
@@ -1043,12 +1088,37 @@ namespace LinearAlgebra
             return false;
         }
 
+        /// <summary>Damped CGLS without the iteration-count out param -- forwards to the core,
+        /// discarding the count. This is the signature every non-diagnostic overload calls.</summary>
+        public static bool cgls<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                     ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
+                                     int maxIterations, fProxy tolerance, fProxy damp)
+            where TOp : struct, IfProxyLinearOperator
+            => cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp, out int _);
+
         /// <summary>Undamped CGLS (damp = 0): plain least-squares. Forwards to the damped core.</summary>
         public static bool cgls<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
                                      int maxIterations, fProxy tolerance)
             where TOp : struct, IfProxyLinearOperator
             => cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, (fProxy)0);
+
+        /// <summary>
+        /// Diagnostic CGLS: same solve as the core, but also returns a <see cref="fProxyLstsqInfo"/>
+        /// (rnorm/Arnorm/xnorm/iterations/converged) computed exactly from the final x. Reuses the
+        /// caller's r (length Rows) and s (length Cols) scratch for the post-solve residual eval, so
+        /// it allocates nothing beyond what the plain solve needs. rnorm/Arnorm/xnorm are only
+        /// meaningful when the return value is true.
+        /// </summary>
+        public static bool cgls<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                     ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
+                                     int maxIterations, fProxy tolerance, fProxy damp, out fProxyLstsqInfo info)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            bool ok = cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp, out int iters);
+            info = lstsqInfo(in A, in b, in x, damp, iters, ok, ref r, ref s);
+            return ok;
+        }
 
         /// <summary>
         /// CGLS over a dense <see cref="fProxyMxN"/> (possibly rectangular) -- zero-alloc
@@ -1203,7 +1273,7 @@ namespace LinearAlgebra
         public static bool lsqr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN w,
                                      ref fProxyN tmpM, ref fProxyN tmpN,
-                                     int maxIterations, fProxy tolerance, fProxy damp)
+                                     int maxIterations, fProxy tolerance, fProxy damp, out int iterations)
             where TOp : struct, IfProxyLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("lsqr: b.N must equal A.Rows");
@@ -1216,6 +1286,9 @@ namespace LinearAlgebra
 
             if (maxIterations < 1)
                 throw new ArgumentException("lsqr: maxIterations must be >= 1");
+
+            // Observer-only iteration counter (see cgls): pure int, bit-identical x.
+            iterations = 0;
 
             unsafe
             {
@@ -1271,6 +1344,8 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
+                iterations = k + 1;
+
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 A.Apply(in v, ref tmpM);
                 u.scaleAddInpl(-alpha, tmpM);              // u = -alpha*u + tmpM = A v - alpha u
@@ -1321,6 +1396,15 @@ namespace LinearAlgebra
             return false;
         }
 
+        /// <summary>Damped LSQR without the iteration-count out param -- forwards to the core,
+        /// discarding the count. The signature every non-diagnostic overload calls.</summary>
+        public static bool lsqr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                     ref fProxyN u, ref fProxyN v, ref fProxyN w,
+                                     ref fProxyN tmpM, ref fProxyN tmpN,
+                                     int maxIterations, fProxy tolerance, fProxy damp)
+            where TOp : struct, IfProxyLinearOperator
+            => lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp, out int _);
+
         /// <summary>Undamped LSQR (damp = 0): plain least-squares. Forwards to the damped core.</summary>
         public static bool lsqr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN w,
@@ -1328,6 +1412,23 @@ namespace LinearAlgebra
                                      int maxIterations, fProxy tolerance)
             where TOp : struct, IfProxyLinearOperator
             => lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, (fProxy)0);
+
+        /// <summary>
+        /// Diagnostic LSQR: same solve as the core plus a <see cref="fProxyLstsqInfo"/> computed
+        /// exactly from the final x. Reuses the caller's tmpM (length Rows) and tmpN (length Cols)
+        /// scratch for the post-solve residual eval -- no extra allocation. rnorm/Arnorm/xnorm are
+        /// only meaningful when the return value is true.
+        /// </summary>
+        public static bool lsqr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                     ref fProxyN u, ref fProxyN v, ref fProxyN w,
+                                     ref fProxyN tmpM, ref fProxyN tmpN,
+                                     int maxIterations, fProxy tolerance, fProxy damp, out fProxyLstsqInfo info)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            bool ok = lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp, out int iters);
+            info = lstsqInfo(in A, in b, in x, damp, iters, ok, ref tmpM, ref tmpN);
+            return ok;
+        }
 
         /// <summary>
         /// LSQR over a dense <see cref="fProxyMxN"/> (possibly rectangular) -- zero-alloc
@@ -1491,7 +1592,7 @@ namespace LinearAlgebra
         public static bool lsmr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN h,
                                      ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
-                                     int maxIterations, fProxy tolerance, fProxy damp)
+                                     int maxIterations, fProxy tolerance, fProxy damp, out int iterations)
             where TOp : struct, IfProxyLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("lsmr: b.N must equal A.Rows");
@@ -1505,6 +1606,9 @@ namespace LinearAlgebra
 
             if (maxIterations < 1)
                 throw new ArgumentException("lsmr: maxIterations must be >= 1");
+
+            // Observer-only iteration counter (see cgls): pure int, bit-identical x.
+            iterations = 0;
 
             unsafe
             {
@@ -1565,6 +1669,8 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
+                iterations = k + 1;
+
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 A.Apply(in v, ref tmpM);
                 u.scaleAddInpl(-alpha, tmpM);              // u = A v - alpha u
@@ -1625,6 +1731,15 @@ namespace LinearAlgebra
             return false;
         }
 
+        /// <summary>Damped LSMR without the iteration-count out param -- forwards to the core,
+        /// discarding the count. The signature every non-diagnostic overload calls.</summary>
+        public static bool lsmr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                     ref fProxyN u, ref fProxyN v, ref fProxyN h,
+                                     ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
+                                     int maxIterations, fProxy tolerance, fProxy damp)
+            where TOp : struct, IfProxyLinearOperator
+            => lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp, out int _);
+
         /// <summary>Undamped LSMR (damp = 0): plain least-squares. Forwards to the damped core.</summary>
         public static bool lsmr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN h,
@@ -1632,6 +1747,23 @@ namespace LinearAlgebra
                                      int maxIterations, fProxy tolerance)
             where TOp : struct, IfProxyLinearOperator
             => lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, (fProxy)0);
+
+        /// <summary>
+        /// Diagnostic LSMR: same solve as the core plus a <see cref="fProxyLstsqInfo"/> computed
+        /// exactly from the final x. Reuses the caller's tmpM (length Rows) and tmpN (length Cols)
+        /// scratch for the post-solve residual eval -- no extra allocation. rnorm/Arnorm/xnorm are
+        /// only meaningful when the return value is true.
+        /// </summary>
+        public static bool lsmr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
+                                     ref fProxyN u, ref fProxyN v, ref fProxyN h,
+                                     ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
+                                     int maxIterations, fProxy tolerance, fProxy damp, out fProxyLstsqInfo info)
+            where TOp : struct, IfProxyLinearOperator
+        {
+            bool ok = lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp, out int iters);
+            info = lstsqInfo(in A, in b, in x, damp, iters, ok, ref tmpM, ref tmpN);
+            return ok;
+        }
 
         /// <summary>
         /// LSMR over a dense <see cref="fProxyMxN"/> (possibly rectangular) -- zero-alloc
@@ -1749,6 +1881,107 @@ namespace LinearAlgebra
         {
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
         }
+
+        // ==================== Diagnostic (out fProxyLstsqInfo) convenience overloads ====================
+        // Dense + BSM allocating forms of cgls / lsqr / lsmr that also return an fProxyLstsqInfo
+        // (rnorm/Arnorm/xnorm/iterations/converged). They allocate the solver's scratch, forward to
+        // the generic diagnostic overload (which reuses two of those scratch buffers for the exact
+        // post-solve residual eval), and add no allocation beyond the plain solve. BSM forms
+        // materialize A^T once so both the solve and the diagnostic ApplyT use the cache-friendly
+        // spMV(A^T). The norms are only meaningful when the call returns true.
+
+        /// <summary>Diagnostic CGLS over a dense matrix (Tikhonov damp; damp==0 = plain LS).</summary>
+        public static bool cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp, out fProxyLstsqInfo info)
+        {
+            fProxyN r = b.tempfProxyVec(A.M_Rows);
+            fProxyN s = b.tempfProxyVec(A.N_Cols);
+            fProxyN p = b.tempfProxyVec(A.N_Cols);
+            fProxyN q = b.tempfProxyVec(A.M_Rows);
+            return cgls(new fProxyDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp, out info);
+        }
+
+        /// <summary>Diagnostic CGLS over a dense matrix, default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x, out fProxyLstsqInfo info)
+            => cgls(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0, out info);
+
+        /// <summary>Diagnostic CGLS over a BSR matrix (Tikhonov damp; damp==0 = plain LS). Materializes A^T once.</summary>
+        public static bool cgls(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp, out fProxyLstsqInfo info)
+        {
+            fProxyN r = b.tempfProxyVec(A.M_Rows);
+            fProxyN s = b.tempfProxyVec(A.N_Cols);
+            fProxyN p = b.tempfProxyVec(A.N_Cols);
+            fProxyN q = b.tempfProxyVec(A.M_Rows);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            return cgls(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp, out info);
+        }
+
+        /// <summary>Diagnostic CGLS over a BSR matrix, default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool cgls(in fProxyBSM A, in fProxyN b, ref fProxyN x, out fProxyLstsqInfo info)
+            => cgls(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0, out info);
+
+        /// <summary>Diagnostic LSQR over a dense matrix (Tikhonov damp; damp==0 = plain LS).</summary>
+        public static bool lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp, out fProxyLstsqInfo info)
+        {
+            fProxyN u    = b.tempfProxyVec(A.M_Rows);
+            fProxyN v    = b.tempfProxyVec(A.N_Cols);
+            fProxyN w    = b.tempfProxyVec(A.N_Cols);
+            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
+            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            return lsqr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp, out info);
+        }
+
+        /// <summary>Diagnostic LSQR over a dense matrix, default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x, out fProxyLstsqInfo info)
+            => lsqr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0, out info);
+
+        /// <summary>Diagnostic LSQR over a BSR matrix (Tikhonov damp; damp==0 = plain LS). Materializes A^T once.</summary>
+        public static bool lsqr(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp, out fProxyLstsqInfo info)
+        {
+            fProxyN u    = b.tempfProxyVec(A.M_Rows);
+            fProxyN v    = b.tempfProxyVec(A.N_Cols);
+            fProxyN w    = b.tempfProxyVec(A.N_Cols);
+            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
+            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            return lsqr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp, out info);
+        }
+
+        /// <summary>Diagnostic LSQR over a BSR matrix, default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsqr(in fProxyBSM A, in fProxyN b, ref fProxyN x, out fProxyLstsqInfo info)
+            => lsqr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0, out info);
+
+        /// <summary>Diagnostic LSMR over a dense matrix (Tikhonov damp; damp==0 = plain LS).</summary>
+        public static bool lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp, out fProxyLstsqInfo info)
+        {
+            fProxyN u    = b.tempfProxyVec(A.M_Rows);
+            fProxyN v    = b.tempfProxyVec(A.N_Cols);
+            fProxyN h    = b.tempfProxyVec(A.N_Cols);
+            fProxyN hbar = b.tempfProxyVec(A.N_Cols);
+            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
+            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            return lsmr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp, out info);
+        }
+
+        /// <summary>Diagnostic LSMR over a dense matrix, default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, out fProxyLstsqInfo info)
+            => lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0, out info);
+
+        /// <summary>Diagnostic LSMR over a BSR matrix (Tikhonov damp; damp==0 = plain LS). Materializes A^T once.</summary>
+        public static bool lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp, out fProxyLstsqInfo info)
+        {
+            fProxyN u    = b.tempfProxyVec(A.M_Rows);
+            fProxyN v    = b.tempfProxyVec(A.N_Cols);
+            fProxyN h    = b.tempfProxyVec(A.N_Cols);
+            fProxyN hbar = b.tempfProxyVec(A.N_Cols);
+            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
+            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            return lsmr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp, out info);
+        }
+
+        /// <summary>Diagnostic LSMR over a BSR matrix, default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x, out fProxyLstsqInfo info)
+            => lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0, out info);
 
         /// <summary>
         /// Zero-alloc CGNE / Craig's method (Saad Alg. 8.5) for CONSISTENT systems: finds the
