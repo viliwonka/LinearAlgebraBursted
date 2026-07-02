@@ -1983,6 +1983,144 @@ namespace LinearAlgebra
         public static bool lsmr(in doubleBSM A, in doubleN b, ref doubleN x, out doubleLstsqInfo info)
             => lsmr(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps, (double)0, out info);
 
+        // ==================== AᵀA-Jacobi (column-equilibration) convenience overloads ====================
+        // cglsJacobi / lsqrJacobi / lsmrJacobi build the column scale d[j] = 1/||A_:,j|| from
+        // columnNormsSquared, wrap A in a doubleColScaledOperator, solve the equilibrated system
+        // (A*D) y = b with the underlying solver (COLD start -- x is zeroed internally; column
+        // scaling is a change of variable, so a warm start would need pre-mapping y0 = D^-1 x0), and
+        // unscale x = D*y in place. On an ill-conditioned least-squares problem this converges in
+        // fewer iterations than the un-preconditioned solve to the SAME solution. Everything is
+        // temp-pool allocated from b. BSM forms materialize A^T once (ApplyT-heavy). For explicit
+        // control (custom d, warm start, damping semantics, zero-alloc) use the composable path
+        // directly: Linear_OP.columnNormsSquared + buildJacobiScale + doubleColScaledOperator + the
+        // generic solver overload.
+
+        // ---- CGLS + Jacobi ----
+        /// <summary>CGLS with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
+        public static bool cglsJacobi(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            Linear_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (double)0;                 // cold start (change of variable)
+            doubleN r = b.tempdoubleVec(m), s = b.tempdoubleVec(n), p = b.tempdoubleVec(n), q = b.tempdoubleVec(m);
+            bool ok = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];                     // unscale x = D y
+            return ok;
+        }
+
+        /// <summary>CGLS + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.doubleSqrtEps).</summary>
+        public static bool cglsJacobi(in doubleMxN A, in doubleN b, ref doubleN x)
+            => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
+
+        /// <summary>CGLS with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
+        public static bool cglsJacobi(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            Sparse_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            doubleBSM AT = b.doubleBSMTranspose(in A);
+            var op = new doubleColScaledOperator<doubleBSMOperator>(new doubleBSMOperator(in A, in AT), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (double)0;
+            doubleN r = b.tempdoubleVec(m), s = b.tempdoubleVec(n), p = b.tempdoubleVec(n), q = b.tempdoubleVec(m);
+            bool ok = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>CGLS + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.doubleSqrtEps).</summary>
+        public static bool cglsJacobi(in doubleBSM A, in doubleN b, ref doubleN x)
+            => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
+
+        // ---- LSQR + Jacobi ----
+        /// <summary>LSQR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
+        public static bool lsqrJacobi(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            Linear_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (double)0;
+            doubleN u = b.tempdoubleVec(m), v = b.tempdoubleVec(n), w = b.tempdoubleVec(n), tmpM = b.tempdoubleVec(m), tmpN = b.tempdoubleVec(n);
+            bool ok = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>LSQR + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.doubleSqrtEps).</summary>
+        public static bool lsqrJacobi(in doubleMxN A, in doubleN b, ref doubleN x)
+            => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
+
+        /// <summary>LSQR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
+        public static bool lsqrJacobi(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            Sparse_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            doubleBSM AT = b.doubleBSMTranspose(in A);
+            var op = new doubleColScaledOperator<doubleBSMOperator>(new doubleBSMOperator(in A, in AT), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (double)0;
+            doubleN u = b.tempdoubleVec(m), v = b.tempdoubleVec(n), w = b.tempdoubleVec(n), tmpM = b.tempdoubleVec(m), tmpN = b.tempdoubleVec(n);
+            bool ok = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>LSQR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.doubleSqrtEps).</summary>
+        public static bool lsqrJacobi(in doubleBSM A, in doubleN b, ref doubleN x)
+            => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
+
+        // ---- LSMR + Jacobi ----
+        /// <summary>LSMR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
+        public static bool lsmrJacobi(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            Linear_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (double)0;
+            doubleN u = b.tempdoubleVec(m), v = b.tempdoubleVec(n), h = b.tempdoubleVec(n), hbar = b.tempdoubleVec(n), tmpM = b.tempdoubleVec(m), tmpN = b.tempdoubleVec(n);
+            bool ok = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>LSMR + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.doubleSqrtEps).</summary>
+        public static bool lsmrJacobi(in doubleMxN A, in doubleN b, ref doubleN x)
+            => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
+
+        /// <summary>LSMR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
+        public static bool lsmrJacobi(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            Sparse_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            doubleBSM AT = b.doubleBSMTranspose(in A);
+            var op = new doubleColScaledOperator<doubleBSMOperator>(new doubleBSMOperator(in A, in AT), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (double)0;
+            doubleN u = b.tempdoubleVec(m), v = b.tempdoubleVec(n), h = b.tempdoubleVec(n), hbar = b.tempdoubleVec(n), tmpM = b.tempdoubleVec(m), tmpN = b.tempdoubleVec(n);
+            bool ok = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>LSMR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.doubleSqrtEps).</summary>
+        public static bool lsmrJacobi(in doubleBSM A, in doubleN b, ref doubleN x)
+            => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
+
         /// <summary>
         /// Zero-alloc CGNE / Craig's method (Saad Alg. 8.5) for CONSISTENT systems: finds the
         /// MINIMUM-NORM solution of A x = b (requires b in range(A)) for possibly rectangular

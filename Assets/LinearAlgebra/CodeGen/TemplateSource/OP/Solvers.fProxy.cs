@@ -1983,6 +1983,144 @@ namespace LinearAlgebra
         public static bool lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x, out fProxyLstsqInfo info)
             => lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps, (fProxy)0, out info);
 
+        // ==================== AᵀA-Jacobi (column-equilibration) convenience overloads ====================
+        // cglsJacobi / lsqrJacobi / lsmrJacobi build the column scale d[j] = 1/||A_:,j|| from
+        // columnNormsSquared, wrap A in a fProxyColScaledOperator, solve the equilibrated system
+        // (A*D) y = b with the underlying solver (COLD start -- x is zeroed internally; column
+        // scaling is a change of variable, so a warm start would need pre-mapping y0 = D^-1 x0), and
+        // unscale x = D*y in place. On an ill-conditioned least-squares problem this converges in
+        // fewer iterations than the un-preconditioned solve to the SAME solution. Everything is
+        // temp-pool allocated from b. BSM forms materialize A^T once (ApplyT-heavy). For explicit
+        // control (custom d, warm start, damping semantics, zero-alloc) use the composable path
+        // directly: Linear_OP.columnNormsSquared + buildJacobiScale + fProxyColScaledOperator + the
+        // generic solver overload.
+
+        // ---- CGLS + Jacobi ----
+        /// <summary>CGLS with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
+        public static bool cglsJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            Linear_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (fProxy)0;                 // cold start (change of variable)
+            fProxyN r = b.tempfProxyVec(m), s = b.tempfProxyVec(n), p = b.tempfProxyVec(n), q = b.tempfProxyVec(m);
+            bool ok = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];                     // unscale x = D y
+            return ok;
+        }
+
+        /// <summary>CGLS + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool cglsJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x)
+            => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+
+        /// <summary>CGLS with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
+        public static bool cglsJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            Sparse_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            var op = new fProxyColScaledOperator<fProxyBSMOperator>(new fProxyBSMOperator(in A, in AT), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (fProxy)0;
+            fProxyN r = b.tempfProxyVec(m), s = b.tempfProxyVec(n), p = b.tempfProxyVec(n), q = b.tempfProxyVec(m);
+            bool ok = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>CGLS + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool cglsJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+            => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+
+        // ---- LSQR + Jacobi ----
+        /// <summary>LSQR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
+        public static bool lsqrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            Linear_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (fProxy)0;
+            fProxyN u = b.tempfProxyVec(m), v = b.tempfProxyVec(n), w = b.tempfProxyVec(n), tmpM = b.tempfProxyVec(m), tmpN = b.tempfProxyVec(n);
+            bool ok = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>LSQR + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsqrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x)
+            => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+
+        /// <summary>LSQR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
+        public static bool lsqrJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            Sparse_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            var op = new fProxyColScaledOperator<fProxyBSMOperator>(new fProxyBSMOperator(in A, in AT), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (fProxy)0;
+            fProxyN u = b.tempfProxyVec(m), v = b.tempfProxyVec(n), w = b.tempfProxyVec(n), tmpM = b.tempfProxyVec(m), tmpN = b.tempfProxyVec(n);
+            bool ok = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>LSQR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsqrJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+            => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+
+        // ---- LSMR + Jacobi ----
+        /// <summary>LSMR with an AᵀA-Jacobi column-equilibration preconditioner over a dense matrix.</summary>
+        public static bool lsmrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            Linear_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (fProxy)0;
+            fProxyN u = b.tempfProxyVec(m), v = b.tempfProxyVec(n), h = b.tempfProxyVec(n), hbar = b.tempfProxyVec(n), tmpM = b.tempfProxyVec(m), tmpN = b.tempfProxyVec(n);
+            bool ok = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>LSMR + Jacobi (dense), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsmrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x)
+            => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+
+        /// <summary>LSMR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
+        public static bool lsmrJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            Sparse_OP.columnNormsSquared(in A, ref d2);
+            Linear_OP.buildJacobiScale(in d2, ref d);
+            fProxyBSM AT = b.fProxyBSMTranspose(in A);
+            var op = new fProxyColScaledOperator<fProxyBSMOperator>(new fProxyBSMOperator(in A, in AT), d, scratch);
+
+            for (int j = 0; j < n; j++) x[j] = (fProxy)0;
+            fProxyN u = b.tempfProxyVec(m), v = b.tempfProxyVec(n), h = b.tempfProxyVec(n), hbar = b.tempfProxyVec(n), tmpM = b.tempfProxyVec(m), tmpN = b.tempfProxyVec(n);
+            bool ok = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            for (int j = 0; j < n; j++) x[j] *= d[j];
+            return ok;
+        }
+
+        /// <summary>LSMR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
+        public static bool lsmrJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+            => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
+
         /// <summary>
         /// Zero-alloc CGNE / Craig's method (Saad Alg. 8.5) for CONSISTENT systems: finds the
         /// MINIMUM-NORM solution of A x = b (requires b in range(A)) for possibly rectangular

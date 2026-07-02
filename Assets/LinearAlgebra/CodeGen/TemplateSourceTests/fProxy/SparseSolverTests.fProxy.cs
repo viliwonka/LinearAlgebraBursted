@@ -63,6 +63,10 @@ public class fProxySparseSolverTests
             LstsqInfoBitIdenticalToPlainSolve,
             LstsqInfoBSMMatchesDense,
 
+            // ---- AᵀA-Jacobi preconditioner: fewer iterations, same solution ----
+            JacobiPreconditionerReducesIterations,
+            JacobiConvenienceSolversLSOptimalDenseAndBSM,
+
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
             MinresWarmStart,
             BiCGStabWarmStart,
@@ -139,6 +143,8 @@ public class fProxySparseSolverTests
                 case TestType.LstsqInfoDampedArnorm: LstsqInfoDampedArnorm(); break;
                 case TestType.LstsqInfoBitIdenticalToPlainSolve: LstsqInfoBitIdenticalToPlainSolve(); break;
                 case TestType.LstsqInfoBSMMatchesDense: LstsqInfoBSMMatchesDense(); break;
+                case TestType.JacobiPreconditionerReducesIterations: JacobiPreconditionerReducesIterations(); break;
+                case TestType.JacobiConvenienceSolversLSOptimalDenseAndBSM: JacobiConvenienceSolversLSOptimalDenseAndBSM(); break;
 
                 case TestType.MinresWarmStart: MinresWarmStart(); break;
                 case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
@@ -1327,6 +1333,114 @@ public class fProxySparseSolverTests
             arena.Dispose();
         }
 
+        // ================== AᵀA-Jacobi preconditioner ==================
+
+        // A = Q·diag(s) with Q orthonormal columns (QR of a random tall matrix) and s spanning
+        // magnitudes (2^0..2^(n-1)). AᵀA = diag(s²) is badly scaled: the plain solve sees n distinct
+        // eigenvalues (needs ~n Krylov steps), while column-Jacobi maps A·D = Q (unit-conditioned),
+        // so the preconditioned solve converges almost immediately.
+        static fProxyMxN BuildBadlyScaledOrthonormal(ref Arena arena, int m, int n, uint seed)
+        {
+            var Q = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
+            var R = arena.fProxyMat(n, n);
+            QR.qrDecomposition(ref Q, ref R);           // Q now has orthonormal columns
+
+            var A = arena.fProxyMat(m, n);
+            for (int j = 0; j < n; j++)
+            {
+                fProxy s = math.pow((fProxy)2, (fProxy)j);
+                for (int i = 0; i < m; i++) A[i, j] = Q[i, j] * s;
+            }
+            return A;
+        }
+
+        // The preconditioner STRICTLY reduces iterations on the badly-scaled system, both reach the
+        // least-squares optimum, and the lsqrJacobi convenience wrapper matches the composable path.
+        void JacobiPreconditionerReducesIterations()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 30, n = 12;
+            var A = BuildBadlyScaledOrthonormal(ref arena, m, n, 52001);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 52002);
+            int maxIter = 4 * n;
+            fProxy tol = Consts.fProxySqrtEps;
+
+            // plain lsqr with diagnostics
+            var xPlain = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqr(in A, in b, ref xPlain, maxIter, tol, (fProxy)0, out var infoPlain));
+
+            // preconditioned via the composable diagnostic path (to read the iteration count)
+            var d2 = arena.fProxyVec(n); Linear_OP.columnNormsSquared(in A, ref d2);
+            var d  = arena.fProxyVec(n); Linear_OP.buildJacobiScale(in d2, ref d);
+            var scratch = arena.fProxyVec(n);
+            var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
+
+            var y    = arena.fProxyVec(n);
+            var u    = arena.fProxyVec(m);
+            var v    = arena.fProxyVec(n);
+            var w    = arena.fProxyVec(n);
+            var tmpM = arena.fProxyVec(m);
+            var tmpN = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqr(op, in b, ref y, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIter, tol, (fProxy)0, out fProxyLstsqInfo infoJac));
+            var xComp = arena.fProxyVec(n);
+            for (int j = 0; j < n; j++) xComp[j] = d[j] * y[j];
+
+            Assert.IsTrue(infoJac.iterations < infoPlain.iterations);   // the preconditioner's payoff
+
+            // Both land on a least-squares-optimal x (‖Aᵀr‖ ≈ 0). (Forward error is NOT compared:
+            // the plain solve on this ill-conditioned system is much less accurate per-component.)
+            AssertLeastSquaresOptimal(in A, in xComp,  in b, LooseTol());
+            AssertLeastSquaresOptimal(in A, in xPlain, in b, LooseTol());
+
+            // The convenience wrapper reproduces the composable path exactly.
+            var xConv = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqrJacobi(in A, in b, ref xConv, maxIter, tol));
+            AssertVecEq(in xConv, in xComp, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // Every *Jacobi convenience wrapper (cgls/lsqr/lsmr, dense AND 1x1-BSM) solves the
+        // badly-scaled system to least-squares optimality, and the BSM form matches the dense form.
+        void JacobiConvenienceSolversLSOptimalDenseAndBSM()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 24, n = 8;
+            var A = BuildBadlyScaledOrthonormal(ref arena, m, n, 52101);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 52102);
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            int maxIter = 4 * n;
+            fProxy tol = Consts.fProxySqrtEps;
+
+            // cgls
+            var xCd = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.cglsJacobi(in A, in b, ref xCd, maxIter, tol));
+            AssertLeastSquaresOptimal(in A, in xCd, in b, LooseTol());
+            var xCb = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.cglsJacobi(in bsm, in b, ref xCb, maxIter, tol));
+            AssertVecEq(in xCd, in xCb, LooseTol());
+
+            // lsqr
+            var xLd = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqrJacobi(in A, in b, ref xLd, maxIter, tol));
+            AssertLeastSquaresOptimal(in A, in xLd, in b, LooseTol());
+            var xLb = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqrJacobi(in bsm, in b, ref xLb, maxIter, tol));
+            AssertVecEq(in xLd, in xLb, LooseTol());
+
+            // lsmr
+            var xMd = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsmrJacobi(in A, in b, ref xMd, maxIter, tol));
+            AssertLeastSquaresOptimal(in A, in xMd, in b, LooseTol());
+            var xMb = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsmrJacobi(in bsm, in b, ref xMb, maxIter, tol));
+            AssertVecEq(in xMd, in xMb, LooseTol());
+
+            arena.Dispose();
+        }
+
         // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
         // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. qrDirectSolve
         // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
@@ -1481,6 +1595,14 @@ public class fProxySparseSolverTests
     [Test]
     public void LstsqInfoBSMMatchesDenseTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoBSMMatchesDense }.Run();
+
+    [Test]
+    public void JacobiPreconditionerReducesIterationsTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.JacobiPreconditionerReducesIterations }.Run();
+
+    [Test]
+    public void JacobiConvenienceSolversLSOptimalDenseAndBSMTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.JacobiConvenienceSolversLSOptimalDenseAndBSM }.Run();
 
     // ---- Phase 3 warm-start entry points ----
 
