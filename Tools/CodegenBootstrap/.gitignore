@@ -1,0 +1,8 @@
+bin/
+obj/
+
+# The repo-root .gitignore blanket-excludes *.csproj/*.sln (Unity's IDE-generated project files,
+# which are regenerated and never meant to be checked in). CodegenBootstrap.csproj is NOT one of
+# those - it's a hand-written, checked-in project file for the headless codegen host - so un-ignore
+# it specifically.
+!CodegenBootstrap.csproj
