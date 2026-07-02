@@ -47,6 +47,10 @@ public class fProxySparseSolverTests
             LsmrOverdeterminedConsistentDenseAndBSM,
             LsmrInconsistentMatchesQR,
             LsmrUnderdeterminedMatchesLsqr,
+            LsmrMonotonicArnorm,
+
+            // ---- Tikhonov damping (CGLS/LSQR/LSMR): min ||Ax-b||^2 + damp^2||x||^2 ----
+            TikhonovDampingMatchesAugmentedQR,
 
             // ---- Phase 3 warm-start plumbing (initial residual r = b - A*x0 from the CALLER's x) ----
             MinresWarmStart,
@@ -112,6 +116,9 @@ public class fProxySparseSolverTests
                 case TestType.LsmrOverdeterminedConsistentDenseAndBSM: LsmrOverdeterminedConsistentDenseAndBSM(); break;
                 case TestType.LsmrInconsistentMatchesQR: LsmrInconsistentMatchesQR(); break;
                 case TestType.LsmrUnderdeterminedMatchesLsqr: LsmrUnderdeterminedMatchesLsqr(); break;
+                case TestType.LsmrMonotonicArnorm: LsmrMonotonicArnorm(); break;
+
+                case TestType.TikhonovDampingMatchesAugmentedQR: TikhonovDampingMatchesAugmentedQR(); break;
 
                 case TestType.MinresWarmStart: MinresWarmStart(); break;
                 case TestType.BiCGStabWarmStart: BiCGStabWarmStart(); break;
@@ -981,6 +988,112 @@ public class fProxySparseSolverTests
 
             arena.Dispose();
         }
+
+        // ---- LSMR monotone ||A^T r|| (its distinguishing property vs LSQR) ----
+        //
+        // LSMR guarantees ||A^T r_k|| decreases MONOTONICALLY. Run it for k = 1..n iterations (fresh
+        // zero start each time, tolerance 0 so it never early-stops and runs EXACTLY k iterations),
+        // recompute the true ||A^T(A x_k - b)|| externally, and assert the sequence is non-increasing.
+        // A recurrence bug that swapped/mis-scaled the MINRES-layer rotation could still converge to
+        // the right final x (self-correcting over enough steps) while violating monotonicity -- this
+        // pins the property the QR cross-check cannot see. Generous fp slack: only a GROSS violation
+        // (a real bug) exceeds it.
+        void LsmrMonotonicArnorm()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 12, n = 6;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 43101);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 43102);   // inconsistent -> ||A^T r|| > 0 for a while
+
+            fProxy prev = fProxy.MaxValue;
+            for (int k = 1; k <= n; k++)
+            {
+                var x = arena.fProxyVec(n);                     // fresh zero start
+                Solvers.lsmr(in A, in b, ref x, k, (fProxy)0);  // tol 0 -> runs exactly k iterations
+
+                var res = Linear_OP.dot(A, x) - b;              // A x - b   (length m)
+                var atr = Linear_OP.dot(res, A);                // A^T res   (length n)
+                fProxy nrm = math.sqrt(Linear_OP.dot(atr, atr));
+
+                Assert.IsTrue(nrm <= prev + (fProxy)0.02 * prev + (fProxy)1e-4);   // non-increasing (+ fp slack)
+                prev = nrm;
+            }
+
+            arena.Dispose();
+        }
+
+        // ---- Tikhonov damping: CGLS / LSQR / LSMR all solve min ||Ax-b||^2 + damp^2||x||^2 ----
+        //
+        // Reference = dense QR least-squares on the AUGMENTED system [A; damp*I] x ~= [b; 0], which
+        // IS the damped minimizer x = (A^T A + damp^2 I)^-1 A^T b. All three damped solvers (dense
+        // AND 1x1-BSM) must land on it. Uses an INCONSISTENT b so damping actually changes the
+        // answer (a wrong/no-op damp term would miss the reference). damp = 0.5 is well inside the
+        // regime where the regularization is numerically significant but the system stays solvable.
+        void TikhonovDampingMatchesAugmentedQR()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 4;
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, 43201);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 43202);   // inconsistent
+            fProxy damp = (fProxy)0.5;
+
+            var xref = DampedReferenceQR(ref arena, in A, in b, damp);
+
+            // dense damped solvers
+            var xC = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.cgls(in A, in b, ref xC, 16 * n, Consts.fProxySqrtEps, damp));
+            AssertVecEq(in xC, in xref, LooseTol());
+
+            var xL = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqr(in A, in b, ref xL, 16 * n, Consts.fProxySqrtEps, damp));
+            AssertVecEq(in xL, in xref, LooseTol());
+
+            var xM = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsmr(in A, in b, ref xM, 16 * n, Consts.fProxySqrtEps, damp));
+            AssertVecEq(in xM, in xref, LooseTol());
+
+            // 1x1-BSM damped solvers agree with the same reference
+            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+
+            var xCb = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.cgls(in bsm, in b, ref xCb, 16 * n, Consts.fProxySqrtEps, damp));
+            AssertVecEq(in xCb, in xref, LooseTol());
+
+            var xLb = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsqr(in bsm, in b, ref xLb, 16 * n, Consts.fProxySqrtEps, damp));
+            AssertVecEq(in xLb, in xref, LooseTol());
+
+            var xMb = arena.fProxyVec(n);
+            Assert.IsTrue(Solvers.lsmr(in bsm, in b, ref xMb, 16 * n, Consts.fProxySqrtEps, damp));
+            AssertVecEq(in xMb, in xref, LooseTol());
+
+            arena.Dispose();
+        }
+
+        // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
+        // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. qrDirectSolve
+        // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
+        static fProxyN DampedReferenceQR(ref Arena arena, in fProxyMxN A, in fProxyN b, fProxy damp)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            var Atil = arena.fProxyMat(m + n, n);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    Atil[i, j] = A[i, j];
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    Atil[m + i, j] = (i == j) ? damp : (fProxy)0;
+
+            var btil = arena.fProxyVec(m + n);
+            for (int i = 0; i < m; i++) btil[i] = b[i];
+            for (int i = 0; i < n; i++) btil[m + i] = (fProxy)0;
+
+            var xref = arena.fProxyVec(n);
+            QR.qrDirectSolve(ref Atil, ref btil, ref xref);
+            return xref;
+        }
     }
 
     // Deliberately non-SPD test-double preconditioner: z = M^-1 r := -r, so <r,z> = -||r||^2 <= 0.
@@ -1075,6 +1188,14 @@ public class fProxySparseSolverTests
     [Test]
     public void LsmrUnderdeterminedMatchesLsqrTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrUnderdeterminedMatchesLsqr }.Run();
+
+    [Test]
+    public void LsmrMonotonicArnormTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrMonotonicArnorm }.Run();
+
+    [Test]
+    public void TikhonovDampingMatchesAugmentedQRTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.TikhonovDampingMatchesAugmentedQR }.Run();
 
     // ---- Phase 3 warm-start entry points ----
 

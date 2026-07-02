@@ -943,13 +943,18 @@ namespace LinearAlgebra
         /// solution with r left orthogonal to range(A) (‖Aᵀr‖≈0, ‖r‖ generally nonzero -- the
         /// normal-equations optimality condition).
         ///
+        /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
+        /// ‖Ax-b‖² + damp²‖x‖², i.e. runs CG on the SHIFTED normal equations (AᵀA + damp²I)x = Aᵀb
+        /// -- the residual becomes s = Aᵀr - damp²x and the curvature ‖Ap‖² + damp²‖p‖², never
+        /// forming AᵀA. damp == 0 is BIT-IDENTICAL to the plain solve.
+        ///
         /// Returns false on non-convergence or non-positive curvature ‖Ap‖²&lt;=0 (breakdown,
         /// mirrors cg's p·Ap&lt;=0 guard: p is in null(A), or p==0). On a false return x is
         /// undefined -- only read x when the call returns true.
         /// </summary>
         public static bool cgls<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN r, ref floatN s, ref floatN p, ref floatN q,
-                                     int maxIterations, float tolerance)
+                                     int maxIterations, float tolerance, float damp)
             where TOp : struct, IfloatLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("cgls: b.N must equal A.Rows");
@@ -991,8 +996,10 @@ namespace LinearAlgebra
             r.Data.CopyFrom(b.Data);
             r.addScaledInpl((float)(-1), q);
 
-            // s = A^T r
+            // s = A^T r - damp^2 x  (damped: the residual of the normal equations
+            // (A^T A + damp^2 I) x = A^T b; damp==0 -> s = A^T r exactly, bit-identical).
             A.ApplyT(in r, ref s);
+            if (damp != (float)0) s.addScaledInpl(-(damp * damp), x);
 
             float gamma = Linear_OP.dot(s, s);
 
@@ -1006,6 +1013,7 @@ namespace LinearAlgebra
                 A.Apply(in p, ref q);                       // q = A p
 
                 float delta = Linear_OP.dot(q, q);
+                if (damp != (float)0) delta += (damp * damp) * Linear_OP.dot(p, p);   // p^T(A^T A + damp^2 I)p
 
                 if (!(delta > (float)0))                   // NaN-safe: also catches breakdown
                     return false;
@@ -1016,6 +1024,7 @@ namespace LinearAlgebra
                 r.addScaledInpl(-alpha, q);
 
                 A.ApplyT(in r, ref s);                       // s = A^T r, recomputed fresh (stability)
+                if (damp != (float)0) s.addScaledInpl(-(damp * damp), x);   // - damp^2 x (damped gradient)
 
                 float gammaNew = Linear_OP.dot(s, s);
 
@@ -1031,6 +1040,13 @@ namespace LinearAlgebra
 
             return false;
         }
+
+        /// <summary>Undamped CGLS (damp = 0): plain least-squares. Forwards to the damped core.</summary>
+        public static bool cgls<TOp>(in TOp A, in floatN b, ref floatN x,
+                                     ref floatN r, ref floatN s, ref floatN p, ref floatN q,
+                                     int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
+            => cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, (float)0);
 
         /// <summary>
         /// CGLS over a dense <see cref="floatMxN"/> (possibly rectangular) -- zero-alloc
@@ -1051,6 +1067,19 @@ namespace LinearAlgebra
             floatN p = b.tempfloatVec(A.N_Cols);
             floatN q = b.tempfloatVec(A.M_Rows);
             return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Damped (Tikhonov) CGLS over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
+        /// four scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
+        /// </summary>
+        public static bool cgls(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        {
+            floatN r = b.tempfloatVec(A.M_Rows);
+            floatN s = b.tempfloatVec(A.N_Cols);
+            floatN p = b.tempfloatVec(A.N_Cols);
+            floatN q = b.tempfloatVec(A.M_Rows);
+            return cgls(new floatDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
         }
 
         /// <summary>CGLS over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
@@ -1115,6 +1144,21 @@ namespace LinearAlgebra
             return cgls(new floatBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
+        /// <summary>
+        /// Damped (Tikhonov) CGLS over a BSR matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates four
+        /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
+        /// reproduces the plain least-squares solve.
+        /// </summary>
+        public static bool cgls(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        {
+            floatN r = b.tempfloatVec(A.M_Rows);
+            floatN s = b.tempfloatVec(A.N_Cols);
+            floatN p = b.tempfloatVec(A.N_Cols);
+            floatN q = b.tempfloatVec(A.M_Rows);
+            floatBSM AT = b.floatBSMTranspose(in A);
+            return cgls(new floatBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
+        }
+
         /// <summary>CGLS over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
         public static bool cgls(in floatBSM A, in floatN b, ref floatN x)
         {
@@ -1139,6 +1183,11 @@ namespace LinearAlgebra
         /// for free (no extra ApplyT call, a well-known LSQR identity) -- same convergence
         /// contract as <see cref="cgls{TOp}"/>: converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖.
         ///
+        /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
+        /// ‖Ax-b‖² + damp²‖x‖² (equivalently solves (AᵀA + damp²I)x = Aᵀb) via one extra rotation
+        /// per step folding damp into the bidiagonal diagonal -- no augmented matrix formed.
+        /// damp == 0 is BIT-IDENTICAL to the plain least-squares solve.
+        ///
         /// Returns false on non-convergence or a total bidiagonalization breakdown (the current
         /// alpha and beta both collapse to zero in the same step -- the Golub-Kahan recurrence
         /// exhausted). On a false return x is undefined -- only read x when the call returns
@@ -1147,7 +1196,7 @@ namespace LinearAlgebra
         public static bool lsqr<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v, ref floatN w,
                                      ref floatN tmpM, ref floatN tmpN,
-                                     int maxIterations, float tolerance)
+                                     int maxIterations, float tolerance, float damp)
             where TOp : struct, IfloatLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("lsqr: b.N must equal A.Rows");
@@ -1226,13 +1275,23 @@ namespace LinearAlgebra
                 alpha = math.sqrt(Linear_OP.dot(v, v));
                 if (alpha > (float)0) v.divInpl(alpha);
 
-                // ---- Givens rotation folding (rhobar, beta) -> (rho, 0) ----
-                float rho = math.sqrt(rhobar * rhobar + beta * beta);
+                // ---- fold Tikhonov damping into rhobar: rotate (rhobar, damp) -> (rhobar1, 0),
+                // scaling phibar by the rotation cosine. damp==0 -> rhobar1==rhobar and phibar is
+                // untouched, so the undamped path is bit-identical. ----
+                float rhobar1 = rhobar;
+                if (damp != (float)0)
+                {
+                    rhobar1 = math.sqrt(rhobar * rhobar + damp * damp);
+                    phibar = (rhobar / rhobar1) * phibar;   // cs1 * phibar
+                }
+
+                // ---- Givens rotation folding (rhobar1, beta) -> (rho, 0) ----
+                float rho = math.sqrt(rhobar1 * rhobar1 + beta * beta);
 
                 if (!(rho > (float)0))
-                    break; // total breakdown: rhobar and beta both zero
+                    break; // total breakdown: rhobar1 and beta both zero
 
-                float c = rhobar / rho;
+                float c = rhobar1 / rho;
                 float sn = beta / rho;
                 float theta = sn * alpha;
                 rhobar = -c * alpha;
@@ -1255,6 +1314,14 @@ namespace LinearAlgebra
             return false;
         }
 
+        /// <summary>Undamped LSQR (damp = 0): plain least-squares. Forwards to the damped core.</summary>
+        public static bool lsqr<TOp>(in TOp A, in floatN b, ref floatN x,
+                                     ref floatN u, ref floatN v, ref floatN w,
+                                     ref floatN tmpM, ref floatN tmpN,
+                                     int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
+            => lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, (float)0);
+
         /// <summary>
         /// LSQR over a dense <see cref="floatMxN"/> (possibly rectangular) -- zero-alloc
         /// primitive. Forwards into <see cref="lsqr{TOp}"/> via <see cref="floatDenseOperator"/>.
@@ -1276,6 +1343,20 @@ namespace LinearAlgebra
             floatN tmpM = b.tempfloatVec(A.M_Rows);
             floatN tmpN = b.tempfloatVec(A.N_Cols);
             return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Damped (Tikhonov) LSQR over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
+        /// five scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
+        /// </summary>
+        public static bool lsqr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        {
+            floatN u    = b.tempfloatVec(A.M_Rows);
+            floatN v    = b.tempfloatVec(A.N_Cols);
+            floatN w    = b.tempfloatVec(A.N_Cols);
+            floatN tmpM = b.tempfloatVec(A.M_Rows);
+            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            return lsqr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
         /// <summary>LSQR over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
@@ -1343,6 +1424,22 @@ namespace LinearAlgebra
             return lsqr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
+        /// <summary>
+        /// Damped (Tikhonov) LSQR over a BSR matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates five
+        /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
+        /// reproduces the plain least-squares solve.
+        /// </summary>
+        public static bool lsqr(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        {
+            floatN u    = b.tempfloatVec(A.M_Rows);
+            floatN v    = b.tempfloatVec(A.N_Cols);
+            floatN w    = b.tempfloatVec(A.N_Cols);
+            floatN tmpM = b.tempfloatVec(A.M_Rows);
+            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            floatBSM AT = b.floatBSMTranspose(in A);
+            return lsqr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+        }
+
         /// <summary>LSQR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
         public static bool lsqr(in floatBSM A, in floatN b, ref floatN x)
         {
@@ -1368,6 +1465,13 @@ namespace LinearAlgebra
         /// contract as <see cref="cgls{TOp}"/> / <see cref="lsqr{TOp}"/>: converges when
         /// ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖.
         ///
+        /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
+        /// ‖Ax-b‖² + damp²‖x‖² (equivalently solves (AᵀA + damp²I)x = Aᵀb) via one extra rotation
+        /// per step that folds damp into the bidiagonal diagonal -- no augmented matrix formed.
+        /// damp == 0 is the plain least-squares solve and is BIT-IDENTICAL to the undamped path.
+        /// Damping regularizes rank-deficient / ill-posed / noisy systems and stabilizes the
+        /// underdetermined minimum-norm solution.
+        ///
         /// Returns false on non-convergence or a bidiagonalization breakdown (a rotation radius
         /// collapses to zero -- the Golub-Kahan recurrence exhausted). On a false return x is
         /// undefined -- only read x when the call returns true.
@@ -1375,7 +1479,7 @@ namespace LinearAlgebra
         public static bool lsmr<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v, ref floatN h,
                                      ref floatN hbar, ref floatN tmpM, ref floatN tmpN,
-                                     int maxIterations, float tolerance)
+                                     int maxIterations, float tolerance, float damp)
             where TOp : struct, IfloatLinearOperator
         {
             if (b.N != A.Rows) throw new ArgumentException("lsmr: b.N must equal A.Rows");
@@ -1462,12 +1566,15 @@ namespace LinearAlgebra
                     if (alpha > (float)0) v.divInpl(alpha);
                 }
 
-                // ---- rotation P_k : (alphabar, beta) -> (rho, 0) ----
+                // ---- rotation P_k : (alphahat, beta) -> (rho, 0) ----
+                // alphahat folds in the Tikhonov damping: alphahat = sqrt(alphabar^2 + damp^2).
+                // damp==0 -> alphahat==alphabar exactly, so the undamped path is bit-identical.
                 float rhoold = rho;
-                rho = math.sqrt(alphabar * alphabar + beta * beta);
+                float alphahat = damp != (float)0 ? math.sqrt(alphabar * alphabar + damp * damp) : alphabar;
+                rho = math.sqrt(alphahat * alphahat + beta * beta);
                 if (!(rho > (float)0))
-                    break; // breakdown: alphabar and beta both zero
-                float c = alphabar / rho;
+                    break; // breakdown: alphahat and beta both zero
+                float c = alphahat / rho;
                 float s = beta / rho;
                 float thetanew = s * alpha;
                 alphabar = c * alpha;
@@ -1493,7 +1600,9 @@ namespace LinearAlgebra
                 // h = v - (thetanew/rho) * h
                 h.scaleAddInpl(-thetanew / rho, v);         // h = -(thetanew/rho)*h + v
 
-                // ‖A^T r_k‖ = |zetabar| falls out for free and decreases monotonically.
+                // ‖A^T r‖ for the just-updated x = |zetabar| (falls out for free, decreases
+                // monotonically). With damping this is the DAMPED normal-equation residual
+                // ‖AᵀA x + damp² x − Aᵀb‖ = ‖Aᵀr − damp² x‖.
                 if (zetabar * zetabar <= threshold)
                     return true;
 
@@ -1503,6 +1612,14 @@ namespace LinearAlgebra
 
             return false;
         }
+
+        /// <summary>Undamped LSMR (damp = 0): plain least-squares. Forwards to the damped core.</summary>
+        public static bool lsmr<TOp>(in TOp A, in floatN b, ref floatN x,
+                                     ref floatN u, ref floatN v, ref floatN h,
+                                     ref floatN hbar, ref floatN tmpM, ref floatN tmpN,
+                                     int maxIterations, float tolerance)
+            where TOp : struct, IfloatLinearOperator
+            => lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, (float)0);
 
         /// <summary>
         /// LSMR over a dense <see cref="floatMxN"/> (possibly rectangular) -- zero-alloc
@@ -1526,6 +1643,21 @@ namespace LinearAlgebra
             floatN tmpM = b.tempfloatVec(A.M_Rows);
             floatN tmpN = b.tempfloatVec(A.N_Cols);
             return lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Damped (Tikhonov) LSMR over a dense matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates
+        /// six scratch vectors from the arena. damp == 0 reproduces the plain least-squares solve.
+        /// </summary>
+        public static bool lsmr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        {
+            floatN u    = b.tempfloatVec(A.M_Rows);
+            floatN v    = b.tempfloatVec(A.N_Cols);
+            floatN h    = b.tempfloatVec(A.N_Cols);
+            floatN hbar = b.tempfloatVec(A.N_Cols);
+            floatN tmpM = b.tempfloatVec(A.M_Rows);
+            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            return lsmr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
         /// <summary>LSMR over a dense matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
@@ -1581,6 +1713,23 @@ namespace LinearAlgebra
             floatN tmpN = b.tempfloatVec(A.N_Cols);
             floatBSM AT = b.floatBSMTranspose(in A);
             return lsmr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// Damped (Tikhonov) LSMR over a BSR matrix -- minimizes ‖Ax-b‖² + damp²‖x‖². Allocates six
+        /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
+        /// reproduces the plain least-squares solve.
+        /// </summary>
+        public static bool lsmr(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        {
+            floatN u    = b.tempfloatVec(A.M_Rows);
+            floatN v    = b.tempfloatVec(A.N_Cols);
+            floatN h    = b.tempfloatVec(A.N_Cols);
+            floatN hbar = b.tempfloatVec(A.N_Cols);
+            floatN tmpM = b.tempfloatVec(A.M_Rows);
+            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            floatBSM AT = b.floatBSMTranspose(in A);
+            return lsmr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
         /// <summary>LSMR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
