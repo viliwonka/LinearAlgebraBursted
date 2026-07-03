@@ -48,7 +48,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
+            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
         }
     }
 
@@ -63,7 +63,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
+            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
         }
     }
 
@@ -78,7 +78,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
+            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
         }
     }
 
@@ -93,7 +93,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
+            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
         }
     }
 
@@ -1386,13 +1386,13 @@ namespace LinearAlgebra.Benchmarks
             }
         }
 
-        // ==== Section 1: SPD -> conjugateGradient & minres ==============================================
+        // ==== Section 1: SPD -> cg & minres ==============================================
 
         static void Section1Float(StringBuilder sb)
         {
             sb.AppendLine();
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                "--- 1. SPD block-sparse (b={0}): conjugateGradient & minres, K={1}, tol=0 [float] ---", BR, K_CG));
+                "--- 1. SPD block-sparse (b={0}): cg & minres, K={1}, tol=0 [float] ---", BR, K_CG));
             sb.AppendLine(RowHeader());
 
             foreach (var n in BlockSizesN)
@@ -1437,7 +1437,7 @@ namespace LinearAlgebra.Benchmarks
         {
             sb.AppendLine();
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                "--- 1. SPD block-sparse (b={0}): conjugateGradient & minres, K={1}, tol=0 [double] ---", BR, K_CG));
+                "--- 1. SPD block-sparse (b={0}): cg & minres, K={1}, tol=0 [double] ---", BR, K_CG));
             sb.AppendLine(RowHeader());
 
             foreach (var n in BlockSizesN)
@@ -1684,7 +1684,7 @@ namespace LinearAlgebra.Benchmarks
 
         // ==== Section 4: zero-cost-abstraction probe (THE fork datapoint) ===============================
         //
-        // Generic Solvers.conjugateGradient(in floatMxN/doubleMxN,...) -- which internally wraps A in
+        // Generic Solvers.cg(in floatMxN/doubleMxN,...) -- which internally wraps A in
         // floatDenseOperator/doubleDenseOperator and calls the generic cg<TOp> loop -- vs a hand-inlined
         // dense CG written directly against raw pointers in CGHandInlinedJobFloat/Double (see above), no
         // IfloatLinearOperator/IdoubleLinearOperator, no generic dispatch. Same matrix, same K, same
@@ -1697,7 +1697,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine();
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                 "--- 4. Zero-cost-abstraction probe (dense SPD, K={0}, tol=0) [float] ---", K_CG));
-            sb.AppendLine("    generic = Solvers.conjugateGradient(in floatMxN,...) via cg<floatDenseOperator>;");
+            sb.AppendLine("    generic = Solvers.cg(in floatMxN,...) via cg<floatDenseOperator>;");
             sb.AppendLine("    hand-inlined = raw-pointer GEMV/axpy/dot written directly in the job, no operator interface.");
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11} {4,11} {5,10}",
                 "dtype", "N", "path", "med(ms)", "min(ms)", "ratio"));
@@ -1733,7 +1733,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine();
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                 "--- 4. Zero-cost-abstraction probe (dense SPD, K={0}, tol=0) [double] ---", K_CG));
-            sb.AppendLine("    generic = Solvers.conjugateGradient(in doubleMxN,...) via cg<doubleDenseOperator>;");
+            sb.AppendLine("    generic = Solvers.cg(in doubleMxN,...) via cg<doubleDenseOperator>;");
             sb.AppendLine("    hand-inlined = raw-pointer GEMV/axpy/dot written directly in the job, no operator interface.");
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11} {4,11} {5,10}",
                 "dtype", "N", "path", "med(ms)", "min(ms)", "ratio"));

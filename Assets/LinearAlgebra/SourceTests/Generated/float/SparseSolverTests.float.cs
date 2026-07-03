@@ -10,7 +10,7 @@ using Unity.Mathematics;
 
 // Phase-2 sparse-solver test suite: IfloatLinearOperator / floatDenseOperator /
 // floatBSMOperator / floatBlockJacobi / Solvers.cg&lt;TOp&gt; / Solvers.pcg&lt;TOp,TPre&gt;, plus
-// the concrete conjugateGradient/pcg convenience overloads for floatMxN and floatBSM. Every
+// the concrete cg/pcg convenience overloads for floatMxN and floatBSM. Every
 // BSM system is cross-checked against the equivalent dense system (same pattern as
 // floatSparseBSMTests: build the SAME system in both forms and compare).
 //
@@ -218,11 +218,11 @@ public class floatSparseSolverTests
             var b = arena.floatRandomVec(dim, -1f, 1f, 4242);
 
             var xDense = arena.floatVec(dim);
-            bool okDense = Solvers.conjugateGradient(in A, in b, ref xDense, 4 * dim, Consts.floatSqrtEps);
+            bool okDense = Solvers.cg(in A, in b, ref xDense, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okDense);
 
             var xBsm = arena.floatVec(dim);
-            bool okBsm = Solvers.conjugateGradient(in bsm, in b, ref xBsm, 4 * dim, Consts.floatSqrtEps);
+            bool okBsm = Solvers.cg(in bsm, in b, ref xBsm, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okBsm);
 
             AssertVecEq(in xDense, in xBsm, Tol());
@@ -276,7 +276,7 @@ public class floatSparseSolverTests
 
             var b = arena.floatRandomVec(dim, -1f, 1f, 8100);
             var x = arena.floatVec(dim);
-            bool ok = Solvers.conjugateGradient(in Absm, in b, ref x);
+            bool ok = Solvers.cg(in Absm, in b, ref x);
             Assert.IsTrue(ok);
 
             var Ax = Sparse_OP.spMV(in Absm, in x);
@@ -284,14 +284,14 @@ public class floatSparseSolverTests
 
             // Cross-check against the dense reference too.
             var xDense = arena.floatVec(dim);
-            bool okDense = Solvers.conjugateGradient(in A, in b, ref xDense);
+            bool okDense = Solvers.cg(in A, in b, ref xDense);
             Assert.IsTrue(okDense);
             AssertVecEq(in x, in xDense, Tol());
 
             arena.Dispose();
         }
 
-        // ---- 3. Dense forwarding unchanged: guards the conjugateGradient(in floatMxN,...) ----
+        // ---- 3. Dense forwarding unchanged: guards the cg(in floatMxN,...) ----
         //         refactor into cg<floatDenseOperator> -----------------------------------------
         void DenseForwardingUnchanged()
         {
@@ -303,7 +303,7 @@ public class floatSparseSolverTests
 
             // The (unchanged, public) concrete entry point.
             var xConcrete = arena.floatVec(dim);
-            bool okConcrete = Solvers.conjugateGradient(in A, in b, ref xConcrete);
+            bool okConcrete = Solvers.cg(in A, in b, ref xConcrete);
             Assert.IsTrue(okConcrete);
 
             // Calling cg<TOp> directly via floatDenseOperator must reproduce the identical
@@ -348,7 +348,7 @@ public class floatSparseSolverTests
             var b = arena.floatRandomVec(dim, -1f, 1f, 6002);
 
             var xCG = arena.floatVec(dim);
-            bool okCG = Solvers.conjugateGradient(in bsm, in b, ref xCG);
+            bool okCG = Solvers.cg(in bsm, in b, ref xCG);
             Assert.IsTrue(okCG);
 
             var xPCG = arena.floatVec(dim);
@@ -403,7 +403,7 @@ public class floatSparseSolverTests
                 if (minCG < 0)
                 {
                     var xCG = arena.floatVec(dim);
-                    if (Solvers.conjugateGradient(in bsm, in b, ref xCG, budget, Consts.floatSqrtEps))
+                    if (Solvers.cg(in bsm, in b, ref xCG, budget, Consts.floatSqrtEps))
                         minCG = budget;
                 }
                 if (minPCG < 0)
@@ -486,10 +486,10 @@ public class floatSparseSolverTests
 
             // Same check for plain (unpreconditioned) CG.
             var xCG = arena.floatVec(dim);
-            bool okCG = Solvers.conjugateGradient(in bsm, in b, ref xCG);
+            bool okCG = Solvers.cg(in bsm, in b, ref xCG);
             Assert.IsTrue(okCG);
             var xCGWarm = xCG.Copy();
-            bool okCGWarm = Solvers.conjugateGradient(in bsm, in b, ref xCGWarm, 1, Consts.floatSqrtEps);
+            bool okCGWarm = Solvers.cg(in bsm, in b, ref xCGWarm, 1, Consts.floatSqrtEps);
             Assert.IsTrue(okCGWarm);
             AssertVecEq(in xCG, in xCGWarm, Tol());
 
@@ -575,7 +575,7 @@ public class floatSparseSolverTests
             AssertVecEq(in AxBsm, in b, LooseTol());
 
             // NOTE (spec nice-to-have, NOT asserted): plain CG on this SAME indefinite A breaks
-            // down -- Solvers.conjugateGradient's p.Ap>0 curvature guard fails / returns a much
+            // down -- Solvers.cg's p.Ap>0 curvature guard fails / returns a much
             // worse residual. MINRES succeeding where CG cannot is the whole point of this case;
             // asserting CG's failure mode is fiddly and left as a documented expectation.
 
@@ -592,7 +592,7 @@ public class floatSparseSolverTests
             var b = arena.floatRandomVec(dim, -1f, 1f, 32002);
 
             var xCG = arena.floatVec(dim);
-            bool okCG = Solvers.conjugateGradient(in A, in b, ref xCG, 4 * dim, Consts.floatSqrtEps);
+            bool okCG = Solvers.cg(in A, in b, ref xCG, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okCG);
 
             var xMin = arena.floatVec(dim);
@@ -1553,7 +1553,7 @@ public class floatSparseSolverTests
             int maxIter = 4 * n;
 
             var xg = arena.floatVec(n);
-            var ig = Solvers.conjugateGradient(in Aspd, in bspd, ref xg, maxIter, Consts.floatSqrtEps);
+            var ig = Solvers.cg(in Aspd, in bspd, ref xg, maxIter, Consts.floatSqrtEps);
             Assert.IsTrue(ig.Solved && ig.iterations >= 1 && ig.iterations <= maxIter);
             AssertResidualNorm(in Aspd, in bspd, in xg, ig.rnorm, tol);
 
@@ -1592,7 +1592,7 @@ public class floatSparseSolverTests
             //      iterate -- the contract that on MaxIterations x is a valid last iterate, not
             //      undefined. Each returns √(tracked residual) with x fully advanced. ----
             var xh = arena.floatVec(n);
-            var ih = Solvers.conjugateGradient(in Aspd, in bspd, ref xh, 1, Consts.floatSqrtEps);
+            var ih = Solvers.cg(in Aspd, in bspd, ref xh, 1, Consts.floatSqrtEps);
             Assert.IsTrue(!ih.Solved && ih.status == IterativeSolveStatus.MaxIterations && ih.iterations == 1);
             AssertResidualNorm(in Aspd, in bspd, in xh, ih.rnorm, tol);
 
@@ -1624,7 +1624,7 @@ public class floatSparseSolverTests
             Aind[1, 0] = (float)0; Aind[1, 1] = (float)(-1);
             var bind = arena.floatVec(2); bind[0] = (float)1; bind[1] = (float)1;
             var xind = arena.floatVec(2); xind[0] = (float)0; xind[1] = (float)0;
-            var iind = Solvers.conjugateGradient(in Aind, in bind, ref xind, 10, Consts.floatSqrtEps);
+            var iind = Solvers.cg(in Aind, in bind, ref xind, 10, Consts.floatSqrtEps);
             Assert.IsTrue(iind.status == IterativeSolveStatus.Breakdown && iind.iterations == 0);
             AssertResidualNorm(in Aind, in bind, in xind, iind.rnorm, tol);
             AssertClose(iind.rnorm, math.sqrt((float)2), tol);
@@ -1634,7 +1634,7 @@ public class floatSparseSolverTests
             var bzero = arena.floatVec(n);
             for (int i = 0; i < n; i++) bzero[i] = (float)0;
             var xzero = arena.floatVec(n);
-            var izero = Solvers.conjugateGradient(in Aspd, in bzero, ref xzero, maxIter, Consts.floatSqrtEps);
+            var izero = Solvers.cg(in Aspd, in bzero, ref xzero, maxIter, Consts.floatSqrtEps);
             Assert.IsTrue(izero.Solved && izero.iterations == 0);
             AssertClose(izero.rnorm, (float)0, tol);
 

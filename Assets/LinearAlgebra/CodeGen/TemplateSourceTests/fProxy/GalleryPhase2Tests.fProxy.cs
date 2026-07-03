@@ -160,7 +160,7 @@ public class fProxyGalleryPhase2Tests
             var b = Linear_OP.dot(A, xTrue);   // consistent RHS
 
             var x = arena.fProxyVec(n);
-            bool conv = Solvers.conjugateGradient(in A, in b, ref x, 500, Consts.fProxySqrtEps);
+            bool conv = Solvers.cg(in A, in b, ref x, 500, Consts.fProxySqrtEps);
             AssertTrue(conv);
 
             // GCD(5) is moderately conditioned ⇒ generous, precision-scaled band.

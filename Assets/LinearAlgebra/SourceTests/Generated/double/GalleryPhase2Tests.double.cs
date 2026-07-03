@@ -160,7 +160,7 @@ public class doubleGalleryPhase2Tests
             var b = Linear_OP.dot(A, xTrue);   // consistent RHS
 
             var x = arena.doubleVec(n);
-            bool conv = Solvers.conjugateGradient(in A, in b, ref x, 500, Consts.doubleSqrtEps);
+            bool conv = Solvers.cg(in A, in b, ref x, 500, Consts.doubleSqrtEps);
             AssertTrue(conv);
 
             // GCD(5) is moderately conditioned ⇒ generous, precision-scaled band.

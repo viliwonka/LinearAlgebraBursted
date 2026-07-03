@@ -162,8 +162,8 @@ namespace LinearAlgebra
         /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b,
         /// generic over any <see cref="IfloatLinearOperator"/> (Burst-monomorphized static
         /// dispatch, no vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the CG
-        /// loop — the concrete dense (<c>conjugateGradient(in floatMxN, ...)</c>) and BSM
-        /// (<c>conjugateGradient(in floatBSM, ...)</c>) overloads below are thin forwarders that
+        /// loop — the concrete dense (<c>cg(in floatMxN, ...)</c>) and BSM
+        /// (<c>cg(in floatBSM, ...)</c>) overloads below are thin forwarders that
         /// wrap their matrix in <see cref="floatDenseOperator"/> / <c>floatBSMOperator</c> and
         /// call this method.
         ///
@@ -282,7 +282,7 @@ namespace LinearAlgebra
         /// Forwards into <see cref="cg{TOp}"/> via <see cref="floatDenseOperator"/> — see that
         /// method for the actual loop.
         /// </summary>
-        public static SolveInfo conjugateGradient(in floatMxN A, in floatN b, ref floatN x,
+        public static SolveInfo cg(in floatMxN A, in floatN b, ref floatN x,
                                              ref floatN r, ref floatN p, ref floatN Ap,
                                              int maxIterations, float tolerance)
         {
@@ -293,30 +293,30 @@ namespace LinearAlgebra
         /// Conjugate Gradient solver — allocates three scratch vectors from the arena and calls
         /// the zero-alloc primitive. x is overwritten with the solution on convergence.
         /// </summary>
-        public static SolveInfo conjugateGradient(in floatMxN A, in floatN b, ref floatN x,
+        public static SolveInfo cg(in floatMxN A, in floatN b, ref floatN x,
                                              int maxIterations, float tolerance)
         {
             floatN r  = b.tempfloatVec(A.M_Rows);
             floatN p  = b.tempfloatVec(A.M_Rows);
             floatN Ap = b.tempfloatVec(A.M_Rows);
-            return conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Conjugate Gradient solver with default maxIterations (A.M_Rows) and tolerance
         /// (Consts.floatSqrtEps). x is overwritten with the solution on convergence.
         /// </summary>
-        public static SolveInfo conjugateGradient(in floatMxN A, in floatN b, ref floatN x)
+        public static SolveInfo cg(in floatMxN A, in floatN b, ref floatN x)
         {
-            return conjugateGradient(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+            return cg(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix. Same semantics as
-        /// the dense overload — see <see cref="conjugateGradient(in floatMxN, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>.
+        /// the dense overload — see <see cref="cg(in floatMxN, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>.
         /// Forwards into <see cref="cg{TOp}"/> via <c>floatBSMOperator</c>.
         /// </summary>
-        public static SolveInfo conjugateGradient(in floatBSM A, in floatN b, ref floatN x,
+        public static SolveInfo cg(in floatBSM A, in floatN b, ref floatN x,
                                              ref floatN r, ref floatN p, ref floatN Ap,
                                              int maxIterations, float tolerance)
         {
@@ -327,22 +327,22 @@ namespace LinearAlgebra
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix — allocates three
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo conjugateGradient(in floatBSM A, in floatN b, ref floatN x,
+        public static SolveInfo cg(in floatBSM A, in floatN b, ref floatN x,
                                              int maxIterations, float tolerance)
         {
             floatN r  = b.tempfloatVec(A.M_Rows);
             floatN p  = b.tempfloatVec(A.M_Rows);
             floatN Ap = b.tempfloatVec(A.M_Rows);
-            return conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix, with default
         /// maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).
         /// </summary>
-        public static SolveInfo conjugateGradient(in floatBSM A, in floatN b, ref floatN x)
+        public static SolveInfo cg(in floatBSM A, in floatN b, ref floatN x)
         {
-            return conjugateGradient(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
+            return cg(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
 
         /// <summary>

@@ -161,7 +161,7 @@ public class doubleConjugateGradientTests
 
             var x = arena.doubleVec(dim); // zero initial guess
 
-            bool ok = Solvers.conjugateGradient(in A, in b, ref x);
+            bool ok = Solvers.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             var Ax = Linear_OP.dot(A, x);
@@ -182,7 +182,7 @@ public class doubleConjugateGradientTests
 
             // CG solve
             var xCG = arena.doubleVec(dim);
-            bool ok = Solvers.conjugateGradient(in A, in b, ref xCG);
+            bool ok = Solvers.cg(in A, in b, ref xCG);
             Assert.IsTrue(ok);
 
             // Cholesky solve on the same system (b overwritten with x).
@@ -209,12 +209,12 @@ public class doubleConjugateGradientTests
 
             // Reference: defaults overload.
             var xDef = arena.doubleVec(dim);
-            bool okDef = Solvers.conjugateGradient(in A, in b, ref xDef);
+            bool okDef = Solvers.cg(in A, in b, ref xDef);
             Assert.IsTrue(okDef);
 
             // Explicit maxIterations/tolerance overload.
             var xExpl = arena.doubleVec(dim);
-            bool okExpl = Solvers.conjugateGradient(in A, in b, ref xExpl, dim, Consts.doubleSqrtEps);
+            bool okExpl = Solvers.cg(in A, in b, ref xExpl, dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okExpl);
             Assert.IsTrue(Analysis_OP.isZero(xDef - xExpl, Tol()));
 
@@ -223,7 +223,7 @@ public class doubleConjugateGradientTests
             var r = arena.doubleVec(dim);
             var p = arena.doubleVec(dim);
             var Ap = arena.doubleVec(dim);
-            bool okPrim = Solvers.conjugateGradient(in A, in b, ref xPrim,
+            bool okPrim = Solvers.cg(in A, in b, ref xPrim,
                                                     ref r, ref p, ref Ap,
                                                     dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okPrim);
@@ -245,7 +245,7 @@ public class doubleConjugateGradientTests
             // Non-zero initial guess must still be driven to zero.
             var x = arena.doubleRandomVec(dim, -1f, 1f, 9999);
 
-            bool ok = Solvers.conjugateGradient(in A, in b, ref x);
+            bool ok = Solvers.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
             Assert.IsTrue(Analysis_OP.isZero(in x, Tol()));
 
@@ -264,7 +264,7 @@ public class doubleConjugateGradientTests
             var b = arena.doubleRandomVec(2, -1f, 1f, 13);
             var x = arena.doubleVec(2);
 
-            bool ok = Solvers.conjugateGradient(in A, in b, ref x);
+            bool ok = Solvers.cg(in A, in b, ref x);
             Assert.IsFalse(ok);
 
             arena.Dispose();
@@ -287,7 +287,7 @@ public class doubleConjugateGradientTests
             b[0] = 2f; b[1] = 2f;
 
             var x = arena.doubleVec(2);
-            bool ok = Solvers.conjugateGradient(in A, in b, ref x);
+            bool ok = Solvers.cg(in A, in b, ref x);
 
             // never produces NaN/Inf on the rank-deficient input...
             Assert.IsFalse(Analysis_OP.isAnyNan(in x));
@@ -314,12 +314,12 @@ public class doubleConjugateGradientTests
 
             // First solve from zero.
             var x = arena.doubleVec(dim);
-            bool ok = Solvers.conjugateGradient(in A, in b, ref x);
+            bool ok = Solvers.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             // Feed the solution back as the initial guess.
             var xWarm = x.Copy();
-            bool ok2 = Solvers.conjugateGradient(in A, in b, ref xWarm);
+            bool ok2 = Solvers.cg(in A, in b, ref xWarm);
             Assert.IsTrue(ok2);
 
             // x must be unchanged (still solves the system).
@@ -342,7 +342,7 @@ public class doubleConjugateGradientTests
             var b = arena.doubleRandomVec(1, -1f, 1f, 77);
             var x = arena.doubleVec(1);
 
-            bool ok = Solvers.conjugateGradient(in A, in b, ref x);
+            bool ok = Solvers.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             var Ax = Linear_OP.dot(A, x);
@@ -365,7 +365,7 @@ public class doubleConjugateGradientTests
 
             var x = arena.doubleVec(dim); // zero initial guess
 
-            bool ok = Solvers.conjugateGradient(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
+            bool ok = Solvers.cg(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
             var Ax = Linear_OP.dot(A, x);
@@ -387,7 +387,7 @@ public class doubleConjugateGradientTests
 
             var x = arena.doubleVec(dim);
 
-            bool ok = Solvers.conjugateGradient(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
+            bool ok = Solvers.cg(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);
 
             var Ax = Linear_OP.dot(A, x);

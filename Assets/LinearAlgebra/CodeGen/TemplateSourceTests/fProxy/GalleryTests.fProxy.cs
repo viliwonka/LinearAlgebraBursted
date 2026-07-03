@@ -576,7 +576,7 @@ public class fProxyGalleryTests
             var b = Linear_OP.dot(A, xTrue);   // consistent RHS
 
             var x = arena.fProxyVec(n);
-            bool conv = Solvers.conjugateGradient(in A, in b, ref x, 200, Consts.fProxySqrtEps);
+            bool conv = Solvers.cg(in A, in b, ref x, 200, Consts.fProxySqrtEps);
             AssertTrue(conv);
 
             fProxy tol = (fProxy)100 * Consts.fProxySqrtEps;

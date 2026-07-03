@@ -464,15 +464,15 @@ public class doubleSparseSymmetricTests
             var b = arena.doubleRandomVec(dim, (double)(-1f), (double)1f, 50000u);
 
             var xSym = arena.doubleVec(dim);
-            bool okSym = Solvers.conjugateGradient(in sym, in b, ref xSym, 4 * dim, Consts.doubleSqrtEps);
+            bool okSym = Solvers.cg(in sym, in b, ref xSym, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okSym);
 
             var xFull = arena.doubleVec(dim);
-            bool okFull = Solvers.conjugateGradient(in full, in b, ref xFull, 4 * dim, Consts.doubleSqrtEps);
+            bool okFull = Solvers.cg(in full, in b, ref xFull, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okFull);
 
             var xDense = arena.doubleVec(dim);
-            bool okDense = Solvers.conjugateGradient(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
+            bool okDense = Solvers.cg(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okDense);
 
             AssertVecEq(in xSym, in xFull, LooseTol());
@@ -501,7 +501,7 @@ public class doubleSparseSymmetricTests
             Assert.IsTrue(okFull);
 
             var xDense = arena.doubleVec(dim);
-            bool okDense = Solvers.conjugateGradient(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
+            bool okDense = Solvers.cg(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okDense);
 
             AssertVecEq(in xSym, in xFull, LooseTol());

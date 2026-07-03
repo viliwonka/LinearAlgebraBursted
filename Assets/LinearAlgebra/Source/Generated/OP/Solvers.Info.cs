@@ -61,7 +61,7 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Result of a square-system Krylov solve (<c>cg</c> / <c>conjugateGradient</c> / <c>pcg</c> /
+    /// Result of a square-system Krylov solve (<c>cg</c> / <c>pcg</c> /
     /// <c>minres</c> / <c>biCGStab</c> / <c>cgne</c>). Same contract as <see cref="LstsqInfo"/> --
     /// returned by value, implicit <c>bool</c> == <see cref="Solved"/>, norm reported as <c>double</c>
     /// -- but carries only the residual norm ‖b - A x‖ (no Aᵀr / xnorm: for a square solve the

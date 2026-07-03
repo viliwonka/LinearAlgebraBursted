@@ -746,7 +746,7 @@ public class floatSolverBatteryTests
             var b = Linear_OP.dot(A, xTrue);
 
             var x = arena.floatVec(n);
-            bool conv = Solvers.conjugateGradient(in A, in b, ref x, 200, Consts.floatSqrtEps);
+            bool conv = Solvers.cg(in A, in b, ref x, 200, Consts.floatSqrtEps);
             AssertTrue(conv);
 
             // relative residual ‖A x − b‖ ≤ 100·sqrtEps·‖b‖ (CG guarantees ≤ sqrtEps·‖b‖)

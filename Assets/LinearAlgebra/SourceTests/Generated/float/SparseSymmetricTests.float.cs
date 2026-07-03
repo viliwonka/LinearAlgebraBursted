@@ -464,15 +464,15 @@ public class floatSparseSymmetricTests
             var b = arena.floatRandomVec(dim, (float)(-1f), (float)1f, 50000u);
 
             var xSym = arena.floatVec(dim);
-            bool okSym = Solvers.conjugateGradient(in sym, in b, ref xSym, 4 * dim, Consts.floatSqrtEps);
+            bool okSym = Solvers.cg(in sym, in b, ref xSym, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okSym);
 
             var xFull = arena.floatVec(dim);
-            bool okFull = Solvers.conjugateGradient(in full, in b, ref xFull, 4 * dim, Consts.floatSqrtEps);
+            bool okFull = Solvers.cg(in full, in b, ref xFull, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okFull);
 
             var xDense = arena.floatVec(dim);
-            bool okDense = Solvers.conjugateGradient(in dense, in b, ref xDense, 4 * dim, Consts.floatSqrtEps);
+            bool okDense = Solvers.cg(in dense, in b, ref xDense, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okDense);
 
             AssertVecEq(in xSym, in xFull, LooseTol());
@@ -501,7 +501,7 @@ public class floatSparseSymmetricTests
             Assert.IsTrue(okFull);
 
             var xDense = arena.floatVec(dim);
-            bool okDense = Solvers.conjugateGradient(in dense, in b, ref xDense, 4 * dim, Consts.floatSqrtEps);
+            bool okDense = Solvers.cg(in dense, in b, ref xDense, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okDense);
 
             AssertVecEq(in xSym, in xFull, LooseTol());

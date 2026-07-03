@@ -41,7 +41,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Thin <see cref="IdoubleLinearOperator"/> wrapper over a dense <see cref="doubleMxN"/>.
     /// Forwards Apply/ApplyT to the existing dense matVec/vecMat dot kernels -- this is what
-    /// the concrete <c>Solvers.conjugateGradient(in doubleMxN, ...)</c> overloads wrap
+    /// the concrete <c>Solvers.cg(in doubleMxN, ...)</c> overloads wrap
     /// internally so the generic <c>Solvers.cg&lt;TOp&gt;</c> loop is the single source of truth.
     /// Readonly: a value copy of this struct is cheap (holds only the doubleMxN header, no
     /// buffer copy) and safe to pass through `in` parameters in generic constrained calls

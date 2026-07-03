@@ -464,15 +464,15 @@ public class fProxySparseSymmetricTests
             var b = arena.fProxyRandomVec(dim, (fProxy)(-1f), (fProxy)1f, 50000u);
 
             var xSym = arena.fProxyVec(dim);
-            bool okSym = Solvers.conjugateGradient(in sym, in b, ref xSym, 4 * dim, Consts.fProxySqrtEps);
+            bool okSym = Solvers.cg(in sym, in b, ref xSym, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okSym);
 
             var xFull = arena.fProxyVec(dim);
-            bool okFull = Solvers.conjugateGradient(in full, in b, ref xFull, 4 * dim, Consts.fProxySqrtEps);
+            bool okFull = Solvers.cg(in full, in b, ref xFull, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okFull);
 
             var xDense = arena.fProxyVec(dim);
-            bool okDense = Solvers.conjugateGradient(in dense, in b, ref xDense, 4 * dim, Consts.fProxySqrtEps);
+            bool okDense = Solvers.cg(in dense, in b, ref xDense, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okDense);
 
             AssertVecEq(in xSym, in xFull, LooseTol());
@@ -501,7 +501,7 @@ public class fProxySparseSymmetricTests
             Assert.IsTrue(okFull);
 
             var xDense = arena.fProxyVec(dim);
-            bool okDense = Solvers.conjugateGradient(in dense, in b, ref xDense, 4 * dim, Consts.fProxySqrtEps);
+            bool okDense = Solvers.cg(in dense, in b, ref xDense, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okDense);
 
             AssertVecEq(in xSym, in xFull, LooseTol());

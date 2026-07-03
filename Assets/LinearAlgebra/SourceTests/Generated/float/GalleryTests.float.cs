@@ -576,7 +576,7 @@ public class floatGalleryTests
             var b = Linear_OP.dot(A, xTrue);   // consistent RHS
 
             var x = arena.floatVec(n);
-            bool conv = Solvers.conjugateGradient(in A, in b, ref x, 200, Consts.floatSqrtEps);
+            bool conv = Solvers.cg(in A, in b, ref x, 200, Consts.floatSqrtEps);
             AssertTrue(conv);
 
             float tol = (float)100 * Consts.floatSqrtEps;

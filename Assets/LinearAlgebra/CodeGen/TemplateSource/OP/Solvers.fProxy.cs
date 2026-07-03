@@ -162,8 +162,8 @@ namespace LinearAlgebra
         /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b,
         /// generic over any <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static
         /// dispatch, no vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the CG
-        /// loop — the concrete dense (<c>conjugateGradient(in fProxyMxN, ...)</c>) and BSM
-        /// (<c>conjugateGradient(in fProxyBSM, ...)</c>) overloads below are thin forwarders that
+        /// loop — the concrete dense (<c>cg(in fProxyMxN, ...)</c>) and BSM
+        /// (<c>cg(in fProxyBSM, ...)</c>) overloads below are thin forwarders that
         /// wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSMOperator</c> and
         /// call this method.
         ///
@@ -282,7 +282,7 @@ namespace LinearAlgebra
         /// Forwards into <see cref="cg{TOp}"/> via <see cref="fProxyDenseOperator"/> — see that
         /// method for the actual loop.
         /// </summary>
-        public static SolveInfo conjugateGradient(in fProxyMxN A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                              ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
                                              int maxIterations, fProxy tolerance)
         {
@@ -293,30 +293,30 @@ namespace LinearAlgebra
         /// Conjugate Gradient solver — allocates three scratch vectors from the arena and calls
         /// the zero-alloc primitive. x is overwritten with the solution on convergence.
         /// </summary>
-        public static SolveInfo conjugateGradient(in fProxyMxN A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                              int maxIterations, fProxy tolerance)
         {
             fProxyN r  = b.tempfProxyVec(A.M_Rows);
             fProxyN p  = b.tempfProxyVec(A.M_Rows);
             fProxyN Ap = b.tempfProxyVec(A.M_Rows);
-            return conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Conjugate Gradient solver with default maxIterations (A.M_Rows) and tolerance
         /// (Consts.fProxySqrtEps). x is overwritten with the solution on convergence.
         /// </summary>
-        public static SolveInfo conjugateGradient(in fProxyMxN A, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg(in fProxyMxN A, in fProxyN b, ref fProxyN x)
         {
-            return conjugateGradient(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+            return cg(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix. Same semantics as
-        /// the dense overload — see <see cref="conjugateGradient(in fProxyMxN, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int, fProxy)"/>.
+        /// the dense overload — see <see cref="cg(in fProxyMxN, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int, fProxy)"/>.
         /// Forwards into <see cref="cg{TOp}"/> via <c>fProxyBSMOperator</c>.
         /// </summary>
-        public static SolveInfo conjugateGradient(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSM A, in fProxyN b, ref fProxyN x,
                                              ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
                                              int maxIterations, fProxy tolerance)
         {
@@ -327,22 +327,22 @@ namespace LinearAlgebra
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix — allocates three
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo conjugateGradient(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSM A, in fProxyN b, ref fProxyN x,
                                              int maxIterations, fProxy tolerance)
         {
             fProxyN r  = b.tempfProxyVec(A.M_Rows);
             fProxyN p  = b.tempfProxyVec(A.M_Rows);
             fProxyN Ap = b.tempfProxyVec(A.M_Rows);
-            return conjugateGradient(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix, with default
         /// maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo conjugateGradient(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg(in fProxyBSM A, in fProxyN b, ref fProxyN x)
         {
-            return conjugateGradient(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
+            return cg(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
         /// <summary>
