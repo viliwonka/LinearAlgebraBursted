@@ -90,7 +90,7 @@ public class floatLiteratureTests
             AssertClose(S[1], (float)1, (float)1E-4);
 
             AssertClose(Norms.matrixL2(in A), (float)2, (float)1E-4);
-            AssertClose(Blas.cond(in A), (float)2, (float)1E-4);
+            AssertClose(Analysis.cond(in A), (float)2, (float)1E-4);
 
             arena.Dispose();
         }
@@ -158,10 +158,10 @@ public class floatLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             var H3 = arena.floatHilbert(3);
-            AssertClose(Blas.cond(in H3), (float)524.0568, (float)5);
+            AssertClose(Analysis.cond(in H3), (float)524.0568, (float)5);
 
             var H5 = arena.floatHilbert(5);
-            AssertBelow((float)1E5, Blas.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
+            AssertBelow((float)1E5, Analysis.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
 
             arena.Dispose();
         }
@@ -211,7 +211,7 @@ public class floatLiteratureTests
             float lamMin = (float)2 - (float)2 * math.cos(pi / (float)(n + 1));
 
             // condition number (read-only on T)
-            AssertClose(Blas.cond(in T), lamMax / lamMin, (float)1E-2);
+            AssertClose(Analysis.cond(in T), lamMax / lamMin, (float)1E-2);
 
             var L = arena.floatMat(n, n);
             AssertTrue(Cholesky.choleskyDecomposition(in T, ref L));

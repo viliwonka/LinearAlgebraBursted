@@ -413,7 +413,7 @@ public class fProxySolverBatteryTests
                 AssertClose(S[i], sq, band);
 
             fProxy condBand = IsDouble() ? (fProxy)1E-5 : (fProxy)1E-2;
-            AssertClose(Blas.cond(in A), (fProxy)1, condBand);
+            AssertClose(Analysis.cond(in A), (fProxy)1, condBand);
         }
 
         // Parter: nonsymmetric Toeplitz; all singular values < π and cluster near π. n = 8.
@@ -459,7 +459,7 @@ public class fProxySolverBatteryTests
             AssertClose(S[2], eps, (fProxy)1 * Consts.fProxySqrtEps);
 
             // numerical rank is full (n) at this ε
-            RecordEq(Blas.rank(in A), n);
+            RecordEq(Analysis.rank(in A), n);
 
             // pinv least squares recovers a consistent xTrue
             var xTrue = arena.fProxyVec(n);
@@ -767,10 +767,10 @@ public class fProxySolverBatteryTests
             var arena = new Arena(Allocator.Persistent);
 
             var Hd = arena.fProxyHadamard(4);
-            AssertClose(Blas.cond(in Hd), (fProxy)1, IsDouble() ? (fProxy)1E-5 : (fProxy)1E-2);
+            AssertClose(Analysis.cond(in Hd), (fProxy)1, IsDouble() ? (fProxy)1E-5 : (fProxy)1E-2);
 
             var H3 = arena.fProxyHilbert(3);
-            fProxy c = Blas.cond(in H3);
+            fProxy c = Analysis.cond(in H3);
             AssertClose(c, (fProxy)524.0568, IsDouble() ? (fProxy)1 : (fProxy)10);
 
             arena.Dispose();

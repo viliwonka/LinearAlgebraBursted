@@ -90,7 +90,7 @@ public class fProxyLiteratureTests
             AssertClose(S[1], (fProxy)1, (fProxy)1E-4);
 
             AssertClose(Norms.matrixL2(in A), (fProxy)2, (fProxy)1E-4);
-            AssertClose(Blas.cond(in A), (fProxy)2, (fProxy)1E-4);
+            AssertClose(Analysis.cond(in A), (fProxy)2, (fProxy)1E-4);
 
             arena.Dispose();
         }
@@ -158,10 +158,10 @@ public class fProxyLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             var H3 = arena.fProxyHilbert(3);
-            AssertClose(Blas.cond(in H3), (fProxy)524.0568, (fProxy)5);
+            AssertClose(Analysis.cond(in H3), (fProxy)524.0568, (fProxy)5);
 
             var H5 = arena.fProxyHilbert(5);
-            AssertBelow((fProxy)1E5, Blas.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
+            AssertBelow((fProxy)1E5, Analysis.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
 
             arena.Dispose();
         }
@@ -211,7 +211,7 @@ public class fProxyLiteratureTests
             fProxy lamMin = (fProxy)2 - (fProxy)2 * math.cos(pi / (fProxy)(n + 1));
 
             // condition number (read-only on T)
-            AssertClose(Blas.cond(in T), lamMax / lamMin, (fProxy)1E-2);
+            AssertClose(Analysis.cond(in T), lamMax / lamMin, (fProxy)1E-2);
 
             var L = arena.fProxyMat(n, n);
             AssertTrue(Cholesky.choleskyDecomposition(in T, ref L));

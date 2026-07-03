@@ -90,7 +90,7 @@ public class doubleLiteratureTests
             AssertClose(S[1], (double)1, (double)1E-4);
 
             AssertClose(Norms.matrixL2(in A), (double)2, (double)1E-4);
-            AssertClose(Blas.cond(in A), (double)2, (double)1E-4);
+            AssertClose(Analysis.cond(in A), (double)2, (double)1E-4);
 
             arena.Dispose();
         }
@@ -158,10 +158,10 @@ public class doubleLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             var H3 = arena.doubleHilbert(3);
-            AssertClose(Blas.cond(in H3), (double)524.0568, (double)5);
+            AssertClose(Analysis.cond(in H3), (double)524.0568, (double)5);
 
             var H5 = arena.doubleHilbert(5);
-            AssertBelow((double)1E5, Blas.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
+            AssertBelow((double)1E5, Analysis.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
 
             arena.Dispose();
         }
@@ -211,7 +211,7 @@ public class doubleLiteratureTests
             double lamMin = (double)2 - (double)2 * math.cos(pi / (double)(n + 1));
 
             // condition number (read-only on T)
-            AssertClose(Blas.cond(in T), lamMax / lamMin, (double)1E-2);
+            AssertClose(Analysis.cond(in T), lamMax / lamMin, (double)1E-2);
 
             var L = arena.doubleMat(n, n);
             AssertTrue(Cholesky.choleskyDecomposition(in T, ref L));

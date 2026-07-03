@@ -413,7 +413,7 @@ public class doubleSolverBatteryTests
                 AssertClose(S[i], sq, band);
 
             double condBand = IsDouble() ? (double)1E-5 : (double)1E-2;
-            AssertClose(Blas.cond(in A), (double)1, condBand);
+            AssertClose(Analysis.cond(in A), (double)1, condBand);
         }
 
         // Parter: nonsymmetric Toeplitz; all singular values < π and cluster near π. n = 8.
@@ -459,7 +459,7 @@ public class doubleSolverBatteryTests
             AssertClose(S[2], eps, (double)1 * Consts.doubleSqrtEps);
 
             // numerical rank is full (n) at this ε
-            RecordEq(Blas.rank(in A), n);
+            RecordEq(Analysis.rank(in A), n);
 
             // pinv least squares recovers a consistent xTrue
             var xTrue = arena.doubleVec(n);
@@ -767,10 +767,10 @@ public class doubleSolverBatteryTests
             var arena = new Arena(Allocator.Persistent);
 
             var Hd = arena.doubleHadamard(4);
-            AssertClose(Blas.cond(in Hd), (double)1, IsDouble() ? (double)1E-5 : (double)1E-2);
+            AssertClose(Analysis.cond(in Hd), (double)1, IsDouble() ? (double)1E-5 : (double)1E-2);
 
             var H3 = arena.doubleHilbert(3);
-            double c = Blas.cond(in H3);
+            double c = Analysis.cond(in H3);
             AssertClose(c, (double)524.0568, IsDouble() ? (double)1 : (double)10);
 
             arena.Dispose();
