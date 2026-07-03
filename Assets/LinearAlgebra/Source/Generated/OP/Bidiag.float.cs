@@ -21,7 +21,7 @@ namespace LinearAlgebra
 
         // Build a Householder reflector from COLUMN k of matrix M (rows k..M_Rows-1).
         // Stores result in u[k..M_Rows-1]; entries u[0..k-1] are not accessed.
-        // Convention: H = I - u*uᵀ with ||u||² = 2, matching QR.genHouseholderPete.
+        // Convention: H = I - u*uᵀ with ||u||² = 2, matching QR.genHouseholder.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void genHouseholderCol(ref floatMxN M, ref floatN u, int k, float zeroThreshold)
         {

@@ -69,19 +69,4 @@ namespace LinearAlgebra
 
     }
 
-    public interface IMatrix<T> where T : unmanaged {
-
-        ref T this[int row, int col] { get; }
-        ref T this[int index] { get; }
-
-        int M_Rows { get; }
-        int N_Cols { get; }
-
-        void CopyTo(IMatrix<T> destination);
-        void CopyFrom(IMatrix<T> source);
-
-        // Read-only checks
-        bool IsSquare { get; }
-    }
-
 }

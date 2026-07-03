@@ -1,7 +1,5 @@
 using Unity.Mathematics;
 
-using UnityEngine.UIElements;
-
 namespace LinearAlgebra
 {
     public static partial class ArenaExtensions {

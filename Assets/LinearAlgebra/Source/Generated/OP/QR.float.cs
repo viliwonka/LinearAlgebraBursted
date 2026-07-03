@@ -21,7 +21,7 @@ namespace LinearAlgebra
         // scale-invariant — a fixed absolute constant mis-classifies every column of a uniformly
         // tiny-magnitude matrix as a zero column and silently produces a garbage decomposition.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void genHouseholderPete(ref floatMxN Q, ref floatN u, int k, float zeroThreshold) {
+        private static void genHouseholder(ref floatMxN Q, ref floatN u, int k, float zeroThreshold) {
 
             for (int r = k; r < u.N; r++)
                 u[r] = Q[r, k];
@@ -100,7 +100,7 @@ namespace LinearAlgebra
         // EXACTLY Q.M_Rows; w is a workspace vector of length >= Q.N_Cols (the reflector-apply
         // accumulator). Hoist both out of a hot loop to skip the per-call Allocator.Temp allocs.
         // Always reports DirectSolveStatus.Success — this factorization has no failure mode (a
-        // zero-norm column is handled via the sign-convention fallback in genHouseholderPete, not
+        // zero-norm column is handled via the sign-convention fallback in genHouseholder, not
         // rejected).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo qrDecomposition(ref floatMxN Q, ref floatMxN R, ref floatN u, ref floatN w)
@@ -116,12 +116,12 @@ namespace LinearAlgebra
 
             int qrSteps = Q.N_Cols;
 
-            // scale-relative zero-column threshold (see genHouseholderPete); LInf(Q) == max |entry|.
+            // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
             float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
 
             for (int d = 0; d < qrSteps; d++)
             {
-                genHouseholderPete(ref Q, ref u, d, zeroThreshold);
+                genHouseholder(ref Q, ref u, d, zeroThreshold);
 
                 // Apply the reflector to the trailing submatrix: Q[d:, d:] -= u·(uᵀ·Q[d:, d:]).
                 // Vectorised, zero-alloc (w is caller scratch). See applyReflectorRight.
@@ -183,7 +183,7 @@ namespace LinearAlgebra
         }
 
         // Blocked (level-3 / compact-WY, GEMM trailing-update) factorization core. τ≡1 convention
-        // throughout (see file-header notes on genHouseholderPete / applyReflectorRight): each
+        // throughout (see file-header notes on genHouseholder / applyReflectorRight): each
         // H_i = I - u_i u_iᵀ, so the compact-WY T has T[i,i] = 1 (not LAPACK's τ-scaled diagonal).
         //
         // Panels of QR_BLOCK columns are factored with the existing rank-1 sweep (cheap — pb is
@@ -222,7 +222,7 @@ namespace LinearAlgebra
             int m = Q.M_Rows;
             int n = Q.N_Cols;
 
-            // scale-relative zero-column threshold (see genHouseholderPete); LInf(Q) == max |entry|.
+            // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
             float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
 
             float* Qp = Q.Data.Ptr;
@@ -241,7 +241,7 @@ namespace LinearAlgebra
                 //     once below as a single block GEMM instead of once per column.
                 for (int d = p0; d < p0 + pb; d++)
                 {
-                    genHouseholderPete(ref Q, ref u, d, zeroThreshold);
+                    genHouseholder(ref Q, ref u, d, zeroThreshold);
                     applyReflectorRightCols(ref Q, ref u, ref w, d, p0 + pb);
 
                     R[d, d] = Q[d, d];
@@ -457,7 +457,7 @@ namespace LinearAlgebra
             var w = new floatN(n, Allocator.Temp, false);
             var colNorm2 = new floatN(n, Allocator.Temp, false);
 
-            // scale-relative zero-column threshold (see genHouseholderPete); LInf(Q) == max |entry|.
+            // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
             float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
 
             for (int d = 0; d < n; d++)
@@ -507,7 +507,7 @@ namespace LinearAlgebra
                     P.Swap(d, pivotCol);
                 }
 
-                genHouseholderPete(ref Q, ref u, d, zeroThreshold);
+                genHouseholder(ref Q, ref u, d, zeroThreshold);
 
                 // Apply the reflector to the trailing submatrix (vectorised, see applyReflectorRight).
                 applyReflectorRight(ref Q, ref u, ref w, d);
@@ -594,13 +594,13 @@ namespace LinearAlgebra
             // Reflector-apply accumulator (length N_Cols). Allocated once per call (O(n) « O(n³)).
             var w = new floatN(A.N_Cols, Allocator.Temp, false);
 
-            // scale-relative zero-column threshold (see genHouseholderPete); LInf(A) == max |entry|.
+            // scale-relative zero-column threshold (see genHouseholder); LInf(A) == max |entry|.
             float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in A);
 
             float dotProduct = 0;
             for (int d = 0; d < qrSteps; d++) {
 
-                genHouseholderPete(ref A, ref u, d, zeroThreshold);
+                genHouseholder(ref A, ref u, d, zeroThreshold);
 
                 // Apply the reflector to the trailing submatrix (vectorised, see applyReflectorRight).
                 applyReflectorRight(ref A, ref u, ref w, d);

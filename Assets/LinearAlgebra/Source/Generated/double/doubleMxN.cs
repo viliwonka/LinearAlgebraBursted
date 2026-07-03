@@ -7,7 +7,7 @@ namespace LinearAlgebra
     // A m x n matrix
     // m = rows
     // n = cols
-    public partial struct doubleMxN : IDisposable, IUnsafedoubleArray, IMatrix<double> {
+    public partial struct doubleMxN : IDisposable, IUnsafedoubleArray {
         
         public int M_Rows;
         public int N_Cols;
@@ -23,10 +23,6 @@ namespace LinearAlgebra
         public readonly int Length;
 
         public bool IsSquare => M_Rows == N_Cols;
-
-        int IMatrix<double>.M_Rows => M_Rows;
-
-        int IMatrix<double>.N_Cols => N_Cols;
 
         public unsafe doubleMxN(int M_rows, int N_cols, Allocator allocator, bool uninit = false)
         {
@@ -111,14 +107,6 @@ namespace LinearAlgebra
                 if (r < M_Rows - 1) sb.AppendLine();
             }
             return sb.ToString();
-        }
-
-        void IMatrix<double>.CopyTo(IMatrix<double> destination) {
-            throw new NotImplementedException();
-        }
-
-        void IMatrix<double>.CopyFrom(IMatrix<double> source) {
-            throw new NotImplementedException();
         }
     }
 }
