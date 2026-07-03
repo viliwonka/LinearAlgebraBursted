@@ -8,14 +8,14 @@ using Unity.Jobs;
 // Milestone D: block-size-specialized (unrolled) sparse matvec kernels, b in {1,2,3,4,6}
 // (bsmMatVecB{b} / bsmMatVecTB{b} / bsmMatVecSymB{b} in UnsafeOP.Sparse.fProxy.cs), dispatched
 // from Sparse_OP.spMV / spMVT (SparseOP.fProxy.cs). Every case here proves ONE dispatch branch
-// against the dense reference: build a fProxyBSM via the builder, expand with ToDense (already
-// independently validated by fProxySparseBSMTests), and assert spMV/spMVT agree with
-// Linear_OP.dot on the dense expansion -- exactly the recipe fProxySparseBSMTests.RandomSpMV /
+// against the dense reference: build a fProxyBSR via the builder, expand with ToDense (already
+// independently validated by fProxySparseBSRTests), and assert spMV/spMVT agree with
+// Linear_OP.dot on the dense expansion -- exactly the recipe fProxySparseBSRTests.RandomSpMV /
 // RandomSpMVT already use, just swept across every specialized block size PLUS the two boundary
 // cases that must still fall back to the general kernel: a non-specialized square size (b=5) and
 // a rectangular block (BR != BC, which never dispatches to a specialized kernel regardless of
 // size). Symmetric-storage cases (bsmMatVecSymB{b}) reuse the same recipe but on a GENUINELY
-// symmetric matrix: ToBSMSymmetric now requires symmetric diagonal blocks (the lower triangle is
+// symmetric matrix: ToBSRSymmetric now requires symmetric diagonal blocks (the lower triangle is
 // stored implicitly as the transpose), so the diagonal blocks are built as M^T M. That makes the
 // dense expansion truly symmetric, which lets the spMVT check compare against an INDEPENDENT
 // transpose-matvec of the dense (DenseTransMatVec) rather than tautologically re-using spMV's own
@@ -37,7 +37,7 @@ public class fProxySparseUnrollTests
 
         public TestType Type;
 
-        // Matches fProxySparseBSMTests.Tol(): values live in [-1,1], dot products sum a handful
+        // Matches fProxySparseBSRTests.Tol(): values live in [-1,1], dot products sum a handful
         // of products, so the absolute error stays well below this scaled threshold on both
         // precisions (float needs the looser bound, double is far tighter).
         static fProxy Tol() => /*+choose[1e-4f|1e-11]*/1e-4f/*-choose*/;
@@ -75,7 +75,7 @@ public class fProxySparseUnrollTests
         // ---- helpers ---------------------------------------------------------------------
 
         // Reference y = A^T*x computed directly off the dense expansion (independent of
-        // Linear_OP.trans), matching fProxySparseBSMTests.DenseTransMatVec.
+        // Linear_OP.trans), matching fProxySparseBSRTests.DenseTransMatVec.
         static void DenseTransMatVec(in fProxyMxN dense, in fProxyN x, ref fProxyN y)
         {
             for (int j = 0; j < dense.N_Cols; j++)
@@ -89,21 +89,21 @@ public class fProxySparseUnrollTests
 
         // 4x4 block grid of b x b blocks (square, non-symmetric storage), six scattered stored
         // blocks (some rows/cols empty) so RowPtr/ColInd traversal isn't trivially degenerate.
-        static fProxyBSM BuildRandomSquare(ref Arena arena, int b, uint seedBase)
+        static fProxyBSR BuildRandomSquare(ref Arena arena, int b, uint seedBase)
         {
-            var builder = arena.fProxyBSMBuilder(4, 4, b, b);
+            var builder = arena.fProxyBSRBuilder(4, 4, b, b);
             builder.AddBlock(0, 0, arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seedBase + 1u));
             builder.AddBlock(0, 2, arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seedBase + 2u));
             builder.AddBlock(1, 1, arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seedBase + 3u));
             builder.AddBlock(1, 3, arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seedBase + 4u));
             builder.AddBlock(2, 0, arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seedBase + 5u));
             builder.AddBlock(3, 3, arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seedBase + 6u));
-            return builder.ToBSM(ref arena);
+            return builder.ToBSR(ref arena);
         }
 
         // Symmetric b x b diagonal block D = M^T M: symmetric by construction (bit-exact, since
         // D[r,c] and D[c,r] sum the identical products in the identical order), so it satisfies
-        // ToBSMSymmetric's diagonal-symmetry contract with zero asymmetry.
+        // ToBSRSymmetric's diagonal-symmetry contract with zero asymmetry.
         static fProxyMxN SymDiagBlock(ref Arena arena, int b, uint seed)
         {
             var M = arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seed);
@@ -115,11 +115,11 @@ public class fProxySparseUnrollTests
         // three off-diagonal pairs, including two that both mirror into block-row 3 (exercises
         // bi!=bj scatter writes landing in the same y-range from different stored blocks). Diagonal
         // blocks are M^T M so the represented matrix is genuinely symmetric (required by
-        // ToBSMSymmetric); off-diagonal blocks stay arbitrary (their transpose fills the lower
+        // ToBSRSymmetric); off-diagonal blocks stay arbitrary (their transpose fills the lower
         // triangle).
-        static fProxyBSM BuildRandomSymmetric(ref Arena arena, int b, uint seedBase)
+        static fProxyBSR BuildRandomSymmetric(ref Arena arena, int b, uint seedBase)
         {
-            var builder = arena.fProxyBSMBuilder(4, 4, b, b);
+            var builder = arena.fProxyBSRBuilder(4, 4, b, b);
             builder.AddBlock(0, 0, SymDiagBlock(ref arena, b, seedBase + 1u));
             builder.AddBlock(1, 1, SymDiagBlock(ref arena, b, seedBase + 2u));
             builder.AddBlock(2, 2, SymDiagBlock(ref arena, b, seedBase + 3u));
@@ -127,7 +127,7 @@ public class fProxySparseUnrollTests
             builder.AddBlock(0, 1, arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seedBase + 5u));
             builder.AddBlock(1, 3, arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seedBase + 6u));
             builder.AddBlock(0, 3, arena.fProxyRandomMat(b, b, (fProxy)(-1f), (fProxy)1f, seedBase + 7u));
-            return builder.ToBSMSymmetric(ref arena);
+            return builder.ToBSRSymmetric(ref arena);
         }
 
         // ---- square-block spMV / spMVT: covers b in {1,2,3,4,6} (specialized) and b=5
@@ -182,12 +182,12 @@ public class fProxySparseUnrollTests
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2, BC = 3; // BC would be a specialized size on its own -- BR != BC must still fall back.
-            var builder = arena.fProxyBSMBuilder(3, 3, BR, BC);
+            var builder = arena.fProxyBSRBuilder(3, 3, BR, BC);
             builder.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 71001));
             builder.AddBlock(0, 2, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 71002));
             builder.AddBlock(1, 1, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 71003));
             builder.AddBlock(2, 0, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 71004));
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
             var dense = A.ToDense(ref arena);
 
             var x = arena.fProxyRandomVec(A.N_Cols, (fProxy)(-1f), (fProxy)1f, 71100);
@@ -203,12 +203,12 @@ public class fProxySparseUnrollTests
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2, BC = 3;
-            var builder = arena.fProxyBSMBuilder(3, 3, BR, BC);
+            var builder = arena.fProxyBSRBuilder(3, 3, BR, BC);
             builder.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 72001));
             builder.AddBlock(0, 2, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 72002));
             builder.AddBlock(1, 1, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 72003));
             builder.AddBlock(2, 0, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 72004));
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
             var dense = A.ToDense(ref arena);
 
             var xt = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 72100);

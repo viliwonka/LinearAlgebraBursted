@@ -4,28 +4,28 @@ namespace LinearAlgebra
 {
     public static partial class SVD
     {
-        /// <summary>Throws unless <paramref name="ws"/> matches Arena.floatSVDValues_WS(m, n) sizing.</summary>
-        static void RequireSvdValuesWorkspace(in floatSVDValues_WS ws, int n)
+        /// <summary>Throws unless <paramref name="ws"/> matches Arena.floatSVDValuesCache(m, n) sizing.</summary>
+        static void RequireSvdValuesWorkspace(in floatSVDValuesCache ws, int n)
         {
             bool ok = ws.dVec.N == n && ws.eVec.N == n;
 
             if (!ok)
-                throw new ArgumentException("SVD: workspace must be sized for m x n (use Arena.floatSVDValues_WS(m, n))");
+                throw new ArgumentException("SVD: workspace must be sized for m x n (use Arena.floatSVDValuesCache(m, n))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for SVD.svdValues (Golub-Kahan bidiagonalization, values-only + implicit-shift
-    /// bidiagonal QR, values-only). Allocate ONCE via Arena.floatSVDValues_WS(m, n) and reuse it across
+    /// bidiagonal QR, values-only). Allocate ONCE via Arena.floatSVDValuesCache(m, n) and reuse it across
     /// many same-shape calls to avoid the per-call Allocator.Temp allocations svdValues's allocating
     /// overload makes internally.
     ///
-    /// BidiagWs is the nested workspace Bidiag.bidiagonalizeValues needs (see floatBidiag_WS); dVec/eVec
+    /// BidiagWs is the nested workspace Bidiag.bidiagonalizeValues needs (see floatBidiagCache); dVec/eVec
     /// (length n) are the diagonal/superdiagonal the values-only bidiagonal QR diagonalizes in place.
     /// </summary>
-    public struct floatSVDValues_WS
+    public struct floatSVDValuesCache
     {
-        public floatBidiag_WS BidiagWs;
+        public floatBidiagCache BidiagWs;
         public floatN dVec;
         public floatN eVec;
     }
@@ -34,14 +34,14 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Allocates an svdValues workspace for an m x n (m >= n) system — see
-        /// <see cref="floatSVDValues_WS"/> for layout. Persistent in this arena; create once outside a
+        /// <see cref="floatSVDValuesCache"/> for layout. Persistent in this arena; create once outside a
         /// hot loop and pass to svdValues's ref-workspace overload.
         /// </summary>
-        public static floatSVDValues_WS floatSVDValues_WS(this ref Arena arena, int m, int n)
+        public static floatSVDValuesCache floatSVDValuesCache(this ref Arena arena, int m, int n)
         {
-            return new floatSVDValues_WS
+            return new floatSVDValuesCache
             {
-                BidiagWs = arena.floatBidiag_WS(m, n),
+                BidiagWs = arena.floatBidiagCache(m, n),
                 dVec = arena.floatVec(n),
                 eVec = arena.floatVec(n)
             };

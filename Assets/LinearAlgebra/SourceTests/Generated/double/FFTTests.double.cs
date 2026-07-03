@@ -527,7 +527,7 @@ public class doubleFFTTests
         void TableFftVsRecurrence(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             var re0 = arena.doubleRandomVec(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVec(N, -2f, 2f, seedIm);
 
@@ -564,7 +564,7 @@ public class doubleFFTTests
         void TableIfftVsRecurrence(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             var re0 = arena.doubleRandomVec(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVec(N, -2f, 2f, seedIm);
 
@@ -603,7 +603,7 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             var real = arena.doubleRandomVec(N, -2f, 2f, seed);
 
             var reR = arena.doubleVec(halfSpec);
@@ -648,7 +648,7 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             var real0 = arena.doubleRandomVec(N, -2f, 2f, seed);
 
             var specRe = arena.doubleVec(halfSpec);
@@ -687,7 +687,7 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 64;
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
 
             var re0 = arena.doubleRandomVec(N, -3f, 3f, 6543u);
             var im0 = arena.doubleRandomVec(N, -3f, 3f, 7654u);
@@ -710,7 +710,7 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int halfSpec = (N >> 1) + 1;
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             var real0 = arena.doubleRandomVec(N, -3f, 3f, seed);
 
             var rRe = arena.doubleVec(halfSpec);
@@ -763,7 +763,7 @@ public class doubleFFTTests
         void Radix4VsOracleOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.doubleFFT_WS(N);
+            var ws    = arena.doubleFFTCache(N);
 
             var re0 = arena.doubleRandomVec(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVec(N, -2f, 2f, seedIm);
@@ -829,7 +829,7 @@ public class doubleFFTTests
         void Radix4RoundTripOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws    = arena.doubleFFT_WS(N);
+            var ws    = arena.doubleFFTCache(N);
 
             var re0 = arena.doubleRandomVec(N, -3f, 3f, seedRe);
             var im0 = arena.doubleRandomVec(N, -3f, 3f, seedIm);
@@ -893,7 +893,7 @@ public class doubleFFTTests
         void FftVsDftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             var re0 = arena.doubleRandomVec(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVec(N, -2f, 2f, seedIm);
 
@@ -934,7 +934,7 @@ public class doubleFFTTests
         void ParsevalFftOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             var re0 = arena.doubleRandomVec(N, -2f, 2f, seedRe);
             var im0 = arena.doubleRandomVec(N, -2f, 2f, seedIm);
 
@@ -971,7 +971,7 @@ public class doubleFFTTests
         void ParsevalRfftOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             int halfSpec = (N >> 1) + 1;
             int M = N >> 1;
             var real = arena.doubleRandomVec(N, -2f, 2f, seed);
@@ -1017,7 +1017,7 @@ public class doubleFFTTests
         void FftLinearityOneSize(int N, uint sx, uint sy)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
 
             var xr = arena.doubleRandomVec(N, -2f, 2f, sx);
             var xi = arena.doubleRandomVec(N, -2f, 2f, sx + 17u);
@@ -1082,7 +1082,7 @@ public class doubleFFTTests
         //   constant c          -> X[0] = c·N, else 0
         //   exp(+2πi·k0·n/N)    -> X[k0] = N, else 0
         // Runs the input through BOTH fft(ws) and dft and compares each to the analytic expectation.
-        void KnownRunBoth(in doubleFFT_WS ws, int N,
+        void KnownRunBoth(in doubleFFTCache ws, int N,
                           in doubleN inRe, in doubleN inIm,
                           in doubleN expRe, in doubleN expIm, double relTol)
         {
@@ -1099,7 +1099,7 @@ public class doubleFFTTests
         {
             var arena = new Arena(Allocator.Persistent);
             int N = 16;
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             double twoPi = (double)(2.0 * System.Math.PI);
             double relTol = (double)2E-3f;
 
@@ -1191,7 +1191,7 @@ public class doubleFFTTests
         void RoundTripFftWsOneSize(int N, uint seedRe, uint seedIm)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             var re0 = arena.doubleRandomVec(N, -3f, 3f, seedRe);
             var im0 = arena.doubleRandomVec(N, -3f, 3f, seedIm);
 
@@ -1211,7 +1211,7 @@ public class doubleFFTTests
         void RoundTripRfftWsOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             int halfSpec = (N >> 1) + 1;
             var real0 = arena.doubleRandomVec(N, -3f, 3f, seed);
 
@@ -1268,7 +1268,7 @@ public class doubleFFTTests
         void WorkspaceReuseOneSize(int N, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
-            var ws = arena.doubleFFT_WS(N);
+            var ws = arena.doubleFFTCache(N);
             int halfSpec = (N >> 1) + 1;
 
             var re0 = arena.doubleRandomVec(N, -2f, 2f, seed);
@@ -1520,11 +1520,11 @@ public class doubleFFTTests
     public void FftWorkspaceFactoryNonPow2Throws()
     {
         var arena = new Arena(Allocator.Persistent);
-        Assert.Throws<ArgumentException>(() => arena.doubleFFT_WS(0));
-        Assert.Throws<ArgumentException>(() => arena.doubleFFT_WS(1));
-        Assert.Throws<ArgumentException>(() => arena.doubleFFT_WS(3));
-        Assert.Throws<ArgumentException>(() => arena.doubleFFT_WS(5));
-        Assert.Throws<ArgumentException>(() => arena.doubleFFT_WS(6));
+        Assert.Throws<ArgumentException>(() => arena.doubleFFTCache(0));
+        Assert.Throws<ArgumentException>(() => arena.doubleFFTCache(1));
+        Assert.Throws<ArgumentException>(() => arena.doubleFFTCache(3));
+        Assert.Throws<ArgumentException>(() => arena.doubleFFTCache(5));
+        Assert.Throws<ArgumentException>(() => arena.doubleFFTCache(6));
         arena.Dispose();
     }
 
@@ -1534,7 +1534,7 @@ public class doubleFFTTests
         var arena = new Arena(Allocator.Persistent);
         var re8  = arena.doubleVec(8);
         var im8  = arena.doubleVec(8);
-        var ws16 = arena.doubleFFT_WS(16);   // sized for 16, not 8
+        var ws16 = arena.doubleFFTCache(16);   // sized for 16, not 8
 
         // fft and ifft with mismatched workspace
         Assert.Throws<ArgumentException>(() => doubleFFT_OP.fft(ref re8, ref im8, in ws16));
@@ -1556,7 +1556,7 @@ public class doubleFFTTests
     public void RfftTableWrongOutputLengthThrows()
     {
         var arena = new Arena(Allocator.Persistent);
-        var ws = arena.doubleFFT_WS(8);
+        var ws = arena.doubleFFTCache(8);
         var real = arena.doubleVec(8);
         var re5  = arena.doubleVec(5);    // correct N/2+1
         var im5  = arena.doubleVec(5);    // correct

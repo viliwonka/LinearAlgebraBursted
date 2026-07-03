@@ -37,7 +37,7 @@ namespace LinearAlgebra
         //     not from higher-precision accumulation.
         //
         // lowRankApprox uses svdThin instead (full SVD + slice — see its own doc). Scratch layout:
-        // see floatSVDTruncated_WS.
+        // see floatSVDTruncatedCache.
 
         /// <summary>
         /// GKL truncated SVD: the top-k singular triplets of A (m x n, m >= n) via Golub-Kahan-Lanczos
@@ -54,11 +54,11 @@ namespace LinearAlgebra
         /// are set to 0, Uk/Vk columns zeroed. The residual |β_last·P[p-1,t]| / (σ₀+ε) is also checked
         /// against 8·√ε; if it exceeds this tolerance, converged is set false.
         /// <paramref name="ws"/> is the GKL scratch; size it with
-        /// Arena.floatSVDTruncated_WS(m, n, k, oversample) using the SAME k and oversample.
+        /// Arena.floatSVDTruncatedCache(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static void svdTruncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
-                                        bool partialReorth, ref floatSVDTruncated_WS ws, out bool converged)
+                                        bool partialReorth, ref floatSVDTruncatedCache ws, out bool converged)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -514,29 +514,29 @@ namespace LinearAlgebra
         /// <summary>svdTruncated (ref workspace) with default partialReorth=true.</summary>
         public static void svdTruncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
-                                        ref floatSVDTruncated_WS ws, out bool converged)
+                                        ref floatSVDTruncatedCache ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
 
         /// <summary>svdTruncated (ref workspace) with default maxIter (75) and partialReorth=true.</summary>
         public static void svdTruncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                         int k, int oversample, uint seed,
-                                        ref floatSVDTruncated_WS ws, out bool converged)
+                                        ref floatSVDTruncatedCache ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, ref ws, out converged);
 
         /// <summary>svdTruncated (ref workspace) with default seed and maxIter (75) and partialReorth=true.</summary>
         public static void svdTruncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                         int k, int oversample,
-                                        ref floatSVDTruncated_WS ws, out bool converged)
+                                        ref floatSVDTruncatedCache ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
         /// svdTruncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12))
         /// and partialReorth=true.
-        /// Pass a workspace from Arena.floatSVDTruncated_WS(m, n, k) (no oversample overload)
+        /// Pass a workspace from Arena.floatSVDTruncatedCache(m, n, k) (no oversample overload)
         /// which uses the same generous formula.
         /// </summary>
         public static void svdTruncated(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                        int k, ref floatSVDTruncated_WS ws, out bool converged)
+                                        int k, ref floatSVDTruncatedCache ws, out bool converged)
             => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
@@ -551,26 +551,26 @@ namespace LinearAlgebra
             if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
             if (oversample < 0) throw new ArgumentException("svdTruncated: oversample must be >= 0");
             int p = math.min(k + oversample, n);
-            var ws = new floatSVDTruncated_WS
+            var ws = new floatSVDTruncatedCache
             {
-                UL     = A.tempfloatMat(p, m),
-                VL     = A.tempfloatMat(p + 1, n),
-                dB     = A.tempfloatVec(p),
-                eB     = A.tempfloatVec(p),
-                UtB    = A.tempfloatMat(p, p),
-                VtB    = A.tempfloatMat(p, p),
-                BsvdWs = new floatSVDFull_WS
+                UL     = A.floatTempMat(p, m),
+                VL     = A.floatTempMat(p + 1, n),
+                dB     = A.floatTempVec(p),
+                eB     = A.floatTempVec(p),
+                UtB    = A.floatTempMat(p, p),
+                VtB    = A.floatTempMat(p, p),
+                BsvdWs = new floatSVDFullCache
                 {
-                    U = A.tempfloatMat(p, p),
-                    S = A.tempfloatVec(p),
-                    V = A.tempfloatMat(p, p)
+                    U = A.floatTempMat(p, p),
+                    S = A.floatTempVec(p),
+                    V = A.floatTempMat(p, p)
                 },
-                uBuf  = A.tempfloatVec(m),
-                vBuf  = A.tempfloatVec(n),
-                alpha = A.tempfloatVec(p),
-                beta  = A.tempfloatVec(p),
-                mu    = A.tempfloatVec(p + 1),
-                nu    = A.tempfloatVec(p + 1)
+                uBuf  = A.floatTempVec(m),
+                vBuf  = A.floatTempVec(n),
+                alpha = A.floatTempVec(p),
+                beta  = A.floatTempVec(p),
+                mu    = A.floatTempVec(p + 1),
+                nu    = A.floatTempVec(p + 1)
             };
             svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, partialReorth, ref ws, out converged);
         }
@@ -588,26 +588,26 @@ namespace LinearAlgebra
             if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
             if (oversample < 0) throw new ArgumentException("svdTruncated: oversample must be >= 0");
             int p = math.min(k + oversample, n);
-            var ws = new floatSVDTruncated_WS
+            var ws = new floatSVDTruncatedCache
             {
-                UL     = A.tempfloatMat(p, m),
-                VL     = A.tempfloatMat(p + 1, n),
-                dB     = A.tempfloatVec(p),
-                eB     = A.tempfloatVec(p),
-                UtB    = A.tempfloatMat(p, p),
-                VtB    = A.tempfloatMat(p, p),
-                BsvdWs = new floatSVDFull_WS
+                UL     = A.floatTempMat(p, m),
+                VL     = A.floatTempMat(p + 1, n),
+                dB     = A.floatTempVec(p),
+                eB     = A.floatTempVec(p),
+                UtB    = A.floatTempMat(p, p),
+                VtB    = A.floatTempMat(p, p),
+                BsvdWs = new floatSVDFullCache
                 {
-                    U = A.tempfloatMat(p, p),
-                    S = A.tempfloatVec(p),
-                    V = A.tempfloatMat(p, p)
+                    U = A.floatTempMat(p, p),
+                    S = A.floatTempVec(p),
+                    V = A.floatTempMat(p, p)
                 },
-                uBuf  = A.tempfloatVec(m),
-                vBuf  = A.tempfloatVec(n),
-                alpha = A.tempfloatVec(p),
-                beta  = A.tempfloatVec(p),
-                mu    = A.tempfloatVec(p + 1),
-                nu    = A.tempfloatVec(p + 1)
+                uBuf  = A.floatTempVec(m),
+                vBuf  = A.floatTempVec(n),
+                alpha = A.floatTempVec(p),
+                beta  = A.floatTempVec(p),
+                mu    = A.floatTempVec(p + 1),
+                nu    = A.floatTempVec(p + 1)
             };
             svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
         }
@@ -623,26 +623,26 @@ namespace LinearAlgebra
             int n = A.N_Cols;
             if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
             int p = math.min(n, math.max(2 * k, k + 12));
-            var ws = new floatSVDTruncated_WS
+            var ws = new floatSVDTruncatedCache
             {
-                UL     = A.tempfloatMat(p, m),
-                VL     = A.tempfloatMat(p + 1, n),
-                dB     = A.tempfloatVec(p),
-                eB     = A.tempfloatVec(p),
-                UtB    = A.tempfloatMat(p, p),
-                VtB    = A.tempfloatMat(p, p),
-                BsvdWs = new floatSVDFull_WS
+                UL     = A.floatTempMat(p, m),
+                VL     = A.floatTempMat(p + 1, n),
+                dB     = A.floatTempVec(p),
+                eB     = A.floatTempVec(p),
+                UtB    = A.floatTempMat(p, p),
+                VtB    = A.floatTempMat(p, p),
+                BsvdWs = new floatSVDFullCache
                 {
-                    U = A.tempfloatMat(p, p),
-                    S = A.tempfloatVec(p),
-                    V = A.tempfloatMat(p, p)
+                    U = A.floatTempMat(p, p),
+                    S = A.floatTempVec(p),
+                    V = A.floatTempMat(p, p)
                 },
-                uBuf  = A.tempfloatVec(m),
-                vBuf  = A.tempfloatVec(n),
-                alpha = A.tempfloatVec(p),
-                beta  = A.tempfloatVec(p),
-                mu    = A.tempfloatVec(p + 1),
-                nu    = A.tempfloatVec(p + 1)
+                uBuf  = A.floatTempVec(m),
+                vBuf  = A.floatTempVec(n),
+                alpha = A.floatTempVec(p),
+                beta  = A.floatTempVec(p),
+                mu    = A.floatTempVec(p + 1),
+                nu    = A.floatTempVec(p + 1)
             };
             // Use oversample = max(k, 12) which gives p = min(k + max(k,12), n) = min(max(2k,k+12), n)
             svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
@@ -655,10 +655,10 @@ namespace LinearAlgebra
         /// Uses the FULL Golub-Kahan SVD (svdThin) internally — EXACT, not approximate. 0 &lt;= k &lt;= n.
         /// A is NOT modified. <paramref name="converged"/> is the SVD's flag (when false Ak is undefined).
         /// <paramref name="ws"/> is full-SVD scratch reused across calls; size it with
-        /// Arena.floatSVDFull_WS(m, n).
+        /// Arena.floatSVDFullCache(m, n).
         /// </summary>
         public static void lowRankApprox(in floatMxN A, ref floatMxN Ak, int k,
-                                         ref floatSVDFull_WS ws, out bool converged, int maxIter)
+                                         ref floatSVDFullCache ws, out bool converged, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -702,7 +702,7 @@ namespace LinearAlgebra
 
         /// <summary>lowRankApprox (ref workspace) with default maxIter (75).</summary>
         public static void lowRankApprox(in floatMxN A, ref floatMxN Ak, int k,
-                                         ref floatSVDFull_WS ws, out bool converged)
+                                         ref floatSVDFullCache ws, out bool converged)
             => lowRankApprox(in A, ref Ak, k, ref ws, out converged, 75);
 
         /// <summary>
@@ -713,11 +713,11 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new floatSVDFull_WS
+            var ws = new floatSVDFullCache
             {
-                U = A.tempfloatMat(m, n),
-                S = A.tempfloatVec(n),
-                V = A.tempfloatMat(n, n)
+                U = A.floatTempMat(m, n),
+                S = A.floatTempVec(n),
+                V = A.floatTempMat(n, n)
             };
             lowRankApprox(in A, ref Ak, k, ref ws, out converged, maxIter);
         }

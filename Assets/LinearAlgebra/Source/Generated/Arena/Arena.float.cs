@@ -6,8 +6,8 @@ namespace LinearAlgebra
     {
         internal UnsafeList<floatN> floatVectors;
         internal UnsafeList<floatMxN> floatMatrices;
-        internal UnsafeList<floatN> tempfloatVectors;
-        internal UnsafeList<floatMxN> tempfloatMatrices;
+        internal UnsafeList<floatN> floatTempVectors;
+        internal UnsafeList<floatMxN> floatTempMatrices;
     }
 
     public unsafe partial struct Arena {
@@ -38,17 +38,17 @@ namespace LinearAlgebra
             return vec;
         }
 
-        internal floatN tempfloatVec(int N, bool uninit = false)
+        internal floatN floatTempVec(int N, bool uninit = false)
         {
             var vec = new floatN(N, in this, uninit);
-            _core->tempfloatVectors.Add(in vec);
+            _core->floatTempVectors.Add(in vec);
             return vec;
         }
 
-        internal floatN tempfloatVec(in floatN orig)
+        internal floatN floatTempVec(in floatN orig)
         {
             var vec = new floatN(in orig);
-            _core->tempfloatVectors.Add(in vec);
+            _core->floatTempVectors.Add(in vec);
             return vec;
         }
         #endregion
@@ -86,17 +86,17 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        internal floatMxN tempfloatMat(int M_rows, int M_cols, bool uninit = false)
+        internal floatMxN floatTempMat(int M_rows, int M_cols, bool uninit = false)
         {
             var matrix = new floatMxN(M_rows, M_cols, in this, uninit);
-            _core->tempfloatMatrices.Add(in matrix);
+            _core->floatTempMatrices.Add(in matrix);
             return matrix;
         }
 
-        internal floatMxN tempfloatMat(in floatMxN orig)
+        internal floatMxN floatTempMat(in floatMxN orig)
         {
             var matrix = new floatMxN(orig);
-            _core->tempfloatMatrices.Add(in matrix);
+            _core->floatTempMatrices.Add(in matrix);
             return matrix;
         }
         #endregion
@@ -108,7 +108,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in floatN v) {
-            for (int i = 0; i < _core->tempfloatVectors.Length; i++) if (_core->tempfloatVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->floatTempVectors.Length; i++) if (_core->floatTempVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
         public bool isPersistent(in floatMxN m) {
@@ -116,7 +116,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in floatMxN m) {
-            for (int i = 0; i < _core->tempfloatMatrices.Length; i++) if (_core->tempfloatMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->floatTempMatrices.Length; i++) if (_core->floatTempMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
 

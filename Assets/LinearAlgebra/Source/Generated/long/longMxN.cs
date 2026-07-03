@@ -83,7 +83,7 @@ namespace LinearAlgebra
             if (!_arena.HasCore)
                 throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
 
-            return _arena.templongMat(in this);
+            return _arena.longTempMat(in this);
         }
 
         public void Dispose() {

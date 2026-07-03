@@ -25,7 +25,7 @@ namespace LinearAlgebra
         // The leading k columns of (U, Σ, W) are the approximate top-k SVD.
         //
         // Buffers come from A's temp pool (allocating overloads) or a caller-provided
-        // floatSVDRandomized_WS (ref-workspace overloads) — see that struct for layout.
+        // floatSVDRandomizedCache (ref-workspace overloads) — see that struct for layout.
 
         // Default sketch seed (golden-ratio constant). Inlined rather than a const field because this
         // type-independent member would otherwise be emitted into BOTH the float and double generated
@@ -46,11 +46,11 @@ namespace LinearAlgebra
         /// flag (false -&gt; outputs undefined). A is NOT modified.
         ///
         /// <paramref name="ws"/> holds all scratch; size it with
-        /// Arena.floatSVDRandomized_WS(m, n, k, oversample) using the SAME k and oversample.
+        /// Arena.floatSVDRandomizedCache(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter,
-                                         ref floatSVDRandomized_WS ws)
+                                         ref floatSVDRandomizedCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -100,12 +100,12 @@ namespace LinearAlgebra
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
         public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                         int k, uint seed, ref floatSVDRandomized_WS ws)
+                                         int k, uint seed, ref floatSVDRandomizedCache ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75, ref ws);
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
         public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                         int k, ref floatSVDRandomized_WS ws)
+                                         int k, ref floatSVDRandomizedCache ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
 
         /// <summary>
@@ -121,20 +121,20 @@ namespace LinearAlgebra
             RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIter);
 
             int l = math.min(k + oversample, n);
-            var ws = new floatSVDRandomized_WS
+            var ws = new floatSVDRandomizedCache
             {
-                Omega = A.tempfloatMat(n, l),
-                Y = A.tempfloatMat(m, l),
-                R = A.tempfloatMat(l, l),
-                qu = A.tempfloatVec(m),
-                qw = A.tempfloatVec(l),
-                Z = A.tempfloatMat(n, l),
-                B = A.tempfloatMat(l, n),
-                Bt = A.tempfloatMat(n, l),
-                Up = A.tempfloatMat(n, l),
-                Sb = A.tempfloatVec(l),
-                Vp = A.tempfloatMat(l, l),
-                UA = A.tempfloatMat(m, l)
+                Omega = A.floatTempMat(n, l),
+                Y = A.floatTempMat(m, l),
+                R = A.floatTempMat(l, l),
+                qu = A.floatTempVec(m),
+                qw = A.floatTempVec(l),
+                Z = A.floatTempMat(n, l),
+                B = A.floatTempMat(l, n),
+                Bt = A.floatTempMat(n, l),
+                Up = A.floatTempMat(n, l),
+                Sb = A.floatTempVec(l),
+                Vp = A.floatTempMat(l, l),
+                UA = A.floatTempMat(m, l)
             };
             return svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, maxIter, ref ws);
         }

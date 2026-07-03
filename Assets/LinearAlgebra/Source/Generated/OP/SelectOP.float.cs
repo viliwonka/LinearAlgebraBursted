@@ -31,7 +31,7 @@ namespace LinearAlgebra
 
         public static floatN select(in floatN a, in floatN b, in boolN c)
         {
-            floatN res = a.tempfloatVec(a.N, true);
+            floatN res = a.floatTempVec(a.N, true);
             select(in a, in b, in c, ref res);
             return res;
         }
@@ -53,7 +53,7 @@ namespace LinearAlgebra
 
         public static floatMxN select(in floatMxN a, in floatMxN b, in boolMxN c)
         {
-            floatMxN res = a.tempfloatMat(a.M_Rows, a.N_Cols, true);
+            floatMxN res = a.floatTempMat(a.M_Rows, a.N_Cols, true);
             select(in a, in b, in c, ref res);
             return res;
         }

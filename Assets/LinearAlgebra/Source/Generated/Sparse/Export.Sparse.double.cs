@@ -6,21 +6,21 @@ using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
-    // Managed (allocating, NON-Burst) text / CSV export for the block-sparse doubleBSM, mirroring
+    // Managed (allocating, NON-Burst) text / CSV export for the block-sparse doubleBSR, mirroring
     // Debug/Export.double.cs. Lives in namespace LinearAlgebra (not LinearAlgebra.Sparse) so it
     // merges into the same `Print` partial class as the dense exporters and the Sparse Debug
-    // overloads -- doubleBSM is brought in via the `using LinearAlgebra.Sparse;` above (same
+    // overloads -- doubleBSR is brought in via the `using LinearAlgebra.Sparse;` above (same
     // pattern as Sparse/Debug.Sparse.double.cs and Sparse/Arena.Sparse.double.cs).
     public static partial class Print
     {
         /// <summary>
-        /// Dense-ish preview: densifies via doubleBSM.ToDense into a scratch Arena (allocated and
+        /// Dense-ish preview: densifies via doubleBSR.ToDense into a scratch Arena (allocated and
         /// disposed internally -- the caller does not need one of their own) and reuses the
         /// existing dense Print.ToText(in doubleMxN). For a preview of the STORAGE itself (not the
-        /// expanded dense matrix), see ToCsv(in doubleBSM)/SaveCsv, which write a block-level
+        /// expanded dense matrix), see ToCsv(in doubleBSR)/SaveCsv, which write a block-level
         /// coordinate/triplet list instead.
         /// </summary>
-        public static string ToText(in doubleBSM m)
+        public static string ToText(in doubleBSR m)
         {
             var arena = new Arena(Allocator.Persistent);
             var dense = m.ToDense(ref arena);
@@ -32,11 +32,11 @@ namespace LinearAlgebra
         /// <summary>
         /// Block-level coordinate/triplet CSV: one row per STORED block, "blockRow,blockCol,v0,v1,
         /// ...,v(BR*BC-1)" with the block's values flattened row-major (matching Values' own
-        /// layout -- see doubleBSM.cs). Avoids needing an Arena (unlike ToText's ToDense route) by
+        /// layout -- see doubleBSR.cs). Avoids needing an Arena (unlike ToText's ToDense route) by
         /// reading RowPtr/ColInd/Values directly. For Symmetric matrices this reflects exactly
         /// what is stored (the upper block-triangle only), not a mirrored dense expansion.
         /// </summary>
-        public static string ToCsv(in doubleBSM m)
+        public static string ToCsv(in doubleBSR m)
         {
             int blockLen = m.BR * m.BC;
 
@@ -74,6 +74,6 @@ namespace LinearAlgebra
             return sb.ToString();
         }
 
-        public static void SaveCsv(in doubleBSM m, string path) => File.WriteAllText(path, ToCsv(in m));
+        public static void SaveCsv(in doubleBSR m, string path) => File.WriteAllText(path, ToCsv(in m));
     }
 }

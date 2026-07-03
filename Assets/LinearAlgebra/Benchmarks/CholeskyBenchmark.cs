@@ -41,7 +41,7 @@ namespace LinearAlgebra.Benchmarks
     {
         public floatMxN A;
         public floatMxN L;
-        public floatCholeskyPivot_WS ws;
+        public floatCholeskyPivotCache ws;
 
         public void Execute()
         {
@@ -56,7 +56,7 @@ namespace LinearAlgebra.Benchmarks
     {
         public doubleMxN A;
         public doubleMxN L;
-        public doubleCholeskyPivot_WS ws;
+        public doubleCholeskyPivotCache ws;
 
         public void Execute()
         {
@@ -142,7 +142,7 @@ namespace LinearAlgebra.Benchmarks
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatMat(n, n);
             var L = arena.floatMat(n, n);
-            var ws = arena.floatCholeskyPivot_WS(n);
+            var ws = arena.floatCholeskyPivotCache(n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -167,7 +167,7 @@ namespace LinearAlgebra.Benchmarks
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleMat(n, n);
             var L = arena.doubleMat(n, n);
-            var ws = arena.doubleCholeskyPivot_WS(n);
+            var ws = arena.doubleCholeskyPivotCache(n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)

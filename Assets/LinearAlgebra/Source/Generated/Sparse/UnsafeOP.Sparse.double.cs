@@ -47,7 +47,7 @@ namespace LinearAlgebra.Internal
         // transposed copy) -- each stored block K contributes y[j-block] += K^T * x[i-block].
         // Safe single-threaded (no scatter race): every (br,k) pair touches a distinct block,
         // and different blocks in the same block-row write to DIFFERENT y[j-block] ranges only
-        // when ColInd is duplicate-free per row, which ToBSM guarantees.
+        // when ColInd is duplicate-free per row, which ToBSR guarantees.
         // Correctness-first fallback -- Sparse_OP.spMVT routes here for rectangular blocks and
         // any square size not covered by bsmMatVecTB1/B2/B3/B4/B6 below.
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -85,7 +85,7 @@ namespace LinearAlgebra.Internal
         // is IMPLICIT (block (bj,bi) == transpose of stored block (bi,bj)). y must already be zeroed
         // by the caller (accumulates into y). For each stored block K at (bi,bj):
         //   - diagonal (bi==bj): y_i += K * x_j   (once -- K is used as the full BR x BR block as
-        //     given, no packing/half-storage assumption; see doubleBSM.Symmetric doc)
+        //     given, no packing/half-storage assumption; see doubleBSR.Symmetric doc)
         //   - off-diagonal (bi<bj, guaranteed since only the upper triangle is stored): y_i += K * x_j
         //     AND y_j += K^T * x_i (the implicit mirrored lower block)
         // Single-threaded caller (IJob.Run, no parallel-for) -> the y_j scatter write from an

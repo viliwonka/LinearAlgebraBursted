@@ -31,8 +31,8 @@ namespace LinearAlgebra
                 throw new ArgumentException("svdRandomized: maxIter must be >= 1");
         }
 
-        /// <summary>Throws unless <paramref name="ws"/> matches Arena.doubleSVDRandomized_WS(m, n, k, oversample) sizing (sketch width l = min(k+oversample, n)).</summary>
-        static void RequireSvdRandomizedWorkspace(in doubleSVDRandomized_WS ws, int m, int n, int l)
+        /// <summary>Throws unless <paramref name="ws"/> matches Arena.doubleSVDRandomizedCache(m, n, k, oversample) sizing (sketch width l = min(k+oversample, n)).</summary>
+        static void RequireSvdRandomizedWorkspace(in doubleSVDRandomizedCache ws, int m, int n, int l)
         {
             bool ok =
                 ws.Omega.M_Rows == n && ws.Omega.N_Cols == l &&
@@ -51,14 +51,14 @@ namespace LinearAlgebra
             if (!ok)
                 throw new ArgumentException(
                     "svdRandomized: workspace must be sized for this (m, n, k, oversample) — use " +
-                    "Arena.doubleSVDRandomized_WS(m, n, k, oversample) with the SAME k and oversample");
+                    "Arena.doubleSVDRandomizedCache(m, n, k, oversample) with the SAME k and oversample");
         }
     }
 
     /// <summary>
     /// Reusable scratch storage for svdRandomized (Halko-Martinsson-Tropp). The randomized SVD
     /// allocates a dozen intermediate buffers per call; allocate this ONCE via
-    /// Arena.doubleSVDRandomized_WS(m, n, k, oversample) and reuse it across same-shape calls
+    /// Arena.doubleSVDRandomizedCache(m, n, k, oversample) and reuse it across same-shape calls
     /// (SAME k and oversample) to make repeated randomized SVDs zero-alloc.
     ///
     /// All buffers are sized by the sketch width l = min(k + oversample, n): Omega (n x l), Y (m x l,
@@ -69,7 +69,7 @@ namespace LinearAlgebra
     /// svdThin on the small Bt still uses a little Allocator.Temp scratch of its own, so the op
     /// is low-alloc rather than strictly zero-alloc.
     /// </summary>
-    public struct doubleSVDRandomized_WS
+    public struct doubleSVDRandomizedCache
     {
         public doubleMxN Omega;
         public doubleMxN Y;
@@ -90,13 +90,13 @@ namespace LinearAlgebra
         /// <summary>
         /// Allocates a randomized-SVD workspace for an m x n (m >= n) matrix, target rank k, and
         /// oversampling p (sketch width l = min(k + oversample, n)) — see
-        /// <see cref="doubleSVDRandomized_WS"/> for layout. Pass the SAME k/oversample to
+        /// <see cref="doubleSVDRandomizedCache"/> for layout. Pass the SAME k/oversample to
         /// svdRandomized's ref-workspace overload.
         /// </summary>
-        public static doubleSVDRandomized_WS doubleSVDRandomized_WS(this ref Arena arena, int m, int n, int k, int oversample)
+        public static doubleSVDRandomizedCache doubleSVDRandomizedCache(this ref Arena arena, int m, int n, int k, int oversample)
         {
             int l = math.min(k + oversample, n);
-            return new doubleSVDRandomized_WS
+            return new doubleSVDRandomizedCache
             {
                 Omega = arena.doubleMat(n, l),
                 Y = arena.doubleMat(m, l),
@@ -117,7 +117,7 @@ namespace LinearAlgebra
         /// Allocates a randomized-SVD workspace with the default oversample (10) — matches the
         /// svdRandomized convenience overloads (oversample 10, powerIters 2, maxIter 75).
         /// </summary>
-        public static doubleSVDRandomized_WS doubleSVDRandomized_WS(this ref Arena arena, int m, int n, int k)
-            => arena.doubleSVDRandomized_WS(m, n, k, 10);
+        public static doubleSVDRandomizedCache doubleSVDRandomizedCache(this ref Arena arena, int m, int n, int k)
+            => arena.doubleSVDRandomizedCache(m, n, k, 10);
     }
 }

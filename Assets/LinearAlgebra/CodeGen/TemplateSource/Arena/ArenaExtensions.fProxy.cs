@@ -17,7 +17,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static fProxyN fProxyIndexOneVector(this ref Arena arena, int N)
+        public static fProxyN fProxyIndexOneVec(this ref Arena arena, int N)
         {
             var vec = arena.fProxyVec(N, true);
 

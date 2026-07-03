@@ -31,7 +31,7 @@ namespace LinearAlgebra
 
         public static fProxyN select(in fProxyN a, in fProxyN b, in boolN c)
         {
-            fProxyN res = a.tempfProxyVec(a.N, true);
+            fProxyN res = a.fProxyTempVec(a.N, true);
             select(in a, in b, in c, ref res);
             return res;
         }
@@ -53,7 +53,7 @@ namespace LinearAlgebra
 
         public static fProxyMxN select(in fProxyMxN a, in fProxyMxN b, in boolMxN c)
         {
-            fProxyMxN res = a.tempfProxyMat(a.M_Rows, a.N_Cols, true);
+            fProxyMxN res = a.fProxyTempMat(a.M_Rows, a.N_Cols, true);
             select(in a, in b, in c, ref res);
             return res;
         }

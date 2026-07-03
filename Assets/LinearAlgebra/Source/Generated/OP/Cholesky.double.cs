@@ -269,7 +269,7 @@ namespace LinearAlgebra
         /// scale-relative to the largest |diagonal| so it is scale-invariant.
         /// </summary>
         public static RankRevealingInfo choleskyDecompositionPivot(in doubleMxN A, ref doubleMxN L, ref Pivot P,
-                                                       ref doubleCholeskyPivot_WS ws) {
+                                                       ref doubleCholeskyPivotCache ws) {
             if (!A.IsSquare)
                 throw new ArgumentException("choleskyDecompositionPivot: A needs to be square");
 
@@ -411,7 +411,7 @@ namespace LinearAlgebra
         /// </summary>
         public static RankRevealingInfo choleskyDecompositionPivot(in doubleMxN A, ref doubleMxN L, ref Pivot P) {
             int n = A.IsSquare ? A.M_Rows : 0;
-            var ws = new doubleCholeskyPivot_WS
+            var ws = new doubleCholeskyPivotCache
             {
                 W = new doubleMxN(n, n, Allocator.Temp),
                 bt = default
@@ -438,7 +438,7 @@ namespace LinearAlgebra
         /// not re-verify them.
         /// </summary>
         public static DirectSolveInfo choleskyPivotSolve(ref doubleMxN L, in Pivot P, int rank, ref doubleN b,
-                                              ref doubleCholeskyPivot_WS ws) {
+                                              ref doubleCholeskyPivotCache ws) {
             if (!L.IsSquare)
                 throw new ArgumentException("choleskyPivotSolve: L must be square");
 
@@ -542,7 +542,7 @@ namespace LinearAlgebra
         /// </summary>
         public static DirectSolveInfo choleskyPivotSolve(ref doubleMxN L, in Pivot P, int rank, ref doubleN b) {
             int n = L.IsSquare ? L.M_Rows : 0;
-            var ws = new doubleCholeskyPivot_WS
+            var ws = new doubleCholeskyPivotCache
             {
                 W = default,
                 bt = new doubleN(n, Allocator.Temp)
@@ -574,7 +574,7 @@ namespace LinearAlgebra
         /// rank) and the minimum-norm least-squares solution.
         /// </summary>
         public static RankRevealingInfo choleskyPivotSolve(in doubleMxN A, ref doubleMxN L, ref Pivot P, ref doubleN b,
-                                              ref doubleCholeskyPivot_WS ws) {
+                                              ref doubleCholeskyPivotCache ws) {
             var decompInfo = choleskyDecompositionPivot(in A, ref L, ref P, ref ws);
             if (!decompInfo.Solved)
                 return decompInfo;

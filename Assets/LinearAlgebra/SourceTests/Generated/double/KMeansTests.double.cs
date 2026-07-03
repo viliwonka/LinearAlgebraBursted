@@ -1,7 +1,7 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.ML;        // opt-in: doubleKMeans_OP.kmeans, KMeansInit, doubleKMeans_WS
+using LinearAlgebra.ML;        // opt-in: doubleKMeans_OP.kmeans, KMeansInit, doubleKMeansCache
 using LinearAlgebra.Stats;     // doubleStats_OP.colMean (k==1 global-mean oracle)
 
 using NUnit.Framework;
@@ -84,7 +84,7 @@ public class doubleKMeansTests
 
             var centroids = arena.doubleMat(k, D);
             var assign    = arena.Indices(12);
-            var ws        = arena.doubleKMeans_WS(12, D, k);
+            var ws        = arena.doubleKMeansCache(12, D, k);
             doubleKMeans_OP.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out double inertia, out int iters, ref ws);
 
             // each of the three centers is matched by exactly one centroid (tight band)
@@ -126,7 +126,7 @@ public class doubleKMeansTests
             int N = X.M_Rows, D = X.N_Cols;
             var centroids = arena.doubleMat(k, D);
             var assign    = arena.Indices(N);
-            var ws        = arena.doubleKMeans_WS(N, D, k);
+            var ws        = arena.doubleKMeansCache(N, D, k);
             doubleKMeans_OP.kmeans(in X, k, seed, maxIter, ref centroids, ref assign, out _, out _, ref ws);
 
             for (int n = 0; n < N; n++)
@@ -149,7 +149,7 @@ public class doubleKMeansTests
                 int N = X.M_Rows, D = X.N_Cols, k = 2;
                 var centroids = arena.doubleMat(k, D);
                 var assign    = arena.Indices(N);
-                var ws        = arena.doubleKMeans_WS(N, D, k);
+                var ws        = arena.doubleKMeansCache(N, D, k);
                 doubleKMeans_OP.kmeans(in X, k, 3u, 20, ref centroids, ref assign, out double inertia, out _, ref ws);
 
                 AssertTrue(inertia >= (double)0);
@@ -164,7 +164,7 @@ public class doubleKMeansTests
                 int N = B.M_Rows, D = B.N_Cols, k = 3;
                 var centroids = arena.doubleMat(k, D);
                 var assign    = arena.Indices(N);
-                var ws        = arena.doubleKMeans_WS(N, D, k);
+                var ws        = arena.doubleKMeansCache(N, D, k);
                 doubleKMeans_OP.kmeans(in B, k, 9u, 20, ref centroids, ref assign, out double inertia, out _, ref ws);
 
                 AssertTrue(inertia >= (double)0);
@@ -193,7 +193,7 @@ public class doubleKMeansTests
             int k = 1;
             var centroids = arena.doubleMat(k, D);
             var assign    = arena.Indices(N);
-            var ws        = arena.doubleKMeans_WS(N, D, k);
+            var ws        = arena.doubleKMeansCache(N, D, k);
             doubleKMeans_OP.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out double inertia, out _, ref ws);
 
             var mean = doubleStats_OP.colMean(in X);   // length D
@@ -263,8 +263,8 @@ public class doubleKMeansTests
             int N = X.M_Rows, D = X.N_Cols, k = 2;
             uint seed = 1234u;
 
-            var c1 = arena.doubleMat(k, D); var a1 = arena.Indices(N); var w1 = arena.doubleKMeans_WS(N, D, k);
-            var c2 = arena.doubleMat(k, D); var a2 = arena.Indices(N); var w2 = arena.doubleKMeans_WS(N, D, k);
+            var c1 = arena.doubleMat(k, D); var a1 = arena.Indices(N); var w1 = arena.doubleKMeansCache(N, D, k);
+            var c2 = arena.doubleMat(k, D); var a2 = arena.Indices(N); var w2 = arena.doubleKMeansCache(N, D, k);
 
             doubleKMeans_OP.kmeans(in X, k, seed, 20, init, ref c1, ref a1, out double in1, out int it1, ref w1);
             doubleKMeans_OP.kmeans(in X, k, seed, 20, init, ref c2, ref a2, out double in2, out int it2, ref w2);
@@ -289,7 +289,7 @@ public class doubleKMeansTests
             int N = X.M_Rows, D = X.N_Cols, k = 2;
             uint seed = 99u;
 
-            var cP = arena.doubleMat(k, D); var aP = arena.Indices(N); var ws = arena.doubleKMeans_WS(N, D, k);
+            var cP = arena.doubleMat(k, D); var aP = arena.Indices(N); var ws = arena.doubleKMeansCache(N, D, k);
             doubleKMeans_OP.kmeans(in X, k, seed, 20, KMeansInit.KMeansPlusPlus, ref cP, ref aP, out double inP, out int itP, ref ws);
 
             doubleKMeans_OP.kmeans(ref arena, in X, k, seed, 20, KMeansInit.KMeansPlusPlus,
@@ -323,7 +323,7 @@ public class doubleKMeansTests
 
             var centroids = arena.doubleMat(k, D);
             var assign    = arena.Indices(N);
-            var ws        = arena.doubleKMeans_WS(N, D, k);
+            var ws        = arena.doubleKMeansCache(N, D, k);
             doubleKMeans_OP.kmeans(in X, k, 2u, 20, ref centroids, ref assign, out double inertia, out _, ref ws);
 
             // every centroid component finite (reseed must not produce NaN/Inf via divide-by-zero)
@@ -356,7 +356,7 @@ public class doubleKMeansTests
             int N = X.M_Rows, D = X.N_Cols;
             var centroids = arena.doubleMat(k, D);
             var assign    = arena.Indices(N);
-            var ws        = arena.doubleKMeans_WS(N, D, k);
+            var ws        = arena.doubleKMeansCache(N, D, k);
             doubleKMeans_OP.kmeans(in X, k, seed, 30, init, ref centroids, ref assign, out double inertia, out _, ref ws);
 
             AssertTrue(inertia >= (double)0);
@@ -565,7 +565,7 @@ public class doubleKMeansTests
         var arena = new Arena(Allocator.Persistent);
         int N = 6, D = 2, k = 2;
         var X  = arena.doubleMat(N, D);
-        var ws = arena.doubleKMeans_WS(N, D, k);
+        var ws = arena.doubleKMeansCache(N, D, k);
         var assign = arena.Indices(N);
         var badCentroids = arena.doubleMat(k + 1, D);   // wrong row count
         Assert.Throws<ArgumentException>(() =>
@@ -579,7 +579,7 @@ public class doubleKMeansTests
         var arena = new Arena(Allocator.Persistent);
         int N = 6, D = 2, k = 2;
         var X  = arena.doubleMat(N, D);
-        var ws = arena.doubleKMeans_WS(N, D, k);
+        var ws = arena.doubleKMeansCache(N, D, k);
         var centroids = arena.doubleMat(k, D);
         var badAssign = arena.Indices(N + 1);           // wrong length
         Assert.Throws<ArgumentException>(() =>
@@ -595,7 +595,7 @@ public class doubleKMeansTests
         var X  = arena.doubleMat(N, D);
         var centroids = arena.doubleMat(k, D);
         var assign    = arena.Indices(N);
-        var badWs = arena.doubleKMeans_WS(N, D, k + 1);   // ws sized for wrong k
+        var badWs = arena.doubleKMeansCache(N, D, k + 1);   // ws sized for wrong k
         Assert.Throws<ArgumentException>(() =>
             doubleKMeans_OP.kmeans(in X, k, 1u, 10, ref centroids, ref assign, out double inertia, out int iters, ref badWs));
         arena.Dispose();

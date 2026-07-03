@@ -20,7 +20,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN X;                   // N x D, NOT modified
         public floatMxN centroids;           // k x D
         public Indices assignment;           // length N
-        public floatKMeans_WS ws;
+        public floatKMeansCache ws;
 
         public void Execute() =>
             floatKMeans_OP.kmeans(in X, 16, 12345u, 10, KMeansInit.Uniform,
@@ -33,7 +33,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN X;
         public doubleMxN centroids;
         public Indices assignment;
-        public doubleKMeans_WS ws;
+        public doubleKMeansCache ws;
 
         public void Execute() =>
             doubleKMeans_OP.kmeans(in X, 16, 12345u, 10, KMeansInit.Uniform,
@@ -64,7 +64,7 @@ namespace LinearAlgebra.Benchmarks
             var X = arena.floatMat(n, D);
             var centroids = arena.floatMat(K, D);
             var assignment = arena.Indices(n);
-            var ws = arena.floatKMeans_WS(n, D, K);
+            var ws = arena.floatKMeansCache(n, D, K);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -84,7 +84,7 @@ namespace LinearAlgebra.Benchmarks
             var X = arena.doubleMat(n, D);
             var centroids = arena.doubleMat(K, D);
             var assignment = arena.Indices(n);
-            var ws = arena.doubleKMeans_WS(n, D, K);
+            var ws = arena.doubleKMeansCache(n, D, K);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)

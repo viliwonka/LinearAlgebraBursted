@@ -15,7 +15,7 @@ namespace LinearAlgebra.ML
     /// This is a buffer-carrying (fProxy-prefixed) struct rather than a plain scalar diagnostics struct
     /// (like <c>SolveInfo</c>/<c>EigenSolveInfo</c>) because PCA has a downstream <c>pcaTransform</c> stage
     /// that consumes <c>mean</c>/<c>scale</c>/<c>components</c>/<c>k</c> together as a unit — the same
-    /// justification every <c>_WS</c> (<c>fProxyKMeans_WS</c>, <c>fProxySVDThin_WS</c>) already has for
+    /// justification every <c>Cache</c> (<c>fProxyKMeansCache</c>, <c>fProxySVDThinCache</c>) already has for
     /// bundling arena buffer handles into one struct.
     /// </summary>
     public struct fProxyPCAModel

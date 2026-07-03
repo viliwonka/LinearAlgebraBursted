@@ -17,7 +17,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static floatN floatIndexOneVector(this ref Arena arena, int N)
+        public static floatN floatIndexOneVec(this ref Arena arena, int N)
         {
             var vec = arena.floatVec(N, true);
 

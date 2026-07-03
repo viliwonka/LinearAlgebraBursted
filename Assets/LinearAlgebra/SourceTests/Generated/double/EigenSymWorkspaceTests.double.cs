@@ -6,8 +6,8 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Workspace-overload tests for Eigen.eigenvaluesSymmetric and its workspace doubleEigenSym_WS
-// (Arena.doubleEigenSym_WS(n)). eigenvaluesSymmetric DESTROYS its input matrix, so every call
+// Workspace-overload tests for Eigen.eigenvaluesSymmetric and its workspace doubleEigenSymCache
+// (Arena.doubleEigenSymCache(n)). eigenvaluesSymmetric DESTROYS its input matrix, so every call
 // runs on a private copy.
 //
 // The ws overload is the real body (caller-owned eVec/vVec/pVec); the allocating overload delegates
@@ -67,7 +67,7 @@ public class doubleEigenSymWorkspaceTests
 
             var Aw = A.Copy();
             var eigW = arena.doubleVec(n);
-            var ws = arena.doubleEigenSym_WS(n);
+            var ws = arena.doubleEigenSymCache(n);
             bool okW = Eigen.eigenvaluesSymmetric(ref Aw, ref eigW, ref ws);
 
             Assert.IsTrue(okA == okW);
@@ -84,7 +84,7 @@ public class doubleEigenSymWorkspaceTests
             var A1 = Symmetric(ref arena, n, 8801);
             var A2 = Symmetric(ref arena, n, 9902);
 
-            var ws = arena.doubleEigenSym_WS(n);   // allocated ONCE
+            var ws = arena.doubleEigenSymCache(n);   // allocated ONCE
 
             // warm on A1
             var A1c = A1.Copy();
@@ -127,21 +127,21 @@ public class doubleEigenSymWorkspaceTests
             int n = 5;
             var A = arena.doubleIdentityMat(n);   // symmetric -> passes the symmetry guard
             var eig = arena.doubleVec(n);
-            var ws = arena.doubleEigenSym_WS(n + 1);   // wrong n
+            var ws = arena.doubleEigenSymCache(n + 1);   // wrong n
             Assert.Throws<ArgumentException>(
                 () => Eigen.eigenvaluesSymmetric(ref A, ref eig, ref ws));
         }
         finally { arena.Dispose(); }
     }
 
-    // Arena.doubleEigenSym_WS(n): three length-n vectors.
+    // Arena.doubleEigenSymCache(n): three length-n vectors.
     [Test]
     public void EigenSymWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var ws = arena.doubleEigenSym_WS(7);
+            var ws = arena.doubleEigenSymCache(7);
             Assert.AreEqual(7, ws.eVec.N);
             Assert.AreEqual(7, ws.vVec.N);
             Assert.AreEqual(7, ws.pVec.N);

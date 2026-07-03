@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Phase-2 solver-workspace tests for svdThin/svdValues: the caller-provided-scratch overloads
-// (svdThin(...,ref fProxySVDThin_WS) / svdValues(...,ref fProxySVDValues_WS)) must produce results
+// (svdThin(...,ref fProxySVDThinCache) / svdValues(...,ref fProxySVDValuesCache)) must produce results
 // identical to the allocating wrappers (they run the SAME kernel), and a mis-sized/reused workspace
 // must behave correctly (throw on bad size, produce identical results across repeated reuse).
 public class fProxySvdThinValuesWorkspaceTests
@@ -63,7 +63,7 @@ public class fProxySvdThinValuesWorkspaceTests
             var Ub = arena.fProxyMat(m, n);
             var Sb = arena.fProxyVec(n);
             var Vb = arena.fProxyMat(n, n);
-            var ws = arena.fProxySVDThin_WS(m, n);
+            var ws = arena.fProxySVDThinCache(m, n);
             bool okb = SVD.svdThin(in Ab, ref Ub, ref Sb, ref Vb, ref ws);
 
             Assert.IsTrue(oka == okb);
@@ -87,7 +87,7 @@ public class fProxySvdThinValuesWorkspaceTests
             bool oka = SVD.svdValues(in A0, ref Sa);
 
             var Sb = arena.fProxyVec(n);
-            var ws = arena.fProxySVDValues_WS(m, n);
+            var ws = arena.fProxySVDValuesCache(m, n);
             bool okb = SVD.svdValues(in A0, ref Sb, ref ws);
 
             Assert.IsTrue(oka == okb);
@@ -103,8 +103,8 @@ public class fProxySvdThinValuesWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 4;
 
-            var thinWs = arena.fProxySVDThin_WS(m, n);     // allocated ONCE, reused below
-            var valuesWs = arena.fProxySVDValues_WS(m, n); // allocated ONCE, reused below
+            var thinWs = arena.fProxySVDThinCache(m, n);     // allocated ONCE, reused below
+            var valuesWs = arena.fProxySVDValuesCache(m, n); // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
@@ -163,7 +163,7 @@ public class fProxySvdThinValuesWorkspaceTests
             var U = arena.fProxyMat(6, 4);
             var S = arena.fProxyVec(4);
             var V = arena.fProxyMat(4, 4);
-            var ws = arena.fProxySVDThin_WS(6, 4);
+            var ws = arena.fProxySVDThinCache(6, 4);
             ws.B = arena.fProxyMat(3, 3);   // wrong: must be 4 x 4
             Assert.Throws<ArgumentException>(() => SVD.svdThin(in A, ref U, ref S, ref V, ref ws));
         }
@@ -180,7 +180,7 @@ public class fProxySvdThinValuesWorkspaceTests
             var U = arena.fProxyMat(6, 4);
             var S = arena.fProxyVec(4);
             var V = arena.fProxyMat(4, 4);
-            var ws = arena.fProxySVDThin_WS(6, 4);
+            var ws = arena.fProxySVDThinCache(6, 4);
             ws.Ut = arena.fProxyMat(4, 5);  // wrong: must be n x m = 4 x 6
             Assert.Throws<ArgumentException>(() => SVD.svdThin(in A, ref U, ref S, ref V, ref ws));
         }
@@ -195,21 +195,21 @@ public class fProxySvdThinValuesWorkspaceTests
         {
             var A = arena.fProxyMat(6, 4);
             var S = arena.fProxyVec(4);
-            var ws = arena.fProxySVDValues_WS(6, 4);
+            var ws = arena.fProxySVDValuesCache(6, 4);
             ws.dVec = arena.fProxyVec(3);   // wrong: must be length 4
             Assert.Throws<ArgumentException>(() => SVD.svdValues(in A, ref S, ref ws));
         }
         finally { arena.Dispose(); }
     }
 
-    // Arena.fProxySVDThin_WS(m, n) / fProxySVDValues_WS(m, n) must size every field for m x n.
+    // Arena.fProxySVDThinCache(m, n) / fProxySVDValuesCache(m, n) must size every field for m x n.
     [Test]
     public void SvdThinValuesWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var thinWs = arena.fProxySVDThin_WS(7, 4);
+            var thinWs = arena.fProxySVDThinCache(7, 4);
             Assert.AreEqual(4, thinWs.B.M_Rows);
             Assert.AreEqual(4, thinWs.B.N_Cols);
             Assert.AreEqual(4, thinWs.dVec.N);
@@ -221,7 +221,7 @@ public class fProxySvdThinValuesWorkspaceTests
             Assert.AreEqual(7, thinWs.BidiagWs.W.M_Rows);
             Assert.AreEqual(4, thinWs.BidiagWs.W.N_Cols);
 
-            var valuesWs = arena.fProxySVDValues_WS(7, 4);
+            var valuesWs = arena.fProxySVDValuesCache(7, 4);
             Assert.AreEqual(4, valuesWs.dVec.N);
             Assert.AreEqual(4, valuesWs.eVec.N);
             Assert.AreEqual(7, valuesWs.BidiagWs.W.M_Rows);

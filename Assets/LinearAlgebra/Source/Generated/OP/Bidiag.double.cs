@@ -128,7 +128,7 @@ namespace LinearAlgebra
         /// B (n×n) receives the upper bidiagonal factor (nonzero only on main diagonal and first superdiagonal).
         /// V (n×n) receives the right orthogonal factor (VᵀV = I_n).</para>
         /// <para>Zero-alloc: scratch comes from the caller-provided <paramref name="ws"/> (see
-        /// <see cref="doubleBidiag_WS"/>); nothing is allocated internally.</para>
+        /// <see cref="doubleBidiagCache"/>); nothing is allocated internally.</para>
         /// </summary>
         /// <param name="A">Input m×n matrix (m≥n). Not modified.</param>
         /// <param name="U">Output m×n left factor (orthonormal columns). Caller-allocated.</param>
@@ -136,7 +136,7 @@ namespace LinearAlgebra
         /// <param name="V">Output n×n right orthogonal factor. Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bidiagonalize(in doubleMxN A, ref doubleMxN U, ref doubleMxN B, ref doubleMxN V,
-                                         ref doubleBidiag_WS ws)
+                                         ref doubleBidiagCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -242,7 +242,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new doubleBidiag_WS
+            var ws = new doubleBidiagCache
             {
                 W = new doubleMxN(m, n, Allocator.Temp, true),
                 leftU = new doubleMxN(m, n, Allocator.Temp, false),
@@ -273,7 +273,7 @@ namespace LinearAlgebra
         /// <param name="e">Output superdiagonal, length n (e[0]=0). Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bidiagonalizeValues(in doubleMxN A, ref doubleN d, ref doubleN e,
-                                               ref doubleBidiag_WS ws)
+                                               ref doubleBidiagCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -331,7 +331,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new doubleBidiag_WS
+            var ws = new doubleBidiagCache
             {
                 W = new doubleMxN(m, n, Allocator.Temp, true),
                 uVec = new doubleN(m, Allocator.Temp, false),

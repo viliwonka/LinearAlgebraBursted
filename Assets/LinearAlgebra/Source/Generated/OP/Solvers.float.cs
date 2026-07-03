@@ -139,7 +139,7 @@ namespace LinearAlgebra
         /// and returns it. Use the ref-destination overload in hot loops to avoid the allocation.
         /// </summary>
         public static floatN solveQR(ref floatMxN Q, ref floatMxN R, ref floatN b) {
-            floatN x = b.tempfloatVec(Q.N_Cols);
+            floatN x = b.floatTempVec(Q.N_Cols);
             solveQR(ref Q, ref R, ref b, ref x);
             return x;
         }
@@ -160,9 +160,9 @@ namespace LinearAlgebra
         /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b,
         /// generic over any <see cref="IfloatLinearOperator"/> (Burst-monomorphized static
         /// dispatch, no vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the CG
-        /// loop — the concrete dense (<c>cg(in floatMxN, ...)</c>) and BSM
-        /// (<c>cg(in floatBSM, ...)</c>) overloads below are thin forwarders that
-        /// wrap their matrix in <see cref="floatDenseOperator"/> / <c>floatBSMOperator</c> and
+        /// loop — the concrete dense (<c>cg(in floatMxN, ...)</c>) and BSR
+        /// (<c>cg(in floatBSR, ...)</c>) overloads below are thin forwarders that
+        /// wrap their matrix in <see cref="floatDenseOperator"/> / <c>floatBSROperator</c> and
         /// call this method.
         ///
         /// Caller provides x (initial guess, overwritten with solution — WARM-STARTABLE: seed x
@@ -286,9 +286,9 @@ namespace LinearAlgebra
         public static SolveInfo cg(in floatMxN A, in floatN b, ref floatN x,
                                              int maxIterations, float tolerance)
         {
-            floatN r  = b.tempfloatVec(A.M_Rows);
-            floatN p  = b.tempfloatVec(A.M_Rows);
-            floatN Ap = b.tempfloatVec(A.M_Rows);
+            floatN r  = b.floatTempVec(A.M_Rows);
+            floatN p  = b.floatTempVec(A.M_Rows);
+            floatN Ap = b.floatTempVec(A.M_Rows);
             return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
@@ -304,25 +304,25 @@ namespace LinearAlgebra
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix. Same semantics as
         /// the dense overload — see <see cref="cg(in floatMxN, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>.
-        /// Forwards into <see cref="cg{TOp}"/> via <c>floatBSMOperator</c>.
+        /// Forwards into <see cref="cg{TOp}"/> via <c>floatBSROperator</c>.
         /// </summary>
-        public static SolveInfo cg(in floatBSM A, in floatN b, ref floatN x,
+        public static SolveInfo cg(in floatBSR A, in floatN b, ref floatN x,
                                              ref floatN r, ref floatN p, ref floatN Ap,
                                              int maxIterations, float tolerance)
         {
-            return cg(new floatBSMOperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(new floatBSROperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix — allocates three
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo cg(in floatBSM A, in floatN b, ref floatN x,
+        public static SolveInfo cg(in floatBSR A, in floatN b, ref floatN x,
                                              int maxIterations, float tolerance)
         {
-            floatN r  = b.tempfloatVec(A.M_Rows);
-            floatN p  = b.tempfloatVec(A.M_Rows);
-            floatN Ap = b.tempfloatVec(A.M_Rows);
+            floatN r  = b.floatTempVec(A.M_Rows);
+            floatN p  = b.floatTempVec(A.M_Rows);
+            floatN Ap = b.floatTempVec(A.M_Rows);
             return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
@@ -330,7 +330,7 @@ namespace LinearAlgebra
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix, with default
         /// maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).
         /// </summary>
-        public static SolveInfo cg(in floatBSM A, in floatN b, ref floatN x)
+        public static SolveInfo cg(in floatBSR A, in floatN b, ref floatN x)
         {
             return cg(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
@@ -472,10 +472,10 @@ namespace LinearAlgebra
             where TOp : struct, IfloatLinearOperator
             where TPre : struct, IfloatPreconditioner
         {
-            floatN r  = b.tempfloatVec(A.Rows);
-            floatN p  = b.tempfloatVec(A.Rows);
-            floatN Ap = b.tempfloatVec(A.Rows);
-            floatN z  = b.tempfloatVec(A.Rows);
+            floatN r  = b.floatTempVec(A.Rows);
+            floatN p  = b.floatTempVec(A.Rows);
+            floatN Ap = b.floatTempVec(A.Rows);
+            floatN z  = b.floatTempVec(A.Rows);
             return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
         }
 
@@ -493,26 +493,26 @@ namespace LinearAlgebra
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
         /// matching block-Jacobi preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
-        /// <c>floatBSMOperator</c>.
+        /// <c>floatBSROperator</c>.
         /// </summary>
-        public static SolveInfo pcg(in floatBSM A, in floatBlockJacobi M, in floatN b, ref floatN x,
+        public static SolveInfo pcg(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x,
                                ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
                                int maxIterations, float tolerance)
         {
-            return pcg(new floatBSMOperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(new floatBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix — allocates four
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo pcg(in floatBSM A, in floatBlockJacobi M, in floatN b, ref floatN x,
+        public static SolveInfo pcg(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x,
                                int maxIterations, float tolerance)
         {
-            floatN r  = b.tempfloatVec(A.M_Rows);
-            floatN p  = b.tempfloatVec(A.M_Rows);
-            floatN Ap = b.tempfloatVec(A.M_Rows);
-            floatN z  = b.tempfloatVec(A.M_Rows);
+            floatN r  = b.floatTempVec(A.M_Rows);
+            floatN p  = b.floatTempVec(A.M_Rows);
+            floatN Ap = b.floatTempVec(A.M_Rows);
+            floatN z  = b.floatTempVec(A.M_Rows);
             return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
         }
 
@@ -520,7 +520,7 @@ namespace LinearAlgebra
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
         /// maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).
         /// </summary>
-        public static SolveInfo pcg(in floatBSM A, in floatBlockJacobi M, in floatN b, ref floatN x)
+        public static SolveInfo pcg(in floatBSR A, in floatBlockJacobi M, in floatN b, ref floatN x)
         {
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
@@ -696,13 +696,13 @@ namespace LinearAlgebra
         /// <summary>MINRES over a dense matrix -- allocates seven scratch vectors from the arena.</summary>
         public static SolveInfo minres(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN y  = b.tempfloatVec(A.M_Rows);
-            floatN r1 = b.tempfloatVec(A.M_Rows);
-            floatN r2 = b.tempfloatVec(A.M_Rows);
-            floatN v  = b.tempfloatVec(A.M_Rows);
-            floatN w  = b.tempfloatVec(A.M_Rows);
-            floatN w1 = b.tempfloatVec(A.M_Rows);
-            floatN w2 = b.tempfloatVec(A.M_Rows);
+            floatN y  = b.floatTempVec(A.M_Rows);
+            floatN r1 = b.floatTempVec(A.M_Rows);
+            floatN r2 = b.floatTempVec(A.M_Rows);
+            floatN v  = b.floatTempVec(A.M_Rows);
+            floatN w  = b.floatTempVec(A.M_Rows);
+            floatN w1 = b.floatTempVec(A.M_Rows);
+            floatN w2 = b.floatTempVec(A.M_Rows);
             return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
         }
 
@@ -714,31 +714,31 @@ namespace LinearAlgebra
 
         /// <summary>
         /// MINRES over a symmetric block-sparse (BSR) matrix -- zero-alloc primitive. Forwards
-        /// into <see cref="minres{TOp}"/> via <c>floatBSMOperator</c>.
+        /// into <see cref="minres{TOp}"/> via <c>floatBSROperator</c>.
         /// </summary>
-        public static SolveInfo minres(in floatBSM A, in floatN b, ref floatN x,
+        public static SolveInfo minres(in floatBSR A, in floatN b, ref floatN x,
                                   ref floatN y, ref floatN r1, ref floatN r2, ref floatN v,
                                   ref floatN w, ref floatN w1, ref floatN w2,
                                   int maxIterations, float tolerance)
         {
-            return minres(new floatBSMOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(new floatBSROperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
         }
 
         /// <summary>MINRES over a BSR matrix -- allocates seven scratch vectors from the arena.</summary>
-        public static SolveInfo minres(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static SolveInfo minres(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN y  = b.tempfloatVec(A.M_Rows);
-            floatN r1 = b.tempfloatVec(A.M_Rows);
-            floatN r2 = b.tempfloatVec(A.M_Rows);
-            floatN v  = b.tempfloatVec(A.M_Rows);
-            floatN w  = b.tempfloatVec(A.M_Rows);
-            floatN w1 = b.tempfloatVec(A.M_Rows);
-            floatN w2 = b.tempfloatVec(A.M_Rows);
+            floatN y  = b.floatTempVec(A.M_Rows);
+            floatN r1 = b.floatTempVec(A.M_Rows);
+            floatN r2 = b.floatTempVec(A.M_Rows);
+            floatN v  = b.floatTempVec(A.M_Rows);
+            floatN w  = b.floatTempVec(A.M_Rows);
+            floatN w1 = b.floatTempVec(A.M_Rows);
+            floatN w2 = b.floatTempVec(A.M_Rows);
             return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
         }
 
         /// <summary>MINRES over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
-        public static SolveInfo minres(in floatBSM A, in floatN b, ref floatN x)
+        public static SolveInfo minres(in floatBSR A, in floatN b, ref floatN x)
         {
             return minres(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
@@ -897,11 +897,11 @@ namespace LinearAlgebra
         /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from the arena.</summary>
         public static SolveInfo biCGStab(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN r     = b.tempfloatVec(A.M_Rows);
-            floatN rHat0 = b.tempfloatVec(A.M_Rows);
-            floatN p     = b.tempfloatVec(A.M_Rows);
-            floatN v     = b.tempfloatVec(A.M_Rows);
-            floatN t     = b.tempfloatVec(A.M_Rows);
+            floatN r     = b.floatTempVec(A.M_Rows);
+            floatN rHat0 = b.floatTempVec(A.M_Rows);
+            floatN p     = b.floatTempVec(A.M_Rows);
+            floatN v     = b.floatTempVec(A.M_Rows);
+            floatN t     = b.floatTempVec(A.M_Rows);
             return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
         }
 
@@ -913,28 +913,28 @@ namespace LinearAlgebra
 
         /// <summary>
         /// BiCGSTAB over a block-sparse (BSR) matrix -- zero-alloc primitive. Forwards into
-        /// <see cref="biCGStab{TOp}"/> via <c>floatBSMOperator</c>.
+        /// <see cref="biCGStab{TOp}"/> via <c>floatBSROperator</c>.
         /// </summary>
-        public static SolveInfo biCGStab(in floatBSM A, in floatN b, ref floatN x,
+        public static SolveInfo biCGStab(in floatBSR A, in floatN b, ref floatN x,
                                     ref floatN r, ref floatN rHat0, ref floatN p, ref floatN v, ref floatN t,
                                     int maxIterations, float tolerance)
         {
-            return biCGStab(new floatBSMOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(new floatBSROperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
         }
 
         /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
-        public static SolveInfo biCGStab(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static SolveInfo biCGStab(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN r     = b.tempfloatVec(A.M_Rows);
-            floatN rHat0 = b.tempfloatVec(A.M_Rows);
-            floatN p     = b.tempfloatVec(A.M_Rows);
-            floatN v     = b.tempfloatVec(A.M_Rows);
-            floatN t     = b.tempfloatVec(A.M_Rows);
+            floatN r     = b.floatTempVec(A.M_Rows);
+            floatN rHat0 = b.floatTempVec(A.M_Rows);
+            floatN p     = b.floatTempVec(A.M_Rows);
+            floatN v     = b.floatTempVec(A.M_Rows);
+            floatN t     = b.floatTempVec(A.M_Rows);
             return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
         }
 
         /// <summary>BiCGSTAB over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.floatSqrtEps).</summary>
-        public static SolveInfo biCGStab(in floatBSM A, in floatN b, ref floatN x)
+        public static SolveInfo biCGStab(in floatBSR A, in floatN b, ref floatN x)
         {
             return biCGStab(in A, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
@@ -1142,10 +1142,10 @@ namespace LinearAlgebra
         /// <summary>CGLS over a dense matrix -- allocates four scratch vectors from the arena.</summary>
         public static LstsqInfo cgls(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN r = b.tempfloatVec(A.M_Rows);
-            floatN s = b.tempfloatVec(A.N_Cols);
-            floatN p = b.tempfloatVec(A.N_Cols);
-            floatN q = b.tempfloatVec(A.M_Rows);
+            floatN r = b.floatTempVec(A.M_Rows);
+            floatN s = b.floatTempVec(A.N_Cols);
+            floatN p = b.floatTempVec(A.N_Cols);
+            floatN q = b.floatTempVec(A.M_Rows);
             return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
@@ -1155,10 +1155,10 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
         {
-            floatN r = b.tempfloatVec(A.M_Rows);
-            floatN s = b.tempfloatVec(A.N_Cols);
-            floatN p = b.tempfloatVec(A.N_Cols);
-            floatN q = b.tempfloatVec(A.M_Rows);
+            floatN r = b.floatTempVec(A.M_Rows);
+            floatN s = b.floatTempVec(A.N_Cols);
+            floatN p = b.floatTempVec(A.N_Cols);
+            floatN q = b.floatTempVec(A.M_Rows);
             return cgls(new floatDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
         }
 
@@ -1170,58 +1170,58 @@ namespace LinearAlgebra
 
         /// <summary>
         /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="cgls{TOp}"/> via <c>floatBSMOperator</c>. This is the payoff
+        /// Forwards into <see cref="cgls{TOp}"/> via <c>floatBSROperator</c>. This is the payoff
         /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
         /// operator, never forming AᵀA.
         /// </summary>
-        public static LstsqInfo cgls(in floatBSM A, in floatN b, ref floatN x,
+        public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN s, ref floatN p, ref floatN q,
                                 int maxIterations, float tolerance)
         {
-            return cgls(new floatBSMOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new floatBSROperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
         /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
-        /// <c>arena.floatBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// <c>arena.floatBSRTranspose(in A)</c> outside a hot loop / before a benchmark's timed
         /// region) and routes every ApplyT call through the resulting cache-friendly forward
         /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
-        /// <see cref="floatBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// <see cref="floatBSROperator"/>'s two-arg ctor. Caller is responsible for AT actually
         /// being A's transpose; this overload does not verify it. Prefer this over the allocating
-        /// <see cref="cgls(in floatBSM, in floatN, ref floatN, int, float)"/> overload when
+        /// <see cref="cgls(in floatBSR, in floatN, ref floatN, int, float)"/> overload when
         /// solving repeatedly against the same A (build AT once, reuse it across many solves).
         /// </summary>
-        public static LstsqInfo cgls(in floatBSM A, in floatBSM AT, in floatN b, ref floatN x,
+        public static LstsqInfo cgls(in floatBSR A, in floatBSR AT, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN s, ref floatN p, ref floatN q,
                                 int maxIterations, float tolerance)
         {
-            return cgls(new floatBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGLS over a BSR matrix -- allocates four scratch vectors AND materializes A^T ONCE
-        /// via <c>arena.floatBSMTranspose</c> (same arena as the scratch vectors, taken from
-        /// b), then drives CGLS with the two-arg <see cref="floatBSMOperator"/> so every
+        /// via <c>arena.floatBSRTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives CGLS with the two-arg <see cref="floatBSROperator"/> so every
         /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
         /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- this is the fix for the
         /// rectangular CGLS/LSQR transpose-matvec cache-unfriendliness (the one-time O(nnz)
         /// transpose build is amortized over every iteration). For a build-free zero-alloc path
         /// (e.g. many solves reusing the same A), build A^T yourself once (<c>arena.
-        /// floatBSMTranspose(in A)</c>) and call the zero-alloc <see cref="cgls(in floatBSM,
-        /// in floatBSM, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref
+        /// floatBSRTranspose(in A)</c>) and call the zero-alloc <see cref="cgls(in floatBSR,
+        /// in floatBSR, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref
         /// floatN, int, float)"/> overload above with your own scratch vectors, or the generic
-        /// <see cref="cgls{TOp}"/> overload directly with <c>new floatBSMOperator(in A, in
+        /// <see cref="cgls{TOp}"/> overload directly with <c>new floatBSROperator(in A, in
         /// AT)</c>.
         /// </summary>
-        public static LstsqInfo cgls(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN r = b.tempfloatVec(A.M_Rows);
-            floatN s = b.tempfloatVec(A.N_Cols);
-            floatN p = b.tempfloatVec(A.N_Cols);
-            floatN q = b.tempfloatVec(A.M_Rows);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            return cgls(new floatBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            floatN r = b.floatTempVec(A.M_Rows);
+            floatN s = b.floatTempVec(A.N_Cols);
+            floatN p = b.floatTempVec(A.N_Cols);
+            floatN q = b.floatTempVec(A.M_Rows);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            return cgls(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>
@@ -1229,18 +1229,18 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo cgls(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
         {
-            floatN r = b.tempfloatVec(A.M_Rows);
-            floatN s = b.tempfloatVec(A.N_Cols);
-            floatN p = b.tempfloatVec(A.N_Cols);
-            floatN q = b.tempfloatVec(A.M_Rows);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            return cgls(new floatBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
+            floatN r = b.floatTempVec(A.M_Rows);
+            floatN s = b.floatTempVec(A.N_Cols);
+            floatN p = b.floatTempVec(A.N_Cols);
+            floatN q = b.floatTempVec(A.M_Rows);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            return cgls(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
         }
 
         /// <summary>CGLS over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
-        public static LstsqInfo cgls(in floatBSM A, in floatN b, ref floatN x)
+        public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x)
         {
             return cgls(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
         }
@@ -1472,11 +1472,11 @@ namespace LinearAlgebra
         /// <summary>LSQR over a dense matrix -- allocates five scratch vectors from the arena.</summary>
         public static LstsqInfo lsqr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN u    = b.tempfloatVec(A.M_Rows);
-            floatN v    = b.tempfloatVec(A.N_Cols);
-            floatN w    = b.tempfloatVec(A.N_Cols);
-            floatN tmpM = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            floatN u    = b.floatTempVec(A.M_Rows);
+            floatN v    = b.floatTempVec(A.N_Cols);
+            floatN w    = b.floatTempVec(A.N_Cols);
+            floatN tmpM = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
             return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
@@ -1486,11 +1486,11 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo lsqr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
         {
-            floatN u    = b.tempfloatVec(A.M_Rows);
-            floatN v    = b.tempfloatVec(A.N_Cols);
-            floatN w    = b.tempfloatVec(A.N_Cols);
-            floatN tmpM = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            floatN u    = b.floatTempVec(A.M_Rows);
+            floatN v    = b.floatTempVec(A.N_Cols);
+            floatN w    = b.floatTempVec(A.N_Cols);
+            floatN tmpM = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
             return lsqr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
@@ -1502,61 +1502,61 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="lsqr{TOp}"/> via <c>floatBSMOperator</c>. This is the payoff
+        /// Forwards into <see cref="lsqr{TOp}"/> via <c>floatBSROperator</c>. This is the payoff
         /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
         /// operator, never forming AᵀA, with better ill-conditioned behavior than <see
         /// cref="cgls{TOp}"/>.
         /// </summary>
-        public static LstsqInfo lsqr(in floatBSM A, in floatN b, ref floatN x,
+        public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN w,
                                 ref floatN tmpM, ref floatN tmpN,
                                 int maxIterations, float tolerance)
         {
-            return lsqr(new floatBSMOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new floatBSROperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
         /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
-        /// <c>arena.floatBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// <c>arena.floatBSRTranspose(in A)</c> outside a hot loop / before a benchmark's timed
         /// region) and routes every ApplyT call through the resulting cache-friendly forward
         /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
-        /// <see cref="floatBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// <see cref="floatBSROperator"/>'s two-arg ctor. Caller is responsible for AT actually
         /// being A's transpose; this overload does not verify it. Prefer this over the allocating
-        /// <see cref="lsqr(in floatBSM, in floatN, ref floatN, int, float)"/> overload when
+        /// <see cref="lsqr(in floatBSR, in floatN, ref floatN, int, float)"/> overload when
         /// solving repeatedly against the same A (build AT once, reuse it across many solves).
         /// </summary>
-        public static LstsqInfo lsqr(in floatBSM A, in floatBSM AT, in floatN b, ref floatN x,
+        public static LstsqInfo lsqr(in floatBSR A, in floatBSR AT, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN w,
                                 ref floatN tmpM, ref floatN tmpN,
                                 int maxIterations, float tolerance)
         {
-            return lsqr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSQR over a BSR matrix -- allocates five scratch vectors AND materializes A^T ONCE
-        /// via <c>arena.floatBSMTranspose</c> (same arena as the scratch vectors, taken from
-        /// b), then drives LSQR with the two-arg <see cref="floatBSMOperator"/> so every
+        /// via <c>arena.floatBSRTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives LSQR with the two-arg <see cref="floatBSROperator"/> so every
         /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
         /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- same fix and same tradeoff as
-        /// <see cref="cgls(in floatBSM, in floatN, ref floatN, int, float)"/>: for a
-        /// build-free zero-alloc path, build A^T yourself once (<c>arena.floatBSMTranspose(in
-        /// A)</c>) and call the zero-alloc <see cref="lsqr(in floatBSM, in floatBSM, in
+        /// <see cref="cgls(in floatBSR, in floatN, ref floatN, int, float)"/>: for a
+        /// build-free zero-alloc path, build A^T yourself once (<c>arena.floatBSRTranspose(in
+        /// A)</c>) and call the zero-alloc <see cref="lsqr(in floatBSR, in floatBSR, in
         /// floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref floatN, int,
         /// float)"/> overload above with your own scratch vectors, or the generic
-        /// <see cref="lsqr{TOp}"/> overload directly with <c>new floatBSMOperator(in A, in
+        /// <see cref="lsqr{TOp}"/> overload directly with <c>new floatBSROperator(in A, in
         /// AT)</c>.
         /// </summary>
-        public static LstsqInfo lsqr(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN u    = b.tempfloatVec(A.M_Rows);
-            floatN v    = b.tempfloatVec(A.N_Cols);
-            floatN w    = b.tempfloatVec(A.N_Cols);
-            floatN tmpM = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            return lsqr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            floatN u    = b.floatTempVec(A.M_Rows);
+            floatN v    = b.floatTempVec(A.N_Cols);
+            floatN w    = b.floatTempVec(A.N_Cols);
+            floatN tmpM = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            return lsqr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
@@ -1564,19 +1564,19 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsqr(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
         {
-            floatN u    = b.tempfloatVec(A.M_Rows);
-            floatN v    = b.tempfloatVec(A.N_Cols);
-            floatN w    = b.tempfloatVec(A.N_Cols);
-            floatN tmpM = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            return lsqr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            floatN u    = b.floatTempVec(A.M_Rows);
+            floatN v    = b.floatTempVec(A.N_Cols);
+            floatN w    = b.floatTempVec(A.N_Cols);
+            floatN tmpM = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            return lsqr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
         /// <summary>LSQR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
-        public static LstsqInfo lsqr(in floatBSM A, in floatN b, ref floatN x)
+        public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x)
         {
             return lsqr(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
         }
@@ -1818,12 +1818,12 @@ namespace LinearAlgebra
         /// <summary>LSMR over a dense matrix -- allocates six scratch vectors from the arena.</summary>
         public static LstsqInfo lsmr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN u    = b.tempfloatVec(A.M_Rows);
-            floatN v    = b.tempfloatVec(A.N_Cols);
-            floatN h    = b.tempfloatVec(A.N_Cols);
-            floatN hbar = b.tempfloatVec(A.N_Cols);
-            floatN tmpM = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            floatN u    = b.floatTempVec(A.M_Rows);
+            floatN v    = b.floatTempVec(A.N_Cols);
+            floatN h    = b.floatTempVec(A.N_Cols);
+            floatN hbar = b.floatTempVec(A.N_Cols);
+            floatN tmpM = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
             return lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
@@ -1833,12 +1833,12 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo lsmr(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
         {
-            floatN u    = b.tempfloatVec(A.M_Rows);
-            floatN v    = b.tempfloatVec(A.N_Cols);
-            floatN h    = b.tempfloatVec(A.N_Cols);
-            floatN hbar = b.tempfloatVec(A.N_Cols);
-            floatN tmpM = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            floatN u    = b.floatTempVec(A.M_Rows);
+            floatN v    = b.floatTempVec(A.N_Cols);
+            floatN h    = b.floatTempVec(A.N_Cols);
+            floatN hbar = b.floatTempVec(A.N_Cols);
+            floatN tmpM = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
             return lsmr(new floatDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
@@ -1850,51 +1850,51 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LSMR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="lsmr{TOp}"/> via <c>floatBSMOperator</c>. Matrix-free least
+        /// Forwards into <see cref="lsmr{TOp}"/> via <c>floatBSROperator</c>. Matrix-free least
         /// squares over a sparse Jacobian-like operator, never forming AᵀA, with LSMR's monotone
         /// ‖Aᵀr‖ decrease (see the generic overload).
         /// </summary>
-        public static LstsqInfo lsmr(in floatBSM A, in floatN b, ref floatN x,
+        public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN h,
                                 ref floatN hbar, ref floatN tmpM, ref floatN tmpN,
                                 int maxIterations, float tolerance)
         {
-            return lsmr(new floatBSMOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new floatBSROperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSMR over a (possibly rectangular) BSR matrix -- zero-alloc primitive that takes a
-        /// CALLER-PROVIDED precomputed transpose AT (e.g. <c>arena.floatBSMTranspose(in A)</c>
+        /// CALLER-PROVIDED precomputed transpose AT (e.g. <c>arena.floatBSRTranspose(in A)</c>
         /// built once outside a hot loop) and routes every ApplyT through the cache-friendly
         /// forward spMV(AT, x) instead of on-the-fly spMVT(A, x) -- see
-        /// <see cref="floatBSMOperator"/>'s two-arg ctor. Caller is responsible for AT being A's
+        /// <see cref="floatBSROperator"/>'s two-arg ctor. Caller is responsible for AT being A's
         /// transpose; this overload does not verify it.
         /// </summary>
-        public static LstsqInfo lsmr(in floatBSM A, in floatBSM AT, in floatN b, ref floatN x,
+        public static LstsqInfo lsmr(in floatBSR A, in floatBSR AT, in floatN b, ref floatN x,
                                 ref floatN u, ref floatN v, ref floatN h,
                                 ref floatN hbar, ref floatN tmpM, ref floatN tmpN,
                                 int maxIterations, float tolerance)
         {
-            return lsmr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSMR over a BSR matrix -- allocates six scratch vectors AND materializes A^T ONCE via
-        /// <c>arena.floatBSMTranspose</c>, then drives LSMR with the two-arg
-        /// <see cref="floatBSMOperator"/> so every ApplyT routes through a cache-friendly forward
+        /// <c>arena.floatBSRTranspose</c>, then drives LSMR with the two-arg
+        /// <see cref="floatBSROperator"/> so every ApplyT routes through a cache-friendly forward
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// zero-alloc AT overload above with your own scratch vectors.
         /// </summary>
-        public static LstsqInfo lsmr(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN u    = b.tempfloatVec(A.M_Rows);
-            floatN v    = b.tempfloatVec(A.N_Cols);
-            floatN h    = b.tempfloatVec(A.N_Cols);
-            floatN hbar = b.tempfloatVec(A.N_Cols);
-            floatN tmpM = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            return lsmr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            floatN u    = b.floatTempVec(A.M_Rows);
+            floatN v    = b.floatTempVec(A.N_Cols);
+            floatN h    = b.floatTempVec(A.N_Cols);
+            floatN hbar = b.floatTempVec(A.N_Cols);
+            floatN tmpM = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            return lsmr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
@@ -1902,20 +1902,20 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsmr(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
+        public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance, float damp)
         {
-            floatN u    = b.tempfloatVec(A.M_Rows);
-            floatN v    = b.tempfloatVec(A.N_Cols);
-            floatN h    = b.tempfloatVec(A.N_Cols);
-            floatN hbar = b.tempfloatVec(A.N_Cols);
-            floatN tmpM = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            return lsmr(new floatBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            floatN u    = b.floatTempVec(A.M_Rows);
+            floatN v    = b.floatTempVec(A.N_Cols);
+            floatN h    = b.floatTempVec(A.N_Cols);
+            floatN hbar = b.floatTempVec(A.N_Cols);
+            floatN tmpM = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            return lsmr(new floatBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
         /// <summary>LSMR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
-        public static LstsqInfo lsmr(in floatBSM A, in floatN b, ref floatN x)
+        public static LstsqInfo lsmr(in floatBSR A, in floatN b, ref floatN x)
         {
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
         }
@@ -1927,7 +1927,7 @@ namespace LinearAlgebra
         // scaling is a change of variable, so a warm start would need pre-mapping y0 = D^-1 x0), and
         // unscale x = D*y in place. On an ill-conditioned least-squares problem this converges in
         // fewer iterations than the un-preconditioned solve to the SAME solution. Everything is
-        // temp-pool allocated from b. BSM forms materialize A^T once (ApplyT-heavy). For explicit
+        // temp-pool allocated from b. BSR forms materialize A^T once (ApplyT-heavy). For explicit
         // control (custom d, warm start, damping semantics, zero-alloc) use the composable path
         // directly: Linear_OP.columnNormsSquared + buildJacobiScale + floatColScaledOperator + the
         // generic solver overload.
@@ -1965,13 +1965,13 @@ namespace LinearAlgebra
         public static LstsqInfo cglsJacobi(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            floatN d = b.tempfloatVec(n), d2 = b.tempfloatVec(n), scratch = b.tempfloatVec(n);
+            floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
             var op = new floatColScaledOperator<floatDenseOperator>(new floatDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (float)0;                 // cold start (change of variable)
-            floatN r = b.tempfloatVec(m), s = b.tempfloatVec(n), p = b.tempfloatVec(n), q = b.tempfloatVec(m);
+            floatN r = b.floatTempVec(m), s = b.floatTempVec(n), p = b.floatTempVec(n), q = b.floatTempVec(m);
             var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
             return JacobiFinish(new floatDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
@@ -1981,23 +1981,23 @@ namespace LinearAlgebra
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         /// <summary>CGLS with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo cglsJacobi(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo cglsJacobi(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            floatN d = b.tempfloatVec(n), d2 = b.tempfloatVec(n), scratch = b.tempfloatVec(n);
+            floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
             Sparse_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            var op = new floatColScaledOperator<floatBSMOperator>(new floatBSMOperator(in A, in AT), d, scratch);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            var op = new floatColScaledOperator<floatBSROperator>(new floatBSROperator(in A, in AT), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
-            floatN r = b.tempfloatVec(m), s = b.tempfloatVec(n), p = b.tempfloatVec(n), q = b.tempfloatVec(m);
+            floatN r = b.floatTempVec(m), s = b.floatTempVec(n), p = b.floatTempVec(n), q = b.floatTempVec(m);
             var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
-            return JacobiFinish(new floatBSMOperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
+            return JacobiFinish(new floatBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
 
         /// <summary>CGLS + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.floatSqrtEps).</summary>
-        public static LstsqInfo cglsJacobi(in floatBSM A, in floatN b, ref floatN x)
+        public static LstsqInfo cglsJacobi(in floatBSR A, in floatN b, ref floatN x)
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         // ---- LSQR + Jacobi ----
@@ -2005,13 +2005,13 @@ namespace LinearAlgebra
         public static LstsqInfo lsqrJacobi(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            floatN d = b.tempfloatVec(n), d2 = b.tempfloatVec(n), scratch = b.tempfloatVec(n);
+            floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
             var op = new floatColScaledOperator<floatDenseOperator>(new floatDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
-            floatN u = b.tempfloatVec(m), v = b.tempfloatVec(n), w = b.tempfloatVec(n), tmpM = b.tempfloatVec(m), tmpN = b.tempfloatVec(n);
+            floatN u = b.floatTempVec(m), v = b.floatTempVec(n), w = b.floatTempVec(n), tmpM = b.floatTempVec(m), tmpN = b.floatTempVec(n);
             var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
             return JacobiFinish(new floatDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
@@ -2021,23 +2021,23 @@ namespace LinearAlgebra
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         /// <summary>LSQR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsqrJacobi(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsqrJacobi(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            floatN d = b.tempfloatVec(n), d2 = b.tempfloatVec(n), scratch = b.tempfloatVec(n);
+            floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
             Sparse_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            var op = new floatColScaledOperator<floatBSMOperator>(new floatBSMOperator(in A, in AT), d, scratch);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            var op = new floatColScaledOperator<floatBSROperator>(new floatBSROperator(in A, in AT), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
-            floatN u = b.tempfloatVec(m), v = b.tempfloatVec(n), w = b.tempfloatVec(n), tmpM = b.tempfloatVec(m), tmpN = b.tempfloatVec(n);
+            floatN u = b.floatTempVec(m), v = b.floatTempVec(n), w = b.floatTempVec(n), tmpM = b.floatTempVec(m), tmpN = b.floatTempVec(n);
             var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
-            return JacobiFinish(new floatBSMOperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            return JacobiFinish(new floatBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
         /// <summary>LSQR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.floatSqrtEps).</summary>
-        public static LstsqInfo lsqrJacobi(in floatBSM A, in floatN b, ref floatN x)
+        public static LstsqInfo lsqrJacobi(in floatBSR A, in floatN b, ref floatN x)
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         // ---- LSMR + Jacobi ----
@@ -2045,13 +2045,13 @@ namespace LinearAlgebra
         public static LstsqInfo lsmrJacobi(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            floatN d = b.tempfloatVec(n), d2 = b.tempfloatVec(n), scratch = b.tempfloatVec(n);
+            floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
             var op = new floatColScaledOperator<floatDenseOperator>(new floatDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
-            floatN u = b.tempfloatVec(m), v = b.tempfloatVec(n), h = b.tempfloatVec(n), hbar = b.tempfloatVec(n), tmpM = b.tempfloatVec(m), tmpN = b.tempfloatVec(n);
+            floatN u = b.floatTempVec(m), v = b.floatTempVec(n), h = b.floatTempVec(n), hbar = b.floatTempVec(n), tmpM = b.floatTempVec(m), tmpN = b.floatTempVec(n);
             var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
             return JacobiFinish(new floatDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
@@ -2061,23 +2061,23 @@ namespace LinearAlgebra
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         /// <summary>LSMR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsmrJacobi(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static LstsqInfo lsmrJacobi(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            floatN d = b.tempfloatVec(n), d2 = b.tempfloatVec(n), scratch = b.tempfloatVec(n);
+            floatN d = b.floatTempVec(n), d2 = b.floatTempVec(n), scratch = b.floatTempVec(n);
             Sparse_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            var op = new floatColScaledOperator<floatBSMOperator>(new floatBSMOperator(in A, in AT), d, scratch);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            var op = new floatColScaledOperator<floatBSROperator>(new floatBSROperator(in A, in AT), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (float)0;
-            floatN u = b.tempfloatVec(m), v = b.tempfloatVec(n), h = b.tempfloatVec(n), hbar = b.tempfloatVec(n), tmpM = b.tempfloatVec(m), tmpN = b.tempfloatVec(n);
+            floatN u = b.floatTempVec(m), v = b.floatTempVec(n), h = b.floatTempVec(n), hbar = b.floatTempVec(n), tmpM = b.floatTempVec(m), tmpN = b.floatTempVec(n);
             var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
-            return JacobiFinish(new floatBSMOperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            return JacobiFinish(new floatBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
         /// <summary>LSMR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.floatSqrtEps).</summary>
-        public static LstsqInfo lsmrJacobi(in floatBSM A, in floatN b, ref floatN x)
+        public static LstsqInfo lsmrJacobi(in floatBSR A, in floatN b, ref floatN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
 
         /// <summary>
@@ -2195,10 +2195,10 @@ namespace LinearAlgebra
         /// <summary>CGNE over a dense matrix -- allocates four scratch vectors from the arena.</summary>
         public static SolveInfo cgne(in floatMxN A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN r    = b.tempfloatVec(A.M_Rows);
-            floatN p    = b.tempfloatVec(A.N_Cols);
-            floatN q    = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
+            floatN r    = b.floatTempVec(A.M_Rows);
+            floatN p    = b.floatTempVec(A.N_Cols);
+            floatN q    = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
             return cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
@@ -2210,48 +2210,48 @@ namespace LinearAlgebra
 
         /// <summary>
         /// CGNE / Craig over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc
-        /// primitive. Forwards into <see cref="cgne{TOp}"/> via <c>floatBSMOperator</c>. Matrix-
+        /// primitive. Forwards into <see cref="cgne{TOp}"/> via <c>floatBSROperator</c>. Matrix-
         /// free minimum-norm solve over a sparse Jacobian-like operator, never forming A Aᵀ.
         /// </summary>
-        public static SolveInfo cgne(in floatBSM A, in floatN b, ref floatN x,
+        public static SolveInfo cgne(in floatBSR A, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN p, ref floatN q, ref floatN tmpN,
                                 int maxIterations, float tolerance)
         {
-            return cgne(new floatBSMOperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new floatBSROperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGNE / Craig over a BSR matrix with a CALLER-PROVIDED precomputed transpose AT (built
-        /// once via <c>arena.floatBSMTranspose(in A)</c>), routing every ApplyT through the
+        /// once via <c>arena.floatBSRTranspose(in A)</c>), routing every ApplyT through the
         /// cache-friendly forward spMV(AT, x) instead of on-the-fly spMVT(A, x) -- see
-        /// <see cref="floatBSMOperator"/>'s two-arg ctor. Zero-alloc; caller owns AT.
+        /// <see cref="floatBSROperator"/>'s two-arg ctor. Zero-alloc; caller owns AT.
         /// </summary>
-        public static SolveInfo cgne(in floatBSM A, in floatBSM AT, in floatN b, ref floatN x,
+        public static SolveInfo cgne(in floatBSR A, in floatBSR AT, in floatN b, ref floatN x,
                                 ref floatN r, ref floatN p, ref floatN q, ref floatN tmpN,
                                 int maxIterations, float tolerance)
         {
-            return cgne(new floatBSMOperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGNE over a BSR matrix -- allocates four scratch vectors AND materializes A^T once via
-        /// <c>arena.floatBSMTranspose</c>, driving CGNE with the two-arg
-        /// <see cref="floatBSMOperator"/> so every ApplyT routes through a cache-friendly forward
+        /// <c>arena.floatBSRTranspose</c>, driving CGNE with the two-arg
+        /// <see cref="floatBSROperator"/> so every ApplyT routes through a cache-friendly forward
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// caller-AT overload above.
         /// </summary>
-        public static SolveInfo cgne(in floatBSM A, in floatN b, ref floatN x, int maxIterations, float tolerance)
+        public static SolveInfo cgne(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
-            floatN r    = b.tempfloatVec(A.M_Rows);
-            floatN p    = b.tempfloatVec(A.N_Cols);
-            floatN q    = b.tempfloatVec(A.M_Rows);
-            floatN tmpN = b.tempfloatVec(A.N_Cols);
-            floatBSM AT = b.floatBSMTranspose(in A);
-            return cgne(new floatBSMOperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            floatN r    = b.floatTempVec(A.M_Rows);
+            floatN p    = b.floatTempVec(A.N_Cols);
+            floatN q    = b.floatTempVec(A.M_Rows);
+            floatN tmpN = b.floatTempVec(A.N_Cols);
+            floatBSR AT = b.floatBSRTranspose(in A);
+            return cgne(new floatBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>CGNE over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.floatSqrtEps).</summary>
-        public static SolveInfo cgne(in floatBSM A, in floatN b, ref floatN x)
+        public static SolveInfo cgne(in floatBSR A, in floatN b, ref floatN x)
         {
             return cgne(in A, in b, ref x, A.N_Cols, Consts.floatSqrtEps);
         }

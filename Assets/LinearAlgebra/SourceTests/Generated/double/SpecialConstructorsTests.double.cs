@@ -130,7 +130,7 @@ public class doubleSpecialConstructorsTests {
         public void IndexOneVec()
         {
             var arena = new Arena(Allocator.Persistent);
-            var v = arena.doubleIndexOneVector(16);
+            var v = arena.doubleIndexOneVec(16);
 
             for (int i = 0; i < v.N; i++) {
                 Assert.IsTrue(v[i] == (double)i + 1);

@@ -17,9 +17,9 @@ namespace LinearAlgebra
         /// Power iteration with Rayleigh-quotient eigenvalue estimate, generic over any
         /// <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static dispatch, no
         /// vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the power-iteration
-        /// loop — the concrete dense (<c>powerIteration(in fProxyMxN, ...)</c>) and BSM
-        /// (<c>powerIteration(in fProxyBSM, ...)</c>) overloads below are thin forwarders that
-        /// wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSMOperator</c> and
+        /// loop — the concrete dense (<c>powerIteration(in fProxyMxN, ...)</c>) and BSR
+        /// (<c>powerIteration(in fProxyBSR, ...)</c>) overloads below are thin forwarders that
+        /// wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c> and
         /// call this method (mirrors <see cref="Solvers.cg{TOp}"/>).
         ///
         /// Finds the dominant eigenpair (lambda, v) of a square operator A (A.Rows == A.Cols).
@@ -100,7 +100,7 @@ namespace LinearAlgebra
             for (int iter = 0; iter < maxIter; iter++) {
 
                 // Step 1: w = A * v (no allocation — the operator's own Apply, e.g. a manual
-                // matvec for dense or spMV for a BSM)
+                // matvec for dense or spMV for a BSR)
                 A.Apply(in v, ref w);
 
                 // Step 2: lambda = v . w (Rayleigh quotient; ||v||_2 = 1)
@@ -192,16 +192,16 @@ namespace LinearAlgebra
         /// Power iteration with Rayleigh-quotient eigenvalue estimate over a block-sparse (BSR)
         /// matrix. Same semantics as the dense overload — see
         /// <see cref="powerIteration(in fProxyMxN, ref fProxyN, ref fProxyN, out fProxy, fProxy, int)"/>.
-        /// Forwards into <see cref="powerIteration{TOp}"/> via <c>fProxyBSMOperator</c>.
+        /// Forwards into <see cref="powerIteration{TOp}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
-        public static EigenSolveInfo powerIteration(in fProxyBSM A, ref fProxyN v, ref fProxyN w,
+        public static EigenSolveInfo powerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN w,
                                           out fProxy lambda, fProxy tol, int maxIter)
         {
-            return powerIteration(new fProxyBSMOperator(in A), ref v, ref w, out lambda, tol, maxIter);
+            return powerIteration(new fProxyBSROperator(in A), ref v, ref w, out lambda, tol, maxIter);
         }
 
         /// <summary>powerIteration over a block-sparse (BSR) matrix with default maxIter (1000).</summary>
-        public static EigenSolveInfo powerIteration(in fProxyBSM A, ref fProxyN v, ref fProxyN w,
+        public static EigenSolveInfo powerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN w,
                                           out fProxy lambda, fProxy tol)
             => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
 
@@ -209,7 +209,7 @@ namespace LinearAlgebra
         /// powerIteration over a block-sparse (BSR) matrix with default tol
         /// (Consts.fProxyZeroThreshold) and maxIter (1000).
         /// </summary>
-        public static EigenSolveInfo powerIteration(in fProxyBSM A, ref fProxyN v, ref fProxyN w,
+        public static EigenSolveInfo powerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN w,
                                           out fProxy lambda)
             => powerIteration(in A, ref v, ref w, out lambda, Consts.fProxyZeroThreshold, 1000);
 
@@ -219,9 +219,9 @@ namespace LinearAlgebra
         /// <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static dispatch, no
         /// vtable/managed delegate) -- same shape as <see cref="powerIteration{TOp}"/>. This is
         /// the SINGLE SOURCE OF TRUTH for the inverse-iteration loop -- the concrete dense
-        /// (<c>inversePowerIteration(in fProxyMxN, ...)</c>) and BSM
-        /// (<c>inversePowerIteration(in fProxyBSM, ...)</c>) overloads below are thin forwarders
-        /// that wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSMOperator</c>
+        /// (<c>inversePowerIteration(in fProxyMxN, ...)</c>) and BSR
+        /// (<c>inversePowerIteration(in fProxyBSR, ...)</c>) overloads below are thin forwarders
+        /// that wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c>
         /// and call this method (mirrors <see cref="powerIteration{TOp}"/>).
         ///
         /// A^-1 amplifies the SMALLEST-magnitude eigencomponent of A, so ordinary power iteration
@@ -469,10 +469,10 @@ namespace LinearAlgebra
         public static EigenSolveInfo inversePowerIteration(in fProxyMxN A, ref fProxyN v, out fProxy lambda,
                                                  fProxy tol, int maxIter, int cgMaxIter, fProxy cgTol)
         {
-            fProxyN y  = v.tempfProxyVec(A.M_Rows);
-            fProxyN r  = v.tempfProxyVec(A.M_Rows);
-            fProxyN p  = v.tempfProxyVec(A.M_Rows);
-            fProxyN Ap = v.tempfProxyVec(A.M_Rows);
+            fProxyN y  = v.fProxyTempVec(A.M_Rows);
+            fProxyN r  = v.fProxyTempVec(A.M_Rows);
+            fProxyN p  = v.fProxyTempVec(A.M_Rows);
+            fProxyN Ap = v.fProxyTempVec(A.M_Rows);
             return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
         }
 
@@ -492,18 +492,18 @@ namespace LinearAlgebra
         /// Inverse power iteration for the smallest eigenpair of a SPD block-sparse (BSR) matrix.
         /// Same semantics as the dense overload -- see
         /// <see cref="inversePowerIteration(in fProxyMxN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, out fProxy, fProxy, int, int, fProxy)"/>.
-        /// Forwards into <see cref="inversePowerIteration{TOp}"/> via <c>fProxyBSMOperator</c>.
+        /// Forwards into <see cref="inversePowerIteration{TOp}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
-        public static EigenSolveInfo inversePowerIteration(in fProxyBSM A, ref fProxyN v, ref fProxyN y,
+        public static EigenSolveInfo inversePowerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN y,
                                                  ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
                                                  out fProxy lambda,
                                                  fProxy tol, int maxIter, int cgMaxIter, fProxy cgTol)
         {
-            return inversePowerIteration(new fProxyBSMOperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
+            return inversePowerIteration(new fProxyBSROperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
         }
 
         /// <summary>inversePowerIteration over a BSR matrix with default cgMaxIter (A.M_Rows) and cgTol (Consts.fProxySqrtEps).</summary>
-        public static EigenSolveInfo inversePowerIteration(in fProxyBSM A, ref fProxyN v, ref fProxyN y,
+        public static EigenSolveInfo inversePowerIteration(in fProxyBSR A, ref fProxyN v, ref fProxyN y,
                                                  ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
                                                  out fProxy lambda, fProxy tol, int maxIter)
             => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.fProxySqrtEps);
@@ -512,13 +512,13 @@ namespace LinearAlgebra
         /// Inverse power iteration over a BSR SPD matrix -- allocates the inner-solve scratch from
         /// the arena that <paramref name="v"/> carries and calls the zero-alloc primitive.
         /// </summary>
-        public static EigenSolveInfo inversePowerIteration(in fProxyBSM A, ref fProxyN v, out fProxy lambda,
+        public static EigenSolveInfo inversePowerIteration(in fProxyBSR A, ref fProxyN v, out fProxy lambda,
                                                  fProxy tol, int maxIter, int cgMaxIter, fProxy cgTol)
         {
-            fProxyN y  = v.tempfProxyVec(A.M_Rows);
-            fProxyN r  = v.tempfProxyVec(A.M_Rows);
-            fProxyN p  = v.tempfProxyVec(A.M_Rows);
-            fProxyN Ap = v.tempfProxyVec(A.M_Rows);
+            fProxyN y  = v.fProxyTempVec(A.M_Rows);
+            fProxyN r  = v.fProxyTempVec(A.M_Rows);
+            fProxyN p  = v.fProxyTempVec(A.M_Rows);
+            fProxyN Ap = v.fProxyTempVec(A.M_Rows);
             return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
         }
 
@@ -528,7 +528,7 @@ namespace LinearAlgebra
         /// (Consts.fProxySqrtEps). See the dense overload's doc comment for why tol defaults to a
         /// multiple of cgTol rather than the much tighter Consts.fProxyZeroThreshold.
         /// </summary>
-        public static EigenSolveInfo inversePowerIteration(in fProxyBSM A, ref fProxyN v, out fProxy lambda)
+        public static EigenSolveInfo inversePowerIteration(in fProxyBSR A, ref fProxyN v, out fProxy lambda)
             => inversePowerIteration(in A, ref v, out lambda, (fProxy)10 * Consts.fProxySqrtEps, 1000, A.M_Rows, Consts.fProxySqrtEps);
 
         /// <summary>
@@ -536,15 +536,15 @@ namespace LinearAlgebra
         /// any <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static dispatch, no
         /// vtable/managed delegate) -- same shape as <see cref="powerIteration{TOp}"/> /
         /// <see cref="inversePowerIteration{TOp}"/>. This is the SINGLE SOURCE OF TRUTH for the
-        /// Lanczos loop -- the concrete dense (<c>lanczos(in fProxyMxN, ...)</c>) and BSM
-        /// (<c>lanczos(in fProxyBSM, ...)</c>) overloads below are thin forwarders that wrap their
-        /// matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSMOperator</c> and call this
+        /// Lanczos loop -- the concrete dense (<c>lanczos(in fProxyMxN, ...)</c>) and BSR
+        /// (<c>lanczos(in fProxyBSR, ...)</c>) overloads below are thin forwarders that wrap their
+        /// matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c> and call this
         /// method.
         ///
         /// Builds an orthonormal Krylov basis v_1..v_m (m = <paramref name="steps"/>) via the
         /// classical 3-term Lanczos recurrence and the corresponding symmetric tridiagonal T (diag
         /// alpha_1..alpha_m, off-diag beta_2..beta_m), then reuses
-        /// <see cref="eigenvaluesSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyEigenSym_WS)"/> on
+        /// <see cref="eigenvaluesSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyEigenSymCache)"/> on
         /// T to obtain the Ritz values -- approximate eigenvalues of A. The EXTREMAL Ritz values
         /// (largest and smallest) converge fastest and are already accurate for m &lt;&lt; A.Rows;
         /// with m == A.Rows and full reorthogonalization, T is orthogonally similar to A and the
@@ -564,8 +564,8 @@ namespace LinearAlgebra
         /// for extra robustness -- this implementation prioritizes correctness over the last bit of
         /// speed, per its purpose as a general-purpose extremal eigensolver.
         ///
-        /// Workspace (see <see cref="fProxyLanczos_WS"/>, allocate via
-        /// <c>Arena.fProxyLanczos_WS(A.Rows, steps)</c>): <c>ws.V</c> (steps x n) accumulates the
+        /// Workspace (see <see cref="fProxyLanczosCache"/>, allocate via
+        /// <c>Arena.fProxyLanczosCache(A.Rows, steps)</c>): <c>ws.V</c> (steps x n) accumulates the
         /// Krylov basis (row j = v_(j+1)); <c>ws.vCur</c>/<c>ws.w</c> (length n) are the current
         /// Krylov vector (copied out of V for A.Apply, which requires distinct in/out buffers) and
         /// the work vector; <c>ws.alpha</c>/<c>ws.beta</c> (length steps) are T's diagonal/off-
@@ -598,7 +598,7 @@ namespace LinearAlgebra
         ///
         /// Does not allocate.
         /// </summary>
-        public static LanczosInfo lanczos<TOp>(in TOp A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+        public static LanczosInfo lanczos<TOp>(in TOp A, ref fProxyLanczosCache ws, ref fProxyN eigenvalues,
                                         int steps, fProxy breakdownTol)
             where TOp : struct, IfProxyLinearOperator
         {
@@ -615,7 +615,7 @@ namespace LinearAlgebra
         // building the Krylov basis ws.V, and assemble the (early-breakdown-padded) symmetric
         // tridiagonal ws.T. Sets `produced`. Callers then apply their own symmetric eigensolver to
         // ws.T (eigenvaluesSymmetric for values, eigenSymmetric for values + eigenvectors).
-        static void lanczosTridiag<TOp>(in TOp A, ref fProxyLanczos_WS ws, out int produced,
+        static void lanczosTridiag<TOp>(in TOp A, ref fProxyLanczosCache ws, out int produced,
                                         int steps, fProxy breakdownTol)
             where TOp : struct, IfProxyLinearOperator
         {
@@ -752,7 +752,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>lanczos with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
-        public static LanczosInfo lanczos<TOp>(in TOp A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+        public static LanczosInfo lanczos<TOp>(in TOp A, ref fProxyLanczosCache ws, ref fProxyN eigenvalues,
                                         int steps)
             where TOp : struct, IfProxyLinearOperator
             => lanczos(in A, ref ws, ref eigenvalues, steps, Consts.fProxyZeroThreshold);
@@ -763,20 +763,20 @@ namespace LinearAlgebra
         /// the actual loop and the full algorithm documentation (seeding, full
         /// reorthogonalization, workspace layout, early-breakdown padding, output convention).
         /// </summary>
-        public static LanczosInfo lanczos(in fProxyMxN A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+        public static LanczosInfo lanczos(in fProxyMxN A, ref fProxyLanczosCache ws, ref fProxyN eigenvalues,
                                    int steps, fProxy breakdownTol)
         {
             return lanczos(new fProxyDenseOperator(in A), ref ws, ref eigenvalues, steps, breakdownTol);
         }
 
         /// <summary>lanczos over a dense matrix with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
-        public static LanczosInfo lanczos(in fProxyMxN A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+        public static LanczosInfo lanczos(in fProxyMxN A, ref fProxyLanczosCache ws, ref fProxyN eigenvalues,
                                    int steps)
             => lanczos(in A, ref ws, ref eigenvalues, steps, Consts.fProxyZeroThreshold);
 
         /// <summary>
         /// Lanczos over a dense SYMMETRIC matrix -- allocates the workspace (see
-        /// <see cref="fProxyLanczos_WS"/>) and the output eigenvalues buffer (length steps) from
+        /// <see cref="fProxyLanczosCache"/>) and the output eigenvalues buffer (length steps) from
         /// <paramref name="arena"/> and calls the zero-alloc primitive. Returns the Ritz values;
         /// only the first <c>info.produced</c> entries are meaningful (see
         /// <see cref="lanczos{TOp}"/>'s doc comment). Use the ref-workspace overload in hot loops
@@ -785,7 +785,7 @@ namespace LinearAlgebra
         public static fProxyN lanczos(ref Arena arena, in fProxyMxN A, int steps, out LanczosInfo info,
                                       fProxy breakdownTol)
         {
-            var ws = arena.fProxyLanczos_WS(A.M_Rows, steps);
+            var ws = arena.fProxyLanczosCache(A.M_Rows, steps);
             var eigenvalues = arena.fProxyVec(steps);
             info = lanczos(in A, ref ws, ref eigenvalues, steps, breakdownTol);
             return eigenvalues;
@@ -798,17 +798,17 @@ namespace LinearAlgebra
         /// <summary>
         /// Lanczos tridiagonalization of a SYMMETRIC block-sparse (BSR) matrix. Same semantics as
         /// the dense overload -- see
-        /// <see cref="lanczos(in fProxyMxN, ref fProxyLanczos_WS, ref fProxyN, int, fProxy)"/>.
-        /// Forwards into <see cref="lanczos{TOp}"/> via <c>fProxyBSMOperator</c>.
+        /// <see cref="lanczos(in fProxyMxN, ref fProxyLanczosCache, ref fProxyN, int, fProxy)"/>.
+        /// Forwards into <see cref="lanczos{TOp}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
-        public static LanczosInfo lanczos(in fProxyBSM A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+        public static LanczosInfo lanczos(in fProxyBSR A, ref fProxyLanczosCache ws, ref fProxyN eigenvalues,
                                    int steps, fProxy breakdownTol)
         {
-            return lanczos(new fProxyBSMOperator(in A), ref ws, ref eigenvalues, steps, breakdownTol);
+            return lanczos(new fProxyBSROperator(in A), ref ws, ref eigenvalues, steps, breakdownTol);
         }
 
         /// <summary>lanczos over a BSR matrix with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
-        public static LanczosInfo lanczos(in fProxyBSM A, ref fProxyLanczos_WS ws, ref fProxyN eigenvalues,
+        public static LanczosInfo lanczos(in fProxyBSR A, ref fProxyLanczosCache ws, ref fProxyN eigenvalues,
                                    int steps)
             => lanczos(in A, ref ws, ref eigenvalues, steps, Consts.fProxyZeroThreshold);
 
@@ -817,17 +817,17 @@ namespace LinearAlgebra
         /// eigenvalues buffer from <paramref name="arena"/> and calls the zero-alloc primitive.
         /// See the dense overload's doc comment for the return-value convention.
         /// </summary>
-        public static fProxyN lanczos(ref Arena arena, in fProxyBSM A, int steps, out LanczosInfo info,
+        public static fProxyN lanczos(ref Arena arena, in fProxyBSR A, int steps, out LanczosInfo info,
                                       fProxy breakdownTol)
         {
-            var ws = arena.fProxyLanczos_WS(A.M_Rows, steps);
+            var ws = arena.fProxyLanczosCache(A.M_Rows, steps);
             var eigenvalues = arena.fProxyVec(steps);
             info = lanczos(in A, ref ws, ref eigenvalues, steps, breakdownTol);
             return eigenvalues;
         }
 
         /// <summary>lanczos (allocating) over a BSR matrix with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
-        public static fProxyN lanczos(ref Arena arena, in fProxyBSM A, int steps, out LanczosInfo info)
+        public static fProxyN lanczos(ref Arena arena, in fProxyBSR A, int steps, out LanczosInfo info)
             => lanczos(ref arena, in A, steps, out info, Consts.fProxyZeroThreshold);
 
         /// <summary>
@@ -853,7 +853,7 @@ namespace LinearAlgebra
         /// length-steps Temp vectors internally. Returns a <see cref="LanczosInfo"/> (produced,
         /// status = eigenSymmetric's convergence flag).
         /// </summary>
-        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref fProxyLanczos_WS ws, ref fProxyMxN Yt,
+        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref fProxyLanczosCache ws, ref fProxyMxN Yt,
                                                ref fProxyN eigenvalues, ref fProxyMxN ritz,
                                                int steps, fProxy breakdownTol)
             where TOp : struct, IfProxyLinearOperator
@@ -893,7 +893,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>lanczosVectors with default breakdownTol (Consts.fProxyZeroThreshold).</summary>
-        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref fProxyLanczos_WS ws, ref fProxyMxN Yt,
+        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref fProxyLanczosCache ws, ref fProxyMxN Yt,
                                                ref fProxyN eigenvalues, ref fProxyMxN ritz,
                                                int steps)
             where TOp : struct, IfProxyLinearOperator
@@ -910,7 +910,7 @@ namespace LinearAlgebra
                                              out fProxyMxN ritz, out LanczosInfo info,
                                              fProxy breakdownTol)
         {
-            var ws = arena.fProxyLanczos_WS(A.M_Rows, steps);
+            var ws = arena.fProxyLanczosCache(A.M_Rows, steps);
             var Yt = arena.fProxyMat(steps, steps);
             var eigenvalues = arena.fProxyVec(steps);
             ritz = arena.fProxyMat(steps, A.M_Rows);
@@ -926,20 +926,20 @@ namespace LinearAlgebra
         /// Lanczos with Ritz vectors over a BSR SYMMETRIC matrix -- allocates workspace/scratch and
         /// the eigenvalues + Ritz-vector outputs from <paramref name="arena"/>. See the dense overload.
         /// </summary>
-        public static fProxyN lanczosVectors(ref Arena arena, in fProxyBSM A, int steps,
+        public static fProxyN lanczosVectors(ref Arena arena, in fProxyBSR A, int steps,
                                              out fProxyMxN ritz, out LanczosInfo info,
                                              fProxy breakdownTol)
         {
-            var ws = arena.fProxyLanczos_WS(A.M_Rows, steps);
+            var ws = arena.fProxyLanczosCache(A.M_Rows, steps);
             var Yt = arena.fProxyMat(steps, steps);
             var eigenvalues = arena.fProxyVec(steps);
             ritz = arena.fProxyMat(steps, A.M_Rows);
-            info = lanczosVectors(new fProxyBSMOperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, steps, breakdownTol);
+            info = lanczosVectors(new fProxyBSROperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, steps, breakdownTol);
             return eigenvalues;
         }
 
         /// <summary>lanczosVectors (allocating) over a BSR matrix with default breakdownTol.</summary>
-        public static fProxyN lanczosVectors(ref Arena arena, in fProxyBSM A, int steps, out fProxyMxN ritz, out LanczosInfo info)
+        public static fProxyN lanczosVectors(ref Arena arena, in fProxyBSR A, int steps, out fProxyMxN ritz, out LanczosInfo info)
             => lanczosVectors(ref arena, in A, steps, out ritz, out info, Consts.fProxyZeroThreshold);
 
         /// <summary>
@@ -1157,7 +1157,7 @@ namespace LinearAlgebra
         /// beyond three length-n Temp scratch vectors.
         /// </summary>
         public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy eps,
-                                                 ref fProxyEigenSym_WS ws)
+                                                 ref fProxyEigenSymCache ws)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Eigen.eigenvaluesSymmetric: A must be square");
@@ -1352,7 +1352,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>eigenvaluesSymmetric (ref workspace) with default maxIterPerEig (30) and eps (Consts.fProxyZeroThreshold).</summary>
-        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyEigenSym_WS ws)
+        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyEigenSymCache ws)
             => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.fProxyZeroThreshold, ref ws);
 
         /// <summary>
@@ -1362,7 +1362,7 @@ namespace LinearAlgebra
         public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy eps)
         {
             int n = A.M_Rows;
-            var ws = new fProxyEigenSym_WS
+            var ws = new fProxyEigenSymCache
             {
                 eVec = new fProxyN(n, Allocator.Temp, false),
                 vVec = new fProxyN(n, Allocator.Temp, false),

@@ -7,7 +7,7 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// Sparse matvec kernels over doubleBSM (block-CSR). The shape mirrors Linear_OP.dot's
+    /// Sparse matvec kernels over doubleBSR (block-CSR). The shape mirrors Linear_OP.dot's
     /// dense matVec overloads (in A, in x, ref y) on purpose -- a future generic
     /// IdoubleLinearOperator wrapper (Phase 2) can forward Apply/ApplyT straight to spMV/spMVT.
     /// </summary>
@@ -18,7 +18,7 @@ namespace LinearAlgebra.Sparse
         // ref-dest primitive. Guard: y must not alias x (each x[k] feeds every block-row that
         // stores a block in column-block k).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void spMV(in doubleBSM A, in doubleN x, ref doubleN y)
+        public static void spMV(in doubleBSR A, in doubleN x, ref doubleN y)
         {
             Assume.SameDim(A.N_Cols, x.N);
 
@@ -41,7 +41,7 @@ namespace LinearAlgebra.Sparse
 
                 if (A.Symmetric)
                 {
-                    // Symmetric storage requires BR==BC by construction (doubleBSM ctor), so
+                    // Symmetric storage requires BR==BC by construction (doubleBSR ctor), so
                     // dispatching on BR alone is sufficient here.
                     switch (A.BR)
                     {
@@ -75,9 +75,9 @@ namespace LinearAlgebra.Sparse
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static doubleN spMV(in doubleBSM A, in doubleN x)
+        public static doubleN spMV(in doubleBSR A, in doubleN x)
         {
-            doubleN result = x.tempdoubleVec(A.M_Rows);
+            doubleN result = x.doubleTempVec(A.M_Rows);
             spMV(in A, in x, ref result);
             return result;
         }
@@ -94,7 +94,7 @@ namespace LinearAlgebra.Sparse
         /// in that case. Jacobi-LS preconditioning targets rectangular / non-symmetric least
         /// squares, where Symmetric is false.
         /// </summary>
-        public static void columnNormsSquared(in doubleBSM A, ref doubleN d2)
+        public static void columnNormsSquared(in doubleBSR A, ref doubleN d2)
         {
             if (d2.N != A.N_Cols)
                 throw new ArgumentException("columnNormsSquared: d2.N must equal A.N_Cols");
@@ -135,7 +135,7 @@ namespace LinearAlgebra.Sparse
         // ref-dest primitive. Guard: y must not alias x (each x[k] feeds every block-column
         // that stores a block in block-row k).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void spMVT(in doubleBSM A, in doubleN x, ref doubleN y)
+        public static void spMVT(in doubleBSR A, in doubleN x, ref doubleN y)
         {
             if (A.Symmetric)
             {
@@ -188,9 +188,9 @@ namespace LinearAlgebra.Sparse
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static doubleN spMVT(in doubleBSM A, in doubleN x)
+        public static doubleN spMVT(in doubleBSR A, in doubleN x)
         {
-            doubleN result = x.tempdoubleVec(A.N_Cols);
+            doubleN result = x.doubleTempVec(A.N_Cols);
             spMVT(in A, in x, ref result);
             return result;
         }

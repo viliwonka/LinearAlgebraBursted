@@ -7,14 +7,14 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Symmetric upper-block-triangle storage test suite for fProxyBSM (BSR). Milestone A: prove that
-// a matrix stored as its upper block-triangle ONLY (fProxyBSM.Symmetric == true, built via
-// fProxyBSMBuilder.ToBSMSymmetric) behaves identically to the SAME matrix stored FULLY (every
-// block, incl. the explicit mirrored lower blocks, built via ToBSM). Every correctness case
+// Symmetric upper-block-triangle storage test suite for fProxyBSR (BSR). Milestone A: prove that
+// a matrix stored as its upper block-triangle ONLY (fProxyBSR.Symmetric == true, built via
+// fProxyBSRBuilder.ToBSRSymmetric) behaves identically to the SAME matrix stored FULLY (every
+// block, incl. the explicit mirrored lower blocks, built via ToBSR). Every correctness case
 // assembles the SAME logical SPD matrix in BOTH storage forms plus a dense reference, and
 // cross-checks spMV / spMVT / ToDense / the solvers between them.
 //
-// The correctness cases run inside a [BurstCompile] IJob (same pattern as fProxySparseBSMTests /
+// The correctness cases run inside a [BurstCompile] IJob (same pattern as fProxySparseBSRTests /
 // fProxySparseSolverTests). Guard / exception cases run on the managed test thread with
 // Assert.Throws (NUnit's Assert.Throws cannot execute inside a Burst-compiled job).
 public class fProxySparseSymmetricTests
@@ -33,9 +33,9 @@ public class fProxySparseSymmetricTests
             // ---- A1 edge cases ----
             CrossCheck_DiagonalOnly,   // no off-diagonal blocks -> bsmMatVecSym's bi!=bj branch never taken
             CrossCheck_SingleBlock,    // 1x1 block grid: trivially symmetric == full (no lower triangle)
-            CrossCheck_Empty,          // zero-triplet symmetric BSM: round-trips to zero dense / zero matvec
+            CrossCheck_Empty,          // zero-triplet symmetric BSR: round-trips to zero dense / zero matvec
 
-            // ---- A2 solver wiring (symmetric BSM feeds cg / minres / block-Jacobi pcg) ----
+            // ---- A2 solver wiring (symmetric BSR feeds cg / minres / block-Jacobi pcg) ----
             CgSymMatchesFull,
             MinresSymMatchesFull,
             PcgBlockJacobiSymMatchesFull,
@@ -47,7 +47,7 @@ public class fProxySparseSymmetricTests
         // byte-identical block values, so ToDense agrees exactly and spMV/spMVT differ only by the
         // block-traversal ORDER of otherwise-identical products -- values live in a bounded range,
         // so the absolute error stays well below this scaled threshold on both precisions (float
-        // needs the looser bound, double is far tighter). Matches fProxySparseBSMTests.Tol().
+        // needs the looser bound, double is far tighter). Matches fProxySparseBSRTests.Tol().
         static fProxy Tol() => /*+choose[1e-4f|1e-11]*/1e-4f/*-choose*/;
 
         // Looser threshold for the A2 solver cross-checks: comparing TWO independently-converged
@@ -106,7 +106,7 @@ public class fProxySparseSymmetricTests
         // reference. Builders are passed by value: AddBlock mutates through the builder's shared
         // heap _state pointer, so growth/appends are visible to the caller's copy too.
         static void AddDiag(ref Arena arena, int i, int BR, fProxy strong, uint seed,
-                            fProxyBSMBuilder full, fProxyBSMBuilder sym, ref fProxyMxN dense)
+                            fProxyBSRBuilder full, fProxyBSRBuilder sym, ref fProxyMxN dense)
         {
             var Mi = arena.fProxyRandomMat(BR, BR, (fProxy)(-1f), (fProxy)1f, seed);
             var Di = Linear_OP.dot(Mi, Mi, true);   // M_i^T M_i, symmetric PSD
@@ -128,7 +128,7 @@ public class fProxySparseSymmetricTests
         //   - dense reference: both dense[bi,bj]=K and dense[bj,bi]=K^T so it stays truly symmetric
         // offScale is kept small so the assembled matrix stays SPD by diagonal dominance.
         static void AddOffDiag(ref Arena arena, int bi, int bj, int BR, uint seed,
-                               fProxyBSMBuilder full, fProxyBSMBuilder sym, ref fProxyMxN dense)
+                               fProxyBSRBuilder full, fProxyBSRBuilder sym, ref fProxyMxN dense)
         {
             var block = arena.fProxyRandomMat(BR, BR, (fProxy)(-0.2f), (fProxy)0.2f, seed);
 
@@ -151,9 +151,9 @@ public class fProxySparseSymmetricTests
                 }
         }
 
-        // The shared A1 assertion battery: given the SAME matrix as a symmetric BSM, a full BSM, and
+        // The shared A1 assertion battery: given the SAME matrix as a symmetric BSR, a full BSR, and
         // a dense reference, prove every access path agrees.
-        static void CrossCheck(ref Arena arena, in fProxyBSM sym, in fProxyBSM full,
+        static void CrossCheck(ref Arena arena, in fProxyBSR sym, in fProxyBSR full,
                                in fProxyMxN dense, uint seedBase)
         {
             // Storage-mode flags.
@@ -192,18 +192,18 @@ public class fProxySparseSymmetricTests
             AssertSymmetric(in dSym, Tol());         // and the shared dense result is symmetric
         }
 
-        // Assemble the SAME SPD matrix as (symmetric BSM, full BSM, dense reference). The off-diagonal
+        // Assemble the SAME SPD matrix as (symmetric BSR, full BSR, dense reference). The off-diagonal
         // sparsity pattern is written as a straight-line sequence of AddOffDiag calls (NOT a loop over
         // a collection) so the whole method is Burst-compatible.
-        static void BuildSpdPair_BR1_Sparse(ref Arena arena, out fProxyBSM sym, out fProxyBSM full, out fProxyMxN dense)
+        static void BuildSpdPair_BR1_Sparse(ref Arena arena, out fProxyBSR sym, out fProxyBSR full, out fProxyMxN dense)
         {
             const int BR = 1, nb = 5;
             int dim = BR * nb;
             fProxy strong = (fProxy)dim;
             dense = arena.fProxyMat(dim, dim);
 
-            var f = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb + 2 * 2);
-            var s = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb + 2);
+            var f = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb + 2 * 2);
+            var s = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb + 2);
 
             AddDiag(ref arena, 0, BR, strong, 10000u, f, s, ref dense);
             AddDiag(ref arena, 1, BR, strong, 10001u, f, s, ref dense);
@@ -215,19 +215,19 @@ public class fProxySparseSymmetricTests
             AddOffDiag(ref arena, 0, 1, BR, 11000u, f, s, ref dense);
             AddOffDiag(ref arena, 1, 3, BR, 11001u, f, s, ref dense);
 
-            sym  = s.ToBSMSymmetric(ref arena);
-            full = f.ToBSM(ref arena);
+            sym  = s.ToBSRSymmetric(ref arena);
+            full = f.ToBSR(ref arena);
         }
 
-        static void BuildSpdPair_BR1_Dense(ref Arena arena, out fProxyBSM sym, out fProxyBSM full, out fProxyMxN dense)
+        static void BuildSpdPair_BR1_Dense(ref Arena arena, out fProxyBSR sym, out fProxyBSR full, out fProxyMxN dense)
         {
             const int BR = 1, nb = 5;
             int dim = BR * nb;
             fProxy strong = (fProxy)dim;
             dense = arena.fProxyMat(dim, dim);
 
-            var f = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb + 2 * 10);
-            var s = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb + 10);
+            var f = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb + 2 * 10);
+            var s = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb + 10);
 
             AddDiag(ref arena, 0, BR, strong, 12000u, f, s, ref dense);
             AddDiag(ref arena, 1, BR, strong, 12001u, f, s, ref dense);
@@ -247,20 +247,20 @@ public class fProxySparseSymmetricTests
             AddOffDiag(ref arena, 2, 4, BR, 13008u, f, s, ref dense);
             AddOffDiag(ref arena, 3, 4, BR, 13009u, f, s, ref dense);
 
-            sym  = s.ToBSMSymmetric(ref arena);
-            full = f.ToBSM(ref arena);
+            sym  = s.ToBSRSymmetric(ref arena);
+            full = f.ToBSR(ref arena);
         }
 
         // BR=3 exercises genuine block interior transposes in bsmMatVecSym (the K^T * x_i mirror).
-        static void BuildSpdPair_BR3_Sparse(ref Arena arena, out fProxyBSM sym, out fProxyBSM full, out fProxyMxN dense)
+        static void BuildSpdPair_BR3_Sparse(ref Arena arena, out fProxyBSR sym, out fProxyBSR full, out fProxyMxN dense)
         {
             const int BR = 3, nb = 4;
             int dim = BR * nb;
             fProxy strong = (fProxy)dim;
             dense = arena.fProxyMat(dim, dim);
 
-            var f = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb + 2 * 3);
-            var s = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb + 3);
+            var f = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb + 2 * 3);
+            var s = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb + 3);
 
             AddDiag(ref arena, 0, BR, strong, 20000u, f, s, ref dense);
             AddDiag(ref arena, 1, BR, strong, 20001u, f, s, ref dense);
@@ -272,19 +272,19 @@ public class fProxySparseSymmetricTests
             AddOffDiag(ref arena, 1, 2, BR, 21001u, f, s, ref dense);
             AddOffDiag(ref arena, 2, 3, BR, 21002u, f, s, ref dense);
 
-            sym  = s.ToBSMSymmetric(ref arena);
-            full = f.ToBSM(ref arena);
+            sym  = s.ToBSRSymmetric(ref arena);
+            full = f.ToBSR(ref arena);
         }
 
-        static void BuildSpdPair_BR3_Dense(ref Arena arena, out fProxyBSM sym, out fProxyBSM full, out fProxyMxN dense)
+        static void BuildSpdPair_BR3_Dense(ref Arena arena, out fProxyBSR sym, out fProxyBSR full, out fProxyMxN dense)
         {
             const int BR = 3, nb = 4;
             int dim = BR * nb;
             fProxy strong = (fProxy)dim;
             dense = arena.fProxyMat(dim, dim);
 
-            var f = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb + 2 * 6);
-            var s = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb + 6);
+            var f = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb + 2 * 6);
+            var s = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb + 6);
 
             AddDiag(ref arena, 0, BR, strong, 22000u, f, s, ref dense);
             AddDiag(ref arena, 1, BR, strong, 22001u, f, s, ref dense);
@@ -299,8 +299,8 @@ public class fProxySparseSymmetricTests
             AddOffDiag(ref arena, 1, 3, BR, 23004u, f, s, ref dense);
             AddOffDiag(ref arena, 2, 3, BR, 23005u, f, s, ref dense);
 
-            sym  = s.ToBSMSymmetric(ref arena);
-            full = f.ToBSM(ref arena);
+            sym  = s.ToBSRSymmetric(ref arena);
+            full = f.ToBSR(ref arena);
         }
 
         // ================================================================================
@@ -344,7 +344,7 @@ public class fProxySparseSymmetricTests
             arena.Dispose();
         }
 
-        // ---- edge: diagonal-only symmetric BSM ----
+        // ---- edge: diagonal-only symmetric BSR ----
         //
         // ONLY diagonal blocks are populated -> in bsmMatVecSym the `if (bi != bj)` mirrored-write
         // branch is NEVER taken. This isolates the diagonal path (the branch that would silently
@@ -359,15 +359,15 @@ public class fProxySparseSymmetricTests
             fProxy strong = (fProxy)dim;
             var dense = arena.fProxyMat(dim, dim);
 
-            var f = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb);
-            var s = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb);
+            var f = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb);
+            var s = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb);
 
             AddDiag(ref arena, 0, BR, strong, 30000u, f, s, ref dense);
             AddDiag(ref arena, 1, BR, strong, 30001u, f, s, ref dense);
             AddDiag(ref arena, 2, BR, strong, 30002u, f, s, ref dense);
 
-            var sym  = s.ToBSMSymmetric(ref arena);
-            var full = f.ToBSM(ref arena);
+            var sym  = s.ToBSRSymmetric(ref arena);
+            var full = f.ToBSR(ref arena);
 
             Assert.IsTrue(sym.Nnzb == nb);          // exactly the diagonal blocks
             Assert.IsTrue(sym.Nnzb == full.Nnzb);   // no lower triangle to omit
@@ -390,13 +390,13 @@ public class fProxySparseSymmetricTests
             fProxy strong = (fProxy)dim;
             var dense = arena.fProxyMat(dim, dim);
 
-            var f = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb);
-            var s = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb);
+            var f = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb);
+            var s = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb);
 
             AddDiag(ref arena, 0, BR, strong, 40000u, f, s, ref dense);
 
-            var sym  = s.ToBSMSymmetric(ref arena);
-            var full = f.ToBSM(ref arena);
+            var sym  = s.ToBSRSymmetric(ref arena);
+            var full = f.ToBSR(ref arena);
 
             Assert.IsTrue(sym.Nnzb == 1);
             Assert.IsTrue(sym.Nnzb == full.Nnzb);
@@ -406,36 +406,36 @@ public class fProxySparseSymmetricTests
             arena.Dispose();
         }
 
-        // ---- edge: empty (zero-triplet) symmetric BSM ----
+        // ---- edge: empty (zero-triplet) symmetric BSR ----
         //
         // A builder with a valid square block-grid shape (BR==BC, BlockRows==BlockCols so
-        // ToBSMSymmetric's guard passes) but ZERO triplets ToBSMSymmetric's to a valid empty BSM
+        // ToBSRSymmetric's guard passes) but ZERO triplets ToBSRSymmetric's to a valid empty BSR
         // (Nnzb == 0): every block-row's RowPtr range is empty, so bsmMatVecSym never dereferences
         // the zero-length ColInd/Values buffers. ToDense must produce the all-zero matrix and
-        // spMV/spMVT the zero vector for any x. Mirrors fProxySparseBSMTests.EmptyBSMRoundTrip, but
+        // spMV/spMVT the zero vector for any x. Mirrors fProxySparseBSRTests.EmptyBSRRoundTrip, but
         // there is no full-storage twin to compare against -- an empty matrix is checked against
         // zero directly. spMVT specifically exercises the Symmetric-forwarding spMVT->spMV path on
-        // an empty matrix (distinct from the full BSM's own empty-transpose loop).
+        // an empty matrix (distinct from the full BSR's own empty-transpose loop).
         void CrossCheck_Empty()
         {
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2, nb = 3;                 // 3x3 block grid of 2x2 blocks -> 6x6 dense
             int dim = BR * nb;
-            var builder = arena.fProxyBSMBuilder(nb, nb, BR, BR); // never AddBlock/AddValue
-            var sym = builder.ToBSMSymmetric(ref arena);
+            var builder = arena.fProxyBSRBuilder(nb, nb, BR, BR); // never AddBlock/AddValue
+            var sym = builder.ToBSRSymmetric(ref arena);
 
             Assert.IsTrue(sym.Symmetric);
             Assert.IsTrue(sym.Nnzb == 0);
             Assert.IsTrue(sym.M_Rows == dim);
             Assert.IsTrue(sym.N_Cols == dim);
 
-            // ToDense of an empty symmetric BSM == the all-zero matrix of the right dims.
+            // ToDense of an empty symmetric BSR == the all-zero matrix of the right dims.
             var dense = sym.ToDense(ref arena);
             var zero = arena.fProxyMat(dim, dim);
             AssertMatEq(in dense, in zero, Tol());
 
-            // spMV of an empty BSM == the zero vector, for a random nonzero x.
+            // spMV of an empty BSR == the zero vector, for a random nonzero x.
             var x = arena.fProxyRandomVec(dim, (fProxy)(-1f), (fProxy)1f, 42000u);
             var y = Sparse_OP.spMV(in sym, in x);
             Assert.IsTrue(Analysis_OP.isZero(y, Tol()));
@@ -510,7 +510,7 @@ public class fProxySparseSymmetricTests
             arena.Dispose();
         }
 
-        // Block-Jacobi on a symmetric BSM: the diagonal block (col==row) is the FIRST stored entry
+        // Block-Jacobi on a symmetric BSR: the diagonal block (col==row) is the FIRST stored entry
         // in a symmetric row range (upper-triangle storage => ColInd ascending, >= row), so the
         // preconditioner's diagonal lookup must succeed WITHOUT special-casing -- this is the
         // specific "not broken by symmetric storage" claim Milestone A asked to verify.
@@ -596,31 +596,31 @@ public class fProxySparseSymmetricTests
     // A1 guard / exception cases (managed thread; Assert.Throws can't run inside Burst)
     // ================================================================================
 
-    // ToBSMSymmetric rejects a lower-triangle triplet (blockCol < blockRow): building a symmetric
+    // ToBSRSymmetric rejects a lower-triangle triplet (blockCol < blockRow): building a symmetric
     // matrix must only add blocks at (br, bc) with bc >= br, otherwise the caller has (probably)
     // a bug and we refuse to silently fold it into the transpose position.
     [Test]
-    public void ToBSMSymmetric_LowerTriangleTriplet_Throws()
+    public void ToBSRSymmetric_LowerTriangleTriplet_Throws()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
             const int BR = 2;
-            var builder = arena.fProxyBSMBuilder(2, 2, BR, BR, 1);
+            var builder = arena.fProxyBSRBuilder(2, 2, BR, BR, 1);
             builder.AddBlock(1, 0, arena.fProxyRandomMat(BR, BR, (fProxy)(-1f), (fProxy)1f, 60001)); // bc < br
-            Assert.Throws<ArgumentException>(() => builder.ToBSMSymmetric(ref arena));
+            Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(ref arena));
         }
         finally { arena.Dispose(); }
     }
 
-    // ToBSMSymmetric rejects a NON-SYMMETRIC diagonal block: upper-block storage represents the
+    // ToBSRSymmetric rejects a NON-SYMMETRIC diagonal block: upper-block storage represents the
     // implicit lower block (bj,bi) as block(bi,bj)^T, so the matrix is symmetric only if each
     // diagonal block is -- and spMVT forwards to spMV assuming A==A^T, so a non-symmetric diagonal
     // block would silently make spMVT return A*x. The build must refuse it (same stance as the
     // lower-triangle guard). Uses a 1x1 block grid so a single non-symmetric diagonal block is the
     // only thing under test.
     [Test]
-    public void ToBSMSymmetric_NonSymmetricDiagonalBlock_Throws()
+    public void ToBSRSymmetric_NonSymmetricDiagonalBlock_Throws()
     {
         var arena = new Arena(Allocator.Persistent);
         try
@@ -629,9 +629,9 @@ public class fProxySparseSymmetricTests
             var blk = arena.fProxyMat(BR, BR);
             blk[0, 0] = (fProxy)1; blk[0, 1] = (fProxy)2;
             blk[1, 0] = (fProxy)3; blk[1, 1] = (fProxy)4;   // blk[0,1]=2 != blk[1,0]=3 -> not symmetric
-            var builder = arena.fProxyBSMBuilder(1, 1, BR, BR, 1);
+            var builder = arena.fProxyBSRBuilder(1, 1, BR, BR, 1);
             builder.AddBlock(0, 0, in blk);
-            Assert.Throws<ArgumentException>(() => builder.ToBSMSymmetric(ref arena));
+            Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(ref arena));
         }
         finally { arena.Dispose(); }
     }
@@ -639,7 +639,7 @@ public class fProxySparseSymmetricTests
     // A SYMMETRIC diagonal block is accepted (the guard's tolerance does not false-positive on a
     // genuinely symmetric block): companion to the throw case above.
     [Test]
-    public void ToBSMSymmetric_SymmetricDiagonalBlock_Accepted()
+    public void ToBSRSymmetric_SymmetricDiagonalBlock_Accepted()
     {
         var arena = new Arena(Allocator.Persistent);
         try
@@ -648,42 +648,42 @@ public class fProxySparseSymmetricTests
             var blk = arena.fProxyMat(BR, BR);
             blk[0, 0] = (fProxy)1; blk[0, 1] = (fProxy)2;
             blk[1, 0] = (fProxy)2; blk[1, 1] = (fProxy)4;   // symmetric (2 == 2)
-            var builder = arena.fProxyBSMBuilder(1, 1, BR, BR, 1);
+            var builder = arena.fProxyBSRBuilder(1, 1, BR, BR, 1);
             builder.AddBlock(0, 0, in blk);
-            var sym = builder.ToBSMSymmetric(ref arena);    // must NOT throw
+            var sym = builder.ToBSRSymmetric(ref arena);    // must NOT throw
             Assert.IsTrue(sym.Symmetric);
         }
         finally { arena.Dispose(); }
     }
 
-    // ToBSMSymmetric rejects rectangular blocks (BR != BC) -- this guard fires BEFORE the triplet
+    // ToBSRSymmetric rejects rectangular blocks (BR != BC) -- this guard fires BEFORE the triplet
     // scan, so it throws even with zero triplets.
     [Test]
-    public void ToBSMSymmetric_NonSquareBlock_Throws()
+    public void ToBSRSymmetric_NonSquareBlock_Throws()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.fProxyBSMBuilder(2, 2, 3, 2); // BR=3 != BC=2, but square block grid
-            Assert.Throws<ArgumentException>(() => builder.ToBSMSymmetric(ref arena));
+            var builder = arena.fProxyBSRBuilder(2, 2, 3, 2); // BR=3 != BC=2, but square block grid
+            Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(ref arena));
         }
         finally { arena.Dispose(); }
     }
 
-    // ToBSMSymmetric rejects a non-square block grid (BlockRows != BlockCols) even with BR == BC.
+    // ToBSRSymmetric rejects a non-square block grid (BlockRows != BlockCols) even with BR == BC.
     [Test]
-    public void ToBSMSymmetric_NonSquareGrid_Throws()
+    public void ToBSRSymmetric_NonSquareGrid_Throws()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.fProxyBSMBuilder(2, 3, 3, 3); // BlockRows=2 != BlockCols=3, BR==BC
-            Assert.Throws<ArgumentException>(() => builder.ToBSMSymmetric(ref arena));
+            var builder = arena.fProxyBSRBuilder(2, 3, 3, 3); // BlockRows=2 != BlockCols=3, BR==BC
+            Assert.Throws<ArgumentException>(() => builder.ToBSRSymmetric(ref arena));
         }
         finally { arena.Dispose(); }
     }
 
-    // The fProxyBSM CONSTRUCTOR's OWN symmetric guard (a different code path than the builder's):
+    // The fProxyBSR CONSTRUCTOR's OWN symmetric guard (a different code path than the builder's):
     // rectangular blocks (BR != BC) are rejected up front.
     [Test]
     public void Ctor_SymmetricNonSquareBlock_Throws()
@@ -692,7 +692,7 @@ public class fProxySparseSymmetricTests
         try
         {
             // 2x2 block grid, BR=3 != BC=2 -> symmetric storage forbidden.
-            Assert.Throws<ArgumentException>(() => arena.fProxyBSM(2, 2, 3, 2, 1, symmetric: true));
+            Assert.Throws<ArgumentException>(() => arena.fProxyBSR(2, 2, 3, 2, 1, symmetric: true));
         }
         finally { arena.Dispose(); }
     }
@@ -706,7 +706,7 @@ public class fProxySparseSymmetricTests
         try
         {
             // 2x3 block grid, BR==BC==3 -> symmetric storage forbidden (grid not square).
-            Assert.Throws<ArgumentException>(() => arena.fProxyBSM(2, 3, 3, 3, 1, symmetric: true));
+            Assert.Throws<ArgumentException>(() => arena.fProxyBSR(2, 3, 3, 3, 1, symmetric: true));
         }
         finally { arena.Dispose(); }
     }

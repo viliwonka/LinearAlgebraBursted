@@ -459,7 +459,7 @@ namespace LinearAlgebra.Stats
         // population variance along cols (÷M_Rows), dest length N_Cols. Two-pass; needs one N_Cols
         // scratch vector for the column means. The scratch is a function-local Allocator.Temp
         // allocation disposed before return — it does NOT persist in the arena temp pool, so calling
-        // this every frame leaks nothing (unlike a tempdoubleVec, which lives until ClearTemp).
+        // this every frame leaks nothing (unlike a doubleTempVec, which lives until ClearTemp).
         public static void colVariance(in doubleMxN A, ref doubleN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
@@ -633,7 +633,7 @@ namespace LinearAlgebra.Stats
             }
 
             // Temp vector for column means (reclaimed by ClearTemp, not persistent).
-            var means = A.tempdoubleVec(N);
+            var means = A.doubleTempVec(N);
 
             // First pass: accumulate column sums (row-major), then divide to get means.
             for (int r = 0; r < M; r++)
@@ -644,7 +644,7 @@ namespace LinearAlgebra.Stats
 
             // Second pass: build centered M×N matrix in one row-major sweep (reclaimed by ClearTemp).
             // centered[r, c] = A[r, c] − mean[c]
-            var centered = A.tempdoubleMat(M, N);
+            var centered = A.doubleTempMat(M, N);
             for (int r = 0; r < M; r++)
                 for (int c = 0; c < N; c++)
                     centered[r, c] = A[r, c] - means[c];
@@ -693,11 +693,11 @@ namespace LinearAlgebra.Stats
             int N = A.N_Cols;
 
             // Compute covariance into a temp matrix (reclaimed by ClearTemp, not persistent).
-            var C = A.tempdoubleMat(N, N);
+            var C = A.doubleTempMat(N, N);
             covarianceInto(in A, ref C);
 
             // Precompute all N standard deviations into a temp vector (reclaimed by ClearTemp).
-            var s = A.tempdoubleVec(N);
+            var s = A.doubleTempVec(N);
             for (int i = 0; i < N; i++)
                 s[i] = math.sqrt(C[i, i]);
 
@@ -734,7 +734,7 @@ namespace LinearAlgebra.Stats
         //   *Columns  — per column of a doubleMxN (strided).
         //
         // Matrix variants use function-local Allocator.Temp scratch vectors disposed before
-        // return — callers on per-frame paths leak nothing (unlike tempdoubleVec / arena temp).
+        // return — callers on per-frame paths leak nothing (unlike doubleTempVec / arena temp).
         //
         // Zero/constant-axis guards use !(x > 0) which is NaN-safe (catches 0 AND NaN).
 

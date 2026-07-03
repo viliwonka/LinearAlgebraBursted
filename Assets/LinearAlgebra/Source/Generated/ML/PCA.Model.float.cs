@@ -15,7 +15,7 @@ namespace LinearAlgebra.ML
     /// This is a buffer-carrying (float-prefixed) struct rather than a plain scalar diagnostics struct
     /// (like <c>SolveInfo</c>/<c>EigenSolveInfo</c>) because PCA has a downstream <c>pcaTransform</c> stage
     /// that consumes <c>mean</c>/<c>scale</c>/<c>components</c>/<c>k</c> together as a unit — the same
-    /// justification every <c>_WS</c> (<c>floatKMeans_WS</c>, <c>floatSVDThin_WS</c>) already has for
+    /// justification every <c>Cache</c> (<c>floatKMeansCache</c>, <c>floatSVDThinCache</c>) already has for
     /// bundling arena buffer handles into one struct.
     /// </summary>
     public struct floatPCAModel

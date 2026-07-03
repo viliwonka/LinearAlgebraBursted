@@ -276,10 +276,10 @@ namespace LinearAlgebra
             => svdValues(in A, ref S, 75, Consts.fProxyZeroThreshold);
 
         /// <summary>
-        /// svdValues using a reusable workspace (Arena.fProxySVDValues_WS(m, n)) — zero-alloc.
+        /// svdValues using a reusable workspace (Arena.fProxySVDValuesCache(m, n)) — zero-alloc.
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
-        public static bool svdValues(in fProxyMxN A, ref fProxyN S, ref fProxySVDValues_WS ws,
+        public static bool svdValues(in fProxyMxN A, ref fProxyN S, ref fProxySVDValuesCache ws,
                                      int maxIter, fProxy eps)
         {
             int m = A.M_Rows;
@@ -327,7 +327,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>svdValues (workspace) with default maxIter (75) and eps (Consts.fProxyZeroThreshold).</summary>
-        public static bool svdValues(in fProxyMxN A, ref fProxyN S, ref fProxySVDValues_WS ws)
+        public static bool svdValues(in fProxyMxN A, ref fProxyN S, ref fProxySVDValuesCache ws)
             => svdValues(in A, ref S, ref ws, 75, Consts.fProxyZeroThreshold);
 
         // pythag(a,b) = sqrt(a^2 + b^2) without destructive under/overflow.
@@ -466,12 +466,12 @@ namespace LinearAlgebra
             => svdThin(in A, ref U, ref S, ref V, 75, Consts.fProxyZeroThreshold);
 
         /// <summary>
-        /// svdThin using a reusable workspace (Arena.fProxySVDThin_WS(m, n)) — zero-alloc (including
+        /// svdThin using a reusable workspace (Arena.fProxySVDThinCache(m, n)) — zero-alloc (including
         /// the inner Bidiag.bidiagonalize call, via the workspace's nested BidiagWs). Semantics
         /// identical to the allocating overload; see that one for full documentation.
         /// </summary>
         public static bool svdThin(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
-                                   ref fProxySVDThin_WS ws, int maxIter, fProxy eps)
+                                   ref fProxySVDThinCache ws, int maxIter, fProxy eps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -554,12 +554,12 @@ namespace LinearAlgebra
 
         /// <summary>svdThin (workspace) with default eps (Consts.fProxyZeroThreshold).</summary>
         public static bool svdThin(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
-                                   ref fProxySVDThin_WS ws, int maxIter)
+                                   ref fProxySVDThinCache ws, int maxIter)
             => svdThin(in A, ref U, ref S, ref V, ref ws, maxIter, Consts.fProxyZeroThreshold);
 
         /// <summary>svdThin (workspace) with default maxIter (75) and eps (Consts.fProxyZeroThreshold).</summary>
         public static bool svdThin(in fProxyMxN A, ref fProxyMxN U, ref fProxyN S, ref fProxyMxN V,
-                                   ref fProxySVDThin_WS ws)
+                                   ref fProxySVDThinCache ws)
             => svdThin(in A, ref U, ref S, ref V, ref ws, 75, Consts.fProxyZeroThreshold);
 
         // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (d diagonal, e superdiagonal,

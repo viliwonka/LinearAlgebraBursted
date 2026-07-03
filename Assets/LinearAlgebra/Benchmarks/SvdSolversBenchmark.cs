@@ -21,7 +21,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN Uk;         // n x k
         public floatN Sk;           // length k
         public floatMxN Vk;         // n x k
-        public floatSVDRandomized_WS ws;
+        public floatSVDRandomizedCache ws;
 
         public void Execute() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, 16, ref ws);
     }
@@ -33,7 +33,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN Uk;
         public doubleN Sk;
         public doubleMxN Vk;
-        public doubleSVDRandomized_WS ws;
+        public doubleSVDRandomizedCache ws;
 
         public void Execute() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, 16, ref ws);
     }
@@ -46,7 +46,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN A;          // n x n, NOT modified by Golub-Kahan path
         public floatN b;
         public floatN x;
-        public floatSVD_WS ws;
+        public floatSVDCache ws;
 
         public void Execute() => SVD.pinvSolve(ref A, in b, ref x, out bool _, ref ws);
     }
@@ -57,7 +57,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN A;
         public doubleN b;
         public doubleN x;
-        public doubleSVD_WS ws;
+        public doubleSVDCache ws;
 
         public void Execute() => SVD.pinvSolve(ref A, in b, ref x, out bool _, ref ws);
     }
@@ -69,7 +69,7 @@ namespace LinearAlgebra.Benchmarks
     {
         public floatMxN A;          // n x n, NOT modified by Golub-Kahan path
         public floatMxN Aplus;      // n x n
-        public floatSVD_WS ws;
+        public floatSVDCache ws;
 
         public void Execute() => SVD.pseudoInverse(ref A, ref Aplus, out bool _, ref ws);
     }
@@ -79,7 +79,7 @@ namespace LinearAlgebra.Benchmarks
     {
         public doubleMxN A;
         public doubleMxN Aplus;
-        public doubleSVD_WS ws;
+        public doubleSVDCache ws;
 
         public void Execute() => SVD.pseudoInverse(ref A, ref Aplus, out bool _, ref ws);
     }
@@ -120,7 +120,7 @@ namespace LinearAlgebra.Benchmarks
             var Uk = arena.floatMat(n, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            var ws = arena.floatSVDRandomized_WS(n, n, k);
+            var ws = arena.floatSVDRandomizedCache(n, n, k);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -142,7 +142,7 @@ namespace LinearAlgebra.Benchmarks
             var Uk = arena.doubleMat(n, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            var ws = arena.doubleSVDRandomized_WS(n, n, k);
+            var ws = arena.doubleSVDRandomizedCache(n, n, k);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -164,7 +164,7 @@ namespace LinearAlgebra.Benchmarks
             var A = arena.floatMat(n, n);
             var b = arena.floatVec(n);
             var x = arena.floatVec(n);
-            var ws = arena.floatSVD_WS(n, n);
+            var ws = arena.floatSVDCache(n, n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -188,7 +188,7 @@ namespace LinearAlgebra.Benchmarks
             var A = arena.doubleMat(n, n);
             var b = arena.doubleVec(n);
             var x = arena.doubleVec(n);
-            var ws = arena.doubleSVD_WS(n, n);
+            var ws = arena.doubleSVDCache(n, n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -213,7 +213,7 @@ namespace LinearAlgebra.Benchmarks
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatMat(n, n);
             var Aplus = arena.floatMat(n, n);
-            var ws = arena.floatSVD_WS(n, n);
+            var ws = arena.floatSVDCache(n, n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
@@ -234,7 +234,7 @@ namespace LinearAlgebra.Benchmarks
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleMat(n, n);
             var Aplus = arena.doubleMat(n, n);
-            var ws = arena.doubleSVD_WS(n, n);
+            var ws = arena.doubleSVDCache(n, n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)

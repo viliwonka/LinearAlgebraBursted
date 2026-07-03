@@ -7,10 +7,10 @@ namespace LinearAlgebra
     /// operator into its own zero-cost specialization). Lets Krylov solvers (CG, PCG, MINRES,
     /// BiCGSTAB, CGLS, LSQR -- see <c>Solvers</c>) be written ONCE and reused over both dense
     /// (<see cref="floatDenseOperator"/>) and block-sparse
-    /// (<c>LinearAlgebra.Sparse.floatBSMOperator</c>) matrices without duplicating the solver
+    /// (<c>LinearAlgebra.Sparse.floatBSROperator</c>) matrices without duplicating the solver
     /// loop.
     /// Implement on a small, ideally-readonly struct holding only blittable fields (a value
-    /// copy of the wrapped matrix/BSM struct) -- same Burst-functor contract as
+    /// copy of the wrapped matrix/BSR struct) -- same Burst-functor contract as
     /// <see cref="IfloatScalarFunction"/> / <see cref="IfloatSampler"/>.
     /// </summary>
     public interface IfloatLinearOperator
@@ -69,7 +69,7 @@ namespace LinearAlgebra
     /// Right column-scaling wrapper: presents the operator A·D where D = diag(d) is a diagonal
     /// scaling of the INPUT (column) space, over any inner <typeparamref name="TInner"/> operator.
     /// Composes with every generic solver with NO solver change (they are already generic over
-    /// <c>TOp</c>), so passing <c>floatColScaledOperator&lt;floatDenseOperator&gt;</c> (or the BSM
+    /// <c>TOp</c>), so passing <c>floatColScaledOperator&lt;floatDenseOperator&gt;</c> (or the BSR
     /// operator) turns cgls/lsqr/lsmr into their column-preconditioned variants: with
     /// d[j] = 1/‖A_:,j‖₂ (an AᵀA-Jacobi / column-equilibration preconditioner, built via
     /// <c>Linear_OP.columnNormsSquared</c> + <c>Linear_OP.buildJacobiScale</c>) the scaled operator

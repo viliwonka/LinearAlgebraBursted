@@ -139,7 +139,7 @@ namespace LinearAlgebra
         /// and returns it. Use the ref-destination overload in hot loops to avoid the allocation.
         /// </summary>
         public static fProxyN solveQR(ref fProxyMxN Q, ref fProxyMxN R, ref fProxyN b) {
-            fProxyN x = b.tempfProxyVec(Q.N_Cols);
+            fProxyN x = b.fProxyTempVec(Q.N_Cols);
             solveQR(ref Q, ref R, ref b, ref x);
             return x;
         }
@@ -160,9 +160,9 @@ namespace LinearAlgebra
         /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b,
         /// generic over any <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static
         /// dispatch, no vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the CG
-        /// loop — the concrete dense (<c>cg(in fProxyMxN, ...)</c>) and BSM
-        /// (<c>cg(in fProxyBSM, ...)</c>) overloads below are thin forwarders that
-        /// wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSMOperator</c> and
+        /// loop — the concrete dense (<c>cg(in fProxyMxN, ...)</c>) and BSR
+        /// (<c>cg(in fProxyBSR, ...)</c>) overloads below are thin forwarders that
+        /// wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c> and
         /// call this method.
         ///
         /// Caller provides x (initial guess, overwritten with solution — WARM-STARTABLE: seed x
@@ -286,9 +286,9 @@ namespace LinearAlgebra
         public static SolveInfo cg(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                              int maxIterations, fProxy tolerance)
         {
-            fProxyN r  = b.tempfProxyVec(A.M_Rows);
-            fProxyN p  = b.tempfProxyVec(A.M_Rows);
-            fProxyN Ap = b.tempfProxyVec(A.M_Rows);
+            fProxyN r  = b.fProxyTempVec(A.M_Rows);
+            fProxyN p  = b.fProxyTempVec(A.M_Rows);
+            fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
@@ -304,25 +304,25 @@ namespace LinearAlgebra
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix. Same semantics as
         /// the dense overload — see <see cref="cg(in fProxyMxN, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int, fProxy)"/>.
-        /// Forwards into <see cref="cg{TOp}"/> via <c>fProxyBSMOperator</c>.
+        /// Forwards into <see cref="cg{TOp}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
-        public static SolveInfo cg(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                              ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
                                              int maxIterations, fProxy tolerance)
         {
-            return cg(new fProxyBSMOperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(new fProxyBSROperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix — allocates three
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo cg(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cg(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                              int maxIterations, fProxy tolerance)
         {
-            fProxyN r  = b.tempfProxyVec(A.M_Rows);
-            fProxyN p  = b.tempfProxyVec(A.M_Rows);
-            fProxyN Ap = b.tempfProxyVec(A.M_Rows);
+            fProxyN r  = b.fProxyTempVec(A.M_Rows);
+            fProxyN p  = b.fProxyTempVec(A.M_Rows);
+            fProxyN Ap = b.fProxyTempVec(A.M_Rows);
             return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
@@ -330,7 +330,7 @@ namespace LinearAlgebra
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix, with default
         /// maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo cg(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cg(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return cg(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
@@ -472,10 +472,10 @@ namespace LinearAlgebra
             where TOp : struct, IfProxyLinearOperator
             where TPre : struct, IfProxyPreconditioner
         {
-            fProxyN r  = b.tempfProxyVec(A.Rows);
-            fProxyN p  = b.tempfProxyVec(A.Rows);
-            fProxyN Ap = b.tempfProxyVec(A.Rows);
-            fProxyN z  = b.tempfProxyVec(A.Rows);
+            fProxyN r  = b.fProxyTempVec(A.Rows);
+            fProxyN p  = b.fProxyTempVec(A.Rows);
+            fProxyN Ap = b.fProxyTempVec(A.Rows);
+            fProxyN z  = b.fProxyTempVec(A.Rows);
             return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
         }
 
@@ -493,26 +493,26 @@ namespace LinearAlgebra
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
         /// matching block-Jacobi preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
-        /// <c>fProxyBSMOperator</c>.
+        /// <c>fProxyBSROperator</c>.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSM A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo pcg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
                                ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
                                int maxIterations, fProxy tolerance)
         {
-            return pcg(new fProxyBSMOperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(new fProxyBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix — allocates four
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSM A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
+        public static SolveInfo pcg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x,
                                int maxIterations, fProxy tolerance)
         {
-            fProxyN r  = b.tempfProxyVec(A.M_Rows);
-            fProxyN p  = b.tempfProxyVec(A.M_Rows);
-            fProxyN Ap = b.tempfProxyVec(A.M_Rows);
-            fProxyN z  = b.tempfProxyVec(A.M_Rows);
+            fProxyN r  = b.fProxyTempVec(A.M_Rows);
+            fProxyN p  = b.fProxyTempVec(A.M_Rows);
+            fProxyN Ap = b.fProxyTempVec(A.M_Rows);
+            fProxyN z  = b.fProxyTempVec(A.M_Rows);
             return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
         }
 
@@ -520,7 +520,7 @@ namespace LinearAlgebra
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
         /// maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).
         /// </summary>
-        public static SolveInfo pcg(in fProxyBSM A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x)
+        public static SolveInfo pcg(in fProxyBSR A, in fProxyBlockJacobi M, in fProxyN b, ref fProxyN x)
         {
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
@@ -696,13 +696,13 @@ namespace LinearAlgebra
         /// <summary>MINRES over a dense matrix -- allocates seven scratch vectors from the arena.</summary>
         public static SolveInfo minres(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN y  = b.tempfProxyVec(A.M_Rows);
-            fProxyN r1 = b.tempfProxyVec(A.M_Rows);
-            fProxyN r2 = b.tempfProxyVec(A.M_Rows);
-            fProxyN v  = b.tempfProxyVec(A.M_Rows);
-            fProxyN w  = b.tempfProxyVec(A.M_Rows);
-            fProxyN w1 = b.tempfProxyVec(A.M_Rows);
-            fProxyN w2 = b.tempfProxyVec(A.M_Rows);
+            fProxyN y  = b.fProxyTempVec(A.M_Rows);
+            fProxyN r1 = b.fProxyTempVec(A.M_Rows);
+            fProxyN r2 = b.fProxyTempVec(A.M_Rows);
+            fProxyN v  = b.fProxyTempVec(A.M_Rows);
+            fProxyN w  = b.fProxyTempVec(A.M_Rows);
+            fProxyN w1 = b.fProxyTempVec(A.M_Rows);
+            fProxyN w2 = b.fProxyTempVec(A.M_Rows);
             return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
         }
 
@@ -714,31 +714,31 @@ namespace LinearAlgebra
 
         /// <summary>
         /// MINRES over a symmetric block-sparse (BSR) matrix -- zero-alloc primitive. Forwards
-        /// into <see cref="minres{TOp}"/> via <c>fProxyBSMOperator</c>.
+        /// into <see cref="minres{TOp}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
-        public static SolveInfo minres(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo minres(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                   ref fProxyN y, ref fProxyN r1, ref fProxyN r2, ref fProxyN v,
                                   ref fProxyN w, ref fProxyN w1, ref fProxyN w2,
                                   int maxIterations, fProxy tolerance)
         {
-            return minres(new fProxyBSMOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(new fProxyBSROperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
         }
 
         /// <summary>MINRES over a BSR matrix -- allocates seven scratch vectors from the arena.</summary>
-        public static SolveInfo minres(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static SolveInfo minres(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN y  = b.tempfProxyVec(A.M_Rows);
-            fProxyN r1 = b.tempfProxyVec(A.M_Rows);
-            fProxyN r2 = b.tempfProxyVec(A.M_Rows);
-            fProxyN v  = b.tempfProxyVec(A.M_Rows);
-            fProxyN w  = b.tempfProxyVec(A.M_Rows);
-            fProxyN w1 = b.tempfProxyVec(A.M_Rows);
-            fProxyN w2 = b.tempfProxyVec(A.M_Rows);
+            fProxyN y  = b.fProxyTempVec(A.M_Rows);
+            fProxyN r1 = b.fProxyTempVec(A.M_Rows);
+            fProxyN r2 = b.fProxyTempVec(A.M_Rows);
+            fProxyN v  = b.fProxyTempVec(A.M_Rows);
+            fProxyN w  = b.fProxyTempVec(A.M_Rows);
+            fProxyN w1 = b.fProxyTempVec(A.M_Rows);
+            fProxyN w2 = b.fProxyTempVec(A.M_Rows);
             return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
         }
 
         /// <summary>MINRES over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).</summary>
-        public static SolveInfo minres(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static SolveInfo minres(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return minres(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
@@ -897,11 +897,11 @@ namespace LinearAlgebra
         /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from the arena.</summary>
         public static SolveInfo biCGStab(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN r     = b.tempfProxyVec(A.M_Rows);
-            fProxyN rHat0 = b.tempfProxyVec(A.M_Rows);
-            fProxyN p     = b.tempfProxyVec(A.M_Rows);
-            fProxyN v     = b.tempfProxyVec(A.M_Rows);
-            fProxyN t     = b.tempfProxyVec(A.M_Rows);
+            fProxyN r     = b.fProxyTempVec(A.M_Rows);
+            fProxyN rHat0 = b.fProxyTempVec(A.M_Rows);
+            fProxyN p     = b.fProxyTempVec(A.M_Rows);
+            fProxyN v     = b.fProxyTempVec(A.M_Rows);
+            fProxyN t     = b.fProxyTempVec(A.M_Rows);
             return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
         }
 
@@ -913,28 +913,28 @@ namespace LinearAlgebra
 
         /// <summary>
         /// BiCGSTAB over a block-sparse (BSR) matrix -- zero-alloc primitive. Forwards into
-        /// <see cref="biCGStab{TOp}"/> via <c>fProxyBSMOperator</c>.
+        /// <see cref="biCGStab{TOp}"/> via <c>fProxyBSROperator</c>.
         /// </summary>
-        public static SolveInfo biCGStab(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo biCGStab(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                     ref fProxyN r, ref fProxyN rHat0, ref fProxyN p, ref fProxyN v, ref fProxyN t,
                                     int maxIterations, fProxy tolerance)
         {
-            return biCGStab(new fProxyBSMOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(new fProxyBSROperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
         }
 
         /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
-        public static SolveInfo biCGStab(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static SolveInfo biCGStab(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN r     = b.tempfProxyVec(A.M_Rows);
-            fProxyN rHat0 = b.tempfProxyVec(A.M_Rows);
-            fProxyN p     = b.tempfProxyVec(A.M_Rows);
-            fProxyN v     = b.tempfProxyVec(A.M_Rows);
-            fProxyN t     = b.tempfProxyVec(A.M_Rows);
+            fProxyN r     = b.fProxyTempVec(A.M_Rows);
+            fProxyN rHat0 = b.fProxyTempVec(A.M_Rows);
+            fProxyN p     = b.fProxyTempVec(A.M_Rows);
+            fProxyN v     = b.fProxyTempVec(A.M_Rows);
+            fProxyN t     = b.fProxyTempVec(A.M_Rows);
             return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
         }
 
         /// <summary>BiCGSTAB over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.fProxySqrtEps).</summary>
-        public static SolveInfo biCGStab(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static SolveInfo biCGStab(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return biCGStab(in A, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
@@ -1142,10 +1142,10 @@ namespace LinearAlgebra
         /// <summary>CGLS over a dense matrix -- allocates four scratch vectors from the arena.</summary>
         public static LstsqInfo cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN r = b.tempfProxyVec(A.M_Rows);
-            fProxyN s = b.tempfProxyVec(A.N_Cols);
-            fProxyN p = b.tempfProxyVec(A.N_Cols);
-            fProxyN q = b.tempfProxyVec(A.M_Rows);
+            fProxyN r = b.fProxyTempVec(A.M_Rows);
+            fProxyN s = b.fProxyTempVec(A.N_Cols);
+            fProxyN p = b.fProxyTempVec(A.N_Cols);
+            fProxyN q = b.fProxyTempVec(A.M_Rows);
             return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
@@ -1155,10 +1155,10 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
         {
-            fProxyN r = b.tempfProxyVec(A.M_Rows);
-            fProxyN s = b.tempfProxyVec(A.N_Cols);
-            fProxyN p = b.tempfProxyVec(A.N_Cols);
-            fProxyN q = b.tempfProxyVec(A.M_Rows);
+            fProxyN r = b.fProxyTempVec(A.M_Rows);
+            fProxyN s = b.fProxyTempVec(A.N_Cols);
+            fProxyN p = b.fProxyTempVec(A.N_Cols);
+            fProxyN q = b.fProxyTempVec(A.M_Rows);
             return cgls(new fProxyDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
         }
 
@@ -1170,58 +1170,58 @@ namespace LinearAlgebra
 
         /// <summary>
         /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="cgls{TOp}"/> via <c>fProxyBSMOperator</c>. This is the payoff
+        /// Forwards into <see cref="cgls{TOp}"/> via <c>fProxyBSROperator</c>. This is the payoff
         /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
         /// operator, never forming AᵀA.
         /// </summary>
-        public static LstsqInfo cgls(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
                                 int maxIterations, fProxy tolerance)
         {
-            return cgls(new fProxyBSMOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new fProxyBSROperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
         /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
-        /// <c>arena.fProxyBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// <c>arena.fProxyBSRTranspose(in A)</c> outside a hot loop / before a benchmark's timed
         /// region) and routes every ApplyT call through the resulting cache-friendly forward
         /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
-        /// <see cref="fProxyBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// <see cref="fProxyBSROperator"/>'s two-arg ctor. Caller is responsible for AT actually
         /// being A's transpose; this overload does not verify it. Prefer this over the allocating
-        /// <see cref="cgls(in fProxyBSM, in fProxyN, ref fProxyN, int, fProxy)"/> overload when
+        /// <see cref="cgls(in fProxyBSR, in fProxyN, ref fProxyN, int, fProxy)"/> overload when
         /// solving repeatedly against the same A (build AT once, reuse it across many solves).
         /// </summary>
-        public static LstsqInfo cgls(in fProxyBSM A, in fProxyBSM AT, in fProxyN b, ref fProxyN x,
+        public static LstsqInfo cgls(in fProxyBSR A, in fProxyBSR AT, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
                                 int maxIterations, fProxy tolerance)
         {
-            return cgls(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGLS over a BSR matrix -- allocates four scratch vectors AND materializes A^T ONCE
-        /// via <c>arena.fProxyBSMTranspose</c> (same arena as the scratch vectors, taken from
-        /// b), then drives CGLS with the two-arg <see cref="fProxyBSMOperator"/> so every
+        /// via <c>arena.fProxyBSRTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives CGLS with the two-arg <see cref="fProxyBSROperator"/> so every
         /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
         /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- this is the fix for the
         /// rectangular CGLS/LSQR transpose-matvec cache-unfriendliness (the one-time O(nnz)
         /// transpose build is amortized over every iteration). For a build-free zero-alloc path
         /// (e.g. many solves reusing the same A), build A^T yourself once (<c>arena.
-        /// fProxyBSMTranspose(in A)</c>) and call the zero-alloc <see cref="cgls(in fProxyBSM,
-        /// in fProxyBSM, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref
+        /// fProxyBSRTranspose(in A)</c>) and call the zero-alloc <see cref="cgls(in fProxyBSR,
+        /// in fProxyBSR, in fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref
         /// fProxyN, int, fProxy)"/> overload above with your own scratch vectors, or the generic
-        /// <see cref="cgls{TOp}"/> overload directly with <c>new fProxyBSMOperator(in A, in
+        /// <see cref="cgls{TOp}"/> overload directly with <c>new fProxyBSROperator(in A, in
         /// AT)</c>.
         /// </summary>
-        public static LstsqInfo cgls(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN r = b.tempfProxyVec(A.M_Rows);
-            fProxyN s = b.tempfProxyVec(A.N_Cols);
-            fProxyN p = b.tempfProxyVec(A.N_Cols);
-            fProxyN q = b.tempfProxyVec(A.M_Rows);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            return cgls(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            fProxyN r = b.fProxyTempVec(A.M_Rows);
+            fProxyN s = b.fProxyTempVec(A.N_Cols);
+            fProxyN p = b.fProxyTempVec(A.N_Cols);
+            fProxyN q = b.fProxyTempVec(A.M_Rows);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return cgls(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>
@@ -1229,18 +1229,18 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo cgls(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
+        public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
         {
-            fProxyN r = b.tempfProxyVec(A.M_Rows);
-            fProxyN s = b.tempfProxyVec(A.N_Cols);
-            fProxyN p = b.tempfProxyVec(A.N_Cols);
-            fProxyN q = b.tempfProxyVec(A.M_Rows);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            return cgls(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
+            fProxyN r = b.fProxyTempVec(A.M_Rows);
+            fProxyN s = b.fProxyTempVec(A.N_Cols);
+            fProxyN p = b.fProxyTempVec(A.N_Cols);
+            fProxyN q = b.fProxyTempVec(A.M_Rows);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return cgls(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
         }
 
         /// <summary>CGLS over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
-        public static LstsqInfo cgls(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static LstsqInfo cgls(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return cgls(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
         }
@@ -1472,11 +1472,11 @@ namespace LinearAlgebra
         /// <summary>LSQR over a dense matrix -- allocates five scratch vectors from the arena.</summary>
         public static LstsqInfo lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN u    = b.tempfProxyVec(A.M_Rows);
-            fProxyN v    = b.tempfProxyVec(A.N_Cols);
-            fProxyN w    = b.tempfProxyVec(A.N_Cols);
-            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            fProxyN u    = b.fProxyTempVec(A.M_Rows);
+            fProxyN v    = b.fProxyTempVec(A.N_Cols);
+            fProxyN w    = b.fProxyTempVec(A.N_Cols);
+            fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
@@ -1486,11 +1486,11 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo lsqr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
         {
-            fProxyN u    = b.tempfProxyVec(A.M_Rows);
-            fProxyN v    = b.tempfProxyVec(A.N_Cols);
-            fProxyN w    = b.tempfProxyVec(A.N_Cols);
-            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            fProxyN u    = b.fProxyTempVec(A.M_Rows);
+            fProxyN v    = b.fProxyTempVec(A.N_Cols);
+            fProxyN w    = b.fProxyTempVec(A.N_Cols);
+            fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             return lsqr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
@@ -1502,61 +1502,61 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="lsqr{TOp}"/> via <c>fProxyBSMOperator</c>. This is the payoff
+        /// Forwards into <see cref="lsqr{TOp}"/> via <c>fProxyBSROperator</c>. This is the payoff
         /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
         /// operator, never forming AᵀA, with better ill-conditioned behavior than <see
         /// cref="cgls{TOp}"/>.
         /// </summary>
-        public static LstsqInfo lsqr(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN w,
                                 ref fProxyN tmpM, ref fProxyN tmpN,
                                 int maxIterations, fProxy tolerance)
         {
-            return lsqr(new fProxyBSMOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new fProxyBSROperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
         /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
-        /// <c>arena.fProxyBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// <c>arena.fProxyBSRTranspose(in A)</c> outside a hot loop / before a benchmark's timed
         /// region) and routes every ApplyT call through the resulting cache-friendly forward
         /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
-        /// <see cref="fProxyBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// <see cref="fProxyBSROperator"/>'s two-arg ctor. Caller is responsible for AT actually
         /// being A's transpose; this overload does not verify it. Prefer this over the allocating
-        /// <see cref="lsqr(in fProxyBSM, in fProxyN, ref fProxyN, int, fProxy)"/> overload when
+        /// <see cref="lsqr(in fProxyBSR, in fProxyN, ref fProxyN, int, fProxy)"/> overload when
         /// solving repeatedly against the same A (build AT once, reuse it across many solves).
         /// </summary>
-        public static LstsqInfo lsqr(in fProxyBSM A, in fProxyBSM AT, in fProxyN b, ref fProxyN x,
+        public static LstsqInfo lsqr(in fProxyBSR A, in fProxyBSR AT, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN w,
                                 ref fProxyN tmpM, ref fProxyN tmpN,
                                 int maxIterations, fProxy tolerance)
         {
-            return lsqr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSQR over a BSR matrix -- allocates five scratch vectors AND materializes A^T ONCE
-        /// via <c>arena.fProxyBSMTranspose</c> (same arena as the scratch vectors, taken from
-        /// b), then drives LSQR with the two-arg <see cref="fProxyBSMOperator"/> so every
+        /// via <c>arena.fProxyBSRTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives LSQR with the two-arg <see cref="fProxyBSROperator"/> so every
         /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
         /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- same fix and same tradeoff as
-        /// <see cref="cgls(in fProxyBSM, in fProxyN, ref fProxyN, int, fProxy)"/>: for a
-        /// build-free zero-alloc path, build A^T yourself once (<c>arena.fProxyBSMTranspose(in
-        /// A)</c>) and call the zero-alloc <see cref="lsqr(in fProxyBSM, in fProxyBSM, in
+        /// <see cref="cgls(in fProxyBSR, in fProxyN, ref fProxyN, int, fProxy)"/>: for a
+        /// build-free zero-alloc path, build A^T yourself once (<c>arena.fProxyBSRTranspose(in
+        /// A)</c>) and call the zero-alloc <see cref="lsqr(in fProxyBSR, in fProxyBSR, in
         /// fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, ref fProxyN, int,
         /// fProxy)"/> overload above with your own scratch vectors, or the generic
-        /// <see cref="lsqr{TOp}"/> overload directly with <c>new fProxyBSMOperator(in A, in
+        /// <see cref="lsqr{TOp}"/> overload directly with <c>new fProxyBSROperator(in A, in
         /// AT)</c>.
         /// </summary>
-        public static LstsqInfo lsqr(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN u    = b.tempfProxyVec(A.M_Rows);
-            fProxyN v    = b.tempfProxyVec(A.N_Cols);
-            fProxyN w    = b.tempfProxyVec(A.N_Cols);
-            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            return lsqr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            fProxyN u    = b.fProxyTempVec(A.M_Rows);
+            fProxyN v    = b.fProxyTempVec(A.N_Cols);
+            fProxyN w    = b.fProxyTempVec(A.N_Cols);
+            fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return lsqr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
@@ -1564,19 +1564,19 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsqr(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
+        public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
         {
-            fProxyN u    = b.tempfProxyVec(A.M_Rows);
-            fProxyN v    = b.tempfProxyVec(A.N_Cols);
-            fProxyN w    = b.tempfProxyVec(A.N_Cols);
-            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            return lsqr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            fProxyN u    = b.fProxyTempVec(A.M_Rows);
+            fProxyN v    = b.fProxyTempVec(A.N_Cols);
+            fProxyN w    = b.fProxyTempVec(A.N_Cols);
+            fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return lsqr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
         /// <summary>LSQR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
-        public static LstsqInfo lsqr(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static LstsqInfo lsqr(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return lsqr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
         }
@@ -1818,12 +1818,12 @@ namespace LinearAlgebra
         /// <summary>LSMR over a dense matrix -- allocates six scratch vectors from the arena.</summary>
         public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN u    = b.tempfProxyVec(A.M_Rows);
-            fProxyN v    = b.tempfProxyVec(A.N_Cols);
-            fProxyN h    = b.tempfProxyVec(A.N_Cols);
-            fProxyN hbar = b.tempfProxyVec(A.N_Cols);
-            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            fProxyN u    = b.fProxyTempVec(A.M_Rows);
+            fProxyN v    = b.fProxyTempVec(A.N_Cols);
+            fProxyN h    = b.fProxyTempVec(A.N_Cols);
+            fProxyN hbar = b.fProxyTempVec(A.N_Cols);
+            fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             return lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
@@ -1833,12 +1833,12 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo lsmr(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
         {
-            fProxyN u    = b.tempfProxyVec(A.M_Rows);
-            fProxyN v    = b.tempfProxyVec(A.N_Cols);
-            fProxyN h    = b.tempfProxyVec(A.N_Cols);
-            fProxyN hbar = b.tempfProxyVec(A.N_Cols);
-            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            fProxyN u    = b.fProxyTempVec(A.M_Rows);
+            fProxyN v    = b.fProxyTempVec(A.N_Cols);
+            fProxyN h    = b.fProxyTempVec(A.N_Cols);
+            fProxyN hbar = b.fProxyTempVec(A.N_Cols);
+            fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             return lsmr(new fProxyDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
@@ -1850,51 +1850,51 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LSMR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="lsmr{TOp}"/> via <c>fProxyBSMOperator</c>. Matrix-free least
+        /// Forwards into <see cref="lsmr{TOp}"/> via <c>fProxyBSROperator</c>. Matrix-free least
         /// squares over a sparse Jacobian-like operator, never forming AᵀA, with LSMR's monotone
         /// ‖Aᵀr‖ decrease (see the generic overload).
         /// </summary>
-        public static LstsqInfo lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN h,
                                 ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
                                 int maxIterations, fProxy tolerance)
         {
-            return lsmr(new fProxyBSMOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new fProxyBSROperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSMR over a (possibly rectangular) BSR matrix -- zero-alloc primitive that takes a
-        /// CALLER-PROVIDED precomputed transpose AT (e.g. <c>arena.fProxyBSMTranspose(in A)</c>
+        /// CALLER-PROVIDED precomputed transpose AT (e.g. <c>arena.fProxyBSRTranspose(in A)</c>
         /// built once outside a hot loop) and routes every ApplyT through the cache-friendly
         /// forward spMV(AT, x) instead of on-the-fly spMVT(A, x) -- see
-        /// <see cref="fProxyBSMOperator"/>'s two-arg ctor. Caller is responsible for AT being A's
+        /// <see cref="fProxyBSROperator"/>'s two-arg ctor. Caller is responsible for AT being A's
         /// transpose; this overload does not verify it.
         /// </summary>
-        public static LstsqInfo lsmr(in fProxyBSM A, in fProxyBSM AT, in fProxyN b, ref fProxyN x,
+        public static LstsqInfo lsmr(in fProxyBSR A, in fProxyBSR AT, in fProxyN b, ref fProxyN x,
                                 ref fProxyN u, ref fProxyN v, ref fProxyN h,
                                 ref fProxyN hbar, ref fProxyN tmpM, ref fProxyN tmpN,
                                 int maxIterations, fProxy tolerance)
         {
-            return lsmr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSMR over a BSR matrix -- allocates six scratch vectors AND materializes A^T ONCE via
-        /// <c>arena.fProxyBSMTranspose</c>, then drives LSMR with the two-arg
-        /// <see cref="fProxyBSMOperator"/> so every ApplyT routes through a cache-friendly forward
+        /// <c>arena.fProxyBSRTranspose</c>, then drives LSMR with the two-arg
+        /// <see cref="fProxyBSROperator"/> so every ApplyT routes through a cache-friendly forward
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// zero-alloc AT overload above with your own scratch vectors.
         /// </summary>
-        public static LstsqInfo lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN u    = b.tempfProxyVec(A.M_Rows);
-            fProxyN v    = b.tempfProxyVec(A.N_Cols);
-            fProxyN h    = b.tempfProxyVec(A.N_Cols);
-            fProxyN hbar = b.tempfProxyVec(A.N_Cols);
-            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            return lsmr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            fProxyN u    = b.fProxyTempVec(A.M_Rows);
+            fProxyN v    = b.fProxyTempVec(A.N_Cols);
+            fProxyN h    = b.fProxyTempVec(A.N_Cols);
+            fProxyN hbar = b.fProxyTempVec(A.N_Cols);
+            fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return lsmr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
@@ -1902,20 +1902,20 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
+        public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance, fProxy damp)
         {
-            fProxyN u    = b.tempfProxyVec(A.M_Rows);
-            fProxyN v    = b.tempfProxyVec(A.N_Cols);
-            fProxyN h    = b.tempfProxyVec(A.N_Cols);
-            fProxyN hbar = b.tempfProxyVec(A.N_Cols);
-            fProxyN tmpM = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            return lsmr(new fProxyBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            fProxyN u    = b.fProxyTempVec(A.M_Rows);
+            fProxyN v    = b.fProxyTempVec(A.N_Cols);
+            fProxyN h    = b.fProxyTempVec(A.N_Cols);
+            fProxyN hbar = b.fProxyTempVec(A.N_Cols);
+            fProxyN tmpM = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return lsmr(new fProxyBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
         /// <summary>LSMR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
-        public static LstsqInfo lsmr(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static LstsqInfo lsmr(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
         }
@@ -1927,7 +1927,7 @@ namespace LinearAlgebra
         // scaling is a change of variable, so a warm start would need pre-mapping y0 = D^-1 x0), and
         // unscale x = D*y in place. On an ill-conditioned least-squares problem this converges in
         // fewer iterations than the un-preconditioned solve to the SAME solution. Everything is
-        // temp-pool allocated from b. BSM forms materialize A^T once (ApplyT-heavy). For explicit
+        // temp-pool allocated from b. BSR forms materialize A^T once (ApplyT-heavy). For explicit
         // control (custom d, warm start, damping semantics, zero-alloc) use the composable path
         // directly: Linear_OP.columnNormsSquared + buildJacobiScale + fProxyColScaledOperator + the
         // generic solver overload.
@@ -1965,13 +1965,13 @@ namespace LinearAlgebra
         public static LstsqInfo cglsJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
             var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;                 // cold start (change of variable)
-            fProxyN r = b.tempfProxyVec(m), s = b.tempfProxyVec(n), p = b.tempfProxyVec(n), q = b.tempfProxyVec(m);
+            fProxyN r = b.fProxyTempVec(m), s = b.fProxyTempVec(n), p = b.fProxyTempVec(n), q = b.fProxyTempVec(m);
             var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
             return JacobiFinish(new fProxyDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
@@ -1981,23 +1981,23 @@ namespace LinearAlgebra
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         /// <summary>CGLS with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo cglsJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo cglsJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
             Sparse_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            var op = new fProxyColScaledOperator<fProxyBSMOperator>(new fProxyBSMOperator(in A, in AT), d, scratch);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            var op = new fProxyColScaledOperator<fProxyBSROperator>(new fProxyBSROperator(in A, in AT), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
-            fProxyN r = b.tempfProxyVec(m), s = b.tempfProxyVec(n), p = b.tempfProxyVec(n), q = b.tempfProxyVec(m);
+            fProxyN r = b.fProxyTempVec(m), s = b.fProxyTempVec(n), p = b.fProxyTempVec(n), q = b.fProxyTempVec(m);
             var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
-            return JacobiFinish(new fProxyBSMOperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
+            return JacobiFinish(new fProxyBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
 
         /// <summary>CGLS + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
-        public static LstsqInfo cglsJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static LstsqInfo cglsJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x)
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         // ---- LSQR + Jacobi ----
@@ -2005,13 +2005,13 @@ namespace LinearAlgebra
         public static LstsqInfo lsqrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
             var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
-            fProxyN u = b.tempfProxyVec(m), v = b.tempfProxyVec(n), w = b.tempfProxyVec(n), tmpM = b.tempfProxyVec(m), tmpN = b.tempfProxyVec(n);
+            fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), w = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
             var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
             return JacobiFinish(new fProxyDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
@@ -2021,23 +2021,23 @@ namespace LinearAlgebra
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         /// <summary>LSQR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsqrJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsqrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
             Sparse_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            var op = new fProxyColScaledOperator<fProxyBSMOperator>(new fProxyBSMOperator(in A, in AT), d, scratch);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            var op = new fProxyColScaledOperator<fProxyBSROperator>(new fProxyBSROperator(in A, in AT), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
-            fProxyN u = b.tempfProxyVec(m), v = b.tempfProxyVec(n), w = b.tempfProxyVec(n), tmpM = b.tempfProxyVec(m), tmpN = b.tempfProxyVec(n);
+            fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), w = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
             var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
-            return JacobiFinish(new fProxyBSMOperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            return JacobiFinish(new fProxyBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
         /// <summary>LSQR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
-        public static LstsqInfo lsqrJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static LstsqInfo lsqrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x)
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         // ---- LSMR + Jacobi ----
@@ -2045,13 +2045,13 @@ namespace LinearAlgebra
         public static LstsqInfo lsmrJacobi(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
             var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
-            fProxyN u = b.tempfProxyVec(m), v = b.tempfProxyVec(n), h = b.tempfProxyVec(n), hbar = b.tempfProxyVec(n), tmpM = b.tempfProxyVec(m), tmpN = b.tempfProxyVec(n);
+            fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), h = b.fProxyTempVec(n), hbar = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
             var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
             return JacobiFinish(new fProxyDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
@@ -2061,23 +2061,23 @@ namespace LinearAlgebra
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         /// <summary>LSMR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsmrJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static LstsqInfo lsmrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            fProxyN d = b.tempfProxyVec(n), d2 = b.tempfProxyVec(n), scratch = b.tempfProxyVec(n);
+            fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
             Sparse_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            var op = new fProxyColScaledOperator<fProxyBSMOperator>(new fProxyBSMOperator(in A, in AT), d, scratch);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            var op = new fProxyColScaledOperator<fProxyBSROperator>(new fProxyBSROperator(in A, in AT), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
-            fProxyN u = b.tempfProxyVec(m), v = b.tempfProxyVec(n), h = b.tempfProxyVec(n), hbar = b.tempfProxyVec(n), tmpM = b.tempfProxyVec(m), tmpN = b.tempfProxyVec(n);
+            fProxyN u = b.fProxyTempVec(m), v = b.fProxyTempVec(n), h = b.fProxyTempVec(n), hbar = b.fProxyTempVec(n), tmpM = b.fProxyTempVec(m), tmpN = b.fProxyTempVec(n);
             var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
-            return JacobiFinish(new fProxyBSMOperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            return JacobiFinish(new fProxyBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
         /// <summary>LSMR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.fProxySqrtEps).</summary>
-        public static LstsqInfo lsmrJacobi(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static LstsqInfo lsmrJacobi(in fProxyBSR A, in fProxyN b, ref fProxyN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
 
         /// <summary>
@@ -2195,10 +2195,10 @@ namespace LinearAlgebra
         /// <summary>CGNE over a dense matrix -- allocates four scratch vectors from the arena.</summary>
         public static SolveInfo cgne(in fProxyMxN A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN r    = b.tempfProxyVec(A.M_Rows);
-            fProxyN p    = b.tempfProxyVec(A.N_Cols);
-            fProxyN q    = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
+            fProxyN r    = b.fProxyTempVec(A.M_Rows);
+            fProxyN p    = b.fProxyTempVec(A.N_Cols);
+            fProxyN q    = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
             return cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
@@ -2210,48 +2210,48 @@ namespace LinearAlgebra
 
         /// <summary>
         /// CGNE / Craig over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc
-        /// primitive. Forwards into <see cref="cgne{TOp}"/> via <c>fProxyBSMOperator</c>. Matrix-
+        /// primitive. Forwards into <see cref="cgne{TOp}"/> via <c>fProxyBSROperator</c>. Matrix-
         /// free minimum-norm solve over a sparse Jacobian-like operator, never forming A Aᵀ.
         /// </summary>
-        public static SolveInfo cgne(in fProxyBSM A, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cgne(in fProxyBSR A, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
                                 int maxIterations, fProxy tolerance)
         {
-            return cgne(new fProxyBSMOperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new fProxyBSROperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGNE / Craig over a BSR matrix with a CALLER-PROVIDED precomputed transpose AT (built
-        /// once via <c>arena.fProxyBSMTranspose(in A)</c>), routing every ApplyT through the
+        /// once via <c>arena.fProxyBSRTranspose(in A)</c>), routing every ApplyT through the
         /// cache-friendly forward spMV(AT, x) instead of on-the-fly spMVT(A, x) -- see
-        /// <see cref="fProxyBSMOperator"/>'s two-arg ctor. Zero-alloc; caller owns AT.
+        /// <see cref="fProxyBSROperator"/>'s two-arg ctor. Zero-alloc; caller owns AT.
         /// </summary>
-        public static SolveInfo cgne(in fProxyBSM A, in fProxyBSM AT, in fProxyN b, ref fProxyN x,
+        public static SolveInfo cgne(in fProxyBSR A, in fProxyBSR AT, in fProxyN b, ref fProxyN x,
                                 ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,
                                 int maxIterations, fProxy tolerance)
         {
-            return cgne(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGNE over a BSR matrix -- allocates four scratch vectors AND materializes A^T once via
-        /// <c>arena.fProxyBSMTranspose</c>, driving CGNE with the two-arg
-        /// <see cref="fProxyBSMOperator"/> so every ApplyT routes through a cache-friendly forward
+        /// <c>arena.fProxyBSRTranspose</c>, driving CGNE with the two-arg
+        /// <see cref="fProxyBSROperator"/> so every ApplyT routes through a cache-friendly forward
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// caller-AT overload above.
         /// </summary>
-        public static SolveInfo cgne(in fProxyBSM A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
+        public static SolveInfo cgne(in fProxyBSR A, in fProxyN b, ref fProxyN x, int maxIterations, fProxy tolerance)
         {
-            fProxyN r    = b.tempfProxyVec(A.M_Rows);
-            fProxyN p    = b.tempfProxyVec(A.N_Cols);
-            fProxyN q    = b.tempfProxyVec(A.M_Rows);
-            fProxyN tmpN = b.tempfProxyVec(A.N_Cols);
-            fProxyBSM AT = b.fProxyBSMTranspose(in A);
-            return cgne(new fProxyBSMOperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            fProxyN r    = b.fProxyTempVec(A.M_Rows);
+            fProxyN p    = b.fProxyTempVec(A.N_Cols);
+            fProxyN q    = b.fProxyTempVec(A.M_Rows);
+            fProxyN tmpN = b.fProxyTempVec(A.N_Cols);
+            fProxyBSR AT = b.fProxyBSRTranspose(in A);
+            return cgne(new fProxyBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>CGNE over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.fProxySqrtEps).</summary>
-        public static SolveInfo cgne(in fProxyBSM A, in fProxyN b, ref fProxyN x)
+        public static SolveInfo cgne(in fProxyBSR A, in fProxyN b, ref fProxyN x)
         {
             return cgne(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
         }

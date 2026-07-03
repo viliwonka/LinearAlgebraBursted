@@ -6,8 +6,8 @@ namespace LinearAlgebra
     {
         internal UnsafeList<fProxyN> fProxyVectors;
         internal UnsafeList<fProxyMxN> fProxyMatrices;
-        internal UnsafeList<fProxyN> tempfProxyVectors;
-        internal UnsafeList<fProxyMxN> tempfProxyMatrices;
+        internal UnsafeList<fProxyN> fProxyTempVectors;
+        internal UnsafeList<fProxyMxN> fProxyTempMatrices;
     }
 
     public unsafe partial struct Arena {
@@ -38,17 +38,17 @@ namespace LinearAlgebra
             return vec;
         }
 
-        internal fProxyN tempfProxyVec(int N, bool uninit = false)
+        internal fProxyN fProxyTempVec(int N, bool uninit = false)
         {
             var vec = new fProxyN(N, in this, uninit);
-            _core->tempfProxyVectors.Add(in vec);
+            _core->fProxyTempVectors.Add(in vec);
             return vec;
         }
 
-        internal fProxyN tempfProxyVec(in fProxyN orig)
+        internal fProxyN fProxyTempVec(in fProxyN orig)
         {
             var vec = new fProxyN(in orig);
-            _core->tempfProxyVectors.Add(in vec);
+            _core->fProxyTempVectors.Add(in vec);
             return vec;
         }
         #endregion
@@ -86,17 +86,17 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        internal fProxyMxN tempfProxyMat(int M_rows, int M_cols, bool uninit = false)
+        internal fProxyMxN fProxyTempMat(int M_rows, int M_cols, bool uninit = false)
         {
             var matrix = new fProxyMxN(M_rows, M_cols, in this, uninit);
-            _core->tempfProxyMatrices.Add(in matrix);
+            _core->fProxyTempMatrices.Add(in matrix);
             return matrix;
         }
 
-        internal fProxyMxN tempfProxyMat(in fProxyMxN orig)
+        internal fProxyMxN fProxyTempMat(in fProxyMxN orig)
         {
             var matrix = new fProxyMxN(orig);
-            _core->tempfProxyMatrices.Add(in matrix);
+            _core->fProxyTempMatrices.Add(in matrix);
             return matrix;
         }
         #endregion
@@ -108,7 +108,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in fProxyN v) {
-            for (int i = 0; i < _core->tempfProxyVectors.Length; i++) if (_core->tempfProxyVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->fProxyTempVectors.Length; i++) if (_core->fProxyTempVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
         public bool isPersistent(in fProxyMxN m) {
@@ -116,7 +116,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in fProxyMxN m) {
-            for (int i = 0; i < _core->tempfProxyMatrices.Length; i++) if (_core->tempfProxyMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->fProxyTempMatrices.Length; i++) if (_core->fProxyTempMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
 

@@ -7,7 +7,7 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Heap-allocated body holding ALL of an arena's mutable tracking state -- every per-type
-    /// growable UnsafeList (fProxyVectors/Matrices/temp*, fProxyBSMs/BSMBuilders/BlockJacobis,
+    /// growable UnsafeList (fProxyVectors/Matrices/temp*, fProxyBSRs/BSRBuilders/BlockJacobis,
     /// iProxy*, Bool*, Pivots, IndexBuffers), plus Allocator/Initialized. This struct is never
     /// copied by user code: it is Malloc'd ONCE per arena and addressed exclusively through the
     /// stable <see cref="Arena"/> handle's <c>_core</c> pointer, which is what gives the arena a
@@ -19,9 +19,9 @@ namespace LinearAlgebra
     {
         public int AllocationsCount =>
             
-            floatVectors.Length + floatMatrices.Length + floatBSMs.Length + floatBSMBuilders.Length + floatBlockJacobis.Length
+            floatVectors.Length + floatMatrices.Length + floatBSRs.Length + floatBSRBuilders.Length + floatBlockJacobis.Length
             +
-            doubleVectors.Length + doubleMatrices.Length + doubleBSMs.Length + doubleBSMBuilders.Length + doubleBlockJacobis.Length
+            doubleVectors.Length + doubleMatrices.Length + doubleBSRs.Length + doubleBSRBuilders.Length + doubleBlockJacobis.Length
             
             +
             
@@ -35,17 +35,17 @@ namespace LinearAlgebra
 
         public int TempAllocationsCount =>
             
-            tempfloatVectors.Length + tempfloatMatrices.Length
+            floatTempVectors.Length + floatTempMatrices.Length
             +
-            tempdoubleVectors.Length + tempdoubleMatrices.Length
+            doubleTempVectors.Length + doubleTempMatrices.Length
             
             +
             
-            tempintVectors.Length + tempintMatrices.Length
+            intTempVectors.Length + intTempMatrices.Length
             +
-            tempshortVectors.Length + tempshortMatrices.Length
+            shortTempVectors.Length + shortTempMatrices.Length
             +
-            templongVectors.Length + templongMatrices.Length
+            longTempVectors.Length + longTempMatrices.Length
             
         ;
 
@@ -71,36 +71,36 @@ namespace LinearAlgebra
             
             floatVectors = new UnsafeList<floatN>(8, Allocator);
             floatMatrices = new UnsafeList<floatMxN>(8, Allocator);
-            tempfloatVectors = new UnsafeList<floatN>(8, Allocator);
-            tempfloatMatrices = new UnsafeList<floatMxN>(8, Allocator);
-            floatBSMs = new UnsafeList<floatBSM>(4, Allocator);
-            floatBSMBuilders = new UnsafeList<floatBSMBuilder>(4, Allocator);
+            floatTempVectors = new UnsafeList<floatN>(8, Allocator);
+            floatTempMatrices = new UnsafeList<floatMxN>(8, Allocator);
+            floatBSRs = new UnsafeList<floatBSR>(4, Allocator);
+            floatBSRBuilders = new UnsafeList<floatBSRBuilder>(4, Allocator);
             floatBlockJacobis = new UnsafeList<floatBlockJacobi>(4, Allocator);
             
             doubleVectors = new UnsafeList<doubleN>(8, Allocator);
             doubleMatrices = new UnsafeList<doubleMxN>(8, Allocator);
-            tempdoubleVectors = new UnsafeList<doubleN>(8, Allocator);
-            tempdoubleMatrices = new UnsafeList<doubleMxN>(8, Allocator);
-            doubleBSMs = new UnsafeList<doubleBSM>(4, Allocator);
-            doubleBSMBuilders = new UnsafeList<doubleBSMBuilder>(4, Allocator);
+            doubleTempVectors = new UnsafeList<doubleN>(8, Allocator);
+            doubleTempMatrices = new UnsafeList<doubleMxN>(8, Allocator);
+            doubleBSRs = new UnsafeList<doubleBSR>(4, Allocator);
+            doubleBSRBuilders = new UnsafeList<doubleBSRBuilder>(4, Allocator);
             doubleBlockJacobis = new UnsafeList<doubleBlockJacobi>(4, Allocator);
             
 
             
             intVectors = new UnsafeList<intN>(8, Allocator);
             intMatrices = new UnsafeList<intMxN>(8, Allocator);
-            tempintVectors = new UnsafeList<intN>(8, Allocator);
-            tempintMatrices = new UnsafeList<intMxN>(8, Allocator);
+            intTempVectors = new UnsafeList<intN>(8, Allocator);
+            intTempMatrices = new UnsafeList<intMxN>(8, Allocator);
             
             shortVectors = new UnsafeList<shortN>(8, Allocator);
             shortMatrices = new UnsafeList<shortMxN>(8, Allocator);
-            tempshortVectors = new UnsafeList<shortN>(8, Allocator);
-            tempshortMatrices = new UnsafeList<shortMxN>(8, Allocator);
+            shortTempVectors = new UnsafeList<shortN>(8, Allocator);
+            shortTempMatrices = new UnsafeList<shortMxN>(8, Allocator);
             
             longVectors = new UnsafeList<longN>(8, Allocator);
             longMatrices = new UnsafeList<longMxN>(8, Allocator);
-            templongVectors = new UnsafeList<longN>(8, Allocator);
-            templongMatrices = new UnsafeList<longMxN>(8, Allocator);
+            longTempVectors = new UnsafeList<longN>(8, Allocator);
+            longTempMatrices = new UnsafeList<longMxN>(8, Allocator);
             
 
             BoolVectors = new UnsafeList<boolN>(2, Allocator);
@@ -147,13 +147,13 @@ namespace LinearAlgebra
                 floatMatrices[i].Dispose();
             floatMatrices.Clear();
 
-            for (int i = 0; i < floatBSMs.Length; i++)
-                floatBSMs[i].Dispose();
-            floatBSMs.Clear();
+            for (int i = 0; i < floatBSRs.Length; i++)
+                floatBSRs[i].Dispose();
+            floatBSRs.Clear();
 
-            for (int i = 0; i < floatBSMBuilders.Length; i++)
-                floatBSMBuilders[i].Dispose();
-            floatBSMBuilders.Clear();
+            for (int i = 0; i < floatBSRBuilders.Length; i++)
+                floatBSRBuilders[i].Dispose();
+            floatBSRBuilders.Clear();
 
             for (int i = 0; i < floatBlockJacobis.Length; i++)
                 floatBlockJacobis[i].Dispose();
@@ -167,13 +167,13 @@ namespace LinearAlgebra
                 doubleMatrices[i].Dispose();
             doubleMatrices.Clear();
 
-            for (int i = 0; i < doubleBSMs.Length; i++)
-                doubleBSMs[i].Dispose();
-            doubleBSMs.Clear();
+            for (int i = 0; i < doubleBSRs.Length; i++)
+                doubleBSRs[i].Dispose();
+            doubleBSRs.Clear();
 
-            for (int i = 0; i < doubleBSMBuilders.Length; i++)
-                doubleBSMBuilders[i].Dispose();
-            doubleBSMBuilders.Clear();
+            for (int i = 0; i < doubleBSRBuilders.Length; i++)
+                doubleBSRBuilders[i].Dispose();
+            doubleBSRBuilders.Clear();
 
             for (int i = 0; i < doubleBlockJacobis.Length; i++)
                 doubleBlockJacobis[i].Dispose();
@@ -231,47 +231,47 @@ namespace LinearAlgebra
         public void ClearTemp()
         {
             
-            for (int i = 0; i < tempfloatVectors.Length; i++)
-                tempfloatVectors[i].Dispose();
-            tempfloatVectors.Clear();
+            for (int i = 0; i < floatTempVectors.Length; i++)
+                floatTempVectors[i].Dispose();
+            floatTempVectors.Clear();
 
-            for (int i = 0; i < tempfloatMatrices.Length; i++)
-                tempfloatMatrices[i].Dispose();
-            tempfloatMatrices.Clear();
+            for (int i = 0; i < floatTempMatrices.Length; i++)
+                floatTempMatrices[i].Dispose();
+            floatTempMatrices.Clear();
             
-            for (int i = 0; i < tempdoubleVectors.Length; i++)
-                tempdoubleVectors[i].Dispose();
-            tempdoubleVectors.Clear();
+            for (int i = 0; i < doubleTempVectors.Length; i++)
+                doubleTempVectors[i].Dispose();
+            doubleTempVectors.Clear();
 
-            for (int i = 0; i < tempdoubleMatrices.Length; i++)
-                tempdoubleMatrices[i].Dispose();
-            tempdoubleMatrices.Clear();
+            for (int i = 0; i < doubleTempMatrices.Length; i++)
+                doubleTempMatrices[i].Dispose();
+            doubleTempMatrices.Clear();
             
 
             
-            for (int i = 0; i < tempintVectors.Length; i++)
-                tempintVectors[i].Dispose();
-            tempintVectors.Clear();
+            for (int i = 0; i < intTempVectors.Length; i++)
+                intTempVectors[i].Dispose();
+            intTempVectors.Clear();
 
-            for (int i = 0; i < tempintMatrices.Length; i++)
-                tempintMatrices[i].Dispose();
-            tempintMatrices.Clear();
+            for (int i = 0; i < intTempMatrices.Length; i++)
+                intTempMatrices[i].Dispose();
+            intTempMatrices.Clear();
             
-            for (int i = 0; i < tempshortVectors.Length; i++)
-                tempshortVectors[i].Dispose();
-            tempshortVectors.Clear();
+            for (int i = 0; i < shortTempVectors.Length; i++)
+                shortTempVectors[i].Dispose();
+            shortTempVectors.Clear();
 
-            for (int i = 0; i < tempshortMatrices.Length; i++)
-                tempshortMatrices[i].Dispose();
-            tempshortMatrices.Clear();
+            for (int i = 0; i < shortTempMatrices.Length; i++)
+                shortTempMatrices[i].Dispose();
+            shortTempMatrices.Clear();
             
-            for (int i = 0; i < templongVectors.Length; i++)
-                templongVectors[i].Dispose();
-            templongVectors.Clear();
+            for (int i = 0; i < longTempVectors.Length; i++)
+                longTempVectors[i].Dispose();
+            longTempVectors.Clear();
 
-            for (int i = 0; i < templongMatrices.Length; i++)
-                templongMatrices[i].Dispose();
-            templongMatrices.Clear();
+            for (int i = 0; i < longTempMatrices.Length; i++)
+                longTempMatrices[i].Dispose();
+            longTempMatrices.Clear();
             
 
             for (int i = 0; i < TempBoolVectors.Length; i++)
@@ -295,36 +295,36 @@ namespace LinearAlgebra
             
             floatVectors.Dispose();
             floatMatrices.Dispose();
-            tempfloatMatrices.Dispose();
-            tempfloatVectors.Dispose();
-            floatBSMs.Dispose();
-            floatBSMBuilders.Dispose();
+            floatTempMatrices.Dispose();
+            floatTempVectors.Dispose();
+            floatBSRs.Dispose();
+            floatBSRBuilders.Dispose();
             floatBlockJacobis.Dispose();
             
             doubleVectors.Dispose();
             doubleMatrices.Dispose();
-            tempdoubleMatrices.Dispose();
-            tempdoubleVectors.Dispose();
-            doubleBSMs.Dispose();
-            doubleBSMBuilders.Dispose();
+            doubleTempMatrices.Dispose();
+            doubleTempVectors.Dispose();
+            doubleBSRs.Dispose();
+            doubleBSRBuilders.Dispose();
             doubleBlockJacobis.Dispose();
             
 
             
             intVectors.Dispose();
             intMatrices.Dispose();
-            tempintMatrices.Dispose();
-            tempintVectors.Dispose();
+            intTempMatrices.Dispose();
+            intTempVectors.Dispose();
             
             shortVectors.Dispose();
             shortMatrices.Dispose();
-            tempshortMatrices.Dispose();
-            tempshortVectors.Dispose();
+            shortTempMatrices.Dispose();
+            shortTempVectors.Dispose();
             
             longVectors.Dispose();
             longMatrices.Dispose();
-            templongMatrices.Dispose();
-            templongVectors.Dispose();
+            longTempMatrices.Dispose();
+            longTempVectors.Dispose();
             
 
             BoolVectors.Dispose();

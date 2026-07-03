@@ -128,7 +128,7 @@ namespace LinearAlgebra.Realtime
         /// </summary>
         public doubleMxN AsMatrix()
         {
-            var m = _buffer.tempdoubleMat(_count, _features);
+            var m = _buffer.doubleTempMat(_count, _features);
             AsMatrix(ref m);
             return m;
         }
@@ -160,7 +160,7 @@ namespace LinearAlgebra.Realtime
         /// <summary>Allocating moving average — a fresh Features vector from the arena TEMP pool.</summary>
         public doubleN Mean()
         {
-            var v = _buffer.tempdoubleVec(_features);
+            var v = _buffer.doubleTempVec(_features);
             Mean(ref v);
             return v;
         }
@@ -178,7 +178,7 @@ namespace LinearAlgebra.Realtime
                 throw new ArgumentException("RollingWindow.Covariance: dest must be Features x Features");
 
             // Time-order into a temp matrix, then reuse the StatsOP covariance core.
-            var m = _buffer.tempdoubleMat(_count, _features);
+            var m = _buffer.doubleTempMat(_count, _features);
             AsMatrix(ref m);
             doubleStats_OP.covarianceInto(in m, ref dest);
         }
@@ -186,7 +186,7 @@ namespace LinearAlgebra.Realtime
         /// <summary>Allocating covariance — a fresh Features×Features matrix from the arena TEMP pool.</summary>
         public doubleMxN Covariance()
         {
-            var c = _buffer.tempdoubleMat(_features, _features);
+            var c = _buffer.doubleTempMat(_features, _features);
             Covariance(ref c);
             return c;
         }

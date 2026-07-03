@@ -408,11 +408,11 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// lqDecomposition using a reusable workspace (Arena.fProxyLQ_WS(m, n)) — zero-alloc.
+        /// lqDecomposition using a reusable workspace (Arena.fProxyLQCache(m, n)) — zero-alloc.
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo lqDecomposition(ref fProxyMxN A, ref fProxyMxN L, ref fProxyMxN Q, ref fProxyLQ_WS ws)
+        public static DirectSolveInfo lqDecomposition(ref fProxyMxN A, ref fProxyMxN L, ref fProxyMxN Q, ref fProxyLQCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -486,13 +486,13 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// lqMinNormSolve using a reusable workspace (Arena.fProxyLQMinNormSolve_WS(m, n)) —
+        /// lqMinNormSolve using a reusable workspace (Arena.fProxyLQMinNormSolveCache(m, n)) —
         /// zero-alloc end to end (including the nested lqDecomposition call).
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         // Always reports DirectSolveStatus.Success — see the allocating overload.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo lqMinNormSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, ref fProxyLQMinNormSolve_WS ws)
+        public static DirectSolveInfo lqMinNormSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x, ref fProxyLQMinNormSolveCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;

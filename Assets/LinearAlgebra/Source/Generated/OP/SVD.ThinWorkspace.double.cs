@@ -4,8 +4,8 @@ namespace LinearAlgebra
 {
     public static partial class SVD
     {
-        /// <summary>Throws unless <paramref name="ws"/> matches Arena.doubleSVDThin_WS(m, n) sizing (BidiagWs is validated separately, by bidiagonalize itself).</summary>
-        static void RequireSvdThinWorkspace(in doubleSVDThin_WS ws, int m, int n)
+        /// <summary>Throws unless <paramref name="ws"/> matches Arena.doubleSVDThinCache(m, n) sizing (BidiagWs is validated separately, by bidiagonalize itself).</summary>
+        static void RequireSvdThinWorkspace(in doubleSVDThinCache ws, int m, int n)
         {
             bool ok =
                 ws.B.M_Rows == n && ws.B.N_Cols == n &&
@@ -14,24 +14,24 @@ namespace LinearAlgebra
                 ws.Vt.M_Rows == n && ws.Vt.N_Cols == n;
 
             if (!ok)
-                throw new ArgumentException("SVD: workspace must be sized for m x n (use Arena.doubleSVDThin_WS(m, n))");
+                throw new ArgumentException("SVD: workspace must be sized for m x n (use Arena.doubleSVDThinCache(m, n))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for SVD.svdThin (Golub-Kahan bidiagonalization + implicit-shift bidiagonal QR).
-    /// Allocate ONCE (sized for the matrix shape) via Arena.doubleSVDThin_WS(m, n) and reuse it across
+    /// Allocate ONCE (sized for the matrix shape) via Arena.doubleSVDThinCache(m, n) and reuse it across
     /// many same-shape calls to avoid the per-call Allocator.Temp allocations svdThin's allocating
     /// overload makes internally.
     ///
-    /// BidiagWs is the nested workspace Bidiag.bidiagonalize needs (see doubleBidiag_WS); B (n x n) is
+    /// BidiagWs is the nested workspace Bidiag.bidiagonalize needs (see doubleBidiagCache); B (n x n) is
     /// the bidiagonal factor; dVec/eVec (length n) are the diagonal/superdiagonal the bidiagonal QR
     /// diagonalizes; Ut (n x m) / Vt (n x n) are the transposed accumulators the QR sweep rotates
     /// (unit-stride rows, same trick as eigenSymmetric/svdDecomposition).
     /// </summary>
-    public struct doubleSVDThin_WS
+    public struct doubleSVDThinCache
     {
-        public doubleBidiag_WS BidiagWs;
+        public doubleBidiagCache BidiagWs;
         public doubleMxN B;
         public doubleN dVec;
         public doubleN eVec;
@@ -43,14 +43,14 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Allocates an svdThin workspace for an m x n (m >= n) system — see
-        /// <see cref="doubleSVDThin_WS"/> for layout. Persistent in this arena; create once outside a
+        /// <see cref="doubleSVDThinCache"/> for layout. Persistent in this arena; create once outside a
         /// hot loop and pass to svdThin's ref-workspace overload.
         /// </summary>
-        public static doubleSVDThin_WS doubleSVDThin_WS(this ref Arena arena, int m, int n)
+        public static doubleSVDThinCache doubleSVDThinCache(this ref Arena arena, int m, int n)
         {
-            return new doubleSVDThin_WS
+            return new doubleSVDThinCache
             {
-                BidiagWs = arena.doubleBidiag_WS(m, n),
+                BidiagWs = arena.doubleBidiagCache(m, n),
                 B = arena.doubleMat(n, n),
                 dVec = arena.doubleVec(n),
                 eVec = arena.doubleVec(n),

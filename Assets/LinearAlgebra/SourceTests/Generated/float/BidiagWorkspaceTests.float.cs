@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Workspace-overload tests for Bidiag.bidiagonalize / bidiagonalizeValues and their shared workspace
-// floatBidiag_WS (Arena.floatBidiag_WS(m, n)).
+// floatBidiagCache (Arena.floatBidiagCache(m, n)).
 //
 // The ws overload is the real body (caller-owned W/leftU/uVec/vVec/wScratch); the allocating overload
 // delegates with Temp scratch, so for identical inputs the outputs are bit-identical. Tests:
@@ -52,7 +52,7 @@ public class floatBidiagWorkspaceTests
             var Ua = arena.floatMat(m, n); var Ba = arena.floatMat(n, n); var Va = arena.floatMat(n, n);
             Bidiag.bidiagonalize(in A, ref Ua, ref Ba, ref Va);
 
-            var ws = arena.floatBidiag_WS(m, n);
+            var ws = arena.floatBidiagCache(m, n);
             var Uw = arena.floatMat(m, n); var Bw = arena.floatMat(n, n); var Vw = arena.floatMat(n, n);
             Bidiag.bidiagonalize(in A, ref Uw, ref Bw, ref Vw, ref ws);
 
@@ -71,7 +71,7 @@ public class floatBidiagWorkspaceTests
             var da = arena.floatVec(n); var ea = arena.floatVec(n);
             Bidiag.bidiagonalizeValues(in A, ref da, ref ea);
 
-            var ws = arena.floatBidiag_WS(m, n);
+            var ws = arena.floatBidiagCache(m, n);
             var dw = arena.floatVec(n); var ew = arena.floatVec(n);
             Bidiag.bidiagonalizeValues(in A, ref dw, ref ew, ref ws);
 
@@ -89,7 +89,7 @@ public class floatBidiagWorkspaceTests
             var A1 = arena.floatRandomMat(m, n, (float)(-3f), (float)3f, 4004);
             var A2 = arena.floatRandomMat(m, n, (float)(-2f), (float)2f, 5005);
 
-            var ws = arena.floatBidiag_WS(m, n);   // allocated ONCE
+            var ws = arena.floatBidiagCache(m, n);   // allocated ONCE
 
             // full bidiagonalize: warm on A1, reuse on A2, compare to fresh allocating on A2.
             var U1 = arena.floatMat(m, n); var B1 = arena.floatMat(n, n); var V1 = arena.floatMat(n, n);
@@ -135,7 +135,7 @@ public class floatBidiagWorkspaceTests
             int m = 6, n = 4;
             var A = arena.floatMat(m, n);
             var U = arena.floatMat(m, n); var B = arena.floatMat(n, n); var V = arena.floatMat(n, n);
-            var ws = arena.floatBidiag_WS(m + 1, n);   // wrong m
+            var ws = arena.floatBidiagCache(m + 1, n);   // wrong m
             Assert.Throws<ArgumentException>(
                 () => Bidiag.bidiagonalize(in A, ref U, ref B, ref V, ref ws));
         }
@@ -151,7 +151,7 @@ public class floatBidiagWorkspaceTests
             int m = 6, n = 4;
             var A = arena.floatMat(m, n);
             var d = arena.floatVec(n); var e = arena.floatVec(n);
-            var ws = arena.floatBidiag_WS(m, n + 1);   // wrong n (W/vVec/wScratch all wrong)
+            var ws = arena.floatBidiagCache(m, n + 1);   // wrong n (W/vVec/wScratch all wrong)
             Assert.Throws<ArgumentException>(
                 () => Bidiag.bidiagonalizeValues(in A, ref d, ref e, ref ws));
         }
@@ -170,7 +170,7 @@ public class floatBidiagWorkspaceTests
             int m = 6, n = 4;
             var A = arena.floatRandomMat(m, n, (float)(-2f), (float)2f, 6006);
 
-            var ws = new floatBidiag_WS
+            var ws = new floatBidiagCache
             {
                 W = arena.floatMat(m, n),
                 leftU = default,                 // intentionally absent
@@ -190,14 +190,14 @@ public class floatBidiagWorkspaceTests
         finally { arena.Dispose(); }
     }
 
-    // Arena.floatBidiag_WS(m, n): W (m x n), leftU (m x n), uVec (m), vVec (n), wScratch (n).
+    // Arena.floatBidiagCache(m, n): W (m x n), leftU (m x n), uVec (m), vVec (n), wScratch (n).
     [Test]
     public void BidiagWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var ws = arena.floatBidiag_WS(9, 4);
+            var ws = arena.floatBidiagCache(9, 4);
             Assert.AreEqual(9, ws.W.M_Rows);     Assert.AreEqual(4, ws.W.N_Cols);
             Assert.AreEqual(9, ws.leftU.M_Rows); Assert.AreEqual(4, ws.leftU.N_Cols);
             Assert.AreEqual(9, ws.uVec.N);

@@ -17,7 +17,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public static doubleN doubleIndexOneVector(this ref Arena arena, int N)
+        public static doubleN doubleIndexOneVec(this ref Arena arena, int N)
         {
             var vec = arena.doubleVec(N, true);
 

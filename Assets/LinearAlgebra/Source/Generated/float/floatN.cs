@@ -81,7 +81,7 @@ namespace LinearAlgebra
             if (!_arena.HasCore)
                 throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
 
-            return _arena.tempfloatVec(in this);   // temp pool (was wrongly the persistent Copy path)
+            return _arena.floatTempVec(in this);   // temp pool (was wrongly the persistent Copy path)
         }
 
         public void CopyTo(in floatN vec)

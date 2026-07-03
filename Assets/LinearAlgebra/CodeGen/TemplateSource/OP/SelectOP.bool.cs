@@ -14,7 +14,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
             Assume.SameDim(in a, in c);
 
-            boolN res = a.tempBoolVec(a.N, true);
+            boolN res = a.boolTempVec(a.N, true);
 
             unsafe
             {
@@ -29,7 +29,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
             Assume.SameDim(in a, in c);
 
-            boolMxN res = a.tempBoolMat(a.M_Rows, a.N_Cols, true);
+            boolMxN res = a.boolTempMat(a.M_Rows, a.N_Cols, true);
 
             unsafe
             {

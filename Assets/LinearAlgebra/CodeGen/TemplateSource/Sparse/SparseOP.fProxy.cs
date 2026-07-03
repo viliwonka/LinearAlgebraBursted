@@ -7,7 +7,7 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// Sparse matvec kernels over fProxyBSM (block-CSR). The shape mirrors Linear_OP.dot's
+    /// Sparse matvec kernels over fProxyBSR (block-CSR). The shape mirrors Linear_OP.dot's
     /// dense matVec overloads (in A, in x, ref y) on purpose -- a future generic
     /// IfProxyLinearOperator wrapper (Phase 2) can forward Apply/ApplyT straight to spMV/spMVT.
     /// </summary>
@@ -18,7 +18,7 @@ namespace LinearAlgebra.Sparse
         // ref-dest primitive. Guard: y must not alias x (each x[k] feeds every block-row that
         // stores a block in column-block k).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void spMV(in fProxyBSM A, in fProxyN x, ref fProxyN y)
+        public static void spMV(in fProxyBSR A, in fProxyN x, ref fProxyN y)
         {
             Assume.SameDim(A.N_Cols, x.N);
 
@@ -41,7 +41,7 @@ namespace LinearAlgebra.Sparse
 
                 if (A.Symmetric)
                 {
-                    // Symmetric storage requires BR==BC by construction (fProxyBSM ctor), so
+                    // Symmetric storage requires BR==BC by construction (fProxyBSR ctor), so
                     // dispatching on BR alone is sufficient here.
                     switch (A.BR)
                     {
@@ -75,9 +75,9 @@ namespace LinearAlgebra.Sparse
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxyN spMV(in fProxyBSM A, in fProxyN x)
+        public static fProxyN spMV(in fProxyBSR A, in fProxyN x)
         {
-            fProxyN result = x.tempfProxyVec(A.M_Rows);
+            fProxyN result = x.fProxyTempVec(A.M_Rows);
             spMV(in A, in x, ref result);
             return result;
         }
@@ -94,7 +94,7 @@ namespace LinearAlgebra.Sparse
         /// in that case. Jacobi-LS preconditioning targets rectangular / non-symmetric least
         /// squares, where Symmetric is false.
         /// </summary>
-        public static void columnNormsSquared(in fProxyBSM A, ref fProxyN d2)
+        public static void columnNormsSquared(in fProxyBSR A, ref fProxyN d2)
         {
             if (d2.N != A.N_Cols)
                 throw new ArgumentException("columnNormsSquared: d2.N must equal A.N_Cols");
@@ -135,7 +135,7 @@ namespace LinearAlgebra.Sparse
         // ref-dest primitive. Guard: y must not alias x (each x[k] feeds every block-column
         // that stores a block in block-row k).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void spMVT(in fProxyBSM A, in fProxyN x, ref fProxyN y)
+        public static void spMVT(in fProxyBSR A, in fProxyN x, ref fProxyN y)
         {
             if (A.Symmetric)
             {
@@ -188,9 +188,9 @@ namespace LinearAlgebra.Sparse
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxyN spMVT(in fProxyBSM A, in fProxyN x)
+        public static fProxyN spMVT(in fProxyBSR A, in fProxyN x)
         {
-            fProxyN result = x.tempfProxyVec(A.N_Cols);
+            fProxyN result = x.fProxyTempVec(A.N_Cols);
             spMVT(in A, in x, ref result);
             return result;
         }

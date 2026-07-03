@@ -57,7 +57,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxyMxN outerDot(fProxyN a, fProxyN b)
         {
-            fProxyMxN result = a.tempfProxyMat(a.N, b.N, true);
+            fProxyMxN result = a.fProxyTempMat(a.N, b.N, true);
             outerDot(in a, in b, ref result);
             return result;
         }
@@ -87,7 +87,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxyN dot(fProxyMxN A, fProxyN x)
         {
-            fProxyN result = x.tempfProxyVec(A.M_Rows);
+            fProxyN result = x.fProxyTempVec(A.M_Rows);
             dot(in A, in x, ref result);
             return result;
         }
@@ -117,7 +117,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxyN dot(fProxyN y, fProxyMxN A)
         {
-            fProxyN result = y.tempfProxyVec(A.N_Cols);
+            fProxyN result = y.fProxyTempVec(A.N_Cols);
             dot(in y, in A, ref result);
             return result;
         }
@@ -170,7 +170,7 @@ namespace LinearAlgebra
             int m = transposeA ? a.N_Cols : a.M_Rows;
             int k = b.N_Cols;
 
-            fProxyMxN c = a.tempfProxyMat(m, k);
+            fProxyMxN c = a.fProxyTempMat(m, k);
             dot(in a, in b, ref c, transposeA);
             return c;
         }
@@ -198,7 +198,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxyMxN trans(fProxyMxN A)
         {
-            var T = A.tempfProxyMat(A.N_Cols, A.M_Rows, true);
+            var T = A.fProxyTempMat(A.N_Cols, A.M_Rows, true);
             trans(in A, ref T);
             return T;
         }

@@ -7,15 +7,15 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Milestone B test suite for the materialized-transpose optimization on doubleBSM (block-CSR):
-//   * Arena.doubleBSMTranspose(in A)         -- builds A^T as its own compressed BSM
-//   * doubleBSMOperator(in A, in AT) two-arg  -- ApplyT forwards to spMV(AT, .) instead of spMVT(A, .)
+// Milestone B test suite for the materialized-transpose optimization on doubleBSR (block-CSR):
+//   * Arena.doubleBSRTranspose(in A)         -- builds A^T as its own compressed BSR
+//   * doubleBSROperator(in A, in AT) two-arg  -- ApplyT forwards to spMV(AT, .) instead of spMVT(A, .)
 //
 // The whole point of the optimization is that y = A^T x is computed IDENTICALLY, just via a
 // cache-friendly forward traversal of a materialized AT rather than the scatter-heavy on-the-fly
 // spMVT over A. So every case here is a cross-check: the new path must agree with the old path to
 // within a tight (exact-identity, not iterative-convergence) tolerance. The solver-level wiring
-// that consumes these (cgls/lsqr allocating BSM overloads) is regression-covered separately by
+// that consumes these (cgls/lsqr allocating BSR overloads) is regression-covered separately by
 // doubleSparseSolverTests -- this file targets the transpose primitive + operator ctor directly.
 //
 // Correctness cases run inside a [BurstCompile] IJob (matches doubleSparseSolverTests /
@@ -35,7 +35,7 @@ public class doubleSparseTransposeTests
             // 2. Operator ApplyT parity between the one-arg (on-the-fly) and two-arg (precomputed AT) ctors.
             OperatorApplyTParity,
 
-            // 3. Symmetric BSM: transpose is a value-identical no-op (returns A unchanged).
+            // 3. Symmetric BSR: transpose is a value-identical no-op (returns A unchanged).
             SymmetricNoOp,
         }
 
@@ -66,41 +66,41 @@ public class doubleSparseTransposeTests
             Assert.IsTrue(Analysis_OP.isZero(a - b, tol));
         }
 
-        // A random rectangular BSM on a 3x2 block grid of 3x2 (BR x BC) blocks -> dense 9x4 (m > n).
+        // A random rectangular BSR on a 3x2 block grid of 3x2 (BR x BC) blocks -> dense 9x4 (m > n).
         // BR != BC deliberately exercises the block-interior dimension swap (3x2 -> 2x3) in
-        // doubleBSMTranspose. Only 4 of the 6 block positions are filled (leaving (1,0) and (2,1)
+        // doubleBSRTranspose. Only 4 of the 6 block positions are filled (leaving (1,0) and (2,1)
         // empty) so genuine block sparsity -- not a dense grid -- is transposed.
-        static doubleBSM BuildTallRectBSM(ref Arena arena)
+        static doubleBSR BuildTallRectBSR(ref Arena arena)
         {
             const int blockRows = 3, blockCols = 2, BR = 3, BC = 2;
-            var b = arena.doubleBSMBuilder(blockRows, blockCols, BR, BC, 4);
+            var b = arena.doubleBSRBuilder(blockRows, blockCols, BR, BC, 4);
             b.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, -1f, 1f, 70001));
             b.AddBlock(0, 1, arena.doubleRandomMat(BR, BC, -1f, 1f, 70002));
             b.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, -1f, 1f, 70003));
             b.AddBlock(2, 0, arena.doubleRandomMat(BR, BC, -1f, 1f, 70004));
-            return b.ToBSM(ref arena);
+            return b.ToBSR(ref arena);
         }
 
-        // A random rectangular BSM on a 2x3 block grid of 2x3 (BR x BC) blocks -> dense 4x9 (m < n).
+        // A random rectangular BSR on a 2x3 block grid of 2x3 (BR x BC) blocks -> dense 4x9 (m < n).
         // Block-interior transpose here is 2x3 -> 3x2. Again 4 of 6 block positions filled.
-        static doubleBSM BuildWideRectBSM(ref Arena arena)
+        static doubleBSR BuildWideRectBSR(ref Arena arena)
         {
             const int blockRows = 2, blockCols = 3, BR = 2, BC = 3;
-            var b = arena.doubleBSMBuilder(blockRows, blockCols, BR, BC, 4);
+            var b = arena.doubleBSRBuilder(blockRows, blockCols, BR, BC, 4);
             b.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, -1f, 1f, 71001));
             b.AddBlock(0, 2, arena.doubleRandomMat(BR, BC, -1f, 1f, 71002));
             b.AddBlock(1, 0, arena.doubleRandomMat(BR, BC, -1f, 1f, 71003));
             b.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, -1f, 1f, 71004));
-            return b.ToBSM(ref arena);
+            return b.ToBSR(ref arena);
         }
 
         // Core cross-check shared by the tall/wide cases: materialize AT, and for a random x of
         // length A.M_Rows (both A^T x paths consume an m-vector: spMVT asserts SameDim(A.M_Rows, x.N)
         // and AT.N_Cols == A.M_Rows) prove spMV(AT, x) == spMVT(A, x). Also pin the transpose's
         // outer dimensions.
-        static void CrossCheckTranspose(ref Arena arena, in doubleBSM A, uint seed)
+        static void CrossCheckTranspose(ref Arena arena, in doubleBSR A, uint seed)
         {
-            var AT = arena.doubleBSMTranspose(in A);
+            var AT = arena.doubleBSRTranspose(in A);
 
             // Outer dimensions swap: A is m x n -> AT is n x m.
             Assert.IsTrue(AT.M_Rows == A.N_Cols);
@@ -122,7 +122,7 @@ public class doubleSparseTransposeTests
         void TransposeMatchesSpMVT_TallBlockGrid()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = BuildTallRectBSM(ref arena);
+            var A = BuildTallRectBSR(ref arena);
             Assert.IsTrue(A.M_Rows > A.N_Cols);       // genuinely m > n
             CrossCheckTranspose(ref arena, in A, 72001u);
             arena.Dispose();
@@ -132,7 +132,7 @@ public class doubleSparseTransposeTests
         void TransposeMatchesSpMVT_WideBlockGrid()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = BuildWideRectBSM(ref arena);
+            var A = BuildWideRectBSR(ref arena);
             Assert.IsTrue(A.M_Rows < A.N_Cols);       // genuinely m < n
             CrossCheckTranspose(ref arena, in A, 72101u);
             arena.Dispose();
@@ -147,11 +147,11 @@ public class doubleSparseTransposeTests
         void OperatorApplyTParity()
         {
             var arena = new Arena(Allocator.Persistent);
-            var A = BuildTallRectBSM(ref arena);      // 9 x 4
-            var AT = arena.doubleBSMTranspose(in A);
+            var A = BuildTallRectBSR(ref arena);      // 9 x 4
+            var AT = arena.doubleBSRTranspose(in A);
 
-            var op1 = new doubleBSMOperator(in A);        // one-arg: ApplyT == on-the-fly spMVT(A, .)
-            var op2 = new doubleBSMOperator(in A, in AT); // two-arg: ApplyT == spMV(AT, .)
+            var op1 = new doubleBSROperator(in A);        // one-arg: ApplyT == on-the-fly spMVT(A, .)
+            var op2 = new doubleBSROperator(in A, in AT); // two-arg: ApplyT == spMV(AT, .)
 
             // ApplyT: y = A^T x, x length m = A.M_Rows, y length n = A.N_Cols. y must not alias x,
             // and each operator needs its own destination.
@@ -174,9 +174,9 @@ public class doubleSparseTransposeTests
             arena.Dispose();
         }
 
-        // ---- 3. symmetric BSM: transpose is a value-identical no-op ----
+        // ---- 3. symmetric BSR: transpose is a value-identical no-op ----
         //
-        // For symmetric upper-block storage A == A^T by construction, so doubleBSMTranspose returns
+        // For symmetric upper-block storage A == A^T by construction, so doubleBSRTranspose returns
         // A itself unchanged (no redundant materialized copy). The primary contract is numerical:
         // spMV(AT, x) == spMV(A, x) for any x. The structural asserts (same Nnzb / BlockRows /
         // Symmetric flag) are a cheap confirmation that no needless rebuild happened.
@@ -188,7 +188,7 @@ public class doubleSparseTransposeTests
             int dim = BR * nb;
             double strong = (double)dim;
 
-            var s = arena.doubleBSMBuilder(nb, nb, BR, BR, nb + 2);
+            var s = arena.doubleBSRBuilder(nb, nb, BR, BR, nb + 2);
 
             // Diagonal blocks: D_i = M_i^T M_i + strong*I is genuinely symmetric, so the assembled
             // matrix is a true symmetric matrix (not merely symmetric STORAGE of an asymmetric one).
@@ -201,14 +201,14 @@ public class doubleSparseTransposeTests
                 s.AddBlock(i, i, in Di);
             }
 
-            // Two upper off-diagonal blocks (blockCol > blockRow, as ToBSMSymmetric requires).
+            // Two upper off-diagonal blocks (blockCol > blockRow, as ToBSRSymmetric requires).
             s.AddBlock(0, 1, arena.doubleRandomMat(BR, BR, -0.2f, 0.2f, 74100));
             s.AddBlock(1, 2, arena.doubleRandomMat(BR, BR, -0.2f, 0.2f, 74101));
 
-            var A = s.ToBSMSymmetric(ref arena);
+            var A = s.ToBSRSymmetric(ref arena);
             Assert.IsTrue(A.Symmetric);
 
-            var AT = arena.doubleBSMTranspose(in A);
+            var AT = arena.doubleBSRTranspose(in A);
 
             // No-op: same structure (returned A unchanged, no rebuild).
             Assert.IsTrue(AT.Symmetric);

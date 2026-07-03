@@ -6,8 +6,8 @@ namespace LinearAlgebra
     {
         internal UnsafeList<shortN> shortVectors;
         internal UnsafeList<shortMxN> shortMatrices;
-        internal UnsafeList<shortN> tempshortVectors;
-        internal UnsafeList<shortMxN> tempshortMatrices;
+        internal UnsafeList<shortN> shortTempVectors;
+        internal UnsafeList<shortMxN> shortTempMatrices;
     }
 
     public unsafe partial struct Arena {
@@ -38,17 +38,17 @@ namespace LinearAlgebra
             return vec;
         }
 
-        internal shortN tempshortVec(int N, bool uninit = false)
+        internal shortN shortTempVec(int N, bool uninit = false)
         {
             var vec = new shortN(N, in this, uninit);
-            _core->tempshortVectors.Add(in vec);
+            _core->shortTempVectors.Add(in vec);
             return vec;
         }
 
-        internal shortN tempshortVec(in shortN orig)
+        internal shortN shortTempVec(in shortN orig)
         {
             var vec = new shortN(in orig);
-            _core->tempshortVectors.Add(in vec);
+            _core->shortTempVectors.Add(in vec);
             return vec;
         }
         #endregion
@@ -85,17 +85,17 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        internal shortMxN tempshortMat(int M_rows, int M_cols, bool uninit = false)
+        internal shortMxN shortTempMat(int M_rows, int M_cols, bool uninit = false)
         {
             var matrix = new shortMxN(M_rows, M_cols, in this, uninit);
-            _core->tempshortMatrices.Add(in matrix);
+            _core->shortTempMatrices.Add(in matrix);
             return matrix;
         }
 
-        internal shortMxN tempshortMat(in shortMxN orig)
+        internal shortMxN shortTempMat(in shortMxN orig)
         {
             var matrix = new shortMxN(orig);
-            _core->tempshortMatrices.Add(in matrix);
+            _core->shortTempMatrices.Add(in matrix);
             return matrix;
         }
         #endregion
@@ -106,7 +106,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in shortN v) {
-            for (int i = 0; i < _core->tempshortVectors.Length; i++) if (_core->tempshortVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->shortTempVectors.Length; i++) if (_core->shortTempVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
         public bool isPersistent(in shortMxN m) {
@@ -114,7 +114,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in shortMxN m) {
-            for (int i = 0; i < _core->tempshortMatrices.Length; i++) if (_core->tempshortMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->shortTempMatrices.Length; i++) if (_core->shortTempMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
 

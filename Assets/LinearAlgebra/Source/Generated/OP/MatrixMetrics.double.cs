@@ -50,7 +50,7 @@ namespace LinearAlgebra
         /// zero / degenerate column (colNorm2[j] &lt;= 0 or NaN) -- that column is left UNSCALED
         /// rather than dividing by zero. Written into the caller's d (length colNorm2.N), no
         /// allocation. Pairs with <see cref="columnNormsSquared(in doubleMxN, ref doubleN)"/> (or
-        /// its BSM sibling) to right-precondition a least-squares solve via
+        /// its BSR sibling) to right-precondition a least-squares solve via
         /// <see cref="doubleColScaledOperator{TInner}"/>: solve (A·diag(d)) y = b, then x = diag(d)·y,
         /// which equilibrates the normal-equation diagonal so ill-conditioned LS converges faster.
         /// </summary>
@@ -77,7 +77,7 @@ namespace LinearAlgebra
             if (k == 0)
                 return (double)0;
 
-            doubleN S = A.tempdoubleVec(k);
+            doubleN S = A.doubleTempVec(k);
             SVD.singularValues(in A, ref S);
 
             double sMin = S[k - 1];          // singular values are descending
@@ -100,7 +100,7 @@ namespace LinearAlgebra
             if (k == 0)
                 return 0;
 
-            doubleN S = A.tempdoubleVec(k);
+            doubleN S = A.doubleTempVec(k);
             SVD.singularValues(in A, ref S);
 
             if (S[0] == (double)0)

@@ -6,8 +6,8 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        internal UnsafeList<fProxyBSM> fProxyBSMs;
-        internal UnsafeList<fProxyBSMBuilder> fProxyBSMBuilders;
+        internal UnsafeList<fProxyBSR> fProxyBSRs;
+        internal UnsafeList<fProxyBSRBuilder> fProxyBSRBuilders;
         internal UnsafeList<fProxyBlockJacobi> fProxyBlockJacobis;
     }
 
@@ -18,25 +18,25 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Allocates a compressed block-sparse (BSR) matrix with the given block-grid shape
-        /// and stored-block capacity (nnzb). Typically produced by fProxyBSMBuilder.ToBSM
+        /// and stored-block capacity (nnzb). Typically produced by fProxyBSRBuilder.ToBSR
         /// rather than called directly. Arena-owned: disposed with the arena.
         /// </summary>
-        public fProxyBSM fProxyBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false, bool symmetric = false)
+        public fProxyBSR fProxyBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false, bool symmetric = false)
         {
-            var mat = new fProxyBSM(blockRows, blockCols, BR, BC, nnzb, in this, uninit, symmetric);
-            _core->fProxyBSMs.Add(in mat);
+            var mat = new fProxyBSR(blockRows, blockCols, BR, BC, nnzb, in this, uninit, symmetric);
+            _core->fProxyBSRs.Add(in mat);
             return mat;
         }
 
         /// <summary>
         /// Allocates a COO-of-blocks assembly builder for a blockRows x blockCols grid of
-        /// BR x BC blocks. Accumulate triplets via AddBlock/AddValue, then call ToBSM(arena)
-        /// once to compress into a fProxyBSM. Arena-owned: disposed with the arena.
+        /// BR x BC blocks. Accumulate triplets via AddBlock/AddValue, then call ToBSR(arena)
+        /// once to compress into a fProxyBSR. Arena-owned: disposed with the arena.
         /// </summary>
-        public fProxyBSMBuilder fProxyBSMBuilder(int blockRows, int blockCols, int BR, int BC, int capacityHint = 8)
+        public fProxyBSRBuilder fProxyBSRBuilder(int blockRows, int blockCols, int BR, int BC, int capacityHint = 8)
         {
-            var builder = new fProxyBSMBuilder(blockRows, blockCols, BR, BC, in this, capacityHint);
-            _core->fProxyBSMBuilders.Add(in builder);
+            var builder = new fProxyBSRBuilder(blockRows, blockCols, BR, BC, in this, capacityHint);
+            _core->fProxyBSRBuilders.Add(in builder);
             return builder;
         }
 
@@ -44,7 +44,7 @@ namespace LinearAlgebra
         /// Builds a block-Jacobi preconditioner from A's diagonal blocks (A must be square:
         /// BlockRows==BlockCols, BR==BC). Arena-owned: disposed with the arena.
         /// </summary>
-        public fProxyBlockJacobi fProxyBlockJacobi(in fProxyBSM A)
+        public fProxyBlockJacobi fProxyBlockJacobi(in fProxyBSR A)
         {
             var pc = new fProxyBlockJacobi(in A, in this);
             _core->fProxyBlockJacobis.Add(in pc);
@@ -52,29 +52,29 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Materializes A^T as its own compressed BSM: every stored block at (blockRow,
+        /// Materializes A^T as its own compressed BSR: every stored block at (blockRow,
         /// blockCol) becomes a block at (blockCol, blockRow), transposed in place (BR x BC ->
-        /// BC x BR), then re-compressed via <see cref="fProxyBSMBuilder"/> (the same
-        /// triplet-sort/compress path as ToBSM). One-time O(nnz) cost -- the payoff is a
-        /// cache-friendly FORWARD <see cref="Sparse_OP.spMV(in fProxyBSM, in fProxyN, ref fProxyN)"/>
+        /// BC x BR), then re-compressed via <see cref="fProxyBSRBuilder"/> (the same
+        /// triplet-sort/compress path as ToBSR). One-time O(nnz) cost -- the payoff is a
+        /// cache-friendly FORWARD <see cref="Sparse_OP.spMV(in fProxyBSR, in fProxyN, ref fProxyN)"/>
         /// over A^T in place of the scatter-heavy on-the-fly <see cref="Sparse_OP.spMVT"/>
-        /// traversal on every Krylov iteration -- see <see cref="fProxyBSMOperator"/>'s two-arg
-        /// constructor and the cgls/lsqr allocating <see cref="fProxyBSM"/> overloads in
+        /// traversal on every Krylov iteration -- see <see cref="fProxyBSROperator"/>'s two-arg
+        /// constructor and the cgls/lsqr allocating <see cref="fProxyBSR"/> overloads in
         /// Solvers.fProxy.cs, which build A^T once per solve and reuse it every iteration.
         ///
         /// If A.Symmetric (implies square, and A == A^T by construction -- see
-        /// fProxyBSM.Symmetric), returns A itself unchanged: transposing symmetric upper-block
+        /// fProxyBSR.Symmetric), returns A itself unchanged: transposing symmetric upper-block
         /// storage is a no-op, and materializing a redundant copy would only double memory for
-        /// zero benefit. This is safe to feed straight into fProxyBSMOperator's two-arg ctor:
+        /// zero benefit. This is safe to feed straight into fProxyBSROperator's two-arg ctor:
         /// Sparse_OP.spMV already special-cases Symmetric internally, exactly matching what
         /// spMVT itself does for a symmetric A (forwards straight to spMV).
         /// </summary>
-        public unsafe fProxyBSM fProxyBSMTranspose(in fProxyBSM A)
+        public unsafe fProxyBSR fProxyBSRTranspose(in fProxyBSR A)
         {
             if (A.Symmetric)
                 return A;
 
-            var builder = fProxyBSMBuilder(A.BlockCols, A.BlockRows, A.BC, A.BR, A.Nnzb);
+            var builder = fProxyBSRBuilder(A.BlockCols, A.BlockRows, A.BC, A.BR, A.Nnzb);
 
             int blockLen = A.BR * A.BC;
             fProxy* blockT = stackalloc fProxy[blockLen];
@@ -100,7 +100,7 @@ namespace LinearAlgebra
             }
 
             Arena self = this;
-            return builder.ToBSM(ref self);
+            return builder.ToBSR(ref self);
         }
     }
 }

@@ -7,8 +7,8 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Phase-1 Block Sparse Matrix (BSM / block-CSR) test suite. Every correctness case validates
-// the sparse op against the DENSE reference: build a doubleBSM via the builder, expand with
+// Phase-1 Block Sparse Matrix (BSR / block-CSR) test suite. Every correctness case validates
+// the sparse op against the DENSE reference: build a doubleBSR via the builder, expand with
 // ToDense, and compare spMV/spMVT against Linear_OP.dot on the dense expansion. Property /
 // reconstruction checks are preferred over hard-coded element values, except the small
 // hand-computable cases where an exact expected matrix is more convincing.
@@ -17,10 +17,10 @@ using Unity.Mathematics;
 // ConjugateGradientTests). The guard / exception cases run on the managed test thread with
 // Assert.Throws (same pattern as BidiagWorkspaceTests / ClampTests) -- NUnit's Assert.Throws
 // cannot execute inside a Burst-compiled job.
-public class doubleSparseBSMTests
+public class doubleSparseBSRTests
 {
     [BurstCompile]
-    public struct SparseBSMTestJob : IJob
+    public struct SparseBSRTestJob : IJob
     {
         public enum TestType
         {
@@ -33,7 +33,7 @@ public class doubleSparseBSMTests
             OneByOneBlocks,
             GrowthThenDispose,
             ClearThenReallocate,
-            EmptyBSMRoundTrip,
+            EmptyBSRRoundTrip,
         }
 
         public TestType Type;
@@ -56,7 +56,7 @@ public class doubleSparseBSMTests
                 case TestType.OneByOneBlocks: OneByOneBlocks(); break;
                 case TestType.GrowthThenDispose: GrowthThenDispose(); break;
                 case TestType.ClearThenReallocate: ClearThenReallocate(); break;
-                case TestType.EmptyBSMRoundTrip: EmptyBSMRoundTrip(); break;
+                case TestType.EmptyBSRRoundTrip: EmptyBSRRoundTrip(); break;
             }
         }
 
@@ -96,13 +96,13 @@ public class doubleSparseBSMTests
                     Assert.IsTrue(math.abs(a[i, j] - b[i, j]) < tol);
         }
 
-        // ---- 1. hand-built small BSM: 2x2 grid of 3x3 blocks, some blocks omitted ---------
+        // ---- 1. hand-built small BSR: 2x2 grid of 3x3 blocks, some blocks omitted ---------
         void HandBuiltSmall()
         {
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 3, BC = 3;
-            var builder = arena.doubleBSMBuilder(2, 2, BR, BC);
+            var builder = arena.doubleBSRBuilder(2, 2, BR, BC);
 
             // Three distinct blocks placed at (0,0), (0,1), (1,1). Block (1,0) intentionally
             // omitted -> must expand to a zero 3x3 region.
@@ -121,7 +121,7 @@ public class doubleSparseBSMTests
             builder.AddBlock(0, 1, in b01);
             builder.AddBlock(1, 1, in b11);
 
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
 
             // Structural expectations.
             Assert.IsTrue(A.M_Rows == 6);
@@ -143,20 +143,20 @@ public class doubleSparseBSMTests
             arena.Dispose();
         }
 
-        // Build a random BSM on a 3x3 block grid of 3x3 blocks (9x9), a handful of blocks.
-        static doubleBSM BuildRandom(ref Arena arena)
+        // Build a random BSR on a 3x3 block grid of 3x3 blocks (9x9), a handful of blocks.
+        static doubleBSR BuildRandom(ref Arena arena)
         {
             const int BR = 3, BC = 3;
-            var builder = arena.doubleBSMBuilder(3, 3, BR, BC);
+            var builder = arena.doubleBSRBuilder(3, 3, BR, BC);
             builder.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1001));
             builder.AddBlock(0, 2, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1002));
             builder.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1003));
             builder.AddBlock(2, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1004));
             builder.AddBlock(2, 2, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 1005));
-            return builder.ToBSM(ref arena);
+            return builder.ToBSR(ref arena);
         }
 
-        // ---- 2. random BSM: spMV(A,x) == dense(A)*x --------------------------------------
+        // ---- 2. random BSR: spMV(A,x) == dense(A)*x --------------------------------------
         void RandomSpMV()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -179,7 +179,7 @@ public class doubleSparseBSMTests
             arena.Dispose();
         }
 
-        // ---- 3. random BSM: spMVT(A,x) == dense(A)^T * x ---------------------------------
+        // ---- 3. random BSR: spMVT(A,x) == dense(A)^T * x ---------------------------------
         void RandomSpMVT()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -207,11 +207,11 @@ public class doubleSparseBSMTests
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2, BC = 3;
-            var builder = arena.doubleBSMBuilder(2, 3, BR, BC); // 4 x 9 dense
+            var builder = arena.doubleBSRBuilder(2, 3, BR, BC); // 4 x 9 dense
             builder.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 2001));
             builder.AddBlock(0, 2, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 2002));
             builder.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 2003));
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
 
             Assert.IsTrue(A.M_Rows == 4);
             Assert.IsTrue(A.N_Cols == 9);
@@ -243,7 +243,7 @@ public class doubleSparseBSMTests
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2, BC = 2;
-            var builder = arena.doubleBSMBuilder(2, 2, BR, BC); // 4 x 4 dense
+            var builder = arena.doubleBSRBuilder(2, 2, BR, BC); // 4 x 4 dense
 
             var blkA = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 3001);
             var blkB = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 3002);
@@ -257,7 +257,7 @@ public class doubleSparseBSMTests
 
             Assert.IsTrue(builder.TripletCount == 4);   // pre-compression: 2 blocks + 2 scalars
 
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
             Assert.IsTrue(A.Nnzb == 1);                 // all four triplets collapse to one block
 
             // Independent reference: sum blkA + blkB, then add 12 to local (1,0) == global (1,0).
@@ -281,7 +281,7 @@ public class doubleSparseBSMTests
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2, BC = 2;
-            var builder = arena.doubleBSMBuilder(2, 3, BR, BC); // 4 x 6 dense
+            var builder = arena.doubleBSRBuilder(2, 3, BR, BC); // 4 x 6 dense
 
             // Scrambled (br,bc) insertion order across both rows.
             var b_1_2 = arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 4001);
@@ -296,7 +296,7 @@ public class doubleSparseBSMTests
             builder.AddBlock(0, 0, in b_0_0);
             builder.AddBlock(0, 1, in b_0_1);
 
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
 
             // ColInd strictly ascending within each block-row.
             for (int row = 0; row < A.BlockRows; row++)
@@ -321,12 +321,12 @@ public class doubleSparseBSMTests
             arena.Dispose();
         }
 
-        // ---- 7. 1x1-block BSM == plain sparse scalar matrix ------------------------------
+        // ---- 7. 1x1-block BSR == plain sparse scalar matrix ------------------------------
         void OneByOneBlocks()
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var builder = arena.doubleBSMBuilder(4, 4, 1, 1); // 4 x 4 scalar sparse
+            var builder = arena.doubleBSRBuilder(4, 4, 1, 1); // 4 x 4 scalar sparse
 
             // Scatter of scalar entries (some rows empty, one duplicate to also exercise sum).
             builder.AddValue(0, 0, (double)2);
@@ -335,7 +335,7 @@ public class doubleSparseBSMTests
             builder.AddValue(3, 3, (double)5);
             builder.AddValue(0, 0, (double)1); // duplicate at (0,0) -> 2 + 1 = 3
 
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
             Assert.IsTrue(A.M_Rows == 4);
             Assert.IsTrue(A.N_Cols == 4);
             Assert.IsTrue(A.BR == 1);
@@ -368,16 +368,16 @@ public class doubleSparseBSMTests
         // growth path that used to leave the arena's tracked value-copy of the builder pointing
         // at a freed pre-growth buffer (double-free / use-after-free on dispose). Values come
         // from `refDense`; the caller keeps `refDense` as the independent dense reference.
-        static doubleBSM BuildDenseGrown(ref Arena arena, in doubleMxN refDense, out int tripletCount)
+        static doubleBSR BuildDenseGrown(ref Arena arena, in doubleMxN refDense, out int tripletCount)
         {
             int N = refDense.M_Rows;
-            var builder = arena.doubleBSMBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
+            var builder = arena.doubleBSRBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
             for (int r = 0; r < N; r++)
                 for (int c = 0; c < N; c++)
                     builder.AddValue(r, c, refDense[r, c]);
 
             tripletCount = builder.TripletCount;
-            return builder.ToBSM(ref arena);
+            return builder.ToBSR(ref arena);
         }
 
         // ---- 8. growth past capacityHint then arena.Dispose() (the crash) + correctness ------
@@ -419,7 +419,7 @@ public class doubleSparseBSMTests
         // ---- 9. Clear() then reallocate a second grown builder in the SAME arena -------------
         //
         // Proves the arena's builder-tracking list is safely reusable after Clear(): grow a
-        // first builder past capacityHint, ToBSM, Clear() (disposes the first builder's shared
+        // first builder past capacityHint, ToBSR, Clear() (disposes the first builder's shared
         // state and empties the tracking list WITHOUT tearing down the arena), then build and
         // grow a SECOND builder in the same arena and verify its correctness too. Final
         // arena.Dispose() at the very end must also be clean.
@@ -455,33 +455,33 @@ public class doubleSparseBSMTests
             arena.Dispose();
         }
 
-        // ---- 10. empty BSM (zero triplets) + minimal 1x1 single-element BSM round-trip -------
+        // ---- 10. empty BSR (zero triplets) + minimal 1x1 single-element BSR round-trip -------
         //
-        // A builder with a nonzero block-grid shape but ZERO triplets ToBSM's to a valid empty
-        // BSM (Nnzb == 0): every block-row's RowPtr range is empty so bsmMatVec/bsmMatVecT never
+        // A builder with a nonzero block-grid shape but ZERO triplets ToBSR's to a valid empty
+        // BSR (Nnzb == 0): every block-row's RowPtr range is empty so bsmMatVec/bsmMatVecT never
         // dereference the (possibly-null-Ptr) zero-length ColInd/Values buffers. ToDense must
         // produce the all-zero matrix and spMV/spMVT the zero vector for any x. Mirrors the
         // codebase's established zero-length-vector pattern (arena.doubleVec(0) etc.). Also folds
-        // in the smallest non-empty edge: a 1x1-grid, 1x1-block, single-triplet BSM (one scalar).
-        void EmptyBSMRoundTrip()
+        // in the smallest non-empty edge: a 1x1-grid, 1x1-block, single-triplet BSR (one scalar).
+        void EmptyBSRRoundTrip()
         {
             var arena = new Arena(Allocator.Persistent);
 
-            // --- empty BSM: 3x3 block grid of 2x2 blocks (6x6 dense) with NO triplets ---
+            // --- empty BSR: 3x3 block grid of 2x2 blocks (6x6 dense) with NO triplets ---
             const int BR = 2, BC = 2;
-            var builder = arena.doubleBSMBuilder(3, 3, BR, BC);
-            var A = builder.ToBSM(ref arena);
+            var builder = arena.doubleBSRBuilder(3, 3, BR, BC);
+            var A = builder.ToBSR(ref arena);
 
             Assert.IsTrue(A.Nnzb == 0);
             Assert.IsTrue(A.M_Rows == 6);
             Assert.IsTrue(A.N_Cols == 6);
 
-            // ToDense of an empty BSM == the all-zero matrix of the right dims.
+            // ToDense of an empty BSR == the all-zero matrix of the right dims.
             var dense = A.ToDense(ref arena);
             var zero = arena.doubleMat(6, 6);
             AssertMatEq(in dense, in zero, Tol());
 
-            // spMV of an empty BSM == the zero vector, for a random nonzero x.
+            // spMV of an empty BSR == the zero vector, for a random nonzero x.
             var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 9201);
             var y = arena.doubleVec(A.M_Rows);
             Sparse_OP.spMV(in A, in x, ref y);
@@ -494,9 +494,9 @@ public class doubleSparseBSMTests
             Assert.IsTrue(Analysis_OP.isZero(yt, Tol()));
 
             // --- minimal non-empty edge: 1x1 grid, 1x1 block, one triplet == a single scalar ---
-            var oneBuilder = arena.doubleBSMBuilder(1, 1, 1, 1);
+            var oneBuilder = arena.doubleBSRBuilder(1, 1, 1, 1);
             oneBuilder.AddValue(0, 0, (double)7);
-            var one = oneBuilder.ToBSM(ref arena);
+            var one = oneBuilder.ToBSR(ref arena);
 
             Assert.IsTrue(one.Nnzb == 1);
             Assert.IsTrue(one.M_Rows == 1);
@@ -519,58 +519,58 @@ public class doubleSparseBSMTests
 
     [Test]
     public void HandBuiltSmallTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.HandBuiltSmall }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.HandBuiltSmall }.Run();
 
     [Test]
     public void RandomSpMVTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.RandomSpMV }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.RandomSpMV }.Run();
 
     [Test]
     public void RandomSpMVTTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.RandomSpMVT }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.RandomSpMVT }.Run();
 
     [Test]
     public void RectangularBlocksTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.RectangularBlocks }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.RectangularBlocks }.Run();
 
     [Test]
     public void DuplicateSummationTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.DuplicateSummation }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.DuplicateSummation }.Run();
 
     [Test]
     public void OutOfOrderTripletsTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.OutOfOrderTriplets }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.OutOfOrderTriplets }.Run();
 
     [Test]
     public void OneByOneBlocksTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.OneByOneBlocks }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.OneByOneBlocks }.Run();
 
     // Regression: builder grown far past capacityHint (default 8), then arena.Dispose() --
     // used to double-free / use-after-free the arena's stale tracked copy (native crash).
     [Test]
     public void GrowthThenDisposeTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.GrowthThenDispose }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.GrowthThenDispose }.Run();
 
     // Regression: arena.Clear() then a second grown builder in the same arena.
     [Test]
     public void ClearThenReallocateTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.ClearThenReallocate }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.ClearThenReallocate }.Run();
 
-    // Empty BSM (zero triplets) round-trips to zero dense / zero matvec; + minimal 1x1 scalar BSM.
+    // Empty BSR (zero triplets) round-trips to zero dense / zero matvec; + minimal 1x1 scalar BSR.
     [Test]
-    public void EmptyBSMRoundTripTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.EmptyBSMRoundTrip }.Run();
+    public void EmptyBSRRoundTripTest()
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.EmptyBSRRoundTrip }.Run();
 
-    // ---- Regression test: ToDense/ToBSM dangling-arena-pointer bug (fixed) ----------------
+    // ---- Regression test: ToDense/ToBSR dangling-arena-pointer bug (fixed) ----------------
     //
-    // doubleBSM.ToDense and doubleBSMBuilder.ToBSM used to take `in Arena arena`, but both call a
-    // MUTATING arena allocator method internally (arena.doubleMat / arena.doubleBSM). Since those
+    // doubleBSR.ToDense and doubleBSRBuilder.ToBSR used to take `in Arena arena`, but both call a
+    // MUTATING arena allocator method internally (arena.doubleMat / arena.doubleBSR). Since those
     // Arena methods aren't `readonly`, calling them through an `in Arena` parameter forced the C#
     // compiler to make a defensive copy of the arena, and the allocated result's internal arena
     // pointer captured the address of that dead stack temporary -- a use-after-scope bug. Reading
     // elements off the result was fine (the Values buffer is a real, independent allocation), but
     // any op that allocates through the result's own arena pointer -- e.g.
-    // Linear_OP.trans(dense).tempdoubleMat -- dereferenced the dangling pointer and threw
+    // Linear_OP.trans(dense).doubleTempMat -- dereferenced the dangling pointer and threw
     // "allocator handle is not valid" under Burst. This broke the spec's own recommended
     // validation recipe: Sparse_OP.spMVT(A,x) vs Linear_OP.dot(Linear_OP.trans(ToDense(A)), x).
     //
@@ -610,13 +610,13 @@ public class doubleSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
 
         const int N = 15;
-        var builder = arena.doubleBSMBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
+        var builder = arena.doubleBSRBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
         for (int r = 0; r < N; r++)
             for (int c = 0; c < N; c++)
                 builder.AddValue(r, c, (double)(r * N + c));
 
         Assert.IsTrue(builder.TripletCount == N * N); // 225 -> grew well past 8
-        builder.ToBSM(ref arena);
+        builder.ToBSR(ref arena);
 
         // Clear() disposes the builder's shared state once and empties the tracking list;
         // Dispose() then runs Clear() again internally. Neither may double-free / crash.
@@ -635,7 +635,7 @@ public class doubleSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.doubleBSMBuilder(2, 2, 3, 3);
+            var builder = arena.doubleBSRBuilder(2, 2, 3, 3);
             var block = arena.doubleMat(3, 3);
             Assert.Throws<ArgumentException>(() => builder.AddBlock(2, 0, in block));  // br == BlockRows
             Assert.Throws<ArgumentException>(() => builder.AddBlock(-1, 0, in block));
@@ -649,7 +649,7 @@ public class doubleSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.doubleBSMBuilder(2, 2, 3, 3);
+            var builder = arena.doubleBSRBuilder(2, 2, 3, 3);
             var block = arena.doubleMat(3, 3);
             Assert.Throws<ArgumentException>(() => builder.AddBlock(0, 2, in block));  // bc == BlockCols
             Assert.Throws<ArgumentException>(() => builder.AddBlock(0, -1, in block));
@@ -663,7 +663,7 @@ public class doubleSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.doubleBSMBuilder(2, 2, 3, 3);
+            var builder = arena.doubleBSRBuilder(2, 2, 3, 3);
             var wrong = arena.doubleMat(2, 3); // not 3 x 3
             Assert.Throws<ArgumentException>(() => builder.AddBlock(0, 0, in wrong));
         }
@@ -676,7 +676,7 @@ public class doubleSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.doubleBSMBuilder(2, 2, 3, 3); // 6 x 6
+            var builder = arena.doubleBSRBuilder(2, 2, 3, 3); // 6 x 6
             Assert.Throws<ArgumentException>(() => builder.AddValue(6, 0, (double)1)); // row == M_Rows
             Assert.Throws<ArgumentException>(() => builder.AddValue(-1, 0, (double)1));
             Assert.Throws<ArgumentException>(() => builder.AddValue(0, 6, (double)1)); // col == N_Cols
@@ -723,7 +723,7 @@ public class doubleSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = BuildSquare(ref arena);          // square BSM, both diagonal blocks present
+            var A = BuildSquare(ref arena);          // square BSR, both diagonal blocks present
             var M = arena.doubleBlockJacobi(in A);
             var r = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 9003);
             var zAlias = r;                          // struct copy shares Data.Ptr with r
@@ -773,13 +773,13 @@ public class doubleSparseBSMTests
         finally { arena.Dispose(); }
     }
 
-    // Small square (4x4) BSM used by the guard tests. Managed helper (no Burst).
-    static doubleBSM BuildSquare(ref Arena arena)
+    // Small square (4x4) BSR used by the guard tests. Managed helper (no Burst).
+    static doubleBSR BuildSquare(ref Arena arena)
     {
         const int BR = 2, BC = 2;
-        var builder = arena.doubleBSMBuilder(2, 2, BR, BC);
+        var builder = arena.doubleBSRBuilder(2, 2, BR, BC);
         builder.AddBlock(0, 0, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 6001));
         builder.AddBlock(1, 1, arena.doubleRandomMat(BR, BC, (double)(-1f), (double)1f, 6002));
-        return builder.ToBSM(ref arena);
+        return builder.ToBSR(ref arena);
     }
 }

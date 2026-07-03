@@ -20,11 +20,11 @@ namespace LinearAlgebra.Sparse
     /// requires BR==BC and a square block grid (BlockRows==BlockCols). See spec-sparse-bsm.md
     /// §2.3.
     ///
-    /// Lifecycle: build via doubleBSMBuilder.ToBSM(arena). This type is the compressed,
+    /// Lifecycle: build via doubleBSRBuilder.ToBSR(arena). This type is the compressed,
     /// matvec-ready form -- there is no cheap incremental pattern edit after compression; go
     /// back through the builder to add/remove blocks.
     /// </summary>
-    public partial struct doubleBSM : IDisposable
+    public partial struct doubleBSR : IDisposable
     {
         public int BlockRows;  // mb: number of block-rows
         public int BlockCols;  // nb: number of block-cols
@@ -49,10 +49,10 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Allocates a compressed BSR matrix with the given block-grid shape and a fixed
-        /// number of stored blocks (nnzb). Typically produced by doubleBSMBuilder.ToBSM
+        /// number of stored blocks (nnzb). Typically produced by doubleBSRBuilder.ToBSR
         /// rather than called directly -- the caller is expected to fill RowPtr/ColInd/Values.
         /// </summary>
-        public unsafe doubleBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, Allocator allocator, bool uninit = false, bool symmetric = false)
+        public unsafe doubleBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, Allocator allocator, bool uninit = false, bool symmetric = false)
         {
             _arena = default;
             BlockRows = blockRows;
@@ -61,7 +61,7 @@ namespace LinearAlgebra.Sparse
             this.BC = BC;
 
             if (symmetric && (BR != BC || blockRows != blockCols))
-                throw new ArgumentException("doubleBSM: symmetric storage requires BR==BC and blockRows==blockCols");
+                throw new ArgumentException("doubleBSR: symmetric storage requires BR==BC and blockRows==blockCols");
             Symmetric = symmetric;
 
             var options = uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory;
@@ -84,7 +84,7 @@ namespace LinearAlgebra.Sparse
         /// Creates a new BSR matrix of the given shape from an arena. Same allocation shape
         /// as the Allocator overload, but tracked by the arena for disposal.
         /// </summary>
-        public unsafe doubleBSM(int blockRows, int blockCols, int BR, int BC, int nnzb, in Arena arena, bool uninit = false, bool symmetric = false)
+        public unsafe doubleBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, in Arena arena, bool uninit = false, bool symmetric = false)
         {
             _arena = arena;
 
@@ -94,7 +94,7 @@ namespace LinearAlgebra.Sparse
             this.BC = BC;
 
             if (symmetric && (BR != BC || blockRows != blockCols))
-                throw new ArgumentException("doubleBSM: symmetric storage requires BR==BC and blockRows==blockCols");
+                throw new ArgumentException("doubleBSR: symmetric storage requires BR==BC and blockRows==blockCols");
             Symmetric = symmetric;
 
             var allocator = arena.Allocator;
@@ -126,7 +126,7 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Expands this BSM to a dense M_Rows x N_Cols matrix: zero-filled, then every stored
+        /// Expands this BSR to a dense M_Rows x N_Cols matrix: zero-filled, then every stored
         /// block scattered into place. Used by tests and as a general-purpose densify helper.
         /// Kept as `ref Arena` for API stability, though `in Arena` would work equally well now
         /// that Arena is a thin handle to a heap-allocated ArenaCore (see Arena.cs).

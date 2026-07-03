@@ -17,9 +17,9 @@ namespace LinearAlgebra
         /// Power iteration with Rayleigh-quotient eigenvalue estimate, generic over any
         /// <see cref="IdoubleLinearOperator"/> (Burst-monomorphized static dispatch, no
         /// vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the power-iteration
-        /// loop — the concrete dense (<c>powerIteration(in doubleMxN, ...)</c>) and BSM
-        /// (<c>powerIteration(in doubleBSM, ...)</c>) overloads below are thin forwarders that
-        /// wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSMOperator</c> and
+        /// loop — the concrete dense (<c>powerIteration(in doubleMxN, ...)</c>) and BSR
+        /// (<c>powerIteration(in doubleBSR, ...)</c>) overloads below are thin forwarders that
+        /// wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSROperator</c> and
         /// call this method (mirrors <see cref="Solvers.cg{TOp}"/>).
         ///
         /// Finds the dominant eigenpair (lambda, v) of a square operator A (A.Rows == A.Cols).
@@ -100,7 +100,7 @@ namespace LinearAlgebra
             for (int iter = 0; iter < maxIter; iter++) {
 
                 // Step 1: w = A * v (no allocation — the operator's own Apply, e.g. a manual
-                // matvec for dense or spMV for a BSM)
+                // matvec for dense or spMV for a BSR)
                 A.Apply(in v, ref w);
 
                 // Step 2: lambda = v . w (Rayleigh quotient; ||v||_2 = 1)
@@ -192,16 +192,16 @@ namespace LinearAlgebra
         /// Power iteration with Rayleigh-quotient eigenvalue estimate over a block-sparse (BSR)
         /// matrix. Same semantics as the dense overload — see
         /// <see cref="powerIteration(in doubleMxN, ref doubleN, ref doubleN, out double, double, int)"/>.
-        /// Forwards into <see cref="powerIteration{TOp}"/> via <c>doubleBSMOperator</c>.
+        /// Forwards into <see cref="powerIteration{TOp}"/> via <c>doubleBSROperator</c>.
         /// </summary>
-        public static EigenSolveInfo powerIteration(in doubleBSM A, ref doubleN v, ref doubleN w,
+        public static EigenSolveInfo powerIteration(in doubleBSR A, ref doubleN v, ref doubleN w,
                                           out double lambda, double tol, int maxIter)
         {
-            return powerIteration(new doubleBSMOperator(in A), ref v, ref w, out lambda, tol, maxIter);
+            return powerIteration(new doubleBSROperator(in A), ref v, ref w, out lambda, tol, maxIter);
         }
 
         /// <summary>powerIteration over a block-sparse (BSR) matrix with default maxIter (1000).</summary>
-        public static EigenSolveInfo powerIteration(in doubleBSM A, ref doubleN v, ref doubleN w,
+        public static EigenSolveInfo powerIteration(in doubleBSR A, ref doubleN v, ref doubleN w,
                                           out double lambda, double tol)
             => powerIteration(in A, ref v, ref w, out lambda, tol, 1000);
 
@@ -209,7 +209,7 @@ namespace LinearAlgebra
         /// powerIteration over a block-sparse (BSR) matrix with default tol
         /// (Consts.doubleZeroThreshold) and maxIter (1000).
         /// </summary>
-        public static EigenSolveInfo powerIteration(in doubleBSM A, ref doubleN v, ref doubleN w,
+        public static EigenSolveInfo powerIteration(in doubleBSR A, ref doubleN v, ref doubleN w,
                                           out double lambda)
             => powerIteration(in A, ref v, ref w, out lambda, Consts.doubleZeroThreshold, 1000);
 
@@ -219,9 +219,9 @@ namespace LinearAlgebra
         /// <see cref="IdoubleLinearOperator"/> (Burst-monomorphized static dispatch, no
         /// vtable/managed delegate) -- same shape as <see cref="powerIteration{TOp}"/>. This is
         /// the SINGLE SOURCE OF TRUTH for the inverse-iteration loop -- the concrete dense
-        /// (<c>inversePowerIteration(in doubleMxN, ...)</c>) and BSM
-        /// (<c>inversePowerIteration(in doubleBSM, ...)</c>) overloads below are thin forwarders
-        /// that wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSMOperator</c>
+        /// (<c>inversePowerIteration(in doubleMxN, ...)</c>) and BSR
+        /// (<c>inversePowerIteration(in doubleBSR, ...)</c>) overloads below are thin forwarders
+        /// that wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSROperator</c>
         /// and call this method (mirrors <see cref="powerIteration{TOp}"/>).
         ///
         /// A^-1 amplifies the SMALLEST-magnitude eigencomponent of A, so ordinary power iteration
@@ -469,10 +469,10 @@ namespace LinearAlgebra
         public static EigenSolveInfo inversePowerIteration(in doubleMxN A, ref doubleN v, out double lambda,
                                                  double tol, int maxIter, int cgMaxIter, double cgTol)
         {
-            doubleN y  = v.tempdoubleVec(A.M_Rows);
-            doubleN r  = v.tempdoubleVec(A.M_Rows);
-            doubleN p  = v.tempdoubleVec(A.M_Rows);
-            doubleN Ap = v.tempdoubleVec(A.M_Rows);
+            doubleN y  = v.doubleTempVec(A.M_Rows);
+            doubleN r  = v.doubleTempVec(A.M_Rows);
+            doubleN p  = v.doubleTempVec(A.M_Rows);
+            doubleN Ap = v.doubleTempVec(A.M_Rows);
             return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
         }
 
@@ -492,18 +492,18 @@ namespace LinearAlgebra
         /// Inverse power iteration for the smallest eigenpair of a SPD block-sparse (BSR) matrix.
         /// Same semantics as the dense overload -- see
         /// <see cref="inversePowerIteration(in doubleMxN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, out double, double, int, int, double)"/>.
-        /// Forwards into <see cref="inversePowerIteration{TOp}"/> via <c>doubleBSMOperator</c>.
+        /// Forwards into <see cref="inversePowerIteration{TOp}"/> via <c>doubleBSROperator</c>.
         /// </summary>
-        public static EigenSolveInfo inversePowerIteration(in doubleBSM A, ref doubleN v, ref doubleN y,
+        public static EigenSolveInfo inversePowerIteration(in doubleBSR A, ref doubleN v, ref doubleN y,
                                                  ref doubleN r, ref doubleN p, ref doubleN Ap,
                                                  out double lambda,
                                                  double tol, int maxIter, int cgMaxIter, double cgTol)
         {
-            return inversePowerIteration(new doubleBSMOperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
+            return inversePowerIteration(new doubleBSROperator(in A), ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
         }
 
         /// <summary>inversePowerIteration over a BSR matrix with default cgMaxIter (A.M_Rows) and cgTol (Consts.doubleSqrtEps).</summary>
-        public static EigenSolveInfo inversePowerIteration(in doubleBSM A, ref doubleN v, ref doubleN y,
+        public static EigenSolveInfo inversePowerIteration(in doubleBSR A, ref doubleN v, ref doubleN y,
                                                  ref doubleN r, ref doubleN p, ref doubleN Ap,
                                                  out double lambda, double tol, int maxIter)
             => inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, A.M_Rows, Consts.doubleSqrtEps);
@@ -512,13 +512,13 @@ namespace LinearAlgebra
         /// Inverse power iteration over a BSR SPD matrix -- allocates the inner-solve scratch from
         /// the arena that <paramref name="v"/> carries and calls the zero-alloc primitive.
         /// </summary>
-        public static EigenSolveInfo inversePowerIteration(in doubleBSM A, ref doubleN v, out double lambda,
+        public static EigenSolveInfo inversePowerIteration(in doubleBSR A, ref doubleN v, out double lambda,
                                                  double tol, int maxIter, int cgMaxIter, double cgTol)
         {
-            doubleN y  = v.tempdoubleVec(A.M_Rows);
-            doubleN r  = v.tempdoubleVec(A.M_Rows);
-            doubleN p  = v.tempdoubleVec(A.M_Rows);
-            doubleN Ap = v.tempdoubleVec(A.M_Rows);
+            doubleN y  = v.doubleTempVec(A.M_Rows);
+            doubleN r  = v.doubleTempVec(A.M_Rows);
+            doubleN p  = v.doubleTempVec(A.M_Rows);
+            doubleN Ap = v.doubleTempVec(A.M_Rows);
             return inversePowerIteration(in A, ref v, ref y, ref r, ref p, ref Ap, out lambda, tol, maxIter, cgMaxIter, cgTol);
         }
 
@@ -528,7 +528,7 @@ namespace LinearAlgebra
         /// (Consts.doubleSqrtEps). See the dense overload's doc comment for why tol defaults to a
         /// multiple of cgTol rather than the much tighter Consts.doubleZeroThreshold.
         /// </summary>
-        public static EigenSolveInfo inversePowerIteration(in doubleBSM A, ref doubleN v, out double lambda)
+        public static EigenSolveInfo inversePowerIteration(in doubleBSR A, ref doubleN v, out double lambda)
             => inversePowerIteration(in A, ref v, out lambda, (double)10 * Consts.doubleSqrtEps, 1000, A.M_Rows, Consts.doubleSqrtEps);
 
         /// <summary>
@@ -536,15 +536,15 @@ namespace LinearAlgebra
         /// any <see cref="IdoubleLinearOperator"/> (Burst-monomorphized static dispatch, no
         /// vtable/managed delegate) -- same shape as <see cref="powerIteration{TOp}"/> /
         /// <see cref="inversePowerIteration{TOp}"/>. This is the SINGLE SOURCE OF TRUTH for the
-        /// Lanczos loop -- the concrete dense (<c>lanczos(in doubleMxN, ...)</c>) and BSM
-        /// (<c>lanczos(in doubleBSM, ...)</c>) overloads below are thin forwarders that wrap their
-        /// matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSMOperator</c> and call this
+        /// Lanczos loop -- the concrete dense (<c>lanczos(in doubleMxN, ...)</c>) and BSR
+        /// (<c>lanczos(in doubleBSR, ...)</c>) overloads below are thin forwarders that wrap their
+        /// matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSROperator</c> and call this
         /// method.
         ///
         /// Builds an orthonormal Krylov basis v_1..v_m (m = <paramref name="steps"/>) via the
         /// classical 3-term Lanczos recurrence and the corresponding symmetric tridiagonal T (diag
         /// alpha_1..alpha_m, off-diag beta_2..beta_m), then reuses
-        /// <see cref="eigenvaluesSymmetric(ref doubleMxN, ref doubleN, ref doubleEigenSym_WS)"/> on
+        /// <see cref="eigenvaluesSymmetric(ref doubleMxN, ref doubleN, ref doubleEigenSymCache)"/> on
         /// T to obtain the Ritz values -- approximate eigenvalues of A. The EXTREMAL Ritz values
         /// (largest and smallest) converge fastest and are already accurate for m &lt;&lt; A.Rows;
         /// with m == A.Rows and full reorthogonalization, T is orthogonally similar to A and the
@@ -564,8 +564,8 @@ namespace LinearAlgebra
         /// for extra robustness -- this implementation prioritizes correctness over the last bit of
         /// speed, per its purpose as a general-purpose extremal eigensolver.
         ///
-        /// Workspace (see <see cref="doubleLanczos_WS"/>, allocate via
-        /// <c>Arena.doubleLanczos_WS(A.Rows, steps)</c>): <c>ws.V</c> (steps x n) accumulates the
+        /// Workspace (see <see cref="doubleLanczosCache"/>, allocate via
+        /// <c>Arena.doubleLanczosCache(A.Rows, steps)</c>): <c>ws.V</c> (steps x n) accumulates the
         /// Krylov basis (row j = v_(j+1)); <c>ws.vCur</c>/<c>ws.w</c> (length n) are the current
         /// Krylov vector (copied out of V for A.Apply, which requires distinct in/out buffers) and
         /// the work vector; <c>ws.alpha</c>/<c>ws.beta</c> (length steps) are T's diagonal/off-
@@ -598,7 +598,7 @@ namespace LinearAlgebra
         ///
         /// Does not allocate.
         /// </summary>
-        public static LanczosInfo lanczos<TOp>(in TOp A, ref doubleLanczos_WS ws, ref doubleN eigenvalues,
+        public static LanczosInfo lanczos<TOp>(in TOp A, ref doubleLanczosCache ws, ref doubleN eigenvalues,
                                         int steps, double breakdownTol)
             where TOp : struct, IdoubleLinearOperator
         {
@@ -615,7 +615,7 @@ namespace LinearAlgebra
         // building the Krylov basis ws.V, and assemble the (early-breakdown-padded) symmetric
         // tridiagonal ws.T. Sets `produced`. Callers then apply their own symmetric eigensolver to
         // ws.T (eigenvaluesSymmetric for values, eigenSymmetric for values + eigenvectors).
-        static void lanczosTridiag<TOp>(in TOp A, ref doubleLanczos_WS ws, out int produced,
+        static void lanczosTridiag<TOp>(in TOp A, ref doubleLanczosCache ws, out int produced,
                                         int steps, double breakdownTol)
             where TOp : struct, IdoubleLinearOperator
         {
@@ -752,7 +752,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>lanczos with default breakdownTol (Consts.doubleZeroThreshold).</summary>
-        public static LanczosInfo lanczos<TOp>(in TOp A, ref doubleLanczos_WS ws, ref doubleN eigenvalues,
+        public static LanczosInfo lanczos<TOp>(in TOp A, ref doubleLanczosCache ws, ref doubleN eigenvalues,
                                         int steps)
             where TOp : struct, IdoubleLinearOperator
             => lanczos(in A, ref ws, ref eigenvalues, steps, Consts.doubleZeroThreshold);
@@ -763,20 +763,20 @@ namespace LinearAlgebra
         /// the actual loop and the full algorithm documentation (seeding, full
         /// reorthogonalization, workspace layout, early-breakdown padding, output convention).
         /// </summary>
-        public static LanczosInfo lanczos(in doubleMxN A, ref doubleLanczos_WS ws, ref doubleN eigenvalues,
+        public static LanczosInfo lanczos(in doubleMxN A, ref doubleLanczosCache ws, ref doubleN eigenvalues,
                                    int steps, double breakdownTol)
         {
             return lanczos(new doubleDenseOperator(in A), ref ws, ref eigenvalues, steps, breakdownTol);
         }
 
         /// <summary>lanczos over a dense matrix with default breakdownTol (Consts.doubleZeroThreshold).</summary>
-        public static LanczosInfo lanczos(in doubleMxN A, ref doubleLanczos_WS ws, ref doubleN eigenvalues,
+        public static LanczosInfo lanczos(in doubleMxN A, ref doubleLanczosCache ws, ref doubleN eigenvalues,
                                    int steps)
             => lanczos(in A, ref ws, ref eigenvalues, steps, Consts.doubleZeroThreshold);
 
         /// <summary>
         /// Lanczos over a dense SYMMETRIC matrix -- allocates the workspace (see
-        /// <see cref="doubleLanczos_WS"/>) and the output eigenvalues buffer (length steps) from
+        /// <see cref="doubleLanczosCache"/>) and the output eigenvalues buffer (length steps) from
         /// <paramref name="arena"/> and calls the zero-alloc primitive. Returns the Ritz values;
         /// only the first <c>info.produced</c> entries are meaningful (see
         /// <see cref="lanczos{TOp}"/>'s doc comment). Use the ref-workspace overload in hot loops
@@ -785,7 +785,7 @@ namespace LinearAlgebra
         public static doubleN lanczos(ref Arena arena, in doubleMxN A, int steps, out LanczosInfo info,
                                       double breakdownTol)
         {
-            var ws = arena.doubleLanczos_WS(A.M_Rows, steps);
+            var ws = arena.doubleLanczosCache(A.M_Rows, steps);
             var eigenvalues = arena.doubleVec(steps);
             info = lanczos(in A, ref ws, ref eigenvalues, steps, breakdownTol);
             return eigenvalues;
@@ -798,17 +798,17 @@ namespace LinearAlgebra
         /// <summary>
         /// Lanczos tridiagonalization of a SYMMETRIC block-sparse (BSR) matrix. Same semantics as
         /// the dense overload -- see
-        /// <see cref="lanczos(in doubleMxN, ref doubleLanczos_WS, ref doubleN, int, double)"/>.
-        /// Forwards into <see cref="lanczos{TOp}"/> via <c>doubleBSMOperator</c>.
+        /// <see cref="lanczos(in doubleMxN, ref doubleLanczosCache, ref doubleN, int, double)"/>.
+        /// Forwards into <see cref="lanczos{TOp}"/> via <c>doubleBSROperator</c>.
         /// </summary>
-        public static LanczosInfo lanczos(in doubleBSM A, ref doubleLanczos_WS ws, ref doubleN eigenvalues,
+        public static LanczosInfo lanczos(in doubleBSR A, ref doubleLanczosCache ws, ref doubleN eigenvalues,
                                    int steps, double breakdownTol)
         {
-            return lanczos(new doubleBSMOperator(in A), ref ws, ref eigenvalues, steps, breakdownTol);
+            return lanczos(new doubleBSROperator(in A), ref ws, ref eigenvalues, steps, breakdownTol);
         }
 
         /// <summary>lanczos over a BSR matrix with default breakdownTol (Consts.doubleZeroThreshold).</summary>
-        public static LanczosInfo lanczos(in doubleBSM A, ref doubleLanczos_WS ws, ref doubleN eigenvalues,
+        public static LanczosInfo lanczos(in doubleBSR A, ref doubleLanczosCache ws, ref doubleN eigenvalues,
                                    int steps)
             => lanczos(in A, ref ws, ref eigenvalues, steps, Consts.doubleZeroThreshold);
 
@@ -817,17 +817,17 @@ namespace LinearAlgebra
         /// eigenvalues buffer from <paramref name="arena"/> and calls the zero-alloc primitive.
         /// See the dense overload's doc comment for the return-value convention.
         /// </summary>
-        public static doubleN lanczos(ref Arena arena, in doubleBSM A, int steps, out LanczosInfo info,
+        public static doubleN lanczos(ref Arena arena, in doubleBSR A, int steps, out LanczosInfo info,
                                       double breakdownTol)
         {
-            var ws = arena.doubleLanczos_WS(A.M_Rows, steps);
+            var ws = arena.doubleLanczosCache(A.M_Rows, steps);
             var eigenvalues = arena.doubleVec(steps);
             info = lanczos(in A, ref ws, ref eigenvalues, steps, breakdownTol);
             return eigenvalues;
         }
 
         /// <summary>lanczos (allocating) over a BSR matrix with default breakdownTol (Consts.doubleZeroThreshold).</summary>
-        public static doubleN lanczos(ref Arena arena, in doubleBSM A, int steps, out LanczosInfo info)
+        public static doubleN lanczos(ref Arena arena, in doubleBSR A, int steps, out LanczosInfo info)
             => lanczos(ref arena, in A, steps, out info, Consts.doubleZeroThreshold);
 
         /// <summary>
@@ -853,7 +853,7 @@ namespace LinearAlgebra
         /// length-steps Temp vectors internally. Returns a <see cref="LanczosInfo"/> (produced,
         /// status = eigenSymmetric's convergence flag).
         /// </summary>
-        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref doubleLanczos_WS ws, ref doubleMxN Yt,
+        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref doubleLanczosCache ws, ref doubleMxN Yt,
                                                ref doubleN eigenvalues, ref doubleMxN ritz,
                                                int steps, double breakdownTol)
             where TOp : struct, IdoubleLinearOperator
@@ -893,7 +893,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>lanczosVectors with default breakdownTol (Consts.doubleZeroThreshold).</summary>
-        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref doubleLanczos_WS ws, ref doubleMxN Yt,
+        public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref doubleLanczosCache ws, ref doubleMxN Yt,
                                                ref doubleN eigenvalues, ref doubleMxN ritz,
                                                int steps)
             where TOp : struct, IdoubleLinearOperator
@@ -910,7 +910,7 @@ namespace LinearAlgebra
                                              out doubleMxN ritz, out LanczosInfo info,
                                              double breakdownTol)
         {
-            var ws = arena.doubleLanczos_WS(A.M_Rows, steps);
+            var ws = arena.doubleLanczosCache(A.M_Rows, steps);
             var Yt = arena.doubleMat(steps, steps);
             var eigenvalues = arena.doubleVec(steps);
             ritz = arena.doubleMat(steps, A.M_Rows);
@@ -926,20 +926,20 @@ namespace LinearAlgebra
         /// Lanczos with Ritz vectors over a BSR SYMMETRIC matrix -- allocates workspace/scratch and
         /// the eigenvalues + Ritz-vector outputs from <paramref name="arena"/>. See the dense overload.
         /// </summary>
-        public static doubleN lanczosVectors(ref Arena arena, in doubleBSM A, int steps,
+        public static doubleN lanczosVectors(ref Arena arena, in doubleBSR A, int steps,
                                              out doubleMxN ritz, out LanczosInfo info,
                                              double breakdownTol)
         {
-            var ws = arena.doubleLanczos_WS(A.M_Rows, steps);
+            var ws = arena.doubleLanczosCache(A.M_Rows, steps);
             var Yt = arena.doubleMat(steps, steps);
             var eigenvalues = arena.doubleVec(steps);
             ritz = arena.doubleMat(steps, A.M_Rows);
-            info = lanczosVectors(new doubleBSMOperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, steps, breakdownTol);
+            info = lanczosVectors(new doubleBSROperator(in A), ref ws, ref Yt, ref eigenvalues, ref ritz, steps, breakdownTol);
             return eigenvalues;
         }
 
         /// <summary>lanczosVectors (allocating) over a BSR matrix with default breakdownTol.</summary>
-        public static doubleN lanczosVectors(ref Arena arena, in doubleBSM A, int steps, out doubleMxN ritz, out LanczosInfo info)
+        public static doubleN lanczosVectors(ref Arena arena, in doubleBSR A, int steps, out doubleMxN ritz, out LanczosInfo info)
             => lanczosVectors(ref arena, in A, steps, out ritz, out info, Consts.doubleZeroThreshold);
 
         /// <summary>
@@ -1157,7 +1157,7 @@ namespace LinearAlgebra
         /// beyond three length-n Temp scratch vectors.
         /// </summary>
         public static bool eigenvaluesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double eps,
-                                                 ref doubleEigenSym_WS ws)
+                                                 ref doubleEigenSymCache ws)
         {
             if (!A.IsSquare)
                 throw new ArgumentException("Eigen.eigenvaluesSymmetric: A must be square");
@@ -1352,7 +1352,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>eigenvaluesSymmetric (ref workspace) with default maxIterPerEig (30) and eps (Consts.doubleZeroThreshold).</summary>
-        public static bool eigenvaluesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleEigenSym_WS ws)
+        public static bool eigenvaluesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleEigenSymCache ws)
             => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.doubleZeroThreshold, ref ws);
 
         /// <summary>
@@ -1362,7 +1362,7 @@ namespace LinearAlgebra
         public static bool eigenvaluesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double eps)
         {
             int n = A.M_Rows;
-            var ws = new doubleEigenSym_WS
+            var ws = new doubleEigenSymCache
             {
                 eVec = new doubleN(n, Allocator.Temp, false),
                 vVec = new doubleN(n, Allocator.Temp, false),

@@ -3,7 +3,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Reusable scratch storage for the zero-alloc SVD solvers (SVD.pinvSolve / SVD.pseudoInverse).
     /// Allocate ONCE (sized for the matrix shape) and reuse it across many same-shape solves to
-    /// avoid per-call allocations — create via Arena.fProxySVD_WS(m, n).
+    /// avoid per-call allocations — create via Arena.fProxySVDCache(m, n).
     ///
     /// Layout: with k = min(m, n), S is length k, M is k x k (the singular-vector matrix — V for a
     /// tall/square system, W for a wide one), U is the left-factor scratch max(m,n) x k (receives the
@@ -11,7 +11,7 @@ namespace LinearAlgebra
     /// is wide (m &lt; n); for m &gt;= n At is left as default (unused). This is exactly the (S, M, U, At)
     /// tuple the scratch-primitive overloads expect, bundled so callers don't size them by hand.
     /// </summary>
-    public struct fProxySVD_WS
+    public struct fProxySVDCache
     {
         public fProxyN S;
         public fProxyMxN M;
@@ -21,12 +21,12 @@ namespace LinearAlgebra
 
     public static partial class ArenaExtensions
     {
-        /// <summary>Allocates an SVD-solver workspace sized for an m x n system — see <see cref="fProxySVD_WS"/> for layout. Persistent in this arena; create once outside a hot loop.</summary>
-        public static fProxySVD_WS fProxySVD_WS(this ref Arena arena, int m, int n)
+        /// <summary>Allocates an SVD-solver workspace sized for an m x n system — see <see cref="fProxySVDCache"/> for layout. Persistent in this arena; create once outside a hot loop.</summary>
+        public static fProxySVDCache fProxySVDCache(this ref Arena arena, int m, int n)
         {
             int k   = m < n ? m : n;
             int big = m < n ? n : m;
-            return new fProxySVD_WS
+            return new fProxySVDCache
             {
                 S  = arena.fProxyVec(k),
                 M  = arena.fProxyMat(k, k),

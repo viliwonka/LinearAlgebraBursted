@@ -31,20 +31,20 @@ namespace LinearAlgebra
         //+copyReplace
         public unsafe fProxyN fProxyVec(int n, bool uninit = false);
 
-        public unsafe fProxyN tempfProxyVec(int n, bool uninit = false);
+        public unsafe fProxyN fProxyTempVec(int n, bool uninit = false);
 
         public unsafe fProxyMxN fProxyMat(int m, int n, bool uninit = false);
 
-        public unsafe fProxyMxN tempfProxyMat(int m, int n, bool uninit = false);
+        public unsafe fProxyMxN fProxyTempMat(int m, int n, bool uninit = false);
         //-copyReplace
 
         public unsafe boolN boolVec(int n, bool uninit = false);
 
-        public unsafe boolN tempBoolVec(int n, bool uninit = false);
+        public unsafe boolN boolTempVec(int n, bool uninit = false);
 
         public unsafe boolMxN boolMat(int m, int n, bool uninit = false);
 
-        public unsafe boolMxN tempBoolMat(int m, int n, bool uninit = false);
+        public unsafe boolMxN boolTempMat(int m, int n, bool uninit = false);
 
     }
 

@@ -10,7 +10,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolMxN operator <(in floatMxN lhs, float rhs)
         {
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {
@@ -24,7 +24,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolMxN operator >(in floatMxN lhs, float rhs)
         {
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {
@@ -39,7 +39,7 @@ namespace LinearAlgebra
         public static boolMxN operator <=(in floatMxN lhs, float rhs)
         {
             
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {
@@ -53,7 +53,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolMxN operator >=(in floatMxN lhs, float rhs)
         {
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {
@@ -67,7 +67,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolMxN operator ==(in floatMxN lhs, float rhs)
         {
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {
@@ -81,7 +81,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolMxN operator !=(in floatMxN lhs, float rhs)
         {
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {
@@ -101,7 +101,7 @@ namespace LinearAlgebra
         {
             Assume.SameDim(in lhs, in rhs);
 
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {
@@ -117,7 +117,7 @@ namespace LinearAlgebra
         {
             Assume.SameDim(in lhs, in rhs);
 
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {
@@ -133,7 +133,7 @@ namespace LinearAlgebra
         {
             Assume.SameDim(in lhs, in rhs);
 
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {
@@ -147,7 +147,7 @@ namespace LinearAlgebra
         {
             Assume.SameDim(in lhs, in rhs);
 
-            boolMxN res = lhs.tempBoolMat(lhs.M_Rows, lhs.N_Cols, true);
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
 
             unsafe
             {

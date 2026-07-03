@@ -7,8 +7,8 @@ using System;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// COO-of-blocks assembly builder for doubleBSM. Accumulates (blockRow, blockCol, BR x BC
-    /// block) triplets in growable allocator-backed lists; call ToBSM(arena) ONCE to sort and
+    /// COO-of-blocks assembly builder for doubleBSR. Accumulates (blockRow, blockCol, BR x BC
+    /// block) triplets in growable allocator-backed lists; call ToBSR(arena) ONCE to sort and
     /// compress into block-CSR. Duplicate triplets at the same (blockRow, blockCol) are summed
     /// on compression -- this is the "sparse matrix is a graph" editable phase (add/remove a
     /// node = add/remove triplets).
@@ -16,7 +16,7 @@ namespace LinearAlgebra.Sparse
     /// Editing the pattern after compression is out of scope for Phase 1 -- go back through the
     /// builder (re-stamping VALUES on a fixed pattern without a rebuild is a later phase).
     ///
-    /// MUTABLE-STATE INDIRECTION (fixes a use-after-free): the arena's doubleBSMBuilder(...)
+    /// MUTABLE-STATE INDIRECTION (fixes a use-after-free): the arena's doubleBSRBuilder(...)
     /// factory (see Arena.Sparse.double.cs) registers a VALUE COPY of this struct in its own
     /// tracking list so it can dispose it later. AddBlock/AddValue append to the triplet lists
     /// via UnsafeList.Add, which reallocates the backing buffer once the initial capacityHint is
@@ -26,7 +26,7 @@ namespace LinearAlgebra.Sparse
     /// Clear() would double-free / use-after-free it (reliably reproducible by adding more than
     /// capacityHint triplets, e.g. via AddValue, then disposing the arena). Fixed by moving the
     /// growable triplet state behind a single heap-allocated State* that every value-copy of
-    /// doubleBSMBuilder shares (the pointer VALUE is copied around; there is exactly one
+    /// doubleBSRBuilder shares (the pointer VALUE is copied around; there is exactly one
     /// pointee) -- mirrors the ArenaCore* idiom Arena itself now uses internally (see Arena.cs:
     /// Arena is a thin handle around a heap-allocated ArenaCore, so copying the handle can never
     /// diverge from the one shared core), except the pointee here has to be heap-owned by the
@@ -39,10 +39,10 @@ namespace LinearAlgebra.Sparse
     /// AddBlock/AddValue mutate through _state, so growth is visible to every copy, including
     /// the arena's.
     /// </summary>
-    public partial struct doubleBSMBuilder : IDisposable
+    public partial struct doubleBSRBuilder : IDisposable
     {
         // Heap-owned, single-identity mutable state -- see the type doc above. Every
-        // doubleBSMBuilder value-copy (this instance, the arena's tracked copy, the caller's
+        // doubleBSRBuilder value-copy (this instance, the arena's tracked copy, the caller's
         // copy, ...) shares the SAME pointee, so UnsafeList growth from AddBlock/AddValue is
         // visible everywhere, including to the arena's own bookkeeping copy.
         private struct State
@@ -84,7 +84,7 @@ namespace LinearAlgebra.Sparse
         // relocation), not FM2.
         private Arena _arena;
 
-        public unsafe doubleBSMBuilder(int blockRows, int blockCols, int BR, int BC, Allocator allocator, int capacityHint = 8)
+        public unsafe doubleBSRBuilder(int blockRows, int blockCols, int BR, int BC, Allocator allocator, int capacityHint = 8)
         {
             _arena = default;
 
@@ -100,7 +100,7 @@ namespace LinearAlgebra.Sparse
             _state->triValues = new UnsafeList<double>(capacityHint * BR * BC, allocator);
         }
 
-        public unsafe doubleBSMBuilder(int blockRows, int blockCols, int BR, int BC, in Arena arena, int capacityHint = 8)
+        public unsafe doubleBSRBuilder(int blockRows, int blockCols, int BR, int BC, in Arena arena, int capacityHint = 8)
         {
             _arena = arena;
 
@@ -120,7 +120,7 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Appends a (br, bc, block) triplet. block must point to BR*BC values in row-major
-        /// order (block[r*BC+c]). Multiple triplets at the same (br, bc) are summed on ToBSM.
+        /// order (block[r*BC+c]). Multiple triplets at the same (br, bc) are summed on ToBSR.
         /// </summary>
         public unsafe void AddBlock(int br, int bc, [NoAlias] double* block)
         {
@@ -151,7 +151,7 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// Convenience: routes a single scalar at global (row, col) into its owning block,
         /// appending a fresh triplet that is zero everywhere except that one entry. Summed
-        /// with any other triplet touching the same block on ToBSM -- fine for occasional
+        /// with any other triplet touching the same block on ToBSR -- fine for occasional
         /// edits, wasteful for many scalar adds into the same block (prefer AddBlock for that).
         /// </summary>
         public unsafe void AddValue(int globalRow, int globalCol, double v)
@@ -177,19 +177,19 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Sorts triplets by (blockRow, blockCol), sums duplicates at the same (blockRow,
-        /// blockCol), and builds the compressed doubleBSM (RowPtr/ColInd/Values). Counting-sort
+        /// blockCol), and builds the compressed doubleBSR (RowPtr/ColInd/Values). Counting-sort
         /// by block-row + insertion-sort by block-col within each row bucket: deterministic,
         /// O(nnz + sum of row-degree^2) -- fine for the one-time assembly-to-compressed
         /// transition this represents (see the type doc re: Phase 1 pattern-edit scope).
         ///
         /// Kept as `ref Arena` for API stability, but this is no longer load-bearing -- see the
-        /// matching comment on doubleBSM.ToDense: Arena is now a thin copyable handle to a
+        /// matching comment on doubleBSR.ToDense: Arena is now a thin copyable handle to a
         /// heap-allocated ArenaCore, so `in Arena` would resolve correctly here too.
         /// </summary>
-        public unsafe doubleBSM ToBSM(ref Arena arena) => ToBSMCore(ref arena, symmetric: false);
+        public unsafe doubleBSR ToBSR(ref Arena arena) => ToBSRCore(ref arena, symmetric: false);
 
         /// <summary>
-        /// Same as ToBSM, but builds SYMMETRIC upper-block storage (see doubleBSM.Symmetric / spec
+        /// Same as ToBSR, but builds SYMMETRIC upper-block storage (see doubleBSR.Symmetric / spec
         /// §2.3): requires BR==BC and BlockRows==BlockCols, and requires every accumulated triplet's
         /// blockCol >= blockRow (upper triangle + diagonal only). A lower-triangle triplet
         /// (blockCol < blockRow) throws immediately -- we do NOT silently fold it into its transpose
@@ -206,17 +206,17 @@ namespace LinearAlgebra.Sparse
         /// lower-triangle guard). The check is on the duplicate-SUMMED diagonal block, so a symmetric
         /// block assembled from several AddBlock/AddValue contributions is accepted.
         /// </summary>
-        public unsafe doubleBSM ToBSMSymmetric(ref Arena arena)
+        public unsafe doubleBSR ToBSRSymmetric(ref Arena arena)
         {
             if (BR != BC || BlockRows != BlockCols)
-                throw new ArgumentException("ToBSMSymmetric: requires BR==BC and BlockRows==BlockCols (square blocks on a square block grid)");
+                throw new ArgumentException("ToBSRSymmetric: requires BR==BC and BlockRows==BlockCols (square blocks on a square block grid)");
 
             int n = TripletCount;
             for (int t = 0; t < n; t++)
                 if (_state->triBlockCol[t] < _state->triBlockRow[t])
-                    throw new ArgumentException("ToBSMSymmetric: found a lower-triangle triplet (blockCol < blockRow); symmetric build only accepts blocks with blockCol >= blockRow (upper triangle + diagonal). Add the block at its transpose position (blockRow<->blockCol swapped) instead, or use ToBSM() for full storage.");
+                    throw new ArgumentException("ToBSRSymmetric: found a lower-triangle triplet (blockCol < blockRow); symmetric build only accepts blocks with blockCol >= blockRow (upper triangle + diagonal). Add the block at its transpose position (blockRow<->blockCol swapped) instead, or use ToBSR() for full storage.");
 
-            var bsm = ToBSMCore(ref arena, symmetric: true);
+            var bsm = ToBSRCore(ref arena, symmetric: true);
 
             // Validate diagonal-block symmetry on the compressed (duplicate-summed) blocks. A
             // relative tolerance absorbs assembly roundoff while still catching a genuinely
@@ -236,7 +236,7 @@ namespace LinearAlgebra.Sparse
                             double b = bsm.Values[off + c * BC + r];
                             double tolAbs = (double)8 * Consts.doubleZeroThreshold * ((double)1 + math.abs(a) + math.abs(b));
                             if (math.abs(a - b) > tolAbs)
-                                throw new ArgumentException("ToBSMSymmetric: a diagonal block is not symmetric (block[r,c] != block[c,r]). Symmetric upper-block storage stores the lower triangle implicitly as the transpose, so diagonal blocks must be symmetric; symmetrize the block (e.g. (K+K^T)/2), or use ToBSM() for full storage.");
+                                throw new ArgumentException("ToBSRSymmetric: a diagonal block is not symmetric (block[r,c] != block[c,r]). Symmetric upper-block storage stores the lower triangle implicitly as the transpose, so diagonal blocks must be symmetric; symmetrize the block (e.g. (K+K^T)/2), or use ToBSR() for full storage.");
                         }
                 }
             }
@@ -244,7 +244,7 @@ namespace LinearAlgebra.Sparse
             return bsm;
         }
 
-        private unsafe doubleBSM ToBSMCore(ref Arena arena, bool symmetric)
+        private unsafe doubleBSR ToBSRCore(ref Arena arena, bool symmetric)
         {
             int n = TripletCount;
             int blockLen = BR * BC;
@@ -301,7 +301,7 @@ namespace LinearAlgebra.Sparse
                 }
             }
 
-            var bsm = arena.doubleBSM(BlockRows, BlockCols, BR, BC, nnzb, true, symmetric);
+            var bsm = arena.doubleBSR(BlockRows, BlockCols, BR, BC, nnzb, true, symmetric);
 
             // 4. Fill RowPtr/ColInd/Values, summing consecutive same-column entries.
             int outIdx = 0;
@@ -351,8 +351,8 @@ namespace LinearAlgebra.Sparse
         /// to protect against two DIFFERENT copies of this struct independently calling Dispose
         /// on the same shared _state: the arena-owns-everything convention means only the
         /// arena's own tracked copy ever does that (callers are not expected to dispose the
-        /// value returned by arena.doubleBSMBuilder(...) themselves, same as doubleMxN/
-        /// doubleBSM/etc).
+        /// value returned by arena.doubleBSRBuilder(...) themselves, same as doubleMxN/
+        /// doubleBSR/etc).
         /// </summary>
         public unsafe void Dispose()
         {

@@ -8,9 +8,9 @@ namespace LinearAlgebra
         /// Throws if <paramref name="ws"/> is not sized for an m x n bidiagonalization. The common
         /// buffers (W m x n, uVec m, vVec n, wScratch n) are always required; leftU (m x n) is required
         /// only by the full <see cref="bidiagonalize"/> (which reconstructs U), not by
-        /// <see cref="bidiagonalizeValues"/>. Matches Arena.doubleBidiag_WS(m, n).
+        /// <see cref="bidiagonalizeValues"/>. Matches Arena.doubleBidiagCache(m, n).
         /// </summary>
-        static void RequireBidiagWorkspace(in doubleBidiag_WS ws, int m, int n, bool needLeftU)
+        static void RequireBidiagWorkspace(in doubleBidiagCache ws, int m, int n, bool needLeftU)
         {
             bool ok =
                 ws.W.M_Rows == m && ws.W.N_Cols == n &&
@@ -20,20 +20,20 @@ namespace LinearAlgebra
                 (!needLeftU || (ws.leftU.M_Rows == m && ws.leftU.N_Cols == n));
 
             if (!ok)
-                throw new ArgumentException("Bidiag: workspace must be sized for m x n (use Arena.doubleBidiag_WS(m, n))");
+                throw new ArgumentException("Bidiag: workspace must be sized for m x n (use Arena.doubleBidiagCache(m, n))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for Golub-Kahan-Householder bidiagonalization (Bidiag.bidiagonalize /
-    /// bidiagonalizeValues). Allocate ONCE via Arena.doubleBidiag_WS(m, n) and reuse it across
+    /// bidiagonalizeValues). Allocate ONCE via Arena.doubleBidiagCache(m, n) and reuse it across
     /// same-shape calls so repeated bidiagonalizations are zero-alloc.
     ///
     /// W (m x n) is the working copy of A reduced in place; leftU (m x n) stores the left reflectors
     /// for the U backward pass (used only by bidiagonalize, not bidiagonalizeValues); uVec (m),
     /// vVec (n) are the Householder vectors and wScratch (n) is the apply-reflector scratch.
     /// </summary>
-    public struct doubleBidiag_WS
+    public struct doubleBidiagCache
     {
         public doubleMxN W;
         public doubleMxN leftU;
@@ -46,11 +46,11 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Allocates a bidiagonalization workspace for an m x n (m >= n) matrix. See
-        /// <see cref="doubleBidiag_WS"/> for reuse guidance.
+        /// <see cref="doubleBidiagCache"/> for reuse guidance.
         /// </summary>
-        public static doubleBidiag_WS doubleBidiag_WS(this ref Arena arena, int m, int n)
+        public static doubleBidiagCache doubleBidiagCache(this ref Arena arena, int m, int n)
         {
-            return new doubleBidiag_WS
+            return new doubleBidiagCache
             {
                 W = arena.doubleMat(m, n),
                 leftU = arena.doubleMat(m, n),

@@ -6,22 +6,22 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an m x n LQ decomposition (W m x n,
-        /// v length n) — the layout produced by Arena.fProxyLQ_WS(m, n).
+        /// v length n) — the layout produced by Arena.fProxyLQCache(m, n).
         /// </summary>
-        static void RequireLQWorkspace(in fProxyLQ_WS ws, int m, int n)
+        static void RequireLQWorkspace(in fProxyLQCache ws, int m, int n)
         {
             bool ok =
                 ws.W.M_Rows == m && ws.W.N_Cols == n &&
                 ws.v.N == n;
 
             if (!ok)
-                throw new ArgumentException("LQ: workspace must be sized for m x n (use Arena.fProxyLQ_WS(m, n))");
+                throw new ArgumentException("LQ: workspace must be sized for m x n (use Arena.fProxyLQCache(m, n))");
         }
     }
 
     /// <summary>
     /// Reusable scratch for LQ.lqDecomposition. Allocate ONCE (sized for the matrix shape) via
-    /// Arena.fProxyLQ_WS(m, n) and reuse it across many same-shape calls to avoid the per-call
+    /// Arena.fProxyLQCache(m, n) and reuse it across many same-shape calls to avoid the per-call
     /// Allocator.Temp allocations lqDecomposition's allocating overload makes internally.
     ///
     /// W (m x n) holds the working copy of A, reduced to [L | 0] in place during the forward sweep
@@ -29,7 +29,7 @@ namespace LinearAlgebra
     /// for the backward Q-reconstruction pass); v (length n) is the reflector scratch vector shared
     /// by both passes.
     /// </summary>
-    public struct fProxyLQ_WS
+    public struct fProxyLQCache
     {
         public fProxyMxN W;
         public fProxyN v;
@@ -39,11 +39,11 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Allocates an LQ-decomposition workspace sized for an m x n (m &lt;= n) system. See
-        /// <see cref="fProxyLQ_WS"/> for reuse guidance.
+        /// <see cref="fProxyLQCache"/> for reuse guidance.
         /// </summary>
-        public static fProxyLQ_WS fProxyLQ_WS(this ref Arena arena, int m, int n)
+        public static fProxyLQCache fProxyLQCache(this ref Arena arena, int m, int n)
         {
-            return new fProxyLQ_WS
+            return new fProxyLQCache
             {
                 W = arena.fProxyMat(m, n),
                 v = arena.fProxyVec(n)

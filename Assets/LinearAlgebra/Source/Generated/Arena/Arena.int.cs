@@ -6,8 +6,8 @@ namespace LinearAlgebra
     {
         internal UnsafeList<intN> intVectors;
         internal UnsafeList<intMxN> intMatrices;
-        internal UnsafeList<intN> tempintVectors;
-        internal UnsafeList<intMxN> tempintMatrices;
+        internal UnsafeList<intN> intTempVectors;
+        internal UnsafeList<intMxN> intTempMatrices;
     }
 
     public unsafe partial struct Arena {
@@ -38,17 +38,17 @@ namespace LinearAlgebra
             return vec;
         }
 
-        internal intN tempintVec(int N, bool uninit = false)
+        internal intN intTempVec(int N, bool uninit = false)
         {
             var vec = new intN(N, in this, uninit);
-            _core->tempintVectors.Add(in vec);
+            _core->intTempVectors.Add(in vec);
             return vec;
         }
 
-        internal intN tempintVec(in intN orig)
+        internal intN intTempVec(in intN orig)
         {
             var vec = new intN(in orig);
-            _core->tempintVectors.Add(in vec);
+            _core->intTempVectors.Add(in vec);
             return vec;
         }
         #endregion
@@ -85,17 +85,17 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        internal intMxN tempintMat(int M_rows, int M_cols, bool uninit = false)
+        internal intMxN intTempMat(int M_rows, int M_cols, bool uninit = false)
         {
             var matrix = new intMxN(M_rows, M_cols, in this, uninit);
-            _core->tempintMatrices.Add(in matrix);
+            _core->intTempMatrices.Add(in matrix);
             return matrix;
         }
 
-        internal intMxN tempintMat(in intMxN orig)
+        internal intMxN intTempMat(in intMxN orig)
         {
             var matrix = new intMxN(orig);
-            _core->tempintMatrices.Add(in matrix);
+            _core->intTempMatrices.Add(in matrix);
             return matrix;
         }
         #endregion
@@ -106,7 +106,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in intN v) {
-            for (int i = 0; i < _core->tempintVectors.Length; i++) if (_core->tempintVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->intTempVectors.Length; i++) if (_core->intTempVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
         public bool isPersistent(in intMxN m) {
@@ -114,7 +114,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in intMxN m) {
-            for (int i = 0; i < _core->tempintMatrices.Length; i++) if (_core->tempintMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->intTempMatrices.Length; i++) if (_core->intTempMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
 

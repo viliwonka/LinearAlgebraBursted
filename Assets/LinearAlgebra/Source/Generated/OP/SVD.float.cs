@@ -276,10 +276,10 @@ namespace LinearAlgebra
             => svdValues(in A, ref S, 75, Consts.floatZeroThreshold);
 
         /// <summary>
-        /// svdValues using a reusable workspace (Arena.floatSVDValues_WS(m, n)) — zero-alloc.
+        /// svdValues using a reusable workspace (Arena.floatSVDValuesCache(m, n)) — zero-alloc.
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
-        public static bool svdValues(in floatMxN A, ref floatN S, ref floatSVDValues_WS ws,
+        public static bool svdValues(in floatMxN A, ref floatN S, ref floatSVDValuesCache ws,
                                      int maxIter, float eps)
         {
             int m = A.M_Rows;
@@ -327,7 +327,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>svdValues (workspace) with default maxIter (75) and eps (Consts.floatZeroThreshold).</summary>
-        public static bool svdValues(in floatMxN A, ref floatN S, ref floatSVDValues_WS ws)
+        public static bool svdValues(in floatMxN A, ref floatN S, ref floatSVDValuesCache ws)
             => svdValues(in A, ref S, ref ws, 75, Consts.floatZeroThreshold);
 
         // pythag(a,b) = sqrt(a^2 + b^2) without destructive under/overflow.
@@ -466,12 +466,12 @@ namespace LinearAlgebra
             => svdThin(in A, ref U, ref S, ref V, 75, Consts.floatZeroThreshold);
 
         /// <summary>
-        /// svdThin using a reusable workspace (Arena.floatSVDThin_WS(m, n)) — zero-alloc (including
+        /// svdThin using a reusable workspace (Arena.floatSVDThinCache(m, n)) — zero-alloc (including
         /// the inner Bidiag.bidiagonalize call, via the workspace's nested BidiagWs). Semantics
         /// identical to the allocating overload; see that one for full documentation.
         /// </summary>
         public static bool svdThin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
-                                   ref floatSVDThin_WS ws, int maxIter, float eps)
+                                   ref floatSVDThinCache ws, int maxIter, float eps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -554,12 +554,12 @@ namespace LinearAlgebra
 
         /// <summary>svdThin (workspace) with default eps (Consts.floatZeroThreshold).</summary>
         public static bool svdThin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
-                                   ref floatSVDThin_WS ws, int maxIter)
+                                   ref floatSVDThinCache ws, int maxIter)
             => svdThin(in A, ref U, ref S, ref V, ref ws, maxIter, Consts.floatZeroThreshold);
 
         /// <summary>svdThin (workspace) with default maxIter (75) and eps (Consts.floatZeroThreshold).</summary>
         public static bool svdThin(in floatMxN A, ref floatMxN U, ref floatN S, ref floatMxN V,
-                                   ref floatSVDThin_WS ws)
+                                   ref floatSVDThinCache ws)
             => svdThin(in A, ref U, ref S, ref V, ref ws, 75, Consts.floatZeroThreshold);
 
         // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (d diagonal, e superdiagonal,

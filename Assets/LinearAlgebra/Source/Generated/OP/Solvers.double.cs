@@ -139,7 +139,7 @@ namespace LinearAlgebra
         /// and returns it. Use the ref-destination overload in hot loops to avoid the allocation.
         /// </summary>
         public static doubleN solveQR(ref doubleMxN Q, ref doubleMxN R, ref doubleN b) {
-            doubleN x = b.tempdoubleVec(Q.N_Cols);
+            doubleN x = b.doubleTempVec(Q.N_Cols);
             solveQR(ref Q, ref R, ref b, ref x);
             return x;
         }
@@ -160,9 +160,9 @@ namespace LinearAlgebra
         /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b,
         /// generic over any <see cref="IdoubleLinearOperator"/> (Burst-monomorphized static
         /// dispatch, no vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the CG
-        /// loop — the concrete dense (<c>cg(in doubleMxN, ...)</c>) and BSM
-        /// (<c>cg(in doubleBSM, ...)</c>) overloads below are thin forwarders that
-        /// wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSMOperator</c> and
+        /// loop — the concrete dense (<c>cg(in doubleMxN, ...)</c>) and BSR
+        /// (<c>cg(in doubleBSR, ...)</c>) overloads below are thin forwarders that
+        /// wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSROperator</c> and
         /// call this method.
         ///
         /// Caller provides x (initial guess, overwritten with solution — WARM-STARTABLE: seed x
@@ -286,9 +286,9 @@ namespace LinearAlgebra
         public static SolveInfo cg(in doubleMxN A, in doubleN b, ref doubleN x,
                                              int maxIterations, double tolerance)
         {
-            doubleN r  = b.tempdoubleVec(A.M_Rows);
-            doubleN p  = b.tempdoubleVec(A.M_Rows);
-            doubleN Ap = b.tempdoubleVec(A.M_Rows);
+            doubleN r  = b.doubleTempVec(A.M_Rows);
+            doubleN p  = b.doubleTempVec(A.M_Rows);
+            doubleN Ap = b.doubleTempVec(A.M_Rows);
             return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
@@ -304,25 +304,25 @@ namespace LinearAlgebra
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix. Same semantics as
         /// the dense overload — see <see cref="cg(in doubleMxN, in doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, int, double)"/>.
-        /// Forwards into <see cref="cg{TOp}"/> via <c>doubleBSMOperator</c>.
+        /// Forwards into <see cref="cg{TOp}"/> via <c>doubleBSROperator</c>.
         /// </summary>
-        public static SolveInfo cg(in doubleBSM A, in doubleN b, ref doubleN x,
+        public static SolveInfo cg(in doubleBSR A, in doubleN b, ref doubleN x,
                                              ref doubleN r, ref doubleN p, ref doubleN Ap,
                                              int maxIterations, double tolerance)
         {
-            return cg(new doubleBSMOperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
+            return cg(new doubleBSROperator(in A), in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix — allocates three
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo cg(in doubleBSM A, in doubleN b, ref doubleN x,
+        public static SolveInfo cg(in doubleBSR A, in doubleN b, ref doubleN x,
                                              int maxIterations, double tolerance)
         {
-            doubleN r  = b.tempdoubleVec(A.M_Rows);
-            doubleN p  = b.tempdoubleVec(A.M_Rows);
-            doubleN Ap = b.tempdoubleVec(A.M_Rows);
+            doubleN r  = b.doubleTempVec(A.M_Rows);
+            doubleN p  = b.doubleTempVec(A.M_Rows);
+            doubleN Ap = b.doubleTempVec(A.M_Rows);
             return cg(in A, in b, ref x, ref r, ref p, ref Ap, maxIterations, tolerance);
         }
 
@@ -330,7 +330,7 @@ namespace LinearAlgebra
         /// Conjugate Gradient solver over a block-sparse (BSR) SPD matrix, with default
         /// maxIterations (A.M_Rows) and tolerance (Consts.doubleSqrtEps).
         /// </summary>
-        public static SolveInfo cg(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static SolveInfo cg(in doubleBSR A, in doubleN b, ref doubleN x)
         {
             return cg(in A, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
@@ -472,10 +472,10 @@ namespace LinearAlgebra
             where TOp : struct, IdoubleLinearOperator
             where TPre : struct, IdoublePreconditioner
         {
-            doubleN r  = b.tempdoubleVec(A.Rows);
-            doubleN p  = b.tempdoubleVec(A.Rows);
-            doubleN Ap = b.tempdoubleVec(A.Rows);
-            doubleN z  = b.tempdoubleVec(A.Rows);
+            doubleN r  = b.doubleTempVec(A.Rows);
+            doubleN p  = b.doubleTempVec(A.Rows);
+            doubleN Ap = b.doubleTempVec(A.Rows);
+            doubleN z  = b.doubleTempVec(A.Rows);
             return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
         }
 
@@ -493,26 +493,26 @@ namespace LinearAlgebra
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
         /// matching block-Jacobi preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
-        /// <c>doubleBSMOperator</c>.
+        /// <c>doubleBSROperator</c>.
         /// </summary>
-        public static SolveInfo pcg(in doubleBSM A, in doubleBlockJacobi M, in doubleN b, ref doubleN x,
+        public static SolveInfo pcg(in doubleBSR A, in doubleBlockJacobi M, in doubleN b, ref doubleN x,
                                ref doubleN r, ref doubleN p, ref doubleN Ap, ref doubleN z,
                                int maxIterations, double tolerance)
         {
-            return pcg(new doubleBSMOperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+            return pcg(new doubleBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
         }
 
         /// <summary>
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix — allocates four
         /// scratch vectors from the arena and calls the zero-alloc primitive.
         /// </summary>
-        public static SolveInfo pcg(in doubleBSM A, in doubleBlockJacobi M, in doubleN b, ref doubleN x,
+        public static SolveInfo pcg(in doubleBSR A, in doubleBlockJacobi M, in doubleN b, ref doubleN x,
                                int maxIterations, double tolerance)
         {
-            doubleN r  = b.tempdoubleVec(A.M_Rows);
-            doubleN p  = b.tempdoubleVec(A.M_Rows);
-            doubleN Ap = b.tempdoubleVec(A.M_Rows);
-            doubleN z  = b.tempdoubleVec(A.M_Rows);
+            doubleN r  = b.doubleTempVec(A.M_Rows);
+            doubleN p  = b.doubleTempVec(A.M_Rows);
+            doubleN Ap = b.doubleTempVec(A.M_Rows);
+            doubleN z  = b.doubleTempVec(A.M_Rows);
             return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
         }
 
@@ -520,7 +520,7 @@ namespace LinearAlgebra
         /// Block-Jacobi Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
         /// maxIterations (A.M_Rows) and tolerance (Consts.doubleSqrtEps).
         /// </summary>
-        public static SolveInfo pcg(in doubleBSM A, in doubleBlockJacobi M, in doubleN b, ref doubleN x)
+        public static SolveInfo pcg(in doubleBSR A, in doubleBlockJacobi M, in doubleN b, ref doubleN x)
         {
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
@@ -696,13 +696,13 @@ namespace LinearAlgebra
         /// <summary>MINRES over a dense matrix -- allocates seven scratch vectors from the arena.</summary>
         public static SolveInfo minres(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN y  = b.tempdoubleVec(A.M_Rows);
-            doubleN r1 = b.tempdoubleVec(A.M_Rows);
-            doubleN r2 = b.tempdoubleVec(A.M_Rows);
-            doubleN v  = b.tempdoubleVec(A.M_Rows);
-            doubleN w  = b.tempdoubleVec(A.M_Rows);
-            doubleN w1 = b.tempdoubleVec(A.M_Rows);
-            doubleN w2 = b.tempdoubleVec(A.M_Rows);
+            doubleN y  = b.doubleTempVec(A.M_Rows);
+            doubleN r1 = b.doubleTempVec(A.M_Rows);
+            doubleN r2 = b.doubleTempVec(A.M_Rows);
+            doubleN v  = b.doubleTempVec(A.M_Rows);
+            doubleN w  = b.doubleTempVec(A.M_Rows);
+            doubleN w1 = b.doubleTempVec(A.M_Rows);
+            doubleN w2 = b.doubleTempVec(A.M_Rows);
             return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
         }
 
@@ -714,31 +714,31 @@ namespace LinearAlgebra
 
         /// <summary>
         /// MINRES over a symmetric block-sparse (BSR) matrix -- zero-alloc primitive. Forwards
-        /// into <see cref="minres{TOp}"/> via <c>doubleBSMOperator</c>.
+        /// into <see cref="minres{TOp}"/> via <c>doubleBSROperator</c>.
         /// </summary>
-        public static SolveInfo minres(in doubleBSM A, in doubleN b, ref doubleN x,
+        public static SolveInfo minres(in doubleBSR A, in doubleN b, ref doubleN x,
                                   ref doubleN y, ref doubleN r1, ref doubleN r2, ref doubleN v,
                                   ref doubleN w, ref doubleN w1, ref doubleN w2,
                                   int maxIterations, double tolerance)
         {
-            return minres(new doubleBSMOperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
+            return minres(new doubleBSROperator(in A), in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
         }
 
         /// <summary>MINRES over a BSR matrix -- allocates seven scratch vectors from the arena.</summary>
-        public static SolveInfo minres(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        public static SolveInfo minres(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN y  = b.tempdoubleVec(A.M_Rows);
-            doubleN r1 = b.tempdoubleVec(A.M_Rows);
-            doubleN r2 = b.tempdoubleVec(A.M_Rows);
-            doubleN v  = b.tempdoubleVec(A.M_Rows);
-            doubleN w  = b.tempdoubleVec(A.M_Rows);
-            doubleN w1 = b.tempdoubleVec(A.M_Rows);
-            doubleN w2 = b.tempdoubleVec(A.M_Rows);
+            doubleN y  = b.doubleTempVec(A.M_Rows);
+            doubleN r1 = b.doubleTempVec(A.M_Rows);
+            doubleN r2 = b.doubleTempVec(A.M_Rows);
+            doubleN v  = b.doubleTempVec(A.M_Rows);
+            doubleN w  = b.doubleTempVec(A.M_Rows);
+            doubleN w1 = b.doubleTempVec(A.M_Rows);
+            doubleN w2 = b.doubleTempVec(A.M_Rows);
             return minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, maxIterations, tolerance);
         }
 
         /// <summary>MINRES over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.doubleSqrtEps).</summary>
-        public static SolveInfo minres(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static SolveInfo minres(in doubleBSR A, in doubleN b, ref doubleN x)
         {
             return minres(in A, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
@@ -897,11 +897,11 @@ namespace LinearAlgebra
         /// <summary>BiCGSTAB over a dense matrix -- allocates five scratch vectors from the arena.</summary>
         public static SolveInfo biCGStab(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN r     = b.tempdoubleVec(A.M_Rows);
-            doubleN rHat0 = b.tempdoubleVec(A.M_Rows);
-            doubleN p     = b.tempdoubleVec(A.M_Rows);
-            doubleN v     = b.tempdoubleVec(A.M_Rows);
-            doubleN t     = b.tempdoubleVec(A.M_Rows);
+            doubleN r     = b.doubleTempVec(A.M_Rows);
+            doubleN rHat0 = b.doubleTempVec(A.M_Rows);
+            doubleN p     = b.doubleTempVec(A.M_Rows);
+            doubleN v     = b.doubleTempVec(A.M_Rows);
+            doubleN t     = b.doubleTempVec(A.M_Rows);
             return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
         }
 
@@ -913,28 +913,28 @@ namespace LinearAlgebra
 
         /// <summary>
         /// BiCGSTAB over a block-sparse (BSR) matrix -- zero-alloc primitive. Forwards into
-        /// <see cref="biCGStab{TOp}"/> via <c>doubleBSMOperator</c>.
+        /// <see cref="biCGStab{TOp}"/> via <c>doubleBSROperator</c>.
         /// </summary>
-        public static SolveInfo biCGStab(in doubleBSM A, in doubleN b, ref doubleN x,
+        public static SolveInfo biCGStab(in doubleBSR A, in doubleN b, ref doubleN x,
                                     ref doubleN r, ref doubleN rHat0, ref doubleN p, ref doubleN v, ref doubleN t,
                                     int maxIterations, double tolerance)
         {
-            return biCGStab(new doubleBSMOperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
+            return biCGStab(new doubleBSROperator(in A), in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
         }
 
         /// <summary>BiCGSTAB over a BSR matrix -- allocates five scratch vectors from the arena.</summary>
-        public static SolveInfo biCGStab(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        public static SolveInfo biCGStab(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN r     = b.tempdoubleVec(A.M_Rows);
-            doubleN rHat0 = b.tempdoubleVec(A.M_Rows);
-            doubleN p     = b.tempdoubleVec(A.M_Rows);
-            doubleN v     = b.tempdoubleVec(A.M_Rows);
-            doubleN t     = b.tempdoubleVec(A.M_Rows);
+            doubleN r     = b.doubleTempVec(A.M_Rows);
+            doubleN rHat0 = b.doubleTempVec(A.M_Rows);
+            doubleN p     = b.doubleTempVec(A.M_Rows);
+            doubleN v     = b.doubleTempVec(A.M_Rows);
+            doubleN t     = b.doubleTempVec(A.M_Rows);
             return biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, maxIterations, tolerance);
         }
 
         /// <summary>BiCGSTAB over a BSR matrix with default maxIterations (A.M_Rows) and tolerance (Consts.doubleSqrtEps).</summary>
-        public static SolveInfo biCGStab(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static SolveInfo biCGStab(in doubleBSR A, in doubleN b, ref doubleN x)
         {
             return biCGStab(in A, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
@@ -1142,10 +1142,10 @@ namespace LinearAlgebra
         /// <summary>CGLS over a dense matrix -- allocates four scratch vectors from the arena.</summary>
         public static LstsqInfo cgls(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN r = b.tempdoubleVec(A.M_Rows);
-            doubleN s = b.tempdoubleVec(A.N_Cols);
-            doubleN p = b.tempdoubleVec(A.N_Cols);
-            doubleN q = b.tempdoubleVec(A.M_Rows);
+            doubleN r = b.doubleTempVec(A.M_Rows);
+            doubleN s = b.doubleTempVec(A.N_Cols);
+            doubleN p = b.doubleTempVec(A.N_Cols);
+            doubleN q = b.doubleTempVec(A.M_Rows);
             return cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
@@ -1155,10 +1155,10 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo cgls(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance, double damp)
         {
-            doubleN r = b.tempdoubleVec(A.M_Rows);
-            doubleN s = b.tempdoubleVec(A.N_Cols);
-            doubleN p = b.tempdoubleVec(A.N_Cols);
-            doubleN q = b.tempdoubleVec(A.M_Rows);
+            doubleN r = b.doubleTempVec(A.M_Rows);
+            doubleN s = b.doubleTempVec(A.N_Cols);
+            doubleN p = b.doubleTempVec(A.N_Cols);
+            doubleN q = b.doubleTempVec(A.M_Rows);
             return cgls(new doubleDenseOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
         }
 
@@ -1170,58 +1170,58 @@ namespace LinearAlgebra
 
         /// <summary>
         /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="cgls{TOp}"/> via <c>doubleBSMOperator</c>. This is the payoff
+        /// Forwards into <see cref="cgls{TOp}"/> via <c>doubleBSROperator</c>. This is the payoff
         /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
         /// operator, never forming AᵀA.
         /// </summary>
-        public static LstsqInfo cgls(in doubleBSM A, in doubleN b, ref doubleN x,
+        public static LstsqInfo cgls(in doubleBSR A, in doubleN b, ref doubleN x,
                                 ref doubleN r, ref doubleN s, ref doubleN p, ref doubleN q,
                                 int maxIterations, double tolerance)
         {
-            return cgls(new doubleBSMOperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new doubleBSROperator(in A), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGLS over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
         /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
-        /// <c>arena.doubleBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// <c>arena.doubleBSRTranspose(in A)</c> outside a hot loop / before a benchmark's timed
         /// region) and routes every ApplyT call through the resulting cache-friendly forward
         /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
-        /// <see cref="doubleBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// <see cref="doubleBSROperator"/>'s two-arg ctor. Caller is responsible for AT actually
         /// being A's transpose; this overload does not verify it. Prefer this over the allocating
-        /// <see cref="cgls(in doubleBSM, in doubleN, ref doubleN, int, double)"/> overload when
+        /// <see cref="cgls(in doubleBSR, in doubleN, ref doubleN, int, double)"/> overload when
         /// solving repeatedly against the same A (build AT once, reuse it across many solves).
         /// </summary>
-        public static LstsqInfo cgls(in doubleBSM A, in doubleBSM AT, in doubleN b, ref doubleN x,
+        public static LstsqInfo cgls(in doubleBSR A, in doubleBSR AT, in doubleN b, ref doubleN x,
                                 ref doubleN r, ref doubleN s, ref doubleN p, ref doubleN q,
                                 int maxIterations, double tolerance)
         {
-            return cgls(new doubleBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            return cgls(new doubleBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGLS over a BSR matrix -- allocates four scratch vectors AND materializes A^T ONCE
-        /// via <c>arena.doubleBSMTranspose</c> (same arena as the scratch vectors, taken from
-        /// b), then drives CGLS with the two-arg <see cref="doubleBSMOperator"/> so every
+        /// via <c>arena.doubleBSRTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives CGLS with the two-arg <see cref="doubleBSROperator"/> so every
         /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
         /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- this is the fix for the
         /// rectangular CGLS/LSQR transpose-matvec cache-unfriendliness (the one-time O(nnz)
         /// transpose build is amortized over every iteration). For a build-free zero-alloc path
         /// (e.g. many solves reusing the same A), build A^T yourself once (<c>arena.
-        /// doubleBSMTranspose(in A)</c>) and call the zero-alloc <see cref="cgls(in doubleBSM,
-        /// in doubleBSM, in doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, ref
+        /// doubleBSRTranspose(in A)</c>) and call the zero-alloc <see cref="cgls(in doubleBSR,
+        /// in doubleBSR, in doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, ref
         /// doubleN, int, double)"/> overload above with your own scratch vectors, or the generic
-        /// <see cref="cgls{TOp}"/> overload directly with <c>new doubleBSMOperator(in A, in
+        /// <see cref="cgls{TOp}"/> overload directly with <c>new doubleBSROperator(in A, in
         /// AT)</c>.
         /// </summary>
-        public static LstsqInfo cgls(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        public static LstsqInfo cgls(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN r = b.tempdoubleVec(A.M_Rows);
-            doubleN s = b.tempdoubleVec(A.N_Cols);
-            doubleN p = b.tempdoubleVec(A.N_Cols);
-            doubleN q = b.tempdoubleVec(A.M_Rows);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            return cgls(new doubleBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
+            doubleN r = b.doubleTempVec(A.M_Rows);
+            doubleN s = b.doubleTempVec(A.N_Cols);
+            doubleN p = b.doubleTempVec(A.N_Cols);
+            doubleN q = b.doubleTempVec(A.M_Rows);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            return cgls(new doubleBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
         }
 
         /// <summary>
@@ -1229,18 +1229,18 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo cgls(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance, double damp)
+        public static LstsqInfo cgls(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance, double damp)
         {
-            doubleN r = b.tempdoubleVec(A.M_Rows);
-            doubleN s = b.tempdoubleVec(A.N_Cols);
-            doubleN p = b.tempdoubleVec(A.N_Cols);
-            doubleN q = b.tempdoubleVec(A.M_Rows);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            return cgls(new doubleBSMOperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
+            doubleN r = b.doubleTempVec(A.M_Rows);
+            doubleN s = b.doubleTempVec(A.N_Cols);
+            doubleN p = b.doubleTempVec(A.N_Cols);
+            doubleN q = b.doubleTempVec(A.M_Rows);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            return cgls(new doubleBSROperator(in A, in AT), in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance, damp);
         }
 
         /// <summary>CGLS over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo cgls(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static LstsqInfo cgls(in doubleBSR A, in doubleN b, ref doubleN x)
         {
             return cgls(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
         }
@@ -1472,11 +1472,11 @@ namespace LinearAlgebra
         /// <summary>LSQR over a dense matrix -- allocates five scratch vectors from the arena.</summary>
         public static LstsqInfo lsqr(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN u    = b.tempdoubleVec(A.M_Rows);
-            doubleN v    = b.tempdoubleVec(A.N_Cols);
-            doubleN w    = b.tempdoubleVec(A.N_Cols);
-            doubleN tmpM = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
+            doubleN u    = b.doubleTempVec(A.M_Rows);
+            doubleN v    = b.doubleTempVec(A.N_Cols);
+            doubleN w    = b.doubleTempVec(A.N_Cols);
+            doubleN tmpM = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
             return lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
@@ -1486,11 +1486,11 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo lsqr(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance, double damp)
         {
-            doubleN u    = b.tempdoubleVec(A.M_Rows);
-            doubleN v    = b.tempdoubleVec(A.N_Cols);
-            doubleN w    = b.tempdoubleVec(A.N_Cols);
-            doubleN tmpM = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
+            doubleN u    = b.doubleTempVec(A.M_Rows);
+            doubleN v    = b.doubleTempVec(A.N_Cols);
+            doubleN w    = b.doubleTempVec(A.N_Cols);
+            doubleN tmpM = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
             return lsqr(new doubleDenseOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
@@ -1502,61 +1502,61 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="lsqr{TOp}"/> via <c>doubleBSMOperator</c>. This is the payoff
+        /// Forwards into <see cref="lsqr{TOp}"/> via <c>doubleBSROperator</c>. This is the payoff
         /// of rectangular BR x BC blocks: matrix-free least squares over a sparse Jacobian-like
         /// operator, never forming AᵀA, with better ill-conditioned behavior than <see
         /// cref="cgls{TOp}"/>.
         /// </summary>
-        public static LstsqInfo lsqr(in doubleBSM A, in doubleN b, ref doubleN x,
+        public static LstsqInfo lsqr(in doubleBSR A, in doubleN b, ref doubleN x,
                                 ref doubleN u, ref doubleN v, ref doubleN w,
                                 ref doubleN tmpM, ref doubleN tmpN,
                                 int maxIterations, double tolerance)
         {
-            return lsqr(new doubleBSMOperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new doubleBSROperator(in A), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSQR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive
         /// variant that takes a CALLER-PROVIDED precomputed transpose AT (e.g. built once via
-        /// <c>arena.doubleBSMTranspose(in A)</c> outside a hot loop / before a benchmark's timed
+        /// <c>arena.doubleBSRTranspose(in A)</c> outside a hot loop / before a benchmark's timed
         /// region) and routes every ApplyT call through the resulting cache-friendly forward
         /// spMV(AT, x) instead of the scatter-heavy on-the-fly spMVT(A, x) -- see
-        /// <see cref="doubleBSMOperator"/>'s two-arg ctor. Caller is responsible for AT actually
+        /// <see cref="doubleBSROperator"/>'s two-arg ctor. Caller is responsible for AT actually
         /// being A's transpose; this overload does not verify it. Prefer this over the allocating
-        /// <see cref="lsqr(in doubleBSM, in doubleN, ref doubleN, int, double)"/> overload when
+        /// <see cref="lsqr(in doubleBSR, in doubleN, ref doubleN, int, double)"/> overload when
         /// solving repeatedly against the same A (build AT once, reuse it across many solves).
         /// </summary>
-        public static LstsqInfo lsqr(in doubleBSM A, in doubleBSM AT, in doubleN b, ref doubleN x,
+        public static LstsqInfo lsqr(in doubleBSR A, in doubleBSR AT, in doubleN b, ref doubleN x,
                                 ref doubleN u, ref doubleN v, ref doubleN w,
                                 ref doubleN tmpM, ref doubleN tmpN,
                                 int maxIterations, double tolerance)
         {
-            return lsqr(new doubleBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsqr(new doubleBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSQR over a BSR matrix -- allocates five scratch vectors AND materializes A^T ONCE
-        /// via <c>arena.doubleBSMTranspose</c> (same arena as the scratch vectors, taken from
-        /// b), then drives LSQR with the two-arg <see cref="doubleBSMOperator"/> so every
+        /// via <c>arena.doubleBSRTranspose</c> (same arena as the scratch vectors, taken from
+        /// b), then drives LSQR with the two-arg <see cref="doubleBSROperator"/> so every
         /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
         /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- same fix and same tradeoff as
-        /// <see cref="cgls(in doubleBSM, in doubleN, ref doubleN, int, double)"/>: for a
-        /// build-free zero-alloc path, build A^T yourself once (<c>arena.doubleBSMTranspose(in
-        /// A)</c>) and call the zero-alloc <see cref="lsqr(in doubleBSM, in doubleBSM, in
+        /// <see cref="cgls(in doubleBSR, in doubleN, ref doubleN, int, double)"/>: for a
+        /// build-free zero-alloc path, build A^T yourself once (<c>arena.doubleBSRTranspose(in
+        /// A)</c>) and call the zero-alloc <see cref="lsqr(in doubleBSR, in doubleBSR, in
         /// doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, ref doubleN, int,
         /// double)"/> overload above with your own scratch vectors, or the generic
-        /// <see cref="lsqr{TOp}"/> overload directly with <c>new doubleBSMOperator(in A, in
+        /// <see cref="lsqr{TOp}"/> overload directly with <c>new doubleBSROperator(in A, in
         /// AT)</c>.
         /// </summary>
-        public static LstsqInfo lsqr(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        public static LstsqInfo lsqr(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN u    = b.tempdoubleVec(A.M_Rows);
-            doubleN v    = b.tempdoubleVec(A.N_Cols);
-            doubleN w    = b.tempdoubleVec(A.N_Cols);
-            doubleN tmpM = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            return lsqr(new doubleBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
+            doubleN u    = b.doubleTempVec(A.M_Rows);
+            doubleN v    = b.doubleTempVec(A.N_Cols);
+            doubleN w    = b.doubleTempVec(A.N_Cols);
+            doubleN tmpM = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            return lsqr(new doubleBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
@@ -1564,19 +1564,19 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsqr(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance, double damp)
+        public static LstsqInfo lsqr(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance, double damp)
         {
-            doubleN u    = b.tempdoubleVec(A.M_Rows);
-            doubleN v    = b.tempdoubleVec(A.N_Cols);
-            doubleN w    = b.tempdoubleVec(A.N_Cols);
-            doubleN tmpM = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            return lsqr(new doubleBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            doubleN u    = b.doubleTempVec(A.M_Rows);
+            doubleN v    = b.doubleTempVec(A.N_Cols);
+            doubleN w    = b.doubleTempVec(A.N_Cols);
+            doubleN tmpM = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            return lsqr(new doubleBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
         /// <summary>LSQR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo lsqr(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static LstsqInfo lsqr(in doubleBSR A, in doubleN b, ref doubleN x)
         {
             return lsqr(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
         }
@@ -1818,12 +1818,12 @@ namespace LinearAlgebra
         /// <summary>LSMR over a dense matrix -- allocates six scratch vectors from the arena.</summary>
         public static LstsqInfo lsmr(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN u    = b.tempdoubleVec(A.M_Rows);
-            doubleN v    = b.tempdoubleVec(A.N_Cols);
-            doubleN h    = b.tempdoubleVec(A.N_Cols);
-            doubleN hbar = b.tempdoubleVec(A.N_Cols);
-            doubleN tmpM = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
+            doubleN u    = b.doubleTempVec(A.M_Rows);
+            doubleN v    = b.doubleTempVec(A.N_Cols);
+            doubleN h    = b.doubleTempVec(A.N_Cols);
+            doubleN hbar = b.doubleTempVec(A.N_Cols);
+            doubleN tmpM = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
             return lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
@@ -1833,12 +1833,12 @@ namespace LinearAlgebra
         /// </summary>
         public static LstsqInfo lsmr(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance, double damp)
         {
-            doubleN u    = b.tempdoubleVec(A.M_Rows);
-            doubleN v    = b.tempdoubleVec(A.N_Cols);
-            doubleN h    = b.tempdoubleVec(A.N_Cols);
-            doubleN hbar = b.tempdoubleVec(A.N_Cols);
-            doubleN tmpM = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
+            doubleN u    = b.doubleTempVec(A.M_Rows);
+            doubleN v    = b.doubleTempVec(A.N_Cols);
+            doubleN h    = b.doubleTempVec(A.N_Cols);
+            doubleN hbar = b.doubleTempVec(A.N_Cols);
+            doubleN tmpM = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
             return lsmr(new doubleDenseOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
@@ -1850,51 +1850,51 @@ namespace LinearAlgebra
 
         /// <summary>
         /// LSMR over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc primitive.
-        /// Forwards into <see cref="lsmr{TOp}"/> via <c>doubleBSMOperator</c>. Matrix-free least
+        /// Forwards into <see cref="lsmr{TOp}"/> via <c>doubleBSROperator</c>. Matrix-free least
         /// squares over a sparse Jacobian-like operator, never forming AᵀA, with LSMR's monotone
         /// ‖Aᵀr‖ decrease (see the generic overload).
         /// </summary>
-        public static LstsqInfo lsmr(in doubleBSM A, in doubleN b, ref doubleN x,
+        public static LstsqInfo lsmr(in doubleBSR A, in doubleN b, ref doubleN x,
                                 ref doubleN u, ref doubleN v, ref doubleN h,
                                 ref doubleN hbar, ref doubleN tmpM, ref doubleN tmpN,
                                 int maxIterations, double tolerance)
         {
-            return lsmr(new doubleBSMOperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new doubleBSROperator(in A), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSMR over a (possibly rectangular) BSR matrix -- zero-alloc primitive that takes a
-        /// CALLER-PROVIDED precomputed transpose AT (e.g. <c>arena.doubleBSMTranspose(in A)</c>
+        /// CALLER-PROVIDED precomputed transpose AT (e.g. <c>arena.doubleBSRTranspose(in A)</c>
         /// built once outside a hot loop) and routes every ApplyT through the cache-friendly
         /// forward spMV(AT, x) instead of on-the-fly spMVT(A, x) -- see
-        /// <see cref="doubleBSMOperator"/>'s two-arg ctor. Caller is responsible for AT being A's
+        /// <see cref="doubleBSROperator"/>'s two-arg ctor. Caller is responsible for AT being A's
         /// transpose; this overload does not verify it.
         /// </summary>
-        public static LstsqInfo lsmr(in doubleBSM A, in doubleBSM AT, in doubleN b, ref doubleN x,
+        public static LstsqInfo lsmr(in doubleBSR A, in doubleBSR AT, in doubleN b, ref doubleN x,
                                 ref doubleN u, ref doubleN v, ref doubleN h,
                                 ref doubleN hbar, ref doubleN tmpM, ref doubleN tmpN,
                                 int maxIterations, double tolerance)
         {
-            return lsmr(new doubleBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            return lsmr(new doubleBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// LSMR over a BSR matrix -- allocates six scratch vectors AND materializes A^T ONCE via
-        /// <c>arena.doubleBSMTranspose</c>, then drives LSMR with the two-arg
-        /// <see cref="doubleBSMOperator"/> so every ApplyT routes through a cache-friendly forward
+        /// <c>arena.doubleBSRTranspose</c>, then drives LSMR with the two-arg
+        /// <see cref="doubleBSROperator"/> so every ApplyT routes through a cache-friendly forward
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// zero-alloc AT overload above with your own scratch vectors.
         /// </summary>
-        public static LstsqInfo lsmr(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        public static LstsqInfo lsmr(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN u    = b.tempdoubleVec(A.M_Rows);
-            doubleN v    = b.tempdoubleVec(A.N_Cols);
-            doubleN h    = b.tempdoubleVec(A.N_Cols);
-            doubleN hbar = b.tempdoubleVec(A.N_Cols);
-            doubleN tmpM = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            return lsmr(new doubleBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
+            doubleN u    = b.doubleTempVec(A.M_Rows);
+            doubleN v    = b.doubleTempVec(A.N_Cols);
+            doubleN h    = b.doubleTempVec(A.N_Cols);
+            doubleN hbar = b.doubleTempVec(A.N_Cols);
+            doubleN tmpM = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            return lsmr(new doubleBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
@@ -1902,20 +1902,20 @@ namespace LinearAlgebra
         /// scratch vectors AND materializes A^T once (see the undamped allocating overload). damp == 0
         /// reproduces the plain least-squares solve.
         /// </summary>
-        public static LstsqInfo lsmr(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance, double damp)
+        public static LstsqInfo lsmr(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance, double damp)
         {
-            doubleN u    = b.tempdoubleVec(A.M_Rows);
-            doubleN v    = b.tempdoubleVec(A.N_Cols);
-            doubleN h    = b.tempdoubleVec(A.N_Cols);
-            doubleN hbar = b.tempdoubleVec(A.N_Cols);
-            doubleN tmpM = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            return lsmr(new doubleBSMOperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
+            doubleN u    = b.doubleTempVec(A.M_Rows);
+            doubleN v    = b.doubleTempVec(A.N_Cols);
+            doubleN h    = b.doubleTempVec(A.N_Cols);
+            doubleN hbar = b.doubleTempVec(A.N_Cols);
+            doubleN tmpM = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            return lsmr(new doubleBSROperator(in A, in AT), in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance, damp);
         }
 
         /// <summary>LSMR over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo lsmr(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static LstsqInfo lsmr(in doubleBSR A, in doubleN b, ref doubleN x)
         {
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
         }
@@ -1927,7 +1927,7 @@ namespace LinearAlgebra
         // scaling is a change of variable, so a warm start would need pre-mapping y0 = D^-1 x0), and
         // unscale x = D*y in place. On an ill-conditioned least-squares problem this converges in
         // fewer iterations than the un-preconditioned solve to the SAME solution. Everything is
-        // temp-pool allocated from b. BSM forms materialize A^T once (ApplyT-heavy). For explicit
+        // temp-pool allocated from b. BSR forms materialize A^T once (ApplyT-heavy). For explicit
         // control (custom d, warm start, damping semantics, zero-alloc) use the composable path
         // directly: Linear_OP.columnNormsSquared + buildJacobiScale + doubleColScaledOperator + the
         // generic solver overload.
@@ -1965,13 +1965,13 @@ namespace LinearAlgebra
         public static LstsqInfo cglsJacobi(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
             var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (double)0;                 // cold start (change of variable)
-            doubleN r = b.tempdoubleVec(m), s = b.tempdoubleVec(n), p = b.tempdoubleVec(n), q = b.tempdoubleVec(m);
+            doubleN r = b.doubleTempVec(m), s = b.doubleTempVec(n), p = b.doubleTempVec(n), q = b.doubleTempVec(m);
             var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
             return JacobiFinish(new doubleDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
@@ -1981,23 +1981,23 @@ namespace LinearAlgebra
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
 
         /// <summary>CGLS with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo cglsJacobi(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        public static LstsqInfo cglsJacobi(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
             Sparse_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            var op = new doubleColScaledOperator<doubleBSMOperator>(new doubleBSMOperator(in A, in AT), d, scratch);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            var op = new doubleColScaledOperator<doubleBSROperator>(new doubleBSROperator(in A, in AT), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (double)0;
-            doubleN r = b.tempdoubleVec(m), s = b.tempdoubleVec(n), p = b.tempdoubleVec(n), q = b.tempdoubleVec(m);
+            doubleN r = b.doubleTempVec(m), s = b.doubleTempVec(n), p = b.doubleTempVec(n), q = b.doubleTempVec(m);
             var solveInfo = cgls(op, in b, ref x, ref r, ref s, ref p, ref q, maxIterations, tolerance);
-            return JacobiFinish(new doubleBSMOperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
+            return JacobiFinish(new doubleBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref r, ref s);
         }
 
         /// <summary>CGLS + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo cglsJacobi(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static LstsqInfo cglsJacobi(in doubleBSR A, in doubleN b, ref doubleN x)
             => cglsJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
 
         // ---- LSQR + Jacobi ----
@@ -2005,13 +2005,13 @@ namespace LinearAlgebra
         public static LstsqInfo lsqrJacobi(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
             var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (double)0;
-            doubleN u = b.tempdoubleVec(m), v = b.tempdoubleVec(n), w = b.tempdoubleVec(n), tmpM = b.tempdoubleVec(m), tmpN = b.tempdoubleVec(n);
+            doubleN u = b.doubleTempVec(m), v = b.doubleTempVec(n), w = b.doubleTempVec(n), tmpM = b.doubleTempVec(m), tmpN = b.doubleTempVec(n);
             var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
             return JacobiFinish(new doubleDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
@@ -2021,23 +2021,23 @@ namespace LinearAlgebra
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
 
         /// <summary>LSQR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsqrJacobi(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        public static LstsqInfo lsqrJacobi(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
             Sparse_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            var op = new doubleColScaledOperator<doubleBSMOperator>(new doubleBSMOperator(in A, in AT), d, scratch);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            var op = new doubleColScaledOperator<doubleBSROperator>(new doubleBSROperator(in A, in AT), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (double)0;
-            doubleN u = b.tempdoubleVec(m), v = b.tempdoubleVec(n), w = b.tempdoubleVec(n), tmpM = b.tempdoubleVec(m), tmpN = b.tempdoubleVec(n);
+            doubleN u = b.doubleTempVec(m), v = b.doubleTempVec(n), w = b.doubleTempVec(n), tmpM = b.doubleTempVec(m), tmpN = b.doubleTempVec(n);
             var solveInfo = lsqr(op, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, maxIterations, tolerance);
-            return JacobiFinish(new doubleBSMOperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            return JacobiFinish(new doubleBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
         /// <summary>LSQR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo lsqrJacobi(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static LstsqInfo lsqrJacobi(in doubleBSR A, in doubleN b, ref doubleN x)
             => lsqrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
 
         // ---- LSMR + Jacobi ----
@@ -2045,13 +2045,13 @@ namespace LinearAlgebra
         public static LstsqInfo lsmrJacobi(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
             var op = new doubleColScaledOperator<doubleDenseOperator>(new doubleDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (double)0;
-            doubleN u = b.tempdoubleVec(m), v = b.tempdoubleVec(n), h = b.tempdoubleVec(n), hbar = b.tempdoubleVec(n), tmpM = b.tempdoubleVec(m), tmpN = b.tempdoubleVec(n);
+            doubleN u = b.doubleTempVec(m), v = b.doubleTempVec(n), h = b.doubleTempVec(n), hbar = b.doubleTempVec(n), tmpM = b.doubleTempVec(m), tmpN = b.doubleTempVec(n);
             var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
             return JacobiFinish(new doubleDenseOperator(in A), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
@@ -2061,23 +2061,23 @@ namespace LinearAlgebra
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
 
         /// <summary>LSMR with an AᵀA-Jacobi preconditioner over a BSR matrix (materializes Aᵀ once).</summary>
-        public static LstsqInfo lsmrJacobi(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        public static LstsqInfo lsmrJacobi(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
             int m = A.M_Rows, n = A.N_Cols;
-            doubleN d = b.tempdoubleVec(n), d2 = b.tempdoubleVec(n), scratch = b.tempdoubleVec(n);
+            doubleN d = b.doubleTempVec(n), d2 = b.doubleTempVec(n), scratch = b.doubleTempVec(n);
             Sparse_OP.columnNormsSquared(in A, ref d2);
             Linear_OP.buildJacobiScale(in d2, ref d);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            var op = new doubleColScaledOperator<doubleBSMOperator>(new doubleBSMOperator(in A, in AT), d, scratch);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            var op = new doubleColScaledOperator<doubleBSROperator>(new doubleBSROperator(in A, in AT), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (double)0;
-            doubleN u = b.tempdoubleVec(m), v = b.tempdoubleVec(n), h = b.tempdoubleVec(n), hbar = b.tempdoubleVec(n), tmpM = b.tempdoubleVec(m), tmpN = b.tempdoubleVec(n);
+            doubleN u = b.doubleTempVec(m), v = b.doubleTempVec(n), h = b.doubleTempVec(n), hbar = b.doubleTempVec(n), tmpM = b.doubleTempVec(m), tmpN = b.doubleTempVec(n);
             var solveInfo = lsmr(op, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, maxIterations, tolerance);
-            return JacobiFinish(new doubleBSMOperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
+            return JacobiFinish(new doubleBSROperator(in A, in AT), in b, ref x, in d, solveInfo.iterations, solveInfo.status, ref u, ref v);
         }
 
         /// <summary>LSMR + Jacobi (BSR), default maxIterations (A.N_Cols) / tolerance (Consts.doubleSqrtEps).</summary>
-        public static LstsqInfo lsmrJacobi(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static LstsqInfo lsmrJacobi(in doubleBSR A, in doubleN b, ref doubleN x)
             => lsmrJacobi(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
 
         /// <summary>
@@ -2195,10 +2195,10 @@ namespace LinearAlgebra
         /// <summary>CGNE over a dense matrix -- allocates four scratch vectors from the arena.</summary>
         public static SolveInfo cgne(in doubleMxN A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN r    = b.tempdoubleVec(A.M_Rows);
-            doubleN p    = b.tempdoubleVec(A.N_Cols);
-            doubleN q    = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
+            doubleN r    = b.doubleTempVec(A.M_Rows);
+            doubleN p    = b.doubleTempVec(A.N_Cols);
+            doubleN q    = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
             return cgne(in A, in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
@@ -2210,48 +2210,48 @@ namespace LinearAlgebra
 
         /// <summary>
         /// CGNE / Craig over a (possibly rectangular) block-sparse (BSR) matrix -- zero-alloc
-        /// primitive. Forwards into <see cref="cgne{TOp}"/> via <c>doubleBSMOperator</c>. Matrix-
+        /// primitive. Forwards into <see cref="cgne{TOp}"/> via <c>doubleBSROperator</c>. Matrix-
         /// free minimum-norm solve over a sparse Jacobian-like operator, never forming A Aᵀ.
         /// </summary>
-        public static SolveInfo cgne(in doubleBSM A, in doubleN b, ref doubleN x,
+        public static SolveInfo cgne(in doubleBSR A, in doubleN b, ref doubleN x,
                                 ref doubleN r, ref doubleN p, ref doubleN q, ref doubleN tmpN,
                                 int maxIterations, double tolerance)
         {
-            return cgne(new doubleBSMOperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new doubleBSROperator(in A), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGNE / Craig over a BSR matrix with a CALLER-PROVIDED precomputed transpose AT (built
-        /// once via <c>arena.doubleBSMTranspose(in A)</c>), routing every ApplyT through the
+        /// once via <c>arena.doubleBSRTranspose(in A)</c>), routing every ApplyT through the
         /// cache-friendly forward spMV(AT, x) instead of on-the-fly spMVT(A, x) -- see
-        /// <see cref="doubleBSMOperator"/>'s two-arg ctor. Zero-alloc; caller owns AT.
+        /// <see cref="doubleBSROperator"/>'s two-arg ctor. Zero-alloc; caller owns AT.
         /// </summary>
-        public static SolveInfo cgne(in doubleBSM A, in doubleBSM AT, in doubleN b, ref doubleN x,
+        public static SolveInfo cgne(in doubleBSR A, in doubleBSR AT, in doubleN b, ref doubleN x,
                                 ref doubleN r, ref doubleN p, ref doubleN q, ref doubleN tmpN,
                                 int maxIterations, double tolerance)
         {
-            return cgne(new doubleBSMOperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            return cgne(new doubleBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>
         /// CGNE over a BSR matrix -- allocates four scratch vectors AND materializes A^T once via
-        /// <c>arena.doubleBSMTranspose</c>, driving CGNE with the two-arg
-        /// <see cref="doubleBSMOperator"/> so every ApplyT routes through a cache-friendly forward
+        /// <c>arena.doubleBSRTranspose</c>, driving CGNE with the two-arg
+        /// <see cref="doubleBSROperator"/> so every ApplyT routes through a cache-friendly forward
         /// spMV(A^T, x). For a build-free zero-alloc path, build A^T yourself once and call the
         /// caller-AT overload above.
         /// </summary>
-        public static SolveInfo cgne(in doubleBSM A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
+        public static SolveInfo cgne(in doubleBSR A, in doubleN b, ref doubleN x, int maxIterations, double tolerance)
         {
-            doubleN r    = b.tempdoubleVec(A.M_Rows);
-            doubleN p    = b.tempdoubleVec(A.N_Cols);
-            doubleN q    = b.tempdoubleVec(A.M_Rows);
-            doubleN tmpN = b.tempdoubleVec(A.N_Cols);
-            doubleBSM AT = b.doubleBSMTranspose(in A);
-            return cgne(new doubleBSMOperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
+            doubleN r    = b.doubleTempVec(A.M_Rows);
+            doubleN p    = b.doubleTempVec(A.N_Cols);
+            doubleN q    = b.doubleTempVec(A.M_Rows);
+            doubleN tmpN = b.doubleTempVec(A.N_Cols);
+            doubleBSR AT = b.doubleBSRTranspose(in A);
+            return cgne(new doubleBSROperator(in A, in AT), in b, ref x, ref r, ref p, ref q, ref tmpN, maxIterations, tolerance);
         }
 
         /// <summary>CGNE over a BSR matrix with default maxIterations (A.N_Cols) and tolerance (Consts.doubleSqrtEps).</summary>
-        public static SolveInfo cgne(in doubleBSM A, in doubleN b, ref doubleN x)
+        public static SolveInfo cgne(in doubleBSR A, in doubleN b, ref doubleN x)
         {
             return cgne(in A, in b, ref x, A.N_Cols, Consts.doubleSqrtEps);
         }

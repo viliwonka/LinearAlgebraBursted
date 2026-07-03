@@ -41,7 +41,7 @@ namespace LinearAlgebra.ML
     /// resolve degenerate/repeated-eigenvalue rotation ambiguity -- keep cross-route/determinism
     /// expectations to well-separated spectra.
     ///
-    /// No floatPCA_WS: PCA fits once (no per-frame restart loop like k-means), so each method allocates
+    /// No floatPCACache: PCA fits once (no per-frame restart loop like k-means), so each method allocates
     /// its own scratch from X's arena TEMP pool and calls the wrapped kernels' existing non-WS overloads.
     /// Realtime pattern: allocate the model once via Arena.floatPCAModel(p, k), call the `ref` fit each
     /// frame, ClearTemp() at end of frame reclaims all internal scratch.
@@ -186,7 +186,7 @@ namespace LinearAlgebra.ML
             }
             else // Correlation
             {
-                var sampleStd = X.tempfloatVec(p);
+                var sampleStd = X.floatTempVec(p);
                 ComputeSampleStd(in X, in mean, ref sampleStd);
 
                 for (int c = 0; c < p; c++)
@@ -258,7 +258,7 @@ namespace LinearAlgebra.ML
             floatStats_OP.colMean(in X, ref model.mean);
 
             // C is PCA-built scratch each call (temp pool) -- eigenSymmetric destroys it.
-            var C = X.tempfloatMat(p, p);
+            var C = X.floatTempMat(p, p);
             floatStats_OP.covarianceInto(in X, ref C);
 
             float totalVariance;
@@ -274,7 +274,7 @@ namespace LinearAlgebra.ML
             {
                 // Direct row-sum sampleStd (NOT sqrt(C[j,j])) so degenerate detection is bit-identical
                 // to BuildWorkingCopy's — see ComputeSampleStd.
-                var sampleStd = X.tempfloatVec(p);
+                var sampleStd = X.floatTempVec(p);
                 ComputeSampleStd(in X, in model.mean, ref sampleStd);
 
                 for (int j = 0; j < p; j++)
@@ -353,11 +353,11 @@ namespace LinearAlgebra.ML
 
             floatStats_OP.colMean(in X, ref model.mean);
 
-            var Xc = X.tempfloatMat(n, p);
+            var Xc = X.floatTempMat(n, p);
             float totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
 
             // svdThin reads A while writing U -- a SEPARATE n x p temp, never Xc itself.
-            var U = X.tempfloatMat(n, p);
+            var U = X.floatTempMat(n, p);
             bool converged = SVD.svdThin(in Xc, ref U, ref model.explainedVariance, ref model.components, maxIter);
 
             if (converged)
@@ -423,10 +423,10 @@ namespace LinearAlgebra.ML
 
             floatStats_OP.colMean(in X, ref model.mean);
 
-            var Xc = X.tempfloatMat(n, p);
+            var Xc = X.floatTempMat(n, p);
             float totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
 
-            var Uk = X.tempfloatMat(n, k);
+            var Uk = X.floatTempMat(n, k);
             SVD.svdTruncated(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
                               k, oversample, seed, maxIter, out bool converged);
 
@@ -494,10 +494,10 @@ namespace LinearAlgebra.ML
 
             floatStats_OP.colMean(in X, ref model.mean);
 
-            var Xc = X.tempfloatMat(n, p);
+            var Xc = X.floatTempMat(n, p);
             float totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
 
-            var Uk = X.tempfloatMat(n, k);
+            var Uk = X.floatTempMat(n, k);
             bool converged = SVD.svdRandomized(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
                                                 k, oversample, powerIters, seed, maxIter);
 
@@ -561,7 +561,7 @@ namespace LinearAlgebra.ML
             if (scores.M_Rows != nNew || scores.N_Cols != model.k)
                 throw new ArgumentException(method + ": scores must be X.M_Rows x model.k");
 
-            var Xs = X.tempfloatMat(nNew, p);
+            var Xs = X.floatTempMat(nNew, p);
             for (int r = 0; r < nNew; r++)
                 for (int c = 0; c < p; c++)
                     Xs[r, c] = (X[r, c] - model.mean[c]) / model.scale[c];

@@ -4,10 +4,10 @@ namespace LinearAlgebra.ML
 {
     /// <summary>
     /// Reusable scratch storage for zero-alloc Lloyd k-means.
-    /// Allocate ONCE (sized for the data shape) via <c>Arena.fProxyKMeans_WS(N, D, k)</c>
+    /// Allocate ONCE (sized for the data shape) via <c>Arena.fProxyKMeansCache(N, D, k)</c>
     /// and reuse across same-shape calls. All buffers are arena-owned and disposed with the arena.
     /// </summary>
-    public struct fProxyKMeans_WS
+    public struct fProxyKMeansCache
     {
         public fProxyMxN Gram;           // N x k  GEMM output X*C^T, patched to scores in-place
         public fProxyMxN Ct;             // D x k  transposed centroids (refreshed each iteration)
@@ -30,9 +30,9 @@ namespace LinearAlgebra
         /// All buffers are persistent in this arena (disposed with it).
         /// Create once outside hot loops and reuse for same-shape calls.
         /// </summary>
-        public static LinearAlgebra.ML.fProxyKMeans_WS fProxyKMeans_WS(this ref Arena arena, int N, int D, int k)
+        public static LinearAlgebra.ML.fProxyKMeansCache fProxyKMeansCache(this ref Arena arena, int N, int D, int k)
         {
-            return new LinearAlgebra.ML.fProxyKMeans_WS
+            return new LinearAlgebra.ML.fProxyKMeansCache
             {
                 Gram           = arena.fProxyMat(N, k),
                 Ct             = arena.fProxyMat(D, k),

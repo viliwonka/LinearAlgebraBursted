@@ -8,8 +8,8 @@ using Unity.Jobs;
 
 // Workspace-overload tests for SVD family ops with reusable workspaces.
 //
-// nullspaceBasis, rangeBasis, and lowRankApprox share fProxySVDFull_WS.
-// svdTruncated (GKL bidiagonalization) uses its own fProxySVDTruncated_WS.
+// nullspaceBasis, rangeBasis, and lowRankApprox share fProxySVDFullCache.
+// svdTruncated (GKL bidiagonalization) uses its own fProxySVDTruncatedCache.
 //
 // Each op has a `ref <WorkspaceType> ws` overload (caller-owned scratch) PLUS an allocating
 // overload. They run the same kernel with the same seed, so for identical inputs the outputs
@@ -69,7 +69,7 @@ public class fProxySvdFullWorkspaceTests
             var basisA = arena.fProxyMat(n, n);
             int dimA = SVD.nullspaceBasis(in A, ref basisA, out bool cA);
 
-            var ws = arena.fProxySVDFull_WS(m, n);
+            var ws = arena.fProxySVDFullCache(m, n);
             var basisW = arena.fProxyMat(n, n);
             int dimW = SVD.nullspaceBasis(in A, ref basisW, ref ws, out bool cW);
 
@@ -89,7 +89,7 @@ public class fProxySvdFullWorkspaceTests
             var basisA = arena.fProxyMat(m, n);
             int rankA = SVD.rangeBasis(in A, ref basisA, out bool cA);
 
-            var ws = arena.fProxySVDFull_WS(m, n);
+            var ws = arena.fProxySVDFullCache(m, n);
             var basisW = arena.fProxyMat(m, n);
             int rankW = SVD.rangeBasis(in A, ref basisW, ref ws, out bool cW);
 
@@ -109,7 +109,7 @@ public class fProxySvdFullWorkspaceTests
             var UkA = arena.fProxyMat(m, k); var SkA = arena.fProxyVec(k); var VkA = arena.fProxyMat(n, k);
             SVD.svdTruncated(in A, ref UkA, ref SkA, ref VkA, k, out bool cA);
 
-            var ws = arena.fProxySVDTruncated_WS(m, n, k);
+            var ws = arena.fProxySVDTruncatedCache(m, n, k);
             var UkW = arena.fProxyMat(m, k); var SkW = arena.fProxyVec(k); var VkW = arena.fProxyMat(n, k);
             SVD.svdTruncated(in A, ref UkW, ref SkW, ref VkW, k, ref ws, out bool cW);
 
@@ -130,7 +130,7 @@ public class fProxySvdFullWorkspaceTests
             var AkA = arena.fProxyMat(m, n);
             SVD.lowRankApprox(in A, ref AkA, k, out bool cA);
 
-            var ws = arena.fProxySVDFull_WS(m, n);
+            var ws = arena.fProxySVDFullCache(m, n);
             var AkW = arena.fProxyMat(m, n);
             SVD.lowRankApprox(in A, ref AkW, k, ref ws, out bool cW);
 
@@ -150,8 +150,8 @@ public class fProxySvdFullWorkspaceTests
             var A1 = RankDeficient(ref arena, m, n, 2, 5005);
             var A2 = RankDeficient(ref arena, m, n, 3, 6006);
 
-            var ws = arena.fProxySVDFull_WS(m, n);           // for nullspace / range / lowRank
-            var wsTrunc = arena.fProxySVDTruncated_WS(m, n, k);  // for svdTruncated (GKL)
+            var ws = arena.fProxySVDFullCache(m, n);           // for nullspace / range / lowRank
+            var wsTrunc = arena.fProxySVDTruncatedCache(m, n, k);  // for svdTruncated (GKL)
 
             // ---- nullspace ----
             var nb1 = arena.fProxyMat(n, n);
@@ -215,7 +215,7 @@ public class fProxySvdFullWorkspaceTests
         {
             var A = arena.fProxyMat(6, 4);
             var basis = arena.fProxyMat(4, 4);
-            var ws = arena.fProxySVDFull_WS(5, 4);   // wrong m
+            var ws = arena.fProxySVDFullCache(5, 4);   // wrong m
             Assert.Throws<ArgumentException>(
                 () => SVD.nullspaceBasis(in A, ref basis, ref ws, out bool _));
         }
@@ -230,7 +230,7 @@ public class fProxySvdFullWorkspaceTests
         {
             var A = arena.fProxyMat(6, 4);
             var basis = arena.fProxyMat(6, 4);
-            var ws = arena.fProxySVDFull_WS(6, 3);   // wrong n
+            var ws = arena.fProxySVDFullCache(6, 3);   // wrong n
             Assert.Throws<ArgumentException>(
                 () => SVD.rangeBasis(in A, ref basis, ref ws, out bool _));
         }
@@ -245,7 +245,7 @@ public class fProxySvdFullWorkspaceTests
         {
             var A = arena.fProxyMat(6, 4);
             var Uk = arena.fProxyMat(6, 2); var Sk = arena.fProxyVec(2); var Vk = arena.fProxyMat(4, 2);
-            var ws = arena.fProxySVDTruncated_WS(7, 4, 2);   // wrong m (7 vs A's 6)
+            var ws = arena.fProxySVDTruncatedCache(7, 4, 2);   // wrong m (7 vs A's 6)
             Assert.Throws<ArgumentException>(
                 () => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, 2, ref ws, out bool _));
         }
@@ -260,21 +260,21 @@ public class fProxySvdFullWorkspaceTests
         {
             var A = arena.fProxyMat(6, 4);
             var Ak = arena.fProxyMat(6, 4);
-            var ws = arena.fProxySVDFull_WS(6, 5);   // wrong n
+            var ws = arena.fProxySVDFullCache(6, 5);   // wrong n
             Assert.Throws<ArgumentException>(
                 () => SVD.lowRankApprox(in A, ref Ak, 2, ref ws, out bool _));
         }
         finally { arena.Dispose(); }
     }
 
-    // Arena.fProxySVDFull_WS(m, n) must size U (m x n), S (n), V (n x n).
+    // Arena.fProxySVDFullCache(m, n) must size U (m x n), S (n), V (n x n).
     [Test]
     public void SvdFullWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var ws = arena.fProxySVDFull_WS(7, 4);
+            var ws = arena.fProxySVDFullCache(7, 4);
             Assert.AreEqual(7, ws.U.M_Rows);
             Assert.AreEqual(4, ws.U.N_Cols);
             Assert.AreEqual(4, ws.S.N);

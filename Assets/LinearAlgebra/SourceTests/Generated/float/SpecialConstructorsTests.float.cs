@@ -130,7 +130,7 @@ public class floatSpecialConstructorsTests {
         public void IndexOneVec()
         {
             var arena = new Arena(Allocator.Persistent);
-            var v = arena.floatIndexOneVector(16);
+            var v = arena.floatIndexOneVec(16);
 
             for (int i = 0; i < v.N; i++) {
                 Assert.IsTrue(v[i] == (float)i + 1);

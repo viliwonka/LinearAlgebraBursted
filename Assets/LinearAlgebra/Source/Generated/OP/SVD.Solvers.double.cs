@@ -18,10 +18,10 @@ namespace LinearAlgebra
         /// N_Cols) is overwritten.
         /// relTol &lt; 0 selects auto tolerance: relTol = max(m, n) * Consts.doubleZeroThreshold.
         /// Singular values S[j] &lt;= relTol * S[0] are treated as zero.
-        /// Allocates temporaries from A's arena via tempdoubleVec/tempdoubleMat (not an Inpl op).
+        /// Allocates temporaries from A's arena via doubleTempVec/doubleTempMat (not an Inpl op).
         /// Returns the numerical rank used; converged is svdThin's return value.
         /// </summary>
-        // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVD_WS. Hoist these
+        // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVDCache. Hoist these
         // out of a hot loop solving many same-shape systems to avoid per-call allocs.
         public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
                                     double relTol, int maxSweeps,
@@ -148,33 +148,33 @@ namespace LinearAlgebra
             int k = math.min(m, n);
             int big = math.max(m, n);
 
-            doubleN S = A.tempdoubleVec(k);
-            doubleMxN M = A.tempdoubleMat(k, k);
-            doubleMxN U = A.tempdoubleMat(big, k);
+            doubleN S = A.doubleTempVec(k);
+            doubleMxN M = A.doubleTempMat(k, k);
+            doubleMxN U = A.doubleTempMat(big, k);
             doubleMxN At = default;
             if (m < n)
-                At = A.tempdoubleMat(n, m);
+                At = A.doubleTempMat(n, m);
 
             return pinvSolve(ref A, in b, ref x, out converged, relTol, maxSweeps, ref S, ref M, ref U, ref At);
         }
 
         /// <summary>
-        /// pinvSolve using a reusable workspace (Arena.doubleSVD_WS(m, n)) — zero-alloc.
+        /// pinvSolve using a reusable workspace (Arena.doubleSVDCache(m, n)) — zero-alloc.
         /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)); the guards in
         /// the underlying scratch primitive enforce this.
         /// </summary>
         public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
-                                    ref doubleSVD_WS ws, double relTol, int maxSweeps)
+                                    ref doubleSVDCache ws, double relTol, int maxSweeps)
             => pinvSolve(ref A, in b, ref x, out converged, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
 
         /// <summary>pinvSolve (workspace) with default maxSweeps (30).</summary>
         public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
-                                    ref doubleSVD_WS ws, double relTol)
+                                    ref doubleSVDCache ws, double relTol)
             => pinvSolve(ref A, in b, ref x, out converged, ref ws, relTol, 30);
 
         /// <summary>pinvSolve (workspace) with default relTol (-1, auto) and maxSweeps (30).</summary>
         public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
-                                    ref doubleSVD_WS ws)
+                                    ref doubleSVDCache ws)
             => pinvSolve(ref A, in b, ref x, out converged, ref ws, (double)(-1), 30);
 
         /// <summary>pinvSolve with default maxSweeps (30).</summary>
@@ -191,7 +191,7 @@ namespace LinearAlgebra
         /// A is NOT modified (the Golub-Kahan path takes it as input). Same tolerance/rank/return
         /// semantics as pinvSolve. Any shape.
         /// </summary>
-        // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVD_WS.
+        // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVDCache.
         public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
                                         double relTol, int maxSweeps,
                                         ref doubleN S, ref doubleMxN M, ref doubleMxN U, ref doubleMxN At)
@@ -307,32 +307,32 @@ namespace LinearAlgebra
             int k = math.min(m, n);
             int big = math.max(m, n);
 
-            doubleN S = A.tempdoubleVec(k);
-            doubleMxN M = A.tempdoubleMat(k, k);
-            doubleMxN U = A.tempdoubleMat(big, k);
+            doubleN S = A.doubleTempVec(k);
+            doubleMxN M = A.doubleTempMat(k, k);
+            doubleMxN U = A.doubleTempMat(big, k);
             doubleMxN At = default;
             if (m < n)
-                At = A.tempdoubleMat(n, m);
+                At = A.doubleTempMat(n, m);
 
             return pseudoInverse(ref A, ref Aplus, out converged, relTol, maxSweeps, ref S, ref M, ref U, ref At);
         }
 
         /// <summary>
-        /// pseudoInverse using a reusable workspace (Arena.doubleSVD_WS(m, n)) — zero-alloc.
+        /// pseudoInverse using a reusable workspace (Arena.doubleSVDCache(m, n)) — zero-alloc.
         /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)).
         /// </summary>
         public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
-                                        ref doubleSVD_WS ws, double relTol, int maxSweeps)
+                                        ref doubleSVDCache ws, double relTol, int maxSweeps)
             => pseudoInverse(ref A, ref Aplus, out converged, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
 
         /// <summary>pseudoInverse (workspace) with default maxSweeps (30).</summary>
         public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
-                                        ref doubleSVD_WS ws, double relTol)
+                                        ref doubleSVDCache ws, double relTol)
             => pseudoInverse(ref A, ref Aplus, out converged, ref ws, relTol, 30);
 
         /// <summary>pseudoInverse (workspace) with default relTol (-1, auto) and maxSweeps (30).</summary>
         public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
-                                        ref doubleSVD_WS ws)
+                                        ref doubleSVDCache ws)
             => pseudoInverse(ref A, ref Aplus, out converged, ref ws, (double)(-1), 30);
 
         /// <summary>pseudoInverse with default maxSweeps (30).</summary>

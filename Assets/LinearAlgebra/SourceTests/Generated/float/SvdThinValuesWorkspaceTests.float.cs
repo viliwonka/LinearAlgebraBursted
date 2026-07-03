@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Phase-2 solver-workspace tests for svdThin/svdValues: the caller-provided-scratch overloads
-// (svdThin(...,ref floatSVDThin_WS) / svdValues(...,ref floatSVDValues_WS)) must produce results
+// (svdThin(...,ref floatSVDThinCache) / svdValues(...,ref floatSVDValuesCache)) must produce results
 // identical to the allocating wrappers (they run the SAME kernel), and a mis-sized/reused workspace
 // must behave correctly (throw on bad size, produce identical results across repeated reuse).
 public class floatSvdThinValuesWorkspaceTests
@@ -63,7 +63,7 @@ public class floatSvdThinValuesWorkspaceTests
             var Ub = arena.floatMat(m, n);
             var Sb = arena.floatVec(n);
             var Vb = arena.floatMat(n, n);
-            var ws = arena.floatSVDThin_WS(m, n);
+            var ws = arena.floatSVDThinCache(m, n);
             bool okb = SVD.svdThin(in Ab, ref Ub, ref Sb, ref Vb, ref ws);
 
             Assert.IsTrue(oka == okb);
@@ -87,7 +87,7 @@ public class floatSvdThinValuesWorkspaceTests
             bool oka = SVD.svdValues(in A0, ref Sa);
 
             var Sb = arena.floatVec(n);
-            var ws = arena.floatSVDValues_WS(m, n);
+            var ws = arena.floatSVDValuesCache(m, n);
             bool okb = SVD.svdValues(in A0, ref Sb, ref ws);
 
             Assert.IsTrue(oka == okb);
@@ -103,8 +103,8 @@ public class floatSvdThinValuesWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
             int m = 8, n = 4;
 
-            var thinWs = arena.floatSVDThin_WS(m, n);     // allocated ONCE, reused below
-            var valuesWs = arena.floatSVDValues_WS(m, n); // allocated ONCE, reused below
+            var thinWs = arena.floatSVDThinCache(m, n);     // allocated ONCE, reused below
+            var valuesWs = arena.floatSVDValuesCache(m, n); // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
@@ -163,7 +163,7 @@ public class floatSvdThinValuesWorkspaceTests
             var U = arena.floatMat(6, 4);
             var S = arena.floatVec(4);
             var V = arena.floatMat(4, 4);
-            var ws = arena.floatSVDThin_WS(6, 4);
+            var ws = arena.floatSVDThinCache(6, 4);
             ws.B = arena.floatMat(3, 3);   // wrong: must be 4 x 4
             Assert.Throws<ArgumentException>(() => SVD.svdThin(in A, ref U, ref S, ref V, ref ws));
         }
@@ -180,7 +180,7 @@ public class floatSvdThinValuesWorkspaceTests
             var U = arena.floatMat(6, 4);
             var S = arena.floatVec(4);
             var V = arena.floatMat(4, 4);
-            var ws = arena.floatSVDThin_WS(6, 4);
+            var ws = arena.floatSVDThinCache(6, 4);
             ws.Ut = arena.floatMat(4, 5);  // wrong: must be n x m = 4 x 6
             Assert.Throws<ArgumentException>(() => SVD.svdThin(in A, ref U, ref S, ref V, ref ws));
         }
@@ -195,21 +195,21 @@ public class floatSvdThinValuesWorkspaceTests
         {
             var A = arena.floatMat(6, 4);
             var S = arena.floatVec(4);
-            var ws = arena.floatSVDValues_WS(6, 4);
+            var ws = arena.floatSVDValuesCache(6, 4);
             ws.dVec = arena.floatVec(3);   // wrong: must be length 4
             Assert.Throws<ArgumentException>(() => SVD.svdValues(in A, ref S, ref ws));
         }
         finally { arena.Dispose(); }
     }
 
-    // Arena.floatSVDThin_WS(m, n) / floatSVDValues_WS(m, n) must size every field for m x n.
+    // Arena.floatSVDThinCache(m, n) / floatSVDValuesCache(m, n) must size every field for m x n.
     [Test]
     public void SvdThinValuesWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var thinWs = arena.floatSVDThin_WS(7, 4);
+            var thinWs = arena.floatSVDThinCache(7, 4);
             Assert.AreEqual(4, thinWs.B.M_Rows);
             Assert.AreEqual(4, thinWs.B.N_Cols);
             Assert.AreEqual(4, thinWs.dVec.N);
@@ -221,7 +221,7 @@ public class floatSvdThinValuesWorkspaceTests
             Assert.AreEqual(7, thinWs.BidiagWs.W.M_Rows);
             Assert.AreEqual(4, thinWs.BidiagWs.W.N_Cols);
 
-            var valuesWs = arena.floatSVDValues_WS(7, 4);
+            var valuesWs = arena.floatSVDValuesCache(7, 4);
             Assert.AreEqual(4, valuesWs.dVec.N);
             Assert.AreEqual(4, valuesWs.eVec.N);
             Assert.AreEqual(7, valuesWs.BidiagWs.W.M_Rows);

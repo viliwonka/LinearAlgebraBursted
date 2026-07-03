@@ -31,7 +31,7 @@ namespace LinearAlgebra
 
         public static doubleN select(in doubleN a, in doubleN b, in boolN c)
         {
-            doubleN res = a.tempdoubleVec(a.N, true);
+            doubleN res = a.doubleTempVec(a.N, true);
             select(in a, in b, in c, ref res);
             return res;
         }
@@ -53,7 +53,7 @@ namespace LinearAlgebra
 
         public static doubleMxN select(in doubleMxN a, in doubleMxN b, in boolMxN c)
         {
-            doubleMxN res = a.tempdoubleMat(a.M_Rows, a.N_Cols, true);
+            doubleMxN res = a.doubleTempMat(a.M_Rows, a.N_Cols, true);
             select(in a, in b, in c, ref res);
             return res;
         }

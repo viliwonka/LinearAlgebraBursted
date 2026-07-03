@@ -43,7 +43,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN outerDot(longN a, longN b)
         {
-            longMxN result = a.templongMat(a.N, b.N, true);
+            longMxN result = a.longTempMat(a.N, b.N, true);
             outerDot(in a, in b, ref result);
             return result;
         }
@@ -73,7 +73,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longN dot(longMxN A, longN x)
         {
-            longN result = x.templongVec(A.M_Rows);
+            longN result = x.longTempVec(A.M_Rows);
             dot(in A, in x, ref result);
             return result;
         }
@@ -103,7 +103,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longN dot(longN y, longMxN A)
         {
-            longN result = y.templongVec(A.N_Cols);
+            longN result = y.longTempVec(A.N_Cols);
             dot(in y, in A, ref result);
             return result;
         }
@@ -156,7 +156,7 @@ namespace LinearAlgebra
             int m = transposeA ? a.N_Cols : a.M_Rows;
             int k = b.N_Cols;
 
-            longMxN c = a.templongMat(m, k);
+            longMxN c = a.longTempMat(m, k);
             dot(in a, in b, ref c, transposeA);
             return c;
         }
@@ -184,7 +184,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN trans(longMxN A)
         {
-            var T = A.templongMat(A.N_Cols, A.M_Rows, true);
+            var T = A.longTempMat(A.N_Cols, A.M_Rows, true);
             trans(in A, ref T);
             return T;
         }

@@ -8,7 +8,7 @@ using NUnit.Framework;
 using Unity.Collections;
 
 // Content-correctness tests for the templated debug/print surface: the doublePCAModel summary
-// (ML/PCA.Model.double.cs), the sparse block-structure printers Print.Spy / Print.Log(in doubleBSM)
+// (ML/PCA.Model.double.cs), the sparse block-structure printers Print.Spy / Print.Log(in doubleBSR)
 // (Sparse/Debug.Sparse.double.cs), and the sparse managed exporters Print.ToText / ToCsv / SaveCsv
 // (Sparse/Export.Sparse.double.cs). Generated per float/double.
 //
@@ -17,7 +17,7 @@ using Unity.Collections;
 //     that the strings are RIGHT). Note the literal "doublePCAModel" in the model assertion is
 //     itself codegen-substituted to "floatPCAModel"/"doublePCAModel", exactly as the struct's own
 //     ToFixedString literal is -- so both sides move together and the match holds per type.
-//   * Print.Spy / Print.Log(in doubleBSM) are Burst-void log-only -> DoesNotThrow smoke coverage
+//   * Print.Spy / Print.Log(in doubleBSR) are Burst-void log-only -> DoesNotThrow smoke coverage
 //     (same pattern as DebugExportTests.IntLogDoesNotThrow / FloatHistogramDoesNotThrow).
 //
 // All of it runs on the managed test thread (ToText/ToCsv use System.Text/System.IO and cannot be
@@ -52,29 +52,29 @@ public class doubleDebugPrintTests
         arena.Dispose();
     }
 
-    // ---------------- helpers: small BSMs assembled on the managed thread ----------------
+    // ---------------- helpers: small BSRs assembled on the managed thread ----------------
 
     // 2x2 block grid of 1x1 blocks (2x2 dense), block (1,0) intentionally absent:
     //   [1 2]
     //   [0 4]
-    static doubleBSM BuildNonSymmetric(ref Arena arena)
+    static doubleBSR BuildNonSymmetric(ref Arena arena)
     {
-        var b = arena.doubleBSMBuilder(2, 2, 1, 1);
+        var b = arena.doubleBSRBuilder(2, 2, 1, 1);
         b.AddValue(0, 0, (double)1);
         b.AddValue(0, 1, (double)2);
         b.AddValue(1, 1, (double)4);
-        return b.ToBSM(ref arena);
+        return b.ToBSR(ref arena);
     }
 
     // Symmetric upper-block-triangle 2x2 grid of 1x1 blocks. Stored blocks: (0,0)=5, (0,1)=3,
     // (1,1)=7; the mirror block (1,0) is NOT stored. Dense form is [[5 3][3 7]].
-    static doubleBSM BuildSymmetric(ref Arena arena)
+    static doubleBSR BuildSymmetric(ref Arena arena)
     {
-        var b = arena.doubleBSMBuilder(2, 2, 1, 1);
+        var b = arena.doubleBSRBuilder(2, 2, 1, 1);
         b.AddValue(0, 0, (double)5);
         b.AddValue(0, 1, (double)3);
         b.AddValue(1, 1, (double)7);
-        return b.ToBSMSymmetric(ref arena);
+        return b.ToBSRSymmetric(ref arena);
     }
 
     // ---------------- sparse ToCsv (block triplet list) ----------------
@@ -124,7 +124,7 @@ public class doubleDebugPrintTests
     }
 
     // ToText DOES mirror the symmetric storage (via ToDense) -- contrast with ToCsv above, which
-    // does not. Dense form of the symmetric BSM is [[5 3][3 7]].
+    // does not. Dense form of the symmetric BSR is [[5 3][3 7]].
     [Test]
     public void SparseToTextSymmetricMirrorsIntoDensePreview()
     {
@@ -181,15 +181,15 @@ public class doubleDebugPrintTests
         arena.Dispose();
     }
 
-    // Empty BSM (Nnzb == 0): every block-row's RowPtr range is empty, so the grid is all '.' and
+    // Empty BSR (Nnzb == 0): every block-row's RowPtr range is empty, so the grid is all '.' and
     // the stored-block value loop never runs. Must not dereference the zero-length buffers.
     [Test]
     public void SparseSpyAndLogEmptyDoNotThrow()
     {
         var arena = new Arena(Allocator.Persistent);
 
-        var builder = arena.doubleBSMBuilder(3, 3, 2, 2);   // 6x6 dense, zero triplets
-        var E = builder.ToBSM(ref arena);
+        var builder = arena.doubleBSRBuilder(3, 3, 2, 2);   // 6x6 dense, zero triplets
+        var E = builder.ToBSR(ref arena);
         Assert.IsTrue(E.Nnzb == 0);
 
         Assert.DoesNotThrow(() => Print.Spy(in E));

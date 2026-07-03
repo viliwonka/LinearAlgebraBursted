@@ -289,7 +289,7 @@ namespace LinearAlgebra
             if (k == 0)
                 return (double)0;
 
-            doubleN S = A.tempdoubleVec(k);
+            doubleN S = A.doubleTempVec(k);
             SVD.singularValues(in A, ref S);
             return S[0];   // singular values are sorted descending -> σ_max
         }

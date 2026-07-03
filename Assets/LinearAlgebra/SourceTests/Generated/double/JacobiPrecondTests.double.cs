@@ -8,10 +8,10 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // AᵀA-Jacobi (column-equilibration) least-squares preconditioner primitives:
-//   Linear_OP.columnNormsSquared (dense) / Sparse_OP.columnNormsSquared (BSM),
+//   Linear_OP.columnNormsSquared (dense) / Sparse_OP.columnNormsSquared (BSR),
 //   Linear_OP.buildJacobiScale, and doubleColScaledOperator<TInner> (the A·D wrapper).
 // Value cases run inside a [BurstCompile] IJob (matches the other sparse-solver suites);
-// the Symmetric-BSM reject runs on the managed thread with Assert.Throws.
+// the Symmetric-BSR reject runs on the managed thread with Assert.Throws.
 public class doubleJacobiPrecondTests
 {
     [BurstCompile]
@@ -20,7 +20,7 @@ public class doubleJacobiPrecondTests
         public enum TestType
         {
             ColumnNormsSquaredDenseMatchesReference,
-            ColumnNormsSquaredBSMMatchesDense,
+            ColumnNormsSquaredBSRMatchesDense,
             BuildJacobiScaleZeroColumnGuard,
             ColScaledOperatorAdjointIdentity,
             ColScaledEquilibrationUnitColumns,
@@ -37,7 +37,7 @@ public class doubleJacobiPrecondTests
             switch (Type)
             {
                 case TestType.ColumnNormsSquaredDenseMatchesReference: ColumnNormsSquaredDenseMatchesReference(); break;
-                case TestType.ColumnNormsSquaredBSMMatchesDense: ColumnNormsSquaredBSMMatchesDense(); break;
+                case TestType.ColumnNormsSquaredBSRMatchesDense: ColumnNormsSquaredBSRMatchesDense(); break;
                 case TestType.BuildJacobiScaleZeroColumnGuard: BuildJacobiScaleZeroColumnGuard(); break;
                 case TestType.ColScaledOperatorAdjointIdentity: ColScaledOperatorAdjointIdentity(); break;
                 case TestType.ColScaledEquilibrationUnitColumns: ColScaledEquilibrationUnitColumns(); break;
@@ -47,15 +47,15 @@ public class doubleJacobiPrecondTests
 
         // ---- helpers ----
 
-        // BR x BC-block BSM built from a dense matrix's nonzero entries via scalar AddValue.
-        static doubleBSM DenseToBSM(ref Arena arena, in doubleMxN A, int BR, int BC, int nnzHint)
+        // BR x BC-block BSR built from a dense matrix's nonzero entries via scalar AddValue.
+        static doubleBSR DenseToBSR(ref Arena arena, in doubleMxN A, int BR, int BC, int nnzHint)
         {
-            var builder = arena.doubleBSMBuilder(A.M_Rows / BR, A.N_Cols / BC, BR, BC, math.max(nnzHint, 1));
+            var builder = arena.doubleBSRBuilder(A.M_Rows / BR, A.N_Cols / BC, BR, BC, math.max(nnzHint, 1));
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (double)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSM(ref arena);
+            return builder.ToBSR(ref arena);
         }
 
         static void AssertClose(double got, double expected, double tol)
@@ -82,8 +82,8 @@ public class doubleJacobiPrecondTests
             arena.Dispose();
         }
 
-        // ---- 2. BSM columnNormsSquared (1x1 and 3x3 blocks) matches dense ----
-        void ColumnNormsSquaredBSMMatchesDense()
+        // ---- 2. BSR columnNormsSquared (1x1 and 3x3 blocks) matches dense ----
+        void ColumnNormsSquaredBSRMatchesDense()
         {
             var arena = new Arena(Allocator.Persistent);
 
@@ -93,12 +93,12 @@ public class doubleJacobiPrecondTests
             var d2Dense = arena.doubleVec(n);
             Linear_OP.columnNormsSquared(in A, ref d2Dense);
 
-            var bsm1 = DenseToBSM(ref arena, in A, 1, 1, m * n);
+            var bsm1 = DenseToBSR(ref arena, in A, 1, 1, m * n);
             var d2b1 = arena.doubleVec(n);
             Sparse_OP.columnNormsSquared(in bsm1, ref d2b1);
             for (int c = 0; c < n; c++) AssertClose(d2b1[c], d2Dense[c], Tight());
 
-            var bsm3 = DenseToBSM(ref arena, in A, 3, 3, m * n);
+            var bsm3 = DenseToBSR(ref arena, in A, 3, 3, m * n);
             var d2b3 = arena.doubleVec(n);
             Sparse_OP.columnNormsSquared(in bsm3, ref d2b3);
             for (int c = 0; c < n; c++) AssertClose(d2b3[c], d2Dense[c], Tight());
@@ -110,7 +110,7 @@ public class doubleJacobiPrecondTests
             var d2Dense2 = arena.doubleVec(n2);
             Linear_OP.columnNormsSquared(in A2, ref d2Dense2);
 
-            var bsm23 = DenseToBSM(ref arena, in A2, 2, 3, m2 * n2);
+            var bsm23 = DenseToBSR(ref arena, in A2, 2, 3, m2 * n2);
             var d2b23 = arena.doubleVec(n2);
             Sparse_OP.columnNormsSquared(in bsm23, ref d2b23);
             for (int c = 0; c < n2; c++) AssertClose(d2b23[c], d2Dense2[c], Tight());
@@ -239,8 +239,8 @@ public class doubleJacobiPrecondTests
         => new JacobiPrecondTestJob { Type = JacobiPrecondTestJob.TestType.ColumnNormsSquaredDenseMatchesReference }.Run();
 
     [Test]
-    public void ColumnNormsSquaredBSMMatchesDenseTest()
-        => new JacobiPrecondTestJob { Type = JacobiPrecondTestJob.TestType.ColumnNormsSquaredBSMMatchesDense }.Run();
+    public void ColumnNormsSquaredBSRMatchesDenseTest()
+        => new JacobiPrecondTestJob { Type = JacobiPrecondTestJob.TestType.ColumnNormsSquaredBSRMatchesDense }.Run();
 
     [Test]
     public void BuildJacobiScaleZeroColumnGuardTest()
@@ -258,18 +258,18 @@ public class doubleJacobiPrecondTests
     public void ColScaledOperatorSolvesConsistentTest()
         => new JacobiPrecondTestJob { Type = JacobiPrecondTestJob.TestType.ColScaledOperatorSolvesConsistent }.Run();
 
-    // ---- managed-thread reject: Symmetric BSM is not supported by columnNormsSquared ----
+    // ---- managed-thread reject: Symmetric BSR is not supported by columnNormsSquared ----
     [Test]
-    public void ColumnNormsSquaredBSMSymmetricThrows()
+    public void ColumnNormsSquaredBSRSymmetricThrows()
     {
         var arena = new Arena(Allocator.Persistent);
 
-        // A diagonal 1x1-block matrix is trivially symmetric -> ToBSMSymmetric accepts it.
-        var s = arena.doubleBSMBuilder(3, 3, 1, 1, 3);
+        // A diagonal 1x1-block matrix is trivially symmetric -> ToBSRSymmetric accepts it.
+        var s = arena.doubleBSRBuilder(3, 3, 1, 1, 3);
         s.AddValue(0, 0, (double)2);
         s.AddValue(1, 1, (double)3);
         s.AddValue(2, 2, (double)4);
-        var sym = s.ToBSMSymmetric(ref arena);
+        var sym = s.ToBSRSymmetric(ref arena);
 
         var d2 = arena.doubleVec(3);
         Assert.Throws<ArgumentException>(() => Sparse_OP.columnNormsSquared(in sym, ref d2));

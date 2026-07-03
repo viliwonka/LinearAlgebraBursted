@@ -6,8 +6,8 @@ namespace LinearAlgebra
     {
         internal UnsafeList<doubleN> doubleVectors;
         internal UnsafeList<doubleMxN> doubleMatrices;
-        internal UnsafeList<doubleN> tempdoubleVectors;
-        internal UnsafeList<doubleMxN> tempdoubleMatrices;
+        internal UnsafeList<doubleN> doubleTempVectors;
+        internal UnsafeList<doubleMxN> doubleTempMatrices;
     }
 
     public unsafe partial struct Arena {
@@ -38,17 +38,17 @@ namespace LinearAlgebra
             return vec;
         }
 
-        internal doubleN tempdoubleVec(int N, bool uninit = false)
+        internal doubleN doubleTempVec(int N, bool uninit = false)
         {
             var vec = new doubleN(N, in this, uninit);
-            _core->tempdoubleVectors.Add(in vec);
+            _core->doubleTempVectors.Add(in vec);
             return vec;
         }
 
-        internal doubleN tempdoubleVec(in doubleN orig)
+        internal doubleN doubleTempVec(in doubleN orig)
         {
             var vec = new doubleN(in orig);
-            _core->tempdoubleVectors.Add(in vec);
+            _core->doubleTempVectors.Add(in vec);
             return vec;
         }
         #endregion
@@ -86,17 +86,17 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        internal doubleMxN tempdoubleMat(int M_rows, int M_cols, bool uninit = false)
+        internal doubleMxN doubleTempMat(int M_rows, int M_cols, bool uninit = false)
         {
             var matrix = new doubleMxN(M_rows, M_cols, in this, uninit);
-            _core->tempdoubleMatrices.Add(in matrix);
+            _core->doubleTempMatrices.Add(in matrix);
             return matrix;
         }
 
-        internal doubleMxN tempdoubleMat(in doubleMxN orig)
+        internal doubleMxN doubleTempMat(in doubleMxN orig)
         {
             var matrix = new doubleMxN(orig);
-            _core->tempdoubleMatrices.Add(in matrix);
+            _core->doubleTempMatrices.Add(in matrix);
             return matrix;
         }
         #endregion
@@ -108,7 +108,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in doubleN v) {
-            for (int i = 0; i < _core->tempdoubleVectors.Length; i++) if (_core->tempdoubleVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->doubleTempVectors.Length; i++) if (_core->doubleTempVectors[i].Data.Ptr == v.Data.Ptr) return true;
             return false;
         }
         public bool isPersistent(in doubleMxN m) {
@@ -116,7 +116,7 @@ namespace LinearAlgebra
             return false;
         }
         public bool isTemp(in doubleMxN m) {
-            for (int i = 0; i < _core->tempdoubleMatrices.Length; i++) if (_core->tempdoubleMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->doubleTempMatrices.Length; i++) if (_core->doubleTempMatrices[i].Data.Ptr == m.Data.Ptr) return true;
             return false;
         }
 

@@ -25,7 +25,7 @@ namespace LinearAlgebra
         // The leading k columns of (U, Σ, W) are the approximate top-k SVD.
         //
         // Buffers come from A's temp pool (allocating overloads) or a caller-provided
-        // fProxySVDRandomized_WS (ref-workspace overloads) — see that struct for layout.
+        // fProxySVDRandomizedCache (ref-workspace overloads) — see that struct for layout.
 
         // Default sketch seed (golden-ratio constant). Inlined rather than a const field because this
         // type-independent member would otherwise be emitted into BOTH the float and double generated
@@ -46,11 +46,11 @@ namespace LinearAlgebra
         /// flag (false -&gt; outputs undefined). A is NOT modified.
         ///
         /// <paramref name="ws"/> holds all scratch; size it with
-        /// Arena.fProxySVDRandomized_WS(m, n, k, oversample) using the SAME k and oversample.
+        /// Arena.fProxySVDRandomizedCache(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static bool svdRandomized(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter,
-                                         ref fProxySVDRandomized_WS ws)
+                                         ref fProxySVDRandomizedCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -100,12 +100,12 @@ namespace LinearAlgebra
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
         public static bool svdRandomized(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
-                                         int k, uint seed, ref fProxySVDRandomized_WS ws)
+                                         int k, uint seed, ref fProxySVDRandomizedCache ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75, ref ws);
 
         /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
         public static bool svdRandomized(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
-                                         int k, ref fProxySVDRandomized_WS ws)
+                                         int k, ref fProxySVDRandomizedCache ws)
             => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
 
         /// <summary>
@@ -121,20 +121,20 @@ namespace LinearAlgebra
             RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIter);
 
             int l = math.min(k + oversample, n);
-            var ws = new fProxySVDRandomized_WS
+            var ws = new fProxySVDRandomizedCache
             {
-                Omega = A.tempfProxyMat(n, l),
-                Y = A.tempfProxyMat(m, l),
-                R = A.tempfProxyMat(l, l),
-                qu = A.tempfProxyVec(m),
-                qw = A.tempfProxyVec(l),
-                Z = A.tempfProxyMat(n, l),
-                B = A.tempfProxyMat(l, n),
-                Bt = A.tempfProxyMat(n, l),
-                Up = A.tempfProxyMat(n, l),
-                Sb = A.tempfProxyVec(l),
-                Vp = A.tempfProxyMat(l, l),
-                UA = A.tempfProxyMat(m, l)
+                Omega = A.fProxyTempMat(n, l),
+                Y = A.fProxyTempMat(m, l),
+                R = A.fProxyTempMat(l, l),
+                qu = A.fProxyTempVec(m),
+                qw = A.fProxyTempVec(l),
+                Z = A.fProxyTempMat(n, l),
+                B = A.fProxyTempMat(l, n),
+                Bt = A.fProxyTempMat(n, l),
+                Up = A.fProxyTempMat(n, l),
+                Sb = A.fProxyTempVec(l),
+                Vp = A.fProxyTempMat(l, l),
+                UA = A.fProxyTempMat(m, l)
             };
             return svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, maxIter, ref ws);
         }

@@ -130,7 +130,7 @@ public class fProxySpecialConstructorsTests {
         public void IndexOneVec()
         {
             var arena = new Arena(Allocator.Persistent);
-            var v = arena.fProxyIndexOneVector(16);
+            var v = arena.fProxyIndexOneVec(16);
 
             for (int i = 0; i < v.N; i++) {
                 Assert.IsTrue(v[i] == (fProxy)i + 1);

@@ -5,19 +5,19 @@ using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
-    // Burst-safe block-structure printing for fProxyBSM (block-CSR sparse matrix), mirroring
+    // Burst-safe block-structure printing for fProxyBSR (block-CSR sparse matrix), mirroring
     // Print.Spy/Print.Log for dense matrices (Debug.fProxy.cs) but at BLOCK granularity: one char
-    // per BR x BC block instead of per scalar. See Sparse/fProxyBSM.cs for the RowPtr/ColInd/Values
+    // per BR x BC block instead of per scalar. See Sparse/fProxyBSR.cs for the RowPtr/ColInd/Values
     // (CSR-of-blocks, row-major block interior) layout this reads. Lives in namespace LinearAlgebra
     // (not LinearAlgebra.Sparse) so it merges into the same `Print` partial class as the dense
-    // overloads -- fProxyBSM is brought in via the `using LinearAlgebra.Sparse;` above.
+    // overloads -- fProxyBSR is brought in via the `using LinearAlgebra.Sparse;` above.
     public static partial class Print
     {
         // Scans ColInd[RowPtr[row]..RowPtr[row+1)) for `col`. ColInd is ascending within a row
-        // (see fProxyBSM.cs), so this early-exits once it passes col instead of scanning the whole
+        // (see fProxyBSR.cs), so this early-exits once it passes col instead of scanning the whole
         // row. Used both directly (non-symmetric) and with (row,col) swapped to mirror the stored
         // upper block-triangle into the lower triangle for Symmetric matrices.
-        static bool BsmBlockStored(in fProxyBSM m, int row, int col)
+        static bool BsrBlockStored(in fProxyBSR m, int row, int col)
         {
             int start = m.RowPtr[row];
             int end = m.RowPtr[row + 1];
@@ -36,11 +36,11 @@ namespace LinearAlgebra
         // partials and collide (CS0102).
 
         // Appends the header + block-sparsity grid ('X' stored / '.' absent) into str. One char per
-        // block; for Symmetric matrices (only the upper block-triangle is stored, see fProxyBSM.cs)
+        // block; for Symmetric matrices (only the upper block-triangle is stored, see fProxyBSR.cs)
         // the lower triangle is mirrored in the DISPLAY only -- storage itself is untouched. Caps
         // against the FixedString4096Bytes budget and appends "..." instead of overflowing. Returns
         // true if the grid was truncated (caller can skip anything more expensive after that).
-        static bool AppendBsmSpyGrid(in fProxyBSM m, ref FixedString4096Bytes str)
+        static bool AppendBsrSpyGrid(in fProxyBSR m, ref FixedString4096Bytes str)
         {
             int mb = m.BlockRows;
             int nb = m.BlockCols;
@@ -48,7 +48,7 @@ namespace LinearAlgebra
             int totalBlocks = mb * nb;
             fProxy density = totalBlocks > 0 ? (fProxy)nnzb / (fProxy)totalBlocks : (fProxy)0;
 
-            FixedString128Bytes header1 = "BSM block sparsity print\n";
+            FixedString128Bytes header1 = "BSR block sparsity print\n";
             FixedString128Bytes header2 = $"Dim | Rows:{m.M_Rows} Cols:{m.N_Cols}  Block:{m.BR}x{m.BC}  Grid:{mb}x{nb}\n";
             FixedString128Bytes header3 = $"Nnzb:{nnzb}  Symmetric:{(m.Symmetric ? 1 : 0)}  Density:{density:G3}\n";
 
@@ -73,9 +73,9 @@ namespace LinearAlgebra
                 {
                     bool present;
                     if (m.Symmetric && br > bc)
-                        present = BsmBlockStored(in m, bc, br); // mirror: (bc,br) is the stored upper block
+                        present = BsrBlockStored(in m, bc, br); // mirror: (bc,br) is the stored upper block
                     else
-                        present = BsmBlockStored(in m, br, bc);
+                        present = BsrBlockStored(in m, br, bc);
 
                     str.Append(present ? 'X' : '.');
                 }
@@ -98,10 +98,10 @@ namespace LinearAlgebra
         /// BlockCols, Nnzb and block density. Symmetric matrices (upper-block-triangle-only
         /// storage) are mirrored into the lower triangle for the display.
         /// </summary>
-        public static void Spy(in fProxyBSM m)
+        public static void Spy(in fProxyBSR m)
         {
             FixedString4096Bytes str = new FixedString4096Bytes();
-            AppendBsmSpyGrid(in m, ref str);
+            AppendBsrSpyGrid(in m, ref str);
             UnityEngine.Debug.Log($"{str}");
         }
 
@@ -111,10 +111,10 @@ namespace LinearAlgebra
         /// what is actually stored). Caps against the FixedString4096Bytes budget and appends "..."
         /// instead of overflowing, both for the grid and for the value dump.
         /// </summary>
-        public static void Log(in fProxyBSM m)
+        public static void Log(in fProxyBSR m)
         {
             FixedString4096Bytes str = new FixedString4096Bytes();
-            bool truncated = AppendBsmSpyGrid(in m, ref str);
+            bool truncated = AppendBsrSpyGrid(in m, ref str);
 
             if (!truncated)
             {

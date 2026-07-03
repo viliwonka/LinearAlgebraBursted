@@ -128,7 +128,7 @@ namespace LinearAlgebra
         /// B (n×n) receives the upper bidiagonal factor (nonzero only on main diagonal and first superdiagonal).
         /// V (n×n) receives the right orthogonal factor (VᵀV = I_n).</para>
         /// <para>Zero-alloc: scratch comes from the caller-provided <paramref name="ws"/> (see
-        /// <see cref="fProxyBidiag_WS"/>); nothing is allocated internally.</para>
+        /// <see cref="fProxyBidiagCache"/>); nothing is allocated internally.</para>
         /// </summary>
         /// <param name="A">Input m×n matrix (m≥n). Not modified.</param>
         /// <param name="U">Output m×n left factor (orthonormal columns). Caller-allocated.</param>
@@ -136,7 +136,7 @@ namespace LinearAlgebra
         /// <param name="V">Output n×n right orthogonal factor. Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bidiagonalize(in fProxyMxN A, ref fProxyMxN U, ref fProxyMxN B, ref fProxyMxN V,
-                                         ref fProxyBidiag_WS ws)
+                                         ref fProxyBidiagCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -242,7 +242,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new fProxyBidiag_WS
+            var ws = new fProxyBidiagCache
             {
                 W = new fProxyMxN(m, n, Allocator.Temp, true),
                 leftU = new fProxyMxN(m, n, Allocator.Temp, false),
@@ -273,7 +273,7 @@ namespace LinearAlgebra
         /// <param name="e">Output superdiagonal, length n (e[0]=0). Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bidiagonalizeValues(in fProxyMxN A, ref fProxyN d, ref fProxyN e,
-                                               ref fProxyBidiag_WS ws)
+                                               ref fProxyBidiagCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -331,7 +331,7 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            var ws = new fProxyBidiag_WS
+            var ws = new fProxyBidiagCache
             {
                 W = new fProxyMxN(m, n, Allocator.Temp, true),
                 uVec = new fProxyN(m, Allocator.Temp, false),

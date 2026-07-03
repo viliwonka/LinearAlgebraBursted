@@ -42,7 +42,7 @@ namespace LinearAlgebra.ML
         /// <paramref name="assignment"/> N output cluster labels in [0, k); always consistent with returned centroids.
         /// <paramref name="inertia"/>    Final total SSE; always consistent with returned centroids and assignment.
         /// <paramref name="iters"/>      Actual iteration count in [1, maxIter].
-        /// <paramref name="ws"/>         Pre-allocated workspace — Arena.doubleKMeans_WS(N, D, k).
+        /// <paramref name="ws"/>         Pre-allocated workspace — Arena.doubleKMeansCache(N, D, k).
         /// </summary>
         public static void kmeans(
             in doubleMxN X,
@@ -54,7 +54,7 @@ namespace LinearAlgebra.ML
             ref Indices assignment,
             out double inertia,
             out int iters,
-            ref doubleKMeans_WS ws)
+            ref doubleKMeansCache ws)
         {
             // ---- input guards ----
             if (X.M_Rows == 0 || X.N_Cols == 0)
@@ -270,7 +270,7 @@ namespace LinearAlgebra.ML
         // =========================================================================
 
         /// <summary>
-        /// Calls <see cref="kmeans(in doubleMxN,int,uint,int,KMeansInit,ref doubleMxN,ref Indices,out double,out int,ref doubleKMeans_WS)"/>
+        /// Calls <see cref="kmeans(in doubleMxN,int,uint,int,KMeansInit,ref doubleMxN,ref Indices,out double,out int,ref doubleKMeansCache)"/>
         /// with <c>init = KMeansInit.KMeansPlusPlus</c>.
         /// </summary>
         public static void kmeans(
@@ -282,7 +282,7 @@ namespace LinearAlgebra.ML
             ref Indices assignment,
             out double inertia,
             out int iters,
-            ref doubleKMeans_WS ws)
+            ref doubleKMeansCache ws)
             => kmeans(in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
                       ref centroids, ref assignment, out inertia, out iters, ref ws);
 
@@ -324,7 +324,7 @@ namespace LinearAlgebra.ML
             int kk = math.min(k, N);  // match the primary overload's clamp
             centroids  = arena.doubleMat(kk, D);
             assignment = arena.Indices(N);
-            var ws     = arena.doubleKMeans_WS(N, D, kk);
+            var ws     = arena.doubleKMeansCache(N, D, kk);
             kmeans(in X, k, seed, maxIter, init, ref centroids, ref assignment,
                    out inertia, out iters, ref ws);
         }
@@ -363,7 +363,7 @@ namespace LinearAlgebra.ML
             in doubleMxN X, int N, int D, int k,
             ref Random rng,
             ref doubleMxN centroids,
-            ref doubleKMeans_WS ws)
+            ref doubleKMeansCache ws)
         {
             // First centroid: uniform random point.
             int firstIdx = math.min((int)(rng.NextDouble() * (double)N), N - 1);

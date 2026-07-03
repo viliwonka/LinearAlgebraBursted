@@ -128,7 +128,7 @@ namespace LinearAlgebra.Realtime
         /// </summary>
         public fProxyMxN AsMatrix()
         {
-            var m = _buffer.tempfProxyMat(_count, _features);
+            var m = _buffer.fProxyTempMat(_count, _features);
             AsMatrix(ref m);
             return m;
         }
@@ -160,7 +160,7 @@ namespace LinearAlgebra.Realtime
         /// <summary>Allocating moving average — a fresh Features vector from the arena TEMP pool.</summary>
         public fProxyN Mean()
         {
-            var v = _buffer.tempfProxyVec(_features);
+            var v = _buffer.fProxyTempVec(_features);
             Mean(ref v);
             return v;
         }
@@ -178,7 +178,7 @@ namespace LinearAlgebra.Realtime
                 throw new ArgumentException("RollingWindow.Covariance: dest must be Features x Features");
 
             // Time-order into a temp matrix, then reuse the StatsOP covariance core.
-            var m = _buffer.tempfProxyMat(_count, _features);
+            var m = _buffer.fProxyTempMat(_count, _features);
             AsMatrix(ref m);
             fProxyStats_OP.covarianceInto(in m, ref dest);
         }
@@ -186,7 +186,7 @@ namespace LinearAlgebra.Realtime
         /// <summary>Allocating covariance — a fresh Features×Features matrix from the arena TEMP pool.</summary>
         public fProxyMxN Covariance()
         {
-            var c = _buffer.tempfProxyMat(_features, _features);
+            var c = _buffer.fProxyTempMat(_features, _features);
             Covariance(ref c);
             return c;
         }

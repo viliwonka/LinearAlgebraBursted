@@ -7,8 +7,8 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Phase-1 Block Sparse Matrix (BSM / block-CSR) test suite. Every correctness case validates
-// the sparse op against the DENSE reference: build a floatBSM via the builder, expand with
+// Phase-1 Block Sparse Matrix (BSR / block-CSR) test suite. Every correctness case validates
+// the sparse op against the DENSE reference: build a fProxyBSR via the builder, expand with
 // ToDense, and compare spMV/spMVT against Linear_OP.dot on the dense expansion. Property /
 // reconstruction checks are preferred over hard-coded element values, except the small
 // hand-computable cases where an exact expected matrix is more convincing.
@@ -17,10 +17,10 @@ using Unity.Mathematics;
 // ConjugateGradientTests). The guard / exception cases run on the managed test thread with
 // Assert.Throws (same pattern as BidiagWorkspaceTests / ClampTests) -- NUnit's Assert.Throws
 // cannot execute inside a Burst-compiled job.
-public class floatSparseBSMTests
+public class fProxySparseBSRTests
 {
     [BurstCompile]
-    public struct SparseBSMTestJob : IJob
+    public struct SparseBSRTestJob : IJob
     {
         public enum TestType
         {
@@ -33,7 +33,7 @@ public class floatSparseBSMTests
             OneByOneBlocks,
             GrowthThenDispose,
             ClearThenReallocate,
-            EmptyBSMRoundTrip,
+            EmptyBSRRoundTrip,
         }
 
         public TestType Type;
@@ -41,7 +41,7 @@ public class floatSparseBSMTests
         // Reconstruction / matvec error tolerance. Values live in [-1,1] and the dot products
         // sum O(N_Cols) products, so the absolute error stays well below this scaled threshold
         // on both precisions (float needs the looser bound, double is far tighter).
-        static float Tol() => 1e-4f;
+        static fProxy Tol() => /*+choose[1e-4f|1e-11]*/1e-4f/*-choose*/;
 
         public void Execute()
         {
@@ -56,7 +56,7 @@ public class floatSparseBSMTests
                 case TestType.OneByOneBlocks: OneByOneBlocks(); break;
                 case TestType.GrowthThenDispose: GrowthThenDispose(); break;
                 case TestType.ClearThenReallocate: ClearThenReallocate(); break;
-                case TestType.EmptyBSMRoundTrip: EmptyBSMRoundTrip(); break;
+                case TestType.EmptyBSRRoundTrip: EmptyBSRRoundTrip(); break;
             }
         }
 
@@ -64,7 +64,7 @@ public class floatSparseBSMTests
 
         // Independent (does NOT reuse ToDense's indexing) scatter of a BR x BC block into a
         // zero-initialized dense matrix at block position (br, bc).
-        static void Scatter(ref floatMxN dense, int br, int bc, in floatMxN block)
+        static void Scatter(ref fProxyMxN dense, int br, int bc, in fProxyMxN block)
         {
             int BR = block.M_Rows, BC = block.N_Cols;
             for (int r = 0; r < BR; r++)
@@ -76,18 +76,18 @@ public class floatSparseBSMTests
         //
         // Dangling-arena-pointer history: see ToDense_TransposeReference_Works below. Kept as a
         // hand-rolled reference anyway since it's cheaper and has no dependence on Linear_OP.trans.
-        static void DenseTransMatVec(in floatMxN dense, in floatN x, ref floatN y)
+        static void DenseTransMatVec(in fProxyMxN dense, in fProxyN x, ref fProxyN y)
         {
             for (int j = 0; j < dense.N_Cols; j++)
             {
-                float s = 0;
+                fProxy s = 0;
                 for (int i = 0; i < dense.M_Rows; i++)
                     s += dense[i, j] * x[i];
                 y[j] = s;
             }
         }
 
-        static void AssertMatEq(in floatMxN a, in floatMxN b, float tol)
+        static void AssertMatEq(in fProxyMxN a, in fProxyMxN b, fProxy tol)
         {
             Assert.IsTrue(a.M_Rows == b.M_Rows);
             Assert.IsTrue(a.N_Cols == b.N_Cols);
@@ -96,32 +96,32 @@ public class floatSparseBSMTests
                     Assert.IsTrue(math.abs(a[i, j] - b[i, j]) < tol);
         }
 
-        // ---- 1. hand-built small BSM: 2x2 grid of 3x3 blocks, some blocks omitted ---------
+        // ---- 1. hand-built small BSR: 2x2 grid of 3x3 blocks, some blocks omitted ---------
         void HandBuiltSmall()
         {
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 3, BC = 3;
-            var builder = arena.floatBSMBuilder(2, 2, BR, BC);
+            var builder = arena.fProxyBSRBuilder(2, 2, BR, BC);
 
             // Three distinct blocks placed at (0,0), (0,1), (1,1). Block (1,0) intentionally
             // omitted -> must expand to a zero 3x3 region.
-            var b00 = arena.floatMat(BR, BC);
-            var b01 = arena.floatMat(BR, BC);
-            var b11 = arena.floatMat(BR, BC);
+            var b00 = arena.fProxyMat(BR, BC);
+            var b01 = arena.fProxyMat(BR, BC);
+            var b11 = arena.fProxyMat(BR, BC);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BC; c++)
                 {
-                    b00[r, c] = (float)(10 + r * BC + c);
-                    b01[r, c] = (float)(20 + r * BC + c);
-                    b11[r, c] = (float)(30 + r * BC + c);
+                    b00[r, c] = (fProxy)(10 + r * BC + c);
+                    b01[r, c] = (fProxy)(20 + r * BC + c);
+                    b11[r, c] = (fProxy)(30 + r * BC + c);
                 }
 
             builder.AddBlock(0, 0, in b00);
             builder.AddBlock(0, 1, in b01);
             builder.AddBlock(1, 1, in b11);
 
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
 
             // Structural expectations.
             Assert.IsTrue(A.M_Rows == 6);
@@ -132,7 +132,7 @@ public class floatSparseBSMTests
             Assert.IsTrue(A.RowPtr.Length == 3); // BlockRows + 1
 
             // Independent reference dense (manual scatter, zeros elsewhere).
-            var expected = arena.floatMat(6, 6);
+            var expected = arena.fProxyMat(6, 6);
             Scatter(ref expected, 0, 0, in b00);
             Scatter(ref expected, 0, 1, in b01);
             Scatter(ref expected, 1, 1, in b11);
@@ -143,30 +143,30 @@ public class floatSparseBSMTests
             arena.Dispose();
         }
 
-        // Build a random BSM on a 3x3 block grid of 3x3 blocks (9x9), a handful of blocks.
-        static floatBSM BuildRandom(ref Arena arena)
+        // Build a random BSR on a 3x3 block grid of 3x3 blocks (9x9), a handful of blocks.
+        static fProxyBSR BuildRandom(ref Arena arena)
         {
             const int BR = 3, BC = 3;
-            var builder = arena.floatBSMBuilder(3, 3, BR, BC);
-            builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 1001));
-            builder.AddBlock(0, 2, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 1002));
-            builder.AddBlock(1, 1, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 1003));
-            builder.AddBlock(2, 0, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 1004));
-            builder.AddBlock(2, 2, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 1005));
-            return builder.ToBSM(ref arena);
+            var builder = arena.fProxyBSRBuilder(3, 3, BR, BC);
+            builder.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 1001));
+            builder.AddBlock(0, 2, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 1002));
+            builder.AddBlock(1, 1, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 1003));
+            builder.AddBlock(2, 0, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 1004));
+            builder.AddBlock(2, 2, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 1005));
+            return builder.ToBSR(ref arena);
         }
 
-        // ---- 2. random BSM: spMV(A,x) == dense(A)*x --------------------------------------
+        // ---- 2. random BSR: spMV(A,x) == dense(A)*x --------------------------------------
         void RandomSpMV()
         {
             var arena = new Arena(Allocator.Persistent);
 
             var A = BuildRandom(ref arena);
             var dense = A.ToDense(ref arena);
-            var x = arena.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, 7777);
+            var x = arena.fProxyRandomVec(A.N_Cols, (fProxy)(-1f), (fProxy)1f, 7777);
 
             // ref-dest overload.
-            var y = arena.floatVec(A.M_Rows);
+            var y = arena.fProxyVec(A.M_Rows);
             Sparse_OP.spMV(in A, in x, ref y);
 
             var yRef = Linear_OP.dot(dense, x);
@@ -179,19 +179,19 @@ public class floatSparseBSMTests
             arena.Dispose();
         }
 
-        // ---- 3. random BSM: spMVT(A,x) == dense(A)^T * x ---------------------------------
+        // ---- 3. random BSR: spMVT(A,x) == dense(A)^T * x ---------------------------------
         void RandomSpMVT()
         {
             var arena = new Arena(Allocator.Persistent);
 
             var A = BuildRandom(ref arena);
             var dense = A.ToDense(ref arena);
-            var x = arena.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, 8888);
+            var x = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 8888);
 
-            var y = arena.floatVec(A.N_Cols);
+            var y = arena.fProxyVec(A.N_Cols);
             Sparse_OP.spMVT(in A, in x, ref y);
 
-            var yRef = arena.floatVec(A.N_Cols);
+            var yRef = arena.fProxyVec(A.N_Cols);
             DenseTransMatVec(in dense, in x, ref yRef);
             Assert.IsTrue(Analysis_OP.isZero(y - yRef, Tol()));
 
@@ -207,11 +207,11 @@ public class floatSparseBSMTests
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2, BC = 3;
-            var builder = arena.floatBSMBuilder(2, 3, BR, BC); // 4 x 9 dense
-            builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 2001));
-            builder.AddBlock(0, 2, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 2002));
-            builder.AddBlock(1, 1, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 2003));
-            var A = builder.ToBSM(ref arena);
+            var builder = arena.fProxyBSRBuilder(2, 3, BR, BC); // 4 x 9 dense
+            builder.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 2001));
+            builder.AddBlock(0, 2, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 2002));
+            builder.AddBlock(1, 1, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 2003));
+            var A = builder.ToBSR(ref arena);
 
             Assert.IsTrue(A.M_Rows == 4);
             Assert.IsTrue(A.N_Cols == 9);
@@ -221,16 +221,16 @@ public class floatSparseBSMTests
             Assert.IsTrue(dense.N_Cols == 9);
 
             // spMV: x has N_Cols, y has M_Rows.
-            var x = arena.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, 2100);
-            var y = arena.floatVec(A.M_Rows);
+            var x = arena.fProxyRandomVec(A.N_Cols, (fProxy)(-1f), (fProxy)1f, 2100);
+            var y = arena.fProxyVec(A.M_Rows);
             Sparse_OP.spMV(in A, in x, ref y);
             Assert.IsTrue(Analysis_OP.isZero(y - Linear_OP.dot(dense, x), Tol()));
 
             // spMVT: x has M_Rows, y has N_Cols.
-            var xt = arena.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, 2200);
-            var yt = arena.floatVec(A.N_Cols);
+            var xt = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 2200);
+            var yt = arena.fProxyVec(A.N_Cols);
             Sparse_OP.spMVT(in A, in xt, ref yt);
-            var ytRef = arena.floatVec(A.N_Cols);
+            var ytRef = arena.fProxyVec(A.N_Cols);
             DenseTransMatVec(in dense, in xt, ref ytRef);
             Assert.IsTrue(Analysis_OP.isZero(yt - ytRef, Tol()));
 
@@ -243,30 +243,30 @@ public class floatSparseBSMTests
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2, BC = 2;
-            var builder = arena.floatBSMBuilder(2, 2, BR, BC); // 4 x 4 dense
+            var builder = arena.fProxyBSRBuilder(2, 2, BR, BC); // 4 x 4 dense
 
-            var blkA = arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 3001);
-            var blkB = arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 3002);
+            var blkA = arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 3001);
+            var blkB = arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 3002);
 
             builder.AddBlock(0, 0, in blkA);
             builder.AddBlock(0, 0, in blkB);           // duplicate block -> summed
 
             // Two scalar adds into the SAME global cell (also inside block (0,0)).
-            builder.AddValue(1, 0, (float)5);
-            builder.AddValue(1, 0, (float)7);          // duplicate scalar -> summed
+            builder.AddValue(1, 0, (fProxy)5);
+            builder.AddValue(1, 0, (fProxy)7);          // duplicate scalar -> summed
 
             Assert.IsTrue(builder.TripletCount == 4);   // pre-compression: 2 blocks + 2 scalars
 
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
             Assert.IsTrue(A.Nnzb == 1);                 // all four triplets collapse to one block
 
             // Independent reference: sum blkA + blkB, then add 12 to local (1,0) == global (1,0).
-            var expected = arena.floatMat(4, 4);
-            var sum = arena.floatMat(BR, BC);
+            var expected = arena.fProxyMat(4, 4);
+            var sum = arena.fProxyMat(BR, BC);
             for (int r = 0; r < BR; r++)
                 for (int c = 0; c < BC; c++)
                     sum[r, c] = blkA[r, c] + blkB[r, c];
-            sum[1, 0] += (float)12;
+            sum[1, 0] += (fProxy)12;
             Scatter(ref expected, 0, 0, in sum);
 
             var dense = A.ToDense(ref arena);
@@ -281,14 +281,14 @@ public class floatSparseBSMTests
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2, BC = 2;
-            var builder = arena.floatBSMBuilder(2, 3, BR, BC); // 4 x 6 dense
+            var builder = arena.fProxyBSRBuilder(2, 3, BR, BC); // 4 x 6 dense
 
             // Scrambled (br,bc) insertion order across both rows.
-            var b_1_2 = arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 4001);
-            var b_0_2 = arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 4002);
-            var b_1_0 = arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 4003);
-            var b_0_0 = arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 4004);
-            var b_0_1 = arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 4005);
+            var b_1_2 = arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 4001);
+            var b_0_2 = arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 4002);
+            var b_1_0 = arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 4003);
+            var b_0_0 = arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 4004);
+            var b_0_1 = arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 4005);
 
             builder.AddBlock(1, 2, in b_1_2);
             builder.AddBlock(0, 2, in b_0_2);
@@ -296,7 +296,7 @@ public class floatSparseBSMTests
             builder.AddBlock(0, 0, in b_0_0);
             builder.AddBlock(0, 1, in b_0_1);
 
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
 
             // ColInd strictly ascending within each block-row.
             for (int row = 0; row < A.BlockRows; row++)
@@ -308,7 +308,7 @@ public class floatSparseBSMTests
             }
 
             // ...and the expansion is correct regardless of insertion order.
-            var expected = arena.floatMat(4, 6);
+            var expected = arena.fProxyMat(4, 6);
             Scatter(ref expected, 0, 0, in b_0_0);
             Scatter(ref expected, 0, 1, in b_0_1);
             Scatter(ref expected, 0, 2, in b_0_2);
@@ -321,38 +321,38 @@ public class floatSparseBSMTests
             arena.Dispose();
         }
 
-        // ---- 7. 1x1-block BSM == plain sparse scalar matrix ------------------------------
+        // ---- 7. 1x1-block BSR == plain sparse scalar matrix ------------------------------
         void OneByOneBlocks()
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var builder = arena.floatBSMBuilder(4, 4, 1, 1); // 4 x 4 scalar sparse
+            var builder = arena.fProxyBSRBuilder(4, 4, 1, 1); // 4 x 4 scalar sparse
 
             // Scatter of scalar entries (some rows empty, one duplicate to also exercise sum).
-            builder.AddValue(0, 0, (float)2);
-            builder.AddValue(0, 3, (float)(-1));
-            builder.AddValue(2, 1, (float)4);
-            builder.AddValue(3, 3, (float)5);
-            builder.AddValue(0, 0, (float)1); // duplicate at (0,0) -> 2 + 1 = 3
+            builder.AddValue(0, 0, (fProxy)2);
+            builder.AddValue(0, 3, (fProxy)(-1));
+            builder.AddValue(2, 1, (fProxy)4);
+            builder.AddValue(3, 3, (fProxy)5);
+            builder.AddValue(0, 0, (fProxy)1); // duplicate at (0,0) -> 2 + 1 = 3
 
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
             Assert.IsTrue(A.M_Rows == 4);
             Assert.IsTrue(A.N_Cols == 4);
             Assert.IsTrue(A.BR == 1);
             Assert.IsTrue(A.BC == 1);
 
-            var expected = arena.floatMat(4, 4);
-            expected[0, 0] = (float)3;
-            expected[0, 3] = (float)(-1);
-            expected[2, 1] = (float)4;
-            expected[3, 3] = (float)5;
+            var expected = arena.fProxyMat(4, 4);
+            expected[0, 0] = (fProxy)3;
+            expected[0, 3] = (fProxy)(-1);
+            expected[2, 1] = (fProxy)4;
+            expected[3, 3] = (fProxy)5;
 
             var dense = A.ToDense(ref arena);
             AssertMatEq(in dense, in expected, Tol());
 
             // spMV must match the dense reference too.
-            var x = arena.floatRandomVec(4, (float)(-1f), (float)1f, 5050);
-            var y = arena.floatVec(4);
+            var x = arena.fProxyRandomVec(4, (fProxy)(-1f), (fProxy)1f, 5050);
+            var y = arena.fProxyVec(4);
             Sparse_OP.spMV(in A, in x, ref y);
             Assert.IsTrue(Analysis_OP.isZero(y - Linear_OP.dot(expected, x), Tol()));
 
@@ -368,16 +368,16 @@ public class floatSparseBSMTests
         // growth path that used to leave the arena's tracked value-copy of the builder pointing
         // at a freed pre-growth buffer (double-free / use-after-free on dispose). Values come
         // from `refDense`; the caller keeps `refDense` as the independent dense reference.
-        static floatBSM BuildDenseGrown(ref Arena arena, in floatMxN refDense, out int tripletCount)
+        static fProxyBSR BuildDenseGrown(ref Arena arena, in fProxyMxN refDense, out int tripletCount)
         {
             int N = refDense.M_Rows;
-            var builder = arena.floatBSMBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
+            var builder = arena.fProxyBSRBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
             for (int r = 0; r < N; r++)
                 for (int c = 0; c < N; c++)
                     builder.AddValue(r, c, refDense[r, c]);
 
             tripletCount = builder.TripletCount;
-            return builder.ToBSM(ref arena);
+            return builder.ToBSR(ref arena);
         }
 
         // ---- 8. growth past capacityHint then arena.Dispose() (the crash) + correctness ------
@@ -393,7 +393,7 @@ public class floatSparseBSMTests
             var arena = new Arena(Allocator.Persistent);
 
             const int N = 15;
-            var refDense = arena.floatRandomMat(N, N, (float)(-1f), (float)1f, 74101);
+            var refDense = arena.fProxyRandomMat(N, N, (fProxy)(-1f), (fProxy)1f, 74101);
 
             var A = BuildDenseGrown(ref arena, in refDense, out int tripletCount);
 
@@ -407,8 +407,8 @@ public class floatSparseBSMTests
             AssertMatEq(in dense, in refDense, Tol());
 
             // Correctness #2: spMV after growth matches the dense matvec.
-            var x = arena.floatRandomVec(N, (float)(-1f), (float)1f, 74202);
-            var y = arena.floatVec(N);
+            var x = arena.fProxyRandomVec(N, (fProxy)(-1f), (fProxy)1f, 74202);
+            var y = arena.fProxyVec(N);
             Sparse_OP.spMV(in A, in x, ref y);
             Assert.IsTrue(Analysis_OP.isZero(y - Linear_OP.dot(refDense, x), Tol()));
 
@@ -419,7 +419,7 @@ public class floatSparseBSMTests
         // ---- 9. Clear() then reallocate a second grown builder in the SAME arena -------------
         //
         // Proves the arena's builder-tracking list is safely reusable after Clear(): grow a
-        // first builder past capacityHint, ToBSM, Clear() (disposes the first builder's shared
+        // first builder past capacityHint, ToBSR, Clear() (disposes the first builder's shared
         // state and empties the tracking list WITHOUT tearing down the arena), then build and
         // grow a SECOND builder in the same arena and verify its correctness too. Final
         // arena.Dispose() at the very end must also be clean.
@@ -430,7 +430,7 @@ public class floatSparseBSMTests
             const int N = 15;
 
             // First grown builder.
-            var refA = arena.floatRandomMat(N, N, (float)(-1f), (float)1f, 75101);
+            var refA = arena.fProxyRandomMat(N, N, (fProxy)(-1f), (fProxy)1f, 75101);
             var A = BuildDenseGrown(ref arena, in refA, out int tripletCountA);
             Assert.IsTrue(tripletCountA == N * N);
             var denseA = A.ToDense(ref arena);
@@ -440,76 +440,76 @@ public class floatSparseBSMTests
             arena.Clear();
 
             // Second grown builder in the SAME arena.
-            var refB = arena.floatRandomMat(N, N, (float)(-1f), (float)1f, 75202);
+            var refB = arena.fProxyRandomMat(N, N, (fProxy)(-1f), (fProxy)1f, 75202);
             var B = BuildDenseGrown(ref arena, in refB, out int tripletCountB);
             Assert.IsTrue(tripletCountB == N * N);
             var denseB = B.ToDense(ref arena);
             AssertMatEq(in denseB, in refB, Tol());
 
             // spMV correctness on the post-Clear builder too.
-            var x = arena.floatRandomVec(N, (float)(-1f), (float)1f, 75303);
-            var y = arena.floatVec(N);
+            var x = arena.fProxyRandomVec(N, (fProxy)(-1f), (fProxy)1f, 75303);
+            var y = arena.fProxyVec(N);
             Sparse_OP.spMV(in B, in x, ref y);
             Assert.IsTrue(Analysis_OP.isZero(y - Linear_OP.dot(refB, x), Tol()));
 
             arena.Dispose();
         }
 
-        // ---- 10. empty BSM (zero triplets) + minimal 1x1 single-element BSM round-trip -------
+        // ---- 10. empty BSR (zero triplets) + minimal 1x1 single-element BSR round-trip -------
         //
-        // A builder with a nonzero block-grid shape but ZERO triplets ToBSM's to a valid empty
-        // BSM (Nnzb == 0): every block-row's RowPtr range is empty so bsmMatVec/bsmMatVecT never
+        // A builder with a nonzero block-grid shape but ZERO triplets ToBSR's to a valid empty
+        // BSR (Nnzb == 0): every block-row's RowPtr range is empty so bsmMatVec/bsmMatVecT never
         // dereference the (possibly-null-Ptr) zero-length ColInd/Values buffers. ToDense must
         // produce the all-zero matrix and spMV/spMVT the zero vector for any x. Mirrors the
-        // codebase's established zero-length-vector pattern (arena.floatVec(0) etc.). Also folds
-        // in the smallest non-empty edge: a 1x1-grid, 1x1-block, single-triplet BSM (one scalar).
-        void EmptyBSMRoundTrip()
+        // codebase's established zero-length-vector pattern (arena.fProxyVec(0) etc.). Also folds
+        // in the smallest non-empty edge: a 1x1-grid, 1x1-block, single-triplet BSR (one scalar).
+        void EmptyBSRRoundTrip()
         {
             var arena = new Arena(Allocator.Persistent);
 
-            // --- empty BSM: 3x3 block grid of 2x2 blocks (6x6 dense) with NO triplets ---
+            // --- empty BSR: 3x3 block grid of 2x2 blocks (6x6 dense) with NO triplets ---
             const int BR = 2, BC = 2;
-            var builder = arena.floatBSMBuilder(3, 3, BR, BC);
-            var A = builder.ToBSM(ref arena);
+            var builder = arena.fProxyBSRBuilder(3, 3, BR, BC);
+            var A = builder.ToBSR(ref arena);
 
             Assert.IsTrue(A.Nnzb == 0);
             Assert.IsTrue(A.M_Rows == 6);
             Assert.IsTrue(A.N_Cols == 6);
 
-            // ToDense of an empty BSM == the all-zero matrix of the right dims.
+            // ToDense of an empty BSR == the all-zero matrix of the right dims.
             var dense = A.ToDense(ref arena);
-            var zero = arena.floatMat(6, 6);
+            var zero = arena.fProxyMat(6, 6);
             AssertMatEq(in dense, in zero, Tol());
 
-            // spMV of an empty BSM == the zero vector, for a random nonzero x.
-            var x = arena.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, 9201);
-            var y = arena.floatVec(A.M_Rows);
+            // spMV of an empty BSR == the zero vector, for a random nonzero x.
+            var x = arena.fProxyRandomVec(A.N_Cols, (fProxy)(-1f), (fProxy)1f, 9201);
+            var y = arena.fProxyVec(A.M_Rows);
             Sparse_OP.spMV(in A, in x, ref y);
             Assert.IsTrue(Analysis_OP.isZero(y, Tol()));
 
             // spMVT too (transpose path's empty-row loop is separate code).
-            var xt = arena.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, 9202);
-            var yt = arena.floatVec(A.N_Cols);
+            var xt = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 9202);
+            var yt = arena.fProxyVec(A.N_Cols);
             Sparse_OP.spMVT(in A, in xt, ref yt);
             Assert.IsTrue(Analysis_OP.isZero(yt, Tol()));
 
             // --- minimal non-empty edge: 1x1 grid, 1x1 block, one triplet == a single scalar ---
-            var oneBuilder = arena.floatBSMBuilder(1, 1, 1, 1);
-            oneBuilder.AddValue(0, 0, (float)7);
-            var one = oneBuilder.ToBSM(ref arena);
+            var oneBuilder = arena.fProxyBSRBuilder(1, 1, 1, 1);
+            oneBuilder.AddValue(0, 0, (fProxy)7);
+            var one = oneBuilder.ToBSR(ref arena);
 
             Assert.IsTrue(one.Nnzb == 1);
             Assert.IsTrue(one.M_Rows == 1);
             Assert.IsTrue(one.N_Cols == 1);
 
             var oneDense = one.ToDense(ref arena);
-            Assert.IsTrue(math.abs(oneDense[0, 0] - (float)7) < Tol());
+            Assert.IsTrue(math.abs(oneDense[0, 0] - (fProxy)7) < Tol());
 
-            var ox = arena.floatVec(1);
-            ox[0] = (float)3;
-            var oy = arena.floatVec(1);
+            var ox = arena.fProxyVec(1);
+            ox[0] = (fProxy)3;
+            var oy = arena.fProxyVec(1);
             Sparse_OP.spMV(in one, in ox, ref oy);
-            Assert.IsTrue(math.abs(oy[0] - (float)21) < Tol()); // 7 * 3
+            Assert.IsTrue(math.abs(oy[0] - (fProxy)21) < Tol()); // 7 * 3
 
             arena.Dispose();
         }
@@ -519,58 +519,58 @@ public class floatSparseBSMTests
 
     [Test]
     public void HandBuiltSmallTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.HandBuiltSmall }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.HandBuiltSmall }.Run();
 
     [Test]
     public void RandomSpMVTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.RandomSpMV }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.RandomSpMV }.Run();
 
     [Test]
     public void RandomSpMVTTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.RandomSpMVT }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.RandomSpMVT }.Run();
 
     [Test]
     public void RectangularBlocksTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.RectangularBlocks }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.RectangularBlocks }.Run();
 
     [Test]
     public void DuplicateSummationTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.DuplicateSummation }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.DuplicateSummation }.Run();
 
     [Test]
     public void OutOfOrderTripletsTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.OutOfOrderTriplets }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.OutOfOrderTriplets }.Run();
 
     [Test]
     public void OneByOneBlocksTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.OneByOneBlocks }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.OneByOneBlocks }.Run();
 
     // Regression: builder grown far past capacityHint (default 8), then arena.Dispose() --
     // used to double-free / use-after-free the arena's stale tracked copy (native crash).
     [Test]
     public void GrowthThenDisposeTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.GrowthThenDispose }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.GrowthThenDispose }.Run();
 
     // Regression: arena.Clear() then a second grown builder in the same arena.
     [Test]
     public void ClearThenReallocateTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.ClearThenReallocate }.Run();
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.ClearThenReallocate }.Run();
 
-    // Empty BSM (zero triplets) round-trips to zero dense / zero matvec; + minimal 1x1 scalar BSM.
+    // Empty BSR (zero triplets) round-trips to zero dense / zero matvec; + minimal 1x1 scalar BSR.
     [Test]
-    public void EmptyBSMRoundTripTest()
-        => new SparseBSMTestJob { Type = SparseBSMTestJob.TestType.EmptyBSMRoundTrip }.Run();
+    public void EmptyBSRRoundTripTest()
+        => new SparseBSRTestJob { Type = SparseBSRTestJob.TestType.EmptyBSRRoundTrip }.Run();
 
-    // ---- Regression test: ToDense/ToBSM dangling-arena-pointer bug (fixed) ----------------
+    // ---- Regression test: ToDense/ToBSR dangling-arena-pointer bug (fixed) ----------------
     //
-    // floatBSM.ToDense and floatBSMBuilder.ToBSM used to take `in Arena arena`, but both call a
-    // MUTATING arena allocator method internally (arena.floatMat / arena.floatBSM). Since those
+    // fProxyBSR.ToDense and fProxyBSRBuilder.ToBSR used to take `in Arena arena`, but both call a
+    // MUTATING arena allocator method internally (arena.fProxyMat / arena.fProxyBSR). Since those
     // Arena methods aren't `readonly`, calling them through an `in Arena` parameter forced the C#
     // compiler to make a defensive copy of the arena, and the allocated result's internal arena
     // pointer captured the address of that dead stack temporary -- a use-after-scope bug. Reading
     // elements off the result was fine (the Values buffer is a real, independent allocation), but
     // any op that allocates through the result's own arena pointer -- e.g.
-    // Linear_OP.trans(dense).tempfloatMat -- dereferenced the dangling pointer and threw
+    // Linear_OP.trans(dense).fProxyTempMat -- dereferenced the dangling pointer and threw
     // "allocator handle is not valid" under Burst. This broke the spec's own recommended
     // validation recipe: Sparse_OP.spMVT(A,x) vs Linear_OP.dot(Linear_OP.trans(ToDense(A)), x).
     //
@@ -585,14 +585,14 @@ public class floatSparseBSMTests
         {
             var A = BuildSquare(ref arena);
             var dense = A.ToDense(ref arena);
-            var x = arena.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, 12321);
+            var x = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 12321);
 
             // Used to throw "allocator handle is not valid" (dangling arena pointer); now fixed.
             var yRef = Linear_OP.dot(Linear_OP.trans(dense), x);
 
-            var y = arena.floatVec(A.N_Cols);
+            var y = arena.fProxyVec(A.N_Cols);
             Sparse_OP.spMVT(in A, in x, ref y);
-            Assert.IsTrue(Analysis_OP.isZero(y - yRef, (float)1e-4f));
+            Assert.IsTrue(Analysis_OP.isZero(y - yRef, (fProxy)1e-4f));
         }
         finally { arena.Dispose(); }
     }
@@ -610,13 +610,13 @@ public class floatSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
 
         const int N = 15;
-        var builder = arena.floatBSMBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
+        var builder = arena.fProxyBSRBuilder(N, N, 1, 1); // DEFAULT capacityHint = 8
         for (int r = 0; r < N; r++)
             for (int c = 0; c < N; c++)
-                builder.AddValue(r, c, (float)(r * N + c));
+                builder.AddValue(r, c, (fProxy)(r * N + c));
 
         Assert.IsTrue(builder.TripletCount == N * N); // 225 -> grew well past 8
-        builder.ToBSM(ref arena);
+        builder.ToBSR(ref arena);
 
         // Clear() disposes the builder's shared state once and empties the tracking list;
         // Dispose() then runs Clear() again internally. Neither may double-free / crash.
@@ -635,8 +635,8 @@ public class floatSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.floatBSMBuilder(2, 2, 3, 3);
-            var block = arena.floatMat(3, 3);
+            var builder = arena.fProxyBSRBuilder(2, 2, 3, 3);
+            var block = arena.fProxyMat(3, 3);
             Assert.Throws<ArgumentException>(() => builder.AddBlock(2, 0, in block));  // br == BlockRows
             Assert.Throws<ArgumentException>(() => builder.AddBlock(-1, 0, in block));
         }
@@ -649,8 +649,8 @@ public class floatSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.floatBSMBuilder(2, 2, 3, 3);
-            var block = arena.floatMat(3, 3);
+            var builder = arena.fProxyBSRBuilder(2, 2, 3, 3);
+            var block = arena.fProxyMat(3, 3);
             Assert.Throws<ArgumentException>(() => builder.AddBlock(0, 2, in block));  // bc == BlockCols
             Assert.Throws<ArgumentException>(() => builder.AddBlock(0, -1, in block));
         }
@@ -663,8 +663,8 @@ public class floatSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.floatBSMBuilder(2, 2, 3, 3);
-            var wrong = arena.floatMat(2, 3); // not 3 x 3
+            var builder = arena.fProxyBSRBuilder(2, 2, 3, 3);
+            var wrong = arena.fProxyMat(2, 3); // not 3 x 3
             Assert.Throws<ArgumentException>(() => builder.AddBlock(0, 0, in wrong));
         }
         finally { arena.Dispose(); }
@@ -676,11 +676,11 @@ public class floatSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var builder = arena.floatBSMBuilder(2, 2, 3, 3); // 6 x 6
-            Assert.Throws<ArgumentException>(() => builder.AddValue(6, 0, (float)1)); // row == M_Rows
-            Assert.Throws<ArgumentException>(() => builder.AddValue(-1, 0, (float)1));
-            Assert.Throws<ArgumentException>(() => builder.AddValue(0, 6, (float)1)); // col == N_Cols
-            Assert.Throws<ArgumentException>(() => builder.AddValue(0, -1, (float)1));
+            var builder = arena.fProxyBSRBuilder(2, 2, 3, 3); // 6 x 6
+            Assert.Throws<ArgumentException>(() => builder.AddValue(6, 0, (fProxy)1)); // row == M_Rows
+            Assert.Throws<ArgumentException>(() => builder.AddValue(-1, 0, (fProxy)1));
+            Assert.Throws<ArgumentException>(() => builder.AddValue(0, 6, (fProxy)1)); // col == N_Cols
+            Assert.Throws<ArgumentException>(() => builder.AddValue(0, -1, (fProxy)1));
         }
         finally { arena.Dispose(); }
     }
@@ -694,7 +694,7 @@ public class floatSparseBSMTests
         try
         {
             var A = BuildSquare(ref arena);          // 4 x 4 (M_Rows == N_Cols)
-            var x = arena.floatRandomVec(A.N_Cols, (float)(-1f), (float)1f, 9001);
+            var x = arena.fProxyRandomVec(A.N_Cols, (fProxy)(-1f), (fProxy)1f, 9001);
             var yAlias = x;                          // struct copy shares Data.Ptr with x
             Assert.Throws<ArgumentException>(() => Sparse_OP.spMV(in A, in x, ref yAlias));
         }
@@ -708,14 +708,14 @@ public class floatSparseBSMTests
         try
         {
             var A = BuildSquare(ref arena);
-            var x = arena.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, 9002);
+            var x = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 9002);
             var yAlias = x;
             Assert.Throws<ArgumentException>(() => Sparse_OP.spMVT(in A, in x, ref yAlias));
         }
         finally { arena.Dispose(); }
     }
 
-    // floatBlockJacobi.Apply's z-must-not-alias-r guard (each z_i draws on the full r_i block;
+    // fProxyBlockJacobi.Apply's z-must-not-alias-r guard (each z_i draws on the full r_i block;
     // overwriting r in place mid-block would corrupt later rows of the same block's product).
     [Test]
     public void BlockJacobiApply_AliasingZ_Throws()
@@ -723,9 +723,9 @@ public class floatSparseBSMTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = BuildSquare(ref arena);          // square BSM, both diagonal blocks present
-            var M = arena.floatBlockJacobi(in A);
-            var r = arena.floatRandomVec(A.M_Rows, (float)(-1f), (float)1f, 9003);
+            var A = BuildSquare(ref arena);          // square BSR, both diagonal blocks present
+            var M = arena.fProxyBlockJacobi(in A);
+            var r = arena.fProxyRandomVec(A.M_Rows, (fProxy)(-1f), (fProxy)1f, 9003);
             var zAlias = r;                          // struct copy shares Data.Ptr with r
             Assert.Throws<ArgumentException>(() => M.Apply(in r, ref zAlias));
         }
@@ -742,13 +742,13 @@ public class floatSparseBSMTests
         {
             var A = BuildSquare(ref arena); // 4 x 4
             // wrong x length (must equal N_Cols).
-            var badX = arena.floatVec(A.N_Cols + 1);
-            var y = arena.floatVec(A.M_Rows);
+            var badX = arena.fProxyVec(A.N_Cols + 1);
+            var y = arena.fProxyVec(A.M_Rows);
             Assert.Throws<ArgumentException>(() => Sparse_OP.spMV(in A, in badX, ref y));
 
             // wrong y length (must equal M_Rows).
-            var x = arena.floatVec(A.N_Cols);
-            var badY = arena.floatVec(A.M_Rows + 1);
+            var x = arena.fProxyVec(A.N_Cols);
+            var badY = arena.fProxyVec(A.M_Rows + 1);
             Assert.Throws<ArgumentException>(() => Sparse_OP.spMV(in A, in x, ref badY));
         }
         finally { arena.Dispose(); }
@@ -762,24 +762,24 @@ public class floatSparseBSMTests
         {
             var A = BuildSquare(ref arena); // 4 x 4
             // spMVT: x must equal M_Rows, y must equal N_Cols.
-            var badX = arena.floatVec(A.M_Rows + 1);
-            var y = arena.floatVec(A.N_Cols);
+            var badX = arena.fProxyVec(A.M_Rows + 1);
+            var y = arena.fProxyVec(A.N_Cols);
             Assert.Throws<ArgumentException>(() => Sparse_OP.spMVT(in A, in badX, ref y));
 
-            var x = arena.floatVec(A.M_Rows);
-            var badY = arena.floatVec(A.N_Cols + 1);
+            var x = arena.fProxyVec(A.M_Rows);
+            var badY = arena.fProxyVec(A.N_Cols + 1);
             Assert.Throws<ArgumentException>(() => Sparse_OP.spMVT(in A, in x, ref badY));
         }
         finally { arena.Dispose(); }
     }
 
-    // Small square (4x4) BSM used by the guard tests. Managed helper (no Burst).
-    static floatBSM BuildSquare(ref Arena arena)
+    // Small square (4x4) BSR used by the guard tests. Managed helper (no Burst).
+    static fProxyBSR BuildSquare(ref Arena arena)
     {
         const int BR = 2, BC = 2;
-        var builder = arena.floatBSMBuilder(2, 2, BR, BC);
-        builder.AddBlock(0, 0, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 6001));
-        builder.AddBlock(1, 1, arena.floatRandomMat(BR, BC, (float)(-1f), (float)1f, 6002));
-        return builder.ToBSM(ref arena);
+        var builder = arena.fProxyBSRBuilder(2, 2, BR, BC);
+        builder.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 6001));
+        builder.AddBlock(1, 1, arena.fProxyRandomMat(BR, BC, (fProxy)(-1f), (fProxy)1f, 6002));
+        return builder.ToBSR(ref arena);
     }
 }

@@ -77,7 +77,7 @@ public class fProxySVDWorkspaceTests
             // workspace-struct form (default relTol/maxSweeps) must match the raw-scratch form
             var Aw = A0.Copy();
             var xw = arena.fProxyVec(n);
-            var ws = arena.fProxySVD_WS(m, n);
+            var ws = arena.fProxySVDCache(m, n);
             int rw = SVD.pinvSolve(ref Aw, in b, ref xw, out bool cw, ref ws);
 
             Assert.IsTrue(rw == rb);
@@ -119,7 +119,7 @@ public class fProxySVDWorkspaceTests
 
             var Aw = A0.Copy();
             var Pw = arena.fProxyMat(n, m);
-            var ws = arena.fProxySVD_WS(m, n);
+            var ws = arena.fProxySVDCache(m, n);
             int rw = SVD.pseudoInverse(ref Aw, ref Pw, out bool cw, ref ws);
 
             Assert.IsTrue(rw == rb);
@@ -140,7 +140,7 @@ public class fProxySVDWorkspaceTests
             for (int d = 0; d < n; d++)
                 A0[d, d] += (fProxy)10f;
 
-            var ws = arena.fProxySVD_WS(m, n);   // allocated ONCE, reused below
+            var ws = arena.fProxySVDCache(m, n);   // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
@@ -249,7 +249,7 @@ public class fProxySVDWorkspaceTests
         finally { arena.Dispose(); }
     }
 
-    // Arena.fProxySVD_WS(m, n) must size S (k), M (k x k), and At (n x m only when wide).
+    // Arena.fProxySVDCache(m, n) must size S (k), M (k x k), and At (n x m only when wide).
     [Test]
     public void SvdWorkspace_Factory_SizesCorrectly()
     {
@@ -257,7 +257,7 @@ public class fProxySVDWorkspaceTests
         try
         {
             // tall: k = n, big = m; U = big x k = 7 x 4; At unused (left default).
-            var wsTall = arena.fProxySVD_WS(7, 4);
+            var wsTall = arena.fProxySVDCache(7, 4);
             Assert.AreEqual(4, wsTall.S.N);
             Assert.AreEqual(4, wsTall.M.M_Rows);
             Assert.AreEqual(4, wsTall.M.N_Cols);
@@ -265,7 +265,7 @@ public class fProxySVDWorkspaceTests
             Assert.AreEqual(4, wsTall.U.N_Cols);
 
             // wide: k = m, big = n; U = big x k = 8 x 3; At = n x m
-            var wsWide = arena.fProxySVD_WS(3, 8);
+            var wsWide = arena.fProxySVDCache(3, 8);
             Assert.AreEqual(3, wsWide.S.N);
             Assert.AreEqual(3, wsWide.M.M_Rows);
             Assert.AreEqual(3, wsWide.M.N_Cols);

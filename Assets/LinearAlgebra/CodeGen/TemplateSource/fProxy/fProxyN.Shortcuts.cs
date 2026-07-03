@@ -13,41 +13,41 @@ namespace LinearAlgebra {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe fProxyN fProxyVec(int N, bool uninit = false) => _arena.fProxyVec(N, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe fProxyN tempfProxyVec(int N, bool uninit = false) => _arena.tempfProxyVec(N, uninit);
+        public unsafe fProxyN fProxyTempVec(int N, bool uninit = false) => _arena.fProxyTempVec(N, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe fProxyMxN fProxyMat(int M_rows, int N_cols, bool uninit = false) => _arena.fProxyMat(M_rows, N_cols, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe fProxyMxN tempfProxyMat(int M_rows, int N_cols, bool uninit = false) => _arena.tempfProxyMat(M_rows, N_cols, uninit);
+        public unsafe fProxyMxN fProxyTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.fProxyTempMat(M_rows, N_cols, uninit);
         //-copyReplace
 
-        // NOT wrapped in copyReplace: there is no iProxy BSM equivalent, so this only needs to
+        // NOT wrapped in copyReplace: there is no iProxy BSR equivalent, so this only needs to
         // exist for the fProxy float/double types this file already generates. Forwards to the
         // arena `b` carries so Solvers.fProxy.cs can materialize A^T once per solve via
-        // `b.fProxyBSMTranspose(in A)` without direct access to fProxyN's private _arena field.
+        // `b.fProxyBSRTranspose(in A)` without direct access to fProxyN's private _arena field.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe fProxyBSM fProxyBSMTranspose(in fProxyBSM A) => _arena.fProxyBSMTranspose(in A);
+        public unsafe fProxyBSR fProxyBSRTranspose(in fProxyBSR A) => _arena.fProxyBSRTranspose(in A);
 
         //+copyReplace
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe iProxyN iProxyVec(int N, bool uninit = false) => _arena.iProxyVec(N, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe iProxyN tempiProxyVec(int N, bool uninit = false) => _arena.tempiProxyVec(N, uninit);
+        public unsafe iProxyN iProxyTempVec(int N, bool uninit = false) => _arena.iProxyTempVec(N, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe iProxyMxN iProxyMat(int M_rows, int N_cols, bool uninit = false) => _arena.iProxyMat(M_rows, N_cols, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe iProxyMxN tempiProxyMat(int M_rows, int N_cols, bool uninit = false) => _arena.tempiProxyMat(M_rows, N_cols, uninit);
+        public unsafe iProxyMxN iProxyTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.iProxyTempMat(M_rows, N_cols, uninit);
         //-copyReplace
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe boolN boolVec(int n, bool uninit = false) => _arena.boolVec(n, uninit);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolN tempBoolVec(int n, bool uninit = false) => _arena.tempBoolVec(n, uninit);
+        public unsafe boolN boolTempVec(int n, bool uninit = false) => _arena.boolTempVec(n, uninit);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe boolMxN boolMat(int M_rows, int N_cols, bool uninit = false) => _arena.boolMat(M_rows, N_cols, uninit);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe boolMxN tempBoolMat(int M_rows, int N_cols, bool uninit = false) => _arena.tempBoolMat(M_rows, N_cols, uninit);
+        public unsafe boolMxN boolTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.boolTempMat(M_rows, N_cols, uninit);
     }
 }

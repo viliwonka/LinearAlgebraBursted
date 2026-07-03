@@ -1,7 +1,7 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.ML;        // opt-in: floatKMeans_OP.kmeans, KMeansInit, floatKMeans_WS
+using LinearAlgebra.ML;        // opt-in: floatKMeans_OP.kmeans, KMeansInit, floatKMeansCache
 using LinearAlgebra.Stats;     // floatStats_OP.colMean (k==1 global-mean oracle)
 
 using NUnit.Framework;
@@ -84,7 +84,7 @@ public class floatKMeansTests
 
             var centroids = arena.floatMat(k, D);
             var assign    = arena.Indices(12);
-            var ws        = arena.floatKMeans_WS(12, D, k);
+            var ws        = arena.floatKMeansCache(12, D, k);
             floatKMeans_OP.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out float inertia, out int iters, ref ws);
 
             // each of the three centers is matched by exactly one centroid (tight band)
@@ -126,7 +126,7 @@ public class floatKMeansTests
             int N = X.M_Rows, D = X.N_Cols;
             var centroids = arena.floatMat(k, D);
             var assign    = arena.Indices(N);
-            var ws        = arena.floatKMeans_WS(N, D, k);
+            var ws        = arena.floatKMeansCache(N, D, k);
             floatKMeans_OP.kmeans(in X, k, seed, maxIter, ref centroids, ref assign, out _, out _, ref ws);
 
             for (int n = 0; n < N; n++)
@@ -149,7 +149,7 @@ public class floatKMeansTests
                 int N = X.M_Rows, D = X.N_Cols, k = 2;
                 var centroids = arena.floatMat(k, D);
                 var assign    = arena.Indices(N);
-                var ws        = arena.floatKMeans_WS(N, D, k);
+                var ws        = arena.floatKMeansCache(N, D, k);
                 floatKMeans_OP.kmeans(in X, k, 3u, 20, ref centroids, ref assign, out float inertia, out _, ref ws);
 
                 AssertTrue(inertia >= (float)0);
@@ -164,7 +164,7 @@ public class floatKMeansTests
                 int N = B.M_Rows, D = B.N_Cols, k = 3;
                 var centroids = arena.floatMat(k, D);
                 var assign    = arena.Indices(N);
-                var ws        = arena.floatKMeans_WS(N, D, k);
+                var ws        = arena.floatKMeansCache(N, D, k);
                 floatKMeans_OP.kmeans(in B, k, 9u, 20, ref centroids, ref assign, out float inertia, out _, ref ws);
 
                 AssertTrue(inertia >= (float)0);
@@ -193,7 +193,7 @@ public class floatKMeansTests
             int k = 1;
             var centroids = arena.floatMat(k, D);
             var assign    = arena.Indices(N);
-            var ws        = arena.floatKMeans_WS(N, D, k);
+            var ws        = arena.floatKMeansCache(N, D, k);
             floatKMeans_OP.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out float inertia, out _, ref ws);
 
             var mean = floatStats_OP.colMean(in X);   // length D
@@ -263,8 +263,8 @@ public class floatKMeansTests
             int N = X.M_Rows, D = X.N_Cols, k = 2;
             uint seed = 1234u;
 
-            var c1 = arena.floatMat(k, D); var a1 = arena.Indices(N); var w1 = arena.floatKMeans_WS(N, D, k);
-            var c2 = arena.floatMat(k, D); var a2 = arena.Indices(N); var w2 = arena.floatKMeans_WS(N, D, k);
+            var c1 = arena.floatMat(k, D); var a1 = arena.Indices(N); var w1 = arena.floatKMeansCache(N, D, k);
+            var c2 = arena.floatMat(k, D); var a2 = arena.Indices(N); var w2 = arena.floatKMeansCache(N, D, k);
 
             floatKMeans_OP.kmeans(in X, k, seed, 20, init, ref c1, ref a1, out float in1, out int it1, ref w1);
             floatKMeans_OP.kmeans(in X, k, seed, 20, init, ref c2, ref a2, out float in2, out int it2, ref w2);
@@ -289,7 +289,7 @@ public class floatKMeansTests
             int N = X.M_Rows, D = X.N_Cols, k = 2;
             uint seed = 99u;
 
-            var cP = arena.floatMat(k, D); var aP = arena.Indices(N); var ws = arena.floatKMeans_WS(N, D, k);
+            var cP = arena.floatMat(k, D); var aP = arena.Indices(N); var ws = arena.floatKMeansCache(N, D, k);
             floatKMeans_OP.kmeans(in X, k, seed, 20, KMeansInit.KMeansPlusPlus, ref cP, ref aP, out float inP, out int itP, ref ws);
 
             floatKMeans_OP.kmeans(ref arena, in X, k, seed, 20, KMeansInit.KMeansPlusPlus,
@@ -323,7 +323,7 @@ public class floatKMeansTests
 
             var centroids = arena.floatMat(k, D);
             var assign    = arena.Indices(N);
-            var ws        = arena.floatKMeans_WS(N, D, k);
+            var ws        = arena.floatKMeansCache(N, D, k);
             floatKMeans_OP.kmeans(in X, k, 2u, 20, ref centroids, ref assign, out float inertia, out _, ref ws);
 
             // every centroid component finite (reseed must not produce NaN/Inf via divide-by-zero)
@@ -356,7 +356,7 @@ public class floatKMeansTests
             int N = X.M_Rows, D = X.N_Cols;
             var centroids = arena.floatMat(k, D);
             var assign    = arena.Indices(N);
-            var ws        = arena.floatKMeans_WS(N, D, k);
+            var ws        = arena.floatKMeansCache(N, D, k);
             floatKMeans_OP.kmeans(in X, k, seed, 30, init, ref centroids, ref assign, out float inertia, out _, ref ws);
 
             AssertTrue(inertia >= (float)0);
@@ -565,7 +565,7 @@ public class floatKMeansTests
         var arena = new Arena(Allocator.Persistent);
         int N = 6, D = 2, k = 2;
         var X  = arena.floatMat(N, D);
-        var ws = arena.floatKMeans_WS(N, D, k);
+        var ws = arena.floatKMeansCache(N, D, k);
         var assign = arena.Indices(N);
         var badCentroids = arena.floatMat(k + 1, D);   // wrong row count
         Assert.Throws<ArgumentException>(() =>
@@ -579,7 +579,7 @@ public class floatKMeansTests
         var arena = new Arena(Allocator.Persistent);
         int N = 6, D = 2, k = 2;
         var X  = arena.floatMat(N, D);
-        var ws = arena.floatKMeans_WS(N, D, k);
+        var ws = arena.floatKMeansCache(N, D, k);
         var centroids = arena.floatMat(k, D);
         var badAssign = arena.Indices(N + 1);           // wrong length
         Assert.Throws<ArgumentException>(() =>
@@ -595,7 +595,7 @@ public class floatKMeansTests
         var X  = arena.floatMat(N, D);
         var centroids = arena.floatMat(k, D);
         var assign    = arena.Indices(N);
-        var badWs = arena.floatKMeans_WS(N, D, k + 1);   // ws sized for wrong k
+        var badWs = arena.floatKMeansCache(N, D, k + 1);   // ws sized for wrong k
         Assert.Throws<ArgumentException>(() =>
             floatKMeans_OP.kmeans(in X, k, 1u, 10, ref centroids, ref assign, out float inertia, out int iters, ref badWs));
         arena.Dispose();

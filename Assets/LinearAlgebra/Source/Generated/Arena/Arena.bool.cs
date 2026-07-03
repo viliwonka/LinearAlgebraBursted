@@ -13,7 +13,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        public boolN tempBoolVec(int N, bool uninit = false)
+        public boolN boolTempVec(int N, bool uninit = false)
         {
             var vec = new boolN(N, in this, uninit);
             _core->TempBoolVectors.Add(in vec);
@@ -27,7 +27,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        internal boolN tempBoolVec(in boolN orig)
+        internal boolN boolTempVec(in boolN orig)
         {
             var vec = new boolN(in orig);
             _core->TempBoolVectors.Add(in vec);
@@ -52,14 +52,14 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        public boolMxN tempBoolMat(int M_rows, int N_cols, bool uninit = false)
+        public boolMxN boolTempMat(int M_rows, int N_cols, bool uninit = false)
         {
             var matrix = new boolMxN(M_rows, N_cols, in this, uninit);
             _core->TempBoolMatrices.Add(in matrix);
             return matrix;
         }
 
-        public boolMxN tempBoolMat(in boolMxN mat)
+        public boolMxN boolTempMat(in boolMxN mat)
         {
             var matrix = new boolMxN(mat);
             _core->TempBoolMatrices.Add(in matrix);

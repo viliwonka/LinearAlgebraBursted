@@ -7,7 +7,7 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Heap-allocated body holding ALL of an arena's mutable tracking state -- every per-type
-    /// growable UnsafeList (fProxyVectors/Matrices/temp*, fProxyBSMs/BSMBuilders/BlockJacobis,
+    /// growable UnsafeList (fProxyVectors/Matrices/temp*, fProxyBSRs/BSRBuilders/BlockJacobis,
     /// iProxy*, Bool*, Pivots, IndexBuffers), plus Allocator/Initialized. This struct is never
     /// copied by user code: it is Malloc'd ONCE per arena and addressed exclusively through the
     /// stable <see cref="Arena"/> handle's <c>_core</c> pointer, which is what gives the arena a
@@ -19,7 +19,7 @@ namespace LinearAlgebra
     {
         public int AllocationsCount =>
             //+copyReplaceFill[+]
-            fProxyVectors.Length + fProxyMatrices.Length + fProxyBSMs.Length + fProxyBSMBuilders.Length + fProxyBlockJacobis.Length
+            fProxyVectors.Length + fProxyMatrices.Length + fProxyBSRs.Length + fProxyBSRBuilders.Length + fProxyBlockJacobis.Length
             //-copyReplaceFill
             +
             //+copyReplaceFill[+]
@@ -29,11 +29,11 @@ namespace LinearAlgebra
 
         public int TempAllocationsCount =>
             //+copyReplaceFill[+]
-            tempfProxyVectors.Length + tempfProxyMatrices.Length
+            fProxyTempVectors.Length + fProxyTempMatrices.Length
             //-copyReplaceFill
             +
             //+copyReplaceFill[+]
-            tempiProxyVectors.Length + tempiProxyMatrices.Length
+            iProxyTempVectors.Length + iProxyTempMatrices.Length
             //-copyReplaceFill
         ;
 
@@ -59,18 +59,18 @@ namespace LinearAlgebra
             //+copyReplace
             fProxyVectors = new UnsafeList<fProxyN>(8, Allocator);
             fProxyMatrices = new UnsafeList<fProxyMxN>(8, Allocator);
-            tempfProxyVectors = new UnsafeList<fProxyN>(8, Allocator);
-            tempfProxyMatrices = new UnsafeList<fProxyMxN>(8, Allocator);
-            fProxyBSMs = new UnsafeList<fProxyBSM>(4, Allocator);
-            fProxyBSMBuilders = new UnsafeList<fProxyBSMBuilder>(4, Allocator);
+            fProxyTempVectors = new UnsafeList<fProxyN>(8, Allocator);
+            fProxyTempMatrices = new UnsafeList<fProxyMxN>(8, Allocator);
+            fProxyBSRs = new UnsafeList<fProxyBSR>(4, Allocator);
+            fProxyBSRBuilders = new UnsafeList<fProxyBSRBuilder>(4, Allocator);
             fProxyBlockJacobis = new UnsafeList<fProxyBlockJacobi>(4, Allocator);
             //-copyReplace
 
             //+copyReplace
             iProxyVectors = new UnsafeList<iProxyN>(8, Allocator);
             iProxyMatrices = new UnsafeList<iProxyMxN>(8, Allocator);
-            tempiProxyVectors = new UnsafeList<iProxyN>(8, Allocator);
-            tempiProxyMatrices = new UnsafeList<iProxyMxN>(8, Allocator);
+            iProxyTempVectors = new UnsafeList<iProxyN>(8, Allocator);
+            iProxyTempMatrices = new UnsafeList<iProxyMxN>(8, Allocator);
             //-copyReplace
 
             BoolVectors = new UnsafeList<boolN>(2, Allocator);
@@ -117,13 +117,13 @@ namespace LinearAlgebra
                 fProxyMatrices[i].Dispose();
             fProxyMatrices.Clear();
 
-            for (int i = 0; i < fProxyBSMs.Length; i++)
-                fProxyBSMs[i].Dispose();
-            fProxyBSMs.Clear();
+            for (int i = 0; i < fProxyBSRs.Length; i++)
+                fProxyBSRs[i].Dispose();
+            fProxyBSRs.Clear();
 
-            for (int i = 0; i < fProxyBSMBuilders.Length; i++)
-                fProxyBSMBuilders[i].Dispose();
-            fProxyBSMBuilders.Clear();
+            for (int i = 0; i < fProxyBSRBuilders.Length; i++)
+                fProxyBSRBuilders[i].Dispose();
+            fProxyBSRBuilders.Clear();
 
             for (int i = 0; i < fProxyBlockJacobis.Length; i++)
                 fProxyBlockJacobis[i].Dispose();
@@ -165,23 +165,23 @@ namespace LinearAlgebra
         public void ClearTemp()
         {
             //+copyReplace
-            for (int i = 0; i < tempfProxyVectors.Length; i++)
-                tempfProxyVectors[i].Dispose();
-            tempfProxyVectors.Clear();
+            for (int i = 0; i < fProxyTempVectors.Length; i++)
+                fProxyTempVectors[i].Dispose();
+            fProxyTempVectors.Clear();
 
-            for (int i = 0; i < tempfProxyMatrices.Length; i++)
-                tempfProxyMatrices[i].Dispose();
-            tempfProxyMatrices.Clear();
+            for (int i = 0; i < fProxyTempMatrices.Length; i++)
+                fProxyTempMatrices[i].Dispose();
+            fProxyTempMatrices.Clear();
             //-copyReplace
 
             //+copyReplace
-            for (int i = 0; i < tempiProxyVectors.Length; i++)
-                tempiProxyVectors[i].Dispose();
-            tempiProxyVectors.Clear();
+            for (int i = 0; i < iProxyTempVectors.Length; i++)
+                iProxyTempVectors[i].Dispose();
+            iProxyTempVectors.Clear();
 
-            for (int i = 0; i < tempiProxyMatrices.Length; i++)
-                tempiProxyMatrices[i].Dispose();
-            tempiProxyMatrices.Clear();
+            for (int i = 0; i < iProxyTempMatrices.Length; i++)
+                iProxyTempMatrices[i].Dispose();
+            iProxyTempMatrices.Clear();
             //-copyReplace
 
             for (int i = 0; i < TempBoolVectors.Length; i++)
@@ -205,18 +205,18 @@ namespace LinearAlgebra
             //+copyReplace
             fProxyVectors.Dispose();
             fProxyMatrices.Dispose();
-            tempfProxyMatrices.Dispose();
-            tempfProxyVectors.Dispose();
-            fProxyBSMs.Dispose();
-            fProxyBSMBuilders.Dispose();
+            fProxyTempMatrices.Dispose();
+            fProxyTempVectors.Dispose();
+            fProxyBSRs.Dispose();
+            fProxyBSRBuilders.Dispose();
             fProxyBlockJacobis.Dispose();
             //-copyReplace
 
             //+copyReplace
             iProxyVectors.Dispose();
             iProxyMatrices.Dispose();
-            tempiProxyMatrices.Dispose();
-            tempiProxyVectors.Dispose();
+            iProxyTempMatrices.Dispose();
+            iProxyTempVectors.Dispose();
             //-copyReplace
 
             BoolVectors.Dispose();

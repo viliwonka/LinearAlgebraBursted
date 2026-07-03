@@ -3,29 +3,29 @@ using LinearAlgebra;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// Thin <see cref="IfloatLinearOperator"/> wrapper over a compressed <see cref="floatBSM"/>.
+    /// Thin <see cref="IfloatLinearOperator"/> wrapper over a compressed <see cref="floatBSR"/>.
     /// Forwards Apply straight to <see cref="Sparse_OP.spMV"/>. ApplyT forwards either to the
     /// on-the-fly, scatter-traversal <see cref="Sparse_OP.spMVT"/> (one-arg ctor, the default --
     /// no transpose materialized) or to a cache-friendly FORWARD <see cref="Sparse_OP.spMV"/>
-    /// over a precomputed transpose AT (two-arg ctor -- see <see cref="Arena.floatBSMTranspose"/>),
+    /// over a precomputed transpose AT (two-arg ctor -- see <see cref="Arena.floatBSRTranspose"/>),
     /// depending on which constructor built this operator.
     /// -- this is the wrapper the Phase-1 SparseOP.float.cs header comment anticipated. Lets the
     /// generic Krylov solvers (<c>Solvers.cg&lt;TOp&gt;</c>, <c>Solvers.pcg&lt;TOp,TPre&gt;</c>) run
-    /// over a BSM with zero-cost Burst static dispatch, no vtable.
-    /// Readonly: a value copy of this struct only copies the floatBSM/AT headers (a handful of
+    /// over a BSR with zero-cost Burst static dispatch, no vtable.
+    /// Readonly: a value copy of this struct only copies the floatBSR/AT headers (a handful of
     /// UnsafeList headers + ints), not the underlying buffers -- cheap and safe to pass through
     /// `in` parameters in generic constrained calls.
     /// </summary>
-    public readonly struct floatBSMOperator : IfloatLinearOperator
+    public readonly struct floatBSROperator : IfloatLinearOperator
     {
-        public readonly floatBSM A;
+        public readonly floatBSR A;
 
         /// <summary>
-        /// Optional precomputed transpose of A (see <see cref="Arena.floatBSMTranspose"/>).
+        /// Optional precomputed transpose of A (see <see cref="Arena.floatBSRTranspose"/>).
         /// Default/unset (one-arg ctor) when <see cref="_hasT"/> is false -- ApplyT then falls
         /// back to the on-the-fly <see cref="Sparse_OP.spMVT"/>.
         /// </summary>
-        public readonly floatBSM AT;
+        public readonly floatBSR AT;
         private readonly bool _hasT;
 
         /// <summary>
@@ -33,7 +33,7 @@ namespace LinearAlgebra.Sparse
         /// call. Keeps today's behavior for callers that only ever do a one-shot ApplyT (or a
         /// few), where materializing AT up front wouldn't pay for itself.
         /// </summary>
-        public floatBSMOperator(in floatBSM a)
+        public floatBSROperator(in floatBSR a)
         {
             A = a;
             AT = default;
@@ -41,15 +41,15 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Carries a precomputed transpose aT (typically <c>arena.floatBSMTranspose(in a)</c>,
-        /// built ONCE per solve). ApplyT then forwards to <see cref="Sparse_OP.spMV(in floatBSM,
+        /// Carries a precomputed transpose aT (typically <c>arena.floatBSRTranspose(in a)</c>,
+        /// built ONCE per solve). ApplyT then forwards to <see cref="Sparse_OP.spMV(in floatBSR,
         /// in floatN, ref floatN)"/> over aT -- a forward, cache-friendly block-CSR traversal --
         /// instead of the scatter-heavy <see cref="Sparse_OP.spMVT"/> over a. The one-time O(nnz)
         /// transpose build is amortized over every iteration a solver (e.g. cgls/lsqr) calls
         /// ApplyT. Caller is responsible for aT actually being a's transpose -- this ctor does not
         /// verify it (that would defeat the point of precomputing it once).
         /// </summary>
-        public floatBSMOperator(in floatBSM a, in floatBSM aT)
+        public floatBSROperator(in floatBSR a, in floatBSR aT)
         {
             A = a;
             AT = aT;

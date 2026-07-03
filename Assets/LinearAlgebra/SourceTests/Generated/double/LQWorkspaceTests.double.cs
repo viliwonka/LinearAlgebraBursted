@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Phase-2 solver-workspace tests for LQ: the caller-provided-scratch overloads
-// (lqDecomposition(...,ref doubleLQ_WS) / lqMinNormSolve(...,ref doubleLQMinNormSolve_WS)) must
+// (lqDecomposition(...,ref doubleLQCache) / lqMinNormSolve(...,ref doubleLQMinNormSolveCache)) must
 // produce results identical to the allocating wrappers (they run the SAME kernel), and a mis-sized/
 // reused workspace must behave correctly (throw on bad size, produce identical results across reuse).
 public class doubleLQWorkspaceTests
@@ -58,7 +58,7 @@ public class doubleLQWorkspaceTests
             var Ab = A0.Copy();
             var Lb = arena.doubleMat(m, m);
             var Qb = arena.doubleMat(m, n);
-            var ws = arena.doubleLQ_WS(m, n);
+            var ws = arena.doubleLQCache(m, n);
             LQ.lqDecomposition(ref Ab, ref Lb, ref Qb, ref ws);
 
             Assert.IsTrue(Analysis_OP.isZero(La - Lb, Tol()));
@@ -83,7 +83,7 @@ public class doubleLQWorkspaceTests
 
             var Ab = A0.Copy();
             var xb = arena.doubleVec(n);
-            var ws = arena.doubleLQMinNormSolve_WS(m, n);
+            var ws = arena.doubleLQMinNormSolveCache(m, n);
             LQ.lqMinNormSolve(ref Ab, ref b, ref xb, ref ws);
 
             Assert.IsTrue(Analysis_OP.isZero(xa - xb, Tol()));
@@ -98,8 +98,8 @@ public class doubleLQWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
             int m = 4, n = 8;
 
-            var lqWs = arena.doubleLQ_WS(m, n);                     // allocated ONCE, reused below
-            var solveWs = arena.doubleLQMinNormSolve_WS(m, n);      // allocated ONCE, reused below
+            var lqWs = arena.doubleLQCache(m, n);                     // allocated ONCE, reused below
+            var solveWs = arena.doubleLQMinNormSolveCache(m, n);      // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
@@ -158,7 +158,7 @@ public class doubleLQWorkspaceTests
             var A = arena.doubleMat(4, 8);
             var L = arena.doubleMat(4, 4);
             var Q = arena.doubleMat(4, 8);
-            var ws = arena.doubleLQ_WS(4, 8);
+            var ws = arena.doubleLQCache(4, 8);
             ws.W = arena.doubleMat(3, 8);   // wrong: must be m x n = 4 x 8
             Assert.Throws<ArgumentException>(() => LQ.lqDecomposition(ref A, ref L, ref Q, ref ws));
         }
@@ -174,7 +174,7 @@ public class doubleLQWorkspaceTests
             var A = arena.doubleMat(4, 8);
             var L = arena.doubleMat(4, 4);
             var Q = arena.doubleMat(4, 8);
-            var ws = arena.doubleLQ_WS(4, 8);
+            var ws = arena.doubleLQCache(4, 8);
             ws.v = arena.doubleVec(5);    // wrong: must be length n = 8
             Assert.Throws<ArgumentException>(() => LQ.lqDecomposition(ref A, ref L, ref Q, ref ws));
         }
@@ -190,26 +190,26 @@ public class doubleLQWorkspaceTests
             var A = arena.doubleMat(4, 8);
             var b = arena.doubleVec(4);
             var x = arena.doubleVec(8);
-            var ws = arena.doubleLQMinNormSolve_WS(4, 8);
+            var ws = arena.doubleLQMinNormSolveCache(4, 8);
             ws.L = arena.doubleMat(3, 3);   // wrong: must be m x m = 4 x 4
             Assert.Throws<ArgumentException>(() => LQ.lqMinNormSolve(ref A, ref b, ref x, ref ws));
         }
         finally { arena.Dispose(); }
     }
 
-    // Arena.doubleLQ_WS(m, n) / doubleLQMinNormSolve_WS(m, n) must size every field for m x n.
+    // Arena.doubleLQCache(m, n) / doubleLQMinNormSolveCache(m, n) must size every field for m x n.
     [Test]
     public void LQWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var lqWs = arena.doubleLQ_WS(4, 8);
+            var lqWs = arena.doubleLQCache(4, 8);
             Assert.AreEqual(4, lqWs.W.M_Rows);
             Assert.AreEqual(8, lqWs.W.N_Cols);
             Assert.AreEqual(8, lqWs.v.N);
 
-            var solveWs = arena.doubleLQMinNormSolve_WS(4, 8);
+            var solveWs = arena.doubleLQMinNormSolveCache(4, 8);
             Assert.AreEqual(4, solveWs.L.M_Rows);
             Assert.AreEqual(4, solveWs.L.N_Cols);
             Assert.AreEqual(4, solveWs.Q.M_Rows);

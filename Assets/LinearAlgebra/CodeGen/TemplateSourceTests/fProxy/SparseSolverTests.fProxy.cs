@@ -9,13 +9,13 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Phase-2 sparse-solver test suite: IfProxyLinearOperator / fProxyDenseOperator /
-// fProxyBSMOperator / fProxyBlockJacobi / Solvers.cg&lt;TOp&gt; / Solvers.pcg&lt;TOp,TPre&gt;, plus
-// the concrete cg/pcg convenience overloads for fProxyMxN and fProxyBSM. Every
-// BSM system is cross-checked against the equivalent dense system (same pattern as
-// fProxySparseBSMTests: build the SAME system in both forms and compare).
+// fProxyBSROperator / fProxyBlockJacobi / Solvers.cg&lt;TOp&gt; / Solvers.pcg&lt;TOp,TPre&gt;, plus
+// the concrete cg/pcg convenience overloads for fProxyMxN and fProxyBSR. Every
+// BSR system is cross-checked against the equivalent dense system (same pattern as
+// fProxySparseBSRTests: build the SAME system in both forms and compare).
 //
 // Correctness cases run inside a [BurstCompile] IJob (matches fProxyConjugateGradientTests /
-// fProxySparseBSMTests). Guard/exception cases run on the managed test thread with
+// fProxySparseBSRTests). Guard/exception cases run on the managed test thread with
 // Assert.Throws, since NUnit's Assert.Throws cannot execute inside a Burst-compiled job.
 public class fProxySparseSolverTests
 {
@@ -24,7 +24,7 @@ public class fProxySparseSolverTests
     {
         public enum TestType
         {
-            Laplacian1DBSMCGMatchesDenseCG,
+            Laplacian1DBSRCGMatchesDenseCG,
             ThreeByThreeBlockSPDConverges,
             DenseForwardingUnchanged,
             PCGMatchesCG,
@@ -34,17 +34,17 @@ public class fProxySparseSolverTests
             PcgNonSpdPreconditionerBreaksDown,
 
             // ---- Phase 3: MINRES / BiCGSTAB / CGLS / LSQR ----
-            MinresIndefiniteDenseAndBSM,
+            MinresIndefiniteDenseAndBSR,
             MinresSpdMatchesCG,
             BiCGStabNonSymmetricMatchesLU,
-            CglsOverdeterminedConsistentDenseAndBSM,
-            LsqrOverdeterminedConsistentDenseAndBSM,
+            CglsOverdeterminedConsistentDenseAndBSR,
+            LsqrOverdeterminedConsistentDenseAndBSR,
             CglsInconsistentMatchesQR,
             LsqrInconsistentMatchesQR,
             CglsLsqrUnderdeterminedConsistent,
 
             // ---- LSMR (Fong-Saunders): least-squares with monotone ||A^T r|| ----
-            LsmrOverdeterminedConsistentDenseAndBSM,
+            LsmrOverdeterminedConsistentDenseAndBSR,
             LsmrInconsistentMatchesQR,
             LsmrUnderdeterminedMatchesLsqr,
             LsmrMonotonicArnorm,
@@ -61,11 +61,11 @@ public class fProxySparseSolverTests
             LstsqInfoMatchesIndependentRecompute,
             LstsqInfoDampedArnorm,
             LsmrRnormMatchesExact,
-            LstsqInfoBSMMatchesDense,
+            LstsqInfoBSRMatchesDense,
 
             // ---- AᵀA-Jacobi preconditioner: fewer iterations, same solution ----
             JacobiPreconditionerReducesIterations,
-            JacobiConvenienceSolversLSOptimalDenseAndBSM,
+            JacobiConvenienceSolversLSOptimalDenseAndBSR,
 
             // ---- literature ground truth: Strang best-fit-line, EXACT diagnostics ----
             LstsqInfoStrangLineFitExact,
@@ -116,7 +116,7 @@ public class fProxySparseSolverTests
         {
             switch (Type)
             {
-                case TestType.Laplacian1DBSMCGMatchesDenseCG: Laplacian1DBSMCGMatchesDenseCG(); break;
+                case TestType.Laplacian1DBSRCGMatchesDenseCG: Laplacian1DBSRCGMatchesDenseCG(); break;
                 case TestType.ThreeByThreeBlockSPDConverges: ThreeByThreeBlockSPDConverges(); break;
                 case TestType.DenseForwardingUnchanged: DenseForwardingUnchanged(); break;
                 case TestType.PCGMatchesCG: PCGMatchesCG(); break;
@@ -125,16 +125,16 @@ public class fProxySparseSolverTests
                 case TestType.WarmStart: WarmStart(); break;
                 case TestType.PcgNonSpdPreconditionerBreaksDown: PcgNonSpdPreconditionerBreaksDown(); break;
 
-                case TestType.MinresIndefiniteDenseAndBSM: MinresIndefiniteDenseAndBSM(); break;
+                case TestType.MinresIndefiniteDenseAndBSR: MinresIndefiniteDenseAndBSR(); break;
                 case TestType.MinresSpdMatchesCG: MinresSpdMatchesCG(); break;
                 case TestType.BiCGStabNonSymmetricMatchesLU: BiCGStabNonSymmetricMatchesLU(); break;
-                case TestType.CglsOverdeterminedConsistentDenseAndBSM: CglsOverdeterminedConsistentDenseAndBSM(); break;
-                case TestType.LsqrOverdeterminedConsistentDenseAndBSM: LsqrOverdeterminedConsistentDenseAndBSM(); break;
+                case TestType.CglsOverdeterminedConsistentDenseAndBSR: CglsOverdeterminedConsistentDenseAndBSR(); break;
+                case TestType.LsqrOverdeterminedConsistentDenseAndBSR: LsqrOverdeterminedConsistentDenseAndBSR(); break;
                 case TestType.CglsInconsistentMatchesQR: CglsInconsistentMatchesQR(); break;
                 case TestType.LsqrInconsistentMatchesQR: LsqrInconsistentMatchesQR(); break;
                 case TestType.CglsLsqrUnderdeterminedConsistent: CglsLsqrUnderdeterminedConsistent(); break;
 
-                case TestType.LsmrOverdeterminedConsistentDenseAndBSM: LsmrOverdeterminedConsistentDenseAndBSM(); break;
+                case TestType.LsmrOverdeterminedConsistentDenseAndBSR: LsmrOverdeterminedConsistentDenseAndBSR(); break;
                 case TestType.LsmrInconsistentMatchesQR: LsmrInconsistentMatchesQR(); break;
                 case TestType.LsmrUnderdeterminedMatchesLsqr: LsmrUnderdeterminedMatchesLsqr(); break;
                 case TestType.LsmrMonotonicArnorm: LsmrMonotonicArnorm(); break;
@@ -148,9 +148,9 @@ public class fProxySparseSolverTests
                 case TestType.LstsqInfoMatchesIndependentRecompute: LstsqInfoMatchesIndependentRecompute(); break;
                 case TestType.LstsqInfoDampedArnorm: LstsqInfoDampedArnorm(); break;
                 case TestType.LsmrRnormMatchesExact: LsmrRnormMatchesExact(); break;
-                case TestType.LstsqInfoBSMMatchesDense: LstsqInfoBSMMatchesDense(); break;
+                case TestType.LstsqInfoBSRMatchesDense: LstsqInfoBSRMatchesDense(); break;
                 case TestType.JacobiPreconditionerReducesIterations: JacobiPreconditionerReducesIterations(); break;
-                case TestType.JacobiConvenienceSolversLSOptimalDenseAndBSM: JacobiConvenienceSolversLSOptimalDenseAndBSM(); break;
+                case TestType.JacobiConvenienceSolversLSOptimalDenseAndBSR: JacobiConvenienceSolversLSOptimalDenseAndBSR(); break;
                 case TestType.LstsqInfoStrangLineFitExact: LstsqInfoStrangLineFitExact(); break;
                 case TestType.SolveInfoRnormMatchesResidual: SolveInfoRnormMatchesResidual(); break;
 
@@ -175,23 +175,23 @@ public class fProxySparseSolverTests
             return A;
         }
 
-        // 1x1-block BSM built from a dense matrix's nonzero entries via AddValue. Triplet count
+        // 1x1-block BSR built from a dense matrix's nonzero entries via AddValue. Triplet count
         // is bounded by the caller-supplied nnzHint (sized to the known nonzero pattern) purely
         // as a perf choice -- it avoids a few reallocations of the builder's internal growable
         // lists, nothing more. Growing the builder's lists past capacityHint (triggering one or
         // more UnsafeList reallocations) is safe: the builder's mutable triplet state lives
         // behind a single heap-allocated pointer shared by every value-copy of the struct
         // (including the arena's own tracked copy), so a reallocation on one copy is visible to
-        // all of them. See the growth regression tests in SparseBSMTests.fProxy.cs, which build
+        // all of them. See the growth regression tests in SparseBSRTests.fProxy.cs, which build
         // via many-reallocation growth on purpose to prove this.
-        static fProxyBSM DenseToBSM1x1(ref Arena arena, in fProxyMxN A, int nnzHint)
+        static fProxyBSR DenseToBSR1x1(ref Arena arena, in fProxyMxN A, int nnzHint)
         {
-            var builder = arena.fProxyBSMBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
+            var builder = arena.fProxyBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     if (A[r, c] != (fProxy)0)
                         builder.AddValue(r, c, A[r, c]);
-            return builder.ToBSM(ref arena);
+            return builder.ToBSR(ref arena);
         }
 
         static void AssertVecEq(in fProxyN a, in fProxyN b, fProxy tol)
@@ -205,15 +205,15 @@ public class fProxySparseSolverTests
         static void AssertClose(double got, double expected, fProxy tol)
             => Assert.IsTrue(math.abs(got - expected) <= tol * ((fProxy)1 + math.abs(expected)));
 
-        // ---- 1. 1D Laplacian tridiagonal as a 1x1-block BSM: CG matches dense CG -----------
-        void Laplacian1DBSMCGMatchesDenseCG()
+        // ---- 1. 1D Laplacian tridiagonal as a 1x1-block BSR: CG matches dense CG -----------
+        void Laplacian1DBSRCGMatchesDenseCG()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 16;
             var A = arena.fProxyLaplacian1D(dim);
             // Tridiagonal: at most 3 nonzeros/row -> 3*dim is a safe upper bound.
-            var bsm = DenseToBSM1x1(ref arena, in A, 3 * dim);
+            var bsm = DenseToBSR1x1(ref arena, in A, 3 * dim);
 
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 4242);
 
@@ -221,14 +221,14 @@ public class fProxySparseSolverTests
             bool okDense = Solvers.cg(in A, in b, ref xDense, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okDense);
 
-            var xBsm = arena.fProxyVec(dim);
-            bool okBsm = Solvers.cg(in bsm, in b, ref xBsm, 4 * dim, Consts.fProxySqrtEps);
-            Assert.IsTrue(okBsm);
+            var xBsr = arena.fProxyVec(dim);
+            bool okBsr = Solvers.cg(in bsm, in b, ref xBsr, 4 * dim, Consts.fProxySqrtEps);
+            Assert.IsTrue(okBsr);
 
-            AssertVecEq(in xDense, in xBsm, Tol());
+            AssertVecEq(in xDense, in xBsr, Tol());
 
-            // A*x ~= b for the BSM solve too (spec's explicit acceptance criterion).
-            var Ax = Sparse_OP.spMV(in bsm, in xBsm);
+            // A*x ~= b for the BSR solve too (spec's explicit acceptance criterion).
+            var Ax = Sparse_OP.spMV(in bsm, in xBsr);
             AssertVecEq(in Ax, in b, Tol());
 
             arena.Dispose();
@@ -238,7 +238,7 @@ public class fProxySparseSolverTests
         //
         // Build a random block matrix M (BR=3, a handful of blocks on a 3x3 block grid), form
         // the dense A = M^T M + eps*I (guaranteed SPD), then re-encode A as a genuine 3x3-block
-        // BSM with every block-row/col pair stored (A^T A is generally dense even when M is
+        // BSR with every block-row/col pair stored (A^T A is generally dense even when M is
         // sparse) -- so CG genuinely walks a multi-block-per-row BSR structure, not just 1x1
         // scalars.
         void ThreeByThreeBlockSPDConverges()
@@ -249,20 +249,20 @@ public class fProxySparseSolverTests
             const int nb = 3; // 9x9
             int dim = BR * nb;
 
-            var mb = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb * nb);
+            var mb = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb * nb);
             mb.AddBlock(0, 0, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8001));
             mb.AddBlock(0, 1, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8002));
             mb.AddBlock(1, 1, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8003));
             mb.AddBlock(1, 2, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8004));
             mb.AddBlock(2, 2, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8005));
             mb.AddBlock(2, 0, arena.fProxyRandomMat(BR, BR, -1f, 1f, 8006));
-            var Mdense = mb.ToBSM(ref arena).ToDense(ref arena);
+            var Mdense = mb.ToBSR(ref arena).ToDense(ref arena);
 
             var A = Linear_OP.dot(Mdense, Mdense, true);
             for (int i = 0; i < dim; i++)
                 A[i, i] += dim;
 
-            var ab = arena.fProxyBSMBuilder(nb, nb, BR, BR, nb * nb);
+            var ab = arena.fProxyBSRBuilder(nb, nb, BR, BR, nb * nb);
             for (int bi = 0; bi < nb; bi++)
                 for (int bj = 0; bj < nb; bj++)
                 {
@@ -272,7 +272,7 @@ public class fProxySparseSolverTests
                             blk[r, c] = A[bi * BR + r, bj * BR + c];
                     ab.AddBlock(bi, bj, in blk);
                 }
-            var Absm = ab.ToBSM(ref arena);
+            var Absm = ab.ToBSR(ref arena);
 
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 8100);
             var x = arena.fProxyVec(dim);
@@ -343,7 +343,7 @@ public class fProxySparseSolverTests
 
             int dim = 12;
             var A = BuildDenseSPD(ref arena, dim, 6001);
-            var bsm = DenseToBSM1x1(ref arena, in A, dim * dim);
+            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
             var M = arena.fProxyBlockJacobi(in bsm);
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 6002);
 
@@ -392,7 +392,7 @@ public class fProxySparseSolverTests
                 for (int c = 0; c < dim; c++)
                     A[r, c] = d[r] * Sym[r, c] * d[c];
 
-            var bsm = DenseToBSM1x1(ref arena, in A, dim * dim);
+            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
             var M = arena.fProxyBlockJacobi(in bsm);
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 7002);
 
@@ -427,7 +427,7 @@ public class fProxySparseSolverTests
             var arena = new Arena(Allocator.Persistent);
 
             const int BR = 2;
-            var builder = arena.fProxyBSMBuilder(2, 2, BR, BR, 2);
+            var builder = arena.fProxyBSRBuilder(2, 2, BR, BR, 2);
             var d0 = arena.fProxyMat(BR, BR);
             d0[0, 0] = 4f; d0[0, 1] = 1f;
             d0[1, 0] = 1f; d0[1, 1] = 3f;
@@ -436,7 +436,7 @@ public class fProxySparseSolverTests
             d1[1, 0] = 0f; d1[1, 1] = 5f;
             builder.AddBlock(0, 0, in d0);
             builder.AddBlock(1, 1, in d1);
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
 
             var M = arena.fProxyBlockJacobi(in A);
 
@@ -468,7 +468,7 @@ public class fProxySparseSolverTests
 
             int dim = 10;
             var A = BuildDenseSPD(ref arena, dim, 9001);
-            var bsm = DenseToBSM1x1(ref arena, in A, dim * dim);
+            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
             var M = arena.fProxyBlockJacobi(in bsm);
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 9002);
 
@@ -525,14 +525,14 @@ public class fProxySparseSolverTests
         // Phase 3 correctness cases
         // =================================================================================
 
-        // ---- MINRES on a symmetric INDEFINITE system (dense + BSM agree) -----------------
+        // ---- MINRES on a symmetric INDEFINITE system (dense + BSR agree) -----------------
         //
         // Laplacian1D (SPD, diag 2 / off-diag -1) shifted by -2 on the diagonal: eigenvalues
         // become 2-2cos(k*pi/(n+1)) - 2 = -2cos(k*pi/(n+1)) for k=1..n, which straddle 0 -> a
         // genuinely mixed-sign (symmetric indefinite) A. dim=16 -> n+1=17 is odd, so k=(n+1)/2
         // is non-integer and NO eigenvalue is exactly 0 (A stays nonsingular). MINRES handles
         // this cleanly where CG's p.Ap>0 curvature requirement would break down.
-        void MinresIndefiniteDenseAndBSM()
+        void MinresIndefiniteDenseAndBSR()
         {
             var arena = new Arena(Allocator.Persistent);
 
@@ -564,15 +564,15 @@ public class fProxySparseSolverTests
             AssertVecEq(in xDense, in xLU, LooseTol());
             pivot.Dispose();
 
-            // Same system as a 1x1-block BSM: minres(BSM) must agree with minres(dense).
-            var bsm = DenseToBSM1x1(ref arena, in A, 3 * dim);   // tridiagonal (shifted diag=0 dropped)
-            var xBsm = arena.fProxyVec(dim);
-            bool okBsm = Solvers.minres(in bsm, in b, ref xBsm, 4 * dim, Consts.fProxySqrtEps);
-            Assert.IsTrue(okBsm);
-            AssertVecEq(in xDense, in xBsm, LooseTol());
+            // Same system as a 1x1-block BSR: minres(BSR) must agree with minres(dense).
+            var bsm = DenseToBSR1x1(ref arena, in A, 3 * dim);   // tridiagonal (shifted diag=0 dropped)
+            var xBsr = arena.fProxyVec(dim);
+            bool okBsr = Solvers.minres(in bsm, in b, ref xBsr, 4 * dim, Consts.fProxySqrtEps);
+            Assert.IsTrue(okBsr);
+            AssertVecEq(in xDense, in xBsr, LooseTol());
 
-            var AxBsm = Sparse_OP.spMV(in bsm, in xBsm);
-            AssertVecEq(in AxBsm, in b, LooseTol());
+            var AxBsr = Sparse_OP.spMV(in bsm, in xBsr);
+            AssertVecEq(in AxBsr, in b, LooseTol());
 
             // NOTE (spec nice-to-have, NOT asserted): plain CG on this SAME indefinite A breaks
             // down -- Solvers.cg's p.Ap>0 curvature guard fails / returns a much
@@ -582,7 +582,7 @@ public class fProxySparseSolverTests
             arena.Dispose();
         }
 
-        // ---- MINRES on a plain SPD system agrees with CG (dense + BSM) --------------------
+        // ---- MINRES on a plain SPD system agrees with CG (dense + BSR) --------------------
         void MinresSpdMatchesCG()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -603,12 +603,12 @@ public class fProxySparseSolverTests
             var Ax = Linear_OP.dot(A, xMin);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            // BSM minres agrees with dense minres.
-            var bsm = DenseToBSM1x1(ref arena, in A, dim * dim);
-            var xMinBsm = arena.fProxyVec(dim);
-            bool okMinBsm = Solvers.minres(in bsm, in b, ref xMinBsm, 4 * dim, Consts.fProxySqrtEps);
-            Assert.IsTrue(okMinBsm);
-            AssertVecEq(in xMin, in xMinBsm, LooseTol());
+            // BSR minres agrees with dense minres.
+            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var xMinBsr = arena.fProxyVec(dim);
+            bool okMinBsr = Solvers.minres(in bsm, in b, ref xMinBsr, 4 * dim, Consts.fProxySqrtEps);
+            Assert.IsTrue(okMinBsr);
+            AssertVecEq(in xMin, in xMinBsr, LooseTol());
 
             arena.Dispose();
         }
@@ -645,21 +645,21 @@ public class fProxySparseSolverTests
             AssertVecEq(in xBcg, in xLU, LooseTol());
             pivot.Dispose();
 
-            // BSM form agrees with the dense BiCGSTAB solve.
-            var bsm = DenseToBSM1x1(ref arena, in A, dim * dim);
-            var xBcgBsm = arena.fProxyVec(dim);
-            bool okBcgBsm = Solvers.biCGStab(in bsm, in b, ref xBcgBsm, 4 * dim, Consts.fProxySqrtEps);
-            Assert.IsTrue(okBcgBsm);
-            AssertVecEq(in xBcg, in xBcgBsm, LooseTol());
+            // BSR form agrees with the dense BiCGSTAB solve.
+            var bsm = DenseToBSR1x1(ref arena, in A, dim * dim);
+            var xBcgBsr = arena.fProxyVec(dim);
+            bool okBcgBsr = Solvers.biCGStab(in bsm, in b, ref xBcgBsr, 4 * dim, Consts.fProxySqrtEps);
+            Assert.IsTrue(okBcgBsr);
+            AssertVecEq(in xBcg, in xBcgBsr, LooseTol());
 
             arena.Dispose();
         }
 
-        // ---- CGLS on an overdetermined CONSISTENT least-squares problem (dense + BSM) -----
+        // ---- CGLS on an overdetermined CONSISTENT least-squares problem (dense + BSR) -----
         //
         // b = A*x_true exactly (b in range(A)) -> the least-squares solution is x_true, recovered
         // exactly (within tolerance). m > n.
-        void CglsOverdeterminedConsistentDenseAndBSM()
+        void CglsOverdeterminedConsistentDenseAndBSR()
         {
             var arena = new Arena(Allocator.Persistent);
 
@@ -676,17 +676,17 @@ public class fProxySparseSolverTests
             var Ax = Linear_OP.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
-            var xBsm = arena.fProxyVec(n);
-            bool okBsm = Solvers.cgls(in bsm, in b, ref xBsm, 8 * n, Consts.fProxySqrtEps);
-            Assert.IsTrue(okBsm);
-            AssertVecEq(in x, in xBsm, LooseTol());
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var xBsr = arena.fProxyVec(n);
+            bool okBsr = Solvers.cgls(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(okBsr);
+            AssertVecEq(in x, in xBsr, LooseTol());
 
             arena.Dispose();
         }
 
-        // ---- LSQR on an overdetermined CONSISTENT least-squares problem (dense + BSM) ------
-        void LsqrOverdeterminedConsistentDenseAndBSM()
+        // ---- LSQR on an overdetermined CONSISTENT least-squares problem (dense + BSR) ------
+        void LsqrOverdeterminedConsistentDenseAndBSR()
         {
             var arena = new Arena(Allocator.Persistent);
 
@@ -703,11 +703,11 @@ public class fProxySparseSolverTests
             var Ax = Linear_OP.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
-            var xBsm = arena.fProxyVec(n);
-            bool okBsm = Solvers.lsqr(in bsm, in b, ref xBsm, 8 * n, Consts.fProxySqrtEps);
-            Assert.IsTrue(okBsm);
-            AssertVecEq(in x, in xBsm, LooseTol());
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var xBsr = arena.fProxyVec(n);
+            bool okBsr = Solvers.lsqr(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(okBsr);
+            AssertVecEq(in x, in xBsr, LooseTol());
 
             arena.Dispose();
         }
@@ -738,11 +738,11 @@ public class fProxySparseSolverTests
             QR.qrDirectSolve(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
-            var xBsm = arena.fProxyVec(n);
-            bool okBsm = Solvers.cgls(in bsm, in b, ref xBsm, 8 * n, Consts.fProxySqrtEps);
-            Assert.IsTrue(okBsm);
-            AssertVecEq(in x, in xBsm, LooseTol());
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var xBsr = arena.fProxyVec(n);
+            bool okBsr = Solvers.cgls(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(okBsr);
+            AssertVecEq(in x, in xBsr, LooseTol());
 
             arena.Dispose();
         }
@@ -768,11 +768,11 @@ public class fProxySparseSolverTests
             QR.qrDirectSolve(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
-            var xBsm = arena.fProxyVec(n);
-            bool okBsm = Solvers.lsqr(in bsm, in b, ref xBsm, 8 * n, Consts.fProxySqrtEps);
-            Assert.IsTrue(okBsm);
-            AssertVecEq(in x, in xBsm, LooseTol());
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var xBsr = arena.fProxyVec(n);
+            bool okBsr = Solvers.lsqr(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(okBsr);
+            AssertVecEq(in x, in xBsr, LooseTol());
 
             arena.Dispose();
         }
@@ -914,10 +914,10 @@ public class fProxySparseSolverTests
             arena.Dispose();
         }
 
-        // ---- LSMR on an overdetermined CONSISTENT least-squares problem (dense + BSM) ------
+        // ---- LSMR on an overdetermined CONSISTENT least-squares problem (dense + BSR) ------
         //
-        // Same fixture and acceptance criterion as CglsOverdeterminedConsistentDenseAndBSM above.
-        void LsmrOverdeterminedConsistentDenseAndBSM()
+        // Same fixture and acceptance criterion as CglsOverdeterminedConsistentDenseAndBSR above.
+        void LsmrOverdeterminedConsistentDenseAndBSR()
         {
             var arena = new Arena(Allocator.Persistent);
 
@@ -934,11 +934,11 @@ public class fProxySparseSolverTests
             var Ax = Linear_OP.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
-            var xBsm = arena.fProxyVec(n);
-            bool okBsm = Solvers.lsmr(in bsm, in b, ref xBsm, 8 * n, Consts.fProxySqrtEps);
-            Assert.IsTrue(okBsm);
-            AssertVecEq(in x, in xBsm, LooseTol());
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var xBsr = arena.fProxyVec(n);
+            bool okBsr = Solvers.lsmr(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(okBsr);
+            AssertVecEq(in x, in xBsr, LooseTol());
 
             arena.Dispose();
         }
@@ -968,11 +968,11 @@ public class fProxySparseSolverTests
             QR.qrDirectSolve(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
-            var xBsm = arena.fProxyVec(n);
-            bool okBsm = Solvers.lsmr(in bsm, in b, ref xBsm, 8 * n, Consts.fProxySqrtEps);
-            Assert.IsTrue(okBsm);
-            AssertVecEq(in x, in xBsm, LooseTol());
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
+            var xBsr = arena.fProxyVec(n);
+            bool okBsr = Solvers.lsmr(in bsm, in b, ref xBsr, 8 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(okBsr);
+            AssertVecEq(in x, in xBsr, LooseTol());
 
             arena.Dispose();
         }
@@ -1065,7 +1065,7 @@ public class fProxySparseSolverTests
         //
         // Reference = dense QR least-squares on the AUGMENTED system [A; damp*I] x ~= [b; 0], which
         // IS the damped minimizer x = (A^T A + damp^2 I)^-1 A^T b. All three damped solvers (dense
-        // AND 1x1-BSM) must land on it. Uses an INCONSISTENT b so damping actually changes the
+        // AND 1x1-BSR) must land on it. Uses an INCONSISTENT b so damping actually changes the
         // answer (a wrong/no-op damp term would miss the reference). damp = 0.5 is well inside the
         // regime where the regularization is numerically significant but the system stays solvable.
         void TikhonovDampingMatchesAugmentedQR()
@@ -1092,8 +1092,8 @@ public class fProxySparseSolverTests
             Assert.IsTrue(Solvers.lsmr(in A, in b, ref xM, 16 * n, Consts.fProxySqrtEps, damp));
             AssertVecEq(in xM, in xref, LooseTol());
 
-            // 1x1-BSM damped solvers agree with the same reference
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            // 1x1-BSR damped solvers agree with the same reference
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
 
             var xCb = arena.fProxyVec(n);
             Assert.IsTrue(Solvers.cgls(in bsm, in b, ref xCb, 16 * n, Consts.fProxySqrtEps, damp));
@@ -1113,7 +1113,7 @@ public class fProxySparseSolverTests
         // ---- CGNE / Craig: minimum-norm solution of a consistent under-determined system ----
         //
         // Same wide-A min-norm setup as CglsLsqrUnderdeterminedConsistent above; CGNE is
-        // cross-checked against LSQR (already tested), on dense AND 1x1-BSM.
+        // cross-checked against LSQR (already tested), on dense AND 1x1-BSR.
         void CgneUnderdeterminedMinNormMatchesLsqr()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1132,10 +1132,10 @@ public class fProxySparseSolverTests
             Assert.IsTrue(Solvers.lsqr(in A, in b, ref xL, 8 * n, Consts.fProxySqrtEps));
             AssertVecEq(in xC, in xL, LooseTol());          // both land on the unique min-norm solution
 
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
             var xCb = arena.fProxyVec(n);
             Assert.IsTrue(Solvers.cgne(in bsm, in b, ref xCb, 8 * n, Consts.fProxySqrtEps));
-            AssertVecEq(in xC, in xCb, LooseTol());          // BSM agrees with dense CGNE
+            AssertVecEq(in xC, in xCb, LooseTol());          // BSR agrees with dense CGNE
 
             arena.Dispose();
         }
@@ -1327,17 +1327,17 @@ public class fProxySparseSolverTests
             arena.Dispose();
         }
 
-        // The BSM diagnostic overload reports the same diagnostics (up to iterative tolerance) as the
-        // dense one for the SAME system -- confirms the BSM info path (with A^T materialization) feeds
+        // The BSR diagnostic overload reports the same diagnostics (up to iterative tolerance) as the
+        // dense one for the SAME system -- confirms the BSR info path (with A^T materialization) feeds
         // lstsqInfo identically.
-        void LstsqInfoBSMMatchesDense()
+        void LstsqInfoBSRMatchesDense()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int m = 12, n = 5;
             var A = arena.fProxyRandomMat(m, n, -1f, 1f, 51301);
             var b = arena.fProxyRandomVec(m, -1f, 1f, 51302);
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
             int maxIter = 8 * n;
 
             var xD = arena.fProxyVec(n);
@@ -1427,16 +1427,16 @@ public class fProxySparseSolverTests
             arena.Dispose();
         }
 
-        // Every *Jacobi convenience wrapper (cgls/lsqr/lsmr, dense AND 1x1-BSM) solves the
-        // badly-scaled system to least-squares optimality, and the BSM form matches the dense form.
-        void JacobiConvenienceSolversLSOptimalDenseAndBSM()
+        // Every *Jacobi convenience wrapper (cgls/lsqr/lsmr, dense AND 1x1-BSR) solves the
+        // badly-scaled system to least-squares optimality, and the BSR form matches the dense form.
+        void JacobiConvenienceSolversLSOptimalDenseAndBSR()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int m = 24, n = 8;
             var A = BuildBadlyScaledOrthonormal(ref arena, m, n, 52101);
             var b = arena.fProxyRandomVec(m, -1f, 1f, 52102);
-            var bsm = DenseToBSM1x1(ref arena, in A, m * n);
+            var bsm = DenseToBSR1x1(ref arena, in A, m * n);
             int maxIter = 4 * n;
             fProxy tol = Consts.fProxySqrtEps;
 
@@ -1518,10 +1518,10 @@ public class fProxySparseSolverTests
             AssertClose(rnorm, math.sqrt(acc), tol);
         }
 
-        // BSM counterpart: recompute ‖b - A x‖ with the SAME sparse matvec the solver tracked its
-        // residual through (spMV), so the check stays in-arithmetic rather than comparing a BSM-
+        // BSR counterpart: recompute ‖b - A x‖ with the SAME sparse matvec the solver tracked its
+        // residual through (spMV), so the check stays in-arithmetic rather than comparing a BSR-
         // tracked rnorm against a dense recompute (whose summation order differs).
-        static void AssertResidualNormBSM(in fProxyBSM A, in fProxyN b, in fProxyN x, double rnorm, fProxy tol)
+        static void AssertResidualNormBSR(in fProxyBSR A, in fProxyN b, in fProxyN x, double rnorm, fProxy tol)
         {
             var Ax = Sparse_OP.spMV(in A, in x);
             fProxy acc = (fProxy)0;
@@ -1541,11 +1541,11 @@ public class fProxySparseSolverTests
             var arena = new Arena(Allocator.Persistent);
             fProxy tol = LooseTol();
 
-            // ---- SPD system: cg, pcg (block-Jacobi over BSM), minres ----
+            // ---- SPD system: cg, pcg (block-Jacobi over BSR), minres ----
             int n = 12;
             var Aspd = BuildDenseSPD(ref arena, n, 52001);
             var bspd = arena.fProxyRandomVec(n, -1f, 1f, 52002);
-            var bsm = DenseToBSM1x1(ref arena, in Aspd, n * n);
+            var bsm = DenseToBSR1x1(ref arena, in Aspd, n * n);
             var M = arena.fProxyBlockJacobi(in bsm);
             int maxIter = 4 * n;
 
@@ -1557,7 +1557,7 @@ public class fProxySparseSolverTests
             var xp = arena.fProxyVec(n);
             var ip = Solvers.pcg(in bsm, in M, in bspd, ref xp, maxIter, Consts.fProxySqrtEps);
             Assert.IsTrue(ip.Solved && ip.iterations >= 1);
-            AssertResidualNormBSM(in bsm, in bspd, in xp, ip.rnorm, tol);   // BSM solve -> BSM recompute
+            AssertResidualNormBSR(in bsm, in bspd, in xp, ip.rnorm, tol);   // BSR solve -> BSR recompute
 
             var xm = arena.fProxyVec(n);
             var im = Solvers.minres(in Aspd, in bspd, ref xm, maxIter, Consts.fProxySqrtEps);
@@ -1596,7 +1596,7 @@ public class fProxySparseSolverTests
             var xhp = arena.fProxyVec(n);
             var ihp = Solvers.pcg(in bsm, in M, in bspd, ref xhp, 1, Consts.fProxySqrtEps);
             Assert.IsTrue(ihp.status == IterativeSolveStatus.MaxIterations && ihp.iterations == 1);
-            AssertResidualNormBSM(in bsm, in bspd, in xhp, ihp.rnorm, tol);
+            AssertResidualNormBSR(in bsm, in bspd, in xhp, ihp.rnorm, tol);
 
             var xhm = arena.fProxyVec(n);
             var ihm = Solvers.minres(in Aspd, in bspd, ref xhm, 1, Consts.fProxySqrtEps);
@@ -1676,8 +1676,8 @@ public class fProxySparseSolverTests
     // ---- correctness cases (Burst) -------------------------------------------------------
 
     [Test]
-    public void Laplacian1DBSMCGMatchesDenseCGTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.Laplacian1DBSMCGMatchesDenseCG }.Run();
+    public void Laplacian1DBSRCGMatchesDenseCGTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.Laplacian1DBSRCGMatchesDenseCG }.Run();
 
     [Test]
     public void ThreeByThreeBlockSPDConvergesTest()
@@ -1710,8 +1710,8 @@ public class fProxySparseSolverTests
     // ---- Phase 3 correctness entry points ----
 
     [Test]
-    public void MinresIndefiniteDenseAndBSMTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.MinresIndefiniteDenseAndBSM }.Run();
+    public void MinresIndefiniteDenseAndBSRTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.MinresIndefiniteDenseAndBSR }.Run();
 
     [Test]
     public void MinresSpdMatchesCGTest()
@@ -1722,12 +1722,12 @@ public class fProxySparseSolverTests
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.BiCGStabNonSymmetricMatchesLU }.Run();
 
     [Test]
-    public void CglsOverdeterminedConsistentDenseAndBSMTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsOverdeterminedConsistentDenseAndBSM }.Run();
+    public void CglsOverdeterminedConsistentDenseAndBSRTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.CglsOverdeterminedConsistentDenseAndBSR }.Run();
 
     [Test]
-    public void LsqrOverdeterminedConsistentDenseAndBSMTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsqrOverdeterminedConsistentDenseAndBSM }.Run();
+    public void LsqrOverdeterminedConsistentDenseAndBSRTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsqrOverdeterminedConsistentDenseAndBSR }.Run();
 
     [Test]
     public void CglsInconsistentMatchesQRTest()
@@ -1744,8 +1744,8 @@ public class fProxySparseSolverTests
     // ---- LSMR entry points ----
 
     [Test]
-    public void LsmrOverdeterminedConsistentDenseAndBSMTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrOverdeterminedConsistentDenseAndBSM }.Run();
+    public void LsmrOverdeterminedConsistentDenseAndBSRTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrOverdeterminedConsistentDenseAndBSR }.Run();
 
     [Test]
     public void LsmrInconsistentMatchesQRTest()
@@ -1790,16 +1790,16 @@ public class fProxySparseSolverTests
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LsmrRnormMatchesExact }.Run();
 
     [Test]
-    public void LstsqInfoBSMMatchesDenseTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoBSMMatchesDense }.Run();
+    public void LstsqInfoBSRMatchesDenseTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.LstsqInfoBSRMatchesDense }.Run();
 
     [Test]
     public void JacobiPreconditionerReducesIterationsTest()
         => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.JacobiPreconditionerReducesIterations }.Run();
 
     [Test]
-    public void JacobiConvenienceSolversLSOptimalDenseAndBSMTest()
-        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.JacobiConvenienceSolversLSOptimalDenseAndBSM }.Run();
+    public void JacobiConvenienceSolversLSOptimalDenseAndBSRTest()
+        => new SparseSolverTestJob { Type = SparseSolverTestJob.TestType.JacobiConvenienceSolversLSOptimalDenseAndBSR }.Run();
 
     [Test]
     public void LstsqInfoStrangLineFitExactTest()
@@ -1833,13 +1833,13 @@ public class fProxySparseSolverTests
 
     // ---- guard / exception cases (managed thread; Assert.Throws can't run inside Burst) ----
 
-    static fProxyBSM BuildSquareBSM(ref Arena arena)
+    static fProxyBSR BuildSquareBSR(ref Arena arena)
     {
         const int BR = 2, BC = 2;
-        var builder = arena.fProxyBSMBuilder(2, 2, BR, BC, 2);
+        var builder = arena.fProxyBSRBuilder(2, 2, BR, BC, 2);
         builder.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, -1f, 1f, 6101));
         builder.AddBlock(1, 1, arena.fProxyRandomMat(BR, BC, -1f, 1f, 6102));
-        return builder.ToBSM(ref arena);
+        return builder.ToBSR(ref arena);
     }
 
     [Test]
@@ -1850,9 +1850,9 @@ public class fProxySparseSolverTests
         {
             const int BR = 2;
             // Only an off-diagonal block -- no block at (0,0) or (1,1).
-            var builder = arena.fProxyBSMBuilder(2, 2, BR, BR, 1);
+            var builder = arena.fProxyBSRBuilder(2, 2, BR, BR, 1);
             builder.AddBlock(0, 1, arena.fProxyRandomMat(BR, BR, -1f, 1f, 6201));
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
 
             Assert.Throws<ArgumentException>(() => arena.fProxyBlockJacobi(in A));
         }
@@ -1860,15 +1860,15 @@ public class fProxySparseSolverTests
     }
 
     [Test]
-    public void BlockJacobi_NonSquareBSM_Throws()
+    public void BlockJacobi_NonSquareBSR_Throws()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
             const int BR = 2, BC = 3;
-            var builder = arena.fProxyBSMBuilder(2, 2, BR, BC, 1); // BR != BC
+            var builder = arena.fProxyBSRBuilder(2, 2, BR, BC, 1); // BR != BC
             builder.AddBlock(0, 0, arena.fProxyRandomMat(BR, BC, -1f, 1f, 6301));
-            var A = builder.ToBSM(ref arena);
+            var A = builder.ToBSR(ref arena);
 
             Assert.Throws<ArgumentException>(() => arena.fProxyBlockJacobi(in A));
         }
@@ -1949,7 +1949,7 @@ public class fProxySparseSolverTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = BuildSquareBSM(ref arena);       // 4 x 4, both diagonal blocks present
+            var A = BuildSquareBSR(ref arena);       // 4 x 4, both diagonal blocks present
             var M = arena.fProxyBlockJacobi(in A);
             int dim = A.M_Rows;
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 6521);
@@ -1970,7 +1970,7 @@ public class fProxySparseSolverTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = BuildSquareBSM(ref arena);
+            var A = BuildSquareBSR(ref arena);
             var M = arena.fProxyBlockJacobi(in A);
             int dim = A.M_Rows;
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 6531);
@@ -2015,7 +2015,7 @@ public class fProxySparseSolverTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = BuildSquareBSM(ref arena);
+            var A = BuildSquareBSR(ref arena);
             var M = arena.fProxyBlockJacobi(in A);
             int dim = A.M_Rows;
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 6551);

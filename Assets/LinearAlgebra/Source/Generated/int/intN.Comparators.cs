@@ -10,7 +10,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolN operator <(in intN lhs, int rhs) {
 
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe {
                 UnsafeBool_OP.cmprLessScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
@@ -22,7 +22,7 @@ namespace LinearAlgebra
         public static boolN operator <(int lhs, in intN rhs) => rhs > lhs;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolN operator >(in intN lhs, int rhs) {
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe {
                 UnsafeBool_OP.cmprGreaterScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.N);
@@ -35,7 +35,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolN operator <=(in intN lhs, int rhs)
         {
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe
             {
@@ -49,7 +49,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolN operator >=(in intN lhs, int rhs)
         {
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe
             {
@@ -63,7 +63,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolN operator ==(in intN lhs, int rhs)
         {
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe
             {
@@ -77,7 +77,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static boolN operator !=(in intN lhs, int rhs)
         {
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe
             {
@@ -97,7 +97,7 @@ namespace LinearAlgebra
 
             Assume.SameDim(in lhs, in rhs);
 
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe
             {
@@ -113,7 +113,7 @@ namespace LinearAlgebra
         {
             Assume.SameDim(in lhs, in rhs);
 
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe
             {
@@ -129,7 +129,7 @@ namespace LinearAlgebra
         {
             Assume.SameDim(in lhs, in rhs);
 
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe
             {
@@ -143,7 +143,7 @@ namespace LinearAlgebra
         {
             Assume.SameDim(in lhs, in rhs);
 
-            boolN res = lhs.tempBoolVec(lhs.N, true);
+            boolN res = lhs.boolTempVec(lhs.N, true);
 
             unsafe
             {

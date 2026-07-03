@@ -17,7 +17,7 @@ namespace LinearAlgebra.Benchmarks
     //
     // The core method: for every case, ONE matrix is built with a block-sparsity pattern (block size
     // b=3, the FEM/cloth/PD workhorse) and materialized in BOTH storage forms -- a dense NxN
-    // floatMxN/doubleMxN with zeros in the absent blocks, AND a floatBSM/doubleBSM (block-CSR) holding
+    // floatMxN/doubleMxN with zeros in the absent blocks, AND a floatBSR/doubleBSR (block-CSR) holding
     // exactly the nonzero blocks. Because both forms encode the IDENTICAL matrix:
     //   (a) dense-vs-sparse solve TIME is a fair, apples-to-apples comparison (same math, only the
     //       storage/traversal differs), and
@@ -55,7 +55,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct CGSparseJobFloat : IJob
     {
-        public floatBSM A;
+        public floatBSR A;
         public floatN b, x, r, p, Ap;
         public int K;
 
@@ -85,7 +85,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct CGSparseJobDouble : IJob
     {
-        public doubleBSM A;
+        public doubleBSR A;
         public doubleN b, x, r, p, Ap;
         public int K;
 
@@ -117,7 +117,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct MinresSparseJobFloat : IJob
     {
-        public floatBSM A;
+        public floatBSR A;
         public floatN b, x, y, r1, r2, v, w, w1, w2;
         public int K;
 
@@ -147,7 +147,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct MinresSparseJobDouble : IJob
     {
-        public doubleBSM A;
+        public doubleBSR A;
         public doubleN b, x, y, r1, r2, v, w, w1, w2;
         public int K;
 
@@ -179,7 +179,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct BiCGStabSparseJobFloat : IJob
     {
-        public floatBSM A;
+        public floatBSR A;
         public floatN b, x, r, rHat0, p, v, t;
         public int K;
 
@@ -209,7 +209,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct BiCGStabSparseJobDouble : IJob
     {
-        public doubleBSM A;
+        public doubleBSR A;
         public doubleN b, x, r, rHat0, p, v, t;
         public int K;
 
@@ -241,7 +241,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct CglsSparseJobFloat : IJob
     {
-        public floatBSM A;
+        public floatBSR A;
         public floatN b, x, r, s, p, q;
         public int K;
 
@@ -271,7 +271,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct CglsSparseJobDouble : IJob
     {
-        public doubleBSM A;
+        public doubleBSR A;
         public doubleN b, x, r, s, p, q;
         public int K;
 
@@ -303,7 +303,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LsqrSparseJobFloat : IJob
     {
-        public floatBSM A;
+        public floatBSR A;
         public floatN b, x, u, v, w, tmpM, tmpN;
         public int K;
 
@@ -333,7 +333,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LsqrSparseJobDouble : IJob
     {
-        public doubleBSM A;
+        public doubleBSR A;
         public doubleN b, x, u, v, w, tmpM, tmpN;
         public int K;
 
@@ -353,7 +353,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct CglsSparseTJobFloat : IJob
     {
-        public floatBSM A, AT;
+        public floatBSR A, AT;
         public floatN b, x, r, s, p, q;
         public int K;
         public void Execute()
@@ -367,7 +367,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct CglsSparseTJobDouble : IJob
     {
-        public doubleBSM A, AT;
+        public doubleBSR A, AT;
         public doubleN b, x, r, s, p, q;
         public int K;
         public void Execute()
@@ -381,7 +381,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LsqrSparseTJobFloat : IJob
     {
-        public floatBSM A, AT;
+        public floatBSR A, AT;
         public floatN b, x, u, v, w, tmpM, tmpN;
         public int K;
         public void Execute()
@@ -395,7 +395,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LsqrSparseTJobDouble : IJob
     {
-        public doubleBSM A, AT;
+        public doubleBSR A, AT;
         public doubleN b, x, u, v, w, tmpM, tmpN;
         public int K;
         public void Execute()
@@ -550,7 +550,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct MatvecSparseJobFloat : IJob
     {
-        public floatBSM A;
+        public floatBSR A;
         public floatN x, y;
         public int reps;
         public void Execute()
@@ -582,7 +582,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct MatvecSparseJobDouble : IJob
     {
-        public doubleBSM A;
+        public doubleBSR A;
         public doubleN x, y;
         public int reps;
         public void Execute()
@@ -631,9 +631,9 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== Dense vs Sparse (BSM) iterative solvers: timing + numerical cross-check ===");
+            sb.AppendLine("=== Dense vs Sparse (BSR) iterative solvers: timing + numerical cross-check ===");
             sb.AppendLine("Same matrix, two storage forms: a dense NxN floatMxN/doubleMxN with zeros in the");
-            sb.AppendLine("absent blocks, and a floatBSM/doubleBSM (block-CSR) holding exactly the nonzero");
+            sb.AppendLine("absent blocks, and a floatBSR/doubleBSR (block-CSR) holding exactly the nonzero");
             sb.AppendLine("b=3 blocks. Because both encode the IDENTICAL matrix, (a) dense-vs-sparse time is");
             sb.AppendLine("directly comparable (same math, only storage/traversal differs), and (b) dense-vs-");
             sb.AppendLine("sparse SOLUTIONS must agree numerically -- the residual column is that cross-check,");
@@ -644,7 +644,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("block grid): ~7% / ~33% of blocks nonzero, always including every diagonal block.");
             sb.AppendLine("Section 0 first isolates the pure per-iteration operator cost (dense GEMV vs sparse");
             sb.AppendLine("spMV) that dominates every solver -- the cleanest dense-vs-sparse signal. Section 0b");
-            sb.AppendLine("goes one level deeper: symmetric upper-block storage (Symmetric=true, ToBSMSymmetric)");
+            sb.AppendLine("goes one level deeper: symmetric upper-block storage (Symmetric=true, ToBSRSymmetric)");
             sb.AppendLine("vs full block-CSR storage on the IDENTICAL SPD matrix -- bsmMatVecSym touches half as");
             sb.AppendLine("many stored blocks as the full traversal, so this isolates that ~2x memory/FLOP win.");
             sb.AppendLine();
@@ -800,12 +800,12 @@ namespace LinearAlgebra.Benchmarks
 
         // ==== block-matrix builders (float) =============================================================
 
-        static void BuildBlockSPDFloat(ref Arena arena, int nb, float density, uint seed, out floatMxN dense, out floatBSM sparse)
+        static void BuildBlockSPDFloat(ref Arena arena, int nb, float density, uint seed, out floatMxN dense, out floatBSR sparse)
         {
             int dim = nb * BR;
             dense = arena.floatMat(dim, dim);
             var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzb);
-            var builder = arena.floatBSMBuilder(nb, nb, BR, BR, nnzb);
+            var builder = arena.floatBSRBuilder(nb, nb, BR, BR, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
             float strong = dim;
             const float offScale = 0.3f;
@@ -849,25 +849,25 @@ namespace LinearAlgebra.Benchmarks
                         dense[bj * BR + r, bi * BR + c] = blockT[r, c];
             }
 
-            sparse = builder.ToBSM(ref arena);
+            sparse = builder.ToBSR(ref arena);
         }
 
         // Same recipe as BuildBlockSPDFloat (identical rng sequence: diagonal blocks Di = Mi^T Mi +
         // strong*I, then off-diagonal pairs at offScale), but assembles TWO block-CSR encodings of
         // the SAME dense SPD matrix side by side: `full` (every stored block, incl. the explicit
         // mirrored lower block bj,bi) and `sym` (upper-triangle + diagonal ONLY, via
-        // ToBSMSymmetric -- the lower triangle is implicit). Used by Section 0b to isolate the
+        // ToBSRSymmetric -- the lower triangle is implicit). Used by Section 0b to isolate the
         // symmetric-storage spMV win (bsmMatVecSym does half the stored-block work of bsmMatVec)
         // on a matrix that is byte-for-byte identical between the two storage forms.
         static void BuildBlockSPDPairFloat(ref Arena arena, int nb, float density, uint seed,
-                                           out floatMxN dense, out floatBSM full, out floatBSM sym)
+                                           out floatMxN dense, out floatBSR full, out floatBSR sym)
         {
             int dim = nb * BR;
             dense = arena.floatMat(dim, dim);
             var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzbFull);
             int nnzbSym = nb + pairs.Count;
-            var fullBuilder = arena.floatBSMBuilder(nb, nb, BR, BR, nnzbFull);
-            var symBuilder = arena.floatBSMBuilder(nb, nb, BR, BR, nnzbSym);
+            var fullBuilder = arena.floatBSRBuilder(nb, nb, BR, BR, nnzbFull);
+            var symBuilder = arena.floatBSRBuilder(nb, nb, BR, BR, nnzbSym);
             var rng = new Random(seed ^ 0x9E3779B9u);
             float strong = dim;
             const float offScale = 0.3f;
@@ -913,16 +913,16 @@ namespace LinearAlgebra.Benchmarks
                         dense[bj * BR + r, bi * BR + c] = blockT[r, c];
             }
 
-            full = fullBuilder.ToBSM(ref arena);
-            sym = symBuilder.ToBSMSymmetric(ref arena);
+            full = fullBuilder.ToBSR(ref arena);
+            sym = symBuilder.ToBSRSymmetric(ref arena);
         }
 
-        static void BuildBlockNonSymFloat(ref Arena arena, int nb, float density, uint seed, out floatMxN dense, out floatBSM sparse)
+        static void BuildBlockNonSymFloat(ref Arena arena, int nb, float density, uint seed, out floatMxN dense, out floatBSR sparse)
         {
             int dim = nb * BR;
             dense = arena.floatMat(dim, dim);
             var pairs = ChooseOffDiagPairsAsymmetric(nb, density, seed, out int nnzb);
-            var builder = arena.floatBSMBuilder(nb, nb, BR, BR, nnzb);
+            var builder = arena.floatBSRBuilder(nb, nb, BR, BR, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
             float strong = dim;
             const float offScale = 0.3f;
@@ -956,16 +956,16 @@ namespace LinearAlgebra.Benchmarks
                         dense[bi * BR + r, bj * BR + c] = block[r, c];
             }
 
-            sparse = builder.ToBSM(ref arena);
+            sparse = builder.ToBSR(ref arena);
         }
 
-        static void BuildBlockRectFloat(ref Arena arena, int mb, int nb, float density, uint seed, out floatMxN dense, out floatBSM sparse)
+        static void BuildBlockRectFloat(ref Arena arena, int mb, int nb, float density, uint seed, out floatMxN dense, out floatBSR sparse)
         {
             int rows = mb * BR, cols = nb * BR;
             dense = arena.floatMat(rows, cols);
             int diagCount = math.min(mb, nb);
             var pairs = ChooseOffDiagPairsRect(mb, nb, density, seed, out int nnzb);
-            var builder = arena.floatBSMBuilder(mb, nb, BR, BR, nnzb);
+            var builder = arena.floatBSRBuilder(mb, nb, BR, BR, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
 
             for (int i = 0; i < diagCount; i++)
@@ -995,17 +995,17 @@ namespace LinearAlgebra.Benchmarks
                         dense[bi * BR + r, bj * BR + c] = block[r, c];
             }
 
-            sparse = builder.ToBSM(ref arena);
+            sparse = builder.ToBSR(ref arena);
         }
 
         // ==== block-matrix builders (double) =============================================================
 
-        static void BuildBlockSPDDouble(ref Arena arena, int nb, float density, uint seed, out doubleMxN dense, out doubleBSM sparse)
+        static void BuildBlockSPDDouble(ref Arena arena, int nb, float density, uint seed, out doubleMxN dense, out doubleBSR sparse)
         {
             int dim = nb * BR;
             dense = arena.doubleMat(dim, dim);
             var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzb);
-            var builder = arena.doubleBSMBuilder(nb, nb, BR, BR, nnzb);
+            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
             double strong = dim;
             const double offScale = 0.3;
@@ -1049,19 +1049,19 @@ namespace LinearAlgebra.Benchmarks
                         dense[bj * BR + r, bi * BR + c] = blockT[r, c];
             }
 
-            sparse = builder.ToBSM(ref arena);
+            sparse = builder.ToBSR(ref arena);
         }
 
         // Double counterpart of BuildBlockSPDPairFloat -- see that method's doc comment.
         static void BuildBlockSPDPairDouble(ref Arena arena, int nb, float density, uint seed,
-                                            out doubleMxN dense, out doubleBSM full, out doubleBSM sym)
+                                            out doubleMxN dense, out doubleBSR full, out doubleBSR sym)
         {
             int dim = nb * BR;
             dense = arena.doubleMat(dim, dim);
             var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzbFull);
             int nnzbSym = nb + pairs.Count;
-            var fullBuilder = arena.doubleBSMBuilder(nb, nb, BR, BR, nnzbFull);
-            var symBuilder = arena.doubleBSMBuilder(nb, nb, BR, BR, nnzbSym);
+            var fullBuilder = arena.doubleBSRBuilder(nb, nb, BR, BR, nnzbFull);
+            var symBuilder = arena.doubleBSRBuilder(nb, nb, BR, BR, nnzbSym);
             var rng = new Random(seed ^ 0x9E3779B9u);
             double strong = dim;
             const double offScale = 0.3;
@@ -1107,16 +1107,16 @@ namespace LinearAlgebra.Benchmarks
                         dense[bj * BR + r, bi * BR + c] = blockT[r, c];
             }
 
-            full = fullBuilder.ToBSM(ref arena);
-            sym = symBuilder.ToBSMSymmetric(ref arena);
+            full = fullBuilder.ToBSR(ref arena);
+            sym = symBuilder.ToBSRSymmetric(ref arena);
         }
 
-        static void BuildBlockNonSymDouble(ref Arena arena, int nb, float density, uint seed, out doubleMxN dense, out doubleBSM sparse)
+        static void BuildBlockNonSymDouble(ref Arena arena, int nb, float density, uint seed, out doubleMxN dense, out doubleBSR sparse)
         {
             int dim = nb * BR;
             dense = arena.doubleMat(dim, dim);
             var pairs = ChooseOffDiagPairsAsymmetric(nb, density, seed, out int nnzb);
-            var builder = arena.doubleBSMBuilder(nb, nb, BR, BR, nnzb);
+            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
             double strong = dim;
             const double offScale = 0.3;
@@ -1150,16 +1150,16 @@ namespace LinearAlgebra.Benchmarks
                         dense[bi * BR + r, bj * BR + c] = block[r, c];
             }
 
-            sparse = builder.ToBSM(ref arena);
+            sparse = builder.ToBSR(ref arena);
         }
 
-        static void BuildBlockRectDouble(ref Arena arena, int mb, int nb, float density, uint seed, out doubleMxN dense, out doubleBSM sparse)
+        static void BuildBlockRectDouble(ref Arena arena, int mb, int nb, float density, uint seed, out doubleMxN dense, out doubleBSR sparse)
         {
             int rows = mb * BR, cols = nb * BR;
             dense = arena.doubleMat(rows, cols);
             int diagCount = math.min(mb, nb);
             var pairs = ChooseOffDiagPairsRect(mb, nb, density, seed, out int nnzb);
-            var builder = arena.doubleBSMBuilder(mb, nb, BR, BR, nnzb);
+            var builder = arena.doubleBSRBuilder(mb, nb, BR, BR, nnzb);
             var rng = new Random(seed ^ 0x9E3779B9u);
 
             for (int i = 0; i < diagCount; i++)
@@ -1189,7 +1189,7 @@ namespace LinearAlgebra.Benchmarks
                         dense[bi * BR + r, bj * BR + c] = block[r, c];
             }
 
-            sparse = builder.ToBSM(ref arena);
+            sparse = builder.ToBSR(ref arena);
         }
 
         // ==== Section 0: operator matvec throughput (dense GEMV vs sparse spMV) =========================
@@ -1296,7 +1296,7 @@ namespace LinearAlgebra.Benchmarks
         //
         // Section 0 already compares dense GEMV vs sparse spMV; this isolates the OTHER half of the
         // Milestone-A story -- storing a genuinely symmetric matrix as upper-triangle-only
-        // (Symmetric=true, built via ToBSMSymmetric) vs full block-CSR (every block, incl. the
+        // (Symmetric=true, built via ToBSRSymmetric) vs full block-CSR (every block, incl. the
         // explicit mirrored lower block), on the identical matrix (BuildBlockSPDPairFloat/Double pins
         // the rng sequence so `full` and `sym` encode byte-for-byte the same SPD system). bsmMatVecSym
         // does one accumulate per stored block for the diagonal and TWO (K*x_j and K^T*x_i) for each
@@ -1579,7 +1579,7 @@ namespace LinearAlgebra.Benchmarks
 
             // Milestone B: transpose-optimized variants -- Aᵀ materialized ONCE (outside timing), ApplyT
             // becomes a forward spMV over Aᵀ. Compare "sparseT" rows against the "sparse" rows above.
-            var AT = arena.floatBSMTranspose(in sparse);
+            var AT = arena.floatBSRTranspose(in sparse);
 
             var xCST = arena.floatVec(cols); var rCST = arena.floatVec(rows); var sCST = arena.floatVec(cols); var pCST = arena.floatVec(cols); var qCST = arena.floatVec(rows);
             var cglsSparseTJob = new CglsSparseTJobFloat { A = sparse, AT = AT, b = b, x = xCST, r = rCST, s = sCST, p = pCST, q = qCST, K = K_LS };
@@ -1626,7 +1626,7 @@ namespace LinearAlgebra.Benchmarks
 
             // Milestone B: transpose-optimized variants -- Aᵀ materialized ONCE (outside timing), ApplyT
             // becomes a forward spMV over Aᵀ. Compare "sparseT" rows against the "sparse" rows above.
-            var AT = arena.doubleBSMTranspose(in sparse);
+            var AT = arena.doubleBSRTranspose(in sparse);
 
             var xCST = arena.doubleVec(cols); var rCST = arena.doubleVec(rows); var sCST = arena.doubleVec(cols); var pCST = arena.doubleVec(cols); var qCST = arena.doubleVec(rows);
             var cglsSparseTJob = new CglsSparseTJobDouble { A = sparse, AT = AT, b = b, x = xCST, r = rCST, s = sCST, p = pCST, q = qCST, K = K_LS };

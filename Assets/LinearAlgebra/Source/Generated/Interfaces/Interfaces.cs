@@ -44,28 +44,28 @@ namespace LinearAlgebra
         
         public unsafe floatN floatVec(int n, bool uninit = false);
 
-        public unsafe floatN tempfloatVec(int n, bool uninit = false);
+        public unsafe floatN floatTempVec(int n, bool uninit = false);
 
         public unsafe floatMxN floatMat(int m, int n, bool uninit = false);
 
-        public unsafe floatMxN tempfloatMat(int m, int n, bool uninit = false);
+        public unsafe floatMxN floatTempMat(int m, int n, bool uninit = false);
         
         public unsafe doubleN doubleVec(int n, bool uninit = false);
 
-        public unsafe doubleN tempdoubleVec(int n, bool uninit = false);
+        public unsafe doubleN doubleTempVec(int n, bool uninit = false);
 
         public unsafe doubleMxN doubleMat(int m, int n, bool uninit = false);
 
-        public unsafe doubleMxN tempdoubleMat(int m, int n, bool uninit = false);
+        public unsafe doubleMxN doubleTempMat(int m, int n, bool uninit = false);
         
 
         public unsafe boolN boolVec(int n, bool uninit = false);
 
-        public unsafe boolN tempBoolVec(int n, bool uninit = false);
+        public unsafe boolN boolTempVec(int n, bool uninit = false);
 
         public unsafe boolMxN boolMat(int m, int n, bool uninit = false);
 
-        public unsafe boolMxN tempBoolMat(int m, int n, bool uninit = false);
+        public unsafe boolMxN boolTempMat(int m, int n, bool uninit = false);
 
     }
 

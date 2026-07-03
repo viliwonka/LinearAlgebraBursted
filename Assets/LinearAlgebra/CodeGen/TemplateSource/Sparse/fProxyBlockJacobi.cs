@@ -6,30 +6,30 @@ using LinearAlgebra;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// Block-Jacobi preconditioner for a square BSM (<c>BlockRows==BlockCols</c>, <c>BR==BC</c>):
+    /// Block-Jacobi preconditioner for a square BSR (<c>BlockRows==BlockCols</c>, <c>BR==BC</c>):
     /// z = M⁻¹ r where M = blockdiag(A_00, A_11, ..., A_{nb-1,nb-1}), i.e. each diagonal block
     /// inverted independently and applied block-wise. The <c>BR==1</c> case degenerates to
     /// point-Jacobi (z_i = r_i / A_ii) -- no special-cased code path is needed, the general
     /// BR x BR inverse-and-multiply reduces to that automatically for BR=1.
     ///
-    /// Built ONCE from a compressed <see cref="fProxyBSM"/> (an O(nb * BR^3) one-time cost via
+    /// Built ONCE from a compressed <see cref="fProxyBSR"/> (an O(nb * BR^3) one-time cost via
     /// LU decomposition on each tiny diagonal block -- reuses <see cref="LU.luDecompositionInpl"/>
     /// / <see cref="LU.luSolve(ref fProxyMxN, in Pivot, ref fProxyN)"/>, no new inverse
     /// primitive), then <see cref="Apply"/> is a zero-alloc block-diagonal matvec every PCG
     /// iteration.
     ///
     /// Readonly: nothing mutates after the constructor fills DInv (it is never grown/resized).
-    /// The two IfProxyLinearOperator wrappers (fProxyBSMOperator/fProxyDenseOperator) are
+    /// The two IfProxyLinearOperator wrappers (fProxyBSROperator/fProxyDenseOperator) are
     /// already readonly structs, so passing them through `in TOp` in the generic solvers makes
     /// no defensive copy; being non-readonly here would force the compiler to snapshot-copy the
     /// whole preconditioner (the DInv UnsafeList header, at least) on every `M.Apply(in r, ref
-    /// z)` call inside pcg -- undermining the zero-cost-dispatch claim. See fProxyBSMOperator's
+    /// z)` call inside pcg -- undermining the zero-cost-dispatch claim. See fProxyBSROperator's
     /// own doc comment for the same reasoning.
     /// </summary>
     public readonly partial struct fProxyBlockJacobi : IfProxyPreconditioner, IDisposable
     {
-        public readonly int BlockRows;  // nb: number of diagonal blocks (== BlockCols of the source BSM)
-        public readonly int BR;         // block dimension (== BC of the source BSM)
+        public readonly int BlockRows;  // nb: number of diagonal blocks (== BlockCols of the source BSR)
+        public readonly int BR;         // block dimension (== BC of the source BSR)
 
         public int Rows => BlockRows * BR;
 
@@ -45,7 +45,7 @@ namespace LinearAlgebra.Sparse
         /// (BlockRows==BlockCols, BR==BC). Throws ArgumentException if a diagonal block is
         /// missing from the stored pattern or is singular.
         /// </summary>
-        public unsafe fProxyBlockJacobi(in fProxyBSM A, Allocator allocator)
+        public unsafe fProxyBlockJacobi(in fProxyBSR A, Allocator allocator)
         {
             _arena = default;
 
@@ -124,9 +124,9 @@ namespace LinearAlgebra.Sparse
         /// proofing) `_arena` handle -- a plain value copy, safe regardless of `in`/`ref` now
         /// that Arena is a thin copyable handle to a heap-allocated ArenaCore (see Arena.cs).
         /// The arena-OWNING factory that actually registers this instance for disposal is
-        /// `Arena.fProxyBlockJacobi(in fProxyBSM)`.
+        /// `Arena.fProxyBlockJacobi(in fProxyBSR)`.
         /// </summary>
-        public unsafe fProxyBlockJacobi(in fProxyBSM A, in Arena arena) : this(in A, arena.Allocator)
+        public unsafe fProxyBlockJacobi(in fProxyBSR A, in Arena arena) : this(in A, arena.Allocator)
         {
             _arena = arena;
         }

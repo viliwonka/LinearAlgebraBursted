@@ -82,7 +82,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN im;
         public floatN srcRe;
         public floatN srcIm;
-        public floatFFT_WS ws;
+        public floatFFTCache ws;
 
         public void Execute()
         {
@@ -99,7 +99,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN im;
         public doubleN srcRe;
         public doubleN srcIm;
-        public doubleFFT_WS ws;
+        public doubleFFTCache ws;
 
         public void Execute()
         {
@@ -125,7 +125,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var a = new Arena(Allocator.Persistent);
-            var ws = a.floatFFT_WS(n);
+            var ws = a.floatFFTCache(n);
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
             floatFFT_OP.fft(ref re, ref im, in ws);
             a.Dispose();
@@ -144,7 +144,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var a = new Arena(Allocator.Persistent);
-            var ws = a.doubleFFT_WS(n);
+            var ws = a.doubleFFTCache(n);
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
             doubleFFT_OP.fft(ref re, ref im, in ws);
             a.Dispose();
@@ -159,7 +159,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN real;
         public floatN re;
         public floatN im;
-        public floatFFT_WS ws;   // built once, outside the timed loop
+        public floatFFTCache ws;   // built once, outside the timed loop
 
         public void Execute() => floatFFT_OP.rfft(in real, ref re, ref im, in ws);
     }
@@ -170,7 +170,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN real;
         public doubleN re;
         public doubleN im;
-        public doubleFFT_WS ws;
+        public doubleFFTCache ws;
 
         public void Execute() => doubleFFT_OP.rfft(in real, ref re, ref im, in ws);
     }
@@ -313,7 +313,7 @@ namespace LinearAlgebra.Benchmarks
             var im    = arena.floatVec(n);
             var srcRe = arena.floatVec(n);
             var srcIm = arena.floatVec(n);
-            var ws    = arena.floatFFT_WS(n);   // built ONCE outside the timed loop
+            var ws    = arena.floatFFTCache(n);   // built ONCE outside the timed loop
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -336,7 +336,7 @@ namespace LinearAlgebra.Benchmarks
             var im    = arena.doubleVec(n);
             var srcRe = arena.doubleVec(n);
             var srcIm = arena.doubleVec(n);
-            var ws    = arena.doubleFFT_WS(n);
+            var ws    = arena.doubleFFTCache(n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -444,7 +444,7 @@ namespace LinearAlgebra.Benchmarks
             var real  = arena.floatVec(n);
             var re    = arena.floatVec(n / 2 + 1);
             var im    = arena.floatVec(n / 2 + 1);
-            var ws    = arena.floatFFT_WS(n);   // built ONCE outside the timed loop
+            var ws    = arena.floatFFTCache(n);   // built ONCE outside the timed loop
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xDEADBEEFu);
             for (int i = 0; i < n; i++)
@@ -463,7 +463,7 @@ namespace LinearAlgebra.Benchmarks
             var real  = arena.doubleVec(n);
             var re    = arena.doubleVec(n / 2 + 1);
             var im    = arena.doubleVec(n / 2 + 1);
-            var ws    = arena.doubleFFT_WS(n);
+            var ws    = arena.doubleFFTCache(n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0xDEADBEEFu);
             for (int i = 0; i < n; i++)

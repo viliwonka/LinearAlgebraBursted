@@ -289,7 +289,7 @@ namespace LinearAlgebra
             if (k == 0)
                 return (fProxy)0;
 
-            fProxyN S = A.tempfProxyVec(k);
+            fProxyN S = A.fProxyTempVec(k);
             SVD.singularValues(in A, ref S);
             return S[0];   // singular values are sorted descending -> σ_max
         }
