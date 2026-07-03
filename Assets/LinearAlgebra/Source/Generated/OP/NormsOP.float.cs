@@ -1,4 +1,4 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using System;
 using Unity.Mathematics;
@@ -8,45 +8,39 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    public static partial class floatNorms_OP {
+    // Public surface. The vector/flat norms accept either a vector (floatN) or a matrix
+    // (floatMxN, treated as a flat array). Each is a thin, inlined forwarder to the generic
+    // floatNormsCore body, so the class merges to a bare `Norms` with no prefix while the body
+    // stays single-source and Burst emits identical code to the old generic call.
+    public static partial class Norms {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float L2<T>(in T a) where T : unmanaged, IUnsafefloatArray {
-
-            unsafe
-            {
-                return math.sqrt(UnsafeOP.vecDot(a.Data.Ptr, a.Data.Ptr, a.Data.Length));
-            }
-        }
+        public static float L2(in floatN   a) => floatNormsCore.L2(a);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float L2(in floatMxN a) => floatNormsCore.L2(a);
 
         // Standard L1 norm: the sum of absolute values, Σ|xᵢ| (NOT averaged by length).
         // Naïve accumulation (no Kahan/pairwise compensation): accurate at moderate sizes; very
         // long float vectors may lose precision. The same caveat applies to matrixL1 / matrixLInf.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float L1<T>(in T a) where T : unmanaged, IUnsafefloatArray {
-
-            unsafe {
-                return UnsafeOP.sumAbs(a.Data.Ptr, a.Data.Length);
-            }
-        }
+        public static float L1(in floatN   a) => floatNormsCore.L1(a);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float L1(in floatMxN a) => floatNormsCore.L1(a);
 
         // L-infinity (max-abs) norm: the largest absolute element, max_i |xᵢ|.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float LInf<T>(in T a) where T : unmanaged, IUnsafefloatArray {
-
-            unsafe {
-                return UnsafeOP.maxAbs(a.Data.Ptr, a.Data.Length);
-            }
-        }
+        public static float LInf(in floatN   a) => floatNormsCore.LInf(a);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float LInf(in floatMxN a) => floatNormsCore.LInf(a);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float L2Range(in floatN a, int start, int end)
         {
             if (start >= end)
-                throw new ArgumentException("NormsOP.L2: start must be less than end");
+                throw new ArgumentException("Norms.L2: start must be less than end");
 
             if (start < 0 || end > a.Data.Length)
-                throw new ArgumentOutOfRangeException("NormsOP.L2: start and end must be within bounds of vector");
+                throw new ArgumentOutOfRangeException("Norms.L2: start and end must be within bounds of vector");
 
             unsafe
             {
@@ -55,101 +49,45 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void NormalizeL2<T>(in T x) where T : unmanaged, IUnsafefloatArray
-        {
-            unsafe
-            {
-                UnsafeOP.normalizeL2Inpl(x.Data.Ptr, x.Data.Length);
-            }
-        }
+        public static void NormalizeL2(in floatN   x) => floatNormsCore.NormalizeL2(x);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void NormalizeL2(in floatMxN x) => floatNormsCore.NormalizeL2(x);
 
         // returns length before normalization
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeL2<T>(in T x, int start, int end) where T : unmanaged, IUnsafefloatArray
-        {
-            if (start >= end)
-                throw new ArgumentException("NormalizeL2: start must be less than end");
-
-            if (start < 0 || end > x.Data.Length)
-                throw new ArgumentOutOfRangeException("NormalizeL2: start and end must be within bounds of vector");
-
-            unsafe
-            {
-                return UnsafeOP.normalizeL2Inpl(x.Data.Ptr, start, end);
-            }
-        }
+        public static float NormalizeL2(in floatN   x, int start, int end) => floatNormsCore.NormalizeL2(x, start, end);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeL2(in floatMxN x, int start, int end) => floatNormsCore.NormalizeL2(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeL1<T>(in T x) where T : unmanaged, IUnsafefloatArray
-        {
-            unsafe
-            {
-                return UnsafeOP.normalizeL1(x.Data.Ptr, x.Data.Length);
-            }
-        }
+        public static float NormalizeL1(in floatN   x) => floatNormsCore.NormalizeL1(x);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeL1(in floatMxN x) => floatNormsCore.NormalizeL1(x);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeL1<T>(in T x, int start, int end) where T : unmanaged, IUnsafefloatArray
-        {
-            if (start >= end)
-                throw new ArgumentException("NormalizeL1: start must be less than end");
-
-            if (start < 0 || end > x.Data.Length)
-                throw new ArgumentOutOfRangeException("NormalizeL1: start and end must be within bounds of vector");
-
-            unsafe
-            {
-                return UnsafeOP.normalizeL1(x.Data.Ptr, start, end);
-            }
-        }
+        public static float NormalizeL1(in floatN   x, int start, int end) => floatNormsCore.NormalizeL1(x, start, end);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeL1(in floatMxN x, int start, int end) => floatNormsCore.NormalizeL1(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLMax<T>(in T x) where T : unmanaged, IUnsafefloatArray
-        {
-            unsafe
-            {
-                return UnsafeOP.normalizeLMax(x.Data.Ptr, x.Data.Length);
-            }
-        }
+        public static float NormalizeLMax(in floatN   x) => floatNormsCore.NormalizeLMax(x);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeLMax(in floatMxN x) => floatNormsCore.NormalizeLMax(x);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLMax<T>(in T x, int start, int end) where T : unmanaged, IUnsafefloatArray
-        {
-            if (start >= end)
-                throw new ArgumentException("NormalizeLMax: start must be less than end");
-
-            if (start < 0 || end > x.Data.Length)
-                throw new ArgumentOutOfRangeException("NormalizeLMax: start and end must be within bounds of vector");
-
-            unsafe
-            {
-                return UnsafeOP.normalizeLMax(x.Data.Ptr, start, end);
-            }
-        }
+        public static float NormalizeLMax(in floatN   x, int start, int end) => floatNormsCore.NormalizeLMax(x, start, end);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeLMax(in floatMxN x, int start, int end) => floatNormsCore.NormalizeLMax(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLP<T>(in T x, float p) where T : unmanaged, IUnsafefloatArray
-        {
-            unsafe
-            {
-                return UnsafeOP.normalizeLP(x.Data.Ptr, x.Data.Length, p);
-            }
-        }
+        public static float NormalizeLP(in floatN   x, float p) => floatNormsCore.NormalizeLP(x, p);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeLP(in floatMxN x, float p) => floatNormsCore.NormalizeLP(x, p);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLP<T>(in T x, int start, int end, float p) where T : unmanaged, IUnsafefloatArray
-        {
-            if (start >= end)
-                throw new ArgumentException("NormalizeLP: start must be less than end");
-
-            if (start < 0 || end > x.Data.Length)
-                throw new ArgumentOutOfRangeException("NormalizeLP: start and end must be within bounds of vector");
-
-            unsafe
-            {
-                return UnsafeOP.normalizeLP(x.Data.Ptr, start, end, p);
-            }
-        }
+        public static float NormalizeLP(in floatN   x, int start, int end, float p) => floatNormsCore.NormalizeLP(x, start, end, p);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeLP(in floatMxN x, int start, int end, float p) => floatNormsCore.NormalizeLP(x, start, end, p);
 
         // ---- Enum-dispatch normalize ----
 
@@ -159,15 +97,9 @@ namespace LinearAlgebra
         /// <b>whole-matrix</b> scope (all elements as a single distribution); use
         /// <see cref="NormalizeRows"/> or <see cref="NormalizeColumns"/> for per-axis normalization.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Normalize<T>(in T x, Norm n) where T : unmanaged, IUnsafefloatArray
-        {
-            switch (n)
-            {
-                case Norm.L1:   NormalizeL1(in x);   break;
-                case Norm.L2:   NormalizeL2(in x);   break;
-                default:        NormalizeLMax(in x);  break; // Linf
-            }
-        }
+        public static void Normalize(in floatN   x, Norm n) => floatNormsCore.Normalize(x, n);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Normalize(in floatMxN x, Norm n) => floatNormsCore.Normalize(x, n);
 
         // Zero-norm row → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
         public static void NormalizeRows(ref floatMxN A, Norm n)
@@ -292,6 +224,110 @@ namespace LinearAlgebra
             floatN S = A.floatTempVec(k);
             SVD.singularValues(in A, ref S);
             return S[0];   // singular values are sorted descending -> σ_max
+        }
+    }
+
+    // Internal generic bodies (one per norm kernel), written once. `floatNormsCore` and
+    // `doubleNormsCore` are distinct types, so the type-identical generic signatures never
+    // collide (unlike a merged `Norms`); the public forwarders above inline straight through.
+    internal static class floatNormsCore
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float L2<T>(in T a) where T : unmanaged, IUnsafefloatArray {
+            unsafe { return math.sqrt(UnsafeOP.vecDot(a.Data.Ptr, a.Data.Ptr, a.Data.Length)); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float L1<T>(in T a) where T : unmanaged, IUnsafefloatArray {
+            unsafe { return UnsafeOP.sumAbs(a.Data.Ptr, a.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float LInf<T>(in T a) where T : unmanaged, IUnsafefloatArray {
+            unsafe { return UnsafeOP.maxAbs(a.Data.Ptr, a.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void NormalizeL2<T>(in T x) where T : unmanaged, IUnsafefloatArray
+        {
+            unsafe { UnsafeOP.normalizeL2Inpl(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeL2<T>(in T x, int start, int end) where T : unmanaged, IUnsafefloatArray
+        {
+            if (start >= end)
+                throw new ArgumentException("NormalizeL2: start must be less than end");
+
+            if (start < 0 || end > x.Data.Length)
+                throw new ArgumentOutOfRangeException("NormalizeL2: start and end must be within bounds of vector");
+
+            unsafe { return UnsafeOP.normalizeL2Inpl(x.Data.Ptr, start, end); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeL1<T>(in T x) where T : unmanaged, IUnsafefloatArray
+        {
+            unsafe { return UnsafeOP.normalizeL1(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeL1<T>(in T x, int start, int end) where T : unmanaged, IUnsafefloatArray
+        {
+            if (start >= end)
+                throw new ArgumentException("NormalizeL1: start must be less than end");
+
+            if (start < 0 || end > x.Data.Length)
+                throw new ArgumentOutOfRangeException("NormalizeL1: start and end must be within bounds of vector");
+
+            unsafe { return UnsafeOP.normalizeL1(x.Data.Ptr, start, end); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeLMax<T>(in T x) where T : unmanaged, IUnsafefloatArray
+        {
+            unsafe { return UnsafeOP.normalizeLMax(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeLMax<T>(in T x, int start, int end) where T : unmanaged, IUnsafefloatArray
+        {
+            if (start >= end)
+                throw new ArgumentException("NormalizeLMax: start must be less than end");
+
+            if (start < 0 || end > x.Data.Length)
+                throw new ArgumentOutOfRangeException("NormalizeLMax: start and end must be within bounds of vector");
+
+            unsafe { return UnsafeOP.normalizeLMax(x.Data.Ptr, start, end); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeLP<T>(in T x, float p) where T : unmanaged, IUnsafefloatArray
+        {
+            unsafe { return UnsafeOP.normalizeLP(x.Data.Ptr, x.Data.Length, p); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float NormalizeLP<T>(in T x, int start, int end, float p) where T : unmanaged, IUnsafefloatArray
+        {
+            if (start >= end)
+                throw new ArgumentException("NormalizeLP: start must be less than end");
+
+            if (start < 0 || end > x.Data.Length)
+                throw new ArgumentOutOfRangeException("NormalizeLP: start and end must be within bounds of vector");
+
+            unsafe { return UnsafeOP.normalizeLP(x.Data.Ptr, start, end, p); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Normalize<T>(in T x, Norm n) where T : unmanaged, IUnsafefloatArray
+        {
+            switch (n)
+            {
+                case Norm.L1:   NormalizeL1(in x);   break;
+                case Norm.L2:   NormalizeL2(in x);   break;
+                default:        NormalizeLMax(in x);  break; // Linf
+            }
         }
     }
 }

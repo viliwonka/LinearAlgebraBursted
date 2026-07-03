@@ -72,8 +72,8 @@ public class floatMatrixMetricsTests
             var v = arena.floatVec(4);
             v[0] = (float)3; v[1] = (float)(-4); v[2] = (float)0; v[3] = (float)1;
 
-            AssertClose(floatNorms_OP.L1(in v), (float)8, (float)1E-5);
-            AssertClose(floatNorms_OP.LInf(in v), (float)4, (float)1E-5);
+            AssertClose(Norms.L1(in v), (float)8, (float)1E-5);
+            AssertClose(Norms.LInf(in v), (float)4, (float)1E-5);
 
             arena.Dispose();
         }
@@ -101,7 +101,7 @@ public class floatMatrixMetricsTests
             A[0, 0] = (float)1; A[0, 1] = (float)(-2);
             A[1, 0] = (float)(-3); A[1, 1] = (float)4;
 
-            AssertClose(floatNorms_OP.matrixL1(in A), (float)6, (float)1E-5);
+            AssertClose(Norms.matrixL1(in A), (float)6, (float)1E-5);
 
             arena.Dispose();
         }
@@ -115,7 +115,7 @@ public class floatMatrixMetricsTests
             A[0, 0] = (float)1; A[0, 1] = (float)(-2);
             A[1, 0] = (float)(-3); A[1, 1] = (float)4;
 
-            AssertClose(floatNorms_OP.matrixLInf(in A), (float)7, (float)1E-5);
+            AssertClose(Norms.matrixLInf(in A), (float)7, (float)1E-5);
 
             arena.Dispose();
         }
@@ -128,7 +128,7 @@ public class floatMatrixMetricsTests
             var A = arena.floatMat(2, 2);
             A[0, 0] = (float)5; A[1, 1] = (float)2;
 
-            AssertClose(floatNorms_OP.matrixL2(in A), (float)5, (float)1E-4);
+            AssertClose(Norms.matrixL2(in A), (float)5, (float)1E-4);
 
             // tall/square branch must NOT modify A (it decomposes a TempCopy, not A itself)
             AssertClose(A[0, 0], (float)5, (float)1E-6);
@@ -148,7 +148,7 @@ public class floatMatrixMetricsTests
             A[0, 0] = (float)3;
             A[1, 1] = (float)4;
 
-            AssertClose(floatNorms_OP.matrixL2(in A), (float)4, (float)1E-4);
+            AssertClose(Norms.matrixL2(in A), (float)4, (float)1E-4);
             AssertIntEqual(Blas.rank(in A), 2);
             AssertClose(Blas.cond(in A), (float)4 / (float)3, (float)1E-4);
 
@@ -205,8 +205,8 @@ public class floatMatrixMetricsTests
             A[1, 0] = (float)3;  A[1, 1] = (float)(-4);
             A[2, 0] = (float)5;  A[2, 1] = (float)6;
 
-            AssertClose(floatNorms_OP.matrixL1(in A), (float)12, (float)1E-5);
-            AssertClose(floatNorms_OP.matrixLInf(in A), (float)11, (float)1E-5);
+            AssertClose(Norms.matrixL1(in A), (float)12, (float)1E-5);
+            AssertClose(Norms.matrixLInf(in A), (float)11, (float)1E-5);
 
             arena.Dispose();
         }
@@ -274,7 +274,7 @@ public class floatMatrixMetricsTests
             A[1, 0] = (float)1; A[1, 1] = (float)2;
 
             AssertClose(Blas.cond(in A), (float)3, (float)1E-4);
-            AssertClose(floatNorms_OP.matrixL2(in A), (float)3, (float)1E-4);
+            AssertClose(Norms.matrixL2(in A), (float)3, (float)1E-4);
 
             arena.Dispose();
         }
@@ -291,7 +291,7 @@ public class floatMatrixMetricsTests
             AssertClose(Blas.trace(in A), (float)7, (float)1E-5);
             AssertClose(Blas.cond(in A), (float)1, (float)1E-4);
             AssertIntEqual(Blas.rank(in A), 1);
-            AssertClose(floatNorms_OP.matrixL2(in A), (float)7, (float)1E-4);
+            AssertClose(Norms.matrixL2(in A), (float)7, (float)1E-4);
 
             arena.Dispose();
         }

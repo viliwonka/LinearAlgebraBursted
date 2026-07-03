@@ -111,7 +111,7 @@ public class doubleQRLeastSquaresResidualTests
                 RecordBound(Analysis.MaxZeroError(AtR), (double)1E-3f * scale);
 
                 // sanity: the residual is genuinely non-zero (this is an inconsistent system).
-                double rNorm = doubleNorms_OP.L2(in r);
+                double rNorm = Norms.L2(in r);
                 if (!(rNorm > (double)1E-2f) && Fail[0] == (double)0)
                 {
                     Fail[0] = (double)1;

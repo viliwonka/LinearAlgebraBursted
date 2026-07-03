@@ -18,7 +18,7 @@ namespace LinearAlgebra
             if(end == -1)
                 end = a.N;
 
-            fProxy normL2 = fProxyNorms_OP.L2Range(a, start, end);
+            fProxy normL2 = Norms.L2Range(a, start, end);
 
             FixedString128Bytes dimStr = $"Dim: {dim} \n";
             FixedString128Bytes normStr = $"L2: {normL2:G3} \n";

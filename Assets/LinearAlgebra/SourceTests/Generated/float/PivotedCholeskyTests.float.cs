@@ -125,7 +125,7 @@ public class floatPivotedCholeskyTests
                 var Pc = new Pivot(n, Allocator.Persistent);
                 Cholesky.choleskyPivotSolve(in A, ref Lc, ref Pc, ref b); // b <- x
                 for (int i = 0; i < n; i++) b[i] -= xOrig[i];
-                RecordBound(floatNorms_OP.L2(in b), (float)1E-3f);
+                RecordBound(Norms.L2(in b), (float)1E-3f);
 
                 Pc.Dispose();
                 P.Dispose();
@@ -191,10 +191,10 @@ public class floatPivotedCholeskyTests
                 Cholesky.choleskyPivotSolve(in A, ref Ls, ref Ps, ref b); // b <- x
 
                 // A·x ≈ A·xRange (consistency) and x ≈ xRange (exact recovery, scaled by ‖xRange‖).
-                float scale = floatNorms_OP.L2(in xRange) + (float)1f;
+                float scale = Norms.L2(in xRange) + (float)1f;
                 var diff = arena.floatVec(n);
                 for (int i = 0; i < n; i++) diff[i] = b[i] - xRange[i];
-                RecordBound(floatNorms_OP.L2(in diff) / scale, (float)1E-2f);
+                RecordBound(Norms.L2(in diff) / scale, (float)1E-2f);
 
                 Ps.Dispose();
                 P.Dispose();
@@ -228,12 +228,12 @@ public class floatPivotedCholeskyTests
                 var Ax = Blas.dot(A, b);
                 var resid = arena.floatVec(n);
                 for (int i = 0; i < n; i++) resid[i] = Ax[i] - bForResidual[i];
-                float bScale = floatNorms_OP.L2(in bForResidual) + (float)1f;
-                RecordBound(floatNorms_OP.L2(in resid) / bScale, (float)1E-2f);
+                float bScale = Norms.L2(in bForResidual) + (float)1f;
+                RecordBound(Norms.L2(in resid) / bScale, (float)1E-2f);
 
                 // minimum-norm: ‖x‖ ≤ ‖xOrig‖ (+ tiny slack).
-                float xNorm = floatNorms_OP.L2(in b);
-                float origNorm = floatNorms_OP.L2(in xOrig);
+                float xNorm = Norms.L2(in b);
+                float origNorm = Norms.L2(in xOrig);
                 if (!(xNorm <= origNorm + (float)1E-3f * (origNorm + (float)1f)) && Fail[0] == (float)0)
                 {
                     Fail[0] = (float)1;
@@ -329,7 +329,7 @@ public class floatPivotedCholeskyTests
             // solve: x = 0 for any b.
             var b = arena.floatRandomVec(n, -1f, 1f, 999);
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b);
-            RecordBound(floatNorms_OP.L2(in b), (float)1E-6f);
+            RecordBound(Norms.L2(in b), (float)1E-6f);
 
             P.Dispose();
             arena.Dispose();
@@ -438,10 +438,10 @@ public class floatPivotedCholeskyTests
                 var bOrig = arena.floatRandomVec(n, -2f, 2f, 77000 + t * 13);
                 var Ab = Blas.dot(A, bOrig);
 
-                float scale = floatNorms_OP.L2(in Ab) + (float)1f;
+                float scale = Norms.L2(in Ab) + (float)1f;
                 var diff = arena.floatVec(n);
                 for (int i = 0; i < n; i++) diff[i] = AAx[i] - Ab[i];
-                RecordBound(floatNorms_OP.L2(in diff) / scale, (float)1E-2f);
+                RecordBound(Norms.L2(in diff) / scale, (float)1E-2f);
 
                 P.Dispose();
                 arena.Clear();

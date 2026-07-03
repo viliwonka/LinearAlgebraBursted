@@ -107,7 +107,7 @@ public class doubleScalarMatrixOpTests
             var v = arena.doubleVec(3);
             v[0] = (double)(-1); v[1] = (double)2; v[2] = (double)(-2);
 
-            double norm = doubleNorms_OP.NormalizeLP(in v, (double)3);
+            double norm = Norms.NormalizeLP(in v, (double)3);
 
             if (math.isnan(norm))
             {

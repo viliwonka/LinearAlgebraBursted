@@ -111,7 +111,7 @@ public class floatQRLeastSquaresResidualTests
                 RecordBound(Analysis.MaxZeroError(AtR), (float)1E-3f * scale);
 
                 // sanity: the residual is genuinely non-zero (this is an inconsistent system).
-                float rNorm = floatNorms_OP.L2(in r);
+                float rNorm = Norms.L2(in r);
                 if (!(rNorm > (float)1E-2f) && Fail[0] == (float)0)
                 {
                     Fail[0] = (float)1;

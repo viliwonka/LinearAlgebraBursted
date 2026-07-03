@@ -366,7 +366,7 @@ public class fProxyTransformsTests
             AssertClose(v[0], (fProxy)0.5f, (fProxy)EPS);
             AssertClose(v[1], (fProxy)(-1f), (fProxy)EPS);
             AssertClose(v[2], (fProxy)0.25f, (fProxy)EPS);
-            AssertTrue(fProxyNorms_OP.LInf(in v) <= (fProxy)1f + (fProxy)EPS);
+            AssertTrue(Norms.LInf(in v) <= (fProxy)1f + (fProxy)EPS);
             arena.Dispose();
         }
 
@@ -521,18 +521,18 @@ public class fProxyTransformsTests
 
             var v1 = arena.fProxyVec(4);
             v1[0] = 1f; v1[1] = -2f; v1[2] = 3f; v1[3] = -4f;
-            fProxyNorms_OP.Normalize(in v1, Norm.L1);
-            AssertClose(fProxyNorms_OP.L1(in v1), (fProxy)1f, (fProxy)EPS);
+            Norms.Normalize(in v1, Norm.L1);
+            AssertClose(Norms.L1(in v1), (fProxy)1f, (fProxy)EPS);
 
             var v2 = arena.fProxyVec(4);
             v2[0] = 1f; v2[1] = -2f; v2[2] = 3f; v2[3] = -4f;
-            fProxyNorms_OP.Normalize(in v2, Norm.L2);
-            AssertClose(fProxyNorms_OP.L2(in v2), (fProxy)1f, (fProxy)EPS);
+            Norms.Normalize(in v2, Norm.L2);
+            AssertClose(Norms.L2(in v2), (fProxy)1f, (fProxy)EPS);
 
             var vi = arena.fProxyVec(4);
             vi[0] = 1f; vi[1] = -2f; vi[2] = 3f; vi[3] = -4f;
-            fProxyNorms_OP.Normalize(in vi, Norm.Linf);
-            AssertClose(fProxyNorms_OP.LInf(in vi), (fProxy)1f, (fProxy)EPS);
+            Norms.Normalize(in vi, Norm.Linf);
+            AssertClose(Norms.LInf(in vi), (fProxy)1f, (fProxy)EPS);
 
             arena.Dispose();
         }
@@ -541,7 +541,7 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(4, 5, -3f, 3f, 1212);
-            fProxyNorms_OP.NormalizeRows(ref A, Norm.L2);
+            Norms.NormalizeRows(ref A, Norm.L2);
             var rL2 = fProxyStats_OP.rowNormL2(in A);
             for (int r = 0; r < 4; r++)
                 AssertClose(rL2[r], (fProxy)1f, (fProxy)EPS);
@@ -552,7 +552,7 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(5, 4, -3f, 3f, 3434);
-            fProxyNorms_OP.NormalizeColumns(ref A, Norm.L1);
+            Norms.NormalizeColumns(ref A, Norm.L1);
             var cL1 = fProxyStats_OP.colNormL1(in A);
             for (int c = 0; c < 4; c++)
                 AssertClose(cL1[c], (fProxy)1f, (fProxy)EPS);
@@ -569,7 +569,7 @@ public class fProxyTransformsTests
             A[1, 0] = 0f; A[1, 1] = 0f; A[1, 2] = 0f;
             A[2, 0] = 3f; A[2, 1] = 0f; A[2, 2] = 4f;
 
-            fProxyNorms_OP.NormalizeRows(ref A, Norm.L2);
+            Norms.NormalizeRows(ref A, Norm.L2);
             for (int c = 0; c < 3; c++)
             {
                 AssertClose(A[1, c], (fProxy)0f, (fProxy)EPS);
@@ -584,7 +584,7 @@ public class fProxyTransformsTests
             B[1, 0] = 3f; B[1, 1] = 0f; B[1, 2] = 4f;
             B[2, 0] = 5f; B[2, 1] = 0f; B[2, 2] = 6f;
 
-            fProxyNorms_OP.NormalizeColumns(ref B, Norm.L1);
+            Norms.NormalizeColumns(ref B, Norm.L1);
             for (int r = 0; r < 3; r++)
             {
                 AssertClose(B[r, 1], (fProxy)0f, (fProxy)EPS);

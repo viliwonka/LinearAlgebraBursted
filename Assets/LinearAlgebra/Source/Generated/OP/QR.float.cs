@@ -26,7 +26,7 @@ namespace LinearAlgebra
             for (int r = k; r < u.N; r++)
                 u[r] = Q[r, k];
 
-            float xNorm = floatNorms_OP.L2Range(u, k, u.N);
+            float xNorm = Norms.L2Range(u, k, u.N);
 
             if (math.abs(xNorm) > zeroThreshold) {
 
@@ -117,7 +117,7 @@ namespace LinearAlgebra
             int qrSteps = Q.N_Cols;
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
-            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in Q);
 
             for (int d = 0; d < qrSteps; d++)
             {
@@ -223,7 +223,7 @@ namespace LinearAlgebra
             int n = Q.N_Cols;
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
-            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in Q);
 
             float* Qp = Q.Data.Ptr;
             float* Vp = Vpanel.Data.Ptr;
@@ -458,7 +458,7 @@ namespace LinearAlgebra
             var colNorm2 = new floatN(n, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
-            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in Q);
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in Q);
 
             for (int d = 0; d < n; d++)
             {
@@ -595,7 +595,7 @@ namespace LinearAlgebra
             var w = new floatN(A.N_Cols, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(A) == max |entry|.
-            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in A);
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
 
             float dotProduct = 0;
             for (int d = 0; d < qrSteps; d++) {

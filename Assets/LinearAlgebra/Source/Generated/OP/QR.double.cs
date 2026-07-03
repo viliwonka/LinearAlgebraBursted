@@ -26,7 +26,7 @@ namespace LinearAlgebra
             for (int r = k; r < u.N; r++)
                 u[r] = Q[r, k];
 
-            double xNorm = doubleNorms_OP.L2Range(u, k, u.N);
+            double xNorm = Norms.L2Range(u, k, u.N);
 
             if (math.abs(xNorm) > zeroThreshold) {
 
@@ -117,7 +117,7 @@ namespace LinearAlgebra
             int qrSteps = Q.N_Cols;
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
-            double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in Q);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in Q);
 
             for (int d = 0; d < qrSteps; d++)
             {
@@ -223,7 +223,7 @@ namespace LinearAlgebra
             int n = Q.N_Cols;
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
-            double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in Q);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in Q);
 
             double* Qp = Q.Data.Ptr;
             double* Vp = Vpanel.Data.Ptr;
@@ -458,7 +458,7 @@ namespace LinearAlgebra
             var colNorm2 = new doubleN(n, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
-            double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in Q);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in Q);
 
             for (int d = 0; d < n; d++)
             {
@@ -595,7 +595,7 @@ namespace LinearAlgebra
             var w = new doubleN(A.N_Cols, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(A) == max |entry|.
-            double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in A);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
 
             double dotProduct = 0;
             for (int d = 0; d < qrSteps; d++) {

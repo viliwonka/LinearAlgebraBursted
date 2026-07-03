@@ -89,7 +89,7 @@ public class floatLiteratureTests
             AssertClose(S[0], (float)2, (float)1E-4);
             AssertClose(S[1], (float)1, (float)1E-4);
 
-            AssertClose(floatNorms_OP.matrixL2(in A), (float)2, (float)1E-4);
+            AssertClose(Norms.matrixL2(in A), (float)2, (float)1E-4);
             AssertClose(Blas.cond(in A), (float)2, (float)1E-4);
 
             arena.Dispose();

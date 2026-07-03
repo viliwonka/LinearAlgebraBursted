@@ -28,7 +28,7 @@ namespace LinearAlgebra
             for (int r = k; r < M.M_Rows; r++)
                 u[r] = M[r, k];
 
-            double xNorm = doubleNorms_OP.L2Range(u, k, M.M_Rows);
+            double xNorm = Norms.L2Range(u, k, M.M_Rows);
 
             if (math.abs(xNorm) > zeroThreshold)
             {
@@ -55,7 +55,7 @@ namespace LinearAlgebra
             for (int c = colStart; c < n; c++)
                 v[c] = M[row, c];
 
-            double xNorm = doubleNorms_OP.L2Range(v, colStart, n);
+            double xNorm = Norms.L2Range(v, colStart, n);
 
             if (math.abs(xNorm) > zeroThreshold)
             {
@@ -174,7 +174,7 @@ namespace LinearAlgebra
             var vVec = ws.vVec;
             var wScratch = ws.wScratch;
 
-            double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in A);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
 
             // ---- Forward sweep: reduce W to upper bidiagonal form ----
             for (int k = 0; k < n; k++)
@@ -297,7 +297,7 @@ namespace LinearAlgebra
             var vVec = ws.vVec;
             var wScratch = ws.wScratch;
 
-            double zeroThreshold = Consts.doubleZeroThreshold * doubleNorms_OP.LInf(in A);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
 
             for (int k = 0; k < n; k++)
             {

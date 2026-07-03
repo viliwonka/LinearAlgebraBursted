@@ -89,7 +89,7 @@ public class doubleLiteratureTests
             AssertClose(S[0], (double)2, (double)1E-4);
             AssertClose(S[1], (double)1, (double)1E-4);
 
-            AssertClose(doubleNorms_OP.matrixL2(in A), (double)2, (double)1E-4);
+            AssertClose(Norms.matrixL2(in A), (double)2, (double)1E-4);
             AssertClose(Blas.cond(in A), (double)2, (double)1E-4);
 
             arena.Dispose();

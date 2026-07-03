@@ -147,7 +147,7 @@ public class floatSpecialConstructorsTests {
             {
                 var v = arena.floatRandomUnitVec(16, 332*seed+17);
 
-                var len = floatNorms_OP.L2(in v);
+                var len = Norms.L2(in v);
 
                 Assert.IsTrue(Unity.Mathematics.math.abs(len - (float)1) <= 0.00001f);
             }

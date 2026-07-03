@@ -147,7 +147,7 @@ public class doubleSpecialConstructorsTests {
             {
                 var v = arena.doubleRandomUnitVec(16, 332*seed+17);
 
-                var len = doubleNorms_OP.L2(in v);
+                var len = Norms.L2(in v);
 
                 Assert.IsTrue(Unity.Mathematics.math.abs(len - (double)1) <= 0.00001f);
             }

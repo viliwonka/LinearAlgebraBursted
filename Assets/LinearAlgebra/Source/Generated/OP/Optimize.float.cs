@@ -205,7 +205,7 @@ namespace LinearAlgebra
             for (int i = 0; i < maxIter; i++) {
                 f.Gradient(in x, ref g);
 
-                if (floatNorms_OP.L2(in g) <= gradTol)
+                if (Norms.L2(in g) <= gradTol)
                     return true;
 
                 for (int j = 0; j < x.N; j++)
@@ -216,7 +216,7 @@ namespace LinearAlgebra
 
             // Final convergence check: compute fresh gradient at returned x
             f.Gradient(in x, ref g);
-            return floatNorms_OP.L2(in g) <= gradTol;
+            return Norms.L2(in g) <= gradTol;
         }
     }
 }

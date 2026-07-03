@@ -1,4 +1,4 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using System;
 using Unity.Mathematics;
@@ -8,45 +8,39 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    public static partial class fProxyNorms_OP {
+    // Public surface. The vector/flat norms accept either a vector (fProxyN) or a matrix
+    // (fProxyMxN, treated as a flat array). Each is a thin, inlined forwarder to the generic
+    // fProxyNormsCore body, so the class merges to a bare `Norms` with no prefix while the body
+    // stays single-source and Burst emits identical code to the old generic call.
+    public static partial class Norms {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy L2<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
-
-            unsafe
-            {
-                return math.sqrt(UnsafeOP.vecDot(a.Data.Ptr, a.Data.Ptr, a.Data.Length));
-            }
-        }
+        public static fProxy L2(in fProxyN   a) => fProxyNormsCore.L2(a);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy L2(in fProxyMxN a) => fProxyNormsCore.L2(a);
 
         // Standard L1 norm: the sum of absolute values, Σ|xᵢ| (NOT averaged by length).
         // Naïve accumulation (no Kahan/pairwise compensation): accurate at moderate sizes; very
         // long float vectors may lose precision. The same caveat applies to matrixL1 / matrixLInf.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy L1<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
-
-            unsafe {
-                return UnsafeOP.sumAbs(a.Data.Ptr, a.Data.Length);
-            }
-        }
+        public static fProxy L1(in fProxyN   a) => fProxyNormsCore.L1(a);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy L1(in fProxyMxN a) => fProxyNormsCore.L1(a);
 
         // L-infinity (max-abs) norm: the largest absolute element, max_i |xᵢ|.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy LInf<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
-
-            unsafe {
-                return UnsafeOP.maxAbs(a.Data.Ptr, a.Data.Length);
-            }
-        }
+        public static fProxy LInf(in fProxyN   a) => fProxyNormsCore.LInf(a);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy LInf(in fProxyMxN a) => fProxyNormsCore.LInf(a);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy L2Range(in fProxyN a, int start, int end)
         {
             if (start >= end)
-                throw new ArgumentException("NormsOP.L2: start must be less than end");
+                throw new ArgumentException("Norms.L2: start must be less than end");
 
             if (start < 0 || end > a.Data.Length)
-                throw new ArgumentOutOfRangeException("NormsOP.L2: start and end must be within bounds of vector");
+                throw new ArgumentOutOfRangeException("Norms.L2: start and end must be within bounds of vector");
 
             unsafe
             {
@@ -55,101 +49,45 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void NormalizeL2<T>(in T x) where T : unmanaged, IUnsafefProxyArray
-        {
-            unsafe
-            {
-                UnsafeOP.normalizeL2Inpl(x.Data.Ptr, x.Data.Length);
-            }
-        }
+        public static void NormalizeL2(in fProxyN   x) => fProxyNormsCore.NormalizeL2(x);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void NormalizeL2(in fProxyMxN x) => fProxyNormsCore.NormalizeL2(x);
 
         // returns length before normalization
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeL2<T>(in T x, int start, int end) where T : unmanaged, IUnsafefProxyArray
-        {
-            if (start >= end)
-                throw new ArgumentException("NormalizeL2: start must be less than end");
-
-            if (start < 0 || end > x.Data.Length)
-                throw new ArgumentOutOfRangeException("NormalizeL2: start and end must be within bounds of vector");
-
-            unsafe
-            {
-                return UnsafeOP.normalizeL2Inpl(x.Data.Ptr, start, end);
-            }
-        }
+        public static fProxy NormalizeL2(in fProxyN   x, int start, int end) => fProxyNormsCore.NormalizeL2(x, start, end);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeL2(in fProxyMxN x, int start, int end) => fProxyNormsCore.NormalizeL2(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeL1<T>(in T x) where T : unmanaged, IUnsafefProxyArray
-        {
-            unsafe
-            {
-                return UnsafeOP.normalizeL1(x.Data.Ptr, x.Data.Length);
-            }
-        }
+        public static fProxy NormalizeL1(in fProxyN   x) => fProxyNormsCore.NormalizeL1(x);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeL1(in fProxyMxN x) => fProxyNormsCore.NormalizeL1(x);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeL1<T>(in T x, int start, int end) where T : unmanaged, IUnsafefProxyArray
-        {
-            if (start >= end)
-                throw new ArgumentException("NormalizeL1: start must be less than end");
-
-            if (start < 0 || end > x.Data.Length)
-                throw new ArgumentOutOfRangeException("NormalizeL1: start and end must be within bounds of vector");
-
-            unsafe
-            {
-                return UnsafeOP.normalizeL1(x.Data.Ptr, start, end);
-            }
-        }
+        public static fProxy NormalizeL1(in fProxyN   x, int start, int end) => fProxyNormsCore.NormalizeL1(x, start, end);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeL1(in fProxyMxN x, int start, int end) => fProxyNormsCore.NormalizeL1(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLMax<T>(in T x) where T : unmanaged, IUnsafefProxyArray
-        {
-            unsafe
-            {
-                return UnsafeOP.normalizeLMax(x.Data.Ptr, x.Data.Length);
-            }
-        }
+        public static fProxy NormalizeLMax(in fProxyN   x) => fProxyNormsCore.NormalizeLMax(x);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeLMax(in fProxyMxN x) => fProxyNormsCore.NormalizeLMax(x);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLMax<T>(in T x, int start, int end) where T : unmanaged, IUnsafefProxyArray
-        {
-            if (start >= end)
-                throw new ArgumentException("NormalizeLMax: start must be less than end");
-
-            if (start < 0 || end > x.Data.Length)
-                throw new ArgumentOutOfRangeException("NormalizeLMax: start and end must be within bounds of vector");
-
-            unsafe
-            {
-                return UnsafeOP.normalizeLMax(x.Data.Ptr, start, end);
-            }
-        }
+        public static fProxy NormalizeLMax(in fProxyN   x, int start, int end) => fProxyNormsCore.NormalizeLMax(x, start, end);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeLMax(in fProxyMxN x, int start, int end) => fProxyNormsCore.NormalizeLMax(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLP<T>(in T x, fProxy p) where T : unmanaged, IUnsafefProxyArray
-        {
-            unsafe
-            {
-                return UnsafeOP.normalizeLP(x.Data.Ptr, x.Data.Length, p);
-            }
-        }
+        public static fProxy NormalizeLP(in fProxyN   x, fProxy p) => fProxyNormsCore.NormalizeLP(x, p);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeLP(in fProxyMxN x, fProxy p) => fProxyNormsCore.NormalizeLP(x, p);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLP<T>(in T x, int start, int end, fProxy p) where T : unmanaged, IUnsafefProxyArray
-        {
-            if (start >= end)
-                throw new ArgumentException("NormalizeLP: start must be less than end");
-
-            if (start < 0 || end > x.Data.Length)
-                throw new ArgumentOutOfRangeException("NormalizeLP: start and end must be within bounds of vector");
-
-            unsafe
-            {
-                return UnsafeOP.normalizeLP(x.Data.Ptr, start, end, p);
-            }
-        }
+        public static fProxy NormalizeLP(in fProxyN   x, int start, int end, fProxy p) => fProxyNormsCore.NormalizeLP(x, start, end, p);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeLP(in fProxyMxN x, int start, int end, fProxy p) => fProxyNormsCore.NormalizeLP(x, start, end, p);
 
         // ---- Enum-dispatch normalize ----
 
@@ -159,15 +97,9 @@ namespace LinearAlgebra
         /// <b>whole-matrix</b> scope (all elements as a single distribution); use
         /// <see cref="NormalizeRows"/> or <see cref="NormalizeColumns"/> for per-axis normalization.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Normalize<T>(in T x, Norm n) where T : unmanaged, IUnsafefProxyArray
-        {
-            switch (n)
-            {
-                case Norm.L1:   NormalizeL1(in x);   break;
-                case Norm.L2:   NormalizeL2(in x);   break;
-                default:        NormalizeLMax(in x);  break; // Linf
-            }
-        }
+        public static void Normalize(in fProxyN   x, Norm n) => fProxyNormsCore.Normalize(x, n);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Normalize(in fProxyMxN x, Norm n) => fProxyNormsCore.Normalize(x, n);
 
         // Zero-norm row → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
         public static void NormalizeRows(ref fProxyMxN A, Norm n)
@@ -292,6 +224,110 @@ namespace LinearAlgebra
             fProxyN S = A.fProxyTempVec(k);
             SVD.singularValues(in A, ref S);
             return S[0];   // singular values are sorted descending -> σ_max
+        }
+    }
+
+    // Internal generic bodies (one per norm kernel), written once. `floatNormsCore` and
+    // `doubleNormsCore` are distinct types, so the type-identical generic signatures never
+    // collide (unlike a merged `Norms`); the public forwarders above inline straight through.
+    internal static class fProxyNormsCore
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy L2<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
+            unsafe { return math.sqrt(UnsafeOP.vecDot(a.Data.Ptr, a.Data.Ptr, a.Data.Length)); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy L1<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
+            unsafe { return UnsafeOP.sumAbs(a.Data.Ptr, a.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy LInf<T>(in T a) where T : unmanaged, IUnsafefProxyArray {
+            unsafe { return UnsafeOP.maxAbs(a.Data.Ptr, a.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void NormalizeL2<T>(in T x) where T : unmanaged, IUnsafefProxyArray
+        {
+            unsafe { UnsafeOP.normalizeL2Inpl(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeL2<T>(in T x, int start, int end) where T : unmanaged, IUnsafefProxyArray
+        {
+            if (start >= end)
+                throw new ArgumentException("NormalizeL2: start must be less than end");
+
+            if (start < 0 || end > x.Data.Length)
+                throw new ArgumentOutOfRangeException("NormalizeL2: start and end must be within bounds of vector");
+
+            unsafe { return UnsafeOP.normalizeL2Inpl(x.Data.Ptr, start, end); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeL1<T>(in T x) where T : unmanaged, IUnsafefProxyArray
+        {
+            unsafe { return UnsafeOP.normalizeL1(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeL1<T>(in T x, int start, int end) where T : unmanaged, IUnsafefProxyArray
+        {
+            if (start >= end)
+                throw new ArgumentException("NormalizeL1: start must be less than end");
+
+            if (start < 0 || end > x.Data.Length)
+                throw new ArgumentOutOfRangeException("NormalizeL1: start and end must be within bounds of vector");
+
+            unsafe { return UnsafeOP.normalizeL1(x.Data.Ptr, start, end); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeLMax<T>(in T x) where T : unmanaged, IUnsafefProxyArray
+        {
+            unsafe { return UnsafeOP.normalizeLMax(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeLMax<T>(in T x, int start, int end) where T : unmanaged, IUnsafefProxyArray
+        {
+            if (start >= end)
+                throw new ArgumentException("NormalizeLMax: start must be less than end");
+
+            if (start < 0 || end > x.Data.Length)
+                throw new ArgumentOutOfRangeException("NormalizeLMax: start and end must be within bounds of vector");
+
+            unsafe { return UnsafeOP.normalizeLMax(x.Data.Ptr, start, end); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeLP<T>(in T x, fProxy p) where T : unmanaged, IUnsafefProxyArray
+        {
+            unsafe { return UnsafeOP.normalizeLP(x.Data.Ptr, x.Data.Length, p); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static fProxy NormalizeLP<T>(in T x, int start, int end, fProxy p) where T : unmanaged, IUnsafefProxyArray
+        {
+            if (start >= end)
+                throw new ArgumentException("NormalizeLP: start must be less than end");
+
+            if (start < 0 || end > x.Data.Length)
+                throw new ArgumentOutOfRangeException("NormalizeLP: start and end must be within bounds of vector");
+
+            unsafe { return UnsafeOP.normalizeLP(x.Data.Ptr, start, end, p); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Normalize<T>(in T x, Norm n) where T : unmanaged, IUnsafefProxyArray
+        {
+            switch (n)
+            {
+                case Norm.L1:   NormalizeL1(in x);   break;
+                case Norm.L2:   NormalizeL2(in x);   break;
+                default:        NormalizeLMax(in x);  break; // Linf
+            }
         }
     }
 }

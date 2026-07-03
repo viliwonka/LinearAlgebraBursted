@@ -107,7 +107,7 @@ public class floatScalarMatrixOpTests
             var v = arena.floatVec(3);
             v[0] = (float)(-1); v[1] = (float)2; v[2] = (float)(-2);
 
-            float norm = floatNorms_OP.NormalizeLP(in v, (float)3);
+            float norm = Norms.NormalizeLP(in v, (float)3);
 
             if (math.isnan(norm))
             {

@@ -89,7 +89,7 @@ public class fProxyLiteratureTests
             AssertClose(S[0], (fProxy)2, (fProxy)1E-4);
             AssertClose(S[1], (fProxy)1, (fProxy)1E-4);
 
-            AssertClose(fProxyNorms_OP.matrixL2(in A), (fProxy)2, (fProxy)1E-4);
+            AssertClose(Norms.matrixL2(in A), (fProxy)2, (fProxy)1E-4);
             AssertClose(Blas.cond(in A), (fProxy)2, (fProxy)1E-4);
 
             arena.Dispose();

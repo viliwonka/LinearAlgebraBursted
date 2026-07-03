@@ -147,7 +147,7 @@ public class fProxySpecialConstructorsTests {
             {
                 var v = arena.fProxyRandomUnitVec(16, 332*seed+17);
 
-                var len = fProxyNorms_OP.L2(in v);
+                var len = Norms.L2(in v);
 
                 Assert.IsTrue(Unity.Mathematics.math.abs(len - (fProxy)1) <= 0.00001f);
             }

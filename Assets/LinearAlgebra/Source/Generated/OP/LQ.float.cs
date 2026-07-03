@@ -25,7 +25,7 @@ namespace LinearAlgebra
             for (int c = colStart; c < n; c++)
                 v[c] = M[row, c];
 
-            float xNorm = floatNorms_OP.L2Range(v, colStart, n);
+            float xNorm = Norms.L2Range(v, colStart, n);
 
             if (math.abs(xNorm) > zeroThreshold)
             {
@@ -378,7 +378,7 @@ namespace LinearAlgebra
             var v = new floatN(n, Allocator.Temp, false);
 
             W.Data.CopyFrom(A.Data);
-            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in A);
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
 
             if (m < LQ_BLOCK_MIN_M)
             {
@@ -432,7 +432,7 @@ namespace LinearAlgebra
             var v = ws.v;
 
             W.Data.CopyFrom(A.Data);
-            float zeroThreshold = Consts.floatZeroThreshold * floatNorms_OP.LInf(in A);
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
 
             lqKernel(ref W, ref L, ref Q, ref v, zeroThreshold);
 

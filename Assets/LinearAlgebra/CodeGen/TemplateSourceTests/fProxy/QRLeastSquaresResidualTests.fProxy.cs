@@ -111,7 +111,7 @@ public class fProxyQRLeastSquaresResidualTests
                 RecordBound(Analysis.MaxZeroError(AtR), (fProxy)1E-3f * scale);
 
                 // sanity: the residual is genuinely non-zero (this is an inconsistent system).
-                fProxy rNorm = fProxyNorms_OP.L2(in r);
+                fProxy rNorm = Norms.L2(in r);
                 if (!(rNorm > (fProxy)1E-2f) && Fail[0] == (fProxy)0)
                 {
                     Fail[0] = (fProxy)1;

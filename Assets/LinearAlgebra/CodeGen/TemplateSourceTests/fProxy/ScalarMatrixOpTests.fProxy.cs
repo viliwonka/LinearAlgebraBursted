@@ -107,7 +107,7 @@ public class fProxyScalarMatrixOpTests
             var v = arena.fProxyVec(3);
             v[0] = (fProxy)(-1); v[1] = (fProxy)2; v[2] = (fProxy)(-2);
 
-            fProxy norm = fProxyNorms_OP.NormalizeLP(in v, (fProxy)3);
+            fProxy norm = Norms.NormalizeLP(in v, (fProxy)3);
 
             if (math.isnan(norm))
             {
