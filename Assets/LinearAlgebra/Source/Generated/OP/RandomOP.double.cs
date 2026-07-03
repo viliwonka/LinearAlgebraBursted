@@ -8,13 +8,13 @@ namespace LinearAlgebra
     /// <summary>
     /// Zero-alloc random-fill operations for existing vectors and matrices. Complements the
     /// allocating helpers in <c>ArenaExtensions.double</c> (which create a new buffer with a
-    /// fresh internal seed). Use these <em>Inpl</em> forms in per-frame / realtime loops where
+    /// fresh internal seed). Use these <em>InPlace</em> forms in per-frame / realtime loops where
     /// the buffer already exists and the caller manages the <see cref="Unity.Mathematics.Random"/>
     /// stream for reproducibility and correlation control.
     ///
-    /// Uniform refill: <c>nextUniformInpl</c> — overwrites a buffer directly from the caller's
+    /// Uniform refill: <c>nextUniformInPlace</c> — overwrites a buffer directly from the caller's
     /// evolving RNG stream.
-    /// Generic fill: <c>randomInpl&lt;S&gt;</c> — works with any <see cref="IdoubleSampler"/>
+    /// Generic fill: <c>randomInPlace&lt;S&gt;</c> — works with any <see cref="IdoubleSampler"/>
     /// struct-functor. ICDF samplers advance rng once per element. <see cref="doubleGaussian"/>
     /// uses one pair of uniform draws per two samples (Box–Muller), advancing rng by
     /// ceil(N/2)×2 steps: N steps when N is even, N+1 steps when N is odd.
@@ -30,7 +30,7 @@ namespace LinearAlgebra
         /// advancing <paramref name="rng"/> by <c>dest.N</c> steps.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextUniformInpl(ref Random rng, ref doubleN dest)
+        public static void nextUniformInPlace(ref Random rng, ref doubleN dest)
         {
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)
@@ -43,10 +43,10 @@ namespace LinearAlgebra
         /// by <c>dest.N</c> steps. Throws if <paramref name="min"/> &gt; <paramref name="max"/>.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextUniformInpl(ref Random rng, ref doubleN dest, double min, double max)
+        public static void nextUniformInPlace(ref Random rng, ref doubleN dest, double min, double max)
         {
             if (!(min <= max))
-                throw new ArgumentException("nextUniformInpl: min must be <= max");
+                throw new ArgumentException("nextUniformInPlace: min must be <= max");
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)
                 dest[i] = rng.NextDouble(min, max);
@@ -59,7 +59,7 @@ namespace LinearAlgebra
         /// advancing <paramref name="rng"/> by <c>dest.Length</c> steps.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextUniformInpl(ref Random rng, ref doubleMxN dest)
+        public static void nextUniformInPlace(ref Random rng, ref doubleMxN dest)
         {
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)
@@ -72,10 +72,10 @@ namespace LinearAlgebra
         /// by <c>dest.Length</c> steps. Throws if <paramref name="min"/> &gt; <paramref name="max"/>.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextUniformInpl(ref Random rng, ref doubleMxN dest, double min, double max)
+        public static void nextUniformInPlace(ref Random rng, ref doubleMxN dest, double min, double max)
         {
             if (!(min <= max))
-                throw new ArgumentException("nextUniformInpl: min must be <= max");
+                throw new ArgumentException("nextUniformInPlace: min must be <= max");
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)
                 dest[i] = rng.NextDouble(min, max);
@@ -89,7 +89,7 @@ namespace LinearAlgebra
         /// each concrete sampler type.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void randomInpl<S>(ref Random rng, ref doubleN dest, ref S s)
+        public static void randomInPlace<S>(ref Random rng, ref doubleN dest, ref S s)
             where S : struct, IdoubleSampler
         {
             int len = dest.Data.Length;
@@ -101,7 +101,7 @@ namespace LinearAlgebra
 
         /// <summary>Matrix overload — fills every element by drawing from <paramref name="s"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void randomInpl<S>(ref Random rng, ref doubleMxN dest, ref S s)
+        public static void randomInPlace<S>(ref Random rng, ref doubleMxN dest, ref S s)
             where S : struct, IdoubleSampler
         {
             int len = dest.Data.Length;
@@ -112,8 +112,8 @@ namespace LinearAlgebra
         // ---- weighted pick ----
 
         // Private helper: cumulative-scan pick given a pre-validated total.
-        // Called by both weightedPick and weightedPickInpl so validation + summation
-        // run only once per public call (not once per draw in the Inpl case).
+        // Called by both weightedPick and weightedPickInPlace so validation + summation
+        // run only once per public call (not once per draw in the InPlace case).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static int weightedPickFromTotal(in doubleN weights, double total, ref Random rng)
         {
@@ -172,7 +172,7 @@ namespace LinearAlgebra
         /// even when <c>dest.N == 0</c>). Zero-alloc; O(N + k) where k = dest.N.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void weightedPickInpl(in doubleN weights, ref Indices dest, ref Random rng)
+        public static void weightedPickInPlace(in doubleN weights, ref Indices dest, ref Random rng)
         {
             double total = weightedPickValidateAndSum(in weights);
             int k = dest.N;
@@ -484,7 +484,7 @@ namespace LinearAlgebra
     /// over a long fill.
     ///
     /// <para>Because of the cached spare, the sampler MUST be passed by <c>ref</c> to
-    /// <c>Rand.randomInpl</c> — copying it by value would silently duplicate the
+    /// <c>Rand.randomInPlace</c> — copying it by value would silently duplicate the
     /// spare state and corrupt the stream.</para>
     ///
     /// <para>No static ICDF is provided: Box–Muller is a two-draw transform, not a simple

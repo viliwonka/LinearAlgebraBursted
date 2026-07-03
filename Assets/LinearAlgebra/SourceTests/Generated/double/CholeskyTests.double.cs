@@ -338,10 +338,10 @@ public class doubleCholeskyTests
             bool ok = Cholesky.choleskySolve(in A, ref L, ref bChol);
             Assert.IsTrue(ok);
 
-            // LU solve on the same system (inplace LU with pivot).
+            // LU solve on the same system (in-place LU with pivot).
             var lu = A.Copy();
             var pivot = new Pivot(dim, Allocator.Temp);
-            bool luOk = LinearAlgebra.LU.luDecompositionInpl(ref lu, ref pivot);
+            bool luOk = LinearAlgebra.LU.luDecompositionInPlace(ref lu, ref pivot);
             Assert.IsTrue(luOk);
 
             var bLU = b.Copy();

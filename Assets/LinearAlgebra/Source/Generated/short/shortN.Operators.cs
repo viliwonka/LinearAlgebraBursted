@@ -14,7 +14,7 @@ namespace LinearAlgebra
         public static shortN operator -(in shortN a) {
 
             shortN vec = a.TempCopy();
-            shortComp.signFlipInpl(vec);
+            shortComp.signFlipInPlace(vec);
 
             return vec;
         }
@@ -23,7 +23,7 @@ namespace LinearAlgebra
         public static shortN operator +(in shortN a, short s) {
 
             shortN vec = a.TempCopy();
-            shortComp.addInpl(vec, s);
+            shortComp.addInPlace(vec, s);
 
             return vec; 
         }
@@ -35,7 +35,7 @@ namespace LinearAlgebra
         public static shortN operator -(in shortN a, short s) {
             
             shortN vec = a.TempCopy();
-            shortComp.addInpl(vec, (short)(-s));
+            shortComp.addInPlace(vec, (short)(-s));
             
             return vec;
         }
@@ -44,7 +44,7 @@ namespace LinearAlgebra
         public static shortN operator -(short s, in shortN a)
         {
             shortN vec = a.TempCopy();
-            shortComp.subInpl(s, vec);
+            shortComp.subInPlace(s, vec);
             return vec;
         }
 
@@ -53,7 +53,7 @@ namespace LinearAlgebra
             
             shortN vec = a.TempCopy();
 
-            shortComp.mulInpl(vec, s);
+            shortComp.mulInPlace(vec, s);
 
             return vec;
         }
@@ -69,7 +69,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            shortComp.divInpl(vec, s);
+            shortComp.divInPlace(vec, s);
 
             return vec;
         }
@@ -79,7 +79,7 @@ namespace LinearAlgebra
         {
             shortN vec = a.TempCopy();
 
-            shortComp.divInpl(s, vec);
+            shortComp.divInPlace(s, vec);
 
             return vec;
         }
@@ -92,7 +92,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            shortComp.modInpl(vec, s);
+            shortComp.modInPlace(vec, s);
 
             return vec;
         }
@@ -102,7 +102,7 @@ namespace LinearAlgebra
         {
             shortN vec = a.TempCopy();
 
-            shortComp.modInpl(s, vec);
+            shortComp.modInPlace(s, vec);
 
             return vec;
         }
@@ -113,7 +113,7 @@ namespace LinearAlgebra
 
             shortN matrix = a.TempCopy();
 
-            shortComp.bitwiseComplementInpl(matrix);
+            shortComp.bitwiseComplementInPlace(matrix);
 
             return matrix;
         }
@@ -122,7 +122,7 @@ namespace LinearAlgebra
         public static shortN operator &(in shortN a, in short s) {
 
             shortN matrix = a.TempCopy();
-            shortComp.bitwiseAndInpl(matrix, s);
+            shortComp.bitwiseAndInPlace(matrix, s);
             return matrix;
         }
         public static shortN operator &(in short s, in shortN a) => a & s;
@@ -131,7 +131,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator |(in shortN a, in short s) {
             shortN matrix = a.TempCopy();
-            shortComp.bitwiseOrInpl(matrix, s);
+            shortComp.bitwiseOrInPlace(matrix, s);
             return matrix;
         }
         public static shortN operator |(in short s, in shortN a) => a | s;
@@ -140,7 +140,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator ^(in shortN a, in short b) {
             shortN matrix = a.TempCopy();
-            shortComp.bitwiseXorInpl(matrix, b);
+            shortComp.bitwiseXorInPlace(matrix, b);
             return matrix;
         }
         public static shortN operator ^(in short s, in shortN a) => a ^ s;
@@ -149,14 +149,14 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator <<(in shortN a, int shift) {
             shortN matrix = a.TempCopy();
-            shortComp.bitwiseLeftShiftInpl(matrix, shift);
+            shortComp.bitwiseLeftShiftInPlace(matrix, shift);
             return matrix;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator >>(in shortN a, int shift) {
             shortN matrix = a.TempCopy();
-            shortComp.bitwiseRightShiftInpl(matrix, shift);
+            shortComp.bitwiseRightShiftInPlace(matrix, shift);
             return matrix;
         }
 
@@ -172,7 +172,7 @@ namespace LinearAlgebra
 
             shortN vec = a.TempCopy();
 
-            shortComp.addInpl(vec, b);   // vec += b  (vec is the copy of a)
+            shortComp.addInPlace(vec, b);   // vec += b  (vec is the copy of a)
 
             return vec;
         }
@@ -184,7 +184,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             shortN vec = a.TempCopy();
-            shortComp.subInpl(vec, b);
+            shortComp.subInPlace(vec, b);
             
             return vec;
         }
@@ -197,7 +197,7 @@ namespace LinearAlgebra
 
             shortN vec = a.TempCopy();
 
-            shortComp.mulInpl(b, vec);
+            shortComp.mulInPlace(b, vec);
 
             return vec;
         }
@@ -209,7 +209,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             shortN newDividendVec = dividend.TempCopy();
-            shortComp.divInpl(newDividendVec, divisor);
+            shortComp.divInPlace(newDividendVec, divisor);
 
             return newDividendVec;
         }
@@ -221,7 +221,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             shortN newDividendVec = dividend.TempCopy();
-            shortComp.modInpl(newDividendVec, divisor);
+            shortComp.modInPlace(newDividendVec, divisor);
 
             return newDividendVec;
         }
@@ -232,7 +232,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             shortN matrix = a.TempCopy();
-            shortComp.bitwiseAndInpl(matrix, b);
+            shortComp.bitwiseAndInPlace(matrix, b);
             return matrix;
         }
         
@@ -242,7 +242,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             shortN matrix = a.TempCopy();
-            shortComp.bitwiseOrInpl(matrix, b);
+            shortComp.bitwiseOrInPlace(matrix, b);
             return matrix;
         }
         
@@ -253,7 +253,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             shortN matrix = a.TempCopy();
-            shortComp.bitwiseXorInpl(matrix, b);
+            shortComp.bitwiseXorInPlace(matrix, b);
             return matrix;
         }
         

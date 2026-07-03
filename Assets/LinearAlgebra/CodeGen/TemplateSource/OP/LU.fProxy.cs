@@ -10,7 +10,6 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    // Inpl = inplace
     public static partial class LU {
 
         /// <summary>
@@ -310,12 +309,12 @@ namespace LinearAlgebra
 
         // A = LU (LU initially A, P reset and modified in place)
         /// <summary>
-        /// Performs LU decomposition inplace with partial pivoting (compact LU form).
+        /// Performs LU decomposition in-place with partial pivoting (compact LU form).
         /// Factor row i lives at physical row P[i].
         /// Returns Success; Singular if a zero pivot is encountered (singular matrix).
         /// On Singular: no NaN/Inf is written, P remains a valid permutation.
         /// </summary>
-        public static DirectSolveInfo luDecompositionInpl(ref fProxyMxN LU, ref Pivot P) {
+        public static DirectSolveInfo luDecompositionInPlace(ref fProxyMxN LU, ref Pivot P) {
 
             if (!LU.IsSquare)
                 throw new System.ArgumentException("luDecomposition: LU (A) needs to be square");
@@ -382,9 +381,9 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Solve LUx = b for x using the compact inplace LU form with pivot.
+        /// Solve LUx = b for x using the compact in-place LU form with pivot.
         /// b is overwritten with x. Always reports DirectSolveStatus.Success — this assumes a
-        /// valid factor from a luDecompositionInpl that returned Success; it does not re-verify it.
+        /// valid factor from a luDecompositionInPlace that returned Success; it does not re-verify it.
         /// Throws ArgumentException if dimensions are inconsistent.
         /// </summary>
         public static DirectSolveInfo luSolve(ref fProxyMxN LU, in Pivot pivot, ref fProxyN b) {
@@ -439,7 +438,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Compute the determinant from the compact inplace LU form with pivot.
+        /// Compute the determinant from the compact in-place LU form with pivot.
         /// Returns P.Sign * product of diagonal elements LU[P[i], i].
         /// Throws ArgumentException if LU is not square or P.N != LU.M_Rows.
         /// </summary>

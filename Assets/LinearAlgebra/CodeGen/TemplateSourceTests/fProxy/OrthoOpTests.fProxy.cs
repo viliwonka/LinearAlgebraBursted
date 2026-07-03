@@ -472,7 +472,7 @@ public class fProxyOrthoOpTests
 
                     Solvers.solveUpperTriangular(ref R, ref y);
 
-                    y.subInpl(xOrig);
+                    y.subInPlace(xOrig);
                     fProxy zeroError = Analysis.MaxZeroError(y);
 
                     if(Analysis.isAnyNan(in y)) {
@@ -527,7 +527,7 @@ public class fProxyOrthoOpTests
 
                     Solvers.solveUpperTriangular(ref R, ref y);
 
-                    y.subInpl(xOrig);
+                    y.subInPlace(xOrig);
                     fProxy zeroError = Analysis.MaxZeroError(y);
 
                     if (Analysis.isAnyNan(in y)) {
@@ -573,7 +573,7 @@ public class fProxyOrthoOpTests
                 if (Analysis.isAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
-                x.subInpl(xOrig);
+                x.subInPlace(xOrig);
 
                 fProxy zeroError = Analysis.MaxZeroError(x);
 
@@ -620,7 +620,7 @@ public class fProxyOrthoOpTests
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
 
-                x.subInpl(xOrig);
+                x.subInPlace(xOrig);
 
                 fProxy zeroError = Analysis.MaxZeroError(x);
 
@@ -1036,7 +1036,7 @@ public class fProxyOrthoOpTests
             // residual = A x - b
             var Ax   = arena.fProxyVec(m);
             Blas.dot(in A, in x, ref Ax);
-            Ax.subInpl(b);
+            Ax.subInPlace(b);
             fProxy residual = Analysis.MaxZeroError(Ax);
             if (!(residual <= (fProxy)1E-4f) && Fail[0] == (fProxy)0)
             {

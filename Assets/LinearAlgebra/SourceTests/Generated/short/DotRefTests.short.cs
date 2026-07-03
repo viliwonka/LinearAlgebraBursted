@@ -93,7 +93,7 @@ public class shortDotRefTests
                 var R = Blas.dot(A, x);
 
                 var D = arena.shortVec(M);
-                shortComp.addInpl(D, (short)999);   // dirty the destination
+                shortComp.addInPlace(D, (short)999);   // dirty the destination
                 Blas.dot(in A, in x, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
@@ -105,7 +105,7 @@ public class shortDotRefTests
                 var R = Blas.dot(y, A);
 
                 var D = arena.shortVec(N);
-                shortComp.addInpl(D, (short)999);
+                shortComp.addInPlace(D, (short)999);
                 Blas.dot(in y, in A, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
@@ -117,7 +117,7 @@ public class shortDotRefTests
                 var R = Blas.dot(a, b, false);
 
                 var D = arena.shortMat(M, N);
-                shortComp.addInpl(D, (short)999);
+                shortComp.addInPlace(D, (short)999);
                 Blas.dot(in a, in b, ref D, false);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }

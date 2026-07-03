@@ -64,7 +64,7 @@ public class doubleLiteratureTests
 
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInpl(ref LUmat, ref pivot);
+            LU.luDecompositionInPlace(ref LUmat, ref pivot);
             double det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -142,7 +142,7 @@ public class doubleLiteratureTests
             // det(Pascal) = 1 (LU destroys its input, so factor a copy)
             var LUmat = P.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInpl(ref LUmat, ref pivot);
+            LU.luDecompositionInPlace(ref LUmat, ref pivot);
             double det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -244,7 +244,7 @@ public class doubleLiteratureTests
             double scale = (double)1E-7;
 
             var A = arena.doubleRandomMat(n, n, -1f, 1f, 90211);
-            doubleComp.mulInpl(A, scale);   // entries now ~1e-7
+            doubleComp.mulInPlace(A, scale);   // entries now ~1e-7
 
             var Q = A.Copy();
             var R = arena.doubleMat(n, n);

@@ -868,7 +868,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void normalizeL2Inpl([NoAlias] double* target, int n)
+        public static void normalizeL2InPlace([NoAlias] double* target, int n)
         {
             double sum = 0f;
 
@@ -882,7 +882,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static double normalizeL2Inpl([NoAlias] double* target, int start, int end)
+        public static double normalizeL2InPlace([NoAlias] double* target, int start, int end)
         {
             double sum = 0f;
 

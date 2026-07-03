@@ -59,12 +59,12 @@ namespace LinearAlgebra.Benchmarks
             var G = new floatMxN(m, n, Allocator.Temp, false);
             var R = new floatMxN(n, n, Allocator.Temp, false);
             var gauss = new floatGaussian(0f, 1f);
-            Rand.randomInpl(ref rng, ref G, ref gauss);
+            Rand.randomInPlace(ref rng, ref G, ref gauss);
             QR.qrDecomposition(ref G, ref R);   // G → Q in-place
 
             // V (n x n) Haar-uniform orthogonal
             var V = new floatMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInpl(ref rng, ref V);
+            Rand.randomOrthogonalInPlace(ref rng, ref V);
 
             // A[i,j] = Σ_t  Sigma[t] · G[i,t] · V[j,t]   (double accumulation for accuracy)
             for (int i = 0; i < m; i++)
@@ -99,11 +99,11 @@ namespace LinearAlgebra.Benchmarks
             var G = new doubleMxN(m, n, Allocator.Temp, false);
             var R = new doubleMxN(n, n, Allocator.Temp, false);
             var gauss = new doubleGaussian(0.0, 1.0);
-            Rand.randomInpl(ref rng, ref G, ref gauss);
+            Rand.randomInPlace(ref rng, ref G, ref gauss);
             QR.qrDecomposition(ref G, ref R);
 
             var V = new doubleMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInpl(ref rng, ref V);
+            Rand.randomOrthogonalInPlace(ref rng, ref V);
 
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)

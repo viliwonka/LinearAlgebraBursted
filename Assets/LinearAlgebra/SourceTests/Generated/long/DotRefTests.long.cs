@@ -93,7 +93,7 @@ public class longDotRefTests
                 var R = Blas.dot(A, x);
 
                 var D = arena.longVec(M);
-                longComp.addInpl(D, (long)999);   // dirty the destination
+                longComp.addInPlace(D, (long)999);   // dirty the destination
                 Blas.dot(in A, in x, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
@@ -105,7 +105,7 @@ public class longDotRefTests
                 var R = Blas.dot(y, A);
 
                 var D = arena.longVec(N);
-                longComp.addInpl(D, (long)999);
+                longComp.addInPlace(D, (long)999);
                 Blas.dot(in y, in A, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
@@ -117,7 +117,7 @@ public class longDotRefTests
                 var R = Blas.dot(a, b, false);
 
                 var D = arena.longMat(M, N);
-                longComp.addInpl(D, (long)999);
+                longComp.addInPlace(D, (long)999);
                 Blas.dot(in a, in b, ref D, false);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }

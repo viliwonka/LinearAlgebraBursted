@@ -167,8 +167,8 @@ public class floatSVDTests
         {
             var U = new floatMxN(m, m, Allocator.Temp, false);
             var V = new floatMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInpl(ref rng, ref U);
-            Rand.randomOrthogonalInpl(ref rng, ref V);
+            Rand.randomOrthogonalInPlace(ref rng, ref U);
+            Rand.randomOrthogonalInPlace(ref rng, ref V);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {

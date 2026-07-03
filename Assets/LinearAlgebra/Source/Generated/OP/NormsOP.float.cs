@@ -250,7 +250,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void NormalizeL2<T>(in T x) where T : unmanaged, IUnsafefloatArray
         {
-            unsafe { UnsafeOP.normalizeL2Inpl(x.Data.Ptr, x.Data.Length); }
+            unsafe { UnsafeOP.normalizeL2InPlace(x.Data.Ptr, x.Data.Length); }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -262,7 +262,7 @@ namespace LinearAlgebra
             if (start < 0 || end > x.Data.Length)
                 throw new ArgumentOutOfRangeException("NormalizeL2: start and end must be within bounds of vector");
 
-            unsafe { return UnsafeOP.normalizeL2Inpl(x.Data.Ptr, start, end); }
+            unsafe { return UnsafeOP.normalizeL2InPlace(x.Data.Ptr, start, end); }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

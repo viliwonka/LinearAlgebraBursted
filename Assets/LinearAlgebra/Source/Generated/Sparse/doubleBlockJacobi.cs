@@ -13,7 +13,7 @@ namespace LinearAlgebra.Sparse
     /// BR x BR inverse-and-multiply reduces to that automatically for BR=1.
     ///
     /// Built ONCE from a compressed <see cref="doubleBSR"/> (an O(nb * BR^3) one-time cost via
-    /// LU decomposition on each tiny diagonal block -- reuses <see cref="LU.luDecompositionInpl"/>
+    /// LU decomposition on each tiny diagonal block -- reuses <see cref="LU.luDecompositionInPlace"/>
     /// / <see cref="LU.luSolve(ref doubleMxN, in Pivot, ref doubleN)"/>, no new inverse
     /// primitive), then <see cref="Apply"/> is a zero-alloc block-diagonal matvec every PCG
     /// iteration.
@@ -86,7 +86,7 @@ namespace LinearAlgebra.Sparse
                         Dcopy[r, c] = A.Values[srcOff + r * BR + c];
 
                 var P = new Pivot(BR, Allocator.Temp);
-                bool ok = LU.luDecompositionInpl(ref Dcopy, ref P);
+                bool ok = LU.luDecompositionInPlace(ref Dcopy, ref P);
 
                 if (!ok)
                 {

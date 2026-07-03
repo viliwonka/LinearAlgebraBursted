@@ -10,13 +10,13 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-// Tests for the weighted discrete picker (Rand.weightedPick / weightedPickInpl).
+// Tests for the weighted discrete picker (Rand.weightedPick / weightedPickInPlace).
 // One template expands to Rand / Rand, so statistics use loose tolerances
 // that hold for both precisions; the underlying uniform stream is float-valued for both, so a
 // fixed seed makes every count deterministic.
 //
 //   * weightedPick(in weights, ref rng) -> int : unnormalized PMF, linear cumulative scan.
-//   * weightedPickInpl(in weights, ref dest, ref rng) : k picks with replacement; validates ONCE
+//   * weightedPickInPlace(in weights, ref dest, ref rng) : k picks with replacement; validates ONCE
 //     up front (throws even if dest.N == 0 with bad weights).
 //
 // Burst-compatible computational tests live in TestJob; managed-throw guards are plain [Test]
@@ -31,7 +31,7 @@ public class floatRandomWeightedTests
             SingleElementAlwaysZero,
             ZeroWeightNeverPicked,
             Proportionality,
-            InplFillsInRange,
+            InPlaceFillsInRange,
         }
 
         public TestType Type;
@@ -46,7 +46,7 @@ public class floatRandomWeightedTests
                 case TestType.SingleElementAlwaysZero: SingleElementAlwaysZero(); break;
                 case TestType.ZeroWeightNeverPicked:   ZeroWeightNeverPicked();   break;
                 case TestType.Proportionality:         Proportionality();         break;
-                case TestType.InplFillsInRange:        InplFillsInRange();        break;
+                case TestType.InPlaceFillsInRange:        InPlaceFillsInRange();        break;
             }
         }
 
@@ -105,8 +105,8 @@ public class floatRandomWeightedTests
             arena.Dispose();
         }
 
-        // weightedPickInpl fills dest.N picks, all valid indices; zero-weight index excluded.
-        void InplFillsInRange()
+        // weightedPickInPlace fills dest.N picks, all valid indices; zero-weight index excluded.
+        void InPlaceFillsInRange()
         {
             var arena = new Arena(Allocator.Persistent);
             var rng = new Random(97531864u);
@@ -115,7 +115,7 @@ public class floatRandomWeightedTests
 
             int k = 256;
             var dest = arena.Indices(k);
-            Rand.weightedPickInpl(in w, ref dest, ref rng);
+            Rand.weightedPickInPlace(in w, ref dest, ref rng);
             AssertTrue(dest.N == k);
             for (int i = 0; i < k; i++)
             {
@@ -177,7 +177,7 @@ public class floatRandomWeightedTests
     [Test] public void SingleElementAlwaysZeroTest() => RunJob(TestJob.TestType.SingleElementAlwaysZero);
     [Test] public void ZeroWeightNeverPickedTest() => RunJob(TestJob.TestType.ZeroWeightNeverPicked);
     [Test] public void ProportionalityTest() => RunJob(TestJob.TestType.Proportionality);
-    [Test] public void InplFillsInRangeTest() => RunJob(TestJob.TestType.InplFillsInRange);
+    [Test] public void InPlaceFillsInRangeTest() => RunJob(TestJob.TestType.InPlaceFillsInRange);
 
     // ---------------- Managed validation throws (main thread, not in a Burst job) ----------------
 
@@ -215,7 +215,7 @@ public class floatRandomWeightedTests
     }
 
     [Test]
-    public void WeightedPickInplValidatesUpFrontEvenWhenDestEmpty()
+    public void WeightedPickInPlaceValidatesUpFrontEvenWhenDestEmpty()
     {
         var arena = new Arena(Allocator.Persistent);
         Random rng = new Random(1u);
@@ -224,13 +224,13 @@ public class floatRandomWeightedTests
         var bad = arena.floatVec(3);
         bad[0] = (float)1; bad[1] = (float)(-1); bad[2] = (float)1;
         var emptyDest = arena.Indices(0);
-        Assert.Throws<ArgumentException>(() => Rand.weightedPickInpl(in bad, ref emptyDest, ref rng));
+        Assert.Throws<ArgumentException>(() => Rand.weightedPickInPlace(in bad, ref emptyDest, ref rng));
 
         // All-zero total likewise throws with an empty destination.
         var zero = arena.floatVec(2);
         zero[0] = (float)0; zero[1] = (float)0;
         var emptyDest2 = arena.Indices(0);
-        Assert.Throws<ArgumentException>(() => Rand.weightedPickInpl(in zero, ref emptyDest2, ref rng));
+        Assert.Throws<ArgumentException>(() => Rand.weightedPickInPlace(in zero, ref emptyDest2, ref rng));
 
         arena.Dispose();
     }

@@ -7,7 +7,7 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Zero-alloc random-fill operations for integer vectors and matrices.
-    /// Uniform refill: <c>nextUniformInpl</c> — overwrites a buffer directly from the caller's
+    /// Uniform refill: <c>nextUniformInPlace</c> — overwrites a buffer directly from the caller's
     /// evolving RNG stream. Range is [min, max) per Unity's NextInt contract.
     ///
     /// <b>int-range limitation:</b> random draws use <c>Unity.Mathematics.Random.NextInt</c>,
@@ -31,7 +31,7 @@ namespace LinearAlgebra
         /// by <c>dest.N</c> steps (see class summary for the min==max and int-range contract).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextUniformInpl(ref Random rng, ref shortN dest, short min, short max)
+        public static void nextUniformInPlace(ref Random rng, ref shortN dest, short min, short max)
         {
             if (min < int.MinValue || max > int.MaxValue)
                 throw new ArgumentException("Rand: min/max must be within int range for random generation");
@@ -53,11 +53,11 @@ namespace LinearAlgebra
         // ---- uniform refill (matrix) ----
 
         /// <summary>
-        /// Matrix overload of <see cref="nextUniformInpl(ref Random, ref shortN, short, short)"/>;
+        /// Matrix overload of <see cref="nextUniformInPlace(ref Random, ref shortN, short, short)"/>;
         /// advances <paramref name="rng"/> by <c>dest.Length</c> steps.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextUniformInpl(ref Random rng, ref shortMxN dest, short min, short max)
+        public static void nextUniformInPlace(ref Random rng, ref shortMxN dest, short min, short max)
         {
             if (min < int.MinValue || max > int.MaxValue)
                 throw new ArgumentException("Rand: min/max must be within int range for random generation");

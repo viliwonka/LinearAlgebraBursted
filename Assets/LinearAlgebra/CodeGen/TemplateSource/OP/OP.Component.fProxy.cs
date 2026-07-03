@@ -9,12 +9,11 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Inpl = inplace
     /// </summary>
     public static partial class fProxyComp {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void addInpl<T>(T place, fProxy s) where T : unmanaged, IUnsafefProxyArray {
+        public static void addInPlace<T>(T place, fProxy s) where T : unmanaged, IUnsafefProxyArray {
 
             unsafe {
                 UnsafeOP.scalAdd(place.Data.Ptr, place.Data.Length, s);
@@ -22,7 +21,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void mulInpl<T>(T place, fProxy s) where T : unmanaged, IUnsafefProxyArray
+        public static void mulInPlace<T>(T place, fProxy s) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 UnsafeOP.scalMul(place.Data.Ptr, place.Data.Length, s);
@@ -30,7 +29,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void divInpl<T>(this T place, fProxy s) where T : unmanaged, IUnsafefProxyArray
+        public static void divInPlace<T>(this T place, fProxy s) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe
             {
@@ -39,7 +38,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void divInpl<T>(fProxy s, T place) where T : unmanaged, IUnsafefProxyArray
+        public static void divInPlace<T>(fProxy s, T place) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe
             {
@@ -48,7 +47,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void addInpl<T>(this T place, T from) where T : unmanaged, IUnsafefProxyArray
+        public static void addInPlace<T>(this T place, T from) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 // place += from. (compAdd is (target, from) — a prior reversed call mutated `from` instead.)
@@ -57,7 +56,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void subInpl<T>(this T place, T fromB) where T : unmanaged, IUnsafefProxyArray
+        public static void subInPlace<T>(this T place, T fromB) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 UnsafeOP.compSub(place.Data.Ptr, fromB.Data.Ptr, fromB.Data.Length);
@@ -66,7 +65,7 @@ namespace LinearAlgebra
 
         // y += a * x
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void addScaledInpl<T>(this T y, fProxy a, T x) where T : unmanaged, IUnsafefProxyArray
+        public static void addScaledInPlace<T>(this T y, fProxy a, T x) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 UnsafeOP.axpy(y.Data.Ptr, x.Data.Ptr, a, x.Data.Length);
@@ -75,7 +74,7 @@ namespace LinearAlgebra
 
         // y = a * y + x
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void scaleAddInpl<T>(this T y, fProxy a, T x) where T : unmanaged, IUnsafefProxyArray
+        public static void scaleAddInPlace<T>(this T y, fProxy a, T x) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 UnsafeOP.aypx(y.Data.Ptr, x.Data.Ptr, a, x.Data.Length);
@@ -83,7 +82,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void modInpl<T>(this T place, fProxy s) where T : unmanaged, IUnsafefProxyArray
+        public static void modInPlace<T>(this T place, fProxy s) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe
             {
@@ -92,7 +91,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void modInpl<T>(fProxy s, T place) where T : unmanaged, IUnsafefProxyArray
+        public static void modInPlace<T>(fProxy s, T place) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe
             {
@@ -100,28 +99,28 @@ namespace LinearAlgebra
             }
         }
 
-        // (T,T) buffer-pairwise overload of mulInpl, matching addInpl/subInpl's existing pattern
+        // (T,T) buffer-pairwise overload of mulInPlace, matching addInPlace/subInPlace's existing pattern
         // of overloading a single name across a scalar (T, fProxy) and a buffer (T, T) form.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void mulInpl<T>(this T from, T to) where T : unmanaged, IUnsafefProxyArray
+        public static void mulInPlace<T>(this T from, T to) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 UnsafeOP.compMul(from.Data.Ptr, to.Data.Ptr, from.Data.Length);
             }
         }
 
-        // (T,T) buffer-pairwise overload of divInpl.
+        // (T,T) buffer-pairwise overload of divInPlace.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void divInpl<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafefProxyArray
+        public static void divInPlace<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 UnsafeOP.compDiv(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
             }
         }
 
-        // (T,T) buffer-pairwise overload of modInpl.
+        // (T,T) buffer-pairwise overload of modInPlace.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void modInpl<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafefProxyArray
+        public static void modInPlace<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 UnsafeOP.compMod(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
@@ -129,13 +128,13 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void subInpl<T>(this T v, fProxy s) where T : unmanaged, IUnsafefProxyArray
+        public static void subInPlace<T>(this T v, fProxy s) where T : unmanaged, IUnsafefProxyArray
         {
-            addInpl(v, -s);
+            addInPlace(v, -s);
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void subInpl<T>(fProxy s, T v) where T : unmanaged, IUnsafefProxyArray
+        public static void subInPlace<T>(fProxy s, T v) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {                 
                 UnsafeOP.scalSub(s, v.Data.Ptr, v.Data.Length);
@@ -143,7 +142,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void signFlipInpl<T>(this T a) where T : unmanaged, IUnsafefProxyArray
+        public static void signFlipInPlace<T>(this T a) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 UnsafeOP.signFlip(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
@@ -154,10 +153,10 @@ namespace LinearAlgebra
         /// Delegates to the mathUnsafe clamp kernel; no allocation.</summary>
         /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void clampInpl<T>(in T x, fProxy lo, fProxy hi) where T : unmanaged, IUnsafefProxyArray
+        public static void clampInPlace<T>(in T x, fProxy lo, fProxy hi) where T : unmanaged, IUnsafefProxyArray
         {
             if (lo > hi)
-                throw new ArgumentException("clampInpl: lo must be <= hi");
+                throw new ArgumentException("clampInPlace: lo must be <= hi");
             unsafe
             {
                 mathUnsafefProxy.clamp(x.Data.Ptr, x.Data.Length, lo, hi);

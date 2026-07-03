@@ -12,10 +12,10 @@ using Random = Unity.Mathematics.Random;
 
 // Tests for the type-agnostic shuffle / permutation / sampling ops in Rand (shared across all
 // element types; not generated per-type). Hand-written singular file.
-//   * randomPermutationInpl(ref Pivot, ref rng) : uniform permutation of 0..N-1 from identity;
+//   * randomPermutationInPlace(ref Pivot, ref rng) : uniform permutation of 0..N-1 from identity;
 //     Pivot.Sign reflects swap parity.
-//   * shuffleInpl(ref Indices, ref rng)         : Fisher-Yates over existing contents.
-//   * sampleKWithoutReplacementInpl(ref Indices dest, int n, ref rng) : dest.N distinct indices
+//   * shuffleInPlace(ref Indices, ref rng)         : Fisher-Yates over existing contents.
+//   * sampleKWithoutReplacementInPlace(ref Indices dest, int n, ref rng) : dest.N distinct indices
 //     from [0, n). Throws if n <= 0 or dest.N > n; dest.N == 0 returns without alloc/throw.
 //
 // Burst-compatible computational tests live in TestJob; managed-throw guards are plain [Test]
@@ -61,14 +61,14 @@ public class RandomSharedTests
             }
         }
 
-        // randomPermutationInpl yields a bijection of 0..N-1, and a Copy preserves contents+Sign.
+        // randomPermutationInPlace yields a bijection of 0..N-1, and a Copy preserves contents+Sign.
         void PermutationIsBijection()
         {
             var arena = new Arena(Allocator.Persistent);
             int n = 16;
             var p = arena.Pivot(n);
             var rng = new Random(1234567u);
-            Rand.randomPermutationInpl(ref p, ref rng);
+            Rand.randomPermutationInPlace(ref p, ref rng);
 
             AssertTrue(p.N == n);
             // Each value in 0..n-1 appears exactly once.
@@ -100,7 +100,7 @@ public class RandomSharedTests
             var arena = new Arena(Allocator.Persistent);
             var p = arena.Pivot(1);
             var rng = new Random(99u);
-            Rand.randomPermutationInpl(ref p, ref rng);
+            Rand.randomPermutationInPlace(ref p, ref rng);
             AssertTrue(p[0] == 0);
             AssertTrue(p.Sign == 1);
             arena.Dispose();
@@ -126,7 +126,7 @@ public class RandomSharedTests
         {
             var p = arena.Pivot(n);
             var rng = new Random(seed);
-            Rand.randomPermutationInpl(ref p, ref rng);
+            Rand.randomPermutationInPlace(ref p, ref rng);
 
             int inversions = 0;
             for (int i = 0; i < n; i++)
@@ -148,7 +148,7 @@ public class RandomSharedTests
             {
                 var p = arena.Pivot(n);
                 var rng = new Random(s * 2654435761u + 1u);
-                Rand.randomPermutationInpl(ref p, ref rng);
+                Rand.randomPermutationInPlace(ref p, ref rng);
                 for (int i = 0; i < n; i++)
                     if (p[i] != i) { anyNonIdentity = true; break; }
             }
@@ -156,7 +156,7 @@ public class RandomSharedTests
             arena.Dispose();
         }
 
-        // shuffleInpl keeps the multiset of contents (incl. duplicates), only reordering.
+        // shuffleInPlace keeps the multiset of contents (incl. duplicates), only reordering.
         void ShuffleMultisetEqual()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -170,7 +170,7 @@ public class RandomSharedTests
             for (int i = 0; i < n; i++) pre[i] = idx[i];
 
             var rng = new Random(2468013u);
-            Rand.shuffleInpl(ref idx, ref rng);
+            Rand.shuffleInPlace(ref idx, ref rng);
 
             // sort both (insertion sort) and compare element-wise => multiset equality
             InsertionSort(ref pre);
@@ -188,7 +188,7 @@ public class RandomSharedTests
             var idx = arena.Indices(1);
             idx[0] = 42;
             var rng = new Random(7u);
-            Rand.shuffleInpl(ref idx, ref rng);
+            Rand.shuffleInPlace(ref idx, ref rng);
             AssertEq(idx[0], 42);
             arena.Dispose();
         }
@@ -200,7 +200,7 @@ public class RandomSharedTests
             int n = 20, k = 5;
             var dest = arena.Indices(k);
             var rng = new Random(13572468u);
-            Rand.sampleKWithoutReplacementInpl(ref dest, n, ref rng);
+            Rand.sampleKWithoutReplacementInPlace(ref dest, n, ref rng);
 
             for (int i = 0; i < k; i++)
             {
@@ -218,7 +218,7 @@ public class RandomSharedTests
             int n = 8;
             var dest = arena.Indices(n);
             var rng = new Random(97531864u);
-            Rand.sampleKWithoutReplacementInpl(ref dest, n, ref rng);
+            Rand.sampleKWithoutReplacementInPlace(ref dest, n, ref rng);
 
             var seen = arena.Indices(n);
             for (int i = 0; i < n; i++) seen[i] = 0;
@@ -238,7 +238,7 @@ public class RandomSharedTests
             var arena = new Arena(Allocator.Persistent);
             var dest = arena.Indices(0);
             var rng = new Random(1u);
-            Rand.sampleKWithoutReplacementInpl(ref dest, 5, ref rng);
+            Rand.sampleKWithoutReplacementInPlace(ref dest, 5, ref rng);
             AssertEq(dest.N, 0);
             arena.Dispose();
         }
@@ -250,11 +250,11 @@ public class RandomSharedTests
             int n = 50, k = 10;
             var d1 = arena.Indices(k);
             var r1 = new Random(555u);
-            Rand.sampleKWithoutReplacementInpl(ref d1, n, ref r1);
+            Rand.sampleKWithoutReplacementInPlace(ref d1, n, ref r1);
 
             var d2 = arena.Indices(k);
             var r2 = new Random(555u);
-            Rand.sampleKWithoutReplacementInpl(ref d2, n, ref r2);
+            Rand.sampleKWithoutReplacementInPlace(ref d2, n, ref r2);
 
             for (int i = 0; i < k; i++)
                 AssertEq(d1[i], d2[i]);
@@ -346,12 +346,12 @@ public class RandomSharedTests
 
         // n <= 0 throws.
         var dest = arena.Indices(3);
-        Assert.Throws<ArgumentException>(() => Rand.sampleKWithoutReplacementInpl(ref dest, 0, ref rng));
-        Assert.Throws<ArgumentException>(() => Rand.sampleKWithoutReplacementInpl(ref dest, -1, ref rng));
+        Assert.Throws<ArgumentException>(() => Rand.sampleKWithoutReplacementInPlace(ref dest, 0, ref rng));
+        Assert.Throws<ArgumentException>(() => Rand.sampleKWithoutReplacementInPlace(ref dest, -1, ref rng));
 
         // dest.N > n throws.
         var big = arena.Indices(5);
-        Assert.Throws<ArgumentException>(() => Rand.sampleKWithoutReplacementInpl(ref big, 3, ref rng));
+        Assert.Throws<ArgumentException>(() => Rand.sampleKWithoutReplacementInPlace(ref big, 3, ref rng));
 
         arena.Dispose();
     }

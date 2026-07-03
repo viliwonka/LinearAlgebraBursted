@@ -93,8 +93,8 @@ public class floatSVDLowRankTests
         {
             var U = new floatMxN(m, m, Allocator.Temp, false);
             var V = new floatMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInpl(ref rng, ref U);
-            Rand.randomOrthogonalInpl(ref rng, ref V);
+            Rand.randomOrthogonalInPlace(ref rng, ref U);
+            Rand.randomOrthogonalInPlace(ref rng, ref V);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -406,8 +406,8 @@ public class floatSVDLowRankTests
         {
             Ularge = new floatMxN(m, m, Allocator.Temp, false);
             Vmat   = new floatMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInpl(ref rng, ref Ularge);
-            Rand.randomOrthogonalInpl(ref rng, ref Vmat);
+            Rand.randomOrthogonalInPlace(ref rng, ref Ularge);
+            Rand.randomOrthogonalInPlace(ref rng, ref Vmat);
         }
 
         // Check GKL top-k against svdThin oracle. Asserts converged=true, σ within svTol of oracle,

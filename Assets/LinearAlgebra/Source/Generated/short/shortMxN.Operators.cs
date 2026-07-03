@@ -16,7 +16,7 @@ namespace LinearAlgebra
         {
             shortMxN matrix = a.TempCopy();
             
-            shortComp.signFlipInpl(matrix);
+            shortComp.signFlipInPlace(matrix);
 
             return matrix;
         }
@@ -25,7 +25,7 @@ namespace LinearAlgebra
         {
             shortMxN matrix = lhs.TempCopy();
             
-            shortComp.addInpl(matrix, rhs);
+            shortComp.addInPlace(matrix, rhs);
 
             return matrix;
         }
@@ -36,7 +36,7 @@ namespace LinearAlgebra
         {
             shortMxN matrix = lhs.TempCopy();
             
-            shortComp.addInpl(matrix, (short)(-rhs));
+            shortComp.addInPlace(matrix, (short)(-rhs));
 
             return matrix;
         }
@@ -45,7 +45,7 @@ namespace LinearAlgebra
         {
             // subtraction is NOT commutative: lhs - rhs[i,j], not rhs[i,j] - lhs
             shortMxN matrix = rhs.TempCopy();
-            shortComp.subInpl(lhs, matrix);
+            shortComp.subInPlace(lhs, matrix);
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -53,7 +53,7 @@ namespace LinearAlgebra
         {
             shortMxN matrix = a.TempCopy();
 
-            shortComp.mulInpl(matrix, s);
+            shortComp.mulInPlace(matrix, s);
 
             return matrix;
         }
@@ -67,7 +67,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            shortComp.divInpl(matrix, s);
+            shortComp.divInPlace(matrix, s);
 
             return matrix;
         }
@@ -76,7 +76,7 @@ namespace LinearAlgebra
         {
             // 0 / M is valid (= 0 where M != 0); a zero MATRIX entry still throws (integer div by zero).
             shortMxN matrix = a.TempCopy();
-            shortComp.divInpl(s, matrix);
+            shortComp.divInPlace(s, matrix);
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -87,7 +87,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            shortComp.modInpl(matrix, s);
+            shortComp.modInPlace(matrix, s);
 
             return matrix;
         }
@@ -96,7 +96,7 @@ namespace LinearAlgebra
         {
             // 0 % M is valid (= 0 where M != 0); a zero MATRIX entry still throws (integer mod by zero).
             shortMxN matrix = a.TempCopy();
-            shortComp.modInpl(s, matrix);
+            shortComp.modInPlace(s, matrix);
 
             return matrix;
         }
@@ -106,7 +106,7 @@ namespace LinearAlgebra
 
             shortMxN matrix = a.TempCopy();
 
-            shortComp.bitwiseComplementInpl(matrix);
+            shortComp.bitwiseComplementInPlace(matrix);
 
             return matrix;
         }
@@ -115,7 +115,7 @@ namespace LinearAlgebra
         public static shortMxN operator &(in shortMxN a, in short s) {
 
             shortMxN matrix = a.TempCopy();
-            shortComp.bitwiseAndInpl(matrix, s);
+            shortComp.bitwiseAndInPlace(matrix, s);
             return matrix;
         }
 
@@ -124,7 +124,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortMxN operator |(in shortMxN a, in short s) {
             shortMxN matrix = a.TempCopy();
-            shortComp.bitwiseOrInpl(matrix, s);
+            shortComp.bitwiseOrInPlace(matrix, s);
             return matrix;
         }
 
@@ -133,7 +133,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortMxN operator ^(in shortMxN a, in short s) {
             shortMxN matrix = a.TempCopy();
-            shortComp.bitwiseXorInpl(matrix, s);
+            shortComp.bitwiseXorInPlace(matrix, s);
             return matrix;
         }
 
@@ -142,14 +142,14 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortMxN operator <<(in shortMxN a, int shift) {
             shortMxN matrix = a.TempCopy();
-            shortComp.bitwiseLeftShiftInpl(matrix, shift);
+            shortComp.bitwiseLeftShiftInPlace(matrix, shift);
             return matrix;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortMxN operator >>(in shortMxN a, int shift) {
             shortMxN matrix = a.TempCopy();
-            shortComp.bitwiseRightShiftInpl(matrix, shift);
+            shortComp.bitwiseRightShiftInPlace(matrix, shift);
             return matrix;
         }
 
@@ -165,7 +165,7 @@ namespace LinearAlgebra
 
             shortMxN matrix = lhs.TempCopy();
 
-            shortComp.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
+            shortComp.addInPlace(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
 
             return matrix;
         }
@@ -178,7 +178,7 @@ namespace LinearAlgebra
             
             shortMxN matrix = lhs.TempCopy();
 
-            shortComp.subInpl(matrix, rhs);
+            shortComp.subInPlace(matrix, rhs);
 
             return matrix;
         }
@@ -191,7 +191,7 @@ namespace LinearAlgebra
 
             shortMxN matrix = lhs.TempCopy();
 
-            shortComp.mulInpl(rhs, matrix);
+            shortComp.mulInPlace(rhs, matrix);
 
             return matrix;
         }
@@ -204,7 +204,7 @@ namespace LinearAlgebra
 
             shortMxN newDividendMatrix = dividend.TempCopy();
 
-            shortComp.divInpl(newDividendMatrix, divisor);
+            shortComp.divInPlace(newDividendMatrix, divisor);
             return newDividendMatrix;
         }
 
@@ -216,7 +216,7 @@ namespace LinearAlgebra
 
             var newDividendMatrix = dividend.TempCopy();
 
-            shortComp.modInpl(newDividendMatrix, divisor);
+            shortComp.modInPlace(newDividendMatrix, divisor);
             return newDividendMatrix;
         }
 
@@ -226,7 +226,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             shortMxN matrix = a.TempCopy();
-            shortComp.bitwiseAndInpl(matrix, b);
+            shortComp.bitwiseAndInPlace(matrix, b);
             return matrix;
         }
 
@@ -237,7 +237,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             shortMxN matrix = a.TempCopy();
-            shortComp.bitwiseOrInpl(matrix, b);
+            shortComp.bitwiseOrInPlace(matrix, b);
             return matrix;
         }
 
@@ -248,7 +248,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             shortMxN matrix = a.TempCopy();
-            shortComp.bitwiseXorInpl(matrix, b);
+            shortComp.bitwiseXorInPlace(matrix, b);
             return matrix;
         }
 

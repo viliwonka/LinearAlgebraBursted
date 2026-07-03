@@ -228,7 +228,7 @@ public class fProxySolverBatteryTests
 
             var LUm = A.Copy();
             var P = new Pivot(n, Allocator.Temp);
-            AssertTrue(LU.luDecompositionInpl(ref LUm, ref P));
+            AssertTrue(LU.luDecompositionInPlace(ref LUm, ref P));
 
             var x = b.Copy();                 // luSolve overwrites b with x
             LU.luSolve(ref LUm, in P, ref x);
@@ -780,13 +780,13 @@ public class fProxySolverBatteryTests
         // helpers
         // =====================================================================
 
-        // det via LU on a copy (luDecompositionInpl destroys its input).
+        // det via LU on a copy (luDecompositionInPlace destroys its input).
         fProxy Determinant(in fProxyMxN M)
         {
             int n = M.M_Rows;
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInpl(ref LUmat, ref pivot);
+            LU.luDecompositionInPlace(ref LUmat, ref pivot);
             fProxy det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;

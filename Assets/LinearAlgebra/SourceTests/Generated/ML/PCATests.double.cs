@@ -483,7 +483,7 @@ public class doublePCATests
 
             var V = arena.doubleMat(p, p);
             var rng = new Unity.Mathematics.Random(0x01234567u);
-            Rand.randomOrthogonalInpl(ref rng, ref V);
+            Rand.randomOrthogonalInPlace(ref rng, ref V);
 
             var X = arena.doubleMat(n, p);
             for (int i = 0; i < n; i++)

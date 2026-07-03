@@ -472,7 +472,7 @@ public class doubleOrthoOpTests
 
                     Solvers.solveUpperTriangular(ref R, ref y);
 
-                    y.subInpl(xOrig);
+                    y.subInPlace(xOrig);
                     double zeroError = Analysis.MaxZeroError(y);
 
                     if(Analysis.isAnyNan(in y)) {
@@ -527,7 +527,7 @@ public class doubleOrthoOpTests
 
                     Solvers.solveUpperTriangular(ref R, ref y);
 
-                    y.subInpl(xOrig);
+                    y.subInPlace(xOrig);
                     double zeroError = Analysis.MaxZeroError(y);
 
                     if (Analysis.isAnyNan(in y)) {
@@ -573,7 +573,7 @@ public class doubleOrthoOpTests
                 if (Analysis.isAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
-                x.subInpl(xOrig);
+                x.subInPlace(xOrig);
 
                 double zeroError = Analysis.MaxZeroError(x);
 
@@ -620,7 +620,7 @@ public class doubleOrthoOpTests
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
 
-                x.subInpl(xOrig);
+                x.subInPlace(xOrig);
 
                 double zeroError = Analysis.MaxZeroError(x);
 
@@ -1036,7 +1036,7 @@ public class doubleOrthoOpTests
             // residual = A x - b
             var Ax   = arena.doubleVec(m);
             Blas.dot(in A, in x, ref Ax);
-            Ax.subInpl(b);
+            Ax.subInPlace(b);
             double residual = Analysis.MaxZeroError(Ax);
             if (!(residual <= (double)1E-4f) && Fail[0] == (double)0)
             {

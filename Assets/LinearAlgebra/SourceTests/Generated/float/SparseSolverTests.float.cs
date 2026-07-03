@@ -552,12 +552,12 @@ public class floatSparseSolverTests
 
             // Independent cross-check against a DIRECT LU solve on the SAME indefinite matrix
             // (no Krylov/MINRES involvement) -- pins the iterative solution to a truly independent
-            // reference, not just the self-consistent A x ~= b residual. luDecompositionInpl +
+            // reference, not just the self-consistent A x ~= b residual. luDecompositionInPlace +
             // luSolve are DESTRUCTIVE, so they run on COPIES. The shifted Laplacian above is
             // constructed to be nonsingular (odd n+1 -> no exactly-zero eigenvalue), so LU succeeds.
             var LUcopy = A.Copy();
             var pivot = new Pivot(dim, Allocator.Temp);
-            bool okLU = LU.luDecompositionInpl(ref LUcopy, ref pivot);
+            bool okLU = LU.luDecompositionInPlace(ref LUcopy, ref pivot);
             Assert.IsTrue(okLU);
             var xLU = b.Copy();
             LU.luSolve(ref LUcopy, in pivot, ref xLU);
@@ -635,10 +635,10 @@ public class floatSparseSolverTests
             var Ax = Blas.dot(A, xBcg);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            // Direct LU reference on COPIES (luDecompositionInpl + luSolve are DESTRUCTIVE).
+            // Direct LU reference on COPIES (luDecompositionInPlace + luSolve are DESTRUCTIVE).
             var LUcopy = A.Copy();
             var pivot = new Pivot(dim, Allocator.Temp);
-            bool okLU = LU.luDecompositionInpl(ref LUcopy, ref pivot);
+            bool okLU = LU.luDecompositionInPlace(ref LUcopy, ref pivot);
             Assert.IsTrue(okLU);
             var xLU = b.Copy();
             LU.luSolve(ref LUcopy, in pivot, ref xLU);

@@ -310,7 +310,7 @@ namespace LinearAlgebra
         public static void rowMean(in floatMxN A, ref floatN dest)
         {
             rowSum(in A, ref dest);
-            floatComp.divInpl(dest, A.N_Cols);
+            floatComp.divInPlace(dest, A.N_Cols);
         }
 
         public static floatN rowMean(in floatMxN A)
@@ -323,7 +323,7 @@ namespace LinearAlgebra
         public static void colMean(in floatMxN A, ref floatN dest)
         {
             colSum(in A, ref dest);
-            floatComp.divInpl(dest, A.M_Rows);
+            floatComp.divInPlace(dest, A.M_Rows);
         }
 
         public static floatN colMean(in floatMxN A)
@@ -472,7 +472,7 @@ namespace LinearAlgebra
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     means[c] += A[r, c];
-            floatComp.divInpl(means, A.M_Rows);
+            floatComp.divInPlace(means, A.M_Rows);
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = 0f;
@@ -484,7 +484,7 @@ namespace LinearAlgebra
                     dest[c] += d * d;
                 }
 
-            floatComp.divInpl(dest, A.M_Rows);
+            floatComp.divInPlace(dest, A.M_Rows);
 
             means.Dispose();
         }

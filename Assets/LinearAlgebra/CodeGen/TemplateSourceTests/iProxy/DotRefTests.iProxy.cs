@@ -93,7 +93,7 @@ public class iProxyDotRefTests
                 var R = Blas.dot(A, x);
 
                 var D = arena.iProxyVec(M);
-                iProxyComp.addInpl(D, (iProxy)999);   // dirty the destination
+                iProxyComp.addInPlace(D, (iProxy)999);   // dirty the destination
                 Blas.dot(in A, in x, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
@@ -105,7 +105,7 @@ public class iProxyDotRefTests
                 var R = Blas.dot(y, A);
 
                 var D = arena.iProxyVec(N);
-                iProxyComp.addInpl(D, (iProxy)999);
+                iProxyComp.addInPlace(D, (iProxy)999);
                 Blas.dot(in y, in A, ref D);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }
@@ -117,7 +117,7 @@ public class iProxyDotRefTests
                 var R = Blas.dot(a, b, false);
 
                 var D = arena.iProxyMat(M, N);
-                iProxyComp.addInpl(D, (iProxy)999);
+                iProxyComp.addInPlace(D, (iProxy)999);
                 Blas.dot(in a, in b, ref D, false);
                 Assert.IsTrue(ExactEqual(in R, in D));
             }

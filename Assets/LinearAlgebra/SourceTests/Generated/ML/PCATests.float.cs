@@ -483,7 +483,7 @@ public class floatPCATests
 
             var V = arena.floatMat(p, p);
             var rng = new Unity.Mathematics.Random(0x01234567u);
-            Rand.randomOrthogonalInpl(ref rng, ref V);
+            Rand.randomOrthogonalInPlace(ref rng, ref V);
 
             var X = arena.floatMat(n, p);
             for (int i = 0; i < n; i++)

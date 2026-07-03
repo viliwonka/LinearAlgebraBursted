@@ -18,7 +18,7 @@ namespace LinearAlgebra
         /// N_Cols) is overwritten.
         /// relTol &lt; 0 selects auto tolerance: relTol = max(m, n) * Consts.fProxyZeroThreshold.
         /// Singular values S[j] &lt;= relTol * S[0] are treated as zero.
-        /// Allocates temporaries from A's arena via fProxyTempVec/fProxyTempMat (not an Inpl op).
+        /// Allocates temporaries from A's arena via fProxyTempVec/fProxyTempMat (not an InPlace op).
         /// Returns the numerical rank used; converged is svdThin's return value.
         /// </summary>
         // Caller-provided scratch overload (zero-alloc); scratch layout: see fProxySVDCache. Hoist these

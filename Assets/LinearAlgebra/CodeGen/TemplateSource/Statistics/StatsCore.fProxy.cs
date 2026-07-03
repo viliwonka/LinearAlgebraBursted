@@ -310,7 +310,7 @@ namespace LinearAlgebra
         public static void rowMean(in fProxyMxN A, ref fProxyN dest)
         {
             rowSum(in A, ref dest);
-            fProxyComp.divInpl(dest, A.N_Cols);
+            fProxyComp.divInPlace(dest, A.N_Cols);
         }
 
         public static fProxyN rowMean(in fProxyMxN A)
@@ -323,7 +323,7 @@ namespace LinearAlgebra
         public static void colMean(in fProxyMxN A, ref fProxyN dest)
         {
             colSum(in A, ref dest);
-            fProxyComp.divInpl(dest, A.M_Rows);
+            fProxyComp.divInPlace(dest, A.M_Rows);
         }
 
         public static fProxyN colMean(in fProxyMxN A)
@@ -472,7 +472,7 @@ namespace LinearAlgebra
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     means[c] += A[r, c];
-            fProxyComp.divInpl(means, A.M_Rows);
+            fProxyComp.divInPlace(means, A.M_Rows);
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = 0f;
@@ -484,7 +484,7 @@ namespace LinearAlgebra
                     dest[c] += d * d;
                 }
 
-            fProxyComp.divInpl(dest, A.M_Rows);
+            fProxyComp.divInPlace(dest, A.M_Rows);
 
             means.Dispose();
         }

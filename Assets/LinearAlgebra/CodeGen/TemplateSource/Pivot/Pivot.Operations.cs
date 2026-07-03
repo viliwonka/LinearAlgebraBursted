@@ -16,8 +16,8 @@ namespace LinearAlgebra {
 
         //+copyReplaceAll
 
-        /// <summary>Applies pivot to vector v inplace; resets pivot to [0, 1, 2, ...].</summary>
-        public static void ApplyVecInpl(ref fProxyN v, ref Pivot pivot) {
+        /// <summary>Applies pivot to vector v in-place; resets pivot to [0, 1, 2, ...].</summary>
+        public static void ApplyVecInPlace(ref fProxyN v, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -36,8 +36,8 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>Applies pivot to rows of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
-        public static void ApplyRowInpl(ref fProxyMxN A, ref Pivot pivot) {
+        /// <summary>Applies pivot to rows of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
+        public static void ApplyRowInPlace(ref fProxyMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -56,8 +56,8 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>Applies pivot to columns of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
-        public static void ApplyColumnInpl(ref fProxyMxN A, ref Pivot pivot) {
+        /// <summary>Applies pivot to columns of matrix A in-place; resets pivot to [0, 1, 2, ...].</summary>
+        public static void ApplyColumnInPlace(ref fProxyMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
 
@@ -85,7 +85,7 @@ namespace LinearAlgebra {
 
             Pivot tempPivot = Copy();
             
-            ApplyRowInpl(ref A, ref tempPivot);
+            ApplyRowInPlace(ref A, ref tempPivot);
 
             tempPivot.Dispose();
         }
@@ -99,7 +99,7 @@ namespace LinearAlgebra {
 
             Pivot tempPivot = Copy();
             
-            ApplyColumnInpl(ref A, ref tempPivot);
+            ApplyColumnInPlace(ref A, ref tempPivot);
 
             tempPivot.Dispose();
         }
@@ -112,7 +112,7 @@ namespace LinearAlgebra {
 
             Pivot tempPivot = Copy();
 
-            ApplyVecInpl(ref v, ref tempPivot);
+            ApplyVecInPlace(ref v, ref tempPivot);
 
             tempPivot.Dispose();
         }
@@ -122,7 +122,7 @@ namespace LinearAlgebra {
 
             Pivot tempPivot = InverseCopy();
             
-            ApplyVecInpl(ref v, ref tempPivot);
+            ApplyVecInPlace(ref v, ref tempPivot);
 
             tempPivot.Dispose();
         }
@@ -132,7 +132,7 @@ namespace LinearAlgebra {
 
             Pivot tempPivot = InverseCopy();
 
-            ApplyRowInpl(ref A, ref tempPivot);
+            ApplyRowInPlace(ref A, ref tempPivot);
             
             tempPivot.Dispose();
         }
@@ -142,7 +142,7 @@ namespace LinearAlgebra {
 
             Pivot tempPivot = InverseCopy();
             
-            ApplyColumnInpl(ref A, ref tempPivot);
+            ApplyColumnInPlace(ref A, ref tempPivot);
             
             tempPivot.Dispose();
         }

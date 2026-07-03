@@ -63,7 +63,7 @@ namespace LinearAlgebra
             // Ω (n x ℓ) standard normal; Y = A Ω (m x ℓ).
             var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
             var gauss = new floatGaussian((float)0, (float)1);
-            Rand.randomInpl(ref rng, ref ws.Omega, ref gauss);
+            Rand.randomInPlace(ref rng, ref ws.Omega, ref gauss);
 
             Blas.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
 

@@ -206,18 +206,18 @@ namespace LinearAlgebra
         // Applies a single Householder reflection matrix -style transform directly to `matrix`:
         // matrix -= (2 / uᵀu) · u·uᵀ · matrix. Standalone primitive (not part of QR's internal
         // incremental reflector pipeline — see QR.applyReflectorRight for that).
-        public static void householderInpl(ref fProxyMxN matrix, in fProxyN u)
+        public static void householderInPlace(ref fProxyMxN matrix, in fProxyN u)
         {
             if(matrix.IsSquare == false)
-                throw new ArgumentException("Blas.householderInpl: Matrix must be square");
+                throw new ArgumentException("Blas.householderInPlace: Matrix must be square");
 
             if(matrix.M_Rows < matrix.N_Cols)
-                throw new ArgumentException("Blas.householderInpl: Matrix must be square or tall (more or equal rows than cols)");
+                throw new ArgumentException("Blas.householderInPlace: Matrix must be square or tall (more or equal rows than cols)");
 
             var maxDim = math.max(matrix.M_Rows, matrix.N_Cols);
 
             if(u.N < maxDim)
-                throw new ArgumentException("Blas.householderInpl: Vector must be at least as long as the largest dimension of the matrix");
+                throw new ArgumentException("Blas.householderInPlace: Vector must be at least as long as the largest dimension of the matrix");
 
             fProxy vTv = dot(u, u); // Inline dot product calculation
 

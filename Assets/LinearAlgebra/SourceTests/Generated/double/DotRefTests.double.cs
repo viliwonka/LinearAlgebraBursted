@@ -75,7 +75,7 @@ public class doubleDotRefTests
                 var R = Blas.dot(A, x);
 
                 var D = arena.doubleVec(M);
-                doubleComp.addInpl(D, (double)999);   // dirty the destination
+                doubleComp.addInPlace(D, (double)999);   // dirty the destination
                 Blas.dot(in A, in x, ref D);
                 Assert.IsTrue(Analysis.isZero(R - D, Tol()));
             }
@@ -87,7 +87,7 @@ public class doubleDotRefTests
                 var R = Blas.dot(y, A);
 
                 var D = arena.doubleVec(N);
-                doubleComp.addInpl(D, (double)999);
+                doubleComp.addInPlace(D, (double)999);
                 Blas.dot(in y, in A, ref D);
                 Assert.IsTrue(Analysis.isZero(R - D, Tol()));
             }
@@ -99,7 +99,7 @@ public class doubleDotRefTests
                 var R = Blas.dot(a, b, false);
 
                 var D = arena.doubleMat(M, N);
-                doubleComp.addInpl(D, (double)999);
+                doubleComp.addInPlace(D, (double)999);
                 Blas.dot(in a, in b, ref D, false);
                 Assert.IsTrue(Analysis.isZero(R - D, Tol()));
             }

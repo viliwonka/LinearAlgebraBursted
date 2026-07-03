@@ -64,7 +64,7 @@ public class fProxyLiteratureTests
 
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInpl(ref LUmat, ref pivot);
+            LU.luDecompositionInPlace(ref LUmat, ref pivot);
             fProxy det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -142,7 +142,7 @@ public class fProxyLiteratureTests
             // det(Pascal) = 1 (LU destroys its input, so factor a copy)
             var LUmat = P.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInpl(ref LUmat, ref pivot);
+            LU.luDecompositionInPlace(ref LUmat, ref pivot);
             fProxy det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -244,7 +244,7 @@ public class fProxyLiteratureTests
             fProxy scale = (fProxy)1E-7;
 
             var A = arena.fProxyRandomMat(n, n, -1f, 1f, 90211);
-            fProxyComp.mulInpl(A, scale);   // entries now ~1e-7
+            fProxyComp.mulInPlace(A, scale);   // entries now ~1e-7
 
             var Q = A.Copy();
             var R = arena.fProxyMat(n, n);

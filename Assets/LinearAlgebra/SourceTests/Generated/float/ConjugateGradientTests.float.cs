@@ -13,8 +13,8 @@ public class floatConjugateGradientTests
     {
         public enum TestType
         {
-            AddScaledInpl,
-            ScaleAddInpl,
+            AddScaledInPlace,
+            ScaleAddInPlace,
             SolveDefaults,
             CrossCheckCholesky,
             OverloadsAgree,
@@ -39,11 +39,11 @@ public class floatConjugateGradientTests
         {
             switch (Type)
             {
-                case TestType.AddScaledInpl:
-                    AddScaledInpl();
+                case TestType.AddScaledInPlace:
+                    AddScaledInPlace();
                     break;
-                case TestType.ScaleAddInpl:
-                    ScaleAddInpl();
+                case TestType.ScaleAddInPlace:
+                    ScaleAddInPlace();
                     break;
                 case TestType.SolveDefaults:
                     SolveDefaults();
@@ -97,7 +97,7 @@ public class floatConjugateGradientTests
         // ---- Load-bearing primitives ------------------------------------------------
 
         // y += a * x : each element must become y0 + a*x0.
-        void AddScaledInpl()
+        void AddScaledInPlace()
         {
             var arena = new Arena(Allocator.Persistent);
 
@@ -110,7 +110,7 @@ public class floatConjugateGradientTests
             // Snapshot of the original y before the in-place update.
             var y0 = y.Copy();
 
-            y.addScaledInpl(a, x);
+            y.addScaledInPlace(a, x);
 
             float tol = Tol();
             for (int i = 0; i < n; i++)
@@ -123,7 +123,7 @@ public class floatConjugateGradientTests
         }
 
         // y = a * y + x : each element must become a*y0 + x0.
-        void ScaleAddInpl()
+        void ScaleAddInPlace()
         {
             var arena = new Arena(Allocator.Persistent);
 
@@ -135,7 +135,7 @@ public class floatConjugateGradientTests
 
             var y0 = y.Copy();
 
-            y.scaleAddInpl(a, x);
+            y.scaleAddInPlace(a, x);
 
             float tol = Tol();
             for (int i = 0; i < n; i++)
@@ -398,15 +398,15 @@ public class floatConjugateGradientTests
     }
 
     [Test]
-    public void AddScaledInplTest()
+    public void AddScaledInPlaceTest()
     {
-        new ConjugateGradientTestJob() { Type = ConjugateGradientTestJob.TestType.AddScaledInpl }.Run();
+        new ConjugateGradientTestJob() { Type = ConjugateGradientTestJob.TestType.AddScaledInPlace }.Run();
     }
 
     [Test]
-    public void ScaleAddInplTest()
+    public void ScaleAddInPlaceTest()
     {
-        new ConjugateGradientTestJob() { Type = ConjugateGradientTestJob.TestType.ScaleAddInpl }.Run();
+        new ConjugateGradientTestJob() { Type = ConjugateGradientTestJob.TestType.ScaleAddInPlace }.Run();
     }
 
     [Test]

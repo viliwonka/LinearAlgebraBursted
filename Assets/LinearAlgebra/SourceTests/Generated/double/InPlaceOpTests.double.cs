@@ -5,24 +5,24 @@ using NUnit.Framework;
 using Unity.Collections;
 
 // Regression tests (from PR #1's ideas):
-//  - addInpl(place, from) must mutate `place` (place += from), NOT `from`. The internal compAdd
+//  - addInPlace(place, from) must mutate `place` (place += from), NOT `from`. The internal compAdd
 //    operands were reversed, so the method used to mutate the wrong operand — masked end-to-end
 //    only because the + operators also called it backwards.
 //  - the isPersistent / isTemp pool checks, used to assert ops don't move a persistent
 //    buffer into the temp pool.
 // Managed [Test] (arena on a normal C# thread) — reads the arena's debug pool checks.
-public class fProxyInplaceOpTests
+public class doubleInPlaceOpTests
 {
     [Test]
-    public void AddInpl_MutatesPlace_LeavesFromUnchanged()
+    public void AddInPlace_MutatesPlace_LeavesFromUnchanged()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var a = arena.fProxyVec(3); a[0] = (fProxy)1; a[1] = (fProxy)2; a[2] = (fProxy)3;
-            var b = arena.fProxyVec(3); b[0] = (fProxy)10; b[1] = (fProxy)20; b[2] = (fProxy)30;
+            var a = arena.doubleVec(3); a[0] = (double)1; a[1] = (double)2; a[2] = (double)3;
+            var b = arena.doubleVec(3); b[0] = (double)10; b[1] = (double)20; b[2] = (double)30;
 
-            fProxyComp.addInpl(a, b);   // a += b
+            doubleComp.addInPlace(a, b);   // a += b
 
             // a updated...
             Assert.AreEqual(11.0, (double)a[0], 1e-6);
@@ -37,15 +37,15 @@ public class fProxyInplaceOpTests
     }
 
     [Test]
-    public void SubInpl_MutatesPlace_LeavesFromUnchanged()
+    public void SubInPlace_MutatesPlace_LeavesFromUnchanged()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var a = arena.fProxyVec(2); a[0] = (fProxy)10; a[1] = (fProxy)20;
-            var b = arena.fProxyVec(2); b[0] = (fProxy)3;  b[1] = (fProxy)5;
+            var a = arena.doubleVec(2); a[0] = (double)10; a[1] = (double)20;
+            var b = arena.doubleVec(2); b[0] = (double)3;  b[1] = (double)5;
 
-            fProxyComp.subInpl(a, b);   // a -= b
+            doubleComp.subInPlace(a, b);   // a -= b
 
             Assert.AreEqual(7.0, (double)a[0], 1e-6);
             Assert.AreEqual(15.0, (double)a[1], 1e-6);
@@ -61,7 +61,7 @@ public class fProxyInplaceOpTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var v = arena.fProxyVec(3);
+            var v = arena.doubleVec(3);
             Assert.IsTrue(arena.isPersistent(in v));
             Assert.IsFalse(arena.isTemp(in v));
 
@@ -70,7 +70,7 @@ public class fProxyInplaceOpTests
             Assert.IsFalse(arena.isPersistent(in t));
 
             // operator + must leave its operands persistent and return a temp result.
-            var a = arena.fProxyVec(2); var b = arena.fProxyVec(2);
+            var a = arena.doubleVec(2); var b = arena.doubleVec(2);
             var sum = a + b;
             Assert.IsTrue(arena.isPersistent(in a));
             Assert.IsTrue(arena.isPersistent(in b));

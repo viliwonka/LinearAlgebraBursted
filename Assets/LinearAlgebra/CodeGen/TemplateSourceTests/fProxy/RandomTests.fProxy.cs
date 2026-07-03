@@ -15,7 +15,7 @@ using Random = Unity.Mathematics.Random;
 //   * In-job (Burst) tests: pure ICDF quantiles, empirical moments / support,
 //     determinism, stream advance, Gaussian spare bookkeeping, matrix overloads.
 //   * Managed throw tests (main thread): constructor / arg validation, mirroring
-//     the clampInpl / FFT guard-test convention.
+//     the clampInPlace / FFT guard-test convention.
 //
 // The underlying uniform stream (NextFProxy -> (fProxy)NextFloat) is float-valued for
 // BOTH expansions, so a fixed seed makes every statistic deterministic; the only
@@ -204,7 +204,7 @@ public class fProxyRandomTests
             var rng = new Random(1234567u);
             var s = new fProxyUniform((fProxy)(-2), (fProxy)4);
             var v = arena.fProxyVec(StatN);
-            Rand.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInPlace(ref rng, ref v, ref s);
 
             fProxy mean = Mean(in v);
             fProxy var = Variance(in v, mean);
@@ -221,7 +221,7 @@ public class fProxyRandomTests
             fProxy lambda = (fProxy)2;
             var s = new fProxyExponential(lambda);
             var v = arena.fProxyVec(StatN);
-            Rand.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInPlace(ref rng, ref v, ref s);
 
             fProxy mean = Mean(in v);
             fProxy var = Variance(in v, mean);
@@ -238,7 +238,7 @@ public class fProxyRandomTests
             fProxy mu = (fProxy)1.5, sd = (fProxy)2;
             var s = new fProxyGaussian(mu, sd);
             var v = arena.fProxyVec(StatN);
-            Rand.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInPlace(ref rng, ref v, ref s);
 
             fProxy mean = Mean(in v);
             fProxy var = Variance(in v, mean);
@@ -255,7 +255,7 @@ public class fProxyRandomTests
             fProxy sigma = (fProxy)1.5;
             var s = new fProxyRayleigh(sigma);
             var v = arena.fProxyVec(StatN);
-            Rand.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInPlace(ref rng, ref v, ref s);
 
             fProxy mean = Mean(in v);
             fProxy expected = sigma * math.sqrt((fProxy)(System.Math.PI / 2.0));
@@ -271,7 +271,7 @@ public class fProxyRandomTests
             fProxy x0 = (fProxy)5, gamma = (fProxy)2;
             var s = new fProxyCauchy(x0, gamma);
             var v = arena.fProxyVec(StatN);
-            Rand.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInPlace(ref rng, ref v, ref s);
 
             fProxy frac = FractionBelow(in v, x0);
             AssertClose(frac, (fProxy)0.5, (fProxy)0.04);
@@ -286,7 +286,7 @@ public class fProxyRandomTests
             fProxy xm = (fProxy)2, alpha = (fProxy)1.5;
             var s = new fProxyPareto(xm, alpha);
             var v = arena.fProxyVec(StatN);
-            Rand.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInPlace(ref rng, ref v, ref s);
 
             fProxy median = xm * math.pow((fProxy)2, (fProxy)1 / alpha);
             fProxy frac = FractionBelow(in v, median);
@@ -309,25 +309,25 @@ public class fProxyRandomTests
             fProxy a = (fProxy)(-2), b = (fProxy)4;
             var su = new fProxyUniform(a, b);
             var vu = arena.fProxyVec(n);
-            Rand.randomInpl(ref rng, ref vu, ref su);
+            Rand.randomInPlace(ref rng, ref vu, ref su);
             for (int i = 0; i < n; i++)
                 AssertTrue(vu[i] >= a && vu[i] < b);
 
             var se = new fProxyExponential((fProxy)2);
             var ve = arena.fProxyVec(n);
-            Rand.randomInpl(ref rng, ref ve, ref se);
+            Rand.randomInPlace(ref rng, ref ve, ref se);
             for (int i = 0; i < n; i++)
                 AssertTrue(ve[i] >= (fProxy)0);
 
             var sr = new fProxyRayleigh((fProxy)1.5);
             var vr = arena.fProxyVec(n);
-            Rand.randomInpl(ref rng, ref vr, ref sr);
+            Rand.randomInPlace(ref rng, ref vr, ref sr);
             for (int i = 0; i < n; i++)
                 AssertTrue(vr[i] >= (fProxy)0);
 
             var sw = new fProxyWeibull((fProxy)1.5, (fProxy)2);
             var vw = arena.fProxyVec(n);
-            Rand.randomInpl(ref rng, ref vw, ref sw);
+            Rand.randomInPlace(ref rng, ref vw, ref sw);
             for (int i = 0; i < n; i++)
                 AssertTrue(vw[i] >= (fProxy)0);
 
@@ -335,7 +335,7 @@ public class fProxyRandomTests
             fProxy low = (fProxy)(-1), high = (fProxy)5;
             var st = new fProxyTriangular(low, (fProxy)2, high);
             var vt = arena.fProxyVec(n);
-            Rand.randomInpl(ref rng, ref vt, ref st);
+            Rand.randomInPlace(ref rng, ref vt, ref st);
             for (int i = 0; i < n; i++)
                 AssertTrue(vt[i] >= low && vt[i] <= high);
 
@@ -353,12 +353,12 @@ public class fProxyRandomTests
             var r1 = new Random(55u);
             var s1 = new fProxyExponential((fProxy)1.7);
             var v1 = arena.fProxyVec(n);
-            Rand.randomInpl(ref r1, ref v1, ref s1);
+            Rand.randomInPlace(ref r1, ref v1, ref s1);
 
             var r2 = new Random(55u);
             var s2 = new fProxyExponential((fProxy)1.7);
             var v2 = arena.fProxyVec(n);
-            Rand.randomInpl(ref r2, ref v2, ref s2);
+            Rand.randomInPlace(ref r2, ref v2, ref s2);
 
             for (int i = 0; i < n; i++)
                 AssertClose(v1[i], v2[i], (fProxy)0);   // bit-identical
@@ -366,7 +366,7 @@ public class fProxyRandomTests
             arena.Dispose();
         }
 
-        // Two nextUniformInpl calls over the SAME rng advance the stream: buffers differ.
+        // Two nextUniformInPlace calls over the SAME rng advance the stream: buffers differ.
         void StreamAdvance()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -374,9 +374,9 @@ public class fProxyRandomTests
             var rng = new Random(7777u);
 
             var v1 = arena.fProxyVec(n);
-            Rand.nextUniformInpl(ref rng, ref v1);
+            Rand.nextUniformInPlace(ref rng, ref v1);
             var v2 = arena.fProxyVec(n);
-            Rand.nextUniformInpl(ref rng, ref v2);
+            Rand.nextUniformInPlace(ref rng, ref v2);
 
             bool anyDiff = false;
             for (int i = 0; i < n; i++)
@@ -386,7 +386,7 @@ public class fProxyRandomTests
             // Re-seeding resets the stream: a fresh rng reproduces the first buffer.
             var rng3 = new Random(7777u);
             var v3 = arena.fProxyVec(n);
-            Rand.nextUniformInpl(ref rng3, ref v3);
+            Rand.nextUniformInPlace(ref rng3, ref v3);
             for (int i = 0; i < n; i++)
                 AssertClose(v1[i], v3[i], (fProxy)0);
 
@@ -421,7 +421,7 @@ public class fProxyRandomTests
             var rngFill = new Random(seed);
             var g = new fProxyGaussian((fProxy)0, (fProxy)1);
             var v = arena.fProxyVec(n);
-            Rand.randomInpl(ref rngFill, ref v, ref g);
+            Rand.randomInPlace(ref rngFill, ref v, ref g);
             uint stateFill = rngFill.state;
 
             // Reference: advance an identically-seeded rng by ceil(n/2)*2 uniform draws.
@@ -438,7 +438,7 @@ public class fProxyRandomTests
             var rngFill2 = new Random(seed);
             var g2 = new fProxyGaussian((fProxy)0, (fProxy)1);
             var v2 = arena.fProxyVec(nEven);
-            Rand.randomInpl(ref rngFill2, ref v2, ref g2);
+            Rand.randomInPlace(ref rngFill2, ref v2, ref g2);
 
             var rngRef2 = new Random(seed);
             for (int i = 0; i < nEven; i++)
@@ -454,27 +454,27 @@ public class fProxyRandomTests
             var arena = new Arena(Allocator.Persistent);
             var rng = new Random(20240626u);
 
-            // nextUniformInpl(min,max) over a 4x5 matrix: poison first, then assert all in [min,max).
+            // nextUniformInPlace(min,max) over a 4x5 matrix: poison first, then assert all in [min,max).
             fProxy mn = (fProxy)(-1), mx = (fProxy)2;
             var M = arena.fProxyMat(4, 5);
             for (int i = 0; i < M.Length; i++) M[i] = (fProxy)999;
-            Rand.nextUniformInpl(ref rng, ref M, mn, mx);
+            Rand.nextUniformInPlace(ref rng, ref M, mn, mx);
             AssertTrue(M.Length == 20);
             for (int i = 0; i < M.Length; i++)
                 AssertTrue(M[i] >= mn && M[i] < mx);
 
-            // nextUniformInpl [0,1) over a 3x7 matrix.
+            // nextUniformInPlace [0,1) over a 3x7 matrix.
             var M01 = arena.fProxyMat(3, 7);
             for (int i = 0; i < M01.Length; i++) M01[i] = (fProxy)999;
-            Rand.nextUniformInpl(ref rng, ref M01);
+            Rand.nextUniformInPlace(ref rng, ref M01);
             for (int i = 0; i < M01.Length; i++)
                 AssertTrue(M01[i] >= (fProxy)0 && M01[i] < (fProxy)1);
 
-            // randomInpl<S> over a 3x7 matrix with Exponential: all >= 0, all written.
+            // randomInPlace<S> over a 3x7 matrix with Exponential: all >= 0, all written.
             var g = new fProxyExponential((fProxy)2);
             var ME = arena.fProxyMat(3, 7);
             for (int i = 0; i < ME.Length; i++) ME[i] = (fProxy)(-999);
-            Rand.randomInpl(ref rng, ref ME, ref g);
+            Rand.randomInPlace(ref rng, ref ME, ref g);
             AssertTrue(ME.Length == 21);
             for (int i = 0; i < ME.Length; i++)
                 AssertTrue(ME[i] >= (fProxy)0);
@@ -619,16 +619,16 @@ public class fProxyRandomTests
     }
 
     [Test]
-    public void NextUniformInplMinGreaterMaxThrows()
+    public void NextUniformInPlaceMinGreaterMaxThrows()
     {
         var arena = new Arena(Allocator.Persistent);
 
         var v = arena.fProxyVec(8);
         Random rng = new Random(1u);
-        Assert.Throws<ArgumentException>(() => Rand.nextUniformInpl(ref rng, ref v, (fProxy)5, (fProxy)1));
+        Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref v, (fProxy)5, (fProxy)1));
 
         var M = arena.fProxyMat(3, 3);
-        Assert.Throws<ArgumentException>(() => Rand.nextUniformInpl(ref rng, ref M, (fProxy)5, (fProxy)1));
+        Assert.Throws<ArgumentException>(() => Rand.nextUniformInPlace(ref rng, ref M, (fProxy)5, (fProxy)1));
 
         arena.Dispose();
     }

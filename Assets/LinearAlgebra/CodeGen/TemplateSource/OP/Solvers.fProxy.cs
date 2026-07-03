@@ -7,7 +7,6 @@ using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
-    // Inpl = inplace
     public static partial class Solvers {
 
         // Solve Ux = b for x
@@ -198,9 +197,9 @@ namespace LinearAlgebra
                 throw new ArgumentException("cg: maxIterations must be >= 1");
 
             // Aliasing guard: the loop below mixes plain elementwise scratch updates
-            // (addScaledInpl/scaleAddInpl) with reads of "old" values, and those primitives do
+            // (addScaledInPlace/scaleAddInPlace) with reads of "old" values, and those primitives do
             // NOT self-check aliasing the way A.Apply's own dot/spMV call does. E.g. r aliasing
-            // Ap turns `r.addScaledInpl(-1, Ap)` (r -= Ap) into r -= r == 0 elementwise -- a
+            // Ap turns `r.addScaledInPlace(-1, Ap)` (r -= Ap) into r -= r == 0 elementwise -- a
             // silent false convergence instead of a thrown exception. Check every pair up front.
             unsafe
             {
@@ -227,7 +226,7 @@ namespace LinearAlgebra
             // r = b - A x
             A.Apply(in x, ref Ap);                       // Ap = A x (temp use of Ap)
             r.Data.CopyFrom(b.Data);                     // r  = b
-            r.addScaledInpl((fProxy)(-1), Ap);           // r -= Ap  =>  r = b - A x
+            r.addScaledInPlace((fProxy)(-1), Ap);           // r -= Ap  =>  r = b - A x
 
             // p = r
             p.Data.CopyFrom(r.Data);
@@ -249,8 +248,8 @@ namespace LinearAlgebra
 
                 fProxy alpha = rsold / pAp;
 
-                x.addScaledInpl(alpha, p);               // x += alpha p
-                r.addScaledInpl(-alpha, Ap);             // r -= alpha Ap
+                x.addScaledInPlace(alpha, p);               // x += alpha p
+                r.addScaledInPlace(-alpha, Ap);             // r -= alpha Ap
 
                 fProxy rsnew = Blas.dot(r, r);
 
@@ -259,7 +258,7 @@ namespace LinearAlgebra
 
                 fProxy beta = rsnew / rsold;
 
-                p.scaleAddInpl(beta, r);                 // p = beta p + r
+                p.scaleAddInPlace(beta, r);                 // p = beta p + r
 
                 rsold = rsnew;
             }
@@ -405,7 +404,7 @@ namespace LinearAlgebra
             // r = b - A x
             A.Apply(in x, ref Ap);
             r.Data.CopyFrom(b.Data);
-            r.addScaledInpl((fProxy)(-1), Ap);
+            r.addScaledInPlace((fProxy)(-1), Ap);
 
             fProxy threshold = tolerance * tolerance * bb;
 
@@ -439,8 +438,8 @@ namespace LinearAlgebra
 
                 fProxy alpha = rzold / pAp;
 
-                x.addScaledInpl(alpha, p);               // x += alpha p
-                r.addScaledInpl(-alpha, Ap);             // r -= alpha Ap
+                x.addScaledInPlace(alpha, p);               // x += alpha p
+                r.addScaledInPlace(-alpha, Ap);             // r -= alpha Ap
 
                 rr = Blas.dot(r, r);
                 if (rr <= threshold)
@@ -455,7 +454,7 @@ namespace LinearAlgebra
 
                 fProxy beta = rznew / rzold;
 
-                p.scaleAddInpl(beta, z);                 // p = beta p + z
+                p.scaleAddInPlace(beta, z);                 // p = beta p + z
 
                 rzold = rznew;
             }
@@ -599,7 +598,7 @@ namespace LinearAlgebra
             // r1 = b - A x
             A.Apply(in x, ref y);                       // y = A x (temp use of y)
             r1.Data.CopyFrom(b.Data);
-            r1.addScaledInpl((fProxy)(-1), y);           // r1 = b - A x
+            r1.addScaledInPlace((fProxy)(-1), y);           // r1 = b - A x
 
             fProxy beta1 = math.sqrt(Blas.dot(r1, r1));
             fProxy threshold = tolerance * tolerance * bb;
@@ -625,15 +624,15 @@ namespace LinearAlgebra
             {
                 // ---- Lanczos step: extend the tridiagonalization by one vector ----
                 v.Data.CopyFrom(r2.Data);
-                v.divInpl(beta);                          // v = r2 / beta
+                v.divInPlace(beta);                          // v = r2 / beta
 
                 A.Apply(in v, ref y);                      // y = A v
 
                 if (k >= 1)
-                    y.addScaledInpl(-(beta / oldb), r1);   // y -= (beta/oldb) r1
+                    y.addScaledInPlace(-(beta / oldb), r1);   // y -= (beta/oldb) r1
 
                 fProxy alfa = Blas.dot(v, y);
-                y.addScaledInpl(-(alfa / beta), r2);       // y -= (alfa/beta) r2
+                y.addScaledInPlace(-(alfa / beta), r2);       // y -= (alfa/beta) r2
 
                 r1.Data.CopyFrom(r2.Data);
                 r2.Data.CopyFrom(y.Data);
@@ -661,11 +660,11 @@ namespace LinearAlgebra
                 w2.Data.CopyFrom(w.Data);
 
                 w.Data.CopyFrom(v.Data);
-                w.addScaledInpl(-oldeps, w1);
-                w.addScaledInpl(-delta, w2);
-                w.divInpl(gamma);                          // w = (v - oldeps*w1 - delta*w2) / gamma
+                w.addScaledInPlace(-oldeps, w1);
+                w.addScaledInPlace(-delta, w2);
+                w.divInPlace(gamma);                          // w = (v - oldeps*w1 - delta*w2) / gamma
 
-                x.addScaledInpl(phi, w);
+                x.addScaledInPlace(phi, w);
 
                 // phibar IS the true residual norm ‖b-Ax‖ at this step (MINRES identity) --
                 // no extra dot product needed, so rnorm = phibar is free.
@@ -801,7 +800,7 @@ namespace LinearAlgebra
             // r = b - A x
             A.Apply(in x, ref v);                          // v = A x (temp use, overwritten below)
             r.Data.CopyFrom(b.Data);
-            r.addScaledInpl((fProxy)(-1), v);
+            r.addScaledInPlace((fProxy)(-1), v);
 
             fProxy threshold = tolerance * tolerance * bb;
 
@@ -827,8 +826,8 @@ namespace LinearAlgebra
 
                 fProxy beta = (rhoNew / rho) * (alpha / omega);
 
-                p.addScaledInpl(-omega, v);                // p -= omega v      (still old p, old v)
-                p.scaleAddInpl(beta, r);                    // p = beta p + r
+                p.addScaledInPlace(-omega, v);                // p -= omega v      (still old p, old v)
+                p.scaleAddInPlace(beta, r);                    // p = beta p + r
 
                 A.Apply(in p, ref v);                       // v = A p
 
@@ -839,7 +838,7 @@ namespace LinearAlgebra
 
                 alpha = rhoNew / rv;
 
-                r.addScaledInpl(-alpha, v);                 // r := s = r - alpha v
+                r.addScaledInPlace(-alpha, v);                 // r := s = r - alpha v
 
                 fProxy ss = Blas.dot(r, r);
 
@@ -847,7 +846,7 @@ namespace LinearAlgebra
                 {
                     // Early exit: the half-step residual s is already small enough -- finish
                     // with x += alpha p (skipping the t = A s stabilization matvec entirely).
-                    x.addScaledInpl(alpha, p);
+                    x.addScaledInPlace(alpha, p);
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(ss));
                 }
 
@@ -867,10 +866,10 @@ namespace LinearAlgebra
                     // breakdown: beta would divide by zero. x is still x_old (see above) -> report rr.
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr));
 
-                x.addScaledInpl(alpha, p);
-                x.addScaledInpl(omega, r);                  // r still holds s here
+                x.addScaledInPlace(alpha, p);
+                x.addScaledInPlace(omega, r);                  // r still holds s here
 
-                r.addScaledInpl(-omega, t);                 // r := s - omega t   (new residual)
+                r.addScaledInPlace(-omega, t);                 // r := s - omega t   (new residual)
 
                 rr = Blas.dot(r, r);
 
@@ -963,12 +962,12 @@ namespace LinearAlgebra
         {
             // r = b - A x
             A.Apply(in x, ref rScratch);
-            rScratch.scaleAddInpl((fProxy)(-1), b);          // rScratch = -A x + b = b - A x
+            rScratch.scaleAddInPlace((fProxy)(-1), b);          // rScratch = -A x + b = b - A x
             fProxy rnorm = math.sqrt(Blas.dot(rScratch, rScratch));
 
             // s = Aᵀr - damp²x  (the same optimality residual cgls's loop tracks)
             A.ApplyT(in rScratch, ref sScratch);
-            if (damp != (fProxy)0) sScratch.addScaledInpl(-(damp * damp), x);
+            if (damp != (fProxy)0) sScratch.addScaledInPlace(-(damp * damp), x);
             fProxy arnorm = math.sqrt(Blas.dot(sScratch, sScratch));
 
             fProxy xnorm = math.sqrt(Blas.dot(x, x));
@@ -1059,12 +1058,12 @@ namespace LinearAlgebra
             // r = b - A x
             A.Apply(in x, ref q);                          // q = A x (temp use of q)
             r.Data.CopyFrom(b.Data);
-            r.addScaledInpl((fProxy)(-1), q);
+            r.addScaledInPlace((fProxy)(-1), q);
 
             // s = A^T r - damp^2 x  (damped: the residual of the normal equations
             // (A^T A + damp^2 I) x = A^T b; damp==0 -> s = A^T r exactly, bit-identical).
             A.ApplyT(in r, ref s);
-            if (damp != (fProxy)0) s.addScaledInpl(-(damp * damp), x);
+            if (damp != (fProxy)0) s.addScaledInPlace(-(damp * damp), x);
 
             fProxy gamma = Blas.dot(s, s);
 
@@ -1087,11 +1086,11 @@ namespace LinearAlgebra
 
                 fProxy alpha = gamma / delta;
 
-                x.addScaledInpl(alpha, p);
-                r.addScaledInpl(-alpha, q);
+                x.addScaledInPlace(alpha, p);
+                r.addScaledInPlace(-alpha, q);
 
                 A.ApplyT(in r, ref s);                       // s = A^T r, recomputed fresh (stability)
-                if (damp != (fProxy)0) s.addScaledInpl(-(damp * damp), x);   // - damp^2 x (damped gradient)
+                if (damp != (fProxy)0) s.addScaledInPlace(-(damp * damp), x);   // - damp^2 x (damped gradient)
 
                 fProxy gammaNew = Blas.dot(s, s);
 
@@ -1100,7 +1099,7 @@ namespace LinearAlgebra
 
                 fProxy beta = gammaNew / gamma;
 
-                p.scaleAddInpl(beta, s);                     // p = beta p + s
+                p.scaleAddInPlace(beta, s);                     // p = beta p + s
 
                 gamma = gammaNew;
             }
@@ -1320,7 +1319,7 @@ namespace LinearAlgebra
             // u = b - A x ; beta = ||u||
             A.Apply(in x, ref tmpM);
             u.Data.CopyFrom(b.Data);
-            u.addScaledInpl((fProxy)(-1), tmpM);
+            u.addScaledInPlace((fProxy)(-1), tmpM);
 
             fProxy beta = math.sqrt(Blas.dot(u, u));
 
@@ -1328,7 +1327,7 @@ namespace LinearAlgebra
                 // x already exact (r = 0): rnorm = 0, Aᵀr = 0.
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, (fProxy)0, (fProxy)0, (fProxy)0, in x);
 
-            u.divInpl(beta);
+            u.divInPlace(beta);
 
             // v = A^T u ; alpha = ||v||
             A.ApplyT(in u, ref tmpN);
@@ -1340,7 +1339,7 @@ namespace LinearAlgebra
                 // x already least-squares-stationary (A^T r = 0). ‖r‖ = beta.
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, beta, (fProxy)0, (fProxy)0, in x);
 
-            v.divInpl(alpha);
+            v.divInPlace(alpha);
 
             // phibar tracks ‖r‖ (LSQR identity); arnorm tracks ‖Aᵀr‖ = alpha*beta pre-loop.
             fProxy phibar = beta;
@@ -1364,14 +1363,14 @@ namespace LinearAlgebra
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 A.Apply(in v, ref tmpM);
-                u.scaleAddInpl(-alpha, tmpM);              // u = -alpha*u + tmpM = A v - alpha u
+                u.scaleAddInPlace(-alpha, tmpM);              // u = -alpha*u + tmpM = A v - alpha u
                 beta = math.sqrt(Blas.dot(u, u));
-                if (beta > (fProxy)0) u.divInpl(beta);
+                if (beta > (fProxy)0) u.divInPlace(beta);
 
                 A.ApplyT(in u, ref tmpN);
-                v.scaleAddInpl(-beta, tmpN);                // v = -beta*v + tmpN = A^T u - beta v
+                v.scaleAddInPlace(-beta, tmpN);                // v = -beta*v + tmpN = A^T u - beta v
                 alpha = math.sqrt(Blas.dot(v, v));
-                if (alpha > (fProxy)0) v.divInpl(alpha);
+                if (alpha > (fProxy)0) v.divInPlace(alpha);
 
                 // ---- fold Tikhonov damping into rhobar: rotate (rhobar, damp) -> (rhobar1, 0),
                 // scaling phibar by the rotation cosine. damp==0 -> rhobar1==rhobar and phibar is
@@ -1401,8 +1400,8 @@ namespace LinearAlgebra
                 phibar = sn * phibar;
 
                 // ---- update x using the OLD w, then update w ----
-                x.addScaledInpl(phi / rho, w);
-                w.scaleAddInpl(-theta / rho, v);             // w = -(theta/rho)*w + v
+                x.addScaledInPlace(phi / rho, w);
+                w.scaleAddInPlace(-theta / rho, v);             // w = -(theta/rho)*w + v
 
                 arnorm = phibar * alpha * math.abs(c);        // ‖Aᵀr‖ for the just-updated x (free)
 
@@ -1659,7 +1658,7 @@ namespace LinearAlgebra
             // u = b - A x ; beta = ||u||   (warm-startable: bidiagonalize the residual)
             A.Apply(in x, ref tmpM);
             u.Data.CopyFrom(b.Data);
-            u.addScaledInpl((fProxy)(-1), tmpM);
+            u.addScaledInPlace((fProxy)(-1), tmpM);
 
             fProxy beta = math.sqrt(Blas.dot(u, u));
 
@@ -1667,7 +1666,7 @@ namespace LinearAlgebra
                 // x already exact (r = 0).
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, (fProxy)0, (fProxy)0, (fProxy)0, in x);
 
-            u.divInpl(beta);
+            u.divInPlace(beta);
 
             // v = A^T u ; alpha = ||v||
             A.ApplyT(in u, ref tmpN);
@@ -1679,7 +1678,7 @@ namespace LinearAlgebra
                 // x already least-squares-stationary (A^T r = 0). ‖r‖ = beta.
                 return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, beta, (fProxy)0, (fProxy)0, in x);
 
-            v.divInpl(alpha);
+            v.divInPlace(alpha);
 
             // ||A^T r_0|| = alpha*beta = |zetabar_1|; matches lsqr's pre-loop early-out.
             if ((alpha * beta) * (alpha * beta) <= threshold)
@@ -1711,15 +1710,15 @@ namespace LinearAlgebra
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 A.Apply(in v, ref tmpM);
-                u.scaleAddInpl(-alpha, tmpM);              // u = A v - alpha u
+                u.scaleAddInPlace(-alpha, tmpM);              // u = A v - alpha u
                 beta = math.sqrt(Blas.dot(u, u));
                 if (beta > (fProxy)0)
                 {
-                    u.divInpl(beta);
+                    u.divInPlace(beta);
                     A.ApplyT(in u, ref tmpN);
-                    v.scaleAddInpl(-beta, tmpN);            // v = A^T u - beta v
+                    v.scaleAddInPlace(-beta, tmpN);            // v = A^T u - beta v
                     alpha = math.sqrt(Blas.dot(v, v));
-                    if (alpha > (fProxy)0) v.divInpl(alpha);
+                    if (alpha > (fProxy)0) v.divInPlace(alpha);
                 }
 
                 // ---- rotation P_k : (alphahat, beta) -> (rho, 0) ----
@@ -1756,11 +1755,11 @@ namespace LinearAlgebra
                 // ---- updates: hbar, x, h ----
                 // hbar = h - (thetabar*rho / (rhoold*rhobarold)) * hbar
                 fProxy coefHbar = thetabar * rho / (rhoold * rhobarold);
-                hbar.scaleAddInpl(-coefHbar, h);           // hbar = -coefHbar*hbar + h
+                hbar.scaleAddInPlace(-coefHbar, h);           // hbar = -coefHbar*hbar + h
                 // x = x + (zeta / (rho*rhobar)) * hbar
-                x.addScaledInpl(zeta / (rho * rhobar), hbar);
+                x.addScaledInPlace(zeta / (rho * rhobar), hbar);
                 // h = v - (thetanew/rho) * h
-                h.scaleAddInpl(-thetanew / rho, v);         // h = -(thetanew/rho)*h + v
+                h.scaleAddInPlace(-thetanew / rho, v);         // h = -(thetanew/rho)*h + v
 
                 // ---- ‖r‖ recurrence for the just-updated x (this step's rotations; no matvec) ----
                 fProxy betaacute = chat * betadd;
@@ -2142,7 +2141,7 @@ namespace LinearAlgebra
             // r = b - A x
             A.Apply(in x, ref q);                          // q = A x (temp use of q)
             r.Data.CopyFrom(b.Data);
-            r.addScaledInpl((fProxy)(-1), q);
+            r.addScaledInPlace((fProxy)(-1), q);
 
             fProxy rr = Blas.dot(r, r);
 
@@ -2161,9 +2160,9 @@ namespace LinearAlgebra
 
                 fProxy alpha = rr / pp;
 
-                x.addScaledInpl(alpha, p);                  // x += alpha p
+                x.addScaledInPlace(alpha, p);                  // x += alpha p
                 A.Apply(in p, ref q);                       // q = A p
-                r.addScaledInpl(-alpha, q);                 // r -= alpha A p
+                r.addScaledInPlace(-alpha, q);                 // r -= alpha A p
 
                 fProxy rrNew = Blas.dot(r, r);
 
@@ -2173,7 +2172,7 @@ namespace LinearAlgebra
                 fProxy beta = rrNew / rr;
 
                 A.ApplyT(in r, ref tmpN);                   // tmpN = A^T r
-                p.scaleAddInpl(beta, tmpN);                 // p = beta p + A^T r
+                p.scaleAddInPlace(beta, tmpN);                 // p = beta p + A^T r
 
                 rr = rrNew;
             }

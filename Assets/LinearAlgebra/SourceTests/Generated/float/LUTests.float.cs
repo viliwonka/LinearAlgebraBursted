@@ -32,7 +32,7 @@ public class floatLUTests
             LUReusePivot,
             SwapOPTest,
             LUSolveSystem,
-            LUSolveSystemInplace,
+            LUSolveSystemInPlace,
             // Blocked (level-3) LU path coverage (engages at M_Rows >= 256; LU_BLOCK=32).
             LUBlockedRefAccuracy256,
             LUBlockedRefAccuracy300,
@@ -86,8 +86,8 @@ public class floatLUTests
                 case TestType.LUSolveSystem:
                     SolveSystem();
                 break;
-                case TestType.LUSolveSystemInplace:
-                    SolveSystemInplace();
+                case TestType.LUSolveSystemInPlace:
+                    SolveSystemInPlace();
                     break;
                 case TestType.LUBlockedRefAccuracy256:
                     LUBlockedRefAccuracy256();
@@ -265,8 +265,8 @@ public class floatLUTests
                 Assert.IsFalse(Analysis.isAnyNan(in Lp));
 
                 var LUmat = arena.floatMat(dim, dim);
-                bool inplace = LU.luDecompositionInpl(ref LUmat, ref pivot);
-                Assert.IsFalse(inplace);
+                bool inPlace = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+                Assert.IsFalse(inPlace);
                 Assert.IsFalse(Analysis.isAnyNan(in LUmat));
 
                 pivot.Dispose();
@@ -299,15 +299,15 @@ public class floatLUTests
                 Assert.IsFalse(Analysis.isAnyNan(in Lp));
 
                 var LUmat = A.Copy();
-                bool inplace = LU.luDecompositionInpl(ref LUmat, ref pivot);
-                Assert.IsFalse(inplace);
+                bool inPlace = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+                Assert.IsFalse(inPlace);
                 Assert.IsFalse(Analysis.isAnyNan(in LUmat));
 
                 pivot.Dispose();
             }
 
             // Case 3: [[0,1],[1,0]] : no-pivot fails on zero leading pivot,
-            // but inplace (with partial pivoting) succeeds.
+            // but in-place (with partial pivoting) succeeds.
             {
                 var U = arena.floatMat(2, 2);
                 U[0, 0] = 0f; U[0, 1] = 1f;
@@ -321,8 +321,8 @@ public class floatLUTests
 
                 var LUmat = U.Copy();
                 var pivot = new Pivot(2, Allocator.Temp);
-                bool inplace = LU.luDecompositionInpl(ref LUmat, ref pivot);
-                Assert.IsTrue(inplace);
+                bool inPlace = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+                Assert.IsTrue(inPlace);
                 Assert.IsFalse(Analysis.isAnyNan(in LUmat));
 
                 pivot.Dispose();
@@ -355,9 +355,9 @@ public class floatLUTests
             Assert.IsFalse(pivotedInfo.Solved);
 
             var LUmat = arena.floatMat(dim, dim);
-            DirectSolveInfo inplaceInfo = LU.luDecompositionInpl(ref LUmat, ref pivot);
-            Assert.IsTrue(inplaceInfo.status == DirectSolveStatus.Singular);
-            Assert.IsFalse(inplaceInfo.Solved);
+            DirectSolveInfo inPlaceInfo = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            Assert.IsTrue(inPlaceInfo.status == DirectSolveStatus.Singular);
+            Assert.IsFalse(inPlaceInfo.Solved);
 
             pivot.Dispose();
             arena.Dispose();
@@ -384,7 +384,7 @@ public class floatLUTests
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
 
-                bool success = LU.luDecompositionInpl(ref LUmat, ref pivot);
+                bool success = LU.luDecompositionInPlace(ref LUmat, ref pivot);
                 Assert.IsTrue(success);
 
                 var x_Solved = b.Copy();
@@ -417,7 +417,7 @@ public class floatLUTests
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
 
-                bool success = LU.luDecompositionInpl(ref LUmat, ref pivot);
+                bool success = LU.luDecompositionInPlace(ref LUmat, ref pivot);
                 Assert.IsTrue(success);
 
                 // Verify the permutation is not a simple involution (P applied twice != identity),
@@ -451,7 +451,7 @@ public class floatLUTests
                 var I = arena.floatIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
 
-                bool success = LU.luDecompositionInpl(ref I, ref pivot);
+                bool success = LU.luDecompositionInPlace(ref I, ref pivot);
                 Assert.IsTrue(success);
 
                 float det = LU.determinant(in I, in pivot);
@@ -471,7 +471,7 @@ public class floatLUTests
                 float expected = 2f * -3f * 0.5f * 4f; // -12
 
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInpl(ref D, ref pivot);
+                bool success = LU.luDecompositionInPlace(ref D, ref pivot);
                 Assert.IsTrue(success);
 
                 float det = LU.determinant(in D, in pivot);
@@ -490,7 +490,7 @@ public class floatLUTests
                 A[2, 0] = 2f; A[2, 1] = 1f; A[2, 2] = 0f;
 
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInpl(ref A, ref pivot);
+                bool success = LU.luDecompositionInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 float det = LU.determinant(in A, in pivot);
@@ -509,7 +509,7 @@ public class floatLUTests
                 P[2, 0] = 1f;
 
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInpl(ref P, ref pivot);
+                bool success = LU.luDecompositionInPlace(ref P, ref pivot);
                 Assert.IsTrue(success);
 
                 float det = LU.determinant(in P, in pivot);
@@ -522,7 +522,7 @@ public class floatLUTests
         }
 
         // GALLERY KNOWN-ANSWER: famous unit-determinant matrices. det is computed via
-        // luDecompositionInpl + LU.determinant (the file's established sequence).
+        // luDecompositionInPlace + LU.determinant (the file's established sequence).
         //  - Pascal(5):  symmetric Pascal, det = 1.
         //  - MinIJ(5):   A[i,j]=min(i,j)+1, det = 1.
         //  - Frank(5):   upper-Hessenberg Frank, det = 1 (ill-conditioned but integer-valued, so
@@ -536,7 +536,7 @@ public class floatLUTests
                 int dim = 5;
                 var A = arena.floatPascal(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInpl(ref A, ref pivot);
+                bool success = LU.luDecompositionInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 float det = LU.determinant(in A, in pivot);
@@ -550,7 +550,7 @@ public class floatLUTests
                 int dim = 5;
                 var A = arena.floatMinIJ(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInpl(ref A, ref pivot);
+                bool success = LU.luDecompositionInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 float det = LU.determinant(in A, in pivot);
@@ -564,7 +564,7 @@ public class floatLUTests
                 int dim = 5;
                 var A = arena.floatFrank(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInpl(ref A, ref pivot);
+                bool success = LU.luDecompositionInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 float det = LU.determinant(in A, in pivot);
@@ -589,7 +589,7 @@ public class floatLUTests
             for (int d = 0; d < dim; d++)
                 A1[d, d] += 15f;
             var LU1 = A1.Copy();
-            bool s1 = LU.luDecompositionInpl(ref LU1, ref pivot);
+            bool s1 = LU.luDecompositionInPlace(ref LU1, ref pivot);
             Assert.IsTrue(s1);
 
             // Second decomposition reuses the SAME pivot object; Reset() must clean it.
@@ -604,7 +604,7 @@ public class floatLUTests
             var b = Blas.dot(A2, x_Known);
 
             var LU2 = A2.Copy();
-            bool s2 = LU.luDecompositionInpl(ref LU2, ref pivot);
+            bool s2 = LU.luDecompositionInPlace(ref LU2, ref pivot);
             Assert.IsTrue(s2);
 
             var x_Solved = b.Copy();
@@ -720,7 +720,7 @@ public class floatLUTests
         }
 
         // Same Fail-layout convention as SolveSystem above (see there).
-        public void SolveSystemInplace() {
+        public void SolveSystemInPlace() {
 
             var arena = new Arena(Allocator.Persistent);
 
@@ -742,7 +742,7 @@ public class floatLUTests
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.luDecompositionInpl(ref LUmat, ref pivot);
+            bool success = LU.luDecompositionInPlace(ref LUmat, ref pivot);
 
             Assert.IsTrue(success);
 
@@ -777,10 +777,10 @@ public class floatLUTests
         // below that it runs the plain unblocked rank-1 sweep. The blocked path is DESIGNED to keep
         // the partial-pivoting sequence bit-identical to the unblocked form, so it must produce the
         // SAME pivot array and (within GEMM summation-order rounding) the same L/U as the independent,
-        // untouched, level-2 compact factorization LU.luDecompositionInpl(ref LU, ref P) — which is
+        // untouched, level-2 compact factorization LU.luDecompositionInPlace(ref LU, ref P) — which is
         // used here as the reference ORACLE for both correctness and accuracy.
         //
-        // In the inpl compact form: factor row i lives at physical row P[i]; LU[P[i], j] with j < i
+        // In the in-place compact form: factor row i lives at physical row P[i]; LU[P[i], j] with j < i
         // is the unit-lower L multiplier, and LU[P[i], j] with j >= i is U.
         // ================================================================================
 
@@ -924,7 +924,7 @@ public class floatLUTests
             return A;
         }
 
-        // Points (1)/(2): blocked luDecomposition vs unblocked compact luDecompositionInpl oracle.
+        // Points (1)/(2): blocked luDecomposition vs unblocked compact luDecompositionInPlace oracle.
         // Asserts identical pivots, matching L/U factors, and no backward-error regression.
         private void BlockedVsReference(ref Arena arena, in floatMxN A)
         {
@@ -939,10 +939,10 @@ public class floatLUTests
             Assert.IsFalse(Analysis.isAnyNan(in U));
             Assert.IsFalse(Analysis.isAnyNan(in L));
 
-            // --- reference: independent unblocked compact inplace factorization ---
+            // --- reference: independent unblocked compact in-place factorization ---
             var LUref = A.Copy();
             var pR = new Pivot(dim, Allocator.Temp);
-            bool okR = LU.luDecompositionInpl(ref LUref, ref pR);
+            bool okR = LU.luDecompositionInPlace(ref LUref, ref pR);
             Assert.IsTrue(okR);
 
             // (a) pivot arrays identical elementwise
@@ -1004,7 +1004,7 @@ public class floatLUTests
 
             var LUref = A.Copy();
             var pR = new Pivot(dim, Allocator.Temp);
-            bool okR = LU.luDecompositionInpl(ref LUref, ref pR);
+            bool okR = LU.luDecompositionInPlace(ref LUref, ref pR);
             Assert.IsTrue(okR);
 
             float resBlocked = ResidualPALU(ref arena, in A, in L, in U, in pB);

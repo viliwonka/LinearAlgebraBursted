@@ -56,7 +56,7 @@ namespace LinearAlgebra
 
             float scale = 1 / math.sqrt(sum);
 
-            floatComp.mulInpl(vec, scale);
+            floatComp.mulInPlace(vec, scale);
 
             return vec;
         }

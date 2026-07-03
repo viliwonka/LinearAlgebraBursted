@@ -483,7 +483,7 @@ public class fProxyPCATests
 
             var V = arena.fProxyMat(p, p);
             var rng = new Unity.Mathematics.Random(0x01234567u);
-            Rand.randomOrthogonalInpl(ref rng, ref V);
+            Rand.randomOrthogonalInPlace(ref rng, ref V);
 
             var X = arena.fProxyMat(n, p);
             for (int i = 0; i < n; i++)

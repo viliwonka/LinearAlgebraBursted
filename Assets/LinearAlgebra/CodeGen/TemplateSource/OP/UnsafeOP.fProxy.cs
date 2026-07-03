@@ -868,7 +868,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void normalizeL2Inpl([NoAlias] fProxy* target, int n)
+        public static void normalizeL2InPlace([NoAlias] fProxy* target, int n)
         {
             fProxy sum = 0f;
 
@@ -882,7 +882,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static fProxy normalizeL2Inpl([NoAlias] fProxy* target, int start, int end)
+        public static fProxy normalizeL2InPlace([NoAlias] fProxy* target, int start, int end)
         {
             fProxy sum = 0f;
 

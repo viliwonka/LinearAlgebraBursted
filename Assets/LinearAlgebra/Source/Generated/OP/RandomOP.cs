@@ -19,11 +19,11 @@ namespace LinearAlgebra
         /// in place using Fisher–Yates (Knuth): for i = N−1 downto 1, swap p[i] with p[j]
         /// where j = NextInt(0, i+1). <see cref="Pivot.Swap"/> keeps the parity/Sign field
         /// correct automatically.
-        /// A separate loop from <see cref="shuffleInpl"/> is intentional: Pivot.Swap tracks
+        /// A separate loop from <see cref="shuffleInPlace"/> is intentional: Pivot.Swap tracks
         /// the permutation parity via its swap counter, which plain index swapping cannot do.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void randomPermutationInpl(ref Pivot p, ref Random rng)
+        public static void randomPermutationInPlace(ref Pivot p, ref Random rng)
         {
             p.Reset();
             for (int i = p.N - 1; i >= 1; i--)
@@ -35,11 +35,11 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Shuffles the existing contents of <paramref name="idx"/> in place using the same
-        /// Fisher–Yates sweep as <see cref="randomPermutationInpl"/>, but does not reset or
+        /// Fisher–Yates sweep as <see cref="randomPermutationInPlace"/>, but does not reset or
         /// repopulate the buffer — the caller provides the initial contents.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void shuffleInpl(ref Indices idx, ref Random rng)
+        public static void shuffleInPlace(ref Indices idx, ref Random rng)
         {
             for (int i = idx.N - 1; i >= 1; i--)
             {
@@ -60,13 +60,13 @@ namespace LinearAlgebra
         /// Throws if <paramref name="n"/> &lt;= 0 or <c>dest.N &gt; n</c>.
         /// Not decorated with AggressiveInlining because it allocates a scratch buffer.
         /// </summary>
-        public static void sampleKWithoutReplacementInpl(ref Indices dest, int n, ref Random rng)
+        public static void sampleKWithoutReplacementInPlace(ref Indices dest, int n, ref Random rng)
         {
             if (n <= 0)
-                throw new ArgumentException("Rand.sampleKWithoutReplacementInpl: n must be > 0");
+                throw new ArgumentException("Rand.sampleKWithoutReplacementInPlace: n must be > 0");
             int k = dest.N;
             if (k > n)
-                throw new ArgumentException("Rand.sampleKWithoutReplacementInpl: dest.N must be <= n");
+                throw new ArgumentException("Rand.sampleKWithoutReplacementInPlace: dest.N must be <= n");
 
             if (k == 0) return; // nothing to sample; skip the n-length scratch allocation
 

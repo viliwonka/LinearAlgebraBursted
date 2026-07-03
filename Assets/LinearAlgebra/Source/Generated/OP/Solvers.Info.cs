@@ -131,7 +131,7 @@ namespace LinearAlgebra
     /// <code>
     ///   if (LU.luDecomposition(ref U, ref L, ref P)) { ... }   // implicit bool -> "did it succeed?"
     ///   bool ok = Cholesky.choleskyDecomposition(in A, ref L); // same
-    ///   var info = LU.luDecompositionInpl(ref LU, ref P);
+    ///   var info = LU.luDecompositionInPlace(ref LU, ref P);
     ///   if (!info.Solved) { /* singular */ }
     /// </code>
     ///

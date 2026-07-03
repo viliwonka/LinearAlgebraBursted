@@ -98,8 +98,8 @@ namespace LinearAlgebra {
             return copy;
         }
 
-        // Inverse operation inplace
-        public void InverseInpl() {
+        // Inverse operation in-place
+        public void InverseInPlace() {
 
             var tempPivot = new Pivot(indices.Length, Allocator.Temp);
 

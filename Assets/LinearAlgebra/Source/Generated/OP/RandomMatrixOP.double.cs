@@ -18,8 +18,8 @@ namespace LinearAlgebra
     /// <para><b>Multivariate-normal workflow</b>: factor Σ exactly ONCE via
     /// <c>Cholesky.choleskyDecomposition(in Sigma, ref L)</c> — check the returned
     /// <c>DirectSolveInfo.Solved</c> (false means Σ is not SPD; on a failed return L is partially
-    /// overwritten and must not be reused). Then call <c>multivariateNormalInpl</c> or
-    /// <c>multivariateNormalRowsInpl</c> many times with the same L. Σ may be a covariance or a
+    /// overwritten and must not be reused). Then call <c>multivariateNormalInPlace</c> or
+    /// <c>multivariateNormalRowsInPlace</c> many times with the same L. Σ may be a covariance or a
     /// correlation matrix (both SPD). Do NOT re-factor per sample.</para>
     ///
     /// double-only.
@@ -46,22 +46,22 @@ namespace LinearAlgebra
         /// <param name="mean">Mean vector (length n).</param>
         /// <param name="dest">Output vector (length n; must not alias zScratch, cholL, or mean).</param>
         /// <param name="zScratch">Scratch vector (length n) for the N(0,1) draw.</param>
-        public static void multivariateNormalInpl(ref Random rng, in doubleMxN cholL, in doubleN mean,
+        public static void multivariateNormalInPlace(ref Random rng, in doubleMxN cholL, in doubleN mean,
                                                   ref doubleN dest, ref doubleN zScratch)
         {
             if (!cholL.IsSquare)
-                throw new ArgumentException("multivariateNormalInpl: cholL must be square");
+                throw new ArgumentException("multivariateNormalInPlace: cholL must be square");
             int n = cholL.M_Rows;
             if (mean.N != n)
-                throw new ArgumentException("multivariateNormalInpl: mean.N must equal cholL dimension");
+                throw new ArgumentException("multivariateNormalInPlace: mean.N must equal cholL dimension");
             if (dest.N != n)
-                throw new ArgumentException("multivariateNormalInpl: dest.N must equal cholL dimension");
+                throw new ArgumentException("multivariateNormalInPlace: dest.N must equal cholL dimension");
             if (zScratch.N != n)
-                throw new ArgumentException("multivariateNormalInpl: zScratch.N must equal cholL dimension");
+                throw new ArgumentException("multivariateNormalInPlace: zScratch.N must equal cholL dimension");
 
             // Fill zScratch with N(0,1) via Box-Muller
             var gauss = new doubleGaussian((double)0, (double)1);
-            Rand.randomInpl(ref rng, ref zScratch, ref gauss);
+            Rand.randomInPlace(ref rng, ref zScratch, ref gauss);
 
             // dest = cholL · zScratch
             Blas.dot(in cholL, in zScratch, ref dest);
@@ -76,21 +76,21 @@ namespace LinearAlgebra
         /// primitive overload, and disposes. See the primitive for full documentation.
         /// Allocates one n-element Temp vector internally (disposed before return).
         /// </summary>
-        public static void multivariateNormalInpl(ref Random rng, in doubleMxN cholL, in doubleN mean,
+        public static void multivariateNormalInPlace(ref Random rng, in doubleMxN cholL, in doubleN mean,
                                                   ref doubleN dest)
         {
             if (!cholL.IsSquare)
-                throw new ArgumentException("multivariateNormalInpl: cholL must be square");
+                throw new ArgumentException("multivariateNormalInPlace: cholL must be square");
             int n = cholL.M_Rows;
             if (mean.N != n)
-                throw new ArgumentException("multivariateNormalInpl: mean.N must equal cholL dimension");
+                throw new ArgumentException("multivariateNormalInPlace: mean.N must equal cholL dimension");
             if (dest.N != n)
-                throw new ArgumentException("multivariateNormalInpl: dest.N must equal cholL dimension");
+                throw new ArgumentException("multivariateNormalInPlace: dest.N must equal cholL dimension");
 
             if (n == 0) return;
 
             var z = new doubleN(n, Allocator.Temp);
-            multivariateNormalInpl(ref rng, in cholL, in mean, ref dest, ref z);
+            multivariateNormalInPlace(ref rng, in cholL, in mean, ref dest, ref z);
             z.Dispose();
         }
 
@@ -101,16 +101,16 @@ namespace LinearAlgebra
         /// are allocated once as Temp and reused across the loop; both are disposed before return.
         /// Throws <see cref="ArgumentException"/> if dimensions are inconsistent.
         /// </summary>
-        public static void multivariateNormalRowsInpl(ref Random rng, in doubleMxN cholL, in doubleN mean,
+        public static void multivariateNormalRowsInPlace(ref Random rng, in doubleMxN cholL, in doubleN mean,
                                                       ref doubleMxN destRows)
         {
             if (!cholL.IsSquare)
-                throw new ArgumentException("multivariateNormalRowsInpl: cholL must be square");
+                throw new ArgumentException("multivariateNormalRowsInPlace: cholL must be square");
             int n = cholL.M_Rows;
             if (mean.N != n)
-                throw new ArgumentException("multivariateNormalRowsInpl: mean.N must equal cholL dimension");
+                throw new ArgumentException("multivariateNormalRowsInPlace: mean.N must equal cholL dimension");
             if (destRows.N_Cols != n)
-                throw new ArgumentException("multivariateNormalRowsInpl: destRows.N_Cols must equal cholL dimension");
+                throw new ArgumentException("multivariateNormalRowsInPlace: destRows.N_Cols must equal cholL dimension");
 
             int count = destRows.M_Rows;
             if (count == 0 || n == 0) return;
@@ -124,7 +124,7 @@ namespace LinearAlgebra
 
             for (int r = 0; r < count; r++)
             {
-                Rand.randomInpl(ref rng, ref z, ref gauss);
+                Rand.randomInPlace(ref rng, ref z, ref gauss);
                 Blas.dot(in cholL, in z, ref row);
                 for (int c = 0; c < n; c++)
                     destRows[r, c] = row[c] + mean[c];
@@ -158,10 +158,10 @@ namespace LinearAlgebra
         /// allocates an additional n-element Temp vector internally (disposed inside qrDecomposition).
         /// Throws <see cref="ArgumentException"/> if dest is not square.
         /// </summary>
-        public static void randomOrthogonalInpl(ref Random rng, ref doubleMxN dest)
+        public static void randomOrthogonalInPlace(ref Random rng, ref doubleMxN dest)
         {
             if (!dest.IsSquare)
-                throw new ArgumentException("randomOrthogonalInpl: dest must be square");
+                throw new ArgumentException("randomOrthogonalInPlace: dest must be square");
             int n = dest.M_Rows;
             if (n == 0) return;
 
@@ -171,7 +171,7 @@ namespace LinearAlgebra
 
             // Step 1: fill G with N(0,1)
             var gauss = new doubleGaussian((double)0, (double)1);
-            Rand.randomInpl(ref rng, ref G, ref gauss);
+            Rand.randomInPlace(ref rng, ref G, ref gauss);
 
             // Step 2: QR decomposition — G is overwritten with Q, R holds upper-triangular factor
             QR.qrDecomposition(ref G, ref R);
@@ -205,7 +205,7 @@ namespace LinearAlgebra
         /// [<paramref name="minEig"/>, <paramref name="maxEig"/>].
         ///
         /// Algorithm: A = Q·Λ·Qᵀ where Q is Haar-uniform orthogonal (from
-        /// <see cref="randomOrthogonalInpl"/>) and Λ = diag(λ₁,…,λₙ) with
+        /// <see cref="randomOrthogonalInPlace"/>) and Λ = diag(λ₁,…,λₙ) with
         /// λᵢ ~ Uniform(minEig, maxEig). Qᵀ is computed BEFORE Q's columns are scaled by Λ.
         /// After forming A = QΛQᵀ, exact symmetry is enforced via A ← (A + Aᵀ)/2 to cancel
         /// floating-point asymmetry introduced by finite-precision matrix multiplication.
@@ -215,16 +215,16 @@ namespace LinearAlgebra
         /// Throws if dest is not square, <c>0 &lt; minEig ≤ maxEig</c> is violated, or either
         /// eigenvalue bound is non-finite (±Inf or NaN would otherwise silently produce NaN matrices).
         /// </summary>
-        public static void randomSpdInpl(ref Random rng, ref doubleMxN dest, double minEig, double maxEig)
+        public static void randomSpdInPlace(ref Random rng, ref doubleMxN dest, double minEig, double maxEig)
         {
             if (!dest.IsSquare)
-                throw new ArgumentException("randomSpdInpl: dest must be square");
+                throw new ArgumentException("randomSpdInPlace: dest must be square");
             if (!math.isfinite(minEig) || !math.isfinite(maxEig))
-                throw new ArgumentException("randomSpdInpl: minEig and maxEig must be finite");
+                throw new ArgumentException("randomSpdInPlace: minEig and maxEig must be finite");
             if (!(minEig > (double)0))
-                throw new ArgumentException("randomSpdInpl: minEig must be > 0");
+                throw new ArgumentException("randomSpdInPlace: minEig must be > 0");
             if (!(minEig <= maxEig))
-                throw new ArgumentException("randomSpdInpl: minEig must be <= maxEig");
+                throw new ArgumentException("randomSpdInPlace: minEig must be <= maxEig");
 
             int n = dest.M_Rows;
             if (n == 0) return;
@@ -234,7 +234,7 @@ namespace LinearAlgebra
             var Qt = new doubleMxN(n, n, Allocator.Temp);
 
             // Draw a Haar-uniform orthogonal Q
-            randomOrthogonalInpl(ref rng, ref Q);
+            randomOrthogonalInPlace(ref rng, ref Q);
 
             // Qt = Qᵀ — must be computed BEFORE we scale Q's columns (otherwise Qt = (QΛ)ᵀ = ΛQᵀ)
             Blas.trans(in Q, ref Qt);
@@ -281,16 +281,16 @@ namespace LinearAlgebra
         /// σᵢ = cond^(1−i/(k−1)). For k = 1 (trivial rank-1 case) σ₀ = 1.
         ///
         /// For a symmetric or SPD matrix with controlled condition number, use
-        /// <see cref="randomSpdInpl"/> with minEig=1, maxEig=cond instead.
+        /// <see cref="randomSpdInPlace"/> with minEig=1, maxEig=cond instead.
         ///
         /// Temp scratch: U (m×m), V (n×n), Vᵀ (n×n), UΣ (m×n) — all disposed before return.
         /// Throws if <paramref name="cond"/> &lt; 1, is NaN, or is infinite (non-finite values
         /// would otherwise silently propagate NaN/Inf through the singular-value power computation).
         /// </summary>
-        public static void randomMatrixWithConditionInpl(ref Random rng, ref doubleMxN dest, double cond)
+        public static void randomMatrixWithConditionInPlace(ref Random rng, ref doubleMxN dest, double cond)
         {
             if (!(cond >= (double)1) || !math.isfinite(cond))
-                throw new ArgumentException("randomMatrixWithConditionInpl: cond must be finite and >= 1");
+                throw new ArgumentException("randomMatrixWithConditionInPlace: cond must be finite and >= 1");
 
             int m = dest.M_Rows;
             int n = dest.N_Cols;
@@ -300,12 +300,12 @@ namespace LinearAlgebra
 
             // U: m×m Haar-uniform orthogonal
             var U = new doubleMxN(m, m, Allocator.Temp);
-            randomOrthogonalInpl(ref rng, ref U);
+            randomOrthogonalInPlace(ref rng, ref U);
 
             // V: n×n Haar-uniform orthogonal (independent of U), then Vᵀ
             var V  = new doubleMxN(n, n, Allocator.Temp);
             var Vt = new doubleMxN(n, n, Allocator.Temp);
-            randomOrthogonalInpl(ref rng, ref V);
+            randomOrthogonalInPlace(ref rng, ref V);
             Blas.trans(in V, ref Vt);
             V.Dispose();
 
@@ -358,14 +358,14 @@ namespace LinearAlgebra
         /// Temp scratch: A (m×rank) and B (rank×n) — both disposed before return.
         /// Throws if rank &lt; 0 or rank &gt; min(m,n).
         /// </summary>
-        public static void randomMatrixWithRankInpl(ref Random rng, ref doubleMxN dest, int rank)
+        public static void randomMatrixWithRankInPlace(ref Random rng, ref doubleMxN dest, int rank)
         {
             int m = dest.M_Rows;
             int n = dest.N_Cols;
             int maxRank = math.min(m, n);
 
             if (rank < 0 || rank > maxRank)
-                throw new ArgumentException("randomMatrixWithRankInpl: rank must be in [0, min(m,n)]");
+                throw new ArgumentException("randomMatrixWithRankInPlace: rank must be in [0, min(m,n)]");
 
             if (rank == 0)
             {
@@ -380,8 +380,8 @@ namespace LinearAlgebra
             var B = new doubleMxN(rank, n, Allocator.Temp);
 
             var gauss = new doubleGaussian((double)0, (double)1);
-            Rand.randomInpl(ref rng, ref A, ref gauss);
-            Rand.randomInpl(ref rng, ref B, ref gauss);
+            Rand.randomInPlace(ref rng, ref A, ref gauss);
+            Rand.randomInPlace(ref rng, ref B, ref gauss);
 
             // dest = A·B   (dot clears dest before accumulating)
             Blas.dot(in A, in B, ref dest);
@@ -402,14 +402,14 @@ namespace LinearAlgebra
         /// If a row sum is 0 (astronomically unlikely with [0,1) draws, but guarded), the row is
         /// set to the uniform distribution 1/n. Zero-alloc; no Temp allocations.
         /// </summary>
-        public static void randomStochasticInpl(ref Random rng, ref doubleMxN dest)
+        public static void randomStochasticInPlace(ref Random rng, ref doubleMxN dest)
         {
             int m = dest.M_Rows;
             int n = dest.N_Cols;
             if (m == 0 || n == 0) return;
 
             // Fill with Uniform[0,1)
-            Rand.nextUniformInpl(ref rng, ref dest);
+            Rand.nextUniformInPlace(ref rng, ref dest);
 
             double invN = (double)1 / (double)n;
             for (int r = 0; r < m; r++)

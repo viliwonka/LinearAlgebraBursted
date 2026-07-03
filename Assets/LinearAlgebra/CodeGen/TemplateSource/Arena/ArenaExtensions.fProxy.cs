@@ -56,7 +56,7 @@ namespace LinearAlgebra
 
             fProxy scale = 1 / math.sqrt(sum);
 
-            fProxyComp.mulInpl(vec, scale);
+            fProxyComp.mulInPlace(vec, scale);
 
             return vec;
         }

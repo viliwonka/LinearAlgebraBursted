@@ -8,7 +8,7 @@ using Unity.Collections;
 
 using Unity.Jobs;
 
-// Tests for the integer clampInpl<T> surface (int / short / long), vec + matrix.
+// Tests for the integer clampInPlace<T> surface (int / short / long), vec + matrix.
 // Semantics mirror the float clamp: below lo→lo, above hi→hi, in-range untouched.
 // Passing lo > hi throws ArgumentException (eager validation, same as Cholesky / FFT guards).
 public class intClampTests
@@ -42,7 +42,7 @@ public class intClampTests
             v[0] = (int)(-5); v[1] = (int)(-2); v[2] = (int)0;
             v[3] = (int)2;    v[4] = (int)7;    v[5] = (int)2;
 
-            intComp.clampInpl(in v, (int)(-2), (int)5);
+            intComp.clampInPlace(in v, (int)(-2), (int)5);
 
             Assert.IsTrue(v[0] == (int)(-2));
             Assert.IsTrue(v[1] == (int)(-2));
@@ -60,7 +60,7 @@ public class intClampTests
             A[0, 0] = (int)(-10); A[0, 1] = (int)3;
             A[1, 0] = (int)5;     A[1, 1] = (int)20;
 
-            intComp.clampInpl(in A, (int)0, (int)10);
+            intComp.clampInPlace(in A, (int)0, (int)10);
 
             Assert.IsTrue(A[0, 0] == (int)0);
             Assert.IsTrue(A[0, 1] == (int)3);
@@ -73,7 +73,7 @@ public class intClampTests
         {
             var arena = new Arena(Allocator.Persistent);
             var v = arena.intVec(4, 3); // all 3, inside [0,5]
-            intComp.clampInpl(in v, (int)0, (int)5);
+            intComp.clampInPlace(in v, (int)0, (int)5);
             for (int i = 0; i < 4; i++)
                 Assert.IsTrue(v[i] == (int)3);
             arena.Dispose();
@@ -95,7 +95,7 @@ public class intClampTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.intVec(3, 0);
         v[0] = (int)(-4); v[1] = (int)0; v[2] = (int)9;
-        Assert.Throws<ArgumentException>(() => intComp.clampInpl(in v, (int)6, (int)(-1)));
+        Assert.Throws<ArgumentException>(() => intComp.clampInPlace(in v, (int)6, (int)(-1)));
         arena.Dispose();
     }
 }

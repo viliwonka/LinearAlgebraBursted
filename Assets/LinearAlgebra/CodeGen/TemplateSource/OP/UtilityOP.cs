@@ -8,7 +8,7 @@ namespace LinearAlgebra
     public static partial class fProxyComp {
 
         //+copyReplace
-        public static void zeroInpl(in fProxyN vec) {
+        public static void zeroInPlace(in fProxyN vec) {
 
             unsafe
             {

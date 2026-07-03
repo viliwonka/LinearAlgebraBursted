@@ -12,7 +12,7 @@ using Unity.Mathematics;
 // Tests for the in-place transform family:
 //   StatsOP: standardize / rescale / center / maxAbs / softmax  (flat<T>, *Rows, *Columns)
 //   NormsOP: Normalize<T>(x, Norm) / NormalizeRows / NormalizeColumns
-//   OP.Component: clampInpl<T> (vec + matrix)
+//   OP.Component: clampInPlace<T> (vec + matrix)
 // Verification leans on the existing reduction kernels (mean / stdDev / rowSum / rowNormL2 ...)
 // rather than hand-coding loops, so an assertion failure pins the transform, not the oracle.
 public class fProxyTransformsTests
@@ -600,7 +600,7 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(5);
             v[0] = -5f; v[1] = -1f; v[2] = 0f; v[3] = 3f; v[4] = 9f;
 
-            fProxyComp.clampInpl(in v, (fProxy)(-1f), (fProxy)4f);
+            fProxyComp.clampInPlace(in v, (fProxy)(-1f), (fProxy)4f);
             AssertClose(v[0], (fProxy)(-1f), (fProxy)EPS);
             AssertClose(v[1], (fProxy)(-1f), (fProxy)EPS);
             AssertClose(v[2], (fProxy)0f, (fProxy)EPS);
@@ -616,7 +616,7 @@ public class fProxyTransformsTests
             A[0, 0] = -10f; A[0, 1] = 0.5f;
             A[1, 0] = 2f;   A[1, 1] = 100f;
 
-            fProxyComp.clampInpl(in A, (fProxy)0f, (fProxy)1f);
+            fProxyComp.clampInPlace(in A, (fProxy)0f, (fProxy)1f);
             AssertClose(A[0, 0], (fProxy)0f, (fProxy)EPS);
             AssertClose(A[0, 1], (fProxy)0.5f, (fProxy)EPS);
             AssertClose(A[1, 0], (fProxy)1f, (fProxy)EPS);
@@ -685,7 +685,7 @@ public class fProxyTransformsTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.fProxyVec(3);
         v[0] = -5f; v[1] = 0f; v[2] = 5f;
-        Assert.Throws<ArgumentException>(() => fProxyComp.clampInpl(in v, (fProxy)4f, (fProxy)(-1f)));
+        Assert.Throws<ArgumentException>(() => fProxyComp.clampInPlace(in v, (fProxy)4f, (fProxy)(-1f)));
         arena.Dispose();
     }
 }

@@ -7,9 +7,9 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Zero-alloc random-fill operations for bool vectors and matrices.
-    /// <c>nextBernoulliInpl</c> — fills each element with an independent Bernoulli(p) draw:
+    /// <c>nextBernoulliInPlace</c> — fills each element with an independent Bernoulli(p) draw:
     /// <c>element = rng.NextFloat() &lt; p</c>. Validates p ∈ [0, 1].
-    /// <c>nextBoolInpl</c> — convenience fair-coin wrapper (p = 0.5) using <c>rng.NextBool()</c>.
+    /// <c>nextBoolInPlace</c> — convenience fair-coin wrapper (p = 0.5) using <c>rng.NextBool()</c>.
     /// Hand-written singular file; not generated per-type.
     /// </summary>
     public static partial class Rand
@@ -26,10 +26,10 @@ namespace LinearAlgebra
         /// exact fidelity near the boundaries is required.</para>
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextBernoulliInpl(ref Random rng, ref boolN dest, float p)
+        public static void nextBernoulliInPlace(ref Random rng, ref boolN dest, float p)
         {
             if (!(p >= 0f && p <= 1f))
-                throw new ArgumentException("Rand.nextBernoulliInpl: p must be in [0, 1]");
+                throw new ArgumentException("Rand.nextBernoulliInPlace: p must be in [0, 1]");
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)
                 dest[i] = rng.NextFloat() < p;
@@ -43,10 +43,10 @@ namespace LinearAlgebra
         /// near p = 0 and p = 1.</para>
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextBernoulliInpl(ref Random rng, ref boolMxN dest, float p)
+        public static void nextBernoulliInPlace(ref Random rng, ref boolMxN dest, float p)
         {
             if (!(p >= 0f && p <= 1f))
-                throw new ArgumentException("Rand.nextBernoulliInpl: p must be in [0, 1]");
+                throw new ArgumentException("Rand.nextBernoulliInPlace: p must be in [0, 1]");
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)
                 dest[i] = rng.NextFloat() < p;
@@ -60,17 +60,17 @@ namespace LinearAlgebra
         /// steps. Convenience wrapper for Bernoulli(0.5).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextBoolInpl(ref Random rng, ref boolN dest)
+        public static void nextBoolInPlace(ref Random rng, ref boolN dest)
         {
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)
                 dest[i] = rng.NextBool();
         }
 
-        /// <summary>Matrix overload of <see cref="nextBoolInpl(ref Random, ref boolN)"/>; advances
+        /// <summary>Matrix overload of <see cref="nextBoolInPlace(ref Random, ref boolN)"/>; advances
         /// <paramref name="rng"/> by <c>dest.Length</c> steps.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void nextBoolInpl(ref Random rng, ref boolMxN dest)
+        public static void nextBoolInPlace(ref Random rng, ref boolMxN dest)
         {
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)

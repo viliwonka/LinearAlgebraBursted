@@ -590,13 +590,13 @@ public class doubleGalleryTests
         // helpers
         // =====================================================================
 
-        // det via LU on a copy (luDecompositionInpl destroys its input).
+        // det via LU on a copy (luDecompositionInPlace destroys its input).
         double Determinant(in doubleMxN M)
         {
             int n = M.M_Rows;
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInpl(ref LUmat, ref pivot);
+            LU.luDecompositionInPlace(ref LUmat, ref pivot);
             double det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;

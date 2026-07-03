@@ -14,7 +14,7 @@ namespace LinearAlgebra
         public static fProxyN operator -(in fProxyN a) {
 
             fProxyN vec = a.TempCopy();
-            fProxyComp.signFlipInpl(vec);
+            fProxyComp.signFlipInPlace(vec);
 
             return vec;
         }
@@ -23,7 +23,7 @@ namespace LinearAlgebra
         public static fProxyN operator +(in fProxyN a, fProxy s) {
 
             fProxyN vec = a.TempCopy();
-            fProxyComp.addInpl(vec, s);
+            fProxyComp.addInPlace(vec, s);
 
             return vec; 
         }
@@ -35,7 +35,7 @@ namespace LinearAlgebra
         public static fProxyN operator -(in fProxyN a, fProxy s) {
             
             fProxyN vec = a.TempCopy();
-            fProxyComp.addInpl(vec, -s);
+            fProxyComp.addInPlace(vec, -s);
             
             return vec;
         }
@@ -44,7 +44,7 @@ namespace LinearAlgebra
         public static fProxyN operator -(fProxy s, in fProxyN a)
         {
             fProxyN vec = a.TempCopy();
-            fProxyComp.subInpl(s, vec);
+            fProxyComp.subInPlace(s, vec);
             return vec;
         }
 
@@ -53,7 +53,7 @@ namespace LinearAlgebra
             
             fProxyN vec = a.TempCopy();
 
-            fProxyComp.mulInpl(vec, s);
+            fProxyComp.mulInPlace(vec, s);
 
             return vec;
         }
@@ -69,7 +69,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            fProxyComp.divInpl(vec, s);
+            fProxyComp.divInPlace(vec, s);
 
             return vec;
         }
@@ -79,7 +79,7 @@ namespace LinearAlgebra
         {
             fProxyN vec = a.TempCopy();
 
-            fProxyComp.divInpl(s, vec);
+            fProxyComp.divInPlace(s, vec);
 
             return vec;
         }
@@ -92,7 +92,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            fProxyComp.modInpl(vec, s);
+            fProxyComp.modInPlace(vec, s);
 
             return vec;
         }
@@ -102,7 +102,7 @@ namespace LinearAlgebra
         {
             fProxyN vec = a.TempCopy();
 
-            fProxyComp.modInpl(s, vec);
+            fProxyComp.modInPlace(s, vec);
 
             return vec;
         }
@@ -118,7 +118,7 @@ namespace LinearAlgebra
 
             fProxyN vec = a.TempCopy();
 
-            fProxyComp.addInpl(vec, b);   // vec += b  (vec is the copy of a)
+            fProxyComp.addInPlace(vec, b);   // vec += b  (vec is the copy of a)
 
             return vec;
         }
@@ -130,7 +130,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             fProxyN vec = a.TempCopy();
-            fProxyComp.subInpl(vec, b);
+            fProxyComp.subInPlace(vec, b);
             
             return vec;
         }
@@ -143,7 +143,7 @@ namespace LinearAlgebra
 
             fProxyN vec = a.TempCopy();
 
-            fProxyComp.mulInpl(b, vec);
+            fProxyComp.mulInPlace(b, vec);
 
             return vec;
         }
@@ -155,7 +155,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             fProxyN newDividendVec = dividend.TempCopy();
-            fProxyComp.divInpl(newDividendVec, divisor);
+            fProxyComp.divInPlace(newDividendVec, divisor);
 
             return newDividendVec;
         }
@@ -167,7 +167,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             fProxyN newDividendVec = dividend.TempCopy();
-            fProxyComp.modInpl(newDividendVec, divisor);
+            fProxyComp.modInPlace(newDividendVec, divisor);
 
             return newDividendVec;
         }

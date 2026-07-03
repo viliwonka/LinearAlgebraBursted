@@ -12,8 +12,8 @@ using Random = Unity.Mathematics.Random;
 
 // Tests for the bool random-fill core (Rand). Hand-written singular file (Rand
 // is not generated per-type), mirroring the Chunk-1 RandomTests.fProxy.cs structure:
-//   * nextBernoulliInpl(ref rng, ref dest, p): element = rng.NextFloat() < p. Validates p in [0,1].
-//   * nextBoolInpl(ref rng, ref dest): fair coin via rng.NextBool().
+//   * nextBernoulliInPlace(ref rng, ref dest, p): element = rng.NextFloat() < p. Validates p in [0,1].
+//   * nextBoolInPlace(ref rng, ref dest): fair coin via rng.NextBool().
 // Burst-compatible computational tests live in TestJob (message-free asserts + Fail-buffer
 // diagnostics); managed-throw guards are plain [Test] methods on the main thread. FIXED seeds.
 public class BoolRandomTests
@@ -58,7 +58,7 @@ public class BoolRandomTests
             var rng = new Random(1234567u);
             var v = arena.boolVec(N);
             for (int i = 0; i < v.N; i++) v[i] = true;   // poison true
-            Rand.nextBernoulliInpl(ref rng, ref v, 0f);
+            Rand.nextBernoulliInPlace(ref rng, ref v, 0f);
             for (int i = 0; i < v.N; i++)
                 AssertTrue(v[i] == false);
             arena.Dispose();
@@ -71,7 +71,7 @@ public class BoolRandomTests
             var rng = new Random(2468013u);
             var v = arena.boolVec(N);
             for (int i = 0; i < v.N; i++) v[i] = false;  // poison false
-            Rand.nextBernoulliInpl(ref rng, ref v, 1f);
+            Rand.nextBernoulliInPlace(ref rng, ref v, 1f);
             for (int i = 0; i < v.N; i++)
                 AssertTrue(v[i] == true);
             arena.Dispose();
@@ -83,7 +83,7 @@ public class BoolRandomTests
             var arena = new Arena(Allocator.Persistent);
             var rng = new Random(13572468u);
             var v = arena.boolVec(N);
-            Rand.nextBernoulliInpl(ref rng, ref v, 0.5f);
+            Rand.nextBernoulliInPlace(ref rng, ref v, 0.5f);
 
             int trues = 0;
             for (int i = 0; i < v.N; i++)
@@ -99,24 +99,24 @@ public class BoolRandomTests
             var arena = new Arena(Allocator.Persistent);
             var r1 = new Random(99u);
             var v1 = arena.boolVec(512);
-            Rand.nextBernoulliInpl(ref r1, ref v1, 0.3f);
+            Rand.nextBernoulliInPlace(ref r1, ref v1, 0.3f);
 
             var r2 = new Random(99u);
             var v2 = arena.boolVec(512);
-            Rand.nextBernoulliInpl(ref r2, ref v2, 0.3f);
+            Rand.nextBernoulliInPlace(ref r2, ref v2, 0.3f);
 
             for (int i = 0; i < v1.N; i++)
                 AssertTrue(v1[i] == v2[i]);
             arena.Dispose();
         }
 
-        // nextBoolInpl (fair coin) produces a mix: both true and false present.
+        // nextBoolInPlace (fair coin) produces a mix: both true and false present.
         void NextBoolMix()
         {
             var arena = new Arena(Allocator.Persistent);
             var rng = new Random(97531864u);
             var v = arena.boolVec(N);
-            Rand.nextBoolInpl(ref rng, ref v);
+            Rand.nextBoolInPlace(ref rng, ref v);
 
             int trues = 0;
             for (int i = 0; i < v.N; i++)
@@ -138,13 +138,13 @@ public class BoolRandomTests
 
             var M = arena.boolMat(8, 16);
             for (int i = 0; i < M.Length; i++) M[i] = false;
-            Rand.nextBernoulliInpl(ref rng, ref M, 1f);
+            Rand.nextBernoulliInPlace(ref rng, ref M, 1f);
             AssertTrue(M.Length == 128);
             for (int i = 0; i < M.Length; i++)
                 AssertTrue(M[i] == true);
 
             var Mb = arena.boolMat(8, 16);
-            Rand.nextBoolInpl(ref rng, ref Mb);
+            Rand.nextBoolInPlace(ref rng, ref Mb);
             int trues = 0;
             for (int i = 0; i < Mb.Length; i++)
                 if (Mb[i]) trues++;
@@ -217,12 +217,12 @@ public class BoolRandomTests
         Random rng = new Random(1u);
 
         var v = arena.boolVec(8);
-        Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInpl(ref rng, ref v, -0.01f));
-        Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInpl(ref rng, ref v, 1.01f));
+        Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInPlace(ref rng, ref v, -0.01f));
+        Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInPlace(ref rng, ref v, 1.01f));
 
         var M = arena.boolMat(3, 3);
-        Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInpl(ref rng, ref M, -1f));
-        Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInpl(ref rng, ref M, 2f));
+        Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInPlace(ref rng, ref M, -1f));
+        Assert.Throws<ArgumentException>(() => Rand.nextBernoulliInPlace(ref rng, ref M, 2f));
 
         arena.Dispose();
     }
