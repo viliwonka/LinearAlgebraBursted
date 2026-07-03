@@ -10,8 +10,8 @@ is still being reviewed and may change before `1.0`.
 
 ## Installation
 
-**Unity Package Manager (recommended).** Only the generated runtime code ships — no templates or
-codegen tooling. In *Window → Package Manager → + → Add package from git URL*, paste:
+Install via UPM — only the generated runtime source ships, no templates or codegen tooling. In
+*Window → Package Manager → + → Add package from git URL*:
 
 ```
 https://github.com/viliwonka/LinearAlgebraBursted.git?path=Assets/LinearAlgebra/Source
@@ -23,27 +23,19 @@ or add it to `Packages/manifest.json`:
 "com.viliwonka.burst-linear-algebra": "https://github.com/viliwonka/LinearAlgebraBursted.git?path=Assets/LinearAlgebra/Source"
 ```
 
-**Copy-in.** Alternatively, clone the repo and copy `Assets/LinearAlgebra/Source` into your own
-project. Either way the dependency is just `com.unity.collections` (which pulls in Burst and
-Mathematics). Requires Unity 6000.3+.
+Alternatively, clone the repo and copy `Assets/LinearAlgebra/Source` into your project. Either way the
+only dependency is `com.unity.collections` (which pulls in Burst and Mathematics). Requires Unity 6000.3+.
 
-To work on the library itself (templates + codegen), clone and open the repo directly in Unity.
+To work on the library itself (templates + codegen), open the repo directly in Unity.
 
 ## Core types
 
-- **`Arena`** — the allocator that owns every vector and matrix. `arena.floatVec(n)` /
-  `arena.floatRandomMatrix(m, n)` allocate; `arena.ClearTemp()` frees the temporaries a hot loop
-  produced; `arena.Dispose()` frees everything. Vectors and matrices are lightweight handles into
-  the arena, not copies.
+- **`Arena`** — a struct for managing memory: allocating vectors and matrices, and disposing them.
 - **Vectors & matrices** — `floatN` / `floatMxN` and their `double` / `int` / `short` / `long` /
   `bool` counterparts. Matrices are row-major.
-- **Workspaces** — reusable scratch reserved from the arena (`arena.RequireSvdThinWorkspace(…)`,
-  `RequireEigenSymWorkspace`, `RequireFftWorkspace`, …) and handed to the zero-allocation op/solver
-  overloads so repeated calls in a hot loop allocate nothing.
-- **Info / diagnostic structs** — solvers and decompositions return small result structs
-  (`SolveInfo`, `LstsqInfo`, `DirectSolveInfo`, `RankRevealingInfo`, `EigenSolveInfo`, `fProxyPCAModel`, …)
-  carrying status, iteration count, residual norms, rank and the like. All are Burst-printable with
-  `Print.Log(in info)`.
+- **Workspaces** — reusable scratch buffers reserved from the arena so hot loops allocate nothing.
+- **Info / diagnostic structs** — small result structs returned by solvers and decompositions
+  (status, iterations, residual norms, rank, …), Burst-printable.
 
 ## Usage
 
