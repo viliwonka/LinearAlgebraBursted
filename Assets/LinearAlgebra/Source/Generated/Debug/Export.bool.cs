@@ -1,0 +1,79 @@
+using System.IO;
+using System.Text;
+
+namespace LinearAlgebra
+{
+    // Managed (allocating, NON-Burst) text / CSV exporters for bool matrices and vectors,
+    // mirroring the sibling float/double and int/short/long exporters next to this file. bool has
+    // only one concrete type, so there is no per-type substitution and no proxy-cast trick either
+    // -- boolMxN/boolN already hold real `bool` values. IMPORTANT: this file must never contain
+    // either of the code generator's two per-type placeholder spellings (see GenUtils.cs) -- doing
+    // so would make TemplateConverter.Execute treat it as a multiplying file instead of copying it
+    // through unchanged, and since this filename doesn't contain either placeholder, the copies
+    // would collide on the SAME output path. Keep this comment block itself free of those two
+    // spellings for that reason.
+    //
+    // ToText writes "True"/"False" (human-readable); ToCsv/SaveCsv write "1"/"0" (numeric,
+    // spreadsheet/CSV-friendly).
+    //
+    // Unlike Print.Log -- which is Burst-callable but capped at a 4 KB FixedString and SILENTLY
+    // TRUNCATES past it -- these build an unbounded System.Text.StringBuilder, so they never
+    // truncate. Call them from managed / editor code only, NEVER from inside a Burst job.
+    public static partial class Print
+    {
+        public static string ToText(in boolMxN m)
+        {
+            var sb = new StringBuilder();
+            for (int r = 0; r < m.M_Rows; r++)
+            {
+                for (int c = 0; c < m.N_Cols; c++)
+                {
+                    if (c > 0) sb.Append(' ');
+                    sb.Append(m[r, c] ? "True" : "False");
+                }
+                sb.Append('\n');
+            }
+            return sb.ToString();
+        }
+
+        public static string ToText(in boolN v)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < v.N; i++)
+            {
+                if (i > 0) sb.Append('\n');
+                sb.Append(v[i] ? "True" : "False");
+            }
+            return sb.ToString();
+        }
+
+        public static string ToCsv(in boolMxN m)
+        {
+            var sb = new StringBuilder();
+            for (int r = 0; r < m.M_Rows; r++)
+            {
+                for (int c = 0; c < m.N_Cols; c++)
+                {
+                    if (c > 0) sb.Append(',');
+                    sb.Append(m[r, c] ? '1' : '0');
+                }
+                sb.Append('\n');
+            }
+            return sb.ToString();
+        }
+
+        public static string ToCsv(in boolN v)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < v.N; i++)
+            {
+                sb.Append(v[i] ? '1' : '0');
+                sb.Append('\n');
+            }
+            return sb.ToString();
+        }
+
+        public static void SaveCsv(in boolMxN m, string path) => File.WriteAllText(path, ToCsv(in m));
+        public static void SaveCsv(in boolN v, string path) => File.WriteAllText(path, ToCsv(in v));
+    }
+}

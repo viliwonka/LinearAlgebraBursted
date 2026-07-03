@@ -123,6 +123,57 @@ namespace LinearAlgebra {
 
             Debug.Log(toPrint);
         }
+
+        /// <summary>
+        /// Burst-safe compact summary, e.g. <c>Pivot[N=5, sign=+1]: (2 0 1 4 3)</c>. Caps gracefully
+        /// (appends "..." and stops) for very large N rather than overflowing the FixedString.
+        /// Never allocates managed memory.
+        /// </summary>
+        public FixedString4096Bytes ToFixedString() {
+
+            int n = indices.Length;
+            FixedString4096Bytes str = $"Pivot[N={n}, sign=";
+
+            if (Sign > 0) {
+                FixedString32Bytes signStr = "+1";
+                str.Append(signStr);
+            }
+            else {
+                FixedString32Bytes signStr = "-1";
+                str.Append(signStr);
+            }
+
+            FixedString32Bytes open = "]: (";
+            str.Append(open);
+
+            bool truncated = false;
+            for (int i = 0; i < n; i++) {
+
+                if (i > 0)
+                    str.Append(' ');
+
+                FixedString32Bytes elementStr = $"{indices[i]}";
+                str.Append(elementStr);
+
+                if (str.Length > 3500) {
+                    truncated = true;
+                    break;
+                }
+            }
+
+            if (truncated) {
+                FixedString32Bytes ellipsis = " ...)";
+                str.Append(ellipsis);
+            }
+            else {
+                str.Append(')');
+            }
+
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
     }
 
 }

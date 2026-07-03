@@ -1,0 +1,61 @@
+//singularFile//
+using Unity.Collections;
+
+namespace LinearAlgebra
+{
+    // Burst-safe Print.Log overloads for the small, non-templated info/result structs
+    // (OP/Solvers.Info.cs, OP/Eigen.Info.cs) and the Pivot/Indices permutation types. Mirrors the
+    // fProxy/iProxy Print.Log style (Debug/Debug.fProxy.cs): FixedString + UnityEngine.Debug.Log.
+    // These types are NOT templated (fProxy/iProxy), so their Log overloads live in this singular
+    // file rather than a per-type template.
+    public static partial class Print
+    {
+        public static void Log(in SolveInfo info)
+        {
+            FixedString128Bytes str = info.ToFixedString();
+            UnityEngine.Debug.Log($"{str}");
+        }
+
+        public static void Log(in LstsqInfo info)
+        {
+            FixedString128Bytes str = info.ToFixedString();
+            UnityEngine.Debug.Log($"{str}");
+        }
+
+        public static void Log(in DirectSolveInfo info)
+        {
+            FixedString128Bytes str = info.ToFixedString();
+            UnityEngine.Debug.Log($"{str}");
+        }
+
+        public static void Log(in RankRevealingInfo info)
+        {
+            FixedString128Bytes str = info.ToFixedString();
+            UnityEngine.Debug.Log($"{str}");
+        }
+
+        public static void Log(in EigenSolveInfo info)
+        {
+            FixedString128Bytes str = info.ToFixedString();
+            UnityEngine.Debug.Log($"{str}");
+        }
+
+        public static void Log(in LanczosInfo info)
+        {
+            FixedString128Bytes str = info.ToFixedString();
+            UnityEngine.Debug.Log($"{str}");
+        }
+
+        public static void Log(in Pivot p)
+        {
+            FixedString4096Bytes str = p.ToFixedString();
+            UnityEngine.Debug.Log($"{str}");
+        }
+
+        public static void Log(in Indices idx)
+        {
+            FixedString4096Bytes str = idx.ToFixedString();
+            UnityEngine.Debug.Log($"{str}");
+        }
+    }
+}

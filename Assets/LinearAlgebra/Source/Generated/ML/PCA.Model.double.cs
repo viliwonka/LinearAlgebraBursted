@@ -1,3 +1,5 @@
+using Unity.Collections;
+
 using LinearAlgebra.ML;
 
 namespace LinearAlgebra.ML
@@ -52,6 +54,31 @@ namespace LinearAlgebra.ML
 
         /// <summary>Implicit success test, so <c>if (model)</c> reads naturally after a fit.</summary>
         public static implicit operator bool(doublePCAModel m) => m.converged;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>doublePCAModel(k=3, p=8, converged=true)</c> --
+        /// dims/k/converged only, NEVER the components matrix (unbounded / not Burst-safe to dump).
+        /// p is read from <c>components.M_Rows</c> (the fitted feature count). Never allocates
+        /// managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = $"doublePCAModel(k={k}, p={components.M_Rows}, converged=";
+
+            if (converged)
+            {
+                FixedString32Bytes flag = "true)";
+                str.Append(flag);
+            }
+            else
+            {
+                FixedString32Bytes flag = "false)";
+                str.Append(flag);
+            }
+
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
     }
 }
 

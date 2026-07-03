@@ -1,0 +1,103 @@
+using System.IO;
+
+using LinearAlgebra;
+
+using NUnit.Framework;
+using Unity.Collections;
+
+// Content-correctness tests for the managed integer exporters (Debug/Export.short.cs), generated
+// per integer type (int / short / long). Integers have no round-trip precision concern, so ToText
+// and ToCsv both emit the exact decimal digits (ToText space-separates matrix columns, ToCsv
+// comma-separates). These helpers return System.String, so every assertion is an exact string
+// match on the managed thread -- mirroring DebugExportTests' float/double cases for the new int
+// coverage. Class is short-prefixed so the generated int/short/long variants get distinct names.
+public class shortDebugExportTests
+{
+    [Test]
+    public void IntToCsvMatrixIsRowPerLineCommaSeparated()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var m = arena.shortMat(2, 2);
+        m[0, 0] = (short)1; m[0, 1] = (short)2;
+        m[1, 0] = (short)3; m[1, 1] = (short)4;
+
+        Assert.AreEqual("1,2\n3,4\n", Print.ToCsv(in m));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void IntToTextMatrixIsRowPerLineSpaceSeparated()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var m = arena.shortMat(2, 2);
+        m[0, 0] = (short)1; m[0, 1] = (short)2;
+        m[1, 0] = (short)3; m[1, 1] = (short)4;
+
+        Assert.AreEqual("1 2\n3 4\n", Print.ToText(in m));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void IntToCsvVectorIsOneValuePerLineIncludingNegatives()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var v = arena.shortVec(4);
+        v[0] = (short)(-2); v[1] = (short)0; v[2] = (short)7; v[3] = (short)13;
+
+        Assert.AreEqual("-2\n0\n7\n13\n", Print.ToCsv(in v));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void IntToTextVectorHasNoTrailingNewline()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var v = arena.shortVec(3);
+        v[0] = (short)1; v[1] = (short)2; v[2] = (short)3;
+
+        // vector ToText joins with '\n' between entries and does NOT add a trailing newline.
+        Assert.AreEqual("1\n2\n3", Print.ToText(in v));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void IntSaveCsvRoundTrips()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var m = arena.shortMat(2, 3);
+        m[0, 0] = (short)1; m[0, 1] = (short)2; m[0, 2] = (short)3;
+        m[1, 0] = (short)4; m[1, 1] = (short)5; m[1, 2] = (short)6;
+
+        string path = Path.GetTempFileName();
+        try
+        {
+            Print.SaveCsv(in m, path);
+            Assert.AreEqual(Print.ToCsv(in m), File.ReadAllText(path));
+        }
+        finally { File.Delete(path); }
+
+        arena.Dispose();
+    }
+
+    // int Print.Log smoke (Burst-void log-only) -- matches DebugExportTests.IntLogDoesNotThrow.
+    [Test]
+    public void IntLogDoesNotThrow()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        var v = arena.shortVec(3);
+        v[0] = (short)(-2); v[1] = (short)0; v[2] = (short)7;
+        Assert.DoesNotThrow(() => Print.Log(in v));
+
+        var m = arena.shortMat(2, 2);
+        m[0, 0] = (short)1; m[0, 1] = (short)2;
+        m[1, 0] = (short)3; m[1, 1] = (short)4;
+        Assert.DoesNotThrow(() => Print.Log(in m));
+
+        arena.Dispose();
+    }
+}

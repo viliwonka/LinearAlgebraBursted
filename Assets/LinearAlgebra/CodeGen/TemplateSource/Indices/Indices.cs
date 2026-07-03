@@ -45,5 +45,47 @@ namespace LinearAlgebra
         {
             _data.Dispose();
         }
+
+        /// <summary>
+        /// Burst-safe compact summary, e.g. <c>Indices[N=4]: (7 2 9 0)</c>. Caps gracefully (appends
+        /// "..." and stops) for very large N rather than overflowing the FixedString. Never
+        /// allocates managed memory.
+        /// </summary>
+        public FixedString4096Bytes ToFixedString()
+        {
+            int n = _data.Length;
+            FixedString4096Bytes str = $"Indices[N={n}]: (";
+
+            bool truncated = false;
+            for (int i = 0; i < n; i++)
+            {
+                if (i > 0)
+                    str.Append(' ');
+
+                FixedString32Bytes elementStr = $"{_data[i]}";
+                str.Append(elementStr);
+
+                if (str.Length > 3500)
+                {
+                    truncated = true;
+                    break;
+                }
+            }
+
+            if (truncated)
+            {
+                FixedString32Bytes ellipsis = " ...)";
+                str.Append(ellipsis);
+            }
+            else
+            {
+                str.Append(')');
+            }
+
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
     }
 }

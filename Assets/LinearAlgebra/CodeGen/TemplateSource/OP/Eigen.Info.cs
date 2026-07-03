@@ -1,4 +1,6 @@
 //singularFile//
+using Unity.Collections;
+
 namespace LinearAlgebra
 {
     /// <summary>
@@ -58,6 +60,20 @@ namespace LinearAlgebra
         /// <summary>Same as <see cref="Solved"/>, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
         /// keep compiling after the return type changed from bool to this struct.</summary>
         public static implicit operator bool(EigenSolveInfo i) => i.status == IterativeSolveStatus.Converged;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>EigenSolveInfo(Converged, iters=12,
+        /// residual=1.23E-08)</c>. Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "EigenSolveInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", iters={iterations}, residual={residual:G3})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
     }
 
     /// <summary>
@@ -97,5 +113,19 @@ namespace LinearAlgebra
         /// <summary>Same as <see cref="Solved"/>, so <c>if (lanczos(...))</c> keeps compiling after
         /// the return type changed from bool to this struct.</summary>
         public static implicit operator bool(LanczosInfo i) => i.status == IterativeSolveStatus.Converged;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>LanczosInfo(Converged, produced=20)</c>.
+        /// Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "LanczosInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", produced={produced})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
     }
 }

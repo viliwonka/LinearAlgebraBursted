@@ -1,0 +1,84 @@
+using System.IO;
+
+using LinearAlgebra;
+
+using NUnit.Framework;
+using Unity.Collections;
+
+// Content-correctness tests for the managed bool exporters (Debug/Export.bool.cs). bool has a
+// single concrete type, so -- like the other Bool*Tests -- this is a plain copy-through test file
+// (no per-type placeholder in the name or body). ToText writes "True"/"False" (human-readable); ToCsv/SaveCsv
+// write "1"/"0" (spreadsheet-friendly). These helpers return System.String, so every assertion is
+// an exact string match on the managed thread (same shape as DebugExportTests' float/double cases).
+public class BoolDebugExportTests
+{
+    [Test]
+    public void BoolToTextMatrixWritesTrueFalseSpaceSeparated()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var m = arena.boolMat(2, 2);
+        m[0, 0] = true;  m[0, 1] = false;
+        m[1, 0] = false; m[1, 1] = true;
+
+        Assert.AreEqual("True False\nFalse True\n", Print.ToText(in m));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void BoolToTextVectorHasNoTrailingNewline()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var v = arena.boolVec(3);
+        v[0] = true; v[1] = false; v[2] = true;
+
+        // vector ToText joins with '\n' between entries and does NOT add a trailing newline.
+        Assert.AreEqual("True\nFalse\nTrue", Print.ToText(in v));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void BoolToCsvMatrixWritesOneZeroCommaSeparated()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var m = arena.boolMat(2, 2);
+        m[0, 0] = true;  m[0, 1] = false;
+        m[1, 0] = false; m[1, 1] = true;
+
+        Assert.AreEqual("1,0\n0,1\n", Print.ToCsv(in m));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void BoolToCsvVectorIsOneValuePerLine()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var v = arena.boolVec(3);
+        v[0] = true; v[1] = false; v[2] = true;
+
+        Assert.AreEqual("1\n0\n1\n", Print.ToCsv(in v));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void BoolSaveCsvRoundTrips()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var m = arena.boolMat(2, 3);
+        m[0, 0] = true;  m[0, 1] = false; m[0, 2] = true;
+        m[1, 0] = false; m[1, 1] = true;  m[1, 2] = false;
+
+        string path = Path.GetTempFileName();
+        try
+        {
+            Print.SaveCsv(in m, path);
+            Assert.AreEqual(Print.ToCsv(in m), File.ReadAllText(path));
+        }
+        finally { File.Delete(path); }
+
+        arena.Dispose();
+    }
+}

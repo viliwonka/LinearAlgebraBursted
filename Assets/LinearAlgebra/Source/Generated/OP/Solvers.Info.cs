@@ -1,4 +1,6 @@
 //singularFile//
+using Unity.Collections;
+
 namespace LinearAlgebra
 {
     /// <summary>
@@ -58,6 +60,20 @@ namespace LinearAlgebra
         /// <summary>Implicit success test, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
         /// keep compiling after the return type changed from bool to this struct.</summary>
         public static implicit operator bool(LstsqInfo info) => info.status == IterativeSolveStatus.Converged;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>LstsqInfo(Converged, iters=17, rnorm=1.23E-08,
+        /// Arnorm=4.56E-09, xnorm=2.10E+00)</c>. Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "LstsqInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", iters={iterations}, rnorm={rnorm:G3}, Arnorm={Arnorm:G3}, xnorm={xnorm:G3})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
     }
 
     /// <summary>
@@ -90,6 +106,20 @@ namespace LinearAlgebra
 
         /// <summary>Implicit success test so <c>if (solve(...))</c> keeps compiling.</summary>
         public static implicit operator bool(SolveInfo info) => info.status == IterativeSolveStatus.Converged;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>SolveInfo(Converged, iters=42, rnorm=1.23E-08)</c>.
+        /// Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "SolveInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", iters={iterations}, rnorm={rnorm:G3})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
     }
 
     /// <summary>
@@ -124,6 +154,19 @@ namespace LinearAlgebra
         /// <summary>Implicit success test, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
         /// keep compiling after the return type changed from bool/void to this struct.</summary>
         public static implicit operator bool(DirectSolveInfo i) => i.status == DirectSolveStatus.Success;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>DirectSolveInfo(Success)</c>. Never allocates
+        /// managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "DirectSolveInfo(";
+            str.Append(status.Name());
+            str.Append(')');
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
     }
 
     /// <summary>
@@ -159,5 +202,19 @@ namespace LinearAlgebra
         /// full-rank and (still-usable) rank-deficient results.</summary>
         public static implicit operator bool(RankRevealingInfo i) =>
             i.status == DirectSolveStatus.Success || i.status == DirectSolveStatus.RankDeficient;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>RankRevealingInfo(RankDeficient, rank=3)</c>.
+        /// Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "RankRevealingInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", rank={rank})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
     }
 }

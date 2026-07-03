@@ -1,4 +1,6 @@
 //singularFile//
+using Unity.Collections;
+
 namespace LinearAlgebra
 {
     /// <summary>
@@ -58,5 +60,39 @@ namespace LinearAlgebra
         /// numerical rank below the full dimension. Unlike the other failure statuses, this still
         /// carries a USABLE result -- see <see cref="RankRevealingInfo"/>.</summary>
         RankDeficient = 4,
+    }
+
+    /// <summary>
+    /// Burst-safe enum-to-name helpers for <see cref="IterativeSolveStatus"/> and
+    /// <see cref="DirectSolveStatus"/>, used by every *_Info.ToFixedString() (<c>SolveInfo</c> /
+    /// <c>LstsqInfo</c> / <c>DirectSolveInfo</c> / <c>RankRevealingInfo</c> / <c>EigenSolveInfo</c> /
+    /// <c>LanczosInfo</c>). A manual <c>switch</c> returning a <see cref="FixedString32Bytes"/>
+    /// literal per case -- <c>enum.ToString()</c> is NOT Burst-legal.
+    /// </summary>
+    public static class SolveStatusExtensions
+    {
+        public static FixedString32Bytes Name(this IterativeSolveStatus s)
+        {
+            switch (s)
+            {
+                case IterativeSolveStatus.Converged: return "Converged";
+                case IterativeSolveStatus.MaxIterations: return "MaxIterations";
+                case IterativeSolveStatus.Breakdown: return "Breakdown";
+                default: return "Unknown";
+            }
+        }
+
+        public static FixedString32Bytes Name(this DirectSolveStatus s)
+        {
+            switch (s)
+            {
+                case DirectSolveStatus.Success: return "Success";
+                case DirectSolveStatus.Singular: return "Singular";
+                case DirectSolveStatus.NotPositiveDefinite: return "NotPositiveDefinite";
+                case DirectSolveStatus.Indefinite: return "Indefinite";
+                case DirectSolveStatus.RankDeficient: return "RankDeficient";
+                default: return "Unknown";
+            }
+        }
     }
 }
