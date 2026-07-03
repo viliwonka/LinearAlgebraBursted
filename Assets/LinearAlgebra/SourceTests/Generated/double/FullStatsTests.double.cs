@@ -1,7 +1,6 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.Stats;
 using NUnit.Framework;
 using Unity.Burst;
 using Unity.Collections;
@@ -47,7 +46,7 @@ public class doubleFullStatsTests
             var v = arena.doubleVec(2);
             v[0] = (double)20; v[1] = (double)10;   // unsorted on purpose
 
-            var s = doubleStats_OP.meanMinMaxRange_medianIQRstdDevVariance(in v);
+            var s = Stats.meanMinMaxRange_medianIQRstdDevVariance(in v);
 
             AssertClose(s.median, (double)15, (double)1E-4);
             AssertClose(s.q1, (double)12.5, (double)1E-4);
@@ -72,7 +71,7 @@ public class doubleFullStatsTests
             var v = arena.doubleVec(4);
             v[0] = (double)3; v[1] = (double)1; v[2] = (double)4; v[3] = (double)2;
 
-            var s = doubleStats_OP.meanMinMaxRange_medianIQRstdDevVariance(in v);
+            var s = Stats.meanMinMaxRange_medianIQRstdDevVariance(in v);
 
             AssertClose(s.median, (double)2.5, (double)1E-4);
             AssertClose(s.q1, (double)1.75, (double)1E-4);
@@ -92,11 +91,11 @@ public class doubleFullStatsTests
 
             var odd = arena.doubleVec(3);
             odd[0] = (double)3; odd[1] = (double)1; odd[2] = (double)2;
-            AssertClose(doubleStats_OP.median(in odd), (double)2, (double)1E-4);
+            AssertClose(Stats.median(in odd), (double)2, (double)1E-4);
 
             var even = arena.doubleVec(4);
             even[0] = (double)4; even[1] = (double)2; even[2] = (double)1; even[3] = (double)3;
-            AssertClose(doubleStats_OP.median(in even), (double)2.5, (double)1E-4);
+            AssertClose(Stats.median(in even), (double)2.5, (double)1E-4);
 
             arena.Dispose();
         }

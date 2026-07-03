@@ -2,7 +2,6 @@ using System;
 
 using LinearAlgebra;
 using LinearAlgebra.ML;        // opt-in: KMeans.kmeans, KMeansInit, fProxyKMeansCache
-using LinearAlgebra.Stats;     // fProxyStats_OP.colMean (k==1 global-mean oracle)
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -196,7 +195,7 @@ public class fProxyKMeansTests
             var ws        = arena.fProxyKMeansCache(N, D, k);
             KMeans.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
 
-            var mean = fProxyStats_OP.colMean(in X);   // length D
+            var mean = Stats.colMean(in X);   // length D
             fProxy ctol = (fProxy)50 * Consts.fProxySqrtEps;
             for (int f = 0; f < D; f++)
                 AssertClose(centroids[0, f], mean[f], ctol);

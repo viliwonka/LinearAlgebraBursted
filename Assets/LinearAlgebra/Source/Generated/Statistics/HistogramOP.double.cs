@@ -4,7 +4,7 @@ using System;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace LinearAlgebra.Stats
+namespace LinearAlgebra
 {
     // HistogramOP: count-based distribution estimation over float/double data.
     //

@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
 using LinearAlgebra;
-using LinearAlgebra.Stats;
 
 namespace LinearAlgebra.Realtime
 {
@@ -180,7 +179,7 @@ namespace LinearAlgebra.Realtime
             // Time-order into a temp matrix, then reuse the StatsOP covariance core.
             var m = _buffer.doubleTempMat(_count, _features);
             AsMatrix(ref m);
-            doubleStats_OP.covarianceInto(in m, ref dest);
+            Stats.covarianceInto(in m, ref dest);
         }
 
         /// <summary>Allocating covariance — a fresh Features×Features matrix from the arena TEMP pool.</summary>

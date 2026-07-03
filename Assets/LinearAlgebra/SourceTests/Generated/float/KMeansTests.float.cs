@@ -2,7 +2,6 @@ using System;
 
 using LinearAlgebra;
 using LinearAlgebra.ML;        // opt-in: KMeans.kmeans, KMeansInit, floatKMeansCache
-using LinearAlgebra.Stats;     // floatStats_OP.colMean (k==1 global-mean oracle)
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -196,7 +195,7 @@ public class floatKMeansTests
             var ws        = arena.floatKMeansCache(N, D, k);
             KMeans.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out float inertia, out _, ref ws);
 
-            var mean = floatStats_OP.colMean(in X);   // length D
+            var mean = Stats.colMean(in X);   // length D
             float ctol = (float)50 * Consts.floatSqrtEps;
             for (int f = 0; f < D; f++)
                 AssertClose(centroids[0, f], mean[f], ctol);

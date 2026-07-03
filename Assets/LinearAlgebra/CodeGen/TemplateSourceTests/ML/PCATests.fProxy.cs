@@ -2,7 +2,6 @@ using System;
 
 using LinearAlgebra;
 using LinearAlgebra.ML;        // PCA, fProxyPCAModel, PCAScaling
-using LinearAlgebra.Stats;     // fProxyStats_OP.colMean (oracle side-uses)
 
 using NUnit.Framework;
 using Unity.Burst;

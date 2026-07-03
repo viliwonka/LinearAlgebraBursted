@@ -1,7 +1,6 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.Stats;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -128,10 +127,10 @@ public class fProxyTransformsTests
             v[0] = 2f; v[1] = 4f; v[2] = 4f; v[3] = 4f;
             v[4] = 5f; v[5] = 5f; v[6] = 7f; v[7] = 9f;
 
-            fProxyStats_OP.standardize(in v);
+            Stats.standardize(in v);
 
-            AssertClose(fProxyStats_OP.mean(in v), (fProxy)0f, (fProxy)EPS);
-            AssertClose(fProxyStats_OP.stdDev(in v), (fProxy)1f, (fProxy)EPS);
+            AssertClose(Stats.mean(in v), (fProxy)0f, (fProxy)EPS);
+            AssertClose(Stats.stdDev(in v), (fProxy)1f, (fProxy)EPS);
             arena.Dispose();
         }
 
@@ -142,7 +141,7 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(5);
             for (int i = 0; i < 5; i++) v[i] = 3f;
 
-            fProxyStats_OP.standardize(in v);
+            Stats.standardize(in v);
 
             for (int i = 0; i < 5; i++)
             {
@@ -159,7 +158,7 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(1);
             v[0] = 42f;
 
-            fProxyStats_OP.standardize(in v);
+            Stats.standardize(in v);
             AssertClose(v[0], (fProxy)0f, (fProxy)EPS);
             arena.Dispose();
         }
@@ -173,10 +172,10 @@ public class fProxyTransformsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
 
-            fProxyStats_OP.standardize(in A);
+            Stats.standardize(in A);
 
-            AssertClose(fProxyStats_OP.mean(in A), (fProxy)0f, (fProxy)EPS);
-            AssertClose(fProxyStats_OP.stdDev(in A), (fProxy)1f, (fProxy)EPS);
+            AssertClose(Stats.mean(in A), (fProxy)0f, (fProxy)EPS);
+            AssertClose(Stats.stdDev(in A), (fProxy)1f, (fProxy)EPS);
             arena.Dispose();
         }
 
@@ -184,10 +183,10 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(4, 5, -3f, 3f, 12345);
-            fProxyStats_OP.standardizeRows(ref A);
+            Stats.standardizeRows(ref A);
 
-            var rMean = fProxyStats_OP.rowMean(in A);
-            var rStd = fProxyStats_OP.rowStdDev(in A);
+            var rMean = Stats.rowMean(in A);
+            var rStd = Stats.rowStdDev(in A);
             for (int r = 0; r < 4; r++)
             {
                 AssertClose(rMean[r], (fProxy)0f, (fProxy)EPS);
@@ -200,10 +199,10 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(5, 4, -3f, 3f, 67890);
-            fProxyStats_OP.standardizeColumns(ref A);
+            Stats.standardizeColumns(ref A);
 
-            var cMean = fProxyStats_OP.colMean(in A);
-            var cStd = fProxyStats_OP.colStdDev(in A);
+            var cMean = Stats.colMean(in A);
+            var cStd = Stats.colStdDev(in A);
             for (int c = 0; c < 4; c++)
             {
                 AssertClose(cMean[c], (fProxy)0f, (fProxy)EPS);
@@ -221,7 +220,7 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(4);
             v[0] = 10f; v[1] = 20f; v[2] = 30f; v[3] = 50f;
 
-            fProxyStats_OP.rescale(in v);
+            Stats.rescale(in v);
 
             AssertClose(v[0], (fProxy)0f, (fProxy)EPS);
             AssertClose(v[3], (fProxy)1f, (fProxy)EPS);
@@ -240,7 +239,7 @@ public class fProxyTransformsTests
             v[0] = 10f; v[1] = 20f; v[2] = 30f; v[3] = 50f;
             fProxy lo = -2f, hi = 5f;
 
-            fProxyStats_OP.rescale(in v, lo, hi);
+            Stats.rescale(in v, lo, hi);
 
             AssertClose(v[0], lo, (fProxy)EPS);
             AssertClose(v[3], hi, (fProxy)EPS);
@@ -258,7 +257,7 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(4);
             for (int i = 0; i < 4; i++) v[i] = 7f;
 
-            fProxyStats_OP.rescale(in v, (fProxy)(-3f), (fProxy)9f);
+            Stats.rescale(in v, (fProxy)(-3f), (fProxy)9f);
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(v[i], (fProxy)(-3f), (fProxy)EPS);
@@ -276,8 +275,8 @@ public class fProxyTransformsTests
             a[0] = -4f; a[1] = 1f; a[2] = 0f; a[3] = 9f; a[4] = 2f;
             for (int i = 0; i < 5; i++) b[i] = a[i];
 
-            fProxyStats_OP.rescale(in a);
-            fProxyStats_OP.rescale(in b, (fProxy)0f, (fProxy)1f);
+            Stats.rescale(in a);
+            Stats.rescale(in b, (fProxy)0f, (fProxy)1f);
             for (int i = 0; i < 5; i++)
                 AssertClose(a[i], b[i], (fProxy)EPS);
             arena.Dispose();
@@ -287,9 +286,9 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(4, 5, -3f, 3f, 222);
-            fProxyStats_OP.rescaleRows(ref A);
-            var rMin = fProxyStats_OP.rowMin(in A);
-            var rMax = fProxyStats_OP.rowMax(in A);
+            Stats.rescaleRows(ref A);
+            var rMin = Stats.rowMin(in A);
+            var rMax = Stats.rowMax(in A);
             for (int r = 0; r < 4; r++)
             {
                 AssertClose(rMin[r], (fProxy)0f, (fProxy)EPS);
@@ -303,9 +302,9 @@ public class fProxyTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(5, 4, -3f, 3f, 333);
             fProxy lo = 1f, hi = 3f;
-            fProxyStats_OP.rescaleColumns(ref A, lo, hi);
-            var cMin = fProxyStats_OP.colMin(in A);
-            var cMax = fProxyStats_OP.colMax(in A);
+            Stats.rescaleColumns(ref A, lo, hi);
+            var cMin = Stats.colMin(in A);
+            var cMax = Stats.colMax(in A);
             for (int c = 0; c < 4; c++)
             {
                 AssertClose(cMin[c], lo, (fProxy)EPS);
@@ -323,11 +322,11 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(3);
             v[0] = 1f; v[1] = 2f; v[2] = 3f;
 
-            fProxyStats_OP.center(in v);
+            Stats.center(in v);
             AssertClose(v[0], (fProxy)(-1f), (fProxy)EPS);
             AssertClose(v[1], (fProxy)0f, (fProxy)EPS);
             AssertClose(v[2], (fProxy)1f, (fProxy)EPS);
-            AssertClose(fProxyStats_OP.mean(in v), (fProxy)0f, (fProxy)EPS);
+            AssertClose(Stats.mean(in v), (fProxy)0f, (fProxy)EPS);
             arena.Dispose();
         }
 
@@ -335,8 +334,8 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(4, 5, -5f, 5f, 444);
-            fProxyStats_OP.centerRows(ref A);
-            var rMean = fProxyStats_OP.rowMean(in A);
+            Stats.centerRows(ref A);
+            var rMean = Stats.rowMean(in A);
             for (int r = 0; r < 4; r++)
                 AssertClose(rMean[r], (fProxy)0f, (fProxy)EPS);
             arena.Dispose();
@@ -346,8 +345,8 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(5, 4, -5f, 5f, 555);
-            fProxyStats_OP.centerColumns(ref A);
-            var cMean = fProxyStats_OP.colMean(in A);
+            Stats.centerColumns(ref A);
+            var cMean = Stats.colMean(in A);
             for (int c = 0; c < 4; c++)
                 AssertClose(cMean[c], (fProxy)0f, (fProxy)EPS);
             arena.Dispose();
@@ -362,7 +361,7 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(3);
             v[0] = 2f; v[1] = -4f; v[2] = 1f;
 
-            fProxyStats_OP.maxAbs(in v);
+            Stats.maxAbs(in v);
             AssertClose(v[0], (fProxy)0.5f, (fProxy)EPS);
             AssertClose(v[1], (fProxy)(-1f), (fProxy)EPS);
             AssertClose(v[2], (fProxy)0.25f, (fProxy)EPS);
@@ -377,7 +376,7 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(4);
             for (int i = 0; i < 4; i++) v[i] = 0f;
 
-            fProxyStats_OP.maxAbs(in v);
+            Stats.maxAbs(in v);
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(v[i], (fProxy)0f, (fProxy)EPS);
@@ -390,7 +389,7 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(4, 5, -3f, 3f, 666);
-            fProxyStats_OP.maxAbsRows(ref A);
+            Stats.maxAbsRows(ref A);
             for (int r = 0; r < 4; r++)
             {
                 fProxy mAbs = (fProxy)0f;
@@ -404,7 +403,7 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(5, 4, -3f, 3f, 777);
-            fProxyStats_OP.maxAbsColumns(ref A);
+            Stats.maxAbsColumns(ref A);
             for (int c = 0; c < 4; c++)
             {
                 fProxy mAbs = (fProxy)0f;
@@ -422,8 +421,8 @@ public class fProxyTransformsTests
             var v = arena.fProxyVec(5);
             v[0] = -1f; v[1] = 0f; v[2] = 2f; v[3] = 1f; v[4] = 3f;
 
-            fProxyStats_OP.softmax(in v);
-            AssertClose(fProxyStats_OP.sum(in v), (fProxy)1f, (fProxy)EPS);
+            Stats.softmax(in v);
+            AssertClose(Stats.sum(in v), (fProxy)1f, (fProxy)EPS);
             for (int i = 0; i < 5; i++)
                 AssertTrue(v[i] > (fProxy)0f && v[i] < (fProxy)1f);
             arena.Dispose();
@@ -434,7 +433,7 @@ public class fProxyTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var v = arena.fProxyVec(1);
             v[0] = 17f;
-            fProxyStats_OP.softmax(in v);
+            Stats.softmax(in v);
             AssertClose(v[0], (fProxy)1f, (fProxy)EPS);
             arena.Dispose();
         }
@@ -445,7 +444,7 @@ public class fProxyTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var v = arena.fProxyVec(4);
             v[0] = 0.5f; v[1] = 1f; v[2] = 2f; v[3] = 4f;
-            fProxyStats_OP.softmax(in v);
+            Stats.softmax(in v);
             for (int i = 1; i < 4; i++)
                 AssertTrue(v[i] > v[i - 1]);
             arena.Dispose();
@@ -457,9 +456,9 @@ public class fProxyTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var v = arena.fProxyVec(2);
             v[0] = 1000f; v[1] = 1001f;
-            fProxyStats_OP.softmax(in v);
+            Stats.softmax(in v);
             AssertTrue(math.isfinite(v[0]) && math.isfinite(v[1]));
-            AssertClose(fProxyStats_OP.sum(in v), (fProxy)1f, (fProxy)EPS);
+            AssertClose(Stats.sum(in v), (fProxy)1f, (fProxy)EPS);
             AssertTrue(v[1] > v[0]);
             arena.Dispose();
         }
@@ -473,10 +472,10 @@ public class fProxyTransformsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 5f; A[1, 2] = 6f;
 
-            fProxyStats_OP.softmax(in A);
+            Stats.softmax(in A);
 
-            AssertClose(fProxyStats_OP.sum(in A), (fProxy)1f, (fProxy)EPS);
-            var rSum = fProxyStats_OP.rowSum(in A);
+            AssertClose(Stats.sum(in A), (fProxy)1f, (fProxy)EPS);
+            var rSum = Stats.rowSum(in A);
             AssertTrue(rSum[0] < (fProxy)1f - (fProxy)EPS);
             AssertTrue(rSum[1] < (fProxy)1f - (fProxy)EPS);
             arena.Dispose();
@@ -486,8 +485,8 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(4, 5, -2f, 2f, 888);
-            fProxyStats_OP.softmaxRows(ref A);
-            var rSum = fProxyStats_OP.rowSum(in A);
+            Stats.softmaxRows(ref A);
+            var rSum = Stats.rowSum(in A);
             for (int r = 0; r < 4; r++)
             {
                 AssertClose(rSum[r], (fProxy)1f, (fProxy)EPS);
@@ -501,8 +500,8 @@ public class fProxyTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(5, 4, -2f, 2f, 999);
-            fProxyStats_OP.softmaxColumns(ref A);
-            var cSum = fProxyStats_OP.colSum(in A);
+            Stats.softmaxColumns(ref A);
+            var cSum = Stats.colSum(in A);
             for (int c = 0; c < 4; c++)
             {
                 AssertClose(cSum[c], (fProxy)1f, (fProxy)EPS);
@@ -542,7 +541,7 @@ public class fProxyTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(4, 5, -3f, 3f, 1212);
             Norms.NormalizeRows(ref A, Norm.L2);
-            var rL2 = fProxyStats_OP.rowNormL2(in A);
+            var rL2 = Stats.rowNormL2(in A);
             for (int r = 0; r < 4; r++)
                 AssertClose(rL2[r], (fProxy)1f, (fProxy)EPS);
             arena.Dispose();
@@ -553,7 +552,7 @@ public class fProxyTransformsTests
             var arena = new Arena(Allocator.Persistent);
             var A = arena.fProxyRandomMat(5, 4, -3f, 3f, 3434);
             Norms.NormalizeColumns(ref A, Norm.L1);
-            var cL1 = fProxyStats_OP.colNormL1(in A);
+            var cL1 = Stats.colNormL1(in A);
             for (int c = 0; c < 4; c++)
                 AssertClose(cL1[c], (fProxy)1f, (fProxy)EPS);
             arena.Dispose();
@@ -575,7 +574,7 @@ public class fProxyTransformsTests
                 AssertClose(A[1, c], (fProxy)0f, (fProxy)EPS);
                 AssertTrue(math.isfinite(A[1, c]));
             }
-            var rL2 = fProxyStats_OP.rowNormL2(in A);
+            var rL2 = Stats.rowNormL2(in A);
             AssertClose(rL2[0], (fProxy)1f, (fProxy)EPS);
             AssertClose(rL2[2], (fProxy)1f, (fProxy)EPS);
 

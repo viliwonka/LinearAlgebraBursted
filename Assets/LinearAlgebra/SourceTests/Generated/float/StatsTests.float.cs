@@ -1,7 +1,6 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.Stats;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -121,7 +120,7 @@ public class floatStatsTests
                 for (int j = 0; j < 3; j++)
                     C[i, j] = (float)999f;
 
-            floatStats_OP.covarianceInto(in A, ref C);
+            Stats.covarianceInto(in A, ref C);
 
             for (int i = 0; i < 3; i++)
                 for (int j = 0; j < 3; j++)
@@ -143,10 +142,10 @@ public class floatStatsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
 
-            var rSum = floatStats_OP.rowSum(in A);
-            var cSum = floatStats_OP.colSum(in A);
-            var rMean = floatStats_OP.rowMean(in A);
-            var cMean = floatStats_OP.colMean(in A);
+            var rSum = Stats.rowSum(in A);
+            var cSum = Stats.colSum(in A);
+            var rMean = Stats.rowMean(in A);
+            var cMean = Stats.colMean(in A);
 
             Assert.AreEqual(2, rSum.N); Assert.AreEqual(3, cSum.N);
             Assert.AreEqual(2, rMean.N); Assert.AreEqual(3, cMean.N);
@@ -176,10 +175,10 @@ public class floatStatsTests
             A[0, 0] = 1f; A[0, 1] = -2f; A[0, 2] = 3f;
             A[1, 0] = -4f; A[1, 1] = 6f; A[1, 2] = -8f;
 
-            var rL1 = floatStats_OP.rowNormL1(in A);
-            var rL2 = floatStats_OP.rowNormL2(in A);
-            var cL1 = floatStats_OP.colNormL1(in A);
-            var cL2 = floatStats_OP.colNormL2(in A);
+            var rL1 = Stats.rowNormL1(in A);
+            var rL2 = Stats.rowNormL2(in A);
+            var cL1 = Stats.colNormL1(in A);
+            var cL2 = Stats.colNormL2(in A);
 
             Assert.AreEqual(2, rL1.N); Assert.AreEqual(2, rL2.N);
             Assert.AreEqual(3, cL1.N); Assert.AreEqual(3, cL2.N);
@@ -214,24 +213,24 @@ public class floatStatsTests
             // Poison dest before each call so an accumulating col op with a missing zeroing loop
             // (which += into garbage) would actually fail — the dest does NOT start zeroed.
             // row ops -> length m
-            Poison(in rDest); floatStats_OP.rowSum(in A, ref rDest);      EqVec(in rDest, floatStats_OP.rowSum(in A), m);
-            Poison(in rDest); floatStats_OP.rowMean(in A, ref rDest);     EqVec(in rDest, floatStats_OP.rowMean(in A), m);
-            Poison(in rDest); floatStats_OP.rowMin(in A, ref rDest);      EqVec(in rDest, floatStats_OP.rowMin(in A), m);
-            Poison(in rDest); floatStats_OP.rowMax(in A, ref rDest);      EqVec(in rDest, floatStats_OP.rowMax(in A), m);
-            Poison(in rDest); floatStats_OP.rowVariance(in A, ref rDest); EqVec(in rDest, floatStats_OP.rowVariance(in A), m);
-            Poison(in rDest); floatStats_OP.rowStdDev(in A, ref rDest);   EqVec(in rDest, floatStats_OP.rowStdDev(in A), m);
-            Poison(in rDest); floatStats_OP.rowNormL1(in A, ref rDest);   EqVec(in rDest, floatStats_OP.rowNormL1(in A), m);
-            Poison(in rDest); floatStats_OP.rowNormL2(in A, ref rDest);   EqVec(in rDest, floatStats_OP.rowNormL2(in A), m);
+            Poison(in rDest); Stats.rowSum(in A, ref rDest);      EqVec(in rDest, Stats.rowSum(in A), m);
+            Poison(in rDest); Stats.rowMean(in A, ref rDest);     EqVec(in rDest, Stats.rowMean(in A), m);
+            Poison(in rDest); Stats.rowMin(in A, ref rDest);      EqVec(in rDest, Stats.rowMin(in A), m);
+            Poison(in rDest); Stats.rowMax(in A, ref rDest);      EqVec(in rDest, Stats.rowMax(in A), m);
+            Poison(in rDest); Stats.rowVariance(in A, ref rDest); EqVec(in rDest, Stats.rowVariance(in A), m);
+            Poison(in rDest); Stats.rowStdDev(in A, ref rDest);   EqVec(in rDest, Stats.rowStdDev(in A), m);
+            Poison(in rDest); Stats.rowNormL1(in A, ref rDest);   EqVec(in rDest, Stats.rowNormL1(in A), m);
+            Poison(in rDest); Stats.rowNormL2(in A, ref rDest);   EqVec(in rDest, Stats.rowNormL2(in A), m);
 
             // col ops -> length n
-            Poison(in cDest); floatStats_OP.colSum(in A, ref cDest);      EqVec(in cDest, floatStats_OP.colSum(in A), n);
-            Poison(in cDest); floatStats_OP.colMean(in A, ref cDest);     EqVec(in cDest, floatStats_OP.colMean(in A), n);
-            Poison(in cDest); floatStats_OP.colMin(in A, ref cDest);      EqVec(in cDest, floatStats_OP.colMin(in A), n);
-            Poison(in cDest); floatStats_OP.colMax(in A, ref cDest);      EqVec(in cDest, floatStats_OP.colMax(in A), n);
-            Poison(in cDest); floatStats_OP.colVariance(in A, ref cDest); EqVec(in cDest, floatStats_OP.colVariance(in A), n);
-            Poison(in cDest); floatStats_OP.colStdDev(in A, ref cDest);   EqVec(in cDest, floatStats_OP.colStdDev(in A), n);
-            Poison(in cDest); floatStats_OP.colNormL1(in A, ref cDest);   EqVec(in cDest, floatStats_OP.colNormL1(in A), n);
-            Poison(in cDest); floatStats_OP.colNormL2(in A, ref cDest);   EqVec(in cDest, floatStats_OP.colNormL2(in A), n);
+            Poison(in cDest); Stats.colSum(in A, ref cDest);      EqVec(in cDest, Stats.colSum(in A), n);
+            Poison(in cDest); Stats.colMean(in A, ref cDest);     EqVec(in cDest, Stats.colMean(in A), n);
+            Poison(in cDest); Stats.colMin(in A, ref cDest);      EqVec(in cDest, Stats.colMin(in A), n);
+            Poison(in cDest); Stats.colMax(in A, ref cDest);      EqVec(in cDest, Stats.colMax(in A), n);
+            Poison(in cDest); Stats.colVariance(in A, ref cDest); EqVec(in cDest, Stats.colVariance(in A), n);
+            Poison(in cDest); Stats.colStdDev(in A, ref cDest);   EqVec(in cDest, Stats.colStdDev(in A), n);
+            Poison(in cDest); Stats.colNormL1(in A, ref cDest);   EqVec(in cDest, Stats.colNormL1(in A), n);
+            Poison(in cDest); Stats.colNormL2(in A, ref cDest);   EqVec(in cDest, Stats.colNormL2(in A), n);
 
             arena.Dispose();
         }
@@ -260,11 +259,11 @@ public class floatStatsTests
             v[0] = 2f; v[1] = 4f; v[2] = 4f; v[3] = 4f;
             v[4] = 5f; v[5] = 5f; v[6] = 7f; v[7] = 9f;
 
-            AssertClose(floatStats_OP.mean(in v), (float)5f, 1E-5f);
-            AssertClose(floatStats_OP.variance(in v), (float)4f, 1E-5f);
-            AssertClose(floatStats_OP.stdDev(in v), (float)2f, 1E-5f);
-            AssertClose(floatStats_OP.varianceSample(in v), (float)(32f / 7f), 1E-5f);
-            AssertClose(floatStats_OP.stdDevSample(in v), (float)math.sqrt(32f / 7f), 1E-5f);
+            AssertClose(Stats.mean(in v), (float)5f, 1E-5f);
+            AssertClose(Stats.variance(in v), (float)4f, 1E-5f);
+            AssertClose(Stats.stdDev(in v), (float)2f, 1E-5f);
+            AssertClose(Stats.varianceSample(in v), (float)(32f / 7f), 1E-5f);
+            AssertClose(Stats.stdDevSample(in v), (float)math.sqrt(32f / 7f), 1E-5f);
 
             arena.Dispose();
         }
@@ -277,8 +276,8 @@ public class floatStatsTests
             var v = arena.floatVec(1);
             v[0] = 3f;
 
-            AssertClose(floatStats_OP.variance(in v), (float)0f, 1E-5f);
-            AssertClose(floatStats_OP.stdDev(in v), (float)0f, 1E-5f);
+            AssertClose(Stats.variance(in v), (float)0f, 1E-5f);
+            AssertClose(Stats.stdDev(in v), (float)0f, 1E-5f);
 
             arena.Dispose();
         }
@@ -292,8 +291,8 @@ public class floatStatsTests
             v[0] = 3f; v[1] = 1f; v[2] = 4f; v[3] = 1f;
             v[4] = 5f; v[5] = 9f; v[6] = 2f; v[7] = 6f;
 
-            Assert.AreEqual(1, floatStats_OP.argmin(in v));
-            Assert.AreEqual(5, floatStats_OP.argmax(in v));
+            Assert.AreEqual(1, Stats.argmin(in v));
+            Assert.AreEqual(5, Stats.argmax(in v));
 
             arena.Dispose();
         }
@@ -306,8 +305,8 @@ public class floatStatsTests
             var v = arena.floatVec(3);
             v[0] = 7f; v[1] = 7f; v[2] = 7f;
 
-            Assert.AreEqual(0, floatStats_OP.argmin(in v));
-            Assert.AreEqual(0, floatStats_OP.argmax(in v));
+            Assert.AreEqual(0, Stats.argmin(in v));
+            Assert.AreEqual(0, Stats.argmax(in v));
 
             arena.Dispose();
         }
@@ -324,14 +323,14 @@ public class floatStatsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
 
-            var rowMin = floatStats_OP.rowMin(in A);
-            var rowMax = floatStats_OP.rowMax(in A);
-            var colMin = floatStats_OP.colMin(in A);
-            var colMax = floatStats_OP.colMax(in A);
-            var rowVar = floatStats_OP.rowVariance(in A);
-            var rowStd = floatStats_OP.rowStdDev(in A);
-            var colVar = floatStats_OP.colVariance(in A);
-            var colStd = floatStats_OP.colStdDev(in A);
+            var rowMin = Stats.rowMin(in A);
+            var rowMax = Stats.rowMax(in A);
+            var colMin = Stats.colMin(in A);
+            var colMax = Stats.colMax(in A);
+            var rowVar = Stats.rowVariance(in A);
+            var rowStd = Stats.rowStdDev(in A);
+            var colVar = Stats.colVariance(in A);
+            var colStd = Stats.colStdDev(in A);
 
             // Result vector lengths
             Assert.AreEqual(2, rowMin.N);
@@ -381,9 +380,9 @@ public class floatStatsTests
             A[1, 0] = -3f; A[1, 1] = 3f;
             A[2, 0] = -5f; A[2, 1] = 5f;
 
-            var colMin = floatStats_OP.colMin(in A);
-            var colMax = floatStats_OP.colMax(in A);
-            var colVar = floatStats_OP.colVariance(in A);
+            var colMin = Stats.colMin(in A);
+            var colMax = Stats.colMax(in A);
+            var colVar = Stats.colVariance(in A);
 
             Assert.AreEqual(2, colMin.N);
             Assert.AreEqual(2, colMax.N);
@@ -410,7 +409,7 @@ public class floatStatsTests
             A[1, 0] = 7f;
             A[2, 0] = -4f;
 
-            var rowVar = floatStats_OP.rowVariance(in A);
+            var rowVar = Stats.rowVariance(in A);
 
             Assert.AreEqual(3, rowVar.N);
 
@@ -430,8 +429,8 @@ public class floatStatsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
 
-            Assert.AreEqual(0, floatStats_OP.argmin(in A));
-            Assert.AreEqual(5, floatStats_OP.argmax(in A));
+            Assert.AreEqual(0, Stats.argmin(in A));
+            Assert.AreEqual(5, Stats.argmax(in A));
 
             arena.Dispose();
         }
@@ -448,7 +447,7 @@ public class floatStatsTests
             A[1, 0] = 3f; A[1, 1] = 6f;
             A[2, 0] = 5f; A[2, 1] = 4f;
 
-            var C = floatStats_OP.covariance(in A);
+            var C = Stats.covariance(in A);
 
             Assert.AreEqual(2, C.M_Rows);
             Assert.AreEqual(2, C.N_Cols);
@@ -475,7 +474,7 @@ public class floatStatsTests
             A[1, 0] = 3f; A[1, 1] = 6f;
             A[2, 0] = 5f; A[2, 1] = 4f;
 
-            var C = floatStats_OP.covariance(in A);
+            var C = Stats.covariance(in A);
 
             // Build column vectors and compare with varianceSample.
             var col0 = arena.floatVec(3);
@@ -483,8 +482,8 @@ public class floatStatsTests
             var col1 = arena.floatVec(3);
             col1[0] = A[0, 1]; col1[1] = A[1, 1]; col1[2] = A[2, 1];
 
-            AssertClose(C[0, 0], floatStats_OP.varianceSample(in col0), 1E-5f);
-            AssertClose(C[1, 1], floatStats_OP.varianceSample(in col1), 1E-5f);
+            AssertClose(C[0, 0], Stats.varianceSample(in col0), 1E-5f);
+            AssertClose(C[1, 1], Stats.varianceSample(in col1), 1E-5f);
 
             AssertClose(C[0, 0], (float)4f, 1E-5f);
             AssertClose(C[1, 1], (float)4f, 1E-5f);
@@ -503,7 +502,7 @@ public class floatStatsTests
             A[1, 0] = 3f; A[1, 1] = 6f;
             A[2, 0] = 5f; A[2, 1] = 4f;
 
-            var R = floatStats_OP.correlation(in A);
+            var R = Stats.correlation(in A);
 
             Assert.AreEqual(2, R.M_Rows);
             Assert.AreEqual(2, R.N_Cols);
@@ -530,7 +529,7 @@ public class floatStatsTests
             Apos[1, 0] = 3f; Apos[1, 1] = 3f;
             Apos[2, 0] = 5f; Apos[2, 1] = 5f;
 
-            var Rpos = floatStats_OP.correlation(in Apos);
+            var Rpos = Stats.correlation(in Apos);
             AssertClose(Rpos[0, 1], (float)1f, 1E-5f);
             AssertClose(Rpos[1, 0], (float)1f, 1E-5f);
 
@@ -539,7 +538,7 @@ public class floatStatsTests
             Aneg[1, 0] = 3f; Aneg[1, 1] = -3f;
             Aneg[2, 0] = 5f; Aneg[2, 1] = -5f;
 
-            var Rneg = floatStats_OP.correlation(in Aneg);
+            var Rneg = Stats.correlation(in Aneg);
             AssertClose(Rneg[0, 1], (float)(-1f), 1E-5f);
             AssertClose(Rneg[1, 0], (float)(-1f), 1E-5f);
 
@@ -557,10 +556,10 @@ public class floatStatsTests
             A[1, 0] = 3f; A[1, 1] = 7f;
             A[2, 0] = 5f; A[2, 1] = 7f;
 
-            var C = floatStats_OP.covariance(in A);
+            var C = Stats.covariance(in A);
             AssertClose(C[1, 1], (float)0f, 1E-5f);
 
-            var R = floatStats_OP.correlation(in A);
+            var R = Stats.correlation(in A);
             AssertClose(R[0, 0], (float)1f, 1E-5f);
             AssertClose(R[1, 1], (float)1f, 1E-5f);
             AssertClose(R[0, 1], (float)0f, 1E-5f);
@@ -580,12 +579,12 @@ public class floatStatsTests
             A[1, 0] = 4f;
             A[2, 0] = 6f;
 
-            var C = floatStats_OP.covariance(in A);
+            var C = Stats.covariance(in A);
             Assert.AreEqual(1, C.M_Rows);
             Assert.AreEqual(1, C.N_Cols);
             AssertClose(C[0, 0], (float)4f, 1E-5f);
 
-            var R = floatStats_OP.correlation(in A);
+            var R = Stats.correlation(in A);
             Assert.AreEqual(1, R.M_Rows);
             Assert.AreEqual(1, R.N_Cols);
             AssertClose(R[0, 0], (float)1f, 1E-5f);
@@ -761,7 +760,7 @@ public class floatStatsTests
         var A = arena.floatMat(1, 3);
         A[0, 0] = 5f; A[0, 1] = -2f; A[0, 2] = 9f;
 
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.covariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.covariance(in A));
 
         arena.Dispose();
     }
@@ -775,7 +774,7 @@ public class floatStatsTests
 
         var v = arena.floatVec(0);
 
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.varianceSample(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
 
         arena.Dispose();
     }
@@ -788,7 +787,7 @@ public class floatStatsTests
         var v = arena.floatVec(1);
         v[0] = 5f;
 
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.varianceSample(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
 
         arena.Dispose();
     }
@@ -801,10 +800,10 @@ public class floatStatsTests
         // 0-row matrix (3 cols) is constructible; row/col stats must throw.
         var A = arena.floatMat(0, 3);
 
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.rowMin(in A));
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.colMin(in A));
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.rowVariance(in A));
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.colVariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.rowMin(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.colMin(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.rowVariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.colVariance(in A));
 
         arena.Dispose();
     }
@@ -818,8 +817,8 @@ public class floatStatsTests
         var A = arena.floatMat(1, 2);
         A[0, 0] = 1f; A[0, 1] = 2f;
 
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.covariance(in A));
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.correlation(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.covariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.correlation(in A));
 
         arena.Dispose();
     }
@@ -833,8 +832,8 @@ public class floatStatsTests
         // 0-col matrix (3 rows) is constructible; covariance/correlation must throw.
         var A = arena.floatMat(3, 0);
 
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.covariance(in A));
-        Assert.Throws<InvalidOperationException>(() => floatStats_OP.correlation(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.covariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.correlation(in A));
 
         arena.Dispose();
     }

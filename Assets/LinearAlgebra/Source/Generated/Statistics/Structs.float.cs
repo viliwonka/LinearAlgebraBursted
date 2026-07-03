@@ -1,6 +1,6 @@
 using Unity.Burst;
 
-namespace LinearAlgebra.Stats
+namespace LinearAlgebra
 {
     public struct floatMeanMinMaxRangeStats
     {

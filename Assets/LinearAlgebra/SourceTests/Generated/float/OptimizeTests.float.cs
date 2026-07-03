@@ -1,7 +1,6 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.Stats;
 
 using NUnit.Framework;
 using Unity.Burst;

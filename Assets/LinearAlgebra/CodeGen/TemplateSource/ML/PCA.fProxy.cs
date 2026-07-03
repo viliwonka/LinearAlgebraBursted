@@ -1,6 +1,5 @@
 using System;
 using Unity.Mathematics;
-using LinearAlgebra.Stats;
 
 namespace LinearAlgebra.ML
 {
@@ -251,11 +250,11 @@ namespace LinearAlgebra.ML
             int p = X.N_Cols;
             RequireModelShapeFull(in model, p, method);
 
-            fProxyStats_OP.colMean(in X, ref model.mean);
+            Stats.colMean(in X, ref model.mean);
 
             // C is PCA-built scratch each call (temp pool) -- eigenSymmetric destroys it.
             var C = X.fProxyTempMat(p, p);
-            fProxyStats_OP.covarianceInto(in X, ref C);
+            Stats.covarianceInto(in X, ref C);
 
             fProxy totalVariance;
 
@@ -347,7 +346,7 @@ namespace LinearAlgebra.ML
             int p = X.N_Cols;
             RequireModelShapeFull(in model, p, method);
 
-            fProxyStats_OP.colMean(in X, ref model.mean);
+            Stats.colMean(in X, ref model.mean);
 
             var Xc = X.fProxyTempMat(n, p);
             fProxy totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
@@ -417,7 +416,7 @@ namespace LinearAlgebra.ML
             RequireTopK(k, n, p, method);
             RequireModelShapeTopK(in model, p, k, method);
 
-            fProxyStats_OP.colMean(in X, ref model.mean);
+            Stats.colMean(in X, ref model.mean);
 
             var Xc = X.fProxyTempMat(n, p);
             fProxy totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
@@ -488,7 +487,7 @@ namespace LinearAlgebra.ML
             RequireTopK(k, n, p, method);
             RequireModelShapeTopK(in model, p, k, method);
 
-            fProxyStats_OP.colMean(in X, ref model.mean);
+            Stats.colMean(in X, ref model.mean);
 
             var Xc = X.fProxyTempMat(n, p);
             fProxy totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);

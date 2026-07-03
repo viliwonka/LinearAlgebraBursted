@@ -1,7 +1,6 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.Stats;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -121,7 +120,7 @@ public class fProxyStatsTests
                 for (int j = 0; j < 3; j++)
                     C[i, j] = (fProxy)999f;
 
-            fProxyStats_OP.covarianceInto(in A, ref C);
+            Stats.covarianceInto(in A, ref C);
 
             for (int i = 0; i < 3; i++)
                 for (int j = 0; j < 3; j++)
@@ -143,10 +142,10 @@ public class fProxyStatsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
 
-            var rSum = fProxyStats_OP.rowSum(in A);
-            var cSum = fProxyStats_OP.colSum(in A);
-            var rMean = fProxyStats_OP.rowMean(in A);
-            var cMean = fProxyStats_OP.colMean(in A);
+            var rSum = Stats.rowSum(in A);
+            var cSum = Stats.colSum(in A);
+            var rMean = Stats.rowMean(in A);
+            var cMean = Stats.colMean(in A);
 
             Assert.AreEqual(2, rSum.N); Assert.AreEqual(3, cSum.N);
             Assert.AreEqual(2, rMean.N); Assert.AreEqual(3, cMean.N);
@@ -176,10 +175,10 @@ public class fProxyStatsTests
             A[0, 0] = 1f; A[0, 1] = -2f; A[0, 2] = 3f;
             A[1, 0] = -4f; A[1, 1] = 6f; A[1, 2] = -8f;
 
-            var rL1 = fProxyStats_OP.rowNormL1(in A);
-            var rL2 = fProxyStats_OP.rowNormL2(in A);
-            var cL1 = fProxyStats_OP.colNormL1(in A);
-            var cL2 = fProxyStats_OP.colNormL2(in A);
+            var rL1 = Stats.rowNormL1(in A);
+            var rL2 = Stats.rowNormL2(in A);
+            var cL1 = Stats.colNormL1(in A);
+            var cL2 = Stats.colNormL2(in A);
 
             Assert.AreEqual(2, rL1.N); Assert.AreEqual(2, rL2.N);
             Assert.AreEqual(3, cL1.N); Assert.AreEqual(3, cL2.N);
@@ -214,24 +213,24 @@ public class fProxyStatsTests
             // Poison dest before each call so an accumulating col op with a missing zeroing loop
             // (which += into garbage) would actually fail — the dest does NOT start zeroed.
             // row ops -> length m
-            Poison(in rDest); fProxyStats_OP.rowSum(in A, ref rDest);      EqVec(in rDest, fProxyStats_OP.rowSum(in A), m);
-            Poison(in rDest); fProxyStats_OP.rowMean(in A, ref rDest);     EqVec(in rDest, fProxyStats_OP.rowMean(in A), m);
-            Poison(in rDest); fProxyStats_OP.rowMin(in A, ref rDest);      EqVec(in rDest, fProxyStats_OP.rowMin(in A), m);
-            Poison(in rDest); fProxyStats_OP.rowMax(in A, ref rDest);      EqVec(in rDest, fProxyStats_OP.rowMax(in A), m);
-            Poison(in rDest); fProxyStats_OP.rowVariance(in A, ref rDest); EqVec(in rDest, fProxyStats_OP.rowVariance(in A), m);
-            Poison(in rDest); fProxyStats_OP.rowStdDev(in A, ref rDest);   EqVec(in rDest, fProxyStats_OP.rowStdDev(in A), m);
-            Poison(in rDest); fProxyStats_OP.rowNormL1(in A, ref rDest);   EqVec(in rDest, fProxyStats_OP.rowNormL1(in A), m);
-            Poison(in rDest); fProxyStats_OP.rowNormL2(in A, ref rDest);   EqVec(in rDest, fProxyStats_OP.rowNormL2(in A), m);
+            Poison(in rDest); Stats.rowSum(in A, ref rDest);      EqVec(in rDest, Stats.rowSum(in A), m);
+            Poison(in rDest); Stats.rowMean(in A, ref rDest);     EqVec(in rDest, Stats.rowMean(in A), m);
+            Poison(in rDest); Stats.rowMin(in A, ref rDest);      EqVec(in rDest, Stats.rowMin(in A), m);
+            Poison(in rDest); Stats.rowMax(in A, ref rDest);      EqVec(in rDest, Stats.rowMax(in A), m);
+            Poison(in rDest); Stats.rowVariance(in A, ref rDest); EqVec(in rDest, Stats.rowVariance(in A), m);
+            Poison(in rDest); Stats.rowStdDev(in A, ref rDest);   EqVec(in rDest, Stats.rowStdDev(in A), m);
+            Poison(in rDest); Stats.rowNormL1(in A, ref rDest);   EqVec(in rDest, Stats.rowNormL1(in A), m);
+            Poison(in rDest); Stats.rowNormL2(in A, ref rDest);   EqVec(in rDest, Stats.rowNormL2(in A), m);
 
             // col ops -> length n
-            Poison(in cDest); fProxyStats_OP.colSum(in A, ref cDest);      EqVec(in cDest, fProxyStats_OP.colSum(in A), n);
-            Poison(in cDest); fProxyStats_OP.colMean(in A, ref cDest);     EqVec(in cDest, fProxyStats_OP.colMean(in A), n);
-            Poison(in cDest); fProxyStats_OP.colMin(in A, ref cDest);      EqVec(in cDest, fProxyStats_OP.colMin(in A), n);
-            Poison(in cDest); fProxyStats_OP.colMax(in A, ref cDest);      EqVec(in cDest, fProxyStats_OP.colMax(in A), n);
-            Poison(in cDest); fProxyStats_OP.colVariance(in A, ref cDest); EqVec(in cDest, fProxyStats_OP.colVariance(in A), n);
-            Poison(in cDest); fProxyStats_OP.colStdDev(in A, ref cDest);   EqVec(in cDest, fProxyStats_OP.colStdDev(in A), n);
-            Poison(in cDest); fProxyStats_OP.colNormL1(in A, ref cDest);   EqVec(in cDest, fProxyStats_OP.colNormL1(in A), n);
-            Poison(in cDest); fProxyStats_OP.colNormL2(in A, ref cDest);   EqVec(in cDest, fProxyStats_OP.colNormL2(in A), n);
+            Poison(in cDest); Stats.colSum(in A, ref cDest);      EqVec(in cDest, Stats.colSum(in A), n);
+            Poison(in cDest); Stats.colMean(in A, ref cDest);     EqVec(in cDest, Stats.colMean(in A), n);
+            Poison(in cDest); Stats.colMin(in A, ref cDest);      EqVec(in cDest, Stats.colMin(in A), n);
+            Poison(in cDest); Stats.colMax(in A, ref cDest);      EqVec(in cDest, Stats.colMax(in A), n);
+            Poison(in cDest); Stats.colVariance(in A, ref cDest); EqVec(in cDest, Stats.colVariance(in A), n);
+            Poison(in cDest); Stats.colStdDev(in A, ref cDest);   EqVec(in cDest, Stats.colStdDev(in A), n);
+            Poison(in cDest); Stats.colNormL1(in A, ref cDest);   EqVec(in cDest, Stats.colNormL1(in A), n);
+            Poison(in cDest); Stats.colNormL2(in A, ref cDest);   EqVec(in cDest, Stats.colNormL2(in A), n);
 
             arena.Dispose();
         }
@@ -260,11 +259,11 @@ public class fProxyStatsTests
             v[0] = 2f; v[1] = 4f; v[2] = 4f; v[3] = 4f;
             v[4] = 5f; v[5] = 5f; v[6] = 7f; v[7] = 9f;
 
-            AssertClose(fProxyStats_OP.mean(in v), (fProxy)5f, 1E-5f);
-            AssertClose(fProxyStats_OP.variance(in v), (fProxy)4f, 1E-5f);
-            AssertClose(fProxyStats_OP.stdDev(in v), (fProxy)2f, 1E-5f);
-            AssertClose(fProxyStats_OP.varianceSample(in v), (fProxy)(32f / 7f), 1E-5f);
-            AssertClose(fProxyStats_OP.stdDevSample(in v), (fProxy)math.sqrt(32f / 7f), 1E-5f);
+            AssertClose(Stats.mean(in v), (fProxy)5f, 1E-5f);
+            AssertClose(Stats.variance(in v), (fProxy)4f, 1E-5f);
+            AssertClose(Stats.stdDev(in v), (fProxy)2f, 1E-5f);
+            AssertClose(Stats.varianceSample(in v), (fProxy)(32f / 7f), 1E-5f);
+            AssertClose(Stats.stdDevSample(in v), (fProxy)math.sqrt(32f / 7f), 1E-5f);
 
             arena.Dispose();
         }
@@ -277,8 +276,8 @@ public class fProxyStatsTests
             var v = arena.fProxyVec(1);
             v[0] = 3f;
 
-            AssertClose(fProxyStats_OP.variance(in v), (fProxy)0f, 1E-5f);
-            AssertClose(fProxyStats_OP.stdDev(in v), (fProxy)0f, 1E-5f);
+            AssertClose(Stats.variance(in v), (fProxy)0f, 1E-5f);
+            AssertClose(Stats.stdDev(in v), (fProxy)0f, 1E-5f);
 
             arena.Dispose();
         }
@@ -292,8 +291,8 @@ public class fProxyStatsTests
             v[0] = 3f; v[1] = 1f; v[2] = 4f; v[3] = 1f;
             v[4] = 5f; v[5] = 9f; v[6] = 2f; v[7] = 6f;
 
-            Assert.AreEqual(1, fProxyStats_OP.argmin(in v));
-            Assert.AreEqual(5, fProxyStats_OP.argmax(in v));
+            Assert.AreEqual(1, Stats.argmin(in v));
+            Assert.AreEqual(5, Stats.argmax(in v));
 
             arena.Dispose();
         }
@@ -306,8 +305,8 @@ public class fProxyStatsTests
             var v = arena.fProxyVec(3);
             v[0] = 7f; v[1] = 7f; v[2] = 7f;
 
-            Assert.AreEqual(0, fProxyStats_OP.argmin(in v));
-            Assert.AreEqual(0, fProxyStats_OP.argmax(in v));
+            Assert.AreEqual(0, Stats.argmin(in v));
+            Assert.AreEqual(0, Stats.argmax(in v));
 
             arena.Dispose();
         }
@@ -324,14 +323,14 @@ public class fProxyStatsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
 
-            var rowMin = fProxyStats_OP.rowMin(in A);
-            var rowMax = fProxyStats_OP.rowMax(in A);
-            var colMin = fProxyStats_OP.colMin(in A);
-            var colMax = fProxyStats_OP.colMax(in A);
-            var rowVar = fProxyStats_OP.rowVariance(in A);
-            var rowStd = fProxyStats_OP.rowStdDev(in A);
-            var colVar = fProxyStats_OP.colVariance(in A);
-            var colStd = fProxyStats_OP.colStdDev(in A);
+            var rowMin = Stats.rowMin(in A);
+            var rowMax = Stats.rowMax(in A);
+            var colMin = Stats.colMin(in A);
+            var colMax = Stats.colMax(in A);
+            var rowVar = Stats.rowVariance(in A);
+            var rowStd = Stats.rowStdDev(in A);
+            var colVar = Stats.colVariance(in A);
+            var colStd = Stats.colStdDev(in A);
 
             // Result vector lengths
             Assert.AreEqual(2, rowMin.N);
@@ -381,9 +380,9 @@ public class fProxyStatsTests
             A[1, 0] = -3f; A[1, 1] = 3f;
             A[2, 0] = -5f; A[2, 1] = 5f;
 
-            var colMin = fProxyStats_OP.colMin(in A);
-            var colMax = fProxyStats_OP.colMax(in A);
-            var colVar = fProxyStats_OP.colVariance(in A);
+            var colMin = Stats.colMin(in A);
+            var colMax = Stats.colMax(in A);
+            var colVar = Stats.colVariance(in A);
 
             Assert.AreEqual(2, colMin.N);
             Assert.AreEqual(2, colMax.N);
@@ -410,7 +409,7 @@ public class fProxyStatsTests
             A[1, 0] = 7f;
             A[2, 0] = -4f;
 
-            var rowVar = fProxyStats_OP.rowVariance(in A);
+            var rowVar = Stats.rowVariance(in A);
 
             Assert.AreEqual(3, rowVar.N);
 
@@ -430,8 +429,8 @@ public class fProxyStatsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 6f; A[1, 2] = 8f;
 
-            Assert.AreEqual(0, fProxyStats_OP.argmin(in A));
-            Assert.AreEqual(5, fProxyStats_OP.argmax(in A));
+            Assert.AreEqual(0, Stats.argmin(in A));
+            Assert.AreEqual(5, Stats.argmax(in A));
 
             arena.Dispose();
         }
@@ -448,7 +447,7 @@ public class fProxyStatsTests
             A[1, 0] = 3f; A[1, 1] = 6f;
             A[2, 0] = 5f; A[2, 1] = 4f;
 
-            var C = fProxyStats_OP.covariance(in A);
+            var C = Stats.covariance(in A);
 
             Assert.AreEqual(2, C.M_Rows);
             Assert.AreEqual(2, C.N_Cols);
@@ -475,7 +474,7 @@ public class fProxyStatsTests
             A[1, 0] = 3f; A[1, 1] = 6f;
             A[2, 0] = 5f; A[2, 1] = 4f;
 
-            var C = fProxyStats_OP.covariance(in A);
+            var C = Stats.covariance(in A);
 
             // Build column vectors and compare with varianceSample.
             var col0 = arena.fProxyVec(3);
@@ -483,8 +482,8 @@ public class fProxyStatsTests
             var col1 = arena.fProxyVec(3);
             col1[0] = A[0, 1]; col1[1] = A[1, 1]; col1[2] = A[2, 1];
 
-            AssertClose(C[0, 0], fProxyStats_OP.varianceSample(in col0), 1E-5f);
-            AssertClose(C[1, 1], fProxyStats_OP.varianceSample(in col1), 1E-5f);
+            AssertClose(C[0, 0], Stats.varianceSample(in col0), 1E-5f);
+            AssertClose(C[1, 1], Stats.varianceSample(in col1), 1E-5f);
 
             AssertClose(C[0, 0], (fProxy)4f, 1E-5f);
             AssertClose(C[1, 1], (fProxy)4f, 1E-5f);
@@ -503,7 +502,7 @@ public class fProxyStatsTests
             A[1, 0] = 3f; A[1, 1] = 6f;
             A[2, 0] = 5f; A[2, 1] = 4f;
 
-            var R = fProxyStats_OP.correlation(in A);
+            var R = Stats.correlation(in A);
 
             Assert.AreEqual(2, R.M_Rows);
             Assert.AreEqual(2, R.N_Cols);
@@ -530,7 +529,7 @@ public class fProxyStatsTests
             Apos[1, 0] = 3f; Apos[1, 1] = 3f;
             Apos[2, 0] = 5f; Apos[2, 1] = 5f;
 
-            var Rpos = fProxyStats_OP.correlation(in Apos);
+            var Rpos = Stats.correlation(in Apos);
             AssertClose(Rpos[0, 1], (fProxy)1f, 1E-5f);
             AssertClose(Rpos[1, 0], (fProxy)1f, 1E-5f);
 
@@ -539,7 +538,7 @@ public class fProxyStatsTests
             Aneg[1, 0] = 3f; Aneg[1, 1] = -3f;
             Aneg[2, 0] = 5f; Aneg[2, 1] = -5f;
 
-            var Rneg = fProxyStats_OP.correlation(in Aneg);
+            var Rneg = Stats.correlation(in Aneg);
             AssertClose(Rneg[0, 1], (fProxy)(-1f), 1E-5f);
             AssertClose(Rneg[1, 0], (fProxy)(-1f), 1E-5f);
 
@@ -557,10 +556,10 @@ public class fProxyStatsTests
             A[1, 0] = 3f; A[1, 1] = 7f;
             A[2, 0] = 5f; A[2, 1] = 7f;
 
-            var C = fProxyStats_OP.covariance(in A);
+            var C = Stats.covariance(in A);
             AssertClose(C[1, 1], (fProxy)0f, 1E-5f);
 
-            var R = fProxyStats_OP.correlation(in A);
+            var R = Stats.correlation(in A);
             AssertClose(R[0, 0], (fProxy)1f, 1E-5f);
             AssertClose(R[1, 1], (fProxy)1f, 1E-5f);
             AssertClose(R[0, 1], (fProxy)0f, 1E-5f);
@@ -580,12 +579,12 @@ public class fProxyStatsTests
             A[1, 0] = 4f;
             A[2, 0] = 6f;
 
-            var C = fProxyStats_OP.covariance(in A);
+            var C = Stats.covariance(in A);
             Assert.AreEqual(1, C.M_Rows);
             Assert.AreEqual(1, C.N_Cols);
             AssertClose(C[0, 0], (fProxy)4f, 1E-5f);
 
-            var R = fProxyStats_OP.correlation(in A);
+            var R = Stats.correlation(in A);
             Assert.AreEqual(1, R.M_Rows);
             Assert.AreEqual(1, R.N_Cols);
             AssertClose(R[0, 0], (fProxy)1f, 1E-5f);
@@ -761,7 +760,7 @@ public class fProxyStatsTests
         var A = arena.fProxyMat(1, 3);
         A[0, 0] = 5f; A[0, 1] = -2f; A[0, 2] = 9f;
 
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.covariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.covariance(in A));
 
         arena.Dispose();
     }
@@ -775,7 +774,7 @@ public class fProxyStatsTests
 
         var v = arena.fProxyVec(0);
 
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.varianceSample(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
 
         arena.Dispose();
     }
@@ -788,7 +787,7 @@ public class fProxyStatsTests
         var v = arena.fProxyVec(1);
         v[0] = 5f;
 
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.varianceSample(in v));
+        Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
 
         arena.Dispose();
     }
@@ -801,10 +800,10 @@ public class fProxyStatsTests
         // 0-row matrix (3 cols) is constructible; row/col stats must throw.
         var A = arena.fProxyMat(0, 3);
 
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.rowMin(in A));
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.colMin(in A));
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.rowVariance(in A));
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.colVariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.rowMin(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.colMin(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.rowVariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.colVariance(in A));
 
         arena.Dispose();
     }
@@ -818,8 +817,8 @@ public class fProxyStatsTests
         var A = arena.fProxyMat(1, 2);
         A[0, 0] = 1f; A[0, 1] = 2f;
 
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.covariance(in A));
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.correlation(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.covariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.correlation(in A));
 
         arena.Dispose();
     }
@@ -833,8 +832,8 @@ public class fProxyStatsTests
         // 0-col matrix (3 rows) is constructible; covariance/correlation must throw.
         var A = arena.fProxyMat(3, 0);
 
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.covariance(in A));
-        Assert.Throws<InvalidOperationException>(() => fProxyStats_OP.correlation(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.covariance(in A));
+        Assert.Throws<InvalidOperationException>(() => Stats.correlation(in A));
 
         arena.Dispose();
     }
