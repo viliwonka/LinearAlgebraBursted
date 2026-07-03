@@ -2,8 +2,8 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // Allocating (arena) wrappers for longQuery_OP search operations.
-    // Zero-alloc ref-dest primitives (distancesToRow/Column) are in longQuery_OP;
+    // Allocating (arena) wrappers for Query search operations.
+    // Zero-alloc ref-dest primitives (distancesToRow/Column) are in Query;
     // these wrappers do count-pass + exact-alloc so callers don't size buffers manually.
     //
     // All Indices buffers use the shared Indices type (arena.Indices(n)) — assembly-shared,
@@ -24,7 +24,7 @@ namespace LinearAlgebra
         public static longN longDistancesToRow(in longMxN A, in longN q, Metric m)
         {
             var dest = A.longVec(A.M_Rows);
-            longQuery_OP.distancesToRow(in A, in q, m, ref dest);
+            Query.distancesToRow(in A, in q, m, ref dest);
             return dest;
         }
 
@@ -32,7 +32,7 @@ namespace LinearAlgebra
         public static longN longDistancesToColumn(in longMxN A, in longN q, Metric m)
         {
             var dest = A.longVec(A.N_Cols);
-            longQuery_OP.distancesToColumn(in A, in q, m, ref dest);
+            Query.distancesToColumn(in A, in q, m, ref dest);
             return dest;
         }
 
@@ -47,7 +47,7 @@ namespace LinearAlgebra
         public static Indices longNonzeroIndices<T>(this ref Arena arena, in T x, long tol)
             where T : unmanaged, IUnsafelongArray
         {
-            int count = longQuery_OP.countNonzero(in x, tol);
+            int count = Query.countNonzero(in x, tol);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             int written = 0;
@@ -67,14 +67,14 @@ namespace LinearAlgebra
         /// <summary>Two-pass: counts, then exact-allocates Indices of row indices within radius r under metric m.</summary>
         public static Indices longRowsWithinRadius(this ref Arena arena, in longMxN A, in longN q, long r, Metric m)
         {
-            int count = longQuery_OP.countWithinRadius(in A, in q, r, m);
+            int count = Query.countWithinRadius(in A, in q, r, m);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             bool sim = m == Metric.Dot;
             int written = 0;
             for (int row = 0; row < A.M_Rows; row++)
             {
-                long s = longQuery_OP.RowScore(in A, row, in q, m);
+                long s = Query.RowScore(in A, row, in q, m);
                 if (sim ? s >= r : s <= r) idx[written++] = row;
             }
             return idx;
@@ -83,14 +83,14 @@ namespace LinearAlgebra
         /// <summary>Two-pass: counts, then exact-allocates Indices of column indices within radius r under metric m.</summary>
         public static Indices longColumnsWithinRadius(this ref Arena arena, in longMxN A, in longN q, long r, Metric m)
         {
-            int count = longQuery_OP.countWithinColumnRadius(in A, in q, r, m);
+            int count = Query.countWithinColumnRadius(in A, in q, r, m);
             if (count == 0) return arena.Indices(0);
             var idx = arena.Indices(count);
             bool sim = m == Metric.Dot;
             int written = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                long s = longQuery_OP.ColScore(in A, c, in q, m);
+                long s = Query.ColScore(in A, c, in q, m);
                 if (sim ? s >= r : s <= r) idx[written++] = c;
             }
             return idx;
@@ -107,7 +107,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.longVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.longVec(clampedK);
-            count = longQuery_OP.kNearestRows(in A, in q, clampedK, m, ref idx, ref scores);
+            count = Query.kNearestRows(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -118,7 +118,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.longVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.longVec(clampedK);
-            count = longQuery_OP.kNearestColumns(in A, in q, clampedK, m, ref idx, ref scores);
+            count = Query.kNearestColumns(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -133,7 +133,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.longVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.longVec(clampedK);
-            count = longQuery_OP.kFarthestRows(in A, in q, clampedK, m, ref idx, ref scores);
+            count = Query.kFarthestRows(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
 
@@ -144,7 +144,7 @@ namespace LinearAlgebra
             if (clampedK <= 0) { scores = A.longVec(0, true); count = 0; return arena.Indices(0); }
             var idx = arena.Indices(clampedK);
             scores = A.longVec(clampedK);
-            count = longQuery_OP.kFarthestColumns(in A, in q, clampedK, m, ref idx, ref scores);
+            count = Query.kFarthestColumns(in A, in q, clampedK, m, ref idx, ref scores);
             return idx;
         }
     }

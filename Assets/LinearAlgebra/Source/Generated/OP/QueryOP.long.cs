@@ -6,13 +6,13 @@ using System.Runtime.CompilerServices;
 
 namespace LinearAlgebra
 {
-    // longQuery_OP: integer-exact search & selection inside integer vectors / matrices.
+    // Query: integer-exact search & selection inside integer vectors / matrices.
     // This is the P2 subset from spec-query.md — only the metrics/norms that are
     // exact for integer types: Manhattan, Chebyshev, SqEuclidean, Dot (Group 3);
     // L1 and Linf norms (Group 2). Euclidean, Cosine, and L2 are float-only (need
     // sqrt/division) and throw ArgumentException if passed to integer methods.
     //
-    // decodeIndex is type-agnostic (int→int) and lives in fProxyQuery_OP — reuse that,
+    // decodeIndex is type-agnostic (int→int) and lives in Query — reuse that,
     // do NOT call or duplicate it here.
     //
     // P3 overflow note: ALL integer metrics require each element AND each element-wise
@@ -30,7 +30,7 @@ namespace LinearAlgebra
     //       Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
     //       Euclidean and Cosine throw ArgumentException.
     //   4 — Value / mask search: findValue, nonzero, countNonzero.
-    public static partial class longQuery_OP
+    public static partial class Query
     {
         // -------------------------------------------------------------------------
         // HELPERS
@@ -381,14 +381,8 @@ namespace LinearAlgebra
         // ---- Metric validation --------------------------------------------------
 
         // Validates metric is integer-exact; throws ArgumentException if float-only.
-        // Call once at method entry (hoisted outside per-row loops).
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void ValidateIntegerMetric(Metric m)
-        {
-            if (m == Metric.Euclidean || m == Metric.Cosine)
-                throw new System.ArgumentException(
-                    "QueryOP: Euclidean and Cosine metrics require sqrt/division and are float-only for integer types. Use Manhattan, Chebyshev, SqEuclidean, or Dot instead.");
-        }
+        // ValidateIntegerMetric lives in longQueryCore (type-agnostic Metric->void; would collide
+        // across the merged int/short/long `Query` partial).
 
         // ---- Integer metric score kernels ----------------------------------------
         // Internal: Row variant (contiguous elements); Col variant (strided).
@@ -489,26 +483,8 @@ namespace LinearAlgebra
             else throw new System.ArgumentException("ColScore: unsupported metric for integer types");
         }
 
-        // Metric direction helpers (hoisted outside per-row loops).
-        // Dot is similarity (higher = nearer); Manhattan/Chebyshev/SqEuclidean are distance (lower = nearer).
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsSimilarityMetric(Metric m) => m == Metric.Dot;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static long WorstScoreForNearest(Metric m)
-            => IsSimilarityMetric(m) ? long.MinValue : long.MaxValue;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static long WorstScoreForFarthest(Metric m)
-            => IsSimilarityMetric(m) ? long.MaxValue : long.MinValue;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsBetterForNearest(long a, long b, Metric m)
-            => IsSimilarityMetric(m) ? a > b : a < b;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsBetterForFarthest(long a, long b, Metric m)
-            => IsSimilarityMetric(m) ? a < b : a > b;
+        // Metric direction helpers (IsSimilarityMetric / WorstScoreForNearest / WorstScoreForFarthest /
+        // IsBetterForNearest / IsBetterForFarthest) live in longQueryCore -- see the fProxy note.
 
         // ---- distancesToRow / distancesToColumn ---------------------------------
 
@@ -526,7 +502,7 @@ namespace LinearAlgebra
         /// </summary>
         public static void distancesToRow(in longMxN A, in longN q, Metric m, ref longN dest)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.distancesToRow: q.N must equal A.N_Cols");
             if (dest.N != A.M_Rows)
@@ -550,7 +526,7 @@ namespace LinearAlgebra
         /// </summary>
         public static void distancesToColumn(in longMxN A, in longN q, Metric m, ref longN dest)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.distancesToColumn: q.N must equal A.M_Rows");
             if (dest.N != A.N_Cols)
@@ -574,18 +550,18 @@ namespace LinearAlgebra
         /// </summary>
         public static void nearestRow(in longMxN A, in longN q, Metric m, out int index, out long score)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (A.M_Rows == 0)
                 throw new System.InvalidOperationException("QueryOP.nearestRow: matrix has no rows");
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.nearestRow: q.N must equal A.N_Cols");
 
-            long best = WorstScoreForNearest(m);
+            long best = longQueryCore.WorstScoreForNearest(m);
             int bestIdx = 0;
             for (int r = 0; r < A.M_Rows; r++)
             {
                 long s = RowScore(in A, r, in q, m);
-                if (IsBetterForNearest(s, best, m)) { best = s; bestIdx = r; }
+                if (longQueryCore.IsBetterForNearest(s, best, m)) { best = s; bestIdx = r; }
             }
             index = bestIdx;
             score = best;
@@ -600,18 +576,18 @@ namespace LinearAlgebra
         /// </summary>
         public static void nearestColumn(in longMxN A, in longN q, Metric m, out int index, out long score)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (A.N_Cols == 0)
                 throw new System.InvalidOperationException("QueryOP.nearestColumn: matrix has no columns");
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.nearestColumn: q.N must equal A.M_Rows");
 
-            long best = WorstScoreForNearest(m);
+            long best = longQueryCore.WorstScoreForNearest(m);
             int bestIdx = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
                 long s = ColScore(in A, c, in q, m);
-                if (IsBetterForNearest(s, best, m)) { best = s; bestIdx = c; }
+                if (longQueryCore.IsBetterForNearest(s, best, m)) { best = s; bestIdx = c; }
             }
             index = bestIdx;
             score = best;
@@ -629,18 +605,18 @@ namespace LinearAlgebra
         /// </summary>
         public static void farthestRow(in longMxN A, in longN q, Metric m, out int index, out long score)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (A.M_Rows == 0)
                 throw new System.InvalidOperationException("QueryOP.farthestRow: matrix has no rows");
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.farthestRow: q.N must equal A.N_Cols");
 
-            long worst = WorstScoreForFarthest(m);
+            long worst = longQueryCore.WorstScoreForFarthest(m);
             int worstIdx = 0;
             for (int r = 0; r < A.M_Rows; r++)
             {
                 long s = RowScore(in A, r, in q, m);
-                if (IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = r; }
+                if (longQueryCore.IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = r; }
             }
             index = worstIdx;
             score = worst;
@@ -655,18 +631,18 @@ namespace LinearAlgebra
         /// </summary>
         public static void farthestColumn(in longMxN A, in longN q, Metric m, out int index, out long score)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (A.N_Cols == 0)
                 throw new System.InvalidOperationException("QueryOP.farthestColumn: matrix has no columns");
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.farthestColumn: q.N must equal A.M_Rows");
 
-            long worst = WorstScoreForFarthest(m);
+            long worst = longQueryCore.WorstScoreForFarthest(m);
             int worstIdx = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
                 long s = ColScore(in A, c, in q, m);
-                if (IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = c; }
+                if (longQueryCore.IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = c; }
             }
             index = worstIdx;
             score = worst;
@@ -685,11 +661,11 @@ namespace LinearAlgebra
         /// </summary>
         public static int countWithinRadius(in longMxN A, in longN q, long r, Metric m)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.countWithinRadius: q.N must equal A.N_Cols");
 
-            bool sim = IsSimilarityMetric(m);
+            bool sim = longQueryCore.IsSimilarityMetric(m);
             int count = 0;
             for (int row = 0; row < A.M_Rows; row++)
             {
@@ -708,11 +684,11 @@ namespace LinearAlgebra
         /// </summary>
         public static int countWithinColumnRadius(in longMxN A, in longN q, long r, Metric m)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.countWithinColumnRadius: q.N must equal A.M_Rows");
 
-            bool sim = IsSimilarityMetric(m);
+            bool sim = longQueryCore.IsSimilarityMetric(m);
             int count = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
@@ -738,7 +714,7 @@ namespace LinearAlgebra
         /// </summary>
         public static int kNearestRows(in longMxN A, in longN q, int k, Metric m, ref Indices idx, ref longN scores)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (A.M_Rows == 0 || k <= 0) return 0;
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.kNearestRows: q.N must equal A.N_Cols");
@@ -748,12 +724,12 @@ namespace LinearAlgebra
                 throw new System.ArgumentException("QueryOP.kNearestRows: scores.N must be >= k");
 
             int clampedK = math.min(k, A.M_Rows);
-            bool sim = IsSimilarityMetric(m);
+            bool sim = longQueryCore.IsSimilarityMetric(m);
             int count = 0;
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                long s = longQuery_OP.RowScore(in A, r, in q, m);
+                long s = Query.RowScore(in A, r, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -786,7 +762,7 @@ namespace LinearAlgebra
         /// </summary>
         public static int kNearestColumns(in longMxN A, in longN q, int k, Metric m, ref Indices idx, ref longN scores)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (A.N_Cols == 0 || k <= 0) return 0;
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.kNearestColumns: q.N must equal A.M_Rows");
@@ -796,12 +772,12 @@ namespace LinearAlgebra
                 throw new System.ArgumentException("QueryOP.kNearestColumns: scores.N must be >= k");
 
             int clampedK = math.min(k, A.N_Cols);
-            bool sim = IsSimilarityMetric(m);
+            bool sim = longQueryCore.IsSimilarityMetric(m);
             int count = 0;
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                long s = longQuery_OP.ColScore(in A, c, in q, m);
+                long s = Query.ColScore(in A, c, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -834,7 +810,7 @@ namespace LinearAlgebra
         /// </summary>
         public static int kFarthestRows(in longMxN A, in longN q, int k, Metric m, ref Indices idx, ref longN scores)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (A.M_Rows == 0 || k <= 0) return 0;
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.kFarthestRows: q.N must equal A.N_Cols");
@@ -844,12 +820,12 @@ namespace LinearAlgebra
                 throw new System.ArgumentException("QueryOP.kFarthestRows: scores.N must be >= k");
 
             int clampedK = math.min(k, A.M_Rows);
-            bool sim = IsSimilarityMetric(m);
+            bool sim = longQueryCore.IsSimilarityMetric(m);
             int count = 0;
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                long s = longQuery_OP.RowScore(in A, r, in q, m);
+                long s = Query.RowScore(in A, r, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -881,7 +857,7 @@ namespace LinearAlgebra
         /// </summary>
         public static int kFarthestColumns(in longMxN A, in longN q, int k, Metric m, ref Indices idx, ref longN scores)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (A.N_Cols == 0 || k <= 0) return 0;
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.kFarthestColumns: q.N must equal A.M_Rows");
@@ -891,12 +867,12 @@ namespace LinearAlgebra
                 throw new System.ArgumentException("QueryOP.kFarthestColumns: scores.N must be >= k");
 
             int clampedK = math.min(k, A.N_Cols);
-            bool sim = IsSimilarityMetric(m);
+            bool sim = longQueryCore.IsSimilarityMetric(m);
             int count = 0;
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                long s = longQuery_OP.ColScore(in A, c, in q, m);
+                long s = Query.ColScore(in A, c, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -928,17 +904,17 @@ namespace LinearAlgebra
         /// </summary>
         public static int rowsWithinRadius(in longMxN A, in longN q, long r, Metric m, ref Indices idx)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.rowsWithinRadius: q.N must equal A.N_Cols");
             if (idx.N < A.M_Rows)
                 throw new System.ArgumentException("QueryOP.rowsWithinRadius: idx.N must be >= A.M_Rows (worst case)");
 
-            bool sim = IsSimilarityMetric(m);
+            bool sim = longQueryCore.IsSimilarityMetric(m);
             int count = 0;
             for (int row = 0; row < A.M_Rows; row++)
             {
-                long s = longQuery_OP.RowScore(in A, row, in q, m);
+                long s = Query.RowScore(in A, row, in q, m);
                 if (sim ? s >= r : s <= r) idx[count++] = row;
             }
             return count;
@@ -954,17 +930,17 @@ namespace LinearAlgebra
         /// </summary>
         public static int columnsWithinRadius(in longMxN A, in longN q, long r, Metric m, ref Indices idx)
         {
-            ValidateIntegerMetric(m);
+            longQueryCore.ValidateIntegerMetric(m);
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.columnsWithinRadius: q.N must equal A.M_Rows");
             if (idx.N < A.N_Cols)
                 throw new System.ArgumentException("QueryOP.columnsWithinRadius: idx.N must be >= A.N_Cols (worst case)");
 
-            bool sim = IsSimilarityMetric(m);
+            bool sim = longQueryCore.IsSimilarityMetric(m);
             int count = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                long s = longQuery_OP.ColScore(in A, c, in q, m);
+                long s = Query.ColScore(in A, c, in q, m);
                 if (sim ? s >= r : s <= r) idx[count++] = c;
             }
             return count;

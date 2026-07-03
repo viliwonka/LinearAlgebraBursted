@@ -20,7 +20,7 @@ namespace LinearAlgebra
     //       Methods that return Indices index buffers (kNearestRows etc.) are also in this file.
     //   4 — Value / mask search: findValue, nonzero, countNonzero.
     //       nonzero (ref Indices) is in this file.
-    public static partial class doubleQuery_OP
+    public static partial class Query
     {
         // -------------------------------------------------------------------------
         // GROUP 1 — EXTREMES
@@ -69,16 +69,8 @@ namespace LinearAlgebra
             flatIndex = bestIdx;
         }
 
-        /// <summary>
-        /// Converts a row-major flat index to (row, col) for a matrix with nCols columns.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void decodeIndex(int flat, int nCols, out int row, out int col)
-        {
-            if (nCols <= 0) throw new System.ArgumentException("decodeIndex: nCols must be > 0");
-            row = flat / nCols;
-            col = flat % nCols;
-        }
+        // decodeIndex (row-major flat -> (row,col)) is type-agnostic (int-only) and lives in the
+        // non-templated Query.Shared.cs so the merged float/double partial emits it exactly once.
 
         // ---- Per-axis row/col arg-min/max with Indices buffer ---
 
@@ -467,27 +459,10 @@ namespace LinearAlgebra
             }
         }
 
-        // Metric direction helpers — hoisted outside per-row loops.
-        // Similarity metrics (Cosine, Dot): higher score = nearer.
-        // Distance metrics (Manhattan, Euclidean, SqEuclidean, Chebyshev): lower score = nearer.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsSimilarityMetric(Metric m) => m == Metric.Cosine || m == Metric.Dot;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static double WorstScoreForNearest(Metric m)
-            => IsSimilarityMetric(m) ? double.MinValue : double.MaxValue;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static double WorstScoreForFarthest(Metric m)
-            => IsSimilarityMetric(m) ? double.MaxValue : double.MinValue;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsBetterForNearest(double a, double b, Metric m)
-            => IsSimilarityMetric(m) ? a > b : a < b;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsBetterForFarthest(double a, double b, Metric m)
-            => IsSimilarityMetric(m) ? a < b : a > b;
+        // Metric direction helpers (IsSimilarityMetric / WorstScoreForNearest / WorstScoreForFarthest /
+        // IsBetterForNearest / IsBetterForFarthest) live in doubleQueryCore: they take no double
+        // parameter (or return double), so in the merged float+double `Query` partial they would
+        // collide (CS0111) -- and IsSimilarityMetric's rule even differs from the integer variant.
 
         // ---- distancesToRow / distancesToColumn ---------------------------------
 
@@ -537,12 +512,12 @@ namespace LinearAlgebra
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.nearestRow: q.N must equal A.N_Cols");
 
-            double best = WorstScoreForNearest(m);
+            double best = doubleQueryCore.WorstScoreForNearest(m);
             int bestIdx = 0;
             for (int r = 0; r < A.M_Rows; r++)
             {
                 double s = RowScore(in A, r, in q, m);
-                if (IsBetterForNearest(s, best, m)) { best = s; bestIdx = r; }
+                if (doubleQueryCore.IsBetterForNearest(s, best, m)) { best = s; bestIdx = r; }
             }
             index = bestIdx;
             score = best;
@@ -559,12 +534,12 @@ namespace LinearAlgebra
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.nearestColumn: q.N must equal A.M_Rows");
 
-            double best = WorstScoreForNearest(m);
+            double best = doubleQueryCore.WorstScoreForNearest(m);
             int bestIdx = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
                 double s = ColScore(in A, c, in q, m);
-                if (IsBetterForNearest(s, best, m)) { best = s; bestIdx = c; }
+                if (doubleQueryCore.IsBetterForNearest(s, best, m)) { best = s; bestIdx = c; }
             }
             index = bestIdx;
             score = best;
@@ -585,12 +560,12 @@ namespace LinearAlgebra
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.farthestRow: q.N must equal A.N_Cols");
 
-            double worst = WorstScoreForFarthest(m);
+            double worst = doubleQueryCore.WorstScoreForFarthest(m);
             int worstIdx = 0;
             for (int r = 0; r < A.M_Rows; r++)
             {
                 double s = RowScore(in A, r, in q, m);
-                if (IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = r; }
+                if (doubleQueryCore.IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = r; }
             }
             index = worstIdx;
             score = worst;
@@ -607,12 +582,12 @@ namespace LinearAlgebra
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.farthestColumn: q.N must equal A.M_Rows");
 
-            double worst = WorstScoreForFarthest(m);
+            double worst = doubleQueryCore.WorstScoreForFarthest(m);
             int worstIdx = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
                 double s = ColScore(in A, c, in q, m);
-                if (IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = c; }
+                if (doubleQueryCore.IsBetterForFarthest(s, worst, m)) { worst = s; worstIdx = c; }
             }
             index = worstIdx;
             score = worst;
@@ -631,7 +606,7 @@ namespace LinearAlgebra
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.countWithinRadius: q.N must equal A.N_Cols");
 
-            bool sim = IsSimilarityMetric(m);
+            bool sim = doubleQueryCore.IsSimilarityMetric(m);
             int count = 0;
             for (int row = 0; row < A.M_Rows; row++)
             {
@@ -650,7 +625,7 @@ namespace LinearAlgebra
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.countWithinColumnRadius: q.N must equal A.M_Rows");
 
-            bool sim = IsSimilarityMetric(m);
+            bool sim = doubleQueryCore.IsSimilarityMetric(m);
             int count = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
@@ -684,7 +659,7 @@ namespace LinearAlgebra
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                double s = doubleQuery_OP.RowScore(in A, r, in q, m);
+                double s = Query.RowScore(in A, r, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -725,7 +700,7 @@ namespace LinearAlgebra
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                double s = doubleQuery_OP.ColScore(in A, c, in q, m);
+                double s = Query.ColScore(in A, c, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -766,7 +741,7 @@ namespace LinearAlgebra
 
             for (int r = 0; r < A.M_Rows; r++)
             {
-                double s = doubleQuery_OP.RowScore(in A, r, in q, m);
+                double s = Query.RowScore(in A, r, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -807,7 +782,7 @@ namespace LinearAlgebra
 
             for (int c = 0; c < A.N_Cols; c++)
             {
-                double s = doubleQuery_OP.ColScore(in A, c, in q, m);
+                double s = Query.ColScore(in A, c, in q, m);
                 if (count < clampedK)
                 {
                     int ins = count;
@@ -845,7 +820,7 @@ namespace LinearAlgebra
             int count = 0;
             for (int row = 0; row < A.M_Rows; row++)
             {
-                double s = doubleQuery_OP.RowScore(in A, row, in q, m);
+                double s = Query.RowScore(in A, row, in q, m);
                 if (sim ? s >= r : s <= r) idx[count++] = row;
             }
             return count;
@@ -867,7 +842,7 @@ namespace LinearAlgebra
             int count = 0;
             for (int c = 0; c < A.N_Cols; c++)
             {
-                double s = doubleQuery_OP.ColScore(in A, c, in q, m);
+                double s = Query.ColScore(in A, c, in q, m);
                 if (sim ? s >= r : s <= r) idx[count++] = c;
             }
             return count;

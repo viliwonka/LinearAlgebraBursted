@@ -1,11 +1,12 @@
 #define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
+using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
     // QueryOP.Predicate: predicate-filtered and score-based query operators.
-    // Extends doubleQuery_OP (partial class). Reuses RowScore/ColScore,
+    // Extends Query (partial class). Reuses RowScore/ColScore,
     // IsBetterForNearest, and WorstScoreForNearest from QueryOP.double.cs.
     //
     // Groups:
@@ -16,10 +17,10 @@ namespace LinearAlgebra
     //
     // Empty-result contract (Group C): when zero rows/columns pass the predicate,
     //   nearestRowWhere / nearestColumnWhere set index = -1 and
-    //   score = WorstScoreForNearest(m) (double.MaxValue for distance metrics,
+    //   score = doubleQueryCore.WorstScoreForNearest(m) (double.MaxValue for distance metrics,
     //   double.MinValue for similarity metrics). Callers must check index == -1 before use.
     //   kNearestRowsWhere / kNearestColumnsWhere return 0.
-    public static partial class doubleQuery_OP
+    public static partial class Query
     {
         // -------------------------------------------------------------------------
         // GROUP A — FLAT / SCALAR PREDICATE OPS
@@ -31,54 +32,37 @@ namespace LinearAlgebra
         /// Empty x (length == 0) returns -1 without throwing.
         /// Generic over doubleN and doubleMxN (row-major flat index for matrices).
         /// </summary>
-        public static int findFirst<T, P>(in T x, ref P pred)
-            where T : unmanaged, IUnsafedoubleArray
-            where P : struct, IdoublePredicate
-        {
-            for (int i = 0; i < x.Data.Length; i++)
-                if (pred.Test(x.Data[i])) return i;
-            return -1;
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int findFirst<P>(in doubleN   x, ref P pred) where P : struct, IdoublePredicate => doubleQueryCore.findFirst(in x, ref pred);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int findFirst<P>(in doubleMxN x, ref P pred) where P : struct, IdoublePredicate => doubleQueryCore.findFirst(in x, ref pred);
 
         /// <summary>
         /// Returns the count of elements in x where pred.Test(x[i]) is true.
         /// Full scan. Empty x returns 0.
         /// </summary>
-        public static int count<T, P>(in T x, ref P pred)
-            where T : unmanaged, IUnsafedoubleArray
-            where P : struct, IdoublePredicate
-        {
-            int c = 0;
-            for (int i = 0; i < x.Data.Length; i++)
-                if (pred.Test(x.Data[i])) c++;
-            return c;
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int count<P>(in doubleN   x, ref P pred) where P : struct, IdoublePredicate => doubleQueryCore.count(in x, ref pred);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int count<P>(in doubleMxN x, ref P pred) where P : struct, IdoublePredicate => doubleQueryCore.count(in x, ref pred);
 
         /// <summary>
         /// Returns true if at least one element in x satisfies pred.
         /// Short-circuits on the first true. Empty x returns false.
         /// </summary>
-        public static bool any<T, P>(in T x, ref P pred)
-            where T : unmanaged, IUnsafedoubleArray
-            where P : struct, IdoublePredicate
-        {
-            for (int i = 0; i < x.Data.Length; i++)
-                if (pred.Test(x.Data[i])) return true;
-            return false;
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool any<P>(in doubleN   x, ref P pred) where P : struct, IdoublePredicate => doubleQueryCore.any(in x, ref pred);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool any<P>(in doubleMxN x, ref P pred) where P : struct, IdoublePredicate => doubleQueryCore.any(in x, ref pred);
 
         /// <summary>
         /// Returns true if every element in x satisfies pred.
         /// Short-circuits on the first false. Empty x returns true (vacuous truth).
         /// </summary>
-        public static bool all<T, P>(in T x, ref P pred)
-            where T : unmanaged, IUnsafedoubleArray
-            where P : struct, IdoublePredicate
-        {
-            for (int i = 0; i < x.Data.Length; i++)
-                if (!pred.Test(x.Data[i])) return false;
-            return true;
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool all<P>(in doubleN   x, ref P pred) where P : struct, IdoublePredicate => doubleQueryCore.all(in x, ref pred);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool all<P>(in doubleMxN x, ref P pred) where P : struct, IdoublePredicate => doubleQueryCore.all(in x, ref pred);
 
         /// <summary>
         /// Fills idx[0..count) with flat indices where pred.Test(x[i]) is true,
@@ -86,17 +70,10 @@ namespace LinearAlgebra
         /// idx must have length >= x.Data.Length (worst case — all elements match).
         /// Empty x returns 0 with no writes.
         /// </summary>
-        public static int findAll<T, P>(in T x, ref P pred, ref Indices idx)
-            where T : unmanaged, IUnsafedoubleArray
-            where P : struct, IdoublePredicate
-        {
-            if (idx.N < x.Data.Length)
-                throw new System.ArgumentException("QueryOP.findAll: idx.N must be >= x.Data.Length");
-            int c = 0;
-            for (int i = 0; i < x.Data.Length; i++)
-                if (pred.Test(x.Data[i])) idx[c++] = i;
-            return c;
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int findAll<P>(in doubleN   x, ref P pred, ref Indices idx) where P : struct, IdoublePredicate => doubleQueryCore.findAll(in x, ref pred, ref idx);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int findAll<P>(in doubleMxN x, ref P pred, ref Indices idx) where P : struct, IdoublePredicate => doubleQueryCore.findAll(in x, ref pred, ref idx);
 
         // -------------------------------------------------------------------------
         // GROUP B — ROW / COLUMN FILTER
@@ -182,7 +159,7 @@ namespace LinearAlgebra
             if (q.N != A.N_Cols)
                 throw new System.ArgumentException("QueryOP.nearestRowWhere: q.N must equal A.N_Cols");
 
-            double best = WorstScoreForNearest(m);
+            double best = doubleQueryCore.WorstScoreForNearest(m);
             int bestIdx = -1;
             for (int r = 0; r < A.M_Rows; r++)
             {
@@ -190,7 +167,7 @@ namespace LinearAlgebra
                 double s = RowScore(in A, r, in q, m);
                 // bestIdx==-1 guard: adopt the first passing row even if its score equals the
                 // worst-case sentinel, so an all-pass predicate matches unmasked nearestRow exactly.
-                if (bestIdx == -1 || IsBetterForNearest(s, best, m)) { best = s; bestIdx = r; }
+                if (bestIdx == -1 || doubleQueryCore.IsBetterForNearest(s, best, m)) { best = s; bestIdx = r; }
             }
             index = bestIdx;
             score = best;
@@ -257,7 +234,7 @@ namespace LinearAlgebra
             if (q.N != A.M_Rows)
                 throw new System.ArgumentException("QueryOP.nearestColumnWhere: q.N must equal A.M_Rows");
 
-            double best = WorstScoreForNearest(m);
+            double best = doubleQueryCore.WorstScoreForNearest(m);
             int bestIdx = -1;
             for (int c = 0; c < A.N_Cols; c++)
             {
@@ -265,7 +242,7 @@ namespace LinearAlgebra
                 double s = ColScore(in A, c, in q, m);
                 // bestIdx==-1 guard: adopt the first passing column even at the sentinel score,
                 // so an all-pass predicate matches unmasked nearestColumn exactly.
-                if (bestIdx == -1 || IsBetterForNearest(s, best, m)) { best = s; bestIdx = c; }
+                if (bestIdx == -1 || doubleQueryCore.IsBetterForNearest(s, best, m)) { best = s; bestIdx = c; }
             }
             index = bestIdx;
             score = best;

@@ -1,0 +1,42 @@
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
+
+using System.Runtime.CompilerServices;
+
+namespace LinearAlgebra
+{
+    // Integer metric-direction + validation helpers for Query's nearest/farthest/k-selection
+    // kernels. Type-agnostic (or return-type-only) signatures would collide on the merged
+    // int/short/long `Query` partial (CS0111); here they emit as distinct
+    // intQueryCore/shortQueryCore/longQueryCore.
+    internal static partial class shortQueryCore
+    {
+        // Integer metrics forbid Euclidean/Cosine (sqrt/division are float-only); call once at entry.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void ValidateIntegerMetric(Metric m)
+        {
+            if (m == Metric.Euclidean || m == Metric.Cosine)
+                throw new System.ArgumentException(
+                    "Query: Euclidean and Cosine metrics require sqrt/division and are float-only for integer types. Use Manhattan, Chebyshev, SqEuclidean, or Dot instead.");
+        }
+
+        // Dot is similarity (higher = nearer); Manhattan/Chebyshev/SqEuclidean are distance (lower = nearer).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsSimilarityMetric(Metric m) => m == Metric.Dot;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static short WorstScoreForNearest(Metric m)
+            => IsSimilarityMetric(m) ? short.MinValue : short.MaxValue;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static short WorstScoreForFarthest(Metric m)
+            => IsSimilarityMetric(m) ? short.MaxValue : short.MinValue;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsBetterForNearest(short a, short b, Metric m)
+            => IsSimilarityMetric(m) ? a > b : a < b;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsBetterForFarthest(short a, short b, Metric m)
+            => IsSimilarityMetric(m) ? a < b : a > b;
+    }
+}

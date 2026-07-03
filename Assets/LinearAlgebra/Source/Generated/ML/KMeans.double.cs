@@ -163,7 +163,7 @@ namespace LinearAlgebra.ML
                 for (int n = 0; n < N; n++)
                     ws.PrevAssignment[n] = assignment[n];
 
-                doubleQuery_OP.rowArgMin(in ws.Gram, ref assignment);
+                Query.rowArgMin(in ws.Gram, ref assignment);
 
                 int changes = 0;
                 for (int n = 0; n < N; n++)
@@ -254,7 +254,7 @@ namespace LinearAlgebra.ML
                 for (int n = 0; n < N; n++)
                     for (int j = 0; j < k; j++)
                         ws.Gram[n, j] = ws.CentNormSq[j] - (double)2 * ws.Gram[n, j];
-                doubleQuery_OP.rowArgMin(in ws.Gram, ref assignment);
+                Query.rowArgMin(in ws.Gram, ref assignment);
 
                 double sse = (double)0;
                 for (int n = 0; n < N; n++)

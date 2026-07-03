@@ -98,18 +98,18 @@ public class doubleQueryTests
             v[0] = (double)(-2); v[1] = (double)5; v[2] = (double)(-5);
             v[3] = (double)1;    v[4] = (double)(-1); v[5] = (double)4;
 
-            doubleQuery_OP.argMaxAbs(in v, out double maxVal, out int maxIdx);
+            Query.argMaxAbs(in v, out double maxVal, out int maxIdx);
             AssertEqI(maxIdx, 1);                  // first of the two |5| entries
             AssertClose(maxVal, (double)5, (double)0);
 
-            doubleQuery_OP.argMinAbs(in v, out double minVal, out int minIdx);
+            Query.argMinAbs(in v, out double minVal, out int minIdx);
             AssertEqI(minIdx, 3);                  // first of the two |1| entries
             AssertClose(minVal, (double)1, (double)0);
 
             // 1x1 / single-element vector: index 0, value = |element|.
             var one = arena.doubleVec(1);
             one[0] = (double)(-7);
-            doubleQuery_OP.argMaxAbs(in one, out double ov, out int oi);
+            Query.argMaxAbs(in one, out double ov, out int oi);
             AssertEqI(oi, 0);
             AssertClose(ov, (double)7, (double)0);
 
@@ -127,17 +127,17 @@ public class doubleQueryTests
             A[0, 0] = (double)1;  A[0, 1] = (double)(-3); A[0, 2] = (double)2;
             A[1, 0] = (double)0;  A[1, 1] = (double)4;    A[1, 2] = (double)(-4);
 
-            doubleQuery_OP.argMaxAbs(in A, out double maxVal, out int maxIdx);
+            Query.argMaxAbs(in A, out double maxVal, out int maxIdx);
             AssertEqI(maxIdx, 4);
             AssertClose(maxVal, (double)4, (double)0);
-            doubleQuery_OP.decodeIndex(maxIdx, A.N_Cols, out int mr, out int mc);
+            Query.decodeIndex(maxIdx, A.N_Cols, out int mr, out int mc);
             AssertEqI(mr, 1); AssertEqI(mc, 1);
 
             // minAbs is the 0 at flat 3 (r1,c0).
-            doubleQuery_OP.argMinAbs(in A, out double minVal, out int minIdx);
+            Query.argMinAbs(in A, out double minVal, out int minIdx);
             AssertEqI(minIdx, 3);
             AssertClose(minVal, (double)0, (double)0);
-            doubleQuery_OP.decodeIndex(minIdx, A.N_Cols, out int nr, out int nc);
+            Query.decodeIndex(minIdx, A.N_Cols, out int nr, out int nc);
             AssertEqI(nr, 1); AssertEqI(nc, 0);
 
             arena.Dispose();
@@ -146,18 +146,18 @@ public class doubleQueryTests
         // decodeIndex round-trips flat <-> (row,col) for a few hand values.
         void DecodeIndex()
         {
-            doubleQuery_OP.decodeIndex(0, 4, out int r, out int c);
+            Query.decodeIndex(0, 4, out int r, out int c);
             AssertEqI(r, 0); AssertEqI(c, 0);
-            doubleQuery_OP.decodeIndex(7, 4, out r, out c);   // 7 = 1*4 + 3
+            Query.decodeIndex(7, 4, out r, out c);   // 7 = 1*4 + 3
             AssertEqI(r, 1); AssertEqI(c, 3);
-            doubleQuery_OP.decodeIndex(11, 3, out r, out c);  // 11 = 3*3 + 2
+            Query.decodeIndex(11, 3, out r, out c);  // 11 = 3*3 + 2
             AssertEqI(r, 3); AssertEqI(c, 2);
             // round-trip: r*nCols+c -> (r,c)
             int nCols = 5;
             for (int rr = 0; rr < 4; rr++)
                 for (int cc = 0; cc < nCols; cc++)
                 {
-                    doubleQuery_OP.decodeIndex(rr * nCols + cc, nCols, out int gr, out int gc);
+                    Query.decodeIndex(rr * nCols + cc, nCols, out int gr, out int gc);
                     AssertEqI(gr, rr); AssertEqI(gc, cc);
                 }
         }
@@ -179,7 +179,7 @@ public class doubleQueryTests
             var idxR = arena.Indices(3);
             var valR = arena.doubleVec(3);
 
-            int nr = doubleQuery_OP.rowArgMin(in A, ref idxR, ref valR);
+            int nr = Query.rowArgMin(in A, ref idxR, ref valR);
             AssertEqI(nr, 3);
             AssertEqI(idxR[0], 1); AssertClose(valR[0], (double)1, (double)0);
             AssertEqI(idxR[1], 1); AssertClose(valR[1], (double)7, (double)0);
@@ -187,38 +187,38 @@ public class doubleQueryTests
 
             // index-only form must match.
             var idxR2 = arena.Indices(3);
-            doubleQuery_OP.rowArgMin(in A, ref idxR2);
+            Query.rowArgMin(in A, ref idxR2);
             AssertEqI(idxR2[0], 1); AssertEqI(idxR2[1], 1); AssertEqI(idxR2[2], 0);
 
-            doubleQuery_OP.rowArgMax(in A, ref idxR, ref valR);
+            Query.rowArgMax(in A, ref idxR, ref valR);
             AssertEqI(idxR[0], 0); AssertClose(valR[0], (double)3, (double)0);
             AssertEqI(idxR[1], 0); AssertClose(valR[1], (double)9, (double)0);
             AssertEqI(idxR[2], 1); AssertClose(valR[2], (double)5, (double)0);
 
             var idxR3 = arena.Indices(3);
-            doubleQuery_OP.rowArgMax(in A, ref idxR3);
+            Query.rowArgMax(in A, ref idxR3);
             AssertEqI(idxR3[0], 0); AssertEqI(idxR3[1], 0); AssertEqI(idxR3[2], 1);
 
             // columns: colMin per column -> rows {2,0,0}; colMax per column -> rows {1,1,1}.
             var idxC = arena.Indices(3);
             var valC = arena.doubleVec(3);
-            int nc = doubleQuery_OP.colArgMin(in A, ref idxC, ref valC);
+            int nc = Query.colArgMin(in A, ref idxC, ref valC);
             AssertEqI(nc, 3);
             AssertEqI(idxC[0], 2); AssertClose(valC[0], (double)0, (double)0);
             AssertEqI(idxC[1], 0); AssertClose(valC[1], (double)1, (double)0);
             AssertEqI(idxC[2], 0); AssertClose(valC[2], (double)2, (double)0);
 
             var idxC2 = arena.Indices(3);
-            doubleQuery_OP.colArgMin(in A, ref idxC2);
+            Query.colArgMin(in A, ref idxC2);
             AssertEqI(idxC2[0], 2); AssertEqI(idxC2[1], 0); AssertEqI(idxC2[2], 0);
 
-            doubleQuery_OP.colArgMax(in A, ref idxC, ref valC);
+            Query.colArgMax(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 1); AssertClose(valC[0], (double)9, (double)0);
             AssertEqI(idxC[1], 1); AssertClose(valC[1], (double)7, (double)0);
             AssertEqI(idxC[2], 1); AssertClose(valC[2], (double)8, (double)0);
 
             var idxC3 = arena.Indices(3);
-            doubleQuery_OP.colArgMax(in A, ref idxC3);
+            Query.colArgMax(in A, ref idxC3);
             AssertEqI(idxC3[0], 1); AssertEqI(idxC3[1], 1); AssertEqI(idxC3[2], 1);
 
             arena.Dispose();
@@ -246,11 +246,11 @@ public class doubleQueryTests
             var idxC = arena.Indices(2);
             var valC = arena.doubleVec(2);
 
-            doubleQuery_OP.colArgMin(in A, ref idxC, ref valC);
+            Query.colArgMin(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 0); AssertClose(valC[0], (double)1, (double)0);
             AssertEqI(idxC[1], 3); AssertClose(valC[1], (double)4, (double)0);
 
-            doubleQuery_OP.colArgMax(in A, ref idxC, ref valC);
+            Query.colArgMax(in A, ref idxC, ref valC);
             AssertEqI(idxC[0], 2); AssertClose(valC[0], (double)9, (double)0);
             AssertEqI(idxC[1], 0); AssertClose(valC[1], (double)8, (double)0);
 
@@ -275,15 +275,15 @@ public class doubleQueryTests
             A[1, 0] = (double)1;    A[1, 1] = (double)1; A[1, 2] = (double)1;
             A[2, 0] = (double)(-2); A[2, 1] = (double)2; A[2, 2] = (double)0;
 
-            AssertEqI(doubleQuery_OP.argMaxRowNorm(in A, Norm.L1), 2);
-            AssertEqI(doubleQuery_OP.argMaxRowNorm(in A, Norm.L2), 0);
-            AssertEqI(doubleQuery_OP.argMaxRowNorm(in A, Norm.Linf), 0);
+            AssertEqI(Query.argMaxRowNorm(in A, Norm.L1), 2);
+            AssertEqI(Query.argMaxRowNorm(in A, Norm.L2), 0);
+            AssertEqI(Query.argMaxRowNorm(in A, Norm.Linf), 0);
 
             // Tie -> first occurrence. Two rows of identical L1 norm 5; first is row 0.
             var T = arena.doubleMat(2, 2);
             T[0, 0] = (double)5; T[0, 1] = (double)0;
             T[1, 0] = (double)0; T[1, 1] = (double)5;
-            AssertEqI(doubleQuery_OP.argMaxRowNorm(in T, Norm.L1), 0);
+            AssertEqI(Query.argMaxRowNorm(in T, Norm.L1), 0);
 
             arena.Dispose();
         }
@@ -302,9 +302,9 @@ public class doubleQueryTests
             A[1, 0] = (double)1;    A[1, 1] = (double)1; A[1, 2] = (double)0;
             A[2, 0] = (double)(-2); A[2, 1] = (double)2; A[2, 2] = (double)0;
 
-            AssertEqI(doubleQuery_OP.argMaxColNorm(in A, Norm.L1), 0);
-            AssertEqI(doubleQuery_OP.argMaxColNorm(in A, Norm.L2), 2);
-            AssertEqI(doubleQuery_OP.argMaxColNorm(in A, Norm.Linf), 2);
+            AssertEqI(Query.argMaxColNorm(in A, Norm.L1), 0);
+            AssertEqI(Query.argMaxColNorm(in A, Norm.L2), 2);
+            AssertEqI(Query.argMaxColNorm(in A, Norm.Linf), 2);
 
             arena.Dispose();
         }
@@ -330,39 +330,39 @@ public class doubleQueryTests
             var d = arena.doubleVec(2);
 
             // Manhattan: |3|+|4|=7 ; |1|+|0|=1
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.Manhattan, ref d);
+            Query.distancesToRow(in A, in q, Metric.Manhattan, ref d);
             AssertClose(d[0], (double)7, fEps()); AssertClose(d[1], (double)1, fEps());
 
             // Euclidean: 5 ; 1
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.Euclidean, ref d);
+            Query.distancesToRow(in A, in q, Metric.Euclidean, ref d);
             AssertClose(d[0], (double)5, sqrtEps()); AssertClose(d[1], (double)1, sqrtEps());
 
             // SqEuclidean (squared, no sqrt): 25 ; 1
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref d);
+            Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref d);
             AssertClose(d[0], (double)25, fEps()); AssertClose(d[1], (double)1, fEps());
 
             // Chebyshev: max(3,4)=4 ; max(1,0)=1
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.Chebyshev, ref d);
+            Query.distancesToRow(in A, in q, Metric.Chebyshev, ref d);
             AssertClose(d[0], (double)4, fEps()); AssertClose(d[1], (double)1, fEps());
 
             // Dot with q=(0,0) is 0 for every row.
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.Dot, ref d);
+            Query.distancesToRow(in A, in q, Metric.Dot, ref d);
             AssertClose(d[0], (double)0, fEps()); AssertClose(d[1], (double)0, fEps());
 
             // Cosine of a zero query vector = 0 (zero-vector guard).
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.Cosine, ref d);
+            Query.distancesToRow(in A, in q, Metric.Cosine, ref d);
             AssertClose(d[0], (double)0, fEps()); AssertClose(d[1], (double)0, fEps());
 
             // Cosine with a non-zero query: q2 = (3,4) is exactly parallel to r0 -> cos=1;
             // r1=(1,0) -> cos = 3/5 = 0.6.
             var q2 = arena.doubleVec(2);
             q2[0] = (double)3; q2[1] = (double)4;
-            doubleQuery_OP.distancesToRow(in A, in q2, Metric.Cosine, ref d);
+            Query.distancesToRow(in A, in q2, Metric.Cosine, ref d);
             AssertClose(d[0], (double)1,   sqrtEps());
             AssertClose(d[1], (double)0.6, sqrtEps());
 
             // Dot with q2: r0·q2 = 9+16 = 25 ; r1·q2 = 3+0 = 3.
-            doubleQuery_OP.distancesToRow(in A, in q2, Metric.Dot, ref d);
+            Query.distancesToRow(in A, in q2, Metric.Dot, ref d);
             AssertClose(d[0], (double)25, fEps()); AssertClose(d[1], (double)3, fEps());
 
             arena.Dispose();
@@ -384,19 +384,19 @@ public class doubleQueryTests
             var d = arena.doubleVec(2);
 
             // Manhattan: c0=4, c1=4
-            doubleQuery_OP.distancesToColumn(in A, in q, Metric.Manhattan, ref d);
+            Query.distancesToColumn(in A, in q, Metric.Manhattan, ref d);
             AssertClose(d[0], (double)4, fEps()); AssertClose(d[1], (double)4, fEps());
 
             // SqEuclidean: c0 = 9+1 = 10 ; c1 = 16+0 = 16
-            doubleQuery_OP.distancesToColumn(in A, in q, Metric.SqEuclidean, ref d);
+            Query.distancesToColumn(in A, in q, Metric.SqEuclidean, ref d);
             AssertClose(d[0], (double)10, fEps()); AssertClose(d[1], (double)16, fEps());
 
             // Euclidean: sqrt(10), 4
-            doubleQuery_OP.distancesToColumn(in A, in q, Metric.Euclidean, ref d);
+            Query.distancesToColumn(in A, in q, Metric.Euclidean, ref d);
             AssertClose(d[0], math.sqrt((double)10), sqrtEps()); AssertClose(d[1], (double)4, sqrtEps());
 
             // Chebyshev: c0=max(3,1)=3 ; c1=max(4,0)=4
-            doubleQuery_OP.distancesToColumn(in A, in q, Metric.Chebyshev, ref d);
+            Query.distancesToColumn(in A, in q, Metric.Chebyshev, ref d);
             AssertClose(d[0], (double)3, fEps()); AssertClose(d[1], (double)4, fEps());
 
             arena.Dispose();
@@ -416,14 +416,14 @@ public class doubleQueryTests
             q[0] = (double)0; q[1] = (double)0;
 
             // SqEuclidean: distances 0, 25, 2. nearest=r0 (score 0), farthest=r1 (score 25).
-            doubleQuery_OP.nearestRow(in A, in q, Metric.SqEuclidean, out int ni, out double ns);
+            Query.nearestRow(in A, in q, Metric.SqEuclidean, out int ni, out double ns);
             AssertEqI(ni, 0); AssertClose(ns, (double)0, fEps());
 
-            doubleQuery_OP.farthestRow(in A, in q, Metric.SqEuclidean, out int fi, out double fs);
+            Query.farthestRow(in A, in q, Metric.SqEuclidean, out int fi, out double fs);
             AssertEqI(fi, 1); AssertClose(fs, (double)25, fEps());   // squared units, not sqrt
 
             // Euclidean score is in euclidean units: farthest = 5.
-            doubleQuery_OP.farthestRow(in A, in q, Metric.Euclidean, out int fi2, out double fs2);
+            Query.farthestRow(in A, in q, Metric.Euclidean, out int fi2, out double fs2);
             AssertEqI(fi2, 1); AssertClose(fs2, (double)5, sqrtEps());
 
             arena.Dispose();
@@ -443,18 +443,18 @@ public class doubleQueryTests
             var q = arena.doubleVec(2);
             q[0] = (double)1; q[1] = (double)0;
 
-            doubleQuery_OP.nearestRow(in A, in q, Metric.Dot, out int ni, out double ns);
+            Query.nearestRow(in A, in q, Metric.Dot, out int ni, out double ns);
             AssertEqI(ni, 1); AssertClose(ns, (double)10, fEps());
 
-            doubleQuery_OP.farthestRow(in A, in q, Metric.Dot, out int fi, out double fs);
+            Query.farthestRow(in A, in q, Metric.Dot, out int fi, out double fs);
             AssertEqI(fi, 2); AssertClose(fs, (double)(-5), fEps());
 
             // Cosine: r0 & r1 are parallel to q (cos=1), r2 anti-parallel (cos=-1).
             // nearest = max cosine -> first of the two cos=1 rows (r0); farthest = r2.
-            doubleQuery_OP.nearestRow(in A, in q, Metric.Cosine, out int cni, out double cns);
+            Query.nearestRow(in A, in q, Metric.Cosine, out int cni, out double cns);
             AssertEqI(cni, 0); AssertClose(cns, (double)1, sqrtEps());
 
-            doubleQuery_OP.farthestRow(in A, in q, Metric.Cosine, out int cfi, out double cfs);
+            Query.farthestRow(in A, in q, Metric.Cosine, out int cfi, out double cfs);
             AssertEqI(cfi, 2); AssertClose(cfs, (double)(-1), sqrtEps());
 
             // Column twins: nearestColumn/farthestColumn with a similarity metric.
@@ -462,9 +462,9 @@ public class doubleQueryTests
             var q3 = arena.doubleVec(3);
             q3[0] = (double)1; q3[1] = (double)0; q3[2] = (double)0;
             // Dot: c0·q3 = 1 ; c1·q3 = 0 -> nearest(max)=c0, farthest(min)=c1.
-            doubleQuery_OP.nearestColumn(in A, in q3, Metric.Dot, out int cni2, out double cns2);
+            Query.nearestColumn(in A, in q3, Metric.Dot, out int cni2, out double cns2);
             AssertEqI(cni2, 0); AssertClose(cns2, (double)1, fEps());
-            doubleQuery_OP.farthestColumn(in A, in q3, Metric.Dot, out int cfi2, out double cfs2);
+            Query.farthestColumn(in A, in q3, Metric.Dot, out int cfi2, out double cfs2);
             AssertEqI(cfi2, 1); AssertClose(cfs2, (double)0, fEps());
 
             arena.Dispose();
@@ -485,12 +485,12 @@ public class doubleQueryTests
             var scores = arena.doubleVec(k);
 
             // --- distance metric (SqEuclidean) ---
-            int cnt = doubleQuery_OP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
+            int cnt = Query.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, k);
 
             // Brute-force all scores then verify: returned set is the k smallest, sorted ascending.
             var all = arena.doubleVec(M);
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
+            Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
             // sorted ascending => scores[0] <= scores[1] <= scores[2]
             for (int i = 0; i + 1 < cnt; i++)
                 AssertTrue(scores[i] <= scores[i + 1] + sqrtEps());
@@ -509,10 +509,10 @@ public class doubleQueryTests
             // --- similarity metric (Dot): best-first = DESCENDING ---
             var idx2 = arena.Indices(k);
             var scores2 = arena.doubleVec(k);
-            int cnt2 = doubleQuery_OP.kNearestRows(in A, in q, k, Metric.Dot, ref idx2, ref scores2);
+            int cnt2 = Query.kNearestRows(in A, in q, k, Metric.Dot, ref idx2, ref scores2);
             AssertEqI(cnt2, k);
             var allDot = arena.doubleVec(M);
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.Dot, ref allDot);
+            Query.distancesToRow(in A, in q, Metric.Dot, ref allDot);
             for (int i = 0; i + 1 < cnt2; i++)
                 AssertTrue(scores2[i] >= scores2[i + 1] - sqrtEps());
             for (int i = 0; i < cnt2; i++)
@@ -547,7 +547,7 @@ public class doubleQueryTests
             int k = 10;
             var idx = arena.Indices(k);
             var scores = arena.doubleVec(k);
-            int cnt = doubleQuery_OP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
+            int cnt = Query.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, 3);
             // all returned scores == 1
             for (int i = 0; i < cnt; i++) AssertClose(scores[i], (double)1, fEps());
@@ -555,7 +555,7 @@ public class doubleQueryTests
             AssertEqI(idx[0], 0); AssertEqI(idx[1], 1); AssertEqI(idx[2], 2);
 
             // k = 0 -> returns 0, writes nothing.
-            int z = doubleQuery_OP.kNearestRows(in A, in q, 0, Metric.SqEuclidean, ref idx, ref scores);
+            int z = Query.kNearestRows(in A, in q, 0, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(z, 0);
 
             arena.Dispose();
@@ -574,11 +574,11 @@ public class doubleQueryTests
             int k = 2;
             var idx = arena.Indices(k);
             var scores = arena.doubleVec(k);
-            int cnt = doubleQuery_OP.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
+            int cnt = Query.kFarthestRows(in A, in q, k, Metric.SqEuclidean, ref idx, ref scores);
             AssertEqI(cnt, k);
 
             var all = arena.doubleVec(M);
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
+            Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref all);
             // farthest-first => descending distance
             for (int i = 0; i + 1 < cnt; i++)
                 AssertTrue(scores[i] >= scores[i + 1] - sqrtEps());
@@ -611,35 +611,35 @@ public class doubleQueryTests
 
             // radius exactly 5 (boundary): inclusive -> all three rows qualify.
             var idx = arena.Indices(3);
-            int cnt = doubleQuery_OP.rowsWithinRadius(in A, in q, (double)5, Metric.Euclidean, ref idx);
-            int ccnt = doubleQuery_OP.countWithinRadius(in A, in q, (double)5, Metric.Euclidean);
+            int cnt = Query.rowsWithinRadius(in A, in q, (double)5, Metric.Euclidean, ref idx);
+            int ccnt = Query.countWithinRadius(in A, in q, (double)5, Metric.Euclidean);
             AssertEqI(cnt, 3); AssertEqI(ccnt, 3);
             // filled indices are 0,1,2 in scan order
             AssertEqI(idx[0], 0); AssertEqI(idx[1], 1); AssertEqI(idx[2], 2);
 
             // radius just under 5 -> r1 excluded (only the two close rows).
-            int cnt2 = doubleQuery_OP.rowsWithinRadius(in A, in q, (double)4.9, Metric.Euclidean, ref idx);
+            int cnt2 = Query.rowsWithinRadius(in A, in q, (double)4.9, Metric.Euclidean, ref idx);
             AssertEqI(cnt2, 2);
             AssertEqI(idx[0], 0); AssertEqI(idx[1], 2);
-            AssertEqI(doubleQuery_OP.countWithinRadius(in A, in q, (double)4.9, Metric.Euclidean), 2);
+            AssertEqI(Query.countWithinRadius(in A, in q, (double)4.9, Metric.Euclidean), 2);
 
             // similarity metric (Dot): inclusive >= r. q2=(1,0): dots 0, 3, 1.
             var q2 = arena.doubleVec(2);
             q2[0] = (double)1; q2[1] = (double)0;
             // threshold exactly 1 -> rows with dot >= 1: r1(3) and r2(1). r0(0) excluded.
-            int cnt3 = doubleQuery_OP.rowsWithinRadius(in A, in q2, (double)1, Metric.Dot, ref idx);
+            int cnt3 = Query.rowsWithinRadius(in A, in q2, (double)1, Metric.Dot, ref idx);
             AssertEqI(cnt3, 2);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 2);
-            AssertEqI(doubleQuery_OP.countWithinRadius(in A, in q2, (double)1, Metric.Dot), 2);
+            AssertEqI(Query.countWithinRadius(in A, in q2, (double)1, Metric.Dot), 2);
 
             // Column twins. Columns of A length 3: c0=(0,3,1) c1=(0,4,1). qcol=(0,0,0).
             var qcol = arena.doubleVec(3);
             qcol[0] = (double)0; qcol[1] = (double)0; qcol[2] = (double)0;
             // SqEuclidean: c0=0+9+1=10, c1=0+16+1=17. radius 10 inclusive -> only c0.
             var idxc = arena.Indices(2);
-            int ccol = doubleQuery_OP.columnsWithinRadius(in A, in qcol, (double)10, Metric.SqEuclidean, ref idxc);
+            int ccol = Query.columnsWithinRadius(in A, in qcol, (double)10, Metric.SqEuclidean, ref idxc);
             AssertEqI(ccol, 1); AssertEqI(idxc[0], 0);
-            AssertEqI(doubleQuery_OP.countWithinColumnRadius(in A, in qcol, (double)10, Metric.SqEuclidean), 1);
+            AssertEqI(Query.countWithinColumnRadius(in A, in qcol, (double)10, Metric.SqEuclidean), 1);
 
             arena.Dispose();
         }
@@ -656,20 +656,20 @@ public class doubleQueryTests
             v[0] = (double)1; v[1] = (double)2; v[2] = (double)2; v[3] = (double)3; v[4] = (double)2;
 
             // first match (within tol 0) at index 1
-            AssertEqI(doubleQuery_OP.findValue(in v, (double)2, (double)0), 1);
+            AssertEqI(Query.findValue(in v, (double)2, (double)0), 1);
             // absent -> -1
-            AssertEqI(doubleQuery_OP.findValue(in v, (double)9, (double)0), -1);
+            AssertEqI(Query.findValue(in v, (double)9, (double)0), -1);
             // tol boundary, exactly representable in float+double: target 2.5, tol 0.5 matches the
             // 2's on the inclusive boundary (|2 - 2.5| = 0.5 <= 0.5) -> first 2 at index 1.
-            AssertEqI(doubleQuery_OP.findValue(in v, (double)2.5, (double)0.5), 1);
+            AssertEqI(Query.findValue(in v, (double)2.5, (double)0.5), 1);
             // tol below the gap (|2 - 2.5| = 0.5 > 0.25, |3 - 2.5| = 0.5 > 0.25) -> no match.
-            AssertEqI(doubleQuery_OP.findValue(in v, (double)2.5, (double)0.25), -1);
+            AssertEqI(Query.findValue(in v, (double)2.5, (double)0.25), -1);
 
             // matrix overload (flat index). 2x2 = [5, 6; 7, 6]; first 6 at flat 1.
             var A = arena.doubleMat(2, 2);
             A[0, 0] = (double)5; A[0, 1] = (double)6;
             A[1, 0] = (double)7; A[1, 1] = (double)6;
-            AssertEqI(doubleQuery_OP.findValue(in A, (double)6, (double)0), 1);
+            AssertEqI(Query.findValue(in A, (double)6, (double)0), 1);
 
             arena.Dispose();
         }
@@ -683,15 +683,15 @@ public class doubleQueryTests
             v[3] = (double)(-3); v[4] = (double)0.05; v[5] = (double)0;
 
             // tol=0: nonzero are indices 1,3,4 -> count 3
-            AssertEqI(doubleQuery_OP.countNonzero(in v, (double)0), 3);
+            AssertEqI(Query.countNonzero(in v, (double)0), 3);
             var idx = arena.Indices(6);
-            int c = doubleQuery_OP.nonzero(in v, (double)0, ref idx);
+            int c = Query.nonzero(in v, (double)0, ref idx);
             AssertEqI(c, 3);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 3); AssertEqI(idx[2], 4);
 
             // tol=0.1: |0.05| filtered out -> indices 1,3 -> count 2
-            AssertEqI(doubleQuery_OP.countNonzero(in v, (double)0.1), 2);
-            int c2 = doubleQuery_OP.nonzero(in v, (double)0.1, ref idx);
+            AssertEqI(Query.countNonzero(in v, (double)0.1), 2);
+            int c2 = Query.nonzero(in v, (double)0.1, ref idx);
             AssertEqI(c2, 2);
             AssertEqI(idx[0], 1); AssertEqI(idx[1], 3);
 
@@ -699,9 +699,9 @@ public class doubleQueryTests
             var A = arena.doubleMat(2, 2);
             A[0, 0] = (double)0; A[0, 1] = (double)2;
             A[1, 0] = (double)0; A[1, 1] = (double)0;
-            AssertEqI(doubleQuery_OP.countNonzero(in A, (double)0), 1);
+            AssertEqI(Query.countNonzero(in A, (double)0), 1);
             var idxA = arena.Indices(4);
-            int ca = doubleQuery_OP.nonzero(in A, (double)0, ref idxA);
+            int ca = Query.nonzero(in A, (double)0, ref idxA);
             AssertEqI(ca, 1); AssertEqI(idxA[0], 1);
 
             arena.Dispose();
@@ -724,25 +724,25 @@ public class doubleQueryTests
             var q = arena.doubleVec(M);
             for (int i = 0; i < M; i++) q[i] = (double)(i - 2) * (double)0.7;
 
-            doubleQuery_OP.nearestColumn(in A, in q, Metric.SqEuclidean, out int ci, out double cs);
-            doubleQuery_OP.nearestRow(in At, in q, Metric.SqEuclidean, out int ri, out double rs);
+            Query.nearestColumn(in A, in q, Metric.SqEuclidean, out int ci, out double cs);
+            Query.nearestRow(in At, in q, Metric.SqEuclidean, out int ri, out double rs);
             AssertEqI(ci, ri); AssertClose(cs, rs, sqrtEps());
 
             // distancesToColumn(A) == distancesToRow(transpose(A)).
             var dc = arena.doubleVec(N);
             var dr = arena.doubleVec(N);
-            doubleQuery_OP.distancesToColumn(in A, in q, Metric.Euclidean, ref dc);
-            doubleQuery_OP.distancesToRow(in At, in q, Metric.Euclidean, ref dr);
+            Query.distancesToColumn(in A, in q, Metric.Euclidean, ref dc);
+            Query.distancesToRow(in At, in q, Metric.Euclidean, ref dr);
             for (int j = 0; j < N; j++)
                 AssertClose(dc[j], dr[j], sqrtEps());
 
             // colArgMin(A) == rowArgMin(transpose(A)): same per-column extreme indices.
             var colIdx = arena.Indices(N);
             var colVal = arena.doubleVec(N);
-            doubleQuery_OP.colArgMin(in A, ref colIdx, ref colVal);
+            Query.colArgMin(in A, ref colIdx, ref colVal);
             var rowIdx = arena.Indices(N);
             var rowVal = arena.doubleVec(N);
-            doubleQuery_OP.rowArgMin(in At, ref rowIdx, ref rowVal);
+            Query.rowArgMin(in At, ref rowIdx, ref rowVal);
             for (int j = 0; j < N; j++)
             {
                 AssertEqI(colIdx[j], rowIdx[j]);
@@ -750,20 +750,20 @@ public class doubleQueryTests
             }
 
             // argMaxColNorm(A) == argMaxRowNorm(transpose(A)).
-            AssertEqI(doubleQuery_OP.argMaxColNorm(in A, Norm.L2),
-                      doubleQuery_OP.argMaxRowNorm(in At, Norm.L2));
+            AssertEqI(Query.argMaxColNorm(in A, Norm.L2),
+                      Query.argMaxRowNorm(in At, Norm.L2));
 
             // farthestColumn(A) == farthestRow(transpose(A)).
-            doubleQuery_OP.farthestColumn(in A, in q, Metric.SqEuclidean, out int fci, out double fcs);
-            doubleQuery_OP.farthestRow(in At, in q, Metric.SqEuclidean, out int fri, out double frs);
+            Query.farthestColumn(in A, in q, Metric.SqEuclidean, out int fci, out double fcs);
+            Query.farthestRow(in At, in q, Metric.SqEuclidean, out int fri, out double frs);
             AssertEqI(fci, fri); AssertClose(fcs, frs, sqrtEps());
 
             // kNearestColumns(A) == kNearestRows(transpose(A)): same indices + scores.
             int kk = 3;
             var ncIdx = arena.Indices(kk); var ncVal = arena.doubleVec(kk);
             var nrIdx = arena.Indices(kk); var nrVal = arena.doubleVec(kk);
-            int ncCnt = doubleQuery_OP.kNearestColumns(in A, in q, kk, Metric.SqEuclidean, ref ncIdx, ref ncVal);
-            int nrCnt = doubleQuery_OP.kNearestRows(in At, in q, kk, Metric.SqEuclidean, ref nrIdx, ref nrVal);
+            int ncCnt = Query.kNearestColumns(in A, in q, kk, Metric.SqEuclidean, ref ncIdx, ref ncVal);
+            int nrCnt = Query.kNearestRows(in At, in q, kk, Metric.SqEuclidean, ref nrIdx, ref nrVal);
             AssertEqI(ncCnt, nrCnt);
             for (int i = 0; i < ncCnt; i++)
             {
@@ -774,8 +774,8 @@ public class doubleQueryTests
             // kFarthestColumns(A) == kFarthestRows(transpose(A)).
             var fcIdx = arena.Indices(kk); var fcVal = arena.doubleVec(kk);
             var frIdx = arena.Indices(kk); var frVal = arena.doubleVec(kk);
-            int fcCnt = doubleQuery_OP.kFarthestColumns(in A, in q, kk, Metric.SqEuclidean, ref fcIdx, ref fcVal);
-            int frCnt = doubleQuery_OP.kFarthestRows(in At, in q, kk, Metric.SqEuclidean, ref frIdx, ref frVal);
+            int fcCnt = Query.kFarthestColumns(in A, in q, kk, Metric.SqEuclidean, ref fcIdx, ref fcVal);
+            int frCnt = Query.kFarthestRows(in At, in q, kk, Metric.SqEuclidean, ref frIdx, ref frVal);
             AssertEqI(fcCnt, frCnt);
             for (int i = 0; i < fcCnt; i++)
             {
@@ -787,12 +787,12 @@ public class doubleQueryTests
             double rad = (double)6;
             var cwrIdx = arena.Indices(N);
             var rwrIdx = arena.Indices(N);
-            int cwrCnt = doubleQuery_OP.columnsWithinRadius(in A, in q, rad, Metric.SqEuclidean, ref cwrIdx);
-            int rwrCnt = doubleQuery_OP.rowsWithinRadius(in At, in q, rad, Metric.SqEuclidean, ref rwrIdx);
+            int cwrCnt = Query.columnsWithinRadius(in A, in q, rad, Metric.SqEuclidean, ref cwrIdx);
+            int rwrCnt = Query.rowsWithinRadius(in At, in q, rad, Metric.SqEuclidean, ref rwrIdx);
             AssertEqI(cwrCnt, rwrCnt);
             for (int i = 0; i < cwrCnt; i++) AssertEqI(cwrIdx[i], rwrIdx[i]);
-            AssertEqI(doubleQuery_OP.countWithinColumnRadius(in A, in q, rad, Metric.SqEuclidean),
-                      doubleQuery_OP.countWithinRadius(in At, in q, rad, Metric.SqEuclidean));
+            AssertEqI(Query.countWithinColumnRadius(in A, in q, rad, Metric.SqEuclidean),
+                      Query.countWithinRadius(in At, in q, rad, Metric.SqEuclidean));
 
             arena.Dispose();
         }
@@ -819,7 +819,7 @@ public class doubleQueryTests
             AssertEqI(nrCnt, M);
             AssertEqI(nrIdx.N, M);
             var allR = arena.doubleVec(M);
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref allR);
+            Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref allR);
             for (int i = 0; i + 1 < nrCnt; i++) AssertTrue(nrScore[i] <= nrScore[i + 1] + sqrtEps());
             for (int i = 0; i < nrCnt; i++) AssertClose(nrScore[i], allR[nrIdx[i]], sqrtEps());
 
@@ -833,7 +833,7 @@ public class doubleQueryTests
             var ncIdx = arena.doubleKNearestColumns(in A, in qc, kCols, Metric.SqEuclidean, out doubleN ncScore, out int ncCnt);
             AssertEqI(ncCnt, N);
             var allC = arena.doubleVec(N);
-            doubleQuery_OP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
+            Query.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref allC);
             for (int i = 0; i + 1 < ncCnt; i++) AssertTrue(ncScore[i] <= ncScore[i + 1] + sqrtEps());
             for (int i = 0; i < ncCnt; i++) AssertClose(ncScore[i], allC[ncIdx[i]], sqrtEps());
 
@@ -862,7 +862,7 @@ public class doubleQueryTests
             // --- doubleDistancesToRow / Column wrappers vs primitive ---
             var dr = ArenaExtensions.doubleDistancesToRow(in A, in q, Metric.SqEuclidean);
             var drRef = arena.doubleVec(M);
-            doubleQuery_OP.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
+            Query.distancesToRow(in A, in q, Metric.SqEuclidean, ref drRef);
             AssertEqI(dr.N, M);
             for (int i = 0; i < M; i++) AssertClose(dr[i], drRef[i], sqrtEps());
 
@@ -870,14 +870,14 @@ public class doubleQueryTests
             for (int i = 0; i < M; i++) qc[i] = (double)(i) * (double)0.2;
             var dcol = ArenaExtensions.doubleDistancesToColumn(in A, in qc, Metric.SqEuclidean);
             var dcolRef = arena.doubleVec(N);
-            doubleQuery_OP.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
+            Query.distancesToColumn(in A, in qc, Metric.SqEuclidean, ref dcolRef);
             AssertEqI(dcol.N, N);
             for (int j = 0; j < N; j++) AssertClose(dcol[j], dcolRef[j], sqrtEps());
 
             // --- doubleNonzeroIndices: exact-sized, contents match the primitive ---
             var idxNz = arena.doubleNonzeroIndices(in A, (double)0.5);
             var refNz = arena.Indices(M * N);
-            int refCnt = doubleQuery_OP.nonzero(in A, (double)0.5, ref refNz);
+            int refCnt = Query.nonzero(in A, (double)0.5, ref refNz);
             AssertEqI(idxNz.N, refCnt);
             for (int i = 0; i < refCnt; i++) AssertEqI(idxNz[i], refNz[i]);
 
@@ -885,14 +885,14 @@ public class doubleQueryTests
             double radius = (double)5;
             var idxRR = arena.doubleRowsWithinRadius(in A, in q, radius, Metric.SqEuclidean);
             var refRR = arena.Indices(M);
-            int refRRcnt = doubleQuery_OP.rowsWithinRadius(in A, in q, radius, Metric.SqEuclidean, ref refRR);
+            int refRRcnt = Query.rowsWithinRadius(in A, in q, radius, Metric.SqEuclidean, ref refRR);
             AssertEqI(idxRR.N, refRRcnt);
             for (int i = 0; i < refRRcnt; i++) AssertEqI(idxRR[i], refRR[i]);
 
             // --- doubleColumnsWithinRadius ---
             var idxCR = arena.doubleColumnsWithinRadius(in A, in qc, (double)8, Metric.SqEuclidean);
             var refCR = arena.Indices(N);
-            int refCRcnt = doubleQuery_OP.columnsWithinRadius(in A, in qc, (double)8, Metric.SqEuclidean, ref refCR);
+            int refCRcnt = Query.columnsWithinRadius(in A, in qc, (double)8, Metric.SqEuclidean, ref refCR);
             AssertEqI(idxCR.N, refCRcnt);
             for (int i = 0; i < refCRcnt; i++) AssertEqI(idxCR[i], refCR[i]);
 
@@ -901,7 +901,7 @@ public class doubleQueryTests
             var idxK = arena.doubleKNearestRows(in A, in q, k, Metric.SqEuclidean, out doubleN scoresK, out int cntK);
             var refIdxK = arena.Indices(k);
             var refScoresK = arena.doubleVec(k);
-            int refCntK = doubleQuery_OP.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxK, ref refScoresK);
+            int refCntK = Query.kNearestRows(in A, in q, k, Metric.SqEuclidean, ref refIdxK, ref refScoresK);
             AssertEqI(cntK, refCntK);
             AssertEqI(idxK.N, refCntK);
             for (int i = 0; i < refCntK; i++)
@@ -914,7 +914,7 @@ public class doubleQueryTests
             var idxKC = arena.doubleKNearestColumns(in A, in qc, k, Metric.SqEuclidean, out doubleN scoresKC, out int cntKC);
             var refIdxKC = arena.Indices(k);
             var refScoresKC = arena.doubleVec(k);
-            int refCntKC = doubleQuery_OP.kNearestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKC, ref refScoresKC);
+            int refCntKC = Query.kNearestColumns(in A, in qc, k, Metric.SqEuclidean, ref refIdxKC, ref refScoresKC);
             AssertEqI(cntKC, refCntKC);
             for (int i = 0; i < refCntKC; i++)
             {
@@ -1084,9 +1084,9 @@ public class doubleQueryTests
         var arena = new Arena(Allocator.Persistent);
         var v0 = arena.doubleVec(0);
         Assert.Throws<InvalidOperationException>(() =>
-            doubleQuery_OP.argMaxAbs(in v0, out double _, out int _));
+            Query.argMaxAbs(in v0, out double _, out int _));
         Assert.Throws<InvalidOperationException>(() =>
-            doubleQuery_OP.argMinAbs(in v0, out double _, out int _));
+            Query.argMinAbs(in v0, out double _, out int _));
         arena.Dispose();
     }
 
@@ -1099,11 +1099,11 @@ public class doubleQueryTests
         var dest = arena.doubleVec(3);
 
         Assert.Throws<ArgumentException>(() =>
-            doubleQuery_OP.distancesToRow(in A, in qBad, Metric.SqEuclidean, ref dest));
+            Query.distancesToRow(in A, in qBad, Metric.SqEuclidean, ref dest));
         Assert.Throws<ArgumentException>(() =>
-            doubleQuery_OP.nearestRow(in A, in qBad, Metric.SqEuclidean, out int _, out double _));
+            Query.nearestRow(in A, in qBad, Metric.SqEuclidean, out int _, out double _));
         Assert.Throws<ArgumentException>(() =>
-            doubleQuery_OP.countWithinRadius(in A, in qBad, (double)1, Metric.SqEuclidean));
+            Query.countWithinRadius(in A, in qBad, (double)1, Metric.SqEuclidean));
         arena.Dispose();
     }
 
@@ -1116,11 +1116,11 @@ public class doubleQueryTests
         var dest = arena.doubleVec(4);
 
         Assert.Throws<ArgumentException>(() =>
-            doubleQuery_OP.distancesToColumn(in A, in qBad, Metric.SqEuclidean, ref dest));
+            Query.distancesToColumn(in A, in qBad, Metric.SqEuclidean, ref dest));
         Assert.Throws<ArgumentException>(() =>
-            doubleQuery_OP.nearestColumn(in A, in qBad, Metric.SqEuclidean, out int _, out double _));
+            Query.nearestColumn(in A, in qBad, Metric.SqEuclidean, out int _, out double _));
         Assert.Throws<ArgumentException>(() =>
-            doubleQuery_OP.countWithinColumnRadius(in A, in qBad, (double)1, Metric.SqEuclidean));
+            Query.countWithinColumnRadius(in A, in qBad, (double)1, Metric.SqEuclidean));
         arena.Dispose();
     }
 
@@ -1133,12 +1133,12 @@ public class doubleQueryTests
     public void DecodeIndexGuardThrows()
     {
         Assert.Throws<ArgumentException>(() =>
-            doubleQuery_OP.decodeIndex(5, 0, out int _, out int _));
+            Query.decodeIndex(5, 0, out int _, out int _));
         Assert.Throws<ArgumentException>(() =>
-            doubleQuery_OP.decodeIndex(5, -3, out int _, out int _));
+            Query.decodeIndex(5, -3, out int _, out int _));
         // a valid nCols must NOT throw.
         Assert.DoesNotThrow(() =>
-            doubleQuery_OP.decodeIndex(5, 3, out int _, out int _));
+            Query.decodeIndex(5, 3, out int _, out int _));
     }
 
     [Test]

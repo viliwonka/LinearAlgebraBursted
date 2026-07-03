@@ -1,0 +1,22 @@
+using System;
+using System.Runtime.CompilerServices;
+
+namespace LinearAlgebra
+{
+    // Type-agnostic Query helper hoisted out of the per-type QueryOP templates. decodeIndex takes
+    // only ints, so the merged float+double `Query` partial cannot hold it twice -- it lives in this
+    // single non-templated file and emits exactly once (same mechanism as OpHelpers.Shared.cs).
+    public static partial class Query
+    {
+        /// <summary>
+        /// Converts a row-major flat index to (row, col) for a matrix with nCols columns.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void decodeIndex(int flat, int nCols, out int row, out int col)
+        {
+            if (nCols <= 0) throw new ArgumentException("decodeIndex: nCols must be > 0");
+            row = flat / nCols;
+            col = flat % nCols;
+        }
+    }
+}
