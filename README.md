@@ -1,156 +1,120 @@
 # Linear Algebra Library for Unity
 
-## Description
-A linear algebra library for Unity, fully written in Burst. It's designed to be a natural extension of Unity.Mathematics, offering a bit more of functionalities. Currently in an experimental stage and not yet ready for production use.
+A linear algebra library for Unity, fully written in [Burst](https://docs.unity3d.com/Packages/com.unity.burst@latest).
+It's designed as a natural extension of `Unity.Mathematics` — where that stops at 4×4, this
+takes over: arbitrary-size dense and block-sparse vectors and matrices, factorizations, solvers,
+eigensolvers, FFT, statistics and a small ML layer, all Burst-compiled and allocation-conscious.
+
+Getting ready for production — the feature set is complete and heavily tested, but the public API
+is still being reviewed and may change before `1.0`.
 
 ## Installation
 
-To open the repo in Unity, follow these steps:
+**Unity Package Manager (recommended).** Only the generated runtime code ships — no templates or
+codegen tooling. In *Window → Package Manager → + → Add package from git URL*, paste:
 
-1. Clone the repo
-2. Open the project in Unity
+```
+https://github.com/viliwonka/LinearAlgebraBursted.git?path=Assets/LinearAlgebra/Source
+```
 
-To use library in your own project:
+or add it to `Packages/manifest.json`:
 
-1. Clone the repo to separate project
-2. Copy Assets/LinearAlgebra/Source into your own project
+```json
+"com.viliwonka.burst-linear-algebra": "https://github.com/viliwonka/LinearAlgebraBursted.git?path=Assets/LinearAlgebra/Source"
+```
+
+**Copy-in.** Alternatively, clone the repo and copy `Assets/LinearAlgebra/Source` into your own
+project. Either way the dependency is just `com.unity.collections` (which pulls in Burst and
+Mathematics). Requires Unity 6000.3+.
+
+To work on the library itself (templates + codegen), clone and open the repo directly in Unity.
+
+## Core types
+
+- **`Arena`** — the allocator that owns every vector and matrix. `arena.floatVec(n)` /
+  `arena.floatRandomMatrix(m, n)` allocate; `arena.ClearTemp()` frees the temporaries a hot loop
+  produced; `arena.Dispose()` frees everything. Vectors and matrices are lightweight handles into
+  the arena, not copies.
+- **Vectors & matrices** — `floatN` / `floatMxN` and their `double` / `int` / `short` / `long` /
+  `bool` counterparts. Matrices are row-major.
+- **Workspaces** — reusable scratch reserved from the arena (`arena.RequireSvdThinWorkspace(…)`,
+  `RequireEigenSymWorkspace`, `RequireFftWorkspace`, …) and handed to the zero-allocation op/solver
+  overloads so repeated calls in a hot loop allocate nothing.
+- **Info / diagnostic structs** — solvers and decompositions return small result structs
+  (`SolveInfo`, `LstsqInfo`, `DirectSolveInfo`, `RankRevealingInfo`, `EigenSolveInfo`, `fProxyPCAModel`, …)
+  carrying status, iteration count, residual norms, rank and the like. All are Burst-printable with
+  `Print.Log(in info)`.
 
 ## Usage
 
-Here's a simple example:
-
 ```csharp
-    // memory management struct
+    // memory management struct — owns all allocations below
     var arena = new Arena(Allocator.Persistent);
 
     int dim = 128;
-    // creates a zero vector of 128 dimensions 
-    floatN vecA = arena.floatVec(dim);
-    // creates a vector of 128 dimensions with all elements set to 1
-    floatN vecB = arena.floatVec(dim, 1f);
+    floatN vecA = arena.floatVec(dim);        // zero vector
+    floatN vecB = arena.floatVec(dim, 1f);    // filled with 1
 
-    // add per component (will allocate a new temporary vec)
-    floatN vecAdd = vecA + vecB;
-    // mul per component (will allocate a new temporary vec)
-    floatN vecMul = vecA * vecB;
+    floatN vecAdd = vecA + vecB;              // per-component (allocates a temp)
+    floatN vecMul = vecA * vecB;              // per-component (allocates a temp)
 
-    // create identity matrix
-    floatMxN matI = arena.floatIdentityMatrix(16);
+    floatMxN matI   = arena.floatIdentityMatrix(16);
     floatMxN matRand = arena.floatRandomMatrix(16, 16);
 
-    // per component sum, allocates new matrix
-    floatMxN compSumMat = matI + matRand;
+    floatMxN compSumMat = matI + matRand;     // allocates
+    floatElem_OP.addInpl(compSumMat, 1f);     // in place, allocates nothing
+    floatElem_OP.mulInpl(compSumMat, matI);   // in place, allocates nothing
 
-    // adds 1f to compSumMat inplace, allocating nothing
-    floatElem_OP.addInpl(compSumMat, 1f);
-
-    // mulls matI into compSumMat inplace, allocating nothing 
-    floatElem_OP.mulInpl(compSumMat, matI);
-
-    // creates random matrix with range from -3f to 3f
     floatMxN A = arena.floatRandomDiagonalMatrix(dim, -3f, 3f);
     floatMxN B = arena.floatRandomDiagonalMatrix(dim, -3f, 3f);
-
-    // dot multiply A and B, will allocate new matrix
-    floatMxN C = Linear_OP.dot(A, B);
-
-    // adds 5f to element on [0, 0] coords
+    floatMxN C = Linear_OP.dot(A, B);         // matrix multiply (allocates)
     C[0, 0] += 5f;
 
     floatN b = arena.floatVec(dim, 1f);
-    floatN x_result = arena.floatVec(dim, 1f);
+    floatN x = arena.floatVec(dim);
 
+    // solve Ax = b in place via QR; returns a diagnostics struct
+    DirectSolveInfo info = QR.qrDirectSolve(ref A, ref b, ref x);
+    Print.Log(info);                          // "DirectSolveInfo(Success, ...)"
 
-    // solves linear system Ax = b inplace using QR, will allocate nothing permament
-    // but will modify A and b
-    QR.qrDirectSolve(ref A, ref b, ref x_result);
+    float norm = Norms_OP.L1(x);
 
-    // calculate L1 norm
-    float norm = Norms_OP.L1(x_result);
+    boolMxN cmp = C > A;                       // element-wise compare (allocates)
+    cmp = !cmp;                                // negate (allocates)
 
-    // prints C matrix, although it will be cutoff because of big dimensions
-    Print.Log(C);
-
-    // returns true for all elements c_ij > a_ij, else false
-    // will allocate
-    boolMxN matCompare = C > A;
-
-    // flips booleans, will allocate
-    matCompare = !matCompare;
-
-    // creates 3 new allocations
-    boolMxN matCompare2 = C > A | C < B;
-
-    // clears all temporary allocations
-    arena.ClearTemp();
-
-    // creates new int vector with dimensions of 10 and valued at 32
-    intN intVec = arena.intVec(10, 32);
-
-    // applies bitwise OR to elements, allocates new vector
-    intVec |= 64;
-
-    // also allocates, inplace methods do exist though
-    intVec = 2 + (intVec << 2) + intVec;
-
-    // creates new integer matrix
-    intMxN intMat = arena.intRandomMatrix(10, 10, 0, 10);
-
-    // creates new double matrix
-    doubleMxN doubleMat = arena.doubleRandomMatrix(10, 10, 0, 10);
-
-    // creates new short matrix
-    shortMxN shortMat = arena.shortRandomMatrix(10, 10, 0, 10);
-
-    // creates new long matrix
-    longMxN longMat = arena.longRandomMatrix(10, 10, 0, 10);
-
-    // mean of a vec
-    double mean = doubleStats_OP.mean(in doubleMat);
-
-    // mean of a vec
-    double max = doubleStats_OP.max(in doubleMat);
-
-    // vector of means of each row
-    doubleN rowMean = doubleStats_OP.rowMean(in doubleMat);
-
-    // clears and dispose all allocated vectors/matrices, disposes also arena
-    arena.Dispose();
+    arena.ClearTemp();                         // free the temporaries above
+    arena.Dispose();                           // free everything, dispose arena
 ```
 
 ## Features
 
 - **Types** — float, double, int, short, long, bool vectors & matrices
-- **Core ops** — dot, matrix multiply, transpose, outer product, element-wise, select, comparisons
-- **Decompositions** — LU, Cholesky, QR (all with pivoted variants), SVD
-- **Solvers** — direct, least-squares (over-determined), min-norm (under-determined), iterative (CG/PCG, MINRES, BiCGSTAB, CGLS/LSQR)
-- **Eigen** — dominant eigenpair (power iteration), full symmetric (Jacobi), non-symmetric eigenvalues (Francis QR)
-- **Sparse** — block-sparse (BSR) matrices with rectangular blocks + a COO builder; block-Jacobi preconditioner; the iterative solvers run matrix-free on dense *or* sparse operands through a shared linear-operator interface
-- **Numerical LA** — norms, condition number, determinant, trace, rank
-- **Statistics** — mean, var/std, median, min/max, argmin/max, row/col reductions, covariance, correlation
-- **Random** — distribution samplers + structured/multivariate matrix generators (Gaussian, orthogonal, SPD, …)
-- **Histogram** — binning, density, CDF, 2D heatmaps — feeds the weighted sampler
-- **Transforms** — normalize (L1/L2/L∞), standardize, rescale, center, softmax, clamp
-- **Generators** — linspace/arange, curve / easing / LFO functors, convolution kernels, DSP windows
-- **FFT** — power-of-two FFT/IFFT & real-input rfft/irfft (radix-4 workspace) + direct DFT for any N · [docs](docs/fft.md)
-- **Find / query** — arg-min/max, nearest / k-nearest by metric, within-radius, find-value
-- **Resampling** — sample vectors/matrices as continuous functions, resize 1D/2D (nearest / linear / Catmull-Rom)
-- **Optimizers** — 1D root-finding, 1D minimization, gradient descent
+- **Core ops** — dot, matrix multiply (register-tiled GEMM), transpose, outer product, element-wise, select, comparisons
+- **Decompositions** — LU, Cholesky, QR / LQ, QRCP (pivoted), SVD (thin / truncated / randomized)
+- **Solvers** — direct, least-squares, min-norm, iterative (CG/PCG, MINRES, BiCGSTAB, CGLS/LSQR/LSMR); every solver returns a diagnostics struct
+- **Eigen** — power iteration, symmetric (`eigenSymmetric`), non-symmetric (Francis QR), and matrix-free sparse eigensolvers
+- **Sparse** — block-sparse (BSR) matrices with rectangular blocks; solvers and eigensolvers run matrix-free over dense *or* sparse operands through a shared linear-operator interface
+- **ML** — PCA + k-means
+- **Statistics** — mean, var/std, median, min/max, argmin/max, covariance, correlation, row/col reductions
+- **[FFT](docs/fft.md)** — power-of-two FFT/IFFT, real-input rfft/irfft, arbitrary-N DFT
+- **Random** — distribution samplers + structured / multivariate matrix generators (Gaussian, orthogonal, SPD, …)
+- **Signal & data** — histograms, resampling (nearest / linear / Catmull-Rom), transforms (normalize / standardize / softmax / …), generators (linspace, easing/LFO, DSP windows), find/query, 1D optimizers
+- **Debug** — Burst `Print.Log` / `Print.Spy` (incl. block-sparse spy) + managed CSV/text export for every type
 - **Zero-allocation** — preallocated-output / reusable-workspace variants of ops & solvers for hot loops
 
-## WIP / TODO
+## Status & roadmap
 
-**Polish & cleanup**
-- Better arena management + standalone (non-arena) vec/mat lifetime
-- Name unification & simplification
-- More safety checks, fuller docs
+Version `0.1` — everything above is built and tested. The API is still being read through and
+tightened ahead of `1.0`, so names and signatures may still change.
 
-**Not yet built / under design**
-- **Realtime** — a rolling window (ring buffer + zero-alloc moving average/covariance) exists, but the broader design is unsettled: frame-amortized solvers, resumable iterative state (CG/PCG stepping), online covariance / PCA, Kalman
-- **PCA convenience** — covariance → symmetric eigen → sorted components + explained variance
-- **Sparse eigensolvers** — sparse power iteration / LOBPCG (Fiedler vector, low vibration modes, λ_min); symmetric upper-block BSR storage
+**Under design**
 
-Vector/matrix views (slicing) were evaluated and intentionally dropped: a non-owning
-view can't feed the contiguous Burst kernels directly, so callers materialize anyway —
-the query ops cover the real need.
+- **Realtime** — a rolling window (ring buffer + zero-alloc moving average/covariance) exists, but
+  the broader design is unsettled: frame-amortized solvers, resumable iterative state (CG/PCG
+  stepping), online covariance / PCA, Kalman.
+- **Sparse smallest-eigenpair (LOBPCG)** — for structural-stability use cases (buckling, modal
+  analysis, the Fiedler vector). Dense small-scale versions are already covered by `eigenSymmetric`.
 
+Vector/matrix views (slicing) were evaluated and intentionally dropped: a non-owning view can't
+feed the contiguous Burst kernels directly, so callers materialize anyway — the query ops cover the
+real need.
