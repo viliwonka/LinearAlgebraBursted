@@ -7,10 +7,8 @@ namespace LinearAlgebra
 {
     public static partial class Print
     {
-        // Quick ASCII horizontal histogram of a vector's value distribution. Bins [min, max] into
-        // `bins` equal buckets and prints one bar per bucket, scaled so the fullest bucket is
-        // `width` characters wide. Each line is "<left edge> | ####### <count>". Burst-callable;
-        // long outputs (many bins) are flushed in chunks so nothing is truncated.
+        // Quick ASCII horizontal histogram: bins [min, max] into `bins` equal buckets, each line
+        // "<left edge> | ####### <count>" scaled to `width` chars; long output flushes in chunks.
         public static void Histogram(in fProxyN data, int bins = 16, int width = 40)
         {
             if (bins < 1) bins = 1;

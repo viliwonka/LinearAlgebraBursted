@@ -87,21 +87,18 @@ public class floatIndexingTests {
 
             int len = dim * dim;
 
-            // Forward-fill DISTINCT ground-truth values via the plain int indexer (oracle).
+            // Same oracle/from-end pattern as VectorIndexing, over the flat 1D indexer.
             for (int i = 0; i < len; i++)
                 mat[i] = (float)(i + 1);
 
             for (int i = 0; i < len; i++)
                 Assert.IsTrue(mat[i] == (float)(i + 1));
 
-            // From-end accessor must equal the forward element at (Length - k).
             for (int k = 1; k <= len; k++)
                 Assert.IsTrue(mat[^k] == mat[len - k]);
 
-            // ^1 is the LAST element.
             Assert.IsTrue(mat[^1] == mat[len - 1]);
 
-            // Write through the from-end accessor, read back through forward int accessor.
             for (int k = 1; k <= len; k++)
                 mat[^k] = (float)(1000 + k);
 
@@ -120,7 +117,7 @@ public class floatIndexingTests {
 
             floatMxN mat = arena.floatMat(rows, cols);
 
-            // Forward-fill DISTINCT ground-truth values via the plain [r, c] oracle.
+            // Same oracle pattern, via the plain [r, c] indexer; from-end checked per axis below.
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                     mat[r, c] = (float)(r * cols + c + 1);
@@ -144,10 +141,8 @@ public class floatIndexingTests {
             for (int c = 1; c <= cols; c++)
                 Assert.IsTrue(mat[^r, ^c] == mat[rows - r, cols - c]);
 
-            // ^1, ^1 is the LAST element.
             Assert.IsTrue(mat[^1, ^1] == mat[rows - 1, cols - 1]);
 
-            // Write through the from-end accessor (both axes), read back through forward [r, c].
             for (int r = 1; r <= rows; r++)
             for (int c = 1; c <= cols; c++)
                 mat[^r, ^c] = (float)(1000 + r * cols + c);

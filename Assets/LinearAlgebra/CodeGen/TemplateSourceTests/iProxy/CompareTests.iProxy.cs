@@ -338,7 +338,6 @@ public class iProxyCompareTests
             int dim = 64;
 
             iProxyN v = arena.iProxyRandomVec(dim, -100, 100, 1451);
-            // set first element to zero
             v[0] = 0;
 
             var boolVec = v == 0;
@@ -366,7 +365,6 @@ public class iProxyCompareTests
             int dim = 32;
 
             iProxyMxN m = arena.iProxyRandomMat(dim, dim, -100, 100, 1451);
-            // set first element to zero
             m[0,0] = 0;
 
             var boolMat = m == 0;

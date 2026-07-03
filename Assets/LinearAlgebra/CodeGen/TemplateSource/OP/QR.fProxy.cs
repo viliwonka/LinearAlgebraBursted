@@ -23,8 +23,6 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void genHouseholderPete(ref fProxyMxN Q, ref fProxyN u, int k, fProxy zeroThreshold) {
 
-            // copy column d of A into u
-            // here we are forming x vector
             for (int r = k; r < u.N; r++)
                 u[r] = Q[r, k];
 
@@ -45,8 +43,6 @@ namespace LinearAlgebra
             else {
 
                 u[k] = math.SQRT2;
-                //for (int r = k; r < v.N; r++)
-                //    v[k] = (r == k) ? math.SQRT2 : 0;
             }
         }
 
@@ -100,8 +96,6 @@ namespace LinearAlgebra
             applyReflectorRightCols(ref Q, ref u, ref w, d, Q.N_Cols);
         }
 
-        // Q is original matrix A, R is identity matrix
-        // Q becomes orthogonal matrix, R becomes upper triangular matrix
         // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
         // EXACTLY Q.M_Rows; w is a workspace vector of length >= Q.N_Cols (the reflector-apply
         // accumulator). Hoist both out of a hot loop to skip the per-call Allocator.Temp allocs.
@@ -122,12 +116,9 @@ namespace LinearAlgebra
 
             int qrSteps = Q.N_Cols;
 
-            // scale-relative zero-column threshold (see genHouseholderPete): keyed off the original
-            // matrix magnitude so QR is scale-invariant. LInf(Q) == max |entry|.
+            // scale-relative zero-column threshold (see genHouseholderPete); LInf(Q) == max |entry|.
             fProxy zeroThreshold = Consts.fProxyZeroThreshold * fProxyNorms_OP.LInf(in Q);
 
-            // forming R inside Q (will be copied into R later)
-            // d = step and diagonal index
             for (int d = 0; d < qrSteps; d++)
             {
                 genHouseholderPete(ref Q, ref u, d, zeroThreshold);
@@ -136,8 +127,6 @@ namespace LinearAlgebra
                 // Vectorised, zero-alloc (w is caller scratch). See applyReflectorRight.
                 applyReflectorRight(ref Q, ref u, ref w, d);
 
-                // copy current Q diagonal element into R
-                // it will be over-written in the next step
                 R[d, d] = Q[d, d];
 
                 // copy v into Q below diagonal, will be used to reconstruct Q
@@ -146,32 +135,27 @@ namespace LinearAlgebra
                     Q[i, d] = u[i];
                 }
             }
-            // End or R orthogonalization construction
-
             // Copy the upper triangular part of Q into R
             for (int r = 0; r < R.M_Rows; r++)
             for (int c = 0; c < R.N_Cols; c++)
             {
                 if (c < r)
                 {
-                    // Below diagonal, set to 0
                     R[r, c] = 0;
                 }
                 else if (c > r)
                 {
-                    // above diagonal, copy from Q
                     R[r, c] = Q[r, c];
                 }
             }
 
-            /// Reconstruct Q from vectors stored inside Q columns
+            // Reconstruct Q from vectors stored inside Q columns
 
             // Initialize upper part of Q to identity matrix, including diagonals
             for (int r = 0; r < Q.M_Rows; r++)
             {
                 for (int c = r; c < Q.N_Cols; c++)
                 {
-                    // On and above diagonal
                     if (c > r)
                     {
                         Q[r, c] = 0;
@@ -528,10 +512,9 @@ namespace LinearAlgebra
                 // Apply the reflector to the trailing submatrix (vectorised, see applyReflectorRight).
                 applyReflectorRight(ref Q, ref u, ref w, d);
 
-                // copy current Q diagonal element into R (over-written in next step)
+                // R[d,d] and the stored Householder vector — see qrDecomposition (same pattern).
                 R[d, d] = Q[d, d];
 
-                // copy v into Q below diagonal, will be used to reconstruct Q
                 for (int i = d; i < m; i++)
                     Q[i, d] = u[i];
             }
@@ -582,11 +565,7 @@ namespace LinearAlgebra
             return info;
         }
 
-        // Q is original matrix A that will be turned into R (upper triangular) non square matrix
-        // Q becomes R
-        // b will be transformed into y, where y = Q^T b, and then solved for x
-        // x is the solution
-        // Q and b get modified (destroyed)
+        // b is transformed into y = Q^T b, then solved for x; Q and b get modified (destroyed).
         // PRECONDITION: A has FULL COLUMN RANK. This un-pivoted solve back-substitutes through R's
         // diagonal; a rank-deficient A produces a zero on that diagonal and the result x is then
         // Inf/NaN (no guard). For rank-deficient / least-norm problems use the rank-revealing paths
@@ -619,8 +598,6 @@ namespace LinearAlgebra
             fProxy zeroThreshold = Consts.fProxyZeroThreshold * fProxyNorms_OP.LInf(in A);
 
             fProxy dotProduct = 0;
-            // forming R inside Q (will be copied into R later)
-            // d = step and diagonal index
             for (int d = 0; d < qrSteps; d++) {
 
                 genHouseholderPete(ref A, ref u, d, zeroThreshold);
@@ -633,7 +610,6 @@ namespace LinearAlgebra
                 for (int r = d; r < A.M_Rows; r++)
                     dotProduct += u[r] * b[r];
 
-                //dotProduct *= 2;
                 for (int r = d; r < A.M_Rows; r++)
                     b[r] -= u[r] * dotProduct;
             }
@@ -659,41 +635,33 @@ namespace LinearAlgebra
             return info;
         }
 
-        // QRCP-based rank-safe least-squares: basic (truncated) solution.
-        //
-        // Solves A x ≈ b (m >= n) for a possibly rank-deficient A. Uses column-pivoted QR
-        // (Businger-Golub, A·P = Q·R) to expose the numerical rank r: the R diagonal is
-        // non-increasing, so r = count of leading entries with |R[i,i]| > tol where
-        //     tol = relTol * |R[0,0]|
-        // and relTol defaults to max(m,n) * Consts.fProxyZeroThreshold (matching SVD.pinvSolve /
-        // MatrixMetrics.rank, so rank detection agrees across the library). A negative relTol is
-        // an "auto" sentinel that selects that same default.
-        //
-        // Only the leading r×r block of R is back-substituted; the remaining (n-r) free variables
-        // are set to zero in the permuted ordering, then the column permutation P is un-applied to
-        // recover x. This is the BASIC (truncated) solution: it minimises the residual ||Ax - b||
-        // but is NOT the minimum-norm solution. For minimum-norm use SVD.pinvSolve. When A has
-        // full column rank (r == n) the result is identical to ordinary QR least-squares.
-        //
-        //   A   in:  m x n matrix (m >= n). Not modified (copied into Q scratch).
-        //   b   in:  right-hand side, length m. Must not alias x.
-        //   x   out: solution, length n.
-        //   Q   scratch: m x n (receives orthogonal factor; consumed).
-        //   R   scratch: n x n (receives upper-triangular factor; consumed).
-        //   P   scratch: column Pivot of size n (reset internally).
-        //   u   scratch: length EXACTLY m (Householder workspace; first n entries are
-        //                repurposed for the un-permute scatter after the decomposition).
-        //   relTol:  rank threshold ratio; tol = relTol * |R[0,0]|. Negative = auto default.
-        //   returns: RankRevealingInfo — status is Success (r == n, full rank) or RankDeficient
-        //            (r &lt; n, still a usable truncated least-squares solution); rank = detected r.
         /// <summary>
-        /// QRCP-based rank-safe least-squares: basic (truncated) solution. Returns the least-squares
-        /// solution x with at most r nonzeros in the permuted ordering, where r is the detected
-        /// numerical rank (reported in the returned <see cref="RankRevealingInfo"/>). This is NOT
-        /// the minimum-norm solution; see SVD.pinvSolve for that. The full-rank path (r == n) is
-        /// divide-safe by construction (all used R diagonals exceed tol). A rank-deficient result
-        /// (r &lt; n) is still usable — see <see cref="RankRevealingInfo.Solved"/>.
+        /// QRCP-based rank-safe least-squares: basic (truncated) solution. Solves A x ≈ b (m >= n)
+        /// for a possibly rank-deficient A using column-pivoted QR (Businger-Golub, A·P = Q·R) to
+        /// expose the numerical rank r: the R diagonal is non-increasing, so r = count of leading
+        /// entries with |R[i,i]| &gt; tol, where tol = relTol * |R[0,0]| and relTol defaults to
+        /// max(m,n) * Consts.fProxyZeroThreshold (matching SVD.pinvSolve / MatrixMetrics.rank). A
+        /// negative relTol is an "auto" sentinel that selects that same default.
+        ///
+        /// Only the leading r×r block of R is back-substituted (divide-safe by construction: every
+        /// used R diagonal exceeds tol); the remaining (n-r) free variables are set to zero in the
+        /// permuted ordering, then P is un-applied to recover x. This is the BASIC (truncated)
+        /// solution: it minimizes the residual ‖Ax - b‖ but is NOT the minimum-norm solution — use
+        /// SVD.pinvSolve for that. When A has full column rank (r == n) the result is identical to
+        /// ordinary QR least-squares.
         /// </summary>
+        /// <param name="A">m x n matrix (m >= n). Not modified (copied into Q scratch).</param>
+        /// <param name="b">Right-hand side, length m. Must not alias x.</param>
+        /// <param name="x">Solution, length n.</param>
+        /// <param name="Q">Scratch: m x n (receives orthogonal factor; consumed).</param>
+        /// <param name="R">Scratch: n x n (receives upper-triangular factor; consumed).</param>
+        /// <param name="P">Scratch: column Pivot of size n (reset internally).</param>
+        /// <param name="u">Scratch: length EXACTLY m (Householder workspace; first n entries are
+        /// repurposed for the un-permute scatter after the decomposition).</param>
+        /// <param name="relTol">Rank threshold ratio; tol = relTol * |R[0,0]|. Negative = auto default.</param>
+        /// <returns>Status Success (r == n, full rank) or RankDeficient (r &lt; n, still a usable
+        /// truncated least-squares solution); rank = detected r. See
+        /// <see cref="RankRevealingInfo.Solved"/>.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static RankRevealingInfo qrcpDirectSolve(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
                                            ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P,

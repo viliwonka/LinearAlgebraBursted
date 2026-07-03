@@ -363,7 +363,7 @@ public class doubleConjugateGradientTests
             var A = arena.doubleLaplacian1D(dim);
             var b = arena.doubleRandomVec(dim, -1f, 1f, 4242);
 
-            var x = arena.doubleVec(dim); // zero initial guess
+            var x = arena.doubleVec(dim);
 
             bool ok = Solvers.cg(in A, in b, ref x, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(ok);

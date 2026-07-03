@@ -1100,7 +1100,6 @@ public class fProxySVDTests
 
         private void AssertReconstruct(in fProxyMxN A, in fProxyMxN U, in fProxyN S, in fProxyMxN V, ref Arena arena, fProxy precision)
         {
-            // A ~= U * diag(S) * V^T
             var diagS = arena.fProxyDiagonalMat(in S);
             var US = Linear_OP.dot(U, diagS);
             var Vt = Linear_OP.trans(V);
@@ -1154,7 +1153,6 @@ public class fProxySVDTests
             }
         }
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertClose(fProxy a, fProxy b, fProxy precision)
         {
             fProxy diff = Unity.Mathematics.math.abs(a - b);
@@ -1180,8 +1178,8 @@ public class fProxySVDTests
         var fail = new NativeArray<fProxy>(4, Allocator.TempJob);
         try {
             new TestJob() { Type = type, Fail = fail }.Run();
-            // Under Burst a failed in-job assert logs an exception and aborts the job without
-            // throwing to the caller - surface the recorded diagnostics here as well.
+            // Burst in-job asserts abort without throwing; diagnostics surfaced here too
+            // (see fProxyOrthoOpTests.QRDecompTests).
             if (fail[0] != (fProxy)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 

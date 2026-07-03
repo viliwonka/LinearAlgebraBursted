@@ -37,10 +37,8 @@ namespace LinearAlgebra
             Data = data;
         }
         /// <summary>
-        /// Creates a new matrix of dimension N
+        /// Creates a new arena-backed M_Rows x N_Cols matrix.
         /// </summary>
-        /// <param name="N_cols"></param>
-        /// <param name="allocator"></param>
         public unsafe intMxN(int M_rows, int N_cols, in Arena arena, bool uninit = false)
         {
             _arena = arena;
@@ -54,9 +52,8 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Creates a copy of vector with new allocation
+        /// Creates a copy of the matrix with a new allocation.
         /// </summary>
-        /// <param name="orig"></param>
         public unsafe intMxN(in intMxN orig, Allocator allocator = Allocator.Invalid)
         {
             // guard a standalone (null-arena) source — was dereferencing null for the default allocator

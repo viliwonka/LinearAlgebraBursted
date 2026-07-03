@@ -30,10 +30,8 @@ namespace LinearAlgebra
     /// structs <see cref="DirectSolveInfo"/> / <see cref="RankRevealingInfo"/>. Mirrors
     /// <see cref="IterativeSolveStatus"/>'s role for the Krylov solvers: their <c>Solved</c>
     /// convenience property (and implicit bool conversion) means <c>if (solver(...))</c> keeps
-    /// reading as "did it succeed" while the enum preserves WHY a factorization failed.
-    ///
-    /// Type-agnostic (no fProxy) on purpose -- lives in a non-templated file so codegen does not
-    /// emit a duplicate definition into both the float and double partials (CS0102).
+    /// reading as "did it succeed" while the enum preserves WHY a factorization failed. Type-agnostic
+    /// for the same reason as <see cref="IterativeSolveStatus"/> (CS0102).
     /// </summary>
     public enum DirectSolveStatus
     {

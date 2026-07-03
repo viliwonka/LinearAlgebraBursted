@@ -21,7 +21,6 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // creates vector with s values
         public floatN floatVec(int N, float s)
         {
             var vec = new floatN(N, in this, true);
@@ -69,7 +68,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // creates vector with s values
         public floatMxN floatMat(int M_rows, int N_cols, float s)
         {
             var matrix = new floatMxN(M_rows, N_cols, in this, false);

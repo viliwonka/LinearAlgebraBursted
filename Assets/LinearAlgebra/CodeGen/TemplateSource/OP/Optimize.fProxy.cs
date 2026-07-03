@@ -9,9 +9,8 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // IfProxyScalarFunction (the shared scalar-curve functor — the Burst "lambda" used by the
-    // optimizers AND the generators) lives in Interfaces/ScalarFunction.fProxy.cs. The derivative /
-    // gradient functor interfaces below are optimizer-specific and stay here.
+    // IfProxyScalarFunction (the shared Burst "lambda" functor used by optimizers AND generators)
+    // lives in Interfaces/ScalarFunction.fProxy.cs; the derivative/gradient interfaces below are optimizer-specific.
 
     public interface IfProxyScalarDerivativeFunction : IfProxyScalarFunction {
         fProxy Derivative(fProxy x);
@@ -188,8 +187,8 @@ namespace LinearAlgebra
             where F : struct, IfProxyScalarFunction
             => goldenSection(ref f, a, b, out xMin, Consts.fProxyZeroThreshold, (fProxy)3 * Consts.fProxySqrtEps, 200);
 
-        // Fixed-step gradient descent, in-place on x. g is caller-provided scratch (length x.N). Does NOT allocate.
-        // Iterates x -= learningRate * g until L2(g) <= gradTol or maxIter. Returns true if gradTol reached; iterations = performed count.
+        // Fixed-step gradient descent, in-place on x (x -= learningRate * g until L2(g) <= gradTol or
+        // maxIter). g is caller-provided scratch (length x.N); zero-alloc. iterations = performed count.
         public static bool gradientDescent<F>(ref F f, ref fProxyN x, ref fProxyN g,
                                               fProxy learningRate, fProxy gradTol, int maxIter,
                                               out int iterations)

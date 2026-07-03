@@ -79,7 +79,7 @@ public class fProxyRandomWeightedTests
                 AssertTrue(idx >= 0 && idx < 3);
                 if (idx == 0) c0++; else if (idx == 1) c1++; else c2++;
             }
-            AssertTrue(c1 == 0);                                  // zero weight never picked
+            AssertTrue(c1 == 0);
             fProxy frac0 = (fProxy)c0 / (fProxy)(c0 + c2);
             AssertClose(frac0, (fProxy)0.5, (fProxy)0.05);        // 0 and 2 ~ equal
             arena.Dispose();
@@ -120,7 +120,7 @@ public class fProxyRandomWeightedTests
             for (int i = 0; i < k; i++)
             {
                 AssertTrue(dest[i] >= 0 && dest[i] < 4);
-                AssertTrue(dest[i] != 1);   // zero-weight index never selected
+                AssertTrue(dest[i] != 1);
             }
             arena.Dispose();
         }

@@ -89,18 +89,15 @@ public class BoolIndexingTests
 
             int len = rows * cols;
 
-            // Forward-fill a distinct-enough pattern via the plain int indexer (oracle).
+            // Same oracle/from-end pattern as VectorIndexing, over the flat 1D indexer.
             for (int i = 0; i < len; i++)
                 mat[i] = (i % 3 == 0);
 
-            // From-end accessor must equal the forward element at (Length - k).
             for (int k = 1; k <= len; k++)
                 Assert.IsTrue(mat[^k] == mat[len - k]);
 
-            // ^1 is the LAST element.
             Assert.IsTrue(mat[^1] == mat[len - 1]);
 
-            // Write through the from-end accessor, read back through the plain forward int accessor.
             for (int k = 1; k <= len; k++)
                 mat[^k] = (k % 2 == 0);
 
@@ -115,7 +112,7 @@ public class BoolIndexingTests
 
             boolMxN mat = arena.boolMat(rows, cols);
 
-            // Forward-fill a distinct-enough pattern via the plain [r, c] oracle.
+            // Same oracle pattern, via the plain [r, c] indexer; from-end checked per axis below.
             for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
                 mat[r, c] = ((r * cols + c) % 3 == 0);
@@ -135,10 +132,8 @@ public class BoolIndexingTests
             for (int c = 1; c <= cols; c++)
                 Assert.IsTrue(mat[^r, ^c] == mat[rows - r, cols - c]);
 
-            // ^1, ^1 is the LAST element.
             Assert.IsTrue(mat[^1, ^1] == mat[rows - 1, cols - 1]);
 
-            // Write through the from-end accessor (both axes), read back through forward [r, c].
             for (int r = 1; r <= rows; r++)
             for (int c = 1; c <= cols; c++)
                 mat[^r, ^c] = ((r + c) % 2 == 0);
@@ -196,7 +191,6 @@ public class BoolIndexingTests
             for (int i = 0; i < standalone.Length; i++)
                 Assert.IsTrue(copy[i] == standalone[i]);
 
-            // Copy must be independent of the original.
             copy[0] = !copy[0];
             Assert.IsTrue(copy[0] != standalone[0]);
 

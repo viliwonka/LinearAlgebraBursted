@@ -70,7 +70,6 @@ public class shortQueryPredicateTests
             int fc = shortQuery_OP.findAll(in v, ref pass, ref idx);
             AssertEqI(fc, 2);
             AssertEqI(idx[0], 2); AssertEqI(idx[1], 4);
-            // findAll count == count.
             AssertEqI(fc, shortQuery_OP.count(in v, ref pass));
 
             // No element matches -> findFirst -1, count 0, any false, findAll 0.

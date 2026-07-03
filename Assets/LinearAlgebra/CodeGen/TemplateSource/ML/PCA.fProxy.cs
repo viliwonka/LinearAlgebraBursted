@@ -316,10 +316,7 @@ namespace LinearAlgebra.ML
         public static bool pcaCovariance(in fProxyMxN X, ref fProxyPCAModel model)
             => pcaCovariance(in X, ref model, PCAScaling.Covariance);
 
-        /// <summary>
-        /// Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates
-        /// to the ref-model overload. Guards fire before any arena allocation.
-        /// </summary>
+        /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static fProxyPCAModel pcaCovariance(ref Arena arena, in fProxyMxN X, PCAScaling scaling)
         {
             const string method = "fProxyPCA_OP.pcaCovariance";
@@ -378,10 +375,7 @@ namespace LinearAlgebra.ML
         public static bool pcaSVD(in fProxyMxN X, ref fProxyPCAModel model)
             => pcaSVD(in X, ref model, PCAScaling.Covariance, 75);
 
-        /// <summary>
-        /// Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates
-        /// to the ref-model overload. Guards fire before any arena allocation.
-        /// </summary>
+        /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static fProxyPCAModel pcaSVD(ref Arena arena, in fProxyMxN X, PCAScaling scaling)
         {
             const string method = "fProxyPCA_OP.pcaSVD";
@@ -455,10 +449,7 @@ namespace LinearAlgebra.ML
         public static bool pcaSVDTruncated(in fProxyMxN X, ref fProxyPCAModel model, int k)
             => pcaSVDTruncated(in X, ref model, k, PCAScaling.Covariance);
 
-        /// <summary>
-        /// Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates
-        /// to the ref-model overload. Guards fire before any arena allocation.
-        /// </summary>
+        /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static fProxyPCAModel pcaSVDTruncated(ref Arena arena, in fProxyMxN X, int k, PCAScaling scaling)
         {
             const string method = "fProxyPCA_OP.pcaSVDTruncated";
@@ -526,10 +517,7 @@ namespace LinearAlgebra.ML
         public static bool pcaRandomized(in fProxyMxN X, ref fProxyPCAModel model, int k)
             => pcaRandomized(in X, ref model, k, PCAScaling.Covariance);
 
-        /// <summary>
-        /// Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates
-        /// to the ref-model overload. Guards fire before any arena allocation.
-        /// </summary>
+        /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static fProxyPCAModel pcaRandomized(ref Arena arena, in fProxyMxN X, int k, PCAScaling scaling)
         {
             const string method = "fProxyPCA_OP.pcaRandomized";

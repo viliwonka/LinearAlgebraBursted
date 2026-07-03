@@ -1,5 +1,5 @@
 // Generated
-// Shortcuts for creating new vectors and matrices test
+// Shortcuts for creating new vectors and matrices
 using LinearAlgebra;
 
 namespace LinearAlgebra {

@@ -7,7 +7,6 @@ namespace LinearAlgebra
 {
     public static class Utility_OP {
 
-        // zeroes out a vector inplace
         //+copyReplace
         public static void zeroInpl(in fProxyN vec) {
 

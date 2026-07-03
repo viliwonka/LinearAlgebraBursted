@@ -9,7 +9,6 @@ using System.Runtime.CompilerServices;
 namespace LinearAlgebra.Stats
 {
 
-    // just a prototype, needs matrices handling too
     public static partial class doubleStats_OP {
 
         public static double sum<T>(in T x) where T : unmanaged, IUnsafedoubleArray {
@@ -143,7 +142,6 @@ namespace LinearAlgebra.Stats
             return max;
         }
 
-        // needs to handle even / odd case
         public static double median<T>(in T x) where T : unmanaged, IUnsafedoubleArray {
             if (x.Data.Length == 0)
                 throw new InvalidOperationException("Cannot compute median of an empty array.");
@@ -268,7 +266,6 @@ namespace LinearAlgebra.Stats
         //     The col* accumulating ops (colSum / colVariance / colNorm*) clear dest first, so dest
         //     may hold garbage on entry. ---
 
-        // sum along rows of matrix (dest length M_Rows)
         public static void rowSum(in doubleMxN A, ref doubleN dest)
         {
             if (dest.N != A.M_Rows)
@@ -290,7 +287,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // sum along cols of matrix (dest length N_Cols)
         public static void colSum(in doubleMxN A, ref doubleN dest)
         {
             if (dest.N != A.N_Cols)
@@ -311,7 +307,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // mean along rows of matrix (dest length M_Rows)
         public static void rowMean(in doubleMxN A, ref doubleN dest)
         {
             rowSum(in A, ref dest);
@@ -325,7 +320,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // mean along cols of matrix (dest length N_Cols)
         public static void colMean(in doubleMxN A, ref doubleN dest)
         {
             colSum(in A, ref dest);
@@ -339,7 +333,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // min along rows of matrix (dest length M_Rows)
         public static void rowMin(in doubleMxN A, ref doubleN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
@@ -363,7 +356,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // max along rows of matrix (dest length M_Rows)
         public static void rowMax(in doubleMxN A, ref doubleN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
@@ -387,7 +379,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // min along cols of matrix (dest length N_Cols)
         public static void colMin(in doubleMxN A, ref doubleN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
@@ -410,7 +401,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // max along cols of matrix (dest length N_Cols)
         public static void colMax(in doubleMxN A, ref doubleN dest)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
@@ -506,7 +496,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // population std dev along rows (sqrt of rowVariance), dest length M_Rows
         public static void rowStdDev(in doubleMxN A, ref doubleN dest)
         {
             rowVariance(in A, ref dest);
@@ -521,7 +510,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // population std dev along cols (sqrt of colVariance), dest length N_Cols
         public static void colStdDev(in doubleMxN A, ref doubleN dest)
         {
             colVariance(in A, ref dest);
@@ -536,7 +524,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // L1 norm of each row (Σ|·| across columns), dest length M_Rows
         public static void rowNormL1(in doubleMxN A, ref doubleN dest)
         {
             if (dest.N != A.M_Rows)
@@ -558,7 +545,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // L2 norm of each row (sqrt Σ·² across columns), dest length M_Rows
         public static void rowNormL2(in doubleMxN A, ref doubleN dest)
         {
             if (dest.N != A.M_Rows)
@@ -580,7 +566,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // L1 norm of each column (Σ|·| across rows), dest length N_Cols
         public static void colNormL1(in doubleMxN A, ref doubleN dest)
         {
             if (dest.N != A.N_Cols)
@@ -601,7 +586,6 @@ namespace LinearAlgebra.Stats
             return vec;
         }
 
-        // L2 norm of each column (sqrt Σ·² across rows), dest length N_Cols
         public static void colNormL2(in doubleMxN A, ref doubleN dest)
         {
             if (dest.N != A.N_Cols)
@@ -754,8 +738,6 @@ namespace LinearAlgebra.Stats
         //
         // Zero/constant-axis guards use !(x > 0) which is NaN-safe (catches 0 AND NaN).
 
-        // --- standardize: z-score (x − mean) / stdDev (population ÷ N). ---
-        // Constant axis (stdDev == 0) → zero-fill.
         /// <summary>z-score standardize every element in-place: x ← (x − mean) / stdDev (population ÷ N).
         /// Constant input (stdDev == 0) → zero-fill. Empty → no-op.</summary>
         /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
@@ -831,13 +813,9 @@ namespace LinearAlgebra.Stats
             s0.Dispose(); s1.Dispose();
         }
 
-        // --- rescale: min-max to [lo, hi]. No-arg overload maps to [0, 1]. ---
-        // Constant axis (max == min, NaN-safe) → lo.
         /// <summary>Rescale every element in-place to [lo, hi] via min-max normalization.
         /// The no-arg overload maps to [0, 1]. Constant input (max == min) → every element set to lo. Empty → no-op.</summary>
-        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
-        /// <b>whole-matrix</b> scope (all elements as a single distribution); use the
-        /// <c>Rows</c>/<c>Columns</c> variants for per-axis.</remarks>
+        /// <remarks>Flat form; matrix scope details as in <see cref="standardize{T}(in T)"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void rescale<T>(in T x) where T : unmanaged, IUnsafedoubleArray
             => rescale(in x, (double)0, (double)1);
@@ -911,11 +889,8 @@ namespace LinearAlgebra.Stats
             s0.Dispose(); s1.Dispose();
         }
 
-        // --- center: subtract mean only (x ← x − mean). No-op on empty. ---
         /// <summary>Center every element in-place by subtracting the mean: x ← x − mean. Empty → no-op.</summary>
-        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
-        /// <b>whole-matrix</b> scope (all elements as a single distribution); use the
-        /// <c>Rows</c>/<c>Columns</c> variants for per-axis.</remarks>
+        /// <remarks>Flat form; matrix scope details as in <see cref="standardize{T}(in T)"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void center<T>(in T x) where T : unmanaged, IUnsafedoubleArray
         {
@@ -958,13 +933,9 @@ namespace LinearAlgebra.Stats
             s0.Dispose();
         }
 
-        // --- maxAbs: divide by max|x|, mapping into [−1, 1]. ---
-        // All-zero axis → leave unchanged (no divide). NaN-safe guard.
         /// <summary>Divide every element in-place by max|x|, mapping data into [−1, 1].
         /// All-zero (or NaN-only) input → left unchanged. Empty → no-op.</summary>
-        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
-        /// <b>whole-matrix</b> scope (all elements as a single distribution); use the
-        /// <c>Rows</c>/<c>Columns</c> variants for per-axis.</remarks>
+        /// <remarks>Flat form; matrix scope details as in <see cref="standardize{T}(in T)"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void maxAbs<T>(in T x) where T : unmanaged, IUnsafedoubleArray
         {
@@ -1009,13 +980,9 @@ namespace LinearAlgebra.Stats
             mAbsArr.Dispose();
         }
 
-        // --- softmax: numerically stable eˣ/Σeˣ. Subtract axis max before exp. ---
-        // In-place, no allocation. Empty → no-op.
         /// <summary>Apply numerically stable softmax in-place: x ← exp(x − max(x)) / Σ exp(x − max(x)).
         /// No allocation. Empty → no-op.</summary>
-        /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
-        /// <b>whole-matrix</b> scope (all elements as a single distribution); use the
-        /// <c>Rows</c>/<c>Columns</c> variants for per-axis.</remarks>
+        /// <remarks>Flat form; matrix scope details as in <see cref="standardize{T}(in T)"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void softmax<T>(in T x) where T : unmanaged, IUnsafedoubleArray
         {

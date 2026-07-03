@@ -83,7 +83,6 @@ public class fProxyResampleTests
             data[0] = (fProxy)10; data[1] = (fProxy)20; data[2] = (fProxy)30;
             data[3] = (fProxy)40; data[4] = (fProxy)50;
 
-            // probe positions 0, 1, and N-1
             CheckIntegerPos(in data, 0);
             CheckIntegerPos(in data, 1);
             CheckIntegerPos(in data, n - 1);

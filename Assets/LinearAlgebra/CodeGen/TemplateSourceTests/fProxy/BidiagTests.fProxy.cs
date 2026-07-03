@@ -47,7 +47,6 @@ public class fProxyBidiagTests
 
         // ---- helpers ----
 
-        // Assert |got - expected| <= tol for a scalar pair
         private void AssertClose(fProxy got, fProxy expected, fProxy tol)
         {
             fProxy diff = Unity.Mathematics.math.abs(got - expected);
@@ -61,7 +60,6 @@ public class fProxyBidiagTests
             Assert.IsTrue(diff <= tol);
         }
 
-        // All entries of |M| <= tol
         private void AssertNearZero(in fProxyMxN M, fProxy tol, string context)
         {
             fProxy err = Analysis_OP.MaxZeroError(M);
@@ -98,11 +96,8 @@ public class fProxyBidiagTests
             }
         }
 
-        // Full suite for a single bidiagonalization result:
-        //  1. A ≈ U*B*Vᵀ  (reconstruction)
-        //  2. B is upper bidiagonal
-        //  3. UᵀU ≈ I_n   (orthonormal columns)
-        //  4. VᵀV ≈ I_n   (orthogonal)
+        // Full suite for a single bidiagonalization result: reconstruction, bidiagonal band,
+        // and U/V orthonormality (numbered inline below).
         private void AssertBidiag(in fProxyMxN A, in fProxyMxN U, in fProxyMxN B, in fProxyMxN V,
                                    ref Arena arena, fProxy tol)
         {

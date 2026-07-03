@@ -505,7 +505,6 @@ public class doubleGeneratorTests
                 AssertClose(a[i], b[i], 1E-5f);
         }
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected, [3]=diff
         void AssertClose(double a, double b, double precision)
         {
             double diff = math.abs(a - b);

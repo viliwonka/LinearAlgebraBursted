@@ -241,15 +241,13 @@ public class fProxyAnalysisTests
             A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
             Assert.IsFalse(Analysis_OP.isLowerTriangular(A));
 
-            // Reset A to the identity matrix
             A = arena.fProxyIdentityMat(dim);
 
-            // Fill elements above the diagonal with a non-zero value and check if it's still lower triangular (it shouldn't be)
+            // Fill elements below the diagonal with a non-zero value; still lower triangular
             for (int r = 1; r < dim; r++)
                 for (int c = 0; c < r; c++)
                     A[r, c] = 5f;
 
-            // The matrix is now lower triangular
             Assert.IsTrue(Analysis_OP.isLowerTriangular(A));
 
             arena.Dispose();
@@ -263,25 +261,20 @@ public class fProxyAnalysisTests
 
             fProxyMxN A = arena.fProxyIdentityMat(dim);
 
-            // Test if an identity matrix is lower triangular within the epsilon tolerance
             Assert.IsTrue(Analysis_OP.isLowerTriangular(A, 0.000001f));
 
-            // Add small random values and test if it's still lower triangular within a higher tolerance
             A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
             Assert.IsTrue(Analysis_OP.isLowerTriangular(A, 0.002f));
 
-            // Reset A to the identity matrix
             A = arena.fProxyIdentityMat(dim);
 
-            // Fill elements above the diagonal with a non-zero value
+            // Fill elements below the diagonal with a non-zero value
             for (int r = 1; r < dim; r++)
                 for (int c = 0; c < r; c++)
                     A[r, c] = 5f;
 
-            // Add small random values again
             A += arena.fProxyRandomMat(dim, dim, -0.001f, 0.001f);
 
-            // Test if the modified matrix is still lower triangular within the higher epsilon tolerance
             Assert.IsTrue(Analysis_OP.isLowerTriangular(A, 0.002f));
 
             arena.Dispose();
@@ -316,12 +309,10 @@ public class fProxyAnalysisTests
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            // self multiply
             A = Linear_OP.dot(A, A);
 
             Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
 
-            // testing inverse
             A = Linear_OP.dot(A, A, true);
 
             Assert.IsTrue(Analysis_OP.isIdentity(A, 0.00001f));

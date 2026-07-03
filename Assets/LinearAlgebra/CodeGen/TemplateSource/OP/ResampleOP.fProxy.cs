@@ -15,9 +15,7 @@ namespace LinearAlgebra
     /// length (<see cref="resampleInto"/>), and separably resize a matrix
     /// (<see cref="resample2DInto"/>).
     ///
-    /// Interpolation modes (<see cref="Interp"/>): Nearest, Linear, Cubic (Catmull-Rom).
-    /// Edge modes (<see cref="EdgeMode"/>): Clamp (repeat edge), Wrap (periodic), Mirror
-    /// (no-edge-repeat reflection, period 2*(N-1)).
+    /// See <see cref="Interp"/> and <see cref="EdgeMode"/> for the interpolation/edge-mode semantics.
     ///
     /// All methods are Burst-compatible and allocation-free except <see cref="resample2DInto"/>,
     /// which allocates exactly one Allocator.Temp scratch buffer and disposes it before returning.

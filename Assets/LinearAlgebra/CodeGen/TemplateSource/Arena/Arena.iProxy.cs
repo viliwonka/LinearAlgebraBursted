@@ -21,7 +21,6 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // creates vector with s values
         public iProxyN iProxyVec(int N, iProxy s)
         {
             var vec = new iProxyN(N, in this, true);
@@ -68,7 +67,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // creates vector with s values
         public iProxyMxN iProxyMat(int M_rows, int N_cols, iProxy s)
         {
             var matrix = new iProxyMxN(M_rows, N_cols, in this, false);

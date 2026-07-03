@@ -65,11 +65,9 @@ public class doubleQRLeastSquaresResidualTests
             if (Analysis_OP.isAnyNan(in x))
                 throw new System.Exception("TestJob: NaN detected");
 
-            // x == [5, -3]
             RecordBound(math.abs(x[0] - (double)5f), (double)1E-4f);
             RecordBound(math.abs(x[1] - (double)(-3f)), (double)1E-4f);
 
-            // residual r = b - A x == [1, -2, 1]
             doubleN r = b - Linear_OP.dot(A, x);
             RecordBound(math.abs(r[0] - (double)1f), (double)1E-4f);
             RecordBound(math.abs(r[1] - (double)(-2f)), (double)1E-4f);

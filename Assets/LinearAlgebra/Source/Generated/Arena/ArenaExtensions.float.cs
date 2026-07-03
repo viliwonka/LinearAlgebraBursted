@@ -73,9 +73,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // linspace. Prefer floatLinspace(a, b, N) for new code; this older name is kept for existing
-        // callers and now delegates to the guarded floatGen_OP.linspace (handles N==1 instead of
-        // dividing by zero, and pins both endpoints exactly).
+        // Legacy name for floatLinspace(a, b, N); delegates to the guarded floatGen_OP.linspace (handles N==1, pins both endpoints exactly).
         public static floatN floatLinVec(this ref Arena arena, int N, float start, float end)
         {
             var vec = arena.floatVec(N);
@@ -86,7 +84,6 @@ namespace LinearAlgebra
         #endregion
 
         #region MATRIX
-        // constructs identity matrix
         public static floatMxN floatIdentityMat(this ref Arena arena, int N)
         {
             var matrix = arena.floatMat(N, N);
@@ -98,7 +95,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs diagonal matrix with scalar s on diagonal
         public static floatMxN floatDiagonalMat(this ref Arena arena, int N, float s)
         {
             var matrix = arena.floatMat(N, N);
@@ -109,7 +105,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs diagonal matrix based on vector
         public static floatMxN floatDiagonalMat(this ref Arena arena, in floatN vec)
         {
             var matrix = arena.floatMat(vec.N, vec.N);
@@ -120,7 +115,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs matrix with indexes that start at 0
         public static floatMxN floatIndexZeroMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.floatMat(M_rows, N_cols, true);
@@ -135,7 +129,6 @@ namespace LinearAlgebra
             return mat;
         }
 
-        // constructs matrix with indexes that start at 1
         public static floatMxN floatIndexOneMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.floatMat(M_rows, N_cols, true);
@@ -149,8 +142,6 @@ namespace LinearAlgebra
 
             return mat;
         }
-
-        // random matrix
 
         public static floatMxN floatRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
@@ -183,7 +174,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // i and j are axis indexes to rotate
         public static floatMxN floatRotationMat(this ref Arena arena, int M, int i, int j, float radians)
         {
             var matrix = arena.floatIdentityMat(M);
@@ -209,7 +199,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // i and j are axis indexes to swap
         public static floatMxN floatPermutationMat(this ref Arena arena, int M, int i, int j)
         {
             var matrix = arena.floatIdentityMat(M);

@@ -110,7 +110,7 @@ namespace LinearAlgebra.ML
                 ws.PointNormSq[n] = s;
             }
 
-            // FIX 1: initialise assignment (not PrevAssignment) to -1 so that the first
+            // Initialise assignment (not PrevAssignment) to -1 so that the first
             // iteration's "PrevAssignment = assignment" step copies -1 into PrevAssignment,
             // guaranteeing all N points register as changed on iter 0. Initialising
             // PrevAssignment instead read from an uninitialized assignment buffer and could
@@ -199,7 +199,7 @@ namespace LinearAlgebra.ML
                 }
 
                 // 5.4.9  Empty-cluster reseed.
-                // FIX 2: reuse ws.D2Weights as a "remaining distance" scratch to prevent
+                // Reuse ws.D2Weights as a "remaining distance" scratch to prevent
                 // multiple empty clusters from picking the same farthest point. Pre-fill
                 // with squared distances, then set each chosen point's entry to -1 to
                 // exclude it from subsequent empty-cluster scans.
@@ -236,16 +236,11 @@ namespace LinearAlgebra.ML
                 }
             }
 
-            // Final sync: only executed on the MaxIter-exhaustion path.
-            //
-            // MaxIter-exhaustion path (converged == false): centroids were updated in 5.4.10
-            //   of the last iteration, but assignment/Gram still reflect the pre-update
-            //   centroids. Recompute Gram, assignment, and inertia so all outputs are
-            //   mutually consistent with the returned centroids.
-            //
-            // Convergence path (converged == true): Gram is already valid (computed in
-            //   5.4.3-5.4.4 from unchanged centroids), inertia was computed in 5.4.6.
-            //   Skipped entirely — avoids a redundant O(N·D·k) GEMM + transpose.
+            // Final sync (MaxIter-exhaustion path only, converged == false): centroids were
+            // updated in 5.4.10 of the last iteration but assignment/Gram still reflect the
+            // pre-update centroids, so recompute them here for consistency. The convergence
+            // path skips this — Gram/inertia are already valid from 5.4.3-5.4.6, avoiding a
+            // redundant O(N·D·k) GEMM + transpose.
             if (!converged)
             {
                 for (int j = 0; j < k; j++)
@@ -264,14 +259,14 @@ namespace LinearAlgebra.ML
                 double sse = (double)0;
                 for (int n = 0; n < N; n++)
                     sse += ws.PointNormSq[n] + ws.Gram[n, assignment[n]];
-                // FIX 4: clamp to >= 0 to guard against tiny negative values from FP
+                // Clamp to >= 0 to guard against tiny negative values from FP
                 // cancellation when a point sits exactly on its centroid.
                 inertia = math.max(sse, (double)0);
             }
         }
 
         // =========================================================================
-        // PRIMARY — forwarding overload defaulting to KMeansPlusPlus (FIX 5)
+        // PRIMARY — forwarding overload defaulting to KMeansPlusPlus
         // =========================================================================
 
         /// <summary>
@@ -292,7 +287,7 @@ namespace LinearAlgebra.ML
                       ref centroids, ref assignment, out inertia, out iters, ref ws);
 
         // =========================================================================
-        // ALLOCATING CONVENIENCE WRAPPER — explicit init (FIX 6: guards before alloc)
+        // ALLOCATING CONVENIENCE WRAPPER — explicit init
         // =========================================================================
 
         /// <summary>
@@ -316,7 +311,7 @@ namespace LinearAlgebra.ML
             out double inertia,
             out int iters)
         {
-            // FIX 6: validate before allocating so invalid args cannot orphan arena memory.
+            // Validate before allocating so invalid args cannot orphan arena memory.
             if (X.M_Rows == 0 || X.N_Cols == 0)
                 throw new InvalidOperationException("doubleKMeans_OP.kmeans: X is empty");
             if (k <= 0)
@@ -335,7 +330,7 @@ namespace LinearAlgebra.ML
         }
 
         // =========================================================================
-        // ALLOCATING CONVENIENCE WRAPPER — defaults to KMeansPlusPlus (FIX 5)
+        // ALLOCATING CONVENIENCE WRAPPER — defaults to KMeansPlusPlus
         // =========================================================================
 
         /// <summary>
@@ -360,7 +355,7 @@ namespace LinearAlgebra.ML
         // =========================================================================
 
         // k-means++ seeding.
-        // FIX 8: incremental D2Weights (O(k·N·D)) — after adding centroid ci, update
+        // Incremental D2Weights (O(k·N·D)) — after adding centroid ci, update
         // D2Weights[n] = min(D2Weights[n], dist(xn, ci)) instead of recomputing from
         // scratch (which was O(k²·N·D)).
         // All-identical-point fallback: uniform random when total weight == 0.

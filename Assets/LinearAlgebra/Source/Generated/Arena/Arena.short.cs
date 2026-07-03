@@ -21,7 +21,6 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // creates vector with s values
         public shortN shortVec(int N, short s)
         {
             var vec = new shortN(N, in this, true);
@@ -68,7 +67,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // creates vector with s values
         public shortMxN shortMat(int M_rows, int N_cols, short s)
         {
             var matrix = new shortMxN(M_rows, N_cols, in this, false);

@@ -1100,7 +1100,6 @@ public class floatSVDTests
 
         private void AssertReconstruct(in floatMxN A, in floatMxN U, in floatN S, in floatMxN V, ref Arena arena, float precision)
         {
-            // A ~= U * diag(S) * V^T
             var diagS = arena.floatDiagonalMat(in S);
             var US = Linear_OP.dot(U, diagS);
             var Vt = Linear_OP.trans(V);
@@ -1154,7 +1153,6 @@ public class floatSVDTests
             }
         }
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertClose(float a, float b, float precision)
         {
             float diff = Unity.Mathematics.math.abs(a - b);
@@ -1180,8 +1178,8 @@ public class floatSVDTests
         var fail = new NativeArray<float>(4, Allocator.TempJob);
         try {
             new TestJob() { Type = type, Fail = fail }.Run();
-            // Under Burst a failed in-job assert logs an exception and aborts the job without
-            // throwing to the caller - surface the recorded diagnostics here as well.
+            // Burst in-job asserts abort without throwing; diagnostics surfaced here too
+            // (see floatOrthoOpTests.QRDecompTests).
             if (fail[0] != (float)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 

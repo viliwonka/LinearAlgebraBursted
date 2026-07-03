@@ -1,5 +1,5 @@
 // Generated
-// Shortcuts for creating new vectors and matrices test
+// Shortcuts for creating new vectors and matrices
 using System.Runtime.CompilerServices;
 
 using LinearAlgebra;
@@ -29,15 +29,10 @@ namespace LinearAlgebra {
         public unsafe doubleMxN tempdoubleMat(int M_rows, int N_cols, bool uninit = false) => _arena.tempdoubleMat(M_rows, N_cols, uninit);
         
 
-        // NOT wrapped in copyReplace / not part of IArenaShortcuts: there is no iProxy (int/
-        // short/long) BSM equivalent, so this shortcut only ever needs to exist for the two
-        // double types (float/double) this file itself already generates -- letting the file's
-        // ordinary single double->float/double substitution handle it (same as the class
-        // declaration itself, `doubleN`, right above). Forwards to the arena that `b` (any
-        // doubleN, e.g. a solver's `b` parameter) carries, mirroring tempdoubleVec's forwarding
-        // -- lets Solvers.double.cs materialize A^T once per solve (arena.doubleBSMTranspose)
-        // via `b.doubleBSMTranspose(in A)` without needing direct access to doubleN's private
-        // _arena field.
+        // NOT wrapped in copyReplace: there is no iProxy BSM equivalent, so this only needs to
+        // exist for the double float/double types this file already generates. Forwards to the
+        // arena `b` carries so Solvers.double.cs can materialize A^T once per solve via
+        // `b.doubleBSMTranspose(in A)` without direct access to doubleN's private _arena field.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe doubleBSM doubleBSMTranspose(in doubleBSM A) => _arena.doubleBSMTranspose(in A);
 

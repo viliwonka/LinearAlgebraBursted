@@ -16,11 +16,7 @@ namespace LinearAlgebra {
 
         
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="v">Vector</param>
-        /// <param name="pivot">Pivot, will be reset [0, 1, 2, .. ]</param>
+        /// <summary>Applies pivot to vector v inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInpl(ref floatN v, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -40,11 +36,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to rows of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInpl(ref floatMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -64,11 +56,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to columns of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInpl(ref floatMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -89,10 +77,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyRow(ref floatMxN A) {
 
             if (A.M_Rows != this.N)
@@ -106,10 +91,7 @@ namespace LinearAlgebra {
         }
 
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyColumn(ref floatMxN A) {
             
             if (A.N_Cols != this.N)
@@ -122,10 +104,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyVec(ref floatN v) {
 
             if(v.N != this.N)
@@ -138,10 +117,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies the inverse pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseVec(ref floatN v) {
 
             Pivot tempPivot = InverseCopy();
@@ -151,10 +127,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseRow(ref floatMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -164,10 +137,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseColumn(ref floatMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -178,11 +148,7 @@ namespace LinearAlgebra {
         }
         
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="v">Vector</param>
-        /// <param name="pivot">Pivot, will be reset [0, 1, 2, .. ]</param>
+        /// <summary>Applies pivot to vector v inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInpl(ref doubleN v, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -202,11 +168,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to rows of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInpl(ref doubleMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -226,11 +188,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to columns of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInpl(ref doubleMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -251,10 +209,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyRow(ref doubleMxN A) {
 
             if (A.M_Rows != this.N)
@@ -268,10 +223,7 @@ namespace LinearAlgebra {
         }
 
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyColumn(ref doubleMxN A) {
             
             if (A.N_Cols != this.N)
@@ -284,10 +236,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyVec(ref doubleN v) {
 
             if(v.N != this.N)
@@ -300,10 +249,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies the inverse pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseVec(ref doubleN v) {
 
             Pivot tempPivot = InverseCopy();
@@ -313,10 +259,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseRow(ref doubleMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -326,10 +269,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseColumn(ref doubleMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -340,11 +280,7 @@ namespace LinearAlgebra {
         }
         
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="v">Vector</param>
-        /// <param name="pivot">Pivot, will be reset [0, 1, 2, .. ]</param>
+        /// <summary>Applies pivot to vector v inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInpl(ref intN v, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -364,11 +300,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to rows of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInpl(ref intMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -388,11 +320,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to columns of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInpl(ref intMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -413,10 +341,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyRow(ref intMxN A) {
 
             if (A.M_Rows != this.N)
@@ -430,10 +355,7 @@ namespace LinearAlgebra {
         }
 
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyColumn(ref intMxN A) {
             
             if (A.N_Cols != this.N)
@@ -446,10 +368,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyVec(ref intN v) {
 
             if(v.N != this.N)
@@ -462,10 +381,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies the inverse pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseVec(ref intN v) {
 
             Pivot tempPivot = InverseCopy();
@@ -475,10 +391,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseRow(ref intMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -488,10 +401,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseColumn(ref intMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -502,11 +412,7 @@ namespace LinearAlgebra {
         }
         
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="v">Vector</param>
-        /// <param name="pivot">Pivot, will be reset [0, 1, 2, .. ]</param>
+        /// <summary>Applies pivot to vector v inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInpl(ref shortN v, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -526,11 +432,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to rows of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInpl(ref shortMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -550,11 +452,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to columns of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInpl(ref shortMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -575,10 +473,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyRow(ref shortMxN A) {
 
             if (A.M_Rows != this.N)
@@ -592,10 +487,7 @@ namespace LinearAlgebra {
         }
 
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyColumn(ref shortMxN A) {
             
             if (A.N_Cols != this.N)
@@ -608,10 +500,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyVec(ref shortN v) {
 
             if(v.N != this.N)
@@ -624,10 +513,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies the inverse pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseVec(ref shortN v) {
 
             Pivot tempPivot = InverseCopy();
@@ -637,10 +523,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseRow(ref shortMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -650,10 +533,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseColumn(ref shortMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -664,11 +544,7 @@ namespace LinearAlgebra {
         }
         
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="v">Vector</param>
-        /// <param name="pivot">Pivot, will be reset [0, 1, 2, .. ]</param>
+        /// <summary>Applies pivot to vector v inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInpl(ref longN v, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -688,11 +564,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to rows of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInpl(ref longMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -712,11 +584,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to columns of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInpl(ref longMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -737,10 +605,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyRow(ref longMxN A) {
 
             if (A.M_Rows != this.N)
@@ -754,10 +619,7 @@ namespace LinearAlgebra {
         }
 
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyColumn(ref longMxN A) {
             
             if (A.N_Cols != this.N)
@@ -770,10 +632,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyVec(ref longN v) {
 
             if(v.N != this.N)
@@ -786,10 +645,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies the inverse pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseVec(ref longN v) {
 
             Pivot tempPivot = InverseCopy();
@@ -799,10 +655,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseRow(ref longMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -812,10 +665,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseColumn(ref longMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -826,11 +676,7 @@ namespace LinearAlgebra {
         }
         
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="v">Vector</param>
-        /// <param name="pivot">Pivot, will be reset [0, 1, 2, .. ]</param>
+        /// <summary>Applies pivot to vector v inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyVecInpl(ref boolN v, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -850,11 +696,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to rows of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyRowInpl(ref boolMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -874,11 +716,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, modifying pivot (resets it)
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
-        /// <param name="pivot">Pivot will also be reset</param>
+        /// <summary>Applies pivot to columns of matrix A inplace; resets pivot to [0, 1, 2, ...].</summary>
         public static void ApplyColumnInpl(ref boolMxN A, ref Pivot pivot) {
 
             for (int fromR = 0; fromR < pivot.N; fromR++) {
@@ -899,10 +737,7 @@ namespace LinearAlgebra {
             }
         }
 
-        /// <summary>
-        /// Applies pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyRow(ref boolMxN A) {
 
             if (A.M_Rows != this.N)
@@ -916,10 +751,7 @@ namespace LinearAlgebra {
         }
 
 
-        /// <summary>
-        /// Applies pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyColumn(ref boolMxN A) {
             
             if (A.N_Cols != this.N)
@@ -932,10 +764,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyVec(ref boolN v) {
 
             if(v.N != this.N)
@@ -948,10 +777,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to vector v inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="v">Vector being modified inplace</param>
+        /// <summary>Applies the inverse pivot to vector v; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseVec(ref boolN v) {
 
             Pivot tempPivot = InverseCopy();
@@ -961,10 +787,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to rows of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to rows of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseRow(ref boolMxN A) {
 
             Pivot tempPivot = InverseCopy();
@@ -974,10 +797,7 @@ namespace LinearAlgebra {
             tempPivot.Dispose();
         }
 
-        /// <summary>
-        /// Applies inverse pivot to columns of matrix A inplace, without modifying pivot data
-        /// </summary>
-        /// <param name="A">Matrix being modified inplace</param>
+        /// <summary>Applies the inverse pivot to columns of matrix A; copies the pivot first, so the original pivot is left unchanged.</summary>
         public void ApplyInverseColumn(ref boolMxN A) {
 
             Pivot tempPivot = InverseCopy();

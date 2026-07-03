@@ -7,8 +7,7 @@ using UnityEngine;
 
 namespace LinearAlgebra {
 
-    // A m x n matrix view, to read, write or operate on a submatrix of a matrix
-    // Also useful to get vectors or columns from a matrix
+    // A view onto a submatrix (or row/column) of a boolMxN, for reading, writing, or operating without copying.
     public struct viewBoolMxN {
 
         // could just use UnsafeList<bool> and support both boolMxN and boolN
@@ -63,12 +62,11 @@ namespace LinearAlgebra {
                 if(i < 0 || i >= sizeM * sizeN)
                     throw new System.ArgumentOutOfRangeException("i out of range");
                 
-                //todo: check correctness, idk what it does
+                // i -> (row, col) within the view: i / sizeN is the row, i % sizeN is the col.
                 return ref mat[posM + i / sizeN * strideM, posN + i % sizeN * strideN];
             }
         }
 
-        // Example operators
         public static viewBoolMxN operator |(viewBoolMxN lhs, bool rhs) {
 
             int len = lhs.sizeM * lhs.sizeN;

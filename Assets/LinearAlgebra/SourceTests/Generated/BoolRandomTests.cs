@@ -121,8 +121,8 @@ public class BoolRandomTests
             int trues = 0;
             for (int i = 0; i < v.N; i++)
                 if (v[i]) trues++;
-            AssertTrue(trues > 0);          // not all false
-            AssertTrue(trues < v.N);        // not all true
+            AssertTrue(trues > 0);
+            AssertTrue(trues < v.N);
 
             // and roughly fair
             float frac = (float)trues / v.N;

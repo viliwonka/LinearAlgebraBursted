@@ -21,7 +21,6 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // creates vector with s values
         public intN intVec(int N, int s)
         {
             var vec = new intN(N, in this, true);
@@ -68,7 +67,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // creates vector with s values
         public intMxN intMat(int M_rows, int N_cols, int s)
         {
             var matrix = new intMxN(M_rows, N_cols, in this, false);

@@ -74,8 +74,6 @@ public class iProxyOperationsTest {
             result = a & b;
             result = a ^ b;
 
-            //Assert.AreEqual(11, arena.TempAllocationsCount);
-
             arena.Dispose();
         }
     }
@@ -184,7 +182,6 @@ public class iProxyOperationsTest {
                 case TestType.SignFlipVec:
                     SignFlipVec();
                     break;
-                // Matrix operations
                 case TestType.AddMat:
                     AddMat();
                     break;
@@ -392,7 +389,6 @@ public class iProxyOperationsTest {
             a = arena.iProxyIndexZeroVec(vecLen);
             iProxyN b = arena.iProxyIndexZeroVec(vecLen);
 
-            // add 1 so no division by zero
             a += 1;
             b += 1;
 
@@ -434,7 +430,6 @@ public class iProxyOperationsTest {
 
             iProxyMxN a = arena.iProxyMat(rows, cols, 10);
 
-            // Element-wise addition with scalar
             a += 1;
 
             for (int i = 0; i < totalElements; i++)
@@ -453,7 +448,6 @@ public class iProxyOperationsTest {
 
             iProxyMxN a = arena.iProxyMat(rows, cols, 10);
 
-            // Element-wise subtraction with scalar
             a -= 5;
 
             for (int i = 0; i < totalElements; i++)
@@ -472,7 +466,6 @@ public class iProxyOperationsTest {
 
             iProxyMxN a = arena.iProxyMat(rows, cols, 2);
 
-            // Element-wise multiplication with scalar
             a *= 3;
 
             for (int i = 0; i < totalElements; i++)
@@ -496,7 +489,6 @@ public class iProxyOperationsTest {
 
             iProxyMxN a = arena.iProxyMat(rows, cols, 10);
 
-            // Element-wise division with scalar
             a /= 2;
 
             for (int i = 0; i < totalElements; i++)
@@ -520,7 +512,6 @@ public class iProxyOperationsTest {
 
             iProxyMxN a = arena.iProxyMat(rows, cols, 10);
 
-            // Element-wise modulo with scalar
             a %= 3;
 
             for (int i = 0; i < totalElements; i++)

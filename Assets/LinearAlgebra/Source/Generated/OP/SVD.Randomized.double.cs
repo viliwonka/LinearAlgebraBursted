@@ -24,10 +24,8 @@ namespace LinearAlgebra
         //   B  = Qᵀ A  (ℓ x n);  B = Ũ Σ Wᵀ  (exact small SVD, via Bᵀ);  U = Q Ũ
         // The leading k columns of (U, Σ, W) are the approximate top-k SVD.
         //
-        // The dozen intermediate buffers come either from A's temp pool (the allocating overloads) or
-        // from a caller-provided doubleSVDRandomized_WS (the ref-workspace overloads) for
-        // zero-alloc repeated calls — size the latter with Arena.doubleSVDRandomized_WS(m, n, k,
-        // oversample).
+        // Buffers come from A's temp pool (allocating overloads) or a caller-provided
+        // doubleSVDRandomized_WS (ref-workspace overloads) — see that struct for layout.
 
         // Default sketch seed (golden-ratio constant). Inlined rather than a const field because this
         // type-independent member would otherwise be emitted into BOTH the float and double generated

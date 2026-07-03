@@ -133,7 +133,6 @@ public class fProxyJacobiPrecondTests
             AssertClose(d[2], (fProxy)1 / (fProxy)3, Tight()); // 1/sqrt(9)
             AssertClose(d[3], (fProxy)2,   Tight());        // 1/sqrt(0.25)
 
-            // No NaN/Inf anywhere.
             for (int j = 0; j < 4; j++) Assert.IsTrue(math.isfinite(d[j]));
 
             arena.Dispose();

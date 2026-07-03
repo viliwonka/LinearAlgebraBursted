@@ -79,7 +79,7 @@ public class floatRandomWeightedTests
                 AssertTrue(idx >= 0 && idx < 3);
                 if (idx == 0) c0++; else if (idx == 1) c1++; else c2++;
             }
-            AssertTrue(c1 == 0);                                  // zero weight never picked
+            AssertTrue(c1 == 0);
             float frac0 = (float)c0 / (float)(c0 + c2);
             AssertClose(frac0, (float)0.5, (float)0.05);        // 0 and 2 ~ equal
             arena.Dispose();
@@ -120,7 +120,7 @@ public class floatRandomWeightedTests
             for (int i = 0; i < k; i++)
             {
                 AssertTrue(dest[i] >= 0 && dest[i] < 4);
-                AssertTrue(dest[i] != 1);   // zero-weight index never selected
+                AssertTrue(dest[i] != 1);
             }
             arena.Dispose();
         }

@@ -117,7 +117,6 @@ public class fProxyCholeskyTests
         {
             var M = arena.fProxyRandomMat(dim, dim, -1f, 1f, seed);
 
-            // dot(M, M, transposeA:true) == Mᵀ·M
             var A = Linear_OP.dot(M, M, true);
 
             for (int d = 0; d < dim; d++)
@@ -217,7 +216,6 @@ public class fProxyCholeskyTests
             Assert.IsTrue(math.abs(L[1, 0] - 1f) < tol);
             Assert.IsTrue(math.abs(L[1, 1] - math.sqrt((fProxy)2f)) < tol);
 
-            // Reconstruct as a second check.
             var Lt = Linear_OP.trans(L);
             var recon = Linear_OP.dot(L, Lt, false);
             Assert.IsTrue(Analysis_OP.isZero(A - recon, tol));
@@ -309,7 +307,7 @@ public class fProxyCholeskyTests
 
             var A = arena.fProxyMat(2, 2);
             A[0, 0] = 1f; A[0, 1] = 2f;
-            A[1, 0] = 2f; A[1, 1] = 1f; // eigenvalues 3, -1 -> indefinite
+            A[1, 0] = 2f; A[1, 1] = 1f; // same matrix as NotSPD's Case 1 (indefinite)
 
             var L = arena.fProxyMat(2, 2);
             DirectSolveInfo decompInfo = Cholesky.choleskyDecomposition(in A, ref L);
@@ -335,7 +333,6 @@ public class fProxyCholeskyTests
 
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 8181);
 
-            // Cholesky solve
             var bChol = b.Copy();
             var L = arena.fProxyMat(dim, dim);
             bool ok = Cholesky.choleskySolve(in A, ref L, ref bChol);
@@ -528,7 +525,6 @@ public class fProxyCholeskyTests
             var A = BuildSPD(ref arena, dim, 909090);
             var Aorig = A.Copy();
 
-            // L and A are distinct handles over the SAME underlying data.
             var L = A;
             bool ok = Cholesky.choleskyDecomposition(in A, ref L);
             Assert.IsTrue(ok);

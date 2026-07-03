@@ -83,7 +83,6 @@ public class doubleResampleTests
             data[0] = (double)10; data[1] = (double)20; data[2] = (double)30;
             data[3] = (double)40; data[4] = (double)50;
 
-            // probe positions 0, 1, and N-1
             CheckIntegerPos(in data, 0);
             CheckIntegerPos(in data, 1);
             CheckIntegerPos(in data, n - 1);

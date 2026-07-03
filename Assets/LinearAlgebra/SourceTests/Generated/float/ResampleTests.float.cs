@@ -83,7 +83,6 @@ public class floatResampleTests
             data[0] = (float)10; data[1] = (float)20; data[2] = (float)30;
             data[3] = (float)40; data[4] = (float)50;
 
-            // probe positions 0, 1, and N-1
             CheckIntegerPos(in data, 0);
             CheckIntegerPos(in data, 1);
             CheckIntegerPos(in data, n - 1);

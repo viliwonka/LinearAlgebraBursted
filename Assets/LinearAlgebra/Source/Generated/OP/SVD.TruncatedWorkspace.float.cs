@@ -67,10 +67,9 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates a GKL-truncated-SVD workspace for an m x n (m >= n) matrix with target rank k
-        /// and oversampling p_extra, sized by p = min(k + oversample, n). Pass the SAME k and
-        /// oversample to svdTruncated's ref-workspace overload. The buffers are persistent in this
-        /// arena (disposed with it), so create the workspace once outside a hot loop.
+        /// Allocates a GKL-truncated-SVD workspace for an m x n (m >= n) matrix, target rank k, and
+        /// oversampling p_extra (p = min(k + oversample, n)) — see <see cref="floatSVDTruncated_WS"/>
+        /// for layout. Pass the SAME k and oversample to svdTruncated's ref-workspace overload.
         /// </summary>
         public static floatSVDTruncated_WS floatSVDTruncated_WS(this ref Arena arena, int m, int n, int k, int oversample)
         {

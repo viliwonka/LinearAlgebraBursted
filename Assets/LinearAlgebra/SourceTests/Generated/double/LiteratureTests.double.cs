@@ -136,7 +136,6 @@ public class doubleLiteratureTests
             int n = 4;
             var P = arena.doublePascal(n);
 
-            // SPD -> Cholesky succeeds (read-only on P)
             var L = arena.doubleMat(n, n);
             AssertTrue(Cholesky.choleskyDecomposition(in P, ref L));
 
@@ -181,7 +180,6 @@ public class doubleLiteratureTests
             var V = arena.doubleMat(n, n);
             AssertTrue(Eigen.eigenDecomposition(ref W, ref eig, ref V, 100));   // destroys W; must converge
 
-            // eigenvectors orthonormal
             AssertTrue(Analysis_OP.isOrthogonal(V, (double)1E-3));
 
             // two spectral invariants over ALL eigenvalues (so corrupted middle ones can't hide):
@@ -215,7 +213,6 @@ public class doubleLiteratureTests
             // condition number (read-only on T)
             AssertClose(Linear_OP.cond(in T), lamMax / lamMin, (double)1E-2);
 
-            // SPD -> Cholesky succeeds (read-only on T)
             var L = arena.doubleMat(n, n);
             AssertTrue(Cholesky.choleskyDecomposition(in T, ref L));
 
@@ -225,7 +222,6 @@ public class doubleLiteratureTests
             var V = arena.doubleMat(n, n);
             AssertTrue(Eigen.eigenDecomposition(ref Tc, ref eig, ref V));   // must converge
 
-            // eigenvectors must be orthonormal
             AssertTrue(Analysis_OP.isOrthogonal(V, (double)1E-3));
 
             for (int i = 0; i < n; i++)
@@ -275,7 +271,6 @@ public class doubleLiteratureTests
             var L = arena.doubleMat(2, 2);
             bool spd = Cholesky.choleskyDecomposition(in A, ref L);
 
-            // must be rejected as not positive-definite
             if (spd && Fail[0] == (double)0)
             {
                 Fail[0] = (double)1; Fail[1] = (double)1; Fail[2] = (double)0; Fail[3] = (double)1;

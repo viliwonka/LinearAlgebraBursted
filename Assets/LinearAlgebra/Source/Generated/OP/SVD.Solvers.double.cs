@@ -9,9 +9,6 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    /// <summary>
-    /// Inpl = inplace
-    /// </summary>
     public static partial class SVD {
 
         /// <summary>
@@ -24,14 +21,8 @@ namespace LinearAlgebra
         /// Allocates temporaries from A's arena via tempdoubleVec/tempdoubleMat (not an Inpl op).
         /// Returns the numerical rank used; converged is svdThin's return value.
         /// </summary>
-        // Caller-provided scratch overload (zero-alloc). Let k = min(A.M_Rows, A.N_Cols):
-        //   S  - singular values, length k
-        //   M  - singular-vector matrix, k x k (plays the role of V for tall A, W for wide A)
-        //   U  - left-factor scratch, max(m,n) x k (receives the Golub-Kahan U of the decomposed
-        //        orientation: A for tall, A^T for wide)
-        //   At - A^T scratch, A.N_Cols x A.M_Rows; USED ONLY when A is wide (m < n). For m >= n
-        //        pass default(doubleMxN) (it is never read). Filled in-place via the ref-dest trans.
-        // Hoist these out of a hot loop solving many same-shape systems to avoid per-call allocs.
+        // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVD_WS. Hoist these
+        // out of a hot loop solving many same-shape systems to avoid per-call allocs.
         public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
                                     double relTol, int maxSweeps,
                                     ref doubleN S, ref doubleMxN M, ref doubleMxN U, ref doubleMxN At)
@@ -200,10 +191,7 @@ namespace LinearAlgebra
         /// A is NOT modified (the Golub-Kahan path takes it as input). Same tolerance/rank/return
         /// semantics as pinvSolve. Any shape.
         /// </summary>
-        // Caller-provided scratch overload (zero-alloc); same scratch contract as pinvSolve:
-        // k = min(A.M_Rows, A.N_Cols); S length k; M is k x k (V for tall A, W for wide A);
-        // U is max(m,n) x k (the Golub-Kahan left factor of the decomposed orientation);
-        // At (A.N_Cols x A.M_Rows) used only when A is wide (m < n), else pass default(doubleMxN).
+        // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVD_WS.
         public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
                                         double relTol, int maxSweeps,
                                         ref doubleN S, ref doubleMxN M, ref doubleMxN U, ref doubleMxN At)

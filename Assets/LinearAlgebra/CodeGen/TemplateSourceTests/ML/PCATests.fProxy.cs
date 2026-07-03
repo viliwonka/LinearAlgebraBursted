@@ -349,7 +349,6 @@ public class fProxyPCATests
 
             var scores = fProxyPCA_OP.pcaTransform(ref arena, in X, in m);
 
-            // shape n×k.
             RecordEq(scores.M_Rows, n);
             RecordEq(scores.N_Cols, m.k);
 
@@ -397,14 +396,13 @@ public class fProxyPCATests
             var X2 = arena.fProxyMat(n, p);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < p; c++)
-                    X2[r, c] = (c == 0) ? -X1[r, c] : X1[r, c];   // negate column 0
+                    X2[r, c] = (c == 0) ? -X1[r, c] : X1[r, c];
 
             var m1 = fProxyPCA_OP.pcaCovariance(ref arena, in X1);
             var m2 = fProxyPCA_OP.pcaCovariance(ref arena, in X2);
             AssertTrue(m1.converged);
             AssertTrue(m2.converged);
 
-            // identical explainedVariance and identical (sign-fixed) components.
             fProxy ctol = (fProxy)100 * Consts.fProxySqrtEps;
             for (int i = 0; i < p; i++)
                 AssertClose(m1.explainedVariance[i], m2.explainedVariance[i], EvTol(m1.explainedVariance[i]));
@@ -541,7 +539,7 @@ public class fProxyPCATests
             return gap > (fProxy)0.05f * (vc + (fProxy)1E-6f);
         }
 
-        // ---- Fail-array diagnostics (layout: [0]=flag, [1]=got, [2]=expected, [3]=diff) ----
+        // ---- Fail-array diagnostics ----
         void AssertClose(fProxy a, fProxy b, fProxy precision)
         {
             fProxy diff = math.abs(a - b);
@@ -630,7 +628,7 @@ public class fProxyPCATests
         // it throws on wide data just like pcaSVD/pcaRandomized (there is deliberately NO "truncated
         // works on wide data" test).
         var arena = new Arena(Allocator.Persistent);
-        var X = arena.fProxyMat(3, 5);   // wide: p > n
+        var X = arena.fProxyMat(3, 5);
         Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaSVDTruncated(ref arena, in X, 2));
         arena.Dispose();
     }
@@ -639,7 +637,7 @@ public class fProxyPCATests
     public void RandomizedWideThrows()
     {
         var arena = new Arena(Allocator.Persistent);
-        var X = arena.fProxyMat(3, 5);   // wide: p > n
+        var X = arena.fProxyMat(3, 5);
         Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaRandomized(ref arena, in X, 2));
         arena.Dispose();
     }

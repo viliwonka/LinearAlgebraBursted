@@ -64,7 +64,7 @@ namespace LinearAlgebra
             if (n == 1)
                 return;
 
-            // For the inverse, conjugate the input; we conjugate again and scale at the end.
+            // Conjugate trick (see ifft doc above).
             if (inverse)
                 for (int i = 0; i < n; i++)
                     im[i] = -im[i];
@@ -133,7 +133,7 @@ namespace LinearAlgebra
 
         // Zero-alloc radix-4 DIT FFT — table-free recurrence twiddles.
         // Length must be a power of 4 (caller guarantees via IsPowerOf4 dispatch).
-        // Conjugate trick inverse: negate im → forward → negate im + scale 1/n.
+        // Conjugate trick for inverse (see ifft doc above).
         // Permutation: base-4 digit reversal (reuses ReverseBase4Digits from FFT.Workspace).
         // Stages q=1,4,16,… (q<n, q<<=2): len=4q; one cos/sin per stage computes wlen=exp(-2πi/len),
         // then w2=wlen^2 and w3=wlen^3. Per group: seed t1=t2=t3=(1,0); advance per j.
@@ -147,7 +147,6 @@ namespace LinearAlgebra
             if (n == 1)
                 return;
 
-            // Conjugate trick for inverse.
             if (inverse)
                 for (int i = 0; i < n; i++)
                     im[i] = -im[i];
@@ -174,11 +173,9 @@ namespace LinearAlgebra
                 float wlenRe = math.cos(ang);
                 float wlenIm = math.sin(ang);
 
-                // w2 = wlen * wlen
                 float w2Re = wlenRe * wlenRe - wlenIm * wlenIm;
                 float w2Im = wlenRe * wlenIm + wlenIm * wlenRe;
 
-                // w3 = w2 * wlen
                 float w3Re = w2Re * wlenRe - w2Im * wlenIm;
                 float w3Im = w2Re * wlenIm + w2Im * wlenRe;
 
@@ -444,10 +441,9 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Forward discrete Fourier transform for ANY length N (O(N²)). outRe/outIm receive the spectrum
-        /// and must not alias the inputs (each output bin reads every input sample).
-        /// The twiddle angle is reduced as baseAng·((k·t) mod N) — exact, since exp is 2π-periodic and
-        /// baseAng = ±2π/N — so the angle stays in (−2π, 2π] and float sin/cos keeps full accuracy even
-        /// at large N. The transform is still O(N²); prefer the power-of-two <see cref="fft"/> for speed.
+        /// and must not alias the inputs (each output bin reads every input sample). The twiddle angle
+        /// is range-reduced mod N for accuracy at large N — see the comment in DftCore. Still O(N²);
+        /// prefer the power-of-two <see cref="fft"/> for speed.
         /// </summary>
         public static void dft(in floatN inRe, in floatN inIm, ref floatN outRe, ref floatN outIm)
         {

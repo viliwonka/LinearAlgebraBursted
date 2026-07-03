@@ -316,10 +316,7 @@ namespace LinearAlgebra.ML
         public static bool pcaCovariance(in floatMxN X, ref floatPCAModel model)
             => pcaCovariance(in X, ref model, PCAScaling.Covariance);
 
-        /// <summary>
-        /// Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates
-        /// to the ref-model overload. Guards fire before any arena allocation.
-        /// </summary>
+        /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static floatPCAModel pcaCovariance(ref Arena arena, in floatMxN X, PCAScaling scaling)
         {
             const string method = "floatPCA_OP.pcaCovariance";
@@ -378,10 +375,7 @@ namespace LinearAlgebra.ML
         public static bool pcaSVD(in floatMxN X, ref floatPCAModel model)
             => pcaSVD(in X, ref model, PCAScaling.Covariance, 75);
 
-        /// <summary>
-        /// Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates
-        /// to the ref-model overload. Guards fire before any arena allocation.
-        /// </summary>
+        /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static floatPCAModel pcaSVD(ref Arena arena, in floatMxN X, PCAScaling scaling)
         {
             const string method = "floatPCA_OP.pcaSVD";
@@ -455,10 +449,7 @@ namespace LinearAlgebra.ML
         public static bool pcaSVDTruncated(in floatMxN X, ref floatPCAModel model, int k)
             => pcaSVDTruncated(in X, ref model, k, PCAScaling.Covariance);
 
-        /// <summary>
-        /// Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates
-        /// to the ref-model overload. Guards fire before any arena allocation.
-        /// </summary>
+        /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static floatPCAModel pcaSVDTruncated(ref Arena arena, in floatMxN X, int k, PCAScaling scaling)
         {
             const string method = "floatPCA_OP.pcaSVDTruncated";
@@ -526,10 +517,7 @@ namespace LinearAlgebra.ML
         public static bool pcaRandomized(in floatMxN X, ref floatPCAModel model, int k)
             => pcaRandomized(in X, ref model, k, PCAScaling.Covariance);
 
-        /// <summary>
-        /// Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates
-        /// to the ref-model overload. Guards fire before any arena allocation.
-        /// </summary>
+        /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static floatPCAModel pcaRandomized(ref Arena arena, in floatMxN X, int k, PCAScaling scaling)
         {
             const string method = "floatPCA_OP.pcaRandomized";

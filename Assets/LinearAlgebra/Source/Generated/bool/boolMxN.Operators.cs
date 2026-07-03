@@ -2,9 +2,6 @@
 namespace LinearAlgebra
 {
 
-    // A m x n matrix
-    // m = rows
-    // n = cols
     public partial struct boolMxN {
 
         #region SCALAR OPERATIONS

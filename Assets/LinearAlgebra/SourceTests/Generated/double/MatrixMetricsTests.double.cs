@@ -311,7 +311,7 @@ public class doubleMatrixMetricsTests
             arena.Dispose();
         }
 
-        // ---- recording asserts (Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff) ----
+        // ---- recording asserts ----
 
         void AssertClose(double a, double b, double precision)
         {

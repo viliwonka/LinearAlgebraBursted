@@ -10,15 +10,10 @@ using Unity.Mathematics;
 // Tests for pivoted (rank-revealing) Cholesky: Cholesky.choleskyDecompositionPivot / choleskyPivotSolve.
 // PᵀAP = LLᵀ with symmetric (diagonal) pivoting, largest remaining diagonal first (LAPACK xPSTRF).
 //
-// Properties / vectors exercised:
-//  - Full-rank SPD: reconstruction PᵀAP == LLᵀ, rank == n, exact solve, first pivot = largest diagonal.
-//  - Diagonal PSD matrix diag(4,0,9,0,1): hand-verifiable pivot order (P[0]=2 [val 9], P[1]=0 [val 4],
-//    P[2]=4 [val 1]) and numerical rank 3.
-//  - Rank-deficient PSD Gram matrix A = B·Bᵀ (B is n×r): rank == r, reconstruction, and the minimum-norm
-//    solve recovers x exactly when b ∈ range(A).
-//  - Minimum-norm certificate: for b = A·xOrig, the solve returns x with A·x ≈ b and ‖x‖ ≤ ‖xOrig‖.
-//  - Indefinite matrices => choleskyDecompositionPivot returns false (e.g. [[1,2],[2,1]], eigenvalues 3,-1).
-//  - Zero matrix => rank 0, solve returns x = 0. Rank-1 outer product v·vᵀ => rank 1.
+// Properties / vectors exercised (see each test method for the exact numbers): full-rank SPD
+// reconstruction + solve; diagonal PSD rank-reveal; rank-deficient PSD Gram-matrix reconstruction +
+// min-norm solve; min-norm certificate ‖x‖ ≤ ‖xOrig‖; indefinite matrices rejected; zero matrix
+// (rank 0) and rank-1 outer product (rank 1).
 public class fProxyPivotedCholeskyTests
 {
     [BurstCompile]

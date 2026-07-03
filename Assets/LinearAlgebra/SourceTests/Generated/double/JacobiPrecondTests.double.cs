@@ -133,7 +133,6 @@ public class doubleJacobiPrecondTests
             AssertClose(d[2], (double)1 / (double)3, Tight()); // 1/sqrt(9)
             AssertClose(d[3], (double)2,   Tight());        // 1/sqrt(0.25)
 
-            // No NaN/Inf anywhere.
             for (int j = 0; j < 4; j++) Assert.IsTrue(math.isfinite(d[j]));
 
             arena.Dispose();

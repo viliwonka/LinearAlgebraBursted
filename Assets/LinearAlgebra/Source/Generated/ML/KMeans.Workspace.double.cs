@@ -6,16 +6,6 @@ namespace LinearAlgebra.ML
     /// Reusable scratch storage for zero-alloc Lloyd k-means.
     /// Allocate ONCE (sized for the data shape) via <c>Arena.doubleKMeans_WS(N, D, k)</c>
     /// and reuse across same-shape calls. All buffers are arena-owned and disposed with the arena.
-    ///
-    /// Memory layout (all double-scalar counts):
-    ///   Gram           N×k  — GEMM output X·Cᵀ, patched in-place to L2² scores each iter
-    ///   Ct             D×k  — transposed centroids (refreshed each iteration)
-    ///   PointNormSq    N    — ‖xₙ‖² (precomputed once before the Lloyd loop)
-    ///   CentNormSq     k    — ‖cⱼ‖² (recomputed each iteration)
-    ///   PrevAssignment N    — cluster labels from previous iter (early-exit detection)
-    ///   NewCentroids   k×D  — centroid accumulator (zeroed each iteration)
-    ///   ClusterCounts  k    — per-cluster point count (zeroed each iteration)
-    ///   D2Weights      N    — D² distances used for k-means++ seeding only
     /// </summary>
     public struct doubleKMeans_WS
     {

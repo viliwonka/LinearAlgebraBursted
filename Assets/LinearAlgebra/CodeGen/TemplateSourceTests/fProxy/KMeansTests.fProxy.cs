@@ -72,11 +72,9 @@ public class fProxyKMeansTests
             }
         }
 
-        // =====================================================================
         // T1 — separable blobs: returned centroids equal the blob centers and
-        //      inertia is (exactly) zero. Centers (0,0),(10,0),(0,10), four
-        //      coincident points each → blob mean == center, SSE == 0.
-        // =====================================================================
+        // inertia is (exactly) zero. Centers (0,0),(10,0),(0,10), four
+        // coincident points each → blob mean == center, SSE == 0.
         void SeparableBlobs()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -106,11 +104,9 @@ public class fProxyKMeansTests
             arena.Dispose();
         }
 
-        // =====================================================================
         // T2 — assignment == brute-force nearest centroid (the final-sync contract).
-        //      Run on well-separated data (no fp tie ambiguity) at maxIter=1 (forces
-        //      the non-converged exit) and at maxIter=20.
-        // =====================================================================
+        // Run on well-separated data (no fp tie ambiguity) at maxIter=1 (forces
+        // the non-converged exit) and at maxIter=20.
         void BruteForceNearest()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -140,11 +136,9 @@ public class fProxyKMeansTests
             }
         }
 
-        // =====================================================================
         // T3 — inertia is non-negative and equals the independently recomputed
-        //      SSE Σ‖xₙ − c_{assignment[n]}‖² of the returned (assignment,centroids).
-        //      On separable blobs it is exactly 0.
-        // =====================================================================
+        // SSE Σ‖xₙ − c_{assignment[n]}‖² of the returned (assignment,centroids).
+        // On separable blobs it is exactly 0.
         void InertiaRecompute()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -180,10 +174,8 @@ public class fProxyKMeansTests
             arena.Dispose();
         }
 
-        // =====================================================================
         // T4 — k == 1: the single centroid is the global mean (colMean). Guards
-        //      against returning a seed point. inertia == Σ‖xₙ − mean‖².
-        // =====================================================================
+        // against returning a seed point. inertia == Σ‖xₙ − mean‖².
         void KEqualsOneMean()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -228,10 +220,8 @@ public class fProxyKMeansTests
             arena.Dispose();
         }
 
-        // =====================================================================
         // T5 — k ≥ N: k clamps to N, every point is its own cluster (sits on its
-        //      centroid), inertia ≈ 0, iters ≤ 2, assignment is a bijection.
-        // =====================================================================
+        // centroid), inertia ≈ 0, iters ≤ 2, assignment is a bijection.
         void KGreaterEqualN()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -263,10 +253,8 @@ public class fProxyKMeansTests
             arena.Dispose();
         }
 
-        // =====================================================================
         // T6 — determinism: two runs with identical seed/init produce bit-identical
-        //      centroids, assignment, inertia, and iters. Exercised for both inits.
-        // =====================================================================
+        // centroids, assignment, inertia, and iters. Exercised for both inits.
         void Determinism(KMeansInit init)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -291,10 +279,8 @@ public class fProxyKMeansTests
             arena.Dispose();
         }
 
-        // =====================================================================
         // T7 — workspace (primitive + factory ws) and allocating wrapper agree
-        //      bit-exactly for identical inputs/seed/init.
-        // =====================================================================
+        // bit-exactly for identical inputs/seed/init.
         void WorkspaceVsAllocating()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -319,12 +305,10 @@ public class fProxyKMeansTests
             arena.Dispose();
         }
 
-        // =====================================================================
         // T8 — empty-cluster reseed: a 2-location duplicate-point set with k=4
-        //      forces ≥2 empty clusters in the first update (k-means++ falls back to
-        //      uniform once all D² weights collapse → duplicate centroids → empties).
-        //      Assert: no throw, all centroid components finite, ≥2 distinct centroids.
-        // =====================================================================
+        // forces ≥2 empty clusters in the first update (k-means++ falls back to
+        // uniform once all D² weights collapse → duplicate centroids → empties).
+        // Assert: no throw, all centroid components finite, ≥2 distinct centroids.
         void EmptyClusterReseed()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -350,15 +334,12 @@ public class fProxyKMeansTests
             AssertTrue(inertia >= (fProxy)0);
             AssertTrue(math.isfinite(inertia));
 
-            // both real locations are represented: ≥2 distinct centroid positions.
             AssertTrue(DistinctCentroidCount(in centroids, k, D) >= 2);
 
             arena.Dispose();
         }
 
-        // =====================================================================
         // T9 — both seeding modes converge to inertia ≈ 0 on the separable blobs.
-        // =====================================================================
         void BothInitsValid()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -382,9 +363,7 @@ public class fProxyKMeansTests
             AssertClose(inertia, (fProxy)0, (fProxy)100 * Consts.fProxySqrtEps);
         }
 
-        // =====================================================================
         // datasets
-        // =====================================================================
 
         // 12×2: three coincident blobs of 4 points each at (0,0),(10,0),(0,10).
         fProxyMxN Blobs3(ref Arena arena)
@@ -409,9 +388,7 @@ public class fProxyKMeansTests
             return X;
         }
 
-        // =====================================================================
         // numeric helpers
-        // =====================================================================
 
         // ‖X[n,:] − C[j,:]‖²
         fProxy DistSq(in fProxyMxN X, int n, in fProxyMxN C, int j, int D)
@@ -547,9 +524,7 @@ public class fProxyKMeansTests
         finally { fail.Dispose(); }
     }
 
-    // =====================================================================
     // T10 — managed guard throws (main thread; throw paths need no Burst).
-    // =====================================================================
 
     [Test]
     public void EmptyXThrows()

@@ -331,13 +331,8 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Returns the column index whose norm (L1 or Linf) is largest.
-        /// L2 norm is not supported for integer types (requires sqrt) — throws ArgumentException.
-        /// Columns are strided (non-contiguous); on ties the first occurrence wins.
-        /// <para>
-        /// Overflow note: L1 accumulates |element| values; Linf takes max |element|.
-        /// Both are overflow-safe for typical integer ranges.
-        /// </para>
+        /// Column analog of <see cref="argMaxRowNorm"/> (same overflow note); columns are
+        /// strided (non-contiguous).
         /// </summary>
         public static int argMaxColNorm(in longMxN A, Norm n)
         {
@@ -405,16 +400,9 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Score between row r of A and query q under integer-exact metric m.
-        /// Supported: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// <para>
-        /// Integer distance metrics require each element AND each element-wise difference
-        /// to fit the proxy type (e.g. for short, coordinates roughly within ±16383 so
-        /// differences fit ±32767); values at the type extreme (MinValue) are not exactly
-        /// representable in abs. Use float/double for larger ranges.
-        /// SqEuclidean/Dot additionally require maxAbs²·dim to fit the proxy type.
-        /// The "overflow-safe" claim for Manhattan/Chebyshev applies only to the abs/max step,
-        /// NOT to the subtraction (A[r,c] - q[c]) which can itself overflow at the type boundary.
-        /// </para>
+        /// Supported: Manhattan, Chebyshev, SqEuclidean, Dot. See the P3 overflow note
+        /// above (and class header): the "overflow-safe" claim for Manhattan/Chebyshev
+        /// covers only the abs/max step, NOT the subtraction (A[r,c] - q[c]) itself.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static long RowScore(in longMxN A, int r, in longN q, Metric m)
@@ -458,17 +446,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Score between column col of A and query q under integer-exact metric m.
-        /// Supported: Manhattan, Chebyshev, SqEuclidean, Dot. Columns are strided.
-        /// <para>
-        /// Integer distance metrics require each element AND each element-wise difference
-        /// to fit the proxy type (e.g. for short, coordinates roughly within ±16383 so
-        /// differences fit ±32767); values at the type extreme (MinValue) are not exactly
-        /// representable in abs. Use float/double for larger ranges.
-        /// SqEuclidean/Dot additionally require maxAbs²·dim to fit the proxy type.
-        /// The "overflow-safe" claim for Manhattan/Chebyshev applies only to the abs/max step,
-        /// NOT to the subtraction (A[r,col] - q[r]) which can itself overflow at the type boundary.
-        /// </para>
+        /// Column analog of <see cref="RowScore"/> (same overflow note); columns are strided.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static long ColScore(in longMxN A, int col, in longN q, Metric m)
@@ -538,7 +516,6 @@ namespace LinearAlgebra
         /// Fills dest[i] with the distance/similarity between row i of A and query q
         /// under integer-exact metric m. dest must have length A.M_Rows. q.N must equal A.N_Cols.
         /// Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Integer distance metrics require each element AND each element-wise difference to fit
         /// the proxy type (e.g. for short, coordinates roughly within ±16383 so differences fit
@@ -563,7 +540,6 @@ namespace LinearAlgebra
         /// Fills dest[j] with the distance/similarity between column j of A and query q
         /// under integer-exact metric m. dest must have length A.N_Cols. q.N must equal A.M_Rows.
         /// Columns are strided (non-contiguous).
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Integer distance metrics require each element AND each element-wise difference to fit
         /// the proxy type (e.g. for short, coordinates roughly within ±16383 so differences fit
@@ -592,7 +568,6 @@ namespace LinearAlgebra
         /// For Dot (similarity): nearest = max dot product.
         /// score is in metric's own units (SqEuclidean → squared distance).
         /// q.N must equal A.N_Cols.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow: see distancesToRow for the full integer overflow contract (element differences must fit the proxy type; SqEuclidean/Dot additionally require maxAbs²·dim to fit).
         /// </para>
@@ -619,7 +594,6 @@ namespace LinearAlgebra
         /// <summary>
         /// Finds the column of A most similar/closest to query q under integer-exact metric m.
         /// q.N must equal A.M_Rows. Columns are strided.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow: see distancesToColumn for the full integer overflow contract (element differences must fit the proxy type; SqEuclidean/Dot additionally require maxAbs²·dim to fit).
         /// </para>
@@ -649,7 +623,6 @@ namespace LinearAlgebra
         /// Finds the row of A most dissimilar/farthest from query q under integer-exact metric m.
         /// For distance metrics: farthest = max distance. For Dot: farthest = min dot product.
         /// score is in metric's own units.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow: see distancesToRow for the full integer overflow contract (element differences must fit the proxy type; SqEuclidean/Dot additionally require maxAbs²·dim to fit).
         /// </para>
@@ -676,7 +649,6 @@ namespace LinearAlgebra
         /// <summary>
         /// Finds the column of A most dissimilar/farthest from query q under integer-exact metric m.
         /// q.N must equal A.M_Rows. Columns are strided.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow: see distancesToColumn for the full integer overflow contract (element differences must fit the proxy type; SqEuclidean/Dot additionally require maxAbs²·dim to fit).
         /// </para>
@@ -707,7 +679,6 @@ namespace LinearAlgebra
         /// For distance metrics: count rows with score &lt;= r.
         /// For Dot (similarity): count rows with score >= r.
         /// q.N must equal A.N_Cols.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow: see distancesToRow for the full integer overflow contract (element differences must fit the proxy type; SqEuclidean/Dot additionally require maxAbs²·dim to fit).
         /// </para>
@@ -731,7 +702,6 @@ namespace LinearAlgebra
         /// <summary>
         /// Returns the count of columns with distance/similarity to q within radius r.
         /// Columns are strided. q.N must equal A.M_Rows.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow: see distancesToColumn for the full integer overflow contract (element differences must fit the proxy type; SqEuclidean/Dot additionally require maxAbs²·dim to fit).
         /// </para>
@@ -760,7 +730,6 @@ namespace LinearAlgebra
         /// Fills idx[0..count) and scores[0..count) sorted best-first.
         /// Returns min(k, A.M_Rows). Uses bounded insertion sort (O(M·k)) — optimal for small k.
         /// q.N must equal A.N_Cols.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
         /// Ensure maxAbsValue² × N_Cols fits the type; otherwise use the float variant.
@@ -809,7 +778,6 @@ namespace LinearAlgebra
         /// Finds the k nearest columns to query q under integer-exact metric m.
         /// idx and scores must both have length >= k.
         /// Returns min(k, A.N_Cols). q.N must equal A.M_Rows. Columns are strided.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
         /// Ensure maxAbsValue² × M_Rows fits the type; otherwise use the float variant.
@@ -858,7 +826,6 @@ namespace LinearAlgebra
         /// Finds the k farthest rows from query q under integer-exact metric m.
         /// idx and scores must have length >= k.
         /// Returns min(k, A.M_Rows). Sorted worst-first (highest distance / lowest similarity).
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
         /// Ensure maxAbsValue² × N_Cols fits the type; otherwise use the float variant.
@@ -906,7 +873,6 @@ namespace LinearAlgebra
         /// <summary>
         /// Finds the k farthest columns from query q under integer-exact metric m.
         /// Returns min(k, A.N_Cols). q.N must equal A.M_Rows. Columns are strided.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
         /// Ensure maxAbsValue² × M_Rows fits the type; otherwise use the float variant.
@@ -956,7 +922,6 @@ namespace LinearAlgebra
         /// For distance metrics: score &lt;= r. For Dot (similarity): score >= r.
         /// Returns count. idx must be sized >= A.M_Rows (worst case).
         /// q.N must equal A.N_Cols.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow: see distancesToRow for the full integer overflow contract (element differences must fit the proxy type; SqEuclidean/Dot additionally require maxAbs²·dim to fit).
         /// </para>
@@ -983,7 +948,6 @@ namespace LinearAlgebra
         /// Fills idx[0..count) with indices of columns within radius r of query q.
         /// Returns count. idx must be sized >= A.N_Cols. q.N must equal A.M_Rows.
         /// Columns are strided.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
         /// <para>
         /// Overflow: see distancesToColumn for the full integer overflow contract (element differences must fit the proxy type; SqEuclidean/Dot additionally require maxAbs²·dim to fit).
         /// </para>

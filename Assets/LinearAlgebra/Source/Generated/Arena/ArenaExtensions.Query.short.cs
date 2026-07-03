@@ -20,17 +20,7 @@ namespace LinearAlgebra
         // distancesToRow / distancesToColumn — allocate shortN from A's arena
         // -------------------------------------------------------------------------
 
-        /// <summary>
-        /// Allocates a fresh shortN (length A.M_Rows) from A's arena and fills it
-        /// with the distance/similarity from each row of A to query q under metric m.
-        /// Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
-        /// <para>
-        /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
-        /// Ensure maxAbsValue² × N_Cols fits the type; otherwise use the float variant.
-        /// Manhattan/Chebyshev require element differences to fit the proxy type (e.g. for short, roughly ±16383 so differences fit ±32767). Use float/double for larger ranges.
-        /// </para>
-        /// </summary>
+        /// <summary>Allocates a fresh shortN (length A.M_Rows) from A's arena with row distances/similarities to q under metric m. See class doc for supported metrics and overflow limits.</summary>
         public static shortN shortDistancesToRow(in shortMxN A, in shortN q, Metric m)
         {
             var dest = A.shortVec(A.M_Rows);
@@ -38,17 +28,7 @@ namespace LinearAlgebra
             return dest;
         }
 
-        /// <summary>
-        /// Allocates a fresh shortN (length A.N_Cols) from A's arena and fills it
-        /// with the distance/similarity from each column of A to query q under metric m.
-        /// Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
-        /// <para>
-        /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
-        /// Ensure maxAbsValue² × M_Rows fits the type; otherwise use the float variant.
-        /// Manhattan/Chebyshev require element differences to fit the proxy type (e.g. for short, roughly ±16383 so differences fit ±32767). Use float/double for larger ranges.
-        /// </para>
-        /// </summary>
+        /// <summary>Allocates a fresh shortN (length A.N_Cols) from A's arena with column distances/similarities to q under metric m. See class doc for supported metrics and overflow limits.</summary>
         public static shortN shortDistancesToColumn(in shortMxN A, in shortN q, Metric m)
         {
             var dest = A.shortVec(A.N_Cols);
@@ -84,14 +64,7 @@ namespace LinearAlgebra
         // rowsWithinRadius / columnsWithinRadius — count-pass + exact-alloc Indices
         // -------------------------------------------------------------------------
 
-        /// <summary>
-        /// Two-pass: count + exact-alloc Indices of row indices within radius r.
-        /// Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
-        /// <para>
-        /// Overflow (SqEuclidean/Dot): see shortDistancesToRow. Manhattan/Chebyshev are overflow-safe.
-        /// </para>
-        /// </summary>
+        /// <summary>Two-pass: counts, then exact-allocates Indices of row indices within radius r under metric m.</summary>
         public static Indices shortRowsWithinRadius(this ref Arena arena, in shortMxN A, in shortN q, short r, Metric m)
         {
             int count = shortQuery_OP.countWithinRadius(in A, in q, r, m);
@@ -107,14 +80,7 @@ namespace LinearAlgebra
             return idx;
         }
 
-        /// <summary>
-        /// Two-pass: count + exact-alloc Indices of column indices within radius r.
-        /// Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
-        /// <para>
-        /// Overflow (SqEuclidean/Dot): see shortDistancesToColumn. Manhattan/Chebyshev are overflow-safe.
-        /// </para>
-        /// </summary>
+        /// <summary>Two-pass: counts, then exact-allocates Indices of column indices within radius r under metric m.</summary>
         public static Indices shortColumnsWithinRadius(this ref Arena arena, in shortMxN A, in shortN q, short r, Metric m)
         {
             int count = shortQuery_OP.countWithinColumnRadius(in A, in q, r, m);
@@ -134,17 +100,7 @@ namespace LinearAlgebra
         // kNearestRows / kNearestColumns — arena-alloc Indices + shortN scores
         // -------------------------------------------------------------------------
 
-        /// <summary>
-        /// Allocates clamped-k Indices + shortN from arena, fills via kNearestRows.
-        /// Returns idx; scores and count are out params. count = min(k, A.M_Rows).
-        /// Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
-        /// <para>
-        /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
-        /// Ensure maxAbsValue² × N_Cols fits the type; otherwise use the float variant.
-        /// Manhattan/Chebyshev are the recommended integer metrics; element differences must fit the proxy type (e.g. for short, roughly ±16383 so differences fit ±32767).
-        /// </para>
-        /// </summary>
+        /// <summary>Allocates clamped-k Indices + shortN scores from arena, filled via kNearestRows; count = min(k, A.M_Rows).</summary>
         public static Indices shortKNearestRows(this ref Arena arena, in shortMxN A, in shortN q, int k, Metric m, out shortN scores, out int count)
         {
             int clampedK = math.min(k, A.M_Rows);
@@ -155,16 +111,7 @@ namespace LinearAlgebra
             return idx;
         }
 
-        /// <summary>
-        /// Allocates clamped-k Indices + shortN from arena, fills via kNearestColumns.
-        /// Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
-        /// <para>
-        /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
-        /// Ensure maxAbsValue² × M_Rows fits the type; otherwise use the float variant.
-        /// Manhattan and Chebyshev are the recommended integer metrics (see overflow note on shortKNearestRows).
-        /// </para>
-        /// </summary>
+        /// <summary>Allocates clamped-k Indices + shortN scores from arena, filled via kNearestColumns; count = min(k, A.N_Cols).</summary>
         public static Indices shortKNearestColumns(this ref Arena arena, in shortMxN A, in shortN q, int k, Metric m, out shortN scores, out int count)
         {
             int clampedK = math.min(k, A.N_Cols);
@@ -179,17 +126,7 @@ namespace LinearAlgebra
         // kFarthestRows / kFarthestColumns — arena-alloc Indices + shortN scores
         // -------------------------------------------------------------------------
 
-        /// <summary>
-        /// Allocates clamped-k Indices + shortN from arena, fills via kFarthestRows.
-        /// Returns idx; scores and count are out params. count = min(k, A.M_Rows).
-        /// Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
-        /// <para>
-        /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
-        /// Ensure maxAbsValue² × N_Cols fits the type; otherwise use the float variant.
-        /// Manhattan and Chebyshev are the recommended integer metrics (see overflow note on shortKNearestRows).
-        /// </para>
-        /// </summary>
+        /// <summary>Allocates clamped-k Indices + shortN scores from arena, filled via kFarthestRows; count = min(k, A.M_Rows).</summary>
         public static Indices shortKFarthestRows(this ref Arena arena, in shortMxN A, in shortN q, int k, Metric m, out shortN scores, out int count)
         {
             int clampedK = math.min(k, A.M_Rows);
@@ -200,17 +137,7 @@ namespace LinearAlgebra
             return idx;
         }
 
-        /// <summary>
-        /// Allocates clamped-k Indices + shortN from arena, fills via kFarthestColumns.
-        /// Returns idx; scores and count are out params. count = min(k, A.N_Cols).
-        /// Supported metrics: Manhattan, Chebyshev, SqEuclidean, Dot.
-        /// Euclidean and Cosine throw ArgumentException (float-only).
-        /// <para>
-        /// Overflow (SqEuclidean/Dot): accumulates products in the proxy type.
-        /// Ensure maxAbsValue² × M_Rows fits the type; otherwise use the float variant.
-        /// Manhattan and Chebyshev are the recommended integer metrics (see overflow note on shortKNearestRows).
-        /// </para>
-        /// </summary>
+        /// <summary>Allocates clamped-k Indices + shortN scores from arena, filled via kFarthestColumns; count = min(k, A.N_Cols).</summary>
         public static Indices shortKFarthestColumns(this ref Arena arena, in shortMxN A, in shortN q, int k, Metric m, out shortN scores, out int count)
         {
             int clampedK = math.min(k, A.N_Cols);

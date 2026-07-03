@@ -164,11 +164,7 @@ namespace LinearAlgebra
 
         #region COMPONENT-WISE OPERATIONS
 
-        /// <summary>
-        /// Component-wise addition
-        /// Vectors have to be same dimensions
-        /// </summary>
-        /// <returns>Same dimension vector</returns>
+        /// <summary>Component-wise addition; vectors must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator +(in shortN a, in shortN b) {
 
@@ -181,11 +177,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        /// <summary>
-        /// Component-wise subtraction
-        /// Vectors have to be same dimensions
-        /// </summary>
-        /// <returns>Same dimension vector</returns>
+        /// <summary>Component-wise subtraction; vectors must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator -(in shortN a, in shortN b) {
 
@@ -197,11 +189,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        /// <summary>
-        /// Component-wise multiplication
-        /// Vectors have to be same dimensions
-        /// </summary>
-        /// <returns>Same dimension vector</returns>
+        /// <summary>Component-wise multiplication; vectors must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator *(in shortN a, in shortN b) {
 
@@ -214,12 +202,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        /// <summary>
-        /// Component-wise division
-        /// Vectors have to be same dimensions
-        /// Dividend / divisor
-        /// </summary>
-        /// <returns>Same dimension vector</returns>
+        /// <summary>Component-wise division (dividend / divisor); vectors must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator /(in shortN dividend, in shortN divisor)
         {
@@ -231,12 +214,7 @@ namespace LinearAlgebra
             return newDividendVec;
         }
 
-        /// <summary>
-        /// Component-wise modulo
-        /// Vectors have to be same dimensions
-        /// Dividend / divisor
-        /// </summary>
-        /// <returns>Same dimension vector</returns>
+        /// <summary>Component-wise modulo (dividend / divisor); vectors must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator %(in shortN dividend, in shortN divisor)
         {

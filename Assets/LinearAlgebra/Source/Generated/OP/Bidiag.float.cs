@@ -127,7 +127,8 @@ namespace LinearAlgebra
         /// U (m×n) receives the left orthogonal factor with orthonormal columns (UᵀU = I_n).
         /// B (n×n) receives the upper bidiagonal factor (nonzero only on main diagonal and first superdiagonal).
         /// V (n×n) receives the right orthogonal factor (VᵀV = I_n).</para>
-        /// <para>Allocates Allocator.Temp scratch internally (O(mn) total).</para>
+        /// <para>Zero-alloc: scratch comes from the caller-provided <paramref name="ws"/> (see
+        /// <see cref="floatBidiag_WS"/>); nothing is allocated internally.</para>
         /// </summary>
         /// <param name="A">Input m×n matrix (m≥n). Not modified.</param>
         /// <param name="U">Output m×n left factor (orthonormal columns). Caller-allocated.</param>
@@ -181,7 +182,6 @@ namespace LinearAlgebra
                 // Step 1: LEFT Householder — zero W[k+1..m-1, k]
                 genHouseholderCol(ref W, ref uVec, k, zeroThreshold);
 
-                // Apply H_k from left to trailing block W[k:, k:]
                 applyHouseholderLeft(ref W, ref uVec, ref wScratch, k);
 
                 // Store left reflector vector for backward U reconstruction
@@ -195,7 +195,6 @@ namespace LinearAlgebra
 
                     genHouseholderRow(ref W, ref vVec, k, colStart, zeroThreshold);
 
-                    // Apply G_k from right to trailing rows W[k:, k+1:]
                     applyHouseholderRight(ref W, ref vVec, k, colStart);
 
                     // Accumulate V from the right: V = V * G_k
@@ -266,7 +265,8 @@ namespace LinearAlgebra
         /// <para>This skips the U backward pass and the V accumulation of <see cref="bidiagonalize"/>
         /// (≈ the column-rotation O(mn²)+O(n³) work), so when only the singular values are wanted it is
         /// far cheaper. Feed (d, e) into SVD's rotation-free bidiagonal QR.</para>
-        /// <para>A is NOT modified (worked on a Temp copy). Allocates O(mn) Temp scratch.</para>
+        /// <para>A is NOT modified (worked on ws.W, a copy). Zero-alloc: uses the caller-provided
+        /// workspace <paramref name="ws"/>; nothing is allocated internally.</para>
         /// </summary>
         /// <param name="A">Input m×n matrix (m≥n). Not modified.</param>
         /// <param name="d">Output diagonal, length n. Caller-allocated.</param>

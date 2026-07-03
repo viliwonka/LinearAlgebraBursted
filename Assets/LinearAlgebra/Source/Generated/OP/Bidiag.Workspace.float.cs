@@ -45,10 +45,8 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates a bidiagonalization workspace for an m x n (m >= n) matrix: W (m x n),
-        /// leftU (m x n), uVec (m), vVec (n), wScratch (n). The buffers are persistent in this arena
-        /// (disposed with it), so create the workspace once outside a hot loop and pass it to the
-        /// ref-workspace overloads of bidiagonalize / bidiagonalizeValues.
+        /// Allocates a bidiagonalization workspace for an m x n (m >= n) matrix. See
+        /// <see cref="floatBidiag_WS"/> for reuse guidance.
         /// </summary>
         public static floatBidiag_WS floatBidiag_WS(this ref Arena arena, int m, int n)
         {

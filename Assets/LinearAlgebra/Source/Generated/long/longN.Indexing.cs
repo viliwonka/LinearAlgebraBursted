@@ -6,11 +6,7 @@ namespace LinearAlgebra
 
     public partial struct longN {
 
-        /// <summary>
-        /// Direct array accessor
-        /// </summary>
-        /// <param name="index"></param>
-        /// <returns></returns>
+        // Direct array accessor (both int and System.Index, from-end supported).
         public ref long this[int index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

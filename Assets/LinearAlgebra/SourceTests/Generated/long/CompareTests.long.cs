@@ -338,7 +338,6 @@ public class longCompareTests
             int dim = 64;
 
             longN v = arena.longRandomVec(dim, -100, 100, 1451);
-            // set first element to zero
             v[0] = 0;
 
             var boolVec = v == 0;
@@ -366,7 +365,6 @@ public class longCompareTests
             int dim = 32;
 
             longMxN m = arena.longRandomMat(dim, dim, -100, 100, 1451);
-            // set first element to zero
             m[0,0] = 0;
 
             var boolMat = m == 0;

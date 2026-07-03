@@ -28,10 +28,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Overwrites every element of <paramref name="dest"/> with a uniform draw from
         /// [<paramref name="min"/>, <paramref name="max"/>), advancing <paramref name="rng"/>
-        /// by <c>dest.N</c> steps. Range is [min, max) per Unity NextInt.
-        /// <para>If min == max the buffer is filled with that constant; no RNG advance occurs.</para>
-        /// <para>Throws <see cref="ArgumentException"/> if min &gt; max, or (long expansion only)
-        /// if min or max falls outside [int.MinValue, int.MaxValue].</para>
+        /// by <c>dest.N</c> steps (see class summary for the min==max and int-range contract).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void nextUniformInpl(ref Random rng, ref longN dest, long min, long max)
@@ -56,12 +53,8 @@ namespace LinearAlgebra
         // ---- uniform refill (matrix) ----
 
         /// <summary>
-        /// Overwrites every element of <paramref name="dest"/> with a uniform draw from
-        /// [<paramref name="min"/>, <paramref name="max"/>), advancing <paramref name="rng"/>
-        /// by <c>dest.Length</c> steps. Range is [min, max) per Unity NextInt.
-        /// <para>If min == max the buffer is filled with that constant; no RNG advance occurs.</para>
-        /// <para>Throws <see cref="ArgumentException"/> if min &gt; max, or (long expansion only)
-        /// if min or max falls outside [int.MinValue, int.MaxValue].</para>
+        /// Matrix overload of <see cref="nextUniformInpl(ref Random, ref longN, long, long)"/>;
+        /// advances <paramref name="rng"/> by <c>dest.Length</c> steps.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void nextUniformInpl(ref Random rng, ref longMxN dest, long min, long max)

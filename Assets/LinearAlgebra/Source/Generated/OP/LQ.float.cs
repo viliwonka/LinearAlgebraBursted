@@ -151,9 +151,7 @@ namespace LinearAlgebra
             for (int i = 0; i < m; i++)
                 Q[i, i] = (float)1;
 
-            // rowStart = d (not 0): row r < d still holds its untouched e_r seed at this point (its
-            // own reflector, colStart = r > d in processing order d = m-1..0, hasn't run yet), so its
-            // dot product against v[d:] is provably zero — including it would be a guaranteed no-op.
+            // rowStart = d — see this method's doc comment above (untouched e_r seed => zero dot).
             for (int d = m - 1; d >= 0; d--)
             {
                 for (int c = d; c < n; c++)
@@ -512,12 +510,10 @@ namespace LinearAlgebra
 
             lqDecomposition(ref A, ref L, ref Q, ref ws.LQWs);
 
-            // Step 1: forward-solve L y = b.  y starts as a copy of b (solveLowerTriangular is in-place).
+            // Same two steps as the allocating overload (forward-solve L y = b, then x = Qᵀ y).
             var y = ws.y;
             y.Data.CopyFrom(b.Data);
             Solvers.solveLowerTriangular(ref L, ref y);
-
-            // Step 2: x = Qᵀ y.  dot(in y, in Q, ref x) computes yᵀ Q = (Qᵀ y)ᵀ → n-vector.
             Linear_OP.dot(in y, in Q, ref x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };

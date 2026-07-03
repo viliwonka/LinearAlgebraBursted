@@ -108,10 +108,7 @@ namespace LinearAlgebra
             return A.M_Rows;
         }
 
-        /// <summary>
-        /// Index-only form of rowArgMin (no value output).
-        /// Returns A.M_Rows. colIndexPerRow must have length A.M_Rows.
-        /// </summary>
+        /// <summary>Index-only form of rowArgMin. Returns A.M_Rows.</summary>
         public static int rowArgMin(in fProxyMxN A, ref Indices colIndexPerRow)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
@@ -156,10 +153,7 @@ namespace LinearAlgebra
             return A.M_Rows;
         }
 
-        /// <summary>
-        /// Index-only form of rowArgMax.
-        /// Returns A.M_Rows. colIndexPerRow must have length A.M_Rows.
-        /// </summary>
+        /// <summary>Index-only form of rowArgMax. Returns A.M_Rows.</summary>
         public static int rowArgMax(in fProxyMxN A, ref Indices colIndexPerRow)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0)
@@ -297,7 +291,6 @@ namespace LinearAlgebra
             }
             else if (n == Norm.L2)
             {
-                // Compare squared norms — argmax is monotone under sqrt so no sqrt needed.
                 for (int r = 0; r < A.M_Rows; r++)
                 {
                     fProxy s = (fProxy)0;

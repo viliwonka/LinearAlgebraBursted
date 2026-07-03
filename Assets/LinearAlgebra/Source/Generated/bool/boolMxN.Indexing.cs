@@ -4,40 +4,22 @@ using System.Runtime.CompilerServices;
 namespace LinearAlgebra
 {
 
-    // A m x n matrix
-    // m = rows
-    // n = cols
     public partial struct boolMxN {
-       
-        /// <summary>
-        /// Direct array accessor
-        /// </summary>
-        /// <param name="index"></param>
-        /// <returns></returns>
+
+        // Direct array accessors: linear index (int or System.Index, from-end supported)
+        // and (row, col) with all int/System.Index combinations.
         public ref bool this[int index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => ref Data.ElementAt(index);
         }
 
-        /// <summary>
-        /// Reverse direct array accessor
-        /// </summary>
-        /// <param name="index"></param>
-        /// <returns></returns>
         public ref bool this[System.Index index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => ref Data.ElementAt(index.IsFromEnd ? Data.Length - index.Value : index.Value);
         }
 
-
-        /// <summary>
-        /// Direct array accessor
-        /// </summary>
-        /// <param name="r">row, where m = rows</param>
-        /// <param name="c">col, where n = cols</param>
-        /// <returns></returns>
         public ref bool this[int r, int c]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -50,12 +32,6 @@ namespace LinearAlgebra
                 return ref Data.ElementAt(r * N_Cols + c);
             }
         }
-        /// <summary>
-        /// Direct array accessor
-        /// </summary>
-        /// <param name="r">row, where m = rows</param>
-        /// <param name="indexC">col, where n = cols</param>
-        /// <returns></returns>
         public ref bool this[int r, System.Index indexC]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -70,12 +46,6 @@ namespace LinearAlgebra
             }
         }
 
-        /// <summary>
-        /// Direct array accessor
-        /// </summary>
-        /// <param name="r">row, where m = rows</param>
-        /// <param name="indexC">col, where n = cols</param>
-        /// <returns></returns>
         public ref bool this[System.Index indexR, int c]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -90,12 +60,6 @@ namespace LinearAlgebra
             }
         }
 
-        /// <summary>
-        /// Direct array accessor
-        /// </summary>
-        /// <param name="r">row, where m = rows</param>
-        /// <param name="indexC">col, where n = cols</param>
-        /// <returns></returns>
         public ref bool this[System.Index indexR, System.Index indexC]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

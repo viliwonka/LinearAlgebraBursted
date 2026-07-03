@@ -84,11 +84,9 @@ namespace LinearAlgebra
         // ---- generic distribution fill (vector) ----
 
         /// <summary>
-        /// Fills every element of <paramref name="dest"/> by calling <c>s.Next(ref rng)</c>.
-        /// ICDF samplers advance rng once per element. <see cref="floatGaussian"/> uses one
-        /// pair of uniform draws per two samples (Box–Muller), advancing rng by ceil(N/2)×2
-        /// steps. The sampler is passed by <c>ref</c> so that mutable state (e.g. Box–Muller
-        /// spare) persists across elements. Burst monomorphizes this for each concrete sampler type.
+        /// Fills every element of <paramref name="dest"/> by calling <c>s.Next(ref rng)</c>
+        /// (see class summary for the rng-advance contract). Burst monomorphizes this for
+        /// each concrete sampler type.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void randomInpl<S>(ref Random rng, ref floatN dest, ref S s)
@@ -169,17 +167,13 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Fills <paramref name="dest"/> with <c>dest.N</c> independent weighted picks
-        /// (with replacement) drawn from <paramref name="weights"/>. Validates and computes
-        /// the total once before the draw loop (so invalid weights throw even when
-        /// <c>dest.N == 0</c>). Zero-alloc; O(N + k) where k = dest.N.
-        /// Throws <see cref="ArgumentException"/> if: weights is empty, any weight is
-        /// non-finite or &lt; 0 (+Inf and NaN both throw), or total is 0.
+        /// (with replacement) drawn from <paramref name="weights"/>, using the same
+        /// validation/throw contract as <see cref="weightedPick"/> (checked once up front,
+        /// even when <c>dest.N == 0</c>). Zero-alloc; O(N + k) where k = dest.N.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void weightedPickInpl(in floatN weights, ref Indices dest, ref Random rng)
         {
-            // Validate + sum once before the draw loop so bad weights throw
-            // even when dest.N == 0 (empty destination).
             float total = weightedPickValidateAndSum(in weights);
             int k = dest.N;
             for (int i = 0; i < k; i++)
@@ -377,10 +371,8 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Quantile function (logit): <c>mu + s·log(u/(1−u))</c>.
-        /// <para>Guard: <c>u</c> is clamped to [<c>Consts.floatEpsilon</c>,
-        /// 1−<c>Consts.floatEpsilon</c>] (~1.19e-7 float / ~2.22e-16 double) to prevent
-        /// <c>log(0)</c> at both endpoints. Clamping to machine epsilon preserves the full
-        /// distribution tail while bounding the output.</para>
+        /// <para>Guard: same epsilon clamp as <see cref="floatCauchy.CauchyICDF"/>, here
+        /// preventing <c>log(0)</c> at both endpoints (Cauchy's guard covers only <c>u=0</c>).</para>
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float LogisticICDF(float u, float mu, float s)
@@ -516,12 +508,10 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Returns one Gaussian variate. Every other call returns the fully-scaled spare cached
-        /// by the previous Box–Muller pair (no RNG advance). The spare is stored fully scaled so
-        /// that a mid-fill change to mean/std cannot silently rescale a pending value.
-        /// <c>math.sincos</c> is not used here because its <c>out</c>-parameter overload is not
-        /// available via the type-proxy template mechanism; <c>math.sin</c> and <c>math.cos</c>
-        /// are called separately instead.
+        /// Returns one Gaussian variate; the cached-spare path (see class summary) does not
+        /// advance rng. <c>math.sincos</c> is not used here because its <c>out</c>-parameter
+        /// overload is not available via the type-proxy template mechanism; <c>math.sin</c> and
+        /// <c>math.cos</c> are called separately instead.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public float Next(ref Random rng)

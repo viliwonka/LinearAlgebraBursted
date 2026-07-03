@@ -6,7 +6,6 @@ using LinearAlgebra.mathProxies;
 
 namespace LinearAlgebra
 {
-    // have to test it all, have to do other conversions too
     public static partial class ArenaExtensions {
 
         #region CONVERSIONS_FROM_MATH

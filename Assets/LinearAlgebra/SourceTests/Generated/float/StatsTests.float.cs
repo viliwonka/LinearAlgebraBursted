@@ -525,7 +525,6 @@ public class floatStatsTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            // Identical columns => +1.
             var Apos = arena.floatMat(3, 2);
             Apos[0, 0] = 1f; Apos[0, 1] = 1f;
             Apos[1, 0] = 3f; Apos[1, 1] = 3f;
@@ -535,7 +534,6 @@ public class floatStatsTests
             AssertClose(Rpos[0, 1], (float)1f, 1E-5f);
             AssertClose(Rpos[1, 0], (float)1f, 1E-5f);
 
-            // Negated column => -1.
             var Aneg = arena.floatMat(3, 2);
             Aneg[0, 0] = 1f; Aneg[0, 1] = -1f;
             Aneg[1, 0] = 3f; Aneg[1, 1] = -3f;

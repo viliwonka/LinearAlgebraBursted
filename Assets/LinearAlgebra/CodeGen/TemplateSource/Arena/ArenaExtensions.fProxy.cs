@@ -73,9 +73,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // linspace. Prefer fProxyLinspace(a, b, N) for new code; this older name is kept for existing
-        // callers and now delegates to the guarded fProxyGen_OP.linspace (handles N==1 instead of
-        // dividing by zero, and pins both endpoints exactly).
+        // Legacy name for fProxyLinspace(a, b, N); delegates to the guarded fProxyGen_OP.linspace (handles N==1, pins both endpoints exactly).
         public static fProxyN fProxyLinVec(this ref Arena arena, int N, fProxy start, fProxy end)
         {
             var vec = arena.fProxyVec(N);
@@ -86,7 +84,6 @@ namespace LinearAlgebra
         #endregion
 
         #region MATRIX
-        // constructs identity matrix
         public static fProxyMxN fProxyIdentityMat(this ref Arena arena, int N)
         {
             var matrix = arena.fProxyMat(N, N);
@@ -98,7 +95,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs diagonal matrix with scalar s on diagonal
         public static fProxyMxN fProxyDiagonalMat(this ref Arena arena, int N, fProxy s)
         {
             var matrix = arena.fProxyMat(N, N);
@@ -109,7 +105,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs diagonal matrix based on vector
         public static fProxyMxN fProxyDiagonalMat(this ref Arena arena, in fProxyN vec)
         {
             var matrix = arena.fProxyMat(vec.N, vec.N);
@@ -120,7 +115,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs matrix with indexes that start at 0
         public static fProxyMxN fProxyIndexZeroMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.fProxyMat(M_rows, N_cols, true);
@@ -135,7 +129,6 @@ namespace LinearAlgebra
             return mat;
         }
 
-        // constructs matrix with indexes that start at 1
         public static fProxyMxN fProxyIndexOneMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.fProxyMat(M_rows, N_cols, true);
@@ -149,8 +142,6 @@ namespace LinearAlgebra
 
             return mat;
         }
-
-        // random matrix
 
         public static fProxyMxN fProxyRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
@@ -183,7 +174,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // i and j are axis indexes to rotate
         public static fProxyMxN fProxyRotationMat(this ref Arena arena, int M, int i, int j, fProxy radians)
         {
             var matrix = arena.fProxyIdentityMat(M);
@@ -209,7 +199,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // i and j are axis indexes to swap
         public static fProxyMxN fProxyPermutationMat(this ref Arena arena, int M, int i, int j)
         {
             var matrix = arena.fProxyIdentityMat(M);

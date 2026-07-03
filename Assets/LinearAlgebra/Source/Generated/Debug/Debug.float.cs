@@ -57,11 +57,9 @@ namespace LinearAlgebra
             int dimCols = m.N_Cols;
 
             FixedString128Bytes dimStr = $"Dim | Rows:{dimRows} Cols:{dimCols} \n";
-            //FixedString128Bytes normStr = $"L2: {normL2} \n";
-            
+
             str.Append(dimStr);
-            //str.Append(normStr);
-            
+
             str.Append('\n');
 
             for (int r = 0; r < dimRows; r++)

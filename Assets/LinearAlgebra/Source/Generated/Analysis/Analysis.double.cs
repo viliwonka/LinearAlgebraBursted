@@ -235,12 +235,8 @@ namespace LinearAlgebra
             return true;
         }
 
-        // could be done in-place with dot products and comparisons
         public static bool isOrthogonal(in doubleMxN A, double epsilon)
         {
-            /*if (A.M_Rows != A.N_Cols)
-                return false;*/
-
             doubleMxN B = new doubleMxN(A.N_Cols, A.N_Cols, Unity.Collections.Allocator.Temp);
 
             // B = A^T * A

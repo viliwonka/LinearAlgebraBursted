@@ -9,7 +9,7 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Inpl = inplace
+    /// Dot products, outer product, matrix multiply, and transpose (integer proxy types).
     /// </summary>
     public static partial class Linear_OP {
 

@@ -10,13 +10,11 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    /// <summary>
-    /// Inpl = inplace
-    /// </summary>
+    // Inpl = inplace
     public static partial class LU {
 
-        // LU decomposition with no pivoting
         /// <summary>
+        /// LU decomposition with no pivoting.
         /// U = A (input matrix, overwritten with upper triangular U)
         /// L = I (identity matrix, overwritten with lower triangular L)
         /// A = L * U
@@ -68,10 +66,7 @@ namespace LinearAlgebra
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
-        // PA = L * U
-        // U is originally A
-        // L is originally I
-        // P is pivot, that is reset, and is modified in place
+        // PA = L * U (U initially A, L initially I, P reset and modified in place)
         /// <summary>
         /// Performs LU decomposition with partial pivoting.
         /// Returns Success; Singular if a zero pivot is encountered (singular matrix).
@@ -313,9 +308,7 @@ namespace LinearAlgebra
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
-        // A = LU
-        // LU is originally A
-        // P is pivot, that is reset, and is modified in place
+        // A = LU (LU initially A, P reset and modified in place)
         /// <summary>
         /// Performs LU decomposition inplace with partial pivoting (compact LU form).
         /// Factor row i lives at physical row P[i].

@@ -80,9 +80,9 @@ namespace LinearAlgebra
     /// <c>scratch</c> buffer (length inner.Cols) that <see cref="Apply"/> uses to form d.*x without
     /// touching the caller's x. <c>d</c> and <c>scratch</c> must be distinct from each other and
     /// from every vector the solver passes to Apply/ApplyT (the arena convenience overloads
-    /// guarantee this by allocating fresh). Readonly: cheap value copy (only handles). NOTE: with
-    /// Tikhonov damping, damping the SCALED system penalizes ‖y‖ = ‖D⁻¹x‖ (a column-weighted ridge
-    /// on x), NOT ‖x‖ -- a different regularizer; use the composable path if you need that control.
+    /// guarantee this by allocating fresh). Readonly, like <see cref="doubleDenseOperator"/>. NOTE:
+    /// with Tikhonov damping, damping the SCALED system penalizes ‖y‖ = ‖D⁻¹x‖ (a column-weighted
+    /// ridge on x), NOT ‖x‖ -- a different regularizer; use the composable path if you need that control.
     /// </summary>
     public readonly struct doubleColScaledOperator<TInner> : IdoubleLinearOperator
         where TInner : struct, IdoubleLinearOperator

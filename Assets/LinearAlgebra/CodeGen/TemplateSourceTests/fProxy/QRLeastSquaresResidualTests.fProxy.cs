@@ -65,11 +65,9 @@ public class fProxyQRLeastSquaresResidualTests
             if (Analysis_OP.isAnyNan(in x))
                 throw new System.Exception("TestJob: NaN detected");
 
-            // x == [5, -3]
             RecordBound(math.abs(x[0] - (fProxy)5f), (fProxy)1E-4f);
             RecordBound(math.abs(x[1] - (fProxy)(-3f)), (fProxy)1E-4f);
 
-            // residual r = b - A x == [1, -2, 1]
             fProxyN r = b - Linear_OP.dot(A, x);
             RecordBound(math.abs(r[0] - (fProxy)1f), (fProxy)1E-4f);
             RecordBound(math.abs(r[1] - (fProxy)(-2f)), (fProxy)1E-4f);

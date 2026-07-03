@@ -302,7 +302,7 @@ public class doubleOrthoColumnPivotTests
 
             AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
             for (int d = 0; d < n; d++)
-                RecordEq(P[d], d); // no pivoting on an all-zero matrix
+                RecordEq(P[d], d);
 
             P.Dispose();
             arena.Dispose();
@@ -895,7 +895,6 @@ public class doubleOrthoColumnPivotTests
             return math.sqrt(s);
         }
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         void AssertClose(double a, double b, double precision)
         {
             double diff = math.abs(a - b);

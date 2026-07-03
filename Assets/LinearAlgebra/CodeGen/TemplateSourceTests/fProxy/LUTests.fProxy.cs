@@ -221,7 +221,6 @@ public class fProxyLUTests
             var U = arena.fProxyRandomMat(dim, dim, 1f, 10f, 314221);
             var L = arena.fProxyIdentityMat(dim);
 
-            // add to diagonals of U
             for(int d = 0; d < dim; d++)
                 U[d, d] += 5f;
 
@@ -635,7 +634,6 @@ public class fProxyLUTests
 
                 Swap_OP.Rows(ref mat, 0, 1);
 
-                // row 0 and row 1 fully swapped
                 for (int c = 0; c < dim; c++) {
                     AssertClose(mat[0, c], (fProxy)(10 + c), 1E-6f);
                     AssertClose(mat[1, c], (fProxy)(0 + c), 1E-6f);
@@ -654,19 +652,16 @@ public class fProxyLUTests
                 // swap columns 0 and 1 only for rows [1,3)
                 Swap_OP.Columns(ref mat, 0, 1, 1, 3);
 
-                // rows 0 and 3 untouched
                 AssertClose(mat[0, 0], (fProxy)(0), 1E-6f);
                 AssertClose(mat[0, 1], (fProxy)(1), 1E-6f);
                 AssertClose(mat[3, 0], (fProxy)(30), 1E-6f);
                 AssertClose(mat[3, 1], (fProxy)(31), 1E-6f);
 
-                // rows 1 and 2 have columns 0 and 1 swapped
                 AssertClose(mat[1, 0], (fProxy)(11), 1E-6f);
                 AssertClose(mat[1, 1], (fProxy)(10), 1E-6f);
                 AssertClose(mat[2, 0], (fProxy)(21), 1E-6f);
                 AssertClose(mat[2, 1], (fProxy)(20), 1E-6f);
 
-                // other columns untouched
                 AssertClose(mat[1, 2], (fProxy)(12), 1E-6f);
                 AssertClose(mat[2, 3], (fProxy)(23), 1E-6f);
             }
@@ -725,6 +720,7 @@ public class fProxyLUTests
             arena.Dispose();
         }
 
+        // Same Fail-layout convention as SolveSystem above (see there).
         public void SolveSystemInplace() {
 
             var arena = new Arena(Allocator.Persistent);
@@ -760,7 +756,6 @@ public class fProxyLUTests
 
             var zeroError = Analysis_OP.MaxZeroError(x_Known - x_Solved);
 
-            // Fail layout: [1]=zeroError, [2]=limit 1E-3, [3]=diff
             if (!(zeroError < (fProxy)1E-03f) && Fail[0] == (fProxy)0)
             {
                 Fail[0] = (fProxy)1;
@@ -899,7 +894,6 @@ public class fProxyLUTests
             // generous for float, tight for double. Deterministic (fixed seeds), so not flaky.
             fProxy xtol = IsDouble() ? (fProxy)1E-8 : (fProxy)3E-3f;
 
-            // Fail layout: [1]=zeroError, [2]=limit, [3]=diff
             if (!(zeroError < xtol) && Fail[0] == (fProxy)0)
             {
                 Fail[0] = (fProxy)1;

@@ -22,7 +22,6 @@ namespace LinearAlgebra
             return true;
         }
 
-        // if all booleans are same with each other
         public static bool IsAllSame<T>(in T x) where T : unmanaged, IUnsafeBoolArray
         {
             for (int i = 1; i < x.Data.Length; i++)
@@ -33,8 +32,7 @@ namespace LinearAlgebra
             return true;
         } 
 
-        // if all bools in x are equal to y
-        public static bool IsAllEqualTo<T>(in T x, bool y) where T : unmanaged, IUnsafeBoolArray 
+        public static bool IsAllEqualTo<T>(in T x, bool y) where T : unmanaged, IUnsafeBoolArray
         {
             for (int i = 0; i < x.Data.Length; i++)
             {

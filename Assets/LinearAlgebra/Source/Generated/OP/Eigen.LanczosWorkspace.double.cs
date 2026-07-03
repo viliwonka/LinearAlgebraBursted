@@ -73,8 +73,7 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Allocates a Lanczos workspace for an n-dimensional symmetric operator run for `steps`
-        /// iterations. The buffers are persistent in this arena (disposed with it), so create the
-        /// workspace once outside a hot loop and pass it to <see cref="Eigen.lanczos{TOp}"/>.
+        /// iterations. See <see cref="doubleLanczos_WS"/> for reuse guidance.
         /// </summary>
         public static doubleLanczos_WS doubleLanczos_WS(this ref Arena arena, int n, int steps)
         {

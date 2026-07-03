@@ -35,7 +35,6 @@ public class iProxyClampTests
             }
         }
 
-        // below lo→lo, at/in-range untouched, above hi→hi.
         void ClampVector()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -45,12 +44,12 @@ public class iProxyClampTests
 
             iProxyElem_OP.clampInpl(in v, (iProxy)(-2), (iProxy)5);
 
-            Assert.IsTrue(v[0] == (iProxy)(-2)); // below lo → lo
-            Assert.IsTrue(v[1] == (iProxy)(-2)); // at lo
-            Assert.IsTrue(v[2] == (iProxy)0);    // in range
-            Assert.IsTrue(v[3] == (iProxy)2);    // in range
-            Assert.IsTrue(v[4] == (iProxy)5);    // above hi → hi
-            Assert.IsTrue(v[5] == (iProxy)2);    // in range untouched
+            Assert.IsTrue(v[0] == (iProxy)(-2));
+            Assert.IsTrue(v[1] == (iProxy)(-2));
+            Assert.IsTrue(v[2] == (iProxy)0);
+            Assert.IsTrue(v[3] == (iProxy)2);
+            Assert.IsTrue(v[4] == (iProxy)5);
+            Assert.IsTrue(v[5] == (iProxy)2);
             arena.Dispose();
         }
 
@@ -63,14 +62,13 @@ public class iProxyClampTests
 
             iProxyElem_OP.clampInpl(in A, (iProxy)0, (iProxy)10);
 
-            Assert.IsTrue(A[0, 0] == (iProxy)0);  // below lo
-            Assert.IsTrue(A[0, 1] == (iProxy)3);  // in range
-            Assert.IsTrue(A[1, 0] == (iProxy)5);  // in range
-            Assert.IsTrue(A[1, 1] == (iProxy)10); // above hi
+            Assert.IsTrue(A[0, 0] == (iProxy)0);
+            Assert.IsTrue(A[0, 1] == (iProxy)3);
+            Assert.IsTrue(A[1, 0] == (iProxy)5);
+            Assert.IsTrue(A[1, 1] == (iProxy)10);
             arena.Dispose();
         }
 
-        // Already in range → fully untouched.
         void ClampNoOpInRange()
         {
             var arena = new Arena(Allocator.Persistent);

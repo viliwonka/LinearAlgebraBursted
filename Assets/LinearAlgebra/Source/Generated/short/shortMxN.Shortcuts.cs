@@ -1,5 +1,5 @@
 // Generated
-// Shortcuts for creating new vectors and matrices test
+// Shortcuts for creating new vectors and matrices
 using System.Runtime.CompilerServices;
 
 using LinearAlgebra;

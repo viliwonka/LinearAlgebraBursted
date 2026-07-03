@@ -133,7 +133,6 @@ public class floatJacobiPrecondTests
             AssertClose(d[2], (float)1 / (float)3, Tight()); // 1/sqrt(9)
             AssertClose(d[3], (float)2,   Tight());        // 1/sqrt(0.25)
 
-            // No NaN/Inf anywhere.
             for (int j = 0; j < 4; j++) Assert.IsTrue(math.isfinite(d[j]));
 
             arena.Dispose();

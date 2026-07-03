@@ -292,9 +292,7 @@ public class fProxyQueryTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            // Build the transpose layout of the ArgMaxRowNorm matrix so columns carry the same
-            // norms: c0:(3,0,0) c1:(0,1,2... ) — instead just hand-pick columns directly.
-            //  cols (each length 3):
+            // Columns (each length 3), hand-picked directly:
             //   c0:  3, 1, -2   -> L1=6, L2²=14, Linf=3
             //   c1:  0, 1,  2   -> L1=3, L2²=5,  Linf=2
             //   c2:  4, 0,  0   -> L1=4, L2²=16, Linf=4
@@ -726,7 +724,6 @@ public class fProxyQueryTests
             var q = arena.fProxyVec(M);
             for (int i = 0; i < M; i++) q[i] = (fProxy)(i - 2) * (fProxy)0.7;
 
-            // nearestColumn(A) == nearestRow(transpose(A)) for a distance metric.
             fProxyQuery_OP.nearestColumn(in A, in q, Metric.SqEuclidean, out int ci, out fProxy cs);
             fProxyQuery_OP.nearestRow(in At, in q, Metric.SqEuclidean, out int ri, out fProxy rs);
             AssertEqI(ci, ri); AssertClose(cs, rs, sqrtEps());

@@ -176,8 +176,7 @@ namespace LinearAlgebra
             // Step 2: QR decomposition — G is overwritten with Q, R holds upper-triangular factor
             QR.qrDecomposition(ref G, ref R);
 
-            // Step 3: Haar sign fix (Mezzadri 2007)
-            //   Multiply column i of Q by sign(R[i,i]).  sign(0) = +1 (no flip needed).
+            // Step 3: Haar sign fix (Mezzadri 2007) — see algorithm doc above for the WHY.
             for (int i = 0; i < n; i++)
             {
                 if (R[i, i] < (fProxy)0)

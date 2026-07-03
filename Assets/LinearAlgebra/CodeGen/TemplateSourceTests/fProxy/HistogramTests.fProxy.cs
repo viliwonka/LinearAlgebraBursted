@@ -118,15 +118,16 @@ public class fProxyHistogramTests
             var arena = new Arena(Allocator.Persistent);
 
             var data = arena.fProxyVec(12);
-            data[0] = (fProxy)0;      // bin0
-            data[1] = (fProxy)1;      // bin0
-            data[2] = (fProxy)2;      // bin1
-            data[3] = (fProxy)3.9;    // bin1
-            data[4] = (fProxy)5;      // bin2
-            data[5] = (fProxy)7.5;    // bin3
-            data[6] = (fProxy)8;      // bin4
-            data[7] = (fProxy)9.999;  // bin4
-            data[8] = (fProxy)10;     // bin4
+            // First 9 values match ExplicitCounts's fixture (same bins); [9..11] are non-finite.
+            data[0] = (fProxy)0;
+            data[1] = (fProxy)1;
+            data[2] = (fProxy)2;
+            data[3] = (fProxy)3.9;
+            data[4] = (fProxy)5;
+            data[5] = (fProxy)7.5;
+            data[6] = (fProxy)8;
+            data[7] = (fProxy)9.999;
+            data[8] = (fProxy)10;
             data[9] = (fProxy)float.NaN;              // dropped
             data[10] = (fProxy)float.PositiveInfinity; // dropped
             data[11] = (fProxy)float.NegativeInfinity; // dropped
@@ -448,7 +449,7 @@ public class fProxyHistogramTests
         }
 
         // =====================================================================
-        // helpers (Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff)
+        // helpers
         // =====================================================================
 
         int Sum(in Indices counts)

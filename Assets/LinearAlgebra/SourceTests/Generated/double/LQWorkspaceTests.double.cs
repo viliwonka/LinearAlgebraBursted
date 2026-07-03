@@ -40,7 +40,6 @@ public class doubleLQWorkspaceTests
             }
         }
 
-        // lqDecomposition scratch overload must match the allocating wrapper.
         void LqDecompEquiv(int m, int n)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -68,7 +67,6 @@ public class doubleLQWorkspaceTests
             arena.Dispose();
         }
 
-        // lqMinNormSolve scratch overload must match the allocating wrapper.
         void LqMinNormSolveEquiv(int m, int n)
         {
             var arena = new Arena(Allocator.Persistent);

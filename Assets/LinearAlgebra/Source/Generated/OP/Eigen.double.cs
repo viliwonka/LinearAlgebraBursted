@@ -11,9 +11,6 @@ using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
-    /// <summary>
-    /// Inpl = inplace
-    /// </summary>
     public static partial class Eigen {
 
         /// <summary>
@@ -968,9 +965,6 @@ namespace LinearAlgebra
         ///     sign differences.
         ///   - Does not allocate.
         /// </summary>
-        /// <remarks>DEPRECATED: prefer <see cref="eigenSymmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/>
-        /// (Householder tridiagonalization + QL, ~30x faster) for symmetric eigenpairs, or
-        /// <see cref="eigenvaluesSymmetric(ref doubleMxN, ref doubleN)"/> for eigenvalues only. Retained for reference.</remarks>
         [System.Obsolete("Prefer Eigen.eigenSymmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.eigenvaluesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static bool eigenDecomposition(ref doubleMxN A, ref doubleN eigenvalues,
                                               ref doubleMxN V, int maxSweeps, double eps)
@@ -1447,7 +1441,7 @@ namespace LinearAlgebra
                 double* v  = vVec.Data.Ptr;
                 double* p  = pVec.Data.Ptr;
 
-                // Matrix scale (max |entry|) for the column-deflation test in the reduction below.
+                // Matrix scale for the deflation test — see eigenvaluesSymmetric.
                 double matScale = (double)0;
                 for (long ii = 0; ii < (long)n * n; ii++)
                 {
@@ -1553,7 +1547,7 @@ namespace LinearAlgebra
                         for (m = l; m < n - 1; m++)
                         {
                             double dd = math.abs(eigenvalues[m]) + math.abs(eigenvalues[m + 1]);
-                            // machine-eps relative, floored by the global scale `anorm` (see above)
+                            // machine-eps relative, floored by anorm — see eigenvaluesSymmetric.
                             if (math.abs(eVec[m]) <= (double)8 * Consts.doubleEpsilon * (dd + anorm)) break;
                         }
                         if (m != l)

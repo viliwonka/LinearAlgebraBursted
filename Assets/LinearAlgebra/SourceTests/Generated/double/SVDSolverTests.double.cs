@@ -384,7 +384,6 @@ public class doubleSVDSolverTests
             arena.Dispose();
         }
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertClose(double a, double b, double precision)
         {
             double diff = Unity.Mathematics.math.abs(a - b);
@@ -410,8 +409,8 @@ public class doubleSVDSolverTests
         var fail = new NativeArray<double>(4, Allocator.TempJob);
         try {
             new TestJob() { Type = type, Fail = fail }.Run();
-            // Under Burst a failed in-job assert logs an exception and aborts the job without
-            // throwing to the caller - surface the recorded diagnostics here as well.
+            // Burst in-job asserts abort without throwing; diagnostics surfaced here too
+            // (see doubleOrthoOpTests.QRDecompTests).
             if (fail[0] != (double)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 

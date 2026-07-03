@@ -313,21 +313,18 @@ public class doubleRandomTests
             for (int i = 0; i < n; i++)
                 AssertTrue(vu[i] >= a && vu[i] < b);
 
-            // Exponential >= 0.
             var se = new doubleExponential((double)2);
             var ve = arena.doubleVec(n);
             doubleRandom_OP.randomInpl(ref rng, ref ve, ref se);
             for (int i = 0; i < n; i++)
                 AssertTrue(ve[i] >= (double)0);
 
-            // Rayleigh >= 0.
             var sr = new doubleRayleigh((double)1.5);
             var vr = arena.doubleVec(n);
             doubleRandom_OP.randomInpl(ref rng, ref vr, ref sr);
             for (int i = 0; i < n; i++)
                 AssertTrue(vr[i] >= (double)0);
 
-            // Weibull >= 0.
             var sw = new doubleWeibull((double)1.5, (double)2);
             var vw = arena.doubleVec(n);
             doubleRandom_OP.randomInpl(ref rng, ref vw, ref sw);

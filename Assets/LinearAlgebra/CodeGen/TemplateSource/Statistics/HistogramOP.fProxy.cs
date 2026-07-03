@@ -33,7 +33,6 @@ namespace LinearAlgebra.Stats
         /// are dropped (out-of-range/NaN policy = DROP). The closed upper edge <c>x == hi</c>
         /// maps to the last bin K−1 rather than being dropped. Floating-point rounding at bin
         /// boundaries is clamped so no in-range sample is accidentally discarded.</para>
-        /// <para><paramref name="counts"/> is zeroed first; the caller buffer may hold garbage.</para>
         /// </summary>
         public static void histogramInto<T>(in T data, fProxy lo, fProxy hi, ref Indices counts)
             where T : unmanaged, IUnsafefProxyArray
@@ -78,7 +77,6 @@ namespace LinearAlgebra.Stats
         /// returns immediately. Constant finite data (max == min): all finite samples are placed in
         /// bin 0 (avoids divide-by-zero). Otherwise forwards to the explicit-range overload with
         /// lo = min, hi = max so that max lands in the last bin via the closed-upper-edge rule.</para>
-        /// <para><paramref name="counts"/> is zeroed first; the caller buffer may hold garbage.</para>
         /// </summary>
         public static void histogramInto<T>(in T data, ref Indices counts)
             where T : unmanaged, IUnsafefProxyArray
@@ -146,10 +144,9 @@ namespace LinearAlgebra.Stats
         /// w = (hi − lo) / K. When all samples are in range, <c>Σ dest[b] * w == 1</c>
         /// (proper probability density integrating to 1). Out-of-range samples (drops) reduce
         /// the integral below 1.</para>
-        /// <para>Same bin rule as <see cref="histogramInto{T}(in T, fProxy, fProxy, ref Indices)"/>:
-        /// b = (int)floor((x − lo) / w); x == hi → last bin; b outside [0,K) → dropped.</para>
-        /// <para>Allocates one <c>Allocator.Temp</c> scratch of K ints; disposed before return.
-        /// Arguments are validated before any allocation.</para>
+        /// <para>Same bin rule as <see cref="histogramInto{T}(in T, fProxy, fProxy, ref Indices)"/>.
+        /// Allocates one <c>Allocator.Temp</c> scratch of K ints (disposed before return);
+        /// arguments are validated before any allocation.</para>
         /// </summary>
         public static void densityInto<T>(in T data, fProxy lo, fProxy hi, ref fProxyN dest)
             where T : unmanaged, IUnsafefProxyArray
@@ -187,10 +184,9 @@ namespace LinearAlgebra.Stats
         /// <para>Formula: <c>dest[b] = (Σ_{i &lt;= b} count_i) / inRangeTotal</c>, monotone
         /// non-decreasing. <c>dest[K−1] == 1</c> if any sample is in range.
         /// If all samples are dropped (none in range), all entries are 0.</para>
-        /// <para>Same bin rule as <see cref="histogramInto{T}(in T, fProxy, fProxy, ref Indices)"/>:
-        /// b = (int)floor((x − lo) / w); x == hi → last bin; b outside [0,K) → dropped.</para>
-        /// <para>Allocates one <c>Allocator.Temp</c> scratch of K ints; disposed before return.
-        /// Arguments are validated before any allocation.</para>
+        /// <para>Same bin rule as <see cref="histogramInto{T}(in T, fProxy, fProxy, ref Indices)"/>.
+        /// Allocates one <c>Allocator.Temp</c> scratch of K ints (disposed before return);
+        /// arguments are validated before any allocation.</para>
         /// </summary>
         public static void cdfInto<T>(in T data, fProxy lo, fProxy hi, ref fProxyN dest)
             where T : unmanaged, IUnsafefProxyArray
@@ -247,7 +243,6 @@ namespace LinearAlgebra.Stats
         /// edge). NaN or out-of-range values on either axis cause the pair to be dropped. A point is
         /// counted only when BOTH coords are finite and in range. Floating-point rounding at bin
         /// boundaries is clamped so no in-range sample is accidentally discarded.</para>
-        /// <para><paramref name="counts"/> is zeroed first; the caller buffer may hold garbage.</para>
         /// <para>Precision note: float variant counts are exact up to 2^24 (~16.7M) per bin;
         /// the double variant up to 2^53.</para>
         /// </summary>

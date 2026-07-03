@@ -21,7 +21,6 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // creates vector with s values
         public doubleN doubleVec(int N, double s)
         {
             var vec = new doubleN(N, in this, true);
@@ -69,7 +68,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // creates vector with s values
         public doubleMxN doubleMat(int M_rows, int N_cols, double s)
         {
             var matrix = new doubleMxN(M_rows, N_cols, in this, false);

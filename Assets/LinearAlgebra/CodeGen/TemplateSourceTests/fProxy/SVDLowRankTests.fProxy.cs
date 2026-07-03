@@ -152,7 +152,6 @@ public class fProxySVDLowRankTests
             for (int t = 0; t < k; t++)
                 AssertClose(Sk[t], fullS[t], tol);
 
-            // Uk, Vk orthonormal columns.
             AssertOrthoCols(in Uk, m, k, (fProxy)1E-3f);
             AssertOrthoCols(in Vk, n, k, (fProxy)1E-3f);
 
@@ -312,7 +311,6 @@ public class fProxySVDLowRankTests
             for (int t = 0; t < r; t++)
                 AssertClose(Sk[t], Sfull[t], svTol);
 
-            // Orthonormality
             AssertOrthoCols(in Uk, m, k, (fProxy)1E-3f);
             AssertOrthoCols(in Vk, n, k, (fProxy)1E-3f);
 
@@ -373,7 +371,6 @@ public class fProxySVDLowRankTests
             SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x12345678u, 75, out bool cT);
             Assert.IsTrue(cT);
 
-            // Orthonormal columns
             AssertOrthoCols(in Uk, m, k, (fProxy)1E-3f);
             AssertOrthoCols(in Vk, n, k, (fProxy)1E-3f);
 
@@ -537,7 +534,6 @@ public class fProxySVDLowRankTests
             for (int t = 0; t < k; t++)
                 AssertClose(Sk[t], (fProxy)10, (fProxy)0.05f);
 
-            // Orthonormality
             AssertOrthoCols(in Uk, m, k, (fProxy)1E-3f);
             AssertOrthoCols(in Vk, n, k, (fProxy)1E-3f);
 

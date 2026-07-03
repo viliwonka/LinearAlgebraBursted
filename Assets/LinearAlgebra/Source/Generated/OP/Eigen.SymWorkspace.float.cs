@@ -31,9 +31,8 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates a symmetric-eigenvalue workspace for an n x n matrix: three length-n vectors.
-        /// The buffers are persistent in this arena (disposed with it), so create the workspace once
-        /// outside a hot loop and pass it to the ref-workspace overload of eigenvaluesSymmetric.
+        /// Allocates a symmetric-eigenvalue workspace for an n x n matrix. See
+        /// <see cref="floatEigenSym_WS"/> for reuse guidance.
         /// </summary>
         public static floatEigenSym_WS floatEigenSym_WS(this ref Arena arena, int n)
         {

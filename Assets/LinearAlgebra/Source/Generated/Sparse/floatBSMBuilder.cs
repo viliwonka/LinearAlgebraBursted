@@ -79,10 +79,7 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe int TripletCount => _state->triBlockRow.Length;
 
-        // Value handle, not a pointer: copying a floatBSMBuilder (including compiler-inserted
-        // defensive copies of `in` parameters) copies this 8-byte handle, which still resolves
-        // to the SAME heap-allocated ArenaCore. This retired the old "arena identity captures a
-        // dangling stack address" failure mode (docs/rfc-memory-model.md FM2) -- see Arena.cs.
+        // Value handle to the shared ArenaCore, not a raw pointer (see Arena.cs); copies stay live (FM2).
         // Unrelated to the _state indirection above, which fixes failure mode 1 (growable-list
         // relocation), not FM2.
         private Arena _arena;
@@ -182,9 +179,8 @@ namespace LinearAlgebra.Sparse
         /// Sorts triplets by (blockRow, blockCol), sums duplicates at the same (blockRow,
         /// blockCol), and builds the compressed floatBSM (RowPtr/ColInd/Values). Counting-sort
         /// by block-row + insertion-sort by block-col within each row bucket: deterministic,
-        /// O(nnz + sum of row-degree^2) -- fine for the one-time assembly->compressed
-        /// transition this represents (Phase 1 has no incremental re-pattern path; re-stamping
-        /// values on a fixed pattern is a later phase).
+        /// O(nnz + sum of row-degree^2) -- fine for the one-time assembly-to-compressed
+        /// transition this represents (see the type doc re: Phase 1 pattern-edit scope).
         ///
         /// Kept as `ref Arena` for API stability, but this is no longer load-bearing -- see the
         /// matching comment on floatBSM.ToDense: Arena is now a thin copyable handle to a

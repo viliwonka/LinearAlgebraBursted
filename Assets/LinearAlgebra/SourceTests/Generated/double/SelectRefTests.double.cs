@@ -23,9 +23,9 @@ public class doubleSelectRefTests
 
         public TestType Type;
 
-        // The ref-dest form runs the SAME kernel as the allocating form, so results
-        // are bit-identical in principle. Keep a small per-precision tolerance anyway
-        // (1e-6-ish float, tighter for double) to stay robust across expansions.
+        // The ref-dest form runs the SAME kernel as the allocating form, so results are
+        // bit-identical in principle; a small per-precision tolerance (~1e-6 float, tighter for
+        // double) is kept anyway for robustness across expansions.
         static double Tol() => 256 * Consts.doubleSqrtEps;
 
         public void Execute()
@@ -79,7 +79,7 @@ public class doubleSelectRefTests
             arena.Dispose();
         }
 
-        // elementwise select(a, b, c): dest[i] = c[i] ? b[i] : a[i] (matrix, boolMxN cond)
+        // Same select(a,b,c) formula as VecCond, for boolMxN cond (matrix).
         void MatCond()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -101,7 +101,8 @@ public class doubleSelectRefTests
             arena.Dispose();
         }
 
-        // scalar-bool condition, c = true -> dest must equal b (vector).
+        // ---- scalar-bool condition: c=true -> dest must equal b; c=false -> dest must equal a
+        //      (vector then matrix) ----
         void VecScalarTrue()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -119,7 +120,6 @@ public class doubleSelectRefTests
             arena.Dispose();
         }
 
-        // scalar-bool condition, c = false -> dest must equal a (vector).
         void VecScalarFalse()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -137,7 +137,6 @@ public class doubleSelectRefTests
             arena.Dispose();
         }
 
-        // scalar-bool condition, c = true -> dest must equal b (matrix).
         void MatScalarTrue()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -156,7 +155,6 @@ public class doubleSelectRefTests
             arena.Dispose();
         }
 
-        // scalar-bool condition, c = false -> dest must equal a (matrix).
         void MatScalarFalse()
         {
             var arena = new Arena(Allocator.Persistent);

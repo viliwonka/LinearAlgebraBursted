@@ -408,7 +408,7 @@ public class fProxyEigenQRTests
             bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
-            // companion eigenproblems are mildly stiff; scale-relative tolerance.
+            // Same scale-relative tolerance rationale as CompanionKnownRoots (mildly stiff).
             fProxy tol = (fProxy)1E-2f;
             AssertClose(re[0], 4f, tol); AssertClose(re[1], 3f, tol);
             AssertClose(re[2], 2f, tol); AssertClose(re[3], 1f, tol);

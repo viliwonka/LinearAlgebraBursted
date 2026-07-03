@@ -21,10 +21,8 @@ namespace LinearAlgebra
         public UnsafeList<long> Data { get; private set; }
 
         /// <summary>
-        /// Creates a new vector of dimension N
+        /// Creates a new arena-backed vector of dimension n.
         /// </summary>
-        /// <param name="n"></param>
-        /// <param name="allocator"></param>
         public unsafe longN(int n, in Arena arena, bool uninit = false) {
 
             _arena = arena;
@@ -38,9 +36,8 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Creates a copy of vector with new allocation
+        /// Creates a copy of the vector with a new allocation.
         /// </summary>
-        /// <param name="orig"></param>
         public unsafe longN(in longN orig, Allocator allocator = Allocator.Invalid) {
 
             _arena = orig._arena;
@@ -57,9 +54,8 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Creates a copy of vector with new allocation
+        /// Creates a new standalone (non-arena) vector with its own allocation.
         /// </summary>
-        /// <param name="orig"></param>
         public unsafe longN(int n, Allocator allocator = Allocator.Invalid, bool uninit = false)
         {
             _arena = default;

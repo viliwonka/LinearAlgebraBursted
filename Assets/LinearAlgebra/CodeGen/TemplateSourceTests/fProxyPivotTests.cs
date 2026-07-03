@@ -258,7 +258,7 @@ public class fProxyPivotTests
             pivot.Swap(6, 7);
             pivot.Swap(1, 4);
 
-            // applying inverse pivot operation to permutation matrix should form identity matrix
+            // column analogue of RowPermutationMatTest above: inverse pivot should form identity.
             pivot.ApplyInverseColumn(ref permutationMatrix);
 
             Assert.IsTrue(Analysis_OP.isIdentity(permutationMatrix));

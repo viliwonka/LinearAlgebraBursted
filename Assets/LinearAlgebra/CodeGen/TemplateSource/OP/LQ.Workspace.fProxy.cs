@@ -38,10 +38,8 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates an LQ-decomposition workspace sized for an m x n (m &lt;= n) system: W m x n,
-        /// v length n. The buffers are persistent in this arena (disposed with it), so create the
-        /// workspace once outside a hot loop and pass it to the ref-workspace overload of
-        /// lqDecomposition.
+        /// Allocates an LQ-decomposition workspace sized for an m x n (m &lt;= n) system. See
+        /// <see cref="fProxyLQ_WS"/> for reuse guidance.
         /// </summary>
         public static fProxyLQ_WS fProxyLQ_WS(this ref Arena arena, int m, int n)
         {

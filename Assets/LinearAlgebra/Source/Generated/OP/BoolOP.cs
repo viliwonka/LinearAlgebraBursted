@@ -7,11 +7,9 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    // can add chaining here for inplace methods
-
     [BurstCompile]
-    /// <summary>           
-    /// Inpl = inplace
+    /// <summary>
+    /// In-place boolean-buffer logic ops (not/or/and/xor/equals/notEquals), buffer×buffer and buffer×scalar.
     /// </summary>
     public static partial class Bool_OP {
 

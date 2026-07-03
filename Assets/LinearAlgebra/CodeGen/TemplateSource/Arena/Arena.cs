@@ -233,29 +233,23 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Thin, freely-copyable handle to a heap-allocated <see cref="ArenaCore"/>. All of the
-    /// arena's actual mutable state lives in the core; copying an Arena (by value, through
-    /// `in`/`ref` parameters, as a struct field on fProxyMxN/fProxyN/etc., ...) only copies the
-    /// <c>_core</c> pointer, so every copy shares exactly ONE core. This is what makes arena
-    /// identity stable-by-address: a defensive copy the compiler makes for an `in Arena`
-    /// parameter can no longer dangle, because the copy still points at the same live core (see
-    /// docs/rfc-memory-model.md, failure mode 2 -- this retires the old "must take `ref Arena`,
-    /// not `in Arena`" convention). A default(Arena)/standalone handle has <c>_core == null</c>.
+    /// Thin, freely-copyable handle to a heap-allocated <see cref="ArenaCore"/>: copying an Arena
+    /// (by value, through `in`/`ref` parameters, as a struct field on fProxyMxN/fProxyN/etc., ...)
+    /// only copies the <c>_core</c> pointer, so every copy shares exactly ONE core -- this is what
+    /// makes arena identity stable-by-address (a defensive copy the compiler makes for an `in
+    /// Arena` parameter can no longer dangle, since it still points at the same live core; see
+    /// docs/rfc-memory-model.md, failure mode 2 -- retires the old "must take `ref Arena`, not `in
+    /// Arena`" convention). A default(Arena)/standalone handle has <c>_core == null</c>.
     ///
-    /// <para><b>Ownership contract:</b> <c>Arena</c> is a value <b>handle</b>, the same shape as a
-    /// Unity <c>NativeContainer</c> (e.g. <c>NativeList</c>): every copy is a view onto the SAME
-    /// heap-allocated core, not an independent arena. Exactly ONE owner must call
-    /// <see cref="Dispose"/>, exactly once, on the handle that is considered authoritative.
-    /// Disposing a second, independently-held copy of the same handle -- or disposing any copy
-    /// after the original has already been disposed -- is undefined behavior (double-free of the
-    /// core block): idempotence (see <see cref="Dispose"/>) holds only for repeated calls on the
-    /// exact same handle instance, not across copies.</para>
+    /// <para><b>Ownership contract:</b> like a Unity <c>NativeContainer</c>, every copy is a view
+    /// onto the SAME heap-allocated core. Exactly ONE owner must call <see cref="Dispose"/>,
+    /// exactly once, on the authoritative handle -- disposing a second copy, or disposing after the
+    /// original has already been disposed, double-frees the core block (undefined behavior).</para>
     ///
     /// <para><b>Not thread-safe:</b> like Unity's native containers, a single <c>Arena</c> must not
-    /// be allocated from or disposed from more than one thread concurrently. The core's tracking
-    /// lists (<c>UnsafeList.Add</c> + realloc) are not atomic, so concurrent use across threads can
-    /// corrupt tracking state or double-free. Use one arena per job/thread and partition work
-    /// across arenas for parallelism, rather than sharing one arena.</para>
+    /// be allocated from or disposed from more than one thread concurrently -- the core's tracking
+    /// lists (<c>UnsafeList.Add</c> + realloc) are not atomic. Use one arena per job/thread rather
+    /// than sharing one arena across threads.</para>
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe partial struct Arena : System.IDisposable
@@ -281,14 +275,12 @@ namespace LinearAlgebra
         {
             _core = (ArenaCore*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<ArenaCore>(), UnsafeUtility.AlignOf<ArenaCore>(), allocator);
 
-            // Free the Malloc'd block if Init throws instead of leaking it. NOTE: this is a
-            // try/finally, not try/catch -- Burst/HPC# does not support catching exceptions (only
-            // throwing them and try/finally for IDisposable-style cleanup; see
-            // Burst's csharp-hpc-overview.md). It is fully effective for plain managed callers
-            // (e.g. `new Arena(...)` outside a Burst job). Under Burst, the documented exception
-            // semantics skip `finally` entirely on the throw path, so this guard degrades to a
-            // no-op there -- a pre-existing Burst limitation, not a regression: the alternative
-            // (try/catch) does not compile under Burst at all.
+            // Free the Malloc'd block if Init throws instead of leaking it. try/finally, not
+            // try/catch -- Burst/HPC# only supports throwing + try/finally cleanup, not catching
+            // (see Burst's csharp-hpc-overview.md). Fully effective for plain managed callers
+            // (e.g. `new Arena(...)` outside a Burst job); under Burst, `finally` is skipped on the
+            // throw path too, so this guard degrades to a no-op there -- a pre-existing Burst
+            // limitation (try/catch doesn't compile under Burst at all, so there's no better option).
             bool ok = false;
             try
             {
@@ -336,15 +328,10 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Frees this handle's <see cref="ArenaCore"/> and every allocation still tracked in it.
-        /// Calling <see cref="Dispose"/> again on THIS SAME handle instance is a safe no-op (it
-        /// nulls <c>_core</c> below, and the null-guarded accessors/<see cref="Clear"/> all agree
-        /// that a null-core handle reads as empty). That idempotence does NOT extend to other
-        /// copies of the handle: <c>Arena</c> is a value handle over one shared heap core (see the
-        /// class-level ownership contract above) -- disposing a second copy of the same original
-        /// handle, or disposing after a DIFFERENT copy already disposed the shared core, frees
-        /// already-freed memory (double-free / undefined behavior), because that copy's own
-        /// <c>_core</c> field is still non-null even though the block it points to is gone. Exactly
-        /// one owning copy may call Dispose.
+        /// Repeated calls on THIS SAME handle instance are a safe no-op (nulls <c>_core</c>; the
+        /// null-guarded accessors/<see cref="Clear"/> then read it as empty). That idempotence does
+        /// NOT extend to other copies -- see the class-level ownership contract for why disposing a
+        /// second copy double-frees the shared core.
         /// </summary>
         public void Dispose()
         {

@@ -77,6 +77,8 @@ public class intIndexingTests {
             arena.Dispose();
         }
 
+        // Same invariants as VectorIndexing (forward-fill oracle, from-end == Length-k, ^1 is
+        // last, write-through-then-readback), on the flat 1D matrix indexer.
         public void MatrixIndexing1D()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -87,21 +89,17 @@ public class intIndexingTests {
 
             int len = dim * dim;
 
-            // Forward-fill DISTINCT ground-truth values via the plain int indexer (oracle).
             for (int i = 0; i < len; i++)
                 mat[i] = (int)(i + 1);
 
             for (int i = 0; i < len; i++)
                 Assert.IsTrue(mat[i] == (int)(i + 1));
 
-            // From-end accessor must equal the forward element at (Length - k).
             for (int k = 1; k <= len; k++)
                 Assert.IsTrue(mat[^k] == mat[len - k]);
 
-            // ^1 is the LAST element.
             Assert.IsTrue(mat[^1] == mat[len - 1]);
 
-            // Write through the from-end accessor, read back through forward int accessor.
             for (int k = 1; k <= len; k++)
                 mat[^k] = (int)(1000 + k);
 

@@ -311,13 +311,6 @@ namespace LinearAlgebra
                 x[i] = math.fmod(x[i], y);
         }
 
-        /*
-        public static void modf([NoAlias] float* x, int n, [NoAlias] float* y)
-        {
-            for (int i = 0; i < n; i++)
-                y[i] = math.modf(x[i], out (float)x[i]);
-        }*/
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void rsqrt([NoAlias] float* x, int n)
         {

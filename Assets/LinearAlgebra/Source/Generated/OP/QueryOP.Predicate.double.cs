@@ -244,11 +244,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Finds the column of A most similar/closest to query q under metric m,
-        /// considering only columns where pred.Test(in A, col) returns true.
-        /// Empty result (no column passes pred): index = -1,
-        ///   score = double.MaxValue for distance metrics, double.MinValue for similarity.
-        /// Callers must check index == -1 before use.
+        /// Column analog of <see cref="nearestRowWhere{P}"/> (same empty-result contract).
         /// Throws InvalidOperationException if A has 0 columns.
         /// Throws ArgumentException if q.N != A.M_Rows.
         /// </summary>

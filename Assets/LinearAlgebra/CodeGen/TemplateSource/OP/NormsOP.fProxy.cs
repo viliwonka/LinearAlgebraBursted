@@ -169,7 +169,6 @@ namespace LinearAlgebra
             }
         }
 
-        // NormalizeRows: normalize each row of A to unit norm (by the chosen norm).
         // Zero-norm row → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
         public static void NormalizeRows(ref fProxyMxN A, Norm n)
         {
@@ -210,7 +209,6 @@ namespace LinearAlgebra
             }
         }
 
-        // NormalizeColumns: normalize each column of A to unit norm (by the chosen norm).
         // Zero-norm column → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
         public static void NormalizeColumns(ref fProxyMxN A, Norm n)
         {

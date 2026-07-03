@@ -117,7 +117,6 @@ public class doubleSVDWorkspaceTests
             Assert.IsTrue(ca == cb);
             Assert.IsTrue(Analysis_OP.isZero(Pa - Pb, Tol()));
 
-            // workspace-struct form (default relTol/maxSweeps) must match the raw-scratch form
             var Aw = A0.Copy();
             var Pw = arena.doubleMat(n, m);
             var ws = arena.doubleSVD_WS(m, n);

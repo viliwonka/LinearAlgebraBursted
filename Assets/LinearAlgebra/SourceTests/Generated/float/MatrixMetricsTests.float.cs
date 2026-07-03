@@ -311,7 +311,7 @@ public class floatMatrixMetricsTests
             arena.Dispose();
         }
 
-        // ---- recording asserts (Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff) ----
+        // ---- recording asserts ----
 
         void AssertClose(float a, float b, float precision)
         {

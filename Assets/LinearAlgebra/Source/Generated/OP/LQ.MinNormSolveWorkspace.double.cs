@@ -41,10 +41,8 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates an LQ-min-norm-solve workspace sized for an m x n (m &lt;= n) system: nested LQ
-        /// workspace, L m x m, Q m x n, y length m. The buffers are persistent in this arena (disposed
-        /// with it), so create the workspace once outside a hot loop and pass it to the ref-workspace
-        /// overload of lqMinNormSolve.
+        /// Allocates an LQ-min-norm-solve workspace sized for an m x n (m &lt;= n) system. See
+        /// <see cref="doubleLQMinNormSolve_WS"/> for reuse guidance.
         /// </summary>
         public static doubleLQMinNormSolve_WS doubleLQMinNormSolve_WS(this ref Arena arena, int m, int n)
         {

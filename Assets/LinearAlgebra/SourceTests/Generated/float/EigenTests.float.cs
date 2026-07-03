@@ -1047,8 +1047,7 @@ public class floatEigenTests
         // eigenvaluesSymmetric tests (Householder tridiagonalization + implicit-shift QL)
         // ---------------------------------------------------------------------
 
-        // n=5 identity: all eigenvalues exactly 1, sorted descending. Exact closed form ->
-        // 100*ZeroThreshold tolerance comfortably above QL noise. A is DESTROYED.
+        // n=5 identity: same oracle as EigenIdentity (eigenvalues == 1); QL variant, A is DESTROYED.
         public void EvSymIdentity()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1071,9 +1070,8 @@ public class floatEigenTests
             arena.Dispose();
         }
 
-        // diag(3, -2, 0.5, 5, -7, 1): eigenvalues are the diagonal entries, sorted DESCENDING BY
-        // VALUE -> (5, 3, 1, 0.5, -2, -7). Diagonal input is exact (Householder leaves it untouched),
-        // so a generous tolerance applies. A is DESTROYED.
+        // diag(3, -2, 0.5, 5, -7, 1): eigenvalues == diagonal, sorted descending -> (5, 3, 1, 0.5, -2, -7)
+        // (same oracle as EigenDiagonal; Householder leaves the diagonal untouched). A is DESTROYED.
         public void EvSymDiagonal()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1108,7 +1106,7 @@ public class floatEigenTests
             arena.Dispose();
         }
 
-        // [[2,1],[1,2]]: closed-form eigenvalues 3 and 1 (descending). A is DESTROYED.
+        // [[2,1],[1,2]]: same oracle as EigenKnown2x2 (eigenvalues 3, 1). A is DESTROYED.
         public void EvSymKnown2x2()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1169,7 +1167,6 @@ public class floatEigenTests
             var arena = new Arena(Allocator.Persistent);
 
             var A = arena.floatRandomMat(n, n, (float)(-5), (float)5, seed);
-            // symmetrize in place
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                 {
@@ -1258,8 +1255,7 @@ public class floatEigenTests
         // eigenSymmetric tests (tred2 Householder + tql2 implicit-shift QL)
         // ---------------------------------------------------------------------
 
-        // n=5 identity: every eigenvalue exactly 1, V orthogonal. Exact closed form so
-        // 100*ZeroThreshold comfortably covers any QL noise. A is DESTROYED.
+        // n=5 identity: same oracle as EigenIdentity; tred2/tql2 variant, A is DESTROYED.
         public void EsymIdentity()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1286,10 +1282,9 @@ public class floatEigenTests
             arena.Dispose();
         }
 
-        // diag(3, -2, 0.5, 5, -7): eigenvalues are the diagonal, sorted DESCENDING BY VALUE
-        // -> (5, 3, 0.5, -2, -7). V is a permutation/sign variant of identity, so rather than
-        // pin exact V we verify the decomposition reconstructs A = V*diag(eig)*V^T and that V
-        // is orthogonal. Diagonal input is exact, tolerance generous.
+        // diag(3, -2, 0.5, 5, -7): eigenvalues == diagonal, sorted descending -> (5, 3, 0.5, -2, -7)
+        // (same oracle as EigenDiagonal). V is a permutation/sign variant of identity, so rather than
+        // pin exact V we verify the decomposition reconstructs A = V*diag(eig)*V^T and that V is orthogonal.
         public void EsymDiagonal()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1331,8 +1326,7 @@ public class floatEigenTests
             arena.Dispose();
         }
 
-        // [[2,1],[1,2]]: closed-form eigenvalues 3 (vector (1,1)/sqrt2) and 1 (vector (1,-1)/sqrt2),
-        // descending. Sign-agnostic eigenvector check: A_orig * v_k ~= lambda_k * v_k per column.
+        // [[2,1],[1,2]]: same oracle as EigenKnown2x2 (eigenvalues 3, 1); sign-agnostic eigenvector check.
         public void EsymKnown2x2()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1520,10 +1514,8 @@ public class floatEigenTests
             arena.Dispose();
         }
 
-        // LITERATURE KNOWN-ANSWER: n=6 1D-Laplacian (path-graph) tridiagonal with diag 2 and
-        // off-diagonal -1. Eigenvalues are EXACTLY lambda_k = 2 - 2*cos(k*pi/(n+1)), k=1..n.
-        // Descending order -> eig[i] corresponds to k = n - i. Also verify the eigenpairs and
-        // orthogonality of the computed V.
+        // n=6 1D-Laplacian: same known-answer oracle as EvSymLaplacian (lambda_k = 2-2cos(k*pi/(n+1))).
+        // Also verifies the eigenpairs and orthogonality of the computed V.
         public void EsymLaplacian()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1668,7 +1660,6 @@ public class floatEigenTests
         }
 
         // Eigenvalues descending by value: eig[i] <= eig[i-1] (+ slack).
-        // Fail layout: [1]=eig[i], [2]=eig[i-1], [3]=index.
         private void AssertDescending(in floatN eig, int n)
         {
             for (int i = 1; i < n; i++)
@@ -1685,7 +1676,6 @@ public class floatEigenTests
             }
         }
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertClose(float a, float b, float precision)
         {
             float diff = Unity.Mathematics.math.abs(a - b);

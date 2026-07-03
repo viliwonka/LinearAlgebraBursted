@@ -4,11 +4,7 @@ namespace LinearAlgebra
 {
     public static partial class SVD
     {
-        /// <summary>
-        /// Throws if <paramref name="ws"/> is not sized for an m x n thin SVD (B/Vt n x n, dVec/eVec
-        /// length n, Ut n x m) — the layout produced by Arena.doubleSVDThin_WS(m, n). Also validates
-        /// the nested Bidiag workspace via Bidiag's own requirement (through bidiagonalize itself).
-        /// </summary>
+        /// <summary>Throws unless <paramref name="ws"/> matches Arena.doubleSVDThin_WS(m, n) sizing (BidiagWs is validated separately, by bidiagonalize itself).</summary>
         static void RequireSvdThinWorkspace(in doubleSVDThin_WS ws, int m, int n)
         {
             bool ok =
@@ -46,10 +42,9 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates an svdThin workspace sized for an m x n (m >= n) system: nested Bidiag workspace,
-        /// B/Vt n x n, dVec/eVec length n, Ut n x m. The buffers are persistent in this arena (disposed
-        /// with it), so create the workspace once outside a hot loop and pass it to the ref-workspace
-        /// overload of svdThin.
+        /// Allocates an svdThin workspace for an m x n (m >= n) system — see
+        /// <see cref="doubleSVDThin_WS"/> for layout. Persistent in this arena; create once outside a
+        /// hot loop and pass to svdThin's ref-workspace overload.
         /// </summary>
         public static doubleSVDThin_WS doubleSVDThin_WS(this ref Arena arena, int m, int n)
         {

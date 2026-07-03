@@ -366,7 +366,6 @@ public class fProxyCompareTests
             int dim = 32;
 
             fProxyMxN m = arena.fProxyRandomMat(dim, dim, -1f, 1f, 1451);
-            // set first element to zero
             m[0,0] = 0f;
 
             var boolMat = m == 0f;

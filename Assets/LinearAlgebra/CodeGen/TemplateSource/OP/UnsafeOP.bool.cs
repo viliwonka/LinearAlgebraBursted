@@ -12,7 +12,6 @@ namespace LinearAlgebra.Internal
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [BurstCompile]
-        // Swap rows in a matrix 
         public static void swapRows([NoAlias] bool* target, int rowA, int rowB, int nCols, int colStart = 0, int colEnd = -1) {
 
             int rowIndexA = rowA * nCols;
@@ -29,8 +28,6 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-
-        // Swap columns in a matrix
         public static void swapColumns([NoAlias] bool* target, int colA, int colB, int nRows, int nCols, int start = 0, int end = -1) {
             int startA = colA;
             int startB = colB;

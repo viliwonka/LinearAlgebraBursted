@@ -47,7 +47,6 @@ public class doubleBidiagTests
 
         // ---- helpers ----
 
-        // Assert |got - expected| <= tol for a scalar pair
         private void AssertClose(double got, double expected, double tol)
         {
             double diff = Unity.Mathematics.math.abs(got - expected);
@@ -61,7 +60,6 @@ public class doubleBidiagTests
             Assert.IsTrue(diff <= tol);
         }
 
-        // All entries of |M| <= tol
         private void AssertNearZero(in doubleMxN M, double tol, string context)
         {
             double err = Analysis_OP.MaxZeroError(M);
@@ -98,11 +96,8 @@ public class doubleBidiagTests
             }
         }
 
-        // Full suite for a single bidiagonalization result:
-        //  1. A ≈ U*B*Vᵀ  (reconstruction)
-        //  2. B is upper bidiagonal
-        //  3. UᵀU ≈ I_n   (orthonormal columns)
-        //  4. VᵀV ≈ I_n   (orthogonal)
+        // Full suite for a single bidiagonalization result: reconstruction, bidiagonal band,
+        // and U/V orthonormality (numbered inline below).
         private void AssertBidiag(in doubleMxN A, in doubleMxN U, in doubleMxN B, in doubleMxN V,
                                    ref Arena arena, double tol)
         {

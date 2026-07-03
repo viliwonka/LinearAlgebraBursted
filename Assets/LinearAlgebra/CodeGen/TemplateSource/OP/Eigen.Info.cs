@@ -36,13 +36,11 @@ namespace LinearAlgebra
     /// </summary>
     public struct EigenSolveInfo
     {
-        /// <summary>Outer iterations actually performed. A Converged return counts the converging
-        /// iteration too (so it is <c>&gt;= 1</c>); a Breakdown return counts only the iterations
-        /// that ran to completion BEFORE the breakdown (so it can be <c>0</c> if the very first
-        /// inner solve broke down). Do NOT infer success from this count alone: powerIteration's
-        /// post-loop convergence check can return Converged with <c>iterations == maxIter</c> (the
-        /// same value a MaxIterations return carries) -- always read <see cref="status"/> for the
-        /// outcome.</summary>
+        /// <summary>Outer iterations actually performed (a Breakdown return counts only iterations
+        /// that ran to completion before the breakdown, so it can be <c>0</c>). Do NOT infer success
+        /// from this count alone -- powerIteration's post-loop check can return Converged with
+        /// <c>iterations == maxIter</c> (the same value a MaxIterations return carries); always read
+        /// <see cref="status"/>.</summary>
         public int iterations;
 
         /// <summary>Infinity-norm residual ‖A v - lambda v‖ at the returned (lambda, v). Always
@@ -57,7 +55,7 @@ namespace LinearAlgebra
         /// Same value as the implicit bool conversion; use whichever reads better.</summary>
         public bool Solved => status == IterativeSolveStatus.Converged;
 
-        /// <summary>Implicit success test, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
+        /// <summary>Same as <see cref="Solved"/>, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
         /// keep compiling after the return type changed from bool to this struct.</summary>
         public static implicit operator bool(EigenSolveInfo i) => i.status == IterativeSolveStatus.Converged;
     }
@@ -96,8 +94,8 @@ namespace LinearAlgebra
         /// (<c>status == IterativeSolveStatus.Converged</c>).</summary>
         public bool Solved => status == IterativeSolveStatus.Converged;
 
-        /// <summary>Implicit success test, so <c>if (lanczos(...))</c> keeps compiling after the
-        /// return type changed from bool to this struct.</summary>
+        /// <summary>Same as <see cref="Solved"/>, so <c>if (lanczos(...))</c> keeps compiling after
+        /// the return type changed from bool to this struct.</summary>
         public static implicit operator bool(LanczosInfo i) => i.status == IterativeSolveStatus.Converged;
     }
 }

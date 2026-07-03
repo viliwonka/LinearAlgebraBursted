@@ -67,11 +67,8 @@ namespace LinearAlgebra
                 dest[i] = rng.NextBool();
         }
 
-        /// <summary>
-        /// Overwrites every element of <paramref name="dest"/> with an independent fair coin
-        /// flip via <c>rng.NextBool()</c>, advancing <paramref name="rng"/> by
-        /// <c>dest.Length</c> steps. Convenience wrapper for Bernoulli(0.5).
-        /// </summary>
+        /// <summary>Matrix overload of <see cref="nextBoolInpl(ref Random, ref boolN)"/>; advances
+        /// <paramref name="rng"/> by <c>dest.Length</c> steps.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void nextBoolInpl(ref Random rng, ref boolMxN dest)
         {

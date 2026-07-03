@@ -4,9 +4,6 @@ using System.Runtime.CompilerServices;
 namespace LinearAlgebra
 {
 
-    // A m x n matrix
-    // m = rows
-    // n = cols
     public partial struct longMxN {
 
         #region SCALAR OPERATIONS
@@ -160,11 +157,7 @@ namespace LinearAlgebra
 
         #region COMPONENT-WISE OPERATIONS
 
-        /// <summary>
-        /// Component-wise addition
-        /// Matrixs have to be same dimensions
-        /// </summary>
-        /// <returns>Same dimension Matrix</returns>
+        /// <summary>Component-wise addition; matrices must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator +(in longMxN lhs, in longMxN rhs)
         {
@@ -177,11 +170,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        /// <summary>
-        /// Component-wise subtraction
-        /// Matrixs have to be same dimensions
-        /// </summary>
-        /// <returns>Same dimension Matrix</returns>
+        /// <summary>Component-wise subtraction; matrices must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator -(in longMxN lhs, in longMxN rhs)
         {
@@ -194,11 +183,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        /// <summary>
-        /// Component-wise multiplication
-        /// Matrixs have to be same dimensions
-        /// </summary>
-        /// <returns>Same dimension Matrix</returns>
+        /// <summary>Component-wise multiplication; matrices must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator *(in longMxN lhs, in longMxN rhs)
         {
@@ -211,11 +196,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        /// <summary>
-        /// Component-wise division
-        /// Matrixs have to be same dimensions
-        /// </summary>
-        /// <returns>Same dimension Matrix</returns>
+        /// <summary>Component-wise division; matrices must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator /(in longMxN dividend, in longMxN divisor)
         {
@@ -227,11 +208,7 @@ namespace LinearAlgebra
             return newDividendMatrix;
         }
 
-        /// <summary>
-        /// Component-wise modulo
-        /// Matrixs have to be same dimensions
-        /// </summary>
-        /// <returns>Same dimension Matrix</returns>
+        /// <summary>Component-wise modulo; matrices must be the same dimensions.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator %(in longMxN dividend, in longMxN divisor)
         {

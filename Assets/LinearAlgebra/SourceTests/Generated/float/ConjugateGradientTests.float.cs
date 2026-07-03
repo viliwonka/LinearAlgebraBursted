@@ -363,7 +363,7 @@ public class floatConjugateGradientTests
             var A = arena.floatLaplacian1D(dim);
             var b = arena.floatRandomVec(dim, -1f, 1f, 4242);
 
-            var x = arena.floatVec(dim); // zero initial guess
+            var x = arena.floatVec(dim);
 
             bool ok = Solvers.cg(in A, in b, ref x, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(ok);

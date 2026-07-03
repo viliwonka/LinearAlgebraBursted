@@ -505,7 +505,6 @@ public class fProxyGeneratorTests
                 AssertClose(a[i], b[i], 1E-5f);
         }
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected, [3]=diff
         void AssertClose(fProxy a, fProxy b, fProxy precision)
         {
             fProxy diff = math.abs(a - b);

@@ -39,10 +39,8 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates a pivoted-Cholesky workspace for an n x n matrix: W (n x n) and bt (n). The buffers
-        /// are persistent in this arena (disposed with it), so create the workspace once outside a hot
-        /// loop and pass it to the ref-workspace overloads of choleskyDecompositionPivot /
-        /// choleskyPivotSolve.
+        /// Allocates a pivoted-Cholesky workspace for an n x n matrix. See
+        /// <see cref="fProxyCholeskyPivot_WS"/> for reuse guidance.
         /// </summary>
         public static fProxyCholeskyPivot_WS fProxyCholeskyPivot_WS(this ref Arena arena, int n)
         {

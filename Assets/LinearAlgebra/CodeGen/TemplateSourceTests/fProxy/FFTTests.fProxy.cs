@@ -897,16 +897,13 @@ public class fProxyFFTTests
             var re0 = arena.fProxyRandomVec(N, -2f, 2f, seedRe);
             var im0 = arena.fProxyRandomVec(N, -2f, 2f, seedIm);
 
-            // Ground truth: direct DFT.
             var dRe = arena.fProxyVec(N);
             var dIm = arena.fProxyVec(N);
             fProxyFFT_OP.dft(in re0, in im0, ref dRe, ref dIm);
 
-            // No-workspace recurrence fft.
             var fRe = re0.Copy(); var fIm = im0.Copy();
             fProxyFFT_OP.fft(ref fRe, ref fIm);
 
-            // Workspace radix-4 / mixed fft.
             var wRe = re0.Copy(); var wIm = im0.Copy();
             fProxyFFT_OP.fft(ref wRe, ref wIm, in ws);
 
@@ -944,12 +941,10 @@ public class fProxyFFTTests
             fProxy timeE = Energy(in re0, in im0);
             fProxy relTol = (fProxy)1E-2f;   // robust scalar-energy bound (float summation at large N)
 
-            // No-workspace fft.
             var fRe = re0.Copy(); var fIm = im0.Copy();
             fProxyFFT_OP.fft(ref fRe, ref fIm);
             AssertCloseRel(Energy(in fRe, in fIm) / (fProxy)N, timeE, relTol);
 
-            // Workspace fft.
             var wRe = re0.Copy(); var wIm = im0.Copy();
             fProxyFFT_OP.fft(ref wRe, ref wIm, in ws);
             AssertCloseRel(Energy(in wRe, in wIm) / (fProxy)N, timeE, relTol);
@@ -1321,7 +1316,6 @@ public class fProxyFFTTests
             WorkspaceReuseOneSize(128, 55003u);   // 2·4^3 mixed (inner M=64 radix-4 for rfft)
         }
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected, [3]=diff
         void AssertClose(fProxy a, fProxy b, fProxy precision)
         {
             fProxy diff = math.abs(a - b);

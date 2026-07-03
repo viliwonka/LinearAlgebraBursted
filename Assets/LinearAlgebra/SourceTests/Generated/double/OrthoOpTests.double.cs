@@ -123,10 +123,6 @@ public class doubleOrthoOpTests
 
             QR.qrDecomposition(ref Q, ref R);
 
-            //Print.Log(A);
-            //Print.Log(Q);
-            //Print.Log(R);
-
             AssertQR(in A, in Q, in R);
 
             arena.Dispose();
@@ -167,10 +163,6 @@ public class doubleOrthoOpTests
 
             QR.qrDecomposition(ref Q, ref R);
 
-            /*Print.Log(A);
-            Print.Log(Q);
-            Print.Log(R);*/
-
             AssertQR(in A, in Q, in R);
 
             arena.Dispose();
@@ -188,8 +180,6 @@ public class doubleOrthoOpTests
             var A = Q.Copy();
 
             QR.qrDecomposition(ref Q, ref R);
-
-            //Print.Log(R);
 
             AssertQR(in A, in Q, in R, 1E-05f);
 
@@ -226,10 +216,6 @@ public class doubleOrthoOpTests
             var A = Q.Copy();
 
             QR.qrDecomposition(ref Q, ref R);
-
-            //Print.Log(A);
-            //Print.Log(Q);
-            //Print.Log(R);
 
             AssertQR(in A, in Q, in R);
 
@@ -270,10 +256,6 @@ public class doubleOrthoOpTests
 
                 QR.qrDecomposition(ref Q, ref R);
 
-                //Print.Log(A);
-                //Print.Log(Q);
-                //Print.Log(R);
-
                 AssertQR(in A, in Q, in R);
             }
             arena.Dispose();
@@ -290,10 +272,6 @@ public class doubleOrthoOpTests
             var A = Q.Copy();
 
             QR.qrDecomposition(ref Q, ref R);
-
-            //Print.Log(A);
-            //Print.Log(Q);
-            //Print.Log(R);
 
             AssertQR(in A, in Q, in R);
 
@@ -405,9 +383,6 @@ public class doubleOrthoOpTests
 
                 QR.qrDecomposition(ref Q, ref R);
 
-                //Print.Log(Q);
-                //Print.Log(R);
-
                 errorSum += ErrorCheckQR(in A, in Q, in R);
 
                 arena.Clear();
@@ -424,8 +399,6 @@ public class doubleOrthoOpTests
 
             if(Analysis_OP.isAnyNan(in shouldBeZero))
                 throw new System.Exception("PrecisionReconstructTestJob: NaN detected");
-
-            //Print.Log(shouldBeZero);
 
             double zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
 
@@ -561,8 +534,7 @@ public class doubleOrthoOpTests
                         throw new System.Exception("SolveSystemTestJob: NaN detected");
                     }
 
-                    // per-solve garbage detector (~3x above the worst observed conditioning-tail
-                    // error of ~0.21 float); the avg bound below is the actual quality guard
+                    // per-solve bound: see SquareFullRank's rationale above
                     AssertBound(zeroError, (double)2000 * Consts.doubleSqrtEps);
 
                     errorSum += zeroError;
@@ -572,7 +544,6 @@ public class doubleOrthoOpTests
 
             double avgError = errorSum / (randomMatTests * randomVecTests);
 
-            // average bound, scaled per precision (see Consts.doubleSqrtEps)
             AssertBound(avgError, (double)150 * Consts.doubleSqrtEps);
         }
 
@@ -606,8 +577,7 @@ public class doubleOrthoOpTests
 
                 double zeroError = Analysis_OP.MaxZeroError(x);
 
-                // per-solve garbage detector (~3x above the worst observed conditioning-tail
-                // error of ~0.21 float); the avg bound below is the actual quality guard
+                // per-solve bound: see SquareFullRank's rationale above
                 AssertBound(zeroError, (double)2000 * Consts.doubleSqrtEps);
 
                 errorSum += zeroError;
@@ -617,7 +587,6 @@ public class doubleOrthoOpTests
 
             double avgError = errorSum / (randomMatTests);
 
-            // average bound, scaled per precision (see Consts.doubleSqrtEps)
             AssertBound(avgError, (double)150 * Consts.doubleSqrtEps);
 
             arena.Dispose();
@@ -655,8 +624,7 @@ public class doubleOrthoOpTests
 
                 double zeroError = Analysis_OP.MaxZeroError(x);
 
-                // per-solve garbage detector (~3x above the worst observed conditioning-tail
-                // error of ~0.21 float); the avg bound below is the actual quality guard
+                // per-solve bound: see SquareFullRank's rationale above
                 AssertBound(zeroError, (double)2000 * Consts.doubleSqrtEps);
 
                 errorSum += zeroError;
@@ -665,7 +633,6 @@ public class doubleOrthoOpTests
 
             double avgError = errorSum / (randomMatTests);
 
-            // average bound, scaled per precision (see Consts.doubleSqrtEps)
             AssertBound(avgError, (double)150 * Consts.doubleSqrtEps);
         }
 
@@ -724,8 +691,7 @@ public class doubleOrthoOpTests
         var fail = new NativeArray<double>(4, Allocator.TempJob);
         try {
             new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.SquareFullRank, Fail = fail }.Run();
-            // Under Burst a failed in-job assert logs an exception and aborts the job without
-            // throwing to the caller - surface the recorded diagnostics here as well.
+            // Burst in-job asserts abort without throwing; diagnostics surfaced here too (see QRDecompTests above).
             if (fail[0] != (double)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 
@@ -745,8 +711,7 @@ public class doubleOrthoOpTests
         var fail = new NativeArray<double>(4, Allocator.TempJob);
         try {
             new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.OverdeterminedFullRank, Fail = fail }.Run();
-            // Under Burst a failed in-job assert logs an exception and aborts the job without
-            // throwing to the caller - surface the recorded diagnostics here as well.
+            // Burst in-job asserts abort without throwing; diagnostics surfaced here too (see QRDecompTests above).
             if (fail[0] != (double)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 
@@ -766,8 +731,7 @@ public class doubleOrthoOpTests
         var fail = new NativeArray<double>(4, Allocator.TempJob);
         try {
             new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.SquareFullRankDirect, Fail = fail }.Run();
-            // Under Burst a failed in-job assert logs an exception and aborts the job without
-            // throwing to the caller - surface the recorded diagnostics here as well.
+            // Burst in-job asserts abort without throwing; diagnostics surfaced here too (see QRDecompTests above).
             if (fail[0] != (double)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 
@@ -787,8 +751,7 @@ public class doubleOrthoOpTests
         var fail = new NativeArray<double>(4, Allocator.TempJob);
         try {
             new SolveSystemTestJob() { Type = SolveSystemTestJob.TestType.OverdeterminedFullRankDirect, Fail = fail }.Run();
-            // Under Burst a failed in-job assert logs an exception and aborts the job without
-            // throwing to the caller - surface the recorded diagnostics here as well.
+            // Burst in-job asserts abort without throwing; diagnostics surfaced here too (see QRDecompTests above).
             if (fail[0] != (double)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 

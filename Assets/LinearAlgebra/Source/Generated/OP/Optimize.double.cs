@@ -9,9 +9,8 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // IdoubleScalarFunction (the shared scalar-curve functor — the Burst "lambda" used by the
-    // optimizers AND the generators) lives in Interfaces/ScalarFunction.double.cs. The derivative /
-    // gradient functor interfaces below are optimizer-specific and stay here.
+    // IdoubleScalarFunction (the shared Burst "lambda" functor used by optimizers AND generators)
+    // lives in Interfaces/ScalarFunction.double.cs; the derivative/gradient interfaces below are optimizer-specific.
 
     public interface IdoubleScalarDerivativeFunction : IdoubleScalarFunction {
         double Derivative(double x);
@@ -188,8 +187,8 @@ namespace LinearAlgebra
             where F : struct, IdoubleScalarFunction
             => goldenSection(ref f, a, b, out xMin, Consts.doubleZeroThreshold, (double)3 * Consts.doubleSqrtEps, 200);
 
-        // Fixed-step gradient descent, in-place on x. g is caller-provided scratch (length x.N). Does NOT allocate.
-        // Iterates x -= learningRate * g until L2(g) <= gradTol or maxIter. Returns true if gradTol reached; iterations = performed count.
+        // Fixed-step gradient descent, in-place on x (x -= learningRate * g until L2(g) <= gradTol or
+        // maxIter). g is caller-provided scratch (length x.N); zero-alloc. iterations = performed count.
         public static bool gradientDescent<F>(ref F f, ref doubleN x, ref doubleN g,
                                               double learningRate, double gradTol, int maxIter,
                                               out int iterations)

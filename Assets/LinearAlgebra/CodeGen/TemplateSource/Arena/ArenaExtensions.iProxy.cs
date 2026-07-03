@@ -62,7 +62,6 @@ namespace LinearAlgebra
             return vec;
         }
 
-        //linspace
         public static iProxyN iProxyLinVec(this ref Arena arena, int N, iProxy start, iProxy end)
         {
             var vec = arena.iProxyVec(N);
@@ -86,7 +85,6 @@ namespace LinearAlgebra
         #endregion
 
         #region MATRIX
-        // constructs identity matrix
         public static iProxyMxN iProxyIdentityMat(this ref Arena arena, int N)
         {
             var matrix = arena.iProxyMat(N, N);
@@ -97,7 +95,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs diagonal matrix with scalar s on diagonal
         public static iProxyMxN iProxyDiagonalMat(this ref Arena arena, int N, iProxy s)
         {
             var matrix = arena.iProxyMat(N, N);
@@ -108,7 +105,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs diagonal matrix based on vector
         public static iProxyMxN iProxyDiagonalMat(this ref Arena arena, in iProxyN vec)
         {
             var matrix = arena.iProxyMat(vec.N, vec.N);
@@ -119,7 +115,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs matrix with indexes that start at 0
         public static iProxyMxN iProxyIndexZeroMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.iProxyMat(M_rows, N_cols, true);
@@ -134,7 +129,6 @@ namespace LinearAlgebra
             return mat;
         }
 
-        // constructs matrix with indexes that start at 1
         public static iProxyMxN iProxyIndexOneMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.iProxyMat(M_rows, N_cols, true);
@@ -148,8 +142,6 @@ namespace LinearAlgebra
 
             return mat;
         }
-
-        // random matrix
 
         public static iProxyMxN iProxyRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
@@ -197,7 +189,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // i and j are axis indexes to swap
         public static iProxyMxN iProxyPermutationMat(this ref Arena arena, int M, int i, int j)
         {
             var matrix = arena.iProxyIdentityMat(M);

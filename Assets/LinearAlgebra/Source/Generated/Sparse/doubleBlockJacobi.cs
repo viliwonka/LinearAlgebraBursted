@@ -37,10 +37,7 @@ namespace LinearAlgebra.Sparse
         /// holds (A_ii⁻¹)[r,c]. Length nb*BR*BR.</summary>
         public readonly UnsafeList<double> DInv;
 
-        // Value handle, not a pointer: copying a doubleBlockJacobi (including compiler-inserted
-        // defensive copies of `in` parameters) copies this 8-byte handle, which still resolves
-        // to the SAME heap-allocated ArenaCore. This retired the old "arena identity captures a
-        // dangling stack address" failure mode (docs/rfc-memory-model.md FM2) -- see Arena.cs.
+        // Value handle to the shared ArenaCore, not a raw pointer (see Arena.cs); copies stay live (FM2).
         private readonly Arena _arena;
 
         /// <summary>

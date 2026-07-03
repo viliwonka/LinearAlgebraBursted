@@ -74,14 +74,8 @@ public class fProxySparseBSMTests
 
         // Reference y = Aᵀ·x computed directly from the dense expansion's elements.
         //
-        // NOTE: fProxyBSM.ToDense used to take `in Arena`, which forced a defensive copy of the
-        // arena before its internal (mutating) arena.fProxyMat(...) call -- the returned matrix's
-        // _arenaPtr captured the address of that dead temporary, so Linear_OP.trans(dense)
-        // (which allocates via dense.tempfProxyMat) dereferenced a dangling pointer and threw
-        // "allocator handle is not valid" under Burst. ToDense/ToBSM now take `ref Arena`
-        // (see ToDense_TransposeReference_Works, formerly the Ignored bug-repro test) so that
-        // recipe works again -- this hand-rolled version is kept anyway since it's a cheaper,
-        // fully independent reference (no dependence on Linear_OP.trans at all).
+        // Dangling-arena-pointer history: see ToDense_TransposeReference_Works below. Kept as a
+        // hand-rolled reference anyway since it's cheaper and has no dependence on Linear_OP.trans.
         static void DenseTransMatVec(in fProxyMxN dense, in fProxyN x, ref fProxyN y)
         {
             for (int j = 0; j < dense.N_Cols; j++)

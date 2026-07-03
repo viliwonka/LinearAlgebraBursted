@@ -56,14 +56,11 @@ namespace LinearAlgebra
         int M_Rows { get; }
         int N_Cols { get; }
 
-        // Methods to copy data to and from the matrix
         void CopyTo(IMatrix<T> destination);
         void CopyFrom(IMatrix<T> source);
 
         // Read-only checks
         bool IsSquare { get; }
-
-        // Other necessary properties and methods...
     }
 
 }

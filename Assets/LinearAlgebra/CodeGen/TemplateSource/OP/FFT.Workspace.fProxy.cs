@@ -43,13 +43,8 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Allocates a twiddle-table FFT workspace for an n-point transform (n must be a power of two,
-        /// n ≥ 2). twRe[j] = cos(-2π·j/n), twIm[j] = sin(-2π·j/n) for j = 0..n/2-1, computed at
-        /// double precision so the table is maximally accurate regardless of element type. Entries are
-        /// computed with direct per-entry cos/sin (no recurrence) for full accuracy.
-        ///
-        /// The full-circle table twReFull/twImFull (length n) is also built: needed by the
-        /// auto-dispatch radix-4 paths inside fft/ifft whose twiddles reach index 3n/4.
-        /// The half-table suffices for the radix-2 table fallback path.
+        /// n ≥ 2). Entries are computed via direct per-entry cos/sin at double precision (no recurrence
+        /// drift); see <see cref="fProxyFFT_WS"/> for the table layout and full-circle-table rationale.
         ///
         /// The buffers are persistent in this arena (disposed with it), so create the workspace once
         /// outside a hot loop and pass it to the table overloads. One table serves fft/ifft of length
@@ -480,7 +475,7 @@ namespace LinearAlgebra
             int size = re.N;
             if (size == 1) return;
 
-            // Conjugate trick: conjugate input, run forward, conjugate + scale at the end.
+            // Conjugate trick (see section banner above).
             if (inverse)
                 for (int i = 0; i < size; i++)
                     im[i] = -im[i];
@@ -552,7 +547,7 @@ namespace LinearAlgebra
             int size = re.N;
             int M = size >> 1;   // size/2, always a power of 4
 
-            // Conjugate trick at the outer level: negate im → forward decomposition → negate+scale.
+            // Conjugate trick at the outer level (see banner above).
             if (inverse)
                 for (int i = 0; i < size; i++)
                     im[i] = -im[i];
@@ -619,7 +614,6 @@ namespace LinearAlgebra
                 im[M + k] = ei - ti;
             }
 
-            // Conjugate and scale for inverse.
             if (inverse)
             {
                 fProxy invN = (fProxy)1 / (fProxy)size;

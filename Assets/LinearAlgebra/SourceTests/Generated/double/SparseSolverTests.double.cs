@@ -916,8 +916,7 @@ public class doubleSparseSolverTests
 
         // ---- LSMR on an overdetermined CONSISTENT least-squares problem (dense + BSM) ------
         //
-        // b = A*x_true exactly (b in range(A)) -> the least-squares solution is x_true, recovered
-        // exactly (within tolerance). Same acceptance criterion as the LSQR twin.
+        // Same fixture and acceptance criterion as CglsOverdeterminedConsistentDenseAndBSM above.
         void LsmrOverdeterminedConsistentDenseAndBSM()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -980,9 +979,8 @@ public class doubleSparseSolverTests
 
         // ---- LSMR on an underdetermined (m < n) CONSISTENT problem: matches LSQR ----
         //
-        // Wide A, b = A*x_gen (consistent) -> infinitely many exact solutions. From x0 = 0 both
-        // LSMR and LSQR converge to the SAME minimum-norm solution, so assert A x ~= b and that
-        // LSMR agrees with the (already-tested) LSQR solution.
+        // Same wide-A min-norm setup as CglsLsqrUnderdeterminedConsistent above; here LSMR is
+        // cross-checked against the already-tested LSQR solution.
         void LsmrUnderdeterminedMatchesLsqr()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -1114,9 +1112,8 @@ public class doubleSparseSolverTests
 
         // ---- CGNE / Craig: minimum-norm solution of a consistent under-determined system ----
         //
-        // Wide A (m < n), b = A*xGen (consistent). CGNE from x0 = 0 converges to the UNIQUE
-        // minimum-norm solution -- the same point LSQR reaches from x0 = 0 -- so assert A x ~= b
-        // and that CGNE agrees with LSQR (already tested), on dense AND 1x1-BSM.
+        // Same wide-A min-norm setup as CglsLsqrUnderdeterminedConsistent above; CGNE is
+        // cross-checked against LSQR (already tested), on dense AND 1x1-BSM.
         void CgneUnderdeterminedMinNormMatchesLsqr()
         {
             var arena = new Arena(Allocator.Persistent);

@@ -62,16 +62,13 @@ public class doubleSparseEigenTests
         static double FullSpectrumTol() => 1e-9;
 
         // Partial-spectrum Lanczos (steps < n): only the EXTREMAL Ritz values (largest at index 0,
-        // smallest at index produced-1) are asserted. Their Kaniel-Paige-Saad convergence in ~n/2
-        // steps on this well-separated Laplacian is fast but NOT machine-exact, so this is
-        // deliberately looser than FullSpectrumTol. Interior Ritz values are not asserted at all.
-        // Applied as a (1+|lambda|)-scaled absolute tolerance (the smallest Laplacian eigenvalue is
-        // ~0.034, so the scale is ~1 there and this stays a meaningful bound, not a free pass).
-        // Partial Lanczos (steps < n) resolves the EXTREMAL Ritz values only approximately -- the
-        // error shrinks as steps->n. At steps=n/2 on the n=16 Laplacian the largest/smallest Ritz
-        // values land ~7e-4 (absolute) from the closed-form extremes, so the double band is 5e-3
-        // (scaled), NOT the ~machine-eps band the FULL-spectrum test can use. This is honest partial-
-        // convergence accuracy (~0.5%), not a loose catch-all.
+        // smallest at index produced-1) are asserted; interior values are not. Kaniel-Paige-Saad
+        // convergence in ~n/2 steps on this well-separated Laplacian is fast but not machine-exact --
+        // at steps=n/2 on the n=16 Laplacian the largest/smallest Ritz values land ~7e-4 (absolute)
+        // from the closed-form extremes, so the double band is 5e-3 (scaled), looser than
+        // FullSpectrumTol but honest partial-convergence accuracy (~0.5%), not a free pass. Applied
+        // as a (1+|lambda|)-scaled absolute tolerance (the smallest Laplacian eigenvalue is ~0.034,
+        // so the scale is ~1 there).
         static double PartialExtremalTol() => 5e-3;
 
         // Breakdown-detection threshold for the early-breakdown test's diagonal operator (||A|| < 1).
@@ -374,11 +371,7 @@ public class doubleSparseEigenTests
             var A = arena.doubleLaplacian1D(n);
             var ARef = arena.doubleLaplacian1D(n);   // independent copy; destroyed below
 
-            // tol is a multiple of cgTol (not the much tighter Consts.doubleZeroThreshold): the
-            // outer convergence checks compare consecutive eigenpair estimates, each from its own
-            // fresh CG solve accurate only to ~cgTol, so an outer tolerance tighter than that noise
-            // floor could spin to maxIter without ever detecting convergence (see
-            // Eigen.inversePowerIteration's no-scratch convenience overload doc comment).
+            // tol rationale (multiple of cgTol, not zeroThreshold): see InverseLaplacianCrossCheck above.
             double cgTol = Consts.doubleSqrtEps;
             double tol = (double)10 * cgTol;
 

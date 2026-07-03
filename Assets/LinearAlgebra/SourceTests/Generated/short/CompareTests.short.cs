@@ -338,7 +338,6 @@ public class shortCompareTests
             int dim = 64;
 
             shortN v = arena.shortRandomVec(dim, -100, 100, 1451);
-            // set first element to zero
             v[0] = 0;
 
             var boolVec = v == 0;
@@ -366,7 +365,6 @@ public class shortCompareTests
             int dim = 32;
 
             shortMxN m = arena.shortRandomMat(dim, dim, -100, 100, 1451);
-            // set first element to zero
             m[0,0] = 0;
 
             var boolMat = m == 0;

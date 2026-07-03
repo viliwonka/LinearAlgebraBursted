@@ -8,9 +8,7 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    // can add chaining here for inplace methods
-
-    /// <summary>           
+    /// <summary>
     /// Inpl = inplace
     /// </summary>
     public static partial class iProxyElem_OP {

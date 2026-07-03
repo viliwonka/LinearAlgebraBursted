@@ -76,8 +76,7 @@ namespace LinearAlgebra
             for (int i = 0; i < N; i++)
                 dest[i] = f.Eval(math.lerp(t0, t1, i * scale));
 
-            // Evaluate at the exact endpoints (the lerp parameter lands ~1 ulp short of t1 at the
-            // last index unless N-1 is a power of two), so the curve hits f(t0) and f(t1) precisely.
+            // Evaluate at the exact endpoints (same ~1 ulp lerp shortfall as linspace above).
             dest[0] = f.Eval(t0);
             dest[N - 1] = f.Eval(t1);
         }
@@ -218,8 +217,8 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Additive outer "sum" M[i,j] = u[i]+v[j] (a u.N × v.N matrix). The separable building block for
-        /// additive fields / gradients. No alias guard: the result is a matrix, inputs are vectors, so
-        /// they can never share a buffer.
+        /// additive fields / gradients. No alias guard, same reasoning as
+        /// <see cref="Linear_OP.outerDot(in floatN, in floatN, ref floatMxN)"/>.
         /// </summary>
         public static void outerSum(in floatN u, in floatN v, ref floatMxN dest)
         {

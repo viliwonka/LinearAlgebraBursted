@@ -44,10 +44,7 @@ namespace LinearAlgebra.Sparse
         public UnsafeList<int> ColInd;     // length nnzb (block-column of each stored block)
         public UnsafeList<float> Values;  // length nnzb*BR*BC (flat, row-major per block)
 
-        // Value handle, not a pointer: copying a floatBSM (including compiler-inserted
-        // defensive copies of `in` parameters) copies this 8-byte handle, which still resolves
-        // to the SAME heap-allocated ArenaCore. This retired the old "arena identity captures a
-        // dangling stack address" failure mode (docs/rfc-memory-model.md FM2) -- see Arena.cs.
+        // Value handle to the shared ArenaCore, not a raw pointer (see Arena.cs); copies stay live (FM2).
         private Arena _arena;
 
         /// <summary>
@@ -131,13 +128,8 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// Expands this BSM to a dense M_Rows x N_Cols matrix: zero-filled, then every stored
         /// block scattered into place. Used by tests and as a general-purpose densify helper.
-        ///
-        /// Kept as `ref Arena` for API stability, but this is no longer load-bearing: since
-        /// Arena is now a thin copyable handle to a heap-allocated ArenaCore (see Arena.cs),
-        /// even a compiler-inserted defensive copy of an `in Arena` parameter would still
-        /// resolve to the same live core, so `in` would work correctly too (the old dangling-
-        /// pointer hazard this comment used to describe is structurally gone -- see
-        /// docs/rfc-memory-model.md, failure mode 2).
+        /// Kept as `ref Arena` for API stability, though `in Arena` would work equally well now
+        /// that Arena is a thin handle to a heap-allocated ArenaCore (see Arena.cs).
         /// </summary>
         public floatMxN ToDense(ref Arena arena)
         {

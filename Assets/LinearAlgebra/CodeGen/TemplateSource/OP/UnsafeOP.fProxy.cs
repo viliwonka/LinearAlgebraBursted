@@ -70,7 +70,6 @@ namespace LinearAlgebra.Internal
 
 
 
-        // outer dot product (vec x vec => mat)
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void vecOuterDot([NoAlias] fProxy* vA, [NoAlias] fProxy* vB, [NoAlias] fProxy* mat, int m, int n)
         {
@@ -282,7 +281,7 @@ namespace LinearAlgebra.Internal
             {
                 for (int nCols = 0; nCols < n; nCols++)
                 {
-                    fProxy temp = matA[r * n + nCols]; // Cache the value from matA
+                    fProxy temp = matA[r * n + nCols];
                     for (int kCols = colStart; kCols < colEnd; kCols++)
                     {
                         matC[r * k + kCols] += temp * matB[nCols * k + kCols];
@@ -677,7 +676,6 @@ namespace LinearAlgebra.Internal
                 target[i] += from[i];
         }
 
-        // y[i] += a * x[i]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void axpy([NoAlias] fProxy* y, [NoAlias] fProxy* x, fProxy a, int n) {
 
@@ -685,7 +683,6 @@ namespace LinearAlgebra.Internal
                 y[i] += a * x[i];
         }
 
-        // y[i] = a * y[i] + x[i]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void aypx([NoAlias] fProxy* y, [NoAlias] fProxy* x, fProxy a, int n) {
 
@@ -1010,7 +1007,6 @@ namespace LinearAlgebra.Internal
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [BurstCompile]
-        // Swap rows in a matrix 
         public static void swapRows([NoAlias] fProxy* target, int rowA, int rowB, int nCols, int colStart = 0, int colEnd = -1) {
             
             int rowIndexA = rowA * nCols;
@@ -1028,7 +1024,6 @@ namespace LinearAlgebra.Internal
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [BurstCompile]
-        // Swap columns in a matrix
         public static void swapColumns([NoAlias] fProxy* target, int colA, int colB, int nRows, int nCols, int start = 0, int end = -1) {
             int startA = colA;
             int startB = colB;

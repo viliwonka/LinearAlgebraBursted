@@ -349,7 +349,6 @@ public class floatPCATests
 
             var scores = floatPCA_OP.pcaTransform(ref arena, in X, in m);
 
-            // shape n×k.
             RecordEq(scores.M_Rows, n);
             RecordEq(scores.N_Cols, m.k);
 
@@ -397,14 +396,13 @@ public class floatPCATests
             var X2 = arena.floatMat(n, p);
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < p; c++)
-                    X2[r, c] = (c == 0) ? -X1[r, c] : X1[r, c];   // negate column 0
+                    X2[r, c] = (c == 0) ? -X1[r, c] : X1[r, c];
 
             var m1 = floatPCA_OP.pcaCovariance(ref arena, in X1);
             var m2 = floatPCA_OP.pcaCovariance(ref arena, in X2);
             AssertTrue(m1.converged);
             AssertTrue(m2.converged);
 
-            // identical explainedVariance and identical (sign-fixed) components.
             float ctol = (float)100 * Consts.floatSqrtEps;
             for (int i = 0; i < p; i++)
                 AssertClose(m1.explainedVariance[i], m2.explainedVariance[i], EvTol(m1.explainedVariance[i]));
@@ -541,7 +539,7 @@ public class floatPCATests
             return gap > (float)0.05f * (vc + (float)1E-6f);
         }
 
-        // ---- Fail-array diagnostics (layout: [0]=flag, [1]=got, [2]=expected, [3]=diff) ----
+        // ---- Fail-array diagnostics ----
         void AssertClose(float a, float b, float precision)
         {
             float diff = math.abs(a - b);
@@ -630,7 +628,7 @@ public class floatPCATests
         // it throws on wide data just like pcaSVD/pcaRandomized (there is deliberately NO "truncated
         // works on wide data" test).
         var arena = new Arena(Allocator.Persistent);
-        var X = arena.floatMat(3, 5);   // wide: p > n
+        var X = arena.floatMat(3, 5);
         Assert.Throws<ArgumentException>(() => floatPCA_OP.pcaSVDTruncated(ref arena, in X, 2));
         arena.Dispose();
     }
@@ -639,7 +637,7 @@ public class floatPCATests
     public void RandomizedWideThrows()
     {
         var arena = new Arena(Allocator.Persistent);
-        var X = arena.floatMat(3, 5);   // wide: p > n
+        var X = arena.floatMat(3, 5);
         Assert.Throws<ArgumentException>(() => floatPCA_OP.pcaRandomized(ref arena, in X, 2));
         arena.Dispose();
     }

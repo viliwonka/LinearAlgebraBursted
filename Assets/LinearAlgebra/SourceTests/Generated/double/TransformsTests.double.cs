@@ -180,7 +180,6 @@ public class doubleTransformsTests
             arena.Dispose();
         }
 
-        // Per row: each row mean ~0, std ~1.
         void StandardizeRows()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -197,7 +196,6 @@ public class doubleTransformsTests
             arena.Dispose();
         }
 
-        // Per column: each column mean ~0, std ~1.
         void StandardizeColumns()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -221,12 +219,12 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
             var v = arena.doubleVec(4);
-            v[0] = 10f; v[1] = 20f; v[2] = 30f; v[3] = 50f; // min 10, max 50
+            v[0] = 10f; v[1] = 20f; v[2] = 30f; v[3] = 50f;
 
             doubleStats_OP.rescale(in v);
 
-            AssertClose(v[0], (double)0f, (double)EPS);   // min → 0
-            AssertClose(v[3], (double)1f, (double)EPS);   // max → 1
+            AssertClose(v[0], (double)0f, (double)EPS);
+            AssertClose(v[3], (double)1f, (double)EPS);
             // (20-10)/40 = 0.25, (30-10)/40 = 0.5
             AssertClose(v[1], (double)0.25f, (double)EPS);
             AssertClose(v[2], (double)0.5f, (double)EPS);
@@ -244,8 +242,8 @@ public class doubleTransformsTests
 
             doubleStats_OP.rescale(in v, lo, hi);
 
-            AssertClose(v[0], lo, (double)EPS);  // min → lo
-            AssertClose(v[3], hi, (double)EPS);  // max → hi
+            AssertClose(v[0], lo, (double)EPS);
+            AssertClose(v[3], hi, (double)EPS);
             for (int i = 0; i < 4; i++)
                 AssertTrue(v[i] >= lo - (double)EPS && v[i] <= hi + (double)EPS);
             // midpoint 0.25 of [lo,hi] = -2 + 0.25*7 = -0.25
@@ -263,7 +261,7 @@ public class doubleTransformsTests
             doubleStats_OP.rescale(in v, (double)(-3f), (double)9f);
             for (int i = 0; i < 4; i++)
             {
-                AssertClose(v[i], (double)(-3f), (double)EPS); // → lo
+                AssertClose(v[i], (double)(-3f), (double)EPS);
                 AssertTrue(math.isfinite(v[i]));
             }
             arena.Dispose();
@@ -278,14 +276,13 @@ public class doubleTransformsTests
             a[0] = -4f; a[1] = 1f; a[2] = 0f; a[3] = 9f; a[4] = 2f;
             for (int i = 0; i < 5; i++) b[i] = a[i];
 
-            doubleStats_OP.rescale(in a);                       // forwarding
-            doubleStats_OP.rescale(in b, (double)0f, (double)1f); // explicit
+            doubleStats_OP.rescale(in a);
+            doubleStats_OP.rescale(in b, (double)0f, (double)1f);
             for (int i = 0; i < 5; i++)
                 AssertClose(a[i], b[i], (double)EPS);
             arena.Dispose();
         }
 
-        // Per row: each row min→0, max→1.
         void RescaleRows()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -301,7 +298,6 @@ public class doubleTransformsTests
             arena.Dispose();
         }
 
-        // Per column with (lo,hi): each column min→lo, max→hi.
         void RescaleColumns()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -368,7 +364,7 @@ public class doubleTransformsTests
 
             doubleStats_OP.maxAbs(in v);
             AssertClose(v[0], (double)0.5f, (double)EPS);
-            AssertClose(v[1], (double)(-1f), (double)EPS); // max-abs maps to ±1
+            AssertClose(v[1], (double)(-1f), (double)EPS);
             AssertClose(v[2], (double)0.25f, (double)EPS);
             AssertTrue(doubleNorms_OP.LInf(in v) <= (double)1f + (double)EPS);
             arena.Dispose();
@@ -390,7 +386,6 @@ public class doubleTransformsTests
             arena.Dispose();
         }
 
-        // Per row: each row's max |element| becomes 1 in magnitude.
         void MaxAbsRows()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -421,7 +416,6 @@ public class doubleTransformsTests
 
         // ---------------- softmax ----------------
 
-        // Sums to 1; all entries in (0,1).
         void SoftmaxVector()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -435,7 +429,6 @@ public class doubleTransformsTests
             arena.Dispose();
         }
 
-        // Single element → 1.
         void SoftmaxSingle()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -467,7 +460,7 @@ public class doubleTransformsTests
             doubleStats_OP.softmax(in v);
             AssertTrue(math.isfinite(v[0]) && math.isfinite(v[1]));
             AssertClose(doubleStats_OP.sum(in v), (double)1f, (double)EPS);
-            AssertTrue(v[1] > v[0]); // 1001 keeps the larger probability
+            AssertTrue(v[1] > v[0]);
             arena.Dispose();
         }
 
@@ -480,17 +473,15 @@ public class doubleTransformsTests
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
             A[1, 0] = 4f; A[1, 1] = 5f; A[1, 2] = 6f;
 
-            doubleStats_OP.softmax(in A); // whole-matrix scope
+            doubleStats_OP.softmax(in A);
 
             AssertClose(doubleStats_OP.sum(in A), (double)1f, (double)EPS);
             var rSum = doubleStats_OP.rowSum(in A);
-            // proves it normalized over the whole matrix, not per row
             AssertTrue(rSum[0] < (double)1f - (double)EPS);
             AssertTrue(rSum[1] < (double)1f - (double)EPS);
             arena.Dispose();
         }
 
-        // Per row: each row sums to 1.
         void SoftmaxRows()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -506,7 +497,6 @@ public class doubleTransformsTests
             arena.Dispose();
         }
 
-        // Per column: each column sums to 1.
         void SoftmaxColumns()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -547,7 +537,6 @@ public class doubleTransformsTests
             arena.Dispose();
         }
 
-        // NormalizeRows(L2): each row has unit L2 norm.
         void NormalizeRowsL2()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -559,7 +548,6 @@ public class doubleTransformsTests
             arena.Dispose();
         }
 
-        // NormalizeColumns(L1): each column has unit L1 norm.
         void NormalizeColumnsL1()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -576,7 +564,6 @@ public class doubleTransformsTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            // row 1 all zero, rest nonzero
             var A = arena.doubleMat(3, 3);
             A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 2f;
             A[1, 0] = 0f; A[1, 1] = 0f; A[1, 2] = 0f;
@@ -585,15 +572,13 @@ public class doubleTransformsTests
             doubleNorms_OP.NormalizeRows(ref A, Norm.L2);
             for (int c = 0; c < 3; c++)
             {
-                AssertClose(A[1, c], (double)0f, (double)EPS); // zero row stays 0
+                AssertClose(A[1, c], (double)0f, (double)EPS);
                 AssertTrue(math.isfinite(A[1, c]));
             }
-            // nonzero rows became unit
             var rL2 = doubleStats_OP.rowNormL2(in A);
             AssertClose(rL2[0], (double)1f, (double)EPS);
             AssertClose(rL2[2], (double)1f, (double)EPS);
 
-            // column 1 all zero
             var B = arena.doubleMat(3, 3);
             B[0, 0] = 1f; B[0, 1] = 0f; B[0, 2] = 2f;
             B[1, 0] = 3f; B[1, 1] = 0f; B[1, 2] = 4f;
@@ -617,11 +602,11 @@ public class doubleTransformsTests
             v[0] = -5f; v[1] = -1f; v[2] = 0f; v[3] = 3f; v[4] = 9f;
 
             doubleElem_OP.clampInpl(in v, (double)(-1f), (double)4f);
-            AssertClose(v[0], (double)(-1f), (double)EPS); // below lo
-            AssertClose(v[1], (double)(-1f), (double)EPS); // at lo
-            AssertClose(v[2], (double)0f, (double)EPS);    // in range
-            AssertClose(v[3], (double)3f, (double)EPS);    // in range
-            AssertClose(v[4], (double)4f, (double)EPS);    // above hi
+            AssertClose(v[0], (double)(-1f), (double)EPS);
+            AssertClose(v[1], (double)(-1f), (double)EPS);
+            AssertClose(v[2], (double)0f, (double)EPS);
+            AssertClose(v[3], (double)3f, (double)EPS);
+            AssertClose(v[4], (double)4f, (double)EPS);
             arena.Dispose();
         }
 
@@ -642,7 +627,6 @@ public class doubleTransformsTests
 
         // ---------------- assertion helpers ----------------
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         void AssertClose(double a, double b, double precision)
         {
             double diff = math.abs(a - b);

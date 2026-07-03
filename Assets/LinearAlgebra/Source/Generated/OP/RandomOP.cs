@@ -34,10 +34,9 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Shuffles the existing contents of <paramref name="idx"/> in place using
-        /// Fisher–Yates (Knuth): for i = N−1 downto 1, swap idx[i] with idx[j]
-        /// where j = NextInt(0, i+1). Does not reset or repopulate the buffer — the
-        /// caller provides the initial contents.
+        /// Shuffles the existing contents of <paramref name="idx"/> in place using the same
+        /// Fisher–Yates sweep as <see cref="randomPermutationInpl"/>, but does not reset or
+        /// repopulate the buffer — the caller provides the initial contents.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void shuffleInpl(ref Indices idx, ref Random rng)

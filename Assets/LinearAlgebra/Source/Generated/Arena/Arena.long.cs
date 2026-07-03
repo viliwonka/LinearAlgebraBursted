@@ -21,7 +21,6 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // creates vector with s values
         public longN longVec(int N, long s)
         {
             var vec = new longN(N, in this, true);
@@ -68,7 +67,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // creates vector with s values
         public longMxN longMat(int M_rows, int N_cols, long s)
         {
             var matrix = new longMxN(M_rows, N_cols, in this, false);

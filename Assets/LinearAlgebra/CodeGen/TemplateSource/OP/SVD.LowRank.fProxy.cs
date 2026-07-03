@@ -36,10 +36,8 @@ namespace LinearAlgebra
         //   - All arithmetic uses native fProxy precision; stability comes from reorthogonalization,
         //     not from higher-precision accumulation.
         //
-        // lowRankApprox still uses svdThin (full SVD + slice) internally — it stays EXACT (Eckart-Young).
-        //
-        // The workspace (fProxySVDTruncated_WS) bundles all scratch; allocate ONCE via
-        // Arena.fProxySVDTruncated_WS(m, n, k, oversample) and reuse across same-shape calls.
+        // lowRankApprox uses svdThin instead (full SVD + slice — see its own doc). Scratch layout:
+        // see fProxySVDTruncated_WS.
 
         /// <summary>
         /// GKL truncated SVD: the top-k singular triplets of A (m x n, m >= n) via Golub-Kahan-Lanczos
@@ -122,9 +120,7 @@ namespace LinearAlgebra
 
                 if (partialReorth)
                 {
-                    // ================================================================
-                    // PARTIAL REORTHOGONALIZATION via ω-recurrence (Larsen/PROPACK)
-                    // ================================================================
+                    // ==== PARTIAL REORTHOGONALIZATION via ω-recurrence (Larsen/PROPACK) ====
                     // Maintain scalar μ_j(i) ≈ ⟨û_j,û_i⟩ and ν_{j+1}(i) ≈ ⟨v̂_{j+1},v̂_i⟩
                     // estimates. Trigger FULL DGKS sweep when max|ω| > δ or forceReorth.
                     // Extended Local Reorthogonalization (ELR) applied every step.
@@ -139,8 +135,6 @@ namespace LinearAlgebra
                     fProxy eps      = Consts.fProxyEpsilon;
                     fProxy eps1     = (fProxy)50 * eps;                           // 100*eps/2
                     fProxy delta    = math.sqrt(eps / (fProxy)p);                 // semiorthogonality trigger
-                    // FUTURE: fProxy eta = math.pow(eps, (fProxy)0.75f) / math.sqrt((fProxy)p);
-                    // assert delta >= eta (holds for p >= 1)
                     fProxy gamma    = (fProxy)1 / math.sqrt((fProxy)2);           // ELR ratio (1/√2)
                     fProxy epsFloor = (fProxy)1.5f * eps;                         // reset level for orthogonalized ω
                     fProxy anorm    = (fProxy)0;                                  // running ‖A‖₂ estimate (order-of-mag)
@@ -150,20 +144,20 @@ namespace LinearAlgebra
                     {
                         // ---- U-half: compute û_j ----
 
-                        // Step 1: uBuf = A·v̂_j − β_{j-1}·û_{j-1}   (β_{-1} term absent at j=0)
+                        // uBuf = A·v̂_j − β_{j-1}·û_{j-1}   (β_{-1} term absent at j=0)
                         UnsafeUtility.MemClear(uBuf_ptr, (long)m * szfProxy);
                         Unsafe_OP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
                         if (j > 0)
                             Unsafe_OP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
 
-                        // Step 2: α_j = ‖uBuf‖ (tentative)
+                        // α_j = ‖uBuf‖ (tentative)
                         ws.alpha[j] = math.sqrt(Unsafe_OP.vecDot(uBuf_ptr, uBuf_ptr, m));
 
                         // Update scale estimate after first step
                         if (j == 0)
                             scaleEps = Consts.fProxyEpsilon * math.max((fProxy)1, ws.alpha[0]);
 
-                        // Step 3: ELR-U — if α_j < γ·β_{j-1}, reortho uBuf against û_{j-1}
+                        // ELR-U — if α_j < γ·β_{j-1}, reortho uBuf against û_{j-1}
                         // and fold the projection back into the bidiagonal (lanbpro line 327).
                         // uNbrClean tracks whether the immediate neighbor was actually cleaned: true
                         // if ELR was unnecessary OR converged; false if the cap was hit while still
@@ -184,11 +178,11 @@ namespace LinearAlgebra
                             }
                         }
 
-                        // Step 4: anorm update (monotone running max; feeds T perturbation only).
+                        // anorm update (monotone running max; feeds T perturbation only).
                         // svdAnormBlock keeps lanbpro's α·β cross term so ‖A‖ is not underestimated.
                         anorm = math.max(anorm, (fProxy)1.01f * svdAnormBlock(ws.alpha[j], j > 0 ? ws.beta[j - 1] : (fProxy)0));
 
-                        // Step 5: μ-recurrence — estimate ⟨û_j, û_i⟩ for i = 0..j-1 (in-place safe).
+                        // μ-recurrence — estimate ⟨û_j, û_i⟩ for i = 0..j-1 (in-place safe).
                         // Convention: ν_j(i+1) for i=j-1 uses self-term ν_j(j)=1 (v̂_j is unit norm).
                         // After recurrence, set μ_j(j-1) = epsFloor (ELR immediate-neighbor floor).
                         fProxy mumax = (fProxy)0;
@@ -218,7 +212,7 @@ namespace LinearAlgebra
                         // Self-term μ_j(j) = 1 (for V-recurrence to read as mu_ptr[j])
                         mu_ptr[j] = (fProxy)1;
 
-                        // Step 6: reorth trigger U
+                        // reorth trigger U
                         bool reorthTriggerU = (j > 0) && (mumax > delta || forceReorth);
                         if (reorthTriggerU)
                         {
@@ -253,7 +247,7 @@ namespace LinearAlgebra
                             forceReorth = !forceReorth;   // toggle: force next half-step (V-side)
                         }
 
-                        // Step 7: alpha breakdown — Krylov space exhausted
+                        // alpha breakdown — Krylov space exhausted
                         if (ws.alpha[j] <= scaleEps)
                         {
                             alphaBreakdown = true;
@@ -261,21 +255,21 @@ namespace LinearAlgebra
                             break;
                         }
 
-                        // Step 8: UL[j,:] = uBuf / α_j
+                        // UL[j,:] = uBuf / α_j
                         fProxy invA = (fProxy)1 / ws.alpha[j];
                         Unsafe_OP.scalMul(uBuf_ptr, m, invA);
                         UnsafeUtility.MemCpy(UL_ptr + j * m, uBuf_ptr, (long)m * szfProxy);
 
                         // ---- V-half: compute v̂_{j+1} ----
 
-                        // Step 9: vBuf = Aᵀ·û_j − α_j·v̂_j
+                        // vBuf = Aᵀ·û_j − α_j·v̂_j
                         Unsafe_OP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
                         Unsafe_OP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
 
-                        // Step 10: β_j = ‖vBuf‖ (tentative)
+                        // β_j = ‖vBuf‖ (tentative)
                         ws.beta[j] = math.sqrt(Unsafe_OP.vecDot(vBuf_ptr, vBuf_ptr, n));
 
-                        // Step 11: ELR-V — if β_j < γ·α_j, reortho vBuf against v̂_j
+                        // ELR-V — if β_j < γ·α_j, reortho vBuf against v̂_j
                         // and fold projection into bidiagonal (lanbpro line 471). vNbrClean as in ELR-U.
                         bool vNbrClean = true;
                         if (ws.beta[j] < gamma * ws.alpha[j])
@@ -293,10 +287,10 @@ namespace LinearAlgebra
                             }
                         }
 
-                        // Step 12: anorm update (post-ELR; α·β cross term retained — see Step 4).
+                        // anorm update (post-ELR; α·β cross term retained — see the U-side anorm update above).
                         anorm = math.max(anorm, (fProxy)1.01f * svdAnormBlock(ws.alpha[j], ws.beta[j]));
 
-                        // Step 13: ν-recurrence — estimate ⟨v̂_{j+1}, v̂_i⟩ for i = 0..j (in-place safe).
+                        // ν-recurrence — estimate ⟨v̂_{j+1}, v̂_i⟩ for i = 0..j (in-place safe).
                         // Convention: ν_j(i) for i==j uses self-term ν_j(j)=1 (v̂_j is unit norm).
                         // After recurrence, set ν_{j+1}(j) = epsFloor (ELR immediate-neighbor floor).
                         fProxy numax = (fProxy)0;
@@ -326,11 +320,10 @@ namespace LinearAlgebra
                             }
                         }
 
-                        // Step 14: reorth trigger V
+                        // reorth trigger V
                         bool reorthTriggerV = (numax > delta || forceReorth);
                         if (reorthTriggerV)
                         {
-                            // FUTURE: windowing (compute_int strategy 0) to reorth vs subset only.
                             // Iterated classical GS vs ALL previous v̂_0..v̂_j (twice-is-enough; see
                             // the U-side block). uBuf is the (j+1)-length coefficient scratch.
                             fProxy normrV = ws.beta[j];
@@ -358,14 +351,13 @@ namespace LinearAlgebra
                             forceReorth = !forceReorth;   // toggle: force next half-step (U-side)
                         }
 
-                        // Step 15: record Lanczos steps completed
                         pDone = j + 1;
 
-                        // Step 16: beta breakdown — invariant subspace reached
+                        // beta breakdown — invariant subspace reached
                         if (ws.beta[j] <= scaleEps)
                             break;
 
-                        // Step 17: VL[j+1,:] = vBuf / β_j
+                        // VL[j+1,:] = vBuf / β_j
                         fProxy invB = (fProxy)1 / ws.beta[j];
                         Unsafe_OP.scalMul(vBuf_ptr, n, invB);
                         UnsafeUtility.MemCpy(VL_ptr + (j + 1) * n, vBuf_ptr, (long)n * szfProxy);
@@ -373,10 +365,8 @@ namespace LinearAlgebra
                 }
                 else
                 {
-                    // ================================================================
-                    // partialReorth == false: FULL DGKS double-reorthogonalization
+                    // ==== partialReorth == false: FULL DGKS double-reorthogonalization ====
                     // (byte-identical to the pre-change code path)
-                    // ================================================================
                     for (int j = 0; j < p; j++)
                     {
                         // ----- uBuf = A * VL[j,:] -----

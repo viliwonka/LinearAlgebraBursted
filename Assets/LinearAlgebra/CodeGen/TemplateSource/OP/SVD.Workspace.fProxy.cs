@@ -21,13 +21,7 @@ namespace LinearAlgebra
 
     public static partial class ArenaExtensions
     {
-        /// <summary>
-        /// Allocates an SVD-solver workspace sized for an m x n system. With k = min(m, n):
-        /// S is length k, M is k x k, U is max(m, n) x k, and At is n x m only when the system is wide
-        /// (m &lt; n) — otherwise At is left default (the tall/square path never reads it). The buffers
-        /// are persistent in this arena (disposed with it), so create the workspace once outside a
-        /// hot loop and pass it to the workspace overloads of pinvSolve / pseudoInverse.
-        /// </summary>
+        /// <summary>Allocates an SVD-solver workspace sized for an m x n system — see <see cref="fProxySVD_WS"/> for layout. Persistent in this arena; create once outside a hot loop.</summary>
         public static fProxySVD_WS fProxySVD_WS(this ref Arena arena, int m, int n)
         {
             int k   = m < n ? m : n;

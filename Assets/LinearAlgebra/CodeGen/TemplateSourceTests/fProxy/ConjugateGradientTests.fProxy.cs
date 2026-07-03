@@ -363,7 +363,7 @@ public class fProxyConjugateGradientTests
             var A = arena.fProxyLaplacian1D(dim);
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 4242);
 
-            var x = arena.fProxyVec(dim); // zero initial guess
+            var x = arena.fProxyVec(dim);
 
             bool ok = Solvers.cg(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);

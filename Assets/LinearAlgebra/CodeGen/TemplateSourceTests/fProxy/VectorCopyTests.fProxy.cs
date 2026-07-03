@@ -22,12 +22,10 @@ public class fProxyVectorCopyTests
             int persistBefore = arena.AllocationsCount;       // includes v
             int tempBefore = arena.TempAllocationsCount;
 
-            // Copy() -> persistent pool
             var c = v.Copy();
             Assert.AreEqual(persistBefore + 1, arena.AllocationsCount);
             Assert.AreEqual(tempBefore, arena.TempAllocationsCount);
 
-            // TempCopy() -> temp pool
             var t = v.TempCopy();
             Assert.AreEqual(persistBefore + 1, arena.AllocationsCount);
             Assert.AreEqual(tempBefore + 1, arena.TempAllocationsCount);

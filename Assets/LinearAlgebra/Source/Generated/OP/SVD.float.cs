@@ -10,9 +10,6 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    /// <summary>
-    /// Inpl = inplace
-    /// </summary>
     public static partial class SVD {
 
         /// <summary>
@@ -31,9 +28,7 @@ namespace LinearAlgebra
         /// SIMD-vectorize the inner plane-rotation loops; same algorithm, unit-stride rows
         /// instead of strided columns).
         /// </summary>
-        /// <remarks>DEPRECATED: prefer <see cref="svdThin(in floatMxN, ref floatMxN, ref floatN, ref floatMxN)"/>
-        /// (Golub-Kahan bidiagonal SVD, ~3x faster and does not modify its input) for the full SVD, or
-        /// <see cref="svdValues(in floatMxN, ref floatN)"/> for singular values only. Retained for reference.</remarks>
+        /// <remarks>Deprecated; see the [Obsolete] message below for the preferred replacement.</remarks>
         [System.Obsolete("Prefer SVD.svdThin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref floatMxN U, ref floatN S, ref floatMxN V,
                                             int maxSweeps, float eps)
@@ -66,12 +61,11 @@ namespace LinearAlgebra
             var Ut = new floatMxN(n, m, Allocator.Temp, true);  // will fill every element
             var Vt = new floatMxN(n, n, Allocator.Temp, false); // zeroed; diagonal set below
 
-            // Fill Ut: row j of Ut = column j of U
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     Ut[j, i] = U[i, j];
 
-            // Initialize Vt to identity (Vt accumulates right singular vectors as rows)
+            // Vt accumulates right singular vectors as rows
             for (int i = 0; i < n; i++)
                 Vt[i, i] = (float)1;
 
@@ -165,7 +159,7 @@ namespace LinearAlgebra
                 }
             }
 
-            // Step 4: Selection sort descending by singular value
+            // Selection sort descending by singular value
             for (int j = 0; j < n; j++) {
                 int maxIdx = j;
                 float maxVal = S[j];
@@ -178,7 +172,6 @@ namespace LinearAlgebra
                 }
 
                 if (maxIdx != j) {
-                    // Swap singular values
                     float tmp = S[j];
                     S[j] = S[maxIdx];
                     S[maxIdx] = tmp;
@@ -504,17 +497,14 @@ namespace LinearAlgebra
             var B = ws.B;
             Bidiag.bidiagonalize(in A, ref U, ref B, ref V, ref ws.BidiagWs);
 
-            // Extract the bidiagonal in NR convention: d = diagonal, e the superdiagonal with
-            // e[0] = 0 and e[i] = B[i-1, i] for i = 1..n-1.
+            // Extract bidiagonal in NR convention — see svdThin's allocating overload above.
             var dVec = ws.dVec;
             var eVec = ws.eVec;
             for (int i = 0; i < n; i++) dVec[i] = B[i, i];
             eVec[0] = (float)0;
             for (int i = 1; i < n; i++) eVec[i] = B[i - 1, i];
 
-            // Transpose U (m x n) -> Ut (n x m) and V (n x n) -> Vt (n x n) so the bidiagonal QR's
-            // plane rotations hit CONTIGUOUS rows (unit-stride, SIMD via Unsafe_OP.jacobiRotate)
-            // instead of strided columns — same trick that vectorized eigenSymmetric / svdDecomposition.
+            // Transpose to contiguous rows for the bidiagonal QR — see the allocating overload above.
             bool ok;
             {
                 var Ut = ws.Ut;
@@ -543,7 +533,7 @@ namespace LinearAlgebra
             {
                 for (int i = 0; i < n; i++) S[i] = dVec[i];
 
-                // sort descending, carrying the matching U and V columns
+                // sort descending (see allocating overload above)
                 for (int j = 0; j < n; j++)
                 {
                     int maxIdx = j;
@@ -572,15 +562,13 @@ namespace LinearAlgebra
                                    ref floatSVDThin_WS ws)
             => svdThin(in A, ref U, ref S, ref V, ref ws, 75, Consts.floatZeroThreshold);
 
-        // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (diagonal d, superdiagonal e
-        // with e[0]=0), accumulating left rotations into Ut (n x m) ROWS and right rotations into Vt
-        // (n x n) ROWS — Ut/Vt are the TRANSPOSES of the SVD's U/V, so each plane rotation touches two
-        // contiguous rows (unit-stride, SIMD via Unsafe_OP.jacobiRotate). NR's Givens convention
-        // a'=c*a+s*b, b'=c*b-s*a equals jacobiRotate(a,b,c,-s). Golub-Reinsch (Numerical Recipes svdcmp
-        // diagonalization). The deflation threshold is machine-eps relative to the GLOBAL scale anorm
-        // (not a local |d|+|e|), which is what lets FLOAT converge on clustered / zero singular values
-        // (same lesson as the symmetric eigen QL). Returns false if any singular value fails to
-        // converge within maxIter sweeps.
+        // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (d diagonal, e superdiagonal,
+        // e[0]=0); accumulates left rotations into Ut (n x m) ROWS and right into Vt (n x n) ROWS — the
+        // TRANSPOSES of U/V, so each rotation touches contiguous rows (SIMD via jacobiRotate). NR's
+        // Givens convention a'=c*a+s*b, b'=c*b-s*a equals jacobiRotate(a,b,c,-s) (Golub-Reinsch /
+        // Numerical Recipes svdcmp). Deflation threshold is machine-eps relative to the GLOBAL scale
+        // anorm (not local |d|+|e|) — needed for FLOAT to converge on clustered/zero singular values
+        // (same lesson as the symmetric eigen QL). Returns false if a value fails to converge within maxIter.
         static unsafe bool bidiagonalQR(ref floatMxN Ut, ref floatN d, ref floatN e, ref floatMxN Vt,
                                         int m, int n, int maxIter)
         {

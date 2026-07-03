@@ -4,10 +4,7 @@ namespace LinearAlgebra
 {
     public static partial class SVD
     {
-        /// <summary>
-        /// Throws if <paramref name="ws"/> is not sized for an m x n values-only SVD (dVec/eVec length
-        /// n) — the layout produced by Arena.fProxySVDValues_WS(m, n).
-        /// </summary>
+        /// <summary>Throws unless <paramref name="ws"/> matches Arena.fProxySVDValues_WS(m, n) sizing.</summary>
         static void RequireSvdValuesWorkspace(in fProxySVDValues_WS ws, int n)
         {
             bool ok = ws.dVec.N == n && ws.eVec.N == n;
@@ -36,9 +33,9 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates an svdValues workspace sized for an m x n (m >= n) system: nested Bidiag workspace,
-        /// dVec/eVec length n. The buffers are persistent in this arena (disposed with it), so create
-        /// the workspace once outside a hot loop and pass it to the ref-workspace overload of svdValues.
+        /// Allocates an svdValues workspace for an m x n (m >= n) system — see
+        /// <see cref="fProxySVDValues_WS"/> for layout. Persistent in this arena; create once outside a
+        /// hot loop and pass to svdValues's ref-workspace overload.
         /// </summary>
         public static fProxySVDValues_WS fProxySVDValues_WS(this ref Arena arena, int m, int n)
         {

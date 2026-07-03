@@ -31,11 +31,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("svdRandomized: maxIter must be >= 1");
         }
 
-        /// <summary>
-        /// Throws if <paramref name="ws"/> is not sized for an m x n randomized SVD with sketch width
-        /// l = min(k + oversample, n) — the layout produced by
-        /// Arena.fProxySVDRandomized_WS(m, n, k, oversample).
-        /// </summary>
+        /// <summary>Throws unless <paramref name="ws"/> matches Arena.fProxySVDRandomized_WS(m, n, k, oversample) sizing (sketch width l = min(k+oversample, n)).</summary>
         static void RequireSvdRandomizedWorkspace(in fProxySVDRandomized_WS ws, int m, int n, int l)
         {
             bool ok =
@@ -92,10 +88,10 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates a randomized-SVD workspace for an m x n (m >= n) matrix with target rank k and
-        /// oversampling p, sized by the sketch width l = min(k + oversample, n). Pass the SAME k and
-        /// oversample to svdRandomized's ref-workspace overload. The buffers are persistent in this
-        /// arena (disposed with it), so create the workspace once outside a hot loop.
+        /// Allocates a randomized-SVD workspace for an m x n (m >= n) matrix, target rank k, and
+        /// oversampling p (sketch width l = min(k + oversample, n)) — see
+        /// <see cref="fProxySVDRandomized_WS"/> for layout. Pass the SAME k/oversample to
+        /// svdRandomized's ref-workspace overload.
         /// </summary>
         public static fProxySVDRandomized_WS fProxySVDRandomized_WS(this ref Arena arena, int m, int n, int k, int oversample)
         {

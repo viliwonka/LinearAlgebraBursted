@@ -52,19 +52,12 @@ public class floatSolversTests {
             var b = arena.floatRandomVec(dim, -1f, 1f);
 
             var y = Linear_OP.dot(b, Q);
-            
-            //var x = arena.Vector(dim);
 
             Solvers.solveUpperTriangular(ref R, ref y);
 
             var Ax = Linear_OP.dot(A, y);
 
             Assert.IsTrue(Analysis_OP.isZero(b - Ax, 1E-6f));
-            /*Print.Log(A);
-            Print.Log(Q);
-            Print.Log(R);
-            */
-            //AssertQR(in A, in Q, in R);
 
             arena.Dispose();
         }

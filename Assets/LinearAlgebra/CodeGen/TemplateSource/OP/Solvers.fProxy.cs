@@ -7,9 +7,7 @@ using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
-    /// <summary>
-    /// Inpl = inplace
-    /// </summary>
+    // Inpl = inplace
     public static partial class Solvers {
 
         // Solve Ux = b for x
@@ -169,12 +167,9 @@ namespace LinearAlgebra
         ///
         /// Caller provides x (initial guess, overwritten with solution — WARM-STARTABLE: seed x
         /// with a previous solution to resume/refine) and three scratch vectors r, p, Ap (all
-        /// length A.Rows). Returns an <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖, iterations,
-        /// status) that converts implicitly to bool (== Converged), so <c>if (cg(...))</c> keeps
-        /// working. Status is Converged iff it reached the relative residual tolerance within
-        /// maxIterations; Breakdown on non-positive curvature p·Ap &lt;= 0 (A not SPD or numerical
-        /// breakdown); MaxIterations otherwise. On a non-Converged return x is undefined (it may
-        /// have been partially updated) — only read x when Solved.
+        /// length A.Rows). Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct
+        /// for the implicit-bool/status/undefined-x contract. Breakdown on non-positive curvature
+        /// p·Ap &lt;= 0 (A not SPD or numerical breakdown).
         /// </summary>
         public static SolveInfo cg<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                    ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
@@ -273,14 +268,9 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b.
-        /// Caller provides x (initial guess, overwritten with solution) and three scratch vectors
-        /// r, p, Ap (all length A.M_Rows). Returns an <see cref="SolveInfo"/> (implicit-bool
-        /// == Converged); Converged within maxIterations to the relative residual tolerance,
-        /// Breakdown on non-positive curvature p·Ap &lt;= 0 (A not SPD or numerical breakdown),
-        /// MaxIterations otherwise. On a non-Converged return x is undefined — only read x when Solved.
-        /// Forwards into <see cref="cg{TOp}"/> via <see cref="fProxyDenseOperator"/> — see that
-        /// method for the actual loop.
+        /// CG over a dense <see cref="fProxyMxN"/> -- zero-alloc primitive. Forwards into
+        /// <see cref="cg{TOp}"/> via <see cref="fProxyDenseOperator"/>. See that method for the
+        /// actual loop and buffer semantics.
         /// </summary>
         public static SolveInfo cg(in fProxyMxN A, in fProxyN b, ref fProxyN x,
                                              ref fProxyN r, ref fProxyN p, ref fProxyN Ap,
@@ -356,10 +346,9 @@ namespace LinearAlgebra
         /// scratch vectors r, p, Ap, z (all length A.Rows). The convergence test compares the
         /// TRUE (unpreconditioned) residual ||r||² against tolerance²·||b||² — the same criterion
         /// as <see cref="cg{TOp}"/> — so iteration counts between cg and pcg on the same system are
-        /// directly comparable. Returns an <see cref="SolveInfo"/> (implicit-bool ==
-        /// Converged): Converged within maxIterations, Breakdown on non-positive curvature
-        /// p·Ap &lt;= 0 (or a non-SPD preconditioner's non-positive ⟨r,z⟩), MaxIterations
-        /// otherwise. On a non-Converged return x is undefined — only read x when Solved.
+        /// directly comparable. Returns a <see cref="SolveInfo"/> — see that struct for the
+        /// implicit-bool/status/undefined-x contract. Breakdown on non-positive curvature
+        /// p·Ap &lt;= 0 (or a non-SPD preconditioner's non-positive ⟨r,z⟩).
         /// </summary>
         public static SolveInfo pcg<TOp, TPre>(in TOp A, in TPre M, in fProxyN b, ref fProxyN x,
                                           ref fProxyN r, ref fProxyN p, ref fProxyN Ap, ref fProxyN z,
@@ -536,14 +525,12 @@ namespace LinearAlgebra
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.fProxySqrtEps);
         }
 
-        // ===================================================================================
         // Phase 3: MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), CGLS/LSQR
         // (rectangular least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/
         // pcg&lt;TOp,TPre&gt; above -- see cg&lt;TOp&gt;'s doc comment for the shared "why an
         // up-front aliasing guard" rationale. These four solvers carry more scratch vectors than
         // cg/pcg (6-9 vs 3-4), so their guards use RequireDistinctBuffers (a small loop-based
         // helper) instead of a hand-expanded OR chain -- see that helper's doc comment.
-        // ===================================================================================
 
         /// <summary>
         /// Zero-alloc MINRES (Paige-Saunders) solver for symmetric systems A x = b, generic over
@@ -565,12 +552,10 @@ namespace LinearAlgebra
         /// residual norm ‖b-Ax‖ falls out of the recurrence for free (the running <c>phibar</c>
         /// variable) -- no extra dot product or matvec is needed to test convergence.
         ///
-        /// Returns an <see cref="SolveInfo"/> (rnorm = phibar = ‖b-Ax‖, iterations, status;
-        /// implicit-bool == Converged): Converged when the residual falls within the relative
-        /// tolerance (‖r‖ &lt;= tolerance*‖b‖) inside maxIterations; Breakdown if the Lanczos
-        /// recurrence exactly exhausts the Krylov subspace short of tolerance (beta==0, an
-        /// exact-arithmetic invariant-subspace breakdown); MaxIterations otherwise. On a
-        /// non-Converged return x is undefined — only read x when Solved.
+        /// Returns a <see cref="SolveInfo"/> (rnorm = phibar = ‖b-Ax‖) — see that struct for the
+        /// implicit-bool/status/undefined-x contract. Breakdown if the Lanczos recurrence exactly
+        /// exhausts the Krylov subspace short of tolerance (beta==0, an exact-arithmetic
+        /// invariant-subspace breakdown).
         /// </summary>
         public static SolveInfo minres<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                        ref fProxyN y, ref fProxyN r1, ref fProxyN r2, ref fProxyN v,
@@ -772,12 +757,10 @@ namespace LinearAlgebra
         /// the fixed "shadow" residual (rHat0 = r0, chosen once at the start and never mutated
         /// after).
         ///
-        /// Returns an <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖, iterations, status;
-        /// implicit-bool == Converged): Converged when the residual falls within the relative
-        /// tolerance (‖r‖ &lt;= tolerance*‖b‖) inside maxIterations; Breakdown on one of the
-        /// standard BiCGSTAB breakdowns (rho == 0, rHat0·v == 0, or omega == 0 -- A not amenable
-        /// to BiCGSTAB from this shadow residual, or numerical breakdown); MaxIterations otherwise.
-        /// On a non-Converged return x is undefined — only read x when Solved.
+        /// Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct for the
+        /// implicit-bool/status/undefined-x contract. Breakdown on one of the standard BiCGSTAB
+        /// breakdowns (rho == 0, rHat0·v == 0, or omega == 0 -- A not amenable to BiCGSTAB from
+        /// this shadow residual, or numerical breakdown).
         /// </summary>
         public static SolveInfo biCGStab<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                          ref fProxyN r, ref fProxyN rHat0, ref fProxyN p, ref fProxyN v, ref fProxyN t,
@@ -1029,10 +1012,9 @@ namespace LinearAlgebra
         /// (not the residual), cgls regularizes ‖x‖ for ANY initial x -- warm start included --
         /// unlike lsqr/lsmr, which regularize ‖x - x₀‖ under a nonzero warm start.
         ///
-        /// Returns an <see cref="LstsqInfo"/> (implicit-bool == Solved): Breakdown on
-        /// non-positive curvature ‖Ap‖²&lt;=0 (mirrors cg's p·Ap&lt;=0 guard: p is in null(A), or
-        /// p==0), MaxIterations if it runs out. On a Breakdown return x is undefined -- only read
-        /// x when Solved.
+        /// Returns an <see cref="LstsqInfo"/> — see that struct for the implicit-bool/status/
+        /// undefined-x contract. Breakdown on non-positive curvature ‖Ap‖²&lt;=0 (mirrors cg's
+        /// p·Ap&lt;=0 guard: p is in null(A), or p==0).
         /// </summary>
         public static LstsqInfo cgls<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN r, ref fProxyN s, ref fProxyN p, ref fProxyN q,
@@ -1291,10 +1273,10 @@ namespace LinearAlgebra
         /// the CORRECTION), not ‖x‖. Start from x = 0 for the ‖x‖-regularized minimizer. (cgls
         /// regularizes ‖x‖ for any x₀.)
         ///
-        /// Returns an <see cref="LstsqInfo"/> (implicit-bool == Solved): Breakdown on a total
-        /// bidiagonalization breakdown (the current alpha and beta both collapse to zero in the same
-        /// step -- the Golub-Kahan recurrence exhausted), MaxIterations if it runs out. On a
-        /// Breakdown return x is undefined -- only read x when Solved.
+        /// Returns an <see cref="LstsqInfo"/> — see that struct for the implicit-bool/status/
+        /// undefined-x contract. Breakdown on a total bidiagonalization breakdown (the current
+        /// alpha and beta both collapse to zero in the same step -- the Golub-Kahan recurrence
+        /// exhausted).
         /// </summary>
         public static LstsqInfo lsqr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN w,
@@ -1630,10 +1612,9 @@ namespace LinearAlgebra
         /// ‖Ax-b‖² + damp²‖x - x₀‖² (regularizing the CORRECTION), not ‖x‖. Start from x = 0 for the
         /// ‖x‖-regularized minimizer. (cgls regularizes ‖x‖ for any x₀; lsqr matches lsmr here.)
         ///
-        /// Returns an <see cref="LstsqInfo"/> (implicit-bool == Solved): Breakdown on a
-        /// bidiagonalization breakdown (a rotation radius collapses to zero -- the Golub-Kahan
-        /// recurrence exhausted), MaxIterations if it runs out. On a Breakdown return x is undefined
-        /// -- only read x when Solved.
+        /// Returns an <see cref="LstsqInfo"/> — see that struct for the implicit-bool/status/
+        /// undefined-x contract. Breakdown on a bidiagonalization breakdown (a rotation radius
+        /// collapses to zero -- the Golub-Kahan recurrence exhausted).
         /// </summary>
         public static LstsqInfo lsmr<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN u, ref fProxyN v, ref fProxyN h,
@@ -1939,7 +1920,7 @@ namespace LinearAlgebra
             return lsmr(in A, in b, ref x, A.N_Cols, Consts.fProxySqrtEps);
         }
 
-        // ==================== AᵀA-Jacobi (column-equilibration) convenience overloads ====================
+        // AᵀA-Jacobi (column-equilibration) convenience overloads.
         // cglsJacobi / lsqrJacobi / lsmrJacobi build the column scale d[j] = 1/||A_:,j|| from
         // columnNormsSquared, wrap A in a fProxyColScaledOperator, solve the equilibrated system
         // (A*D) y = b with the underlying solver (COLD start -- x is zeroed internally; column
@@ -2115,13 +2096,12 @@ namespace LinearAlgebra
         /// INCONSISTENT system (b not in range(A)) the residual cannot reach zero -- CGNE then runs
         /// to maxIterations and reports MaxIterations; use cgls/lsqr/lsmr for least-squares instead.
         ///
-        /// Returns an <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖, iterations, status; implicit-
-        /// bool == Converged). Breakdown when ‖p‖² &lt;= 0 (Aᵀr = 0 while r is still above
-        /// tolerance): for a CONSISTENT system r lies in range(A), so Aᵀr = 0 forces r = 0 in exact
-        /// arithmetic -- a breakdown here therefore means the iteration reached the exact solution
-        /// (to floating-point precision) or the system is inconsistent (r has stalled orthogonal to
-        /// range(A) at the least-squares residual). On a non-Converged return x is undefined --
-        /// only read x when Solved.
+        /// Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct for the
+        /// implicit-bool/status/undefined-x contract. Breakdown when ‖p‖² &lt;= 0 (Aᵀr = 0 while r
+        /// is still above tolerance): for a CONSISTENT system r lies in range(A), so Aᵀr = 0 forces
+        /// r = 0 in exact arithmetic -- a breakdown here therefore means the iteration reached the
+        /// exact solution (to floating-point precision) or the system is inconsistent (r has
+        /// stalled orthogonal to range(A) at the least-squares residual).
         /// </summary>
         public static SolveInfo cgne<TOp>(in TOp A, in fProxyN b, ref fProxyN x,
                                      ref fProxyN r, ref fProxyN p, ref fProxyN q, ref fProxyN tmpN,

@@ -35,7 +35,6 @@ public class shortClampTests
             }
         }
 
-        // below lo→lo, at/in-range untouched, above hi→hi.
         void ClampVector()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -45,12 +44,12 @@ public class shortClampTests
 
             shortElem_OP.clampInpl(in v, (short)(-2), (short)5);
 
-            Assert.IsTrue(v[0] == (short)(-2)); // below lo → lo
-            Assert.IsTrue(v[1] == (short)(-2)); // at lo
-            Assert.IsTrue(v[2] == (short)0);    // in range
-            Assert.IsTrue(v[3] == (short)2);    // in range
-            Assert.IsTrue(v[4] == (short)5);    // above hi → hi
-            Assert.IsTrue(v[5] == (short)2);    // in range untouched
+            Assert.IsTrue(v[0] == (short)(-2));
+            Assert.IsTrue(v[1] == (short)(-2));
+            Assert.IsTrue(v[2] == (short)0);
+            Assert.IsTrue(v[3] == (short)2);
+            Assert.IsTrue(v[4] == (short)5);
+            Assert.IsTrue(v[5] == (short)2);
             arena.Dispose();
         }
 
@@ -63,14 +62,13 @@ public class shortClampTests
 
             shortElem_OP.clampInpl(in A, (short)0, (short)10);
 
-            Assert.IsTrue(A[0, 0] == (short)0);  // below lo
-            Assert.IsTrue(A[0, 1] == (short)3);  // in range
-            Assert.IsTrue(A[1, 0] == (short)5);  // in range
-            Assert.IsTrue(A[1, 1] == (short)10); // above hi
+            Assert.IsTrue(A[0, 0] == (short)0);
+            Assert.IsTrue(A[0, 1] == (short)3);
+            Assert.IsTrue(A[1, 0] == (short)5);
+            Assert.IsTrue(A[1, 1] == (short)10);
             arena.Dispose();
         }
 
-        // Already in range → fully untouched.
         void ClampNoOpInRange()
         {
             var arena = new Arena(Allocator.Persistent);

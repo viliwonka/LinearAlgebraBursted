@@ -69,7 +69,6 @@ namespace LinearAlgebra.Internal
 
 
 
-        // outer dot product (vec x vec => mat)
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void vecOuterDot([NoAlias] int* vA, [NoAlias] int* vB, [NoAlias] int* mat, int m, int n)
         {
@@ -136,7 +135,7 @@ namespace LinearAlgebra.Internal
             {
                 for (int nCols = 0; nCols < n; nCols++)
                 {
-                    int temp = matA[r * n + nCols]; // Cache the value from matA
+                    int temp = matA[r * n + nCols];
                     for (int kCols = 0; kCols < k; kCols++)
                     {
                         matC[r * k + kCols] += (int)(temp * matB[nCols * k + kCols]);
@@ -321,7 +320,6 @@ namespace LinearAlgebra.Internal
                 targetA[i] ^= b[i];
         }
 
-        // do something about bitwise, it is breaking compatibility
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void bitwiseLeftShiftComp([NoAlias] int* targetA, [NoAlias] int* shiftValues, int n) {
             for (int i = 0; i < n; i++)
@@ -336,7 +334,6 @@ namespace LinearAlgebra.Internal
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [BurstCompile]
-        // Swap rows in a matrix 
         public static void swapRows([NoAlias] int* target, int rowA, int rowB, int nCols, int colStart = 0, int colEnd = -1) {
 
             int rowIndexA = rowA * nCols;
@@ -354,7 +351,6 @@ namespace LinearAlgebra.Internal
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [BurstCompile]
-        // Swap columns in a matrix
         public static void swapColumns([NoAlias] int* target, int colA, int colB, int nRows, int nCols, int start = 0, int end = -1) {
             int startA = colA;
             int startB = colB;

@@ -298,7 +298,6 @@ public class doubleOptimizeTests
             arena.Dispose();
         }
 
-        // Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff
         private void AssertFinite(double v)
         {
             if (!Unity.Mathematics.math.isfinite(v) && Fail[0] == (double)0)
@@ -336,8 +335,8 @@ public class doubleOptimizeTests
         var fail = new NativeArray<double>(4, Allocator.TempJob);
         try {
             new TestJob() { Type = type, Fail = fail }.Run();
-            // Under Burst a failed in-job assert logs an exception and aborts the job without
-            // throwing to the caller - surface the recorded diagnostics here as well.
+            // Burst in-job asserts abort without throwing; diagnostics surfaced here too
+            // (see doubleOrthoOpTests.QRDecompTests).
             if (fail[0] != (double)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 

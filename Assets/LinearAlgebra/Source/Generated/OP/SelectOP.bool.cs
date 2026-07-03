@@ -6,11 +6,7 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra
 {
 
-    /// <summary>Returns b if c is true, a otherwise.</summary>
-    /// <param name="a">Value to use if c is false.</param>
-    /// <param name="b">Value to use if c is true.</param>
-    /// <param name="c">Bool value to choose between a and b.</param>
-    /// <returns>The selection between a and b according to bool c.</returns>
+    // Class summary lives on the fProxy partial (SelectOP.fProxy.cs). Bool-buffer select overloads.
     public static partial class Select_OP
     {
         public static boolN select(in boolN a, in boolN b, in boolN c)

@@ -117,7 +117,6 @@ public class fProxySVDWorkspaceTests
             Assert.IsTrue(ca == cb);
             Assert.IsTrue(Analysis_OP.isZero(Pa - Pb, Tol()));
 
-            // workspace-struct form (default relTol/maxSweeps) must match the raw-scratch form
             var Aw = A0.Copy();
             var Pw = arena.fProxyMat(n, m);
             var ws = arena.fProxySVD_WS(m, n);

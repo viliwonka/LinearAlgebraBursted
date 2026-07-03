@@ -73,9 +73,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // linspace. Prefer doubleLinspace(a, b, N) for new code; this older name is kept for existing
-        // callers and now delegates to the guarded doubleGen_OP.linspace (handles N==1 instead of
-        // dividing by zero, and pins both endpoints exactly).
+        // Legacy name for doubleLinspace(a, b, N); delegates to the guarded doubleGen_OP.linspace (handles N==1, pins both endpoints exactly).
         public static doubleN doubleLinVec(this ref Arena arena, int N, double start, double end)
         {
             var vec = arena.doubleVec(N);
@@ -86,7 +84,6 @@ namespace LinearAlgebra
         #endregion
 
         #region MATRIX
-        // constructs identity matrix
         public static doubleMxN doubleIdentityMat(this ref Arena arena, int N)
         {
             var matrix = arena.doubleMat(N, N);
@@ -98,7 +95,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs diagonal matrix with scalar s on diagonal
         public static doubleMxN doubleDiagonalMat(this ref Arena arena, int N, double s)
         {
             var matrix = arena.doubleMat(N, N);
@@ -109,7 +105,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs diagonal matrix based on vector
         public static doubleMxN doubleDiagonalMat(this ref Arena arena, in doubleN vec)
         {
             var matrix = arena.doubleMat(vec.N, vec.N);
@@ -120,7 +115,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // constructs matrix with indexes that start at 0
         public static doubleMxN doubleIndexZeroMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.doubleMat(M_rows, N_cols, true);
@@ -135,7 +129,6 @@ namespace LinearAlgebra
             return mat;
         }
 
-        // constructs matrix with indexes that start at 1
         public static doubleMxN doubleIndexOneMat(this ref Arena arena, int M_rows, int N_cols)
         {
             var mat = arena.doubleMat(M_rows, N_cols, true);
@@ -149,8 +142,6 @@ namespace LinearAlgebra
 
             return mat;
         }
-
-        // random matrix
 
         public static doubleMxN doubleRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
@@ -183,7 +174,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // i and j are axis indexes to rotate
         public static doubleMxN doubleRotationMat(this ref Arena arena, int M, int i, int j, double radians)
         {
             var matrix = arena.doubleIdentityMat(M);
@@ -209,7 +199,6 @@ namespace LinearAlgebra
             return matrix;
         }
 
-        // i and j are axis indexes to swap
         public static doubleMxN doublePermutationMat(this ref Arena arena, int M, int i, int j)
         {
             var matrix = arena.doubleIdentityMat(M);

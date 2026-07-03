@@ -206,7 +206,7 @@ public class RandomSharedTests
             {
                 AssertTrue(dest[i] >= 0 && dest[i] < n);
                 for (int j = i + 1; j < k; j++)
-                    AssertTrue(dest[i] != dest[j]);   // distinct
+                    AssertTrue(dest[i] != dest[j]);
             }
             arena.Dispose();
         }

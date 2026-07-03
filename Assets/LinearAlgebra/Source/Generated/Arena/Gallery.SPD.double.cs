@@ -112,9 +112,8 @@ namespace LinearAlgebra.Gallery
         /// <summary>
         /// n×n Kac–Murdock–Szegö (KMS) Toeplitz matrix: A[i,j] = ρ^|i−j| (0-based indices).
         /// SPD for |ρ| &lt; 1; det = (1−ρ²)^(n−1); inverse is tridiagonal.
-        /// The SPD property for |ρ| &lt; 1 is the caller's responsibility — the generator is
-        /// intentionally permissive so degenerate/indefinite cases (|ρ| ≥ 1, negative ρ) can
-        /// be used as test inputs, following the same convention as <see cref="doubleHilbert"/>.
+        /// SPD is the caller's responsibility — the generator is intentionally permissive, so
+        /// |ρ| ≥ 1 or negative ρ can be used as test inputs (same convention as <see cref="doubleHilbert"/>).
         /// </summary>
         public static doubleMxN doubleKMS(this ref Arena arena, int n, double rho)
         {
@@ -141,9 +140,8 @@ namespace LinearAlgebra.Gallery
         /// n×n Pei matrix: αI + J (all-ones). Diagonal entry α+1, off-diagonal entry 1.
         /// Eigenvalues: α+n (multiplicity 1) and α (multiplicity n−1).
         /// det = αⁿ⁻¹(α+n); SPD if α &gt; 0.
-        /// The SPD regime (α &gt; 0) is the caller's responsibility — the generator is
-        /// intentionally permissive so degenerate/indefinite cases can be used as test inputs,
-        /// following the same convention as <see cref="doubleHilbert"/>.
+        /// SPD is the caller's responsibility — the generator is intentionally permissive, so
+        /// degenerate/indefinite α can be used as test inputs (same convention as <see cref="doubleHilbert"/>).
         /// </summary>
         public static doubleMxN doublePei(this ref Arena arena, int n, double alpha)
         {
@@ -167,9 +165,8 @@ namespace LinearAlgebra.Gallery
         /// materializing U): A[i,j] = min(i,j)·α² + (i==j ? 1 : α).
         /// SPD and det=1 hold for ALL α (not only α = −1); one eigenvalue is tiny for large |α|,
         /// making this the classic "Triw-based" ill-conditioning example.
-        /// The generator is intentionally permissive — degenerate inputs can be used as test
-        /// inputs following the same convention as <see cref="doubleHilbert"/>.
-        /// Default α = −1.
+        /// The generator is intentionally permissive, following the same convention as
+        /// <see cref="doubleHilbert"/>. Default α = −1.
         /// </summary>
         public static doubleMxN doubleMoler(this ref Arena arena, int n, double alpha)
         {

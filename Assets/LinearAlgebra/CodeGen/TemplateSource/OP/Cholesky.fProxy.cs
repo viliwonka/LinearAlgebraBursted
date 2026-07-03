@@ -11,7 +11,6 @@ namespace LinearAlgebra
     /// <summary>
     /// Cholesky factorization A = L * Lᵀ for symmetric positive-definite (SPD) matrices.
     /// Cheaper and more stable than LU for SPD systems (no pivoting needed).
-    /// Inpl = inplace
     /// </summary>
     public static partial class Cholesky {
 

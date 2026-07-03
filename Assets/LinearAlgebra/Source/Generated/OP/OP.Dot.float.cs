@@ -10,7 +10,7 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Inpl = inplace
+    /// Dot products, outer product, matrix multiply, transpose, and in-place Householder reflection.
     /// </summary>
     public static partial class Linear_OP {
 

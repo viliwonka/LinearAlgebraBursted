@@ -7,11 +7,10 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra
 {
 
-    /// <summary>Returns b if c is true, a otherwise.</summary>
-    /// <param name="a">Value to use if c is false.</param>
-    /// <param name="b">Value to use if c is true.</param>
-    /// <param name="c">Bool value to choose between a and b.</param>
-    /// <returns>The selection between a and b according to bool c.</returns>
+    /// <summary>
+    /// Elementwise and scalar-bool select: returns b where c is true, a otherwise. Overloaded over
+    /// vector/matrix and per-element/scalar bool <c>c</c>, for fProxy, iProxy, and bool element types.
+    /// </summary>
     public static partial class Select_OP
     {
         // ref-dest primitive. No alias guard: select is elementwise (dst[i] = c[i] ? b[i] : a[i]),
@@ -78,7 +77,7 @@ namespace LinearAlgebra
             return c ? b.TempCopy() : a.TempCopy();
         }
 
-        // ref-dest primitive. No alias guard: scalar bool selects the whole source unchanged.
+        // Matrix analog of the scalar-bool vector overload above (same no-alias reasoning).
         public static void select(in fProxyMxN a, in fProxyMxN b, in bool c, ref fProxyMxN dest)
         {
             Assume.SameDim(in a, in b);

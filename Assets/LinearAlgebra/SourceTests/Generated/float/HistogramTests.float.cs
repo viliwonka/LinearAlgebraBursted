@@ -118,15 +118,16 @@ public class floatHistogramTests
             var arena = new Arena(Allocator.Persistent);
 
             var data = arena.floatVec(12);
-            data[0] = (float)0;      // bin0
-            data[1] = (float)1;      // bin0
-            data[2] = (float)2;      // bin1
-            data[3] = (float)3.9;    // bin1
-            data[4] = (float)5;      // bin2
-            data[5] = (float)7.5;    // bin3
-            data[6] = (float)8;      // bin4
-            data[7] = (float)9.999;  // bin4
-            data[8] = (float)10;     // bin4
+            // First 9 values match ExplicitCounts's fixture (same bins); [9..11] are non-finite.
+            data[0] = (float)0;
+            data[1] = (float)1;
+            data[2] = (float)2;
+            data[3] = (float)3.9;
+            data[4] = (float)5;
+            data[5] = (float)7.5;
+            data[6] = (float)8;
+            data[7] = (float)9.999;
+            data[8] = (float)10;
             data[9] = (float)float.NaN;              // dropped
             data[10] = (float)float.PositiveInfinity; // dropped
             data[11] = (float)float.NegativeInfinity; // dropped
@@ -448,7 +449,7 @@ public class floatHistogramTests
         }
 
         // =====================================================================
-        // helpers (Fail layout: [0]=flag, [1]=got, [2]=expected/limit, [3]=diff)
+        // helpers
         // =====================================================================
 
         int Sum(in Indices counts)
