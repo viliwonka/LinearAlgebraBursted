@@ -9,12 +9,14 @@ namespace LinearAlgebra
 {
     [BurstCompile]
     /// <summary>
-    /// In-place boolean-buffer logic ops (not/or/and/xor/equals/notEquals), buffer×buffer and buffer×scalar.
+    /// In-place boolean-buffer logic ops (notInPlace/orInPlace/andInPlace/xorInPlace/equalsInPlace/
+    /// notEqualsInPlace), buffer×buffer and buffer×scalar. The pure counterparts are the operator
+    /// overloads (!, |, &amp;, ^, ==, !=), which allocate a new result.
     /// </summary>
     public static partial class boolComp {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void not<T>(this T a) where T : unmanaged, IUnsafeBoolArray
+        public static void notInPlace<T>(this T a) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe {
                 UnsafeBoolOP.not(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
@@ -22,7 +24,7 @@ namespace LinearAlgebra
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void or<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
+        public static void orInPlace<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe
             {
@@ -31,7 +33,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void or<T>(this T a, bool b) where T : unmanaged, IUnsafeBoolArray
+        public static void orInPlace<T>(this T a, bool b) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe
             {
@@ -40,7 +42,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void and<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
+        public static void andInPlace<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe
             {
@@ -49,7 +51,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void and<T>(this T a, bool b) where T : unmanaged, IUnsafeBoolArray
+        public static void andInPlace<T>(this T a, bool b) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe
             {
@@ -58,7 +60,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void xor<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
+        public static void xorInPlace<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe
             {
@@ -66,7 +68,7 @@ namespace LinearAlgebra
             }
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void xor<T>(this T a, bool b) where T : unmanaged, IUnsafeBoolArray
+        public static void xorInPlace<T>(this T a, bool b) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe
             {
@@ -75,7 +77,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void equals<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
+        public static void equalsInPlace<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe
             {
@@ -84,7 +86,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void equals<T>(this T a, bool b) where T : unmanaged, IUnsafeBoolArray
+        public static void equalsInPlace<T>(this T a, bool b) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe
             {
@@ -93,7 +95,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void notEquals<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
+        public static void notEqualsInPlace<T>(this T a, T b) where T : unmanaged, IUnsafeBoolArray
         {
             unsafe
             {
