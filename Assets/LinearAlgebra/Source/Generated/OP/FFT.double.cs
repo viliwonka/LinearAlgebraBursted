@@ -21,10 +21,10 @@ namespace LinearAlgebra
     /// (re, im) pair to a single real vector. Typical DSP pipeline: window (Hann) → rfft → powerSpectrum.
     /// double-only.
     /// </summary>
-    public static partial class doubleFFT_OP
+    public static partial class FFT
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsPow2(int n) => n > 0 && (n & (n - 1)) == 0;
+        // IsPow2 lives in OpHelpers.Shared.cs (type-agnostic, emitted once).
 
         // ---- radix-2 in-place FFT (length must be a power of two) ----
 

@@ -601,7 +601,7 @@ public class doubleTransformsTests
             var v = arena.doubleVec(5);
             v[0] = -5f; v[1] = -1f; v[2] = 0f; v[3] = 3f; v[4] = 9f;
 
-            doubleElem_OP.clampInpl(in v, (double)(-1f), (double)4f);
+            doubleComp.clampInpl(in v, (double)(-1f), (double)4f);
             AssertClose(v[0], (double)(-1f), (double)EPS);
             AssertClose(v[1], (double)(-1f), (double)EPS);
             AssertClose(v[2], (double)0f, (double)EPS);
@@ -617,7 +617,7 @@ public class doubleTransformsTests
             A[0, 0] = -10f; A[0, 1] = 0.5f;
             A[1, 0] = 2f;   A[1, 1] = 100f;
 
-            doubleElem_OP.clampInpl(in A, (double)0f, (double)1f);
+            doubleComp.clampInpl(in A, (double)0f, (double)1f);
             AssertClose(A[0, 0], (double)0f, (double)EPS);
             AssertClose(A[0, 1], (double)0.5f, (double)EPS);
             AssertClose(A[1, 0], (double)1f, (double)EPS);
@@ -686,7 +686,7 @@ public class doubleTransformsTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.doubleVec(3);
         v[0] = -5f; v[1] = 0f; v[2] = 5f;
-        Assert.Throws<ArgumentException>(() => doubleElem_OP.clampInpl(in v, (double)4f, (double)(-1f)));
+        Assert.Throws<ArgumentException>(() => doubleComp.clampInpl(in v, (double)4f, (double)(-1f)));
         arena.Dispose();
     }
 }

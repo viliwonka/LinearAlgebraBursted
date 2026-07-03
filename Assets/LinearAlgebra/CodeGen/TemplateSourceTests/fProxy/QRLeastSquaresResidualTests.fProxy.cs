@@ -62,20 +62,20 @@ public class fProxyQRLeastSquaresResidualTests
 
             QR.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-            if (Analysis_OP.isAnyNan(in x))
+            if (Analysis.isAnyNan(in x))
                 throw new System.Exception("TestJob: NaN detected");
 
             RecordBound(math.abs(x[0] - (fProxy)5f), (fProxy)1E-4f);
             RecordBound(math.abs(x[1] - (fProxy)(-3f)), (fProxy)1E-4f);
 
-            fProxyN r = b - Linear_OP.dot(A, x);
+            fProxyN r = b - Blas.dot(A, x);
             RecordBound(math.abs(r[0] - (fProxy)1f), (fProxy)1E-4f);
             RecordBound(math.abs(r[1] - (fProxy)(-2f)), (fProxy)1E-4f);
             RecordBound(math.abs(r[2] - (fProxy)1f), (fProxy)1E-4f);
 
             // normal equations: Aᵀr == 0
-            fProxyN AtR = Linear_OP.dot(r, A);
-            RecordBound(Analysis_OP.MaxZeroError(AtR), (fProxy)1E-4f);
+            fProxyN AtR = Blas.dot(r, A);
+            RecordBound(Analysis.MaxZeroError(AtR), (fProxy)1E-4f);
 
             arena.Dispose();
         }
@@ -99,16 +99,16 @@ public class fProxyQRLeastSquaresResidualTests
 
                 QR.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis_OP.isAnyNan(in x))
+                if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                fProxyN r = b - Linear_OP.dot(A, x);
-                fProxyN AtR = Linear_OP.dot(r, A);
+                fProxyN r = b - Blas.dot(A, x);
+                fProxyN AtR = Blas.dot(r, A);
 
                 // scale-relative: ||Aᵀr||_inf small vs ||Aᵀb||_inf (the un-projected scale).
-                fProxyN AtB = Linear_OP.dot(b, A);
-                fProxy scale = Analysis_OP.MaxZeroError(AtB) + (fProxy)1f;
-                RecordBound(Analysis_OP.MaxZeroError(AtR), (fProxy)1E-3f * scale);
+                fProxyN AtB = Blas.dot(b, A);
+                fProxy scale = Analysis.MaxZeroError(AtB) + (fProxy)1f;
+                RecordBound(Analysis.MaxZeroError(AtR), (fProxy)1E-3f * scale);
 
                 // sanity: the residual is genuinely non-zero (this is an inconsistent system).
                 fProxy rNorm = fProxyNorms_OP.L2(in r);
@@ -144,10 +144,10 @@ public class fProxyQRLeastSquaresResidualTests
 
                 QR.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis_OP.isAnyNan(in x))
+                if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                fProxy r0 = SumSq(b - Linear_OP.dot(A, x));
+                fProxy r0 = SumSq(b - Blas.dot(A, x));
 
                 fProxy delta = (fProxy)0.05f;
                 for (int k = 0; k < n; k++)
@@ -155,9 +155,9 @@ public class fProxyQRLeastSquaresResidualTests
                     fProxy saved = x[k];
 
                     x[k] = saved + delta;
-                    fProxy rp = SumSq(b - Linear_OP.dot(A, x));
+                    fProxy rp = SumSq(b - Blas.dot(A, x));
                     x[k] = saved - delta;
-                    fProxy rm = SumSq(b - Linear_OP.dot(A, x));
+                    fProxy rm = SumSq(b - Blas.dot(A, x));
                     x[k] = saved;
 
                     // both perturbations must be >= the optimum (minus tiny float slack).

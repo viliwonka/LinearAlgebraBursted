@@ -65,7 +65,7 @@ namespace LinearAlgebra
             var vec = arena.iProxyVec(N);
 
             // N == 1 would divide by (N-1) == 0 -> Inf -> NaN -> garbage int. Match the guarded
-            // fProxyGen_OP.linspace convention: a single sample returns {start}.
+            // Generate.linspace convention: a single sample returns {start}.
             if (N == 1) { vec[0] = start; return vec; }
 
             float scale = 1 / (float)(N - 1);

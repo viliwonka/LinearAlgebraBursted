@@ -12,7 +12,7 @@ namespace LinearAlgebra
     /// <c>nextBoolInpl</c> — convenience fair-coin wrapper (p = 0.5) using <c>rng.NextBool()</c>.
     /// Hand-written singular file; not generated per-type.
     /// </summary>
-    public static class RandomBool_OP
+    public static partial class Rand
     {
         // ---- Bernoulli fill (vector) ----
 
@@ -29,7 +29,7 @@ namespace LinearAlgebra
         public static void nextBernoulliInpl(ref Random rng, ref boolN dest, float p)
         {
             if (!(p >= 0f && p <= 1f))
-                throw new ArgumentException("RandomBool_OP.nextBernoulliInpl: p must be in [0, 1]");
+                throw new ArgumentException("Rand.nextBernoulliInpl: p must be in [0, 1]");
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)
                 dest[i] = rng.NextFloat() < p;
@@ -46,7 +46,7 @@ namespace LinearAlgebra
         public static void nextBernoulliInpl(ref Random rng, ref boolMxN dest, float p)
         {
             if (!(p >= 0f && p <= 1f))
-                throw new ArgumentException("RandomBool_OP.nextBernoulliInpl: p must be in [0, 1]");
+                throw new ArgumentException("Rand.nextBernoulliInpl: p must be in [0, 1]");
             int len = dest.Data.Length;
             for (int i = 0; i < len; i++)
                 dest[i] = rng.NextFloat() < p;

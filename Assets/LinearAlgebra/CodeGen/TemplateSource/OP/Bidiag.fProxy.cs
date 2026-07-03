@@ -91,11 +91,11 @@ namespace LinearAlgebra
             // pass 1: w[0..L) = Σ_{r=d}^{rows-1} u[r] · M[r, d..cols)
             UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<fProxy>());
             for (int r = d; r < rows; r++)
-                Unsafe_OP.axpy(wp, mp + (long)r * cols + d, up[r], L);
+                UnsafeOP.axpy(wp, mp + (long)r * cols + d, up[r], L);
 
             // pass 2: M[r, d..cols) -= u[r] · w[0..L)
             for (int r = d; r < rows; r++)
-                Unsafe_OP.axpy(mp + (long)r * cols + d, wp, -up[r], L);
+                UnsafeOP.axpy(mp + (long)r * cols + d, wp, -up[r], L);
         }
 
         // Apply Householder G = I - v*vᵀ from the RIGHT to M[rowStart:, colStart:]:
@@ -116,8 +116,8 @@ namespace LinearAlgebra
             for (int r = rowStart; r < rows; r++)
             {
                 fProxy* rowPtr = mp + (long)r * cols + colStart;
-                fProxy dot = Unsafe_OP.vecDot(rowPtr, vp, L);
-                Unsafe_OP.axpy(rowPtr, vp, -dot, L);
+                fProxy dot = UnsafeOP.vecDot(rowPtr, vp, L);
+                UnsafeOP.axpy(rowPtr, vp, -dot, L);
             }
         }
 

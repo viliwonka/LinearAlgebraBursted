@@ -48,7 +48,7 @@ namespace LinearAlgebra
             // FloatMode (loop-carried accumulator). This form instead, once column j is known,
             // immediately subtracts its rank-1 contribution from the trailing LOWER triangle as a set
             // of row-wise axpys: L[i, j+1..i] -= L[i,j] * L[j+1..i, j]. Each row segment is unit-stride
-            // (row-major), so they go through the vectorising Unsafe_OP.axpy ([NoAlias], the GEMM
+            // (row-major), so they go through the vectorising UnsafeOP.axpy ([NoAlias], the GEMM
             // pointer path) and run at LU speed (float ~2x double). Only the lower triangle is touched
             // (i >= column index), so no work is wasted on the symmetric upper half.
             //
@@ -60,9 +60,9 @@ namespace LinearAlgebra
             // see docs/level3-blocking-guide.md recipe B), mirroring LAPACK's DPOTRF: a CHOL_BLOCK-wide
             // diagonal block L11 is factored with the same rank-1 sweep above (narrowed to the panel's
             // own jb rows/cols — DPOTF2), the below-panel strip L21 is then solved for in one shot by
-            // forward substitution against L11 (Unsafe_OP.trsmLowerPanel — DTRSM), and finally the whole
+            // forward substitution against L11 (UnsafeOP.trsmLowerPanel — DTRSM), and finally the whole
             // trailing lower triangle is updated ONCE per panel with a triangular SYRK
-            // (Unsafe_OP.syrkLowerSub, A22 -= L21*L21ᵀ) instead of one rank-1 pass per column — trading
+            // (UnsafeOP.syrkLowerSub, A22 -= L21*L21ᵀ) instead of one rank-1 pass per column — trading
             // O(n) re-streams of the trailing matrix for O(n/CHOL_BLOCK), the memory-bandwidth-bound
             // part of the algorithm. (An earlier version computed L21 by extending the panel's rank-1
             // sweep to the below-panel rows with a narrowed column width; it was measurably WORSE at
@@ -125,7 +125,7 @@ namespace LinearAlgebra
 
                         // Rank-1 update of the trailing lower triangle, one row-axpy per row.
                         for (int i = j + 1; i < n; i++)
-                            Unsafe_OP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
+                            UnsafeOP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
                     }
 
                     lj.Dispose();
@@ -166,7 +166,7 @@ namespace LinearAlgebra
                         }
 
                         for (int i = j + 1; i < panelEnd; i++)
-                            Unsafe_OP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
+                            UnsafeOP.axpy(lp + (long)i * n + (j + 1), ljp + (j + 1), -ljp[i], i - j);
                     }
 
                     int rStart = panelEnd;
@@ -179,12 +179,12 @@ namespace LinearAlgebra
                         //     place into L[rStart:n, j0:j0+jb). A21[i,:] is exactly the CURRENT
                         //     L[i, j0:j0+jb) — untouched since the last panel's SYRK, because step (1)
                         //     above never wrote to rows >= panelEnd. ONE call for the whole panel
-                        //     (Unsafe_OP.trsmLowerPanel) instead of a rank-1 update per (row, column)
+                        //     (UnsafeOP.trsmLowerPanel) instead of a rank-1 update per (row, column)
                         //     pair — the earlier per-column-per-row formulation was measured to keep
                         //     O(n^2) tiny NoInlining calls (same call count as the unblocked sweep,
                         //     just each doing less work), which ate the SYRK's savings at n up to ~512;
                         //     this collapses that to O(n/CHOL_BLOCK) calls, one per panel.
-                        Unsafe_OP.trsmLowerPanel(lp + (long)j0 * n + j0, n, lp + (long)rStart * n + j0, n, ntrail, jb);
+                        UnsafeOP.trsmLowerPanel(lp + (long)j0 * n + j0, n, lp + (long)rStart * n + j0, n, ntrail, jb);
 
                         // (3) SYRK trailing update: A22 -= L21*L21ᵀ, L21 = L[j0+jb:n, j0:j0+jb]. Touches
                         //     ONLY the lower triangle of the trailing block (see syrkLowerSub) — a full
@@ -197,7 +197,7 @@ namespace LinearAlgebra
                                 ptp[p * ntrail + kp] = L[row, j0 + p];
                         }
 
-                        Unsafe_OP.syrkLowerSub(lp, n, rStart, j0, jb, ptp);
+                        UnsafeOP.syrkLowerSub(lp, n, rStart, j0, jb, ptp);
                     }
                 }
 
@@ -323,7 +323,7 @@ namespace LinearAlgebra
             fProxy stopTol = (fProxy)n * Consts.fProxyEpsilon * absScale;
 
             // Freshly-computed factor row U[k, k..n-1] gathered contiguously into urow so the rank-1 Schur
-            // update is a set of unit-stride row-axpys (the vectorising Unsafe_OP.axpy path). One O(n) Temp
+            // update is a set of unit-stride row-axpys (the vectorising UnsafeOP.axpy path). One O(n) Temp
             // buffer (« the O(n^3) factor), matching the plain choleskyDecomposition's `lj`.
             var urow = new fProxyN(n, Allocator.Temp, false);
             unsafe {
@@ -376,7 +376,7 @@ namespace LinearAlgebra
                         for (int i = 0; i < k; i++)     { fProxy t = W[i, k]; W[i, k] = W[i, q]; W[i, q] = t; }
                         for (int j = q + 1; j < n; j++) { fProxy t = W[k, j]; W[k, j] = W[q, j]; W[q, j] = t; }
                         for (int m = k + 1; m < q; m++) { fProxy t = W[k, m]; W[k, m] = W[m, q]; W[m, q] = t; }
-                        Swap_OP.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
+                        Swap.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
                         P.Swap(k, q);
                     }
 
@@ -393,7 +393,7 @@ namespace LinearAlgebra
                     // rank-1 Schur update of the trailing UPPER triangle, one unit-stride row-axpy per
                     // row: W[i, i..n-1] -= urow[i] * urow[i..n-1].
                     for (int i = k + 1; i < n; i++)
-                        Unsafe_OP.axpy(wp + (long)i * n + i, urowp + i, -urowp[i], n - i);
+                        UnsafeOP.axpy(wp + (long)i * n + i, urowp + i, -urowp[i], n - i);
                 }
             }
 

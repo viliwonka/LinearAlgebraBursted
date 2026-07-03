@@ -7,10 +7,10 @@ using Unity.Jobs;
 
 // Milestone D: block-size-specialized (unrolled) sparse matvec kernels, b in {1,2,3,4,6}
 // (bsmMatVecB{b} / bsmMatVecTB{b} / bsmMatVecSymB{b} in UnsafeOP.Sparse.double.cs), dispatched
-// from Sparse_OP.spMV / spMVT (SparseOP.double.cs). Every case here proves ONE dispatch branch
+// from BSR.spMV / spMVT (SparseOP.double.cs). Every case here proves ONE dispatch branch
 // against the dense reference: build a doubleBSR via the builder, expand with ToDense (already
 // independently validated by doubleSparseBSRTests), and assert spMV/spMVT agree with
-// Linear_OP.dot on the dense expansion -- exactly the recipe doubleSparseBSRTests.RandomSpMV /
+// Blas.dot on the dense expansion -- exactly the recipe doubleSparseBSRTests.RandomSpMV /
 // RandomSpMVT already use, just swept across every specialized block size PLUS the two boundary
 // cases that must still fall back to the general kernel: a non-specialized square size (b=5) and
 // a rectangular block (BR != BC, which never dispatches to a specialized kernel regardless of
@@ -75,7 +75,7 @@ public class doubleSparseUnrollTests
         // ---- helpers ---------------------------------------------------------------------
 
         // Reference y = A^T*x computed directly off the dense expansion (independent of
-        // Linear_OP.trans), matching doubleSparseBSRTests.DenseTransMatVec.
+        // Blas.trans), matching doubleSparseBSRTests.DenseTransMatVec.
         static void DenseTransMatVec(in doubleMxN dense, in doubleN x, ref doubleN y)
         {
             for (int j = 0; j < dense.N_Cols; j++)
@@ -107,7 +107,7 @@ public class doubleSparseUnrollTests
         static doubleMxN SymDiagBlock(ref Arena arena, int b, uint seed)
         {
             var M = arena.doubleRandomMat(b, b, (double)(-1f), (double)1f, seed);
-            return Linear_OP.dot(M, M, true);   // M^T M
+            return Blas.dot(M, M, true);   // M^T M
         }
 
         // 4x4 block grid of b x b blocks, SYMMETRIC (upper-triangle-only) storage: a SYMMETRIC
@@ -142,13 +142,13 @@ public class doubleSparseUnrollTests
             var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, seedBase + 900u);
 
             var y = arena.doubleVec(A.M_Rows);
-            Sparse_OP.spMV(in A, in x, ref y);
-            var yRef = Linear_OP.dot(dense, x);
-            Assert.IsTrue(Analysis_OP.isZero(y - yRef, Tol()));
+            BSR.spMV(in A, in x, ref y);
+            var yRef = Blas.dot(dense, x);
+            Assert.IsTrue(Analysis.isZero(y - yRef, Tol()));
 
             // allocating overload must agree with the ref-dest overload.
-            var y2 = Sparse_OP.spMV(in A, in x);
-            Assert.IsTrue(Analysis_OP.isZero(y2 - yRef, Tol()));
+            var y2 = BSR.spMV(in A, in x);
+            Assert.IsTrue(Analysis.isZero(y2 - yRef, Tol()));
 
             arena.Dispose();
         }
@@ -162,14 +162,14 @@ public class doubleSparseUnrollTests
             var xt = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, seedBase + 900u);
 
             var yt = arena.doubleVec(A.N_Cols);
-            Sparse_OP.spMVT(in A, in xt, ref yt);
+            BSR.spMVT(in A, in xt, ref yt);
 
             var ytRef = arena.doubleVec(A.N_Cols);
             DenseTransMatVec(in dense, in xt, ref ytRef);
-            Assert.IsTrue(Analysis_OP.isZero(yt - ytRef, Tol()));
+            Assert.IsTrue(Analysis.isZero(yt - ytRef, Tol()));
 
-            var yt2 = Sparse_OP.spMVT(in A, in xt);
-            Assert.IsTrue(Analysis_OP.isZero(yt2 - ytRef, Tol()));
+            var yt2 = BSR.spMVT(in A, in xt);
+            Assert.IsTrue(Analysis.isZero(yt2 - ytRef, Tol()));
 
             arena.Dispose();
         }
@@ -192,8 +192,8 @@ public class doubleSparseUnrollTests
 
             var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 71100);
             var y = arena.doubleVec(A.M_Rows);
-            Sparse_OP.spMV(in A, in x, ref y);
-            Assert.IsTrue(Analysis_OP.isZero(y - Linear_OP.dot(dense, x), Tol()));
+            BSR.spMV(in A, in x, ref y);
+            Assert.IsTrue(Analysis.isZero(y - Blas.dot(dense, x), Tol()));
 
             arena.Dispose();
         }
@@ -213,11 +213,11 @@ public class doubleSparseUnrollTests
 
             var xt = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 72100);
             var yt = arena.doubleVec(A.N_Cols);
-            Sparse_OP.spMVT(in A, in xt, ref yt);
+            BSR.spMVT(in A, in xt, ref yt);
 
             var ytRef = arena.doubleVec(A.N_Cols);
             DenseTransMatVec(in dense, in xt, ref ytRef);
-            Assert.IsTrue(Analysis_OP.isZero(yt - ytRef, Tol()));
+            Assert.IsTrue(Analysis.isZero(yt - ytRef, Tol()));
 
             arena.Dispose();
         }
@@ -234,9 +234,9 @@ public class doubleSparseUnrollTests
             var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, seedBase + 900u);
 
             var y = arena.doubleVec(A.M_Rows);
-            Sparse_OP.spMV(in A, in x, ref y);
-            var yRef = Linear_OP.dot(dense, x);
-            Assert.IsTrue(Analysis_OP.isZero(y - yRef, Tol()));
+            BSR.spMV(in A, in x, ref y);
+            var yRef = Blas.dot(dense, x);
+            Assert.IsTrue(Analysis.isZero(y - yRef, Tol()));
 
             // spMVT on symmetric storage forwards to spMV (A == A^T). Because the matrix is now
             // GENUINELY symmetric, check spMVT against an INDEPENDENT transpose-matvec of the dense
@@ -245,8 +245,8 @@ public class doubleSparseUnrollTests
             var ytRef = arena.doubleVec(A.N_Cols);
             DenseTransMatVec(in dense, in x, ref ytRef);
             var yt = arena.doubleVec(A.N_Cols);
-            Sparse_OP.spMVT(in A, in x, ref yt);
-            Assert.IsTrue(Analysis_OP.isZero(yt - ytRef, Tol()));
+            BSR.spMVT(in A, in x, ref yt);
+            Assert.IsTrue(Analysis.isZero(yt - ytRef, Tol()));
 
             arena.Dispose();
         }

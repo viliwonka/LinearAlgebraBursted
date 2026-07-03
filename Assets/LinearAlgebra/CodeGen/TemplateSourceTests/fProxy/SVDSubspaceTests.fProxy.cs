@@ -172,7 +172,7 @@ public class fProxySVDSubspaceTests
             int m = 8, n = 5, r = 3;
             var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, 13579);
             var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, 24680);
-            var A = Linear_OP.dot(B, C);   // m x n, rank r (generic)
+            var A = Blas.dot(B, C);   // m x n, rank r (generic)
             CheckSubspaces(in A, r, ref arena, (fProxy)1E-3f);
             arena.Dispose();
         }

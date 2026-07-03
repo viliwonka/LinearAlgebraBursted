@@ -62,7 +62,7 @@ public class floatBidiagTests
 
         private void AssertNearZero(in floatMxN M, float tol, string context)
         {
-            float err = Analysis_OP.MaxZeroError(M);
+            float err = Analysis.MaxZeroError(M);
             if (!(err <= tol) && Fail[0] == (float)0)
             {
                 Fail[0] = (float)1;
@@ -70,7 +70,7 @@ public class floatBidiagTests
                 Fail[2] = tol;
                 Fail[3] = err - tol;
             }
-            Assert.IsTrue(Analysis_OP.isZero(in M, tol));
+            Assert.IsTrue(Analysis.isZero(in M, tol));
         }
 
         // Check B is upper bidiagonal: zero everywhere except B[k,k] and B[k,k+1]
@@ -105,12 +105,12 @@ public class floatBidiagTests
             int n = A.N_Cols;
 
             // 1. Reconstruction: A ≈ U * B * Vᵀ
-            var Vt   = Linear_OP.trans(V);
-            var UB   = Linear_OP.dot(U, B);
-            var UBVt = Linear_OP.dot(UB, Vt);
+            var Vt   = Blas.trans(V);
+            var UB   = Blas.dot(U, B);
+            var UBVt = Blas.dot(UB, Vt);
             var diff = A - UBVt;
 
-            if (Analysis_OP.isAnyNan(in diff))
+            if (Analysis.isAnyNan(in diff))
                 throw new System.Exception("BidiagTests: NaN in reconstruction");
 
             AssertNearZero(in diff, tol, "reconstruction");
@@ -118,11 +118,11 @@ public class floatBidiagTests
             // 2. B is upper bidiagonal
             AssertUpperBidiagonal(in B, tol);
 
-            // 3. UᵀU ≈ I_n  (Analysis_OP.isOrthogonal handles thin U: computes AᵀA = I_n)
-            Assert.IsTrue(Analysis_OP.isOrthogonal(in U, tol));
+            // 3. UᵀU ≈ I_n  (Analysis.isOrthogonal handles thin U: computes AᵀA = I_n)
+            Assert.IsTrue(Analysis.isOrthogonal(in U, tol));
 
             // 4. VᵀV ≈ I_n  (V is square)
-            Assert.IsTrue(Analysis_OP.isOrthogonal(in V, tol));
+            Assert.IsTrue(Analysis.isOrthogonal(in V, tol));
         }
 
         // ---- test cases ----

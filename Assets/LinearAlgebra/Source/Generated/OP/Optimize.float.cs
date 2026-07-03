@@ -21,7 +21,7 @@ namespace LinearAlgebra
         void Gradient(in floatN x, ref floatN g);
     }
 
-    public static partial class Optimize_OP {
+    public static partial class Optimize {
 
         /// <summary>
         /// Bracketing root find. Requires f(lo) and f(hi) to have opposite signs; returns false if not bracketed (root = the better endpoint).

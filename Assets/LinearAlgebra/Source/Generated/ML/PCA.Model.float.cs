@@ -5,8 +5,8 @@ using LinearAlgebra.ML;
 namespace LinearAlgebra.ML
 {
     /// <summary>
-    /// A fitted PCA model: the axes/variances needed to project new data (<see cref="floatPCA_OP.pcaTransform"/>)
-    /// or to read off variances for a reduction decision. Every <c>floatPCA_OP</c> fit route (pcaCovariance /
+    /// A fitted PCA model: the axes/variances needed to project new data (<see cref="PCA.pcaTransform"/>)
+    /// or to read off variances for a reduction decision. Every <c>PCA</c> fit route (pcaCovariance /
     /// pcaSVD / pcaSVDTruncated / pcaRandomized) fills one of these. Allocate via
     /// <c>Arena.floatPCAModel(p, k)</c> (p = X.N_Cols features, k = number of components) and reuse across
     /// same-shape fits (realtime pattern: fit each frame into the same model, <c>ClearTemp()</c> reclaims the
@@ -21,7 +21,7 @@ namespace LinearAlgebra.ML
     public struct floatPCAModel
     {
         /// <summary>p x k. Column i is the i-th principal axis (unit-norm, sign-fixed — see
-        /// <see cref="floatPCA_OP"/>'s sign convention). Undefined if <see cref="converged"/> is false.</summary>
+        /// <see cref="PCA"/>'s sign convention). Undefined if <see cref="converged"/> is false.</summary>
         public floatMxN components;
 
         /// <summary>Length k. Variance captured by each component, DESCENDING. Undefined if

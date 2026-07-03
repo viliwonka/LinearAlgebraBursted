@@ -133,8 +133,8 @@ public class doubleAccuracySweepTests
             var Qb = A.Copy();
             var Rb = arena.doubleMat(n, n);
             QR.qrDecomposition(ref Qb, ref Rb);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in Qb));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in Rb));
+            Assert.IsFalse(Analysis.isAnyNan(in Qb));
+            Assert.IsFalse(Analysis.isAnyNan(in Rb));
 
             // Unblocked reference: the zero-alloc (ref u) overload is deliberately NOT blocked (see the
             // QR.double.cs comment) — it runs the classic rank-1 Householder sweep, giving an independent
@@ -201,8 +201,8 @@ public class doubleAccuracySweepTests
 
             LQ.lqDecomposition(ref A, ref L, ref Q);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in L));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in Q));
+            Assert.IsFalse(Analysis.isAnyNan(in L));
+            Assert.IsFalse(Analysis.isAnyNan(in Q));
 
             double recon = ReconResidualLQ(in origA, in L, in Q); // ‖A − L·Q‖_F / ‖A‖_F, double.
             double orth  = OrthoErrorRows(in Q);                  // ‖Q·Qᵀ − I_m‖_F, double.
@@ -231,7 +231,7 @@ public class doubleAccuracySweepTests
 
             bool ok = Cholesky.choleskyDecomposition(in A, ref L);
             Assert.IsTrue(ok);                               // Lehmer stays numerically PD.
-            Assert.IsFalse(Analysis_OP.isAnyNan(in L));
+            Assert.IsFalse(Analysis.isAnyNan(in L));
 
             double recon = ReconResidualLLt(in A, in L);     // ‖A − L·Lᵀ‖_F / ‖A‖_F, double.
             double kappa = DiagCond(in L, true);             // κ proxy = (max/min L_ii)².
@@ -260,8 +260,8 @@ public class doubleAccuracySweepTests
 
             bool ok = LU.luDecomposition(ref U, ref L, ref pivot);
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in L));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in L));
 
             double recon = ReconResidualPALU(in A, in L, in U, in pivot); // ‖P·A − L·U‖_F/‖A‖_F.
             double kappa = DiagCond(in U, false);                         // κ proxy = max/min |U_ii|.
@@ -286,7 +286,7 @@ public class doubleAccuracySweepTests
                                  : WellCondLU(ref arena, n, seed);
 
             var xTrue = arena.doubleRandomVec(n, 1f, 10f, seed == 0 ? 424242u : seed + 1u);
-            var b = Linear_OP.dot(A, xTrue);
+            var b = Blas.dot(A, xTrue);
 
             var U = A.Copy();
             var L = arena.doubleIdentityMat(n);
@@ -297,7 +297,7 @@ public class doubleAccuracySweepTests
 
             var x = b.Copy();
             LU.luSolve(ref L, ref U, in pivot, ref x);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in x));
+            Assert.IsFalse(Analysis.isAnyNan(in x));
 
             // Residual r = A·x − b, all in double.
             double frobA = FrobA(in A);
@@ -366,7 +366,7 @@ public class doubleAccuracySweepTests
         static doubleMxN BuildSPD(ref Arena arena, int n, uint seed)
         {
             var M = arena.doubleRandomMat(n, n, -1f, 1f, seed);
-            var A = Linear_OP.dot(M, M, true);   // Mᵀ·M
+            var A = Blas.dot(M, M, true);   // Mᵀ·M
             for (int d = 0; d < n; d++)
                 A[d, d] += n;
             return A;

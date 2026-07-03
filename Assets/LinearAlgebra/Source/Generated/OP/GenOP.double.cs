@@ -14,11 +14,11 @@ namespace LinearAlgebra
     /// matrix builders (outer / outerSum).
     ///
     /// Every fill comes in two forms — a zero-alloc ref-DESTINATION primitive here
-    /// (`doubleGen_OP.xxx(ref dest, …)`, length taken from dest) and an allocating Arena wrapper
+    /// (`Generate.xxx(ref dest, …)`, length taken from dest) and an allocating Arena wrapper
     /// (`arena.doubleXxx(n, …)`). Use the ref form in per-frame / realtime loops.
     /// double-only. Kernels are normalized to sum 1; easings map t∈[0,1].
     /// </summary>
-    public static partial class doubleGen_OP
+    public static partial class Generate
     {
         // ---- linspace / arange : the axis ----
 
@@ -208,17 +208,17 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Outer product M[i,j] = u[i]*v[j] (a u.N × v.N rank-1 matrix). Forwards to
-        /// <see cref="Linear_OP.outerDot(in doubleN, in doubleN, ref doubleMxN)"/>. Use for separable
+        /// <see cref="Blas.outerDot(in doubleN, in doubleN, ref doubleMxN)"/>. Use for separable
         /// fields — e.g. a 2D Gaussian is outer(g, g) of a 1D Gaussian.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void outer(in doubleN u, in doubleN v, ref doubleMxN dest)
-            => Linear_OP.outerDot(in u, in v, ref dest);
+            => Blas.outerDot(in u, in v, ref dest);
 
         /// <summary>
         /// Additive outer "sum" M[i,j] = u[i]+v[j] (a u.N × v.N matrix). The separable building block for
         /// additive fields / gradients. No alias guard, same reasoning as
-        /// <see cref="Linear_OP.outerDot(in doubleN, in doubleN, ref doubleMxN)"/>.
+        /// <see cref="Blas.outerDot(in doubleN, in doubleN, ref doubleMxN)"/>.
         /// </summary>
         public static void outerSum(in doubleN u, in doubleN v, ref doubleMxN dest)
         {
@@ -252,7 +252,7 @@ namespace LinearAlgebra
 
             var g = new doubleN(N, Allocator.Temp);
             gaussianKernel(ref g, sigma);
-            Linear_OP.outerDot(in g, in g, ref dest);
+            Blas.outerDot(in g, in g, ref dest);
             g.Dispose();
         }
     }

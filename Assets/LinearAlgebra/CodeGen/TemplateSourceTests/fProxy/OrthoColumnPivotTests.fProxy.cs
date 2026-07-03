@@ -382,17 +382,17 @@ public class fProxyOrthoColumnPivotTests
                 for (int j = 0; j < n; j++)
                     Aperm[r, j] = A[r, P[j]];
 
-            fProxyMxN shouldBeZero = Aperm - Linear_OP.dot(Q, R);
+            fProxyMxN shouldBeZero = Aperm - Blas.dot(Q, R);
 
-            if (Analysis_OP.isAnyNan(in shouldBeZero))
+            if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
-            fProxy zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
+            fProxy zeroError = Analysis.MaxZeroError(shouldBeZero);
             RecordBound(zeroError, precision);
 
-            Assert.IsTrue(Analysis_OP.isZero(in shouldBeZero, precision));
-            Assert.IsTrue(Analysis_OP.isUpperTriangular(R, precision));
-            Assert.IsTrue(Analysis_OP.isOrthogonal(Q, precision));
+            Assert.IsTrue(Analysis.isZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis.isUpperTriangular(R, precision));
+            Assert.IsTrue(Analysis.isOrthogonal(Q, precision));
 
             // |R[d,d]| non-increasing (guaranteed by greedy column pivoting). Allow a small
             // absolute slack relative to the leading magnitude for float rounding.
@@ -531,7 +531,7 @@ public class fProxyOrthoColumnPivotTests
             int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank; // qrcp leaves A,b intact
 
             RecordEq(rank, n);
-            if (Analysis_OP.isAnyNan(in x)) { Fail0(0, 0); return; }
+            if (Analysis.isAnyNan(in x)) { Fail0(0, 0); return; }
 
             // reference: ordinary QR-LS (destroys its inputs -> feed copies)
             var Aqr = A.Copy();
@@ -558,7 +558,7 @@ public class fProxyOrthoColumnPivotTests
                 A[d, d] += (fProxy)10f;
 
             var xOrig = arena.fProxyRandomVec(dim, -3f, 3f, 1337);
-            var b = Linear_OP.dot(A, xOrig); // b in range(A) -> exact solution exists
+            var b = Blas.dot(A, xOrig); // b in range(A) -> exact solution exists
             var A_copy = A.Copy();          // for residual check after the solve
 
             var Q = arena.fProxyMat(dim, dim);
@@ -570,7 +570,7 @@ public class fProxyOrthoColumnPivotTests
             int rank = QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u).rank;
 
             RecordEq(rank, dim);
-            if (!Analysis_OP.isAnyNan(in x))
+            if (!Analysis.isAnyNan(in x))
             {
                 fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
                 for (int k = 0; k < dim; k++)
@@ -605,7 +605,7 @@ public class fProxyOrthoColumnPivotTests
             int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 3);
-            if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
             fProxy resQrcp = ResidualNorm(in A_copy, in x, in b);
             fProxy normQrcp = VecNorm(in x);
@@ -652,10 +652,10 @@ public class fProxyOrthoColumnPivotTests
             int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
-            if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
             // reconstruction A x must be the projection of b onto span(ones) = mean(b)*ones
-            var Ax = Linear_OP.dot(A_copy, x);
+            var Ax = Blas.dot(A_copy, x);
             fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
             for (int i = 0; i < dim; i++)
                 AssertClose(Ax[i], mean, tol * (math.abs(mean) + (fProxy)1));
@@ -705,7 +705,7 @@ public class fProxyOrthoColumnPivotTests
             int rank = QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, explicitTol).rank;
 
             RecordEq(rank, 3);
-            if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
             fProxy resQrcp = ResidualNorm(in A_copy, in x, in b);
 
@@ -738,7 +738,7 @@ public class fProxyOrthoColumnPivotTests
             int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 0);
-            if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
             for (int k = 0; k < n; k++)
                 AssertClose(x[k], (fProxy)0, (fProxy)Consts.fProxySqrtEps);
 
@@ -762,7 +762,7 @@ public class fProxyOrthoColumnPivotTests
             int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
-            if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
             AssertClose(x[0], (fProxy)2.5f, (fProxy)Consts.fProxySqrtEps * (fProxy)10);
             RecordBound(ResidualNorm(in A_copy, in x, in b), (fProxy)Consts.fProxySqrtEps * (fProxy)10);
@@ -833,7 +833,7 @@ public class fProxyOrthoColumnPivotTests
             int rank = QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, (fProxy)(-1)).rank;
 
             RecordEq(rank, 1);
-            if (Analysis_OP.isAnyNan(in x)) { Fail0(1, 0); return; }
+            if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
             fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
             AssertClose(x[0], (fProxy)0f, tol); // free variable (original col0) zeroed
@@ -877,7 +877,7 @@ public class fProxyOrthoColumnPivotTests
         // ‖A x − b‖2 using an UNMODIFIED copy of A (the live A may be consumed by a solver).
         fProxy ResidualNorm(in fProxyMxN A, in fProxyN x, in fProxyN b)
         {
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             fProxy s = (fProxy)0;
             for (int i = 0; i < b.N; i++)
             {

@@ -5,7 +5,7 @@ using Unity.Burst;
 
 namespace LinearAlgebra.Internal
 {
-    public static unsafe partial class UnsafeBool_OP
+    public static unsafe partial class UnsafeBoolOP
     {
 
         #region COMPARATORS

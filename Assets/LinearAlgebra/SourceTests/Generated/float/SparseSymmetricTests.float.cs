@@ -80,7 +80,7 @@ public class floatSparseSymmetricTests
 
         static void AssertVecEq(in floatN a, in floatN b, float tol)
         {
-            Assert.IsTrue(Analysis_OP.isZero(a - b, tol));
+            Assert.IsTrue(Analysis.isZero(a - b, tol));
         }
 
         static void AssertMatEq(in floatMxN a, in floatMxN b, float tol)
@@ -109,7 +109,7 @@ public class floatSparseSymmetricTests
                             floatBSRBuilder full, floatBSRBuilder sym, ref floatMxN dense)
         {
             var Mi = arena.floatRandomMat(BR, BR, (float)(-1f), (float)1f, seed);
-            var Di = Linear_OP.dot(Mi, Mi, true);   // M_i^T M_i, symmetric PSD
+            var Di = Blas.dot(Mi, Mi, true);   // M_i^T M_i, symmetric PSD
             for (int d = 0; d < BR; d++)
                 Di[d, d] += strong;
 
@@ -168,20 +168,20 @@ public class floatSparseSymmetricTests
             // ---- spMV direction ----
             var x = arena.floatRandomVec(n, (float)(-1f), (float)1f, seedBase);
 
-            var ySym  = Sparse_OP.spMV(in sym, in x);
-            var yFull = Sparse_OP.spMV(in full, in x);
+            var ySym  = BSR.spMV(in sym, in x);
+            var yFull = BSR.spMV(in full, in x);
             AssertVecEq(in ySym, in yFull, Tol());                 // sym spMV == full spMV
 
             // full is genuinely symmetric: its transpose traversal equals its forward traversal
             // (independent of the Symmetric-flag shortcut, which full does NOT use).
-            var yFullT = Sparse_OP.spMVT(in full, in x);
+            var yFullT = BSR.spMVT(in full, in x);
             AssertVecEq(in yFullT, in yFull, Tol());
 
             // ---- spMVT direction (separate random x) ----
             var xt = arena.floatRandomVec(n, (float)(-1f), (float)1f, seedBase + 1u);
 
-            var ySymT  = Sparse_OP.spMVT(in sym, in xt);   // sym's spMVT forwards to spMV (A==A^T)
-            var yFullT2 = Sparse_OP.spMVT(in full, in xt);  // full's genuine transpose traversal
+            var ySymT  = BSR.spMVT(in sym, in xt);   // sym's spMVT forwards to spMV (A==A^T)
+            var yFullT2 = BSR.spMVT(in full, in xt);  // full's genuine transpose traversal
             AssertVecEq(in ySymT, in yFullT2, Tol());
 
             // ---- ToDense ----
@@ -437,13 +437,13 @@ public class floatSparseSymmetricTests
 
             // spMV of an empty BSR == the zero vector, for a random nonzero x.
             var x = arena.floatRandomVec(dim, (float)(-1f), (float)1f, 42000u);
-            var y = Sparse_OP.spMV(in sym, in x);
-            Assert.IsTrue(Analysis_OP.isZero(y, Tol()));
+            var y = BSR.spMV(in sym, in x);
+            Assert.IsTrue(Analysis.isZero(y, Tol()));
 
             // spMVT too -- exercises the Symmetric spMVT->spMV forwarding on an empty matrix.
             var xt = arena.floatRandomVec(dim, (float)(-1f), (float)1f, 42001u);
-            var yt = Sparse_OP.spMVT(in sym, in xt);
-            Assert.IsTrue(Analysis_OP.isZero(yt, Tol()));
+            var yt = BSR.spMVT(in sym, in xt);
+            Assert.IsTrue(Analysis.isZero(yt, Tol()));
 
             arena.Dispose();
         }
@@ -479,7 +479,7 @@ public class floatSparseSymmetricTests
             AssertVecEq(in xSym, in xDense, LooseTol());
 
             // A*x ~= b for the symmetric solve too.
-            var Ax = Sparse_OP.spMV(in sym, in xSym);
+            var Ax = BSR.spMV(in sym, in xSym);
             AssertVecEq(in Ax, in b, LooseTol());
 
             arena.Dispose();
@@ -537,7 +537,7 @@ public class floatSparseSymmetricTests
             AssertVecEq(in xPcgSym, in xPcgFull, LooseTol());
 
             // And the preconditioned solve satisfies A*x ~= b.
-            var Ax = Sparse_OP.spMV(in sym, in xPcgSym);
+            var Ax = BSR.spMV(in sym, in xPcgSym);
             AssertVecEq(in Ax, in b, LooseTol());
 
             arena.Dispose();

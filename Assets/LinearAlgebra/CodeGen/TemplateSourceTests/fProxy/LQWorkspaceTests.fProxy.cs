@@ -61,8 +61,8 @@ public class fProxyLQWorkspaceTests
             var ws = arena.fProxyLQCache(m, n);
             LQ.lqDecomposition(ref Ab, ref Lb, ref Qb, ref ws);
 
-            Assert.IsTrue(Analysis_OP.isZero(La - Lb, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(Qa - Qb, Tol()));
+            Assert.IsTrue(Analysis.isZero(La - Lb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
 
             arena.Dispose();
         }
@@ -86,7 +86,7 @@ public class fProxyLQWorkspaceTests
             var ws = arena.fProxyLQMinNormSolveCache(m, n);
             LQ.lqMinNormSolve(ref Ab, ref b, ref xb, ref ws);
 
-            Assert.IsTrue(Analysis_OP.isZero(xa - xb, Tol()));
+            Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
 
             arena.Dispose();
         }
@@ -118,8 +118,8 @@ public class fProxyLQWorkspaceTests
                 var Qw = arena.fProxyMat(m, n);
                 LQ.lqDecomposition(ref Aw, ref Lw, ref Qw, ref lqWs);
 
-                Assert.IsTrue(Analysis_OP.isZero(La - Lw, Tol()));
-                Assert.IsTrue(Analysis_OP.isZero(Qa - Qw, Tol()));
+                Assert.IsTrue(Analysis.isZero(La - Lw, Tol()));
+                Assert.IsTrue(Analysis.isZero(Qa - Qw, Tol()));
 
                 // lqMinNormSolve: allocating reference vs reused workspace
                 var b = arena.fProxyRandomVec(m, -5f, 5f, (uint)(4000 + t * 17));
@@ -132,7 +132,7 @@ public class fProxyLQWorkspaceTests
                 var xw = arena.fProxyVec(n);
                 LQ.lqMinNormSolve(ref Asw, ref b, ref xw, ref solveWs);
 
-                Assert.IsTrue(Analysis_OP.isZero(xa - xw, Tol()));
+                Assert.IsTrue(Analysis.isZero(xa - xw, Tol()));
             }
 
             arena.Dispose();

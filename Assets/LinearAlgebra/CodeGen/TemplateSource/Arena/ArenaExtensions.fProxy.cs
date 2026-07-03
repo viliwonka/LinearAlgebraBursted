@@ -56,7 +56,7 @@ namespace LinearAlgebra
 
             fProxy scale = 1 / math.sqrt(sum);
 
-            fProxyElem_OP.mulInpl(vec, scale);
+            fProxyComp.mulInpl(vec, scale);
 
             return vec;
         }
@@ -73,11 +73,11 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // Legacy name for fProxyLinspace(a, b, N); delegates to the guarded fProxyGen_OP.linspace (handles N==1, pins both endpoints exactly).
+        // Legacy name for fProxyLinspace(a, b, N); delegates to the guarded Generate.linspace (handles N==1, pins both endpoints exactly).
         public static fProxyN fProxyLinVec(this ref Arena arena, int N, fProxy start, fProxy end)
         {
             var vec = arena.fProxyVec(N);
-            fProxyGen_OP.linspace(ref vec, start, end);
+            Generate.linspace(ref vec, start, end);
             return vec;
         }
 
@@ -234,7 +234,7 @@ namespace LinearAlgebra
             var matrix = arena.fProxyIdentityMat(M);
 
             // Compute the outer product of v
-            fProxy vTv = Linear_OP.dot(v, v);
+            fProxy vTv = Blas.dot(v, v);
             
             fProxy scaleFactor = 2 / vTv;
             

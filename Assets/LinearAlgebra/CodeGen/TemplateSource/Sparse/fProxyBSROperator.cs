@@ -4,9 +4,9 @@ namespace LinearAlgebra.Sparse
 {
     /// <summary>
     /// Thin <see cref="IfProxyLinearOperator"/> wrapper over a compressed <see cref="fProxyBSR"/>.
-    /// Forwards Apply straight to <see cref="Sparse_OP.spMV"/>. ApplyT forwards either to the
-    /// on-the-fly, scatter-traversal <see cref="Sparse_OP.spMVT"/> (one-arg ctor, the default --
-    /// no transpose materialized) or to a cache-friendly FORWARD <see cref="Sparse_OP.spMV"/>
+    /// Forwards Apply straight to <see cref="BSR.spMV"/>. ApplyT forwards either to the
+    /// on-the-fly, scatter-traversal <see cref="BSR.spMVT"/> (one-arg ctor, the default --
+    /// no transpose materialized) or to a cache-friendly FORWARD <see cref="BSR.spMV"/>
     /// over a precomputed transpose AT (two-arg ctor -- see <see cref="Arena.fProxyBSRTranspose"/>),
     /// depending on which constructor built this operator.
     /// -- this is the wrapper the Phase-1 SparseOP.fProxy.cs header comment anticipated. Lets the
@@ -23,7 +23,7 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// Optional precomputed transpose of A (see <see cref="Arena.fProxyBSRTranspose"/>).
         /// Default/unset (one-arg ctor) when <see cref="_hasT"/> is false -- ApplyT then falls
-        /// back to the on-the-fly <see cref="Sparse_OP.spMVT"/>.
+        /// back to the on-the-fly <see cref="BSR.spMVT"/>.
         /// </summary>
         public readonly fProxyBSR AT;
         private readonly bool _hasT;
@@ -42,9 +42,9 @@ namespace LinearAlgebra.Sparse
 
         /// <summary>
         /// Carries a precomputed transpose aT (typically <c>arena.fProxyBSRTranspose(in a)</c>,
-        /// built ONCE per solve). ApplyT then forwards to <see cref="Sparse_OP.spMV(in fProxyBSR,
+        /// built ONCE per solve). ApplyT then forwards to <see cref="BSR.spMV(in fProxyBSR,
         /// in fProxyN, ref fProxyN)"/> over aT -- a forward, cache-friendly block-CSR traversal --
-        /// instead of the scatter-heavy <see cref="Sparse_OP.spMVT"/> over a. The one-time O(nnz)
+        /// instead of the scatter-heavy <see cref="BSR.spMVT"/> over a. The one-time O(nnz)
         /// transpose build is amortized over every iteration a solver (e.g. cgls/lsqr) calls
         /// ApplyT. Caller is responsible for aT actually being a's transpose -- this ctor does not
         /// verify it (that would defeat the point of precomputing it once).
@@ -59,14 +59,14 @@ namespace LinearAlgebra.Sparse
         public int Rows => A.M_Rows;
         public int Cols => A.N_Cols;
 
-        public void Apply(in fProxyN x, ref fProxyN y) => Sparse_OP.spMV(in A, in x, ref y);
+        public void Apply(in fProxyN x, ref fProxyN y) => BSR.spMV(in A, in x, ref y);
 
         public void ApplyT(in fProxyN x, ref fProxyN y)
         {
             if (_hasT)
-                Sparse_OP.spMV(in AT, in x, ref y);
+                BSR.spMV(in AT, in x, ref y);
             else
-                Sparse_OP.spMVT(in A, in x, ref y);
+                BSR.spMVT(in A, in x, ref y);
         }
     }
 }

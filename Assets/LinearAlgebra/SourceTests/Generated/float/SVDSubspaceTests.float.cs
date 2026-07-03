@@ -172,7 +172,7 @@ public class floatSVDSubspaceTests
             int m = 8, n = 5, r = 3;
             var B = arena.floatRandomMat(m, r, (float)(-2f), (float)2f, 13579);
             var C = arena.floatRandomMat(r, n, (float)(-2f), (float)2f, 24680);
-            var A = Linear_OP.dot(B, C);   // m x n, rank r (generic)
+            var A = Blas.dot(B, C);   // m x n, rank r (generic)
             CheckSubspaces(in A, r, ref arena, (float)1E-3f);
             arena.Dispose();
         }

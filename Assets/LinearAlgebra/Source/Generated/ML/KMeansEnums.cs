@@ -1,7 +1,7 @@
 //singularFile//
 namespace LinearAlgebra.ML
 {
-    // Seeding strategy for fProxyKMeans_OP.kmeans.
+    // Seeding strategy for KMeans.kmeans.
     // KMeansPlusPlus = D²-weighted seeding (Arthur & Vassilvitskii 2007); O(k²·N·D);
     //   improves convergence and solution quality significantly over random init.
     // Uniform = pick k distinct random points via reservoir selection; O(N); fast

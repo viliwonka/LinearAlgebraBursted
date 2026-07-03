@@ -90,7 +90,7 @@ public class fProxyLiteratureTests
             AssertClose(S[1], (fProxy)1, (fProxy)1E-4);
 
             AssertClose(fProxyNorms_OP.matrixL2(in A), (fProxy)2, (fProxy)1E-4);
-            AssertClose(Linear_OP.cond(in A), (fProxy)2, (fProxy)1E-4);
+            AssertClose(Blas.cond(in A), (fProxy)2, (fProxy)1E-4);
 
             arena.Dispose();
         }
@@ -109,7 +109,7 @@ public class fProxyLiteratureTests
 
             // --- SVD pseudo-inverse solve (pinvSolve no longer modifies A or b) ---
             var A1 = arena.fProxyLauchli(3, eps);   // (3+1)x3 = 4x3
-            var b1 = Linear_OP.dot(A1, xTrue);   // length 4, exactly in range(A)
+            var b1 = Blas.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.fProxyVec(3);
             SVD.pinvSolve(ref A1, in b1, ref xSvd, out bool converged);
             AssertTrue(converged);
@@ -118,7 +118,7 @@ public class fProxyLiteratureTests
 
             // --- QR direct solve (destroys A and b) ---
             var A2 = arena.fProxyLauchli(3, eps);   // (3+1)x3 = 4x3
-            var b2 = Linear_OP.dot(A2, xTrue);
+            var b2 = Blas.dot(A2, xTrue);
             var xQr = arena.fProxyVec(3);
             QR.qrDirectSolve(ref A2, ref b2, ref xQr);
             for (int k = 0; k < 3; k++)
@@ -158,10 +158,10 @@ public class fProxyLiteratureTests
             var arena = new Arena(Allocator.Persistent);
 
             var H3 = arena.fProxyHilbert(3);
-            AssertClose(Linear_OP.cond(in H3), (fProxy)524.0568, (fProxy)5);
+            AssertClose(Blas.cond(in H3), (fProxy)524.0568, (fProxy)5);
 
             var H5 = arena.fProxyHilbert(5);
-            AssertBelow((fProxy)1E5, Linear_OP.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
+            AssertBelow((fProxy)1E5, Blas.cond(in H5));   // cond(H_5) ≈ 4.77e5, comfortably > 1e5
 
             arena.Dispose();
         }
@@ -180,7 +180,7 @@ public class fProxyLiteratureTests
             var V = arena.fProxyMat(n, n);
             AssertTrue(Eigen.eigenDecomposition(ref W, ref eig, ref V, 100));   // destroys W; must converge
 
-            AssertTrue(Analysis_OP.isOrthogonal(V, (fProxy)1E-3));
+            AssertTrue(Analysis.isOrthogonal(V, (fProxy)1E-3));
 
             // two spectral invariants over ALL eigenvalues (so corrupted middle ones can't hide):
             //   Σλ = trace = 2*(1+..+10) = 110;   Σλ² = ‖W‖_F² = 2*(1²+..+10²) + 40 = 810
@@ -211,7 +211,7 @@ public class fProxyLiteratureTests
             fProxy lamMin = (fProxy)2 - (fProxy)2 * math.cos(pi / (fProxy)(n + 1));
 
             // condition number (read-only on T)
-            AssertClose(Linear_OP.cond(in T), lamMax / lamMin, (fProxy)1E-2);
+            AssertClose(Blas.cond(in T), lamMax / lamMin, (fProxy)1E-2);
 
             var L = arena.fProxyMat(n, n);
             AssertTrue(Cholesky.choleskyDecomposition(in T, ref L));
@@ -222,7 +222,7 @@ public class fProxyLiteratureTests
             var V = arena.fProxyMat(n, n);
             AssertTrue(Eigen.eigenDecomposition(ref Tc, ref eig, ref V));   // must converge
 
-            AssertTrue(Analysis_OP.isOrthogonal(V, (fProxy)1E-3));
+            AssertTrue(Analysis.isOrthogonal(V, (fProxy)1E-3));
 
             for (int i = 0; i < n; i++)
             {
@@ -244,14 +244,14 @@ public class fProxyLiteratureTests
             fProxy scale = (fProxy)1E-7;
 
             var A = arena.fProxyRandomMat(n, n, -1f, 1f, 90211);
-            fProxyElem_OP.mulInpl(A, scale);   // entries now ~1e-7
+            fProxyComp.mulInpl(A, scale);   // entries now ~1e-7
 
             var Q = A.Copy();
             var R = arena.fProxyMat(n, n);
             QR.qrDecomposition(ref Q, ref R);
 
-            fProxyMxN recon = Linear_OP.dot(Q, R);
-            fProxy err = Analysis_OP.MaxZeroError(A - recon);
+            fProxyMxN recon = Blas.dot(Q, R);
+            fProxy err = Analysis.MaxZeroError(A - recon);
 
             // relative to the matrix scale; pre-fix this was O(scale) (total garbage)
             AssertBelow(err / scale, (fProxy)1E-3);

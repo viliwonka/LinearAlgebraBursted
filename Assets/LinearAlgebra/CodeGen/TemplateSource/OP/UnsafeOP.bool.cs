@@ -8,7 +8,7 @@ using Unity.Burst;
 
 namespace LinearAlgebra.Internal
 {
-    public static unsafe partial class Unsafe_OP {
+    public static unsafe partial class UnsafeOP {
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [BurstCompile]

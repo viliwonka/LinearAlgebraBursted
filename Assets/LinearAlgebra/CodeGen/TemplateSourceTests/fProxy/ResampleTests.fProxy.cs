@@ -8,7 +8,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for fProxyResample_OP (data-vector interpolation + 1D/2D resizing).
+// Tests for Resample (data-vector interpolation + 1D/2D resizing).
 //
 // Verification mixes EXACT checks (integer-position sampling, endpoint pinning, aligned-grid identity,
 // documented edge-mode taps via Nearest) with property checks at a per-precision tolerance that scales
@@ -93,9 +93,9 @@ public class fProxyResampleTests
         void CheckIntegerPos(in fProxyN data, int ix)
         {
             fProxy pos = (fProxy)ix;
-            AssertClose(fProxyResample_OP.sampleAt(in data, pos, Interp.Nearest, EdgeMode.Clamp), data[ix], (fProxy)0);
-            AssertClose(fProxyResample_OP.sampleAt(in data, pos, Interp.Linear,  EdgeMode.Clamp), data[ix], (fProxy)0);
-            AssertClose(fProxyResample_OP.sampleAt(in data, pos, Interp.Cubic,   EdgeMode.Clamp), data[ix], (fProxy)0);
+            AssertClose(Resample.sampleAt(in data, pos, Interp.Nearest, EdgeMode.Clamp), data[ix], (fProxy)0);
+            AssertClose(Resample.sampleAt(in data, pos, Interp.Linear,  EdgeMode.Clamp), data[ix], (fProxy)0);
+            AssertClose(Resample.sampleAt(in data, pos, Interp.Cubic,   EdgeMode.Clamp), data[ix], (fProxy)0);
         }
 
         // Linear at pos=0.5 -> exact mean of the two neighbors.
@@ -106,10 +106,10 @@ public class fProxyResampleTests
             var data = arena.fProxyVec(4);
             data[0] = (fProxy)10; data[1] = (fProxy)20; data[2] = (fProxy)33; data[3] = (fProxy)40;
 
-            fProxy mid01 = fProxyResample_OP.sampleAt(in data, (fProxy)0.5, Interp.Linear, EdgeMode.Clamp);
+            fProxy mid01 = Resample.sampleAt(in data, (fProxy)0.5, Interp.Linear, EdgeMode.Clamp);
             AssertClose(mid01, (fProxy)15, (fProxy)10 * Consts.fProxySqrtEps);   // (10+20)/2
 
-            fProxy mid12 = fProxyResample_OP.sampleAt(in data, (fProxy)1.5, Interp.Linear, EdgeMode.Clamp);
+            fProxy mid12 = Resample.sampleAt(in data, (fProxy)1.5, Interp.Linear, EdgeMode.Clamp);
             AssertClose(mid12, (fProxy)26.5, (fProxy)10 * Consts.fProxySqrtEps); // (20+33)/2
 
             arena.Dispose();
@@ -138,7 +138,7 @@ public class fProxyResampleTests
 
         void CheckQuadAt(in fProxyN data, fProxy pos, fProxy tol)
         {
-            fProxy got = fProxyResample_OP.sampleAt(in data, pos, Interp.Cubic, EdgeMode.Clamp);
+            fProxy got = Resample.sampleAt(in data, pos, Interp.Cubic, EdgeMode.Clamp);
             AssertClose(got, Quad(pos), tol);
         }
 
@@ -196,7 +196,7 @@ public class fProxyResampleTests
 
         // Nearest sample at an integer position (so round(pos)==pos) — reads back data[idx(pos)].
         fProxy Near(in fProxyN data, int pos, EdgeMode edge) =>
-            fProxyResample_OP.sampleAt(in data, (fProxy)pos, Interp.Nearest, edge);
+            Resample.sampleAt(in data, (fProxy)pos, Interp.Nearest, edge);
 
         // =====================================================================
         // sampleAtInto
@@ -220,11 +220,11 @@ public class fProxyResampleTests
             positions[4] = (fProxy)(-1);   // exercises the edge mode
 
             var dest = arena.fProxyVec(k);
-            fProxyResample_OP.sampleAtInto(in data, in positions, ref dest, Interp.Cubic, EdgeMode.Mirror);
+            Resample.sampleAtInto(in data, in positions, ref dest, Interp.Cubic, EdgeMode.Mirror);
 
             for (int j = 0; j < k; j++)
             {
-                fProxy expected = fProxyResample_OP.sampleAt(in data, positions[j], Interp.Cubic, EdgeMode.Mirror);
+                fProxy expected = Resample.sampleAt(in data, positions[j], Interp.Cubic, EdgeMode.Mirror);
                 AssertClose(dest[j], expected, (fProxy)0);   // identical code path -> bit-exact
             }
 
@@ -246,11 +246,11 @@ public class fProxyResampleTests
             src[3] = (fProxy)0.2; src[4] = (fProxy)5.5;
 
             var dstL = arena.fProxyVec(n);
-            fProxyResample_OP.resampleInto(in src, ref dstL, Interp.Linear, EdgeMode.Clamp);
+            Resample.resampleInto(in src, ref dstL, Interp.Linear, EdgeMode.Clamp);
             for (int i = 0; i < n; i++) AssertClose(dstL[i], src[i], (fProxy)0);
 
             var dstC = arena.fProxyVec(n);
-            fProxyResample_OP.resampleInto(in src, ref dstC, Interp.Cubic, EdgeMode.Clamp);
+            Resample.resampleInto(in src, ref dstC, Interp.Cubic, EdgeMode.Clamp);
             for (int i = 0; i < n; i++) AssertClose(dstC[i], src[i], (fProxy)0);
 
             arena.Dispose();
@@ -265,7 +265,7 @@ public class fProxyResampleTests
             var up = arena.fProxyVec(4);
             up[0] = (fProxy)10; up[1] = (fProxy)20; up[2] = (fProxy)30; up[3] = (fProxy)40;
             var dstUp = arena.fProxyVec(9);
-            fProxyResample_OP.resampleInto(in up, ref dstUp, Interp.Cubic, EdgeMode.Clamp);
+            Resample.resampleInto(in up, ref dstUp, Interp.Cubic, EdgeMode.Clamp);
             AssertClose(dstUp[0], up[0], (fProxy)0);
             AssertClose(dstUp[8], up[3], (fProxy)0);
 
@@ -273,7 +273,7 @@ public class fProxyResampleTests
             var down = arena.fProxyVec(9);
             for (int i = 0; i < 9; i++) down[i] = (fProxy)(i * i);
             var dstDown = arena.fProxyVec(4);
-            fProxyResample_OP.resampleInto(in down, ref dstDown, Interp.Linear, EdgeMode.Clamp);
+            Resample.resampleInto(in down, ref dstDown, Interp.Linear, EdgeMode.Clamp);
             AssertClose(dstDown[0], down[0], (fProxy)0);
             AssertClose(dstDown[3], down[8], (fProxy)0);
 
@@ -291,7 +291,7 @@ public class fProxyResampleTests
             for (int i = 0; i < srcN; i++) src[i] = a * (fProxy)i + b;   // -1,1,3,5
 
             var dst = arena.fProxyVec(dstN);
-            fProxyResample_OP.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
+            Resample.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
 
             fProxy scale = (fProxy)(srcN - 1) / (fProxy)(dstN - 1);
             fProxy tol = (fProxy)20 * Consts.fProxySqrtEps;
@@ -313,7 +313,7 @@ public class fProxyResampleTests
             src[0] = (fProxy)5; src[1] = (fProxy)6; src[2] = (fProxy)7;
 
             var dst = arena.fProxyVec(1);
-            fProxyResample_OP.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
+            Resample.resampleInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
             AssertClose(dst[0], src[0], (fProxy)0);
 
             arena.Dispose();
@@ -344,7 +344,7 @@ public class fProxyResampleTests
         void CheckIdentity2D(ref Arena arena, in fProxyMxN src, Interp interp)
         {
             var dst = arena.fProxyMat(src.M_Rows, src.N_Cols);
-            fProxyResample_OP.resample2DInto(in src, ref dst, interp, EdgeMode.Clamp);
+            Resample.resample2DInto(in src, ref dst, interp, EdgeMode.Clamp);
             for (int r = 0; r < src.M_Rows; r++)
                 for (int c = 0; c < src.N_Cols; c++)
                     AssertClose(dst[r, c], src[r, c], (fProxy)0);
@@ -363,7 +363,7 @@ public class fProxyResampleTests
 
             int M2 = 5, N2 = 7;
             var dst = arena.fProxyMat(M2, N2);
-            fProxyResample_OP.resample2DInto(in src, ref dst, Interp.Cubic, EdgeMode.Clamp);
+            Resample.resample2DInto(in src, ref dst, Interp.Cubic, EdgeMode.Clamp);
 
             AssertClose(dst[0, 0],        src[0, 0],         (fProxy)0);
             AssertClose(dst[0, N2 - 1],   src[0, n - 1],     (fProxy)0);
@@ -388,7 +388,7 @@ public class fProxyResampleTests
 
             int M2 = 7, N2 = 9;
             var dst = arena.fProxyMat(M2, N2);
-            fProxyResample_OP.resample2DInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
+            Resample.resample2DInto(in src, ref dst, Interp.Linear, EdgeMode.Clamp);
 
             fProxy rScale = (fProxy)(m - 1) / (fProxy)(M2 - 1);
             fProxy cScale = (fProxy)(n - 1) / (fProxy)(N2 - 1);
@@ -456,7 +456,7 @@ public class fProxyResampleTests
         {
             var empty = arena.fProxyVec(0);
             Assert.Throws<ArgumentException>(
-                () => fProxyResample_OP.sampleAt(in empty, (fProxy)0, Interp.Linear, EdgeMode.Clamp));
+                () => Resample.sampleAt(in empty, (fProxy)0, Interp.Linear, EdgeMode.Clamp));
         }
         finally { arena.Dispose(); }
     }
@@ -474,13 +474,13 @@ public class fProxyResampleTests
             var positions = arena.fProxyVec(3);
             var destBad = arena.fProxyVec(4);
             Assert.Throws<ArgumentException>(
-                () => fProxyResample_OP.sampleAtInto(in data, in positions, ref destBad, Interp.Linear, EdgeMode.Clamp));
+                () => Resample.sampleAtInto(in data, in positions, ref destBad, Interp.Linear, EdgeMode.Clamp));
 
             // empty data (dest.N == positions.N so it reaches the data check) -> "sampleAtInto:" message
             var emptyData = arena.fProxyVec(0);
             var dest = arena.fProxyVec(3);
             var ex = Assert.Throws<ArgumentException>(
-                () => fProxyResample_OP.sampleAtInto(in emptyData, in positions, ref dest, Interp.Linear, EdgeMode.Clamp));
+                () => Resample.sampleAtInto(in emptyData, in positions, ref dest, Interp.Linear, EdgeMode.Clamp));
             StringAssert.Contains("sampleAtInto:", ex.Message);
         }
         finally { arena.Dispose(); }
@@ -495,12 +495,12 @@ public class fProxyResampleTests
             var src = arena.fProxyVec(4);
             var emptyDst = arena.fProxyVec(0);
             Assert.Throws<ArgumentException>(
-                () => fProxyResample_OP.resampleInto(in src, ref emptyDst, Interp.Linear, EdgeMode.Clamp));
+                () => Resample.resampleInto(in src, ref emptyDst, Interp.Linear, EdgeMode.Clamp));
 
             var emptySrc = arena.fProxyVec(0);
             var dst = arena.fProxyVec(4);
             Assert.Throws<ArgumentException>(
-                () => fProxyResample_OP.resampleInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
+                () => Resample.resampleInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
         }
         finally { arena.Dispose(); }
     }
@@ -516,18 +516,18 @@ public class fProxyResampleTests
             // dst with 0 rows
             var dstNoRows = arena.fProxyMat(0, 3);
             Assert.Throws<ArgumentException>(
-                () => fProxyResample_OP.resample2DInto(in src, ref dstNoRows, Interp.Linear, EdgeMode.Clamp));
+                () => Resample.resample2DInto(in src, ref dstNoRows, Interp.Linear, EdgeMode.Clamp));
 
             // dst with 0 cols
             var dstNoCols = arena.fProxyMat(3, 0);
             Assert.Throws<ArgumentException>(
-                () => fProxyResample_OP.resample2DInto(in src, ref dstNoCols, Interp.Linear, EdgeMode.Clamp));
+                () => Resample.resample2DInto(in src, ref dstNoCols, Interp.Linear, EdgeMode.Clamp));
 
             // src 0x0 (validated before any scratch allocation)
             var emptySrc = arena.fProxyMat(0, 0);
             var dst = arena.fProxyMat(2, 2);
             Assert.Throws<ArgumentException>(
-                () => fProxyResample_OP.resample2DInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
+                () => Resample.resample2DInto(in emptySrc, ref dst, Interp.Linear, EdgeMode.Clamp));
         }
         finally { arena.Dispose(); }
     }

@@ -5,7 +5,7 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace LinearAlgebra
 {
-    public static class Utility_OP {
+    public static partial class fProxyComp {
 
         
         public static void zeroInpl(in floatN vec) {

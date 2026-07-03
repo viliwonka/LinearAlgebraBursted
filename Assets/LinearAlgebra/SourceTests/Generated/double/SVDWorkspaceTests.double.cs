@@ -72,7 +72,7 @@ public class doubleSVDWorkspaceTests
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
-            Assert.IsTrue(Analysis_OP.isZero(xa - xb, Tol()));
+            Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
 
             // workspace-struct form (default relTol/maxSweeps) must match the raw-scratch form
             var Aw = A0.Copy();
@@ -82,7 +82,7 @@ public class doubleSVDWorkspaceTests
 
             Assert.IsTrue(rw == rb);
             Assert.IsTrue(cw == cb);
-            Assert.IsTrue(Analysis_OP.isZero(xw - xb, Tol()));
+            Assert.IsTrue(Analysis.isZero(xw - xb, Tol()));
 
             arena.Dispose();
         }
@@ -115,7 +115,7 @@ public class doubleSVDWorkspaceTests
 
             Assert.IsTrue(ra == rb);
             Assert.IsTrue(ca == cb);
-            Assert.IsTrue(Analysis_OP.isZero(Pa - Pb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Pa - Pb, Tol()));
 
             var Aw = A0.Copy();
             var Pw = arena.doubleMat(n, m);
@@ -124,7 +124,7 @@ public class doubleSVDWorkspaceTests
 
             Assert.IsTrue(rw == rb);
             Assert.IsTrue(cw == cb);
-            Assert.IsTrue(Analysis_OP.isZero(Pw - Pb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Pw - Pb, Tol()));
 
             arena.Dispose();
         }
@@ -156,7 +156,7 @@ public class doubleSVDWorkspaceTests
                 var xw = arena.doubleVec(n);
                 SVD.pinvSolve(ref Aw, in b, ref xw, out bool _, ref ws);
 
-                Assert.IsTrue(Analysis_OP.isZero(xa - xw, Tol()));
+                Assert.IsTrue(Analysis.isZero(xa - xw, Tol()));
             }
 
             arena.Dispose();

@@ -157,7 +157,7 @@ public class doubleGalleryPhase2Tests
             var xTrue = arena.doubleVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (double)(i + 1);
 
-            var b = Linear_OP.dot(A, xTrue);   // consistent RHS
+            var b = Blas.dot(A, xTrue);   // consistent RHS
 
             var x = arena.doubleVec(n);
             bool conv = Solvers.cg(in A, in b, ref x, 500, Consts.doubleSqrtEps);

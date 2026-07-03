@@ -7,11 +7,11 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// Sparse matvec kernels over fProxyBSR (block-CSR). The shape mirrors Linear_OP.dot's
+    /// Sparse matvec kernels over fProxyBSR (block-CSR). The shape mirrors Blas.dot's
     /// dense matVec overloads (in A, in x, ref y) on purpose -- a future generic
     /// IfProxyLinearOperator wrapper (Phase 2) can forward Apply/ApplyT straight to spMV/spMVT.
     /// </summary>
-    public static partial class Sparse_OP
+    public static partial class BSR
     {
         // ---- y = A * x ----
 
@@ -45,12 +45,12 @@ namespace LinearAlgebra.Sparse
                     // dispatching on BR alone is sufficient here.
                     switch (A.BR)
                     {
-                        case 1: Unsafe_OP.bsmMatVecSymB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 2: Unsafe_OP.bsmMatVecSymB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 3: Unsafe_OP.bsmMatVecSymB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 4: Unsafe_OP.bsmMatVecSymB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 6: Unsafe_OP.bsmMatVecSymB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        default: Unsafe_OP.bsmMatVecSym(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR); break;
+                        case 1: UnsafeOP.bsmMatVecSymB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 2: UnsafeOP.bsmMatVecSymB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 3: UnsafeOP.bsmMatVecSymB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 4: UnsafeOP.bsmMatVecSymB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 6: UnsafeOP.bsmMatVecSymB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        default: UnsafeOP.bsmMatVecSym(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR); break;
                     }
                 }
                 else if (A.BR == A.BC)
@@ -59,17 +59,17 @@ namespace LinearAlgebra.Sparse
                     // BR != BC always falls through to the general kernel below.
                     switch (A.BR)
                     {
-                        case 1: Unsafe_OP.bsmMatVecB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 2: Unsafe_OP.bsmMatVecB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 3: Unsafe_OP.bsmMatVecB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 4: Unsafe_OP.bsmMatVecB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 6: Unsafe_OP.bsmMatVecB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        default: Unsafe_OP.bsmMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
+                        case 1: UnsafeOP.bsmMatVecB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 2: UnsafeOP.bsmMatVecB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 3: UnsafeOP.bsmMatVecB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 4: UnsafeOP.bsmMatVecB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 6: UnsafeOP.bsmMatVecB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        default: UnsafeOP.bsmMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
                     }
                 }
                 else
                 {
-                    Unsafe_OP.bsmMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
+                    UnsafeOP.bsmMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
                 }
             }
         }
@@ -87,7 +87,7 @@ namespace LinearAlgebra.Sparse
         /// computed directly from the stored blocks in a single pass over the nonzeros (no AᵀA
         /// formed, no transpose-matvecs). Written into the caller's d2 (length A.N_Cols), no
         /// allocation. Feeds an AᵀA-Jacobi (column-equilibration) least-squares preconditioner
-        /// (see <see cref="fProxyColScaledOperator{TInner}"/> / <c>Linear_OP.buildJacobiScale</c>).
+        /// (see <see cref="fProxyColScaledOperator{TInner}"/> / <c>Blas.buildJacobiScale</c>).
         ///
         /// NOT supported for Symmetric (upper-block-triangle-only) storage: the implicit lower
         /// blocks are not materialized, so a single pass would under-count every column -- throws
@@ -172,17 +172,17 @@ namespace LinearAlgebra.Sparse
                     // BR != BC always falls through to the general kernel below.
                     switch (A.BR)
                     {
-                        case 1: Unsafe_OP.bsmMatVecTB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 2: Unsafe_OP.bsmMatVecTB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 3: Unsafe_OP.bsmMatVecTB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 4: Unsafe_OP.bsmMatVecTB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 6: Unsafe_OP.bsmMatVecTB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        default: Unsafe_OP.bsmMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
+                        case 1: UnsafeOP.bsmMatVecTB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 2: UnsafeOP.bsmMatVecTB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 3: UnsafeOP.bsmMatVecTB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 4: UnsafeOP.bsmMatVecTB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 6: UnsafeOP.bsmMatVecTB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        default: UnsafeOP.bsmMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
                     }
                 }
                 else
                 {
-                    Unsafe_OP.bsmMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
+                    UnsafeOP.bsmMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
                 }
             }
         }

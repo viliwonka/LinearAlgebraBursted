@@ -1107,7 +1107,7 @@ namespace LinearAlgebra
                     eigenvalues[maxIdx] = tmp;
 
                     // Swap corresponding columns of V only (A's diagonal traveled into eigenvalues)
-                    Swap_OP.Columns(ref V, j, maxIdx);
+                    Swap.Columns(ref V, j, maxIdx);
                 }
             }
 
@@ -1266,8 +1266,8 @@ namespace LinearAlgebra
                     for (int r = m0; r < n; r++)
                     {
                         fProxy* arow = ap + (long)r * n;
-                        Unsafe_OP.axpy(arow + m0, p + m0, -v[r], len);   // -= v[r] * q
-                        Unsafe_OP.axpy(arow + m0, v + m0, -p[r], len);   // -= q[r] * v
+                        UnsafeOP.axpy(arow + m0, p + m0, -v[r], len);   // -= v[r] * q
+                        UnsafeOP.axpy(arow + m0, v + m0, -p[r], len);   // -= q[r] * v
                     }
 
                     eVec[k] = alpha;
@@ -1497,8 +1497,8 @@ namespace LinearAlgebra
                     for (int r = m0; r < n; r++)
                     {
                         fProxy* arow = ap + (long)r * n;
-                        Unsafe_OP.axpy(arow + m0, p + m0, -v[r], len);
-                        Unsafe_OP.axpy(arow + m0, v + m0, -p[r], len);
+                        UnsafeOP.axpy(arow + m0, p + m0, -v[r], len);
+                        UnsafeOP.axpy(arow + m0, v + m0, -p[r], len);
                     }
 
                     // Accumulate Q: V := V * H_k  (H_k = I - beta v vᵀ on columns [m0,n)).
@@ -1508,7 +1508,7 @@ namespace LinearAlgebra
                         fProxy* qrow = qp + (long)r * n;
                         fProxy s = 0;
                         for (int c = m0; c < n; c++) s += qrow[c] * v[c];
-                        Unsafe_OP.axpy(qrow + m0, v + m0, -(beta * s), len);
+                        UnsafeOP.axpy(qrow + m0, v + m0, -(beta * s), len);
                     }
 
                     eVec[k] = alpha;
@@ -1575,7 +1575,7 @@ namespace LinearAlgebra
 
                                 // Apply the plane rotation to ROWS i, i+1 of the transposed eigenvector
                                 // matrix — contiguous + [NoAlias] (distinct rows) so Burst vectorizes it.
-                                Unsafe_OP.jacobiRotate(qp + (long)i * n, qp + (long)(i + 1) * n, c, s, n);
+                                UnsafeOP.jacobiRotate(qp + (long)i * n, qp + (long)(i + 1) * n, c, s, n);
                             }
                             if (r == (fProxy)0 && i >= l) continue;
                             eigenvalues[l] -= pp; eVec[l] = g; eVec[m] = 0;
@@ -1609,7 +1609,7 @@ namespace LinearAlgebra
                     fProxy tmp = eigenvalues[j];
                     eigenvalues[j] = eigenvalues[maxIdx];
                     eigenvalues[maxIdx] = tmp;
-                    Swap_OP.Columns(ref V, j, maxIdx);
+                    Swap.Columns(ref V, j, maxIdx);
                 }
             }
 
@@ -1701,7 +1701,7 @@ namespace LinearAlgebra
                             y /= x;
                             A[i, m - 1] = y;                          // store multiplier (cleared below)
                             // row update A[i, m:] -= y * A[m, m:] — unit-stride, vectorized.
-                            Unsafe_OP.axpy(ap + (long)i * n + m, ap + (long)m * n + m, -y, n - m);
+                            UnsafeOP.axpy(ap + (long)i * n + m, ap + (long)m * n + m, -y, n - m);
                             // column update A[:, m] += y * A[:, i] — column-strided, left scalar.
                             for (int j = 0; j < n; j++)
                                 A[j, m] += y * A[j, i];
@@ -1868,10 +1868,10 @@ namespace LinearAlgebra
                                     // k, k+1, k+2 are distinct -> [NoAlias] Francis butterfly SIMDs it.
                                     int rowLen = nn - k + 1;
                                     if (k != nn - 1)
-                                        Unsafe_OP.francisRow3(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
+                                        UnsafeOP.francisRow3(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
                                                              ap + (long)(k + 2) * n + k, q, r, xx, yy, zz, rowLen);
                                     else
-                                        Unsafe_OP.francisRow2(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
+                                        UnsafeOP.francisRow2(ap + (long)k * n + k, ap + (long)(k + 1) * n + k,
                                                              q, xx, yy, rowLen);
 
                                     int mmin = nn < k + 3 ? nn : k + 3;

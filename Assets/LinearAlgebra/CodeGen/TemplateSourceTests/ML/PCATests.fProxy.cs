@@ -1,7 +1,7 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.ML;        // fProxyPCA_OP, fProxyPCAModel, PCAScaling
+using LinearAlgebra.ML;        // PCA, fProxyPCAModel, PCAScaling
 using LinearAlgebra.Stats;     // fProxyStats_OP.colMean (oracle side-uses)
 
 using NUnit.Framework;
@@ -10,7 +10,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// PCA (LinearAlgebra.ML.fProxyPCA_OP) — the four fit routes (pcaCovariance / pcaSVD /
+// PCA (LinearAlgebra.ML.PCA) — the four fit routes (pcaCovariance / pcaSVD /
 // pcaSVDTruncated / pcaRandomized), the fProxyPCAModel, PCAScaling, and pcaTransform. Tests mirror
 // the KMeans / SVDRandomized idiom: a [BurstCompile(FloatPrecision.High)] IJob carries a TestType
 // enum, a Fail NativeArray diagnostic channel, and a [TestCaseSource] driver; the managed-throw
@@ -103,8 +103,8 @@ public class fProxyPCATests
             int n = 50, p = 6;
             var X = BuildCorrelated(ref arena, n, p);
 
-            var mCov = fProxyPCA_OP.pcaCovariance(ref arena, in X, scaling);
-            var mSvd = fProxyPCA_OP.pcaSVD(ref arena, in X, scaling);
+            var mCov = PCA.pcaCovariance(ref arena, in X, scaling);
+            var mSvd = PCA.pcaSVD(ref arena, in X, scaling);
 
             AssertTrue(mCov.converged);
             AssertTrue(mSvd.converged);
@@ -146,7 +146,7 @@ public class fProxyPCATests
             var X = BuildDiagonal(ref arena);   // 4×3, sample cov == diag(9,4,1)
             int p = 3;
 
-            var m = fProxyPCA_OP.pcaCovariance(ref arena, in X);   // Covariance
+            var m = PCA.pcaCovariance(ref arena, in X);   // Covariance
             AssertTrue(m.converged);
             RecordEq(m.k, p);
 
@@ -179,7 +179,7 @@ public class fProxyPCATests
             int n = 50, p = 6;
             var X = BuildCorrelated(ref arena, n, p);
 
-            var m = fProxyPCA_OP.pcaCovariance(ref arena, in X);   // full route
+            var m = PCA.pcaCovariance(ref arena, in X);   // full route
             AssertTrue(m.converged);
 
             fProxy sumRatio = (fProxy)0;
@@ -219,8 +219,8 @@ public class fProxyPCATests
             var X = BuildCorrelated(ref arena, n, p);
             for (int r = 0; r < n; r++) X[r, deg] = (fProxy)7;   // zero-variance column
 
-            var mCov = fProxyPCA_OP.pcaCovariance(ref arena, in X, PCAScaling.Correlation);
-            var mSvd = fProxyPCA_OP.pcaSVD(ref arena, in X, PCAScaling.Correlation);
+            var mCov = PCA.pcaCovariance(ref arena, in X, PCAScaling.Correlation);
+            var mSvd = PCA.pcaSVD(ref arena, in X, PCAScaling.Correlation);
             AssertTrue(mCov.converged);
             AssertTrue(mSvd.converged);
 
@@ -266,8 +266,8 @@ public class fProxyPCATests
             int n = 50, p = 6, k = 3;
             var X = BuildCorrelated(ref arena, n, p);
 
-            var full = fProxyPCA_OP.pcaSVD(ref arena, in X);              // k == p
-            var trunc = fProxyPCA_OP.pcaSVDTruncated(ref arena, in X, k); // k == 3
+            var full = PCA.pcaSVD(ref arena, in X);              // k == p
+            var trunc = PCA.pcaSVDTruncated(ref arena, in X, k); // k == 3
             AssertTrue(full.converged);
             AssertTrue(trunc.converged);
             RecordEq(trunc.k, k);
@@ -305,8 +305,8 @@ public class fProxyPCATests
             int n = 50, p = 6, k = 3;
             var X = BuildCorrelated(ref arena, n, p);
 
-            var full = fProxyPCA_OP.pcaSVD(ref arena, in X);
-            var rnd = fProxyPCA_OP.pcaRandomized(ref arena, in X, k);
+            var full = PCA.pcaSVD(ref arena, in X);
+            var rnd = PCA.pcaRandomized(ref arena, in X, k);
             AssertTrue(full.converged);
             AssertTrue(rnd.converged);
             RecordEq(rnd.k, k);
@@ -344,10 +344,10 @@ public class fProxyPCATests
             int n = 50, p = 6;
             var X = BuildCorrelated(ref arena, n, p);
 
-            var m = fProxyPCA_OP.pcaCovariance(ref arena, in X);   // Covariance, scale == 1
+            var m = PCA.pcaCovariance(ref arena, in X);   // Covariance, scale == 1
             AssertTrue(m.converged);
 
-            var scores = fProxyPCA_OP.pcaTransform(ref arena, in X, in m);
+            var scores = PCA.pcaTransform(ref arena, in X, in m);
 
             RecordEq(scores.M_Rows, n);
             RecordEq(scores.N_Cols, m.k);
@@ -398,8 +398,8 @@ public class fProxyPCATests
                 for (int c = 0; c < p; c++)
                     X2[r, c] = (c == 0) ? -X1[r, c] : X1[r, c];
 
-            var m1 = fProxyPCA_OP.pcaCovariance(ref arena, in X1);
-            var m2 = fProxyPCA_OP.pcaCovariance(ref arena, in X2);
+            var m1 = PCA.pcaCovariance(ref arena, in X1);
+            var m2 = PCA.pcaCovariance(ref arena, in X2);
             AssertTrue(m1.converged);
             AssertTrue(m2.converged);
 
@@ -424,8 +424,8 @@ public class fProxyPCATests
             int n = 50, p = 6, k = 3;
             var X = BuildCorrelated(ref arena, n, p);
 
-            var a = fProxyPCA_OP.pcaRandomized(ref arena, in X, k);
-            var b = fProxyPCA_OP.pcaRandomized(ref arena, in X, k);
+            var a = PCA.pcaRandomized(ref arena, in X, k);
+            var b = PCA.pcaRandomized(ref arena, in X, k);
             AssertTrue(a.converged);
             AssertTrue(b.converged);
 
@@ -453,7 +453,7 @@ public class fProxyPCATests
             int n = 4, p = 6;                            // wide: p > n
             var X = arena.fProxyRandomMat(n, p, (fProxy)(-2), (fProxy)2, 20240703u);
 
-            var m = fProxyPCA_OP.pcaCovariance(ref arena, in X);
+            var m = PCA.pcaCovariance(ref arena, in X);
             AssertTrue(m.converged);
             RecordEq(m.k, p);
             RecordEq(m.components.M_Rows, p);
@@ -484,7 +484,7 @@ public class fProxyPCATests
 
             var V = arena.fProxyMat(p, p);
             var rng = new Unity.Mathematics.Random(0x01234567u);
-            fProxyRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref V);
+            Rand.randomOrthogonalInpl(ref rng, ref V);
 
             var X = arena.fProxyMat(n, p);
             for (int i = 0; i < n; i++)
@@ -608,7 +608,7 @@ public class fProxyPCATests
     {
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(1, 3);   // n == 1 < 2 (variance undefined)
-        Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaCovariance(ref arena, in X));
+        Assert.Throws<ArgumentException>(() => PCA.pcaCovariance(ref arena, in X));
         arena.Dispose();
     }
 
@@ -617,7 +617,7 @@ public class fProxyPCATests
     {
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(3, 5);   // wide: p > n
-        Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaSVD(ref arena, in X));
+        Assert.Throws<ArgumentException>(() => PCA.pcaSVD(ref arena, in X));
         arena.Dispose();
     }
 
@@ -629,7 +629,7 @@ public class fProxyPCATests
         // works on wide data" test).
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(3, 5);
-        Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaSVDTruncated(ref arena, in X, 2));
+        Assert.Throws<ArgumentException>(() => PCA.pcaSVDTruncated(ref arena, in X, 2));
         arena.Dispose();
     }
 
@@ -638,7 +638,7 @@ public class fProxyPCATests
     {
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(3, 5);
-        Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaRandomized(ref arena, in X, 2));
+        Assert.Throws<ArgumentException>(() => PCA.pcaRandomized(ref arena, in X, 2));
         arena.Dispose();
     }
 
@@ -647,7 +647,7 @@ public class fProxyPCATests
     {
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(10, 4);
-        Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaSVDTruncated(ref arena, in X, 0));   // k <= 0
+        Assert.Throws<ArgumentException>(() => PCA.pcaSVDTruncated(ref arena, in X, 0));   // k <= 0
         arena.Dispose();
     }
 
@@ -656,7 +656,7 @@ public class fProxyPCATests
     {
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(10, 4);
-        Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaSVDTruncated(ref arena, in X, 5));   // k > min(n,p)=4
+        Assert.Throws<ArgumentException>(() => PCA.pcaSVDTruncated(ref arena, in X, 5));   // k > min(n,p)=4
         arena.Dispose();
     }
 
@@ -666,7 +666,7 @@ public class fProxyPCATests
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(10, 4);              // p == 4
         var model = arena.fProxyPCAModel(3, 3);      // sized for p == 3 (wrong)
-        Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaCovariance(in X, ref model));
+        Assert.Throws<ArgumentException>(() => PCA.pcaCovariance(in X, ref model));
         arena.Dispose();
     }
 
@@ -675,9 +675,9 @@ public class fProxyPCATests
     {
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(10, 4);
-        var model = fProxyPCA_OP.pcaCovariance(ref arena, in X);   // k == 4 == components.N_Cols
+        var model = PCA.pcaCovariance(ref arena, in X);   // k == 4 == components.N_Cols
         model.k = model.components.N_Cols + 1;                     // stale / hand-tampered
-        Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaTransform(ref arena, in X, in model));
+        Assert.Throws<ArgumentException>(() => PCA.pcaTransform(ref arena, in X, in model));
         arena.Dispose();
     }
 
@@ -686,9 +686,9 @@ public class fProxyPCATests
     {
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(10, 4);
-        var model = fProxyPCA_OP.pcaCovariance(ref arena, in X);   // k == 4
+        var model = PCA.pcaCovariance(ref arena, in X);   // k == 4
         var badScores = arena.fProxyMat(10, 3);                    // wrong column count (should be k == 4)
-        Assert.Throws<ArgumentException>(() => fProxyPCA_OP.pcaTransform(in X, in model, ref badScores));
+        Assert.Throws<ArgumentException>(() => PCA.pcaTransform(in X, in model, ref badScores));
         arena.Dispose();
     }
 }

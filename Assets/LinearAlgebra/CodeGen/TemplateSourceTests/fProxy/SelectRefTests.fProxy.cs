@@ -68,13 +68,13 @@ public class fProxySelectRefTests
             var c = arena.boolRandomVec(N, 33333);
 
             // allocating reference
-            var R = Select_OP.select(a, b, c);
+            var R = Select.select(a, b, c);
 
             // ref-dest into a preallocated destination
             var D = arena.fProxyVec(N);
-            Select_OP.select(in a, in b, in c, ref D);
+            Select.select(in a, in b, in c, ref D);
 
-            Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
+            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -91,12 +91,12 @@ public class fProxySelectRefTests
             var b = arena.fProxyRandomMat(M, N, -1f, 1f, 55555);
             var c = arena.boolRandomMat(M, N, 66666);
 
-            var R = Select_OP.select(a, b, c);
+            var R = Select.select(a, b, c);
 
             var D = arena.fProxyMat(M, N);
-            Select_OP.select(in a, in b, in c, ref D);
+            Select.select(in a, in b, in c, ref D);
 
-            Assert.IsTrue(Analysis_OP.isZero(R - D, Tol()));
+            Assert.IsTrue(Analysis.isZero(R - D, Tol()));
 
             arena.Dispose();
         }
@@ -113,9 +113,9 @@ public class fProxySelectRefTests
             var b = arena.fProxyRandomVec(N, -1f, 1f, 88888);
 
             var D = arena.fProxyVec(N);
-            Select_OP.select(in a, in b, true, ref D);
+            Select.select(in a, in b, true, ref D);
 
-            Assert.IsTrue(Analysis_OP.isZero(b - D, Tol()));
+            Assert.IsTrue(Analysis.isZero(b - D, Tol()));
 
             arena.Dispose();
         }
@@ -130,9 +130,9 @@ public class fProxySelectRefTests
             var b = arena.fProxyRandomVec(N, -1f, 1f, 10101);
 
             var D = arena.fProxyVec(N);
-            Select_OP.select(in a, in b, false, ref D);
+            Select.select(in a, in b, false, ref D);
 
-            Assert.IsTrue(Analysis_OP.isZero(a - D, Tol()));
+            Assert.IsTrue(Analysis.isZero(a - D, Tol()));
 
             arena.Dispose();
         }
@@ -148,9 +148,9 @@ public class fProxySelectRefTests
             var b = arena.fProxyRandomMat(M, N, -1f, 1f, 30303);
 
             var D = arena.fProxyMat(M, N);
-            Select_OP.select(in a, in b, true, ref D);
+            Select.select(in a, in b, true, ref D);
 
-            Assert.IsTrue(Analysis_OP.isZero(b - D, Tol()));
+            Assert.IsTrue(Analysis.isZero(b - D, Tol()));
 
             arena.Dispose();
         }
@@ -166,9 +166,9 @@ public class fProxySelectRefTests
             var b = arena.fProxyRandomMat(M, N, -1f, 1f, 50505);
 
             var D = arena.fProxyMat(M, N);
-            Select_OP.select(in a, in b, false, ref D);
+            Select.select(in a, in b, false, ref D);
 
-            Assert.IsTrue(Analysis_OP.isZero(a - D, Tol()));
+            Assert.IsTrue(Analysis.isZero(a - D, Tol()));
 
             arena.Dispose();
         }
@@ -188,12 +188,12 @@ public class fProxySelectRefTests
 
             // Reference into a SEPARATE buffer before a is overwritten.
             var R = arena.fProxyVec(N);
-            Select_OP.select(in a, in b, in c, ref R);
+            Select.select(in a, in b, in c, ref R);
 
             // Now alias the destination onto input a.
-            Select_OP.select(in a, in b, in c, ref a);
+            Select.select(in a, in b, in c, ref a);
 
-            Assert.IsTrue(Analysis_OP.isZero(R - a, Tol()));
+            Assert.IsTrue(Analysis.isZero(R - a, Tol()));
 
             arena.Dispose();
         }

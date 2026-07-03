@@ -103,12 +103,12 @@ public class floatSparseSolverTests
         // (overdetermined) system, whose residual A x - b is left orthogonal to range(A), nonzero.
         static void AssertLeastSquaresOptimal(in floatMxN A, in floatN x, in floatN b, float relTol)
         {
-            var Ax  = Linear_OP.dot(A, x);
+            var Ax  = Blas.dot(A, x);
             var res = Ax - b;                 // r = A x - b     (length m)
-            var atr = Linear_OP.dot(res, A);  // A^T r           (length n)  -- vector*matrix == A^T r
-            var atb = Linear_OP.dot(b, A);    // A^T b           (scale reference)
-            float atrNorm = math.sqrt(Linear_OP.dot(atr, atr));
-            float atbNorm = math.sqrt(Linear_OP.dot(atb, atb));
+            var atr = Blas.dot(res, A);  // A^T r           (length n)  -- vector*matrix == A^T r
+            var atb = Blas.dot(b, A);    // A^T b           (scale reference)
+            float atrNorm = math.sqrt(Blas.dot(atr, atr));
+            float atbNorm = math.sqrt(Blas.dot(atb, atb));
             Assert.IsTrue(atrNorm <= relTol * atbNorm);
         }
 
@@ -169,7 +169,7 @@ public class floatSparseSolverTests
         static floatMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
         {
             var M = arena.floatRandomMat(dim, dim, -1f, 1f, seed);
-            var A = Linear_OP.dot(M, M, true);
+            var A = Blas.dot(M, M, true);
             for (int d = 0; d < dim; d++)
                 A[d, d] += dim;
             return A;
@@ -196,7 +196,7 @@ public class floatSparseSolverTests
 
         static void AssertVecEq(in floatN a, in floatN b, float tol)
         {
-            Assert.IsTrue(Analysis_OP.isZero(a - b, tol));
+            Assert.IsTrue(Analysis.isZero(a - b, tol));
         }
 
         // got/expected are double so the result-struct norm fields (now double regardless of the
@@ -228,7 +228,7 @@ public class floatSparseSolverTests
             AssertVecEq(in xDense, in xBsr, Tol());
 
             // A*x ~= b for the BSR solve too (spec's explicit acceptance criterion).
-            var Ax = Sparse_OP.spMV(in bsm, in xBsr);
+            var Ax = BSR.spMV(in bsm, in xBsr);
             AssertVecEq(in Ax, in b, Tol());
 
             arena.Dispose();
@@ -258,7 +258,7 @@ public class floatSparseSolverTests
             mb.AddBlock(2, 0, arena.floatRandomMat(BR, BR, -1f, 1f, 8006));
             var Mdense = mb.ToBSR(ref arena).ToDense(ref arena);
 
-            var A = Linear_OP.dot(Mdense, Mdense, true);
+            var A = Blas.dot(Mdense, Mdense, true);
             for (int i = 0; i < dim; i++)
                 A[i, i] += dim;
 
@@ -279,7 +279,7 @@ public class floatSparseSolverTests
             bool ok = Solvers.cg(in Absm, in b, ref x);
             Assert.IsTrue(ok);
 
-            var Ax = Sparse_OP.spMV(in Absm, in x);
+            var Ax = BSR.spMV(in Absm, in x);
             AssertVecEq(in Ax, in b, Tol());
 
             // Cross-check against the dense reference too.
@@ -319,7 +319,7 @@ public class floatSparseSolverTests
 
             AssertVecEq(in xConcrete, in xGeneric, Tol());
 
-            var Ax = Linear_OP.dot(A, xConcrete);
+            var Ax = Blas.dot(A, xConcrete);
             AssertVecEq(in Ax, in b, Tol());
 
             // Independent cross-check against a DIRECT solver on a completely different code path
@@ -547,7 +547,7 @@ public class floatSparseSolverTests
             bool okDense = Solvers.minres(in A, in b, ref xDense, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okDense);
 
-            var Ax = Linear_OP.dot(A, xDense);
+            var Ax = Blas.dot(A, xDense);
             AssertVecEq(in Ax, in b, LooseTol());          // A nonsingular -> unique solution, A x ~= b
 
             // Independent cross-check against a DIRECT LU solve on the SAME indefinite matrix
@@ -571,7 +571,7 @@ public class floatSparseSolverTests
             Assert.IsTrue(okBsr);
             AssertVecEq(in xDense, in xBsr, LooseTol());
 
-            var AxBsr = Sparse_OP.spMV(in bsm, in xBsr);
+            var AxBsr = BSR.spMV(in bsm, in xBsr);
             AssertVecEq(in AxBsr, in b, LooseTol());
 
             // NOTE (spec nice-to-have, NOT asserted): plain CG on this SAME indefinite A breaks
@@ -600,7 +600,7 @@ public class floatSparseSolverTests
             Assert.IsTrue(okMin);
             AssertVecEq(in xCG, in xMin, LooseTol());       // MINRES == CG on an SPD system
 
-            var Ax = Linear_OP.dot(A, xMin);
+            var Ax = Blas.dot(A, xMin);
             AssertVecEq(in Ax, in b, LooseTol());
 
             // BSR minres agrees with dense minres.
@@ -632,7 +632,7 @@ public class floatSparseSolverTests
             var xBcg = arena.floatVec(dim);
             bool okBcg = Solvers.biCGStab(in A, in b, ref xBcg, 4 * dim, Consts.floatSqrtEps);
             Assert.IsTrue(okBcg);
-            var Ax = Linear_OP.dot(A, xBcg);
+            var Ax = Blas.dot(A, xBcg);
             AssertVecEq(in Ax, in b, LooseTol());
 
             // Direct LU reference on COPIES (luDecompositionInpl + luSolve are DESTRUCTIVE).
@@ -666,14 +666,14 @@ public class floatSparseSolverTests
             int m = 10, n = 4;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 34001);
             var xTrue = arena.floatRandomVec(n, -1f, 1f, 34002);
-            var b = Linear_OP.dot(A, xTrue);      // consistent
+            var b = Blas.dot(A, xTrue);      // consistent
 
             var x = arena.floatVec(n);
             bool ok = Solvers.cgls(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(ok);
             AssertVecEq(in x, in xTrue, LooseTol());
 
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
             var bsm = DenseToBSR1x1(ref arena, in A, m * n);
@@ -693,14 +693,14 @@ public class floatSparseSolverTests
             int m = 10, n = 4;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 35001);
             var xTrue = arena.floatRandomVec(n, -1f, 1f, 35002);
-            var b = Linear_OP.dot(A, xTrue);      // consistent
+            var b = Blas.dot(A, xTrue);      // consistent
 
             var x = arena.floatVec(n);
             bool ok = Solvers.lsqr(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(ok);
             AssertVecEq(in x, in xTrue, LooseTol());
 
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
             var bsm = DenseToBSR1x1(ref arena, in A, m * n);
@@ -790,18 +790,18 @@ public class floatSparseSolverTests
             int m = 4, n = 10;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 38001);
             var xGen = arena.floatRandomVec(n, -1f, 1f, 38002);
-            var b = Linear_OP.dot(A, xGen);      // consistent
+            var b = Blas.dot(A, xGen);      // consistent
 
             var xC = arena.floatVec(n);
             bool okC = Solvers.cgls(in A, in b, ref xC, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(okC);
-            var AxC = Linear_OP.dot(A, xC);
+            var AxC = Blas.dot(A, xC);
             AssertVecEq(in AxC, in b, LooseTol());
 
             var xL = arena.floatVec(n);
             bool okL = Solvers.lsqr(in A, in b, ref xL, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(okL);
-            var AxL = Linear_OP.dot(A, xL);
+            var AxL = Blas.dot(A, xL);
             AssertVecEq(in AxL, in b, LooseTol());
 
             // Both start from x0=0 -> both land on the unique minimum-norm solution -> they agree.
@@ -878,7 +878,7 @@ public class floatSparseSolverTests
             int m = 10, n = 4;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 41201);
             var xTrue = arena.floatRandomVec(n, -1f, 1f, 41202);
-            var b = Linear_OP.dot(A, xTrue);      // consistent
+            var b = Blas.dot(A, xTrue);      // consistent
 
             var x = arena.floatVec(n);
             bool ok = Solvers.cgls(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
@@ -900,7 +900,7 @@ public class floatSparseSolverTests
             int m = 10, n = 4;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 41301);
             var xTrue = arena.floatRandomVec(n, -1f, 1f, 41302);
-            var b = Linear_OP.dot(A, xTrue);      // consistent
+            var b = Blas.dot(A, xTrue);      // consistent
 
             var x = arena.floatVec(n);
             bool ok = Solvers.lsqr(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
@@ -924,14 +924,14 @@ public class floatSparseSolverTests
             int m = 10, n = 4;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 42001);
             var xTrue = arena.floatRandomVec(n, -1f, 1f, 42002);
-            var b = Linear_OP.dot(A, xTrue);      // consistent
+            var b = Blas.dot(A, xTrue);      // consistent
 
             var x = arena.floatVec(n);
             bool ok = Solvers.lsmr(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(ok);
             AssertVecEq(in x, in xTrue, LooseTol());
 
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             AssertVecEq(in Ax, in b, LooseTol());
 
             var bsm = DenseToBSR1x1(ref arena, in A, m * n);
@@ -988,12 +988,12 @@ public class floatSparseSolverTests
             int m = 4, n = 10;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 42201);
             var xGen = arena.floatRandomVec(n, -1f, 1f, 42202);
-            var b = Linear_OP.dot(A, xGen);      // consistent
+            var b = Blas.dot(A, xGen);      // consistent
 
             var xM = arena.floatVec(n);
             bool okM = Solvers.lsmr(in A, in b, ref xM, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(okM);
-            var AxM = Linear_OP.dot(A, xM);
+            var AxM = Blas.dot(A, xM);
             AssertVecEq(in AxM, in b, LooseTol());
 
             var xL = arena.floatVec(n);
@@ -1013,7 +1013,7 @@ public class floatSparseSolverTests
             int m = 10, n = 4;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 42301);
             var xTrue = arena.floatRandomVec(n, -1f, 1f, 42302);
-            var b = Linear_OP.dot(A, xTrue);      // consistent
+            var b = Blas.dot(A, xTrue);      // consistent
 
             var x = arena.floatVec(n);
             bool ok = Solvers.lsmr(in A, in b, ref x, 8 * n, Consts.floatSqrtEps);
@@ -1050,9 +1050,9 @@ public class floatSparseSolverTests
                 var x = arena.floatVec(n);                     // fresh zero start
                 Solvers.lsmr(in A, in b, ref x, k, (float)0);  // tol 0 -> runs exactly k iterations
 
-                var res = Linear_OP.dot(A, x) - b;              // A x - b   (length m)
-                var atr = Linear_OP.dot(res, A);                // A^T res   (length n)
-                float nrm = math.sqrt(Linear_OP.dot(atr, atr));
+                var res = Blas.dot(A, x) - b;              // A x - b   (length m)
+                var atr = Blas.dot(res, A);                // A^T res   (length n)
+                float nrm = math.sqrt(Blas.dot(atr, atr));
 
                 Assert.IsTrue(nrm <= prev + (float)0.02 * prev + (float)1e-4);   // non-increasing (+ fp slack)
                 prev = nrm;
@@ -1121,11 +1121,11 @@ public class floatSparseSolverTests
             int m = 4, n = 10;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 44001);
             var xGen = arena.floatRandomVec(n, -1f, 1f, 44002);
-            var b = Linear_OP.dot(A, xGen);      // consistent (b in range(A))
+            var b = Blas.dot(A, xGen);      // consistent (b in range(A))
 
             var xC = arena.floatVec(n);
             Assert.IsTrue(Solvers.cgne(in A, in b, ref xC, 8 * n, Consts.floatSqrtEps));
-            var AxC = Linear_OP.dot(A, xC);
+            var AxC = Blas.dot(A, xC);
             AssertVecEq(in AxC, in b, LooseTol());          // solves the consistent system
 
             var xL = arena.floatVec(n);
@@ -1148,7 +1148,7 @@ public class floatSparseSolverTests
             int m = 4, n = 10;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 44101);
             var xGen = arena.floatRandomVec(n, -1f, 1f, 44102);
-            var b = Linear_OP.dot(A, xGen);      // consistent
+            var b = Blas.dot(A, xGen);      // consistent
 
             var x = arena.floatVec(n);
             Assert.IsTrue(Solvers.cgne(in A, in b, ref x, 8 * n, Consts.floatSqrtEps));
@@ -1197,18 +1197,18 @@ public class floatSparseSolverTests
         static void AssertInfoMatches(in floatMxN A, in floatN b, in floatN x, float damp,
                                       in LstsqInfo info, float tol)
         {
-            var Ax  = Linear_OP.dot(A, x);
+            var Ax  = Blas.dot(A, x);
             var res = Ax - b;                        // Ax - b  (= -r), length m
-            float rnorm = math.sqrt(Linear_OP.dot(res, res));
+            float rnorm = math.sqrt(Blas.dot(res, res));
             Assert.IsTrue(math.abs(rnorm - info.rnorm) <= tol * ((float)1 + rnorm));
 
-            var g = Linear_OP.dot(res, A);           // A^T(Ax - b), length n  (vector*matrix)
+            var g = Blas.dot(res, A);           // A^T(Ax - b), length n  (vector*matrix)
             if (damp != (float)0)
                 for (int i = 0; i < g.N; i++) g[i] += (damp * damp) * x[i];   // + damp^2 x
-            float arnorm = math.sqrt(Linear_OP.dot(g, g));
+            float arnorm = math.sqrt(Blas.dot(g, g));
             Assert.IsTrue(math.abs(arnorm - info.Arnorm) <= tol * ((float)1 + arnorm));
 
-            float xnorm = math.sqrt(Linear_OP.dot(x, x));
+            float xnorm = math.sqrt(Blas.dot(x, x));
             Assert.IsTrue(math.abs(xnorm - info.xnorm) <= tol * ((float)1 + xnorm));
         }
 
@@ -1293,7 +1293,7 @@ public class floatSparseSolverTests
 
             // (a) consistent: b = A x* for a known x* -> exact recovery, rnorm -> 0.
             var xStar = arena.floatRandomVec(n, -1f, 1f, 51402);
-            var bCons = Linear_OP.dot(A, xStar);                // bCons = A x*  (consistent)
+            var bCons = Blas.dot(A, xStar);                // bCons = A x*  (consistent)
 
             // (b) inconsistent: random rhs -> nonzero least-squares residual.
             var bInc = arena.floatRandomVec(m, -1f, 1f, 51403);
@@ -1396,8 +1396,8 @@ public class floatSparseSolverTests
             Assert.IsTrue(infoPlain.Solved);
 
             // preconditioned via the composable diagnostic path (to read the iteration count)
-            var d2 = arena.floatVec(n); Linear_OP.columnNormsSquared(in A, ref d2);
-            var d  = arena.floatVec(n); Linear_OP.buildJacobiScale(in d2, ref d);
+            var d2 = arena.floatVec(n); Blas.columnNormsSquared(in A, ref d2);
+            var d  = arena.floatVec(n); Blas.buildJacobiScale(in d2, ref d);
             var scratch = arena.floatVec(n);
             var op = new floatColScaledOperator<floatDenseOperator>(new floatDenseOperator(in A), d, scratch);
 
@@ -1512,7 +1512,7 @@ public class floatSparseSolverTests
         // (a value it already tracked -- never a fresh A*x) matches it.
         static void AssertResidualNorm(in floatMxN A, in floatN b, in floatN x, double rnorm, float tol)
         {
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             float acc = (float)0;
             for (int i = 0; i < b.N; i++) { float e = b[i] - Ax[i]; acc += e * e; }
             AssertClose(rnorm, math.sqrt(acc), tol);
@@ -1523,7 +1523,7 @@ public class floatSparseSolverTests
         // tracked rnorm against a dense recompute (whose summation order differs).
         static void AssertResidualNormBSR(in floatBSR A, in floatN b, in floatN x, double rnorm, float tol)
         {
-            var Ax = Sparse_OP.spMV(in A, in x);
+            var Ax = BSR.spMV(in A, in x);
             float acc = (float)0;
             for (int i = 0; i < b.N; i++) { float e = b[i] - Ax[i]; acc += e * e; }
             AssertClose(rnorm, math.sqrt(acc), tol);
@@ -1578,7 +1578,7 @@ public class floatSparseSolverTests
             int mm = 6, nn = 10;
             var Aun = arena.floatRandomMat(mm, nn, -1f, 1f, 52201);
             var xStar = arena.floatRandomVec(nn, -1f, 1f, 52202);
-            var bun = Linear_OP.dot(Aun, xStar);                          // b = A x*  (in range(A))
+            var bun = Blas.dot(Aun, xStar);                          // b = A x*  (in range(A))
             var xn = arena.floatVec(nn);
             var inx = Solvers.cgne(in Aun, in bun, ref xn, 4 * nn, Consts.floatSqrtEps);
             Assert.IsTrue(inx.Solved && inx.iterations >= 1);

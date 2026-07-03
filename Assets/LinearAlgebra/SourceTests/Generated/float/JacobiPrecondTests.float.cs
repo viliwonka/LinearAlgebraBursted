@@ -8,8 +8,8 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // AᵀA-Jacobi (column-equilibration) least-squares preconditioner primitives:
-//   Linear_OP.columnNormsSquared (dense) / Sparse_OP.columnNormsSquared (BSR),
-//   Linear_OP.buildJacobiScale, and floatColScaledOperator<TInner> (the A·D wrapper).
+//   Blas.columnNormsSquared (dense) / BSR.columnNormsSquared (BSR),
+//   Blas.buildJacobiScale, and floatColScaledOperator<TInner> (the A·D wrapper).
 // Value cases run inside a [BurstCompile] IJob (matches the other sparse-solver suites);
 // the Symmetric-BSR reject runs on the managed thread with Assert.Throws.
 public class floatJacobiPrecondTests
@@ -70,7 +70,7 @@ public class floatJacobiPrecondTests
             var A = arena.floatRandomMat(m, n, -1f, 1f, 61001);
 
             var d2 = arena.floatVec(n);
-            Linear_OP.columnNormsSquared(in A, ref d2);
+            Blas.columnNormsSquared(in A, ref d2);
 
             for (int c = 0; c < n; c++)
             {
@@ -91,16 +91,16 @@ public class floatJacobiPrecondTests
             var A = arena.floatRandomMat(m, n, -1f, 1f, 61101);
 
             var d2Dense = arena.floatVec(n);
-            Linear_OP.columnNormsSquared(in A, ref d2Dense);
+            Blas.columnNormsSquared(in A, ref d2Dense);
 
             var bsm1 = DenseToBSR(ref arena, in A, 1, 1, m * n);
             var d2b1 = arena.floatVec(n);
-            Sparse_OP.columnNormsSquared(in bsm1, ref d2b1);
+            BSR.columnNormsSquared(in bsm1, ref d2b1);
             for (int c = 0; c < n; c++) AssertClose(d2b1[c], d2Dense[c], Tight());
 
             var bsm3 = DenseToBSR(ref arena, in A, 3, 3, m * n);
             var d2b3 = arena.floatVec(n);
-            Sparse_OP.columnNormsSquared(in bsm3, ref d2b3);
+            BSR.columnNormsSquared(in bsm3, ref d2b3);
             for (int c = 0; c < n; c++) AssertClose(d2b3[c], d2Dense[c], Tight());
 
             // RECTANGULAR blocks BR=2, BC=3 (would catch a BR/BC swap in the block-column indexing
@@ -108,11 +108,11 @@ public class floatJacobiPrecondTests
             int m2 = 4, n2 = 9;
             var A2 = arena.floatRandomMat(m2, n2, -1f, 1f, 61102);
             var d2Dense2 = arena.floatVec(n2);
-            Linear_OP.columnNormsSquared(in A2, ref d2Dense2);
+            Blas.columnNormsSquared(in A2, ref d2Dense2);
 
             var bsm23 = DenseToBSR(ref arena, in A2, 2, 3, m2 * n2);
             var d2b23 = arena.floatVec(n2);
-            Sparse_OP.columnNormsSquared(in bsm23, ref d2b23);
+            BSR.columnNormsSquared(in bsm23, ref d2b23);
             for (int c = 0; c < n2; c++) AssertClose(d2b23[c], d2Dense2[c], Tight());
 
             arena.Dispose();
@@ -126,7 +126,7 @@ public class floatJacobiPrecondTests
             var c2 = arena.floatVec(4);
             c2[0] = (float)4;    c2[1] = (float)0;    c2[2] = (float)9;   c2[3] = (float)0.25;
             var d = arena.floatVec(4);
-            Linear_OP.buildJacobiScale(in c2, ref d);
+            Blas.buildJacobiScale(in c2, ref d);
 
             AssertClose(d[0], (float)0.5, Tight());        // 1/sqrt(4)
             AssertClose(d[1], (float)1,   Tight());        // zero column -> unscaled
@@ -146,9 +146,9 @@ public class floatJacobiPrecondTests
             int m = 9, n = 6;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 61301);
             var d2 = arena.floatVec(n);
-            Linear_OP.columnNormsSquared(in A, ref d2);
+            Blas.columnNormsSquared(in A, ref d2);
             var d = arena.floatVec(n);
-            Linear_OP.buildJacobiScale(in d2, ref d);
+            Blas.buildJacobiScale(in d2, ref d);
             var scratch = arena.floatVec(n);
 
             var op = new floatColScaledOperator<floatDenseOperator>(new floatDenseOperator(in A), d, scratch);
@@ -158,11 +158,11 @@ public class floatJacobiPrecondTests
 
             var y1 = arena.floatVec(m);
             op.Apply(in v, ref y1);                 // (AD) v
-            float lhs = Linear_OP.dot(y1, u);
+            float lhs = Blas.dot(y1, u);
 
             var y2 = arena.floatVec(n);
             op.ApplyT(in u, ref y2);                // (AD)^T u
-            float rhs = Linear_OP.dot(v, y2);
+            float rhs = Blas.dot(v, y2);
 
             AssertClose(lhs, rhs, LooseTol());
 
@@ -177,9 +177,9 @@ public class floatJacobiPrecondTests
             int m = 12, n = 5;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 61401);
             var d2 = arena.floatVec(n);
-            Linear_OP.columnNormsSquared(in A, ref d2);
+            Blas.columnNormsSquared(in A, ref d2);
             var d = arena.floatVec(n);
-            Linear_OP.buildJacobiScale(in d2, ref d);
+            Blas.buildJacobiScale(in d2, ref d);
 
             // Materialize A*D (scale column j by d[j]) and re-measure its column norms.
             var AD = arena.floatMat(m, n);
@@ -188,7 +188,7 @@ public class floatJacobiPrecondTests
                     AD[r, c] = A[r, c] * d[c];
 
             var d2s = arena.floatVec(n);
-            Linear_OP.columnNormsSquared(in AD, ref d2s);
+            Blas.columnNormsSquared(in AD, ref d2s);
             for (int c = 0; c < n; c++) AssertClose(d2s[c], (float)1, LooseTol());  // random cols are nonzero
 
             arena.Dispose();
@@ -203,12 +203,12 @@ public class floatJacobiPrecondTests
             int m = 10, n = 4;
             var A = arena.floatRandomMat(m, n, -1f, 1f, 61501);
             var xTrue = arena.floatRandomVec(n, -1f, 1f, 61502);
-            var b = Linear_OP.dot(A, xTrue);        // consistent
+            var b = Blas.dot(A, xTrue);        // consistent
 
             var d2 = arena.floatVec(n);
-            Linear_OP.columnNormsSquared(in A, ref d2);
+            Blas.columnNormsSquared(in A, ref d2);
             var d = arena.floatVec(n);
-            Linear_OP.buildJacobiScale(in d2, ref d);
+            Blas.buildJacobiScale(in d2, ref d);
             var scratch = arena.floatVec(n);
 
             var op = new floatColScaledOperator<floatDenseOperator>(new floatDenseOperator(in A), d, scratch);
@@ -227,7 +227,7 @@ public class floatJacobiPrecondTests
 
             for (int j = 0; j < n; j++) AssertClose(x[j], xTrue[j], LooseTol());
 
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             for (int i = 0; i < m; i++) AssertClose(Ax[i], b[i], LooseTol());
 
             arena.Dispose();
@@ -272,7 +272,7 @@ public class floatJacobiPrecondTests
         var sym = s.ToBSRSymmetric(ref arena);
 
         var d2 = arena.floatVec(3);
-        Assert.Throws<ArgumentException>(() => Sparse_OP.columnNormsSquared(in sym, ref d2));
+        Assert.Throws<ArgumentException>(() => BSR.columnNormsSquared(in sym, ref d2));
 
         arena.Dispose();
     }

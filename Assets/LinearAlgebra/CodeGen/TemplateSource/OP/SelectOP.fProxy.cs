@@ -11,7 +11,7 @@ namespace LinearAlgebra
     /// Elementwise and scalar-bool select: returns b where c is true, a otherwise. Overloaded over
     /// vector/matrix and per-element/scalar bool <c>c</c>, for fProxy, iProxy, and bool element types.
     /// </summary>
-    public static partial class Select_OP
+    public static partial class Select
     {
         // ref-dest primitive. No alias guard: select is elementwise (dst[i] = c[i] ? b[i] : a[i]),
         // so the destination may alias a or b safely.
@@ -25,7 +25,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeSelect_OP.selectfProxy(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.N);
+                UnsafeSelectOP.selectfProxy(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.N);
             }
         }
 
@@ -47,7 +47,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeSelect_OP.selectfProxy(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.M_Rows * a.N_Cols);
+                UnsafeSelectOP.selectfProxy(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.M_Rows * a.N_Cols);
             }
         }
 
@@ -100,7 +100,7 @@ namespace LinearAlgebra
 
 namespace LinearAlgebra.Internal
 {
-    public static unsafe partial class UnsafeSelect_OP
+    public static unsafe partial class UnsafeSelectOP
     {
         public static void selectfProxy([NoAlias] fProxy* a, [NoAlias] fProxy* b, [NoAlias] bool* c, fProxy* target, int n)
         {

@@ -71,7 +71,7 @@ public class doubleEigenSymWorkspaceTests
             bool okW = Eigen.eigenvaluesSymmetric(ref Aw, ref eigW, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.isZero(eigA - eigW, Tol()));
+            Assert.IsTrue(Analysis.isZero(eigA - eigW, Tol()));
 
             arena.Dispose();
         }
@@ -102,7 +102,7 @@ public class doubleEigenSymWorkspaceTests
             bool okA = Eigen.eigenvaluesSymmetric(ref A2a, ref eigA);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis_OP.isZero(eigW - eigA, Tol()));
+            Assert.IsTrue(Analysis.isZero(eigW - eigA, Tol()));
 
             arena.Dispose();
         }

@@ -21,7 +21,7 @@ namespace LinearAlgebra
     /// The sampler is passed by <c>ref</c> so that stateful samplers like
     /// <see cref="floatGaussian"/> accumulate state across elements. float-only.
     /// </summary>
-    public static partial class floatRandom_OP
+    public static partial class Rand
     {
         // ---- uniform refill (vector) ----
 
@@ -484,7 +484,7 @@ namespace LinearAlgebra
     /// over a long fill.
     ///
     /// <para>Because of the cached spare, the sampler MUST be passed by <c>ref</c> to
-    /// <c>floatRandom_OP.randomInpl</c> — copying it by value would silently duplicate the
+    /// <c>Rand.randomInpl</c> — copying it by value would silently duplicate the
     /// spare state and corrupt the stream.</para>
     ///
     /// <para>No static ICDF is provided: Box–Muller is a two-draw transform, not a simple

@@ -57,7 +57,7 @@ public class doubleSvdFullWorkspaceTests
         {
             var B = arena.doubleRandomMat(m, r, (double)(-2f), (double)2f, seed);
             var C = arena.doubleRandomMat(r, n, (double)(-2f), (double)2f, seed + 7u);
-            return Linear_OP.dot(B, C);
+            return Blas.dot(B, C);
         }
 
         void NullspaceEquiv()
@@ -75,7 +75,7 @@ public class doubleSvdFullWorkspaceTests
 
             Assert.IsTrue(dimA == dimW);
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis_OP.isZero(basisA - basisW, Tol()));
+            Assert.IsTrue(Analysis.isZero(basisA - basisW, Tol()));
 
             arena.Dispose();
         }
@@ -95,7 +95,7 @@ public class doubleSvdFullWorkspaceTests
 
             Assert.IsTrue(rankA == rankW);
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis_OP.isZero(basisA - basisW, Tol()));
+            Assert.IsTrue(Analysis.isZero(basisA - basisW, Tol()));
 
             arena.Dispose();
         }
@@ -114,9 +114,9 @@ public class doubleSvdFullWorkspaceTests
             SVD.svdTruncated(in A, ref UkW, ref SkW, ref VkW, k, ref ws, out bool cW);
 
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis_OP.isZero(SkA - SkW, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(UkA - UkW, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(VkA - VkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(SkA - SkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(UkA - UkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(VkA - VkW, Tol()));
 
             arena.Dispose();
         }
@@ -135,7 +135,7 @@ public class doubleSvdFullWorkspaceTests
             SVD.lowRankApprox(in A, ref AkW, k, ref ws, out bool cW);
 
             Assert.IsTrue(cA == cW);
-            Assert.IsTrue(Analysis_OP.isZero(AkA - AkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(AkA - AkW, Tol()));
 
             arena.Dispose();
         }
@@ -161,7 +161,7 @@ public class doubleSvdFullWorkspaceTests
             var nbA = arena.doubleMat(n, n);
             int dimA = SVD.nullspaceBasis(in A2, ref nbA, out bool _);
             Assert.IsTrue(dimW == dimA);
-            Assert.IsTrue(Analysis_OP.isZero(nbW - nbA, Tol()));
+            Assert.IsTrue(Analysis.isZero(nbW - nbA, Tol()));
 
             // ---- range ----
             var rb1 = arena.doubleMat(m, n);
@@ -171,7 +171,7 @@ public class doubleSvdFullWorkspaceTests
             var rbA = arena.doubleMat(m, n);
             int rkA = SVD.rangeBasis(in A2, ref rbA, out bool _);
             Assert.IsTrue(rkW == rkA);
-            Assert.IsTrue(Analysis_OP.isZero(rbW - rbA, Tol()));
+            Assert.IsTrue(Analysis.isZero(rbW - rbA, Tol()));
 
             // ---- truncated ----
             var U1 = arena.doubleMat(m, k); var S1 = arena.doubleVec(k); var V1 = arena.doubleMat(n, k);
@@ -180,9 +180,9 @@ public class doubleSvdFullWorkspaceTests
             SVD.svdTruncated(in A2, ref UW, ref SW, ref VW, k, ref wsTrunc, out bool _);
             var UA = arena.doubleMat(m, k); var SA = arena.doubleVec(k); var VA = arena.doubleMat(n, k);
             SVD.svdTruncated(in A2, ref UA, ref SA, ref VA, k, out bool _);
-            Assert.IsTrue(Analysis_OP.isZero(SW - SA, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(UW - UA, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(VW - VA, Tol()));
+            Assert.IsTrue(Analysis.isZero(SW - SA, Tol()));
+            Assert.IsTrue(Analysis.isZero(UW - UA, Tol()));
+            Assert.IsTrue(Analysis.isZero(VW - VA, Tol()));
 
             // ---- low rank ----
             var Ak1 = arena.doubleMat(m, n);
@@ -191,7 +191,7 @@ public class doubleSvdFullWorkspaceTests
             SVD.lowRankApprox(in A2, ref AkW, k, ref ws, out bool _);
             var AkA = arena.doubleMat(m, n);
             SVD.lowRankApprox(in A2, ref AkA, k, out bool _);
-            Assert.IsTrue(Analysis_OP.isZero(AkW - AkA, Tol()));
+            Assert.IsTrue(Analysis.isZero(AkW - AkA, Tol()));
 
             arena.Dispose();
         }

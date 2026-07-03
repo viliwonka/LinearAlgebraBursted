@@ -56,8 +56,8 @@ namespace LinearAlgebra
         /// blockCol) becomes a block at (blockCol, blockRow), transposed in place (BR x BC ->
         /// BC x BR), then re-compressed via <see cref="fProxyBSRBuilder"/> (the same
         /// triplet-sort/compress path as ToBSR). One-time O(nnz) cost -- the payoff is a
-        /// cache-friendly FORWARD <see cref="Sparse_OP.spMV(in fProxyBSR, in fProxyN, ref fProxyN)"/>
-        /// over A^T in place of the scatter-heavy on-the-fly <see cref="Sparse_OP.spMVT"/>
+        /// cache-friendly FORWARD <see cref="BSR.spMV(in fProxyBSR, in fProxyN, ref fProxyN)"/>
+        /// over A^T in place of the scatter-heavy on-the-fly <see cref="BSR.spMVT"/>
         /// traversal on every Krylov iteration -- see <see cref="fProxyBSROperator"/>'s two-arg
         /// constructor and the cgls/lsqr allocating <see cref="fProxyBSR"/> overloads in
         /// Solvers.fProxy.cs, which build A^T once per solve and reuse it every iteration.
@@ -66,7 +66,7 @@ namespace LinearAlgebra
         /// fProxyBSR.Symmetric), returns A itself unchanged: transposing symmetric upper-block
         /// storage is a no-op, and materializing a redundant copy would only double memory for
         /// zero benefit. This is safe to feed straight into fProxyBSROperator's two-arg ctor:
-        /// Sparse_OP.spMV already special-cases Symmetric internally, exactly matching what
+        /// BSR.spMV already special-cases Symmetric internally, exactly matching what
         /// spMVT itself does for a symmetric A (forwards straight to spMV).
         /// </summary>
         public unsafe fProxyBSR fProxyBSRTranspose(in fProxyBSR A)

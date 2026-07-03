@@ -7,7 +7,7 @@ namespace LinearAlgebra
 {
 
     // Class summary lives on the fProxy partial (SelectOP.fProxy.cs). Bool-buffer select overloads.
-    public static partial class Select_OP
+    public static partial class Select
     {
         public static boolN select(in boolN a, in boolN b, in boolN c)
         {
@@ -18,7 +18,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeSelect_OP.selectBool(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.N);
+                UnsafeSelectOP.selectBool(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.N);
             }
 
             return res;
@@ -33,7 +33,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                UnsafeSelect_OP.selectBool(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.M_Rows * a.N_Cols);
+                UnsafeSelectOP.selectBool(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, res.Data.Ptr, a.M_Rows * a.N_Cols);
             }
 
             return res;
@@ -57,7 +57,7 @@ namespace LinearAlgebra
 
 namespace LinearAlgebra.Internal
 {
-    public static unsafe partial class UnsafeSelect_OP
+    public static unsafe partial class UnsafeSelectOP
     {
         public static void selectBool([NoAlias] bool* a, [NoAlias] bool* b, [NoAlias] bool* c, bool* target, int n)
         {

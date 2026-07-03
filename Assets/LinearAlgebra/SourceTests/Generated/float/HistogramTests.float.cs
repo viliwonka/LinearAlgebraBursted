@@ -441,7 +441,7 @@ public class floatHistogramTests
             var rng = new Random(20240627u);
             for (int t = 0; t < 128; t++)
             {
-                int pick = floatRandom_OP.weightedPick(in weights, ref rng);
+                int pick = Rand.weightedPick(in weights, ref rng);
                 AssertTrue(pick >= 0 && pick < K);
             }
 

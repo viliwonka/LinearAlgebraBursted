@@ -42,7 +42,7 @@ public class intClampTests
             v[0] = (int)(-5); v[1] = (int)(-2); v[2] = (int)0;
             v[3] = (int)2;    v[4] = (int)7;    v[5] = (int)2;
 
-            intElem_OP.clampInpl(in v, (int)(-2), (int)5);
+            intComp.clampInpl(in v, (int)(-2), (int)5);
 
             Assert.IsTrue(v[0] == (int)(-2));
             Assert.IsTrue(v[1] == (int)(-2));
@@ -60,7 +60,7 @@ public class intClampTests
             A[0, 0] = (int)(-10); A[0, 1] = (int)3;
             A[1, 0] = (int)5;     A[1, 1] = (int)20;
 
-            intElem_OP.clampInpl(in A, (int)0, (int)10);
+            intComp.clampInpl(in A, (int)0, (int)10);
 
             Assert.IsTrue(A[0, 0] == (int)0);
             Assert.IsTrue(A[0, 1] == (int)3);
@@ -73,7 +73,7 @@ public class intClampTests
         {
             var arena = new Arena(Allocator.Persistent);
             var v = arena.intVec(4, 3); // all 3, inside [0,5]
-            intElem_OP.clampInpl(in v, (int)0, (int)5);
+            intComp.clampInpl(in v, (int)0, (int)5);
             for (int i = 0; i < 4; i++)
                 Assert.IsTrue(v[i] == (int)3);
             arena.Dispose();
@@ -95,7 +95,7 @@ public class intClampTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.intVec(3, 0);
         v[0] = (int)(-4); v[1] = (int)0; v[2] = (int)9;
-        Assert.Throws<ArgumentException>(() => intElem_OP.clampInpl(in v, (int)6, (int)(-1)));
+        Assert.Throws<ArgumentException>(() => intComp.clampInpl(in v, (int)6, (int)(-1)));
         arena.Dispose();
     }
 }

@@ -96,7 +96,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             Assert.IsTrue(okA == okW);
             Assert.IsTrue(rankA == rankW);
             for (int i = 0; i < n; i++) Assert.IsTrue(Pa[i] == Pw[i]);
-            Assert.IsTrue(Analysis_OP.isZero(La - Lw, Tol()));
+            Assert.IsTrue(Analysis.isZero(La - Lw, Tol()));
 
             Pw.Dispose();
             Pa.Dispose();
@@ -124,7 +124,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             var bw = b.Copy();
             Cholesky.choleskyPivotSolve(ref L, in P, rank, ref bw, ref ws);
 
-            Assert.IsTrue(Analysis_OP.isZero(ba - bw, Tol()));
+            Assert.IsTrue(Analysis.isZero(ba - bw, Tol()));
 
             P.Dispose();
             arena.Dispose();
@@ -151,7 +151,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             bool okW = Cholesky.choleskyPivotSolve(in A, ref Lw, ref Pw, ref bw, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.isZero(ba - bw, Tol()));
+            Assert.IsTrue(Analysis.isZero(ba - bw, Tol()));
 
             Pw.Dispose();
             Pa.Dispose();
@@ -191,7 +191,7 @@ public class fProxyCholeskyPivotWorkspaceTests
             bool okA = Cholesky.choleskyPivotSolve(in A2, ref La, ref Pa, ref b2a);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis_OP.isZero(b2w - b2a, Tol()));
+            Assert.IsTrue(Analysis.isZero(b2w - b2a, Tol()));
 
             Pa.Dispose();
             Pw.Dispose();

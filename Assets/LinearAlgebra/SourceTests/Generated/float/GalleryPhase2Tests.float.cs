@@ -157,7 +157,7 @@ public class floatGalleryPhase2Tests
             var xTrue = arena.floatVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);
 
-            var b = Linear_OP.dot(A, xTrue);   // consistent RHS
+            var b = Blas.dot(A, xTrue);   // consistent RHS
 
             var x = arena.floatVec(n);
             bool conv = Solvers.cg(in A, in b, ref x, 500, Consts.floatSqrtEps);

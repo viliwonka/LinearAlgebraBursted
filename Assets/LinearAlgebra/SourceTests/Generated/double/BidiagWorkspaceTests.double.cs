@@ -56,9 +56,9 @@ public class doubleBidiagWorkspaceTests
             var Uw = arena.doubleMat(m, n); var Bw = arena.doubleMat(n, n); var Vw = arena.doubleMat(n, n);
             Bidiag.bidiagonalize(in A, ref Uw, ref Bw, ref Vw, ref ws);
 
-            Assert.IsTrue(Analysis_OP.isZero(Ua - Uw, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(Ba - Bw, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(Va - Vw, Tol()));
+            Assert.IsTrue(Analysis.isZero(Ua - Uw, Tol()));
+            Assert.IsTrue(Analysis.isZero(Ba - Bw, Tol()));
+            Assert.IsTrue(Analysis.isZero(Va - Vw, Tol()));
 
             arena.Dispose();
         }
@@ -75,8 +75,8 @@ public class doubleBidiagWorkspaceTests
             var dw = arena.doubleVec(n); var ew = arena.doubleVec(n);
             Bidiag.bidiagonalizeValues(in A, ref dw, ref ew, ref ws);
 
-            Assert.IsTrue(Analysis_OP.isZero(da - dw, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(ea - ew, Tol()));
+            Assert.IsTrue(Analysis.isZero(da - dw, Tol()));
+            Assert.IsTrue(Analysis.isZero(ea - ew, Tol()));
 
             arena.Dispose();
         }
@@ -98,9 +98,9 @@ public class doubleBidiagWorkspaceTests
             Bidiag.bidiagonalize(in A2, ref Uw, ref Bw, ref Vw, ref ws);
             var Ua = arena.doubleMat(m, n); var Ba = arena.doubleMat(n, n); var Va = arena.doubleMat(n, n);
             Bidiag.bidiagonalize(in A2, ref Ua, ref Ba, ref Va);
-            Assert.IsTrue(Analysis_OP.isZero(Uw - Ua, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(Bw - Ba, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(Vw - Va, Tol()));
+            Assert.IsTrue(Analysis.isZero(Uw - Ua, Tol()));
+            Assert.IsTrue(Analysis.isZero(Bw - Ba, Tol()));
+            Assert.IsTrue(Analysis.isZero(Vw - Va, Tol()));
 
             // values: same reused workspace.
             var d1 = arena.doubleVec(n); var e1 = arena.doubleVec(n);
@@ -109,8 +109,8 @@ public class doubleBidiagWorkspaceTests
             Bidiag.bidiagonalizeValues(in A2, ref dw, ref ew, ref ws);
             var da = arena.doubleVec(n); var ea = arena.doubleVec(n);
             Bidiag.bidiagonalizeValues(in A2, ref da, ref ea);
-            Assert.IsTrue(Analysis_OP.isZero(dw - da, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(ew - ea, Tol()));
+            Assert.IsTrue(Analysis.isZero(dw - da, Tol()));
+            Assert.IsTrue(Analysis.isZero(ew - ea, Tol()));
 
             arena.Dispose();
         }

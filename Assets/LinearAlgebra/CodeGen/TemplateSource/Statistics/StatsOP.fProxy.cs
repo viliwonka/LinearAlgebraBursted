@@ -310,7 +310,7 @@ namespace LinearAlgebra.Stats
         public static void rowMean(in fProxyMxN A, ref fProxyN dest)
         {
             rowSum(in A, ref dest);
-            fProxyElem_OP.divInpl(dest, A.N_Cols);
+            fProxyComp.divInpl(dest, A.N_Cols);
         }
 
         public static fProxyN rowMean(in fProxyMxN A)
@@ -323,7 +323,7 @@ namespace LinearAlgebra.Stats
         public static void colMean(in fProxyMxN A, ref fProxyN dest)
         {
             colSum(in A, ref dest);
-            fProxyElem_OP.divInpl(dest, A.M_Rows);
+            fProxyComp.divInpl(dest, A.M_Rows);
         }
 
         public static fProxyN colMean(in fProxyMxN A)
@@ -472,7 +472,7 @@ namespace LinearAlgebra.Stats
             for (int r = 0; r < A.M_Rows; r++)
                 for (int c = 0; c < A.N_Cols; c++)
                     means[c] += A[r, c];
-            fProxyElem_OP.divInpl(means, A.M_Rows);
+            fProxyComp.divInpl(means, A.M_Rows);
 
             for (int c = 0; c < A.N_Cols; c++)
                 dest[c] = 0f;
@@ -484,7 +484,7 @@ namespace LinearAlgebra.Stats
                     dest[c] += d * d;
                 }
 
-            fProxyElem_OP.divInpl(dest, A.M_Rows);
+            fProxyComp.divInpl(dest, A.M_Rows);
 
             means.Dispose();
         }
@@ -651,7 +651,7 @@ namespace LinearAlgebra.Stats
 
             // C = centeredᵀ · centered (Gram formulation). dot(..., transposeA:true) dispatches
             // to matMatDotTransA; inner read is unit-stride over columns of centered. Zeros C first.
-            Linear_OP.dot(in centered, in centered, ref C, transposeA: true);
+            Blas.dot(in centered, in centered, ref C, transposeA: true);
 
             // Scale by 1/(M−1) (Bessel correction). The Gram matrix is exactly symmetric under
             // IEEE 754 (mul(a,b)==mul(b,a)), so no explicit symmetrization pass is needed.

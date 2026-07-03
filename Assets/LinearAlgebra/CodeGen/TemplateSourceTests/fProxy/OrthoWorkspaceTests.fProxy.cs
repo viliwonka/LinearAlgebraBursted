@@ -62,8 +62,8 @@ public class fProxyOrthoWorkspaceTests
             var u = arena.fProxyVec(M);
             QR.qrDecomposition(ref Qb, ref Rb, ref u);
 
-            Assert.IsTrue(Analysis_OP.isZero(Qa - Qb, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(Ra - Rb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Ra - Rb, Tol()));
 
             arena.Dispose();
         }
@@ -83,18 +83,18 @@ public class fProxyOrthoWorkspaceTests
 
             // allocating reference (qrDirectSolve destroys A and b, so use fresh copies)
             var Aa = A0.Copy();
-            var ba = Linear_OP.dot(A0, xOrig);
+            var ba = Blas.dot(A0, xOrig);
             var xa = arena.fProxyVec(dim);
             QR.qrDirectSolve(ref Aa, ref ba, ref xa);
 
             // caller-scratch form
             var Ab = A0.Copy();
-            var bb = Linear_OP.dot(A0, xOrig);
+            var bb = Blas.dot(A0, xOrig);
             var xb = arena.fProxyVec(dim);
             var u = arena.fProxyVec(dim);
             QR.qrDirectSolve(ref Ab, ref bb, ref xb, ref u);
 
-            Assert.IsTrue(Analysis_OP.isZero(xa - xb, Tol()));
+            Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
 
             arena.Dispose();
         }
@@ -111,7 +111,7 @@ public class fProxyOrthoWorkspaceTests
                 A[d, d] += 5f;
 
             var xOrig = arena.fProxyRandomVec(N, -3f, 3f, 60221);
-            var b = Linear_OP.dot(A, xOrig);   // consistent RHS; read-only in solveQR, reusable
+            var b = Blas.dot(A, xOrig);   // consistent RHS; read-only in solveQR, reusable
 
             // Precompute QR of A (qrDecomposition overwrites Q with the orthogonal factor)
             var Q = A.Copy();
@@ -121,11 +121,11 @@ public class fProxyOrthoWorkspaceTests
             // ref-destination overload recovers x (length N)
             var x = arena.fProxyVec(N);
             Solvers.solveQR(ref Q, ref R, ref b, ref x);
-            Assert.IsTrue(Analysis_OP.isZero(x - xOrig, SolveTol()));
+            Assert.IsTrue(Analysis.isZero(x - xOrig, SolveTol()));
 
             // allocating convenience must match the ref form exactly (same kernel)
             var xc = Solvers.solveQR(ref Q, ref R, ref b);
-            Assert.IsTrue(Analysis_OP.isZero(xc - x, Tol()));
+            Assert.IsTrue(Analysis.isZero(xc - x, Tol()));
 
             arena.Dispose();
         }

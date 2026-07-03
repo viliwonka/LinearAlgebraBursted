@@ -14,7 +14,7 @@ namespace LinearAlgebra
         public static iProxyN operator -(in iProxyN a) {
 
             iProxyN vec = a.TempCopy();
-            iProxyElem_OP.signFlipInpl(vec);
+            iProxyComp.signFlipInpl(vec);
 
             return vec;
         }
@@ -23,7 +23,7 @@ namespace LinearAlgebra
         public static iProxyN operator +(in iProxyN a, iProxy s) {
 
             iProxyN vec = a.TempCopy();
-            iProxyElem_OP.addInpl(vec, s);
+            iProxyComp.addInpl(vec, s);
 
             return vec; 
         }
@@ -35,7 +35,7 @@ namespace LinearAlgebra
         public static iProxyN operator -(in iProxyN a, iProxy s) {
             
             iProxyN vec = a.TempCopy();
-            iProxyElem_OP.addInpl(vec, (iProxy)(-s));
+            iProxyComp.addInpl(vec, (iProxy)(-s));
             
             return vec;
         }
@@ -44,7 +44,7 @@ namespace LinearAlgebra
         public static iProxyN operator -(iProxy s, in iProxyN a)
         {
             iProxyN vec = a.TempCopy();
-            iProxyElem_OP.subInpl(s, vec);
+            iProxyComp.subInpl(s, vec);
             return vec;
         }
 
@@ -53,7 +53,7 @@ namespace LinearAlgebra
             
             iProxyN vec = a.TempCopy();
 
-            iProxyElem_OP.mulInpl(vec, s);
+            iProxyComp.mulInpl(vec, s);
 
             return vec;
         }
@@ -69,7 +69,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            iProxyElem_OP.divInpl(vec, s);
+            iProxyComp.divInpl(vec, s);
 
             return vec;
         }
@@ -79,7 +79,7 @@ namespace LinearAlgebra
         {
             iProxyN vec = a.TempCopy();
 
-            iProxyElem_OP.divInpl(s, vec);
+            iProxyComp.divInpl(s, vec);
 
             return vec;
         }
@@ -92,7 +92,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            iProxyElem_OP.modInpl(vec, s);
+            iProxyComp.modInpl(vec, s);
 
             return vec;
         }
@@ -102,7 +102,7 @@ namespace LinearAlgebra
         {
             iProxyN vec = a.TempCopy();
 
-            iProxyElem_OP.modInpl(s, vec);
+            iProxyComp.modInpl(s, vec);
 
             return vec;
         }
@@ -113,7 +113,7 @@ namespace LinearAlgebra
 
             iProxyN matrix = a.TempCopy();
 
-            iProxyElem_OP.bitwiseComplementInpl(matrix);
+            iProxyComp.bitwiseComplementInpl(matrix);
 
             return matrix;
         }
@@ -122,7 +122,7 @@ namespace LinearAlgebra
         public static iProxyN operator &(in iProxyN a, in iProxy s) {
 
             iProxyN matrix = a.TempCopy();
-            iProxyElem_OP.bitwiseAndInpl(matrix, s);
+            iProxyComp.bitwiseAndInpl(matrix, s);
             return matrix;
         }
         public static iProxyN operator &(in iProxy s, in iProxyN a) => a & s;
@@ -131,7 +131,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static iProxyN operator |(in iProxyN a, in iProxy s) {
             iProxyN matrix = a.TempCopy();
-            iProxyElem_OP.bitwiseOrInpl(matrix, s);
+            iProxyComp.bitwiseOrInpl(matrix, s);
             return matrix;
         }
         public static iProxyN operator |(in iProxy s, in iProxyN a) => a | s;
@@ -140,7 +140,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static iProxyN operator ^(in iProxyN a, in iProxy b) {
             iProxyN matrix = a.TempCopy();
-            iProxyElem_OP.bitwiseXorInpl(matrix, b);
+            iProxyComp.bitwiseXorInpl(matrix, b);
             return matrix;
         }
         public static iProxyN operator ^(in iProxy s, in iProxyN a) => a ^ s;
@@ -149,14 +149,14 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static iProxyN operator <<(in iProxyN a, int shift) {
             iProxyN matrix = a.TempCopy();
-            iProxyElem_OP.bitwiseLeftShiftInpl(matrix, shift);
+            iProxyComp.bitwiseLeftShiftInpl(matrix, shift);
             return matrix;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static iProxyN operator >>(in iProxyN a, int shift) {
             iProxyN matrix = a.TempCopy();
-            iProxyElem_OP.bitwiseRightShiftInpl(matrix, shift);
+            iProxyComp.bitwiseRightShiftInpl(matrix, shift);
             return matrix;
         }
 
@@ -172,7 +172,7 @@ namespace LinearAlgebra
 
             iProxyN vec = a.TempCopy();
 
-            iProxyElem_OP.addInpl(vec, b);   // vec += b  (vec is the copy of a)
+            iProxyComp.addInpl(vec, b);   // vec += b  (vec is the copy of a)
 
             return vec;
         }
@@ -184,7 +184,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             iProxyN vec = a.TempCopy();
-            iProxyElem_OP.subInpl(vec, b);
+            iProxyComp.subInpl(vec, b);
             
             return vec;
         }
@@ -197,7 +197,7 @@ namespace LinearAlgebra
 
             iProxyN vec = a.TempCopy();
 
-            iProxyElem_OP.mulInpl(b, vec);
+            iProxyComp.mulInpl(b, vec);
 
             return vec;
         }
@@ -209,7 +209,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             iProxyN newDividendVec = dividend.TempCopy();
-            iProxyElem_OP.divInpl(newDividendVec, divisor);
+            iProxyComp.divInpl(newDividendVec, divisor);
 
             return newDividendVec;
         }
@@ -221,7 +221,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             iProxyN newDividendVec = dividend.TempCopy();
-            iProxyElem_OP.modInpl(newDividendVec, divisor);
+            iProxyComp.modInpl(newDividendVec, divisor);
 
             return newDividendVec;
         }
@@ -232,7 +232,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             iProxyN matrix = a.TempCopy();
-            iProxyElem_OP.bitwiseAndInpl(matrix, b);
+            iProxyComp.bitwiseAndInpl(matrix, b);
             return matrix;
         }
         
@@ -242,7 +242,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             iProxyN matrix = a.TempCopy();
-            iProxyElem_OP.bitwiseOrInpl(matrix, b);
+            iProxyComp.bitwiseOrInpl(matrix, b);
             return matrix;
         }
         
@@ -253,7 +253,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             iProxyN matrix = a.TempCopy();
-            iProxyElem_OP.bitwiseXorInpl(matrix, b);
+            iProxyComp.bitwiseXorInpl(matrix, b);
             return matrix;
         }
         

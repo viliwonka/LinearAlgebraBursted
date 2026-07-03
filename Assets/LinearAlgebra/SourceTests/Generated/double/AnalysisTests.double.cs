@@ -74,7 +74,7 @@ public class doubleAnalysisTests
             
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(A));
+            Assert.IsTrue(Analysis.isIdentity(A));
 
             arena.Dispose();
         }
@@ -87,11 +87,11 @@ public class doubleAnalysisTests
             
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(A, 0.0001f));
+            Assert.IsTrue(Analysis.isIdentity(A, 0.0001f));
 
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(A, 0.002f));
+            Assert.IsTrue(Analysis.isIdentity(A, 0.002f));
 
             arena.Dispose();
         }
@@ -104,13 +104,13 @@ public class doubleAnalysisTests
             
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isSymmetric(A));
+            Assert.IsTrue(Analysis.isSymmetric(A));
 
             A = arena.doubleRandomMat(dim, dim * 2);
 
-            doubleMxN C = Linear_OP.dot(A, A, true);
+            doubleMxN C = Blas.dot(A, A, true);
 
-            Assert.IsTrue(Analysis_OP.isSymmetric(C));
+            Assert.IsTrue(Analysis.isSymmetric(C));
 
             arena.Dispose();
         }
@@ -123,17 +123,17 @@ public class doubleAnalysisTests
             
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isSymmetric(A, 0.000001f));
+            Assert.IsTrue(Analysis.isSymmetric(A, 0.000001f));
 
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.isSymmetric(A, 0.002f));
+            Assert.IsTrue(Analysis.isSymmetric(A, 0.002f));
 
-            doubleMxN C = Linear_OP.dot(A, A, true);
+            doubleMxN C = Blas.dot(A, A, true);
 
             C += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.isSymmetric(C, 0.002f));
+            Assert.IsTrue(Analysis.isSymmetric(C, 0.002f));
 
             arena.Dispose();
         }
@@ -146,11 +146,11 @@ public class doubleAnalysisTests
             
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isDiagonal(A));
+            Assert.IsTrue(Analysis.isDiagonal(A));
 
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsFalse(Analysis_OP.isDiagonal(A));
+            Assert.IsFalse(Analysis.isDiagonal(A));
 
             arena.Dispose();
         }
@@ -163,15 +163,15 @@ public class doubleAnalysisTests
             
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isDiagonal(A, 0.000001f));
+            Assert.IsTrue(Analysis.isDiagonal(A, 0.000001f));
 
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.isDiagonal(A, 0.002f));
+            Assert.IsTrue(Analysis.isDiagonal(A, 0.002f));
 
             A = arena.doubleRandomDiagonalMat(dim, -1f, -1f);
 
-            Assert.IsTrue(Analysis_OP.isDiagonal(A, 0.000001f));
+            Assert.IsTrue(Analysis.isDiagonal(A, 0.000001f));
 
             arena.Dispose();
         }
@@ -184,11 +184,11 @@ public class doubleAnalysisTests
             
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isUpperTriangular(A));
+            Assert.IsTrue(Analysis.isUpperTriangular(A));
             
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsFalse(Analysis_OP.isUpperTriangular(A));
+            Assert.IsFalse(Analysis.isUpperTriangular(A));
 
             A = arena.doubleIdentityMat(dim);
 
@@ -196,7 +196,7 @@ public class doubleAnalysisTests
             for (int r = 0; r < c; r++)
                 A[r, c] = 5f;
 
-            Assert.IsTrue(Analysis_OP.isUpperTriangular(A));
+            Assert.IsTrue(Analysis.isUpperTriangular(A));
 
             arena.Dispose();
         }
@@ -209,11 +209,11 @@ public class doubleAnalysisTests
             
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isUpperTriangular(A, 0.000001f));
+            Assert.IsTrue(Analysis.isUpperTriangular(A, 0.000001f));
 
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.isUpperTriangular(A, 0.002f));
+            Assert.IsTrue(Analysis.isUpperTriangular(A, 0.002f));
 
             A = arena.doubleIdentityMat(dim);
 
@@ -223,7 +223,7 @@ public class doubleAnalysisTests
 
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.isUpperTriangular(A, 0.002f));
+            Assert.IsTrue(Analysis.isUpperTriangular(A, 0.002f));
                         
             arena.Dispose();   
         }
@@ -236,10 +236,10 @@ public class doubleAnalysisTests
 
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isLowerTriangular(A));
+            Assert.IsTrue(Analysis.isLowerTriangular(A));
 
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
-            Assert.IsFalse(Analysis_OP.isLowerTriangular(A));
+            Assert.IsFalse(Analysis.isLowerTriangular(A));
 
             A = arena.doubleIdentityMat(dim);
 
@@ -248,7 +248,7 @@ public class doubleAnalysisTests
                 for (int c = 0; c < r; c++)
                     A[r, c] = 5f;
 
-            Assert.IsTrue(Analysis_OP.isLowerTriangular(A));
+            Assert.IsTrue(Analysis.isLowerTriangular(A));
 
             arena.Dispose();
         }
@@ -261,10 +261,10 @@ public class doubleAnalysisTests
 
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isLowerTriangular(A, 0.000001f));
+            Assert.IsTrue(Analysis.isLowerTriangular(A, 0.000001f));
 
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
-            Assert.IsTrue(Analysis_OP.isLowerTriangular(A, 0.002f));
+            Assert.IsTrue(Analysis.isLowerTriangular(A, 0.002f));
 
             A = arena.doubleIdentityMat(dim);
 
@@ -275,7 +275,7 @@ public class doubleAnalysisTests
 
             A += arena.doubleRandomMat(dim, dim, -0.001f, 0.001f);
 
-            Assert.IsTrue(Analysis_OP.isLowerTriangular(A, 0.002f));
+            Assert.IsTrue(Analysis.isLowerTriangular(A, 0.002f));
 
             arena.Dispose();
         }
@@ -288,34 +288,34 @@ public class doubleAnalysisTests
 
             doubleMxN A = arena.doubleIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            A = Linear_OP.dot(arena.doublePermutationMat(dim, 5, 13), A);
+            A = Blas.dot(arena.doublePermutationMat(dim, 5, 13), A);
 
-            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            A = Linear_OP.dot(arena.doubleRotationMat(dim, 3, 15, math.PI/4f ), A);
+            A = Blas.dot(arena.doubleRotationMat(dim, 3, 15, math.PI/4f ), A);
 
-            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
             doubleN reflect = arena.doubleRandomVec(dim, -1f, 1f);
 
-            A = Linear_OP.dot(arena.doubleHouseholderMat(dim, reflect), A);
+            A = Blas.dot(arena.doubleHouseholderMat(dim, reflect), A);
 
-            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
             reflect = arena.doubleRandomVec(dim, -1f, 1f, 50301);
-            A = Linear_OP.dot(arena.doubleHouseholderMat(dim, reflect), A);
+            A = Blas.dot(arena.doubleHouseholderMat(dim, reflect), A);
 
-            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            A = Linear_OP.dot(A, A);
+            A = Blas.dot(A, A);
 
-            Assert.IsTrue(Analysis_OP.isOrthogonal(A, 0.00001f));
+            Assert.IsTrue(Analysis.isOrthogonal(A, 0.00001f));
 
-            A = Linear_OP.dot(A, A, true);
+            A = Blas.dot(A, A, true);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(A, 0.00001f));
+            Assert.IsTrue(Analysis.isIdentity(A, 0.00001f));
 
             arena.Dispose();
         }

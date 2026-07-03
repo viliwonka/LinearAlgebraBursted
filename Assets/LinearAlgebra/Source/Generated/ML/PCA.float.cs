@@ -49,7 +49,7 @@ namespace LinearAlgebra.ML
     /// Deterministic by default: pcaRandomized / pcaSVDTruncated forward the exact default seed
     /// (0x9E3779B1u) svdRandomized/svdTruncated already use, so default calls are bitwise-reproducible.
     /// </summary>
-    public static partial class floatPCA_OP
+    public static partial class PCA
     {
         // =====================================================================================
         // Shared guards (managed throws, before any alloc — mirrors the k-means guard-before-alloc rule)
@@ -72,11 +72,7 @@ namespace LinearAlgebra.ML
                 throw new ArgumentException(method + ": requires samples>=features (X.M_Rows >= X.N_Cols); use pcaCovariance for wide data");
         }
 
-        static void RequireTopK(int k, int n, int p, string method)
-        {
-            if (k <= 0 || k > math.min(n, p))
-                throw new ArgumentException(method + ": k must be in (0, min(n, p)]");
-        }
+        // RequireTopK lives in PCA.Shared.cs (type-agnostic, emitted once).
 
         // model shape guard for the two FULL routes (pcaCovariance/pcaSVD): components p x p,
         // explainedVariance/-Ratio length p, mean/scale length p.
@@ -249,7 +245,7 @@ namespace LinearAlgebra.ML
         /// </summary>
         public static bool pcaCovariance(in floatMxN X, ref floatPCAModel model, PCAScaling scaling)
         {
-            const string method = "floatPCA_OP.pcaCovariance";
+            const string method = "PCA.pcaCovariance";
             RequireBasicShape(in X, method);
 
             int p = X.N_Cols;
@@ -319,7 +315,7 @@ namespace LinearAlgebra.ML
         /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static floatPCAModel pcaCovariance(ref Arena arena, in floatMxN X, PCAScaling scaling)
         {
-            const string method = "floatPCA_OP.pcaCovariance";
+            const string method = "PCA.pcaCovariance";
             RequireBasicShape(in X, method);
 
             int p = X.N_Cols;
@@ -343,7 +339,7 @@ namespace LinearAlgebra.ML
         /// </summary>
         public static bool pcaSVD(in floatMxN X, ref floatPCAModel model, PCAScaling scaling, int maxIter)
         {
-            const string method = "floatPCA_OP.pcaSVD";
+            const string method = "PCA.pcaSVD";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -378,7 +374,7 @@ namespace LinearAlgebra.ML
         /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static floatPCAModel pcaSVD(ref Arena arena, in floatMxN X, PCAScaling scaling)
         {
-            const string method = "floatPCA_OP.pcaSVD";
+            const string method = "PCA.pcaSVD";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -412,7 +408,7 @@ namespace LinearAlgebra.ML
         public static bool pcaSVDTruncated(in floatMxN X, ref floatPCAModel model, int k,
                                             PCAScaling scaling, int oversample, uint seed, int maxIter)
         {
-            const string method = "floatPCA_OP.pcaSVDTruncated";
+            const string method = "PCA.pcaSVDTruncated";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -452,7 +448,7 @@ namespace LinearAlgebra.ML
         /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static floatPCAModel pcaSVDTruncated(ref Arena arena, in floatMxN X, int k, PCAScaling scaling)
         {
-            const string method = "floatPCA_OP.pcaSVDTruncated";
+            const string method = "PCA.pcaSVDTruncated";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -483,7 +479,7 @@ namespace LinearAlgebra.ML
         public static bool pcaRandomized(in floatMxN X, ref floatPCAModel model, int k,
                                           PCAScaling scaling, int oversample, int powerIters, uint seed, int maxIter)
         {
-            const string method = "floatPCA_OP.pcaRandomized";
+            const string method = "PCA.pcaRandomized";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -520,7 +516,7 @@ namespace LinearAlgebra.ML
         /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static floatPCAModel pcaRandomized(ref Arena arena, in floatMxN X, int k, PCAScaling scaling)
         {
-            const string method = "floatPCA_OP.pcaRandomized";
+            const string method = "PCA.pcaRandomized";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -550,7 +546,7 @@ namespace LinearAlgebra.ML
         /// </summary>
         public static void pcaTransform(in floatMxN X, in floatPCAModel model, ref floatMxN scores)
         {
-            const string method = "floatPCA_OP.pcaTransform";
+            const string method = "PCA.pcaTransform";
             int p = X.N_Cols;
             int nNew = X.M_Rows;
 
@@ -566,13 +562,13 @@ namespace LinearAlgebra.ML
                 for (int c = 0; c < p; c++)
                     Xs[r, c] = (X[r, c] - model.mean[c]) / model.scale[c];
 
-            Linear_OP.dot(in Xs, in model.components, ref scores);
+            Blas.dot(in Xs, in model.components, ref scores);
         }
 
         /// <summary>Allocating pcaTransform: allocates and returns a fresh X.M_Rows x model.k scores matrix.</summary>
         public static floatMxN pcaTransform(ref Arena arena, in floatMxN X, in floatPCAModel model)
         {
-            const string method = "floatPCA_OP.pcaTransform";
+            const string method = "PCA.pcaTransform";
             int p = X.N_Cols;
 
             if (model.mean.N != p || model.scale.N != p || model.components.M_Rows != p)

@@ -49,7 +49,7 @@ namespace LinearAlgebra
         // Apply a Householder reflector to the trailing submatrix in place, restricted to columns
         // [d, colEnd):
         //     Q[d:, d:colEnd] -= u · (uᵀ · Q[d:, d:colEnd]).
-        // Two contiguous-memory passes through the vectorising Unsafe_OP.axpy ([NoAlias]) — the same
+        // Two contiguous-memory passes through the vectorising UnsafeOP.axpy ([NoAlias]) — the same
         // raw-pointer path GEMM uses, so Burst SIMD-vectorises the inner work (float runs ~2x double).
         // The previous formulation looped over rows r (stride N_Cols when indexing Q[r, c]), which
         // Burst cannot vectorise — it vectorises loops, and the unit-stride axis here is the columns,
@@ -80,11 +80,11 @@ namespace LinearAlgebra
             // pass 1: w[0..L) = Σ_{r=d}^{M-1} u[r] · Q[r, d..colEnd)   (row segments are unit-stride)
             UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<double>());
             for (int r = d; r < M; r++)
-                Unsafe_OP.axpy(wp, qp + (long)r * N + d, up[r], L);
+                UnsafeOP.axpy(wp, qp + (long)r * N + d, up[r], L);
 
             // pass 2: Q[r, d..colEnd) += (-u[r]) · w[0..L)  ==  Q[r, d..colEnd) -= u[r] · w
             for (int r = d; r < M; r++)
-                Unsafe_OP.axpy(qp + (long)r * N + d, wp, -up[r], L);
+                UnsafeOP.axpy(qp + (long)r * N + d, wp, -up[r], L);
         }
 
         // Un-restricted form: applies to the full trailing block [d, N_Cols). Used by every path
@@ -188,7 +188,7 @@ namespace LinearAlgebra
         //
         // Panels of QR_BLOCK columns are factored with the existing rank-1 sweep (cheap — pb is
         // small), but their combined effect on the REST of the matrix is applied once per panel as
-        // two GEMM-shaped passes (Unsafe_OP.wyVtC / wySubVW, unit-stride inner loop) instead of pb
+        // two GEMM-shaped passes (UnsafeOP.wyVtC / wySubVW, unit-stride inner loop) instead of pb
         // separate rank-1 (applyReflectorRight) passes — the memory-traffic-bound part of the
         // algorithm. Reconstruction of Q is similarly batched, applying panels right-to-left.
         //
@@ -262,10 +262,10 @@ namespace LinearAlgebra
                 }
 
                 // (3) form the pb x pb compact-WY T (τ≡1) from the panel.
-                Unsafe_OP.formT(Vp, pb, rows, pb, T, tcol, Wmat);
+                UnsafeOP.formT(Vp, pb, rows, pb, T, tcol, Wmat);
 
                 // (4) trailing block update on cols [p0+pb, n): C -= V*(Tᵀ*(Vᵀ*C)). One untiled
-                //     GEMM call per panel — Unsafe_OP.wyVtC/wySubVW already reach full GEMM
+                //     GEMM call per panel — UnsafeOP.wyVtC/wySubVW already reach full GEMM
                 //     throughput (~70 GFLOP/s, matched matMatDot) at this width without tiling;
                 //     column-tiling was tried and measured SLOWER (added MemClear/call overhead
                 //     for no cache-locality benefit), so it is deliberately not done here.
@@ -275,9 +275,9 @@ namespace LinearAlgebra
                 {
                     double* Cp = Qp + (long)p0 * n + cStart;
                     UnsafeUtility.MemClear(Wmat, (long)pb * cw * UnsafeUtility.SizeOf<double>());
-                    Unsafe_OP.wyVtC(Vp, pb, Cp, n, rows, pb, cw, Wmat);
-                    Unsafe_OP.wyTriTransMul(T, pb, Wmat, cw);      // Tᵀ — factorization direction
-                    Unsafe_OP.wySubVW(Vp, pb, Cp, n, rows, pb, cw, Wmat);
+                    UnsafeOP.wyVtC(Vp, pb, Cp, n, rows, pb, cw, Wmat);
+                    UnsafeOP.wyTriTransMul(T, pb, Wmat, cw);      // Tᵀ — factorization direction
+                    UnsafeOP.wySubVW(Vp, pb, Cp, n, rows, pb, cw, Wmat);
                 }
             }
 
@@ -327,7 +327,7 @@ namespace LinearAlgebra
                         Vrow[i] = Vfrow[p0 + i];
                 }
 
-                Unsafe_OP.formT(Vp, pb, rows, pb, T, tcol, Wmat);
+                UnsafeOP.formT(Vp, pb, rows, pb, T, tcol, Wmat);
 
                 // Apply the block to columns [p0, n) of Q, rows [p0, m): Q -= V*(T*(Vᵀ*Q)).
                 // NOT columns [0, n): columns < p0 are PROVABLY still their original seeded unit
@@ -341,9 +341,9 @@ namespace LinearAlgebra
                 int cw = n - p0;
                 double* Cp = Qp + (long)p0 * n + p0;
                 UnsafeUtility.MemClear(Wmat, (long)pb * cw * UnsafeUtility.SizeOf<double>());
-                Unsafe_OP.wyVtC(Vp, pb, Cp, n, rows, pb, cw, Wmat);
-                Unsafe_OP.wyTriMul(T, pb, Wmat, cw);               // T — reconstruction direction
-                Unsafe_OP.wySubVW(Vp, pb, Cp, n, rows, pb, cw, Wmat);
+                UnsafeOP.wyVtC(Vp, pb, Cp, n, rows, pb, cw, Wmat);
+                UnsafeOP.wyTriMul(T, pb, Wmat, cw);               // T — reconstruction direction
+                UnsafeOP.wySubVW(Vp, pb, Cp, n, rows, pb, cw, Wmat);
             }
         }
 
@@ -477,7 +477,7 @@ namespace LinearAlgebra
                     int L = n - d;
                     UnsafeUtility.MemClear(cn + d, (long)L * UnsafeUtility.SizeOf<double>());
                     for (int r = d; r < m; r++)
-                        Unsafe_OP.addSquares(cn + d, qp + (long)r * n + d, L);
+                        UnsafeOP.addSquares(cn + d, qp + (long)r * n + d, L);
                 }
 
                 double diagNorm2 = colNorm2[d];
@@ -503,7 +503,7 @@ namespace LinearAlgebra
                     // Full-column swap (all rows): rows < d hold finished R entries that must travel
                     // with the column; rows >= d hold the live sub-matrix. Stored Householder vectors
                     // of earlier steps live in columns < d and are untouched (both indices are >= d).
-                    Swap_OP.Columns(ref Q, d, pivotCol);
+                    Swap.Columns(ref Q, d, pivotCol);
                     P.Swap(d, pivotCol);
                 }
 
@@ -727,7 +727,7 @@ namespace LinearAlgebra
             // dot(in b, in Q, ref x) computes x[j] = Σ_i Q[i,j]·b[i] = (Qᵀb)[j].
             // dot zeroes x via MemClear before accumulating, so x needs no prior initialisation.
             // Guard: x must not alias b (enforced inside dot by pointer comparison).
-            Linear_OP.dot(in b, in Q, ref x);
+            Blas.dot(in b, in Q, ref x);
 
             // Step 6: back-solve the leading r×r block of R in place.
             // x holds c = Qᵀb; overwrite x[0..r-1] with the triangular solution.

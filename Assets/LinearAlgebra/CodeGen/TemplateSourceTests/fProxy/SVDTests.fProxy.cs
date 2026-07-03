@@ -168,8 +168,8 @@ public class fProxySVDTests
         {
             var U = new fProxyMxN(m, m, Allocator.Temp, false);
             var V = new fProxyMxN(n, n, Allocator.Temp, false);
-            fProxyRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref U);
-            fProxyRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref V);
+            Rand.randomOrthogonalInpl(ref rng, ref U);
+            Rand.randomOrthogonalInpl(ref rng, ref V);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -200,7 +200,7 @@ public class fProxySVDTests
             var S = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
             Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             // svTol & ortho/recon tolerances scale with the numeric type via Consts.fProxySqrtEps
             // (float ~3.45e-4, double ~1.49e-8): the SAME bound holds for both generated expansions.
@@ -310,7 +310,7 @@ public class fProxySVDTests
             var S = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
             Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             AssertDescendingNonNegative(in S, n);
             for (int i = 0; i < n; i++) { if (!(S[i] > (fProxy)0)) Record(S[i], (fProxy)0, S[i]); Assert.IsTrue(S[i] > (fProxy)0); }
@@ -334,7 +334,7 @@ public class fProxySVDTests
             var S = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
             Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             AssertDescendingNonNegative(in S, n);
             for (int i = 0; i < n; i++) { if (!(S[i] > (fProxy)0)) Record(S[i], (fProxy)0, S[i]); Assert.IsTrue(S[i] > (fProxy)0); }
@@ -377,8 +377,8 @@ public class fProxySVDTests
             for (int i = 0; i < dim; i++)
                 AssertClose(S[i], (fProxy)1f, 1E-4f);
 
-            Assert.IsTrue(Analysis_OP.isOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis_OP.isOrthogonal(V, 1E-4f));
+            Assert.IsTrue(Analysis.isOrthogonal(U, 1E-4f));
+            Assert.IsTrue(Analysis.isOrthogonal(V, 1E-4f));
 
             AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
 
@@ -446,8 +446,8 @@ public class fProxySVDTests
 
             AssertDescendingNonNegative(in S, dim);
 
-            Assert.IsTrue(Analysis_OP.isOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis_OP.isOrthogonal(V, 1E-4f));
+            Assert.IsTrue(Analysis.isOrthogonal(U, 1E-4f));
+            Assert.IsTrue(Analysis.isOrthogonal(V, 1E-4f));
 
             AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
 
@@ -470,12 +470,12 @@ public class fProxySVDTests
 
             Assert.IsTrue(success);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in V));
 
-            Assert.IsTrue(Analysis_OP.isOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis_OP.isOrthogonal(V, 1E-4f));
+            Assert.IsTrue(Analysis.isOrthogonal(U, 1E-4f));
+            Assert.IsTrue(Analysis.isOrthogonal(V, 1E-4f));
 
             AssertDescendingNonNegative(in S, dim);
 
@@ -501,13 +501,13 @@ public class fProxySVDTests
 
             Assert.IsTrue(success);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in V));
 
             // U is 6x3 with orthonormal columns -> U^T U = I_3
-            Assert.IsTrue(Analysis_OP.isOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis_OP.isOrthogonal(V, 1E-4f));
+            Assert.IsTrue(Analysis.isOrthogonal(U, 1E-4f));
+            Assert.IsTrue(Analysis.isOrthogonal(V, 1E-4f));
 
             AssertDescendingNonNegative(in S, n);
 
@@ -536,9 +536,9 @@ public class fProxySVDTests
 
             Assert.IsTrue(success);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in V));
 
             // exactly one zero singular value (smallest), the third is non-trivial
             Assert.IsTrue(S[3] < 1E-4f);
@@ -578,18 +578,18 @@ public class fProxySVDTests
 
             Assert.IsTrue(success);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in V));
 
             for (int i = 0; i < dim; i++)
                 AssertClose(S[i], (fProxy)0f, 1E-4f);
 
             // U is all zeros (every column matches a zero singular value)
-            Assert.IsTrue(Analysis_OP.isZero(in U, 1E-4f));
+            Assert.IsTrue(Analysis.isZero(in U, 1E-4f));
 
             // V stays identity (no rotations applied)
-            Assert.IsTrue(Analysis_OP.isIdentity(in V, 1E-4f));
+            Assert.IsTrue(Analysis.isIdentity(in V, 1E-4f));
 
             arena.Dispose();
         }
@@ -647,9 +647,9 @@ public class fProxySVDTests
 
             // The return value is intentionally not asserted (may or may not converge).
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in V));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in V));
 
             AssertDescendingNonNegative(in S, dim);
 
@@ -671,7 +671,7 @@ public class fProxySVDTests
             int k = SVD.singularValues(in A, ref S);
             AssertClose((fProxy)k, (fProxy)n, 1E-6f);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             // every singular value == sqrt(4) == 2 (cond = 1)
             for (int i = 0; i < n; i++)
@@ -697,7 +697,7 @@ public class fProxySVDTests
 
             SVD.singularValues(in A, ref S);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             fProxy pi = (fProxy)Unity.Mathematics.math.PI_DBL;
             // boundary lies within ~1e-10 of π; absorb float SVD error without masking a real overshoot.
@@ -739,7 +739,7 @@ public class fProxySVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             for (int i = 0; i < n; i++)
                 AssertClose(S[i], (fProxy)1f, 1E-4f);
@@ -747,7 +747,7 @@ public class fProxySVDTests
             AssertDescendingNonNegative(in S, n);
 
             // A must be unchanged (still identity).
-            Assert.IsTrue(Analysis_OP.isIdentity(in A, 1E-5f));
+            Assert.IsTrue(Analysis.isIdentity(in A, 1E-5f));
 
             arena.Dispose();
         }
@@ -773,7 +773,7 @@ public class fProxySVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             // |d| sorted descending: 5, 3, 2, 1, 0.5
             AssertClose(S[0], (fProxy)5f, 1E-4f);
@@ -806,7 +806,7 @@ public class fProxySVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             AssertClose(S[0], (fProxy)4f, 1E-4f);
             AssertClose(S[1], (fProxy)3f, 1E-4f);
@@ -836,7 +836,7 @@ public class fProxySVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             // expected sole singular value = ||u|| * ||v||
             fProxy nu = (fProxy)0f, nv = (fProxy)0f;
@@ -877,8 +877,8 @@ public class fProxySVDTests
             bool ok = SVD.svdValues(in A, ref S);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in Sref));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in Sref));
 
             AssertDescendingNonNegative(in S, n);
             AssertDescendingNonNegative(in Sref, n);
@@ -920,7 +920,7 @@ public class fProxySVDTests
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
 
             // singular values agree with the oracle (both descending, scale-aware tol)
@@ -933,8 +933,8 @@ public class fProxySVDTests
 
             fProxy reconTol = (fProxy)1E-3f + (fProxy)1E-4f * math.abs(S[0]);
             AssertReconstruct(in A, in U, in S, in V, ref arena, reconTol);
-            Assert.IsTrue(Analysis_OP.isOrthogonal(U, (fProxy)1E-3f));
-            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)1E-3f));
+            Assert.IsTrue(Analysis.isOrthogonal(U, (fProxy)1E-3f));
+            Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)1E-3f));
 
             AssertMatrixUnchanged(in A, in Apristine, m, n);
 
@@ -961,7 +961,7 @@ public class fProxySVDTests
             var V = arena.fProxyMat(n, n);
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             fProxy nu = (fProxy)0f, nv = (fProxy)0f;
             for (int i = 0; i < n; i++) { nu += u[i] * u[i]; nv += v[i] * v[i]; }
@@ -993,14 +993,14 @@ public class fProxySVDTests
             var V = arena.fProxyMat(n, n);
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
 
             for (int i = 0; i < n; i++)
                 AssertClose(S[i], (fProxy)3f, (fProxy)1E-3f);
 
             AssertReconstruct(in A, in U, in S, in V, ref arena, (fProxy)1E-3f);
-            Assert.IsTrue(Analysis_OP.isOrthogonal(U, (fProxy)1E-3f));
-            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)1E-3f));
+            Assert.IsTrue(Analysis.isOrthogonal(U, (fProxy)1E-3f));
+            Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)1E-3f));
             AssertMatrixUnchanged(in A, in Apristine, n, n);
 
             arena.Dispose();
@@ -1019,7 +1019,7 @@ public class fProxySVDTests
             var V = arena.fProxyMat(n, n);
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
             for (int i = 0; i < n; i++)
                 AssertClose(S[i], (fProxy)0f, (fProxy)1E-5f);
 
@@ -1058,7 +1058,7 @@ public class fProxySVDTests
             var V = arena.fProxyMat(n, n);
             bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
 
             for (int i = 0; i < n; i++)
@@ -1072,8 +1072,8 @@ public class fProxySVDTests
                 AssertClose(S[i], (fProxy)0f, (fProxy)1E-3f + (fProxy)1E-3f * S[0]);
 
             AssertReconstruct(in A, in U, in S, in V, ref arena, (fProxy)1E-3f + (fProxy)1E-4f * S[0]);
-            Assert.IsTrue(Analysis_OP.isOrthogonal(U, (fProxy)1E-3f));
-            Assert.IsTrue(Analysis_OP.isOrthogonal(V, (fProxy)1E-3f));
+            Assert.IsTrue(Analysis.isOrthogonal(U, (fProxy)1E-3f));
+            Assert.IsTrue(Analysis.isOrthogonal(V, (fProxy)1E-3f));
             AssertMatrixUnchanged(in A, in Apristine, n, n);
 
             arena.Dispose();
@@ -1101,16 +1101,16 @@ public class fProxySVDTests
         private void AssertReconstruct(in fProxyMxN A, in fProxyMxN U, in fProxyN S, in fProxyMxN V, ref Arena arena, fProxy precision)
         {
             var diagS = arena.fProxyDiagonalMat(in S);
-            var US = Linear_OP.dot(U, diagS);
-            var Vt = Linear_OP.trans(V);
-            var recon = Linear_OP.dot(US, Vt);
+            var US = Blas.dot(U, diagS);
+            var Vt = Blas.trans(V);
+            var recon = Blas.dot(US, Vt);
 
             fProxyMxN shouldBeZero = A - recon;
 
-            if (Analysis_OP.isAnyNan(in shouldBeZero))
+            if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
-            var zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
+            var zeroError = Analysis.MaxZeroError(shouldBeZero);
 
             // Fail layout: [1]=zeroError, [2]=precision, [3]=diff
             if (!(zeroError <= precision) && Fail[0] == (fProxy)0)
@@ -1120,7 +1120,7 @@ public class fProxySVDTests
                 Fail[2] = precision;
                 Fail[3] = zeroError - precision;
             }
-            Assert.IsTrue(Analysis_OP.isZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis.isZero(in shouldBeZero, precision));
         }
 
         // Fail layout: [1]=S[i] (offending element), [2]=bound or S[i-1], [3]=index cast to fProxy

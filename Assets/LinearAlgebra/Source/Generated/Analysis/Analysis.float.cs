@@ -6,7 +6,7 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra
 {
 
-    public static partial class Analysis_OP {
+    public static partial class Analysis {
 
         public static bool isAnyNan(in floatN a) {
             
@@ -241,7 +241,7 @@ namespace LinearAlgebra
 
             // B = A^T * A
             unsafe {
-                Unsafe_OP.matMatDotTransA(A.Data.Ptr, A.Data.Ptr, B.Data.Ptr, A.N_Cols, A.M_Rows, B.N_Cols);
+                UnsafeOP.matMatDotTransA(A.Data.Ptr, A.Data.Ptr, B.Data.Ptr, A.N_Cols, A.M_Rows, B.N_Cols);
             }
 
             bool valid = true;

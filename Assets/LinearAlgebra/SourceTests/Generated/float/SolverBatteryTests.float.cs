@@ -130,9 +130,9 @@ public class floatSolverBatteryTests
 
             // rec = L · Lᵀ
             var Lt = arena.floatMat(n, n);
-            Linear_OP.trans(in L, ref Lt);
+            Blas.trans(in L, ref Lt);
             var rec = arena.floatMat(n, n);
-            Linear_OP.dot(in L, in Lt, ref rec);
+            Blas.dot(in L, in Lt, ref rec);
 
             float tol = (MatMaxAbs(in A) + (float)1) * Consts.floatSqrtEps * factor;
             AssertTrue(MaxAbsDiff(in A, in rec) <= tol);
@@ -224,7 +224,7 @@ public class floatSolverBatteryTests
             var xTrue = arena.floatVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);
 
-            var b = Linear_OP.dot(A, xTrue);   // consistent RHS
+            var b = Blas.dot(A, xTrue);   // consistent RHS
 
             var LUm = A.Copy();
             var P = new Pivot(n, Allocator.Temp);
@@ -269,7 +269,7 @@ public class floatSolverBatteryTests
             var xTrue = arena.floatVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);
 
-            var b = Linear_OP.dot(A, xTrue);
+            var b = Blas.dot(A, xTrue);
 
             var Aw = A.Copy();   // qrDirectSolve destroys A and b
             var bw = b.Copy();
@@ -296,7 +296,7 @@ public class floatSolverBatteryTests
             var xTrue = arena.floatVec(n);
             xTrue[0] = (float)1; xTrue[1] = (float)(-2); xTrue[2] = (float)3;
 
-            var b = Linear_OP.dot(A, xTrue);   // length 4, in range(A)
+            var b = Blas.dot(A, xTrue);   // length 4, in range(A)
 
             var Aw = A.Copy();
             var bw = b.Copy();
@@ -370,7 +370,7 @@ public class floatSolverBatteryTests
 
             // QRProduct = Q · R (m × n)
             var QRProduct = arena.floatMat(m, n);
-            Linear_OP.dot(in Q, in R, ref QRProduct);
+            Blas.dot(in Q, in R, ref QRProduct);
 
             float tol = (MatMaxAbs(in A) + (float)1) * (float)100 * Consts.floatSqrtEps;
             for (int i = 0; i < m; i++)
@@ -413,7 +413,7 @@ public class floatSolverBatteryTests
                 AssertClose(S[i], sq, band);
 
             float condBand = IsDouble() ? (float)1E-5 : (float)1E-2;
-            AssertClose(Linear_OP.cond(in A), (float)1, condBand);
+            AssertClose(Blas.cond(in A), (float)1, condBand);
         }
 
         // Parter: nonsymmetric Toeplitz; all singular values < π and cluster near π. n = 8.
@@ -459,13 +459,13 @@ public class floatSolverBatteryTests
             AssertClose(S[2], eps, (float)1 * Consts.floatSqrtEps);
 
             // numerical rank is full (n) at this ε
-            RecordEq(Linear_OP.rank(in A), n);
+            RecordEq(Blas.rank(in A), n);
 
             // pinv least squares recovers a consistent xTrue
             var xTrue = arena.floatVec(n);
             xTrue[0] = (float)1; xTrue[1] = (float)2; xTrue[2] = (float)3;
 
-            var b = Linear_OP.dot(A, xTrue);   // length 4, in range(A)
+            var b = Blas.dot(A, xTrue);   // length 4, in range(A)
 
             var Aw = A.Copy();                // pinvSolve no longer modifies A (copy kept for clarity)
             var x = arena.floatVec(n);
@@ -507,7 +507,7 @@ public class floatSolverBatteryTests
 
             // VᵀV ≈ I
             var VtV = arena.floatMat(n, n);
-            Linear_OP.dot(in V, in V, ref VtV, transposeA: true);
+            Blas.dot(in V, in V, ref VtV, transposeA: true);
             float orthoTol = (float)50 * Consts.floatSqrtEps;
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
@@ -517,11 +517,11 @@ public class floatSolverBatteryTests
             var D = arena.floatMat(n, n);   // zero-initialized
             for (int i = 0; i < n; i++) D[i, i] = eig[i];
             var VD = arena.floatMat(n, n);
-            Linear_OP.dot(in V, in D, ref VD);
+            Blas.dot(in V, in D, ref VD);
             var Vt = arena.floatMat(n, n);
-            Linear_OP.trans(in V, ref Vt);
+            Blas.trans(in V, ref Vt);
             var rec = arena.floatMat(n, n);
-            Linear_OP.dot(in VD, in Vt, ref rec);
+            Blas.dot(in VD, in Vt, ref rec);
 
             float tol = (MatMaxAbs(in A) + (float)1) * (float)50 * Consts.floatSqrtEps;
             for (int i = 0; i < n; i++)
@@ -743,7 +743,7 @@ public class floatSolverBatteryTests
             var xTrue = arena.floatVec(n);
             for (int i = 0; i < n; i++) xTrue[i] = (float)(i + 1);
 
-            var b = Linear_OP.dot(A, xTrue);
+            var b = Blas.dot(A, xTrue);
 
             var x = arena.floatVec(n);
             bool conv = Solvers.cg(in A, in b, ref x, 200, Consts.floatSqrtEps);
@@ -767,10 +767,10 @@ public class floatSolverBatteryTests
             var arena = new Arena(Allocator.Persistent);
 
             var Hd = arena.floatHadamard(4);
-            AssertClose(Linear_OP.cond(in Hd), (float)1, IsDouble() ? (float)1E-5 : (float)1E-2);
+            AssertClose(Blas.cond(in Hd), (float)1, IsDouble() ? (float)1E-5 : (float)1E-2);
 
             var H3 = arena.floatHilbert(3);
-            float c = Linear_OP.cond(in H3);
+            float c = Blas.cond(in H3);
             AssertClose(c, (float)524.0568, IsDouble() ? (float)1 : (float)10);
 
             arena.Dispose();
@@ -828,7 +828,7 @@ public class floatSolverBatteryTests
         // ‖A x − b‖₂
         float ResidualNorm(in floatMxN A, in floatN x, in floatN b)
         {
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             float s = (float)0;
             for (int i = 0; i < b.N; i++)
             {

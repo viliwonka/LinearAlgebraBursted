@@ -1,7 +1,7 @@
 using System;
 
 using LinearAlgebra;
-using LinearAlgebra.ML;        // opt-in: fProxyKMeans_OP.kmeans, KMeansInit, fProxyKMeansCache
+using LinearAlgebra.ML;        // opt-in: KMeans.kmeans, KMeansInit, fProxyKMeansCache
 using LinearAlgebra.Stats;     // fProxyStats_OP.colMean (k==1 global-mean oracle)
 
 using NUnit.Framework;
@@ -10,7 +10,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// K-means (LinearAlgebra.ML.fProxyKMeans_OP.kmeans) — squared-Euclidean Lloyd with GEMM assignment
+// K-means (LinearAlgebra.ML.KMeans.kmeans) — squared-Euclidean Lloyd with GEMM assignment
 // and k-means++ / Uniform seeding. Tests mirror the SolverBattery / RollingWindow idiom: a Burst
 // [BurstCompile(FloatPrecision.High)] IJob carries a TestType enum, a Fail NativeArray diagnostic
 // channel, and a [TestCaseSource] driver; the managed-throw guard paths run as plain [Test]s on the
@@ -85,7 +85,7 @@ public class fProxyKMeansTests
             var centroids = arena.fProxyMat(k, D);
             var assign    = arena.Indices(12);
             var ws        = arena.fProxyKMeansCache(12, D, k);
-            fProxyKMeans_OP.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out fProxy inertia, out int iters, ref ws);
+            KMeans.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out fProxy inertia, out int iters, ref ws);
 
             // each of the three centers is matched by exactly one centroid (tight band)
             fProxy ctol = (fProxy)50 * Consts.fProxySqrtEps;
@@ -127,7 +127,7 @@ public class fProxyKMeansTests
             var centroids = arena.fProxyMat(k, D);
             var assign    = arena.Indices(N);
             var ws        = arena.fProxyKMeansCache(N, D, k);
-            fProxyKMeans_OP.kmeans(in X, k, seed, maxIter, ref centroids, ref assign, out _, out _, ref ws);
+            KMeans.kmeans(in X, k, seed, maxIter, ref centroids, ref assign, out _, out _, ref ws);
 
             for (int n = 0; n < N; n++)
             {
@@ -150,7 +150,7 @@ public class fProxyKMeansTests
                 var centroids = arena.fProxyMat(k, D);
                 var assign    = arena.Indices(N);
                 var ws        = arena.fProxyKMeansCache(N, D, k);
-                fProxyKMeans_OP.kmeans(in X, k, 3u, 20, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
+                KMeans.kmeans(in X, k, 3u, 20, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
 
                 AssertTrue(inertia >= (fProxy)0);
                 fProxy sse = RecomputeSSE(in X, in centroids, in assign, N, D);
@@ -165,7 +165,7 @@ public class fProxyKMeansTests
                 var centroids = arena.fProxyMat(k, D);
                 var assign    = arena.Indices(N);
                 var ws        = arena.fProxyKMeansCache(N, D, k);
-                fProxyKMeans_OP.kmeans(in B, k, 9u, 20, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
+                KMeans.kmeans(in B, k, 9u, 20, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
 
                 AssertTrue(inertia >= (fProxy)0);
                 AssertClose(inertia, (fProxy)0, (fProxy)100 * Consts.fProxySqrtEps);
@@ -194,7 +194,7 @@ public class fProxyKMeansTests
             var centroids = arena.fProxyMat(k, D);
             var assign    = arena.Indices(N);
             var ws        = arena.fProxyKMeansCache(N, D, k);
-            fProxyKMeans_OP.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
+            KMeans.kmeans(in X, k, 1u, 20, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
 
             var mean = fProxyStats_OP.colMean(in X);   // length D
             fProxy ctol = (fProxy)50 * Consts.fProxySqrtEps;
@@ -235,7 +235,7 @@ public class fProxyKMeansTests
             X[4, 0] = (fProxy)50;  X[4, 1] = (fProxy)200;
 
             // allocating wrapper clamps internally to kk = min(10, 5) = 5
-            fProxyKMeans_OP.kmeans(ref arena, in X, 10, 7u, 20,
+            KMeans.kmeans(ref arena, in X, 10, 7u, 20,
                 out fProxyMxN centroids, out Indices assign, out fProxy inertia, out int iters);
 
             RecordEq(centroids.M_Rows, N);   // clamped to N rows
@@ -266,8 +266,8 @@ public class fProxyKMeansTests
             var c1 = arena.fProxyMat(k, D); var a1 = arena.Indices(N); var w1 = arena.fProxyKMeansCache(N, D, k);
             var c2 = arena.fProxyMat(k, D); var a2 = arena.Indices(N); var w2 = arena.fProxyKMeansCache(N, D, k);
 
-            fProxyKMeans_OP.kmeans(in X, k, seed, 20, init, ref c1, ref a1, out fProxy in1, out int it1, ref w1);
-            fProxyKMeans_OP.kmeans(in X, k, seed, 20, init, ref c2, ref a2, out fProxy in2, out int it2, ref w2);
+            KMeans.kmeans(in X, k, seed, 20, init, ref c1, ref a1, out fProxy in1, out int it1, ref w1);
+            KMeans.kmeans(in X, k, seed, 20, init, ref c2, ref a2, out fProxy in2, out int it2, ref w2);
 
             RecordEq(it1, it2);
             AssertExact(in1, in2);
@@ -290,9 +290,9 @@ public class fProxyKMeansTests
             uint seed = 99u;
 
             var cP = arena.fProxyMat(k, D); var aP = arena.Indices(N); var ws = arena.fProxyKMeansCache(N, D, k);
-            fProxyKMeans_OP.kmeans(in X, k, seed, 20, KMeansInit.KMeansPlusPlus, ref cP, ref aP, out fProxy inP, out int itP, ref ws);
+            KMeans.kmeans(in X, k, seed, 20, KMeansInit.KMeansPlusPlus, ref cP, ref aP, out fProxy inP, out int itP, ref ws);
 
-            fProxyKMeans_OP.kmeans(ref arena, in X, k, seed, 20, KMeansInit.KMeansPlusPlus,
+            KMeans.kmeans(ref arena, in X, k, seed, 20, KMeansInit.KMeansPlusPlus,
                 out fProxyMxN cA, out Indices aA, out fProxy inA, out int itA);
 
             RecordEq(itP, itA);
@@ -324,7 +324,7 @@ public class fProxyKMeansTests
             var centroids = arena.fProxyMat(k, D);
             var assign    = arena.Indices(N);
             var ws        = arena.fProxyKMeansCache(N, D, k);
-            fProxyKMeans_OP.kmeans(in X, k, 2u, 20, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
+            KMeans.kmeans(in X, k, 2u, 20, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
 
             // every centroid component finite (reseed must not produce NaN/Inf via divide-by-zero)
             for (int j = 0; j < k; j++)
@@ -357,7 +357,7 @@ public class fProxyKMeansTests
             var centroids = arena.fProxyMat(k, D);
             var assign    = arena.Indices(N);
             var ws        = arena.fProxyKMeansCache(N, D, k);
-            fProxyKMeans_OP.kmeans(in X, k, seed, 30, init, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
+            KMeans.kmeans(in X, k, seed, 30, init, ref centroids, ref assign, out fProxy inertia, out _, ref ws);
 
             AssertTrue(inertia >= (fProxy)0);
             AssertClose(inertia, (fProxy)0, (fProxy)100 * Consts.fProxySqrtEps);
@@ -532,7 +532,7 @@ public class fProxyKMeansTests
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(0, 2);   // N == 0
         Assert.Throws<InvalidOperationException>(() =>
-            fProxyKMeans_OP.kmeans(ref arena, in X, 2, 1u, 10,
+            KMeans.kmeans(ref arena, in X, 2, 1u, 10,
                 out fProxyMxN c, out Indices a, out fProxy inertia, out int iters));
         arena.Dispose();
     }
@@ -543,7 +543,7 @@ public class fProxyKMeansTests
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(4, 2);
         Assert.Throws<ArgumentException>(() =>
-            fProxyKMeans_OP.kmeans(ref arena, in X, 0, 1u, 10,
+            KMeans.kmeans(ref arena, in X, 0, 1u, 10,
                 out fProxyMxN c, out Indices a, out fProxy inertia, out int iters));
         arena.Dispose();
     }
@@ -554,7 +554,7 @@ public class fProxyKMeansTests
         var arena = new Arena(Allocator.Persistent);
         var X = arena.fProxyMat(4, 2);
         Assert.Throws<ArgumentException>(() =>
-            fProxyKMeans_OP.kmeans(ref arena, in X, 2, 1u, 0,
+            KMeans.kmeans(ref arena, in X, 2, 1u, 0,
                 out fProxyMxN c, out Indices a, out fProxy inertia, out int iters));
         arena.Dispose();
     }
@@ -569,7 +569,7 @@ public class fProxyKMeansTests
         var assign = arena.Indices(N);
         var badCentroids = arena.fProxyMat(k + 1, D);   // wrong row count
         Assert.Throws<ArgumentException>(() =>
-            fProxyKMeans_OP.kmeans(in X, k, 1u, 10, ref badCentroids, ref assign, out fProxy inertia, out int iters, ref ws));
+            KMeans.kmeans(in X, k, 1u, 10, ref badCentroids, ref assign, out fProxy inertia, out int iters, ref ws));
         arena.Dispose();
     }
 
@@ -583,7 +583,7 @@ public class fProxyKMeansTests
         var centroids = arena.fProxyMat(k, D);
         var badAssign = arena.Indices(N + 1);           // wrong length
         Assert.Throws<ArgumentException>(() =>
-            fProxyKMeans_OP.kmeans(in X, k, 1u, 10, ref centroids, ref badAssign, out fProxy inertia, out int iters, ref ws));
+            KMeans.kmeans(in X, k, 1u, 10, ref centroids, ref badAssign, out fProxy inertia, out int iters, ref ws));
         arena.Dispose();
     }
 
@@ -597,7 +597,7 @@ public class fProxyKMeansTests
         var assign    = arena.Indices(N);
         var badWs = arena.fProxyKMeansCache(N, D, k + 1);   // ws sized for wrong k
         Assert.Throws<ArgumentException>(() =>
-            fProxyKMeans_OP.kmeans(in X, k, 1u, 10, ref centroids, ref assign, out fProxy inertia, out int iters, ref badWs));
+            KMeans.kmeans(in X, k, 1u, 10, ref centroids, ref assign, out fProxy inertia, out int iters, ref badWs));
         arena.Dispose();
     }
 }

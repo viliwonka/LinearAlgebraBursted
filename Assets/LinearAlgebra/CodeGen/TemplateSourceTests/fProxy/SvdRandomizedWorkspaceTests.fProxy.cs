@@ -49,7 +49,7 @@ public class fProxySvdRandomizedWorkspaceTests
         {
             var B = arena.fProxyRandomMat(m, r, (fProxy)(-2f), (fProxy)2f, seed);
             var C = arena.fProxyRandomMat(r, n, (fProxy)(-2f), (fProxy)2f, seed + 13u);
-            return Linear_OP.dot(B, C);
+            return Blas.dot(B, C);
         }
 
         // Explicit oversample/powerIters/seed/maxIter: ws overload == allocating overload exactly.
@@ -68,9 +68,9 @@ public class fProxySvdRandomizedWorkspaceTests
             bool okW = SVD.svdRandomized(in A, ref UkW, ref SkW, ref VkW, k, oversample, powerIters, seed, maxIter, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.isZero(SkA - SkW, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(UkA - UkW, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(VkA - VkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(SkA - SkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(UkA - UkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(VkA - VkW, Tol()));
 
             arena.Dispose();
         }
@@ -92,9 +92,9 @@ public class fProxySvdRandomizedWorkspaceTests
             bool okW = SVD.svdRandomized(in A, ref UkW, ref SkW, ref VkW, k, seed, ref ws);
 
             Assert.IsTrue(okA == okW);
-            Assert.IsTrue(Analysis_OP.isZero(SkA - SkW, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(UkA - UkW, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(VkA - VkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(SkA - SkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(UkA - UkW, Tol()));
+            Assert.IsTrue(Analysis.isZero(VkA - VkW, Tol()));
 
             arena.Dispose();
         }
@@ -125,9 +125,9 @@ public class fProxySvdRandomizedWorkspaceTests
             bool okA = SVD.svdRandomized(in A2, ref UA, ref SA, ref VA, k, oversample, powerIters, seed, maxIter);
 
             Assert.IsTrue(okW == okA);
-            Assert.IsTrue(Analysis_OP.isZero(SW - SA, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(UW - UA, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(VW - VA, Tol()));
+            Assert.IsTrue(Analysis.isZero(SW - SA, Tol()));
+            Assert.IsTrue(Analysis.isZero(UW - UA, Tol()));
+            Assert.IsTrue(Analysis.isZero(VW - VA, Tol()));
 
             arena.Dispose();
         }

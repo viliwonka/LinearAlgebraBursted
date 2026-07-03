@@ -127,14 +127,14 @@ namespace LinearAlgebra
                     P.Swap(k, pivotIndex);
 
                     // swap submatrix U rows
-                    Swap_OP.Rows(ref U, k, pivotIndex, k, m);
+                    Swap.Rows(ref U, k, pivotIndex, k, m);
 
                     // swap already calculated L rows
-                    Swap_OP.Rows(ref L, k, pivotIndex, 0, k);
+                    Swap.Rows(ref L, k, pivotIndex, 0, k);
 
                     // Calculate L and U. The trailing-row elimination U[j, k+1:] -= Ljk * U[k, k+1:] is
                     // an axpy over two DISTINCT rows (j > k) along the unit-stride column axis; routed
-                    // through the vectorising Unsafe_OP.axpy ([NoAlias], the GEMM pointer path) so Burst
+                    // through the vectorising UnsafeOP.axpy ([NoAlias], the GEMM pointer path) so Burst
                     // SIMD-vectorises this O(n^3) hot loop (float ~2x double). Bitwise identical to the
                     // scalar form: each column i is updated independently, and (-Ljk)*U[k,i] added to
                     // U[j,i] equals U[j,i] - Ljk*U[k,i] exactly in IEEE.
@@ -151,7 +151,7 @@ namespace LinearAlgebra
                             L[j, k] = Ljk;
 
                             float* rowJ = up + (long)j * m;
-                            Unsafe_OP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
+                            UnsafeOP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
 
                             // U is exactly upper-triangular
                             U[j, k] = 0;
@@ -174,7 +174,7 @@ namespace LinearAlgebra
             // is narrowed to the panel's own columns (DGETF2-style). The panel's contribution to the
             // columns to its right is then applied ONCE per panel as a level-3 TRSM (U12 = L11^-1 *
             // A12, unit-lower forward substitution) followed by a single GEMM trailing update
-            // (A22 -= L21*U12, via Unsafe_OP.wySubVW) instead of one rank-1 update per panel column —
+            // (A22 -= L21*U12, via UnsafeOP.wySubVW) instead of one rank-1 update per panel column —
             // trading O(n) re-streams of the trailing matrix for O(n/LU_BLOCK), the memory-bandwidth-
             // bound part of the algorithm.
             //
@@ -237,10 +237,10 @@ namespace LinearAlgebra
 
                         // swap FULL trailing width [k,m) — not just the panel — so the trailing block
                         // A22 is already pre-permuted when the GEMM below runs.
-                        Swap_OP.Rows(ref U, k, pivotIndex, k, m);
+                        Swap.Rows(ref U, k, pivotIndex, k, m);
 
                         // swap already calculated L rows (multipliers already computed travel too)
-                        Swap_OP.Rows(ref L, k, pivotIndex, 0, k);
+                        Swap.Rows(ref L, k, pivotIndex, 0, k);
 
                         float Ukk = U[k, k];
                         float* rowK = up + (long)k * m;
@@ -253,7 +253,7 @@ namespace LinearAlgebra
 
                             if (len > 0) {
                                 float* rowJ = up + (long)j * m;
-                                Unsafe_OP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
+                                UnsafeOP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
                             }
 
                             // U is exactly upper-triangular
@@ -274,7 +274,7 @@ namespace LinearAlgebra
                             for (int p = 0; p < r; p++) {
                                 float Lrp = L[k0 + r, k0 + p];
                                 float* uP = up + (long)(k0 + p) * m + rStart;
-                                Unsafe_OP.axpy(uR, uP, -Lrp, ntrail);
+                                UnsafeOP.axpy(uR, uP, -Lrp, ntrail);
                             }
                         }
 
@@ -293,7 +293,7 @@ namespace LinearAlgebra
                         //     U[rStart:m, rStart:m] (strided leading dim m). [NoAlias] is truthful:
                         //     Ubuf is a separate Temp buffer; L21 (in L) and A22 (in U) are different
                         //     matrices.
-                        Unsafe_OP.wySubVW(lp + (long)rStart * m + k0, m, up + (long)rStart * m + rStart, m, ntrail, kb, ntrail, ubufp);
+                        UnsafeOP.wySubVW(lp + (long)rStart * m + k0, m, up + (long)rStart * m + rStart, m, ntrail, kb, ntrail, ubufp);
                     }
                 }
 
@@ -367,7 +367,7 @@ namespace LinearAlgebra
                         float Ljk = LU[Pj, k] / Ukk;
 
                         float* rowPj = lup + (long)Pj * m;
-                        Unsafe_OP.axpy(rowPj + (k + 1), rowPk + (k + 1), -Ljk, len);
+                        UnsafeOP.axpy(rowPj + (k + 1), rowPk + (k + 1), -Ljk, len);
 
                         LU[Pj, k] = Ljk;
                     }

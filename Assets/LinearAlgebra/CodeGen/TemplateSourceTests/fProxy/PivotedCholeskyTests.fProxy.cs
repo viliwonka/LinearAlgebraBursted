@@ -120,7 +120,7 @@ public class fProxyPivotedCholeskyTests
 
                 // exact solve: b = A xOrig => x == xOrig.
                 var xOrig = arena.fProxyRandomVec(n, -3f, 3f, 71000 + t * 7);
-                var b = Linear_OP.dot(A, xOrig);
+                var b = Blas.dot(A, xOrig);
                 var Lc = arena.fProxyMat(n);
                 var Pc = new Pivot(n, Allocator.Persistent);
                 Cholesky.choleskyPivotSolve(in A, ref Lc, ref Pc, ref b); // b <- x
@@ -183,8 +183,8 @@ public class fProxyPivotedCholeskyTests
 
                 // xRange = A·w ∈ range(A); b = A·xRange => min-norm solution == xRange.
                 var w = arena.fProxyRandomVec(n, -2f, 2f, 51000 + t * 5);
-                var xRange = Linear_OP.dot(A, w);
-                var b = Linear_OP.dot(A, xRange);
+                var xRange = Blas.dot(A, w);
+                var b = Blas.dot(A, xRange);
 
                 var Ls = arena.fProxyMat(n);
                 var Ps = new Pivot(n, Allocator.Persistent);
@@ -217,7 +217,7 @@ public class fProxyPivotedCholeskyTests
                 var A = Gram(in arena, in B);
 
                 var xOrig = arena.fProxyRandomVec(n, -2f, 2f, 42000 + t * 9);
-                var b = Linear_OP.dot(A, xOrig);     // b ∈ range(A)
+                var b = Blas.dot(A, xOrig);     // b ∈ range(A)
                 var bForResidual = b.Copy();
 
                 var L = arena.fProxyMat(n);
@@ -225,7 +225,7 @@ public class fProxyPivotedCholeskyTests
                 Cholesky.choleskyPivotSolve(in A, ref L, ref P, ref b); // b <- x
 
                 // consistency: A·x ≈ bForResidual.
-                var Ax = Linear_OP.dot(A, b);
+                var Ax = Blas.dot(A, b);
                 var resid = arena.fProxyVec(n);
                 for (int i = 0; i < n; i++) resid[i] = Ax[i] - bForResidual[i];
                 fProxy bScale = fProxyNorms_OP.L2(in bForResidual) + (fProxy)1f;
@@ -432,11 +432,11 @@ public class fProxyPivotedCholeskyTests
                 RecordEq(ok ? 1 : 0, 1);
 
                 // normal equations: A(Ax) == A b  <=>  A(Ax - b) == 0  (residual ⟂ range(A)).
-                var Ax = Linear_OP.dot(A, b);
-                var AAx = Linear_OP.dot(A, Ax);
+                var Ax = Blas.dot(A, b);
+                var AAx = Blas.dot(A, Ax);
                 // recompute A b — b now holds x, so rebuild b from the same seed.
                 var bOrig = arena.fProxyRandomVec(n, -2f, 2f, 77000 + t * 13);
-                var Ab = Linear_OP.dot(A, bOrig);
+                var Ab = Blas.dot(A, bOrig);
 
                 fProxy scale = fProxyNorms_OP.L2(in Ab) + (fProxy)1f;
                 var diff = arena.fProxyVec(n);

@@ -254,21 +254,21 @@ public class floatLUTests
 
                 bool noPivot = LU.luDecompositionNoPivot(ref U, ref L);
                 Assert.IsFalse(noPivot);
-                Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-                Assert.IsFalse(Analysis_OP.isAnyNan(in L));
+                Assert.IsFalse(Analysis.isAnyNan(in U));
+                Assert.IsFalse(Analysis.isAnyNan(in L));
 
                 var Up = arena.floatMat(dim, dim);
                 var Lp = arena.floatIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool pivoted = LU.luDecomposition(ref Up, ref Lp, ref pivot);
                 Assert.IsFalse(pivoted);
-                Assert.IsFalse(Analysis_OP.isAnyNan(in Up));
-                Assert.IsFalse(Analysis_OP.isAnyNan(in Lp));
+                Assert.IsFalse(Analysis.isAnyNan(in Up));
+                Assert.IsFalse(Analysis.isAnyNan(in Lp));
 
                 var LUmat = arena.floatMat(dim, dim);
                 bool inplace = LU.luDecompositionInpl(ref LUmat, ref pivot);
                 Assert.IsFalse(inplace);
-                Assert.IsFalse(Analysis_OP.isAnyNan(in LUmat));
+                Assert.IsFalse(Analysis.isAnyNan(in LUmat));
 
                 pivot.Dispose();
             }
@@ -288,21 +288,21 @@ public class floatLUTests
 
                 bool noPivot = LU.luDecompositionNoPivot(ref U, ref L);
                 Assert.IsFalse(noPivot);
-                Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-                Assert.IsFalse(Analysis_OP.isAnyNan(in L));
+                Assert.IsFalse(Analysis.isAnyNan(in U));
+                Assert.IsFalse(Analysis.isAnyNan(in L));
 
                 var Up = A.Copy();
                 var Lp = arena.floatIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
                 bool pivoted = LU.luDecomposition(ref Up, ref Lp, ref pivot);
                 Assert.IsFalse(pivoted);
-                Assert.IsFalse(Analysis_OP.isAnyNan(in Up));
-                Assert.IsFalse(Analysis_OP.isAnyNan(in Lp));
+                Assert.IsFalse(Analysis.isAnyNan(in Up));
+                Assert.IsFalse(Analysis.isAnyNan(in Lp));
 
                 var LUmat = A.Copy();
                 bool inplace = LU.luDecompositionInpl(ref LUmat, ref pivot);
                 Assert.IsFalse(inplace);
-                Assert.IsFalse(Analysis_OP.isAnyNan(in LUmat));
+                Assert.IsFalse(Analysis.isAnyNan(in LUmat));
 
                 pivot.Dispose();
             }
@@ -324,7 +324,7 @@ public class floatLUTests
                 var pivot = new Pivot(2, Allocator.Temp);
                 bool inplace = LU.luDecompositionInpl(ref LUmat, ref pivot);
                 Assert.IsTrue(inplace);
-                Assert.IsFalse(Analysis_OP.isAnyNan(in LUmat));
+                Assert.IsFalse(Analysis.isAnyNan(in LUmat));
 
                 pivot.Dispose();
             }
@@ -380,7 +380,7 @@ public class floatLUTests
                 var x_Known = arena.floatVec(dim);
                 x_Known[0] = 3f; x_Known[1] = -2f; x_Known[2] = 5f;
 
-                var b = Linear_OP.dot(A, x_Known);
+                var b = Blas.dot(A, x_Known);
 
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
@@ -391,7 +391,7 @@ public class floatLUTests
                 var x_Solved = b.Copy();
                 LU.luSolve(ref LUmat, in pivot, ref x_Solved);
 
-                Assert.IsFalse(Analysis_OP.isAnyNan(in x_Solved));
+                Assert.IsFalse(Analysis.isAnyNan(in x_Solved));
 
                 AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
 
@@ -413,7 +413,7 @@ public class floatLUTests
                 var x_Known = arena.floatVec(dim);
                 x_Known[0] = 1f; x_Known[1] = -3f; x_Known[2] = 2f; x_Known[3] = 4f;
 
-                var b = Linear_OP.dot(A, x_Known);
+                var b = Blas.dot(A, x_Known);
 
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
@@ -432,7 +432,7 @@ public class floatLUTests
                 var x_Solved = b.Copy();
                 LU.luSolve(ref LUmat, in pivot, ref x_Solved);
 
-                Assert.IsFalse(Analysis_OP.isAnyNan(in x_Solved));
+                Assert.IsFalse(Analysis.isAnyNan(in x_Solved));
 
                 AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
 
@@ -602,7 +602,7 @@ public class floatLUTests
             for (int i = 0; i < dim; i++)
                 x_Known[i] = (float)(i + 1);
 
-            var b = Linear_OP.dot(A2, x_Known);
+            var b = Blas.dot(A2, x_Known);
 
             var LU2 = A2.Copy();
             bool s2 = LU.luDecompositionInpl(ref LU2, ref pivot);
@@ -611,7 +611,7 @@ public class floatLUTests
             var x_Solved = b.Copy();
             LU.luSolve(ref LU2, in pivot, ref x_Solved);
 
-            Assert.IsFalse(Analysis_OP.isAnyNan(in x_Solved));
+            Assert.IsFalse(Analysis.isAnyNan(in x_Solved));
 
             AssertVecClose(in x_Known, in x_Solved, dim, 1E-3f);
 
@@ -624,7 +624,7 @@ public class floatLUTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            // Swap_OP.Rows with default start/end swaps full rows.
+            // Swap.Rows with default start/end swaps full rows.
             {
                 int dim = 3;
                 var mat = arena.floatMat(dim, dim);
@@ -632,7 +632,7 @@ public class floatLUTests
                     for (int c = 0; c < dim; c++)
                         mat[r, c] = (float)(r * 10 + c);
 
-                Swap_OP.Rows(ref mat, 0, 1);
+                Swap.Rows(ref mat, 0, 1);
 
                 for (int c = 0; c < dim; c++) {
                     AssertClose(mat[0, c], (float)(10 + c), 1E-6f);
@@ -641,7 +641,7 @@ public class floatLUTests
                 }
             }
 
-            // Swap_OP.Columns with explicit start/end swaps only that row-range.
+            // Swap.Columns with explicit start/end swaps only that row-range.
             {
                 int dim = 4;
                 var mat = arena.floatMat(dim, dim);
@@ -650,7 +650,7 @@ public class floatLUTests
                         mat[r, c] = (float)(r * 10 + c);
 
                 // swap columns 0 and 1 only for rows [1,3)
-                Swap_OP.Columns(ref mat, 0, 1, 1, 3);
+                Swap.Columns(ref mat, 0, 1, 1, 3);
 
                 AssertClose(mat[0, 0], (float)(0), 1E-6f);
                 AssertClose(mat[0, 1], (float)(1), 1E-6f);
@@ -685,7 +685,7 @@ public class floatLUTests
 
             var x_Known = arena.floatRandomVec(dim, 1f, 10f, 901);
 
-            var b = Linear_OP.dot(A, x_Known);
+            var b = Blas.dot(A, x_Known);
 
             var U = A.Copy();
             var L = arena.floatIdentityMat(dim);
@@ -700,10 +700,10 @@ public class floatLUTests
 
             LU.luSolve(ref L, ref U, in pivot, ref x_Solved);
 
-            if (Analysis_OP.isAnyNan(in x_Solved))
+            if (Analysis.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
 
-            var zeroError = Analysis_OP.MaxZeroError(x_Known - x_Solved);
+            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
             // Fail layout: [1]=zeroError, [2]=limit 1E-3, [3]=diff
             if (!(zeroError < (float)1E-03f) && Fail[0] == (float)0)
@@ -737,7 +737,7 @@ public class floatLUTests
 
             var x_Known = arena.floatRandomVec(dim, 1f, 10f, 901);
 
-            var b = Linear_OP.dot(A, x_Known);
+            var b = Blas.dot(A, x_Known);
 
             var LUmat = A.Copy();
 
@@ -751,10 +751,10 @@ public class floatLUTests
 
             LU.luSolve(ref LUmat, in pivot, ref x_Solved);
 
-            if (Analysis_OP.isAnyNan(in x_Solved))
+            if (Analysis.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
 
-            var zeroError = Analysis_OP.MaxZeroError(x_Known - x_Solved);
+            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
             if (!(zeroError < (float)1E-03f) && Fail[0] == (float)0)
             {
@@ -842,10 +842,10 @@ public class floatLUTests
             bool ok = LU.luDecomposition(ref U, ref L, ref pivot);
 
             Assert.IsFalse(ok);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in L));
-            Assert.IsFalse(Analysis_OP.isAnyInf(in U));
-            Assert.IsFalse(Analysis_OP.isAnyInf(in L));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in L));
+            Assert.IsFalse(Analysis.isAnyInf(in U));
+            Assert.IsFalse(Analysis.isAnyInf(in L));
 
             pivot.Dispose();
             arena.Dispose();
@@ -868,7 +868,7 @@ public class floatLUTests
 
             var x_Known = arena.floatRandomVec(dim, 1f, 10f, 901);
 
-            var b = Linear_OP.dot(A, x_Known);
+            var b = Blas.dot(A, x_Known);
 
             var U = A.Copy();
             var L = arena.floatIdentityMat(dim);
@@ -883,10 +883,10 @@ public class floatLUTests
 
             LU.luSolve(ref L, ref U, in pivot, ref x_Solved);
 
-            if (Analysis_OP.isAnyNan(in x_Solved))
+            if (Analysis.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
 
-            var zeroError = Analysis_OP.MaxZeroError(x_Known - x_Solved);
+            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
 
             // x-accuracy is condition-number-amplified (NOT the backward error, which stays ~eps·‖A‖).
             // This fixed random draw at n=300 (cond a few·10^3) lands at ~1.2e-3 max error in float —
@@ -921,7 +921,7 @@ public class floatLUTests
             for (int d = 0; d < dim; d++)
                 A[d, d] += (float)(2 * dim);
             for (int i = 0; i < dim / 2; i++)
-                Swap_OP.Rows(ref A, i, dim - 1 - i);
+                Swap.Rows(ref A, i, dim - 1 - i);
             return A;
         }
 
@@ -937,8 +937,8 @@ public class floatLUTests
             var pB = new Pivot(dim, Allocator.Temp);
             bool okB = LU.luDecomposition(ref U, ref L, ref pB);
             Assert.IsTrue(okB);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in L));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in L));
 
             // --- reference: independent unblocked compact inplace factorization ---
             var LUref = A.Copy();
@@ -1000,8 +1000,8 @@ public class floatLUTests
             var pB = new Pivot(dim, Allocator.Temp);
             bool okB = LU.luDecomposition(ref U, ref L, ref pB);
             Assert.IsTrue(okB);
-            Assert.IsFalse(Analysis_OP.isAnyNan(in U));
-            Assert.IsFalse(Analysis_OP.isAnyNan(in L));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in L));
 
             var LUref = A.Copy();
             var pR = new Pivot(dim, Allocator.Temp);
@@ -1055,8 +1055,8 @@ public class floatLUTests
         {
             var Aperm = A.Copy();
             P.ApplyInverseRow(ref Aperm);
-            var shouldBeZero = Aperm - Linear_OP.dot(L, U);
-            return Analysis_OP.MaxZeroError(shouldBeZero);
+            var shouldBeZero = Aperm - Blas.dot(L, U);
+            return Analysis.MaxZeroError(shouldBeZero);
         }
 
         private void AssertPivotEqual(in Pivot a, in Pivot b, int dim)
@@ -1124,13 +1124,13 @@ public class floatLUTests
         private void AssertLU(in floatMxN A, in floatMxN L, in floatMxN U, bool pivoted) => AssertLU(in A, in L, in U, pivoted, 1E-6f);
         private void AssertLU(in floatMxN A, in floatMxN L, in floatMxN U, bool pivoted, float precision)
         {
-            floatMxN shouldBeZero = A - Linear_OP.dot(L, U);
+            floatMxN shouldBeZero = A - Blas.dot(L, U);
 
-            if (Analysis_OP.isAnyNan(in shouldBeZero))
+            if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
             // Fail layout: [1]=maxZeroError, [2]=precision, [3]=diff
-            var zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
+            var zeroError = Analysis.MaxZeroError(shouldBeZero);
             if (!(zeroError <= precision) && Fail[0] == (float)0)
             {
                 Fail[0] = (float)1;
@@ -1138,13 +1138,13 @@ public class floatLUTests
                 Fail[2] = precision;
                 Fail[3] = zeroError - precision;
             }
-            Assert.IsTrue(Analysis_OP.isZero(in shouldBeZero, precision));
-            Assert.IsTrue(Analysis_OP.isLowerTriangular(L, precision));
-            Assert.IsTrue(Analysis_OP.isUpperTriangular(U, precision));
+            Assert.IsTrue(Analysis.isZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis.isLowerTriangular(L, precision));
+            Assert.IsTrue(Analysis.isUpperTriangular(U, precision));
 
             if(pivoted)
             unsafe {
-                var maxAbs = LinearAlgebra.Internal.Unsafe_OP.maxAbs(L.Data.Ptr, L.Length);
+                var maxAbs = LinearAlgebra.Internal.UnsafeOP.maxAbs(L.Data.Ptr, L.Length);
 
                 if(maxAbs > 1f)
                     throw new System.Exception("TestJob: L has values greater than 1f");

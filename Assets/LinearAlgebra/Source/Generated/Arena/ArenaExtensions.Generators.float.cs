@@ -1,8 +1,8 @@
 namespace LinearAlgebra
 {
-    // Allocating (arena) wrappers for the floatGen_OP generators — each allocates a fresh persistent
+    // Allocating (arena) wrappers for the Generate generators — each allocates a fresh persistent
     // vector/matrix and delegates to the zero-alloc ref-dest primitive. Use these for one-off /
-    // setup-time builds (tween LUTs, kernels, wavetables); use the floatGen_OP.xxx(ref dest, …) form
+    // setup-time builds (tween LUTs, kernels, wavetables); use the Generate.xxx(ref dest, …) form
     // inside per-frame loops.
     public static partial class ArenaExtensions
     {
@@ -12,7 +12,7 @@ namespace LinearAlgebra
         public static floatN floatLinspace(this ref Arena arena, float a, float b, int N)
         {
             var vec = arena.floatVec(N);
-            floatGen_OP.linspace(ref vec, a, b);
+            Generate.linspace(ref vec, a, b);
             return vec;
         }
 
@@ -20,7 +20,7 @@ namespace LinearAlgebra
         public static floatN floatArange(this ref Arena arena, float start, float step, int N)
         {
             var vec = arena.floatVec(N);
-            floatGen_OP.arange(ref vec, start, step);
+            Generate.arange(ref vec, start, step);
             return vec;
         }
 
@@ -29,7 +29,7 @@ namespace LinearAlgebra
             where F : struct, IfloatScalarFunction
         {
             var vec = arena.floatVec(N);
-            floatGen_OP.sample(ref f, ref vec, t0, t1);
+            Generate.sample(ref f, ref vec, t0, t1);
             return vec;
         }
 
@@ -51,7 +51,7 @@ namespace LinearAlgebra
         public static floatN floatGaussianKernel(this ref Arena arena, int N, float sigma)
         {
             var vec = arena.floatVec(N);
-            floatGen_OP.gaussianKernel(ref vec, sigma);
+            Generate.gaussianKernel(ref vec, sigma);
             return vec;
         }
 
@@ -59,7 +59,7 @@ namespace LinearAlgebra
         public static floatN floatBoxKernel(this ref Arena arena, int N)
         {
             var vec = arena.floatVec(N);
-            floatGen_OP.boxKernel(ref vec);
+            Generate.boxKernel(ref vec);
             return vec;
         }
 
@@ -67,7 +67,7 @@ namespace LinearAlgebra
         public static floatN floatTentKernel(this ref Arena arena, int N)
         {
             var vec = arena.floatVec(N);
-            floatGen_OP.tentKernel(ref vec);
+            Generate.tentKernel(ref vec);
             return vec;
         }
 
@@ -75,7 +75,7 @@ namespace LinearAlgebra
         public static floatMxN floatGaussianKernel2D(this ref Arena arena, int N, float sigma)
         {
             var mat = arena.floatMat(N, N);
-            floatGen_OP.gaussianKernel2D(ref mat, sigma);
+            Generate.gaussianKernel2D(ref mat, sigma);
             return mat;
         }
 
@@ -83,7 +83,7 @@ namespace LinearAlgebra
         public static floatN floatWindow(this ref Arena arena, int N, WindowType type)
         {
             var vec = arena.floatVec(N);
-            floatGen_OP.window(ref vec, type);
+            Generate.window(ref vec, type);
             return vec;
         }
 
@@ -95,7 +95,7 @@ namespace LinearAlgebra
         public static floatMxN floatOuter(this ref Arena arena, in floatN u, in floatN v)
         {
             var mat = arena.floatMat(u.N, v.N);
-            floatGen_OP.outer(in u, in v, ref mat);
+            Generate.outer(in u, in v, ref mat);
             return mat;
         }
 
@@ -103,7 +103,7 @@ namespace LinearAlgebra
         public static floatMxN floatOuterSum(this ref Arena arena, in floatN u, in floatN v)
         {
             var mat = arena.floatMat(u.N, v.N);
-            floatGen_OP.outerSum(in u, in v, ref mat);
+            Generate.outerSum(in u, in v, ref mat);
             return mat;
         }
 

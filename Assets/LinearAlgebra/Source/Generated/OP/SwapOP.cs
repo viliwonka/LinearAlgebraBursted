@@ -8,7 +8,7 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    public static class Swap_OP {
+    public static partial class Swap {
 
         
 
@@ -53,7 +53,7 @@ namespace LinearAlgebra
 
             unsafe {
 
-                Unsafe_OP.swapRows(mat.Data.Ptr, i, j, mat.N_Cols, start, end);
+                UnsafeOP.swapRows(mat.Data.Ptr, i, j, mat.N_Cols, start, end);
             }
         }
 
@@ -76,7 +76,7 @@ namespace LinearAlgebra
 
             unsafe {
 
-                Unsafe_OP.swapColumns(mat.Data.Ptr, i, j, mat.M_Rows, mat.N_Cols, start, end);
+                UnsafeOP.swapColumns(mat.Data.Ptr, i, j, mat.M_Rows, mat.N_Cols, start, end);
             }
         }
 
@@ -123,7 +123,7 @@ namespace LinearAlgebra
 
             unsafe {
 
-                Unsafe_OP.swapRows(mat.Data.Ptr, i, j, mat.N_Cols, start, end);
+                UnsafeOP.swapRows(mat.Data.Ptr, i, j, mat.N_Cols, start, end);
             }
         }
 
@@ -146,7 +146,7 @@ namespace LinearAlgebra
 
             unsafe {
 
-                Unsafe_OP.swapColumns(mat.Data.Ptr, i, j, mat.M_Rows, mat.N_Cols, start, end);
+                UnsafeOP.swapColumns(mat.Data.Ptr, i, j, mat.M_Rows, mat.N_Cols, start, end);
             }
         }
 

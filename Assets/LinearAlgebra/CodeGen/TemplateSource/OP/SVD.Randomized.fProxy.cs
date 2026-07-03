@@ -63,9 +63,9 @@ namespace LinearAlgebra
             // Ω (n x ℓ) standard normal; Y = A Ω (m x ℓ).
             var rng = new Random(seed == 0 ? 0x9E3779B1u : seed);
             var gauss = new fProxyGaussian((fProxy)0, (fProxy)1);
-            fProxyRandom_OP.randomInpl(ref rng, ref ws.Omega, ref gauss);
+            Rand.randomInpl(ref rng, ref ws.Omega, ref gauss);
 
-            Linear_OP.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
+            Blas.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
 
             // Q = orth(Y): qrDecomposition overwrites Y with the thin orthonormal Q (m x ℓ).
             QR.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
@@ -73,21 +73,21 @@ namespace LinearAlgebra
             // Subspace iteration: Y = A (Aᵀ Q), re-orthonormalize.
             for (int it = 0; it < powerIters; it++)
             {
-                Linear_OP.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
-                Linear_OP.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
+                Blas.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
+                Blas.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
                 QR.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
             }
 
             // B = Qᵀ A (ℓ x n); solve its SVD exactly via Bᵀ (n x ℓ, tall): Bᵀ = Up Σ Vpᵀ, so
             // B = Vp Σ Upᵀ -> A ≈ Q B = (Q Vp) Σ Upᵀ.
-            Linear_OP.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
-            Linear_OP.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
+            Blas.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
+            Blas.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
 
             bool ok = svdThin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
             if (!ok)
                 return false;
 
-            Linear_OP.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
+            Blas.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
 
             for (int t = 0; t < k; t++)
             {

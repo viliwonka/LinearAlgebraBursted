@@ -3,10 +3,10 @@ using Unity.Burst;
 
 namespace LinearAlgebra.Internal
 {
-    public static unsafe partial class Unsafe_OP
+    public static unsafe partial class UnsafeOP
     {
         // General BR x BC block-CSR matvec: y = A * x. y must already be zeroed by the caller
-        // (accumulates into y, like matVecDot). Correctness-first fallback -- Sparse_OP.spMV
+        // (accumulates into y, like matVecDot). Correctness-first fallback -- BSR.spMV
         // routes here for rectangular blocks (BR != BC) and any square block size NOT covered
         // by the register-tile specializations below (bsmMatVecB1/B2/B3/B4/B6). BR/BC are
         // ordinary runtime fields here, so Burst cannot unroll/vectorize the inner block-multiply
@@ -48,7 +48,7 @@ namespace LinearAlgebra.Internal
         // Safe single-threaded (no scatter race): every (br,k) pair touches a distinct block,
         // and different blocks in the same block-row write to DIFFERENT y[j-block] ranges only
         // when ColInd is duplicate-free per row, which ToBSR guarantees.
-        // Correctness-first fallback -- Sparse_OP.spMVT routes here for rectangular blocks and
+        // Correctness-first fallback -- BSR.spMVT routes here for rectangular blocks and
         // any square size not covered by bsmMatVecTB1/B2/B3/B4/B6 below.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void bsmMatVecT([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
@@ -90,7 +90,7 @@ namespace LinearAlgebra.Internal
         //     AND y_j += K^T * x_i (the implicit mirrored lower block)
         // Single-threaded caller (IJob.Run, no parallel-for) -> the y_j scatter write from an
         // off-diagonal block is race-free, matching every other kernel in this file. Correctness-
-        // first fallback -- Sparse_OP.spMV routes here for symmetric matrices whose BR is not one
+        // first fallback -- BSR.spMV routes here for symmetric matrices whose BR is not one
         // of the register-tile specializations below (bsmMatVecSymB1/B2/B3/B4/B6).
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void bsmMatVecSym([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
@@ -152,7 +152,7 @@ namespace LinearAlgebra.Internal
         // `0 + p0 == p0` exactly in IEEE754 for any finite p0, that fold is arithmetically
         // identical to the left-associative expression `p0 + p1 + p2 + ...` used below, and both
         // then do a single `y[...] += sum` per (block, row/col). Dispatch lives in
-        // Sparse_OP.spMV / spMVT (SparseOP.float.cs).
+        // BSR.spMV / spMVT (SparseOP.float.cs).
         // =====================================================================================
 
         // ---- bsmMatVec: y = A * x, square block b -----------------------------------------

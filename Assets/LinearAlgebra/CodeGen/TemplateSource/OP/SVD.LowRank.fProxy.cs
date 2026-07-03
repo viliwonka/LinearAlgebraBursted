@@ -30,7 +30,7 @@ namespace LinearAlgebra
         //   - UL is stored as p×m (Lanczos u-vectors as contiguous ROWS) and VL as (p+1)×n
         //     (Lanczos v-vectors as contiguous ROWS) so every GEMV (A·v and Aᵀ·u) hits unit-stride
         //     memory in both the matrix and the vector.
-        //   - Matvecs route through Unsafe_OP.matVecDot / vecMatDot (cache-coherent, Burst-vectorized).
+        //   - Matvecs route through UnsafeOP.matVecDot / vecMatDot (cache-coherent, Burst-vectorized).
         //   - DGKS reortho is expressed as matVecDot (to gather all dot-products in one sweep) + j
         //     axpy calls (unit-stride over UL/VL rows), eliminating strided column gathers.
         //   - All arithmetic uses native fProxy precision; stability comes from reorthogonalization,
@@ -112,9 +112,9 @@ namespace LinearAlgebra
                 fProxy* v0 = VL_ptr;  // VL[0,:] at offset 0 (contiguous n-vector)
                 for (int i = 0; i < n; i++)
                     v0[i] = (fProxy)(rng.NextFloat() * 2f - 1f);
-                fProxy seedNorm2 = Unsafe_OP.vecDot(v0, v0, n);
+                fProxy seedNorm2 = UnsafeOP.vecDot(v0, v0, n);
                 if (seedNorm2 > (fProxy)0)
-                    Unsafe_OP.scalMul(v0, n, (fProxy)1 / math.sqrt(seedNorm2));
+                    UnsafeOP.scalMul(v0, n, (fProxy)1 / math.sqrt(seedNorm2));
                 else
                     v0[0] = (fProxy)1;
 
@@ -146,12 +146,12 @@ namespace LinearAlgebra
 
                         // uBuf = A·v̂_j − β_{j-1}·û_{j-1}   (β_{-1} term absent at j=0)
                         UnsafeUtility.MemClear(uBuf_ptr, (long)m * szfProxy);
-                        Unsafe_OP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
+                        UnsafeOP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
                         if (j > 0)
-                            Unsafe_OP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
+                            UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
 
                         // α_j = ‖uBuf‖ (tentative)
-                        ws.alpha[j] = math.sqrt(Unsafe_OP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                        ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
 
                         // Update scale estimate after first step
                         if (j == 0)
@@ -169,9 +169,9 @@ namespace LinearAlgebra
                             fProxy normold = ws.alpha[j];
                             for (int it = 0; it < 4; it++)
                             {
-                                fProxy t = Unsafe_OP.vecDot(UL_ptr + (j - 1) * m, uBuf_ptr, m);
-                                Unsafe_OP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -t, m);
-                                ws.alpha[j] = math.sqrt(Unsafe_OP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                                fProxy t = UnsafeOP.vecDot(UL_ptr + (j - 1) * m, uBuf_ptr, m);
+                                UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -t, m);
+                                ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
                                 ws.beta[j - 1] += t;   // fold projection into bidiagonal
                                 if (ws.alpha[j] >= gamma * normold) { uNbrClean = true; break; }
                                 normold = ws.alpha[j];
@@ -227,11 +227,11 @@ namespace LinearAlgebra
                             while (true)
                             {
                                 UnsafeUtility.MemClear(vBuf_ptr, (long)j * szfProxy);
-                                Unsafe_OP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
+                                UnsafeOP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
                                 for (int l = 0; l < j; l++)
-                                    Unsafe_OP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
+                                    UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
                                 fProxy normrOldU = normrU;
-                                normrU = math.sqrt(Unsafe_OP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                                normrU = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
                                 nreU++;
                                 if (nreU > 4)
                                 {
@@ -257,17 +257,17 @@ namespace LinearAlgebra
 
                         // UL[j,:] = uBuf / α_j
                         fProxy invA = (fProxy)1 / ws.alpha[j];
-                        Unsafe_OP.scalMul(uBuf_ptr, m, invA);
+                        UnsafeOP.scalMul(uBuf_ptr, m, invA);
                         UnsafeUtility.MemCpy(UL_ptr + j * m, uBuf_ptr, (long)m * szfProxy);
 
                         // ---- V-half: compute v̂_{j+1} ----
 
                         // vBuf = Aᵀ·û_j − α_j·v̂_j
-                        Unsafe_OP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
-                        Unsafe_OP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
+                        UnsafeOP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
+                        UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
 
                         // β_j = ‖vBuf‖ (tentative)
-                        ws.beta[j] = math.sqrt(Unsafe_OP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                        ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
 
                         // ELR-V — if β_j < γ·α_j, reortho vBuf against v̂_j
                         // and fold projection into bidiagonal (lanbpro line 471). vNbrClean as in ELR-U.
@@ -278,9 +278,9 @@ namespace LinearAlgebra
                             fProxy normold = ws.beta[j];
                             for (int it = 0; it < 4; it++)
                             {
-                                fProxy t = Unsafe_OP.vecDot(VL_ptr + j * n, vBuf_ptr, n);
-                                Unsafe_OP.axpy(vBuf_ptr, VL_ptr + j * n, -t, n);
-                                ws.beta[j] = math.sqrt(Unsafe_OP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                                fProxy t = UnsafeOP.vecDot(VL_ptr + j * n, vBuf_ptr, n);
+                                UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -t, n);
+                                ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
                                 ws.alpha[j] += t;   // fold projection into bidiagonal
                                 if (ws.beta[j] >= gamma * normold) { vNbrClean = true; break; }
                                 normold = ws.beta[j];
@@ -331,11 +331,11 @@ namespace LinearAlgebra
                             while (true)
                             {
                                 UnsafeUtility.MemClear(uBuf_ptr, (long)(j + 1) * szfProxy);
-                                Unsafe_OP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
+                                UnsafeOP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
                                 for (int l = 0; l <= j; l++)
-                                    Unsafe_OP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
+                                    UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
                                 fProxy normrOldV = normrV;
-                                normrV = math.sqrt(Unsafe_OP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                                normrV = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
                                 nreV++;
                                 if (nreV > 4)
                                 {
@@ -359,7 +359,7 @@ namespace LinearAlgebra
 
                         // VL[j+1,:] = vBuf / β_j
                         fProxy invB = (fProxy)1 / ws.beta[j];
-                        Unsafe_OP.scalMul(vBuf_ptr, n, invB);
+                        UnsafeOP.scalMul(vBuf_ptr, n, invB);
                         UnsafeUtility.MemCpy(VL_ptr + (j + 1) * n, vBuf_ptr, (long)n * szfProxy);
                     }
                 }
@@ -371,11 +371,11 @@ namespace LinearAlgebra
                     {
                         // ----- uBuf = A * VL[j,:] -----
                         UnsafeUtility.MemClear(uBuf_ptr, (long)m * szfProxy);
-                        Unsafe_OP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
+                        UnsafeOP.matVecDot(A_ptr, VL_ptr + j * n, uBuf_ptr, m, n);
 
                         // Subtract beta_{j-1} * UL[j-1,:]  (skipped at j=0)
                         if (j > 0)
-                            Unsafe_OP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
+                            UnsafeOP.axpy(uBuf_ptr, UL_ptr + (j - 1) * m, -ws.beta[j - 1], m);
 
                         // DGKS double reorthogonalize uBuf against UL[0..j-1,:]
                         if (j > 0)
@@ -383,14 +383,14 @@ namespace LinearAlgebra
                             for (int pass = 0; pass < 2; pass++)
                             {
                                 UnsafeUtility.MemClear(vBuf_ptr, (long)j * szfProxy);
-                                Unsafe_OP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
+                                UnsafeOP.matVecDot(UL_ptr, uBuf_ptr, vBuf_ptr, j, m);
                                 for (int l = 0; l < j; l++)
-                                    Unsafe_OP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
+                                    UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, -vBuf_ptr[l], m);
                             }
                         }
 
                         // alpha_j = ||uBuf||
-                        ws.alpha[j] = math.sqrt(Unsafe_OP.vecDot(uBuf_ptr, uBuf_ptr, m));
+                        ws.alpha[j] = math.sqrt(UnsafeOP.vecDot(uBuf_ptr, uBuf_ptr, m));
 
                         // Update scale estimate after first step
                         if (j == 0)
@@ -406,24 +406,24 @@ namespace LinearAlgebra
 
                         // UL[j,:] = uBuf / alpha_j
                         fProxy invA = (fProxy)1 / ws.alpha[j];
-                        Unsafe_OP.scalMul(uBuf_ptr, m, invA);
+                        UnsafeOP.scalMul(uBuf_ptr, m, invA);
                         UnsafeUtility.MemCpy(UL_ptr + j * m, uBuf_ptr, (long)m * szfProxy);
 
                         // ----- vBuf = Aᵀ * UL[j,:] - alpha_j * VL[j,:] -----
-                        Unsafe_OP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
-                        Unsafe_OP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
+                        UnsafeOP.vecMatDot(UL_ptr + j * m, A_ptr, vBuf_ptr, m, n);
+                        UnsafeOP.axpy(vBuf_ptr, VL_ptr + j * n, -ws.alpha[j], n);
 
                         // DGKS double reorthogonalize vBuf against VL[0..j,:]
                         for (int pass = 0; pass < 2; pass++)
                         {
                             UnsafeUtility.MemClear(uBuf_ptr, (long)(j + 1) * szfProxy);
-                            Unsafe_OP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
+                            UnsafeOP.matVecDot(VL_ptr, vBuf_ptr, uBuf_ptr, j + 1, n);
                             for (int l = 0; l <= j; l++)
-                                Unsafe_OP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
+                                UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, -uBuf_ptr[l], n);
                         }
 
                         // beta_j = ||vBuf||
-                        ws.beta[j] = math.sqrt(Unsafe_OP.vecDot(vBuf_ptr, vBuf_ptr, n));
+                        ws.beta[j] = math.sqrt(UnsafeOP.vecDot(vBuf_ptr, vBuf_ptr, n));
 
                         pDone = j + 1;
 
@@ -433,7 +433,7 @@ namespace LinearAlgebra
 
                         // VL[j+1,:] = vBuf / beta_j
                         fProxy invB = (fProxy)1 / ws.beta[j];
-                        Unsafe_OP.scalMul(vBuf_ptr, n, invB);
+                        UnsafeOP.scalMul(vBuf_ptr, n, invB);
                         UnsafeUtility.MemCpy(VL_ptr + (j + 1) * n, vBuf_ptr, (long)n * szfProxy);
                     }
                 }
@@ -487,13 +487,13 @@ namespace LinearAlgebra
                     // uBuf = sum_l P[l,t] * UL[l,:]
                     UnsafeUtility.MemClear(uBuf_ptr, (long)m * UnsafeUtility.SizeOf<fProxy>());
                     for (int l = 0; l < pDone; l++)
-                        Unsafe_OP.axpy(uBuf_ptr, UL_ptr + l * m, ws.BsvdWs.U[l, t], m);
+                        UnsafeOP.axpy(uBuf_ptr, UL_ptr + l * m, ws.BsvdWs.U[l, t], m);
                     for (int i = 0; i < m; i++) Uk[i, t] = uBuf_ptr[i];
 
                     // vBuf = sum_l Q[l,t] * VL[l,:]
                     UnsafeUtility.MemClear(vBuf_ptr, (long)n * UnsafeUtility.SizeOf<fProxy>());
                     for (int l = 0; l < pDone; l++)
-                        Unsafe_OP.axpy(vBuf_ptr, VL_ptr + l * n, ws.BsvdWs.V[l, t], n);
+                        UnsafeOP.axpy(vBuf_ptr, VL_ptr + l * n, ws.BsvdWs.V[l, t], n);
                     for (int i = 0; i < n; i++) Vk[i, t] = vBuf_ptr[i];
                 }
             }

@@ -522,7 +522,7 @@ namespace LinearAlgebra.Benchmarks
 
     // ---- operator matvec microbench jobs (REPS back-to-back matvecs, zero-alloc) -------------------
     //
-    // Isolate the per-iteration operator cost -- dense GEMV (Linear_OP.dot) vs sparse spMV -- that
+    // Isolate the per-iteration operator cost -- dense GEMV (Blas.dot) vs sparse spMV -- that
     // dominates every Krylov iteration, with NO convergence/breakdown variability. The reps loop
     // PING-PONGS x<->y (each matvec feeds the next) specifically to defeat Burst dead-store
     // elimination: if every rep just overwrote the same y that nothing reads between reps, the
@@ -541,8 +541,8 @@ namespace LinearAlgebra.Benchmarks
         {
             for (int k = 0; k < reps; k++)
             {
-                if ((k & 1) == 0) Linear_OP.dot(in A, in x, ref y);
-                else              Linear_OP.dot(in A, in y, ref x);
+                if ((k & 1) == 0) Blas.dot(in A, in x, ref y);
+                else              Blas.dot(in A, in y, ref x);
             }
         }
     }
@@ -557,8 +557,8 @@ namespace LinearAlgebra.Benchmarks
         {
             for (int k = 0; k < reps; k++)
             {
-                if ((k & 1) == 0) Sparse_OP.spMV(in A, in x, ref y);
-                else              Sparse_OP.spMV(in A, in y, ref x);
+                if ((k & 1) == 0) BSR.spMV(in A, in x, ref y);
+                else              BSR.spMV(in A, in y, ref x);
             }
         }
     }
@@ -573,8 +573,8 @@ namespace LinearAlgebra.Benchmarks
         {
             for (int k = 0; k < reps; k++)
             {
-                if ((k & 1) == 0) Linear_OP.dot(in A, in x, ref y);
-                else              Linear_OP.dot(in A, in y, ref x);
+                if ((k & 1) == 0) Blas.dot(in A, in x, ref y);
+                else              Blas.dot(in A, in y, ref x);
             }
         }
     }
@@ -589,8 +589,8 @@ namespace LinearAlgebra.Benchmarks
         {
             for (int k = 0; k < reps; k++)
             {
-                if ((k & 1) == 0) Sparse_OP.spMV(in A, in x, ref y);
-                else              Sparse_OP.spMV(in A, in y, ref x);
+                if ((k & 1) == 0) BSR.spMV(in A, in x, ref y);
+                else              BSR.spMV(in A, in y, ref x);
             }
         }
     }
@@ -674,7 +674,7 @@ namespace LinearAlgebra.Benchmarks
 
         static double ResidualLinSys(in floatMxN A, in floatN x, in floatN b)
         {
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             double num = 0, den = 0;
             for (int i = 0; i < b.N; i++)
             {
@@ -687,7 +687,7 @@ namespace LinearAlgebra.Benchmarks
 
         static double ResidualLinSys(in doubleMxN A, in doubleN x, in doubleN b)
         {
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             double num = 0, den = 0;
             for (int i = 0; i < b.N; i++)
             {
@@ -702,10 +702,10 @@ namespace LinearAlgebra.Benchmarks
         // a (possibly inconsistent) rectangular system, NOT ||Ax-b|| (nonzero even at the LS optimum).
         static double ResidualLS(in floatMxN A, in floatN x, in floatN b)
         {
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             var res = Ax - b;
-            var atr = Linear_OP.dot(res, A);
-            var atb = Linear_OP.dot(b, A);
+            var atr = Blas.dot(res, A);
+            var atb = Blas.dot(b, A);
             double num = 0, den = 0;
             for (int i = 0; i < atr.N; i++) num += (double)atr[i] * (double)atr[i];
             for (int i = 0; i < atb.N; i++) den += (double)atb[i] * (double)atb[i];
@@ -714,10 +714,10 @@ namespace LinearAlgebra.Benchmarks
 
         static double ResidualLS(in doubleMxN A, in doubleN x, in doubleN b)
         {
-            var Ax = Linear_OP.dot(A, x);
+            var Ax = Blas.dot(A, x);
             var res = Ax - b;
-            var atr = Linear_OP.dot(res, A);
-            var atb = Linear_OP.dot(b, A);
+            var atr = Blas.dot(res, A);
+            var atb = Blas.dot(b, A);
             double num = 0, den = 0;
             for (int i = 0; i < atr.N; i++) num += atr[i] * atr[i];
             for (int i = 0; i < atb.N; i++) den += atb[i] * atb[i];
@@ -816,7 +816,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Mi[r, c] = rng.NextFloat(-1f, 1f);
-                var Di = Linear_OP.dot(Mi, Mi, true);
+                var Di = Blas.dot(Mi, Mi, true);
                 for (int d = 0; d < BR; d++) Di[d, d] += strong;
 
                 builder.AddBlock(i, i, in Di);
@@ -878,7 +878,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Mi[r, c] = rng.NextFloat(-1f, 1f);
-                var Di = Linear_OP.dot(Mi, Mi, true);
+                var Di = Blas.dot(Mi, Mi, true);
                 for (int d = 0; d < BR; d++) Di[d, d] += strong;
 
                 fullBuilder.AddBlock(i, i, in Di);
@@ -933,7 +933,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Mi[r, c] = rng.NextFloat(-1f, 1f);
-                var Di = Linear_OP.dot(Mi, Mi, true);
+                var Di = Blas.dot(Mi, Mi, true);
                 for (int d = 0; d < BR; d++) Di[d, d] += strong;
 
                 builder.AddBlock(i, i, in Di);
@@ -1016,7 +1016,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Mi[r, c] = rng.NextDouble(-1.0, 1.0);
-                var Di = Linear_OP.dot(Mi, Mi, true);
+                var Di = Blas.dot(Mi, Mi, true);
                 for (int d = 0; d < BR; d++) Di[d, d] += strong;
 
                 builder.AddBlock(i, i, in Di);
@@ -1072,7 +1072,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Mi[r, c] = rng.NextDouble(-1.0, 1.0);
-                var Di = Linear_OP.dot(Mi, Mi, true);
+                var Di = Blas.dot(Mi, Mi, true);
                 for (int d = 0; d < BR; d++) Di[d, d] += strong;
 
                 fullBuilder.AddBlock(i, i, in Di);
@@ -1127,7 +1127,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int r = 0; r < BR; r++)
                     for (int c = 0; c < BR; c++)
                         Mi[r, c] = rng.NextDouble(-1.0, 1.0);
-                var Di = Linear_OP.dot(Mi, Mi, true);
+                var Di = Blas.dot(Mi, Mi, true);
                 for (int d = 0; d < BR; d++) Di[d, d] += strong;
 
                 builder.AddBlock(i, i, in Di);
@@ -1240,8 +1240,8 @@ namespace LinearAlgebra.Benchmarks
 
                     // clean single-matvec numerical cross-check (untimed; identical input)
                     var xc = arena.floatRandomVec(n, -1f, 1f, sx);
-                    var yDc = Linear_OP.dot(dense, xc);
-                    var ySc = Sparse_OP.spMV(sparse, xc);
+                    var yDc = Blas.dot(dense, xc);
+                    var ySc = BSR.spMV(sparse, xc);
                     double md = 0;
                     for (int i = 0; i < n; i++) md = math.max(md, math.abs((double)yDc[i] - (double)ySc[i]));
                     double speedup = denseStat.Median / math.max(sparseStat.Median, 1e-30);
@@ -1280,8 +1280,8 @@ namespace LinearAlgebra.Benchmarks
                     var sparseStat = Bench.Time(() => sparseJob.Run());
 
                     var xc = arena.doubleRandomVec(n, -1.0, 1.0, sx);
-                    var yDc = Linear_OP.dot(dense, xc);
-                    var ySc = Sparse_OP.spMV(sparse, xc);
+                    var yDc = Blas.dot(dense, xc);
+                    var ySc = BSR.spMV(sparse, xc);
                     double md = 0;
                     for (int i = 0; i < n; i++) md = math.max(md, math.abs(yDc[i] - ySc[i]));
                     double speedup = denseStat.Median / math.max(sparseStat.Median, 1e-30);
@@ -1334,8 +1334,8 @@ namespace LinearAlgebra.Benchmarks
 
                     // clean single-matvec numerical cross-check (untimed; identical input)
                     var xc = arena.floatRandomVec(n, -1f, 1f, sx);
-                    var yFc = Sparse_OP.spMV(full, xc);
-                    var ySc = Sparse_OP.spMV(sym, xc);
+                    var yFc = BSR.spMV(full, xc);
+                    var ySc = BSR.spMV(sym, xc);
                     double md = 0;
                     for (int i = 0; i < n; i++) md = math.max(md, math.abs((double)yFc[i] - (double)ySc[i]));
                     double speedup = fullStat.Median / math.max(symStat.Median, 1e-30);
@@ -1374,8 +1374,8 @@ namespace LinearAlgebra.Benchmarks
                     var symStat = Bench.Time(() => symJob.Run());
 
                     var xc = arena.doubleRandomVec(n, -1.0, 1.0, sx);
-                    var yFc = Sparse_OP.spMV(full, xc);
-                    var ySc = Sparse_OP.spMV(sym, xc);
+                    var yFc = BSR.spMV(full, xc);
+                    var ySc = BSR.spMV(sym, xc);
                     double md = 0;
                     for (int i = 0; i < n; i++) md = math.max(md, math.abs(yFc[i] - ySc[i]));
                     double speedup = fullStat.Median / math.max(symStat.Median, 1e-30);
@@ -1706,7 +1706,7 @@ namespace LinearAlgebra.Benchmarks
             {
                 var arena = new Arena(Allocator.Persistent);
                 var M = arena.floatRandomMat(n, n, -1f, 1f, Seed(n, 0f, 41));
-                var A = Linear_OP.dot(M, M, true);
+                var A = Blas.dot(M, M, true);
                 for (int d = 0; d < n; d++) A[d, d] += n;
                 var b = arena.floatRandomVec(n, -1f, 1f, Seed(n, 0f, 42));
 
@@ -1742,7 +1742,7 @@ namespace LinearAlgebra.Benchmarks
             {
                 var arena = new Arena(Allocator.Persistent);
                 var M = arena.doubleRandomMat(n, n, -1.0, 1.0, Seed(n, 0f, 43));
-                var A = Linear_OP.dot(M, M, true);
+                var A = Blas.dot(M, M, true);
                 for (int d = 0; d < n; d++) A[d, d] += n;
                 var b = arena.doubleRandomVec(n, -1.0, 1.0, Seed(n, 0f, 44));
 

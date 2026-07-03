@@ -16,7 +16,7 @@ namespace LinearAlgebra
         {
             floatMxN matrix = a.TempCopy();
             
-            floatElem_OP.signFlipInpl(matrix);
+            floatComp.signFlipInpl(matrix);
 
             return matrix;
         }
@@ -25,7 +25,7 @@ namespace LinearAlgebra
         {
             floatMxN matrix = lhs.TempCopy();
             
-            floatElem_OP.addInpl(matrix, rhs);
+            floatComp.addInpl(matrix, rhs);
 
             return matrix;
         }
@@ -36,7 +36,7 @@ namespace LinearAlgebra
         {
             floatMxN matrix = lhs.TempCopy();
             
-            floatElem_OP.addInpl(matrix, -rhs);
+            floatComp.addInpl(matrix, -rhs);
 
             return matrix;
         }
@@ -45,7 +45,7 @@ namespace LinearAlgebra
         {
             // subtraction is NOT commutative: lhs - rhs[i,j], not rhs[i,j] - lhs
             floatMxN matrix = rhs.TempCopy();
-            floatElem_OP.subInpl(lhs, matrix);
+            floatComp.subInpl(lhs, matrix);
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -53,7 +53,7 @@ namespace LinearAlgebra
         {
             floatMxN matrix = a.TempCopy();
 
-            floatElem_OP.mulInpl(matrix, s);
+            floatComp.mulInpl(matrix, s);
 
             return matrix;
         }
@@ -67,7 +67,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            floatElem_OP.divInpl(matrix, s);
+            floatComp.divInpl(matrix, s);
 
             return matrix;
         }
@@ -76,7 +76,7 @@ namespace LinearAlgebra
         {
             // 0 / M is valid (= 0 where M != 0); division by zero MATRIX entries is left to IEEE (Inf/NaN).
             floatMxN matrix = a.TempCopy();
-            floatElem_OP.divInpl(s, matrix);
+            floatComp.divInpl(s, matrix);
             return matrix;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -87,7 +87,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            floatElem_OP.modInpl(matrix, s);
+            floatComp.modInpl(matrix, s);
 
             return matrix;
         }
@@ -96,7 +96,7 @@ namespace LinearAlgebra
         {
             // 0 % M is valid (= 0 where M != 0); a zero MATRIX entry is left to IEEE / runtime semantics.
             floatMxN matrix = a.TempCopy();
-            floatElem_OP.modInpl(s, matrix);
+            floatComp.modInpl(s, matrix);
 
             return matrix;
         }
@@ -112,7 +112,7 @@ namespace LinearAlgebra
 
             floatMxN matrix = lhs.TempCopy();
 
-            floatElem_OP.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
+            floatComp.addInpl(matrix, rhs);   // matrix += rhs  (matrix is the copy of lhs)
 
             return matrix;
         }
@@ -125,7 +125,7 @@ namespace LinearAlgebra
             
             floatMxN matrix = lhs.TempCopy();
 
-            floatElem_OP.subInpl(matrix, rhs);
+            floatComp.subInpl(matrix, rhs);
 
             return matrix;
         }
@@ -138,7 +138,7 @@ namespace LinearAlgebra
 
             floatMxN matrix = lhs.TempCopy();
 
-            floatElem_OP.mulInpl(rhs, matrix);
+            floatComp.mulInpl(rhs, matrix);
 
             return matrix;
         }
@@ -151,7 +151,7 @@ namespace LinearAlgebra
 
             floatMxN newDividendMatrix = dividend.TempCopy();
 
-            floatElem_OP.divInpl(newDividendMatrix, divisor);
+            floatComp.divInpl(newDividendMatrix, divisor);
             return newDividendMatrix;
         }
 
@@ -163,7 +163,7 @@ namespace LinearAlgebra
 
             var newDividendMatrix = dividend.TempCopy();
 
-            floatElem_OP.modInpl(newDividendMatrix, divisor);
+            floatComp.modInpl(newDividendMatrix, divisor);
             return newDividendMatrix;
         }
 

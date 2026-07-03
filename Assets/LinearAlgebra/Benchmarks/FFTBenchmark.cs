@@ -15,7 +15,7 @@ namespace LinearAlgebra.Benchmarks
     // FFT is IN-PLACE so re/im are destroyed each call; the job copies pristine srcRe/srcIm
     // into re/im at the start of each Execute so every timed sample does identical work.
     // DFT inputs are `in` (not modified), outputs are separate; no copy needed each call.
-    // float-only for FFT and DFT; doubleFFT_OP mirrors the API.
+    // float-only for FFT and DFT; FFT mirrors the API.
 
     // ---- radix-2 in-place FFT (float) ----
 
@@ -31,7 +31,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = srcRe.N;
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
-            floatFFT_OP.fft(ref re, ref im);
+            FFT.fft(ref re, ref im);
         }
     }
 
@@ -47,7 +47,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = srcRe.N;
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
-            doubleFFT_OP.fft(ref re, ref im);
+            FFT.fft(ref re, ref im);
         }
     }
 
@@ -60,7 +60,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN re;     // output — overwritten each Execute
         public floatN im;     // output — overwritten each Execute
 
-        public void Execute() => floatFFT_OP.rfft(in real, ref re, ref im);
+        public void Execute() => FFT.rfft(in real, ref re, ref im);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -70,7 +70,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN re;
         public doubleN im;
 
-        public void Execute() => doubleFFT_OP.rfft(in real, ref re, ref im);
+        public void Execute() => FFT.rfft(in real, ref re, ref im);
     }
 
     // ---- table-indexed FFT (float) ----
@@ -88,7 +88,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = srcRe.N;
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
-            floatFFT_OP.fft(ref re, ref im, in ws);
+            FFT.fft(ref re, ref im, in ws);
         }
     }
 
@@ -105,7 +105,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = srcRe.N;
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
-            doubleFFT_OP.fft(ref re, ref im, in ws);
+            FFT.fft(ref re, ref im, in ws);
         }
     }
 
@@ -127,7 +127,7 @@ namespace LinearAlgebra.Benchmarks
             var a = new Arena(Allocator.Persistent);
             var ws = a.floatFFTCache(n);
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
-            floatFFT_OP.fft(ref re, ref im, in ws);
+            FFT.fft(ref re, ref im, in ws);
             a.Dispose();
         }
     }
@@ -146,7 +146,7 @@ namespace LinearAlgebra.Benchmarks
             var a = new Arena(Allocator.Persistent);
             var ws = a.doubleFFTCache(n);
             for (int i = 0; i < n; i++) { re[i] = srcRe[i]; im[i] = srcIm[i]; }
-            doubleFFT_OP.fft(ref re, ref im, in ws);
+            FFT.fft(ref re, ref im, in ws);
             a.Dispose();
         }
     }
@@ -161,7 +161,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN im;
         public floatFFTCache ws;   // built once, outside the timed loop
 
-        public void Execute() => floatFFT_OP.rfft(in real, ref re, ref im, in ws);
+        public void Execute() => FFT.rfft(in real, ref re, ref im, in ws);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -172,7 +172,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN im;
         public doubleFFTCache ws;
 
-        public void Execute() => doubleFFT_OP.rfft(in real, ref re, ref im, in ws);
+        public void Execute() => FFT.rfft(in real, ref re, ref im, in ws);
     }
 
     // ---- direct DFT (float) ----
@@ -185,7 +185,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN outRe;
         public floatN outIm;
 
-        public void Execute() => floatFFT_OP.dft(in inRe, in inIm, ref outRe, ref outIm);
+        public void Execute() => FFT.dft(in inRe, in inIm, ref outRe, ref outIm);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -196,7 +196,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN outRe;
         public doubleN outIm;
 
-        public void Execute() => doubleFFT_OP.dft(in inRe, in inIm, ref outRe, ref outIm);
+        public void Execute() => FFT.dft(in inRe, in inIm, ref outRe, ref outIm);
     }
 
     public static class FFTBenchmark
@@ -211,7 +211,7 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== No-workspace FFT in-place (floatFFT_OP.fft / doubleFFT_OP.fft; O(N log N); ms) ===");
+            sb.AppendLine("=== No-workspace FFT in-place (FFT.fft / FFT.fft; O(N log N); ms) ===");
             sb.AppendLine("    Auto-dispatch: power-of-4 → radix-4 recurrence (table-free, zero-alloc); else → radix-2 recurrence.");
             sb.AppendLine("    Input destroyed each call; job copies srcRe/srcIm -> re/im before each run.");
             sb.AppendLine(Bench.HeaderTime());
@@ -219,7 +219,7 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in FftSizes) sb.AppendLine(FftDouble(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== FFT, twiddle-table workspace — auto radix-4/mixed/radix-2 (floatFFT_OP.fft(ws) / doubleFFT_OP.fft(ws); ms) ===");
+            sb.AppendLine("=== FFT, twiddle-table workspace — auto radix-4/mixed/radix-2 (FFT.fft(ws) / FFT.fft(ws); ms) ===");
             sb.AppendLine("    Workspace built once; dispatches: IsPowerOf4 → radix-4 (log4N passes), 2·4^k → mixed, else → radix-2 table.");
             sb.AppendLine("    No per-element cos/sin; full-circle twiddle table built ONCE outside the timed loop.");
             sb.AppendLine(Bench.HeaderTime());
@@ -235,14 +235,14 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in FftSizes) sb.AppendLine(FftTableBuiltDouble(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== Real-input half-spectrum FFT (floatFFT_OP.rfft / doubleFFT_OP.rfft; two-for-one; ms) ===");
+            sb.AppendLine("=== Real-input half-spectrum FFT (FFT.rfft / FFT.rfft; two-for-one; ms) ===");
             sb.AppendLine("    real input `in` — not modified; re/im output length N/2+1 overwritten each call.");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in FftSizes) sb.AppendLine(RfftFloat(n));
             foreach (var n in FftSizes) sb.AppendLine(RfftDouble(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== Real-input FFT, twiddle-table workspace (floatFFT_OP.rfft(ws) / doubleFFT_OP.rfft(ws); ms) ===");
+            sb.AppendLine("=== Real-input FFT, twiddle-table workspace (FFT.rfft(ws) / FFT.rfft(ws); ms) ===");
             sb.AppendLine("    Workspace built ONCE (arena persistent); no cos/sin in the unpack or butterfly.");
             sb.AppendLine("    Expectation: float no longer slower than double at large N (trig anomaly eliminated).");
             sb.AppendLine(Bench.HeaderTime());
@@ -250,7 +250,7 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in FftSizes) sb.AppendLine(RfftTableDouble(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== Direct DFT (floatFFT_OP.dft / doubleFFT_OP.dft; O(N^2); ms) ===");
+            sb.AppendLine("=== Direct DFT (FFT.dft / FFT.dft; O(N^2); ms) ===");
             sb.AppendLine("    Inputs `in` — not modified; output written to separate outRe/outIm.");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in DftSizes) sb.AppendLine(DftFloat(n));

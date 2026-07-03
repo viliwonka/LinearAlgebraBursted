@@ -12,7 +12,7 @@ namespace LinearAlgebra
     /// <see cref="Indices"/> buffers. Not generated per-type — these operate on integer-index
     /// structures that are shared across all element types.
     /// </summary>
-    public static class Random_OP
+    public static partial class Rand
     {
         /// <summary>
         /// Resets <paramref name="p"/> to the identity permutation then shuffles it uniformly
@@ -63,10 +63,10 @@ namespace LinearAlgebra
         public static void sampleKWithoutReplacementInpl(ref Indices dest, int n, ref Random rng)
         {
             if (n <= 0)
-                throw new ArgumentException("Random_OP.sampleKWithoutReplacementInpl: n must be > 0");
+                throw new ArgumentException("Rand.sampleKWithoutReplacementInpl: n must be > 0");
             int k = dest.N;
             if (k > n)
-                throw new ArgumentException("Random_OP.sampleKWithoutReplacementInpl: dest.N must be <= n");
+                throw new ArgumentException("Rand.sampleKWithoutReplacementInpl: dest.N must be <= n");
 
             if (k == 0) return; // nothing to sample; skip the n-length scratch allocation
 

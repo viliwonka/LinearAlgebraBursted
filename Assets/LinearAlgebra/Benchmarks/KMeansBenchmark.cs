@@ -23,7 +23,7 @@ namespace LinearAlgebra.Benchmarks
         public floatKMeansCache ws;
 
         public void Execute() =>
-            floatKMeans_OP.kmeans(in X, 16, 12345u, 10, KMeansInit.Uniform,
+            KMeans.kmeans(in X, 16, 12345u, 10, KMeansInit.Uniform,
                                  ref centroids, ref assignment, out float _, out int _, ref ws);
     }
 
@@ -36,7 +36,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleKMeansCache ws;
 
         public void Execute() =>
-            doubleKMeans_OP.kmeans(in X, 16, 12345u, 10, KMeansInit.Uniform,
+            KMeans.kmeans(in X, 16, 12345u, 10, KMeansInit.Uniform,
                                   ref centroids, ref assignment, out double _, out int _, ref ws);
     }
 

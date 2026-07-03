@@ -51,13 +51,13 @@ public class doubleSolversTests {
 
             var b = arena.doubleRandomVec(dim, -1f, 1f);
 
-            var y = Linear_OP.dot(b, Q);
+            var y = Blas.dot(b, Q);
 
             Solvers.solveUpperTriangular(ref R, ref y);
 
-            var Ax = Linear_OP.dot(A, y);
+            var Ax = Blas.dot(A, y);
 
-            Assert.IsTrue(Analysis_OP.isZero(b - Ax, 1E-6f));
+            Assert.IsTrue(Analysis.isZero(b - Ax, 1E-6f));
 
             arena.Dispose();
         }

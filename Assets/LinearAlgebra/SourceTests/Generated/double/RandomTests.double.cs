@@ -10,7 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
-// Tests for the random-generation continuous core (Random_OP + Sampler).
+// Tests for the random-generation continuous core (Rand + Sampler).
 // Two layers:
 //   * In-job (Burst) tests: pure ICDF quantiles, empirical moments / support,
 //     determinism, stream advance, Gaussian spare bookkeeping, matrix overloads.
@@ -204,7 +204,7 @@ public class doubleRandomTests
             var rng = new Random(1234567u);
             var s = new doubleUniform((double)(-2), (double)4);
             var v = arena.doubleVec(StatN);
-            doubleRandom_OP.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInpl(ref rng, ref v, ref s);
 
             double mean = Mean(in v);
             double var = Variance(in v, mean);
@@ -221,7 +221,7 @@ public class doubleRandomTests
             double lambda = (double)2;
             var s = new doubleExponential(lambda);
             var v = arena.doubleVec(StatN);
-            doubleRandom_OP.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInpl(ref rng, ref v, ref s);
 
             double mean = Mean(in v);
             double var = Variance(in v, mean);
@@ -238,7 +238,7 @@ public class doubleRandomTests
             double mu = (double)1.5, sd = (double)2;
             var s = new doubleGaussian(mu, sd);
             var v = arena.doubleVec(StatN);
-            doubleRandom_OP.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInpl(ref rng, ref v, ref s);
 
             double mean = Mean(in v);
             double var = Variance(in v, mean);
@@ -255,7 +255,7 @@ public class doubleRandomTests
             double sigma = (double)1.5;
             var s = new doubleRayleigh(sigma);
             var v = arena.doubleVec(StatN);
-            doubleRandom_OP.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInpl(ref rng, ref v, ref s);
 
             double mean = Mean(in v);
             double expected = sigma * math.sqrt((double)(System.Math.PI / 2.0));
@@ -271,7 +271,7 @@ public class doubleRandomTests
             double x0 = (double)5, gamma = (double)2;
             var s = new doubleCauchy(x0, gamma);
             var v = arena.doubleVec(StatN);
-            doubleRandom_OP.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInpl(ref rng, ref v, ref s);
 
             double frac = FractionBelow(in v, x0);
             AssertClose(frac, (double)0.5, (double)0.04);
@@ -286,7 +286,7 @@ public class doubleRandomTests
             double xm = (double)2, alpha = (double)1.5;
             var s = new doublePareto(xm, alpha);
             var v = arena.doubleVec(StatN);
-            doubleRandom_OP.randomInpl(ref rng, ref v, ref s);
+            Rand.randomInpl(ref rng, ref v, ref s);
 
             double median = xm * math.pow((double)2, (double)1 / alpha);
             double frac = FractionBelow(in v, median);
@@ -309,25 +309,25 @@ public class doubleRandomTests
             double a = (double)(-2), b = (double)4;
             var su = new doubleUniform(a, b);
             var vu = arena.doubleVec(n);
-            doubleRandom_OP.randomInpl(ref rng, ref vu, ref su);
+            Rand.randomInpl(ref rng, ref vu, ref su);
             for (int i = 0; i < n; i++)
                 AssertTrue(vu[i] >= a && vu[i] < b);
 
             var se = new doubleExponential((double)2);
             var ve = arena.doubleVec(n);
-            doubleRandom_OP.randomInpl(ref rng, ref ve, ref se);
+            Rand.randomInpl(ref rng, ref ve, ref se);
             for (int i = 0; i < n; i++)
                 AssertTrue(ve[i] >= (double)0);
 
             var sr = new doubleRayleigh((double)1.5);
             var vr = arena.doubleVec(n);
-            doubleRandom_OP.randomInpl(ref rng, ref vr, ref sr);
+            Rand.randomInpl(ref rng, ref vr, ref sr);
             for (int i = 0; i < n; i++)
                 AssertTrue(vr[i] >= (double)0);
 
             var sw = new doubleWeibull((double)1.5, (double)2);
             var vw = arena.doubleVec(n);
-            doubleRandom_OP.randomInpl(ref rng, ref vw, ref sw);
+            Rand.randomInpl(ref rng, ref vw, ref sw);
             for (int i = 0; i < n; i++)
                 AssertTrue(vw[i] >= (double)0);
 
@@ -335,7 +335,7 @@ public class doubleRandomTests
             double low = (double)(-1), high = (double)5;
             var st = new doubleTriangular(low, (double)2, high);
             var vt = arena.doubleVec(n);
-            doubleRandom_OP.randomInpl(ref rng, ref vt, ref st);
+            Rand.randomInpl(ref rng, ref vt, ref st);
             for (int i = 0; i < n; i++)
                 AssertTrue(vt[i] >= low && vt[i] <= high);
 
@@ -353,12 +353,12 @@ public class doubleRandomTests
             var r1 = new Random(55u);
             var s1 = new doubleExponential((double)1.7);
             var v1 = arena.doubleVec(n);
-            doubleRandom_OP.randomInpl(ref r1, ref v1, ref s1);
+            Rand.randomInpl(ref r1, ref v1, ref s1);
 
             var r2 = new Random(55u);
             var s2 = new doubleExponential((double)1.7);
             var v2 = arena.doubleVec(n);
-            doubleRandom_OP.randomInpl(ref r2, ref v2, ref s2);
+            Rand.randomInpl(ref r2, ref v2, ref s2);
 
             for (int i = 0; i < n; i++)
                 AssertClose(v1[i], v2[i], (double)0);   // bit-identical
@@ -374,9 +374,9 @@ public class doubleRandomTests
             var rng = new Random(7777u);
 
             var v1 = arena.doubleVec(n);
-            doubleRandom_OP.nextUniformInpl(ref rng, ref v1);
+            Rand.nextUniformInpl(ref rng, ref v1);
             var v2 = arena.doubleVec(n);
-            doubleRandom_OP.nextUniformInpl(ref rng, ref v2);
+            Rand.nextUniformInpl(ref rng, ref v2);
 
             bool anyDiff = false;
             for (int i = 0; i < n; i++)
@@ -386,7 +386,7 @@ public class doubleRandomTests
             // Re-seeding resets the stream: a fresh rng reproduces the first buffer.
             var rng3 = new Random(7777u);
             var v3 = arena.doubleVec(n);
-            doubleRandom_OP.nextUniformInpl(ref rng3, ref v3);
+            Rand.nextUniformInpl(ref rng3, ref v3);
             for (int i = 0; i < n; i++)
                 AssertClose(v1[i], v3[i], (double)0);
 
@@ -421,7 +421,7 @@ public class doubleRandomTests
             var rngFill = new Random(seed);
             var g = new doubleGaussian((double)0, (double)1);
             var v = arena.doubleVec(n);
-            doubleRandom_OP.randomInpl(ref rngFill, ref v, ref g);
+            Rand.randomInpl(ref rngFill, ref v, ref g);
             uint stateFill = rngFill.state;
 
             // Reference: advance an identically-seeded rng by ceil(n/2)*2 uniform draws.
@@ -438,7 +438,7 @@ public class doubleRandomTests
             var rngFill2 = new Random(seed);
             var g2 = new doubleGaussian((double)0, (double)1);
             var v2 = arena.doubleVec(nEven);
-            doubleRandom_OP.randomInpl(ref rngFill2, ref v2, ref g2);
+            Rand.randomInpl(ref rngFill2, ref v2, ref g2);
 
             var rngRef2 = new Random(seed);
             for (int i = 0; i < nEven; i++)
@@ -458,7 +458,7 @@ public class doubleRandomTests
             double mn = (double)(-1), mx = (double)2;
             var M = arena.doubleMat(4, 5);
             for (int i = 0; i < M.Length; i++) M[i] = (double)999;
-            doubleRandom_OP.nextUniformInpl(ref rng, ref M, mn, mx);
+            Rand.nextUniformInpl(ref rng, ref M, mn, mx);
             AssertTrue(M.Length == 20);
             for (int i = 0; i < M.Length; i++)
                 AssertTrue(M[i] >= mn && M[i] < mx);
@@ -466,7 +466,7 @@ public class doubleRandomTests
             // nextUniformInpl [0,1) over a 3x7 matrix.
             var M01 = arena.doubleMat(3, 7);
             for (int i = 0; i < M01.Length; i++) M01[i] = (double)999;
-            doubleRandom_OP.nextUniformInpl(ref rng, ref M01);
+            Rand.nextUniformInpl(ref rng, ref M01);
             for (int i = 0; i < M01.Length; i++)
                 AssertTrue(M01[i] >= (double)0 && M01[i] < (double)1);
 
@@ -474,7 +474,7 @@ public class doubleRandomTests
             var g = new doubleExponential((double)2);
             var ME = arena.doubleMat(3, 7);
             for (int i = 0; i < ME.Length; i++) ME[i] = (double)(-999);
-            doubleRandom_OP.randomInpl(ref rng, ref ME, ref g);
+            Rand.randomInpl(ref rng, ref ME, ref g);
             AssertTrue(ME.Length == 21);
             for (int i = 0; i < ME.Length; i++)
                 AssertTrue(ME[i] >= (double)0);
@@ -625,10 +625,10 @@ public class doubleRandomTests
 
         var v = arena.doubleVec(8);
         Random rng = new Random(1u);
-        Assert.Throws<ArgumentException>(() => doubleRandom_OP.nextUniformInpl(ref rng, ref v, (double)5, (double)1));
+        Assert.Throws<ArgumentException>(() => Rand.nextUniformInpl(ref rng, ref v, (double)5, (double)1));
 
         var M = arena.doubleMat(3, 3);
-        Assert.Throws<ArgumentException>(() => doubleRandom_OP.nextUniformInpl(ref rng, ref M, (double)5, (double)1));
+        Assert.Throws<ArgumentException>(() => Rand.nextUniformInpl(ref rng, ref M, (double)5, (double)1));
 
         arena.Dispose();
     }

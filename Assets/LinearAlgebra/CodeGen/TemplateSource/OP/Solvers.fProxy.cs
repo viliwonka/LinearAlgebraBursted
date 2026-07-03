@@ -129,7 +129,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("solveQR: x.N must equal Q.N_Cols");
 
             // x = Q^T b (or b^T Q). The ref-dest dot guards x-aliases-b and zeroes x first.
-            Linear_OP.dot(in b, in Q, ref x);
+            Blas.dot(in b, in Q, ref x);
             // Solve Rx = Q^T b for x, in place
             return solveUpperTriangular(ref R, ref x);
         }
@@ -213,7 +213,7 @@ namespace LinearAlgebra
                     throw new ArgumentException("cg: r/p/Ap/x/b must be distinct");
             }
 
-            fProxy bb = Linear_OP.dot(b, b);
+            fProxy bb = Blas.dot(b, b);
 
             // b is the zero vector — x = 0 is the exact solution. Copy b (all zeros)
             // rather than multiplying by 0, so a NaN/Inf initial guess is sanitized
@@ -232,7 +232,7 @@ namespace LinearAlgebra
             // p = r
             p.Data.CopyFrom(r.Data);
 
-            fProxy rsold = Linear_OP.dot(r, r);
+            fProxy rsold = Blas.dot(r, r);
             fProxy threshold = tolerance * tolerance * bb;
 
             if (rsold <= threshold)
@@ -242,7 +242,7 @@ namespace LinearAlgebra
             {
                 A.Apply(in p, ref Ap);                    // Ap = A p
 
-                fProxy pAp = Linear_OP.dot(p, Ap);
+                fProxy pAp = Blas.dot(p, Ap);
 
                 if (!(pAp > (fProxy)0))                  // NaN-safe: also catches breakdown
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rsold));
@@ -252,7 +252,7 @@ namespace LinearAlgebra
                 x.addScaledInpl(alpha, p);               // x += alpha p
                 r.addScaledInpl(-alpha, Ap);             // r -= alpha Ap
 
-                fProxy rsnew = Linear_OP.dot(r, r);
+                fProxy rsnew = Blas.dot(r, r);
 
                 if (rsnew <= threshold)
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rsnew));
@@ -394,7 +394,7 @@ namespace LinearAlgebra
                     throw new ArgumentException("pcg: r/p/Ap/z/x/b must be distinct");
             }
 
-            fProxy bb = Linear_OP.dot(b, b);
+            fProxy bb = Blas.dot(b, b);
 
             if (bb == (fProxy)0)
             {
@@ -411,7 +411,7 @@ namespace LinearAlgebra
 
             // rr tracks ‖r‖² of the CURRENT residual across the whole solve -- it is exactly the
             // quantity the convergence test already needs, so reporting rnorm = √rr is free.
-            fProxy rr = Linear_OP.dot(r, r);
+            fProxy rr = Blas.dot(r, r);
             if (rr <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rr));
 
@@ -419,7 +419,7 @@ namespace LinearAlgebra
             M.Apply(in r, ref z);
             p.Data.CopyFrom(z.Data);
 
-            fProxy rzold = Linear_OP.dot(r, z);
+            fProxy rzold = Blas.dot(r, z);
 
             // Block-Jacobi is SPD so this never trips on the shipped path, but a user-supplied
             // preconditioner is not guaranteed SPD; a non-positive <r,z> yields a wrong-signed
@@ -432,7 +432,7 @@ namespace LinearAlgebra
             {
                 A.Apply(in p, ref Ap);                    // Ap = A p
 
-                fProxy pAp = Linear_OP.dot(p, Ap);
+                fProxy pAp = Blas.dot(p, Ap);
 
                 if (!(pAp > (fProxy)0))                  // NaN-safe: also catches breakdown
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr));
@@ -442,13 +442,13 @@ namespace LinearAlgebra
                 x.addScaledInpl(alpha, p);               // x += alpha p
                 r.addScaledInpl(-alpha, Ap);             // r -= alpha Ap
 
-                rr = Linear_OP.dot(r, r);
+                rr = Blas.dot(r, r);
                 if (rr <= threshold)
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
 
                 M.Apply(in r, ref z);                     // z = M^-1 r
 
-                fProxy rznew = Linear_OP.dot(r, z);
+                fProxy rznew = Blas.dot(r, z);
 
                 if (!(rznew > (fProxy)0))                 // NaN-safe: same breakdown guard, fresh <r,z>
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k + 1, math.sqrt(rr));
@@ -588,7 +588,7 @@ namespace LinearAlgebra
                 RequireDistinctBuffers("minres: y/r1/r2/v/w/w1/w2/x/b must be distinct", ptrs, 9);
             }
 
-            fProxy bb = Linear_OP.dot(b, b);
+            fProxy bb = Blas.dot(b, b);
 
             if (bb == (fProxy)0)
             {
@@ -601,7 +601,7 @@ namespace LinearAlgebra
             r1.Data.CopyFrom(b.Data);
             r1.addScaledInpl((fProxy)(-1), y);           // r1 = b - A x
 
-            fProxy beta1 = math.sqrt(Linear_OP.dot(r1, r1));
+            fProxy beta1 = math.sqrt(Blas.dot(r1, r1));
             fProxy threshold = tolerance * tolerance * bb;
 
             if (beta1 * beta1 <= threshold)
@@ -632,14 +632,14 @@ namespace LinearAlgebra
                 if (k >= 1)
                     y.addScaledInpl(-(beta / oldb), r1);   // y -= (beta/oldb) r1
 
-                fProxy alfa = Linear_OP.dot(v, y);
+                fProxy alfa = Blas.dot(v, y);
                 y.addScaledInpl(-(alfa / beta), r2);       // y -= (alfa/beta) r2
 
                 r1.Data.CopyFrom(r2.Data);
                 r2.Data.CopyFrom(y.Data);
 
                 oldb = beta;
-                beta = math.sqrt(Linear_OP.dot(r2, r2));
+                beta = math.sqrt(Blas.dot(r2, r2));
 
                 // ---- apply the PREVIOUS Givens rotation (cs,sn) to the new tridiagonal column ----
                 fProxy oldeps = epsln;
@@ -790,7 +790,7 @@ namespace LinearAlgebra
                 RequireDistinctBuffers("biCGStab: r/rHat0/p/v/t/x/b must be distinct", ptrs, 7);
             }
 
-            fProxy bb = Linear_OP.dot(b, b);
+            fProxy bb = Blas.dot(b, b);
 
             if (bb == (fProxy)0)
             {
@@ -807,7 +807,7 @@ namespace LinearAlgebra
 
             // rr tracks ‖current residual‖²; ss the ‖half-step residual s‖². Both are already
             // computed for the convergence tests, so every exit reports rnorm from a held value.
-            fProxy rr = Linear_OP.dot(r, r);
+            fProxy rr = Blas.dot(r, r);
             if (rr <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rr));
 
@@ -820,7 +820,7 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
-                fProxy rhoNew = Linear_OP.dot(rHat0, r);
+                fProxy rhoNew = Blas.dot(rHat0, r);
 
                 if (rhoNew == (fProxy)0 || math.isnan(rhoNew))
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr)); // r orthogonal to shadow residual
@@ -832,7 +832,7 @@ namespace LinearAlgebra
 
                 A.Apply(in p, ref v);                       // v = A p
 
-                fProxy rv = Linear_OP.dot(rHat0, v);
+                fProxy rv = Blas.dot(rHat0, v);
 
                 if (rv == (fProxy)0 || math.isnan(rv))
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr)); // breakdown: alpha undefined
@@ -841,7 +841,7 @@ namespace LinearAlgebra
 
                 r.addScaledInpl(-alpha, v);                 // r := s = r - alpha v
 
-                fProxy ss = Linear_OP.dot(r, r);
+                fProxy ss = Blas.dot(r, r);
 
                 if (ss <= threshold)
                 {
@@ -853,7 +853,7 @@ namespace LinearAlgebra
 
                 A.Apply(in r, ref t);                       // t = A s   (r currently holds s)
 
-                fProxy tt = Linear_OP.dot(t, t);
+                fProxy tt = Blas.dot(t, t);
 
                 if (!(tt > (fProxy)0))                       // NaN-safe: tt is a norm^2, nonnegative
                     // breakdown: omega undefined. x is still x_old here (the alpha·p / omega·r
@@ -861,7 +861,7 @@ namespace LinearAlgebra
                     // an iterate this path never commits to x).
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr));
 
-                omega = Linear_OP.dot(t, r) / tt;
+                omega = Blas.dot(t, r) / tt;
 
                 if (omega == (fProxy)0 || math.isnan(omega))
                     // breakdown: beta would divide by zero. x is still x_old (see above) -> report rr.
@@ -872,7 +872,7 @@ namespace LinearAlgebra
 
                 r.addScaledInpl(-omega, t);                 // r := s - omega t   (new residual)
 
-                rr = Linear_OP.dot(r, r);
+                rr = Blas.dot(r, r);
 
                 if (rr <= threshold)
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
@@ -964,14 +964,14 @@ namespace LinearAlgebra
             // r = b - A x
             A.Apply(in x, ref rScratch);
             rScratch.scaleAddInpl((fProxy)(-1), b);          // rScratch = -A x + b = b - A x
-            fProxy rnorm = math.sqrt(Linear_OP.dot(rScratch, rScratch));
+            fProxy rnorm = math.sqrt(Blas.dot(rScratch, rScratch));
 
             // s = Aᵀr - damp²x  (the same optimality residual cgls's loop tracks)
             A.ApplyT(in rScratch, ref sScratch);
             if (damp != (fProxy)0) sScratch.addScaledInpl(-(damp * damp), x);
-            fProxy arnorm = math.sqrt(Linear_OP.dot(sScratch, sScratch));
+            fProxy arnorm = math.sqrt(Blas.dot(sScratch, sScratch));
 
-            fProxy xnorm = math.sqrt(Linear_OP.dot(x, x));
+            fProxy xnorm = math.sqrt(Blas.dot(x, x));
 
             return new LstsqInfo
             {
@@ -1043,7 +1043,7 @@ namespace LinearAlgebra
             // bb = dot(b,b)): AtB = A^T b, atbSq = ||AtB||^2. s doubles as scratch for this
             // one-off computation -- the main loop overwrites it every iteration from here on.
             A.ApplyT(in b, ref s);
-            fProxy atbSq = Linear_OP.dot(s, s);
+            fProxy atbSq = Blas.dot(s, s);
 
             if (atbSq == (fProxy)0)
             {
@@ -1051,7 +1051,7 @@ namespace LinearAlgebra
                 // (mirrors cg's bb==0 shortcut: a deterministic, NaN-sanitizing exact answer).
                 for (int i = 0; i < x.N; i++) x[i] = (fProxy)0;
                 // r = b, Aᵀr = Aᵀb = 0, x = 0.
-                return new LstsqInfo { rnorm = math.sqrt(Linear_OP.dot(b, b)), Arnorm = (fProxy)0, xnorm = (fProxy)0, iterations = 0, status = IterativeSolveStatus.Converged };
+                return new LstsqInfo { rnorm = math.sqrt(Blas.dot(b, b)), Arnorm = (fProxy)0, xnorm = (fProxy)0, iterations = 0, status = IterativeSolveStatus.Converged };
             }
 
             fProxy threshold = tolerance * tolerance * atbSq;
@@ -1066,7 +1066,7 @@ namespace LinearAlgebra
             A.ApplyT(in r, ref s);
             if (damp != (fProxy)0) s.addScaledInpl(-(damp * damp), x);
 
-            fProxy gamma = Linear_OP.dot(s, s);
+            fProxy gamma = Blas.dot(s, s);
 
             // rnorm/Arnorm/xnorm are all FREE here: r is live (one dot), Arnorm = √gamma is the
             // tracked normal-equation residual, xnorm one dot on x. No extra matvec.
@@ -1079,8 +1079,8 @@ namespace LinearAlgebra
             {
                 A.Apply(in p, ref q);                       // q = A p
 
-                fProxy delta = Linear_OP.dot(q, q);
-                if (damp != (fProxy)0) delta += (damp * damp) * Linear_OP.dot(p, p);   // p^T(A^T A + damp^2 I)p
+                fProxy delta = Blas.dot(q, q);
+                if (damp != (fProxy)0) delta += (damp * damp) * Blas.dot(p, p);   // p^T(A^T A + damp^2 I)p
 
                 if (!(delta > (fProxy)0))                   // NaN-safe: also catches breakdown
                     return CglsInfo(IterativeSolveStatus.Breakdown, k + 1, gamma, in r, in x);
@@ -1093,7 +1093,7 @@ namespace LinearAlgebra
                 A.ApplyT(in r, ref s);                       // s = A^T r, recomputed fresh (stability)
                 if (damp != (fProxy)0) s.addScaledInpl(-(damp * damp), x);   // - damp^2 x (damped gradient)
 
-                fProxy gammaNew = Linear_OP.dot(s, s);
+                fProxy gammaNew = Blas.dot(s, s);
 
                 if (gammaNew <= threshold)
                     return CglsInfo(IterativeSolveStatus.Converged, k + 1, gammaNew, in r, in x);
@@ -1114,9 +1114,9 @@ namespace LinearAlgebra
         static LstsqInfo CglsInfo(IterativeSolveStatus status, int iterations, fProxy gamma, in fProxyN r, in fProxyN x)
             => new LstsqInfo
             {
-                rnorm = math.sqrt(Linear_OP.dot(r, r)),
+                rnorm = math.sqrt(Blas.dot(r, r)),
                 Arnorm = math.sqrt(gamma),
-                xnorm = math.sqrt(Linear_OP.dot(x, x)),
+                xnorm = math.sqrt(Blas.dot(x, x)),
                 iterations = iterations,
                 status = status,
             };
@@ -1306,13 +1306,13 @@ namespace LinearAlgebra
 
             // Fixed scale reference for the relative tolerance (mirrors cgls's atbSq).
             A.ApplyT(in b, ref tmpN);
-            fProxy atbSq = Linear_OP.dot(tmpN, tmpN);
+            fProxy atbSq = Blas.dot(tmpN, tmpN);
 
             if (atbSq == (fProxy)0)
             {
                 for (int i = 0; i < x.N; i++) x[i] = (fProxy)0;
                 // r = b, Aᵀr = Aᵀb = 0, x = 0.
-                return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, math.sqrt(Linear_OP.dot(b, b)), (fProxy)0, (fProxy)0, in x);
+                return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, math.sqrt(Blas.dot(b, b)), (fProxy)0, (fProxy)0, in x);
             }
 
             fProxy threshold = tolerance * tolerance * atbSq;
@@ -1322,7 +1322,7 @@ namespace LinearAlgebra
             u.Data.CopyFrom(b.Data);
             u.addScaledInpl((fProxy)(-1), tmpM);
 
-            fProxy beta = math.sqrt(Linear_OP.dot(u, u));
+            fProxy beta = math.sqrt(Blas.dot(u, u));
 
             if (beta == (fProxy)0)
                 // x already exact (r = 0): rnorm = 0, Aᵀr = 0.
@@ -1334,7 +1334,7 @@ namespace LinearAlgebra
             A.ApplyT(in u, ref tmpN);
             v.Data.CopyFrom(tmpN.Data);
 
-            fProxy alpha = math.sqrt(Linear_OP.dot(v, v));
+            fProxy alpha = math.sqrt(Blas.dot(v, v));
 
             if (alpha == (fProxy)0)
                 // x already least-squares-stationary (A^T r = 0). ‖r‖ = beta.
@@ -1365,12 +1365,12 @@ namespace LinearAlgebra
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 A.Apply(in v, ref tmpM);
                 u.scaleAddInpl(-alpha, tmpM);              // u = -alpha*u + tmpM = A v - alpha u
-                beta = math.sqrt(Linear_OP.dot(u, u));
+                beta = math.sqrt(Blas.dot(u, u));
                 if (beta > (fProxy)0) u.divInpl(beta);
 
                 A.ApplyT(in u, ref tmpN);
                 v.scaleAddInpl(-beta, tmpN);                // v = -beta*v + tmpN = A^T u - beta v
-                alpha = math.sqrt(Linear_OP.dot(v, v));
+                alpha = math.sqrt(Blas.dot(v, v));
                 if (alpha > (fProxy)0) v.divInpl(alpha);
 
                 // ---- fold Tikhonov damping into rhobar: rotate (rhobar, damp) -> (rhobar1, 0),
@@ -1436,7 +1436,7 @@ namespace LinearAlgebra
         /// makes this the identity, so the undamped path is unchanged.</summary>
         static LstsqInfo LstsqInfoTracked(IterativeSolveStatus status, int iterations, fProxy resNorm, fProxy Arnorm, fProxy dampAug, in fProxyN x)
         {
-            fProxy xnorm = math.sqrt(Linear_OP.dot(x, x));
+            fProxy xnorm = math.sqrt(Blas.dot(x, x));
             fProxy rr = resNorm * resNorm - dampAug * dampAug * xnorm * xnorm;
             fProxy rnorm = rr > (fProxy)0 ? math.sqrt(rr) : (fProxy)0;   // guard estimate noise when ‖b-Ax‖≈0
             return new LstsqInfo
@@ -1645,13 +1645,13 @@ namespace LinearAlgebra
 
             // Fixed scale reference for the relative tolerance (identical contract to lsqr/cgls).
             A.ApplyT(in b, ref tmpN);
-            fProxy atbSq = Linear_OP.dot(tmpN, tmpN);
+            fProxy atbSq = Blas.dot(tmpN, tmpN);
 
             if (atbSq == (fProxy)0)
             {
                 for (int i = 0; i < x.N; i++) x[i] = (fProxy)0;
                 // r = b, Aᵀr = Aᵀb = 0, x = 0.
-                return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, math.sqrt(Linear_OP.dot(b, b)), (fProxy)0, (fProxy)0, in x);
+                return LstsqInfoTracked(IterativeSolveStatus.Converged, 0, math.sqrt(Blas.dot(b, b)), (fProxy)0, (fProxy)0, in x);
             }
 
             fProxy threshold = tolerance * tolerance * atbSq;
@@ -1661,7 +1661,7 @@ namespace LinearAlgebra
             u.Data.CopyFrom(b.Data);
             u.addScaledInpl((fProxy)(-1), tmpM);
 
-            fProxy beta = math.sqrt(Linear_OP.dot(u, u));
+            fProxy beta = math.sqrt(Blas.dot(u, u));
 
             if (beta == (fProxy)0)
                 // x already exact (r = 0).
@@ -1673,7 +1673,7 @@ namespace LinearAlgebra
             A.ApplyT(in u, ref tmpN);
             v.Data.CopyFrom(tmpN.Data);
 
-            fProxy alpha = math.sqrt(Linear_OP.dot(v, v));
+            fProxy alpha = math.sqrt(Blas.dot(v, v));
 
             if (alpha == (fProxy)0)
                 // x already least-squares-stationary (A^T r = 0). ‖r‖ = beta.
@@ -1712,13 +1712,13 @@ namespace LinearAlgebra
                 // ---- bidiagonalization step (Golub-Kahan) ----
                 A.Apply(in v, ref tmpM);
                 u.scaleAddInpl(-alpha, tmpM);              // u = A v - alpha u
-                beta = math.sqrt(Linear_OP.dot(u, u));
+                beta = math.sqrt(Blas.dot(u, u));
                 if (beta > (fProxy)0)
                 {
                     u.divInpl(beta);
                     A.ApplyT(in u, ref tmpN);
                     v.scaleAddInpl(-beta, tmpN);            // v = A^T u - beta v
-                    alpha = math.sqrt(Linear_OP.dot(v, v));
+                    alpha = math.sqrt(Blas.dot(v, v));
                     if (alpha > (fProxy)0) v.divInpl(alpha);
                 }
 
@@ -1929,7 +1929,7 @@ namespace LinearAlgebra
         // fewer iterations than the un-preconditioned solve to the SAME solution. Everything is
         // temp-pool allocated from b. BSR forms materialize A^T once (ApplyT-heavy). For explicit
         // control (custom d, warm start, damping semantics, zero-alloc) use the composable path
-        // directly: Linear_OP.columnNormsSquared + buildJacobiScale + fProxyColScaledOperator + the
+        // directly: Blas.columnNormsSquared + buildJacobiScale + fProxyColScaledOperator + the
         // generic solver overload.
         //
         // DIAGNOSTICS: the returned LstsqInfo is reported in ORIGINAL coordinates. The
@@ -1966,8 +1966,8 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
-            Linear_OP.columnNormsSquared(in A, ref d2);
-            Linear_OP.buildJacobiScale(in d2, ref d);
+            Blas.columnNormsSquared(in A, ref d2);
+            Blas.buildJacobiScale(in d2, ref d);
             var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;                 // cold start (change of variable)
@@ -1985,8 +1985,8 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
-            Sparse_OP.columnNormsSquared(in A, ref d2);
-            Linear_OP.buildJacobiScale(in d2, ref d);
+            BSR.columnNormsSquared(in A, ref d2);
+            Blas.buildJacobiScale(in d2, ref d);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
             var op = new fProxyColScaledOperator<fProxyBSROperator>(new fProxyBSROperator(in A, in AT), d, scratch);
 
@@ -2006,8 +2006,8 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
-            Linear_OP.columnNormsSquared(in A, ref d2);
-            Linear_OP.buildJacobiScale(in d2, ref d);
+            Blas.columnNormsSquared(in A, ref d2);
+            Blas.buildJacobiScale(in d2, ref d);
             var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
@@ -2025,8 +2025,8 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
-            Sparse_OP.columnNormsSquared(in A, ref d2);
-            Linear_OP.buildJacobiScale(in d2, ref d);
+            BSR.columnNormsSquared(in A, ref d2);
+            Blas.buildJacobiScale(in d2, ref d);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
             var op = new fProxyColScaledOperator<fProxyBSROperator>(new fProxyBSROperator(in A, in AT), d, scratch);
 
@@ -2046,8 +2046,8 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
-            Linear_OP.columnNormsSquared(in A, ref d2);
-            Linear_OP.buildJacobiScale(in d2, ref d);
+            Blas.columnNormsSquared(in A, ref d2);
+            Blas.buildJacobiScale(in d2, ref d);
             var op = new fProxyColScaledOperator<fProxyDenseOperator>(new fProxyDenseOperator(in A), d, scratch);
 
             for (int j = 0; j < n; j++) x[j] = (fProxy)0;
@@ -2065,8 +2065,8 @@ namespace LinearAlgebra
         {
             int m = A.M_Rows, n = A.N_Cols;
             fProxyN d = b.fProxyTempVec(n), d2 = b.fProxyTempVec(n), scratch = b.fProxyTempVec(n);
-            Sparse_OP.columnNormsSquared(in A, ref d2);
-            Linear_OP.buildJacobiScale(in d2, ref d);
+            BSR.columnNormsSquared(in A, ref d2);
+            Blas.buildJacobiScale(in d2, ref d);
             fProxyBSR AT = b.fProxyBSRTranspose(in A);
             var op = new fProxyColScaledOperator<fProxyBSROperator>(new fProxyBSROperator(in A, in AT), d, scratch);
 
@@ -2127,7 +2127,7 @@ namespace LinearAlgebra
             }
 
             // Fixed scale reference for the relative tolerance, independent of x0 (mirrors cg's bb).
-            fProxy bb = Linear_OP.dot(b, b);
+            fProxy bb = Blas.dot(b, b);
 
             if (bb == (fProxy)0)
             {
@@ -2144,7 +2144,7 @@ namespace LinearAlgebra
             r.Data.CopyFrom(b.Data);
             r.addScaledInpl((fProxy)(-1), q);
 
-            fProxy rr = Linear_OP.dot(r, r);
+            fProxy rr = Blas.dot(r, r);
 
             if (rr <= threshold)
                 return MakeSolveInfo(IterativeSolveStatus.Converged, 0, math.sqrt(rr));
@@ -2154,7 +2154,7 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
-                fProxy pp = Linear_OP.dot(p, p);
+                fProxy pp = Blas.dot(p, p);
 
                 if (!(pp > (fProxy)0))                      // NaN-safe: A^T r == 0 (r ⟂ range(A)) or p == 0
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr));
@@ -2165,7 +2165,7 @@ namespace LinearAlgebra
                 A.Apply(in p, ref q);                       // q = A p
                 r.addScaledInpl(-alpha, q);                 // r -= alpha A p
 
-                fProxy rrNew = Linear_OP.dot(r, r);
+                fProxy rrNew = Blas.dot(r, r);
 
                 if (rrNew <= threshold)
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rrNew));

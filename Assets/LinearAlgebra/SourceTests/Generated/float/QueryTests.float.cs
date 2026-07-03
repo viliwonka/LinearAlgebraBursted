@@ -17,7 +17,7 @@ using Unity.Mathematics;
 //   2 — Norm-selection: argMaxRowNorm/argMaxColNorm for each Norm (L1/L2/Linf).
 //   3 — Search: distancesToRow/Column, nearest/farthest, kNearest/kFarthest, within-radius/count,
 //       for each Metric; the similarity direction flip (Cosine/Dot -> nearest=MAX) is the key check.
-//   4 — Value/mask: findValue, nonzero/countNonzero, BoolAnalysis_OP.whichTrue/countTrue.
+//   4 — Value/mask: findValue, nonzero/countNonzero, Analysis.whichTrue/countTrue.
 //   Symmetry — a column op on A equals the row op on transpose(A) (spec P1).
 //   Arena wrappers — each allocating wrapper matches the zero-alloc primitive.
 //
@@ -717,7 +717,7 @@ public class floatQueryTests
 
             int M = 5, N = 4;
             var A = arena.floatRandomMat(M, N, -3f, 3f, 20240625);
-            var At = Linear_OP.trans(A);   // N x M
+            var At = Blas.trans(A);   // N x M
 
             // For a column op on A, the query length is M_Rows = M; this same q is the row query
             // for At (whose N_Cols = M). So nearestColumn(A,q) == nearestRow(At,q).
@@ -1016,7 +1016,7 @@ public class floatQueryTests
     [Test] public void ArenaKWrapperClampTest()          => RunJob(TestJob.TestType.ArenaKWrapperClamp);
 
     // -------------------------------------------------------------------------
-    // GROUP 4 — BoolAnalysis_OP.whichTrue / countTrue (bool mask bridge).
+    // GROUP 4 — Analysis.whichTrue / countTrue (bool mask bridge).
     // Bool ops live outside the per-type QueryOP; run on the main thread.
     // -------------------------------------------------------------------------
 
@@ -1029,10 +1029,10 @@ public class floatQueryTests
         mask[0] = false; mask[1] = true; mask[2] = false;
         mask[3] = true;  mask[4] = true; mask[5] = false;
 
-        Assert.AreEqual(3, BoolAnalysis_OP.countTrue(in mask));
+        Assert.AreEqual(3, Analysis.countTrue(in mask));
 
         var idx = arena.Indices(6);
-        int c = BoolAnalysis_OP.whichTrue(in mask, ref idx);
+        int c = Analysis.whichTrue(in mask, ref idx);
         Assert.AreEqual(3, c);
         Assert.AreEqual(1, idx[0]);
         Assert.AreEqual(3, idx[1]);
@@ -1058,10 +1058,10 @@ public class floatQueryTests
         mask[0] = true;  mask[1] = false; mask[2] = true;
         mask[3] = false; mask[4] = false; mask[5] = true;
 
-        Assert.AreEqual(3, BoolAnalysis_OP.countTrue(in mask));
+        Assert.AreEqual(3, Analysis.countTrue(in mask));
 
         var idx = arena.Indices(6);
-        int c = BoolAnalysis_OP.whichTrue(in mask, ref idx);
+        int c = Analysis.whichTrue(in mask, ref idx);
         Assert.AreEqual(3, c);
         Assert.AreEqual(0, idx[0]);
         Assert.AreEqual(2, idx[1]);

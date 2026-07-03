@@ -107,17 +107,17 @@ public class floatPivotTests
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsFalse(Analysis_OP.isIdentity(identity));
+            Assert.IsFalse(Analysis.isIdentity(identity));
 
             pivot.ApplyInverseRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.Dispose();
         }
@@ -136,23 +136,23 @@ public class floatPivotTests
 
             var identity = arena.floatIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.ApplyRow(ref identity);
             pivot.ApplyRow(ref identity);
 
-            Assert.IsFalse(Analysis_OP.isIdentity(identity));
+            Assert.IsFalse(Analysis.isIdentity(identity));
 
             pivot.ApplyInverseRow(ref identity);
             pivot.ApplyInverseRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.Dispose();
         }
@@ -168,17 +168,17 @@ public class floatPivotTests
 
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsFalse(Analysis_OP.isIdentity(identity));
+            Assert.IsFalse(Analysis.isIdentity(identity));
 
             pivot.ApplyInverseColumn(ref identity);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.Dispose();
         }
@@ -197,23 +197,23 @@ public class floatPivotTests
 
             var identity = arena.floatIdentityMat(dim);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.ApplyColumn(ref identity);
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsFalse(Analysis_OP.isIdentity(identity));
+            Assert.IsFalse(Analysis.isIdentity(identity));
 
             pivot.ApplyInverseColumn(ref identity);
             pivot.ApplyInverseColumn(ref identity);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.Reset();
 
             pivot.ApplyColumn(ref identity);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             pivot.Dispose();
         }
@@ -222,9 +222,9 @@ public class floatPivotTests
 
             var permutationMatrix = arena.floatPermutationMat(8, 2, 3);
 
-            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 3, 6));
-            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 6, 7));
-            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 1, 4));
+            permutationMatrix = Blas.dot(permutationMatrix, arena.floatPermutationMat(8, 3, 6));
+            permutationMatrix = Blas.dot(permutationMatrix, arena.floatPermutationMat(8, 6, 7));
+            permutationMatrix = Blas.dot(permutationMatrix, arena.floatPermutationMat(8, 1, 4));
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 
@@ -236,7 +236,7 @@ public class floatPivotTests
             // applying inverse pivot operation to permutation matrix should form identity matrix
             pivot.ApplyInverseRow(ref permutationMatrix);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(permutationMatrix));
+            Assert.IsTrue(Analysis.isIdentity(permutationMatrix));
 
             pivot.Dispose();
         }
@@ -245,11 +245,11 @@ public class floatPivotTests
 
             var permutationMatrix = arena.floatPermutationMat(8, 2, 3);
 
-            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 3, 6));
-            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 6, 7));
-            permutationMatrix = Linear_OP.dot(permutationMatrix, arena.floatPermutationMat(8, 1, 4));
+            permutationMatrix = Blas.dot(permutationMatrix, arena.floatPermutationMat(8, 3, 6));
+            permutationMatrix = Blas.dot(permutationMatrix, arena.floatPermutationMat(8, 6, 7));
+            permutationMatrix = Blas.dot(permutationMatrix, arena.floatPermutationMat(8, 1, 4));
 
-            permutationMatrix = Linear_OP.trans(permutationMatrix);
+            permutationMatrix = Blas.trans(permutationMatrix);
 
             Pivot pivot = new Pivot(8, Allocator.Temp);
 
@@ -261,7 +261,7 @@ public class floatPivotTests
             // column analogue of RowPermutationMatTest above: inverse pivot should form identity.
             pivot.ApplyInverseColumn(ref permutationMatrix);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(permutationMatrix));
+            Assert.IsTrue(Analysis.isIdentity(permutationMatrix));
               
             pivot.Dispose();
         }
@@ -279,12 +279,12 @@ public class floatPivotTests
 
             var vecCopy = vec.Copy();
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(vec == vecCopy, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(vec == vecCopy, true));
 
             // [1, 0, 0, 0] -> [0, 0, 0, 1]
             pivot.ApplyVec(ref vec);
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(vec == vecCopy, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(vec == vecCopy, true));
 
             pivot.Swap(0, 3);
 
@@ -297,7 +297,7 @@ public class floatPivotTests
 
             pivot.ApplyInverseVec(ref vec);
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(vec == vecCopy, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(vec == vecCopy, true));
 
             pivot.Dispose();
         }
@@ -356,11 +356,11 @@ public class floatPivotTests
 
             pivot.ApplyRow(ref identity);
 
-            Assert.IsFalse(Analysis_OP.isIdentity(identity));
+            Assert.IsFalse(Analysis.isIdentity(identity));
 
             pivot.ApplyInverseRow(ref identity);
 
-            Assert.IsTrue(Analysis_OP.isIdentity(identity));
+            Assert.IsTrue(Analysis.isIdentity(identity));
 
             // intentionally NOT disposing pivot - arena.Dispose() owns it (in Execute's finally).
         }

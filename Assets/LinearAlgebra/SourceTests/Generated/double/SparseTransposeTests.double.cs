@@ -63,7 +63,7 @@ public class doubleSparseTransposeTests
 
         static void AssertVecEq(in doubleN a, in doubleN b, double tol)
         {
-            Assert.IsTrue(Analysis_OP.isZero(a - b, tol));
+            Assert.IsTrue(Analysis.isZero(a - b, tol));
         }
 
         // A random rectangular BSR on a 3x2 block grid of 3x2 (BR x BC) blocks -> dense 9x4 (m > n).
@@ -110,8 +110,8 @@ public class doubleSparseTransposeTests
 
             var x = arena.doubleRandomVec(A.M_Rows, -1f, 1f, seed);
 
-            var y1 = Sparse_OP.spMV(in AT, in x);    // new cache-friendly forward traversal of A^T
-            var y2 = Sparse_OP.spMVT(in A, in x);    // old on-the-fly scatter traversal
+            var y1 = BSR.spMV(in AT, in x);    // new cache-friendly forward traversal of A^T
+            var y2 = BSR.spMVT(in A, in x);    // old on-the-fly scatter traversal
 
             Assert.IsTrue(y1.N == A.N_Cols);
             Assert.IsTrue(y2.N == A.N_Cols);
@@ -195,7 +195,7 @@ public class doubleSparseTransposeTests
             for (int i = 0; i < nb; i++)
             {
                 var Mi = arena.doubleRandomMat(BR, BR, -1f, 1f, (uint)(74000 + i));
-                var Di = Linear_OP.dot(Mi, Mi, true);
+                var Di = Blas.dot(Mi, Mi, true);
                 for (int d = 0; d < BR; d++)
                     Di[d, d] += strong;
                 s.AddBlock(i, i, in Di);
@@ -220,8 +220,8 @@ public class doubleSparseTransposeTests
             // Numerical no-op: transposing a symmetric matrix leaves spMV unchanged (square -> x
             // length dim = N_Cols = M_Rows).
             var x = arena.doubleRandomVec(dim, -1f, 1f, 74200);
-            var yA = Sparse_OP.spMV(in A, in x);
-            var yAT = Sparse_OP.spMV(in AT, in x);
+            var yA = BSR.spMV(in A, in x);
+            var yAT = BSR.spMV(in AT, in x);
             AssertVecEq(in yAT, in yA, Tol());
 
             arena.Dispose();

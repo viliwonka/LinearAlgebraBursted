@@ -6,7 +6,7 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    public static partial class Linear_OP {
+    public static partial class Blas {
 
         /// <summary>
         /// Trace: the sum of the diagonal entries, Σ A[i,i]. A must be square.

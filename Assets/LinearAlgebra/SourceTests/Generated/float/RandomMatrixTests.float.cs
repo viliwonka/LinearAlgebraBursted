@@ -11,7 +11,7 @@ using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
 // Tests for Chunk 3 of the random-generation layer: structured / property matrices
-// (floatRandomMatrix_OP). Verification is PROPERTY-based — we construct the matrix and then
+// (Rand). Verification is PROPERTY-based — we construct the matrix and then
 // independently check the property it is supposed to have, reusing the library's own ops:
 //   * randomOrthogonalInpl   -> QᵀQ ≈ I  (dot(Q,Q,transposeA:true)); determinism.
 //   * randomSpdInpl          -> symmetry, Cholesky succeeds (PD), eigenvalues ∈ [minEig,maxEig]
@@ -94,11 +94,11 @@ public class floatRandomMatrixTests
 
             var rng = new Random(seed);
             var Q = arena.floatMat(n, n);
-            floatRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref Q);
+            Rand.randomOrthogonalInpl(ref rng, ref Q);
 
             // QᵀQ
             var QtQ = arena.floatMat(n, n);
-            Linear_OP.dot(in Q, in Q, ref QtQ, transposeA: true);
+            Blas.dot(in Q, in Q, ref QtQ, transposeA: true);
 
             // off-diagonal orthonormality error scales with n; this bound is loose for float,
             // tight for double, but still far above the true ~n·eps backward error.
@@ -121,11 +121,11 @@ public class floatRandomMatrixTests
 
             var r1 = new Random(424242u);
             var Q1 = arena.floatMat(n, n);
-            floatRandomMatrix_OP.randomOrthogonalInpl(ref r1, ref Q1);
+            Rand.randomOrthogonalInpl(ref r1, ref Q1);
 
             var r2 = new Random(424242u);
             var Q2 = arena.floatMat(n, n);
-            floatRandomMatrix_OP.randomOrthogonalInpl(ref r2, ref Q2);
+            Rand.randomOrthogonalInpl(ref r2, ref Q2);
 
             for (int i = 0; i < Q1.Length; i++)
                 AssertClose(Q1[i], Q2[i], (float)0);
@@ -150,7 +150,7 @@ public class floatRandomMatrixTests
                 int n = 4 + (int)t;             // 4..9
                 var rng = new Random(5000u + t * 37u);
                 var A = arena.floatMat(n, n);
-                floatRandomMatrix_OP.randomSpdInpl(ref rng, ref A, minEig, maxEig);
+                Rand.randomSpdInpl(ref rng, ref A, minEig, maxEig);
 
                 // (a) symmetry — implementation symmetrises exactly, so this is tight.
                 float symTol = (float)8 * Consts.floatSqrtEps;
@@ -196,11 +196,11 @@ public class floatRandomMatrixTests
 
             var r1 = new Random(96321u);
             var A1 = arena.floatMat(n, n);
-            floatRandomMatrix_OP.randomSpdInpl(ref r1, ref A1, (float)1, (float)10);
+            Rand.randomSpdInpl(ref r1, ref A1, (float)1, (float)10);
 
             var r2 = new Random(96321u);
             var A2 = arena.floatMat(n, n);
-            floatRandomMatrix_OP.randomSpdInpl(ref r2, ref A2, (float)1, (float)10);
+            Rand.randomSpdInpl(ref r2, ref A2, (float)1, (float)10);
 
             for (int i = 0; i < A1.Length; i++)
                 AssertClose(A1[i], A2[i], (float)0);
@@ -222,7 +222,7 @@ public class floatRandomMatrixTests
 
             var rng = new Random(seed);
             var A = arena.floatMat(m, n);
-            floatRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, cond);
+            Rand.randomMatrixWithConditionInpl(ref rng, ref A, cond);
 
             int k = math.min(m, n);
             var S = arena.floatVec(k);
@@ -244,7 +244,7 @@ public class floatRandomMatrixTests
 
             var rng = new Random(6003u);
             var A = arena.floatMat(1, 4);
-            floatRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (float)50);
+            Rand.randomMatrixWithConditionInpl(ref rng, ref A, (float)50);
 
             var S = arena.floatVec(1);    // k = min(1,4) = 1
             SVD.singularValues(in A, ref S);
@@ -274,7 +274,7 @@ public class floatRandomMatrixTests
                 {
                     var rng = new Random(7000u + (uint)rank * 101u + t * 13u);
                     var A = arena.floatMat(m, n);
-                    floatRandomMatrix_OP.randomMatrixWithRankInpl(ref rng, ref A, rank);
+                    Rand.randomMatrixWithRankInpl(ref rng, ref A, rank);
 
                     int got = NumericalRank(in arena, in A);
                     RecordEq(got, rank);
@@ -298,7 +298,7 @@ public class floatRandomMatrixTests
             var rng0 = new Random(8001u);
             var A0 = arena.floatMat(m, n);
             for (int i = 0; i < A0.Length; i++) A0[i] = (float)999;   // poison
-            floatRandomMatrix_OP.randomMatrixWithRankInpl(ref rng0, ref A0, 0);
+            Rand.randomMatrixWithRankInpl(ref rng0, ref A0, 0);
             for (int i = 0; i < A0.Length; i++)
                 AssertClose(A0[i], (float)0, (float)0);    // exact
             RecordEq(NumericalRank(in arena, in A0), 0);
@@ -306,7 +306,7 @@ public class floatRandomMatrixTests
             // full rank.
             var rngF = new Random(8002u);
             var AF = arena.floatMat(m, n);
-            floatRandomMatrix_OP.randomMatrixWithRankInpl(ref rngF, ref AF, k);
+            Rand.randomMatrixWithRankInpl(ref rngF, ref AF, k);
             RecordEq(NumericalRank(in arena, in AF), k);
 
             arena.Dispose();
@@ -348,7 +348,7 @@ public class floatRandomMatrixTests
 
             var rng = new Random(seed);
             var A = arena.floatMat(m, n);
-            floatRandomMatrix_OP.randomStochasticInpl(ref rng, ref A);
+            Rand.randomStochasticInpl(ref rng, ref A);
 
             float sumTol = (float)20 * Consts.floatSqrtEps;
             for (int r = 0; r < m; r++)
@@ -392,7 +392,7 @@ public class floatRandomMatrixTests
             var z = arena.floatVec(n);
             for (int s = 0; s < samples; s++)
             {
-                floatRandomMatrix_OP.multivariateNormalInpl(ref rng, in I, in mean, ref dest, ref z);
+                Rand.multivariateNormalInpl(ref rng, in I, in mean, ref dest, ref z);
                 for (int i = 0; i < n; i++) acc[i] += dest[i];
             }
             float meanTol = (float)0.1;   // std error of mean over 8000 draws ≈ 0.011
@@ -404,7 +404,7 @@ public class floatRandomMatrixTests
             for (int i = 0; i < n; i++) acc[i] = (float)0;
             for (int s = 0; s < samples; s++)
             {
-                floatRandomMatrix_OP.multivariateNormalInpl(ref rng2, in I, in mean, ref dest);
+                Rand.multivariateNormalInpl(ref rng2, in I, in mean, ref dest);
                 for (int i = 0; i < n; i++) acc[i] += dest[i];
             }
             for (int i = 0; i < n; i++)
@@ -435,7 +435,7 @@ public class floatRandomMatrixTests
 
             var rng = new Random(13000u);
             var dest = arena.floatMat(rows, n);
-            floatRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in L, in mean, ref dest);
+            Rand.multivariateNormalRowsInpl(ref rng, in L, in mean, ref dest);
 
             // empirical column means
             float m0 = (float)0, m1 = (float)0;
@@ -478,11 +478,11 @@ public class floatRandomMatrixTests
 
             var r1 = new Random(55667788u);
             var D1 = arena.floatMat(rows, n);
-            floatRandomMatrix_OP.multivariateNormalRowsInpl(ref r1, in L, in mean, ref D1);
+            Rand.multivariateNormalRowsInpl(ref r1, in L, in mean, ref D1);
 
             var r2 = new Random(55667788u);
             var D2 = arena.floatMat(rows, n);
-            floatRandomMatrix_OP.multivariateNormalRowsInpl(ref r2, in L, in mean, ref D2);
+            Rand.multivariateNormalRowsInpl(ref r2, in L, in mean, ref D2);
 
             for (int i = 0; i < D1.Length; i++)
                 AssertClose(D1[i], D2[i], (float)0);
@@ -567,7 +567,7 @@ public class floatRandomMatrixTests
             var rng = new Random(1u);
             var dest = arena.floatMat(3, 4);
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomOrthogonalInpl(ref rng, ref dest));
+                () => Rand.randomOrthogonalInpl(ref rng, ref dest));
         }
         finally { arena.Dispose(); }
     }
@@ -582,22 +582,22 @@ public class floatRandomMatrixTests
 
             var nonSquare = arena.floatMat(3, 4);
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomSpdInpl(ref rng, ref nonSquare, (float)1, (float)2));
+                () => Rand.randomSpdInpl(ref rng, ref nonSquare, (float)1, (float)2));
 
             var A = arena.floatMat(3, 3);
             // minEig <= 0
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (float)0, (float)2));
+                () => Rand.randomSpdInpl(ref rng, ref A, (float)0, (float)2));
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (float)(-1), (float)2));
+                () => Rand.randomSpdInpl(ref rng, ref A, (float)(-1), (float)2));
             // minEig > maxEig
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (float)5, (float)2));
+                () => Rand.randomSpdInpl(ref rng, ref A, (float)5, (float)2));
             // non-finite bounds
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (float)float.PositiveInfinity, (float)2));
+                () => Rand.randomSpdInpl(ref rng, ref A, (float)float.PositiveInfinity, (float)2));
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomSpdInpl(ref rng, ref A, (float)1, (float)float.NaN));
+                () => Rand.randomSpdInpl(ref rng, ref A, (float)1, (float)float.NaN));
         }
         finally { arena.Dispose(); }
     }
@@ -613,12 +613,12 @@ public class floatRandomMatrixTests
 
             // cond < 1
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (float)0.5));
+                () => Rand.randomMatrixWithConditionInpl(ref rng, ref A, (float)0.5));
             // non-finite cond
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (float)float.PositiveInfinity));
+                () => Rand.randomMatrixWithConditionInpl(ref rng, ref A, (float)float.PositiveInfinity));
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomMatrixWithConditionInpl(ref rng, ref A, (float)float.NaN));
+                () => Rand.randomMatrixWithConditionInpl(ref rng, ref A, (float)float.NaN));
         }
         finally { arena.Dispose(); }
     }
@@ -633,9 +633,9 @@ public class floatRandomMatrixTests
             var A = arena.floatMat(5, 3);   // min(m,n) = 3
 
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomMatrixWithRankInpl(ref rng, ref A, -1));
+                () => Rand.randomMatrixWithRankInpl(ref rng, ref A, -1));
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.randomMatrixWithRankInpl(ref rng, ref A, 4)); // > min(m,n)
+                () => Rand.randomMatrixWithRankInpl(ref rng, ref A, 4)); // > min(m,n)
         }
         finally { arena.Dispose(); }
     }
@@ -654,38 +654,38 @@ public class floatRandomMatrixTests
             var dest3 = arena.floatVec(3);
             var z3 = arena.floatVec(3);
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3, ref z3));
+                () => Rand.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3, ref z3));
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3));
+                () => Rand.multivariateNormalInpl(ref rng, in nonSquare, in mean3, ref dest3));
 
             var L = arena.floatMat(3, 3);
 
             // mean.N mismatch
             var meanBad = arena.floatVec(2);
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.multivariateNormalInpl(ref rng, in L, in meanBad, ref dest3, ref z3));
+                () => Rand.multivariateNormalInpl(ref rng, in L, in meanBad, ref dest3, ref z3));
 
             // dest.N mismatch
             var destBad = arena.floatVec(4);
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.multivariateNormalInpl(ref rng, in L, in mean3, ref destBad, ref z3));
+                () => Rand.multivariateNormalInpl(ref rng, in L, in mean3, ref destBad, ref z3));
 
             // zScratch.N mismatch
             var zBad = arena.floatVec(5);
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.multivariateNormalInpl(ref rng, in L, in mean3, ref dest3, ref zBad));
+                () => Rand.multivariateNormalInpl(ref rng, in L, in mean3, ref dest3, ref zBad));
 
             // rows overload: cholL not square
             var destRows = arena.floatMat(8, 3);
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in nonSquare, in mean3, ref destRows));
+                () => Rand.multivariateNormalRowsInpl(ref rng, in nonSquare, in mean3, ref destRows));
             // rows overload: mean.N mismatch
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in L, in meanBad, ref destRows));
+                () => Rand.multivariateNormalRowsInpl(ref rng, in L, in meanBad, ref destRows));
             // rows overload: destRows.N_Cols mismatch
             var destRowsBad = arena.floatMat(8, 4);
             Assert.Throws<ArgumentException>(
-                () => floatRandomMatrix_OP.multivariateNormalRowsInpl(ref rng, in L, in mean3, ref destRowsBad));
+                () => Rand.multivariateNormalRowsInpl(ref rng, in L, in mean3, ref destRowsBad));
         }
         finally { arena.Dispose(); }
     }

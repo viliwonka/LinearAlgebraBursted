@@ -7,7 +7,7 @@ using Unity.Burst;
 namespace LinearAlgebra.Internal
 {
     
-    public static unsafe partial class UnsafeBool_OP
+    public static unsafe partial class UnsafeBoolOP
     {
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void equals([NoAlias] bool* a, [NoAlias] bool* b, [NoAlias] bool* target, int n)

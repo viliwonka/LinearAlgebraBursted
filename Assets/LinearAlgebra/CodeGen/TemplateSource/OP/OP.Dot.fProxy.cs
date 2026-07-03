@@ -12,7 +12,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Dot products, outer product, matrix multiply, transpose, and in-place Householder reflection.
     /// </summary>
-    public static partial class Linear_OP {
+    public static partial class Blas {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy dot(fProxyN a, fProxyN b)
@@ -21,7 +21,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("dot: Vector must have same dimension");
 
             unsafe {
-                return Unsafe_OP.vecDot(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
+                return UnsafeOP.vecDot(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -34,7 +34,7 @@ namespace LinearAlgebra
                 end = a.N;
 
             unsafe {
-                return Unsafe_OP.vecDotRange(a.Data.Ptr, b.Data.Ptr, start, end);
+                return UnsafeOP.vecDotRange(a.Data.Ptr, b.Data.Ptr, start, end);
             }
         }
 
@@ -50,7 +50,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                Unsafe_OP.vecOuterDot(a.Data.Ptr, b.Data.Ptr, result.Data.Ptr, a.N, b.N);
+                UnsafeOP.vecOuterDot(a.Data.Ptr, b.Data.Ptr, result.Data.Ptr, a.N, b.N);
             }
         }
 
@@ -80,7 +80,7 @@ namespace LinearAlgebra
                 // matVecDot accumulates (+=), so the destination must start zeroed.
                 UnsafeUtility.MemClear(result.Data.Ptr, (long)result.Data.Length * UnsafeUtility.SizeOf<fProxy>());
 
-                Unsafe_OP.matVecDot(A.Data.Ptr, x.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
+                UnsafeOP.matVecDot(A.Data.Ptr, x.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
             }
         }
 
@@ -110,7 +110,7 @@ namespace LinearAlgebra
                 // vecMatDot accumulates (+=), so the destination must start zeroed.
                 UnsafeUtility.MemClear(result.Data.Ptr, (long)result.Data.Length * UnsafeUtility.SizeOf<fProxy>());
 
-                Unsafe_OP.vecMatDot(y.Data.Ptr, A.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
+                UnsafeOP.vecMatDot(y.Data.Ptr, A.Data.Ptr, result.Data.Ptr, A.M_Rows, A.N_Cols);
             }
         }
 
@@ -158,9 +158,9 @@ namespace LinearAlgebra
                 UnsafeUtility.MemClear(c.Data.Ptr, (long)c.Data.Length * UnsafeUtility.SizeOf<fProxy>());
 
                 if(transposeA)
-                    Unsafe_OP.matMatDotTransA(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+                    UnsafeOP.matMatDotTransA(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
                 else
-                    Unsafe_OP.matMatDot(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
+                    UnsafeOP.matMatDot(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, m, n, k);
             }
         }
 
@@ -191,7 +191,7 @@ namespace LinearAlgebra
                 if (T.Data.Ptr == A.Data.Ptr)
                     throw new ArgumentException("trans: destination must not alias the input");
 
-                Unsafe_OP.matTrans(A.Data.Ptr, T.Data.Ptr, A.M_Rows, A.N_Cols);
+                UnsafeOP.matTrans(A.Data.Ptr, T.Data.Ptr, A.M_Rows, A.N_Cols);
             }
         }
 
@@ -209,15 +209,15 @@ namespace LinearAlgebra
         public static void householderInpl(ref fProxyMxN matrix, in fProxyN u)
         {
             if(matrix.IsSquare == false)
-                throw new ArgumentException("Linear_OP.householderInpl: Matrix must be square");
+                throw new ArgumentException("Blas.householderInpl: Matrix must be square");
 
             if(matrix.M_Rows < matrix.N_Cols)
-                throw new ArgumentException("Linear_OP.householderInpl: Matrix must be square or tall (more or equal rows than cols)");
+                throw new ArgumentException("Blas.householderInpl: Matrix must be square or tall (more or equal rows than cols)");
 
             var maxDim = math.max(matrix.M_Rows, matrix.N_Cols);
 
             if(u.N < maxDim)
-                throw new ArgumentException("Linear_OP.householderInpl: Vector must be at least as long as the largest dimension of the matrix");
+                throw new ArgumentException("Blas.householderInpl: Vector must be at least as long as the largest dimension of the matrix");
 
             fProxy vTv = dot(u, u); // Inline dot product calculation
 

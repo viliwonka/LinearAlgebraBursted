@@ -14,7 +14,7 @@ namespace LinearAlgebra
         public static floatN operator -(in floatN a) {
 
             floatN vec = a.TempCopy();
-            floatElem_OP.signFlipInpl(vec);
+            floatComp.signFlipInpl(vec);
 
             return vec;
         }
@@ -23,7 +23,7 @@ namespace LinearAlgebra
         public static floatN operator +(in floatN a, float s) {
 
             floatN vec = a.TempCopy();
-            floatElem_OP.addInpl(vec, s);
+            floatComp.addInpl(vec, s);
 
             return vec; 
         }
@@ -35,7 +35,7 @@ namespace LinearAlgebra
         public static floatN operator -(in floatN a, float s) {
             
             floatN vec = a.TempCopy();
-            floatElem_OP.addInpl(vec, -s);
+            floatComp.addInpl(vec, -s);
             
             return vec;
         }
@@ -44,7 +44,7 @@ namespace LinearAlgebra
         public static floatN operator -(float s, in floatN a)
         {
             floatN vec = a.TempCopy();
-            floatElem_OP.subInpl(s, vec);
+            floatComp.subInpl(s, vec);
             return vec;
         }
 
@@ -53,7 +53,7 @@ namespace LinearAlgebra
             
             floatN vec = a.TempCopy();
 
-            floatElem_OP.mulInpl(vec, s);
+            floatComp.mulInpl(vec, s);
 
             return vec;
         }
@@ -69,7 +69,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            floatElem_OP.divInpl(vec, s);
+            floatComp.divInpl(vec, s);
 
             return vec;
         }
@@ -79,7 +79,7 @@ namespace LinearAlgebra
         {
             floatN vec = a.TempCopy();
 
-            floatElem_OP.divInpl(s, vec);
+            floatComp.divInpl(s, vec);
 
             return vec;
         }
@@ -92,7 +92,7 @@ namespace LinearAlgebra
             if (s == 0f)
                 throw new DivideByZeroException();
 
-            floatElem_OP.modInpl(vec, s);
+            floatComp.modInpl(vec, s);
 
             return vec;
         }
@@ -102,7 +102,7 @@ namespace LinearAlgebra
         {
             floatN vec = a.TempCopy();
 
-            floatElem_OP.modInpl(s, vec);
+            floatComp.modInpl(s, vec);
 
             return vec;
         }
@@ -118,7 +118,7 @@ namespace LinearAlgebra
 
             floatN vec = a.TempCopy();
 
-            floatElem_OP.addInpl(vec, b);   // vec += b  (vec is the copy of a)
+            floatComp.addInpl(vec, b);   // vec += b  (vec is the copy of a)
 
             return vec;
         }
@@ -130,7 +130,7 @@ namespace LinearAlgebra
             Assume.SameDim(in a, in b);
 
             floatN vec = a.TempCopy();
-            floatElem_OP.subInpl(vec, b);
+            floatComp.subInpl(vec, b);
             
             return vec;
         }
@@ -143,7 +143,7 @@ namespace LinearAlgebra
 
             floatN vec = a.TempCopy();
 
-            floatElem_OP.mulInpl(b, vec);
+            floatComp.mulInpl(b, vec);
 
             return vec;
         }
@@ -155,7 +155,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             floatN newDividendVec = dividend.TempCopy();
-            floatElem_OP.divInpl(newDividendVec, divisor);
+            floatComp.divInpl(newDividendVec, divisor);
 
             return newDividendVec;
         }
@@ -167,7 +167,7 @@ namespace LinearAlgebra
             Assume.SameDim(in dividend, in divisor);
 
             floatN newDividendVec = dividend.TempCopy();
-            floatElem_OP.modInpl(newDividendVec, divisor);
+            floatComp.modInpl(newDividendVec, divisor);
 
             return newDividendVec;
         }

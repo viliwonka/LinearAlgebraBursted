@@ -62,20 +62,20 @@ public class floatQRLeastSquaresResidualTests
 
             QR.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-            if (Analysis_OP.isAnyNan(in x))
+            if (Analysis.isAnyNan(in x))
                 throw new System.Exception("TestJob: NaN detected");
 
             RecordBound(math.abs(x[0] - (float)5f), (float)1E-4f);
             RecordBound(math.abs(x[1] - (float)(-3f)), (float)1E-4f);
 
-            floatN r = b - Linear_OP.dot(A, x);
+            floatN r = b - Blas.dot(A, x);
             RecordBound(math.abs(r[0] - (float)1f), (float)1E-4f);
             RecordBound(math.abs(r[1] - (float)(-2f)), (float)1E-4f);
             RecordBound(math.abs(r[2] - (float)1f), (float)1E-4f);
 
             // normal equations: Aᵀr == 0
-            floatN AtR = Linear_OP.dot(r, A);
-            RecordBound(Analysis_OP.MaxZeroError(AtR), (float)1E-4f);
+            floatN AtR = Blas.dot(r, A);
+            RecordBound(Analysis.MaxZeroError(AtR), (float)1E-4f);
 
             arena.Dispose();
         }
@@ -99,16 +99,16 @@ public class floatQRLeastSquaresResidualTests
 
                 QR.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis_OP.isAnyNan(in x))
+                if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                floatN r = b - Linear_OP.dot(A, x);
-                floatN AtR = Linear_OP.dot(r, A);
+                floatN r = b - Blas.dot(A, x);
+                floatN AtR = Blas.dot(r, A);
 
                 // scale-relative: ||Aᵀr||_inf small vs ||Aᵀb||_inf (the un-projected scale).
-                floatN AtB = Linear_OP.dot(b, A);
-                float scale = Analysis_OP.MaxZeroError(AtB) + (float)1f;
-                RecordBound(Analysis_OP.MaxZeroError(AtR), (float)1E-3f * scale);
+                floatN AtB = Blas.dot(b, A);
+                float scale = Analysis.MaxZeroError(AtB) + (float)1f;
+                RecordBound(Analysis.MaxZeroError(AtR), (float)1E-3f * scale);
 
                 // sanity: the residual is genuinely non-zero (this is an inconsistent system).
                 float rNorm = floatNorms_OP.L2(in r);
@@ -144,10 +144,10 @@ public class floatQRLeastSquaresResidualTests
 
                 QR.qrDirectSolve(ref Awork, ref bwork, ref x);
 
-                if (Analysis_OP.isAnyNan(in x))
+                if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
 
-                float r0 = SumSq(b - Linear_OP.dot(A, x));
+                float r0 = SumSq(b - Blas.dot(A, x));
 
                 float delta = (float)0.05f;
                 for (int k = 0; k < n; k++)
@@ -155,9 +155,9 @@ public class floatQRLeastSquaresResidualTests
                     float saved = x[k];
 
                     x[k] = saved + delta;
-                    float rp = SumSq(b - Linear_OP.dot(A, x));
+                    float rp = SumSq(b - Blas.dot(A, x));
                     x[k] = saved - delta;
-                    float rm = SumSq(b - Linear_OP.dot(A, x));
+                    float rm = SumSq(b - Blas.dot(A, x));
                     x[k] = saved;
 
                     // both perturbations must be >= the optimum (minus tiny float slack).

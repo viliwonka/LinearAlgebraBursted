@@ -171,10 +171,10 @@ public class floatCompareTests
             floatN v = arena.floatVec(dim);
 
             var boolVec = v == 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             boolVec = v == 1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
         public void VecNotEquals(ref Arena arena)
@@ -184,10 +184,10 @@ public class floatCompareTests
             floatN v = arena.floatVec(dim);
 
             var boolVec = v != 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
 
             boolVec = v != 1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
         }
 
         public void VecLess(ref Arena arena)
@@ -197,10 +197,10 @@ public class floatCompareTests
             floatN v = arena.floatVec(dim);
 
             var boolVec = v < 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
 
             boolVec = v < 1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
         }
 
         public void VecLessOrEqual(ref Arena arena)
@@ -211,13 +211,13 @@ public class floatCompareTests
 
             var boolVec = v <= 0f;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
             boolVec = v <= 1f;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             boolVec = v <= -1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
         public void VecGreater(ref Arena arena)
@@ -227,10 +227,10 @@ public class floatCompareTests
             floatN v = arena.floatVec(dim);
 
             var boolVec = v > 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
 
             boolVec = v > -1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
         }
 
         public void VecGreaterOrEqual(ref Arena arena)
@@ -240,13 +240,13 @@ public class floatCompareTests
             floatN v = arena.floatVec(dim);
 
             var boolVec = v >= 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             boolVec = v >= -1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             boolVec = v >= 1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
         public void MatEquals(ref Arena arena)
@@ -256,10 +256,10 @@ public class floatCompareTests
             floatMxN m = arena.floatMat(dim, dim);
 
             var boolMat = m == 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
             boolMat = m == 1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
         }
 
         public void MatNotEquals(ref Arena arena)
@@ -269,10 +269,10 @@ public class floatCompareTests
             floatMxN m = arena.floatMat(dim, dim);
 
             var boolMat = m != 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
 
             boolMat = m != 1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
         }
 
         public void MatLess(ref Arena arena)
@@ -282,10 +282,10 @@ public class floatCompareTests
             floatMxN m = arena.floatMat(dim, dim);
 
             var boolMat = m < 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
 
             boolMat = m < 1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
         }
 
         public void MatLessOrEqual(ref Arena arena)
@@ -295,13 +295,13 @@ public class floatCompareTests
             floatMxN m = arena.floatMat(dim, dim);
 
             var boolMat = m <= 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
             boolMat = m <= 1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
             boolMat = m <= -1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
         }
 
         public void MatGreater(ref Arena arena)
@@ -311,10 +311,10 @@ public class floatCompareTests
             floatMxN m = arena.floatMat(dim, dim);
 
             var boolMat = m > 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
 
             boolMat = m > -1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
         }
 
         public void MatGreaterOrEqual(ref Arena arena)
@@ -324,13 +324,13 @@ public class floatCompareTests
             floatMxN m = arena.floatMat(dim, dim);
 
             var boolMat = m >= 0f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
             boolMat = m >= -1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
             boolMat = m >= 1f;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
         }
 
         public void VecRandom(ref Arena arena)
@@ -343,22 +343,22 @@ public class floatCompareTests
 
             var boolVec = v == 0f;
 
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v != 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v < 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v > 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v <= 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v >= 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
         public void MatRandom(ref Arena arena)
@@ -370,22 +370,22 @@ public class floatCompareTests
 
             var boolMat = m == 0f;
 
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m != 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m < 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m > 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m <= 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m >= 0f;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
 
         public void MatDiagonal(ref Arena arena)
@@ -396,9 +396,9 @@ public class floatCompareTests
             
             var boolMat = m0 == 1f;
 
-            Assert.IsTrue(BoolAnalysis_OP.isDiagonal(boolMat));
-            Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
-            Assert.IsFalse(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isDiagonal(boolMat));
+            Assert.IsFalse(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsFalse(Analysis.IsAllEqualTo(boolMat, false));
         }
 
         public void VecVecEquals(ref Arena arena)
@@ -410,13 +410,13 @@ public class floatCompareTests
 
             var boolVec = v0 == v1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             v0[0] = 1f;
 
             boolVec = v0 == v1;
 
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
         public void VecVecNotEquals(ref Arena arena)
@@ -428,13 +428,13 @@ public class floatCompareTests
 
             var boolVec = v0 != v1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 != v1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
         public void VecVecLess(ref Arena arena)
@@ -446,12 +446,12 @@ public class floatCompareTests
             floatN v1 = arena.floatLinVec(dim, 2f, 3f);
 
             var boolVec = v0 < v1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 < v1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
         }
 
         public void VecVecLessOrEqual(ref Arena arena)
@@ -463,20 +463,20 @@ public class floatCompareTests
 
             var boolVec = v0 <= v1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 <= v1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             v0 = arena.floatLinVec(dim, 0f, 1f);
             v1 = arena.floatLinVec(dim, 1f, 0f);
 
             boolVec = v0 <= v1;
 
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
         public void VecVecGreater(ref Arena arena)
@@ -488,22 +488,22 @@ public class floatCompareTests
 
             var boolVec = v0 > v1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
 
             v0 = v1;
 
             boolVec = v0 > v1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
 
             v0 = arena.floatLinVec(dim, 1f, 0f);
             v1 = arena.floatLinVec(dim, 0f, 1f);
 
             boolVec = v0 > v1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v1 > v0;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
         public void VecVecGreaterOrEqual(ref Arena arena)
@@ -515,16 +515,16 @@ public class floatCompareTests
 
             var boolVec = v0 >= v1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
             v0 = v1;
 
             boolVec = v0 >= v1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
 
             v0 = arena.floatLinVec(dim, 1f, 0f);
 
             boolVec = v0 >= v1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsTrue(Analysis.IsAllSame(boolVec));
         }
 
         public void VecVecRandom(ref Arena arena)
@@ -538,22 +538,22 @@ public class floatCompareTests
             v0[1] = 1f-v1[1];
             var boolVec = v0 == v1;
 
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v0 != v1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v0 < v1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v0 > v1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v0 <= v1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
 
             boolVec = v0 >= v1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.IsAllSame(boolVec));
         }
 
         public void MatMatEquals(ref Arena arena)
@@ -564,7 +564,7 @@ public class floatCompareTests
             floatMxN m1 = arena.floatRandomMat(dim, dim, 0f, 1f);
 
             var boolMat = m0 == m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
             m0[0,0] = 1f;
             m0[1,1] = 1f;
@@ -572,7 +572,7 @@ public class floatCompareTests
             m0[3,3] = 1f;
 
             boolMat = m0 == m1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
 
         public void MatMatNotEquals(ref Arena arena)
@@ -583,12 +583,12 @@ public class floatCompareTests
             floatMxN m1 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
 
             var boolMat = m0 != m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
 
             m1 = arena.floatRandomMat(dim, dim, 2f, 3f, 2131);
 
             boolMat = m0 != m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
         }
 
         public void MatMatLess(ref Arena arena)
@@ -599,12 +599,12 @@ public class floatCompareTests
             floatMxN m1 = arena.floatRandomMat(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 < m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
             m0 = m1;
 
             boolMat = m0 < m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
         }
 
         public void MatMatLessOrEqual(ref Arena arena)
@@ -616,19 +616,19 @@ public class floatCompareTests
 
             var boolMat = m0 <= m1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
             m0 = m1;
 
             boolMat = m0 <= m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
 
             m0 = arena.floatRandomMat(dim, dim, 1f, 0f, 2131);
             m1 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
 
             boolMat = m0 <= m1;
 
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
 
         public void MatMatGreater(ref Arena arena)
@@ -639,21 +639,21 @@ public class floatCompareTests
             floatMxN m1 = arena.floatRandomMat(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 > m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
 
             m0 = m1;
 
             boolMat = m0 > m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
 
             m0 = arena.floatRandomMat(dim, dim, 1f, 0f, 2131);
             m1 = arena.floatRandomMat(dim, dim, 0f, 1f, 2131);
 
             boolMat = m0 > m1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m1 > m0;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
 
         public void MatMatGreaterOrEqual(ref Arena arena)
@@ -664,17 +664,17 @@ public class floatCompareTests
             floatMxN m1 = arena.floatRandomMat(dim, dim, 2f, 3f, 2131);
 
             var boolMat = m0 >= m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
 
             m0 = m1;
 
             boolMat = m0 >= m1;
 
-            Assert.IsTrue(BoolAnalysis_OP.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
             m0 = arena.floatRandomMat(dim, dim, 1f, 0f, 2131);
 
             boolMat = m0 >= m1;
-            Assert.IsTrue(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsTrue(Analysis.IsAllSame(boolMat));
         }
 
         public void MatMatRandom(ref Arena arena)
@@ -688,22 +688,22 @@ public class floatCompareTests
             m0[0,1] = 1f - m1[0,1];
             var boolMat = m0 == m1;
 
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m0 != m1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m0 < m1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m0 > m1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m0 <= m1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
 
             boolMat = m0 >= m1;
-            Assert.IsFalse(BoolAnalysis_OP.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
     } 
 

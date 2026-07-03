@@ -115,7 +115,7 @@ public class doubleSparseEigenTests
         static doubleMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
         {
             var M = arena.doubleRandomMat(dim, dim, -1f, 1f, seed);
-            var A = Linear_OP.dot(M, M, true);
+            var A = Blas.dot(M, M, true);
             for (int d = 0; d < dim; d++)
                 A[d, d] += dim;
             return A;
@@ -194,7 +194,7 @@ public class doubleSparseEigenTests
         }
 
         // Residual property ||Av - lambda*v||_inf <= limit, where Av is supplied precomputed (here
-        // from Sparse_OP.spMV on the BSR) and limit scales with max(1,|lambda|). Mirrors
+        // from BSR.spMV on the BSR) and limit scales with max(1,|lambda|). Mirrors
         // doubleEigenTests.AssertPowerResidual but takes Av directly so the BSR matvec is the thing
         // under test.
         void AssertResidual(in doubleN Av, in doubleN v, double lambda, double limitBase, int n)
@@ -264,7 +264,7 @@ public class doubleSparseEigenTests
         // 1x1-block BSR (tridiagonal -> nnzHint = 3*n bounds the pattern) and run powerIteration on
         // the BSR form. Assert convergence, the closed-form dominant eigenvalue (computed in double
         // then cast, mirroring doubleEigenTests.EvSymLaplacian), and the residual A*v ~= lambda*v
-        // using Sparse_OP.spMV on the BSR itself.
+        // using BSR.spMV on the BSR itself.
         void LaplacianKnownSpectrum()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -286,7 +286,7 @@ public class doubleSparseEigenTests
             AssertClose(lambda, (double)lamD, (double)1000 * Consts.doubleZeroThreshold * scale);
 
             // Residual property on the BSR operator: A*v ~= lambda*v (A*v via spMV on the BSR).
-            var Av = Sparse_OP.spMV(in bsm, in v);
+            var Av = BSR.spMV(in bsm, in v);
             AssertResidual(in Av, in v, lambda, (double)100 * Consts.doubleZeroThreshold, n);
 
             arena.Dispose();
@@ -310,7 +310,7 @@ public class doubleSparseEigenTests
         // (same recipe as LaplacianKnownSpectrum/DenseVsSparseCrossCheck above): asserts both
         // converge, both match the closed-form smallest eigenvalue
         // lambda_1 = 2 - 2*cos(pi/(n+1)), the two eigenvector estimates agree up to an overall
-        // sign, and the BSR path's own residual A*v ~= lambda*v holds via Sparse_OP.spMV.
+        // sign, and the BSR path's own residual A*v ~= lambda*v holds via BSR.spMV.
         //
         // Tolerances here use LooseTol() (NOT the tight "1000*zeroThreshold"/"100*zeroThreshold"
         // constants LaplacianKnownSpectrum uses for pure-matvec powerIteration): inverse iteration
@@ -352,7 +352,7 @@ public class doubleSparseEigenTests
             AssertVecEqUpToSign(in vDense, in vSparse, n, LooseTol());
 
             // Residual property on the BSR operator: A*v ~= lambda*v (A*v via spMV on the BSR).
-            var Av = Sparse_OP.spMV(in bsm, in vSparse);
+            var Av = BSR.spMV(in bsm, in vSparse);
             AssertResidual(in Av, in vSparse, lamSparse, LooseTol(), n);
 
             arena.Dispose();
@@ -646,7 +646,7 @@ public class doubleSparseEigenTests
                 AssertClose(math.sqrt(nrmSq), (double)1, VecTol());
 
                 // eigenpair residual ‖A v - lambda v‖_inf, scaled by max(1,|lambda|)
-                var Av = Linear_OP.dot(A, v);
+                var Av = Blas.dot(A, v);
                 double maxRes = (double)0;
                 for (int c = 0; c < n; c++)
                 {
@@ -742,7 +742,7 @@ public class doubleSparseEigenTests
                 for (int c = 0; c < n; c++) nrmSq += v[c] * v[c];
                 AssertClose(math.sqrt(nrmSq), (double)1, VecTol());
 
-                var Av = Linear_OP.dot(A, v);
+                var Av = Blas.dot(A, v);
                 double maxRes = (double)0;
                 for (int c = 0; c < n; c++)
                 {

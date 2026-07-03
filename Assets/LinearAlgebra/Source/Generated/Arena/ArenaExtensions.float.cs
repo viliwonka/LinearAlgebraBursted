@@ -56,7 +56,7 @@ namespace LinearAlgebra
 
             float scale = 1 / math.sqrt(sum);
 
-            floatElem_OP.mulInpl(vec, scale);
+            floatComp.mulInpl(vec, scale);
 
             return vec;
         }
@@ -73,11 +73,11 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // Legacy name for floatLinspace(a, b, N); delegates to the guarded floatGen_OP.linspace (handles N==1, pins both endpoints exactly).
+        // Legacy name for floatLinspace(a, b, N); delegates to the guarded Generate.linspace (handles N==1, pins both endpoints exactly).
         public static floatN floatLinVec(this ref Arena arena, int N, float start, float end)
         {
             var vec = arena.floatVec(N);
-            floatGen_OP.linspace(ref vec, start, end);
+            Generate.linspace(ref vec, start, end);
             return vec;
         }
 
@@ -234,7 +234,7 @@ namespace LinearAlgebra
             var matrix = arena.floatIdentityMat(M);
 
             // Compute the outer product of v
-            float vTv = Linear_OP.dot(v, v);
+            float vTv = Blas.dot(v, v);
             
             float scaleFactor = 2 / vTv;
             

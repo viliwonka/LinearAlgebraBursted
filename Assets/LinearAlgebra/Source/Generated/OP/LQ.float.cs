@@ -90,7 +90,7 @@ namespace LinearAlgebra
             {
                 float* rowPtr = mp + (long)r * cols + colStart;
                 float dot = dot4(rowPtr, vp, L);
-                Unsafe_OP.axpy(rowPtr, vp, -dot, L);
+                UnsafeOP.axpy(rowPtr, vp, -dot, L);
             }
         }
 
@@ -172,7 +172,7 @@ namespace LinearAlgebra
         //
         // Here V is the pb×(n-p0) panel whose ROWS are the reflectors (v_i occupies local columns
         // c' >= i, masked to zero for c' < i); Vt is its (n-p0)×pb transpose, built once per panel so
-        // both the Gram contraction (formT) and the C·Vᵀ folding step (Unsafe_OP.lqYeqCVt) can walk
+        // both the Gram contraction (formT) and the C·Vᵀ folding step (UnsafeOP.lqYeqCVt) can walk
         // it with a unit-stride inner loop. Vt MUST be built, and Y = C·Vᵀ computed, BEFORE the
         // in-place wyTriMul/wyTriTransMul overwrites Vpanel with T·V (or Tᵀ·V) — Vt is a separate,
         // untouched buffer, but Vpanel itself is the one that gets clobbered in place.
@@ -251,7 +251,7 @@ namespace LinearAlgebra
                 }
 
                 // (4) form the pb x pb compact-WY T (τ≡1) from the panel, via its transpose Vt.
-                Unsafe_OP.formT(Vtp, pb, cn, pb, T, tcol, Yp);
+                UnsafeOP.formT(Vtp, pb, cn, pb, T, tcol, Yp);
 
                 // (5) trailing block update, rows [p0+pb, m): C := C·(I - Vᵀ T V) = C - Y·(T·V),
                 //     where Y = C·Vᵀ. Y and Vt MUST be built/read before wyTriMul overwrites Vpanel.
@@ -260,9 +260,9 @@ namespace LinearAlgebra
                 {
                     float* Cp = Wp + (long)(p0 + pb) * n + p0;
                     UnsafeUtility.MemClear(Yp, (long)rowsTrail * pb * UnsafeUtility.SizeOf<float>());
-                    Unsafe_OP.lqYeqCVt(Cp, n, Vtp, cn, rowsTrail, pb, Yp);
-                    Unsafe_OP.wyTriMul(T, pb, Vp, cn);                        // T — factorization direction
-                    Unsafe_OP.wySubVW(Yp, pb, Cp, n, rowsTrail, pb, cn, Vp);
+                    UnsafeOP.lqYeqCVt(Cp, n, Vtp, cn, rowsTrail, pb, Yp);
+                    UnsafeOP.wyTriMul(T, pb, Vp, cn);                        // T — factorization direction
+                    UnsafeOP.wySubVW(Yp, pb, Cp, n, rowsTrail, pb, cn, Vp);
                 }
             }
 
@@ -307,7 +307,7 @@ namespace LinearAlgebra
                     for (int c = 0; c < cn; c++)
                         Vtp[(long)c * pb + i] = Vrow[c];
                 }
-                Unsafe_OP.formT(Vtp, pb, cn, pb, T, tcol, Yp);
+                UnsafeOP.formT(Vtp, pb, cn, pb, T, tcol, Yp);
 
                 // Apply the block to Q rows [p0, m), cols [p0, n): Q := Q·(I - Vᵀ Tᵀ V)
                 // = Q - Y·(Tᵀ·V). Row restriction [p0, m) is valid by the same e_t induction the
@@ -316,9 +316,9 @@ namespace LinearAlgebra
                 int rows = m - p0;
                 float* Cp = Qp + (long)p0 * n + p0;
                 UnsafeUtility.MemClear(Yp, (long)rows * pb * UnsafeUtility.SizeOf<float>());
-                Unsafe_OP.lqYeqCVt(Cp, n, Vtp, cn, rows, pb, Yp);
-                Unsafe_OP.wyTriTransMul(T, pb, Vp, cn);                       // Tᵀ — reconstruction direction
-                Unsafe_OP.wySubVW(Yp, pb, Cp, n, rows, pb, cn, Vp);
+                UnsafeOP.lqYeqCVt(Cp, n, Vtp, cn, rows, pb, Yp);
+                UnsafeOP.wyTriTransMul(T, pb, Vp, cn);                       // Tᵀ — reconstruction direction
+                UnsafeOP.wySubVW(Yp, pb, Cp, n, rows, pb, cn, Vp);
             }
         }
 
@@ -342,7 +342,7 @@ namespace LinearAlgebra
         // the benchmark and lqMinNormSolve's allocating overload) gets the speedup.
         //
         // LQ_BLOCK_MIN_M is a measured (not derived) crossover, unlike QR's simple ">= 2*QR_BLOCK"
-        // gate: LQ's fold step (Unsafe_OP.lqYeqCVt) is reduction-shaped rather than axpy-shaped (see
+        // gate: LQ's fold step (UnsafeOP.lqYeqCVt) is reduction-shaped rather than axpy-shaped (see
         // its doc comment), so its per-panel overhead amortises more slowly, and double's crossover
         // measured LATER than float's — a matrix that already pays off for float can still REGRESS
         // for double (measured: k=256 was a ~9% win for float but a ~20% loss for double). Since the
@@ -476,7 +476,7 @@ namespace LinearAlgebra
             Solvers.solveLowerTriangular(ref L, ref y);
 
             // Step 2: x = Qᵀ y.  dot(in y, in Q, ref x) computes yᵀ Q = (Qᵀ y)ᵀ → n-vector.
-            Linear_OP.dot(in y, in Q, ref x);
+            Blas.dot(in y, in Q, ref x);
 
             y.Dispose();
             Q.Dispose();
@@ -514,7 +514,7 @@ namespace LinearAlgebra
             var y = ws.y;
             y.Data.CopyFrom(b.Data);
             Solvers.solveLowerTriangular(ref L, ref y);
-            Linear_OP.dot(in y, in Q, ref x);
+            Blas.dot(in y, in Q, ref x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }

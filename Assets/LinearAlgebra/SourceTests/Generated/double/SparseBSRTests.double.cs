@@ -9,7 +9,7 @@ using Unity.Mathematics;
 
 // Phase-1 Block Sparse Matrix (BSR / block-CSR) test suite. Every correctness case validates
 // the sparse op against the DENSE reference: build a doubleBSR via the builder, expand with
-// ToDense, and compare spMV/spMVT against Linear_OP.dot on the dense expansion. Property /
+// ToDense, and compare spMV/spMVT against Blas.dot on the dense expansion. Property /
 // reconstruction checks are preferred over hard-coded element values, except the small
 // hand-computable cases where an exact expected matrix is more convincing.
 //
@@ -75,7 +75,7 @@ public class doubleSparseBSRTests
         // Reference y = Aᵀ·x computed directly from the dense expansion's elements.
         //
         // Dangling-arena-pointer history: see ToDense_TransposeReference_Works below. Kept as a
-        // hand-rolled reference anyway since it's cheaper and has no dependence on Linear_OP.trans.
+        // hand-rolled reference anyway since it's cheaper and has no dependence on Blas.trans.
         static void DenseTransMatVec(in doubleMxN dense, in doubleN x, ref doubleN y)
         {
             for (int j = 0; j < dense.N_Cols; j++)
@@ -167,14 +167,14 @@ public class doubleSparseBSRTests
 
             // ref-dest overload.
             var y = arena.doubleVec(A.M_Rows);
-            Sparse_OP.spMV(in A, in x, ref y);
+            BSR.spMV(in A, in x, ref y);
 
-            var yRef = Linear_OP.dot(dense, x);
-            Assert.IsTrue(Analysis_OP.isZero(y - yRef, Tol()));
+            var yRef = Blas.dot(dense, x);
+            Assert.IsTrue(Analysis.isZero(y - yRef, Tol()));
 
             // allocating overload must agree with the ref-dest overload.
-            var y2 = Sparse_OP.spMV(in A, in x);
-            Assert.IsTrue(Analysis_OP.isZero(y2 - yRef, Tol()));
+            var y2 = BSR.spMV(in A, in x);
+            Assert.IsTrue(Analysis.isZero(y2 - yRef, Tol()));
 
             arena.Dispose();
         }
@@ -189,14 +189,14 @@ public class doubleSparseBSRTests
             var x = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 8888);
 
             var y = arena.doubleVec(A.N_Cols);
-            Sparse_OP.spMVT(in A, in x, ref y);
+            BSR.spMVT(in A, in x, ref y);
 
             var yRef = arena.doubleVec(A.N_Cols);
             DenseTransMatVec(in dense, in x, ref yRef);
-            Assert.IsTrue(Analysis_OP.isZero(y - yRef, Tol()));
+            Assert.IsTrue(Analysis.isZero(y - yRef, Tol()));
 
-            var y2 = Sparse_OP.spMVT(in A, in x);
-            Assert.IsTrue(Analysis_OP.isZero(y2 - yRef, Tol()));
+            var y2 = BSR.spMVT(in A, in x);
+            Assert.IsTrue(Analysis.isZero(y2 - yRef, Tol()));
 
             arena.Dispose();
         }
@@ -223,16 +223,16 @@ public class doubleSparseBSRTests
             // spMV: x has N_Cols, y has M_Rows.
             var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 2100);
             var y = arena.doubleVec(A.M_Rows);
-            Sparse_OP.spMV(in A, in x, ref y);
-            Assert.IsTrue(Analysis_OP.isZero(y - Linear_OP.dot(dense, x), Tol()));
+            BSR.spMV(in A, in x, ref y);
+            Assert.IsTrue(Analysis.isZero(y - Blas.dot(dense, x), Tol()));
 
             // spMVT: x has M_Rows, y has N_Cols.
             var xt = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 2200);
             var yt = arena.doubleVec(A.N_Cols);
-            Sparse_OP.spMVT(in A, in xt, ref yt);
+            BSR.spMVT(in A, in xt, ref yt);
             var ytRef = arena.doubleVec(A.N_Cols);
             DenseTransMatVec(in dense, in xt, ref ytRef);
-            Assert.IsTrue(Analysis_OP.isZero(yt - ytRef, Tol()));
+            Assert.IsTrue(Analysis.isZero(yt - ytRef, Tol()));
 
             arena.Dispose();
         }
@@ -353,8 +353,8 @@ public class doubleSparseBSRTests
             // spMV must match the dense reference too.
             var x = arena.doubleRandomVec(4, (double)(-1f), (double)1f, 5050);
             var y = arena.doubleVec(4);
-            Sparse_OP.spMV(in A, in x, ref y);
-            Assert.IsTrue(Analysis_OP.isZero(y - Linear_OP.dot(expected, x), Tol()));
+            BSR.spMV(in A, in x, ref y);
+            Assert.IsTrue(Analysis.isZero(y - Blas.dot(expected, x), Tol()));
 
             arena.Dispose();
         }
@@ -409,8 +409,8 @@ public class doubleSparseBSRTests
             // Correctness #2: spMV after growth matches the dense matvec.
             var x = arena.doubleRandomVec(N, (double)(-1f), (double)1f, 74202);
             var y = arena.doubleVec(N);
-            Sparse_OP.spMV(in A, in x, ref y);
-            Assert.IsTrue(Analysis_OP.isZero(y - Linear_OP.dot(refDense, x), Tol()));
+            BSR.spMV(in A, in x, ref y);
+            Assert.IsTrue(Analysis.isZero(y - Blas.dot(refDense, x), Tol()));
 
             // The whole point: this must NOT crash / corrupt the heap.
             arena.Dispose();
@@ -449,8 +449,8 @@ public class doubleSparseBSRTests
             // spMV correctness on the post-Clear builder too.
             var x = arena.doubleRandomVec(N, (double)(-1f), (double)1f, 75303);
             var y = arena.doubleVec(N);
-            Sparse_OP.spMV(in B, in x, ref y);
-            Assert.IsTrue(Analysis_OP.isZero(y - Linear_OP.dot(refB, x), Tol()));
+            BSR.spMV(in B, in x, ref y);
+            Assert.IsTrue(Analysis.isZero(y - Blas.dot(refB, x), Tol()));
 
             arena.Dispose();
         }
@@ -484,14 +484,14 @@ public class doubleSparseBSRTests
             // spMV of an empty BSR == the zero vector, for a random nonzero x.
             var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 9201);
             var y = arena.doubleVec(A.M_Rows);
-            Sparse_OP.spMV(in A, in x, ref y);
-            Assert.IsTrue(Analysis_OP.isZero(y, Tol()));
+            BSR.spMV(in A, in x, ref y);
+            Assert.IsTrue(Analysis.isZero(y, Tol()));
 
             // spMVT too (transpose path's empty-row loop is separate code).
             var xt = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 9202);
             var yt = arena.doubleVec(A.N_Cols);
-            Sparse_OP.spMVT(in A, in xt, ref yt);
-            Assert.IsTrue(Analysis_OP.isZero(yt, Tol()));
+            BSR.spMVT(in A, in xt, ref yt);
+            Assert.IsTrue(Analysis.isZero(yt, Tol()));
 
             // --- minimal non-empty edge: 1x1 grid, 1x1 block, one triplet == a single scalar ---
             var oneBuilder = arena.doubleBSRBuilder(1, 1, 1, 1);
@@ -508,7 +508,7 @@ public class doubleSparseBSRTests
             var ox = arena.doubleVec(1);
             ox[0] = (double)3;
             var oy = arena.doubleVec(1);
-            Sparse_OP.spMV(in one, in ox, ref oy);
+            BSR.spMV(in one, in ox, ref oy);
             Assert.IsTrue(math.abs(oy[0] - (double)21) < Tol()); // 7 * 3
 
             arena.Dispose();
@@ -570,9 +570,9 @@ public class doubleSparseBSRTests
     // pointer captured the address of that dead stack temporary -- a use-after-scope bug. Reading
     // elements off the result was fine (the Values buffer is a real, independent allocation), but
     // any op that allocates through the result's own arena pointer -- e.g.
-    // Linear_OP.trans(dense).doubleTempMat -- dereferenced the dangling pointer and threw
+    // Blas.trans(dense).doubleTempMat -- dereferenced the dangling pointer and threw
     // "allocator handle is not valid" under Burst. This broke the spec's own recommended
-    // validation recipe: Sparse_OP.spMVT(A,x) vs Linear_OP.dot(Linear_OP.trans(ToDense(A)), x).
+    // validation recipe: BSR.spMVT(A,x) vs Blas.dot(Blas.trans(ToDense(A)), x).
     //
     // Fixed by changing both signatures to `ref Arena arena` (matching how ArenaExtensions
     // factory methods take `this ref Arena`, not `this in Arena`, for the same reason). This test
@@ -588,11 +588,11 @@ public class doubleSparseBSRTests
             var x = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 12321);
 
             // Used to throw "allocator handle is not valid" (dangling arena pointer); now fixed.
-            var yRef = Linear_OP.dot(Linear_OP.trans(dense), x);
+            var yRef = Blas.dot(Blas.trans(dense), x);
 
             var y = arena.doubleVec(A.N_Cols);
-            Sparse_OP.spMVT(in A, in x, ref y);
-            Assert.IsTrue(Analysis_OP.isZero(y - yRef, (double)1e-4f));
+            BSR.spMVT(in A, in x, ref y);
+            Assert.IsTrue(Analysis.isZero(y - yRef, (double)1e-4f));
         }
         finally { arena.Dispose(); }
     }
@@ -696,7 +696,7 @@ public class doubleSparseBSRTests
             var A = BuildSquare(ref arena);          // 4 x 4 (M_Rows == N_Cols)
             var x = arena.doubleRandomVec(A.N_Cols, (double)(-1f), (double)1f, 9001);
             var yAlias = x;                          // struct copy shares Data.Ptr with x
-            Assert.Throws<ArgumentException>(() => Sparse_OP.spMV(in A, in x, ref yAlias));
+            Assert.Throws<ArgumentException>(() => BSR.spMV(in A, in x, ref yAlias));
         }
         finally { arena.Dispose(); }
     }
@@ -710,7 +710,7 @@ public class doubleSparseBSRTests
             var A = BuildSquare(ref arena);
             var x = arena.doubleRandomVec(A.M_Rows, (double)(-1f), (double)1f, 9002);
             var yAlias = x;
-            Assert.Throws<ArgumentException>(() => Sparse_OP.spMVT(in A, in x, ref yAlias));
+            Assert.Throws<ArgumentException>(() => BSR.spMVT(in A, in x, ref yAlias));
         }
         finally { arena.Dispose(); }
     }
@@ -744,12 +744,12 @@ public class doubleSparseBSRTests
             // wrong x length (must equal N_Cols).
             var badX = arena.doubleVec(A.N_Cols + 1);
             var y = arena.doubleVec(A.M_Rows);
-            Assert.Throws<ArgumentException>(() => Sparse_OP.spMV(in A, in badX, ref y));
+            Assert.Throws<ArgumentException>(() => BSR.spMV(in A, in badX, ref y));
 
             // wrong y length (must equal M_Rows).
             var x = arena.doubleVec(A.N_Cols);
             var badY = arena.doubleVec(A.M_Rows + 1);
-            Assert.Throws<ArgumentException>(() => Sparse_OP.spMV(in A, in x, ref badY));
+            Assert.Throws<ArgumentException>(() => BSR.spMV(in A, in x, ref badY));
         }
         finally { arena.Dispose(); }
     }
@@ -764,11 +764,11 @@ public class doubleSparseBSRTests
             // spMVT: x must equal M_Rows, y must equal N_Cols.
             var badX = arena.doubleVec(A.M_Rows + 1);
             var y = arena.doubleVec(A.N_Cols);
-            Assert.Throws<ArgumentException>(() => Sparse_OP.spMVT(in A, in badX, ref y));
+            Assert.Throws<ArgumentException>(() => BSR.spMVT(in A, in badX, ref y));
 
             var x = arena.doubleVec(A.M_Rows);
             var badY = arena.doubleVec(A.N_Cols + 1);
-            Assert.Throws<ArgumentException>(() => Sparse_OP.spMVT(in A, in x, ref badY));
+            Assert.Throws<ArgumentException>(() => BSR.spMVT(in A, in x, ref badY));
         }
         finally { arena.Dispose(); }
     }

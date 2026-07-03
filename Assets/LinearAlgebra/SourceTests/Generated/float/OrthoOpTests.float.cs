@@ -248,7 +248,7 @@ public class floatOrthoOpTests
                     p1 = rand.NextInt(0, dim);
                 }
 
-                Q = Linear_OP.dot(arena.floatPermutationMat(dim, p0, p1), Q);
+                Q = Blas.dot(arena.floatPermutationMat(dim, p0, p1), Q);
 
                 var R = arena.floatMat(dim);
 
@@ -329,11 +329,11 @@ public class floatOrthoOpTests
         private void AssertQR(in floatMxN A, in floatMxN Q, in floatMxN R) => AssertQR(in A, in Q, in R, 1E-6f);
         private void AssertQR(in floatMxN A, in floatMxN Q, in floatMxN R, float precision)
         {
-            floatMxN shouldBeZero = A - Linear_OP.dot(Q, R);
+            floatMxN shouldBeZero = A - Blas.dot(Q, R);
 
-            var zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
+            var zeroError = Analysis.MaxZeroError(shouldBeZero);
 
-            if (Analysis_OP.isAnyNan(in shouldBeZero))
+            if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
             // Fail layout: [1]=zeroError, [2]=precision, [3]=diff
@@ -344,9 +344,9 @@ public class floatOrthoOpTests
                 Fail[2] = precision;
                 Fail[3] = zeroError - precision;
             }
-            Assert.IsTrue(Analysis_OP.isZero(in shouldBeZero, precision));
-            Assert.IsTrue(Analysis_OP.isUpperTriangular(R, precision));
-            Assert.IsTrue(Analysis_OP.isOrthogonal(Q, precision));
+            Assert.IsTrue(Analysis.isZero(in shouldBeZero, precision));
+            Assert.IsTrue(Analysis.isUpperTriangular(R, precision));
+            Assert.IsTrue(Analysis.isOrthogonal(Q, precision));
         }
     }
 
@@ -395,12 +395,12 @@ public class floatOrthoOpTests
 
         private float ErrorCheckQR(in floatMxN A, in floatMxN Q, in floatMxN R) {
 
-            floatMxN shouldBeZero = A - Linear_OP.dot(Q, R);
+            floatMxN shouldBeZero = A - Blas.dot(Q, R);
 
-            if(Analysis_OP.isAnyNan(in shouldBeZero))
+            if(Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("PrecisionReconstructTestJob: NaN detected");
 
-            float zeroError = Analysis_OP.MaxZeroError(shouldBeZero);
+            float zeroError = Analysis.MaxZeroError(shouldBeZero);
 
             return zeroError;
         }
@@ -467,15 +467,15 @@ public class floatOrthoOpTests
                 for(uint j = 0; j < randomVecTests; j++) {
 
                     floatN xOrig = arena.floatRandomVec(systemDim, -25, +25, 1337 + i * i + j * 5);
-                    floatN b = Linear_OP.dot(A, xOrig);
-                    floatN y = Linear_OP.dot(b, Q);
+                    floatN b = Blas.dot(A, xOrig);
+                    floatN y = Blas.dot(b, Q);
 
                     Solvers.solveUpperTriangular(ref R, ref y);
 
                     y.subInpl(xOrig);
-                    float zeroError = Analysis_OP.MaxZeroError(y);
+                    float zeroError = Analysis.MaxZeroError(y);
 
-                    if(Analysis_OP.isAnyNan(in y)) {
+                    if(Analysis.isAnyNan(in y)) {
                         throw new System.Exception("SolveSystemTestJob: NaN detected");
                     }
 
@@ -522,15 +522,15 @@ public class floatOrthoOpTests
                 for (uint j = 0; j < randomVecTests; j++) {
 
                     floatN xOrig = arena.floatRandomVec(sysDimN, -25, +25, 1337 + i * i + j * 5);
-                    floatN b = Linear_OP.dot(A, xOrig);
-                    floatN y = Linear_OP.dot(b, Q);
+                    floatN b = Blas.dot(A, xOrig);
+                    floatN y = Blas.dot(b, Q);
 
                     Solvers.solveUpperTriangular(ref R, ref y);
 
                     y.subInpl(xOrig);
-                    float zeroError = Analysis_OP.MaxZeroError(y);
+                    float zeroError = Analysis.MaxZeroError(y);
 
-                    if (Analysis_OP.isAnyNan(in y)) {
+                    if (Analysis.isAnyNan(in y)) {
                         throw new System.Exception("SolveSystemTestJob: NaN detected");
                     }
 
@@ -565,17 +565,17 @@ public class floatOrthoOpTests
                     A[d, d] += 5.1f + 10f * random.NextFloat();
 
                 floatN xOrig = arena.floatRandomVec(systemDim, -25, +25, 1337 + i * i + i * 5);
-                floatN b = Linear_OP.dot(A, xOrig);
+                floatN b = Blas.dot(A, xOrig);
                 floatN x = arena.floatVec(systemDim);
 
                 QR.qrDirectSolve(ref A, ref b, ref x);
 
-                if (Analysis_OP.isAnyNan(in x)) {
+                if (Analysis.isAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
                 x.subInpl(xOrig);
 
-                float zeroError = Analysis_OP.MaxZeroError(x);
+                float zeroError = Analysis.MaxZeroError(x);
 
                 // per-solve bound: see SquareFullRank's rationale above
                 AssertBound(zeroError, (float)2000 * Consts.floatSqrtEps);
@@ -611,18 +611,18 @@ public class floatOrthoOpTests
                     A[d, d] += 5.1f + 10f * random.NextFloat();
 
                 floatN xOrig = arena.floatRandomVec(sysDimN, -25, +25, 1337 + i * i + i * 5);
-                floatN b = Linear_OP.dot(A, xOrig);
+                floatN b = Blas.dot(A, xOrig);
                 floatN x = arena.floatVec(sysDimN);
 
                 QR.qrDirectSolve(ref A, ref b, ref x);
 
-                if (Analysis_OP.isAnyNan(in x)) {
+                if (Analysis.isAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
                 }
 
                 x.subInpl(xOrig);
 
-                float zeroError = Analysis_OP.MaxZeroError(x);
+                float zeroError = Analysis.MaxZeroError(x);
 
                 // per-solve bound: see SquareFullRank's rationale above
                 AssertBound(zeroError, (float)2000 * Consts.floatSqrtEps);
@@ -916,13 +916,13 @@ public class floatOrthoOpTests
         private void AssertLQ(in floatMxN A, in floatMxN L, in floatMxN Q, float precision)
         {
             // 1. Reconstruction: A ≈ L * Q
-            floatMxN LQProduct = Linear_OP.dot(L, Q);
+            floatMxN LQProduct = Blas.dot(L, Q);
             floatMxN diff = A - LQProduct;
 
-            if (Analysis_OP.isAnyNan(in diff))
+            if (Analysis.isAnyNan(in diff))
                 throw new System.Exception("AssertLQ: NaN in reconstruction");
 
-            float reconError = Analysis_OP.MaxZeroError(diff);
+            float reconError = Analysis.MaxZeroError(diff);
             if (!(reconError <= precision) && Fail[0] == (float)0)
             {
                 Fail[0] = (float)1;
@@ -930,15 +930,15 @@ public class floatOrthoOpTests
                 Fail[2] = precision;
                 Fail[3] = reconError - precision;
             }
-            Assert.IsTrue(Analysis_OP.isZero(in diff, precision));
+            Assert.IsTrue(Analysis.isZero(in diff, precision));
 
             // 2. L is lower-triangular
-            Assert.IsTrue(Analysis_OP.isLowerTriangular(L, precision));
+            Assert.IsTrue(Analysis.isLowerTriangular(L, precision));
 
             // 3. Q has orthonormal rows: QQᵀ = I_m.
             //    isOrthogonal(Qᵀ) checks (Qᵀ)ᵀ(Qᵀ) = QQᵀ = I_m.
-            floatMxN Qt = Linear_OP.trans(Q);
-            Assert.IsTrue(Analysis_OP.isOrthogonal(in Qt, precision));
+            floatMxN Qt = Blas.trans(Q);
+            Assert.IsTrue(Analysis.isOrthogonal(in Qt, precision));
         }
     }
 
@@ -981,10 +981,10 @@ public class floatOrthoOpTests
             var c    = arena.floatRandomVec(m, -1f, 1f, 22222);
             // x_true = Aᵀ c  (dot(c, A) computes cᵀA = (Aᵀc)ᵀ → same n-vector values)
             var xTrue = arena.floatVec(n);
-            Linear_OP.dot(in c, in A, ref xTrue);
+            Blas.dot(in c, in A, ref xTrue);
             // b = A x_true
             var b = arena.floatVec(m);
-            Linear_OP.dot(in A, in xTrue, ref b);
+            Blas.dot(in A, in xTrue, ref b);
             // solve
             var x = arena.floatVec(n);
             LQ.lqMinNormSolve(ref A, ref b, ref x);
@@ -999,9 +999,9 @@ public class floatOrthoOpTests
             var A    = arena.floatRandomMat(m, n, -1f, 1f, 33333);
             var c    = arena.floatRandomVec(m, -1f, 1f, 44444);
             var xTrue = arena.floatVec(n);
-            Linear_OP.dot(in c, in A, ref xTrue);
+            Blas.dot(in c, in A, ref xTrue);
             var b = arena.floatVec(m);
-            Linear_OP.dot(in A, in xTrue, ref b);
+            Blas.dot(in A, in xTrue, ref b);
             var x = arena.floatVec(n);
             LQ.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
@@ -1015,9 +1015,9 @@ public class floatOrthoOpTests
             var A    = arena.floatRandomMat(m, n, -1f, 1f, 55555);
             var c    = arena.floatRandomVec(m, -1f, 1f, 66666);
             var xTrue = arena.floatVec(n);
-            Linear_OP.dot(in c, in A, ref xTrue);
+            Blas.dot(in c, in A, ref xTrue);
             var b = arena.floatVec(m);
-            Linear_OP.dot(in A, in xTrue, ref b);
+            Blas.dot(in A, in xTrue, ref b);
             var x = arena.floatVec(n);
             LQ.lqMinNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
@@ -1035,9 +1035,9 @@ public class floatOrthoOpTests
             LQ.lqMinNormSolve(ref A, ref b, ref x);
             // residual = A x - b
             var Ax   = arena.floatVec(m);
-            Linear_OP.dot(in A, in x, ref Ax);
+            Blas.dot(in A, in x, ref Ax);
             Ax.subInpl(b);
-            float residual = Analysis_OP.MaxZeroError(Ax);
+            float residual = Analysis.MaxZeroError(Ax);
             if (!(residual <= (float)1E-4f) && Fail[0] == (float)0)
             {
                 Fail[0] = (float)1;
@@ -1054,10 +1054,10 @@ public class floatOrthoOpTests
         {
             floatN diff = got - expected;
 
-            if (Analysis_OP.isAnyNan(in diff))
+            if (Analysis.isAnyNan(in diff))
                 throw new System.Exception("AssertClose: NaN detected");
 
-            float err = Analysis_OP.MaxZeroError(diff);
+            float err = Analysis.MaxZeroError(diff);
             if (!(err <= precision) && Fail[0] == (float)0)
             {
                 Fail[0] = (float)1;
@@ -1065,7 +1065,7 @@ public class floatOrthoOpTests
                 Fail[2] = precision;
                 Fail[3] = err - precision;
             }
-            Assert.IsTrue(Analysis_OP.isZero(in diff, precision));
+            Assert.IsTrue(Analysis.isZero(in diff, precision));
         }
     }
 

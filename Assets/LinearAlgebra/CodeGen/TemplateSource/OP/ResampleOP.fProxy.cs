@@ -22,30 +22,11 @@ namespace LinearAlgebra
     /// fProxy-only (float / double generated variants); use the existing integer ops for
     /// index-space resampling.
     /// </summary>
-    public static partial class fProxyResample_OP
+    public static partial class Resample
     {
         // ---- private helpers ----
 
-        /// <summary>
-        /// Resolves an arbitrary integer index i into the valid range [0, n-1] according to the
-        /// given EdgeMode. Clamp is the cheap common-case path (math.clamp); Wrap/Mirror use modulo.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int idx(int i, int n, EdgeMode edge)
-        {
-            switch (edge)
-            {
-                case EdgeMode.Clamp:
-                    return math.clamp(i, 0, n - 1);
-                case EdgeMode.Wrap:
-                    return ((i % n) + n) % n;
-                default: // EdgeMode.Mirror — no-edge-repeat, period 2*(n-1)
-                    if (n == 1) return 0;
-                    int p = 2 * (n - 1);
-                    int iMod = ((i % p) + p) % p;
-                    return iMod < n ? iMod : p - iMod;
-            }
-        }
+        // idx (edge-mode index mapping) lives in OpHelpers.Shared.cs (type-agnostic, emitted once).
 
         /// <summary>Samples a single row of matrix m at a continuous column position.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

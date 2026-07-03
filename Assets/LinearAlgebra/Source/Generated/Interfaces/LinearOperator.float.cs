@@ -59,10 +59,10 @@ namespace LinearAlgebra
         public int Rows => A.M_Rows;
         public int Cols => A.N_Cols;
 
-        public void Apply(in floatN x, ref floatN y) => Linear_OP.dot(in A, in x, ref y);
+        public void Apply(in floatN x, ref floatN y) => Blas.dot(in A, in x, ref y);
 
         // Aᵀx via the existing vector*matrix dot: result[j] = sum_i x[i]*A[i,j] == (Aᵀx)[j].
-        public void ApplyT(in floatN x, ref floatN y) => Linear_OP.dot(in x, in A, ref y);
+        public void ApplyT(in floatN x, ref floatN y) => Blas.dot(in x, in A, ref y);
     }
 
     /// <summary>
@@ -72,7 +72,7 @@ namespace LinearAlgebra
     /// <c>TOp</c>), so passing <c>floatColScaledOperator&lt;floatDenseOperator&gt;</c> (or the BSR
     /// operator) turns cgls/lsqr/lsmr into their column-preconditioned variants: with
     /// d[j] = 1/‖A_:,j‖₂ (an AᵀA-Jacobi / column-equilibration preconditioner, built via
-    /// <c>Linear_OP.columnNormsSquared</c> + <c>Linear_OP.buildJacobiScale</c>) the scaled operator
+    /// <c>Blas.columnNormsSquared</c> + <c>Blas.buildJacobiScale</c>) the scaled operator
     /// A·D has a unit-diagonal normal matrix, so an ill-conditioned least-squares problem converges
     /// in fewer iterations. Solve (A·D) y = b for y, then recover x = D·y (x[j] = d[j]·y[j]).
     ///

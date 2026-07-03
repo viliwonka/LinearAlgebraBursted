@@ -21,7 +21,7 @@ namespace LinearAlgebra
     /// that avoids calling NextInt on the empty range [x, x), which is undefined
     /// in Unity.Mathematics.
     /// </summary>
-    public static partial class shortRandom_OP
+    public static partial class Rand
     {
         // ---- uniform refill (vector) ----
 
@@ -34,9 +34,9 @@ namespace LinearAlgebra
         public static void nextUniformInpl(ref Random rng, ref shortN dest, short min, short max)
         {
             if (min < int.MinValue || max > int.MaxValue)
-                throw new ArgumentException("shortRandom_OP: min/max must be within int range for random generation");
+                throw new ArgumentException("Rand: min/max must be within int range for random generation");
             if (!(min <= max))
-                throw new ArgumentException("shortRandom_OP: min must be <= max");
+                throw new ArgumentException("Rand: min must be <= max");
             int len = dest.Data.Length;
             if (min == max)
             {
@@ -60,9 +60,9 @@ namespace LinearAlgebra
         public static void nextUniformInpl(ref Random rng, ref shortMxN dest, short min, short max)
         {
             if (min < int.MinValue || max > int.MaxValue)
-                throw new ArgumentException("shortRandom_OP: min/max must be within int range for random generation");
+                throw new ArgumentException("Rand: min/max must be within int range for random generation");
             if (!(min <= max))
-                throw new ArgumentException("shortRandom_OP: min must be <= max");
+                throw new ArgumentException("Rand: min must be <= max");
             int len = dest.Data.Length;
             if (min == max)
             {

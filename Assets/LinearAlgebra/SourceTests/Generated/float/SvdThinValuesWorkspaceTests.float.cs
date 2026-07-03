@@ -67,9 +67,9 @@ public class floatSvdThinValuesWorkspaceTests
             bool okb = SVD.svdThin(in Ab, ref Ub, ref Sb, ref Vb, ref ws);
 
             Assert.IsTrue(oka == okb);
-            Assert.IsTrue(Analysis_OP.isZero(Sa - Sb, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(Ua - Ub, Tol()));
-            Assert.IsTrue(Analysis_OP.isZero(Va - Vb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Sa - Sb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Ua - Ub, Tol()));
+            Assert.IsTrue(Analysis.isZero(Va - Vb, Tol()));
 
             arena.Dispose();
         }
@@ -91,7 +91,7 @@ public class floatSvdThinValuesWorkspaceTests
             bool okb = SVD.svdValues(in A0, ref Sb, ref ws);
 
             Assert.IsTrue(oka == okb);
-            Assert.IsTrue(Analysis_OP.isZero(Sa - Sb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Sa - Sb, Tol()));
 
             arena.Dispose();
         }
@@ -125,9 +125,9 @@ public class floatSvdThinValuesWorkspaceTests
                 var Vw = arena.floatMat(n, n);
                 SVD.svdThin(in Aw, ref Uw, ref Sw, ref Vw, ref thinWs);
 
-                Assert.IsTrue(Analysis_OP.isZero(Sa - Sw, Tol()));
-                Assert.IsTrue(Analysis_OP.isZero(Ua - Uw, Tol()));
-                Assert.IsTrue(Analysis_OP.isZero(Va - Vw, Tol()));
+                Assert.IsTrue(Analysis.isZero(Sa - Sw, Tol()));
+                Assert.IsTrue(Analysis.isZero(Ua - Uw, Tol()));
+                Assert.IsTrue(Analysis.isZero(Va - Vw, Tol()));
 
                 // svdValues: allocating reference vs reused workspace
                 var Sva = arena.floatVec(n);
@@ -136,7 +136,7 @@ public class floatSvdThinValuesWorkspaceTests
                 var Svw = arena.floatVec(n);
                 SVD.svdValues(in A0, ref Svw, ref valuesWs);
 
-                Assert.IsTrue(Analysis_OP.isZero(Sva - Svw, Tol()));
+                Assert.IsTrue(Analysis.isZero(Sva - Svw, Tol()));
             }
 
             arena.Dispose();

@@ -10,7 +10,7 @@ using Unity.Mathematics;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Precomputed twiddle table for doubleFFT_OP. One size-n table serves every radix-2 transform of
+    /// Precomputed twiddle table for FFT. One size-n table serves every radix-2 transform of
     /// length ≤ n: the stage-len butterfly twiddle W_len^k is indexed as twRe[k*(n/len)],
     /// twIm[k*(n/len)], eliminating per-element cos/sin from the hot loop. Build once via
     /// Arena.doubleFFTCache(n) and reuse across many transforms of the same size.
@@ -100,7 +100,7 @@ namespace LinearAlgebra
         }
     }
 
-    public static partial class doubleFFT_OP
+    public static partial class FFT
     {
         // ---- workspace guard ----
 
@@ -381,22 +381,7 @@ namespace LinearAlgebra
         // Permutation: base-4 digit reversal (reverse digit order in base-4 = swap bit-pairs).
         // Butterfly: forward DFT sign convention X[k] = Σ x[n]·exp(-2πi·kn/N).
 
-        /// <summary>True if n is a positive power of 4 (n=1,4,16,64,…). The single set bit is at an even bit position.</summary>
-        static bool IsPowerOf4(int n) =>
-            (n > 0) && ((n & (n - 1)) == 0) && ((n & unchecked((int)0xAAAAAAAA)) == 0);
-
-        // Base-4 digit reversal: reverse the log4n base-4 digits of x.
-        // Equivalent to reversing bit-pairs (the 2 bits within each pair stay in order).
-        static int ReverseBase4Digits(int x, int log4n)
-        {
-            int result = 0;
-            for (int d = 0; d < log4n; d++)
-            {
-                result = (result << 2) | (x & 3);
-                x >>= 2;
-            }
-            return result;
-        }
+        // IsPowerOf4 and ReverseBase4Digits live in OpHelpers.Shared.cs (type-agnostic, emitted once).
 
         // Inner radix-4 butterfly pointer kernel.
         // Performs log4(n) stages of radix-4 DIT butterflies on already-permuted data.

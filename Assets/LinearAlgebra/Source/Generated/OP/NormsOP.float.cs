@@ -15,7 +15,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return math.sqrt(Unsafe_OP.vecDot(a.Data.Ptr, a.Data.Ptr, a.Data.Length));
+                return math.sqrt(UnsafeOP.vecDot(a.Data.Ptr, a.Data.Ptr, a.Data.Length));
             }
         }
 
@@ -26,7 +26,7 @@ namespace LinearAlgebra
         public static float L1<T>(in T a) where T : unmanaged, IUnsafefloatArray {
 
             unsafe {
-                return Unsafe_OP.sumAbs(a.Data.Ptr, a.Data.Length);
+                return UnsafeOP.sumAbs(a.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -35,7 +35,7 @@ namespace LinearAlgebra
         public static float LInf<T>(in T a) where T : unmanaged, IUnsafefloatArray {
 
             unsafe {
-                return Unsafe_OP.maxAbs(a.Data.Ptr, a.Data.Length);
+                return UnsafeOP.maxAbs(a.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -50,7 +50,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return math.sqrt(Unsafe_OP.vecDotRange(a.Data.Ptr, a.Data.Ptr, start, end));
+                return math.sqrt(UnsafeOP.vecDotRange(a.Data.Ptr, a.Data.Ptr, start, end));
             }
         }
 
@@ -59,7 +59,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                Unsafe_OP.normalizeL2Inpl(x.Data.Ptr, x.Data.Length);
+                UnsafeOP.normalizeL2Inpl(x.Data.Ptr, x.Data.Length);
             }
         }
 
@@ -75,7 +75,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return Unsafe_OP.normalizeL2Inpl(x.Data.Ptr, start, end);
+                return UnsafeOP.normalizeL2Inpl(x.Data.Ptr, start, end);
             }
         }
 
@@ -84,7 +84,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                return Unsafe_OP.normalizeL1(x.Data.Ptr, x.Data.Length);
+                return UnsafeOP.normalizeL1(x.Data.Ptr, x.Data.Length);
             }
         }
 
@@ -99,7 +99,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return Unsafe_OP.normalizeL1(x.Data.Ptr, start, end);
+                return UnsafeOP.normalizeL1(x.Data.Ptr, start, end);
             }
         }
 
@@ -108,7 +108,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                return Unsafe_OP.normalizeLMax(x.Data.Ptr, x.Data.Length);
+                return UnsafeOP.normalizeLMax(x.Data.Ptr, x.Data.Length);
             }
         }
 
@@ -123,7 +123,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return Unsafe_OP.normalizeLMax(x.Data.Ptr, start, end);
+                return UnsafeOP.normalizeLMax(x.Data.Ptr, start, end);
             }
         }
 
@@ -132,7 +132,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                return Unsafe_OP.normalizeLP(x.Data.Ptr, x.Data.Length, p);
+                return UnsafeOP.normalizeLP(x.Data.Ptr, x.Data.Length, p);
             }
         }
 
@@ -147,7 +147,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                return Unsafe_OP.normalizeLP(x.Data.Ptr, start, end, p);
+                return UnsafeOP.normalizeLP(x.Data.Ptr, start, end, p);
             }
         }
 

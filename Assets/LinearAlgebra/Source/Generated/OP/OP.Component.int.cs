@@ -11,13 +11,13 @@ namespace LinearAlgebra
     /// <summary>
     /// Inpl = inplace
     /// </summary>
-    public static partial class intElem_OP {
+    public static partial class intComp {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void addInpl<T>(T place, int s) where T : unmanaged, IUnsafeintArray {
 
             unsafe {
-                Unsafe_OP.scalAdd(place.Data.Ptr, place.Data.Length, s);
+                UnsafeOP.scalAdd(place.Data.Ptr, place.Data.Length, s);
             }
         }
 
@@ -25,7 +25,7 @@ namespace LinearAlgebra
         public static void mulInpl<T>(T place, int s) where T : unmanaged, IUnsafeintArray
         {
             unsafe {
-                Unsafe_OP.scalMul(place.Data.Ptr, place.Data.Length, s);
+                UnsafeOP.scalMul(place.Data.Ptr, place.Data.Length, s);
             }
         }
 
@@ -34,7 +34,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                Unsafe_OP.scalDiv(place.Data.Ptr, place.Data.Length, s);
+                UnsafeOP.scalDiv(place.Data.Ptr, place.Data.Length, s);
             }
         }
 
@@ -43,7 +43,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                Unsafe_OP.scalDiv(s, place.Data.Ptr, place.Data.Length);
+                UnsafeOP.scalDiv(s, place.Data.Ptr, place.Data.Length);
             }
         }
 
@@ -52,7 +52,7 @@ namespace LinearAlgebra
         {
             unsafe {
                 // place += from. (was passing the operands to compAdd reversed → mutated `from`.)
-                Unsafe_OP.compAdd(place.Data.Ptr, from.Data.Ptr, from.Data.Length);
+                UnsafeOP.compAdd(place.Data.Ptr, from.Data.Ptr, from.Data.Length);
             }
         }
 
@@ -60,7 +60,7 @@ namespace LinearAlgebra
         public static void subInpl<T>(this T place, T fromB) where T : unmanaged, IUnsafeintArray
         {
             unsafe {
-                Unsafe_OP.compSub(place.Data.Ptr, fromB.Data.Ptr, fromB.Data.Length);
+                UnsafeOP.compSub(place.Data.Ptr, fromB.Data.Ptr, fromB.Data.Length);
             }
         }
 
@@ -69,7 +69,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                Unsafe_OP.scalMod(place.Data.Ptr, place.Data.Length, s);
+                UnsafeOP.scalMod(place.Data.Ptr, place.Data.Length, s);
             }
         }
 
@@ -78,7 +78,7 @@ namespace LinearAlgebra
         {
             unsafe
             {
-                Unsafe_OP.scalMod(s, place.Data.Ptr, place.Data.Length);
+                UnsafeOP.scalMod(s, place.Data.Ptr, place.Data.Length);
             }
         }
 
@@ -88,7 +88,7 @@ namespace LinearAlgebra
         public static void mulInpl<T>(this T from, T to) where T : unmanaged, IUnsafeintArray
         {
             unsafe {
-                Unsafe_OP.compMul(from.Data.Ptr, to.Data.Ptr, from.Data.Length);
+                UnsafeOP.compMul(from.Data.Ptr, to.Data.Ptr, from.Data.Length);
             }
         }
 
@@ -97,7 +97,7 @@ namespace LinearAlgebra
         public static void divInpl<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafeintArray
         {
             unsafe {
-                Unsafe_OP.compDiv(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
+                UnsafeOP.compDiv(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
             }
         }
 
@@ -106,7 +106,7 @@ namespace LinearAlgebra
         public static void modInpl<T>(this T targetDividend, T fromDivisor) where T : unmanaged, IUnsafeintArray
         {
             unsafe {
-                Unsafe_OP.compMod(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
+                UnsafeOP.compMod(targetDividend.Data.Ptr, fromDivisor.Data.Ptr, targetDividend.Data.Length);
             }
         }
 
@@ -120,7 +120,7 @@ namespace LinearAlgebra
         public static void subInpl<T>(int s, T v) where T : unmanaged, IUnsafeintArray
         {
             unsafe {                 
-                Unsafe_OP.scalSub(s, v.Data.Ptr, v.Data.Length);
+                UnsafeOP.scalSub(s, v.Data.Ptr, v.Data.Length);
             }
         }
 
@@ -128,7 +128,7 @@ namespace LinearAlgebra
         public static void signFlipInpl<T>(this T a) where T : unmanaged, IUnsafeintArray
         {
             unsafe { 
-                Unsafe_OP.signFlip(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
+                UnsafeOP.signFlip(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
             }
         }
 
@@ -149,91 +149,91 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseComplementInpl<T>(this T a) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseComplement(a.Data.Ptr, a.Data.Length);
+                UnsafeOP.bitwiseComplement(a.Data.Ptr, a.Data.Length);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseAndInpl<T>(this T a, int value) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseAnd(a.Data.Ptr, a.Data.Length, value);
+                UnsafeOP.bitwiseAnd(a.Data.Ptr, a.Data.Length, value);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseOrInpl<T>(this T a, int value) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseOr(a.Data.Ptr, a.Data.Length, value);
+                UnsafeOP.bitwiseOr(a.Data.Ptr, a.Data.Length, value);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseXorInpl<T>(this T a, int value) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseXor(a.Data.Ptr, a.Data.Length, value);
+                UnsafeOP.bitwiseXor(a.Data.Ptr, a.Data.Length, value);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseLeftShiftInpl<T>(this T a, int shift) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseLeftShift(a.Data.Ptr, a.Data.Length, shift);
+                UnsafeOP.bitwiseLeftShift(a.Data.Ptr, a.Data.Length, shift);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseLeftShiftInpl<T>(int valueToBeShifted, T a) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseLeftShift(valueToBeShifted, a.Data.Ptr, a.Data.Length);
+                UnsafeOP.bitwiseLeftShift(valueToBeShifted, a.Data.Ptr, a.Data.Length);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseRightShiftInpl<T>(this T a, int shift) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseRightShift(a.Data.Ptr, a.Data.Length, shift);
+                UnsafeOP.bitwiseRightShift(a.Data.Ptr, a.Data.Length, shift);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseRightShiftInpl<T>(int valueToBeShifted, T a) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseRightShift(valueToBeShifted, a.Data.Ptr, a.Data.Length);
+                UnsafeOP.bitwiseRightShift(valueToBeShifted, a.Data.Ptr, a.Data.Length);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseAndInpl<T>(this T a, T b) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseAndComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
+                UnsafeOP.bitwiseAndComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseOrInpl<T>(this T a, T b) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseOrComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
+                UnsafeOP.bitwiseOrComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseXorInpl<T>(this T a, T b) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseXorComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
+                UnsafeOP.bitwiseXorComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseLeftShiftInpl<T>(this T a, T b) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseLeftShiftComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
+                UnsafeOP.bitwiseLeftShiftComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void bitwiseRightShiftInpl<T>(this T a, T b) where T : unmanaged, IUnsafeintArray {
             unsafe {
-                Unsafe_OP.bitwiseRightShiftComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
+                UnsafeOP.bitwiseRightShiftComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
         }
     }
