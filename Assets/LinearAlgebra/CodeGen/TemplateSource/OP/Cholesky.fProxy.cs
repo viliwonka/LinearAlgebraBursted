@@ -239,6 +239,12 @@ namespace LinearAlgebra
         /// Factor SPD A = L * Lᵀ into caller-allocated L and solve A x = b in one call.
         /// b is overwritten with x. Returns NotPositiveDefinite (forwarded from the decomposition)
         /// without solving if A is not positive-definite.
+        ///
+        /// WARNING: unlike the standalone choleskyDecomposition (where L aliasing A is documented
+        /// as safe in-place factorization), passing the same matrix as both A and L HERE destroys A:
+        /// the internal choleskyDecomposition call overwrites it with the L factor before this method
+        /// ever reads A again, and there is no way to recover the original A afterwards. Pass a
+        /// separate L if the caller still needs A intact after solving.
         /// </summary>
         public static DirectSolveInfo choleskySolve(in fProxyMxN A, ref fProxyMxN L, ref fProxyN b) {
             var decompInfo = choleskyDecomposition(in A, ref L);

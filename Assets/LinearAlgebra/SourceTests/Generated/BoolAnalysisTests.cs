@@ -18,6 +18,8 @@ public class BoolAnalysisTests
             IsAllSame,
             IsAllEqualTo,
             IsAnyEqualTo,
+            any,
+            all,
         }
 
         public TestType Type;
@@ -41,6 +43,12 @@ public class BoolAnalysisTests
                     case TestType.IsAnyEqualTo:
                         IsAnyEqualTo(ref arena);
                     break;
+                    case TestType.any:
+                        any(ref arena);
+                        break;
+                    case TestType.all:
+                        all(ref arena);
+                        break;
                     default:
                         throw new NotImplementedException();
                 }
@@ -99,6 +107,132 @@ public class BoolAnalysisTests
             v[0] = true;
 
             Assert.IsTrue(Analysis.IsAnyEqualTo(v, true));
+        }
+
+        // any/all — thin sugar over IsAnyEqualTo(x,true)/IsAllEqualTo(x,true).
+        // Empty semantics (vacuous truth, matching math.any/math.all):
+        //   any(empty) == false, all(empty) == true.
+
+        void any(ref Arena arena)
+        {
+            int dim = 8;
+
+            // --- vectors ---
+            // all-false
+            boolN allFalse = arena.boolVec(dim);
+            Assert.IsFalse(Analysis.any(allFalse));
+
+            // all-true
+            boolN allTrue = arena.boolVec(dim);
+            allTrue |= true;
+            Assert.IsTrue(Analysis.any(allTrue));
+
+            // mixed (single true element among falses)
+            boolN mixed = arena.boolVec(dim);
+            mixed[dim - 1] = true;
+            Assert.IsTrue(Analysis.any(mixed));
+
+            // single-element
+            boolN oneTrue = arena.boolVec(1);
+            oneTrue[0] = true;
+            Assert.IsTrue(Analysis.any(oneTrue));
+            boolN oneFalse = arena.boolVec(1);
+            Assert.IsFalse(Analysis.any(oneFalse));
+
+            // empty vector -> false (nothing to short-circuit on)
+            boolN emptyVec = arena.boolVec(0);
+            Assert.IsFalse(Analysis.any(emptyVec));
+
+            // --- matrices ---
+            // all-false
+            boolMxN mAllFalse = arena.boolMat(dim, dim);
+            Assert.IsFalse(Analysis.any(mAllFalse));
+
+            // all-true
+            boolMxN mAllTrue = arena.boolMat(dim, dim);
+            for (int i = 0; i < dim; i++)
+                for (int j = 0; j < dim; j++)
+                    mAllTrue[i, j] = true;
+            Assert.IsTrue(Analysis.any(mAllTrue));
+
+            // mixed (single true)
+            boolMxN mMixed = arena.boolMat(dim, dim);
+            mMixed[dim - 1, dim - 1] = true;
+            Assert.IsTrue(Analysis.any(mMixed));
+
+            // single-element matrix
+            boolMxN mOneTrue = arena.boolMat(1, 1);
+            mOneTrue[0, 0] = true;
+            Assert.IsTrue(Analysis.any(mOneTrue));
+            boolMxN mOneFalse = arena.boolMat(1, 1);
+            Assert.IsFalse(Analysis.any(mOneFalse));
+
+            // empty matrix -> false
+            boolMxN emptyMat = arena.boolMat(0, 0);
+            Assert.IsFalse(Analysis.any(emptyMat));
+        }
+
+        void all(ref Arena arena)
+        {
+            int dim = 8;
+
+            // --- vectors ---
+            // all-true
+            boolN allTrue = arena.boolVec(dim);
+            allTrue |= true;
+            Assert.IsTrue(Analysis.all(allTrue));
+
+            // all-false
+            boolN allFalse = arena.boolVec(dim);
+            Assert.IsFalse(Analysis.all(allFalse));
+
+            // mixed (all true except one) -> false
+            boolN mixed = arena.boolVec(dim);
+            mixed |= true;
+            mixed[dim - 1] = false;
+            Assert.IsFalse(Analysis.all(mixed));
+
+            // single-element
+            boolN oneTrue = arena.boolVec(1);
+            oneTrue[0] = true;
+            Assert.IsTrue(Analysis.all(oneTrue));
+            boolN oneFalse = arena.boolVec(1);
+            Assert.IsFalse(Analysis.all(oneFalse));
+
+            // empty vector -> true (vacuous truth, no counterexample)
+            boolN emptyVec = arena.boolVec(0);
+            Assert.IsTrue(Analysis.all(emptyVec));
+
+            // --- matrices ---
+            // all-true
+            boolMxN mAllTrue = arena.boolMat(dim, dim);
+            for (int i = 0; i < dim; i++)
+                for (int j = 0; j < dim; j++)
+                    mAllTrue[i, j] = true;
+            Assert.IsTrue(Analysis.all(mAllTrue));
+
+            // all-false
+            boolMxN mAllFalse = arena.boolMat(dim, dim);
+            Assert.IsFalse(Analysis.all(mAllFalse));
+
+            // mixed (all true except one) -> false
+            boolMxN mMixed = arena.boolMat(dim, dim);
+            for (int i = 0; i < dim; i++)
+                for (int j = 0; j < dim; j++)
+                    mMixed[i, j] = true;
+            mMixed[dim - 1, dim - 1] = false;
+            Assert.IsFalse(Analysis.all(mMixed));
+
+            // single-element matrix
+            boolMxN mOneTrue = arena.boolMat(1, 1);
+            mOneTrue[0, 0] = true;
+            Assert.IsTrue(Analysis.all(mOneTrue));
+            boolMxN mOneFalse = arena.boolMat(1, 1);
+            Assert.IsFalse(Analysis.all(mOneFalse));
+
+            // empty matrix -> true
+            boolMxN emptyMat = arena.boolMat(0, 0);
+            Assert.IsTrue(Analysis.all(emptyMat));
         }
     }
 

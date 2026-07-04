@@ -1,6 +1,7 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using Unity.Burst;
+using System.Runtime.CompilerServices;
 namespace LinearAlgebra
 {
 
@@ -54,6 +55,32 @@ namespace LinearAlgebra
             }
             return false;
         }
+
+        // ---- any/all — thin lowercase sugar over IsAnyEqualTo/IsAllEqualTo, matching
+        // Unity.Mathematics' math.any/math.all naming. Non-generic (one overload per bool
+        // container) rather than the generic IsAnyEqualTo/IsAllEqualTo<T> cores, since any/all
+        // is the call-site-friendly surface callers reach for.
+        //
+        // Empty-input semantics are inherited unchanged from the cores' empty loops:
+        //   any(empty) == false (IsAnyEqualTo never finds a true to short-circuit on)
+        //   all(empty) == true  (IsAllEqualTo never finds a counterexample to fail on)
+        // This matches the vacuous-truth convention math.any/math.all use for zero-length input.
+
+        /// <summary>Returns true if any element of x is true. any(empty) == false.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool any(in boolN x) => IsAnyEqualTo(x, true);
+
+        /// <summary>Returns true if any element of x is true. any(empty) == false.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool any(in boolMxN x) => IsAnyEqualTo(x, true);
+
+        /// <summary>Returns true if every element of x is true. all(empty) == true.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool all(in boolN x) => IsAllEqualTo(x, true);
+
+        /// <summary>Returns true if every element of x is true. all(empty) == true.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool all(in boolMxN x) => IsAllEqualTo(x, true);
 
         // --- QueryOP bridge: bool mask → scalar counts ---------------------------
 

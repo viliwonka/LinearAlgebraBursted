@@ -28,6 +28,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
+        [BurstCompile]
         public static void swapColumns([NoAlias] bool* target, int colA, int colB, int nRows, int nCols, int start = 0, int end = -1) {
             int startA = colA;
             int startB = colB;
