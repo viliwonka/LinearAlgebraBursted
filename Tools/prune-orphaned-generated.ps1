@@ -21,7 +21,9 @@
       FProxy->Double) across the whole relative path, not just the filename -
       folders named "fProxy"/"iProxy" get substituted too.
     - a non-singular file without "fProxy" in its filename maps to one path per
-      int/short/long the same way (iProxy->int/short/long, IProxy->Int/Short/Long).
+      int/short/long the same way (iProxy->int/short/long, IProxy->Int/Short/Long) -
+      PLUS one path per //alsoExpand[type,...]// entry (e.g. uint), mirroring
+      TemplateConverter's ResolveAlsoExpand.
     - files matching TemplateConverter's IgnoreFile (name contains "proxyStructs",
       "markers", or "proxyShims") produce no generated output at all.
 
@@ -49,6 +51,16 @@ $fProxy = "fProxy"; $iProxy = "iProxy"
 $capFProxy = "FProxy"; $capIProxy = "IProxy"
 $floatTypes = @("float", "double"); $capFloatTypes = @("Float", "Double")
 $intTypes   = @("int", "short", "long"); $capIntTypes = @("Int", "Short", "Long")
+# Caps spellings for alsoExpand-able extra types - mirrors GenUtils' (type, caps) pairs.
+$extraCapsMap = @{ "uint" = "UInt" }
+
+# Mirrors TemplateConverter.ResolveAlsoExpand: extra int-family expansion targets
+# declared per-file via //alsoExpand[type,...]//. Returns @() when absent.
+function Get-AlsoExpandTypes($content) {
+  $m = [regex]::Match($content, '//alsoExpand\[([^\]]+)\]//')
+  if (-not $m.Success) { return @() }
+  return @($m.Groups[1].Value.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
 
 function Test-IgnoredFile($name) {
   return ($name -match "proxyStructs" -or $name -match "markers" -or $name -match "proxyShims")
@@ -77,8 +89,14 @@ function Get-ExpectedPaths($templateRoot, $generatedRoot) {
         [void]$expected.Add((Join-Path $generatedRoot $target))
       }
     } else {
-      for ($i = 0; $i -lt $intTypes.Length; $i++) {
-        $target = $rel.Replace($iProxy, $intTypes[$i]).Replace($capIProxy, $capIntTypes[$i])
+      $types = @($intTypes); $caps = @($capIntTypes)
+      foreach ($t in (Get-AlsoExpandTypes $content)) {
+        $types += $t
+        if ($extraCapsMap.ContainsKey($t)) { $caps += $extraCapsMap[$t] }
+        else { $caps += ($t.Substring(0,1).ToUpper() + $t.Substring(1)) }
+      }
+      for ($i = 0; $i -lt $types.Length; $i++) {
+        $target = $rel.Replace($iProxy, $types[$i]).Replace($capIProxy, $caps[$i])
         [void]$expected.Add((Join-Path $generatedRoot $target))
       }
     }

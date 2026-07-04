@@ -68,6 +68,10 @@ public class UIntTypeTests
             // uintComp elementwise math (min/max/mad exist for uint; abs/relu deliberately do NOT)
             MinMaxInPlace,
             MadInPlace,
+
+            // Select (LinearAlgebra.Select) - pure data movement, fully unsigned-safe
+            SelectVecMask,
+            SelectMatScalarCond,
         }
 
         public TestType Type;
@@ -114,6 +118,9 @@ public class UIntTypeTests
 
                 case TestType.MinMaxInPlace: MinMaxInPlace(); break;
                 case TestType.MadInPlace: MadInPlace(); break;
+
+                case TestType.SelectVecMask: SelectVecMask(); break;
+                case TestType.SelectMatScalarCond: SelectMatScalarCond(); break;
 
                 default: throw new NotImplementedException();
             }
@@ -892,6 +899,49 @@ public class UIntTypeTests
             uintN wc = arena.uintVec(n, 1u);
             uintComp.madInPlace(wa, wb, wc);
             for (int i = 0; i < n; i++) Assert.IsTrue(wa[i] == 0u);
+
+            arena.Dispose();
+        }
+
+        // ---- Select (LinearAlgebra.Select) -----------------------------------------------------
+        // select() is pure data movement (dst[i] = c[i] ? b[i] : a[i]) - no comparison or
+        // arithmetic - so it is unsigned-clean with no wrap/ordering caveats to cover; these two
+        // cases just confirm the uint overloads pick the right operand, including UMAX (which
+        // would misbehave under signed reasoning if select ever became comparison-based).
+
+        void SelectVecMask()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 8;
+
+            uintN a = arena.uintVec(n, 1u);
+            uintN b = arena.uintVec(n, UMAX);
+            boolN c = arena.boolVec(n); // zero-filled (all false)
+            for (int i = 0; i < n; i++)
+                c[i] = (i % 2) == 0; // alternate false/true
+
+            uintN r = Select.select(a, b, c); // dest[i] = c[i] ? b[i] : a[i]
+            for (int i = 0; i < n; i++)
+                Assert.IsTrue(r[i] == (c[i] ? UMAX : 1u));
+
+            arena.Dispose();
+        }
+
+        void SelectMatScalarCond()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int rows = 3, cols = 4;
+
+            uintMxN a = arena.uintMat(rows, cols, 2u);
+            uintMxN b = arena.uintMat(rows, cols, UMAX);
+
+            uintMxN rTrue = Select.select(a, b, true); // c=true -> b
+            for (int i = 0; i < rTrue.Length; i++)
+                Assert.IsTrue(rTrue[i] == UMAX);
+
+            uintMxN rFalse = Select.select(a, b, false); // c=false -> a
+            for (int i = 0; i < rFalse.Length; i++)
+                Assert.IsTrue(rFalse[i] == 2u);
 
             arena.Dispose();
         }

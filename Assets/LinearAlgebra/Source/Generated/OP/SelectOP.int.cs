@@ -1,0 +1,110 @@
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
+
+using System;
+using Unity.Burst;
+using LinearAlgebra.Internal;
+
+
+namespace LinearAlgebra
+{
+
+    // Class summary lives on the fProxy partial (SelectOP.fProxy.cs). Integer-family select
+    // overloads (int/short/long, plus uint via the alsoExpand marker above).
+    public static partial class Select
+    {
+        // ref-dest primitive. No alias guard: select is elementwise (dst[i] = c[i] ? b[i] : a[i]),
+        // so the destination may alias a or b safely.
+        public static void select(in intN a, in intN b, in boolN c, ref intN dest)
+        {
+            Assume.SameDim(in a, in b);
+            Assume.SameDim(in a, in c);
+
+            if (dest.N != a.N)
+                throw new ArgumentException("select: dest.N must equal a.N");
+
+            unsafe
+            {
+                UnsafeSelectOP.selectint(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.N);
+            }
+        }
+
+        public static intN select(in intN a, in intN b, in boolN c)
+        {
+            intN res = a.intTempVec(a.N, true);
+            select(in a, in b, in c, ref res);
+            return res;
+        }
+
+        // ref-dest primitive. No alias guard: elementwise op.
+        public static void select(in intMxN a, in intMxN b, in boolMxN c, ref intMxN dest)
+        {
+            Assume.SameDim(in a, in b);
+            Assume.SameDim(in a, in c);
+
+            if (dest.M_Rows != a.M_Rows || dest.N_Cols != a.N_Cols)
+                throw new ArgumentException("select: dest dimensions must match a");
+
+            unsafe
+            {
+                UnsafeSelectOP.selectint(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, dest.Data.Ptr, a.M_Rows * a.N_Cols);
+            }
+        }
+
+        public static intMxN select(in intMxN a, in intMxN b, in boolMxN c)
+        {
+            intMxN res = a.intTempMat(a.M_Rows, a.N_Cols, true);
+            select(in a, in b, in c, ref res);
+            return res;
+        }
+
+        // ref-dest primitive. No alias guard: scalar bool selects the whole source unchanged.
+        public static void select(in intN a, in intN b, in bool c, ref intN dest)
+        {
+            Assume.SameDim(in a, in b);
+
+            if (dest.N != a.N)
+                throw new ArgumentException("select: dest.N must equal a.N");
+
+            if (c)
+                dest.Data.CopyFrom(b.Data);
+            else
+                dest.Data.CopyFrom(a.Data);
+        }
+
+        public static intN select(in intN a, in intN b, in bool c)
+        {
+            return c ? b.TempCopy() : a.TempCopy();
+        }
+
+        // Matrix analog of the scalar-bool vector overload above (same no-alias reasoning).
+        public static void select(in intMxN a, in intMxN b, in bool c, ref intMxN dest)
+        {
+            Assume.SameDim(in a, in b);
+
+            if (dest.M_Rows != a.M_Rows || dest.N_Cols != a.N_Cols)
+                throw new ArgumentException("select: dest dimensions must match a");
+
+            if (c)
+                dest.Data.CopyFrom(b.Data);
+            else
+                dest.Data.CopyFrom(a.Data);
+        }
+
+        public static intMxN select(in intMxN a, in intMxN b, in bool c)
+        {
+            return c ? b.TempCopy() : a.TempCopy();
+        }
+    }
+}
+
+namespace LinearAlgebra.Internal
+{
+    public static unsafe partial class UnsafeSelectOP
+    {
+        public static void selectint([NoAlias] int* a, [NoAlias] int* b, [NoAlias] bool* c, int* target, int n)
+        {
+            for (int i = 0; i < n; i++)
+                target[i] = c[i] ? b[i] : a[i];
+        }
+    }
+}
