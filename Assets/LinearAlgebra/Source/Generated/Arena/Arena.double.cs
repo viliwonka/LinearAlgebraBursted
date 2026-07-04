@@ -5,10 +5,14 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        internal UnsafeList<doubleN> doubleVectors;
-        internal UnsafeList<doubleMxN> doubleMatrices;
-        internal UnsafeList<doubleN> doubleTempVectors;
-        internal UnsafeList<doubleMxN> doubleTempMatrices;
+        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A) -- replace
+        // the old value-copy-tracking UnsafeList<doubleN>/UnsafeList<doubleMxN> lists. doubleN/
+        // doubleMxN now hold a stable doubleVecRecord*/doubleMatRecord* pointing INTO one of these
+        // tables instead of storing their Data inline + being tracked by a separate value copy.
+        internal ChunkedRecordTable<doubleVecRecord> doubleVecRecords;
+        internal ChunkedRecordTable<doubleMatRecord> doubleMatRecords;
+        internal ChunkedRecordTable<doubleVecRecord> doubleTempVecRecords;
+        internal ChunkedRecordTable<doubleMatRecord> doubleTempMatRecords;
     }
 
     public unsafe partial struct Arena {
@@ -17,15 +21,20 @@ namespace LinearAlgebra
 
         public doubleN doubleVec(int N, bool uninit = false) {
 
-            var vec = new doubleN(N, in this, uninit);
-            _core->doubleVectors.Add(in vec);
-            return vec;
+            doubleVecRecord* rec = _core->doubleVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleVecRecords;
+            rec->SelfIndex = slot;
+            return new doubleN(N, rec, Allocator, uninit);
         }
 
         public doubleN doubleVec(int N, double s)
         {
-            var vec = new doubleN(N, in this, true);
-            _core->doubleVectors.Add(in vec);
+            doubleVecRecord* rec = _core->doubleVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleVecRecords;
+            rec->SelfIndex = slot;
+            var vec = new doubleN(N, rec, Allocator, true);
             unsafe {
                 UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
             }
@@ -34,45 +43,56 @@ namespace LinearAlgebra
 
         internal doubleN doubleVec(in doubleN orig)
         {
-            var vec = new doubleN(in orig);
-            _core->doubleVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
-            return vec;
+            doubleVecRecord* rec = _core->doubleVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleVecRecords;
+            rec->SelfIndex = slot;
+            return new doubleN(in orig, rec, Allocator);   // persistent (backs Copy()); was wrongly the temp list
         }
 
         internal doubleN doubleTempVec(int N, bool uninit = false)
         {
-            var vec = new doubleN(N, in this, uninit);
-            _core->doubleTempVectors.Add(in vec);
-            return vec;
+            doubleVecRecord* rec = _core->doubleTempVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleTempVecRecords;
+            rec->SelfIndex = slot;
+            return new doubleN(N, rec, Allocator, uninit);
         }
 
         internal doubleN doubleTempVec(in doubleN orig)
         {
-            var vec = new doubleN(in orig);
-            _core->doubleTempVectors.Add(in vec);
-            return vec;
+            doubleVecRecord* rec = _core->doubleTempVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleTempVecRecords;
+            rec->SelfIndex = slot;
+            return new doubleN(in orig, rec, Allocator);
         }
         #endregion
 
         #region MATRIX
         public doubleMxN doubleMat(int dim, bool uninit = false)
         {
-            // forward to the (rows, cols) overload so the matrix is TRACKED in doubleMatrices —
+            // forward to the (rows, cols) overload so the matrix is TRACKED in doubleMatRecords —
             // the direct `new doubleMxN(...)` here was untracked and leaked on Dispose.
             return doubleMat(dim, dim, uninit);
         }
 
         public doubleMxN doubleMat(int M_rows, int N_cols, bool uninit = false)
         {
-            var matrix = new doubleMxN(M_rows, N_cols, in this, uninit);
-            _core->doubleMatrices.Add(in matrix);
-            return matrix;
+            doubleMatRecord* rec = _core->doubleMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleMatRecords;
+            rec->SelfIndex = slot;
+            return new doubleMxN(M_rows, N_cols, rec, Allocator, uninit);
         }
 
         public doubleMxN doubleMat(int M_rows, int N_cols, double s)
         {
-            var matrix = new doubleMxN(M_rows, N_cols, in this, false);
-            _core->doubleMatrices.Add(in matrix);
+            doubleMatRecord* rec = _core->doubleMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleMatRecords;
+            rec->SelfIndex = slot;
+            var matrix = new doubleMxN(M_rows, N_cols, rec, Allocator, false);
             unsafe
             {
                 UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
@@ -82,42 +102,58 @@ namespace LinearAlgebra
 
         public doubleMxN doubleMat(in doubleMxN orig)
         {
-            var matrix = new doubleMxN(in orig);
-            _core->doubleMatrices.Add(in matrix);
-            return matrix;
+            doubleMatRecord* rec = _core->doubleMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleMatRecords;
+            rec->SelfIndex = slot;
+            return new doubleMxN(in orig, rec, Allocator);
         }
 
         internal doubleMxN doubleTempMat(int M_rows, int M_cols, bool uninit = false)
         {
-            var matrix = new doubleMxN(M_rows, M_cols, in this, uninit);
-            _core->doubleTempMatrices.Add(in matrix);
-            return matrix;
+            doubleMatRecord* rec = _core->doubleTempMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleTempMatRecords;
+            rec->SelfIndex = slot;
+            return new doubleMxN(M_rows, M_cols, rec, Allocator, uninit);
         }
 
         internal doubleMxN doubleTempMat(in doubleMxN orig)
         {
-            var matrix = new doubleMxN(orig);
-            _core->doubleTempMatrices.Add(in matrix);
-            return matrix;
+            doubleMatRecord* rec = _core->doubleTempMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleTempMatRecords;
+            rec->SelfIndex = slot;
+            return new doubleMxN(in orig, rec, Allocator);
         }
         #endregion
 
-        // --- debug pool checks: confirm a buffer lives in the expected (persistent vs temp) list,
+        // --- debug pool checks: confirm a buffer lives in the expected (persistent vs temp) table,
         //     e.g. to assert an op didn't silently move a persistent input into the temp pool ---
+        //     Walk the table via its Count/IsAlive/Resolve iteration surface (ChunkedRecordTable has
+        //     no ForEachAlive callback -- Burst has no managed delegates to hang one off).
         public bool isPersistent(in doubleN v) {
-            for (int i = 0; i < _core->doubleVectors.Length; i++) if (_core->doubleVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->doubleVecRecords.Count; i++)
+                if (_core->doubleVecRecords.IsAlive(i) && _core->doubleVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
+                    return true;
             return false;
         }
         public bool isTemp(in doubleN v) {
-            for (int i = 0; i < _core->doubleTempVectors.Length; i++) if (_core->doubleTempVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->doubleTempVecRecords.Count; i++)
+                if (_core->doubleTempVecRecords.IsAlive(i) && _core->doubleTempVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
+                    return true;
             return false;
         }
         public bool isPersistent(in doubleMxN m) {
-            for (int i = 0; i < _core->doubleMatrices.Length; i++) if (_core->doubleMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->doubleMatRecords.Count; i++)
+                if (_core->doubleMatRecords.IsAlive(i) && _core->doubleMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
+                    return true;
             return false;
         }
         public bool isTemp(in doubleMxN m) {
-            for (int i = 0; i < _core->doubleTempMatrices.Length; i++) if (_core->doubleTempMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->doubleTempMatRecords.Count; i++)
+                if (_core->doubleTempMatRecords.IsAlive(i) && _core->doubleTempMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
+                    return true;
             return false;
         }
 

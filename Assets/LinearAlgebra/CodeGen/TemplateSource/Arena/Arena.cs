@@ -12,20 +12,41 @@ using LinearAlgebra.Sparse;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Heap-allocated body holding ALL of an arena's mutable tracking state -- every per-type
-    /// growable UnsafeList (fProxyVectors/Matrices/temp*, fProxyBSRs/BSRBuilders/BlockJacobis,
-    /// iProxy*, Bool*, Pivots, IndexBuffers), plus Allocator/Initialized. This struct is never
-    /// copied by user code: it is Malloc'd ONCE per arena and addressed exclusively through the
-    /// stable <see cref="Arena"/> handle's <c>_core</c> pointer, which is what gives the arena a
-    /// stable identity-by-address (see docs/rfc-memory-model.md, failure mode 2). Field/method
-    /// visibility is <c>internal</c> -- only <see cref="Arena"/>'s own partials (same assembly)
-    /// reach through <c>_core-&gt;</c>; nothing outside the library touches ArenaCore directly.
+    /// Heap-allocated body holding ALL of an arena's mutable tracking state, plus
+    /// Allocator/Initialized. This struct is never copied by user code: it is Malloc'd ONCE per
+    /// arena and addressed exclusively through the stable <see cref="Arena"/> handle's <c>_core</c>
+    /// pointer, which is what gives the arena a stable identity-by-address (see
+    /// docs/rfc-memory-model.md, failure mode 2). Field/method visibility is <c>internal</c> --
+    /// only <see cref="Arena"/>'s own partials (same assembly) reach through <c>_core-&gt;</c>;
+    /// nothing outside the library touches ArenaCore directly.
+    ///
+    /// <para><b>Migrated families (float/double)</b> -- docs/rfc-memory-model.md §4 Option A -- own
+    /// pointer-stable <see cref="ChunkedRecordTable{TRecord}"/> tables
+    /// (<c>fProxyVecRecords</c>/<c>fProxyMatRecords</c>/temp* -- see <c>fProxyRecords.fProxy.cs</c>,
+    /// <c>Arena.fProxy.cs</c>): fProxyN/fProxyMxN hold a stable record pointer instead of being
+    /// tracked by a separate value copy, and Dispose()/Clear()/ClearTemp() free individual slots.
+    /// <b>Not-yet-migrated families</b> (<c>fProxyBSRs</c>/BSRBuilders/BlockJacobis, all of
+    /// <c>iProxy*</c>, <c>Bool*</c>, <c>Pivots</c>, <c>IndexBuffers</c>) still use the original
+    /// growable-UnsafeList-of-value-copies model: tracked by <c>.Add</c>, bulk-freed by
+    /// <c>.Clear()</c>/<c>.Dispose()</c> on the whole list, with no per-instance early-dispose
+    /// bookkeeping. Both models coexist during the family-by-family migration; see
+    /// <see cref="AllocationsCount"/>'s doc for the one user-visible consequence.</para>
     /// </summary>
-    internal partial struct ArenaCore
+    internal unsafe partial struct ArenaCore
     {
+        /// <summary>
+        /// Live allocation count across every tracked family. TRANSIENT cross-family asymmetry
+        /// during the family-by-family migration (docs/rfc-memory-model.md §4 Option A): migrated
+        /// families (float/double) decrement this THE MOMENT an individual fProxyN/fProxyMxN is
+        /// Dispose()'d (their AliveCount reflects live records exactly); not-yet-migrated families
+        /// (int/short/long/uint, bool) still use the old value-copy tracking lists, whose `.Length`
+        /// only shrinks in bulk on the next Clear()/ClearTemp() -- an individual disposed instance of
+        /// those types stays counted until then. This asymmetry resolves once every family has been
+        /// migrated onto the record-table model.
+        /// </summary>
         public int AllocationsCount =>
             //+copyReplaceFill[+]
-            fProxyVectors.Length + fProxyMatrices.Length + fProxyBSRs.Length + fProxyBSRBuilders.Length + fProxyBlockJacobis.Length
+            fProxyVecRecords.AliveCount + fProxyMatRecords.AliveCount + fProxyBSRs.Length + fProxyBSRBuilders.Length + fProxyBlockJacobis.Length
             //-copyReplaceFill
             +
             //+copyReplaceFill[+]
@@ -35,7 +56,7 @@ namespace LinearAlgebra
 
         public int TempAllocationsCount =>
             //+copyReplaceFill[+]
-            fProxyTempVectors.Length + fProxyTempMatrices.Length
+            fProxyTempVecRecords.AliveCount + fProxyTempMatRecords.AliveCount
             //-copyReplaceFill
             +
             //+copyReplaceFill[+]
@@ -49,7 +70,9 @@ namespace LinearAlgebra
         public bool Initialized;
 
         // internal (not private): Arena.bool.cs's factory methods on the sibling Arena type
-        // reach these directly via _core->BoolVectors etc., mirroring fProxyVectors/iProxyVectors.
+        // reach these directly via _core->BoolVectors etc., mirroring the not-yet-migrated
+        // iProxyVectors/iProxyMatrices tracking lists (bool hasn't moved to the record-table model
+        // either -- see the ArenaCore class doc above for which families have and haven't).
         internal UnsafeList<boolN> BoolVectors;
         internal UnsafeList<boolMxN> BoolMatrices;
         internal UnsafeList<boolN> TempBoolVectors;
@@ -63,10 +86,10 @@ namespace LinearAlgebra
             Allocator = allocator;
 
             //+copyReplace
-            fProxyVectors = new UnsafeList<fProxyN>(8, Allocator);
-            fProxyMatrices = new UnsafeList<fProxyMxN>(8, Allocator);
-            fProxyTempVectors = new UnsafeList<fProxyN>(8, Allocator);
-            fProxyTempMatrices = new UnsafeList<fProxyMxN>(8, Allocator);
+            fProxyVecRecords.Init(Allocator);
+            fProxyMatRecords.Init(Allocator);
+            fProxyTempVecRecords.Init(Allocator);
+            fProxyTempMatRecords.Init(Allocator);
             fProxyBSRs = new UnsafeList<fProxyBSR>(4, Allocator);
             fProxyBSRBuilders = new UnsafeList<fProxyBSRBuilder>(4, Allocator);
             fProxyBlockJacobis = new UnsafeList<fProxyBlockJacobi>(4, Allocator);
@@ -114,14 +137,28 @@ namespace LinearAlgebra
 
         public void Clear()
         {
+            // Ordering note (dispose-then-Free, the OPPOSITE of fProxyN/fProxyMxN.Dispose()'s
+            // Free-then-dispose): this loop is the sole owner walking its OWN record tables
+            // sequentially, one index at a time, gated by IsAlive(i) -- there is no aliased struct
+            // copy that could race in and double-Free the same slot mid-loop, so reading
+            // Resolve(i)->Data before marking the slot dead is safe here. fProxyN/fProxyMxN.Dispose()
+            // instead has to guard against exactly that aliasing (two struct copies sharing one
+            // record), which is why IT frees first and disposes a cached copy of Data second -- see
+            // the comment there.
             //+copyReplace
-            for (int i = 0; i < fProxyVectors.Length; i++)
-                fProxyVectors[i].Dispose();
-            fProxyVectors.Clear();
+            for (int i = 0; i < fProxyVecRecords.Count; i++)
+                if (fProxyVecRecords.IsAlive(i))
+                {
+                    fProxyVecRecords.Resolve(i)->Data.Dispose();
+                    fProxyVecRecords.Free(i);
+                }
 
-            for(int i = 0; i < fProxyMatrices.Length; i++)
-                fProxyMatrices[i].Dispose();
-            fProxyMatrices.Clear();
+            for (int i = 0; i < fProxyMatRecords.Count; i++)
+                if (fProxyMatRecords.IsAlive(i))
+                {
+                    fProxyMatRecords.Resolve(i)->Data.Dispose();
+                    fProxyMatRecords.Free(i);
+                }
 
             for (int i = 0; i < fProxyBSRs.Length; i++)
                 fProxyBSRs[i].Dispose();
@@ -170,14 +207,25 @@ namespace LinearAlgebra
         /// </summary>
         public void ClearTemp()
         {
+            // Same dispose-then-Free ordering as Clear() above, and safe for the identical reason:
+            // this loop is the sole owner sequentially walking its OWN temp record table, gated by
+            // IsAlive(i) -- no aliased struct copy can race in here. See Clear()'s comment (and
+            // fProxyN/fProxyMxN.Dispose()'s comment, which needs the OPPOSITE order because it has
+            // to guard against exactly that aliasing).
             //+copyReplace
-            for (int i = 0; i < fProxyTempVectors.Length; i++)
-                fProxyTempVectors[i].Dispose();
-            fProxyTempVectors.Clear();
+            for (int i = 0; i < fProxyTempVecRecords.Count; i++)
+                if (fProxyTempVecRecords.IsAlive(i))
+                {
+                    fProxyTempVecRecords.Resolve(i)->Data.Dispose();
+                    fProxyTempVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < fProxyTempMatrices.Length; i++)
-                fProxyTempMatrices[i].Dispose();
-            fProxyTempMatrices.Clear();
+            for (int i = 0; i < fProxyTempMatRecords.Count; i++)
+                if (fProxyTempMatRecords.IsAlive(i))
+                {
+                    fProxyTempMatRecords.Resolve(i)->Data.Dispose();
+                    fProxyTempMatRecords.Free(i);
+                }
             //-copyReplace
 
             //+copyReplace
@@ -209,10 +257,10 @@ namespace LinearAlgebra
             Clear();
 
             //+copyReplace
-            fProxyVectors.Dispose();
-            fProxyMatrices.Dispose();
-            fProxyTempMatrices.Dispose();
-            fProxyTempVectors.Dispose();
+            fProxyVecRecords.Dispose();
+            fProxyMatRecords.Dispose();
+            fProxyTempMatRecords.Dispose();
+            fProxyTempVecRecords.Dispose();
             fProxyBSRs.Dispose();
             fProxyBSRBuilders.Dispose();
             fProxyBlockJacobis.Dispose();
@@ -281,6 +329,17 @@ namespace LinearAlgebra
         {
             _core = (ArenaCore*)UnsafeUtility.Malloc(UnsafeUtility.SizeOf<ArenaCore>(), UnsafeUtility.AlignOf<ArenaCore>(), allocator);
 
+            // UnsafeUtility.Malloc does NOT clear memory -- the block starts as garbage bytes.
+            // That used to be harmless (every ArenaCore field was unconditionally REASSIGNED in
+            // Init() below, so nobody ever read the garbage). It stopped being harmless once
+            // ChunkedRecordTable<T> joined the field set (docs/rfc-memory-model.md §4 Option A):
+            // its Init() GUARDS against double-init by checking `_chunks.IsCreated`, and garbage
+            // bytes can spuriously read back as "already created" -- so the very FIRST Init() call
+            // on a freshly Malloc'd core could throw "Init called twice". Zeroing the block first
+            // makes every field (old-style lists AND the new tables) start from a clean, honestly
+            // "never initialized" state.
+            UnsafeUtility.MemClear(_core, UnsafeUtility.SizeOf<ArenaCore>());
+
             // Free the Malloc'd block if Init throws instead of leaking it. try/finally, not
             // try/catch -- Burst/HPC# only supports throwing + try/finally cleanup, not catching
             // (see Burst's csharp-hpc-overview.md). Fully effective for plain managed callers
@@ -301,6 +360,20 @@ namespace LinearAlgebra
                     _core = null;
                 }
             }
+        }
+
+        /// <summary>
+        /// Wraps an EXISTING (already-initialized) ArenaCore -- used internally to reconstruct a
+        /// live Arena handle from a record's <c>Owner</c> back-pointer
+        /// (docs/rfc-memory-model.md §4 Option A), e.g. fProxyN/fProxyMxN's <c>Copy()</c>/
+        /// <c>TempCopy()</c> and their cross-type allocation shortcuts -- replaces the old private
+        /// <c>Arena _arena</c> field those used to read directly. Does NOT allocate or own the
+        /// core: disposing a handle built this way is exactly as safe/unsafe as disposing any other
+        /// copy of the SAME live Arena (see the class-level ownership contract above).
+        /// </summary>
+        internal Arena(ArenaCore* core)
+        {
+            _core = core;
         }
 
         public Pivot Pivot(int size)

@@ -5,10 +5,14 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        internal UnsafeList<floatN> floatVectors;
-        internal UnsafeList<floatMxN> floatMatrices;
-        internal UnsafeList<floatN> floatTempVectors;
-        internal UnsafeList<floatMxN> floatTempMatrices;
+        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A) -- replace
+        // the old value-copy-tracking UnsafeList<floatN>/UnsafeList<floatMxN> lists. floatN/
+        // floatMxN now hold a stable floatVecRecord*/floatMatRecord* pointing INTO one of these
+        // tables instead of storing their Data inline + being tracked by a separate value copy.
+        internal ChunkedRecordTable<floatVecRecord> floatVecRecords;
+        internal ChunkedRecordTable<floatMatRecord> floatMatRecords;
+        internal ChunkedRecordTable<floatVecRecord> floatTempVecRecords;
+        internal ChunkedRecordTable<floatMatRecord> floatTempMatRecords;
     }
 
     public unsafe partial struct Arena {
@@ -17,15 +21,20 @@ namespace LinearAlgebra
 
         public floatN floatVec(int N, bool uninit = false) {
 
-            var vec = new floatN(N, in this, uninit);
-            _core->floatVectors.Add(in vec);
-            return vec;
+            floatVecRecord* rec = _core->floatVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatVecRecords;
+            rec->SelfIndex = slot;
+            return new floatN(N, rec, Allocator, uninit);
         }
 
         public floatN floatVec(int N, float s)
         {
-            var vec = new floatN(N, in this, true);
-            _core->floatVectors.Add(in vec);
+            floatVecRecord* rec = _core->floatVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatVecRecords;
+            rec->SelfIndex = slot;
+            var vec = new floatN(N, rec, Allocator, true);
             unsafe {
                 UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
             }
@@ -34,45 +43,56 @@ namespace LinearAlgebra
 
         internal floatN floatVec(in floatN orig)
         {
-            var vec = new floatN(in orig);
-            _core->floatVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
-            return vec;
+            floatVecRecord* rec = _core->floatVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatVecRecords;
+            rec->SelfIndex = slot;
+            return new floatN(in orig, rec, Allocator);   // persistent (backs Copy()); was wrongly the temp list
         }
 
         internal floatN floatTempVec(int N, bool uninit = false)
         {
-            var vec = new floatN(N, in this, uninit);
-            _core->floatTempVectors.Add(in vec);
-            return vec;
+            floatVecRecord* rec = _core->floatTempVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatTempVecRecords;
+            rec->SelfIndex = slot;
+            return new floatN(N, rec, Allocator, uninit);
         }
 
         internal floatN floatTempVec(in floatN orig)
         {
-            var vec = new floatN(in orig);
-            _core->floatTempVectors.Add(in vec);
-            return vec;
+            floatVecRecord* rec = _core->floatTempVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatTempVecRecords;
+            rec->SelfIndex = slot;
+            return new floatN(in orig, rec, Allocator);
         }
         #endregion
 
         #region MATRIX
         public floatMxN floatMat(int dim, bool uninit = false)
         {
-            // forward to the (rows, cols) overload so the matrix is TRACKED in floatMatrices —
+            // forward to the (rows, cols) overload so the matrix is TRACKED in floatMatRecords —
             // the direct `new floatMxN(...)` here was untracked and leaked on Dispose.
             return floatMat(dim, dim, uninit);
         }
 
         public floatMxN floatMat(int M_rows, int N_cols, bool uninit = false)
         {
-            var matrix = new floatMxN(M_rows, N_cols, in this, uninit);
-            _core->floatMatrices.Add(in matrix);
-            return matrix;
+            floatMatRecord* rec = _core->floatMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatMatRecords;
+            rec->SelfIndex = slot;
+            return new floatMxN(M_rows, N_cols, rec, Allocator, uninit);
         }
 
         public floatMxN floatMat(int M_rows, int N_cols, float s)
         {
-            var matrix = new floatMxN(M_rows, N_cols, in this, false);
-            _core->floatMatrices.Add(in matrix);
+            floatMatRecord* rec = _core->floatMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatMatRecords;
+            rec->SelfIndex = slot;
+            var matrix = new floatMxN(M_rows, N_cols, rec, Allocator, false);
             unsafe
             {
                 UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
@@ -82,42 +102,58 @@ namespace LinearAlgebra
 
         public floatMxN floatMat(in floatMxN orig)
         {
-            var matrix = new floatMxN(in orig);
-            _core->floatMatrices.Add(in matrix);
-            return matrix;
+            floatMatRecord* rec = _core->floatMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatMatRecords;
+            rec->SelfIndex = slot;
+            return new floatMxN(in orig, rec, Allocator);
         }
 
         internal floatMxN floatTempMat(int M_rows, int M_cols, bool uninit = false)
         {
-            var matrix = new floatMxN(M_rows, M_cols, in this, uninit);
-            _core->floatTempMatrices.Add(in matrix);
-            return matrix;
+            floatMatRecord* rec = _core->floatTempMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatTempMatRecords;
+            rec->SelfIndex = slot;
+            return new floatMxN(M_rows, M_cols, rec, Allocator, uninit);
         }
 
         internal floatMxN floatTempMat(in floatMxN orig)
         {
-            var matrix = new floatMxN(orig);
-            _core->floatTempMatrices.Add(in matrix);
-            return matrix;
+            floatMatRecord* rec = _core->floatTempMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatTempMatRecords;
+            rec->SelfIndex = slot;
+            return new floatMxN(in orig, rec, Allocator);
         }
         #endregion
 
-        // --- debug pool checks: confirm a buffer lives in the expected (persistent vs temp) list,
+        // --- debug pool checks: confirm a buffer lives in the expected (persistent vs temp) table,
         //     e.g. to assert an op didn't silently move a persistent input into the temp pool ---
+        //     Walk the table via its Count/IsAlive/Resolve iteration surface (ChunkedRecordTable has
+        //     no ForEachAlive callback -- Burst has no managed delegates to hang one off).
         public bool isPersistent(in floatN v) {
-            for (int i = 0; i < _core->floatVectors.Length; i++) if (_core->floatVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->floatVecRecords.Count; i++)
+                if (_core->floatVecRecords.IsAlive(i) && _core->floatVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
+                    return true;
             return false;
         }
         public bool isTemp(in floatN v) {
-            for (int i = 0; i < _core->floatTempVectors.Length; i++) if (_core->floatTempVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->floatTempVecRecords.Count; i++)
+                if (_core->floatTempVecRecords.IsAlive(i) && _core->floatTempVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
+                    return true;
             return false;
         }
         public bool isPersistent(in floatMxN m) {
-            for (int i = 0; i < _core->floatMatrices.Length; i++) if (_core->floatMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->floatMatRecords.Count; i++)
+                if (_core->floatMatRecords.IsAlive(i) && _core->floatMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
+                    return true;
             return false;
         }
         public bool isTemp(in floatMxN m) {
-            for (int i = 0; i < _core->floatTempMatrices.Length; i++) if (_core->floatTempMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->floatTempMatRecords.Count; i++)
+                if (_core->floatTempMatRecords.IsAlive(i) && _core->floatTempMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
+                    return true;
             return false;
         }
 

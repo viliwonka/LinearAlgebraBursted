@@ -4,18 +4,25 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// A pointer-stable, chunked slot table for future arena-owned allocation records
-    /// (docs/rfc-memory-model.md §4 Option A / A1, §6.1, §7 step 2). This is the Stage-B building
-    /// block for the "Data resolves through a stable in-arena record" migration: a family-specific
-    /// record struct (added in a LATER stage) will be carved out of a table like this one and
-    /// addressed by a raw <c>TRecord*</c> that never moves for the record's lifetime -- so a copy of
-    /// a math struct holding that pointer can never diverge from the one source of truth (the RFC's
-    /// failure modes 1 and 2).
+    /// A pointer-stable, chunked slot table for arena-owned allocation records
+    /// (docs/rfc-memory-model.md §4 Option A / A1, §6.1, §7 step 2). A family-specific record struct
+    /// is carved out of a table like this one and addressed by a raw <c>TRecord*</c> that never moves
+    /// for the record's lifetime -- so a copy of a math struct holding that pointer can never diverge
+    /// from the one source of truth (the RFC's failure modes 1 and 2).
     ///
-    /// <para><b>ADDITIVE ONLY at this stage.</b> Nothing in <c>ArenaCore</c> or any math struct uses
-    /// this table yet -- it exists standalone, exercised only by its own tests
-    /// (<c>ChunkedRecordTableTests</c>). Record structs per family, and wiring this into the arena's
-    /// lifecycle, are later stages.</para>
+    /// <para><b>Live, family-by-family.</b> <c>ArenaCore</c> owns one table per migrated family/pool
+    /// (currently float/double's <c>fProxyVecRecords</c>/<c>fProxyMatRecords</c>/temp* -- see
+    /// <c>Arena.fProxy.cs</c>, <c>fProxyRecords.fProxy.cs</c>): fProxyN/fProxyMxN hold a stable
+    /// <c>fProxyVecRecord*</c>/<c>fProxyMatRecord*</c> into one of these tables instead of being
+    /// tracked by a separate value copy. <c>Arena.Clear()</c>/<c>ClearTemp()</c> walk a table's
+    /// <c>Count</c>/<c>IsAlive</c>/<c>Resolve</c> surface, dispose each alive record's payload, and
+    /// <see cref="Free"/> the slot; <c>fProxyN</c>/<c>fProxyMxN.Dispose()</c> does the same for a
+    /// single record (see those types' Dispose() for the ordering rationale). Not-yet-migrated
+    /// families (int/short/long/uint, bool, the sparse BSR types) still use the original growable-
+    /// UnsafeList-of-value-copies model and don't touch this table -- see the migration's per-family
+    /// status in <c>ArenaCore</c>'s own class doc (<c>Arena.cs</c>). Exercised both end-to-end
+    /// (<c>ArenaWiringTests.fProxy.cs</c>) and directly against its own primitives
+    /// (<c>ChunkedRecordTableTests</c>).</para>
     ///
     /// <para><b>Storage shape.</b> Records live in fixed-capacity <c>Chunk</c>s, each a single
     /// <c>UnsafeUtility.Malloc</c> block that is <b>never reallocated or moved</b> -- this is exactly
@@ -43,9 +50,12 @@ namespace LinearAlgebra
     /// chunk on every frame.</para>
     ///
     /// <para><b>Bookkeeping.</b> Each slot carries <c>Alive</c> + <c>Generation</c> (bumped on
-    /// <see cref="Free"/>) alongside its <typeparamref name="TRecord"/> payload. Nothing reads these
-    /// yet in release code -- they exist now so the future DEBUG generational-validation overlay
-    /// (RFC §6.2, Option B) has somewhere to live without another migration later.</para>
+    /// <see cref="Free"/>) alongside its <typeparamref name="TRecord"/> payload. <c>Alive</c> is live
+    /// release-code state, consumed via <see cref="IsAlive"/> by <c>Arena.Clear()</c>/<c>ClearTemp()</c>
+    /// (skip an already-Dispose()'d record instead of double-freeing it) and guarded by
+    /// <see cref="Free"/> itself (rejects a double-Free). <c>Generation</c> is NOT consumed by
+    /// anything yet -- it exists now so the future DEBUG generational-validation overlay (RFC §6.2,
+    /// Option B) has somewhere to live without another migration later.</para>
     ///
     /// <para><b>Burst.</b> Unmanaged generic (<c>where TRecord : unmanaged</c>), the one raw pointer
     /// held in a field (<c>Chunk.Slots</c>) is <c>[NativeDisableUnsafePtrRestriction]</c>, no managed
@@ -205,11 +215,14 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Frees every chunk block plus the directory/free-list themselves. Does NOT walk or dispose
-        /// individual records -- <typeparamref name="TRecord"/> has no Dispose contract at this
-        /// ADDITIVE-ONLY stage. Disposing per-record resources (e.g. a growable list living inside a
-        /// future builder record) becomes the caller's job once family records land in the next
-        /// stage.
+        /// Frees every chunk block plus the directory/free-list themselves. Does NOT itself walk or
+        /// dispose individual records' payloads -- <typeparamref name="TRecord"/> has no Dispose
+        /// contract of its own (it's a plain unmanaged struct, e.g. <c>fProxyVecRecord</c>'s
+        /// <c>UnsafeList&lt;fProxy&gt; Data</c>). That is the CALLER's job, done BEFORE this runs:
+        /// <c>ArenaCore.Clear()</c>/<c>ClearTemp()</c> walk <c>Count</c>/<c>IsAlive</c>/<c>Resolve</c>,
+        /// dispose each alive record's payload and <see cref="Free"/> its slot, and only THEN is this
+        /// table itself (now empty of live records) disposed alongside the others in
+        /// <c>ArenaCore.Dispose()</c>.
         ///
         /// <para>Idempotent: a second call on an already-disposed (or never-initialized) table is a
         /// safe no-op rather than a double-free of the directory/free-list, mirroring
