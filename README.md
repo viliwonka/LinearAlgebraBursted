@@ -1,12 +1,11 @@
-# Linear Algebra Library for Unity
+# LinearAlgebraBursted
 
-A linear algebra library for Unity, fully written in [Burst](https://docs.unity3d.com/Packages/com.unity.burst@latest).
-It's designed as a natural extension of `Unity.Mathematics` — where that stops at 4×4, this
-takes over: arbitrary-size dense and block-sparse vectors and matrices, factorizations, solvers,
-eigensolvers, FFT, statistics and a small ML layer, all Burst-compiled and allocation-conscious.
+A linear algebra library for Unity, compiled entirely through [Burst](https://docs.unity3d.com/Packages/com.unity.burst@latest).
+It extends `Unity.Mathematics` past its fixed 4×4 ceiling: arbitrary-size vectors and matrices for
+`float`/`double`/`int`/`short`/`long`/`uint`/`bool`, an arena allocator, dense and block-sparse
+factorizations/solvers, eigensolvers, FFT, statistics, and a small ML layer.
 
-Getting ready for production — the feature set is complete and heavily tested, but the public API
-is still being reviewed and may change before `1.0`.
+The public API is still being reviewed and may change before `1.0` (current version `0.1.0`).
 
 ## Installation
 
@@ -23,90 +22,96 @@ or add it to `Packages/manifest.json`:
 "com.viliwonka.burst-linear-algebra": "https://github.com/viliwonka/LinearAlgebraBursted.git?path=Assets/LinearAlgebra/Source"
 ```
 
-Alternatively, clone the repo and copy `Assets/LinearAlgebra/Source` into your project. Either way the
-only dependency is `com.unity.collections` (which pulls in Burst and Mathematics). Requires Unity 6000.3+.
+Or clone the repo and copy `Assets/LinearAlgebra/Source` into your project. Either way the only
+dependency is `com.unity.collections` (pulls in Burst and Mathematics). Requires Unity 6000.3+. To
+work on the library itself (templates + codegen), open the repo directly in Unity.
 
-To work on the library itself (templates + codegen), open the repo directly in Unity.
-
-## Core types
-
-- **`Arena`** — a struct for managing memory: allocating vectors and matrices, and disposing them.
-- **Vectors & matrices** — `floatN` / `floatMxN` and their `double` / `int` / `short` / `long` /
-  `bool` counterparts. Matrices are row-major.
-- **Workspaces** — reusable scratch buffers reserved from the arena so hot loops allocate nothing.
-- **Info / diagnostic structs** — small result structs returned by solvers and decompositions
-  (status, iterations, residual norms, rank, …), Burst-printable.
-
-## Usage
+## Quick start
 
 ```csharp
-    // memory management struct — owns all allocations below
-    var arena = new Arena(Allocator.Persistent);
+// Arena owns every allocation below.
+var arena = new Arena(Allocator.Persistent);
 
-    int dim = 128;
-    floatN vecA = arena.floatVec(dim);        // zero vector
-    floatN vecB = arena.floatVec(dim, 1f);    // filled with 1
+int dim = 128;
+floatN vecA = arena.floatVec(dim);          // zero vector
+floatN vecB = arena.floatVec(dim, 1f);      // filled with 1
+floatN vecAdd = vecA + vecB;                // per-component, allocates a temp
 
-    floatN vecAdd = vecA + vecB;              // per-component (allocates a temp)
-    floatN vecMul = vecA * vecB;              // per-component (allocates a temp)
+floatMxN matI = arena.floatIdentityMat(16);
+floatMxN matRand = arena.floatRandomMat(16, 16);
+floatMxN sum = matI + matRand;              // allocates
+floatComp.addInPlace(sum, 1f);              // in place, allocates nothing
+floatComp.mulInPlace(sum, matRand);         // in place, allocates nothing
 
-    floatMxN matI   = arena.floatIdentityMatrix(16);
-    floatMxN matRand = arena.floatRandomMatrix(16, 16);
+floatMxN A = arena.floatRandomDiagonalMat(dim, -3f, 3f);
+floatMxN B = arena.floatRandomDiagonalMat(dim, -3f, 3f);
+floatMxN C = Blas.dot(A, B);                // matrix multiply, allocates
+C[0, 0] += 5f;
 
-    floatMxN compSumMat = matI + matRand;     // allocates
-    floatElem_OP.addInpl(compSumMat, 1f);     // in place, allocates nothing
-    floatElem_OP.mulInpl(compSumMat, matI);   // in place, allocates nothing
+floatN b = arena.floatVec(dim, 1f);
+floatN x = arena.floatVec(dim);
+// Solve Ax = b via QR; returns a diagnostics struct.
+DirectSolveInfo info = QR.qrDirectSolve(ref A, ref b, ref x);
+Print.Log(info);                            // "DirectSolveInfo(Success)"
+float norm = Norms.L1(x);
 
-    floatMxN A = arena.floatRandomDiagonalMatrix(dim, -3f, 3f);
-    floatMxN B = arena.floatRandomDiagonalMatrix(dim, -3f, 3f);
-    floatMxN C = Linear_OP.dot(A, B);         // matrix multiply (allocates)
-    C[0, 0] += 5f;
+boolMxN cmp = C > A;                        // element-wise compare, allocates
+cmp = !cmp;                                 // negate, allocates
 
-    floatN b = arena.floatVec(dim, 1f);
-    floatN x = arena.floatVec(dim);
-
-    // solve Ax = b in place via QR; returns a diagnostics struct
-    DirectSolveInfo info = QR.qrDirectSolve(ref A, ref b, ref x);
-    Print.Log(info);                          // "DirectSolveInfo(Success, ...)"
-
-    float norm = Norms_OP.L1(x);
-
-    boolMxN cmp = C > A;                       // element-wise compare (allocates)
-    cmp = !cmp;                                // negate (allocates)
-
-    arena.ClearTemp();                         // free the temporaries above
-    arena.Dispose();                           // free everything, dispose arena
+arena.ClearTemp();                          // free the temporaries above
+arena.Dispose();                            // free everything, dispose the arena
 ```
+
+## Benchmarks at a glance
+
+Measured, single-machine numbers for the solvers most people call directly. Machine and commit are
+noted per row; full tables (more sizes, both precisions) live in each feature's mini-doc.
+
+| Solver | Representative case | Measured result | Source |
+|---|---|---|---|
+| Direct solve, dense QR (`QR.qrDirectSolve`) | 1024×1024, float | 74.7× faster after a cache-locality fix (2684ms→35.9ms; 0.53→39.9 GFLOP/s) | commit `eadf6a8` |
+| Least-squares, QRCP (`QR.qrcpDirectSolve`) | 1024×1024, float | 61.6× faster after the same fix (5889ms→95.5ms; 0.24→15.0 GFLOP/s) | commit `eadf6a8` |
+| Iterative solve, CG, dense vs. sparse (`Solvers.cg`) | 768×768 SPD, 7% block fill, double | 13× faster on the sparse (BSR) operand (8.59ms → 0.66ms) | commit `754ff4a` |
+| SVD, truncated GKL (`SVD.svdTruncated`) | 2048×256, k≈21%, float | 6.2–6.9× faster after vectorizing the Lanczos basis | commit `4203c72` |
+| Eigensolve, symmetric (`Eigen.eigenSymmetric`, values only) | 256×256, float | ~75× faster than cyclic Jacobi | commit `4902032` |
+| FFT, real input (`FFT.rfft` vs. full `fft`) | N = 1,048,576, float | 1.5× faster (24.0ms → 15.9ms) | commit `dc3bd3f` |
+
+See [docs/features](docs/features) — each linked doc below carries the deeper benchmark table.
 
 ## Features
 
-- **Types** — float, double, int, short, long, bool vectors & matrices
-- **Core ops** — dot, matrix multiply (register-tiled GEMM), transpose, outer product, element-wise, select, comparisons
-- **Decompositions** — LU, Cholesky, QR / LQ, QRCP (pivoted), SVD (thin / truncated / randomized)
-- **Solvers** — direct, least-squares, min-norm, iterative (CG/PCG, MINRES, BiCGSTAB, CGLS/LSQR/LSMR); every solver returns a diagnostics struct
-- **Eigen** — power iteration, symmetric (`eigenSymmetric`), non-symmetric (Francis QR), and matrix-free sparse eigensolvers
-- **Sparse** — block-sparse (BSR) matrices with rectangular blocks; solvers and eigensolvers run matrix-free over dense *or* sparse operands through a shared linear-operator interface
-- **ML** — PCA + k-means
-- **Statistics** — mean, var/std, median, min/max, argmin/max, covariance, correlation, row/col reductions
-- **[FFT](docs/fft.md)** — power-of-two FFT/IFFT, real-input rfft/irfft, arbitrary-N DFT
-- **Random** — distribution samplers + structured / multivariate matrix generators (Gaussian, orthogonal, SPD, …)
-- **Signal & data** — histograms, resampling (nearest / linear / Catmull-Rom), transforms (normalize / standardize / softmax / …), generators (linspace, easing/LFO, DSP windows), find/query, 1D optimizers
-- **Debug** — Burst `Print.Log` / `Print.Spy` (incl. block-sparse spy) + managed CSV/text export for every type
-- **Zero-allocation** — preallocated-output / reusable-workspace variants of ops & solvers for hot loops
+- **Dense types** — [vectors, matrices, the `Arena` allocator](docs/features/dense-types.md)
+- **Element-wise ops** — [`Comp`: arithmetic, math functions, clamp, in-place](docs/features/comp-elementwise.md)
+- **Core linear algebra** — [`Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics](docs/features/blas.md)
+- **Decompositions** — [LU, Cholesky (+ pivoted), QR/LQ (+ QRCP), Bidiag](docs/features/decompositions.md)
+- **Direct solvers** — [triangular/LU/Cholesky/QR solve, the diagnostics-struct convention](docs/features/solvers.md)
+- **Least squares** — [QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning](docs/features/least-squares.md)
+- **SVD** — [thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation](docs/features/svd.md)
+- **Eigensolvers** — [symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG](docs/features/eigen.md)
+- **Sparse (BSR)** — [block-CSR storage, builder assembly, unrolled spMV, sparse solvers/eigensolvers](docs/features/sparse-bsr.md)
+- **FFT** — [power-of-two FFT/IFFT, radix-4, real-input rfft/irfft, arbitrary-N DFT](docs/features/fft.md)
+- **Statistics** — [whole-array & row/col reductions, covariance/correlation, transforms](docs/features/stats.md)
+- **Random** — [distribution samplers, weighted pick/shuffle, multivariate normal, structured matrices](docs/features/random.md)
+- **Query** — [nearest/k-nearest/radius search, argmax/argmin, predicate-filtered variants](docs/features/query.md)
+- **Select & bit ops** — [element-wise select, integer bit intrinsics, bool logic](docs/features/select-bits.md)
+- **Hash** — [xxHash32 over vectors/matrices, lockstep desync-checksum use case](docs/features/hash.md)
+- **Realtime** — [`RollingWindow`: ring-buffer moving average/covariance](docs/features/realtime.md)
+- **ML** — [k-means, PCA (4 fit routes)](docs/features/ml.md)
+- **Generators** — [linspace, easing curves, LFO/wave, DSP windows, kernels](docs/features/generators.md)
+- **Print & export** — [Burst `Print.Log`/`Print.Spy`, managed CSV/text export](docs/features/print-export.md)
 
-## Status & roadmap
+## Determinism
 
-Version `0.1` — everything above is built and tested. The API is still being read through and
-tightened ahead of `1.0`, so names and signatures may still change.
+The core algorithms are single-threaded with a fixed reduction order (the only reassociation used is
+a documented, rounding-only multi-accumulator dot). Compiled under Burst's `FloatMode.Strict` (which
+disables FP reassociation), results are reproducible run to run and across CPU architectures for a
+fixed Burst version — what a deterministic lockstep multiplayer sim needs — **provided the path uses
+only correctly-rounded operations**: the core factorizations and solvers do, but FFT and random
+sampling both use transcendental functions (`sin`/`cos`/`exp`/...) and do not carry this guarantee.
+This isn't a project-wide default either way: the library's own benchmarks compile under
+`FloatMode.Default`, so a caller who needs determinism must compile their own jobs under
+`FloatMode.Strict`.
 
-**Under design**
+## License
 
-- **Realtime** — a rolling window (ring buffer + zero-alloc moving average/covariance) exists, but
-  the broader design is unsettled: frame-amortized solvers, resumable iterative state (CG/PCG
-  stepping), online covariance / PCA, Kalman.
-- **Sparse smallest-eigenpair (LOBPCG)** — for structural-stability use cases (buckling, modal
-  analysis, the Fiedler vector). Dense small-scale versions are already covered by `eigenSymmetric`.
-
-Vector/matrix views (slicing) were evaluated and intentionally dropped: a non-owning view can't
-feed the contiguous Burst kernels directly, so callers materialize anyway — the query ops cover the
-real need.
+[MIT](LICENSE).

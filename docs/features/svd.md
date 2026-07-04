@@ -1,0 +1,45 @@
+# SVD
+
+`SVD`, built on [`Bidiag`](decompositions.md)'s Golub-Kahan-Householder reduction. Every entry point
+below has a zero-alloc workspace overload alongside the allocating one.
+
+- **`svdThin(in A, ref U, ref S, ref V, ...)`** — the main entry point: full/thin SVD via
+  bidiagonalization + implicit-shift bidiagonal QR (Golub-Reinsch). `A` (m≥n) unmodified, `U` is
+  m×n with orthonormal columns, `S` descending, `V` is n×n.
+- **`svdValues(in A, ref S, ...)`** — values only, skips reconstructing `U`/`V` entirely — the
+  cheapest route when you only need singular values (feeds `Analysis.cond`/`rank`/`matrixL2` — see
+  [blas.md](blas.md)).
+- **`svdTruncated(in A, ref Uk, ref Sk, ref Vk, int k, int oversample, ...)`** — a true top-k
+  Golub-Kahan-Lanczos reduction (not full-then-slice): builds only the requested `k` (+ oversample)
+  singular triplets directly. `partialReorth` toggles full DGKS reorthogonalization (stable) vs. an
+  ω-recurrence (fast). Fastest *exact* route for small/mid k.
+- **`svdRandomized(in A, ref Uk, ref Sk, ref Vk, int k, int oversample, int powerIters, ...)`** —
+  Halko-Martinsson-Tropp: randomized range-finder + subspace iteration + a small exact SVD of the
+  sketch. GEMM-dominated; wins over the exact routes when `k ≪ n` and `n` is large.
+- **`pinvSolve`/`pseudoInverse`** — minimum-norm least-squares / Moore-Penrose pseudo-inverse via
+  `svdThin`, any shape/rank (see [least-squares.md](least-squares.md)).
+- **`lowRankApprox(in A, ref Ak, int k, ...)`** — best rank-k approximation (Eckart-Young), via full
+  `svdThin` + slice (exact, not the truncated-GKL route).
+- **`nullspaceBasis`/`rangeBasis(in A, ref basis, ...)`** — orthonormal nullspace/range basis from
+  trailing/leading singular vectors.
+- `svdDecomposition` (one-sided Jacobi) is `[Obsolete]`, kept only for reference/cross-checking —
+  every route above supersedes it.
+
+Reuses the fast symmetric eigensolver rather than ever forming `AᵀA`: singular values are the
+positive eigenvalues of the Jordan-Wielandt augmented matrix `[[0,A],[Aᵀ,0]]`, so accuracy tracks
+`κ(A)`, not `κ(A)²`.
+
+## Benchmarks
+
+Single-thread, this machine, float, `Burst IJob.Run` median of 9 — each row is a vectorization fix,
+not an algorithm change (same output, cited by commit):
+
+| Method | Size | Before → after | Source |
+|---|---|---|---|
+| `svdThin` (Golub-Kahan bidiagonal QR rotations → contiguous rows) | 256² | 43.5 → 8.96ms (4.85×) | `92db7b4` |
+| `svdValues` (routed through Bidiag instead of the augmented-matrix eigensolve) | 256² | 21.7 → 3.78ms (5.7×) | `4ac19bd` |
+| `svdTruncated` (GKL basis transposed to rows + routed through vectorized GEMV) | 2048×256, k≈21% | 6.2–6.9× faster | `4203c72` |
+
+`svdTruncated` is now the fastest *exact* top-k method for small/mid k (beats both `svdThin` and
+`svdRandomized` by 3–4×); `svdRandomized` only wins at high k% on large matrices (not independently
+re-benchmarked after the `svdTruncated` fix).
