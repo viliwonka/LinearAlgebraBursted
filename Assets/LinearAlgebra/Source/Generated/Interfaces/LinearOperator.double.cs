@@ -66,6 +66,20 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Identity preconditioner: z = r (no-op copy). Gives a <c>TPre</c>-generic solver (e.g.
+    /// <see cref="LOBPCG.lobpcg{TOp,TPre}"/>) a concrete, zero-cost "no preconditioner" instance so
+    /// its UNPRECONDITIONED entry point can forward into the single preconditioned generic
+    /// implementation with a one-line call instead of duplicating a large loop body -- the same
+    /// role <see cref="doubleDenseOperator"/> plays for dense callers of a <c>TOp</c>-generic
+    /// solver. Readonly and stateless: a value copy costs nothing, and Burst monomorphizes the
+    /// `M.Apply` call into the plain copy below (no vtable, no branch).
+    /// </summary>
+    public readonly struct doubleIdentityPreconditioner : IdoublePreconditioner
+    {
+        public void Apply(in doubleN r, ref doubleN z) => z.Data.CopyFrom(r.Data);
+    }
+
+    /// <summary>
     /// Right column-scaling wrapper: presents the operator A·D where D = diag(d) is a diagonal
     /// scaling of the INPUT (column) space, over any inner <typeparamref name="TInner"/> operator.
     /// Composes with every generic solver with NO solver change (they are already generic over

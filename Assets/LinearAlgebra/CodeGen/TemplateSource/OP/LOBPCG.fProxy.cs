@@ -1,0 +1,1020 @@
+﻿using System;
+using System.Runtime.CompilerServices;
+
+using Unity.Collections;
+using Unity.Mathematics;
+using LinearAlgebra.Sparse;
+
+namespace LinearAlgebra
+{
+    /// <summary>
+    /// Blocked Locally Optimal Block Preconditioned Conjugate Gradient (LOBPCG): the k SMALLEST
+    /// eigenpairs of a symmetric operator A (A.Rows == A.Cols), generic over any
+    /// <see cref="IfProxyLinearOperator"/> / optional <see cref="IfProxyPreconditioner"/> --
+    /// same Burst-monomorphized static-dispatch shape as <see cref="Solvers.cg{TOp}"/> /
+    /// <see cref="Solvers.pcg{TOp,TPre}"/>. Reuses the dense
+    /// <see cref="Eigen.eigenSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/> solver for the
+    /// small (&lt;= 3k) Rayleigh-Ritz sub-problem and <see cref="Cholesky.choleskyDecomposition"/>
+    /// for both orthogonalization and the generalized-to-standard eigenproblem reduction.
+    ///
+    /// DESIGN NOTES (see the coder's final report for the full write-up; summarized here for
+    /// future maintainers):
+    ///
+    /// <b>Block size / guard vectors:</b> the active block is exactly k (the requested count) --
+    /// no extra guard vectors. Locking (below) already shrinks the active Rayleigh-Ritz problem as
+    /// pairs converge, which is the main lever real implementations use guard vectors for; adding
+    /// k+g guard columns would speed up the slowest-converging pair at the cost of a meaningfully
+    /// larger per-iteration Gram/eigensolve, so this implementation leaves it out (a documented,
+    /// reportable scope decision, not an oversight).
+    ///
+    /// <b>Locking:</b> deflation-based. Once a pair's relative residual meets <c>tol</c> it is
+    /// LOCKED -- swapped to the back of the k-wide window (frozen, no longer touched: no matvec,
+    /// no preconditioner Apply, no Rayleigh-Ritz) -- and every remaining active W/P direction is
+    /// explicitly projected (deflated) off the FULL locked+active X block, so the active subspace
+    /// never re-discovers an already-found eigenvector. This differs slightly from the most literal
+    /// reading of "soft locking" (which keeps locked columns IN the Rayleigh-Ritz mix so they can
+    /// still drift); deflating them out entirely is simpler, strictly cheaper (zero cost per locked
+    /// pair per iteration, matching the spec's "excluded from W computation" requirement), and
+    /// standard in the literature (Knyazev). Locked pairs stay exposed in the output X (frozen at
+    /// their converged values) exactly as the spec requires.
+    ///
+    /// <b>Orthogonalization (safeguard 1):</b> two stages, both required. First, W is DEFLATED
+    /// (projected, modified-Gram-Schmidt style, TWICE for stability -- mirrors
+    /// <see cref="Eigen.lanczos{TOp}"/>'s own "reorthogonalize twice" folklore) against the full
+    /// locked+active X; P (once formed) is deflated against X and then against the
+    /// already-deflated W. Second, W (then P) is Cholesky-QR-orthonormalized INTERNALLY (see
+    /// <see cref="OrthonormalizeBlock"/>) -- an EARLIER version of this method skipped this second
+    /// stage, reasoning that the Rayleigh-Ritz step's own Cholesky-based generalized-to-standard
+    /// reduction (below) would absorb it "for free"; that was wrong in practice: deflation alone
+    /// leaves W's/P's OWN internal scale arbitrary (active pairs' residuals routinely shrink by very
+    /// different amounts), and feeding that directly into the combined Gram relies on ONE Cholesky
+    /// factorization to absorb both the deflation and that scale spread -- which is exactly the
+    /// ill-conditioned-basis failure mode that manufactures spurious Ritz values (observed: values
+    /// BELOW lambda_min, even negative, for an SPD test operator) instead of tripping the
+    /// rank-deficiency safeguard. Internally orthonormalizing first keeps the combined Gram close to
+    /// the identity, so the final Rayleigh-Ritz Cholesky is well-conditioned by construction and a
+    /// genuine rank deficiency reliably trips safeguard 2 instead. Every orthogonalization step
+    /// mirrors its combination onto A*V using the SAME coefficients (linearity: A(sum_r c_r v_r) =
+    /// sum_r c_r (A v_r)), so AW never needs a fresh matvec -- but see the "AX/AP freshness" note
+    /// below for why X's and P's own A-images do NOT rely purely on this mirroring.
+    ///
+    /// <b>AX/AP freshness (rescue-task fix):</b> an earlier version of this method maintained BOTH
+    /// AX and AP purely via the linearity-mirroring above, across EVERY iteration, with no
+    /// independent recomputation -- i.e. A was never re-applied to X or P once the initial AX seed
+    /// was formed. This is a correctness bug, not just an accuracy nicety: AX/AP are each reformed
+    /// from a NEW linear combination every iteration (chained onto the PREVIOUS iteration's AX/AP),
+    /// so any rounding error introduced by one iteration's Cholesky-QR/Rayleigh-Ritz combination
+    /// compounds into the next. For AX this manifested as slow drift -- the residual would shrink
+    /// geometrically for the first ~15-20 iterations, then stall and creep back up instead of
+    /// continuing to converge (X's OWN combination coefficients are usually well-behaved, so the
+    /// drift is slow). For AP the effect was far more direct and severe: AP feeds straight into
+    /// next iteration's H (the P-columns are dot(*, AP)), so a single iteration's inaccurate AP
+    /// corrupts the NEXT Rayleigh-Ritz problem's energy matrix directly -- this, combined with
+    /// safeguard 2's diag-ratio check being a poor proxy for THIS specific failure (see safeguard 3
+    /// below), is what actually produced Ritz values far below lambda_min, even wildly negative, as
+    /// soon as P entered the mix. The fix: after <see cref="UpdateActiveBlock"/> forms the new
+    /// X/P for this iteration, AX and AP are each recomputed via a FRESH <c>A.Apply</c> (the
+    /// canonical "R = A X - X diag(theta)" formulation), rather than trusted from the combination.
+    /// This costs two extra matvec batches per iteration (over numActive rows) on top of AW's one --
+    /// a small, worthwhile price for AX/AP that stay exact to working precision indefinitely.
+    ///
+    /// <b>Rayleigh-Ritz / rank deficiency (safeguard 2):</b> forms Gram = S^T S and H = S^T A S for
+    /// S = [X_active; W_active(deflated); P_active(deflated)] (m = 3*numActive, or 2*numActive
+    /// before P exists), Cholesky-factors Gram (with one Tikhonov-ridge retry on failure/a tiny
+    /// relative pivot -- mirrors <see cref="Cholesky.choleskyPivotSolve"/>'s own ridge-retry
+    /// recovery, and the retry attempt is re-checked against the SAME pivot tolerance rather than
+    /// accepted on bare Cholesky success), reduces to the standard eigenproblem Ahat = L^-1 H L^-T,
+    /// solves it with <see cref="Eigen.eigenSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/>,
+    /// and recovers the combination coefficients C = L^-T Y. If the 3-block Cholesky fails/is too
+    /// ill-conditioned this iteration DROPS P and retries with just [X_active; W_active] -- "the
+    /// standard fix" the spec calls for. If even THAT fails (after its own ridge retry), this
+    /// iteration is a no-op STALL: X/lambda are left unchanged, P's history is discarded, and the
+    /// loop tries again next iteration -- never NaN, never diverges, just makes no progress that
+    /// one iteration.
+    ///
+    /// <b>Ritz-value plausibility (safeguard 3, rescue-task addition):</b> safeguard 2's Cholesky
+    /// diag-ratio check turned out to be a poor proxy for the ACTUAL failure this class was built
+    /// to prevent -- diagnostic runs found diag ratios of 5.7E-08, 8.1E-04 and 1.25E-03 (all safely
+    /// clear of the sqrt(eps) pivot threshold, i.e. "comfortably well-conditioned" by that check)
+    /// that nonetheless produced Ritz values of -328042.9 and worse. Tightening the pivot threshold
+    /// was tried and rejected: it also rejects benign, already-convergent 2-block [X,W] cases with
+    /// SIMILAR diag ratios that were converging perfectly correctly, so the threshold is not
+    /// discriminating the failure at all -- something else was wrong (the AX/AP freshness bug
+    /// above), and no Cholesky-conditioning threshold can distinguish "well-conditioned reduction of
+    /// a subtly-corrupted problem" from "well-conditioned reduction of a correct one". Instead, this
+    /// safeguard checks the RESULT directly against a cheap, numerically TRUSTWORTHY bound computed
+    /// before the Cholesky reduction: H[i,i]/Gram[i,i] is the exact Rayleigh quotient of one
+    /// individual, already-unit-normalized basis row (a row of X, W, or P) -- a plain dot-product
+    /// ratio, no matrix inversion involved, so it is immune to whatever ill-conditioning may corrupt
+    /// the L^-1 H L^-T transform. Every individual Rayleigh quotient is, by definition, within
+    /// [lambda_min(A), lambda_max(A)] of the FULL operator; a selected Ritz value falling wildly
+    /// outside a generous (1000x) envelope around the range spanned by these quotients is rejected
+    /// (triggering the same drop-P/stall fallback as safeguard 2), rather than locked in as
+    /// numerical garbage.
+    ///
+    /// <b>Guard against tiny/non-finite residuals (safeguard 4):</b> a non-finite (NaN/Inf) residual
+    /// norm aborts the whole solve immediately with <see cref="IterativeSolveStatus.Breakdown"/>
+    /// rather than feeding garbage into the preconditioner/orthogonalization; an exactly-zero (or
+    /// tiny) residual is simply locked immediately (it already satisfies the relative-tolerance
+    /// check for any tol &gt; 0), which is this implementation's reading of "guard before
+    /// normalizing" -- there is no separate per-vector unit-normalization step to guard (Cholesky-QR
+    /// style orthogonalization here operates on the whole active block via its Gram matrix, which
+    /// is scale-covariant), so the guard is folded into the convergence/lock check instead of a
+    /// standalone division.
+    ///
+    /// <b>Zero-alloc scope:</b> every O(n)-scale buffer (X/W/P/AX/AW/AP/R and their "next"
+    /// ping-pong twins, plus the row scratch) lives in <see cref="fProxyLOBPCGCache"/>, allocated
+    /// once via <c>Arena.fProxyLOBPCGCache(n, k)</c> and reused across calls -- zero allocation at
+    /// the O(n) scale. The O(k)-scale Rayleigh-Ritz sub-problem's DENSE matrices (Gram/H/L/Atrans/
+    /// Y/C, each up to 3k x 3k) are ALSO cache fields, reused every iteration via a same-buffer,
+    /// smaller-shaped logical view (<see cref="View"/> -- <see cref="fProxyMxN.M_Rows"/>/
+    /// <see cref="fProxyMxN.N_Cols"/> are plain mutable fields independent of the backing store, so
+    /// a value-copy with different dims is a free reinterpretation of the SAME buffer, not a new
+    /// allocation). The one exception: <see cref="Eigen.eigenSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/>
+    /// itself is not zero-alloc (it allocates three length-m Temp vectors internally, already true
+    /// of every existing caller e.g. <see cref="Eigen.lanczosVectors{TOp}"/>), and this method's own
+    /// small O(m) row/column scratch inside the triangular-solve helpers is likewise a bounded
+    /// <c>Allocator.Temp</c> vector -- consistent with, not a regression from, that established
+    /// precedent.
+    ///
+    /// <b>Convergence:</b> per-pair 2-norm relative residual ||A x_i - lambda_i x_i|| /
+    /// max(|lambda_i|, 1) &lt;= tol. Returns a <see cref="LOBPCGInfo"/> (reuses
+    /// <see cref="IterativeSolveStatus"/> -- Converged/MaxIterations/Breakdown, no new enum).
+    ///
+    /// <b>Output order:</b> eigenvalues/eigenvectors are returned ASCENDING (index 0 = smallest) --
+    /// unlike every OTHER Eigen method in this library (which sorts descending), because LOBPCG's
+    /// entire purpose is "the k smallest", so smallest-first is the natural presentation here.
+    /// </summary>
+    public static partial class LOBPCG
+    {
+        /// <summary>
+        /// Zero-alloc (at O(n) scale) LOBPCG primitive, preconditioned. See the class doc comment
+        /// for the full algorithm/robustness write-up. <paramref name="ws"/> is warm-startable:
+        /// pre-fill <c>ws.X</c> with a guess (it is orthonormalized unconditionally at the start,
+        /// whether seeded or supplied); the all-zero block is seeded deterministically first.
+        /// </summary>
+        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref fProxyLOBPCGCache ws,
+                                                    int k, fProxy tol, int maxIter)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+        {
+            if (A.Rows != A.Cols)
+                throw new ArgumentException("LOBPCG: A must be square");
+
+            int n = A.Rows;
+
+            if (k < 1 || k > n)
+                throw new ArgumentException("LOBPCG: k must be in [1, A.Rows]");
+
+            if (maxIter < 1)
+                throw new ArgumentException("LOBPCG: maxIter must be >= 1");
+
+            if (tol <= (fProxy)0)
+                throw new ArgumentException("LOBPCG: tol must be > 0");
+
+            RequireLOBPCGWorkspace(in ws, n, k);
+            RequireDistinctBuffers(in ws);
+
+            // ---- seed X if all-zero, then orthonormalize unconditionally ----
+            bool allZero = true;
+            for (int i = 0; i < k && allZero; i++)
+                for (int c = 0; c < n; c++)
+                    if (ws.X[i, c] != (fProxy)0) { allZero = false; break; }
+
+            // Deterministic pseudo-random fill (fixed seed -- same inputs always produce the same
+            // result), NOT a periodic formula: an earlier version used `(i + c*3 + 1) & 3`, which
+            // repeats with period 4 in BOTH i and c, so the seeded X has AT MOST 4 distinct rows --
+            // EXACTLY rank-deficient for any k > 4. That degeneracy is silently absorbed by
+            // FactorGram's ridge retry (see safeguard 2), so the solver would iterate correctly
+            // within only a 4-dimensional subspace instead of the full R^n, never converging to
+            // eigenpairs 5+ (or converging to duplicates/garbage for them). A fixed-seed
+            // Unity.Mathematics.Random fill (mirrors the same deterministic-seed pattern used by
+            // SVD.LowRank/SVD.Randomized's own `rng.NextFloat() * 2f - 1f` seed vectors) has
+            // effectively zero chance of landing in any low-dimensional subspace for realistic n/k.
+            if (allZero)
+            {
+                var seedRng = new Unity.Mathematics.Random(0x9E3779B1u);
+                for (int i = 0; i < k; i++)
+                    for (int c = 0; c < n; c++)
+                        ws.X[i, c] = (fProxy)(seedRng.NextFloat() * 2f - 1f);
+            }
+
+            // ws.AX is not yet meaningful here (freshly recomputed via A.Apply right below) --
+            // passed through purely so the SAME combination applied to X is mirrored onto it too
+            // (harmless busywork on not-yet-meaningful data), letting the initial seed reuse the
+            // exact same helper every OTHER block orthonormalization in this file uses.
+            if (!OrthonormalizeBlock(ref ws.X, ref ws.AX, k, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
+                return new LOBPCGInfo { iterations = 0, converged = 0, maxResidual = double.NaN, status = IterativeSolveStatus.Breakdown };
+
+            for (int i = 0; i < k; i++)
+            {
+                for (int c = 0; c < n; c++) ws.rowIn[c] = ws.X[i, c];
+                A.Apply(in ws.rowIn, ref ws.rowOut);
+                for (int c = 0; c < n; c++) ws.AX[i, c] = ws.rowOut[c];
+            }
+
+            for (int i = 0; i < k; i++)
+            {
+                fProxy d = (fProxy)0;
+                for (int c = 0; c < n; c++) d += ws.X[i, c] * ws.AX[i, c];
+                ws.lambda[i] = d;
+            }
+
+            int numActive = k;
+            bool haveP = false;
+
+            for (int iter = 0; iter < maxIter; iter++)
+            {
+                // ---- residual + lock newly converged pairs (scan back-to-front so a swap-in
+                //      from the back is still checked) ----
+                for (int i = numActive - 1; i >= 0; i--)
+                {
+                    fProxy rn2 = (fProxy)0;
+                    for (int c = 0; c < n; c++)
+                    {
+                        fProxy rv = ws.AX[i, c] - ws.lambda[i] * ws.X[i, c];
+                        ws.R[i, c] = rv;
+                        rn2 += rv * rv;
+                    }
+                    fProxy rnorm = math.sqrt(rn2);
+
+                    if (!math.isfinite(rnorm))
+                    {
+                        SortAscending(ref ws, k);
+                        return new LOBPCGInfo { iterations = iter, converged = k - numActive, maxResidual = double.NaN, status = IterativeSolveStatus.Breakdown };
+                    }
+
+                    ws.residual[i] = rnorm;
+
+                    fProxy scale = math.abs(ws.lambda[i]);
+                    if (scale < (fProxy)1) scale = (fProxy)1;
+
+                    if (rnorm <= tol * scale)
+                    {
+                        int last = numActive - 1;
+                        if (i != last)
+                        {
+                            Swap.Rows(ref ws.X, i, last);
+                            Swap.Rows(ref ws.AX, i, last);
+                            Swap.Vec(ref ws.lambda, i, last);
+                            Swap.Vec(ref ws.residual, i, last);
+
+                            // P/AP (the search direction) and R (this row's own just-computed raw
+                            // residual, which forms W a few lines below) must move WITH the pair
+                            // that is moving into row i (previously row `last`), or the next steps
+                            // read a search direction / residual belonging to a DIFFERENT
+                            // (just-locked) pair -- a desync bug that only manifests once a
+                            // lock-swap actually happens (k==1, or a run that converges before any
+                            // lock, never exercises it).
+                            Swap.Rows(ref ws.P, i, last);
+                            Swap.Rows(ref ws.AP, i, last);
+                            Swap.Rows(ref ws.R, i, last);
+                        }
+                        numActive--;
+                    }
+                }
+
+                if (numActive == 0)
+                {
+                    // `iter` (not iter+1): iterations 0..iter-1 each did a full W/Rayleigh-Ritz
+                    // work pass; THIS iteration only ran the residual check before finding
+                    // everyone already converged, so it contributes no additional work -- matches
+                    // SolveInfo's "0 when converged before the first step" convention.
+                    SortAscending(ref ws, k);
+                    return new LOBPCGInfo { iterations = iter, converged = k, maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.Converged };
+                }
+
+                // ---- W = M^-1 R (active), AW = A W (active) -- the ONE matvec batch/iteration ----
+                for (int i = 0; i < numActive; i++)
+                {
+                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.R[i, c];
+                    M.Apply(in ws.rowIn, ref ws.rowOut);
+                    for (int c = 0; c < n; c++) ws.W[i, c] = ws.rowOut[c];
+                }
+                for (int i = 0; i < numActive; i++)
+                {
+                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.W[i, c];
+                    A.Apply(in ws.rowIn, ref ws.rowOut);
+                    for (int c = 0; c < n; c++) ws.AW[i, c] = ws.rowOut[c];
+                }
+
+                // ---- deflate against X, then INTERNALLY orthonormalize (safeguard 1) ----
+                // Deflation alone leaves W's OWN Gram an arbitrary SPD matrix (its rows can differ
+                // in scale by orders of magnitude, e.g. once some pairs' residuals have shrunk much
+                // more than others) -- feeding that directly into the combined Rayleigh-Ritz Gram
+                // relies on ONE Cholesky to absorb both the deflation AND that scale spread, which
+                // is exactly the ill-conditioned-basis failure mode that produces spurious Ritz
+                // values (below lambda_min, even negative) instead of tripping the rank-deficiency
+                // safeguard. Cholesky-QR-normalizing W (and P) INTERNALLY right here -- via the same
+                // FactorGram (with its ridge retry) used everywhere else -- keeps the combined Gram
+                // close to the identity, so the final Rayleigh-Ritz Cholesky is well-conditioned by
+                // construction and a genuine rank deficiency reliably trips the correct safeguard.
+                Deflate(ref ws.W, ref ws.AW, numActive, in ws.X, in ws.AX, k, n);
+
+                if (!OrthonormalizeBlock(ref ws.W, ref ws.AW, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
+                {
+                    // W collapsed entirely onto the already-known (locked+active X) subspace --
+                    // a genuinely degenerate iteration. Stall (leave X/lambda untouched) rather
+                    // than feed a degenerate basis into Rayleigh-Ritz; try again next iteration.
+                    haveP = false;
+                    continue;
+                }
+
+                bool haveP0 = haveP;
+                if (haveP0)
+                {
+                    Deflate(ref ws.P, ref ws.AP, numActive, in ws.X, in ws.AX, k, n);
+                    Deflate(ref ws.P, ref ws.AP, numActive, in ws.W, in ws.AW, numActive, n);
+
+                    // If P has become (nearly) linearly dependent on X/W -- e.g. after many
+                    // iterations P can drift toward the span already covered -- drop it for just
+                    // this iteration (safeguard 2's "standard fix") rather than treating it as a
+                    // hard stall; W alone is still a perfectly good (steepest-descent) basis.
+                    if (!OrthonormalizeBlock(ref ws.P, ref ws.AP, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
+                        haveP0 = false;
+                }
+
+                // ---- Rayleigh-Ritz, 3-block with a 2-block ("drop P") fallback (safeguard 2) ----
+                bool usedP = haveP0;
+                bool ok = TryRayleighRitz(ref ws, numActive, usedP, n);
+
+                if (!ok && usedP)
+                {
+                    usedP = false;
+                    ok = TryRayleighRitz(ref ws, numActive, usedP, n);
+                }
+
+                if (!ok)
+                {
+                    // Pathological stall: leave X/lambda untouched this iteration and retry next
+                    // time; discard P's history since it (or even just [X,W]) was implicated.
+                    haveP = false;
+                    continue;
+                }
+
+                UpdateActiveBlock(ref ws, numActive, usedP, n, k);
+
+                // Recompute AX FRESH via a matvec -- UpdateActiveBlock deliberately does NOT also
+                // mirror-combine AX (see its own doc comment): propagating AX through many
+                // iterations of Cholesky-QR/Rayleigh-Ritz combinations (never re-touching A)
+                // accumulates rounding error that compounds -- exactly the observed failure mode
+                // (residual shrinks nicely for ~15-20 iterations, then stalls and creeps back up
+                // instead of continuing to converge). This is the canonical "R = A X - X diag(theta)"
+                // fresh-residual formulation; the one extra matvec/iteration (over numActive rows
+                // only) is a small, worthwhile price for a residual that stays exact to working
+                // precision indefinitely.
+                for (int i = 0; i < numActive; i++)
+                {
+                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.X[i, c];
+                    A.Apply(in ws.rowIn, ref ws.rowOut);
+                    for (int c = 0; c < n; c++) ws.AX[i, c] = ws.rowOut[c];
+                }
+
+                // Same fix for AP: P is reformed EVERY iteration from a combination of the
+                // CURRENT W and the OLD P (chained iteration to iteration, just like AX used to
+                // be), and -- unlike AX, which only feeds the residual/convergence check -- an
+                // inaccurate AP corrupts next iteration's [X,W,P] Gram/H directly (H's P-columns
+                // are dot(*, AP)), which is a much more direct route to visibly wrong Ritz values
+                // (this is what actually produced Ritz values below lambda_min, even wildly
+                // negative, as soon as P entered the mix -- not merely a conditioning threshold
+                // issue, since the SAME marginal conditioning is completely harmless in the
+                // P-less 2-block path above).
+                for (int i = 0; i < numActive; i++)
+                {
+                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.P[i, c];
+                    A.Apply(in ws.rowIn, ref ws.rowOut);
+                    for (int c = 0; c < n; c++) ws.AP[i, c] = ws.rowOut[c];
+                }
+
+                haveP = true;
+            }
+
+            SortAscending(ref ws, k);
+            return new LOBPCGInfo { iterations = maxIter, converged = k - numActive, maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
+        }
+
+        /// <summary>lobpcg (preconditioned) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => lobpcg(in A, in M, ref ws, k, tol, 1000);
+
+        /// <summary>lobpcg (preconditioned) with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref fProxyLOBPCGCache ws, int k)
+            where TOp : struct, IfProxyLinearOperator
+            where TPre : struct, IfProxyPreconditioner
+            => lobpcg(in A, in M, ref ws, k, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>
+        /// Zero-alloc (at O(n) scale) LOBPCG primitive, UNPRECONDITIONED. Forwards into
+        /// <see cref="lobpcg{TOp,TPre}"/> via <see cref="fProxyIdentityPreconditioner"/> -- a
+        /// one-line forwarder rather than a hand-duplicated loop (unlike <see cref="Solvers.cg{TOp}"/>
+        /// / <see cref="Solvers.pcg{TOp,TPre}"/>'s literal duplication -- LOBPCG's loop is
+        /// considerably larger, so this method mirrors the SAME "single source of truth, thin
+        /// forwarder" pattern already used everywhere else in this file for dense/BSR wrapping,
+        /// just applied one level further).
+        /// </summary>
+        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref fProxyLOBPCGCache ws, int k, fProxy tol, int maxIter)
+            where TOp : struct, IfProxyLinearOperator
+            => lobpcg(in A, new fProxyIdentityPreconditioner(), ref ws, k, tol, maxIter);
+
+        /// <summary>lobpcg (unpreconditioned) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            where TOp : struct, IfProxyLinearOperator
+            => lobpcg(in A, ref ws, k, tol, 1000);
+
+        /// <summary>lobpcg (unpreconditioned) with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref fProxyLOBPCGCache ws, int k)
+            where TOp : struct, IfProxyLinearOperator
+            => lobpcg(in A, ref ws, k, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>
+        /// LOBPCG over a dense <see cref="fProxyMxN"/> -- zero-alloc primitive, unpreconditioned.
+        /// Forwards into <see cref="lobpcg{TOp}"/> via <see cref="fProxyDenseOperator"/>.
+        /// </summary>
+        public static LOBPCGInfo lobpcg(in fProxyMxN A, ref fProxyLOBPCGCache ws, int k, fProxy tol, int maxIter)
+            => lobpcg(new fProxyDenseOperator(in A), ref ws, k, tol, maxIter);
+
+        /// <summary>lobpcg over a dense matrix with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyMxN A, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            => lobpcg(in A, ref ws, k, tol, 1000);
+
+        /// <summary>lobpcg over a dense matrix with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyMxN A, ref fProxyLOBPCGCache ws, int k)
+            => lobpcg(in A, ref ws, k, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>
+        /// LOBPCG over a dense SYMMETRIC matrix -- allocates the workspace from <paramref
+        /// name="arena"/> and calls the zero-alloc primitive. Returns the eigenvalues (length k,
+        /// ASCENDING); <paramref name="eigenvectors"/> is k x n (row i = eigenvector i). Both
+        /// buffers are the workspace's OWN X/lambda (no extra copy) -- the rest of the workspace
+        /// stays allocated in the arena, unused after this call, exactly like every other
+        /// arena-convenience wrapper in this library (e.g. <see cref="Eigen.lanczosVectors{TOp}"/>).
+        /// </summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, int k, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
+        {
+            var ws = arena.fProxyLOBPCGCache(A.M_Rows, k);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating) over a dense matrix with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
+            => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>
+        /// LOBPCG over a block-sparse (BSR) matrix -- zero-alloc primitive, unpreconditioned.
+        /// Forwards into <see cref="lobpcg{TOp}"/> via <c>fProxyBSROperator</c>.
+        /// </summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, ref fProxyLOBPCGCache ws, int k, fProxy tol, int maxIter)
+            => lobpcg(new fProxyBSROperator(in A), ref ws, k, tol, maxIter);
+
+        /// <summary>lobpcg over a BSR matrix with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            => lobpcg(in A, ref ws, k, tol, 1000);
+
+        /// <summary>lobpcg over a BSR matrix with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, ref fProxyLOBPCGCache ws, int k)
+            => lobpcg(in A, ref ws, k, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>lobpcg (allocating) over a BSR matrix. See the dense overload's doc comment.</summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
+        {
+            var ws = arena.fProxyLOBPCGCache(A.M_Rows, k);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating) over a BSR matrix with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
+            => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>
+        /// LOBPCG over a block-sparse (BSR) matrix with its matching block-Jacobi preconditioner --
+        /// zero-alloc primitive. Forwards into <see cref="lobpcg{TOp,TPre}"/> via
+        /// <c>fProxyBSROperator</c>/<c>fProxyBlockJacobi</c>. This is the preconditioned entry point
+        /// the sparse-BSM eigensolver roadmap calls out (matvec + block-Jacobi, matching how
+        /// <see cref="Solvers.pcg(in fProxyBSR, in fProxyBlockJacobi, in fProxyN, ref fProxyN)"/>
+        /// consumes it).
+        /// </summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws,
+                                         int k, fProxy tol, int maxIter)
+            => lobpcg(new fProxyBSROperator(in A), in M, ref ws, k, tol, maxIter);
+
+        /// <summary>lobpcg (BSR + block-Jacobi) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws, int k, fProxy tol)
+            => lobpcg(in A, in M, ref ws, k, tol, 1000);
+
+        /// <summary>lobpcg (BSR + block-Jacobi) with default tol (Consts.fProxySqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in fProxyBSR A, in fProxyBlockJacobi M, ref fProxyLOBPCGCache ws, int k)
+            => lobpcg(in A, in M, ref ws, k, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi. See the dense overload's doc comment.</summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, in fProxyBlockJacobi M, int k,
+                                      out fProxyMxN eigenvectors, out LOBPCGInfo info, fProxy tol, int maxIter)
+        {
+            var ws = arena.fProxyLOBPCGCache(A.M_Rows, k);
+            info = lobpcg(in A, in M, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi and default tol/maxIter.</summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, in fProxyBlockJacobi M, int k,
+                                      out fProxyMxN eigenvectors, out LOBPCGInfo info)
+            => lobpcg(ref arena, in A, in M, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
+
+        // ==================================================================================
+        // Private helpers
+        // ==================================================================================
+
+        // Aliasing guard: every scratch buffer in the workspace must be distinct -- same rationale
+        // as cg<TOp>'s guard (elementwise updates below don't self-check aliasing). A local
+        // loop-based check (mirrors Solvers.RequireDistinctBuffers) rather than a hand-expanded OR
+        // chain: 21 buffers -> 210 pairs, impractical to hand-write/review. Includes the O(k)-scale
+        // Rayleigh-Ritz scratch (Gram/H/L/Atrans/Y/C) alongside the O(n)-scale buffers -- all six
+        // live simultaneously within a single TryRayleighRitz call (Gram/H built together, L
+        // factored from Gram, Atrans formed from H/L, Y from Atrans, C from Y/L), so an aliased
+        // pair among THEM is just as much a correctness hazard as an aliased O(n) pair.
+        static unsafe void RequireDistinctBuffers(in fProxyLOBPCGCache ws)
+        {
+            const int count = 21;
+            long* ptrs = stackalloc long[count];
+            ptrs[0] = (long)ws.X.Data.Ptr;
+            ptrs[1] = (long)ws.AX.Data.Ptr;
+            ptrs[2] = (long)ws.W.Data.Ptr;
+            ptrs[3] = (long)ws.AW.Data.Ptr;
+            ptrs[4] = (long)ws.P.Data.Ptr;
+            ptrs[5] = (long)ws.AP.Data.Ptr;
+            ptrs[6] = (long)ws.R.Data.Ptr;
+            ptrs[7] = (long)ws.Xnext.Data.Ptr;
+            ptrs[8] = (long)ws.AXnext.Data.Ptr;
+            ptrs[9] = (long)ws.Pnext.Data.Ptr;
+            ptrs[10] = (long)ws.APnext.Data.Ptr;
+            ptrs[11] = (long)ws.lambda.Data.Ptr;
+            ptrs[12] = (long)ws.residual.Data.Ptr;
+            ptrs[13] = (long)ws.rowIn.Data.Ptr;
+            ptrs[14] = (long)ws.rowOut.Data.Ptr;
+            ptrs[15] = (long)ws.Gram.Data.Ptr;
+            ptrs[16] = (long)ws.H.Data.Ptr;
+            ptrs[17] = (long)ws.L.Data.Ptr;
+            ptrs[18] = (long)ws.Atrans.Data.Ptr;
+            ptrs[19] = (long)ws.Y.Data.Ptr;
+            ptrs[20] = (long)ws.C.Data.Ptr;
+
+            for (int i = 0; i < count; i++)
+                for (int j = i + 1; j < count; j++)
+                    if (ptrs[i] == ptrs[j])
+                        throw new ArgumentException("LOBPCG: workspace buffers must be distinct (use Arena.fProxyLOBPCGCache(n, k))");
+        }
+
+        // Same-buffer, smaller-shaped logical view: fProxyMxN.M_Rows/N_Cols are plain mutable
+        // fields independent of the backing Data store, so a value-copy with adjusted dims is a
+        // free reinterpretation of the SAME (larger, cache-owned) buffer's leading m x m block --
+        // not a new allocation. See the class doc comment's "Zero-alloc scope" note.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static fProxyMxN View(in fProxyMxN buf, int m)
+        {
+            var v = buf;
+            v.M_Rows = m;
+            v.N_Cols = m;
+            return v;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static void SwapMat(ref fProxyMxN a, ref fProxyMxN b)
+        {
+            var t = a;
+            a = b;
+            b = t;
+        }
+
+        // Cholesky-QR-orthonormalizes the first `rows` rows of V IN PLACE, carrying AV along via
+        // the SAME combination (linearity: A(sum_r c_r v_r) = sum_r c_r (A v_r), so AV never needs
+        // a fresh matvec): G = V V^T, Cholesky-factor it (with FactorGram's own ridge retry), then
+        // Vortho[i,:] = (V[i,:] - sum_{r<i} L[i,r]*Vortho[r,:]) / L[i,i] row by row (each row's
+        // update only reads ALREADY-finalized earlier rows, so overwriting V/AV in place, top row
+        // first, is safe), with the identical row combination applied to AV in lockstep. Used both
+        // to orthonormalize the initial X seed and, every iteration, to internally orthonormalize
+        // the (already X-deflated) W and P blocks -- see the class doc comment's "Orthogonalization"
+        // note on why this is not redundant with the Rayleigh-Ritz Gram's own Cholesky step: without
+        // it, W/P's arbitrary internal scale (e.g. once residuals have shrunk by very different
+        // amounts across active pairs) can make the COMBINED Gram ill-conditioned enough that its
+        // one Cholesky produces spurious Ritz values instead of tripping the rank-deficiency
+        // safeguard. `rowTmp`/`rowTmp2` (length n each) are caller-provided scratch. Returns false
+        // if V's rows cannot be orthonormalized at all (rank-deficient even after FactorGram's ridge
+        // retry -- e.g. k > n for the initial seed, or W/P has collapsed onto the already-known
+        // subspace); callers stall or drop P accordingly.
+        static bool OrthonormalizeBlock(ref fProxyMxN V, ref fProxyMxN AV, int rows, int n,
+                                         ref fProxyMxN Gram, ref fProxyMxN L, ref fProxyN rowTmp, ref fProxyN rowTmp2)
+        {
+            var G = View(in Gram, rows);
+            var Lv = View(in L, rows);
+
+            FillGramSub(ref G, 0, in V, rows, 0, in V, rows, n, true);
+
+            if (!FactorGram(ref G, ref Lv, rows))
+                return false;
+
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < n; c++) { rowTmp[c] = V[i, c]; rowTmp2[c] = AV[i, c]; }
+
+                for (int r = 0; r < i; r++)
+                {
+                    fProxy coef = Lv[i, r];
+                    for (int c = 0; c < n; c++)
+                    {
+                        rowTmp[c] -= coef * V[r, c];
+                        rowTmp2[c] -= coef * AV[r, c];
+                    }
+                }
+
+                fProxy inv = (fProxy)1 / Lv[i, i];
+                for (int c = 0; c < n; c++)
+                {
+                    V[i, c] = rowTmp[c] * inv;
+                    AV[i, c] = rowTmp2[c] * inv;
+                }
+            }
+
+            return true;
+        }
+
+        // Fills Gram[rowOff+i, colOff+j] = dot(Vb[i,:], Wb[j,:]) and mirrors the SAME value into
+        // [colOff+j, rowOff+i] (Gram is symmetric by construction). `sameBlock` (Vb/Wb identical,
+        // rowOff==colOff) restricts the fill to the upper triangle i<=j to avoid redundant work.
+        static void FillGramSub(ref fProxyMxN Gram, int rowOff, in fProxyMxN Vb, int rows,
+                                 int colOff, in fProxyMxN Wb, int cols, int n, bool sameBlock)
+        {
+            for (int i = 0; i < rows; i++)
+            {
+                int jStart = sameBlock ? i : 0;
+                for (int j = jStart; j < cols; j++)
+                {
+                    fProxy s = (fProxy)0;
+                    for (int c = 0; c < n; c++) s += Vb[i, c] * Wb[j, c];
+                    Gram[rowOff + i, colOff + j] = s;
+                    Gram[colOff + j, rowOff + i] = s;
+                }
+            }
+        }
+
+        // Fills H[rowOff+i, colOff+j] = dot(Vb[i,:], AWb[j,:]) and mirrors the SAME value into
+        // [colOff+j, rowOff+i]. Valid because A is symmetric: Vb_i . A Wb_j == Wb_j . A Vb_i
+        // exactly, so one dot product correctly serves both slots -- guaranteeing exact symmetry
+        // rather than "equal only to roundoff, computed twice".
+        static void FillHSub(ref fProxyMxN H, int rowOff, in fProxyMxN Vb, int rows,
+                              int colOff, in fProxyMxN AWb, int cols, int n, bool sameBlock)
+        {
+            for (int i = 0; i < rows; i++)
+            {
+                int jStart = sameBlock ? i : 0;
+                for (int j = jStart; j < cols; j++)
+                {
+                    fProxy s = (fProxy)0;
+                    for (int c = 0; c < n; c++) s += Vb[i, c] * AWb[j, c];
+                    H[rowOff + i, colOff + j] = s;
+                    H[colOff + j, rowOff + i] = s;
+                }
+            }
+        }
+
+        // Deflates each of the first `activeCount` rows of V/AV against the first `againstCount`
+        // rows of Against/AgainstA, TWICE (classical "reorthogonalize twice" folklore -- mirrors
+        // Eigen.lanczos's own choice). AV is updated with the SAME coefficient (linearity:
+        // A(v - c x) = Av - c(Ax)), so this never costs an extra matvec.
+        static void Deflate(ref fProxyMxN V, ref fProxyMxN AV, int activeCount,
+                             in fProxyMxN Against, in fProxyMxN AgainstA, int againstCount, int n)
+        {
+            for (int pass = 0; pass < 2; pass++)
+                for (int a = 0; a < activeCount; a++)
+                    for (int i = 0; i < againstCount; i++)
+                    {
+                        fProxy coeff = (fProxy)0;
+                        for (int c = 0; c < n; c++) coeff += Against[i, c] * V[a, c];
+
+                        for (int c = 0; c < n; c++)
+                        {
+                            V[a, c] -= coeff * Against[i, c];
+                            AV[a, c] -= coeff * AgainstA[i, c];
+                        }
+                    }
+        }
+
+        // Builds the combined Gram/H (2-block [X,W] or 3-block [X,W,P]) for the active window.
+        static void BuildProjected(ref fProxyMxN Gram, ref fProxyMxN H, int numActive, bool useP,
+                                    in fProxyMxN X, in fProxyMxN AX, in fProxyMxN W, in fProxyMxN AW,
+                                    in fProxyMxN P, in fProxyMxN AP, int n)
+        {
+            int offX = 0, offW = numActive, offP = 2 * numActive;
+
+            FillGramSub(ref Gram, offX, in X, numActive, offX, in X, numActive, n, true);
+            FillGramSub(ref Gram, offX, in X, numActive, offW, in W, numActive, n, false);
+            FillGramSub(ref Gram, offW, in W, numActive, offW, in W, numActive, n, true);
+
+            FillHSub(ref H, offX, in X, numActive, offX, in AX, numActive, n, true);
+            FillHSub(ref H, offX, in X, numActive, offW, in AW, numActive, n, false);
+            FillHSub(ref H, offW, in W, numActive, offW, in AW, numActive, n, true);
+
+            if (useP)
+            {
+                FillGramSub(ref Gram, offX, in X, numActive, offP, in P, numActive, n, false);
+                FillGramSub(ref Gram, offW, in W, numActive, offP, in P, numActive, n, false);
+                FillGramSub(ref Gram, offP, in P, numActive, offP, in P, numActive, n, true);
+
+                FillHSub(ref H, offX, in X, numActive, offP, in AP, numActive, n, false);
+                FillHSub(ref H, offW, in W, numActive, offP, in AP, numActive, n, false);
+                FillHSub(ref H, offP, in P, numActive, offP, in AP, numActive, n, true);
+            }
+        }
+
+        // Attempts Cholesky of an m x m Gram view; on failure OR a suspiciously tiny relative
+        // pivot, adds a small Tikhonov ridge (scaled to Gram's own diagonal) and retries once --
+        // mirrors Cholesky.choleskyPivotSolve's own ridge-retry recovery for a borderline
+        // semidefinite Gram. The ridge-retry attempt is checked against the SAME pivotRelTol (not
+        // merely "Cholesky did not report a negative pivot") -- a ridge just barely large enough to
+        // make Gram numerically SPD can still leave L badly conditioned, and accepting that
+        // unconditionally would reintroduce exactly the failure this check exists to catch. Returns
+        // false only if BOTH attempts fail the threshold.
+        static bool FactorGram(ref fProxyMxN Gram, ref fProxyMxN L, int m)
+        {
+            // Relative-pivot tolerance for the "tiny diagonal" rank-deficiency check. A method-
+            // local value (not a class-level const): Cholesky/QR/etc. in this codebase already
+            // hoist their tuning constants into method scope for the same reason -- a class-level
+            // const of the same name would collide across the float/double generated partials
+            // (CS0102; see Cholesky.fProxy.cs's CHOL_BLOCK comment).
+            fProxy pivotRelTol = Consts.fProxySqrtEps;
+
+            var info = Cholesky.choleskyDecomposition(in Gram, ref L);
+            if (info.Solved && MinMaxDiagRatio(in L, m) >= pivotRelTol)
+                return true;
+
+            fProxy scale = (fProxy)0;
+            for (int i = 0; i < m; i++) { fProxy d = math.abs(Gram[i, i]); if (d > scale) scale = d; }
+            fProxy ridge = (fProxy)m * Consts.fProxyEpsilon * scale;
+            if (!(ridge > (fProxy)0)) ridge = Consts.fProxyEpsilon;
+
+            for (int i = 0; i < m; i++) Gram[i, i] += ridge;
+
+            info = Cholesky.choleskyDecomposition(in Gram, ref L);
+            return info.Solved && MinMaxDiagRatio(in L, m) >= pivotRelTol;
+        }
+
+        static fProxy MinMaxDiagRatio(in fProxyMxN L, int m)
+        {
+            fProxy mn = math.abs(L[0, 0]);
+            fProxy mx = mn;
+            for (int i = 1; i < m; i++)
+            {
+                fProxy d = math.abs(L[i, i]);
+                if (d < mn) mn = d;
+                if (d > mx) mx = d;
+            }
+            return mx > (fProxy)0 ? mn / mx : (fProxy)0;
+        }
+
+        // Attempts the full Rayleigh-Ritz reduction for the active window (2-block or 3-block per
+        // `useP`): build Gram/H, factor Gram (with retry), reduce to the standard eigenproblem
+        // Ahat = L^-1 H L^-T, solve it, recover the combination coefficients C = L^-T Y, and write
+        // the selected (smallest numActive) Ritz values directly into ws.lambda[0..numActive) --
+        // done here (rather than returned) because the eigenvalues live in a small Allocator.Temp
+        // buffer that is disposed before this method returns. Returns false (caller falls back or
+        // stalls) if Cholesky or the small eigensolve fails.
+        static bool TryRayleighRitz(ref fProxyLOBPCGCache ws, int numActive, bool useP, int n)
+        {
+            int m = useP ? 3 * numActive : 2 * numActive;
+
+            var G = View(in ws.Gram, m);
+            var Hv = View(in ws.H, m);
+            var Lv = View(in ws.L, m);
+
+            BuildProjected(ref G, ref Hv, numActive, useP, in ws.X, in ws.AX, in ws.W, in ws.AW, in ws.P, in ws.AP, n);
+
+            // Cheap, numerically TRUSTWORTHY plausibility envelope for the eventual Ritz values
+            // (safeguard 3), computed BEFORE the Cholesky-based reduction below: H[i,i]/G[i,i] is
+            // the exact Rayleigh quotient of one individual, already-unit-normalized basis row (a
+            // row of X, W, or P) -- a plain dot-product ratio, no matrix inversion involved, so it
+            // is immune to the ill-conditioning that can corrupt the L^-1 H L^-T transform. Every
+            // individual Rayleigh quotient is, by definition, within [lambda_min(A), lambda_max(A)]
+            // of the FULL operator. If the Ritz values eigenSymmetric returns fall wildly outside
+            // the range spanned by these trustworthy individual quotients, that is conclusive
+            // evidence the transform corrupted the problem -- observed: Ritz values far below
+            // lambda_min, even wildly negative (down to -1E13 and beyond), while the Cholesky
+            // diag-ratio check (FactorGram's pivotRelTol) reported a perfectly comfortable pivot;
+            // diagRatio alone is a poor proxy for THIS failure mode. Reject the whole attempt (so
+            // the caller falls back to dropping P, or stalls) instead of locking in garbage.
+            fProxy qMin = fProxy.MaxValue, qMax = -fProxy.MaxValue;
+            for (int i = 0; i < m; i++)
+            {
+                fProxy gi = G[i, i];
+                if (!(gi > (fProxy)0)) continue; // shouldn't happen for a normalized block; skip defensively
+                fProxy q = Hv[i, i] / gi;
+                if (q < qMin) qMin = q;
+                if (q > qMax) qMax = q;
+            }
+            // Generous margin: a genuine Ritz value from superposing these rows can exceed their
+            // individual quotient range somewhat, but never by orders of magnitude -- 1000x the
+            // observed span (plus a small additive floor for the degenerate span==0 case)
+            // comfortably separates that from actual numerical garbage (observed magnitudes
+            // exceeded this envelope by 1E5-1E30x).
+            fProxy margin = (fProxy)1000 * (qMax - qMin + (fProxy)1);
+            fProxy envMin = qMin - margin;
+            fProxy envMax = qMax + margin;
+
+            if (!FactorGram(ref G, ref Lv, m))
+                return false;
+
+            var Atrans = View(in ws.Atrans, m);
+            FormAtrans(ref Hv, ref Lv, ref Atrans, m);
+
+            // Symmetrize (roundoff insurance -- eigenSymmetric requires exact-within-eps symmetry;
+            // the two triangular-solve passes above are mathematically symmetric but not bit-exact).
+            for (int i = 0; i < m; i++)
+                for (int j = i + 1; j < m; j++)
+                {
+                    fProxy avg = (fProxy)0.5 * (Atrans[i, j] + Atrans[j, i]);
+                    Atrans[i, j] = avg;
+                    Atrans[j, i] = avg;
+                }
+
+            var Yv = View(in ws.Y, m);
+            var eigSmall = new fProxyN(m, Allocator.Temp);
+            bool eigOk = Eigen.eigenSymmetric(ref Atrans, ref eigSmall, ref Yv);
+
+            if (eigOk)
+            {
+                // Validate the selected candidates against the trustworthy envelope BEFORE
+                // committing them to ws.lambda (see safeguard 3 above).
+                for (int j = 0; j < numActive; j++)
+                {
+                    fProxy candidate = eigSmall[m - numActive + j];
+                    if (!math.isfinite(candidate) || candidate < envMin || candidate > envMax)
+                    {
+                        eigOk = false;
+                        break;
+                    }
+                }
+            }
+
+            if (eigOk)
+            {
+                var Cv = View(in ws.C, m);
+                RecoverC(ref Yv, ref Lv, ref Cv, m);
+
+                // eigenSymmetric sorts DESCENDING -- the numActive SMALLEST real eigenvalues are
+                // the LAST numActive entries.
+                for (int j = 0; j < numActive; j++)
+                    ws.lambda[j] = eigSmall[m - numActive + j];
+            }
+
+            eigSmall.Dispose();
+            return eigOk;
+        }
+
+        // Ahat = L^-1 H L^-T via two triangular-solve passes: first each ROW of H is forward-solved
+        // against L (giving H L^-T, since (H_row L^-T)^T = L^-1 H_row^T), stored into Atrans; then
+        // each COLUMN of that result is forward-solved against L again (L^-1 applied on the left).
+        // `m` is small (<= 3k) so the row/column scratch is a bounded Allocator.Temp vector.
+        static void FormAtrans(ref fProxyMxN H, ref fProxyMxN L, ref fProxyMxN Atrans, int m)
+        {
+            var tmp = new fProxyN(m, Allocator.Temp);
+
+            for (int r = 0; r < m; r++)
+            {
+                for (int c = 0; c < m; c++) tmp[c] = H[r, c];
+                Solvers.solveLowerTriangular(ref L, ref tmp);
+                for (int c = 0; c < m; c++) Atrans[r, c] = tmp[c];
+            }
+
+            for (int c = 0; c < m; c++)
+            {
+                for (int r = 0; r < m; r++) tmp[r] = Atrans[r, c];
+                Solvers.solveLowerTriangular(ref L, ref tmp);
+                for (int r = 0; r < m; r++) Atrans[r, c] = tmp[r];
+            }
+
+            tmp.Dispose();
+        }
+
+        // c_j = L^-T y_j for every column j of Y (back-substitution against L read transposed,
+        // (L^T)[r,c] = L[c,r] -- L^T is upper triangular). Mirrors Cholesky's own private
+        // SolveUpperTriangularTransposed in miniature (duplicated here rather than exposing that
+        // private helper across files for one small, stable, easily-reviewed piece of math).
+        static void RecoverC(ref fProxyMxN Y, ref fProxyMxN L, ref fProxyMxN C, int m)
+        {
+            var tmp = new fProxyN(m, Allocator.Temp);
+
+            for (int col = 0; col < m; col++)
+            {
+                for (int r = 0; r < m; r++) tmp[r] = Y[r, col];
+
+                for (int r = m - 1; r >= 0; r--)
+                {
+                    fProxy sum = (fProxy)0;
+                    for (int c = r + 1; c < m; c++) sum += L[c, r] * tmp[c];
+                    tmp[r] = (tmp[r] - sum) / L[r, r];
+                }
+
+                for (int r = 0; r < m; r++) C[r, col] = tmp[r];
+            }
+
+            tmp.Dispose();
+        }
+
+        // Forms the new active X/P block from the recovered combination coefficients C
+        // (ws.lambda[0..numActive) already holds the selected Ritz values -- see TryRayleighRitz).
+        // X_new combines the FULL basis (X/W/[P] parts); P_new (the new "conjugate direction")
+        // combines only the W/[P] parts (zero X-part). Written into the ping-pong Xnext/Pnext
+        // buffers (the combination reads the CURRENT X/W/P, so it cannot safely write in place),
+        // then swapped in; the frozen locked rows [numActive, k) are carried forward first since
+        // Xnext is about to become the new X wholesale.
+        //
+        // Deliberately does NOT also mirror-combine AX/AP the same way (an earlier version did):
+        // the caller ALWAYS immediately recomputes AX/AP via a fresh A.Apply right after this call
+        // returns (see the "AX/AP freshness" class doc note), which unconditionally overwrites
+        // whatever this method would have written -- so computing axv/apv here was pure wasted
+        // work (an extra O(3k) multiply-adds per element, i.e. O(3k^2 n) per iteration) with the
+        // result immediately discarded.
+        static void UpdateActiveBlock(ref fProxyLOBPCGCache ws, int numActive, bool useP, int n, int k)
+        {
+            int m = useP ? 3 * numActive : 2 * numActive;
+            var Cv = View(in ws.C, m);
+
+            for (int j = 0; j < numActive; j++)
+            {
+                int col = m - numActive + j;
+
+                for (int c = 0; c < n; c++)
+                {
+                    fProxy xv = (fProxy)0;
+
+                    for (int r = 0; r < numActive; r++)
+                        xv += Cv[r, col] * ws.X[r, c];
+                    for (int r = 0; r < numActive; r++)
+                        xv += Cv[numActive + r, col] * ws.W[r, c];
+                    if (useP)
+                        for (int r = 0; r < numActive; r++)
+                            xv += Cv[2 * numActive + r, col] * ws.P[r, c];
+
+                    ws.Xnext[j, c] = xv;
+                }
+
+                for (int c = 0; c < n; c++)
+                {
+                    fProxy pv = (fProxy)0;
+
+                    for (int r = 0; r < numActive; r++)
+                        pv += Cv[numActive + r, col] * ws.W[r, c];
+                    if (useP)
+                        for (int r = 0; r < numActive; r++)
+                            pv += Cv[2 * numActive + r, col] * ws.P[r, c];
+
+                    ws.Pnext[j, c] = pv;
+                }
+            }
+
+            for (int i = numActive; i < k; i++)
+                for (int c = 0; c < n; c++)
+                    ws.Xnext[i, c] = ws.X[i, c];
+
+            SwapMat(ref ws.X, ref ws.Xnext);
+            SwapMat(ref ws.P, ref ws.Pnext);
+        }
+
+        static void SortAscending(ref fProxyLOBPCGCache ws, int k)
+        {
+            for (int i = 0; i < k - 1; i++)
+            {
+                int best = i;
+                for (int j = i + 1; j < k; j++)
+                    if (ws.lambda[j] < ws.lambda[best]) best = j;
+
+                if (best != i)
+                {
+                    Swap.Vec(ref ws.lambda, i, best);
+                    Swap.Vec(ref ws.residual, i, best);
+                    Swap.Rows(ref ws.X, i, best);
+                    Swap.Rows(ref ws.AX, i, best);
+                }
+            }
+        }
+
+        static double MaxRelResidual(in fProxyLOBPCGCache ws, int k)
+        {
+            double worst = 0;
+            for (int i = 0; i < k; i++)
+            {
+                fProxy scale = math.abs(ws.lambda[i]);
+                if (scale < (fProxy)1) scale = (fProxy)1;
+                double rel = (double)(ws.residual[i] / scale);
+                if (rel > worst) worst = rel;
+            }
+            return worst;
+        }
+    }
+}

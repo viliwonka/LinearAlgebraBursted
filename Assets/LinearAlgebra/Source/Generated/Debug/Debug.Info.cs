@@ -46,6 +46,12 @@ namespace LinearAlgebra
             UnityEngine.Debug.Log($"{str}");
         }
 
+        public static void Log(in LOBPCGInfo info)
+        {
+            FixedString128Bytes str = info.ToFixedString();
+            UnityEngine.Debug.Log($"{str}");
+        }
+
         public static void Log(in Pivot p)
         {
             FixedString4096Bytes str = p.ToFixedString();

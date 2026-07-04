@@ -1,0 +1,72 @@
+//singularFile//
+using Unity.Collections;
+
+namespace LinearAlgebra
+{
+    /// <summary>
+    /// Result of a blocked LOBPCG solve (<c>LOBPCG.lobpcg</c>). Every overload RETURNS this by
+    /// value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>) means the same
+    /// success-test call shape used by every other iterative solver in this library compiles:
+    /// <code>
+    ///   if (LOBPCG.lobpcg(in A, ref ws, k, tol, maxIter)) { ... }
+    ///   var info = LOBPCG.lobpcg(in A, in M, ref ws, k);
+    ///   if (info.Solved) Debug.Log(info.converged);
+    /// </code>
+    ///
+    /// Reuses <see cref="IterativeSolveStatus"/> (the same enum every other Krylov/eigen solver in
+    /// this library uses) rather than a dedicated LOBPCG enum: Converged means all k pairs locked
+    /// within tol; MaxIterations means the iteration budget ran out with some pairs still active;
+    /// Breakdown means an unrecoverable numerical condition was hit (the initial X seed could not
+    /// be orthonormalized -- e.g. k &gt; n -- or a non-finite residual leaked into the loop), in
+    /// which case X/lambda are undefined.
+    ///
+    /// Type-agnostic (no fProxy prefix) on purpose, matching <see cref="EigenSolveInfo"/> /
+    /// <see cref="LanczosInfo"/> / <see cref="SolveInfo"/>: it lives in a non-templated file so
+    /// codegen does not emit a duplicate definition into both the float and double partials
+    /// (CS0102).
+    /// </summary>
+    public struct LOBPCGInfo
+    {
+        /// <summary>Outer iterations actually performed (0 if every pair was already converged/
+        /// locked before the first iteration -- e.g. the caller warm-started with the exact
+        /// eigenvectors).</summary>
+        public int iterations;
+
+        /// <summary>Number of eigenpairs that met the relative-residual tolerance and were locked
+        /// (0..k). Equals k iff <see cref="status"/> is Converged.</summary>
+        public int converged;
+
+        /// <summary>Worst-case (maximum) relative residual ‖A x_i - lambda_i x_i‖ / max(|lambda_i|,
+        /// 1) over all k returned pairs, widened to <c>double</c> regardless of the solve's
+        /// precision (matching every other *_Info.residual/rnorm convention in this library).
+        /// Filled from the per-pair residual norms the solver already tracks (locked pairs keep
+        /// their locking-time value) -- never a fresh matvec. <see cref="double.NaN"/> on a
+        /// Breakdown return, where X/lambda are undefined.</summary>
+        public double maxResidual;
+
+        /// <summary>Why the solve stopped -- see <see cref="IterativeSolveStatus"/>.</summary>
+        public IterativeSolveStatus status;
+
+        /// <summary>True iff every requested eigenpair converged (<c>status ==
+        /// IterativeSolveStatus.Converged</c>).</summary>
+        public bool Solved => status == IterativeSolveStatus.Converged;
+
+        /// <summary>Same as <see cref="Solved"/>, so <c>if (lobpcg(...))</c> / <c>bool ok =
+        /// lobpcg(...)</c> read the same way every other solver in this library does.</summary>
+        public static implicit operator bool(LOBPCGInfo i) => i.status == IterativeSolveStatus.Converged;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>LOBPCGInfo(Converged, iters=12,
+        /// converged=4/4, maxResidual=1.23E-08)</c>. Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "LOBPCGInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", iters={iterations}, converged={converged}, maxResidual={maxResidual:G3})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+}
