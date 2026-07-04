@@ -3,6 +3,8 @@ using Unity.Collections.LowLevel.Unsafe;
 using System;
 using System.Runtime.InteropServices;
 
+//alsoExpand[uint]// data type + construction/copy: no signed-only ops here.
+
 namespace LinearAlgebra
 {
 

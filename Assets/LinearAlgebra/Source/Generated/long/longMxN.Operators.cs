@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
+
 namespace LinearAlgebra
 {
 
@@ -11,20 +12,22 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator +(in longMxN a) => a;
 
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator -(in longMxN a)
         {
             longMxN matrix = a.TempCopy();
-            
+
             longComp.signFlipInPlace(matrix);
 
             return matrix;
         }
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static longMxN operator +(in longMxN lhs, long rhs)
         {
             longMxN matrix = lhs.TempCopy();
-            
+
             longComp.addInPlace(matrix, rhs);
 
             return matrix;
@@ -35,8 +38,11 @@ namespace LinearAlgebra
         public static longMxN operator -(in longMxN lhs, long rhs)
         {
             longMxN matrix = lhs.TempCopy();
-            
-            longComp.addInPlace(matrix, (long)(-rhs));
+
+            // v - s via a direct kernel, not v + (-s): the latter needs unary minus on the scalar,
+            // which uint can't do (see OP.Component.long.cs), so this line is identical for
+            // every generated type.
+            longComp.subInPlace(matrix, rhs);
 
             return matrix;
         }

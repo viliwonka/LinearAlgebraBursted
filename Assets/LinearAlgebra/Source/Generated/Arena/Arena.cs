@@ -30,6 +30,8 @@ namespace LinearAlgebra
             shortVectors.Length + shortMatrices.Length
             +
             longVectors.Length + longMatrices.Length
+            +
+            uintVectors.Length + uintMatrices.Length
             
         ;
 
@@ -46,6 +48,8 @@ namespace LinearAlgebra
             shortTempVectors.Length + shortTempMatrices.Length
             +
             longTempVectors.Length + longTempMatrices.Length
+            +
+            uintTempVectors.Length + uintTempMatrices.Length
             
         ;
 
@@ -101,6 +105,11 @@ namespace LinearAlgebra
             longMatrices = new UnsafeList<longMxN>(8, Allocator);
             longTempVectors = new UnsafeList<longN>(8, Allocator);
             longTempMatrices = new UnsafeList<longMxN>(8, Allocator);
+            
+            uintVectors = new UnsafeList<uintN>(8, Allocator);
+            uintMatrices = new UnsafeList<uintMxN>(8, Allocator);
+            uintTempVectors = new UnsafeList<uintN>(8, Allocator);
+            uintTempMatrices = new UnsafeList<uintMxN>(8, Allocator);
             
 
             BoolVectors = new UnsafeList<boolN>(2, Allocator);
@@ -205,6 +214,14 @@ namespace LinearAlgebra
                 longMatrices[i].Dispose();
             longMatrices.Clear();
             
+            for (int i = 0; i < uintVectors.Length; i++)
+                uintVectors[i].Dispose();
+            uintVectors.Clear();
+
+            for (int i = 0; i < uintMatrices.Length; i++)
+                uintMatrices[i].Dispose();
+            uintMatrices.Clear();
+            
 
             for (int i = 0; i < BoolVectors.Length; i++)
                 BoolVectors[i].Dispose();
@@ -273,6 +290,14 @@ namespace LinearAlgebra
                 longTempMatrices[i].Dispose();
             longTempMatrices.Clear();
             
+            for (int i = 0; i < uintTempVectors.Length; i++)
+                uintTempVectors[i].Dispose();
+            uintTempVectors.Clear();
+
+            for (int i = 0; i < uintTempMatrices.Length; i++)
+                uintTempMatrices[i].Dispose();
+            uintTempMatrices.Clear();
+            
 
             for (int i = 0; i < TempBoolVectors.Length; i++)
                 TempBoolVectors[i].Dispose();
@@ -325,6 +350,11 @@ namespace LinearAlgebra
             longMatrices.Dispose();
             longTempMatrices.Dispose();
             longTempVectors.Dispose();
+            
+            uintVectors.Dispose();
+            uintMatrices.Dispose();
+            uintTempMatrices.Dispose();
+            uintTempVectors.Dispose();
             
 
             BoolVectors.Dispose();

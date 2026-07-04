@@ -18,6 +18,9 @@ namespace LinearAlgebra
     // Unlike Print.Log -- which is Burst-callable but capped at a 4 KB FixedString and SILENTLY
     // TRUNCATES past it -- these build an unbounded System.Text.StringBuilder, so they never
     // truncate. Call them from managed / editor code only, NEVER from inside a Burst job.
+    //
+    //alsoExpand[uint]// the per-type choose lists below carry a 4th (uint) value; uint's cast is
+    //likewise a direct identity (iProxy defines an implicit conversion to uint there too).
     public static partial class Print
     {
         public static string ToText(in iProxyMxN m)
@@ -28,7 +31,7 @@ namespace LinearAlgebra
                 for (int c = 0; c < m.N_Cols; c++)
                 {
                     if (c > 0) sb.Append(' ');
-                    sb.Append(((/*+choose[int|short|long]*/int/*-choose*/)m[r, c]).ToString(CultureInfo.InvariantCulture));
+                    sb.Append(((/*+choose[int|short|long|uint]*/int/*-choose*/)m[r, c]).ToString(CultureInfo.InvariantCulture));
                 }
                 sb.Append('\n');
             }
@@ -41,7 +44,7 @@ namespace LinearAlgebra
             for (int i = 0; i < v.N; i++)
             {
                 if (i > 0) sb.Append('\n');
-                sb.Append(((/*+choose[int|short|long]*/int/*-choose*/)v[i]).ToString(CultureInfo.InvariantCulture));
+                sb.Append(((/*+choose[int|short|long|uint]*/int/*-choose*/)v[i]).ToString(CultureInfo.InvariantCulture));
             }
             return sb.ToString();
         }
@@ -54,7 +57,7 @@ namespace LinearAlgebra
                 for (int c = 0; c < m.N_Cols; c++)
                 {
                     if (c > 0) sb.Append(',');
-                    sb.Append(((/*+choose[int|short|long]*/int/*-choose*/)m[r, c]).ToString(CultureInfo.InvariantCulture));
+                    sb.Append(((/*+choose[int|short|long|uint]*/int/*-choose*/)m[r, c]).ToString(CultureInfo.InvariantCulture));
                 }
                 sb.Append('\n');
             }
@@ -66,7 +69,7 @@ namespace LinearAlgebra
             var sb = new StringBuilder();
             for (int i = 0; i < v.N; i++)
             {
-                sb.Append(((/*+choose[int|short|long]*/int/*-choose*/)v[i]).ToString(CultureInfo.InvariantCulture));
+                sb.Append(((/*+choose[int|short|long|uint]*/int/*-choose*/)v[i]).ToString(CultureInfo.InvariantCulture));
                 sb.Append('\n');
             }
             return sb.ToString();

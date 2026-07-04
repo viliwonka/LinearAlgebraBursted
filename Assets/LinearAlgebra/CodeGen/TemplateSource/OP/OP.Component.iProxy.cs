@@ -6,6 +6,10 @@ using System.Runtime.CompilerServices;
 using Unity.Burst;
 using LinearAlgebra.Internal;
 
+//alsoExpand[uint]// component-wise arithmetic/bitwise ops. Unary negation (and anything relying
+//on it) is signed-only - see the skipFor-marked blocks below (do not write that marker's literal
+//token here - the codegen parser is content-sensitive, not comment-aware).
+
 namespace LinearAlgebra
 {
     /// <summary>
@@ -109,27 +113,39 @@ namespace LinearAlgebra
             }
         }
 
+        // v - s, via a direct forward-order kernel (UnsafeOP.scalSub(target, n, s)) rather than the
+        // v + (-s) negation trick a scalar-subtract could otherwise reuse from addInPlace: unsigned
+        // types can't negate s, and this is bit-identical to the negation trick for signed types
+        // anyway (v + (-s) == v - s under modular wraparound), so every generated type shares one
+        // implementation. Callers (e.g. the vector/matrix `operator -` overloads) call this same
+        // name either way - see iProxyN.Operators.cs.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void subInPlace<T>(this T v, iProxy s) where T : unmanaged, IUnsafeiProxyArray
         {
-            addInPlace(v, (iProxy)(-s));
-        }
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void subInPlace<T>(iProxy s, T v) where T : unmanaged, IUnsafeiProxyArray
-        {
-            unsafe {                 
-                UnsafeOP.scalSub(s, v.Data.Ptr, v.Data.Length);
+            unsafe {
+                UnsafeOP.scalSub(v.Data.Ptr, v.Data.Length, s);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void subInPlace<T>(iProxy s, T v) where T : unmanaged, IUnsafeiProxyArray
+        {
+            unsafe {
+                UnsafeOP.scalSub(s, v.Data.Ptr, v.Data.Length);
+            }
+        }
+
+        // Negation has no unsigned meaning (uint has no unary minus), so this - and every operator
+        // that calls it (the vector/matrix unary `operator -`) - simply doesn't exist for uint.
+        //+skipFor[u]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void signFlipInPlace<T>(this T a) where T : unmanaged, IUnsafeiProxyArray
         {
-            unsafe { 
+            unsafe {
                 UnsafeOP.signFlip(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
             }
         }
+        //-skipFor
 
         /// <summary>Clamp every element of <paramref name="x"/> to [<paramref name="lo"/>, <paramref name="hi"/>] in-place.
         /// Delegates to the mathUnsafe clamp kernel; no allocation.</summary>

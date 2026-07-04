@@ -6,6 +6,7 @@ using System;
 using Unity.Collections.LowLevel.Unsafe;
 using LinearAlgebra.Internal;
 
+
 namespace LinearAlgebra
 {
     /// <summary>

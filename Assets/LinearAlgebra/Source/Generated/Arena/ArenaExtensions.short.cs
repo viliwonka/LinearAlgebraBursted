@@ -1,5 +1,6 @@
 using Unity.Mathematics;
 
+
 namespace LinearAlgebra
 {
     public static partial class ArenaExtensions {
@@ -39,6 +40,7 @@ namespace LinearAlgebra
             return vec;
         }
 
+        // NOTE: min/max are cast to int for NextInt - for uint, bounds above int.MaxValue are unsupported (the cast wraps).
         public static shortN shortRandomVec(this ref Arena arena, int N, short min, short max, uint seed = 84115)
         {
             var vec = arena.shortVec(N, true);
@@ -141,12 +143,18 @@ namespace LinearAlgebra
             return mat;
         }
 
+        // This default-range overload hardcodes a symmetric [-1, 1] range - literal -1 is out of
+        // range for an unsigned type, so this overload doesn't exist for uint; uint callers must
+        // use the explicit min/max overload below instead.
+        
         public static shortMxN shortRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
             return shortRandomMat(ref arena, M_rows, N_cols, -1, 1, seed);
         }
+        
 
         // constructs diagonal matrix with scalar s on diagonal
+        // NOTE: min/max are cast to int for NextInt - for uint, bounds above int.MaxValue are unsupported (the cast wraps).
         public static shortMxN shortRandomDiagonalMat(this ref Arena arena, int N, short min, short max, uint seed = 65792)
         {
             var matrix = arena.shortMat(N, N);
@@ -166,6 +174,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
+        // NOTE: min/max are cast to int for NextInt - for uint, bounds above int.MaxValue are unsupported (the cast wraps).
         public static shortMxN shortRandomMat(this ref Arena arena, int M_rows, int N_cols, short min, short max, uint seed = 121312)
         {
             var matrix = arena.shortMat(M_rows, N_cols, true);

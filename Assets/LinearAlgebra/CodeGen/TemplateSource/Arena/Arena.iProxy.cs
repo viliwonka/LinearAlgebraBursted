@@ -1,5 +1,7 @@
 using Unity.Collections.LowLevel.Unsafe;
 
+//alsoExpand[uint]// core bump-allocator factories (arena.uintVec/uintMat); no signed-only ops here.
+
 namespace LinearAlgebra
 {
     internal partial struct ArenaCore

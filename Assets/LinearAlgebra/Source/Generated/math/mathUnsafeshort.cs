@@ -3,9 +3,10 @@ using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Mathematics;
 
+
 namespace LinearAlgebra
 {
-    
+
     public static unsafe class mathUnsafeshort
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -29,12 +30,16 @@ namespace LinearAlgebra
                 x[i] = (short)(i+1);
         }
 
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void abs([NoAlias] short* x, int n)
         {
-            for (int i = 0; i < n; i++)
-                x[i] = x[i] < 0? (short)(-x[i]) : x[i];   
+            for (int i = 0; i < n; i++) {
+                short v = x[i];
+                x[i] = v < 0? (short)(-v) : v;
+            }
         }
+        
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void max([NoAlias] short* x, [NoAlias] short* y, int n)
@@ -64,12 +69,16 @@ namespace LinearAlgebra
                 x[i] = (short)(x[i] % y);
         }
 
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void relu([NoAlias] short* x, int n)
         {
-            for (int i = 0; i < n; i++)
-                x[i] = x[i] < 0? (short)0 : x[i];
+            for (int i = 0; i < n; i++) {
+                short v = x[i];
+                x[i] = v < 0? (short)0 : v;
+            }
         }
+        
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void mad([NoAlias] short* a, [NoAlias] short* b, [NoAlias] short* c, int n)

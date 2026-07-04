@@ -3,9 +3,10 @@ using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Mathematics;
 
+
 namespace LinearAlgebra
 {
-    
+
     public static unsafe class mathUnsafeint
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -29,12 +30,16 @@ namespace LinearAlgebra
                 x[i] = (int)(i+1);
         }
 
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void abs([NoAlias] int* x, int n)
         {
-            for (int i = 0; i < n; i++)
-                x[i] = x[i] < 0? (int)(-x[i]) : x[i];   
+            for (int i = 0; i < n; i++) {
+                int v = x[i];
+                x[i] = v < 0? (int)(-v) : v;
+            }
         }
+        
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void max([NoAlias] int* x, [NoAlias] int* y, int n)
@@ -64,12 +69,16 @@ namespace LinearAlgebra
                 x[i] = (int)(x[i] % y);
         }
 
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void relu([NoAlias] int* x, int n)
         {
-            for (int i = 0; i < n; i++)
-                x[i] = x[i] < 0? (int)0 : x[i];
+            for (int i = 0; i < n; i++) {
+                int v = x[i];
+                x[i] = v < 0? (int)0 : v;
+            }
         }
+        
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void mad([NoAlias] int* a, [NoAlias] int* b, [NoAlias] int* c, int n)

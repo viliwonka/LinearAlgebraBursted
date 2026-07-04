@@ -1,6 +1,10 @@
 using System;
 using System.Runtime.CompilerServices;
 
+//alsoExpand[uint]// scalar/component operators. Unary negation (and anything relying on it) is
+//signed-only - see the skipFor-marked blocks below (do not write that marker's literal token
+//here - the codegen parser is content-sensitive, not comment-aware).
+
 namespace LinearAlgebra
 {
 
@@ -10,6 +14,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static iProxyN operator +(in iProxyN a) => a;
 
+        //+skipFor[u]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static iProxyN operator -(in iProxyN a) {
 
@@ -18,6 +23,7 @@ namespace LinearAlgebra
 
             return vec;
         }
+        //-skipFor
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static iProxyN operator +(in iProxyN a, iProxy s) {
@@ -25,7 +31,7 @@ namespace LinearAlgebra
             iProxyN vec = a.TempCopy();
             iProxyComp.addInPlace(vec, s);
 
-            return vec; 
+            return vec;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -33,10 +39,13 @@ namespace LinearAlgebra
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static iProxyN operator -(in iProxyN a, iProxy s) {
-            
+
             iProxyN vec = a.TempCopy();
-            iProxyComp.addInPlace(vec, (iProxy)(-s));
-            
+            // v - s via a direct kernel, not v + (-s): the latter needs unary minus on the scalar,
+            // which uint can't do (see OP.Component.iProxy.cs), so this line is identical for
+            // every generated type.
+            iProxyComp.subInPlace(vec, s);
+
             return vec;
         }
 

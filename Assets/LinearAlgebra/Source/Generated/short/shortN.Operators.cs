@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
+
 namespace LinearAlgebra
 {
 
@@ -10,6 +11,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator +(in shortN a) => a;
 
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator -(in shortN a) {
 
@@ -18,6 +20,7 @@ namespace LinearAlgebra
 
             return vec;
         }
+        
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator +(in shortN a, short s) {
@@ -25,7 +28,7 @@ namespace LinearAlgebra
             shortN vec = a.TempCopy();
             shortComp.addInPlace(vec, s);
 
-            return vec; 
+            return vec;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -33,10 +36,13 @@ namespace LinearAlgebra
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static shortN operator -(in shortN a, short s) {
-            
+
             shortN vec = a.TempCopy();
-            shortComp.addInPlace(vec, (short)(-s));
-            
+            // v - s via a direct kernel, not v + (-s): the latter needs unary minus on the scalar,
+            // which uint can't do (see OP.Component.short.cs), so this line is identical for
+            // every generated type.
+            shortComp.subInPlace(vec, s);
+
             return vec;
         }
 

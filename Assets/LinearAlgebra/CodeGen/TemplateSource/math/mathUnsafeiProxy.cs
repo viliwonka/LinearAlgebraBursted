@@ -3,9 +3,16 @@ using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Mathematics;
 
+//alsoExpand[uint]// element-wise kernels. abs/relu are signed-only - there is no unsigned notion of
+//a negative value, so no absolute-value/negative-clamp to apply, and neither C#'s Math.Abs nor
+//Unity.Mathematics' math.abs defines an overload for uint - both are skipFor-marked below, mirroring
+//signFlip's pattern in UnsafeOP.iProxy.cs (do not write that marker's literal token in prose here -
+//the codegen parser is content-sensitive, not comment-aware). Everything else (min/max/clamp/mod/
+//mad/dot) is unsigned-clean as-is.
+
 namespace LinearAlgebra
 {
-    
+
     public static unsafe class mathUnsafeiProxy
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -29,12 +36,16 @@ namespace LinearAlgebra
                 x[i] = (iProxy)(i+1);
         }
 
+        //+skipFor[u]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void abs([NoAlias] iProxy* x, int n)
         {
-            for (int i = 0; i < n; i++)
-                x[i] = x[i] < 0? (iProxy)(-x[i]) : x[i];   
+            for (int i = 0; i < n; i++) {
+                iProxy v = x[i];
+                x[i] = v < 0? (iProxy)(-v) : v;
+            }
         }
+        //-skipFor
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void max([NoAlias] iProxy* x, [NoAlias] iProxy* y, int n)
@@ -64,12 +75,16 @@ namespace LinearAlgebra
                 x[i] = (iProxy)(x[i] % y);
         }
 
+        //+skipFor[u]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void relu([NoAlias] iProxy* x, int n)
         {
-            for (int i = 0; i < n; i++)
-                x[i] = x[i] < 0? (iProxy)0 : x[i];
+            for (int i = 0; i < n; i++) {
+                iProxy v = x[i];
+                x[i] = v < 0? (iProxy)0 : v;
+            }
         }
+        //-skipFor
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void mad([NoAlias] iProxy* a, [NoAlias] iProxy* b, [NoAlias] iProxy* c, int n)

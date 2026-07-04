@@ -1,8 +1,9 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using Unity.Mathematics;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
+
 
 namespace LinearAlgebra.Internal
 {
@@ -15,32 +16,39 @@ namespace LinearAlgebra.Internal
 
             for (int i = 0; i < n; i++)
                 sum += a[i];
-            
+
             return sum;
         }
 
+        
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static long sumAbs([NoAlias] long* a, int n)
         {
             long sum = 0;
 
-            for (int i = 0; i < n; i++)
-                sum += (long)(a[i] < 0? -a[i] : a[i]);
-            
+            for (int i = 0; i < n; i++) {
+                long v = a[i];
+                sum += (long)(v < 0? -v : v);
+            }
+
             return sum;
         }
+        
 
+        
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static long maxAbs([NoAlias] long* a, int n)
         {
             long max = 0;
 
             for (int i = 0; i < n; i++) {
-                var abs = (a[i] < 0 ? -a[i] : a[i]);
+                long v = a[i];
+                var abs = (v < 0 ? -v : v);
                 max = (long)(max < abs? abs : max);
             }
             return max;
         }
+        
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static long vecDot([NoAlias] long* vA, [NoAlias] long* vB, int n) {
@@ -163,6 +171,7 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void signFlip([NoAlias] long* target, [NoAlias] long* from, int n) {
 
@@ -170,6 +179,7 @@ namespace LinearAlgebra.Internal
                 target[i] = (long)(-from[i]);
         }
         
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void compAdd([NoAlias] long* target, [NoAlias] long* from, int n) {
 
@@ -196,6 +206,18 @@ namespace LinearAlgebra.Internal
         {
             for (int i = 0; i < n; i++)
                 target[i] = (long)(s - target[i]);
+        }
+
+        // target[i] -= s. Forward-order twin of the (s, target, n) overload above. subInPlace<T>(T,
+        // long) (OP.Component.long.cs) uses this uniformly for every generated type - it used
+        // to implement "v - s" as "v + (-s)" for signed types only (bit-identical under modular
+        // wraparound, but unsigned types can't negate s), so unifying on the direct kernel avoids
+        // needing two branches there.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void scalSub([NoAlias] long* target, int n, long s)
+        {
+            for (int i = 0; i < n; i++)
+                target[i] -= s;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

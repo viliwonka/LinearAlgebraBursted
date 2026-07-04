@@ -3,6 +3,9 @@
 using Unity.Collections;
 using Unity.Mathematics;
 
+//alsoExpand[uint]// int-family console dumps; widening to `long` below is a lossless implicit
+//conversion for uint too (as it already is for int/short), so no signed-only ops here.
+
 namespace LinearAlgebra
 {
     // Integer vector / matrix console dumps, mirroring the fProxy Print.Log overloads (which only

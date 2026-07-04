@@ -3,6 +3,7 @@
 using Unity.Collections;
 using Unity.Mathematics;
 
+
 namespace LinearAlgebra
 {
     // Integer vector / matrix console dumps, mirroring the fProxy Print.Log overloads (which only

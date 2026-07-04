@@ -1,5 +1,6 @@
 using Unity.Collections.LowLevel.Unsafe;
 
+
 namespace LinearAlgebra
 {
     internal partial struct ArenaCore

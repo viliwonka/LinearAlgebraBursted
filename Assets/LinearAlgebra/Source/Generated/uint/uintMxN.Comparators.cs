@@ -1,0 +1,163 @@
+using System.Runtime.CompilerServices;
+using LinearAlgebra.Internal;
+
+
+namespace LinearAlgebra
+{
+
+    public partial struct uintMxN
+    {
+        #region SCALAR OPERATIONS
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator <(in uintMxN lhs, uint rhs)
+        {
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprLessScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator <(uint lhs, in uintMxN rhs) => rhs > lhs;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator >(in uintMxN lhs, uint rhs)
+        {
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprGreaterScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator >(uint lhs, in uintMxN rhs) => rhs < lhs;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator <=(in uintMxN lhs, uint rhs)
+        {
+            
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprLessOrEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator <=(uint lhs, in uintMxN rhs) => rhs >= lhs;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator >=(in uintMxN lhs, uint rhs)
+        {
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprGreaterOrEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator >=(uint lhs, in uintMxN rhs) => rhs <= lhs;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator ==(in uintMxN lhs, uint rhs)
+        {
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator ==(uint lhs, in uintMxN rhs) => rhs == lhs;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator !=(in uintMxN lhs, uint rhs)
+        {
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprNotEqualScalar(lhs.Data.Ptr, rhs, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator !=(uint lhs, in uintMxN rhs) => rhs != lhs;
+
+        #endregion
+
+        #region COMPONENT-WISE OPERATIONS
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator <(in uintMxN lhs, in uintMxN rhs)
+        {
+            Assume.SameDim(in lhs, in rhs);
+
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprLess(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator >(in uintMxN a, in uintMxN b) => b < a;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator <=(in uintMxN lhs, in uintMxN rhs)
+        {
+            Assume.SameDim(in lhs, in rhs);
+
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprLessOrEqual(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator >=(in uintMxN lhs, in uintMxN rhs) => rhs <= lhs;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator ==(in uintMxN lhs, in uintMxN rhs)
+        {
+            Assume.SameDim(in lhs, in rhs);
+
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprEqual(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static boolMxN operator !=(in uintMxN lhs, in uintMxN rhs)
+        {
+            Assume.SameDim(in lhs, in rhs);
+
+            boolMxN res = lhs.boolTempMat(lhs.M_Rows, lhs.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.cmprNotEqual(lhs.Data.Ptr, rhs.Data.Ptr, res.Data.Ptr, lhs.Length);
+            }
+
+            return res;
+        }
+
+        #endregion
+    }
+}

@@ -1,7 +1,9 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using System.Runtime.CompilerServices;
 using Unity.Burst;
+
+//alsoExpand[uint]// relational comparators only, no signed-only ops here.
 
 namespace LinearAlgebra.Internal
 {

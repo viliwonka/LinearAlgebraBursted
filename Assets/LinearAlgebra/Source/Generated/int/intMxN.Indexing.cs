@@ -2,6 +2,7 @@ using Unity.Mathematics;
 using System;
 using System.Runtime.CompilerServices;
 
+
 namespace LinearAlgebra
 {
 

@@ -109,6 +109,35 @@ purpose. Companion to `docs/naming-style-guide.md` (the conventions these mistak
   fixed it — the test now resolves per-type exactly like the code under test does. General
   principle: whenever a template test's assertion needs a type-dependent value, drive it through
   the SAME codegen mechanism the implementation uses, don't hand-duplicate the per-type values.
+- **Never write a marker's own literal start token as PROSE inside a doc comment describing it** —
+  not just the `choose`/`*/` case above; this generalizes to every marker (`//+skipFor[...]`,
+  `//+copyReplace`, `//alsoExpand[...]`). The converter's marker parsers do a plain
+  content-sensitive `string.IndexOf` over the WHOLE file text — they have no idea what a real C#
+  comment boundary is — so a sentence like "see the `//+skipFor[u]` block below" is itself a second,
+  PHANTOM marker occurrence. Concretely: writing `//+skipFor[u]` in a header comment, then a real
+  `//+skipFor[u] ... //-skipFor` block further down, makes `SkipForReplace` treat the header's
+  bracket-less/malformed text as the marker instance, silently mis-parse or consume the real block's
+  own closing marker, and corrupt everything downstream — this surfaced as CS0111 in one file and, in
+  a second file, as the file's tail getting silently chewed away (missing braces →
+  CS0106/CS1022 dozens of lines later, nowhere near the actual typo). Same failure mode hit
+  `//+copyReplace` when a doc comment said "the inner iProxy `//+copyReplace` block" — `CopyReplace`
+  found the phantom start, then hunted for `//-copyReplace` and grabbed the wrong span, throwing
+  `ArgumentOutOfRangeException: length ('-2250')` deep in `TemplateConverter.CopyReplace`. Fix:
+  describe markers by name in prose ("a skipFor-marked block", "a copy-replace block") without ever
+  reproducing the literal `//+`/`//-`/`/*+`/bracket token sequence; grep the whole diff for each
+  marker's exact start token after writing ANY comment that discusses codegen mechanics, not just
+  once at the end.
+- **A brand-new codegen-generated CONCRETE type name (e.g. `uintN`, the product of substituting a
+  proxy token) does not exist as a real type anywhere in `TemplateSource`'s own raw, unprocessed
+  compile** — only the proxy token itself (`iProxyN`, wired up as a real placeholder struct in
+  `proxyStructs.cs`) is a valid stand-in there. Writing a hand-added member that references the
+  concrete name literally (`public uintN uintVec(...) => ...;`) compiles fine in the FINAL generated
+  output (where `uintN` is real) but fails TemplateSource's own compile with "type or namespace name
+  'uintN' could not be found" — because that pass never substitutes anything, it just compiles the
+  literal template text as-is. Route any new member through the proxy token inside a (possibly
+  newly widened) `//+copyReplace`/`//alsoExpand` block instead of hand-writing the concrete name;
+  see `iProxyN.Shortcuts.cs`'s uint cross-shortcut, which had to move from a hardcoded `uintN`
+  method to widening the existing `iProxyN`-token copyReplace block.
 
 ## Misc
 - **A `.iProxy.cs`/`.fProxy.cs` file's routing is controlled by its FILENAME suffix, not its

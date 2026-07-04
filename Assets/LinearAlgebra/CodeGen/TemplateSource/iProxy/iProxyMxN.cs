@@ -2,6 +2,8 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using System;
 
+//alsoExpand[uint]// data type + construction/copy: no signed-only ops here.
+
 namespace LinearAlgebra
 {
 

@@ -117,6 +117,10 @@ Every decomposition/algorithm that allocates scratch should offer BOTH:
 - `//+copyReplace ... //-copyReplace` — duplicate a code region once per type in the file's type
   family (float+double, or int+short+long).
 - `//+copyReplaceAll ... //-copyReplaceAll` — same, but ALL types (float+double+int+short+long+bool).
+  **Does NOT thread `//alsoExpand[...]//`'s extra types** (no slot for e.g. `uint` in the fixed
+  list — where would it sit relative to `bool`?); today only `Pivot.Operations.cs` uses this marker
+  and it has no alsoExpand flag, so this is a documented gap, not a bug. Thread it through
+  `GenerateForAllTypes`'s `allTypes` branch (and decide the merged-list position) if that ever changes.
 - `//+copyReplaceFill[sep] ... //-copyReplaceFill` — same as copyReplace, joined by `sep` between
   copies.
 - `//+deleteThis ... //-deleteThis` — strip a block from generated output. The block must still be
@@ -131,7 +135,45 @@ Every decomposition/algorithm that allocates scratch should offer BOTH:
   second, etc. **Block-commented** (`/* */`), not line-commented (`//`), specifically so it can sit
   mid-statement without swallowing the rest of the line. Never embed a literal `*/` inside a prose
   example of this marker written INSIDE a `/* */` doc comment — it prematurely closes the outer
-  comment (see codegen-refactor-lessons.md).
+  comment (see codegen-refactor-lessons.md). **Its bracket-list parser finds the closing `]` via a
+  naive `IndexOf`, so a value containing `]` (e.g. array indexing like `x[i]`) truncates early** —
+  hoist the indexing into a local (`iProxy v = x[i];`) and put `v` in the choose list instead.
+- `//+skipFor[tag,...] ... //-skipFor` (added 2026-07-04) — per-generated-type conditional strip,
+  mirroring `//+copyReplace`'s bracket-list style but line-commented like `//+deleteThis` (it wraps
+  a body, so — unlike `//+choose` — it doesn't need to sit mid-statement). The wrapped block is
+  omitted from output for any generated type matching a bracket entry; the marker lines themselves
+  never appear in ANY output. Entries are a concrete type name (`uint`, `short`) or the `u` tag
+  (matches any unsigned concrete type — currently just `uint`; `ushort`/`byte` would join later via
+  `GenUtils.unsignedTypeNames`). Runs inside the per-type loop (needs to know which type is being
+  emitted), unlike `//+copyReplace`'s family which runs once before that loop starts. **Never write
+  two full method declarations sharing a signature, one per skipFor branch** ("twin" methods) —
+  TemplateSource compiles its own raw, unprocessed text as a real assembly (every marker is just a
+  comment there), so two same-signature declarations collide as a duplicate-member error before
+  codegen ever runs. Express a same-shaped twin via `/*+choose[...]*/` on the differing inner
+  expression instead (one declaration); reach for `//+skipFor` only when one variant should not
+  exist at all for some types (e.g. unary negation has no unsigned meaning). **Not processed on the
+  singular-file path** (`TemplateConverter.Execute`'s singular-files loop never calls
+  `SkipForReplace`) — a known design gap, not currently needed by any singular file, but a
+  `//+skipFor` block written into one would ship un-stripped.
+- `//alsoExpand[type,...]//` (added 2026-07-04) — per-FILE opt-in flag (single line, no closing
+  marker — mirrors `//singularFile//`, just with a bracket payload) that appends the listed
+  concrete type(s) — pre-registered in `GenUtils.extraIntTypes` — to THIS iProxy file's normal
+  int/short/long expansion set, without touching any other iProxy template. Resolved once per file,
+  up front, and threaded into both the outer per-type loop AND any inner iProxy-family
+  `//+copyReplace`/`//+copyReplaceFill` block in the same file (so a cross-type shortcut block
+  widens too — see `iProxyN.Shortcuts.cs`), including on the **singular-file path** (e.g. `Arena.cs`,
+  `Interfaces.cs`) — a singular file opts in exactly the same way a per-type file does. Only ONE
+  marker per file is allowed, and its payload is validated: an entry already in the base
+  int/short/long rotation, or repeated within the same bracket, is an error, not a silent no-op.
+  The marker's own line — plus any run of lines immediately following it that are themselves bare
+  `//` comment lines with no blank line in between (the common shape: the marker line starts a
+  multi-line doc-comment paragraph explaining the flag) — is stripped from generated output, same as
+  `//+copyReplace`'s family; a doc comment separated from the marker by a blank line is left alone.
+  **Never write the literal concrete type name a proxy token expands to** (e.g. `uintN`) directly in
+  template prose expecting it to compile in TemplateSource's own raw pass — only the proxy token
+  itself (`iProxyN`) is a real placeholder type there; `uintN` doesn't exist until codegen
+  substitutes it. Route any new self-referencing member through the proxy token inside a widened
+  `//+copyReplace` block instead of hand-writing the concrete name.
 
 ## Testing conventions
 - A workspace-overload's test suite verifies **equivalence** to the allocating overload (same

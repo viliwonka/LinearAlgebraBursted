@@ -3,6 +3,12 @@ using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.InteropServices;
 using LinearAlgebra.Sparse;
 //singularFile//
+//alsoExpand[uint]// ArenaCore merges every generated type's pools into this ONE file via the
+//copyReplace/copyReplaceFill blocks below (unlike a per-type file, which would emit a separate
+//Arena.<type>.cs per type). The uint pools themselves are declared in Arena.iProxy.cs's
+//alsoExpand-widened partial (uintVectors/uintMatrices/uintTempVectors/uintTempMatrices) - this flag
+//widens the iProxy-token blocks below the SAME way, so Init/Clear/ClearTemp/Dispose/*AllocationsCount
+//actually construct/clear/dispose those pools instead of leaving them default-constructed garbage.
 namespace LinearAlgebra
 {
     /// <summary>

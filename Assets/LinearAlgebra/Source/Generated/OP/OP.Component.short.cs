@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Unity.Burst;
 using LinearAlgebra.Internal;
 
+
 namespace LinearAlgebra
 {
     /// <summary>
@@ -109,27 +110,39 @@ namespace LinearAlgebra
             }
         }
 
+        // v - s, via a direct forward-order kernel (UnsafeOP.scalSub(target, n, s)) rather than the
+        // v + (-s) negation trick a scalar-subtract could otherwise reuse from addInPlace: unsigned
+        // types can't negate s, and this is bit-identical to the negation trick for signed types
+        // anyway (v + (-s) == v - s under modular wraparound), so every generated type shares one
+        // implementation. Callers (e.g. the vector/matrix `operator -` overloads) call this same
+        // name either way - see shortN.Operators.cs.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void subInPlace<T>(this T v, short s) where T : unmanaged, IUnsafeshortArray
         {
-            addInPlace(v, (short)(-s));
-        }
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void subInPlace<T>(short s, T v) where T : unmanaged, IUnsafeshortArray
-        {
-            unsafe {                 
-                UnsafeOP.scalSub(s, v.Data.Ptr, v.Data.Length);
+            unsafe {
+                UnsafeOP.scalSub(v.Data.Ptr, v.Data.Length, s);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void subInPlace<T>(short s, T v) where T : unmanaged, IUnsafeshortArray
+        {
+            unsafe {
+                UnsafeOP.scalSub(s, v.Data.Ptr, v.Data.Length);
+            }
+        }
+
+        // Negation has no unsigned meaning (uint has no unary minus), so this - and every operator
+        // that calls it (the vector/matrix unary `operator -`) - simply doesn't exist for uint.
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void signFlipInPlace<T>(this T a) where T : unmanaged, IUnsafeshortArray
         {
-            unsafe { 
+            unsafe {
                 UnsafeOP.signFlip(a.Data.Ptr, a.Data.Ptr, a.Data.Length);
             }
         }
+        
 
         /// <summary>Clamp every element of <paramref name="x"/> to [<paramref name="lo"/>, <paramref name="hi"/>] in-place.
         /// Delegates to the mathUnsafe clamp kernel; no allocation.</summary>

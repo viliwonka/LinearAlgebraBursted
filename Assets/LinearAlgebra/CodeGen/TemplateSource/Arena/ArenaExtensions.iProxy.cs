@@ -1,5 +1,11 @@
 using Unity.Mathematics;
 
+//alsoExpand[uint]// arena construction convenience methods. The default-range RandomMat overload
+//hardcodes a signed [-1, 1] range that has no unsigned equivalent - see the skipFor-marked block
+//below (do not write that marker's literal token here - the codegen parser is content-sensitive,
+//not comment-aware, and would treat this doc comment as a real marker); everything else here takes
+//its range as explicit params, so it's unsigned-clean.
+
 namespace LinearAlgebra
 {
     public static partial class ArenaExtensions {
@@ -39,6 +45,7 @@ namespace LinearAlgebra
             return vec;
         }
 
+        // NOTE: min/max are cast to int for NextInt - for uint, bounds above int.MaxValue are unsupported (the cast wraps).
         public static iProxyN iProxyRandomVec(this ref Arena arena, int N, iProxy min, iProxy max, uint seed = 84115)
         {
             var vec = arena.iProxyVec(N, true);
@@ -141,12 +148,18 @@ namespace LinearAlgebra
             return mat;
         }
 
+        // This default-range overload hardcodes a symmetric [-1, 1] range - literal -1 is out of
+        // range for an unsigned type, so this overload doesn't exist for uint; uint callers must
+        // use the explicit min/max overload below instead.
+        //+skipFor[u]
         public static iProxyMxN iProxyRandomMat(this ref Arena arena, int M_rows, int N_cols, uint seed = 121312)
         {
             return iProxyRandomMat(ref arena, M_rows, N_cols, -1, 1, seed);
         }
+        //-skipFor
 
         // constructs diagonal matrix with scalar s on diagonal
+        // NOTE: min/max are cast to int for NextInt - for uint, bounds above int.MaxValue are unsupported (the cast wraps).
         public static iProxyMxN iProxyRandomDiagonalMat(this ref Arena arena, int N, iProxy min, iProxy max, uint seed = 65792)
         {
             var matrix = arena.iProxyMat(N, N);
@@ -166,6 +179,7 @@ namespace LinearAlgebra
             return matrix;
         }
 
+        // NOTE: min/max are cast to int for NextInt - for uint, bounds above int.MaxValue are unsupported (the cast wraps).
         public static iProxyMxN iProxyRandomMat(this ref Arena arena, int M_rows, int N_cols, iProxy min, iProxy max, uint seed = 121312)
         {
             var matrix = arena.iProxyMat(M_rows, N_cols, true);

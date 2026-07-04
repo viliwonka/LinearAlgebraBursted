@@ -32,7 +32,10 @@ namespace LinearAlgebra
         public UnsafeList<long> Data { get; }
     }
     
-
+    public interface IUnsafeuintArray {
+        public UnsafeList<uint> Data { get; }
+    }
+    
 
     public interface IUnsafeBoolArray
     {

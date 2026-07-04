@@ -1,8 +1,14 @@
-#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS 
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using Unity.Mathematics;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
+
+//alsoExpand[uint]// raw pointer kernels. signFlip/sumAbs/maxAbs are all signed-only - there is no
+//unsigned notion of a negative value, so no absolute-value to take, and neither C#'s Math.Abs nor
+//Unity.Mathematics' math.abs defines an overload for uint - all three are skipFor-marked below (do
+//not write that marker's literal token in prose here - the codegen parser is content-sensitive, not
+//comment-aware).
 
 namespace LinearAlgebra.Internal
 {
@@ -15,32 +21,39 @@ namespace LinearAlgebra.Internal
 
             for (int i = 0; i < n; i++)
                 sum += a[i];
-            
+
             return sum;
         }
 
+        //+skipFor[u]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static iProxy sumAbs([NoAlias] iProxy* a, int n)
         {
             iProxy sum = 0;
 
-            for (int i = 0; i < n; i++)
-                sum += (iProxy)(a[i] < 0? -a[i] : a[i]);
-            
+            for (int i = 0; i < n; i++) {
+                iProxy v = a[i];
+                sum += (iProxy)(v < 0? -v : v);
+            }
+
             return sum;
         }
+        //-skipFor
 
+        //+skipFor[u]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static iProxy maxAbs([NoAlias] iProxy* a, int n)
         {
             iProxy max = 0;
 
             for (int i = 0; i < n; i++) {
-                var abs = (a[i] < 0 ? -a[i] : a[i]);
+                iProxy v = a[i];
+                var abs = (v < 0 ? -v : v);
                 max = (iProxy)(max < abs? abs : max);
             }
             return max;
         }
+        //-skipFor
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static iProxy vecDot([NoAlias] iProxy* vA, [NoAlias] iProxy* vB, int n) {
@@ -163,13 +176,15 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        //+skipFor[u]
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void signFlip([NoAlias] iProxy* target, [NoAlias] iProxy* from, int n) {
 
             for (int i = 0; i < n; i++)
                 target[i] = (iProxy)(-from[i]);
         }
-        
+        //-skipFor
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void compAdd([NoAlias] iProxy* target, [NoAlias] iProxy* from, int n) {
 
@@ -196,6 +211,18 @@ namespace LinearAlgebra.Internal
         {
             for (int i = 0; i < n; i++)
                 target[i] = (iProxy)(s - target[i]);
+        }
+
+        // target[i] -= s. Forward-order twin of the (s, target, n) overload above. subInPlace<T>(T,
+        // iProxy) (OP.Component.iProxy.cs) uses this uniformly for every generated type - it used
+        // to implement "v - s" as "v + (-s)" for signed types only (bit-identical under modular
+        // wraparound, but unsigned types can't negate s), so unifying on the direct kernel avoids
+        // needing two branches there.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void scalSub([NoAlias] iProxy* target, int n, iProxy s)
+        {
+            for (int i = 0; i < n; i++)
+                target[i] -= s;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

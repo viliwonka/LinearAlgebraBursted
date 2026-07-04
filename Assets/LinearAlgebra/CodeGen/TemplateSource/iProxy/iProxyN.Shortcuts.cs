@@ -4,6 +4,13 @@ using System.Runtime.CompilerServices;
 
 using LinearAlgebra;
 
+//alsoExpand[uint]// gives uintN an IArenaShortcuts implementation (float/double/bool cross-type
+//shortcuts below, unaffected by this file's own outer-type opt-in). The inner iProxy-family
+//copy-replace block below ALSO widens to a 4th (uint) copy from this same flag - TemplateConverter
+//resolves it once per file and threads it into that block too - giving every int-family type
+//(including uintN itself) a uintVec/uintTempVec/uintMat/uintTempMat cross-shortcut, which
+//Blas/OP.Dot.iProxy.cs's a.iProxyTempMat(...)/x.iProxyTempVec(...) calls need to resolve for uint.
+
 namespace LinearAlgebra {
 
     public partial struct iProxyN : IArenaShortcuts

@@ -1,5 +1,9 @@
 using Unity.Collections.LowLevel.Unsafe;
 //singularFile//
+//alsoExpand[uint]// widens the IUnsafeiProxyArray copyReplace block below, so IUnsafeuintArray is
+//generated the same way IUnsafeintArray/IUnsafeshortArray/IUnsafelongArray already are (this is a
+//singular file, but singular files opt into alsoExpand exactly like a per-type file does - see
+//TemplateConverter.Execute's singular-file loop).
 
 /*
 Useful for per-element operations which can happen on both vector or matrix types.
@@ -19,7 +23,6 @@ namespace LinearAlgebra
         public UnsafeList<iProxy> Data { get; }
     }
     //-copyReplace
-
 
     public interface IUnsafeBoolArray
     {

@@ -18,7 +18,8 @@ namespace LinearAlgebra
     // Unlike Print.Log -- which is Burst-callable but capped at a 4 KB FixedString and SILENTLY
     // TRUNCATES past it -- these build an unbounded System.Text.StringBuilder, so they never
     // truncate. Call them from managed / editor code only, NEVER from inside a Burst job.
-    public static partial class Print
+    //
+        public static partial class Print
     {
         public static string ToText(in longMxN m)
         {

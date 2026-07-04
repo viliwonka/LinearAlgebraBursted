@@ -1,6 +1,8 @@
 using System;
 using System.Runtime.CompilerServices;
 
+//alsoExpand[uint]// plain element access, no signed-only ops here.
+
 namespace LinearAlgebra
 {
 

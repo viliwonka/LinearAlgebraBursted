@@ -6,6 +6,8 @@ using System;
 using Unity.Collections.LowLevel.Unsafe;
 using LinearAlgebra.Internal;
 
+//alsoExpand[uint]// dot/outer/matmul/transpose: pure multiply-accumulate, no signed-only ops here.
+
 namespace LinearAlgebra
 {
     /// <summary>

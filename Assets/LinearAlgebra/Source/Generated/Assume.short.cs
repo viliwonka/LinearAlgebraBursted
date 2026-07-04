@@ -1,6 +1,7 @@
 using Unity.Mathematics;
 using System;
 
+
 namespace LinearAlgebra
 {
     internal static partial class Assume

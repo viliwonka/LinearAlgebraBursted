@@ -20,6 +20,18 @@ namespace LinearAlgebra.CodeGen
         //with v0 for the first generated type, v1 for the second, etc. (float|double for an fProxy
         //file; int|short|long for an iProxy file). Lets a magic-number constant differ per generated
         //type - see ChooseMarkerDemo.fProxy.cs / ChooseMarkerDemo.iProxy.cs for worked examples.
+        //+skipFor[tag,...] ... -skipFor are BLOCK markers (line-commented, like copyReplace/deleteThis
+        //above - unlike choose, this wraps a body, so it doesn't need to sit mid-statement): the
+        //wrapped block is OMITTED from output for any generated type matching a bracket entry (the
+        //marker lines themselves never appear in any output, matched or not). Entries are either a
+        //concrete type name ("uint", "short") or the `u` tag (matches any UNSIGNED concrete type).
+        //Used to wrap signed-only code (unary minus, negative literals) that would fail to compile
+        //once an unsigned type joins an iProxy file's rotation.
+        //alsoExpand[type,...]// is a per-FILE opt-in FLAG (single line, no closing marker - mirrors
+        //singularFile// below): it appends the listed concrete type(s) - which must be pre-registered
+        //in extraIntTypes - to THIS iProxy file's normal int/short/long expansion set, without
+        //affecting any other iProxy template. This is how a new int-family type (uint) lights up on
+        //only the handful of files that are ready for it instead of every iProxy file at once.
     */
     public static class GenUtils
     {
@@ -67,6 +79,29 @@ namespace LinearAlgebra.CodeGen
         // second, etc. Block comments (not // line comments) so the marker can sit mid-statement.
         public const string chooseMarkerStart = "/*+choose[";
         public const string chooseMarkerEnd = "/*-choose*/";
+
+        // //+skipFor[tag,...] ... //-skipFor : strips the wrapped block from output for any
+        // generated type matching a bracket entry. See the doc comment above and
+        // TemplateConverter.SkipForReplace/SkipForTagMatches.
+        public const string skipForMarkerStart = "//+skipFor";
+        public const string skipForMarkerEnd = "//-skipFor";
+
+        // Concrete type names the `u` tag in a //+skipFor[...] bracket matches. Add "ushort"/"byte"
+        // here (and to extraIntTypes below) when those land.
+        public static readonly string[] unsignedTypeNames = { "uint" };
+
+        // //alsoExpand[type,...]// : per-file opt-in flag, see the doc comment above and
+        // TemplateConverter.ResolveAlsoExpand. Not bracket-block-closed like copyReplace/skipFor -
+        // it's a single-line FLAG like singularFileMarker below, just with a payload.
+        public const string alsoExpandMarkerStart = "//alsoExpand[";
+        public const string alsoExpandMarkerEnd = "]//";
+
+        // (concrete type, PascalCase caps token) pairs addressable via //alsoExpand[...]. The caps
+        // token mirrors capsIntTypes' shape even though no current template actually uses the caps
+        // "IProxy" token.
+        public static readonly (string type, string caps)[] extraIntTypes = new[] {
+            ("uint", "UInt"),
+        };
 
         // tells compiler that file is singular and should not be copied for each type
         public const string singularFileMarker = "//singularFile//";
