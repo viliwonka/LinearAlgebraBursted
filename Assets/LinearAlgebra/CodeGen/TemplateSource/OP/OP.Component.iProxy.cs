@@ -148,16 +148,20 @@ namespace LinearAlgebra
         //-skipFor
 
         /// <summary>Clamp every element of <paramref name="x"/> to [<paramref name="lo"/>, <paramref name="hi"/>] in-place.
-        /// Delegates to the mathUnsafe clamp kernel; no allocation.</summary>
-        /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.</remarks>
+        /// Delegates to the UnsafeMathOP clamp kernel; no allocation.</summary>
+        /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.
+        /// Takes <paramref name="x"/> by value (<c>this T</c>), matching every other Comp wrapper in this
+        /// file - a generic extension method's receiver cannot use <c>this in T</c> (CS8338: the 'in'
+        /// extension-method form requires a concrete, non-generic value type). Existing callers that
+        /// wrote the old static-style <c>clampInPlace(in v, ...)</c> just drop the now-illegal <c>in</c>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void clampInPlace<T>(in T x, iProxy lo, iProxy hi) where T : unmanaged, IUnsafeiProxyArray
+        public static void clampInPlace<T>(this T x, iProxy lo, iProxy hi) where T : unmanaged, IUnsafeiProxyArray
         {
             if (lo > hi)
                 throw new ArgumentException("clampInPlace: lo must be <= hi");
             unsafe
             {
-                mathUnsafeiProxy.clamp(x.Data.Ptr, x.Data.Length, lo, hi);
+                UnsafeMathOP.clamp(x.Data.Ptr, x.Data.Length, lo, hi);
             }
         }
 
@@ -250,6 +254,46 @@ namespace LinearAlgebra
             unsafe {
                 UnsafeOP.bitwiseRightShiftComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
+        }
+
+        // ---- Componentwise math, forwarding to UnsafeMathOP (mathUnsafe's former home). ----
+
+        //+skipFor[u]
+        // No unsigned meaning (uint has no notion of a negative value to take the magnitude of),
+        // mirroring signFlipInPlace above - see UnsafeMathOP.iProxy.cs's own skipFor-marked kernel.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void absInPlace<T>(this T x) where T : unmanaged, IUnsafeiProxyArray
+        {
+            unsafe { UnsafeMathOP.abs(x.Data.Ptr, x.Data.Length); }
+        }
+        //-skipFor
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void minInPlace<T>(this T x, T y) where T : unmanaged, IUnsafeiProxyArray
+        {
+            unsafe { UnsafeMathOP.min(x.Data.Ptr, y.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void maxInPlace<T>(this T x, T y) where T : unmanaged, IUnsafeiProxyArray
+        {
+            unsafe { UnsafeMathOP.max(x.Data.Ptr, y.Data.Ptr, x.Data.Length); }
+        }
+
+        //+skipFor[u]
+        // No unsigned meaning (clamping negatives to zero is a no-op when there are no negatives),
+        // mirroring absInPlace above - see UnsafeMathOP.iProxy.cs's own skipFor-marked kernel.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void reluInPlace<T>(this T x) where T : unmanaged, IUnsafeiProxyArray
+        {
+            unsafe { UnsafeMathOP.relu(x.Data.Ptr, x.Data.Length); }
+        }
+        //-skipFor
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void madInPlace<T>(this T a, T b, T c) where T : unmanaged, IUnsafeiProxyArray
+        {
+            unsafe { UnsafeMathOP.mad(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, a.Data.Length); }
         }
     }
 }

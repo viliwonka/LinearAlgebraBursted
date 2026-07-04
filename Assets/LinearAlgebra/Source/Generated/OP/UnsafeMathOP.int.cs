@@ -4,26 +4,26 @@ using Unity.Burst;
 using Unity.Mathematics;
 
 
-namespace LinearAlgebra
+namespace LinearAlgebra.Internal
 {
 
-    public static unsafe class mathUnsafeint
+    public static unsafe partial class UnsafeMathOP
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void setAll([NoAlias] int* x, int n, int s)
         {
             for (int i = 0; i < n; i++)
                 x[i] = (int)s;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void setIndexZero([NoAlias] int* x, int n)
         {
             for (int i = 0; i < n; i++)
                 x[i] = (int)i;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void setIndexOne([NoAlias] int* x, int n)
         {
             for (int i = 0; i < n; i++)
@@ -31,7 +31,7 @@ namespace LinearAlgebra
         }
 
         
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void abs([NoAlias] int* x, int n)
         {
             for (int i = 0; i < n; i++) {
@@ -41,28 +41,28 @@ namespace LinearAlgebra
         }
         
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void max([NoAlias] int* x, [NoAlias] int* y, int n)
         {
             for (int i = 0; i < n; i++)
                 x[i] = x[i] > y[i]? x[i]: y[i];
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void min([NoAlias] int* x, [NoAlias] int* y, int n)
         {
             for (int i = 0; i < n; i++)
                 x[i] = x[i] < y[i] ? x[i] : y[i];
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void clamp([NoAlias] int* x, int n, int min, int max)
         {
             for (int i = 0; i < n; i++)
                 x[i] = (int)math.max(min, math.min(max, x[i]));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void mod([NoAlias] int* x, int y, int n)
         {
             for (int i = 0; i < n; i++)
@@ -70,7 +70,7 @@ namespace LinearAlgebra
         }
 
         
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void relu([NoAlias] int* x, int n)
         {
             for (int i = 0; i < n; i++) {
@@ -80,14 +80,14 @@ namespace LinearAlgebra
         }
         
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void mad([NoAlias] int* a, [NoAlias] int* b, [NoAlias] int* c, int n)
         {
             for (int i = 0; i < n; i++)
                 a[i] = (int)(a[i] * b[i] + c[i]);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static int dot([NoAlias] int* x, [NoAlias] int* y, int n)
         {
             int sum = 0;

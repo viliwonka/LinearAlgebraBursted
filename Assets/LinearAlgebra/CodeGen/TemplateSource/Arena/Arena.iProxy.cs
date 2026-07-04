@@ -1,4 +1,5 @@
 using Unity.Collections.LowLevel.Unsafe;
+using LinearAlgebra.Internal;
 
 //alsoExpand[uint]// core bump-allocator factories (arena.uintVec/uintMat); no signed-only ops here.
 
@@ -28,7 +29,7 @@ namespace LinearAlgebra
             var vec = new iProxyN(N, in this, true);
             _core->iProxyVectors.Add(in vec);
             unsafe {
-                mathUnsafeiProxy.setAll(vec.Data.Ptr, N, s);
+                UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
             }
             return vec;
         }
@@ -75,7 +76,7 @@ namespace LinearAlgebra
             _core->iProxyMatrices.Add(in matrix);
             unsafe
             {
-                mathUnsafeiProxy.setAll(matrix.Data.Ptr, matrix.Length, s);
+                UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
             }
             return matrix;
         }

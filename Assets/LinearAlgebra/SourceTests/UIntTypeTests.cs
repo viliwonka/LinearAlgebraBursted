@@ -64,6 +64,10 @@ public class UIntTypeTests
             InPlaceWrap,
             InPlaceBitwise,
             ClampInPlace,
+
+            // uintComp elementwise math (min/max/mad exist for uint; abs/relu deliberately do NOT)
+            MinMaxInPlace,
+            MadInPlace,
         }
 
         public TestType Type;
@@ -107,6 +111,9 @@ public class UIntTypeTests
                 case TestType.InPlaceWrap: InPlaceWrap(); break;
                 case TestType.InPlaceBitwise: InPlaceBitwise(); break;
                 case TestType.ClampInPlace: ClampInPlace(); break;
+
+                case TestType.MinMaxInPlace: MinMaxInPlace(); break;
+                case TestType.MadInPlace: MadInPlace(); break;
 
                 default: throw new NotImplementedException();
             }
@@ -795,7 +802,7 @@ public class UIntTypeTests
             int n = 16;
 
             uintN v = arena.uintIndexZeroVec(n); // [0,1,...,n-1]
-            uintComp.clampInPlace(in v, 3u, 8u);
+            uintComp.clampInPlace(v, 3u, 8u);
             for (int i = 0; i < n; i++)
             {
                 uint expected = (uint)i;
@@ -803,6 +810,88 @@ public class UIntTypeTests
                 if (expected > 8u) expected = 8u;
                 Assert.IsTrue(v[i] == expected);
             }
+
+            arena.Dispose();
+        }
+
+        // uintComp elementwise math: min/max/mad ARE generated for uint (unsigned-clean), and their
+        // buffer overloads mutate the FIRST operand (x for min/max, a for mad), leaving the other
+        // operand(s) untouched. abs/reluInPlace are intentionally absent for uint (there is no
+        // negative to take the magnitude of / clamp to zero) - they are skipFor'd off the kernel, so
+        // a `v.absInPlace()` / `v.reluInPlace()` here would fail to COMPILE. That absence is the
+        // contract; we simply never call them (a compile-level, not runtime, guarantee).
+        void MinMaxInPlace()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 16;
+
+            uintN x = arena.uintIndexZeroVec(n);          // [0,1,...,n-1]
+            uintN y = arena.uintVec(n, 5u);               // constant 5
+            uintN y0 = y.Copy();
+
+            uintComp.minInPlace(x, y); // x = min(x, y); y untouched
+            for (int i = 0; i < n; i++)
+            {
+                uint xi = (uint)i;
+                Assert.IsTrue(x[i] == (xi < 5u ? xi : 5u));
+                Assert.IsTrue(y[i] == y0[i]);
+            }
+
+            uintN a = arena.uintIndexZeroVec(n);          // [0,1,...,n-1]
+            uintN b = arena.uintVec(n, 5u);
+            uintN b0 = b.Copy();
+
+            uintComp.maxInPlace(a, b); // a = max(a, b); b untouched
+            for (int i = 0; i < n; i++)
+            {
+                uint ai = (uint)i;
+                Assert.IsTrue(a[i] == (ai > 5u ? ai : 5u));
+                Assert.IsTrue(b[i] == b0[i]);
+            }
+
+            // unsigned ordering: MaxValue is the LARGEST (not -1), so max picks it, min rejects it.
+            uintN big = arena.uintVec(n, UMAX);
+            uintN small = arena.uintVec(n, 1u);
+            uintN small0 = small.Copy();
+            uintComp.maxInPlace(big, small);
+            for (int i = 0; i < n; i++) Assert.IsTrue(big[i] == UMAX);
+            big = arena.uintVec(n, UMAX);
+            uintComp.minInPlace(big, small);
+            for (int i = 0; i < n; i++)
+            {
+                Assert.IsTrue(big[i] == 1u);
+                Assert.IsTrue(small[i] == small0[i]);
+            }
+
+            arena.Dispose();
+        }
+
+        void MadInPlace()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 16;
+
+            uintN a = arena.uintVec(n, 3u);
+            uintN b = arena.uintVec(n, 4u);
+            uintN c = arena.uintVec(n, 2u);
+            uintN b0 = b.Copy();
+            uintN c0 = c.Copy();
+
+            uintComp.madInPlace(a, b, c); // a = a*b + c = 14 ; b, c untouched
+            for (int i = 0; i < n; i++)
+            {
+                Assert.IsTrue(a[i] == 14u);
+                Assert.IsTrue(b[i] == b0[i]);
+                Assert.IsTrue(c[i] == c0[i]);
+            }
+
+            // modular wraparound flows through mad the same as bare arithmetic:
+            // MaxValue * 1 + 1 == 0 (mod 2^32).
+            uintN wa = arena.uintVec(n, UMAX);
+            uintN wb = arena.uintVec(n, 1u);
+            uintN wc = arena.uintVec(n, 1u);
+            uintComp.madInPlace(wa, wb, wc);
+            for (int i = 0; i < n; i++) Assert.IsTrue(wa[i] == 0u);
 
             arena.Dispose();
         }

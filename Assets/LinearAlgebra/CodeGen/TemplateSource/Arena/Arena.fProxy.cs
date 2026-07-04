@@ -1,4 +1,5 @@
 using Unity.Collections.LowLevel.Unsafe;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -26,7 +27,7 @@ namespace LinearAlgebra
             var vec = new fProxyN(N, in this, true);
             _core->fProxyVectors.Add(in vec);
             unsafe {
-                mathUnsafefProxy.setAll(vec.Data.Ptr, N, s);
+                UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
             }
             return vec;
         }
@@ -74,7 +75,7 @@ namespace LinearAlgebra
             _core->fProxyMatrices.Add(in matrix);
             unsafe
             {
-                mathUnsafefProxy.setAll(matrix.Data.Ptr, matrix.Length, s);
+                UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
             }
             return matrix;
         }

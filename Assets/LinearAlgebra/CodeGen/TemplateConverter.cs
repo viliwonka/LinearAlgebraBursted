@@ -375,7 +375,7 @@ namespace LinearAlgebra.CodeGen {
         // prose sharing that same line), AND any run of lines immediately following it that are
         // themselves //-only comment lines with no blank line in between - the common case where the
         // marker's line is the FIRST line of a multi-line doc-comment paragraph explaining the flag
-        // (see mathUnsafeiProxy.cs/Assume.iProxy.cs/etc.). The run stops at the first line that isn't
+        // (see UnsafeMathOP.iProxy.cs/Assume.iProxy.cs/etc.). The run stops at the first line that isn't
         // a bare "//" comment (blank line or real code), which is left untouched - only content
         // CONTIGUOUS with the marker line is ever consumed, so an unrelated standalone doc comment
         // elsewhere in the file (separated by a blank line, or just not adjacent) is never touched.

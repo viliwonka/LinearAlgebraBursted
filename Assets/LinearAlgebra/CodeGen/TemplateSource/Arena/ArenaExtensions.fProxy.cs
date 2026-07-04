@@ -1,4 +1,5 @@
 using Unity.Mathematics;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -11,7 +12,7 @@ namespace LinearAlgebra
             var vec = arena.fProxyVec(N, true);
 
             unsafe {
-                mathUnsafefProxy.setIndexZero(vec.Data.Ptr, N);
+                UnsafeMathOP.setIndexZero(vec.Data.Ptr, N);
                 
             }
             return vec;
@@ -22,7 +23,7 @@ namespace LinearAlgebra
             var vec = arena.fProxyVec(N, true);
 
             unsafe {
-                mathUnsafefProxy.setIndexOne(vec.Data.Ptr, N);
+                UnsafeMathOP.setIndexOne(vec.Data.Ptr, N);
             }
             return vec;
         }
@@ -123,7 +124,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                mathUnsafefProxy.setIndexZero(mat.Data.Ptr, len);
+                UnsafeMathOP.setIndexZero(mat.Data.Ptr, len);
             }
             
             return mat;
@@ -137,7 +138,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                mathUnsafefProxy.setIndexOne(mat.Data.Ptr, len);
+                UnsafeMathOP.setIndexOne(mat.Data.Ptr, len);
             }
 
             return mat;

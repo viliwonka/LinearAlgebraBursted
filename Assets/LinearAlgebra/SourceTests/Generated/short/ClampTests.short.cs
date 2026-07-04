@@ -42,7 +42,7 @@ public class shortClampTests
             v[0] = (short)(-5); v[1] = (short)(-2); v[2] = (short)0;
             v[3] = (short)2;    v[4] = (short)7;    v[5] = (short)2;
 
-            shortComp.clampInPlace(in v, (short)(-2), (short)5);
+            shortComp.clampInPlace(v, (short)(-2), (short)5);
 
             Assert.IsTrue(v[0] == (short)(-2));
             Assert.IsTrue(v[1] == (short)(-2));
@@ -60,7 +60,7 @@ public class shortClampTests
             A[0, 0] = (short)(-10); A[0, 1] = (short)3;
             A[1, 0] = (short)5;     A[1, 1] = (short)20;
 
-            shortComp.clampInPlace(in A, (short)0, (short)10);
+            shortComp.clampInPlace(A, (short)0, (short)10);
 
             Assert.IsTrue(A[0, 0] == (short)0);
             Assert.IsTrue(A[0, 1] == (short)3);
@@ -73,7 +73,7 @@ public class shortClampTests
         {
             var arena = new Arena(Allocator.Persistent);
             var v = arena.shortVec(4, 3); // all 3, inside [0,5]
-            shortComp.clampInPlace(in v, (short)0, (short)5);
+            shortComp.clampInPlace(v, (short)0, (short)5);
             for (int i = 0; i < 4; i++)
                 Assert.IsTrue(v[i] == (short)3);
             arena.Dispose();
@@ -95,7 +95,7 @@ public class shortClampTests
         var arena = new Arena(Allocator.Persistent);
         var v = arena.shortVec(3, 0);
         v[0] = (short)(-4); v[1] = (short)0; v[2] = (short)9;
-        Assert.Throws<ArgumentException>(() => shortComp.clampInPlace(in v, (short)6, (short)(-1)));
+        Assert.Throws<ArgumentException>(() => shortComp.clampInPlace(v, (short)6, (short)(-1)));
         arena.Dispose();
     }
 }

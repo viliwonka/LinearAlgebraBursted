@@ -10,26 +10,26 @@ using Unity.Mathematics;
 //the codegen parser is content-sensitive, not comment-aware). Everything else (min/max/clamp/mod/
 //mad/dot) is unsigned-clean as-is.
 
-namespace LinearAlgebra
+namespace LinearAlgebra.Internal
 {
 
-    public static unsafe class mathUnsafeiProxy
+    public static unsafe partial class UnsafeMathOP
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void setAll([NoAlias] iProxy* x, int n, iProxy s)
         {
             for (int i = 0; i < n; i++)
                 x[i] = (iProxy)s;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void setIndexZero([NoAlias] iProxy* x, int n)
         {
             for (int i = 0; i < n; i++)
                 x[i] = (iProxy)i;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void setIndexOne([NoAlias] iProxy* x, int n)
         {
             for (int i = 0; i < n; i++)
@@ -37,7 +37,7 @@ namespace LinearAlgebra
         }
 
         //+skipFor[u]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void abs([NoAlias] iProxy* x, int n)
         {
             for (int i = 0; i < n; i++) {
@@ -47,28 +47,28 @@ namespace LinearAlgebra
         }
         //-skipFor
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void max([NoAlias] iProxy* x, [NoAlias] iProxy* y, int n)
         {
             for (int i = 0; i < n; i++)
                 x[i] = x[i] > y[i]? x[i]: y[i];
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void min([NoAlias] iProxy* x, [NoAlias] iProxy* y, int n)
         {
             for (int i = 0; i < n; i++)
                 x[i] = x[i] < y[i] ? x[i] : y[i];
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void clamp([NoAlias] iProxy* x, int n, iProxy min, iProxy max)
         {
             for (int i = 0; i < n; i++)
                 x[i] = (iProxy)math.max(min, math.min(max, x[i]));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void mod([NoAlias] iProxy* x, iProxy y, int n)
         {
             for (int i = 0; i < n; i++)
@@ -76,7 +76,7 @@ namespace LinearAlgebra
         }
 
         //+skipFor[u]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void relu([NoAlias] iProxy* x, int n)
         {
             for (int i = 0; i < n; i++) {
@@ -86,14 +86,14 @@ namespace LinearAlgebra
         }
         //-skipFor
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void mad([NoAlias] iProxy* a, [NoAlias] iProxy* b, [NoAlias] iProxy* c, int n)
         {
             for (int i = 0; i < n; i++)
                 a[i] = (iProxy)(a[i] * b[i] + c[i]);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static iProxy dot([NoAlias] iProxy* x, [NoAlias] iProxy* y, int n)
         {
             iProxy sum = 0;

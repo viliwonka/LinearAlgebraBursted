@@ -1,4 +1,5 @@
 using Unity.Mathematics;
+using LinearAlgebra.Internal;
 
 //alsoExpand[uint]// arena construction convenience methods. The default-range RandomMat overload
 //hardcodes a signed [-1, 1] range that has no unsigned equivalent - see the skipFor-marked block
@@ -16,7 +17,7 @@ namespace LinearAlgebra
             var vec = arena.iProxyVec(N, true);
 
             unsafe {
-                mathUnsafeiProxy.setIndexZero(vec.Data.Ptr, N);
+                UnsafeMathOP.setIndexZero(vec.Data.Ptr, N);
                 
             }
             return vec;
@@ -27,7 +28,7 @@ namespace LinearAlgebra
             var vec = arena.iProxyVec(N, true);
 
             unsafe {
-                mathUnsafeiProxy.setIndexOne(vec.Data.Ptr, N);
+                UnsafeMathOP.setIndexOne(vec.Data.Ptr, N);
             }
             return vec;
         }
@@ -128,7 +129,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                mathUnsafeiProxy.setIndexZero(mat.Data.Ptr, len);
+                UnsafeMathOP.setIndexZero(mat.Data.Ptr, len);
             }
             
             return mat;
@@ -142,7 +143,7 @@ namespace LinearAlgebra
 
             unsafe
             {
-                mathUnsafeiProxy.setIndexOne(mat.Data.Ptr, len);
+                UnsafeMathOP.setIndexOne(mat.Data.Ptr, len);
             }
 
             return mat;

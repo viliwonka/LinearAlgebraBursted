@@ -137,16 +137,20 @@ namespace LinearAlgebra
         
 
         /// <summary>Clamp every element of <paramref name="x"/> to [<paramref name="lo"/>, <paramref name="hi"/>] in-place.
-        /// Delegates to the mathUnsafe clamp kernel; no allocation.</summary>
-        /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.</remarks>
+        /// Delegates to the UnsafeMathOP clamp kernel; no allocation.</summary>
+        /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.
+        /// Takes <paramref name="x"/> by value (<c>this T</c>), matching every other Comp wrapper in this
+        /// file - a generic extension method's receiver cannot use <c>this in T</c> (CS8338: the 'in'
+        /// extension-method form requires a concrete, non-generic value type). Existing callers that
+        /// wrote the old static-style <c>clampInPlace(in v, ...)</c> just drop the now-illegal <c>in</c>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void clampInPlace<T>(in T x, uint lo, uint hi) where T : unmanaged, IUnsafeuintArray
+        public static void clampInPlace<T>(this T x, uint lo, uint hi) where T : unmanaged, IUnsafeuintArray
         {
             if (lo > hi)
                 throw new ArgumentException("clampInPlace: lo must be <= hi");
             unsafe
             {
-                mathUnsafeuint.clamp(x.Data.Ptr, x.Data.Length, lo, hi);
+                UnsafeMathOP.clamp(x.Data.Ptr, x.Data.Length, lo, hi);
             }
         }
 
@@ -239,6 +243,30 @@ namespace LinearAlgebra
             unsafe {
                 UnsafeOP.bitwiseRightShiftComp(a.Data.Ptr, b.Data.Ptr, a.Data.Length);
             }
+        }
+
+        // ---- Componentwise math, forwarding to UnsafeMathOP (mathUnsafe's former home). ----
+
+        
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void minInPlace<T>(this T x, T y) where T : unmanaged, IUnsafeuintArray
+        {
+            unsafe { UnsafeMathOP.min(x.Data.Ptr, y.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void maxInPlace<T>(this T x, T y) where T : unmanaged, IUnsafeuintArray
+        {
+            unsafe { UnsafeMathOP.max(x.Data.Ptr, y.Data.Ptr, x.Data.Length); }
+        }
+
+        
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void madInPlace<T>(this T a, T b, T c) where T : unmanaged, IUnsafeuintArray
+        {
+            unsafe { UnsafeMathOP.mad(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, a.Data.Length); }
         }
     }
 }

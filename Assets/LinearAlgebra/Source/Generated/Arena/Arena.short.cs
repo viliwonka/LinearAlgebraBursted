@@ -1,4 +1,5 @@
 using Unity.Collections.LowLevel.Unsafe;
+using LinearAlgebra.Internal;
 
 
 namespace LinearAlgebra
@@ -27,7 +28,7 @@ namespace LinearAlgebra
             var vec = new shortN(N, in this, true);
             _core->shortVectors.Add(in vec);
             unsafe {
-                mathUnsafeshort.setAll(vec.Data.Ptr, N, s);
+                UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
             }
             return vec;
         }
@@ -74,7 +75,7 @@ namespace LinearAlgebra
             _core->shortMatrices.Add(in matrix);
             unsafe
             {
-                mathUnsafeshort.setAll(matrix.Data.Ptr, matrix.Length, s);
+                UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
             }
             return matrix;
         }
