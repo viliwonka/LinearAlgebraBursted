@@ -292,5 +292,54 @@ namespace LinearAlgebra
         {
             unsafe { UnsafeMathOP.mad(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, a.Data.Length); }
         }
+
+        // ---- Bit-manipulation intrinsics, forwarding to UnsafeBitsOP (see UnsafeBitsOP.short.cs
+        // for the per-type width-correction details, especially short). Every one of these REPLACES
+        // each element in place with the op's own result (e.g. countbitsInPlace turns each element
+        // into its own population count) - the same in-place philosophy as everything else in this
+        // file, just producing a differently-meaning value rather than a transformed one. Sign-
+        // agnostic (they act on the bit pattern, not the numeric value) - no skipFor for uint. ----
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void countbitsInPlace<T>(this T x) where T : unmanaged, IUnsafeshortArray
+        {
+            unsafe { UnsafeBitsOP.countbits(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void tzcntInPlace<T>(this T x) where T : unmanaged, IUnsafeshortArray
+        {
+            unsafe { UnsafeBitsOP.tzcnt(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void lzcntInPlace<T>(this T x) where T : unmanaged, IUnsafeshortArray
+        {
+            unsafe { UnsafeBitsOP.lzcnt(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void reversebitsInPlace<T>(this T x) where T : unmanaged, IUnsafeshortArray
+        {
+            unsafe { UnsafeBitsOP.reversebits(x.Data.Ptr, x.Data.Length); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void rorInPlace<T>(this T x, int n) where T : unmanaged, IUnsafeshortArray
+        {
+            unsafe { UnsafeBitsOP.ror(x.Data.Ptr, x.Data.Length, n); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void rolInPlace<T>(this T x, int n) where T : unmanaged, IUnsafeshortArray
+        {
+            unsafe { UnsafeBitsOP.rol(x.Data.Ptr, x.Data.Length, n); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ceilpow2InPlace<T>(this T x) where T : unmanaged, IUnsafeshortArray
+        {
+            unsafe { UnsafeBitsOP.ceilpow2(x.Data.Ptr, x.Data.Length); }
+        }
     }
 }

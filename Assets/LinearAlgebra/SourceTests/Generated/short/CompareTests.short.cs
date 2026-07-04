@@ -48,6 +48,9 @@ public class shortCompareTests
             MatMatGreater,
             MatMatGreaterOrEqual,
             MatMatRandom,
+
+            VecIsPow2,
+            MatIsPow2,
         }
 
         public TestType Type;
@@ -152,7 +155,12 @@ public class shortCompareTests
                         MatMatRandom(ref arena);
                         break;
 
-
+                    case TestType.VecIsPow2:
+                        VecIsPow2(ref arena);
+                        break;
+                    case TestType.MatIsPow2:
+                        MatIsPow2(ref arena);
+                        break;
 
                     default:
                         throw new System.NotImplementedException();
@@ -704,7 +712,69 @@ public class shortCompareTests
             boolMat = m0 >= m1;
             Assert.IsFalse(Analysis.IsAllSame(boolMat));
         }
-    } 
+
+        // ispow2 is a genuine PREDICATE (not a relational comparison against a second operand), so
+        // it lives here alongside the rest of the boolN/boolMxN-producing comparator surface rather
+        // than in shortCompMathTests/shortCompBitsTests - see UnsafeBoolOP.short.cs's ispow2
+        // kernel and shortN.Comparators.cs/shortMxN.Comparators.cs's public ispow2() methods.
+        public void VecIsPow2(ref Arena arena)
+        {
+            int n = 7;
+
+            shortN v = arena.shortVec(n);
+            v[0] = 0;   // not a power of two
+            v[1] = 1;   // 2^0
+            v[2] = 2;   // 2^1
+            v[3] = 3;   // not a power of two
+            v[4] = 4;   // 2^2
+            v[5] = -8;  // negative - never a power of two, regardless of its magnitude's bit pattern
+            // type MSB pattern (int.MinValue-analog): negative for every SIGNED type, so never a
+            // power of two - the adversarial mirror of uint's 0x80000000 -> true (see
+            // UIntTypeTests.IsPow2HighBitUnsignedTrue), which relies on the exact same bit pattern
+            // being read as POSITIVE (2^31) once there is no sign bit to speak of.
+            v[6] = unchecked((short)0x8000);
+
+            var b = v.ispow2();
+            Assert.IsFalse(b[0]);
+            Assert.IsTrue(b[1]);
+            Assert.IsTrue(b[2]);
+            Assert.IsFalse(b[3]);
+            Assert.IsTrue(b[4]);
+            Assert.IsFalse(b[5]);
+            Assert.IsFalse(b[6]);
+        }
+
+        public void MatIsPow2(ref Arena arena)
+        {
+            int dim = 4;
+
+            shortMxN m = arena.shortMat(dim, dim);
+            for (int i = 0; i < m.Length; i++)
+                m[i] = (short)(i + 1); // 1..16 - several exact powers of two among them (1,2,4,8,16)
+
+            var b = m.ispow2();
+
+            // Hardcoded expected literals (matching VecIsPow2's style), not a recomputation of the
+            // same x>0 && (x&(x-1))==0 formula the kernel itself uses - 1,2,4,8,16 are the powers of
+            // two present in 1..16, everything else in that range is not.
+            Assert.IsTrue(b[0]);    // 1  == 2^0
+            Assert.IsTrue(b[1]);    // 2  == 2^1
+            Assert.IsFalse(b[2]);   // 3
+            Assert.IsTrue(b[3]);    // 4  == 2^2
+            Assert.IsFalse(b[4]);   // 5
+            Assert.IsFalse(b[5]);   // 6
+            Assert.IsFalse(b[6]);   // 7
+            Assert.IsTrue(b[7]);    // 8  == 2^3
+            Assert.IsFalse(b[8]);   // 9
+            Assert.IsFalse(b[9]);   // 10
+            Assert.IsFalse(b[10]);  // 11
+            Assert.IsFalse(b[11]);  // 12
+            Assert.IsFalse(b[12]);  // 13
+            Assert.IsFalse(b[13]);  // 14
+            Assert.IsFalse(b[14]);  // 15
+            Assert.IsTrue(b[15]);   // 16 == 2^4
+        }
+    }
 
     public static Array GetEnums()
     {

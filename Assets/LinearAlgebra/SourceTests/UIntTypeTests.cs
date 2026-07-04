@@ -72,6 +72,15 @@ public class UIntTypeTests
             // Select (LinearAlgebra.Select) - pure data movement, fully unsigned-safe
             SelectVecMask,
             SelectMatScalarCond,
+
+            // bit ops (Piece 4): countbits/tzcnt/lzcnt/reversebits/ror/rol/ceilpow2 are sign-agnostic
+            // (bit-pattern, not numeric-value, ops) and are otherwise fully covered by the
+            // alsoExpand[uint]'d iProxyCompBitsTests template. ispow2 is the ONE op in that family
+            // whose result genuinely depends on signed-vs-unsigned INTERPRETATION of the same bit
+            // pattern (it tests the numeric value, not just the bits) - these two cases are that
+            // targeted, hand-authored contrast.
+            IsPow2HighBitUnsignedTrue,
+            IsPow2HighBitNonPow2,
         }
 
         public TestType Type;
@@ -121,6 +130,9 @@ public class UIntTypeTests
 
                 case TestType.SelectVecMask: SelectVecMask(); break;
                 case TestType.SelectMatScalarCond: SelectMatScalarCond(); break;
+
+                case TestType.IsPow2HighBitUnsignedTrue: IsPow2HighBitUnsignedTrue(); break;
+                case TestType.IsPow2HighBitNonPow2: IsPow2HighBitNonPow2(); break;
 
                 default: throw new NotImplementedException();
             }
@@ -942,6 +954,54 @@ public class UIntTypeTests
             uintMxN rFalse = Select.select(a, b, false); // c=false -> a
             for (int i = 0; i < rFalse.Length; i++)
                 Assert.IsTrue(rFalse[i] == 2u);
+
+            arena.Dispose();
+        }
+
+        // ---- bit ops: sign-vs-unsigned interpretation contrast (Piece 4) --------------------------
+        // countbits/tzcnt/lzcnt/reversebits/ror/rol/ceilpow2 are pure BIT-PATTERN ops - the same bits
+        // give the same answer whether read as int or uint, so there is nothing to contrast there
+        // (they are exercised for uint via the alsoExpand'd iProxyCompBitsTests template instead).
+        // ispow2 is different: it tests the NUMERIC VALUE, which genuinely depends on signed-vs-
+        // unsigned interpretation of the identical bit pattern 0x80000000 - as uint this is 2^31 (a
+        // valid power of two); as int (unchecked((int)0x80000000) == int.MinValue) it is NEGATIVE and
+        // therefore never a power of two. This is the one case where getting the "unsigned" part of
+        // an unsigned ispow2 implementation wrong (e.g. accidentally reusing a signed `x > 0` check
+        // against the reinterpreted bit pattern) would silently pass for every OTHER bit pattern.
+
+        void IsPow2HighBitUnsignedTrue()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 8;
+
+            // 0x80000000u == 2^31: a valid power of two under the UNSIGNED interpretation, even
+            // though the identical bit pattern read as a signed int (int.MinValue) is negative.
+            uintN v = arena.uintVec(n, 0x80000000u);
+            boolN b = v.ispow2();
+            Assert.IsTrue(Analysis.IsAllEqualTo(b, true));
+
+            arena.Dispose();
+        }
+
+        void IsPow2HighBitNonPow2()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 8;
+
+            // 0xC0000000u has TWO bits set (0x80000000 | 0x40000000) - not a power of two under
+            // either interpretation, but its sign bit is set, so a buggy unsigned ispow2 that
+            // internally reused a SIGNED "> 0" comparison against the reinterpreted bits would wrongly
+            // reject it as "negative" and could coincidentally still return false for the wrong
+            // reason. Cross-checked against countbits (also sign-agnostic, so shares no failure mode)
+            // to confirm the pattern really is "two bits set", not a typo in the test's own literal.
+            uintN v = arena.uintVec(n, 0xC0000000u);
+            boolN b = v.ispow2();
+            Assert.IsTrue(Analysis.IsAllEqualTo(b, false));
+
+            uintN c = v.Copy();
+            c.countbitsInPlace();
+            for (int i = 0; i < n; i++)
+                Assert.IsTrue(c[i] == 2u);
 
             arena.Dispose();
         }

@@ -159,5 +159,22 @@ namespace LinearAlgebra
         }
 
         #endregion
+
+        #region PREDICATES
+        /// <summary>Componentwise power-of-two test (mirrors Unity.Mathematics' math.ispow2) - see
+        /// uintN.ispow2()/UnsafeBoolOP.uint.cs's ispow2 kernel for the per-type semantics.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public boolMxN ispow2()
+        {
+            boolMxN res = this.boolTempMat(this.M_Rows, this.N_Cols, true);
+
+            unsafe
+            {
+                UnsafeBoolOP.ispow2(this.Data.Ptr, res.Data.Ptr, this.Length);
+            }
+
+            return res;
+        }
+        #endregion
     }
 }
