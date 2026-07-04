@@ -1,0 +1,317 @@
+using System;
+
+using LinearAlgebra;
+
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Tests for the integer Stats surface (int / short / long) -- whole-array reductions over a vector
+// (iProxyN) or a matrix (iProxyMxN, treated as one flat row-major distribution). Oracles are exact
+// where the result type is exact (sum -> long, min/max -> iProxy, argmin/argmax -> int) and use a
+// tiny double tolerance where the result is a double (mean/variance/stdDev/median). Values are kept
+// small (<= 9 in the known-variance case) so the SAME template is correct for short as for int/long
+// (no overflow of the source type). Empty-array / single-element-sample THROW contracts are checked
+// on the managed thread (Assert.Throws cannot run inside a Burst job).
+public class iProxyStatsTests
+{
+    [BurstCompile]
+    public struct StatsTestJob : IJob
+    {
+        public enum TestType
+        {
+            SumVector,
+            SumMatrix,
+            MeanFractional,
+            VarianceStdDev,
+            SingleElementVariance,
+            MedianOdd,
+            MedianEven2,
+            MedianEven4,
+            MinMaxArg,
+            MinMaxNegatives,
+            AllEqual,
+            MatrixReductions,
+            WidenedSumNoOverflow,
+            SumAccumulatorOwnOverflow,
+        }
+
+        public TestType Type;
+
+        public void Execute()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                switch (Type)
+                {
+                    case TestType.SumVector: SumVector(ref arena); break;
+                    case TestType.SumMatrix: SumMatrix(ref arena); break;
+                    case TestType.MeanFractional: MeanFractional(ref arena); break;
+                    case TestType.VarianceStdDev: VarianceStdDev(ref arena); break;
+                    case TestType.SingleElementVariance: SingleElementVariance(ref arena); break;
+                    case TestType.MedianOdd: MedianOdd(ref arena); break;
+                    case TestType.MedianEven2: MedianEven2(ref arena); break;
+                    case TestType.MedianEven4: MedianEven4(ref arena); break;
+                    case TestType.MinMaxArg: MinMaxArg(ref arena); break;
+                    case TestType.MinMaxNegatives: MinMaxNegatives(ref arena); break;
+                    case TestType.AllEqual: AllEqual(ref arena); break;
+                    case TestType.MatrixReductions: MatrixReductions(ref arena); break;
+                    case TestType.WidenedSumNoOverflow: WidenedSumNoOverflow(ref arena); break;
+                    case TestType.SumAccumulatorOwnOverflow: SumAccumulatorOwnOverflow(ref arena); break;
+                    default: throw new NotImplementedException();
+                }
+            }
+            finally
+            {
+                arena.Dispose();
+            }
+        }
+
+        bool Close(double a, double b) => math.abs(a - b) < 1e-9;
+
+        // sum is a WIDENED long accumulator. {1,2,3,4,5} -> 15. Also a mixed-sign case summing to 0.
+        void SumVector(ref Arena arena)
+        {
+            var v = arena.iProxyVec(5);
+            v[0] = (iProxy)1; v[1] = (iProxy)2; v[2] = (iProxy)3; v[3] = (iProxy)4; v[4] = (iProxy)5;
+            Assert.IsTrue(Stats.sum(in v) == 15L);
+
+            var w = arena.iProxyVec(3);
+            w[0] = (iProxy)(-2); w[1] = (iProxy)(-3); w[2] = (iProxy)5;
+            Assert.IsTrue(Stats.sum(in w) == 0L);
+        }
+
+        // Matrix flat-sum: {{1,2,3},{4,5,6}} -> 21.
+        void SumMatrix(ref Arena arena)
+        {
+            var A = arena.iProxyMat(2, 3);
+            A[0, 0] = (iProxy)1; A[0, 1] = (iProxy)2; A[0, 2] = (iProxy)3;
+            A[1, 0] = (iProxy)4; A[1, 1] = (iProxy)5; A[1, 2] = (iProxy)6;
+            Assert.IsTrue(Stats.sum(in A) == 21L);
+        }
+
+        // mean returns DOUBLE, not the truncated integer: {1,2} -> 1.5 (a bug here would return 1).
+        // Population variance/stdDev/sample variance for the same 2-element vector are exact fractions.
+        void MeanFractional(ref Arena arena)
+        {
+            var v = arena.iProxyVec(2);
+            v[0] = (iProxy)1; v[1] = (iProxy)2;
+
+            Assert.IsTrue(Close(Stats.mean(in v), 1.5));           // NOT 1.0
+            Assert.IsTrue(Close(Stats.variance(in v), 0.25));      // ((0.5)^2 + (0.5)^2)/2
+            Assert.IsTrue(Close(Stats.stdDev(in v), 0.5));
+            Assert.IsTrue(Close(Stats.varianceSample(in v), 0.5)); // /(n-1) = /1
+            Assert.IsTrue(Close(Stats.stdDevSample(in v), math.sqrt(0.5)));
+        }
+
+        // Classic oracle {2,4,4,4,5,5,7,9} (n=8): mean=5, variance(pop)=4, stdDev=2,
+        // varianceSample=32/7, stdDevSample=sqrt(32/7). All safe for short (max value 9).
+        void VarianceStdDev(ref Arena arena)
+        {
+            var v = arena.iProxyVec(8);
+            v[0] = (iProxy)2; v[1] = (iProxy)4; v[2] = (iProxy)4; v[3] = (iProxy)4;
+            v[4] = (iProxy)5; v[5] = (iProxy)5; v[6] = (iProxy)7; v[7] = (iProxy)9;
+
+            Assert.IsTrue(Close(Stats.mean(in v), 5.0));
+            Assert.IsTrue(Close(Stats.variance(in v), 4.0));
+            Assert.IsTrue(Close(Stats.stdDev(in v), 2.0));
+            Assert.IsTrue(Close(Stats.varianceSample(in v), 32.0 / 7.0));
+            Assert.IsTrue(Close(Stats.stdDevSample(in v), math.sqrt(32.0 / 7.0)));
+        }
+
+        // Single element: population variance/stdDev == 0 (no throw). (Sample variance throws -- managed.)
+        void SingleElementVariance(ref Arena arena)
+        {
+            var v = arena.iProxyVec(1);
+            v[0] = (iProxy)3;
+            Assert.IsTrue(Close(Stats.variance(in v), 0.0));
+            Assert.IsTrue(Close(Stats.stdDev(in v), 0.0));
+            Assert.IsTrue(Close(Stats.median(in v), 3.0));
+        }
+
+        // median (odd n): unsorted {3,1,2} -> 2.0 (exercises the internal sort).
+        void MedianOdd(ref Arena arena)
+        {
+            var v = arena.iProxyVec(3);
+            v[0] = (iProxy)3; v[1] = (iProxy)1; v[2] = (iProxy)2;
+            Assert.IsTrue(Close(Stats.median(in v), 2.0));
+        }
+
+        // median (even n=2): unsorted {2,1} -> average of the two middles = 1.5 (double, not truncated).
+        void MedianEven2(ref Arena arena)
+        {
+            var v = arena.iProxyVec(2);
+            v[0] = (iProxy)2; v[1] = (iProxy)1;
+            Assert.IsTrue(Close(Stats.median(in v), 1.5));
+        }
+
+        // median (even n=4): unsorted {4,1,3,2} -> sorted {1,2,3,4} -> (2+3)/2 = 2.5.
+        void MedianEven4(ref Arena arena)
+        {
+            var v = arena.iProxyVec(4);
+            v[0] = (iProxy)4; v[1] = (iProxy)1; v[2] = (iProxy)3; v[3] = (iProxy)2;
+            Assert.IsTrue(Close(Stats.median(in v), 2.5));
+        }
+
+        // min/max/argmin/argmax on {3,1,4,1,5,9,2,6}: min=1 (first tie at index 1), max=9 (index 5).
+        void MinMaxArg(ref Arena arena)
+        {
+            var v = arena.iProxyVec(8);
+            v[0] = (iProxy)3; v[1] = (iProxy)1; v[2] = (iProxy)4; v[3] = (iProxy)1;
+            v[4] = (iProxy)5; v[5] = (iProxy)9; v[6] = (iProxy)2; v[7] = (iProxy)6;
+
+            Assert.IsTrue(Stats.min(in v) == (iProxy)1);
+            Assert.IsTrue(Stats.max(in v) == (iProxy)9);
+            Assert.IsTrue(Stats.argmin(in v) == 1); // first occurrence of the minimum 1
+            Assert.IsTrue(Stats.argmax(in v) == 5);
+        }
+
+        // All-negative {-5,-2,-9,-1}: min=-9 (index 2), max=-1 (index 3).
+        void MinMaxNegatives(ref Arena arena)
+        {
+            var v = arena.iProxyVec(4);
+            v[0] = (iProxy)(-5); v[1] = (iProxy)(-2); v[2] = (iProxy)(-9); v[3] = (iProxy)(-1);
+
+            Assert.IsTrue(Stats.min(in v) == (iProxy)(-9));
+            Assert.IsTrue(Stats.max(in v) == (iProxy)(-1));
+            Assert.IsTrue(Stats.argmin(in v) == 2);
+            Assert.IsTrue(Stats.argmax(in v) == 3);
+        }
+
+        // Ties: {7,7,7} -> argmin==argmax==0 (first occurrence).
+        void AllEqual(ref Arena arena)
+        {
+            var v = arena.iProxyVec(3, (iProxy)7);
+            Assert.IsTrue(Stats.argmin(in v) == 0);
+            Assert.IsTrue(Stats.argmax(in v) == 0);
+            Assert.IsTrue(Stats.min(in v) == (iProxy)7);
+            Assert.IsTrue(Stats.max(in v) == (iProxy)7);
+        }
+
+        // Matrix treated as one flat row-major distribution {{1,2,3},{4,6,8}}:
+        // sum=24, mean=4, min=1, max=8, argmin=0, argmax=5 (linear index).
+        void MatrixReductions(ref Arena arena)
+        {
+            var A = arena.iProxyMat(2, 3);
+            A[0, 0] = (iProxy)1; A[0, 1] = (iProxy)2; A[0, 2] = (iProxy)3;
+            A[1, 0] = (iProxy)4; A[1, 1] = (iProxy)6; A[1, 2] = (iProxy)8;
+
+            Assert.IsTrue(Stats.sum(in A) == 24L);
+            Assert.IsTrue(Close(Stats.mean(in A), 4.0));
+            Assert.IsTrue(Stats.min(in A) == (iProxy)1);
+            Assert.IsTrue(Stats.max(in A) == (iProxy)8);
+            Assert.IsTrue(Stats.argmin(in A) == 0);
+            Assert.IsTrue(Stats.argmax(in A) == 5);
+        }
+
+        // Overflow-avoidance PROOF for the widened `long` sum return: for int/short, summing 3 copies
+        // of the type's MaxValue overflows a SAME-TYPE accumulator, but the widened long return does
+        // not. This property is NOT demonstrable for the long variant (long is already the widest
+        // integer type -- 2 copies of long.MaxValue overflow long itself), so the long branch uses
+        // count=1: a trivial identity (sum==long.MaxValue) that does NOT exercise overflow-avoidance.
+        // That asymmetry is intentional, not a forgotten case. Expected is computed entirely in `long`
+        // (n*MaxValue), which never overflows for the chosen (n, type) pairs.
+        void WidenedSumNoOverflow(ref Arena arena)
+        {
+            int n = /*+choose[3|3|1]*/3/*-choose*/;
+            var v = arena.iProxyVec(n, (iProxy)iProxy.MaxValue);
+
+            long expected = (long)n * (long)iProxy.MaxValue;
+            Assert.IsTrue(Stats.sum(in v) == expected);
+        }
+
+        // Converse of WidenedSumNoOverflow: pins what happens when the ACCUMULATOR ITSELF
+        // overflows (see sum's doc in StatsCore.iProxy.cs). Uses a fixed count of 2 copies of
+        // MaxValue for ALL three types (no choose-marker needed on the count, only the expected
+        // value): for int/short, 2 * MaxValue stays comfortably within `long` -- correct and
+        // widened, "safe by construction". For `long`, 2 * long.MaxValue overflows `long` itself
+        // (the widest available type) and silently wraps via ordinary two's-complement addition:
+        // long.MaxValue + long.MaxValue == 2^64 - 2, which reinterpreted as a signed 64-bit value
+        // is -2 -- a documented, not-fixed garbage-in result for the long variant specifically.
+        void SumAccumulatorOwnOverflow(ref Arena arena)
+        {
+            var v = arena.iProxyVec(2, (iProxy)iProxy.MaxValue);
+
+            long expected = /*+choose[4294967294L|65534L|-2L]*/4294967294L/*-choose*/;
+            Assert.IsTrue(Stats.sum(in v) == expected);
+        }
+    }
+
+    public static Array GetEnums() => Enum.GetValues(typeof(StatsTestJob.TestType));
+
+    [TestCaseSource("GetEnums")]
+    public void StatsCases(StatsTestJob.TestType type)
+    {
+        new StatsTestJob() { Type = type }.Run();
+    }
+
+    // ---- Managed THROW contracts: Assert.Throws must run on the main thread, not in a Burst job. ----
+
+    [Test]
+    public void EmptyVectorReductionsThrow()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var v = arena.iProxyVec(0);
+
+            Assert.Throws<InvalidOperationException>(() => Stats.sum(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.mean(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.variance(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.stdDev(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.stdDevSample(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.median(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.min(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.max(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.argmin(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.argmax(in v));
+        }
+        finally
+        {
+            arena.Dispose();
+        }
+    }
+
+    [Test]
+    public void EmptyMatrixReductionsThrow()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            // 0-row matrix (3 cols) is constructible; flat reductions over it must throw.
+            var A = arena.iProxyMat(0, 3);
+
+            Assert.Throws<InvalidOperationException>(() => Stats.sum(in A));
+            Assert.Throws<InvalidOperationException>(() => Stats.mean(in A));
+            Assert.Throws<InvalidOperationException>(() => Stats.min(in A));
+            Assert.Throws<InvalidOperationException>(() => Stats.argmax(in A));
+        }
+        finally
+        {
+            arena.Dispose();
+        }
+    }
+
+    // Sample variance requires n >= 2: n==1 throws (distinct from population variance, which returns 0).
+    [Test]
+    public void VarianceSampleSingleElementThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var v = arena.iProxyVec(1);
+            v[0] = (iProxy)5;
+
+            Assert.Throws<InvalidOperationException>(() => Stats.varianceSample(in v));
+            Assert.Throws<InvalidOperationException>(() => Stats.stdDevSample(in v));
+        }
+        finally
+        {
+            arena.Dispose();
+        }
+    }
+}

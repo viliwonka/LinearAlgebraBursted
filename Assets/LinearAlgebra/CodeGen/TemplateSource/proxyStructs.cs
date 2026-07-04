@@ -52,7 +52,7 @@ namespace LinearAlgebra
         }
     }
 
-    public struct iProxy
+    public struct iProxy : IComparable<iProxy>
     {
         private int value;
 
@@ -104,6 +104,10 @@ namespace LinearAlgebra
         public override bool Equals(object obj) => obj is iProxy d && this.value == d.value;
         public override int GetHashCode() => value.GetHashCode();
         public override string ToString() => value.ToString();
+
+        public int CompareTo(iProxy other) {
+            return value.CompareTo(other.value);
+        }
     }
 
     public struct anyProxy : IComparable<anyProxy> {

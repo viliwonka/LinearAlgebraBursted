@@ -1,0 +1,208 @@
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
+
+using Unity.Collections;
+using Unity.Mathematics;
+using Unity.Collections.LowLevel.Unsafe;
+using System;
+using System.Runtime.CompilerServices;
+
+namespace LinearAlgebra
+{
+    // Generic reduction bodies for the signed integer family (int/short/long), forwarded to by
+    // the bare `Stats` facade in Stats.long.cs. Kept SPLIT (intStatsCore/shortStatsCore/
+    // longStatsCore -- one distinct type per generated type) because every method here is
+    // generic over T with only a CONSTRAINT (IUnsafelongArray) distinguishing int/short/long --
+    // C# overload resolution ignores generic constraints, so merging this class directly would
+    // collide as CS0111 (see docs/naming-style-guide.md's "Split vs merge safety" and
+    // docs/codegen-refactor-lessons.md). Mirrors floatStatsCore/doubleStatsCore's split for the
+    // exact same reason.
+    internal static partial class longStatsCore
+    {
+        // sum: widened `long` accumulator -- correctly represents e.g. the sum of many
+        // int.MaxValue entries, which would overflow a same-type (int) accumulator. For the
+        // `long` proxy type itself this is a same-width identity (still returns long; no further
+        // widening is possible here without an Int128): if the TRUE mathematical total of a long
+        // vector exceeds long.MaxValue (or underflows long.MinValue), this accumulator silently
+        // wraps, exactly like any plain `long` addition would -- a documented, not-fixed
+        // limitation. This is garbage-in for every method below that derives from sum/mean
+        // (mean, variance, stdDev, varianceSample, stdDevSample all inherit it for the `long`
+        // variant). int/short can NEVER trigger this regardless of vector length, since `long`
+        // fully covers the maximum possible total for those two narrower types by construction
+        // (see StatsTests.long.cs's SumAccumulatorOwnOverflow, which pins this contrast: the
+        // same 2-element/MaxValue-filled input is correct-and-widened for int/short but silently
+        // wraps for long).
+        public static long sum<T>(in T x) where T : unmanaged, IUnsafelongArray {
+
+            if (x.Data.Length == 0)
+                throw new InvalidOperationException("Cannot compute sum of an empty array.");
+
+            long sum = 0;
+            for (int i = 0; i < x.Data.Length; i++)
+                sum += x.Data[i];
+
+            return sum;
+        }
+
+        // Inherits sum's long-accumulator wraparound risk for the `long` variant (see sum's doc
+        // above) -- a `long` vector whose true total overflows long is garbage-in here too;
+        // int/short are safe by construction.
+        public static double mean<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            return (double)sum(in x) / x.Data.Length;
+        }
+
+        // Population variance (÷N). Two-pass: mean first (via the widened sum above), then
+        // squared deviations accumulated directly in `double` -- avoids a second overflow risk
+        // from squaring large deviations that a long accumulator could still hit, at the cost of
+        // double's usual precision caveats for extremely large magnitudes (documented, not
+        // fixed -- the same tradeoff Norms.L2 documents). Also inherits mean's `long`-wraparound
+        // risk transitively for the `long` variant (see sum's doc); int/short are safe by
+        // construction.
+        public static double variance<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            if (x.Data.Length == 0)
+                throw new InvalidOperationException("Cannot compute variance of an empty array.");
+
+            if (x.Data.Length == 1)
+                return 0.0;
+
+            double m = mean(in x);
+            double sum = 0.0;
+            for (int i = 0; i < x.Data.Length; i++)
+            {
+                double d = (double)x.Data[i] - m;
+                sum += d * d;
+            }
+            return sum / x.Data.Length;
+        }
+
+        // Inherits variance's (and transitively sum/mean's) `long`-wraparound risk for the `long`
+        // variant; int/short are safe by construction.
+        public static double stdDev<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            return math.sqrt(variance(in x));
+        }
+
+        // Sample variance: Σ(xᵢ−mean)²/(n−1). n==0 -> throws; n==1 -> throws (matches
+        // floatStatsCore.varianceSample's contract).
+        public static double varianceSample<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            if (x.Data.Length == 0)
+                throw new InvalidOperationException("Cannot compute sample variance of an empty array.");
+
+            if (x.Data.Length == 1)
+                throw new InvalidOperationException("Sample variance requires at least 2 elements.");
+
+            double m = mean(in x);
+            double sum = 0.0;
+            for (int i = 0; i < x.Data.Length; i++)
+            {
+                double d = (double)x.Data[i] - m;
+                sum += d * d;
+            }
+            return sum / (x.Data.Length - 1);
+        }
+
+        public static double stdDevSample<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            return math.sqrt(varianceSample(in x));
+        }
+
+        // Returns the index of the smallest element (first occurrence on ties). For a matrix
+        // (IUnsafelongArray over row-major data), the index is the linear index r*N_Cols+c.
+        public static int argmin<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            if (x.Data.Length == 0)
+                throw new InvalidOperationException("Cannot compute argmin of an empty array.");
+
+            long best = x.Data[0];
+            int bestIdx = 0;
+            for (int i = 1; i < x.Data.Length; i++)
+            {
+                if (x.Data[i] < best)
+                {
+                    best = x.Data[i];
+                    bestIdx = i;
+                }
+            }
+            return bestIdx;
+        }
+
+        // Returns the index of the largest element (first occurrence on ties). Index convention
+        // as argmin above.
+        public static int argmax<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            if (x.Data.Length == 0)
+                throw new InvalidOperationException("Cannot compute argmax of an empty array.");
+
+            long best = x.Data[0];
+            int bestIdx = 0;
+            for (int i = 1; i < x.Data.Length; i++)
+            {
+                if (x.Data[i] > best)
+                {
+                    best = x.Data[i];
+                    bestIdx = i;
+                }
+            }
+            return bestIdx;
+        }
+
+        public static long min<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            if (x.Data.Length == 0)
+                throw new InvalidOperationException("Cannot compute min of an empty array.");
+
+            long min = x.Data[0];
+            for (int i = 1; i < x.Data.Length; i++)
+                if (x.Data[i] < min) min = x.Data[i];
+
+            return min;
+        }
+
+        public static long max<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            if (x.Data.Length == 0)
+                throw new InvalidOperationException("Cannot compute max of an empty array.");
+
+            long max = x.Data[0];
+            for (int i = 1; i < x.Data.Length; i++)
+                if (x.Data[i] > max) max = x.Data[i];
+
+            return max;
+        }
+
+        // Median via full sort (numpy 'linear'-style even-length average). Returns a literal
+        // `double` since the average of two integers is not generally itself an integer (e.g.
+        // {1,2} -> 1.5). The intermediate sum of the two middle elements is done in `double`
+        // (not the source integer type) to avoid a same-type overflow when averaging the two
+        // middle elements (e.g. two large values summing past their own type's range) --
+        // the identical concern the abs-overflow Norms.L1 guards against, applying equally to
+        // whichever of int/short/long is currently generated.
+        //
+        // PRECISION NOTE for the `long` variant specifically: since the result is a `double`, any
+        // `long` element (or the averaged middle pair) whose magnitude exceeds 2^53
+        // (9007199254740992) loses integer precision once represented as a double -- distinct
+        // nearby long values can collapse to the same double, so the reported median may not
+        // exactly distinguish them. This is a documented, not-fixed limitation of returning
+        // `double` for the widest integer type (int/short values are always well within double's
+        // 2^53 exact-integer range, so this affects `long` only).
+        public static double median<T>(in T x) where T : unmanaged, IUnsafelongArray {
+            if (x.Data.Length == 0)
+                throw new InvalidOperationException("Cannot compute median of an empty array.");
+
+            if (x.Data.Length == 1)
+                return (double)x.Data[0];
+
+            var copy = new UnsafeList<long>(x.Data.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            copy.AddRange(x.Data);
+            copy.Sort();
+
+            double res;
+
+            // Odd case! e.g.: 5 % 2 = 1
+            if (copy.Length % 2 != 0) {
+                res = (double)copy[copy.Length / 2];
+            }
+            else { // Even case!
+                var n = copy.Length / 2;
+                res = ((double)copy[n - 1] + (double)copy[n]) / 2.0;
+            }
+
+            copy.Dispose();
+
+            return res;
+        }
+    }
+}
