@@ -2,6 +2,7 @@
 // Shortcuts for creating new vectors and matrices
 using LinearAlgebra;
 
+
 namespace LinearAlgebra {
 
     public partial struct boolMxN : IArenaShortcuts
@@ -22,6 +23,40 @@ namespace LinearAlgebra {
         public unsafe doubleMxN doubleMat(int M_rows, int N_cols, bool uninit = false) => _arena.doubleMat(M_rows, N_cols, uninit);
 
         public unsafe doubleMxN doubleTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.doubleTempMat(M_rows, N_cols, uninit);
+        
+
+        
+        public unsafe intN intVec(int N, bool uninit = false) => _arena.intVec(N, uninit);
+
+        public unsafe intN intTempVec(int N, bool uninit = false) => _arena.intTempVec(N, uninit);
+
+        public unsafe intMxN intMat(int M_rows, int N_cols, bool uninit = false) => _arena.intMat(M_rows, N_cols, uninit);
+
+        public unsafe intMxN intTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.intTempMat(M_rows, N_cols, uninit);
+        
+        public unsafe shortN shortVec(int N, bool uninit = false) => _arena.shortVec(N, uninit);
+
+        public unsafe shortN shortTempVec(int N, bool uninit = false) => _arena.shortTempVec(N, uninit);
+
+        public unsafe shortMxN shortMat(int M_rows, int N_cols, bool uninit = false) => _arena.shortMat(M_rows, N_cols, uninit);
+
+        public unsafe shortMxN shortTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.shortTempMat(M_rows, N_cols, uninit);
+        
+        public unsafe longN longVec(int N, bool uninit = false) => _arena.longVec(N, uninit);
+
+        public unsafe longN longTempVec(int N, bool uninit = false) => _arena.longTempVec(N, uninit);
+
+        public unsafe longMxN longMat(int M_rows, int N_cols, bool uninit = false) => _arena.longMat(M_rows, N_cols, uninit);
+
+        public unsafe longMxN longTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.longTempMat(M_rows, N_cols, uninit);
+        
+        public unsafe uintN uintVec(int N, bool uninit = false) => _arena.uintVec(N, uninit);
+
+        public unsafe uintN uintTempVec(int N, bool uninit = false) => _arena.uintTempVec(N, uninit);
+
+        public unsafe uintMxN uintMat(int M_rows, int N_cols, bool uninit = false) => _arena.uintMat(M_rows, N_cols, uninit);
+
+        public unsafe uintMxN uintTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.uintTempMat(M_rows, N_cols, uninit);
         
 
 

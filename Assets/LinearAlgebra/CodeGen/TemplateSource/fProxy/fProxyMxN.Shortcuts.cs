@@ -4,6 +4,12 @@ using System.Runtime.CompilerServices;
 
 using LinearAlgebra;
 
+//alsoExpand[uint]// widens the iProxy-family copy-replace block below to a 4th (uint) copy, giving
+//fProxyMxN a uintVec/uintTempVec/uintMat/uintTempMat cross-shortcut alongside its existing int/
+//short/long ones - mirrors the identical iProxyMxN.Shortcuts.cs/iProxyN.Shortcuts.cs treatment;
+//Hash.fProxy.cs's rowHashes/colHashes allocating wrappers need it to allocate their uintN result
+//from A's own arena without direct access to fProxyMxN's private _arena field.
+
 namespace LinearAlgebra {
 
     public partial struct fProxyMxN : IArenaShortcuts

@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 
 using LinearAlgebra;
 
+
 namespace LinearAlgebra {
 
     public partial struct floatMxN : IArenaShortcuts
@@ -55,6 +56,15 @@ namespace LinearAlgebra {
         public unsafe longMxN longMat(int M_rows, int N_cols, bool uninit = false) => _arena.longMat(M_rows, N_cols, uninit);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe longMxN longTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.longTempMat(M_rows, N_cols, uninit);
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe uintN uintVec(int N, bool uninit = false) => _arena.uintVec(N, uninit);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe uintN uintTempVec(int N, bool uninit = false) => _arena.uintTempVec(N, uninit);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe uintMxN uintMat(int M_rows, int N_cols, bool uninit = false) => _arena.uintMat(M_rows, N_cols, uninit);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe uintMxN uintTempMat(int M_rows, int N_cols, bool uninit = false) => _arena.uintTempMat(M_rows, N_cols, uninit);
         
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
