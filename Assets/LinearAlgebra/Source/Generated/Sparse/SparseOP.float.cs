@@ -30,7 +30,7 @@ namespace LinearAlgebra.Sparse
                 if (y.Data.Ptr == x.Data.Ptr)
                     throw new ArgumentException("spMV: y must not alias x");
 
-                // bsmMatVec accumulates (+=), so the destination must start zeroed.
+                // bsrMatVec accumulates (+=), so the destination must start zeroed.
                 UnsafeUtility.MemClear(y.Data.Ptr, (long)y.Data.Length * UnsafeUtility.SizeOf<float>());
 
                 int* rowPtr = A.RowPtr.Ptr;
@@ -45,12 +45,12 @@ namespace LinearAlgebra.Sparse
                     // dispatching on BR alone is sufficient here.
                     switch (A.BR)
                     {
-                        case 1: UnsafeOP.bsmMatVecSymB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 2: UnsafeOP.bsmMatVecSymB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 3: UnsafeOP.bsmMatVecSymB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 4: UnsafeOP.bsmMatVecSymB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 6: UnsafeOP.bsmMatVecSymB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        default: UnsafeOP.bsmMatVecSym(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR); break;
+                        case 1: UnsafeOP.bsrMatVecSymB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 2: UnsafeOP.bsrMatVecSymB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 3: UnsafeOP.bsrMatVecSymB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 4: UnsafeOP.bsrMatVecSymB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 6: UnsafeOP.bsrMatVecSymB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        default: UnsafeOP.bsrMatVecSym(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR); break;
                     }
                 }
                 else if (A.BR == A.BC)
@@ -59,17 +59,17 @@ namespace LinearAlgebra.Sparse
                     // BR != BC always falls through to the general kernel below.
                     switch (A.BR)
                     {
-                        case 1: UnsafeOP.bsmMatVecB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 2: UnsafeOP.bsmMatVecB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 3: UnsafeOP.bsmMatVecB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 4: UnsafeOP.bsmMatVecB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 6: UnsafeOP.bsmMatVecB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        default: UnsafeOP.bsmMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
+                        case 1: UnsafeOP.bsrMatVecB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 2: UnsafeOP.bsrMatVecB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 3: UnsafeOP.bsrMatVecB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 4: UnsafeOP.bsrMatVecB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 6: UnsafeOP.bsrMatVecB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        default: UnsafeOP.bsrMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
                     }
                 }
                 else
                 {
-                    UnsafeOP.bsmMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
+                    UnsafeOP.bsrMatVec(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
                 }
             }
         }
@@ -157,7 +157,7 @@ namespace LinearAlgebra.Sparse
                 if (y.Data.Ptr == x.Data.Ptr)
                     throw new ArgumentException("spMVT: y must not alias x");
 
-                // bsmMatVecT accumulates (+=), so the destination must start zeroed.
+                // bsrMatVecT accumulates (+=), so the destination must start zeroed.
                 UnsafeUtility.MemClear(y.Data.Ptr, (long)y.Data.Length * UnsafeUtility.SizeOf<float>());
 
                 int* rowPtr = A.RowPtr.Ptr;
@@ -172,17 +172,17 @@ namespace LinearAlgebra.Sparse
                     // BR != BC always falls through to the general kernel below.
                     switch (A.BR)
                     {
-                        case 1: UnsafeOP.bsmMatVecTB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 2: UnsafeOP.bsmMatVecTB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 3: UnsafeOP.bsmMatVecTB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 4: UnsafeOP.bsmMatVecTB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        case 6: UnsafeOP.bsmMatVecTB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
-                        default: UnsafeOP.bsmMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
+                        case 1: UnsafeOP.bsrMatVecTB1(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 2: UnsafeOP.bsrMatVecTB2(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 3: UnsafeOP.bsrMatVecTB3(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 4: UnsafeOP.bsrMatVecTB4(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        case 6: UnsafeOP.bsrMatVecTB6(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows); break;
+                        default: UnsafeOP.bsrMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC); break;
                     }
                 }
                 else
                 {
-                    UnsafeOP.bsmMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
+                    UnsafeOP.bsrMatVecT(rowPtr, colInd, values, xPtr, yPtr, A.BlockRows, A.BR, A.BC);
                 }
             }
         }

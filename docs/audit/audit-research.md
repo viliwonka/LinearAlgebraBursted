@@ -1,5 +1,8 @@
 # LinearAlgebraBursted — Algorithm Audit Report
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 **Date:** 2026-06-28  
 **Auditor:** Claude Sonnet 4.6 (automated cross-reference audit)  
 **Scope:** All algorithm implementations in `Assets/LinearAlgebra/CodeGen/TemplateSource/`  

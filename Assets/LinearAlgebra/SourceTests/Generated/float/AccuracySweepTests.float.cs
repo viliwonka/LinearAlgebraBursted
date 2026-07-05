@@ -199,7 +199,7 @@ public class floatAccuracySweepTests
             var L = arena.floatMat(m, m);
             var Q = arena.floatMat(m, n);
 
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
 
             Assert.IsFalse(Analysis.isAnyNan(in L));
             Assert.IsFalse(Analysis.isAnyNan(in Q));

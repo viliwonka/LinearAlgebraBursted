@@ -1,5 +1,8 @@
 # LinearAlgebraBursted — Algorithm Audit Report (Round 2)
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 **Date:** 2026-06-28  
 **Auditor:** Claude Sonnet 4.6 (second-pass cross-reference audit)  
 **Scope:** Applied layer first: `OP/RandomOP*`, `OP/ResampleOP`, `Statistics/HistogramOP`, `Statistics/StatsOP`, `Arena/Gallery.*`, `ML/KMeans`, `OP/FFT`; decompositions/eigensolvers only re-examined where round-1 errors were suspected.  

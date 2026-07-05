@@ -6,11 +6,14 @@ solvers for large/sparse `A`. All share the diagnostics-struct convention from
 
 ## Direct routes
 
-- **`QR.qrDirectSolve`** — full column rank, square or tall. Fastest, no rank safety net.
-- **`QR.qrcpDirectSolve(ref A, ref b, ref x, ..., float relTol)`** — rank-deficient-safe via QRCP;
-  `relTol < 0` auto-selects a tolerance (`max(m,n)·Consts.floatZeroThreshold`). Returns the *basic*
-  (truncated) solution, not minimum-norm. Returns `RankRevealingInfo`.
-- **`SVD.pinvSolve`** — minimum-norm least-squares for any shape/rank, via `svdThin`. Slowest of the
+- **`QR.solveInPlace`** — full column rank, square or tall. Fastest, no rank safety net; fused kernel,
+  `A`/`b` exit as undefined scratch.
+- **`QRCP.solveInPlace(ref A_to_Q, ref b, ref x, ref R, ref Pivot P, ref u[, float relTol])`** —
+  rank-deficient-safe via QRCP; `relTol < 0` auto-selects a tolerance
+  (`max(m,n)·Consts.floatZeroThreshold`). Returns the *basic* (truncated) solution, not minimum-norm.
+  Factors `A`'s own buffer directly (no Q scratch, no copy) — `A_to_Q` exits as a usable orthogonal
+  factor; `b` is preserved. Returns `RankInfo`.
+- **`SVD.pinvSolve`** — minimum-norm least-squares for any shape/rank, via `SVD.thin`. Slowest of the
   three, most robust. See [svd.md](svd.md).
 
 ## Iterative (`Solvers`, generic over `IfloatLinearOperator` — dense and [sparse BSR](sparse-bsr.md)
@@ -51,15 +54,15 @@ traversal (`ApplyT`) is less cache-friendly than a forward `spMV` — see
 [sparse-bsr.md](sparse-bsr.md) for the materialized-transpose mitigation (commit `06035da`, measured
 perf-neutral on its own, commit `724ceb0`).
 
-Direct least-squares solve, overdetermined (tall m×n): plain `QR.qrDirectSolve` vs. rank-safe
-`QR.qrcpDirectSolve` on the same shapes (`Benchmarks/QRVariantsBenchmark.cs`, "TALL overdetermined
+Direct least-squares solve, overdetermined (tall m×n): plain `QR.solveInPlace` vs. rank-safe
+`QRCP.solveInPlace` on the same shapes (`Benchmarks/QRVariantsBenchmark.cs`, "TALL overdetermined
 least squares" section — the gap is the column-pivoting overhead: exact partial-norm recomputes plus
 Q reconstruction). AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `95a1897`, Unity
 Editor batchmode (checks likely on):
 
 | Kernel | Shape | float med(ms) | double med(ms) |
 |---|---|---|---|
-| `qrDirectSolve` | 2048×512 | 34.46 | 51.99 |
-| `qrDirectSolve` | 2048×1024 | 95.62 | 159.63 |
-| `qrcpDirectSolve` | 2048×512 | 72.68 | 132.54 |
-| `qrcpDirectSolve` | 2048×1024 | 234.71 | 413.11 |
+| `QR.solveInPlace` | 2048×512 | 34.46 | 51.99 |
+| `QR.solveInPlace` | 2048×1024 | 95.62 | 159.63 |
+| `QRCP.solveInPlace` | 2048×512 | 72.68 | 132.54 |
+| `QRCP.solveInPlace` | 2048×1024 | 234.71 | 413.11 |

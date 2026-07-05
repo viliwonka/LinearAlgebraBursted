@@ -78,7 +78,7 @@ public class floatSVDSolverTests
             int dim = 8;
 
             var A = arena.floatRandomMat(dim, dim, -5f, 5f, 314221);
-            // boost the diagonal to ensure good conditioning (see OrthoOpTests / SolversTests)
+            // boost the diagonal to ensure good conditioning (see QRTests / SolversTests)
             for (int d = 0; d < dim; d++)
                 A[d, d] += (float)10f;
 
@@ -409,7 +409,7 @@ public class floatSVDSolverTests
         try {
             new TestJob() { Type = type, Fail = fail }.Run();
             // Burst in-job asserts abort without throwing; diagnostics surfaced here too
-            // (see floatOrthoOpTests.QRDecompTests).
+            // (see floatQRTests.QRDecompTests).
             if (fail[0] != (float)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 

@@ -9,7 +9,7 @@ using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.TestTools;
 
-public class floatOrthoOpTests
+public class floatQRTests
 {
     [BurstCompile]
     public struct AssemblyTestJob : IJob
@@ -970,7 +970,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(dim, dim);
             var Q    = arena.floatMat(dim, dim);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-6f);
             arena.Dispose();
         }
@@ -983,7 +983,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(dim, dim);
             var Q    = arena.floatMat(dim, dim);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -996,7 +996,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(m, m);
             var Q    = arena.floatMat(m, n);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -1009,7 +1009,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(m, m);
             var Q    = arena.floatMat(m, n);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -1025,7 +1025,7 @@ public class floatOrthoOpTests
             var origA = A.Copy();
             var L    = arena.floatMat(m, m);
             var Q    = arena.floatMat(m, n);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -1053,7 +1053,7 @@ public class floatOrthoOpTests
             var L = arena.floatMat(m, m);
             var Q = arena.floatMat(m, n);
 
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
 
             AssertLQ(in origA, in L, in Q, 1E-2f);
 

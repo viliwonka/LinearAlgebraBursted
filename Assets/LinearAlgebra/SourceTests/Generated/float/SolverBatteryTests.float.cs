@@ -230,7 +230,7 @@ public class floatSolverBatteryTests
             var P = new Pivot(n, Allocator.Temp);
             AssertTrue(LU.decompInPlace(ref LUm, ref P));
 
-            var x = b.Copy();                 // luSolve overwrites b with x
+            var x = b.Copy();                 // decompSolve overwrites b with x
             LU.decompSolve(ref LUm, in P, ref x);
 
             // residual ‖A x − b‖ with the ORIGINAL A,b (backward-stable ⇒ tiny)

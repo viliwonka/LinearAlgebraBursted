@@ -6,7 +6,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Milestone D: block-size-specialized (unrolled) sparse matvec kernels, b in {1,2,3,4,6}
-// (bsmMatVecB{b} / bsmMatVecTB{b} / bsmMatVecSymB{b} in UnsafeOP.Sparse.fProxy.cs), dispatched
+// (bsrMatVecB{b} / bsrMatVecTB{b} / bsrMatVecSymB{b} in UnsafeOP.Sparse.fProxy.cs), dispatched
 // from BSR.spMV / spMVT (SparseOP.fProxy.cs). Every case here proves ONE dispatch branch
 // against the dense reference: build a fProxyBSR via the builder, expand with ToDense (already
 // independently validated by fProxySparseBSRTests), and assert spMV/spMVT agree with
@@ -14,12 +14,12 @@ using Unity.Jobs;
 // RandomSpMVT already use, just swept across every specialized block size PLUS the two boundary
 // cases that must still fall back to the general kernel: a non-specialized square size (b=5) and
 // a rectangular block (BR != BC, which never dispatches to a specialized kernel regardless of
-// size). Symmetric-storage cases (bsmMatVecSymB{b}) reuse the same recipe but on a GENUINELY
+// size). Symmetric-storage cases (bsrMatVecSymB{b}) reuse the same recipe but on a GENUINELY
 // symmetric matrix: ToBSRSymmetric now requires symmetric diagonal blocks (the lower triangle is
 // stored implicitly as the transpose), so the diagonal blocks are built as M^T M. That makes the
 // dense expansion truly symmetric, which lets the spMVT check compare against an INDEPENDENT
 // transpose-matvec of the dense (DenseTransMatVec) rather than tautologically re-using spMV's own
-// output -- genuinely exercising each bsmMatVecSymB{b} across b in {1,2,3,4,5,6}.
+// output -- genuinely exercising each bsrMatVecSymB{b} across b in {1,2,3,4,5,6}.
 //
 // Runs inside a [BurstCompile] IJob, matching every other Sparse test suite.
 public class fProxySparseUnrollTests
@@ -111,7 +111,7 @@ public class fProxySparseUnrollTests
         }
 
         // 4x4 block grid of b x b blocks, SYMMETRIC (upper-triangle-only) storage: a SYMMETRIC
-        // diagonal block at every grid position (exercises bsmMatVecSymB{b}'s bi==bj branch) plus
+        // diagonal block at every grid position (exercises bsrMatVecSymB{b}'s bi==bj branch) plus
         // three off-diagonal pairs, including two that both mirror into block-row 3 (exercises
         // bi!=bj scatter writes landing in the same y-range from different stored blocks). Diagonal
         // blocks are M^T M so the represented matrix is genuinely symmetric (required by
@@ -222,8 +222,8 @@ public class fProxySparseUnrollTests
             arena.Dispose();
         }
 
-        // ---- symmetric-storage spMV: covers b in {1,2,3,4,6} (specialized bsmMatVecSymB{b})
-        // and b=5 (must fall back to the general bsmMatVecSym) --------------------------------
+        // ---- symmetric-storage spMV: covers b in {1,2,3,4,6} (specialized bsrMatVecSymB{b})
+        // and b=5 (must fall back to the general bsrMatVecSym) --------------------------------
 
         void CheckSymmetric(int b, uint seedBase)
         {

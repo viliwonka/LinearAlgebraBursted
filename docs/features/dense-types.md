@@ -143,7 +143,7 @@ session (to control for thermal/frequency drift — see caveat below), Unity Edi
 | `Solvers.cg` (BSR, K=40), N=768, 7% fill | double | 0.2455 | 0.2461 | +0.2% |
 
 GEMM/QR/BSR-spMV/CG all land within ~2% — consistent with the RFC's "~0 cost" claim. Two kernels
-(`LU.luDecomposition`, `Cholesky.choleskyDecomposition`, float N=1024) showed a larger gap in this same
+(`LU.decomp`, `CHO.decomp`, float N=1024) showed a larger gap in this same
 comparison (+5.3%, +6.6%) that does not reproduce at the same magnitude in double (+0.6%, +3.8%); since
 a record-indirection cost should hit both precisions symmetrically (both route through the same
 `floatMxN`/`doubleMxN` record type), and since two independent HEAD-only runs of this same suite (see

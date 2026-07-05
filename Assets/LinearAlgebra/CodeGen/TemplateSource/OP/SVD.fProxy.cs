@@ -488,7 +488,7 @@ namespace LinearAlgebra
         // already-bidiagonal matrix. Writes P (p×p, left singular vectors as COLUMNS), S (singular values,
         // DESCENDING, non-negative), Q (p×p, right singular vectors as COLUMNS). Ut/Vt are p×p caller-owned
         // scratch (the transposed accumulators bidiagonalQR fills). d and e are DESTROYED. No allocation.
-        // Mirrors thin's post-bidiagonalize tail exactly (bidiagonalQR on transposed accumulators, then
+        // Mirrors thin's post-bidiagonalization tail exactly (bidiagonalQR on transposed accumulators, then
         // transpose back, then descending selection sort carrying columns). Returns bidiagonalQR's flag.
         static bool bidiagonalSvdFromDE(ref fProxyN d, ref fProxyN e, ref fProxyMxN Ut, ref fProxyMxN Vt,
                                         ref fProxyMxN P, ref fProxyN S, ref fProxyMxN Q, int p, int maxIter)
@@ -496,7 +496,7 @@ namespace LinearAlgebra
             if (p == 0) return true;
 
             // Clear Ut and Vt (persistent workspace — may hold stale data from a previous call),
-            // then set diagonal to 1. This mirrors the identity-init that bidiagonalize's V starts
+            // then set diagonal to 1. This mirrors the identity-init that Bidiag.decomp's V starts
             // from; here there is no Householder phase so both accumulators start at identity.
             unsafe
             {

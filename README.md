@@ -50,8 +50,9 @@ C[0, 0] += 5f;
 
 floatN b = arena.floatVec(dim, 1f);
 floatN x = arena.floatVec(dim);
-// Solve Ax = b via QR; returns a diagnostics struct.
-DirectSolveInfo info = QR.qrDirectSolve(ref A, ref b, ref x);
+// Solve Ax = b via QR; fastest path, but DESTROYS A and b (both become scratch).
+DirectSolveInfo info = QR.solveInPlace(ref A, ref b, ref x);
+// To keep A and b intact instead: QR.decomp(in A, ref Q, ref R) then QR.decompSolve(ref Q, ref R, ref b, ref x).
 Print.Log(info);                            // "DirectSolveInfo(Success)"
 float norm = Norms.L1(x);
 
@@ -70,17 +71,17 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 
 | Algorithm | Case | Results |
 |---|---|---|
-| LU solve — `LU.luSolve` | 1024×1024, float | 16.7 ms |
-| Cholesky solve — `Cholesky.choleskySolve` | SPD 1024×1024, float | 12.2 ms |
-| QR solve — `QR.qrDirectSolve` | 1024×1024, float | 38.4 ms |
-| QR least squares — `QR.qrDirectSolve` | 2048×512, float | 34.5 ms |
-| QRCP least squares, rank-safe — `QR.qrcpDirectSolve` | 2048×512, float | 72.7 ms |
+| LU solve — `LU.solveInPlace` | 1024×1024, float | 16.7 ms |
+| Cholesky solve — `CHO.solveInPlace` | SPD 1024×1024, float | 12.2 ms |
+| QR solve — `QR.solveInPlace` | 1024×1024, float | 38.4 ms |
+| QR least squares — `QR.solveInPlace` | 2048×512, float | 34.5 ms |
+| QRCP least squares, rank-safe — `QRCP.solveInPlace` | 2048×512, float | 72.7 ms |
 | CG, iterative solve — `Solvers.cg` | SPD 768×768, double; dense vs. sparse BSR (3×3 blocks, 7% fill), 40 iterations | dense 8.62 ms, sparse 0.25 ms |
-| Symmetric eigendecomposition — `Eigen.eigenSymmetric` | 1024×1024, float, values + vectors | 428.6 ms |
-| Eigenvalues only — `Eigen.eigenvaluesSymmetric` | 1024×1024, float | 163.0 ms |
+| Symmetric eigendecomposition — `Eigen.symmetric` | 1024×1024, float, values + vectors | 428.6 ms |
+| Eigenvalues only — `Eigen.valuesSymmetric` | 1024×1024, float | 163.0 ms |
 | Smallest eigenpairs — `LOBPCG.lobpcg` | SPD 512×512, k=4, float, 50 iterations | 84.9 ms |
-| SVD, thin — `SVD.svdThin` | 1024×1024, float | 522.5 ms |
-| SVD, truncated top-k — `SVD.svdTruncated` | 2048×256, k=54, float | 27.6 ms |
+| SVD, thin — `SVD.thin` | 1024×1024, float | 522.5 ms |
+| SVD, truncated top-k — `SVD.truncated` | 2048×256, k=54, float | 27.6 ms |
 | FFT — `FFT.fft` | N = 1,048,576, float | 26.1 ms |
 | Real FFT — `FFT.rfft` | N = 1,048,576, float | 18.7 ms |
 
@@ -89,8 +90,8 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 - **Dense types** — [vectors, matrices, the `Arena` allocator](docs/features/dense-types.md)
 - **Element-wise ops** — [`Comp`: arithmetic, math functions, clamp, in-place](docs/features/comp-elementwise.md)
 - **Core linear algebra** — [`Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics](docs/features/blas.md)
-- **Decompositions** — [LU, Cholesky (+ pivoted), QR/LQ (+ QRCP), Bidiag](docs/features/decompositions.md)
-- **Direct solvers** — [triangular/LU/Cholesky/QR solve, the diagnostics-struct convention](docs/features/solvers.md)
+- **Decompositions** — [LU, CHO/CHOP, QR/LQ (+ QRCP), Bidiag](docs/features/decompositions.md)
+- **Direct solvers** — [triangular/LU/CHO/QR solve, the diagnostics-struct convention](docs/features/solvers.md)
 - **Least squares** — [QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning](docs/features/least-squares.md)
 - **SVD** — [thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation](docs/features/svd.md)
 - **Eigensolvers** — [symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG](docs/features/eigen.md)

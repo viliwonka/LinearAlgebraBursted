@@ -1,5 +1,8 @@
 # Pre-Public-Release Readiness Audit
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 Verified against the actual repo (not just memory). **Bottom line: the numerical CORE is
 release-ready; the gaps are almost entirely release ENGINEERING and presentation.**
 

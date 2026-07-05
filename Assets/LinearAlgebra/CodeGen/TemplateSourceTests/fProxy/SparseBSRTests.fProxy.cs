@@ -458,7 +458,7 @@ public class fProxySparseBSRTests
         // ---- 10. empty BSR (zero triplets) + minimal 1x1 single-element BSR round-trip -------
         //
         // A builder with a nonzero block-grid shape but ZERO triplets ToBSR's to a valid empty
-        // BSR (Nnzb == 0): every block-row's RowPtr range is empty so bsmMatVec/bsmMatVecT never
+        // BSR (Nnzb == 0): every block-row's RowPtr range is empty so bsrMatVec/bsrMatVecT never
         // dereference the (possibly-null-Ptr) zero-length ColInd/Values buffers. ToDense must
         // produce the all-zero matrix and spMV/spMVT the zero vector for any x. Mirrors the
         // codebase's established zero-length-vector pattern (arena.fProxyVec(0) etc.). Also folds

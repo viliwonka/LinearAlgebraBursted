@@ -6,10 +6,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-public class floatCholeskyTests
+public class floatCHOTests
 {
     [BurstCompile]
-    public struct CholeskyTestJob : IJob
+    public struct CHOTestJob : IJob
     {
         public enum TestType
         {
@@ -625,120 +625,120 @@ public class floatCholeskyTests
     [Test]
     public void RoundTripTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.RoundTrip }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.RoundTrip }.Run();
     }
 
     [Test]
     public void SolveOneStepTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveOneStep }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.SolveOneStep }.Run();
     }
 
     [Test]
     public void SolveTwoStepTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveTwoStep }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.SolveTwoStep }.Run();
     }
 
     [Test]
     public void KnownSmallTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.KnownSmall }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.KnownSmall }.Run();
     }
 
     [Test]
     public void IdentityTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Identity }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.Identity }.Run();
     }
 
     [Test]
     public void NotSPDTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.NotSPD }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.NotSPD }.Run();
     }
 
     [Test]
     public void CrossCheckLUTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.CrossCheckLU }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.CrossCheckLU }.Run();
     }
 
     [Test]
     public void TinyTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Tiny }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.Tiny }.Run();
     }
 
     [Test]
     public void AliasingTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Aliasing }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.Aliasing }.Run();
     }
 
     [Test]
     public void GalleryMinIJTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryMinIJ }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.GalleryMinIJ }.Run();
     }
 
     [Test]
     public void GalleryGCDTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryGCD }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.GalleryGCD }.Run();
     }
 
     [Test]
     public void GalleryFiedlerRejectsTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryFiedlerRejects }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.GalleryFiedlerRejects }.Run();
     }
 
     [Test]
     public void BlockedRoundTrip256Test()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip256 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip256 }.Run();
     }
 
     [Test]
     public void BlockedRoundTrip300Test()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip300 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip300 }.Run();
     }
 
     [Test]
     public void BlockedRoundTrip320Test()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip320 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip320 }.Run();
     }
 
     [Test]
     public void BlockedRoundTrip400Test()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip400 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip400 }.Run();
     }
 
     [Test]
     public void BlockedNotSPDTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedNotSPD }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedNotSPD }.Run();
     }
 
     [Test]
     public void BlockedAliasingTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedAliasing }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedAliasing }.Run();
     }
 
     [Test]
     public void SolveInPlaceExitIsUsableFactorTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveInPlaceExitIsUsableFactor }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.SolveInPlaceExitIsUsableFactor }.Run();
     }
 
     [Test]
     public void SolveInPlaceShortCircuitPurityTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveInPlaceShortCircuitPurity }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.SolveInPlaceShortCircuitPurity }.Run();
     }
 }

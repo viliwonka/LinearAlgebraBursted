@@ -21,7 +21,7 @@ using Unity.Mathematics;
 //  - Kahan matrix: invariant under QR with column pivoting — no permutation is performed.
 //    (Kahan's matrix; see nhigham.com and LAPACK lawn276; it is the canonical case where
 //    column pivoting fails to reveal rank precisely because it never pivots.)
-public class fProxyOrthoColumnPivotTests
+public class doubleQRCPTests
 {
     // Burst-compile smoke test.
     [BurstCompile]
@@ -31,8 +31,8 @@ public class fProxyOrthoColumnPivotTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var Q = arena.fProxyRandomMat(12, 6);
-            var R = arena.fProxyMat(6);
+            var Q = arena.doubleRandomMat(12, 6);
+            var R = arena.doubleMat(6);
             var P = new Pivot(6, Allocator.Persistent);
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
@@ -64,7 +64,7 @@ public class fProxyOrthoColumnPivotTests
         public TestType Type;
 
         // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff
-        public NativeArray<fProxy> Fail;
+        public NativeArray<double> Fail;
 
         public void Execute()
         {
@@ -94,13 +94,13 @@ public class fProxyOrthoColumnPivotTests
             {
                 for (uint t = 0; t < 16; t++)
                 {
-                    var Q = arena.fProxyRandomMat(m, n, -3f, 3f, 7001 + t * 13);
-                    var R = arena.fProxyMat(n);
+                    var Q = arena.doubleRandomMat(m, n, -3f, 3f, 7001 + t * 13);
+                    var R = arena.doubleMat(n);
                     var A = Q.Copy();
 
                     QRCP.decompInPlace(ref Q, ref R, ref P);
 
-                    AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+                    AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
                     arena.Clear();
                 }
@@ -118,13 +118,13 @@ public class fProxyOrthoColumnPivotTests
             {
                 for (uint t = 0; t < 16; t++)
                 {
-                    var Q = arena.fProxyRandomMat(dim, dim, -3f, 3f, 4220 + t * 7);
-                    var R = arena.fProxyMat(dim);
+                    var Q = arena.doubleRandomMat(dim, dim, -3f, 3f, 4220 + t * 7);
+                    var R = arena.doubleMat(dim);
                     var A = Q.Copy();
 
                     QRCP.decompInPlace(ref Q, ref R, ref P);
 
-                    AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+                    AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
                     arena.Clear();
                 }
@@ -138,25 +138,25 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 7, n = 4;
-            var Q = arena.fProxyRandomMat(m, n, -1f, 1f, 31337);
+            var Q = arena.doubleRandomMat(m, n, -1f, 1f, 31337);
 
             // Scale columns to distinct magnitudes; column 2 is unambiguously the largest.
             for (int r = 0; r < m; r++)
             {
-                Q[r, 0] *= (fProxy)1f;
-                Q[r, 1] *= (fProxy)4f;
-                Q[r, 2] *= (fProxy)12f;
-                Q[r, 3] *= (fProxy)2f;
+                Q[r, 0] *= (double)1f;
+                Q[r, 1] *= (double)4f;
+                Q[r, 2] *= (double)12f;
+                Q[r, 3] *= (double)2f;
             }
 
-            var R = arena.fProxyMat(n);
+            var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
             // Reconstruction must still hold...
-            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+            AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
             // ...and the first pivot must be original column 2.
             RecordEq(P[0], 2);
 
@@ -172,29 +172,29 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 6, n = 5;
-            var Q = arena.fProxyRandomMat(m, n, -1f, 1f, 90210);
+            var Q = arena.doubleRandomMat(m, n, -1f, 1f, 90210);
 
             // col3 = 2*col0 - col1 ; col4 = col0 + col2  => exact rank 3.
             for (int r = 0; r < m; r++)
             {
-                Q[r, 3] = (fProxy)2f * Q[r, 0] - Q[r, 1];
+                Q[r, 3] = (double)2f * Q[r, 0] - Q[r, 1];
                 Q[r, 4] = Q[r, 0] + Q[r, 2];
             }
 
-            var R = arena.fProxyMat(n);
+            var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
-            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+            AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
             // Count non-negligible diagonal entries relative to the leading one. The gap here is
             // enormous (rank-3 entries are O(|R00|); the 2 dependent columns reduce to the float
             // round-off of forming them, ~1e-6 relative), so 1e-4 relative cleanly separates them
             // and is robust across float/double and seeds.
-            fProxy lead = math.abs(R[0, 0]);
-            fProxy rankTol = (fProxy)1E-4f * lead;
+            double lead = math.abs(R[0, 0]);
+            double rankTol = (double)1E-4f * lead;
             int rank = 0;
             for (int d = 0; d < n; d++)
                 if (math.abs(R[d, d]) > rankTol)
@@ -214,11 +214,11 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 6;
-            fProxy c = (fProxy)0.2f;
-            fProxy s = math.sqrt((fProxy)1f - c * c);
+            double c = (double)0.2f;
+            double s = math.sqrt((double)1f - c * c);
 
-            var Q = arena.fProxyMat(dim, dim); // zero-initialised
-            fProxy si = 1f;                    // s^i
+            var Q = arena.doubleMat(dim, dim); // zero-initialised
+            double si = 1f;                    // s^i
             for (int i = 0; i < dim; i++)
             {
                 Q[i, i] = si;                  // diagonal: s^i
@@ -227,13 +227,13 @@ public class fProxyOrthoColumnPivotTests
                 si *= s;
             }
 
-            var R = arena.fProxyMat(dim);
+            var R = arena.doubleMat(dim);
             var P = new Pivot(dim, Allocator.Persistent);
             var A = Q.Copy();
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
-            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+            AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
             // No pivoting: P must be the identity permutation.
             for (int d = 0; d < dim; d++)
@@ -253,16 +253,16 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
-            fProxy theta = (fProxy)1.2f; // c=cos, s=sin both comfortably away from 0
+            double theta = (double)1.2f; // c=cos, s=sin both comfortably away from 0
 
-            var Q = arena.fProxyKahan(dim, theta);
-            var R = arena.fProxyMat(dim);
+            var Q = arena.doubleKahan(dim, theta);
+            var R = arena.doubleMat(dim);
             var P = new Pivot(dim, Allocator.Persistent);
             var A = Q.Copy();
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
-            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+            AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
             P.Dispose();
             arena.Dispose();
@@ -273,15 +273,15 @@ public class fProxyOrthoColumnPivotTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var Q = arena.fProxyMat(1, 1);
-            Q[0, 0] = (fProxy)5f;
-            var R = arena.fProxyMat(1);
+            var Q = arena.doubleMat(1, 1);
+            Q[0, 0] = (double)5f;
+            var R = arena.doubleMat(1);
             var P = new Pivot(1, Allocator.Persistent);
             var A = Q.Copy();
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
-            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+            AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
             RecordEq(P[0], 0);
 
             P.Dispose();
@@ -296,14 +296,14 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 4, n = 3;
-            var Q = arena.fProxyMat(m, n); // zero-initialised
-            var R = arena.fProxyMat(n);
+            var Q = arena.doubleMat(m, n); // zero-initialised
+            var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
-            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+            AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
             for (int d = 0; d < n; d++)
                 RecordEq(P[d], d);
 
@@ -319,20 +319,20 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 5, n = 3;
-            var Q = arena.fProxyMat(m, n); // zero-initialised
+            var Q = arena.doubleMat(m, n); // zero-initialised
             // column 0: large norm
-            Q[0, 0] = (fProxy)6f; Q[1, 0] = (fProxy)6f; Q[2, 0] = (fProxy)6f;
+            Q[0, 0] = (double)6f; Q[1, 0] = (double)6f; Q[2, 0] = (double)6f;
             // column 1: exact zero (left as 0)
             // column 2: medium norm (< column 0)
-            Q[0, 2] = (fProxy)2f; Q[3, 2] = (fProxy)2f;
+            Q[0, 2] = (double)2f; Q[3, 2] = (double)2f;
 
-            var R = arena.fProxyMat(n);
+            var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
-            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+            AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
             RecordEq(P[0], 0); // largest stays first
             RecordEq(P[2], 1); // zero column pushed last
 
@@ -347,20 +347,20 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 4, n = 3;
-            var Q = arena.fProxyRandomMat(m, n, -1f, 1f, 13579);
+            var Q = arena.doubleRandomMat(m, n, -1f, 1f, 13579);
             for (int r = 0; r < m; r++)
                 Q[r, 2] = Q[r, 0]; // column 2 == column 0
 
-            var R = arena.fProxyMat(n);
+            var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
             QRCP.decompInPlace(ref Q, ref R, ref P);
 
-            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+            AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
-            fProxy lead = math.abs(R[0, 0]);
-            fProxy rankTol = (fProxy)1E-4f * lead;
+            double lead = math.abs(R[0, 0]);
+            double rankTol = (double)1E-4f * lead;
             int rank = 0;
             for (int d = 0; d < n; d++)
                 if (math.abs(R[d, d]) > rankTol)
@@ -378,23 +378,23 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 10, n = 5;
-            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 606060);
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 606060);
             for (int d = 0; d < n; d++) A[d, d] += 4f;
 
-            fProxy checksumBefore = (fProxy)0;
-            for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (fProxy)(i + 1);
+            double checksumBefore = (double)0;
+            for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (double)(i + 1);
 
-            var Q = arena.fProxyMat(m, n);
-            var R = arena.fProxyMat(n);
+            var Q = arena.doubleMat(m, n);
+            var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
             QRCP.decomp(in A, ref Q, ref R, ref P);
 
-            fProxy checksumAfter = (fProxy)0;
-            for (int i = 0; i < A.Length; i++) checksumAfter += A[i] * (fProxy)(i + 1);
+            double checksumAfter = (double)0;
+            for (int i = 0; i < A.Length; i++) checksumAfter += A[i] * (double)(i + 1);
 
-            if (checksumAfter != checksumBefore && Fail[0] == (fProxy)0)
+            if (checksumAfter != checksumBefore && Fail[0] == (double)0)
             {
-                Fail[0] = (fProxy)1;
+                Fail[0] = (double)1;
                 Fail[1] = checksumAfter;
                 Fail[2] = checksumBefore;
                 Fail[3] = checksumAfter - checksumBefore;
@@ -402,7 +402,7 @@ public class fProxyOrthoColumnPivotTests
             Assert.IsTrue(checksumAfter == checksumBefore);
 
             // and the decomposition itself must still be correct (A intact, matches Q*R via P).
-            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+            AssertQRCP(in A, in Q, in R, in P, (double)1E-4f);
 
             P.Dispose();
             arena.Dispose();
@@ -410,7 +410,7 @@ public class fProxyOrthoColumnPivotTests
 
         // Reconstruction (A permuted by P == Q*R), R upper-triangular, Q orthogonal, and the
         // monotone-magnitude diagonal guarantee of column pivoting.
-        void AssertQRCP(in fProxyMxN A, in fProxyMxN Q, in fProxyMxN R, in Pivot P, fProxy precision)
+        void AssertQRCP(in doubleMxN A, in doubleMxN Q, in doubleMxN R, in Pivot P, double precision)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -422,12 +422,12 @@ public class fProxyOrthoColumnPivotTests
                 for (int j = 0; j < n; j++)
                     Aperm[r, j] = A[r, P[j]];
 
-            fProxyMxN shouldBeZero = Aperm - Blas.dot(Q, R);
+            doubleMxN shouldBeZero = Aperm - Blas.dot(Q, R);
 
             if (Analysis.isAnyNan(in shouldBeZero))
                 throw new System.Exception("TestJob: NaN detected");
 
-            fProxy zeroError = Analysis.MaxZeroError(shouldBeZero);
+            double zeroError = Analysis.MaxZeroError(shouldBeZero);
             RecordBound(zeroError, precision);
 
             Assert.IsTrue(Analysis.isZero(in shouldBeZero, precision));
@@ -436,14 +436,14 @@ public class fProxyOrthoColumnPivotTests
 
             // |R[d,d]| non-increasing (guaranteed by greedy column pivoting). Allow a small
             // absolute slack relative to the leading magnitude for float rounding.
-            fProxy monoTol = precision * (math.abs(R[0, 0]) + (fProxy)1f);
+            double monoTol = precision * (math.abs(R[0, 0]) + (double)1f);
             for (int d = 0; d + 1 < n; d++)
             {
-                fProxy hi = math.abs(R[d, d]);
-                fProxy lo = math.abs(R[d + 1, d + 1]);
-                if (!(hi + monoTol >= lo) && Fail[0] == (fProxy)0)
+                double hi = math.abs(R[d, d]);
+                double lo = math.abs(R[d + 1, d + 1]);
+                if (!(hi + monoTol >= lo) && Fail[0] == (double)0)
                 {
-                    Fail[0] = (fProxy)1;
+                    Fail[0] = (double)1;
                     Fail[1] = lo;        // got (next diagonal)
                     Fail[2] = hi;        // expected upper bound (this diagonal)
                     Fail[3] = lo - hi;   // excess
@@ -452,11 +452,11 @@ public class fProxyOrthoColumnPivotTests
             }
         }
 
-        void RecordBound(fProxy value, fProxy limit)
+        void RecordBound(double value, double limit)
         {
-            if (!(value <= limit) && Fail[0] == (fProxy)0)
+            if (!(value <= limit) && Fail[0] == (double)0)
             {
-                Fail[0] = (fProxy)1;
+                Fail[0] = (double)1;
                 Fail[1] = value;
                 Fail[2] = limit;
                 Fail[3] = value - limit;
@@ -465,9 +465,9 @@ public class fProxyOrthoColumnPivotTests
 
         void RecordEq(int got, int expected)
         {
-            if (got != expected && Fail[0] == (fProxy)0)
+            if (got != expected && Fail[0] == (double)0)
             {
-                Fail[0] = (fProxy)1;
+                Fail[0] = (double)1;
                 Fail[1] = got;
                 Fail[2] = expected;
                 Fail[3] = got - expected;
@@ -484,16 +484,16 @@ public class fProxyOrthoColumnPivotTests
     [TestCaseSource("GetEnums")]
     public void ColumnPivotTests(TestJob.TestType type)
     {
-        var fail = new NativeArray<fProxy>(4, Allocator.TempJob);
+        var fail = new NativeArray<double>(4, Allocator.TempJob);
         try
         {
             new TestJob() { Type = type, Fail = fail }.Run();
-            if (fail[0] != (fProxy)0)
+            if (fail[0] != (double)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
         }
         catch (Exception e)
         {
-            if (fail[0] != (fProxy)0)
+            if (fail[0] != (double)0)
                 Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
             throw;
         }
@@ -518,7 +518,7 @@ public class fProxyOrthoColumnPivotTests
     {
         public enum TestType
         {
-            FullRankAgreesWithQR,   // (1) overdetermined full-rank: rank==n & x == qrDirectSolve
+            FullRankAgreesWithQR,   // (1) overdetermined full-rank: rank==n & x == QR.solveInPlace
             FullRankSquare,         // (2) square full-rank: A x == b
             RankDeficientResidual,  // (3) dependent column: rank, minimal residual, pinv cross-check
             Rank1Projection,        // (4) Pei(4,0) rank-1, n>1: residual minimal, A x == proj(b)
@@ -527,7 +527,7 @@ public class fProxyOrthoColumnPivotTests
             OneByOne,               // (7) 1x1 system: x == b/a (projection formula)
             AutoSentinel,           // (8) relTol=-1 == default overload == explicit default tol
             KnownValueRegression,   // (9) hand-computable rank-deficient basic solution
-            RankRevealingInfoStatus,// (10) Stage-3: RankRevealingInfo.status/rank/Solved on rank-deficient A
+            RankInfoStatus,         // (10) Stage-3: RankInfo.status/rank/Solved on rank-deficient A
             NoCopyEquivalenceFullRank,      // (11) commit-2: no-copy solveInPlace == copying-then-solveInPlace
             NoCopyEquivalenceRankDeficient, // (12) same, rank-deficient A
         }
@@ -535,7 +535,7 @@ public class fProxyOrthoColumnPivotTests
         public TestType Type;
 
         // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff
-        public NativeArray<fProxy> Fail;
+        public NativeArray<double> Fail;
 
         public void Execute()
         {
@@ -550,7 +550,7 @@ public class fProxyOrthoColumnPivotTests
                 case TestType.OneByOne:                OneByOne();                break;
                 case TestType.AutoSentinel:            AutoSentinel();            break;
                 case TestType.KnownValueRegression:    KnownValueRegression();    break;
-                case TestType.RankRevealingInfoStatus: RankRevealingInfoStatus(); break;
+                case TestType.RankInfoStatus:          RankInfoStatus();          break;
                 case TestType.NoCopyEquivalenceFullRank:      NoCopyEquivalenceFullRank();      break;
                 case TestType.NoCopyEquivalenceRankDeficient: NoCopyEquivalenceRankDeficient(); break;
             }
@@ -564,15 +564,15 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 12, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -5f, 5f, 778231);
+            var A = arena.doubleRandomMat(m, n, -5f, 5f, 778231);
             for (int d = 0; d < n; d++)
-                A[d, d] += (fProxy)10f; // boost leading block -> full column rank, good conditioning
+                A[d, d] += (double)10f; // boost leading block -> full column rank, good conditioning
 
             // generic b (not in range(A)) so it is a genuine least-squares (not exact) problem
-            var b = arena.fProxyRandomVec(m, -5f, 5f, 9091);
+            var b = arena.doubleRandomVec(m, -5f, 5f, 9091);
             var A_pristine = A.Copy(); // solveInPlace now destroys A (becomes Q); preserve for the QR reference below
 
-            var x = arena.fProxyVec(n);
+            var x = arena.doubleVec(n);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank; // b stays intact; A -> Q
 
             RecordEq(rank, n);
@@ -581,12 +581,12 @@ public class fProxyOrthoColumnPivotTests
             // reference: ordinary QR-LS (destroys its inputs -> feed copies)
             var Aqr = A_pristine.Copy();
             var bqr = b.Copy();
-            var xRef = arena.fProxyVec(n);
+            var xRef = arena.doubleVec(n);
             QR.solveInPlace(ref Aqr, ref bqr, ref xRef);
 
-            fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
+            double tol = (double)Consts.doubleSqrtEps * (double)10;
             for (int k = 0; k < n; k++)
-                AssertClose(x[k], xRef[k], tol * (math.abs(xRef[k]) + (fProxy)1));
+                AssertClose(x[k], xRef[k], tol * (math.abs(xRef[k]) + (double)1));
 
             arena.Dispose();
         }
@@ -598,31 +598,31 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
-            var A = arena.fProxyRandomMat(dim, dim, -5f, 5f, 314221);
+            var A = arena.doubleRandomMat(dim, dim, -5f, 5f, 314221);
             for (int d = 0; d < dim; d++)
-                A[d, d] += (fProxy)10f;
+                A[d, d] += (double)10f;
 
-            var xOrig = arena.fProxyRandomVec(dim, -3f, 3f, 1337);
+            var xOrig = arena.doubleRandomVec(dim, -3f, 3f, 1337);
             var b = Blas.dot(A, xOrig); // b in range(A) -> exact solution exists
             var A_copy = A.Copy();          // for residual check after the solve
 
-            var R = arena.fProxyMat(dim);
+            var R = arena.doubleMat(dim);
             var P = new Pivot(dim, Allocator.Persistent);
-            var u = arena.fProxyVec(dim);
-            var x = arena.fProxyVec(dim);
+            var u = arena.doubleVec(dim);
+            var x = arena.doubleVec(dim);
 
             int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u).rank;
 
             RecordEq(rank, dim);
             if (!Analysis.isAnyNan(in x))
             {
-                fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
+                double tol = (double)Consts.doubleSqrtEps * (double)10;
                 for (int k = 0; k < dim; k++)
-                    AssertClose(x[k], xOrig[k], tol * (math.abs(xOrig[k]) + (fProxy)1));
+                    AssertClose(x[k], xOrig[k], tol * (math.abs(xOrig[k]) + (double)1));
 
                 // residual ~ 0
-                fProxy res = ResidualNorm(in A_copy, in x, in b);
-                RecordBound(res, tol * ((fProxy)1 + VecNorm(in b)));
+                double res = ResidualNorm(in A_copy, in x, in b);
+                RecordBound(res, tol * ((double)1 + VecNorm(in b)));
             }
 
             P.Dispose();
@@ -638,38 +638,38 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 6, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 90211);
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 90211);
             for (int r = 0; r < m; r++)
                 A[r, 3] = A[r, 0] + A[r, 1]; // exact dependency -> true rank 3
             var A_copy = A.Copy();
 
-            var b = arena.fProxyRandomVec(m, -3f, 3f, 5511);
+            var b = arena.doubleRandomVec(m, -3f, 3f, 5511);
 
-            var x = arena.fProxyVec(n);
+            var x = arena.doubleVec(n);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 3);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
-            fProxy resQrcp = ResidualNorm(in A_copy, in x, in b);
-            fProxy normQrcp = VecNorm(in x);
+            double resQrcp = ResidualNorm(in A_copy, in x, in b);
+            double normQrcp = VecNorm(in x);
 
             // pinv reference (no longer modifies A) — same residual, minimum norm
             var Apinv = A_copy.Copy();
-            var xPinv = arena.fProxyVec(n);
+            var xPinv = arena.doubleVec(n);
             int pinvRank = SVD.pinvSolve(ref Apinv, in b, ref xPinv, out bool converged);
 
             RecordEq(pinvRank, 3);
-            fProxy resPinv = ResidualNorm(in A_copy, in xPinv, in b);
-            fProxy normPinv = VecNorm(in xPinv);
+            double resPinv = ResidualNorm(in A_copy, in xPinv, in b);
+            double normPinv = VecNorm(in xPinv);
 
             // (a) SAME residual (both are residual-minimal). Residual is second-order flat at the
             // optimum, so even pinv's iterative x reproduces the minimum value tightly.
-            fProxy resTol = (fProxy)Consts.fProxySqrtEps * (fProxy)4 * (resPinv + (fProxy)1);
+            double resTol = (double)Consts.doubleSqrtEps * (double)4 * (resPinv + (double)1);
             AssertClose(resQrcp, resPinv, resTol);
 
             // (b) basic solution is NOT minimum-norm: ‖x_pinv‖ <= ‖x_qrcp‖ (with slack).
-            fProxy normSlack = (fProxy)Consts.fProxySqrtEps * (fProxy)10 * (normQrcp + (fProxy)1);
+            double normSlack = (double)Consts.doubleSqrtEps * (double)10 * (normQrcp + (double)1);
             RecordBound(normPinv - normQrcp, normSlack);
 
             arena.Dispose();
@@ -684,15 +684,15 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 4;
-            var A = arena.fProxyPei(dim, (fProxy)0); // all-ones, rank 1
+            var A = arena.doublePei(dim, (double)0); // all-ones, rank 1
             var A_copy = A.Copy();
 
-            var b = arena.fProxyRandomVec(dim, -4f, 4f, 24680);
-            fProxy mean = (fProxy)0;
+            var b = arena.doubleRandomVec(dim, -4f, 4f, 24680);
+            double mean = (double)0;
             for (int i = 0; i < dim; i++) mean += b[i];
-            mean /= (fProxy)dim;
+            mean /= (double)dim;
 
-            var x = arena.fProxyVec(dim);
+            var x = arena.doubleVec(dim);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
@@ -700,23 +700,23 @@ public class fProxyOrthoColumnPivotTests
 
             // reconstruction A x must be the projection of b onto span(ones) = mean(b)*ones
             var Ax = Blas.dot(A_copy, x);
-            fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
+            double tol = (double)Consts.doubleSqrtEps * (double)10;
             for (int i = 0; i < dim; i++)
-                AssertClose(Ax[i], mean, tol * (math.abs(mean) + (fProxy)1));
+                AssertClose(Ax[i], mean, tol * (math.abs(mean) + (double)1));
 
             // residual minimal vs pinv, and basic norm >= min norm
-            fProxy resQrcp = ResidualNorm(in A_copy, in x, in b);
-            fProxy normQrcp = VecNorm(in x);
+            double resQrcp = ResidualNorm(in A_copy, in x, in b);
+            double normQrcp = VecNorm(in x);
 
             var Apinv = A_copy.Copy();
-            var xPinv = arena.fProxyVec(dim);
+            var xPinv = arena.doubleVec(dim);
             int pinvRank = SVD.pinvSolve(ref Apinv, in b, ref xPinv, out bool converged);
             RecordEq(pinvRank, 1);
-            fProxy resPinv = ResidualNorm(in A_copy, in xPinv, in b);
-            fProxy normPinv = VecNorm(in xPinv);
+            double resPinv = ResidualNorm(in A_copy, in xPinv, in b);
+            double normPinv = VecNorm(in xPinv);
 
-            AssertClose(resQrcp, resPinv, (fProxy)Consts.fProxySqrtEps * (fProxy)4 * (resPinv + (fProxy)1));
-            RecordBound(normPinv - normQrcp, (fProxy)Consts.fProxySqrtEps * (fProxy)10 * (normQrcp + (fProxy)1));
+            AssertClose(resQrcp, resPinv, (double)Consts.doubleSqrtEps * (double)4 * (resPinv + (double)1));
+            RecordBound(normPinv - normQrcp, (double)Consts.doubleSqrtEps * (double)10 * (normQrcp + (double)1));
 
             arena.Dispose();
         }
@@ -729,40 +729,40 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 8, n = 5;
-            var A = arena.fProxyRandomMat(m, n, -2f, 2f, 90210);
+            var A = arena.doubleRandomMat(m, n, -2f, 2f, 90210);
             for (int r = 0; r < m; r++)
             {
-                A[r, 3] = (fProxy)2f * A[r, 0] - A[r, 1];
+                A[r, 3] = (double)2f * A[r, 0] - A[r, 1];
                 A[r, 4] = A[r, 0] + A[r, 2];
             }
             var A_copy = A.Copy();
 
-            var b = arena.fProxyRandomVec(m, -2f, 2f, 1212);
+            var b = arena.doubleRandomVec(m, -2f, 2f, 1212);
 
-            var R = arena.fProxyMat(n);
+            var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
-            var u = arena.fProxyVec(m);
-            var x = arena.fProxyVec(n);
+            var u = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
 
-            fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroThreshold;
+            double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
             int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u, explicitTol).rank;
 
             RecordEq(rank, 3);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
-            fProxy resQrcp = ResidualNorm(in A_copy, in x, in b);
+            double resQrcp = ResidualNorm(in A_copy, in x, in b);
 
             var Apinv = A_copy.Copy();
-            var xPinv = arena.fProxyVec(n);
+            var xPinv = arena.doubleVec(n);
             int pinvRank = SVD.pinvSolve(ref Apinv, in b, ref xPinv, out bool converged);
             RecordEq(pinvRank, 3);
-            fProxy resPinv = ResidualNorm(in A_copy, in xPinv, in b);
+            double resPinv = ResidualNorm(in A_copy, in xPinv, in b);
 
-            AssertClose(resQrcp, resPinv, (fProxy)Consts.fProxySqrtEps * (fProxy)4 * (resPinv + (fProxy)1));
+            AssertClose(resQrcp, resPinv, (double)Consts.doubleSqrtEps * (double)4 * (resPinv + (double)1));
 
             // basic norm >= min norm
             RecordBound(VecNorm(in xPinv) - VecNorm(in x),
-                        (fProxy)Consts.fProxySqrtEps * (fProxy)10 * (VecNorm(in x) + (fProxy)1));
+                        (double)Consts.doubleSqrtEps * (double)10 * (VecNorm(in x) + (double)1));
 
             P.Dispose();
             arena.Dispose();
@@ -774,16 +774,16 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 5, n = 3;
-            var A = arena.fProxyMat(m, n);                          // zero-initialised
-            var b = arena.fProxyRandomVec(m, -5f, 5f, 5151);
+            var A = arena.doubleMat(m, n);                          // zero-initialised
+            var b = arena.doubleRandomVec(m, -5f, 5f, 5151);
 
-            var x = arena.fProxyVec(n);
+            var x = arena.doubleVec(n);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 0);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
             for (int k = 0; k < n; k++)
-                AssertClose(x[k], (fProxy)0, (fProxy)Consts.fProxySqrtEps);
+                AssertClose(x[k], (double)0, (double)Consts.doubleSqrtEps);
 
             arena.Dispose();
         }
@@ -794,27 +794,27 @@ public class fProxyOrthoColumnPivotTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.fProxyMat(1, 1);
-            A[0, 0] = (fProxy)4f;
+            var A = arena.doubleMat(1, 1);
+            A[0, 0] = (double)4f;
             var A_copy = A.Copy();
 
-            var b = arena.fProxyVec(1);
-            b[0] = (fProxy)10f;
+            var b = arena.doubleVec(1);
+            b[0] = (double)10f;
 
-            var x = arena.fProxyVec(1);
+            var x = arena.doubleVec(1);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
-            AssertClose(x[0], (fProxy)2.5f, (fProxy)Consts.fProxySqrtEps * (fProxy)10);
-            RecordBound(ResidualNorm(in A_copy, in x, in b), (fProxy)Consts.fProxySqrtEps * (fProxy)10);
+            AssertClose(x[0], (double)2.5f, (double)Consts.doubleSqrtEps * (double)10);
+            RecordBound(ResidualNorm(in A_copy, in x, in b), (double)Consts.doubleSqrtEps * (double)10);
 
             arena.Dispose();
         }
 
         // (8) Auto sentinel: relTol = -1 must select the documented default
-        // (max(m,n)*Consts.fProxyZeroThreshold). Verify it produces the SAME rank and the SAME x as
+        // (max(m,n)*Consts.doubleZeroThreshold). Verify it produces the SAME rank and the SAME x as
         // (a) the default overload and (b) the explicit positive default tolerance — bit-for-bit
         // (identical code path). Exercised on a rank-deficient system so rank/truncation matter.
         void AutoSentinel()
@@ -822,23 +822,23 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 6, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 4242);
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 4242);
             for (int r = 0; r < m; r++)
                 A[r, 2] = A[r, 0] - A[r, 1]; // rank 3
-            var b = arena.fProxyRandomVec(m, -3f, 3f, 2424);
+            var b = arena.doubleRandomVec(m, -3f, 3f, 2424);
 
             // solveInPlace now destroys A (becomes Q) -- each call needs its own pristine copy so
             // all three exercise the IDENTICAL input.
-            var xAuto = arena.fProxyVec(n);
+            var xAuto = arena.doubleVec(n);
             var Aauto = A.Copy();
             int rankAuto = QRCP.solveInPlace(ref Aauto, ref b, ref xAuto).rank; // default overload
 
-            var xNeg = arena.fProxyVec(n);
+            var xNeg = arena.doubleVec(n);
             var Aneg = A.Copy();
-            int rankNeg = QRCP.solveInPlace(ref Aneg, ref b, ref xNeg, (fProxy)(-1)).rank; // sentinel
+            int rankNeg = QRCP.solveInPlace(ref Aneg, ref b, ref xNeg, (double)(-1)).rank; // sentinel
 
-            fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroThreshold;
-            var xExpl = arena.fProxyVec(n);
+            double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
+            var xExpl = arena.doubleVec(n);
             var Aexpl = A.Copy();
             int rankExpl = QRCP.solveInPlace(ref Aexpl, ref b, ref xExpl, explicitTol).rank;
 
@@ -848,8 +848,8 @@ public class fProxyOrthoColumnPivotTests
             for (int k = 0; k < n; k++)
             {
                 // identical computation -> exact equality
-                AssertClose(xNeg[k], xAuto[k], (fProxy)0);
-                AssertClose(xExpl[k], xAuto[k], (fProxy)0);
+                AssertClose(xNeg[k], xAuto[k], (double)0);
+                AssertClose(xExpl[k], xAuto[k], (double)0);
             }
 
             arena.Dispose();
@@ -865,29 +865,29 @@ public class fProxyOrthoColumnPivotTests
             var arena = new Arena(Allocator.Persistent);
 
             int m = 3, n = 2;
-            var A = arena.fProxyMat(m, n);  // zero-initialised
-            A[0, 0] = (fProxy)1f; A[0, 1] = (fProxy)2f; // only row 0 is nonzero
+            var A = arena.doubleMat(m, n);  // zero-initialised
+            A[0, 0] = (double)1f; A[0, 1] = (double)2f; // only row 0 is nonzero
             var A_copy = A.Copy();
 
-            var b = arena.fProxyVec(m);
-            b[0] = (fProxy)6f; b[1] = (fProxy)1f; b[2] = (fProxy)1f;
+            var b = arena.doubleVec(m);
+            b[0] = (double)6f; b[1] = (double)1f; b[2] = (double)1f;
 
-            var R = arena.fProxyMat(n);
+            var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
-            var u = arena.fProxyVec(m);
-            var x = arena.fProxyVec(n);
+            var u = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
 
-            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u, (fProxy)(-1)).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u, (double)(-1)).rank;
 
             RecordEq(rank, 1);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
-            fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)10;
-            AssertClose(x[0], (fProxy)0f, tol); // free variable (original col0) zeroed
-            AssertClose(x[1], (fProxy)3f, tol); // pivoted col1 carries the rank-1 solution
+            double tol = (double)Consts.doubleSqrtEps * (double)10;
+            AssertClose(x[0], (double)0f, tol); // free variable (original col0) zeroed
+            AssertClose(x[1], (double)3f, tol); // pivoted col1 carries the rank-1 solution
 
-            fProxy res = ResidualNorm(in A_copy, in x, in b);
-            AssertClose(res, math.sqrt((fProxy)2f), tol);
+            double res = ResidualNorm(in A_copy, in x, in b);
+            AssertClose(res, math.sqrt((double)2f), tol);
 
             P.Dispose();
             arena.Dispose();
@@ -897,17 +897,17 @@ public class fProxyOrthoColumnPivotTests
         // dependency, true rank 3 of 4), QRCP.solveInPlace must return a RankInfo with
         // status == RankDeficient, rank == the detected reduced rank, and Solved == true (a
         // rank-deficient basic solution is still usable) -- distinct from a hard failure.
-        void RankRevealingInfoStatus()
+        void RankInfoStatus()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int m = 6, n = 4;
-            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 90211);
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 90211);
             for (int r = 0; r < m; r++)
                 A[r, 3] = A[r, 0] + A[r, 1]; // exact dependency -> true rank 3
 
-            var b = arena.fProxyRandomVec(m, -3f, 3f, 5511);
-            var x = arena.fProxyVec(n);
+            var b = arena.doubleRandomVec(m, -3f, 3f, 5511);
+            var x = arena.doubleVec(n);
 
             RankInfo info = QRCP.solveInPlace(ref A, ref b, ref x);
 
@@ -932,23 +932,23 @@ public class fProxyOrthoColumnPivotTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A0 = arena.fProxyRandomMat(m, n, -3f, 3f, seed);
+            var A0 = arena.doubleRandomMat(m, n, -3f, 3f, seed);
             for (int d = 0; d < n; d++) A0[d, d] += 6f;
             if (rankDeficient)
                 for (int r = 0; r < m; r++)
                     A0[r, n - 1] = A0[r, 0] + A0[r, 1]; // exact dependency -> rank n-1
 
-            var b = arena.fProxyRandomVec(m, -3f, 3f, seed + 1);
+            var b = arena.doubleRandomVec(m, -3f, 3f, seed + 1);
 
             // Path 1: solveInPlace on one independent copy of A0.
             var Adirect = A0.Copy();
-            var xDirect = arena.fProxyVec(n);
+            var xDirect = arena.doubleVec(n);
             RankInfo infoDirect = QRCP.solveInPlace(ref Adirect, ref b, ref xDirect);
 
             // Path 2: solveInPlace on a SEPARATE independent copy -- proves buffer identity is
             // irrelevant to the result (b is read-only, so the same b is reused for both calls).
             var Acopy = A0.Copy();
-            var xCopy = arena.fProxyVec(n);
+            var xCopy = arena.doubleVec(n);
             RankInfo infoCopy = QRCP.solveInPlace(ref Acopy, ref b, ref xCopy);
 
             RecordEq((int)infoDirect.status, (int)infoCopy.status);
@@ -968,7 +968,7 @@ public class fProxyOrthoColumnPivotTests
 
             // And bit-identical to the Q a fresh decompInPlace produces on a third identical copy.
             var Aref = A0.Copy();
-            var Rref = arena.fProxyMat(n);
+            var Rref = arena.doubleMat(n);
             var Pref = new Pivot(n, Allocator.Persistent);
             QRCP.decompInPlace(ref Aref, ref Rref, ref Pref);
 
@@ -979,11 +979,11 @@ public class fProxyOrthoColumnPivotTests
             arena.Dispose();
         }
 
-        void AssertBitIdentical(fProxy a, fProxy b)
+        void AssertBitIdentical(double a, double b)
         {
-            if (a != b && Fail[0] == (fProxy)0)
+            if (a != b && Fail[0] == (double)0)
             {
-                Fail[0] = (fProxy)1;
+                Fail[0] = (double)1;
                 Fail[1] = a;
                 Fail[2] = b;
                 Fail[3] = a - b;
@@ -994,32 +994,32 @@ public class fProxyOrthoColumnPivotTests
         // ---- helpers ----
 
         // ‖A x − b‖2 using an UNMODIFIED copy of A (the live A may be consumed by a solver).
-        fProxy ResidualNorm(in fProxyMxN A, in fProxyN x, in fProxyN b)
+        double ResidualNorm(in doubleMxN A, in doubleN x, in doubleN b)
         {
             var Ax = Blas.dot(A, x);
-            fProxy s = (fProxy)0;
+            double s = (double)0;
             for (int i = 0; i < b.N; i++)
             {
-                fProxy d = Ax[i] - b[i];
+                double d = Ax[i] - b[i];
                 s += d * d;
             }
             return math.sqrt(s);
         }
 
-        fProxy VecNorm(in fProxyN v)
+        double VecNorm(in doubleN v)
         {
-            fProxy s = (fProxy)0;
+            double s = (double)0;
             for (int i = 0; i < v.N; i++)
                 s += v[i] * v[i];
             return math.sqrt(s);
         }
 
-        void AssertClose(fProxy a, fProxy b, fProxy precision)
+        void AssertClose(double a, double b, double precision)
         {
-            fProxy diff = math.abs(a - b);
-            if (!(diff <= precision) && Fail[0] == (fProxy)0)
+            double diff = math.abs(a - b);
+            if (!(diff <= precision) && Fail[0] == (double)0)
             {
-                Fail[0] = (fProxy)1;
+                Fail[0] = (double)1;
                 Fail[1] = a;
                 Fail[2] = b;
                 Fail[3] = diff;
@@ -1027,11 +1027,11 @@ public class fProxyOrthoColumnPivotTests
             Assert.IsTrue(diff <= precision);
         }
 
-        void RecordBound(fProxy value, fProxy limit)
+        void RecordBound(double value, double limit)
         {
-            if (!(value <= limit) && Fail[0] == (fProxy)0)
+            if (!(value <= limit) && Fail[0] == (double)0)
             {
-                Fail[0] = (fProxy)1;
+                Fail[0] = (double)1;
                 Fail[1] = value;
                 Fail[2] = limit;
                 Fail[3] = value - limit;
@@ -1041,9 +1041,9 @@ public class fProxyOrthoColumnPivotTests
 
         void RecordEq(int got, int expected)
         {
-            if (got != expected && Fail[0] == (fProxy)0)
+            if (got != expected && Fail[0] == (double)0)
             {
-                Fail[0] = (fProxy)1;
+                Fail[0] = (double)1;
                 Fail[1] = got;
                 Fail[2] = expected;
                 Fail[3] = got - expected;
@@ -1051,11 +1051,11 @@ public class fProxyOrthoColumnPivotTests
             Assert.AreEqual(expected, got);
         }
 
-        void Fail0(fProxy got, fProxy expected)
+        void Fail0(double got, double expected)
         {
-            if (Fail[0] == (fProxy)0)
+            if (Fail[0] == (double)0)
             {
-                Fail[0] = (fProxy)1;
+                Fail[0] = (double)1;
                 Fail[1] = got;
                 Fail[2] = expected;
                 Fail[3] = got - expected;
@@ -1073,16 +1073,16 @@ public class fProxyOrthoColumnPivotTests
     [TestCaseSource("GetSolveEnums")]
     public void ColumnPivotSolveTests(SolveTestJob.TestType type)
     {
-        var fail = new NativeArray<fProxy>(4, Allocator.TempJob);
+        var fail = new NativeArray<double>(4, Allocator.TempJob);
         try
         {
             new SolveTestJob() { Type = type, Fail = fail }.Run();
-            if (fail[0] != (fProxy)0)
+            if (fail[0] != (double)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
         }
         catch (Exception e)
         {
-            if (fail[0] != (fProxy)0)
+            if (fail[0] != (double)0)
                 Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
             throw;
         }
@@ -1098,9 +1098,9 @@ public class fProxyOrthoColumnPivotTests
     public void QrcpSolveThrowsOnShortMatrix() // m < n is rejected
     {
         var arena = new Arena(Allocator.Persistent);
-        var A = arena.fProxyMat(2, 3);
-        var b = arena.fProxyVec(2);
-        var x = arena.fProxyVec(3);
+        var A = arena.doubleMat(2, 3);
+        var b = arena.doubleVec(2);
+        var x = arena.doubleVec(3);
         Assert.Catch<ArgumentException>(() => QRCP.solveInPlace(ref A, ref b, ref x));
         arena.Dispose();
     }
@@ -1109,9 +1109,9 @@ public class fProxyOrthoColumnPivotTests
     public void QrcpSolveThrowsOnWrongBLength()
     {
         var arena = new Arena(Allocator.Persistent);
-        var A = arena.fProxyMat(4, 3);
-        var b = arena.fProxyVec(3); // should be 4
-        var x = arena.fProxyVec(3);
+        var A = arena.doubleMat(4, 3);
+        var b = arena.doubleVec(3); // should be 4
+        var x = arena.doubleVec(3);
         Assert.Catch<ArgumentException>(() => QRCP.solveInPlace(ref A, ref b, ref x));
         arena.Dispose();
     }
@@ -1120,9 +1120,9 @@ public class fProxyOrthoColumnPivotTests
     public void QrcpSolveThrowsOnWrongXLength()
     {
         var arena = new Arena(Allocator.Persistent);
-        var A = arena.fProxyMat(4, 3);
-        var b = arena.fProxyVec(4);
-        var x = arena.fProxyVec(2); // should be 3
+        var A = arena.doubleMat(4, 3);
+        var b = arena.doubleVec(4);
+        var x = arena.doubleVec(2); // should be 3
         Assert.Catch<ArgumentException>(() => QRCP.solveInPlace(ref A, ref b, ref x));
         arena.Dispose();
     }

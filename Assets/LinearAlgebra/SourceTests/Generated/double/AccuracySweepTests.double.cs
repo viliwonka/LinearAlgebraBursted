@@ -199,7 +199,7 @@ public class doubleAccuracySweepTests
             var L = arena.doubleMat(m, m);
             var Q = arena.doubleMat(m, n);
 
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
 
             Assert.IsFalse(Analysis.isAnyNan(in L));
             Assert.IsFalse(Analysis.isAnyNan(in Q));

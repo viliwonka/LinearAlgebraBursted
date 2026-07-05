@@ -1,5 +1,8 @@
 # Style / Cohesion / Usability Audit — Round 2
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 Date: 2026-06-28
 Scope: `Assets/LinearAlgebra/CodeGen/TemplateSource/` — complete second pass, emphasis on
 Realtime, Stats, Gallery, ResampleOP, FFT, Wave, Easing, ML/KMeans, Interfaces, RandomOP.

@@ -1,5 +1,8 @@
 # Spec — Literature / test-matrix gallery
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 Status: **SPEC (coder-ready)** · 2026-06-27 · fProxy-only (float/double)
 
 A curated collection of "famous" matrices with **known closed-form properties** (eigenvalues,

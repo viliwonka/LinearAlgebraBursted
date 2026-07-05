@@ -83,7 +83,7 @@ namespace LinearAlgebra
                 var lj = new doubleN(n, Allocator.Temp, false);
                 double* ljp = lj.Data.Ptr;
 
-                // Panel width for the blocked (level-3) path. Method-local const — Cholesky is a
+                // Panel width for the blocked (level-3) path. Method-local const — CHO is a
                 // partial class shared by the float/double generated files, so a class-level const of
                 // the same name would collide across them (CS0102; see QR_BLOCK).
                 const int CHOL_BLOCK = 32;

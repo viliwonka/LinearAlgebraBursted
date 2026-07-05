@@ -1,5 +1,8 @@
 # Phase-2: solver/decomposition workspace overloads — spec
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 Goal: every solver/decomposition that allocates an internal scratch buffer gains a
 caller-provided-scratch overload so a hot loop (solve many same-sized systems) can hoist
 the workspace allocation out of the loop and run zero-alloc. Mirrors the phase-1 ref-dest

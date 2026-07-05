@@ -5,14 +5,14 @@
 
 ## Dense
 
-- **`eigenSymmetric(ref A, ref eigenvalues, ref V, ...)`** — the default: Householder
+- **`Eigen.symmetric(ref A, ref eigenvalues, ref V, ...)`** — the default: Householder
   tridiagonalization (with orthogonal accumulation) + implicit-shift QL, all eigenpairs, descending
-  order, `A` destroyed. **`eigenvaluesSymmetric(ref A, ref eigenvalues, ...)`** — values-only, skips
+  order, `A` destroyed. **`Eigen.valuesSymmetric(ref A, ref eigenvalues, ...)`** — values-only, skips
   the eigenvector accumulation entirely, faster still.
-- `eigenDecomposition` (cyclic two-sided Jacobi) is `[Obsolete]` — Jacobi's column-oriented rotations
+- `Eigen.decompInPlace` (cyclic two-sided Jacobi) is `[Obsolete]` — Jacobi's column-oriented rotations
   resist SIMD; kept only because it has superior relative accuracy on graded spectra, and as a
   cross-check oracle for the Householder path.
-- **`eigenvaluesQR(ref A, ref eigenvaluesReal, ref eigenvaluesImag, ...)`** — non-symmetric, Francis
+- **`Eigen.valuesQR(ref A, ref eigenvaluesReal, ref eigenvaluesImag, ...)`** — non-symmetric, Francis
   double-shift QR on an upper-Hessenberg reduction (elmhes+hqr). Values only; complex-conjugate pairs
   are represented as real/imag arrays (no complex type), via 2×2 Schur blocks.
 
@@ -26,13 +26,13 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
 - **`inversePowerIteration<TOp>(in A, ..., out lambda, ...)`** — smallest eigenpair of SPD `A`, via an
   inner `Solvers.cg` solve each outer iteration (no explicit inverse formed).
 - **`lanczos<TOp>(in A, ref ws, ref eigenvalues, int steps, ...)`** — twice-reorthogonalized symmetric
-  Lanczos tridiagonalization + `eigenvaluesSymmetric` on the result → Ritz **values**.
+  Lanczos tridiagonalization + `Eigen.valuesSymmetric` on the result → Ritz **values**.
   **`lanczosVectors<TOp>(...)`** — same tridiagonalization, then forms Ritz **vectors** too (not
-  zero-alloc — allocates 3 Temp vectors internally via `eigenSymmetric`).
+  zero-alloc — allocates 3 Temp vectors internally via `Eigen.symmetric`).
 - **`LOBPCG.lobpcg<TOp[,TPre]>(in A[, in M], ref ws, int k, float tol, int maxIter)`** — blocked
   Locally Optimal Block Preconditioned Conjugate Gradient: the `k` SMALLEST eigenpairs of a symmetric
   operator, via deflation-based locking (a converged pair is frozen and projected out of the active
-  subspace) and a small dense Rayleigh-Ritz sub-problem solved with `eigenSymmetric` (a 3-block
+  subspace) and a small dense Rayleigh-Ritz sub-problem solved with `Eigen.symmetric` (a 3-block
   `[X,W,P]` reduction that falls back to 2-block `[X,W]` if the 3-block Cholesky is too
   ill-conditioned). Dense (`floatMxN`), [BSR](sparse-bsr.md), and BSR+`floatBlockJacobi`
   (preconditioned) forwarders all share this one body — the same pattern as the rest of this section.
@@ -44,7 +44,7 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
 
 This is the intended tool for sparse smallest-eigenpair problems (structural-stability / buckling /
 modal-analysis use cases, the Fiedler vector) that `lanczos`/`inversePowerIteration` aren't the best
-fit for; the dense small-scale case is still better served by `eigenSymmetric`.
+fit for; the dense small-scale case is still better served by `Eigen.symmetric`.
 
 **Generalized pencil form** — `lobpcg` also solves `A·x = λ·B·x` with B SPD: every overload has a
 `+B` twin (generic operator, dense, BSR, BSR+block-Jacobi) that B-orthonormalizes the basis and
@@ -73,10 +73,10 @@ cyclic Jacobi, same result (commits `4902032`, `facbbff`, `4a188a5`):
 
 | Method | N | Jacobi | Householder | Speedup |
 |---|---|---|---|---|
-| values only (`eigenvaluesSymmetric`) | 256 | 213.2ms | 2.85ms | 74.9× |
+| values only (`Eigen.valuesSymmetric`) | 256 | 213.2ms | 2.85ms | 74.9× |
 | values only | 128 | 25.7ms | 0.473ms | 54.3× |
 | values only | 64 | 3.15ms | 0.0924ms | 34× |
-| values + vectors (`eigenSymmetric`), as shipped | 256 | 213.5ms | 35.8ms | 6.0× |
+| values + vectors (`Eigen.symmetric`), as shipped | 256 | 213.5ms | 35.8ms | 6.0× |
 | values + vectors, after a follow-up vectorization of the eigenvector accumulation | 256 | 213.5ms | 11.1ms | 19.2× (derived: 213.5/11.1) |
 | values + vectors | 128 | 25.6ms | 1.76ms | 14.5× |
 
@@ -90,10 +90,10 @@ likely on):
 
 | Method | dtype | med(ms) |
 |---|---|---|
-| `eigenvaluesSymmetric` (values only) | float | 162.97 |
-| `eigenvaluesSymmetric` | double | 195.59 |
-| `eigenSymmetric` (values + vectors) | float | 428.56 |
-| `eigenSymmetric` | double | 545.01 |
+| `Eigen.valuesSymmetric` (values only) | float | 162.97 |
+| `Eigen.valuesSymmetric` | double | 195.59 |
+| `Eigen.symmetric` (values + vectors) | float | 428.56 |
+| `Eigen.symmetric` | double | 545.01 |
 
 `LOBPCG.lobpcg` (`Benchmarks/LOBPCGBenchmark.cs`), dense SPD `A = MᵀM + I`, N=512, k=4 smallest,
 maxIter fixed at 50 (deterministic timing — same convention as the other iterative-solver

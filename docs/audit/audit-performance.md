@@ -1,5 +1,8 @@
 # Performance Audit — Unity Burst Linear Algebra Library
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 **Date:** 2026-06-28  
 **Reviewer:** Claude Sonnet 4.6  
 **Scope:** `Assets/LinearAlgebra/CodeGen/TemplateSource/` (template source of truth)  

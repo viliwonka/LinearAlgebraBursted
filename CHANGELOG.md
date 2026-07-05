@@ -29,7 +29,7 @@ tested; the surface is still being finalized ahead of a `1.0`.
   and iterative — CG/PCG, MINRES, BiCGSTAB, CGLS/LSQR/LSMR with Tikhonov damping and
   Jacobi / column-equilibration preconditioners. Every solver returns a diagnostics struct.
 - Eigensolvers: dominant eigenpair (power iteration), symmetric (Householder + QL,
-  `eigenSymmetric`), non-symmetric eigenvalues (Francis QR), and matrix-free
+  `Eigen.symmetric`), non-symmetric eigenvalues (Francis QR), and matrix-free
   power / inverse / Lanczos (dense or sparse).
 - Numerical LA: norms, condition number, determinant, trace, rank.
 

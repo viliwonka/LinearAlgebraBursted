@@ -1,5 +1,8 @@
 # Performance Audit — Round 2
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 **Date:** 2026-06-28
 **Reviewer:** Claude Sonnet 4.6 (second-pass; random-seed order 2914)
 **Scope:** `Assets/LinearAlgebra/CodeGen/TemplateSource/` — template source only

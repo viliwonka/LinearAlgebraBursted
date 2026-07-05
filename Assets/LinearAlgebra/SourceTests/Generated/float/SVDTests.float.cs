@@ -1198,7 +1198,7 @@ public class floatSVDTests
         try {
             new TestJob() { Type = type, Fail = fail }.Run();
             // Burst in-job asserts abort without throwing; diagnostics surfaced here too
-            // (see floatOrthoOpTests.QRDecompTests).
+            // (see floatQRTests.QRDecompTests).
             if (fail[0] != (float)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
 

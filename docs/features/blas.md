@@ -22,9 +22,9 @@ rounding change. Small matrices and remainder rows fall back to the untiled kern
 
 ## Norms
 
-`L1`/`L2`/`LInf(in floatN|floatMxN)`, ranged `L2Range(a, start, end)`; in-place `NormalizeL1`/
-`NormalizeL2`/`NormalizeLMax`/`NormalizeLP(x, p)` (each returns the pre-normalization length) and the
-enum-dispatched `Normalize(x, Norm n)`; per-axis `NormalizeRows`/`NormalizeColumns(ref A, Norm n)`
+`L1`/`L2`/`LInf(in floatN|floatMxN)`, ranged `L2Range(a, start, end)`; in-place `normalizeL1`/
+`normalizeL2`/`normalizeLMax`/`normalizeLP(x, p)` (each returns the pre-normalization length) and the
+enum-dispatched `normalize(x, Norm n)`; per-axis `normalizeRows`/`normalizeColumns(ref A, Norm n)`
 (NaN-safe: a zero-norm row/column is left unchanged); induced matrix norms `matrixL1`/`matrixLInf`
 (max abs column/row sum) and `matrixL2` (spectral norm, via SVD).
 

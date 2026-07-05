@@ -1,5 +1,8 @@
 # Level-3 (GEMM) Optimization Opportunities
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 Scan of every dense kernel EXCEPT QR/LQ (both now blocked compact-WY, commits 4f04e76 / cc087c9).
 Ranked by payoff/effort. Line numbers are from `Assets/LinearAlgebra/CodeGen/TemplateSource/OP`.
 

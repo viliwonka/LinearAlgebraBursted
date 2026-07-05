@@ -7,8 +7,8 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Workspace-overload tests for pivoted Cholesky: CHOP.decomp /
-// CHOP.decompSolve / CHOP.solveInPlace and their shared workspace doubleCHOPCache
-// (Arena.doubleCHOPCache(n)). W (n x n) is the destroyable symmetric working copy the
+// CHOP.decompSolve / CHOP.solveInPlace and their shared workspace floatCHOPCache
+// (Arena.floatCHOPCache(n)). W (n x n) is the destroyable symmetric working copy the
 // decomposition pivots on; bt (n) is the permuted RHS the solve gathers into.
 //
 // The ws overloads are the real bodies; the allocating overloads delegate with Temp scratch, so for
@@ -17,7 +17,7 @@ using Unity.Jobs;
 //   (b) REUSE       — ONE workspace reused across two different (same-size) inputs.
 //   (c) MIS-SIZED   — wrong-dimension workspace throws; plus the needW/needBt subtlety: a decomp with
 //                     a bt-less workspace must NOT throw, and a solve with a W-less workspace must NOT.
-public class doubleCholeskyPivotWorkspaceTests
+public class floatCHOPWorkspaceTests
 {
     [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceJob : IJob
@@ -34,7 +34,7 @@ public class doubleCholeskyPivotWorkspaceTests
 
         public TestType Type;
 
-        static double Tol() => 256 * Consts.doubleSqrtEps;
+        static float Tol() => 256 * Consts.floatSqrtEps;
 
         public void Execute()
         {
@@ -50,14 +50,14 @@ public class doubleCholeskyPivotWorkspaceTests
         }
 
         // A = B Bᵀ (B is n x r): symmetric PSD of generic rank min(r, n).
-        static doubleMxN Gram(ref Arena arena, int n, int r, uint seed)
+        static floatMxN Gram(ref Arena arena, int n, int r, uint seed)
         {
-            var B = arena.doubleRandomMat(n, r, (double)(-1f), (double)1f, seed);
-            var A = arena.doubleMat(n, n);
+            var B = arena.floatRandomMat(n, r, (float)(-1f), (float)1f, seed);
+            var A = arena.floatMat(n, n);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
-                    double s = 0;
+                    float s = 0;
                     for (int k = 0; k < r; k++) s += B[i, k] * B[j, k];
                     A[i, j] = s;
                 }
@@ -65,10 +65,10 @@ public class doubleCholeskyPivotWorkspaceTests
         }
 
         // well-conditioned full-rank SPD: Gram + diagonal boost.
-        static doubleMxN SPD(ref Arena arena, int n, uint seed)
+        static floatMxN SPD(ref Arena arena, int n, uint seed)
         {
             var A = Gram(ref arena, n, n, seed);
-            for (int d = 0; d < n; d++) A[d, d] += (double)n;
+            for (int d = 0; d < n; d++) A[d, d] += (float)n;
             return A;
         }
 
@@ -80,14 +80,14 @@ public class doubleCholeskyPivotWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
             var A = (r >= n) ? SPD(ref arena, n, seed) : Gram(ref arena, n, r, seed);
 
-            var La = arena.doubleMat(n, n);
+            var La = arena.floatMat(n, n);
             var Pa = new Pivot(n, Allocator.Persistent);
             var infoA = CHOP.decomp(in A, ref La, ref Pa);
             bool okA = infoA.Solved;
             int rankA = infoA.rank;
 
-            var ws = arena.doubleCHOPCache(n);
-            var Lw = arena.doubleMat(n, n);
+            var ws = arena.floatCHOPCache(n);
+            var Lw = arena.floatMat(n, n);
             var Pw = new Pivot(n, Allocator.Persistent);
             var infoW = CHOP.decomp(in A, ref Lw, ref Pw, ref ws);
             bool okW = infoW.Solved;
@@ -111,16 +111,16 @@ public class doubleCholeskyPivotWorkspaceTests
             var A = SPD(ref arena, n, 3003);
 
             // shared factor (allocating decomposition; L/P/rank fed to both solve forms).
-            var L = arena.doubleMat(n, n);
+            var L = arena.floatMat(n, n);
             var P = new Pivot(n, Allocator.Persistent);
             int rank = CHOP.decomp(in A, ref L, ref P).rank;
 
-            var b = arena.doubleRandomVec(n, (double)(-3f), (double)3f, 4004);
+            var b = arena.floatRandomVec(n, (float)(-3f), (float)3f, 4004);
 
             var ba = b.Copy();
             CHOP.decompSolve(ref L, in P, rank, ref ba);
 
-            var ws = arena.doubleCHOPCache(n);
+            var ws = arena.floatCHOPCache(n);
             var bw = b.Copy();
             CHOP.decompSolve(ref L, in P, rank, ref bw, ref ws);
 
@@ -137,14 +137,14 @@ public class doubleCholeskyPivotWorkspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
             var A = (r >= n) ? SPD(ref arena, n, seed) : Gram(ref arena, n, r, seed);
-            var b = arena.doubleRandomVec(n, (double)(-2f), (double)2f, seed + 100u);
+            var b = arena.floatRandomVec(n, (float)(-2f), (float)2f, seed + 100u);
 
             var Pa = new Pivot(n, Allocator.Persistent);
             var ba = b.Copy();
             var Aa = A.Copy(); // solveInPlace is destructive; each call needs its own copy of A
             bool okA = CHOP.solveInPlace(ref Aa, ref Pa, ref ba);
 
-            var ws = arena.doubleCHOPCache(n);
+            var ws = arena.floatCHOPCache(n);
             var Pw = new Pivot(n, Allocator.Persistent);
             var bw = b.Copy();
             var Aw = A.Copy();
@@ -167,10 +167,10 @@ public class doubleCholeskyPivotWorkspaceTests
 
             var A1 = SPD(ref arena, n, 7007);
             var A2 = SPD(ref arena, n, 8008);
-            var b1 = arena.doubleRandomVec(n, (double)(-2f), (double)2f, 1111);
-            var b2 = arena.doubleRandomVec(n, (double)(-2f), (double)2f, 2222);
+            var b1 = arena.floatRandomVec(n, (float)(-2f), (float)2f, 1111);
+            var b2 = arena.floatRandomVec(n, (float)(-2f), (float)2f, 2222);
 
-            var ws = arena.doubleCHOPCache(n);   // allocated ONCE
+            var ws = arena.floatCHOPCache(n);   // allocated ONCE
 
             // warm on (A1, b1)
             var P1 = new Pivot(n, Allocator.Persistent);
@@ -210,10 +210,10 @@ public class doubleCholeskyPivotWorkspaceTests
 
     // ---- mis-sized workspace guards (managed [Test]) ----
 
-    static doubleMxN ManagedSPD(ref Arena arena, int n)
+    static floatMxN ManagedSPD(ref Arena arena, int n)
     {
-        var A = arena.doubleMat(n, n);
-        for (int i = 0; i < n; i++) A[i, i] = (double)(n + 1);   // diagonal SPD, full rank
+        var A = arena.floatMat(n, n);
+        for (int i = 0; i < n; i++) A[i, i] = (float)(n + 1);   // diagonal SPD, full rank
         return A;
     }
 
@@ -226,8 +226,8 @@ public class doubleCholeskyPivotWorkspaceTests
         {
             int n = 6;
             var A = ManagedSPD(ref arena, n);
-            var L = arena.doubleMat(n, n);
-            var ws = arena.doubleCHOPCache(n + 1);   // W wrong (needW)
+            var L = arena.floatMat(n, n);
+            var ws = arena.floatCHOPCache(n + 1);   // W wrong (needW)
             Assert.Throws<ArgumentException>(
                 () => CHOP.decomp(in A, ref L, ref P, ref ws));
         }
@@ -243,12 +243,12 @@ public class doubleCholeskyPivotWorkspaceTests
         {
             int n = 6;
             var A = ManagedSPD(ref arena, n);
-            var L = arena.doubleMat(n, n);
+            var L = arena.floatMat(n, n);
             int rank = CHOP.decomp(in A, ref L, ref P).rank;
 
-            var b = arena.doubleVec(n);
+            var b = arena.floatVec(n);
             // bt wrong length (needBt) while W is fine.
-            var badWs = new doubleCHOPCache { W = arena.doubleMat(n, n), bt = arena.doubleVec(n + 1) };
+            var badWs = new floatCHOPCache { W = arena.floatMat(n, n), bt = arena.floatVec(n + 1) };
             Assert.Throws<ArgumentException>(
                 () => CHOP.decompSolve(ref L, in P, rank, ref b, ref badWs));
         }
@@ -266,33 +266,33 @@ public class doubleCholeskyPivotWorkspaceTests
         {
             int n = 6;
             var A = ManagedSPD(ref arena, n);
-            var L = arena.doubleMat(n, n);
+            var L = arena.floatMat(n, n);
 
             // decomposition with W only (bt = default) must succeed.
-            var wsNoBt = new doubleCHOPCache { W = arena.doubleMat(n, n), bt = default };
+            var wsNoBt = new floatCHOPCache { W = arena.floatMat(n, n), bt = default };
             Assert.DoesNotThrow(
                 () => CHOP.decomp(in A, ref L, ref P, ref wsNoBt));
 
             int rank = CHOP.decomp(in A, ref L, ref P).rank;
 
             // solve with bt only (W = default) must succeed.
-            var b = arena.doubleVec(n);
-            for (int i = 0; i < n; i++) b[i] = (double)(i + 1);
-            var wsNoW = new doubleCHOPCache { W = default, bt = arena.doubleVec(n) };
+            var b = arena.floatVec(n);
+            for (int i = 0; i < n; i++) b[i] = (float)(i + 1);
+            var wsNoW = new floatCHOPCache { W = default, bt = arena.floatVec(n) };
             Assert.DoesNotThrow(
                 () => CHOP.decompSolve(ref L, in P, rank, ref b, ref wsNoW));
         }
         finally { P.Dispose(); arena.Dispose(); }
     }
 
-    // Arena.doubleCHOPCache(n): W (n x n), bt (n).
+    // Arena.floatCHOPCache(n): W (n x n), bt (n).
     [Test]
-    public void CholeskyPivotWorkspace_Factory_SizesCorrectly()
+    public void CHOPWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var ws = arena.doubleCHOPCache(7);
+            var ws = arena.floatCHOPCache(7);
             Assert.AreEqual(7, ws.W.M_Rows);
             Assert.AreEqual(7, ws.W.N_Cols);
             Assert.AreEqual(7, ws.bt.N);

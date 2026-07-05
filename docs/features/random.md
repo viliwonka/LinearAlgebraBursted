@@ -22,7 +22,7 @@ rng)`, `randomPermutationInPlace(ref Pivot, ref rng)`, `shuffleInPlace(ref Indic
 ## Multivariate normal & structured matrices
 
 `multivariateNormalInPlace(ref rng, in cholL, in mean, ref dest)` (+ row-batch
-`multivariateNormalRowsInPlace`) — caller factors Σ once via `Cholesky.choleskyDecomposition`, then
+`multivariateNormalRowsInPlace`) — caller factors Σ once via `CHO.decomp`, then
 draws as many samples as needed. Property-matrix generators (all validate before allocating Temp
 scratch): `randomOrthogonalInPlace` (Haar-uniform, Mezzadri sign-fixed QR),
 `randomSpdInPlace(..., minEig, maxEig)`, `randomMatrixWithConditionInPlace(..., cond)`,

@@ -1,5 +1,8 @@
 # Style / Cohesion / Usability Audit — LinearAlgebra Burst (TemplateSource)
 
+*Historical document — method names predate the 2026-07 solver-API rework (see
+docs/spec-solver-api-rework.md for the mapping).*
+
 **Scope:** `Assets/LinearAlgebra/CodeGen/TemplateSource/**` (template source only — `Generated/` ignored), plus `docs/spec-*.md` cross-checks.
 **Convention reminder:** `fProxy` → {float, double}; `iProxy` → {int, short, long}; `bool` is its own twin. The codegen expands each `*.fProxy.cs` / `*.iProxy.cs` / `*.bool.cs` into concrete per-type files. Findings on a template apply to every generated variant.
 

@@ -325,8 +325,8 @@ public class floatSparseSolverTests
             // Independent cross-check against a DIRECT solver on a completely different code path
             // (Householder QR, no Krylov/CG involvement). The xConcrete-vs-xGeneric check above is
             // circular now that both funnel through the same cg<TOp> loop; this pins the CG
-            // solution to a truly independent reference. qrDirectSolve is DESTRUCTIVE (destroys
-            // Q/A and b), so it MUST run on fresh copies, not the A/b the CG calls used.
+            // solution to a truly independent reference. QR.solveInPlace is DESTRUCTIVE (destroys
+            // A and b), so it MUST run on fresh copies, not the A/b the CG calls used.
             var A2 = A.Copy();
             var b2 = b.Copy();
             var xQR = arena.floatVec(dim);
@@ -552,8 +552,8 @@ public class floatSparseSolverTests
 
             // Independent cross-check against a DIRECT LU solve on the SAME indefinite matrix
             // (no Krylov/MINRES involvement) -- pins the iterative solution to a truly independent
-            // reference, not just the self-consistent A x ~= b residual. luDecompositionInPlace +
-            // luSolve are DESTRUCTIVE, so they run on COPIES. The shifted Laplacian above is
+            // reference, not just the self-consistent A x ~= b residual. LU.decompInPlace +
+            // LU.decompSolve are DESTRUCTIVE, so they run on COPIES. The shifted Laplacian above is
             // constructed to be nonsingular (odd n+1 -> no exactly-zero eigenvalue), so LU succeeds.
             var LUcopy = A.Copy();
             var pivot = new Pivot(dim, Allocator.Temp);
@@ -635,7 +635,7 @@ public class floatSparseSolverTests
             var Ax = Blas.dot(A, xBcg);
             AssertVecEq(in Ax, in b, LooseTol());
 
-            // Direct LU reference on COPIES (luDecompositionInPlace + luSolve are DESTRUCTIVE).
+            // Direct LU reference on COPIES (LU.decompInPlace + LU.decompSolve are DESTRUCTIVE).
             var LUcopy = A.Copy();
             var pivot = new Pivot(dim, Allocator.Temp);
             bool okLU = LU.decompInPlace(ref LUcopy, ref pivot);
@@ -731,7 +731,7 @@ public class floatSparseSolverTests
 
             AssertLeastSquaresOptimal(in A, in x, in b, LooseTol());
 
-            // Dense QR least-squares reference on COPIES (qrDirectSolve is DESTRUCTIVE).
+            // Dense QR least-squares reference on COPIES (QR.solveInPlace is DESTRUCTIVE).
             var A2 = A.Copy();
             var b2 = b.Copy();
             var xQR = arena.floatVec(n);
@@ -1639,7 +1639,7 @@ public class floatSparseSolverTests
         }
 
         // Damped least-squares reference: min ||Ax-b||^2 + damp^2||x||^2 == the plain least-squares
-        // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. qrDirectSolve
+        // solution of the augmented system [A; damp*I] x ~= [b; 0], solved with dense QR. QR.solveInPlace
         // is DESTRUCTIVE, so the augmented matrix/rhs are fresh temporaries.
         static floatN DampedReferenceQR(ref Arena arena, in floatMxN A, in floatN b, float damp)
         {

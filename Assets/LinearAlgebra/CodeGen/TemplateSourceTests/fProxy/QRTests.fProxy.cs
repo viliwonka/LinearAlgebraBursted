@@ -9,7 +9,7 @@ using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.TestTools;
 
-public class fProxyOrthoOpTests
+public class fProxyQRTests
 {
     [BurstCompile]
     public struct AssemblyTestJob : IJob
@@ -970,7 +970,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(dim, dim);
             var Q    = arena.fProxyMat(dim, dim);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-6f);
             arena.Dispose();
         }
@@ -983,7 +983,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(dim, dim);
             var Q    = arena.fProxyMat(dim, dim);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -996,7 +996,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(m, m);
             var Q    = arena.fProxyMat(m, n);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -1009,7 +1009,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(m, m);
             var Q    = arena.fProxyMat(m, n);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -1025,7 +1025,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(m, m);
             var Q    = arena.fProxyMat(m, n);
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -1053,7 +1053,7 @@ public class fProxyOrthoOpTests
             var L = arena.fProxyMat(m, m);
             var Q = arena.fProxyMat(m, n);
 
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
 
             AssertLQ(in origA, in L, in Q, 1E-2f);
 

@@ -1,5 +1,5 @@
 using System;
-#pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi eigenDecomposition (kept for reference)
+#pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
 using LinearAlgebra.Gallery;
@@ -20,7 +20,7 @@ public class fProxyEigenTests
     {
         public enum TestType
         {
-            // eigenDecomposition
+            // Eigen.decompInPlace
             EigenIdentity,
             EigenDiagonal,
             EigenKnown2x2,
@@ -45,14 +45,14 @@ public class fProxyEigenTests
             PowerMaxIterationsInfo,
             InversePowerBreakdownInfo,
             InversePowerConvergedInfo,
-            // eigenvaluesSymmetric
+            // Eigen.valuesSymmetric
             EvSymIdentity,
             EvSymDiagonal,
             EvSymKnown2x2,
             EvSymN1,
             EvSymCrossCheckJacobi,
             EvSymLaplacian,
-            // eigenSymmetric (tred2 + tql2 full decomposition)
+            // Eigen.symmetric (tred2 + tql2 full decomposition)
             EsymIdentity,
             EsymDiagonal,
             EsymKnown2x2,
@@ -184,7 +184,7 @@ public class fProxyEigenTests
         }
 
         // ---------------------------------------------------------------------
-        // eigenDecomposition tests
+        // Eigen.decompInPlace tests
         // ---------------------------------------------------------------------
 
         // 4x4 identity: every eigenvalue == 1, V orthogonal. Exact closed form, so
@@ -384,7 +384,7 @@ public class fProxyEigenTests
 
         // 6x6 PSD matrix A = B^T B. Eigenvalues must all be >= -tol and equal the singular
         // values of A (which for symmetric PSD equal the eigenvalues) in the same descending
-        // order. eigenDecomposition destroys its input, so copy; SVD.values takes A `in`
+        // order. Eigen.decompInPlace destroys its input, so copy; SVD.values takes A `in`
         // (preserved), so no copy is needed for the SVD side.
         // A = B^T B with B entries ~ +-3 -> eigenvalues up to ~ order 100; scale tolerance.
         public void EigenPSDvsSVD()
@@ -414,7 +414,7 @@ public class fProxyEigenTests
                     A[j, i] = avg;
                 }
 
-            var Aeig = A.Copy();   // destroyed by eigenDecomposition
+            var Aeig = A.Copy();   // destroyed by Eigen.decompInPlace
 
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
@@ -787,7 +787,7 @@ public class fProxyEigenTests
         }
 
         // 6x6 random symmetric with a forced clear dominant eigenvalue (+12 boost on one
-        // diagonal). Reference lambda_max from eigenDecomposition on a copy. Power iteration
+        // diagonal). Reference lambda_max from Eigen.decompInPlace on a copy. Power iteration
         // finds dominant BY MAGNITUDE; the boosted positive eigenvalue dominates both in
         // value and magnitude, so the reference is eig[0] (largest by value == largest |.|).
         public void PowerSymmetricCrossCheck()
@@ -1042,7 +1042,7 @@ public class fProxyEigenTests
         }
 
         // ---------------------------------------------------------------------
-        // eigenvaluesSymmetric tests (Householder tridiagonalization + implicit-shift QL)
+        // Eigen.valuesSymmetric tests (Householder tridiagonalization + implicit-shift QL)
         // ---------------------------------------------------------------------
 
         // n=5 identity: same oracle as EigenIdentity (eigenvalues == 1); QL variant, A is DESTROYED.
@@ -1150,8 +1150,8 @@ public class fProxyEigenTests
             arena.Dispose();
         }
 
-        // CROSS-CHECK vs the Jacobi eigenDecomposition: for n=6 and n=8 random SYMMETRIC matrices,
-        // run eigenDecomposition on one copy and eigenvaluesSymmetric on a SEPARATE copy (both
+        // CROSS-CHECK vs the Jacobi Eigen.decompInPlace: for n=6 and n=8 random SYMMETRIC matrices,
+        // run Eigen.decompInPlace on one copy and Eigen.valuesSymmetric on a SEPARATE copy (both
         // DESTROY their input, both sort descending) and require the eigenvalue vectors to agree.
         // Tolerance scaled by (1+|lambda|): entries ~ +-5, so float values land around few*1e-5.
         public void EvSymCrossCheckJacobi()
@@ -1173,8 +1173,8 @@ public class fProxyEigenTests
                     A[j, i] = avg;
                 }
 
-            var Ajac = A.Copy();   // destroyed by eigenDecomposition
-            var Aql = A.Copy();    // destroyed by eigenvaluesSymmetric
+            var Ajac = A.Copy();   // destroyed by Eigen.decompInPlace
+            var Aql = A.Copy();    // destroyed by Eigen.valuesSymmetric
 
             var eigJac = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
@@ -1250,7 +1250,7 @@ public class fProxyEigenTests
         }
 
         // ---------------------------------------------------------------------
-        // eigenSymmetric tests (tred2 Householder + tql2 implicit-shift QL)
+        // Eigen.symmetric tests (tred2 Householder + tql2 implicit-shift QL)
         // ---------------------------------------------------------------------
 
         // n=5 identity: same oracle as EigenIdentity; tred2/tql2 variant, A is DESTROYED.
@@ -1464,7 +1464,7 @@ public class fProxyEigenTests
             arena.Dispose();
         }
 
-        // CROSS-CHECK eigenvalues vs the trusted values-only eigenvaluesSymmetric on the SAME
+        // CROSS-CHECK eigenvalues vs the trusted values-only Eigen.valuesSymmetric on the SAME
         // random symmetric matrices (n=6, n=8). Both DESTROY their input and sort descending, so
         // run each on a separate copy and compare elementwise.
         public void EsymCrossCheck()
@@ -1479,8 +1479,8 @@ public class fProxyEigenTests
 
             var A = MakeRandomSymmetric(ref arena, n, seed);
 
-            var Asym = A.Copy();   // destroyed by eigenSymmetric
-            var Aval = A.Copy();   // destroyed by eigenvaluesSymmetric
+            var Asym = A.Copy();   // destroyed by Eigen.symmetric
+            var Aval = A.Copy();   // destroyed by Eigen.valuesSymmetric
 
             var eigSym = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);

@@ -35,14 +35,14 @@ public class floatQRCacheWorkspaceTests
         public TestType Type;
 
         // The cache overload runs the SAME kernel as the allocating form, so results are bit-identical
-        // in principle. Keep a small per-precision tolerance for robustness (matches OrthoWorkspaceTests).
+        // in principle. Keep a small per-precision tolerance for robustness (matches QRWorkspaceTests).
         static float Tol() => 256 * Consts.floatSqrtEps;
 
         // Reconstruction / orthogonality "is this a valid QR at all" sanity net — the tight pin is the
         // bit-identity check above. 1E-3f is the value the blocked-QR reconstruction tests use.
         static float ReconTol() => 1E-3f;
 
-        // Looser per-solve bound for an actual numeric QR solve (matches OrthoWorkspaceTests).
+        // Looser per-solve bound for an actual numeric QR solve (matches QRWorkspaceTests).
         static float SolveTol() => 2000 * Consts.floatSqrtEps;
 
         public void Execute()

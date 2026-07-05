@@ -8,11 +8,11 @@ namespace LinearAlgebra.Internal
         // General BR x BC block-CSR matvec: y = A * x. y must already be zeroed by the caller
         // (accumulates into y, like matVecDot). Correctness-first fallback -- BSR.spMV
         // routes here for rectangular blocks (BR != BC) and any square block size NOT covered
-        // by the register-tile specializations below (bsmMatVecB1/B2/B3/B4/B6). BR/BC are
+        // by the register-tile specializations below (bsrMatVecB1/B2/B3/B4/B6). BR/BC are
         // ordinary runtime fields here, so Burst cannot unroll/vectorize the inner block-multiply
         // loops -- that is exactly what the specializations below fix for the common square sizes.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVec([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVec([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                       [NoAlias] double* x, [NoAlias] double* y,
                                       int blockRows, int BR, int BC)
         {
@@ -43,15 +43,15 @@ namespace LinearAlgebra.Internal
         }
 
         // General BR x BC block-CSR transpose matvec: y = A^T * x. y must already be zeroed by
-        // the caller. Walks the SAME row-major block-CSR storage as bsmMatVec (no separate
+        // the caller. Walks the SAME row-major block-CSR storage as bsrMatVec (no separate
         // transposed copy) -- each stored block K contributes y[j-block] += K^T * x[i-block].
         // Safe single-threaded (no scatter race): every (br,k) pair touches a distinct block,
         // and different blocks in the same block-row write to DIFFERENT y[j-block] ranges only
         // when ColInd is duplicate-free per row, which ToBSR guarantees.
         // Correctness-first fallback -- BSR.spMVT routes here for rectangular blocks and
-        // any square size not covered by bsmMatVecTB1/B2/B3/B4/B6 below.
+        // any square size not covered by bsrMatVecTB1/B2/B3/B4/B6 below.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecT([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecT([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                        [NoAlias] double* x, [NoAlias] double* y,
                                        int blockRows, int BR, int BC)
         {
@@ -91,9 +91,9 @@ namespace LinearAlgebra.Internal
         // Single-threaded caller (IJob.Run, no parallel-for) -> the y_j scatter write from an
         // off-diagonal block is race-free, matching every other kernel in this file. Correctness-
         // first fallback -- BSR.spMV routes here for symmetric matrices whose BR is not one
-        // of the register-tile specializations below (bsmMatVecSymB1/B2/B3/B4/B6).
+        // of the register-tile specializations below (bsrMatVecSymB1/B2/B3/B4/B6).
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecSym([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecSym([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                          [NoAlias] double* x, [NoAlias] double* y,
                                          int blockRows, int BR)
         {
@@ -155,10 +155,10 @@ namespace LinearAlgebra.Internal
         // BSR.spMV / spMVT (SparseOP.double.cs).
         // =====================================================================================
 
-        // ---- bsmMatVec: y = A * x, square block b -----------------------------------------
+        // ---- bsrMatVec: y = A * x, square block b -----------------------------------------
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                         [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -172,7 +172,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                         [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -195,7 +195,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                         [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -220,7 +220,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                         [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -247,7 +247,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                         [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -277,10 +277,10 @@ namespace LinearAlgebra.Internal
             }
         }
 
-        // ---- bsmMatVecT: y = A^T * x, square block b ---------------------------------------
+        // ---- bsrMatVecT: y = A^T * x, square block b ---------------------------------------
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecTB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecTB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                          [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -295,7 +295,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecTB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecTB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                          [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -318,7 +318,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecTB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecTB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                          [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -343,7 +343,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecTB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecTB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                          [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -370,7 +370,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecTB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecTB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                          [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int br = 0; br < blockRows; br++)
@@ -400,15 +400,15 @@ namespace LinearAlgebra.Internal
             }
         }
 
-        // ---- bsmMatVecSym: y = A * x, symmetric upper-block-triangle storage, square block b --
+        // ---- bsrMatVecSym: y = A * x, symmetric upper-block-triangle storage, square block b --
         //
-        // Each specialization is the fused pair of the corresponding bsmMatVecB{b} row-pass
-        // (y_i += K * x_j, always) and bsmMatVecTB{b} column-pass (y_j += K^T * x_i, only when
-        // bi != bj) applied to the SAME stored block K -- see bsmMatVecSym above for the general
+        // Each specialization is the fused pair of the corresponding bsrMatVecB{b} row-pass
+        // (y_i += K * x_j, always) and bsrMatVecTB{b} column-pass (y_j += K^T * x_i, only when
+        // bi != bj) applied to the SAME stored block K -- see bsrMatVecSym above for the general
         // version this mirrors.
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecSymB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecSymB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                            [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int bi = 0; bi < blockRows; bi++)
@@ -429,7 +429,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecSymB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecSymB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                            [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int bi = 0; bi < blockRows; bi++)
@@ -465,7 +465,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecSymB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecSymB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                            [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int bi = 0; bi < blockRows; bi++)
@@ -505,7 +505,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecSymB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecSymB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                            [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int bi = 0; bi < blockRows; bi++)
@@ -549,7 +549,7 @@ namespace LinearAlgebra.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void bsmMatVecSymB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
+        public static void bsrMatVecSymB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] double* values,
                                            [NoAlias] double* x, [NoAlias] double* y, int blockRows)
         {
             for (int bi = 0; bi < blockRows; bi++)

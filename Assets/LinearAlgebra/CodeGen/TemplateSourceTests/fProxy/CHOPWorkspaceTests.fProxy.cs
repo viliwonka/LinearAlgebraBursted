@@ -17,7 +17,7 @@ using Unity.Jobs;
 //   (b) REUSE       — ONE workspace reused across two different (same-size) inputs.
 //   (c) MIS-SIZED   — wrong-dimension workspace throws; plus the needW/needBt subtlety: a decomp with
 //                     a bt-less workspace must NOT throw, and a solve with a W-less workspace must NOT.
-public class fProxyCholeskyPivotWorkspaceTests
+public class fProxyCHOPWorkspaceTests
 {
     [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceJob : IJob
@@ -287,7 +287,7 @@ public class fProxyCholeskyPivotWorkspaceTests
 
     // Arena.fProxyCHOPCache(n): W (n x n), bt (n).
     [Test]
-    public void CholeskyPivotWorkspace_Factory_SizesCorrectly()
+    public void CHOPWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try

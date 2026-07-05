@@ -13,7 +13,10 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
   `SVD.thin`, not `SVD.svdThin`; `CHO.decomp`, not `Cholesky.choleskyDecomposition`;
   `PCA.covariance`, not `PCA.pcaCovariance`. Precedent: `Blas.dot`, `Norms.L1`, `Solvers.cg`.
   Exception: a class that genuinely IS the operation (`FFT.fft`, `LOBPCG.lobpcg`) keeps the echo —
-  there the echo names the operation, not the class.
+  there the echo names the operation, not the class. Contrast `KMeans`: it used to echo
+  (`KMeans.kmeans`) but was rebased to `KMeans.fit` (sklearn precedent) — `KMeans` is a class that
+  runs an algorithm, not itself a verb, so it follows the no-echo rule like `SVD`/`CHO`, not the
+  `FFT`/`LOBPCG` exception.
 - **Direct-solver/decomposition token grid** (four tokens, one meaning each — see
   `docs/spec-solver-api-rework.md` for the full rationale):
 
@@ -26,6 +29,10 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
 
   No safe one-shot solves: nothing in this family copies a buffer to protect the caller. Want the
   input preserved → `decomp` + `decompSolve`, or copy explicitly before calling `*InPlace`.
+  **Forward guidance for sparse factorizations**: a future incomplete factorization (IC0, ILU0, or
+  similar) adopts this SAME token grid (`decomp`/`decompInPlace`/`decompSolve`/`solveInPlace`) rather
+  than inventing new tokens — the grid is a general dense-or-sparse direct-solver contract, not a
+  dense-only convention.
 - **Param transformation names**: a `ref` param whose exit state is a *documented, usable value* is
   named `in_to_out`, case-faithful to the types involved (`A_to_Q`, `A_to_LU`, `A_to_L`, `b_to_x`).
   A `ref` param whose exit state is scratch/undefined keeps its plain name, and the XML doc says
@@ -33,8 +40,15 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
 - **Output-only params** (direct-solver `x`/similar) are uninit-safe: "output only; prior contents
   ignored; safe to allocate with `uninit: true`."
 - In-place suffix is **`Inpl`** for elementwise/arithmetic ops, not `Inplace` (e.g. `mulInpl`, not
-  `mulInplace`) — distinct from the factorization family's own `InPlace` token above (`decompInPlace`,
-  `solveInPlace`), which is spelled out because it's a semantic contract token, not a bare suffix.
+  `mulInplace`) — distinct from the spelled-out `InPlace` token, which carries TWO documented senses
+  (both read as "operates in your storage", but the direction of "your storage" differs):
+  1. **Solver sense** — input storage is consumed as the workspace (`LU.decompInPlace`,
+     `QR.solveInPlace`): a `ref` param enters holding real data and exits either destroyed (scratch)
+     or as a usable factor, per the token grid above.
+  2. **Fill-method sense** — writes into a caller-provided buffer instead of allocating a new one, no
+     input is consumed (`Rand.orthogonalInPlace`, `Rand.spdInPlace`): the `ref` param enters
+     don't-care and exits holding the generated result, mirroring the allocating sibling
+     (`Rand.orthogonal`) minus the allocation.
 - Predicates are **lowercase camelCase** (`isSymmetric`, `isDiagonal`, `whichTrue`) — NOT Pascal
   `Is...`. Confirmed against Unity.Mathematics' own convention (`math.isnan`, `math.isfinite`,
   `math.isinf` — always lowercase, never `IsNan`).
@@ -42,10 +56,12 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
   Exceptions below for why "static" is load-bearing, not just style.
 
 ## Type naming
-- Acronyms in **type names** are LOUD: `SVD`, `QR`, `QRCP`, `LQ`, `FFT`, `LU`, `CHO`, `CHOP`
-  (contrast with the leading-acronym-lowercase rule for methods above — these are different rules
-  for different things). `CHO`/`CHOP` (Cholesky / pivoted-Cholesky) joins the QR/LU/SVD/BSR
-  all-caps-shorthand family — SciPy's `cho_factor` precedent; `CHOP` = `CHO` + `Pivot`.
+- **Class-casing rule**: all-caps ONLY for literature-recognized acronyms/initialisms — `QR`, `LU`,
+  `LQ`, `SVD`, `BSR`, `FFT`, `LOBPCG`, `CHO`, `CHOP`, `QRCP`. A truncated-but-pronounceable word stays
+  Pascal, not all-caps, even though it's a shortening — `Rand`, `Bidiag`, `Blas`, `Comp` (contrast
+  with the leading-acronym-lowercase rule for methods above — these are different rules for different
+  things). `CHO`/`CHOP` (Cholesky / pivoted-Cholesky) joins the QR/LU/SVD/BSR all-caps-shorthand
+  family — SciPy's `cho_factor` precedent; `CHOP` = `CHO` + `Pivot`.
 - **`_OP` suffix** = a stateless bag of free functions over buffers (`Stats_OP`, `Norms_OP`,
   `Elem_OP`) — a category marker, paired with a semantic prefix describing *what* it bags. A class
   named just `_OP` with no semantic prefix (the historical `fProxy_OP`) is a smell — split it or
@@ -81,7 +97,7 @@ A class is safe to merge (drop its prefix) ONLY if **both** hold for every metho
 - If both hold, merging is safe **today** — but note it's only a *default* choice, not a spec
   guarantee: a future arg-less factory method added to a currently-safe-to-merge class would force
   re-splitting it. Utility bags in the Stats/Norms mold default to staying split as a hedge against
-  that; permanent-by-construction primitive bags (`Linear_OP`, the `LU`/`SVD`/`QR`/`LQ`/`Cholesky`/
+  that; permanent-by-construction primitive bags (`Linear_OP`, the `LU`/`SVD`/`QR`/`LQ`/`CHO`/
   `Eigen`/`Bidiag`/`Solvers` factorization family) merge freely since Arena already owns every
   factory-style method in the library, so this category of class will never need one.
 

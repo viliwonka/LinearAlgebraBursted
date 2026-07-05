@@ -111,11 +111,11 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WideLQJobFloat : IJob
     {
-        public floatMxN A;     // m x n (n >= m); not modified by lqDecomposition
+        public floatMxN A;     // m x n (n >= m); not modified by LQ.decomp
         public floatMxN L;     // m x m
         public floatMxN Q;     // m x n
 
-        public void Execute() => LQ.decomp(ref A, ref L, ref Q);
+        public void Execute() => LQ.decomp(in A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -125,7 +125,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN L;
         public doubleMxN Q;
 
-        public void Execute() => LQ.decomp(ref A, ref L, ref Q);
+        public void Execute() => LQ.decomp(in A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]

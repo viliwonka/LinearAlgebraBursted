@@ -31,7 +31,7 @@ public class floatSparseSymmetricTests
             CrossCheck_BR3_Dense,
 
             // ---- A1 edge cases ----
-            CrossCheck_DiagonalOnly,   // no off-diagonal blocks -> bsmMatVecSym's bi!=bj branch never taken
+            CrossCheck_DiagonalOnly,   // no off-diagonal blocks -> bsrMatVecSym's bi!=bj branch never taken
             CrossCheck_SingleBlock,    // 1x1 block grid: trivially symmetric == full (no lower triangle)
             CrossCheck_Empty,          // zero-triplet symmetric BSR: round-trips to zero dense / zero matvec
 
@@ -251,7 +251,7 @@ public class floatSparseSymmetricTests
             full = f.ToBSR(ref arena);
         }
 
-        // BR=3 exercises genuine block interior transposes in bsmMatVecSym (the K^T * x_i mirror).
+        // BR=3 exercises genuine block interior transposes in bsrMatVecSym (the K^T * x_i mirror).
         static void BuildSpdPair_BR3_Sparse(ref Arena arena, out floatBSR sym, out floatBSR full, out floatMxN dense)
         {
             const int BR = 3, nb = 4;
@@ -346,7 +346,7 @@ public class floatSparseSymmetricTests
 
         // ---- edge: diagonal-only symmetric BSR ----
         //
-        // ONLY diagonal blocks are populated -> in bsmMatVecSym the `if (bi != bj)` mirrored-write
+        // ONLY diagonal blocks are populated -> in bsrMatVecSym the `if (bi != bj)` mirrored-write
         // branch is NEVER taken. This isolates the diagonal path (the branch that would silently
         // double-count a diagonal block if it were mistakenly treated as off-diagonal). sym and full
         // are structurally identical here (no lower triangle to omit), so Nnzb is equal.
@@ -410,7 +410,7 @@ public class floatSparseSymmetricTests
         //
         // A builder with a valid square block-grid shape (BR==BC, BlockRows==BlockCols so
         // ToBSRSymmetric's guard passes) but ZERO triplets ToBSRSymmetric's to a valid empty BSR
-        // (Nnzb == 0): every block-row's RowPtr range is empty, so bsmMatVecSym never dereferences
+        // (Nnzb == 0): every block-row's RowPtr range is empty, so bsrMatVecSym never dereferences
         // the zero-length ColInd/Values buffers. ToDense must produce the all-zero matrix and
         // spMV/spMVT the zero vector for any x. Mirrors floatSparseBSRTests.EmptyBSRRoundTrip, but
         // there is no full-storage twin to compare against -- an empty matrix is checked against

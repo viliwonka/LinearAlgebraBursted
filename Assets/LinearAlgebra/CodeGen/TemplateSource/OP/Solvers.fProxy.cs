@@ -1616,7 +1616,7 @@ namespace LinearAlgebra
 
             fProxy threshold = tolerance * tolerance * atbSq;
 
-            // u = b - A x ; beta = ||u||   (warm-startable: bidiagonalize the residual)
+            // u = b - A x ; beta = ||u||   (warm-startable: bidiagonalization of the residual)
             A.Apply(in x, ref tmpM);
             u.Data.CopyFrom(b.Data);
             u.addScaledInPlace((fProxy)(-1), tmpM);

@@ -9,7 +9,7 @@ using Unity.Jobs;
 // Phase-2 solver-workspace tests for QR: the caller-provided-scratch QR overloads
 // (decompInPlace(...,ref u) / solveInPlace(...,ref u)) must produce results identical
 // to the allocating wrappers (they run the SAME kernel), and a mis-sized scratch must throw.
-public class doubleOrthoWorkspaceTests
+public class doubleQRWorkspaceTests
 {
     [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceEquivJob : IJob
@@ -29,7 +29,7 @@ public class doubleOrthoWorkspaceTests
         // bit-identical in principle. Keep a small per-precision tolerance for robustness.
         static double Tol() => 256 * Consts.doubleSqrtEps;
 
-        // Looser per-solve bound for an actual numeric QR solve (matches OrthoOpTests).
+        // Looser per-solve bound for an actual numeric QR solve (matches QRTests).
         static double SolveTol() => 2000 * Consts.doubleSqrtEps;
 
         public void Execute()

@@ -72,7 +72,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN L;     // m x m
         public floatMxN Q;     // m x n
 
-        public void Execute() => LQ.decomp(ref A, ref L, ref Q);
+        public void Execute() => LQ.decomp(in A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -82,7 +82,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN L;
         public doubleMxN Q;
 
-        public void Execute() => LQ.decomp(ref A, ref L, ref Q);
+        public void Execute() => LQ.decomp(in A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]

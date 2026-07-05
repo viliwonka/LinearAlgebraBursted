@@ -9,7 +9,7 @@ Design doc: [spec-debug-print.md](../spec-debug-print.md).
   `FixedString4096Bytes` internally, so output **silently truncates** past 4KB; fine for
   spot-checking a value mid-algorithm, not for dumping large matrices.
 - `Print.Spy(in floatMxN m[, float absThreshold = 0.01f])` — an ASCII sparsity grid (`X`/space).
-- Every solver/eigensolver diagnostics struct — `DirectSolveInfo`, `RankRevealingInfo`, `SolveInfo`,
+- Every solver/eigensolver diagnostics struct — `DirectSolveInfo`, `RankInfo`, `SolveInfo`,
   `LstsqInfo` (see [solvers.md](solvers.md)), `EigenSolveInfo`, `LanczosInfo` (see
   [eigen.md](eigen.md#diagnostics-structs)) — has a matching `Print.Log(in <Struct>)`: a Burst-safe
   compact summary, e.g. `DirectSolveInfo(Success)`, never allocates. `LOBPCGInfo` doesn't have one

@@ -14,7 +14,7 @@ using Unity.Mathematics;
 // reconstruction + solve; diagonal PSD rank-reveal; rank-deficient PSD Gram-matrix reconstruction +
 // min-norm solve; min-norm certificate ‖x‖ ≤ ‖xOrig‖; indefinite matrices rejected; zero matrix
 // (rank 0) and rank-1 outer product (rank 1).
-public class fProxyPivotedCholeskyTests
+public class fProxyCHOPTests
 {
     [BurstCompile]
     public struct AssemblyTestJob : IJob

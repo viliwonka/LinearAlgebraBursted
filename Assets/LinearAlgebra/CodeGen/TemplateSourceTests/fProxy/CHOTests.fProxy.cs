@@ -6,10 +6,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-public class doubleCholeskyTests
+public class fProxyCHOTests
 {
     [BurstCompile]
-    public struct CholeskyTestJob : IJob
+    public struct CHOTestJob : IJob
     {
         public enum TestType
         {
@@ -48,8 +48,8 @@ public class doubleCholeskyTests
         public TestType Type;
 
         // Float expansion needs a generous tolerance; double is far tighter.
-        // doubleZeroThreshold is per-precision (1e-6 float, 1e-14 double).
-        static double Tol() => 256 * Consts.doubleSqrtEps;
+        // fProxyZeroThreshold is per-precision (1e-6 float, 1e-14 double).
+        static fProxy Tol() => 256 * Consts.fProxySqrtEps;
 
         public void Execute()
         {
@@ -124,9 +124,9 @@ public class doubleCholeskyTests
         // Build an SPD matrix reliably as A = MᵀM + n·I.
         // MᵀM is symmetric positive-semidefinite; adding n·I (n = dim) makes it
         // strictly positive-definite and diagonally dominant, so Cholesky must succeed.
-        static doubleMxN BuildSPD(ref Arena arena, int dim, uint seed)
+        static fProxyMxN BuildSPD(ref Arena arena, int dim, uint seed)
         {
-            var M = arena.doubleRandomMat(dim, dim, -1f, 1f, seed);
+            var M = arena.fProxyRandomMat(dim, dim, -1f, 1f, seed);
 
             var A = Blas.dot(M, M, true);
 
@@ -143,7 +143,7 @@ public class doubleCholeskyTests
             int dim = 10;
 
             var A = BuildSPD(ref arena, dim, 90125);
-            var L = arena.doubleMat(dim, dim);
+            var L = arena.fProxyMat(dim, dim);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
@@ -167,9 +167,9 @@ public class doubleCholeskyTests
             int dim = 12;
 
             var A = BuildSPD(ref arena, dim, 31337);
-            var L = arena.doubleMat(dim, dim);
+            var L = arena.fProxyMat(dim, dim);
 
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 4242);
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 4242);
             var bOrig = b.Copy();
 
             // factor + solve, as the explicit two-call composition (choleskySolve(in A, ref L, ref b)
@@ -193,9 +193,9 @@ public class doubleCholeskyTests
             int dim = 9;
 
             var A = BuildSPD(ref arena, dim, 271828);
-            var L = arena.doubleMat(dim, dim);
+            var L = arena.fProxyMat(dim, dim);
 
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 5151);
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 5151);
             var bOrig = b.Copy();
 
             bool ok = CHO.decomp(in A, ref L);
@@ -220,8 +220,8 @@ public class doubleCholeskyTests
             int dim = 11;
             var A = BuildSPD(ref arena, dim, 909091);
 
-            var b1 = arena.doubleRandomVec(dim, -1f, 1f, 1212);
-            var b2 = arena.doubleRandomVec(dim, -1f, 1f, 3434);
+            var b1 = arena.fProxyRandomVec(dim, -1f, 1f, 1212);
+            var b2 = arena.fProxyRandomVec(dim, -1f, 1f, 3434);
 
             // path under test: solveInPlace (first RHS), then decompSolve (second RHS) off its exit.
             var Afused = A.Copy();
@@ -233,7 +233,7 @@ public class doubleCholeskyTests
             CHO.decompSolve(ref Afused, ref x2);
 
             // oracle: fresh decomp + decompSolve on an independent copy, same second RHS.
-            var L = arena.doubleMat(dim, dim);
+            var L = arena.fProxyMat(dim, dim);
             var infoRef = CHO.decomp(in A, ref L);
             Assert.IsTrue(infoRef.Solved);
 
@@ -255,11 +255,11 @@ public class doubleCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             // Indefinite [[1,2],[2,1]] (eigenvalues 3, -1) -- reused from NotSPD/NotSPDStatus.
-            var A = arena.doubleMat(2, 2);
+            var A = arena.fProxyMat(2, 2);
             A[0, 0] = 1f; A[0, 1] = 2f;
             A[1, 0] = 2f; A[1, 1] = 1f;
 
-            var b = arena.doubleRandomVec(2, -1f, 1f, 13579);
+            var b = arena.fProxyRandomVec(2, -1f, 1f, 13579);
             var bSnapshot = b.Copy(); // capture BEFORE the call
 
             DirectSolveInfo info = CHO.solveInPlace(ref A, ref b);
@@ -279,20 +279,20 @@ public class doubleCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             // A = [[4,2],[2,3]] -> L = [[2,0],[1,sqrt(2)]]
-            var A = arena.doubleMat(2, 2);
+            var A = arena.fProxyMat(2, 2);
             A[0, 0] = 4f; A[0, 1] = 2f;
             A[1, 0] = 2f; A[1, 1] = 3f;
 
-            var L = arena.doubleMat(2, 2);
+            var L = arena.fProxyMat(2, 2);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
-            double tol = Tol();
+            fProxy tol = Tol();
             Assert.IsTrue(math.abs(L[0, 0] - 2f) < tol);
             Assert.IsTrue(math.abs(L[0, 1] - 0f) < tol);
             Assert.IsTrue(math.abs(L[1, 0] - 1f) < tol);
-            Assert.IsTrue(math.abs(L[1, 1] - math.sqrt((double)2f)) < tol);
+            Assert.IsTrue(math.abs(L[1, 1] - math.sqrt((fProxy)2f)) < tol);
 
             var Lt = Blas.trans(L);
             var recon = Blas.dot(L, Lt, false);
@@ -307,8 +307,8 @@ public class doubleCholeskyTests
 
             int dim = 8;
 
-            var A = arena.doubleIdentityMat(dim);
-            var L = arena.doubleMat(dim, dim);
+            var A = arena.fProxyIdentityMat(dim);
+            var L = arena.fProxyMat(dim, dim);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
@@ -317,7 +317,7 @@ public class doubleCholeskyTests
             Assert.IsTrue(Analysis.isIdentity(L, Tol()));
 
             // Solving I x = b returns x = b.
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 9090);
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 9090);
             var bOrig = b.Copy();
             CHO.decompSolve(ref L, ref b);
             Assert.IsTrue(Analysis.isZero(bOrig - b, Tol()));
@@ -331,11 +331,11 @@ public class doubleCholeskyTests
 
             // Case 1: symmetric but indefinite. [[1,2],[2,1]] has eigenvalues 3 and -1.
             {
-                var A = arena.doubleMat(2, 2);
+                var A = arena.fProxyMat(2, 2);
                 A[0, 0] = 1f; A[0, 1] = 2f;
                 A[1, 0] = 2f; A[1, 1] = 1f;
 
-                var L = arena.doubleMat(2, 2);
+                var L = arena.fProxyMat(2, 2);
 
                 bool ok = CHO.decomp(in A, ref L);
                 Assert.IsFalse(ok);
@@ -343,7 +343,7 @@ public class doubleCholeskyTests
                 Assert.IsFalse(Analysis.isAnyNan(in L));
 
                 // factor+solve composition must also report failure.
-                var b = arena.doubleRandomVec(2, -1f, 1f, 13);
+                var b = arena.fProxyRandomVec(2, -1f, 1f, 13);
                 DirectSolveInfo solveInfo = CHO.decomp(in A, ref L);
                 if (solveInfo.Solved) solveInfo = CHO.decompSolve(ref L, ref b);
                 bool solved = solveInfo.Solved;
@@ -353,8 +353,8 @@ public class doubleCholeskyTests
             // Case 2: zero matrix (first pivot is 0, not > 0) -> not positive-definite.
             {
                 int dim = 5;
-                var A = arena.doubleMat(dim, dim);
-                var L = arena.doubleMat(dim, dim);
+                var A = arena.fProxyMat(dim, dim);
+                var L = arena.fProxyMat(dim, dim);
 
                 bool ok = CHO.decomp(in A, ref L);
                 Assert.IsFalse(ok);
@@ -363,12 +363,12 @@ public class doubleCholeskyTests
 
             // Case 3: negative diagonal -> not positive-definite.
             {
-                var A = arena.doubleMat(3, 3);
+                var A = arena.fProxyMat(3, 3);
                 A[0, 0] = 2f;  A[0, 1] = 0f;  A[0, 2] = 0f;
                 A[1, 0] = 0f;  A[1, 1] = -3f; A[1, 2] = 0f;
                 A[2, 0] = 0f;  A[2, 1] = 0f;  A[2, 2] = 1f;
 
-                var L = arena.doubleMat(3, 3);
+                var L = arena.fProxyMat(3, 3);
 
                 bool ok = CHO.decomp(in A, ref L);
                 Assert.IsFalse(ok);
@@ -385,17 +385,17 @@ public class doubleCholeskyTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.doubleMat(2, 2);
+            var A = arena.fProxyMat(2, 2);
             A[0, 0] = 1f; A[0, 1] = 2f;
             A[1, 0] = 2f; A[1, 1] = 1f; // same matrix as NotSPD's Case 1 (indefinite)
 
-            var L = arena.doubleMat(2, 2);
+            var L = arena.fProxyMat(2, 2);
             DirectSolveInfo decompInfo = CHO.decomp(in A, ref L);
             Assert.IsTrue(decompInfo.status == DirectSolveStatus.NotPositiveDefinite);
             Assert.IsFalse(decompInfo.Solved);
             Assert.IsFalse(decompInfo);
 
-            var b = arena.doubleRandomVec(2, -1f, 1f, 17);
+            var b = arena.fProxyRandomVec(2, -1f, 1f, 17);
             DirectSolveInfo solveInfo = CHO.decomp(in A, ref L);
             if (solveInfo.Solved) solveInfo = CHO.decompSolve(ref L, ref b);
             Assert.IsTrue(solveInfo.status == DirectSolveStatus.NotPositiveDefinite);
@@ -412,10 +412,10 @@ public class doubleCholeskyTests
 
             var A = BuildSPD(ref arena, dim, 707070);
 
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 8181);
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 8181);
 
             var bChol = b.Copy();
-            var L = arena.doubleMat(dim, dim);
+            var L = arena.fProxyMat(dim, dim);
             DirectSolveInfo info = CHO.decomp(in A, ref L);
             if (info.Solved) info = CHO.decompSolve(ref L, ref bChol);
             bool ok = info.Solved;
@@ -442,17 +442,17 @@ public class doubleCholeskyTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.doubleMat(1, 1);
+            var A = arena.fProxyMat(1, 1);
             A[0, 0] = 9f;
 
-            var L = arena.doubleMat(1, 1);
+            var L = arena.fProxyMat(1, 1);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
             Assert.IsTrue(math.abs(L[0, 0] - 3f) < Tol());
 
             // Solve 9·x = b -> A·x ≈ b.
-            var b = arena.doubleRandomVec(1, -1f, 1f, 77);
+            var b = arena.fProxyRandomVec(1, -1f, 1f, 77);
             var bOrig = b.Copy();
             CHO.decompSolve(ref L, ref b);
             var Ax = Blas.dot(A, b);
@@ -493,8 +493,8 @@ public class doubleCholeskyTests
 
             int dim = 6;
 
-            var A = arena.doubleMinIJ(dim);
-            var L = arena.doubleMat(dim, dim);
+            var A = arena.fProxyMinIJ(dim);
+            var L = arena.fProxyMat(dim, dim);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
@@ -516,8 +516,8 @@ public class doubleCholeskyTests
 
             int dim = 6;
 
-            var A = arena.doubleGCD(dim);
-            var L = arena.doubleMat(dim, dim);
+            var A = arena.fProxyGCD(dim);
+            var L = arena.fProxyMat(dim, dim);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
@@ -540,15 +540,15 @@ public class doubleCholeskyTests
 
             int dim = 3;
 
-            var A = arena.doubleFiedler(dim);
-            var L = arena.doubleMat(dim, dim);
+            var A = arena.fProxyFiedler(dim);
+            var L = arena.fProxyMat(dim, dim);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsFalse(ok);
             Assert.IsFalse(Analysis.isAnyNan(in L));
 
             // factor+solve composition must also report failure.
-            var b = arena.doubleRandomVec(dim, -1f, 1f, 17);
+            var b = arena.fProxyRandomVec(dim, -1f, 1f, 17);
             DirectSolveInfo solveInfo = CHO.decomp(in A, ref L);
             if (solveInfo.Solved) solveInfo = CHO.decompSolve(ref L, ref b);
             bool solved = solveInfo.Solved;
@@ -564,7 +564,7 @@ public class doubleCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             var A = BuildSPD(ref arena, dim, seed);
-            var L = arena.doubleMat(dim, dim);
+            var L = arena.fProxyMat(dim, dim);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
@@ -592,7 +592,7 @@ public class doubleCholeskyTests
             var A = BuildSPD(ref arena, dim, 555555);
             A[260, 260] = -1000000f;
 
-            var L = arena.doubleMat(dim, dim);
+            var L = arena.fProxyMat(dim, dim);
 
             bool ok = CHO.decomp(in A, ref L);
             Assert.IsFalse(ok);
@@ -625,120 +625,120 @@ public class doubleCholeskyTests
     [Test]
     public void RoundTripTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.RoundTrip }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.RoundTrip }.Run();
     }
 
     [Test]
     public void SolveOneStepTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveOneStep }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.SolveOneStep }.Run();
     }
 
     [Test]
     public void SolveTwoStepTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveTwoStep }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.SolveTwoStep }.Run();
     }
 
     [Test]
     public void KnownSmallTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.KnownSmall }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.KnownSmall }.Run();
     }
 
     [Test]
     public void IdentityTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Identity }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.Identity }.Run();
     }
 
     [Test]
     public void NotSPDTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.NotSPD }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.NotSPD }.Run();
     }
 
     [Test]
     public void CrossCheckLUTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.CrossCheckLU }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.CrossCheckLU }.Run();
     }
 
     [Test]
     public void TinyTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Tiny }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.Tiny }.Run();
     }
 
     [Test]
     public void AliasingTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.Aliasing }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.Aliasing }.Run();
     }
 
     [Test]
     public void GalleryMinIJTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryMinIJ }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.GalleryMinIJ }.Run();
     }
 
     [Test]
     public void GalleryGCDTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryGCD }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.GalleryGCD }.Run();
     }
 
     [Test]
     public void GalleryFiedlerRejectsTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.GalleryFiedlerRejects }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.GalleryFiedlerRejects }.Run();
     }
 
     [Test]
     public void BlockedRoundTrip256Test()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip256 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip256 }.Run();
     }
 
     [Test]
     public void BlockedRoundTrip300Test()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip300 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip300 }.Run();
     }
 
     [Test]
     public void BlockedRoundTrip320Test()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip320 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip320 }.Run();
     }
 
     [Test]
     public void BlockedRoundTrip400Test()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedRoundTrip400 }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedRoundTrip400 }.Run();
     }
 
     [Test]
     public void BlockedNotSPDTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedNotSPD }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedNotSPD }.Run();
     }
 
     [Test]
     public void BlockedAliasingTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedAliasing }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.BlockedAliasing }.Run();
     }
 
     [Test]
     public void SolveInPlaceExitIsUsableFactorTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveInPlaceExitIsUsableFactor }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.SolveInPlaceExitIsUsableFactor }.Run();
     }
 
     [Test]
     public void SolveInPlaceShortCircuitPurityTest()
     {
-        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveInPlaceShortCircuitPurity }.Run();
+        new CHOTestJob() { Type = CHOTestJob.TestType.SolveInPlaceShortCircuitPurity }.Run();
     }
 }

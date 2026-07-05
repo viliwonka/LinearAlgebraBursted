@@ -199,7 +199,7 @@ public class fProxyAccuracySweepTests
             var L = arena.fProxyMat(m, m);
             var Q = arena.fProxyMat(m, n);
 
-            LQ.decomp(ref A, ref L, ref Q);
+            LQ.decomp(in A, ref L, ref Q);
 
             Assert.IsFalse(Analysis.isAnyNan(in L));
             Assert.IsFalse(Analysis.isAnyNan(in Q));

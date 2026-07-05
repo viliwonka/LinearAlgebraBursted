@@ -645,7 +645,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("Section 0 first isolates the pure per-iteration operator cost (dense GEMV vs sparse");
             sb.AppendLine("spMV) that dominates every solver -- the cleanest dense-vs-sparse signal. Section 0b");
             sb.AppendLine("goes one level deeper: symmetric upper-block storage (Symmetric=true, ToBSRSymmetric)");
-            sb.AppendLine("vs full block-CSR storage on the IDENTICAL SPD matrix -- bsmMatVecSym touches half as");
+            sb.AppendLine("vs full block-CSR storage on the IDENTICAL SPD matrix -- bsrMatVecSym touches half as");
             sb.AppendLine("many stored blocks as the full traversal, so this isolates that ~2x memory/FLOP win.");
             sb.AppendLine();
 
@@ -857,7 +857,7 @@ namespace LinearAlgebra.Benchmarks
         // the SAME dense SPD matrix side by side: `full` (every stored block, incl. the explicit
         // mirrored lower block bj,bi) and `sym` (upper-triangle + diagonal ONLY, via
         // ToBSRSymmetric -- the lower triangle is implicit). Used by Section 0b to isolate the
-        // symmetric-storage spMV win (bsmMatVecSym does half the stored-block work of bsmMatVec)
+        // symmetric-storage spMV win (bsrMatVecSym does half the stored-block work of bsrMatVec)
         // on a matrix that is byte-for-byte identical between the two storage forms.
         static void BuildBlockSPDPairFloat(ref Arena arena, int nb, float density, uint seed,
                                            out floatMxN dense, out floatBSR full, out floatBSR sym)
@@ -1298,9 +1298,9 @@ namespace LinearAlgebra.Benchmarks
         // Milestone-A story -- storing a genuinely symmetric matrix as upper-triangle-only
         // (Symmetric=true, built via ToBSRSymmetric) vs full block-CSR (every block, incl. the
         // explicit mirrored lower block), on the identical matrix (BuildBlockSPDPairFloat/Double pins
-        // the rng sequence so `full` and `sym` encode byte-for-byte the same SPD system). bsmMatVecSym
+        // the rng sequence so `full` and `sym` encode byte-for-byte the same SPD system). bsrMatVecSym
         // does one accumulate per stored block for the diagonal and TWO (K*x_j and K^T*x_i) for each
-        // off-diagonal, touching half as many STORED blocks as bsmMatVec's full traversal for the same
+        // off-diagonal, touching half as many STORED blocks as bsrMatVec's full traversal for the same
         // logical matrix -- expected speedup ~2x with denser off-diagonal fill (dense%=33) and less
         // pronounced at sparse fill (dense%=7, where per-block/per-row overhead dominates more).
         // maxAbsDiff cross-checks spMV(full) against spMV(sym) on a clean untimed matvec -- must be ~0.

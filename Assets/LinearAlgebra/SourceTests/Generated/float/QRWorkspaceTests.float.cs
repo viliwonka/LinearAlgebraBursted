@@ -9,7 +9,7 @@ using Unity.Jobs;
 // Phase-2 solver-workspace tests for QR: the caller-provided-scratch QR overloads
 // (decompInPlace(...,ref u) / solveInPlace(...,ref u)) must produce results identical
 // to the allocating wrappers (they run the SAME kernel), and a mis-sized scratch must throw.
-public class fProxyOrthoWorkspaceTests
+public class floatQRWorkspaceTests
 {
     [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceEquivJob : IJob
@@ -27,10 +27,10 @@ public class fProxyOrthoWorkspaceTests
 
         // The scratch overload runs the SAME kernel as the allocating form, so results are
         // bit-identical in principle. Keep a small per-precision tolerance for robustness.
-        static fProxy Tol() => 256 * Consts.fProxySqrtEps;
+        static float Tol() => 256 * Consts.floatSqrtEps;
 
-        // Looser per-solve bound for an actual numeric QR solve (matches OrthoOpTests).
-        static fProxy SolveTol() => 2000 * Consts.fProxySqrtEps;
+        // Looser per-solve bound for an actual numeric QR solve (matches QRTests).
+        static float SolveTol() => 2000 * Consts.floatSqrtEps;
 
         public void Execute()
         {
@@ -49,17 +49,17 @@ public class fProxyOrthoWorkspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.fProxyRandomMat(M, N, -1f, 1f, 73101);
+            var A = arena.floatRandomMat(M, N, -1f, 1f, 73101);
 
             // allocating reference
             var Qa = A.Copy();
-            var Ra = arena.fProxyMat(N);
+            var Ra = arena.floatMat(N);
             QR.decompInPlace(ref Qa, ref Ra);
 
             // caller-scratch form
             var Qb = A.Copy();
-            var Rb = arena.fProxyMat(N);
-            var u = arena.fProxyVec(M);
+            var Rb = arena.floatMat(N);
+            var u = arena.floatVec(M);
             QR.decompInPlace(ref Qb, ref Rb, ref u);
 
             Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
@@ -74,24 +74,24 @@ public class fProxyOrthoWorkspaceTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 16;
-            var A0 = arena.fProxyRandomMat(dim, dim, -1f, 1f, 51237);
+            var A0 = arena.floatRandomMat(dim, dim, -1f, 1f, 51237);
             // make well-conditioned
             for (int d = 0; d < dim; d++)
                 A0[d, d] += 5f;
 
-            var xOrig = arena.fProxyRandomVec(dim, -3f, 3f, 99001);
+            var xOrig = arena.floatRandomVec(dim, -3f, 3f, 99001);
 
             // allocating reference (solveInPlace destroys A and b, so use fresh copies)
             var Aa = A0.Copy();
             var ba = Blas.dot(A0, xOrig);
-            var xa = arena.fProxyVec(dim);
+            var xa = arena.floatVec(dim);
             QR.solveInPlace(ref Aa, ref ba, ref xa);
 
             // caller-scratch form
             var Ab = A0.Copy();
             var bb = Blas.dot(A0, xOrig);
-            var xb = arena.fProxyVec(dim);
-            var u = arena.fProxyVec(dim);
+            var xb = arena.floatVec(dim);
+            var u = arena.floatVec(dim);
             QR.solveInPlace(ref Ab, ref bb, ref xb, ref u);
 
             Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
@@ -106,20 +106,20 @@ public class fProxyOrthoWorkspaceTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var A = arena.fProxyRandomMat(M, N, -1f, 1f, 33417);
+            var A = arena.floatRandomMat(M, N, -1f, 1f, 33417);
             for (int d = 0; d < N; d++)   // well-conditioned columns
                 A[d, d] += 5f;
 
-            var xOrig = arena.fProxyRandomVec(N, -3f, 3f, 60221);
+            var xOrig = arena.floatRandomVec(N, -3f, 3f, 60221);
             var b = Blas.dot(A, xOrig);   // consistent RHS; read-only in decompSolve, reusable
 
             // Precompute QR of A (decompInPlace overwrites Q with the orthogonal factor)
             var Q = A.Copy();
-            var R = arena.fProxyMat(N);
+            var R = arena.floatMat(N);
             QR.decompInPlace(ref Q, ref R);
 
             // ref-destination overload recovers x (length N)
-            var x = arena.fProxyVec(N);
+            var x = arena.floatVec(N);
             QR.decompSolve(ref Q, ref R, ref b, ref x);
             Assert.IsTrue(Analysis.isZero(x - xOrig, SolveTol()));
 
@@ -147,9 +147,9 @@ public class fProxyOrthoWorkspaceTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.fProxyMat(6, 4);
-            var R = arena.fProxyMat(4);
-            var badU = arena.fProxyVec(3);   // must be length 6 (Q.M_Rows)
+            var Q = arena.floatMat(6, 4);
+            var R = arena.floatMat(4);
+            var badU = arena.floatVec(3);   // must be length 6 (Q.M_Rows)
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref badU));
         }
         finally { arena.Dispose(); }
@@ -161,10 +161,10 @@ public class fProxyOrthoWorkspaceTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = arena.fProxyMat(6, 4);
-            var b = arena.fProxyVec(6);
-            var x = arena.fProxyVec(4);
-            var badU = arena.fProxyVec(4);   // must be length 6 (A.M_Rows)
+            var A = arena.floatMat(6, 4);
+            var b = arena.floatVec(6);
+            var x = arena.floatVec(4);
+            var badU = arena.floatVec(4);   // must be length 6 (A.M_Rows)
             Assert.Throws<ArgumentException>(() => QR.solveInPlace(ref A, ref b, ref x, ref badU));
         }
         finally { arena.Dispose(); }
@@ -177,14 +177,14 @@ public class fProxyOrthoWorkspaceTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = arena.fProxyMat(4, 4);
+            var A = arena.floatMat(4, 4);
             for (int d = 0; d < 4; d++) A[d, d] = 2f;   // nonsingular so QR is well-defined
             var Q = A.Copy();
-            var R = arena.fProxyMat(4);
+            var R = arena.floatMat(4);
             QR.decompInPlace(ref Q, ref R);
 
-            var b = arena.fProxyVec(4);
-            var badX = arena.fProxyVec(3);   // must be length 4 (Q.N_Cols)
+            var b = arena.floatVec(4);
+            var badX = arena.floatVec(3);   // must be length 4 (Q.N_Cols)
             Assert.Throws<ArgumentException>(() => QR.decompSolve(ref Q, ref R, ref b, ref badX));
         }
         finally { arena.Dispose(); }
@@ -197,13 +197,13 @@ public class fProxyOrthoWorkspaceTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var A = arena.fProxyMat(4, 4);
+            var A = arena.floatMat(4, 4);
             for (int d = 0; d < 4; d++) A[d, d] = 2f;
             var Q = A.Copy();
-            var R = arena.fProxyMat(4);
+            var R = arena.floatMat(4);
             QR.decompInPlace(ref Q, ref R);
 
-            var b = arena.fProxyVec(4);
+            var b = arena.floatVec(4);
             var aliasB = b;   // shares b's buffer; length 4 == Q.N_Cols so it passes the dim guard
             Assert.Throws<ArgumentException>(() => QR.decompSolve(ref Q, ref R, ref b, ref aliasB));
         }

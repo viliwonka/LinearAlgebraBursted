@@ -14,7 +14,7 @@ using Unity.Mathematics;
 // reconstruction + solve; diagonal PSD rank-reveal; rank-deficient PSD Gram-matrix reconstruction +
 // min-norm solve; min-norm certificate ‖x‖ ≤ ‖xOrig‖; indefinite matrices rejected; zero matrix
 // (rank 0) and rank-1 outer product (rank 1).
-public class doublePivotedCholeskyTests
+public class floatCHOPTests
 {
     [BurstCompile]
     public struct AssemblyTestJob : IJob
@@ -23,9 +23,9 @@ public class doublePivotedCholeskyTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var B = arena.doubleRandomMat(6, 4);
+            var B = arena.floatRandomMat(6, 4);
             var A = Gram(in arena, in B);
-            var L = arena.doubleMat(6);
+            var L = arena.floatMat(6);
             var P = new Pivot(6, Allocator.Persistent);
 
             CHOP.decomp(in A, ref L, ref P);
@@ -34,14 +34,14 @@ public class doublePivotedCholeskyTests
             arena.Dispose();
         }
 
-        static doubleMxN Gram(in Arena arena, in doubleMxN B)
+        static floatMxN Gram(in Arena arena, in floatMxN B)
         {
             int n = B.M_Rows, r = B.N_Cols;
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
-                    double s = 0;
+                    float s = 0;
                     for (int k = 0; k < r; k++)
                         s += B[i, k] * B[j, k];
                     A[i, j] = s;
@@ -77,7 +77,7 @@ public class doublePivotedCholeskyTests
         public TestType Type;
 
         // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff
-        public NativeArray<double> Fail;
+        public NativeArray<float> Fail;
 
         public void Execute()
         {
@@ -107,31 +107,31 @@ public class doublePivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 8;
-                var B = arena.doubleRandomMat(n, n, -1f, 1f, 6100 + t * 13);
+                var B = arena.floatRandomMat(n, n, -1f, 1f, 6100 + t * 13);
                 var A = Gram(in arena, in B);
-                for (int d = 0; d < n; d++) A[d, d] += (double)n; // diagonal boost: well-conditioned SPD
+                for (int d = 0; d < n; d++) A[d, d] += (float)n; // diagonal boost: well-conditioned SPD
 
-                var L = arena.doubleMat(n);
+                var L = arena.floatMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
 
                 var pivInfo = CHOP.decomp(in A, ref L, ref P);
                 bool ok = pivInfo; int rank = pivInfo.rank;
                 RecordEq(ok ? 1 : 0, 1);
                 RecordEq(rank, n);
-                AssertReconstruct(in A, in L, in P, rank, (double)1E-4f);
+                AssertReconstruct(in A, in L, in P, rank, (float)1E-4f);
 
                 // first pivot must be the largest diagonal of A.
-                int argmaxDiag = 0; double best = A[0, 0];
+                int argmaxDiag = 0; float best = A[0, 0];
                 for (int j = 1; j < n; j++) if (A[j, j] > best) { best = A[j, j]; argmaxDiag = j; }
                 RecordEq(P[0], argmaxDiag);
 
                 // exact solve: b = A xOrig => x == xOrig.
-                var xOrig = arena.doubleRandomVec(n, -3f, 3f, 71000 + t * 7);
+                var xOrig = arena.floatRandomVec(n, -3f, 3f, 71000 + t * 7);
                 var b = Blas.dot(A, xOrig);
                 var Pc = new Pivot(n, Allocator.Persistent);
                 CHOP.solveInPlace(ref A, ref Pc, ref b); // destructive: A -> its own factor; b <- x
                 for (int i = 0; i < n; i++) b[i] -= xOrig[i];
-                RecordBound(Norms.L2(in b), (double)1E-3f);
+                RecordBound(Norms.L2(in b), (float)1E-3f);
 
                 Pc.Dispose();
                 P.Dispose();
@@ -147,10 +147,10 @@ public class doublePivotedCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 5;
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             A[0, 0] = 4f; A[2, 2] = 9f; A[4, 4] = 1f; // others zero
 
-            var L = arena.doubleMat(n);
+            var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
             var pivInfo = CHOP.decomp(in A, ref L, ref P);
@@ -160,7 +160,7 @@ public class doublePivotedCholeskyTests
             RecordEq(P[0], 2);
             RecordEq(P[1], 0);
             RecordEq(P[2], 4);
-            AssertReconstruct(in A, in L, in P, rank, (double)1E-5f);
+            AssertReconstruct(in A, in L, in P, rank, (float)1E-5f);
 
             P.Dispose();
             arena.Dispose();
@@ -175,20 +175,20 @@ public class doublePivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 4;
-                var B = arena.doubleRandomMat(n, r, -1f, 1f, 8200 + t * 11);
+                var B = arena.floatRandomMat(n, r, -1f, 1f, 8200 + t * 11);
                 var A = Gram(in arena, in B);
 
-                var L = arena.doubleMat(n);
+                var L = arena.floatMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
 
                 var pivInfo = CHOP.decomp(in A, ref L, ref P);
                 bool ok = pivInfo; int rank = pivInfo.rank;
                 RecordEq(ok ? 1 : 0, 1);
                 RecordEq(rank, r);
-                AssertReconstruct(in A, in L, in P, rank, (double)1E-4f);
+                AssertReconstruct(in A, in L, in P, rank, (float)1E-4f);
 
                 // xRange = A·w ∈ range(A); b = A·xRange => min-norm solution == xRange.
-                var w = arena.doubleRandomVec(n, -2f, 2f, 51000 + t * 5);
+                var w = arena.floatRandomVec(n, -2f, 2f, 51000 + t * 5);
                 var xRange = Blas.dot(A, w);
                 var b = Blas.dot(A, xRange);
 
@@ -196,10 +196,10 @@ public class doublePivotedCholeskyTests
                 CHOP.solveInPlace(ref A, ref Ps, ref b); // destructive: A -> its own factor; b <- x
 
                 // A·x ≈ A·xRange (consistency) and x ≈ xRange (exact recovery, scaled by ‖xRange‖).
-                double scale = Norms.L2(in xRange) + (double)1f;
-                var diff = arena.doubleVec(n);
+                float scale = Norms.L2(in xRange) + (float)1f;
+                var diff = arena.floatVec(n);
                 for (int i = 0; i < n; i++) diff[i] = b[i] - xRange[i];
-                RecordBound(Norms.L2(in diff) / scale, (double)1E-2f);
+                RecordBound(Norms.L2(in diff) / scale, (float)1E-2f);
 
                 Ps.Dispose();
                 P.Dispose();
@@ -218,10 +218,10 @@ public class doublePivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 3;
-                var B = arena.doubleRandomMat(n, r, -1f, 1f, 3300 + t * 17);
+                var B = arena.floatRandomMat(n, r, -1f, 1f, 3300 + t * 17);
                 var A = Gram(in arena, in B);
 
-                var xOrig = arena.doubleRandomVec(n, -2f, 2f, 42000 + t * 9);
+                var xOrig = arena.floatRandomVec(n, -2f, 2f, 42000 + t * 9);
                 var b = Blas.dot(A, xOrig);     // b ∈ range(A)
                 var bForResidual = b.Copy();
 
@@ -231,17 +231,17 @@ public class doublePivotedCholeskyTests
 
                 // consistency: A·x ≈ bForResidual.
                 var Ax = Blas.dot(A, b);
-                var resid = arena.doubleVec(n);
+                var resid = arena.floatVec(n);
                 for (int i = 0; i < n; i++) resid[i] = Ax[i] - bForResidual[i];
-                double bScale = Norms.L2(in bForResidual) + (double)1f;
-                RecordBound(Norms.L2(in resid) / bScale, (double)1E-2f);
+                float bScale = Norms.L2(in bForResidual) + (float)1f;
+                RecordBound(Norms.L2(in resid) / bScale, (float)1E-2f);
 
                 // minimum-norm: ‖x‖ ≤ ‖xOrig‖ (+ tiny slack).
-                double xNorm = Norms.L2(in b);
-                double origNorm = Norms.L2(in xOrig);
-                if (!(xNorm <= origNorm + (double)1E-3f * (origNorm + (double)1f)) && Fail[0] == (double)0)
+                float xNorm = Norms.L2(in b);
+                float origNorm = Norms.L2(in xOrig);
+                if (!(xNorm <= origNorm + (float)1E-3f * (origNorm + (float)1f)) && Fail[0] == (float)0)
                 {
-                    Fail[0] = (double)1;
+                    Fail[0] = (float)1;
                     Fail[1] = xNorm;
                     Fail[2] = origNorm;
                     Fail[3] = xNorm - origNorm;
@@ -259,10 +259,10 @@ public class doublePivotedCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 2;
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             A[0, 0] = 1f; A[0, 1] = 2f; A[1, 0] = 2f; A[1, 1] = 1f; // eigenvalues 3, -1
 
-            var L = arena.doubleMat(n);
+            var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
             bool ok = CHOP.decomp(in A, ref L, ref P);
@@ -277,14 +277,14 @@ public class doublePivotedCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 3;
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             // PSD-looking 2x2 block plus a negative eigenvalue contribution.
             A[0, 0] = 2f; A[1, 1] = 2f; A[2, 2] = 2f;
             A[0, 1] = 0f; A[1, 0] = 0f;
             A[0, 2] = 3f; A[2, 0] = 3f; // big off-diagonal => negative eigenvalue
             A[1, 2] = 0f; A[2, 1] = 0f;
 
-            var L = arena.doubleMat(n);
+            var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
             bool ok = CHOP.decomp(in A, ref L, ref P);
@@ -302,10 +302,10 @@ public class doublePivotedCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 2;
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             A[0, 0] = 1f; A[0, 1] = 2f; A[1, 0] = 2f; A[1, 1] = 1f; // eigenvalues 3, -1
 
-            var L = arena.doubleMat(n);
+            var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
             RankInfo info = CHOP.decomp(in A, ref L, ref P);
@@ -322,8 +322,8 @@ public class doublePivotedCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var A = arena.doubleMat(n, n); // zero
-            var L = arena.doubleMat(n);
+            var A = arena.floatMat(n, n); // zero
+            var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
             var pivInfo = CHOP.decomp(in A, ref L, ref P);
@@ -332,9 +332,9 @@ public class doublePivotedCholeskyTests
             RecordEq(rank, 0);
 
             // solve: x = 0 for any b.
-            var b = arena.doubleRandomVec(n, -1f, 1f, 999);
+            var b = arena.floatRandomVec(n, -1f, 1f, 999);
             CHOP.decompSolve(ref L, in P, rank, ref b);
-            RecordBound(Norms.L2(in b), (double)1E-6f);
+            RecordBound(Norms.L2(in b), (float)1E-6f);
 
             P.Dispose();
             arena.Dispose();
@@ -345,22 +345,22 @@ public class doublePivotedCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 4;
-            var v = arena.doubleVec(n);
+            var v = arena.floatVec(n);
             v[0] = 1f; v[1] = 2f; v[2] = 3f; v[3] = 0.5f;
 
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     A[i, j] = v[i] * v[j]; // rank-1 PSD
 
-            var L = arena.doubleMat(n);
+            var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
             var pivInfo = CHOP.decomp(in A, ref L, ref P);
             bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 1);
-            AssertReconstruct(in A, in L, in P, rank, (double)1E-4f);
+            AssertReconstruct(in A, in L, in P, rank, (float)1E-4f);
 
             P.Dispose();
             arena.Dispose();
@@ -374,10 +374,10 @@ public class doublePivotedCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 2;
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             A[0, 1] = 1f; A[1, 0] = 1f; // diagonal stays zero
 
-            var L = arena.doubleMat(n);
+            var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
             bool ok = CHOP.decomp(in A, ref L, ref P);
@@ -393,22 +393,22 @@ public class doublePivotedCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 1;
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             A[0, 0] = 4f;
 
-            var L = arena.doubleMat(n);
+            var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
             var pivInfo = CHOP.decomp(in A, ref L, ref P);
             bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 1);
-            AssertReconstruct(in A, in L, in P, rank, (double)1E-5f);
+            AssertReconstruct(in A, in L, in P, rank, (float)1E-5f);
 
-            var b = arena.doubleVec(n);
+            var b = arena.floatVec(n);
             b[0] = 8f;
             CHOP.decompSolve(ref L, in P, rank, ref b);
-            RecordBound(math.abs(b[0] - (double)2f), (double)1E-5f);
+            RecordBound(math.abs(b[0] - (float)2f), (float)1E-5f);
 
             P.Dispose();
             arena.Dispose();
@@ -425,11 +425,11 @@ public class doublePivotedCholeskyTests
             for (uint t = 0; t < 12; t++)
             {
                 int n = 7, r = 3;
-                var B = arena.doubleRandomMat(n, r, -1f, 1f, 2600 + t * 19);
+                var B = arena.floatRandomMat(n, r, -1f, 1f, 2600 + t * 19);
                 var A = Gram(in arena, in B);
 
                 // arbitrary b, generically NOT in range(A) since rank r < n.
-                var b = arena.doubleRandomVec(n, -2f, 2f, 77000 + t * 13);
+                var b = arena.floatRandomVec(n, -2f, 2f, 77000 + t * 13);
 
                 var P = new Pivot(n, Allocator.Persistent);
                 var Awork = A.Copy(); // solveInPlace is destructive; A is still needed below
@@ -440,13 +440,13 @@ public class doublePivotedCholeskyTests
                 var Ax = Blas.dot(A, b);
                 var AAx = Blas.dot(A, Ax);
                 // recompute A b — b now holds x, so rebuild b from the same seed.
-                var bOrig = arena.doubleRandomVec(n, -2f, 2f, 77000 + t * 13);
+                var bOrig = arena.floatRandomVec(n, -2f, 2f, 77000 + t * 13);
                 var Ab = Blas.dot(A, bOrig);
 
-                double scale = Norms.L2(in Ab) + (double)1f;
-                var diff = arena.doubleVec(n);
+                float scale = Norms.L2(in Ab) + (float)1f;
+                var diff = arena.floatVec(n);
                 for (int i = 0; i < n; i++) diff[i] = AAx[i] - Ab[i];
-                RecordBound(Norms.L2(in diff) / scale, (double)1E-2f);
+                RecordBound(Norms.L2(in diff) / scale, (float)1E-2f);
 
                 P.Dispose();
                 arena.Clear();
@@ -469,13 +469,13 @@ public class doublePivotedCholeskyTests
         {
             var arena = new Arena(Allocator.Persistent);
 
-            var B = arena.doubleRandomMat(n, r, -1f, 1f, seed);
+            var B = arena.floatRandomMat(n, r, -1f, 1f, seed);
             var A = Gram(in arena, in B);
             if (r >= n)
-                for (int d = 0; d < n; d++) A[d, d] += (double)n; // diagonal boost -> well-conditioned full rank
+                for (int d = 0; d < n; d++) A[d, d] += (float)n; // diagonal boost -> well-conditioned full rank
 
-            var b1 = arena.doubleRandomVec(n, -2f, 2f, seed + 1u);
-            var b2 = arena.doubleRandomVec(n, -2f, 2f, seed + 2u);
+            var b1 = arena.floatRandomVec(n, -2f, 2f, seed + 1u);
+            var b2 = arena.floatRandomVec(n, -2f, 2f, seed + 2u);
 
             // path under test: solveInPlace (first RHS) on a copy of A, then decompSolve (second
             // RHS) off its exit.
@@ -489,7 +489,7 @@ public class doublePivotedCholeskyTests
             CHOP.decompSolve(ref Afused, in Pfused, info.rank, ref x2);
 
             // oracle: fresh decomp + decompSolve on an independent copy, same second RHS and rank.
-            var L = arena.doubleMat(n, n);
+            var L = arena.floatMat(n, n);
             var Pref = new Pivot(n, Allocator.Persistent);
             var infoRef = CHOP.decomp(in A, ref L, ref Pref);
             Assert.IsTrue(infoRef.Solved);
@@ -515,10 +515,10 @@ public class doublePivotedCholeskyTests
             var arena = new Arena(Allocator.Persistent);
 
             int n = 2;
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             A[0, 0] = 1f; A[0, 1] = 2f; A[1, 0] = 2f; A[1, 1] = 1f; // indefinite (eig 3, -1)
 
-            var b = arena.doubleRandomVec(n, -1f, 1f, 24680);
+            var b = arena.floatRandomVec(n, -1f, 1f, 24680);
             var bSnapshot = b.Copy(); // capture BEFORE the call
 
             var P = new Pivot(n, Allocator.Persistent);
@@ -535,11 +535,11 @@ public class doublePivotedCholeskyTests
             arena.Dispose();
         }
 
-        void RecordEqExact(double got, double expected)
+        void RecordEqExact(float got, float expected)
         {
-            if (got != expected && Fail[0] == (double)0)
+            if (got != expected && Fail[0] == (float)0)
             {
-                Fail[0] = (double)1;
+                Fail[0] = (float)1;
                 Fail[1] = got;
                 Fail[2] = expected;
                 Fail[3] = got - expected;
@@ -549,20 +549,20 @@ public class doublePivotedCholeskyTests
 
         // PᵀAP == LLᵀ (computed directly as Σ_k L[i,k]L[j,k]), L lower-triangular, and columns
         // rank..n-1 of L are exactly zero.
-        void AssertReconstruct(in doubleMxN A, in doubleMxN L, in Pivot P, int rank, double precision)
+        void AssertReconstruct(in floatMxN A, in floatMxN L, in Pivot P, int rank, float precision)
         {
             int n = A.M_Rows;
 
-            double maxErr = 0;
+            float maxErr = 0;
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
-                    double llt = 0;
+                    float llt = 0;
                     for (int k = 0; k < n; k++)
                         llt += L[i, k] * L[j, k];
 
-                    double aperm = A[P[i], P[j]];
-                    double e = math.abs(aperm - llt);
+                    float aperm = A[P[i], P[j]];
+                    float e = math.abs(aperm - llt);
                     if (e > maxErr) maxErr = e;
                 }
             RecordBound(maxErr, precision);
@@ -570,23 +570,23 @@ public class doublePivotedCholeskyTests
             // strict upper triangle is zero, and columns >= rank are zero (clean n×rank factor).
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
-                    if ((j > i || j >= rank) && math.abs(L[i, j]) > precision && Fail[0] == (double)0)
+                    if ((j > i || j >= rank) && math.abs(L[i, j]) > precision && Fail[0] == (float)0)
                     {
-                        Fail[0] = (double)1;
+                        Fail[0] = (float)1;
                         Fail[1] = L[i, j];
                         Fail[2] = 0;
                         Fail[3] = L[i, j];
                     }
         }
 
-        static doubleMxN Gram(in Arena arena, in doubleMxN B)
+        static floatMxN Gram(in Arena arena, in floatMxN B)
         {
             int n = B.M_Rows, r = B.N_Cols;
-            var A = arena.doubleMat(n, n);
+            var A = arena.floatMat(n, n);
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                 {
-                    double s = 0;
+                    float s = 0;
                     for (int k = 0; k < r; k++)
                         s += B[i, k] * B[j, k];
                     A[i, j] = s;
@@ -594,11 +594,11 @@ public class doublePivotedCholeskyTests
             return A;
         }
 
-        void RecordBound(double value, double limit)
+        void RecordBound(float value, float limit)
         {
-            if (!(value <= limit) && Fail[0] == (double)0)
+            if (!(value <= limit) && Fail[0] == (float)0)
             {
-                Fail[0] = (double)1;
+                Fail[0] = (float)1;
                 Fail[1] = value;
                 Fail[2] = limit;
                 Fail[3] = value - limit;
@@ -608,9 +608,9 @@ public class doublePivotedCholeskyTests
 
         void RecordEq(int got, int expected)
         {
-            if (got != expected && Fail[0] == (double)0)
+            if (got != expected && Fail[0] == (float)0)
             {
-                Fail[0] = (double)1;
+                Fail[0] = (float)1;
                 Fail[1] = got;
                 Fail[2] = expected;
                 Fail[3] = got - expected;
@@ -627,16 +627,16 @@ public class doublePivotedCholeskyTests
     [TestCaseSource("GetEnums")]
     public void PivotedCholeskyTests(TestJob.TestType type)
     {
-        var fail = new NativeArray<double>(4, Allocator.TempJob);
+        var fail = new NativeArray<float>(4, Allocator.TempJob);
         try
         {
             new TestJob() { Type = type, Fail = fail }.Run();
-            if (fail[0] != (double)0)
+            if (fail[0] != (float)0)
                 Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
         }
         catch (Exception e)
         {
-            if (fail[0] != (double)0)
+            if (fail[0] != (float)0)
                 Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
             throw;
         }

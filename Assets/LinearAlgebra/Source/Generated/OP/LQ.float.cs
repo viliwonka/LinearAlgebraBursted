@@ -355,7 +355,7 @@ namespace LinearAlgebra
         // zero-norm row is handled via the sign-convention fallback in genHouseholderRow, not
         // rejected).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo decomp(ref floatMxN A, ref floatMxN L, ref floatMxN Q)
+        public static DirectSolveInfo decomp(in floatMxN A, ref floatMxN L, ref floatMxN Q)
         {
             // See lqDecompositionBlockedCore for why this is a method-local const, not a class field.
             const int LQ_BLOCK = 64;
@@ -412,7 +412,7 @@ namespace LinearAlgebra
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo decomp(ref floatMxN A, ref floatMxN L, ref floatMxN Q, ref floatLQCache ws)
+        public static DirectSolveInfo decomp(in floatMxN A, ref floatMxN L, ref floatMxN Q, ref floatLQCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -468,7 +468,7 @@ namespace LinearAlgebra
             var L = new floatMxN(m, m, Allocator.Temp, false);
             var Q = new floatMxN(m, n, Allocator.Temp, false);
 
-            decomp(ref A, ref L, ref Q);
+            decomp(in A, ref L, ref Q);
 
             // Step 1: forward-solve L y = b.  y starts as a copy of b (triLower is in-place).
             var y = new floatN(m, Allocator.Temp, false);
@@ -508,7 +508,7 @@ namespace LinearAlgebra
             var L = ws.L;
             var Q = ws.Q;
 
-            decomp(ref A, ref L, ref Q, ref ws.LQWs);
+            decomp(in A, ref L, ref Q, ref ws.LQWs);
 
             // Same two steps as the allocating overload (forward-solve L y = b, then x = Qᵀ y).
             var y = ws.y;

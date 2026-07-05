@@ -67,7 +67,7 @@ purpose. Companion to `docs/naming-style-guide.md` (the conventions these mistak
 - **Introducing a new class name can shadow an existing local variable of the same name (CS0841 /
   forward-reference error).** Splitting `Ortho_OP` into `QR`/`LQ` classes broke test files that
   happened to declare `var QR = ...;` / `fProxyMxN LQ = ...;` as ordinary local variables in the
-  SAME scope as a call to the new `QR.qrDecomposition(...)` / `LQ.lqDecomposition(...)` — C#'s
+  SAME scope as a call to the new `QR.decomp(...)` / `LQ.decomp(...)` — C#'s
   block-scoping treats the local declaration as shadowing the type for the whole block, and a
   reference to the type BEFORE the local's declaration point is an error, not a fallback to the
   outer name. Fix: rename the locals (`QR` → `QRProduct`, `LQ` → `LQProduct`). When introducing a
