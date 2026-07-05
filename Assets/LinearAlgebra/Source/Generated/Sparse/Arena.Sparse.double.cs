@@ -6,9 +6,20 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        internal UnsafeList<doubleBSR> doubleBSRs;
+        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A), same
+        // design as doubleVecRecords/doubleMatRecords (see Arena/doubleRecords.double.cs,
+        // Arena/Arena.double.cs) -- doubleBSR/doubleBlockJacobi now hold a stable
+        // doubleBSRRecord*/doubleBlockJacobiRecord* into one of these instead of being tracked by
+        // a separate value copy. No temp-pool counterpart (BSR has no isTemp/doubleTempBSR
+        // analogue). doubleBSRBuilders stays on the OLD growable-list-of-value-copies model
+        // DELIBERATELY: a builder's only mutable-relevant field is its heap-Malloc'd `State*`
+        // (see doubleBSRBuilder.cs), which is already pointer-stable and shared identically by
+        // every value-copy -- there is no divergence risk (RFC failure mode 1) left to fix by
+        // wrapping it in a second layer of record-table indirection, so migrating it would add
+        // surface without closing a real bug.
+        internal ChunkedRecordTable<doubleBSRRecord> doubleBSRRecords;
         internal UnsafeList<doubleBSRBuilder> doubleBSRBuilders;
-        internal UnsafeList<doubleBlockJacobi> doubleBlockJacobis;
+        internal ChunkedRecordTable<doubleBlockJacobiRecord> doubleBlockJacobiRecords;
     }
 
     // Core bump-allocator primitives for the block-sparse matrix type, mirroring how
@@ -23,9 +34,11 @@ namespace LinearAlgebra
         /// </summary>
         public doubleBSR doubleBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false, bool symmetric = false)
         {
-            var mat = new doubleBSR(blockRows, blockCols, BR, BC, nnzb, in this, uninit, symmetric);
-            _core->doubleBSRs.Add(in mat);
-            return mat;
+            doubleBSRRecord* rec = _core->doubleBSRRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleBSRRecords;
+            rec->SelfIndex = slot;
+            return new doubleBSR(blockRows, blockCols, BR, BC, nnzb, rec, Allocator, uninit, symmetric);
         }
 
         /// <summary>
@@ -46,9 +59,11 @@ namespace LinearAlgebra
         /// </summary>
         public doubleBlockJacobi doubleBlockJacobi(in doubleBSR A)
         {
-            var pc = new doubleBlockJacobi(in A, in this);
-            _core->doubleBlockJacobis.Add(in pc);
-            return pc;
+            doubleBlockJacobiRecord* rec = _core->doubleBlockJacobiRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->doubleBlockJacobiRecords;
+            rec->SelfIndex = slot;
+            return new doubleBlockJacobi(in A, rec, Allocator);
         }
 
         /// <summary>

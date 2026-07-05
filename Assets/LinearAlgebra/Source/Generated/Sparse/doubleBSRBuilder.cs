@@ -303,11 +303,24 @@ namespace LinearAlgebra.Sparse
 
             var bsm = arena.doubleBSR(BlockRows, BlockCols, BR, BC, nnzb, true, symmetric);
 
+            // Cache the three lists into local variables ONCE: RowPtr/ColInd/Values are now
+            // dual-mode PROPERTIES (doubleBSR.cs, record-table migration), and a property's
+            // return value is not a variable, so `bsm.RowPtr[row] = ...` (an indexer SET chained
+            // off a property GET) no longer compiles (CS1612) -- same restriction that already
+            // applied to any other struct-valued property in C#. A local UnsafeList<T> copy is
+            // addressable and shares the SAME underlying native buffer (UnsafeList<T> is just a
+            // Ptr+length+capacity+allocator handle), so indexing through these locals still
+            // mutates bsm's real storage -- and it's cheaper too (no repeated property dispatch
+            // inside the loop below).
+            var rowPtr = bsm.RowPtr;
+            var colInd = bsm.ColInd;
+            var values = bsm.Values;
+
             // 4. Fill RowPtr/ColInd/Values, summing consecutive same-column entries.
             int outIdx = 0;
             for (int row = 0; row < BlockRows; row++)
             {
-                bsm.RowPtr[row] = outIdx;
+                rowPtr[row] = outIdx;
                 int s = rowStart[row];
                 int e = rowStart[row + 1];
                 int prevCol = -1;
@@ -320,10 +333,10 @@ namespace LinearAlgebra.Sparse
 
                     if (col != prevCol)
                     {
-                        bsm.ColInd[outIdx] = col;
+                        colInd[outIdx] = col;
                         int dstOff = outIdx * blockLen;
                         for (int k = 0; k < blockLen; k++)
-                            bsm.Values[dstOff + k] = _state->triValues[srcOff + k];
+                            values[dstOff + k] = _state->triValues[srcOff + k];
                         prevCol = col;
                         outIdx++;
                     }
@@ -331,11 +344,11 @@ namespace LinearAlgebra.Sparse
                     {
                         int dstOff = (outIdx - 1) * blockLen;
                         for (int k = 0; k < blockLen; k++)
-                            bsm.Values[dstOff + k] += _state->triValues[srcOff + k];
+                            values[dstOff + k] += _state->triValues[srcOff + k];
                     }
                 }
             }
-            bsm.RowPtr[BlockRows] = outIdx;
+            rowPtr[BlockRows] = outIdx;
 
             order.Dispose();
             rowStart.Dispose();

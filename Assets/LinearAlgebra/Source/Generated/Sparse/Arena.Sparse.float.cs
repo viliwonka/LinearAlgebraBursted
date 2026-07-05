@@ -6,9 +6,20 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        internal UnsafeList<floatBSR> floatBSRs;
+        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A), same
+        // design as floatVecRecords/floatMatRecords (see Arena/floatRecords.float.cs,
+        // Arena/Arena.float.cs) -- floatBSR/floatBlockJacobi now hold a stable
+        // floatBSRRecord*/floatBlockJacobiRecord* into one of these instead of being tracked by
+        // a separate value copy. No temp-pool counterpart (BSR has no isTemp/floatTempBSR
+        // analogue). floatBSRBuilders stays on the OLD growable-list-of-value-copies model
+        // DELIBERATELY: a builder's only mutable-relevant field is its heap-Malloc'd `State*`
+        // (see floatBSRBuilder.cs), which is already pointer-stable and shared identically by
+        // every value-copy -- there is no divergence risk (RFC failure mode 1) left to fix by
+        // wrapping it in a second layer of record-table indirection, so migrating it would add
+        // surface without closing a real bug.
+        internal ChunkedRecordTable<floatBSRRecord> floatBSRRecords;
         internal UnsafeList<floatBSRBuilder> floatBSRBuilders;
-        internal UnsafeList<floatBlockJacobi> floatBlockJacobis;
+        internal ChunkedRecordTable<floatBlockJacobiRecord> floatBlockJacobiRecords;
     }
 
     // Core bump-allocator primitives for the block-sparse matrix type, mirroring how
@@ -23,9 +34,11 @@ namespace LinearAlgebra
         /// </summary>
         public floatBSR floatBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false, bool symmetric = false)
         {
-            var mat = new floatBSR(blockRows, blockCols, BR, BC, nnzb, in this, uninit, symmetric);
-            _core->floatBSRs.Add(in mat);
-            return mat;
+            floatBSRRecord* rec = _core->floatBSRRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatBSRRecords;
+            rec->SelfIndex = slot;
+            return new floatBSR(blockRows, blockCols, BR, BC, nnzb, rec, Allocator, uninit, symmetric);
         }
 
         /// <summary>
@@ -46,9 +59,11 @@ namespace LinearAlgebra
         /// </summary>
         public floatBlockJacobi floatBlockJacobi(in floatBSR A)
         {
-            var pc = new floatBlockJacobi(in A, in this);
-            _core->floatBlockJacobis.Add(in pc);
-            return pc;
+            floatBlockJacobiRecord* rec = _core->floatBlockJacobiRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->floatBlockJacobiRecords;
+            rec->SelfIndex = slot;
+            return new floatBlockJacobi(in A, rec, Allocator);
         }
 
         /// <summary>

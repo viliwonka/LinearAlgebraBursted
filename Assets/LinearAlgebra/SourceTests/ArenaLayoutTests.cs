@@ -1,4 +1,5 @@
 using LinearAlgebra;
+using LinearAlgebra.Sparse;
 
 using NUnit.Framework;
 using Unity.Collections;
@@ -149,5 +150,27 @@ public class ArenaLayoutTests
         Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<longMxN>(), "longMxN");
         Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<uintMxN>(), "uintMxN");
         Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<boolMxN>(), "boolMxN");
+    }
+
+    // ---- struct-size regression guard for the sparse trio's record-pointer migration (Stage C) ----
+    //
+    // Same premise as VectorStructs_AreExpectedSize/MatrixStructs_AreExpectedSize above: floatBSR/
+    // doubleBSR swapped their old 8-byte `Arena _arena` handle for an 8-byte fProxyBSRRecord*
+    // (RowPtr/ColInd/Values became dual-mode properties; the three UnsafeList<T> fields moved
+    // in-place from "the struct's own storage" to "the standalone-path fallback storage", net zero
+    // field-count change), and floatBlockJacobi/doubleBlockJacobi made the same trade for their
+    // single DInv list. Measured empirically (Windows/x64, Unity 6000.3.2f1) BOTH before and after
+    // the migration: unchanged at 104 / 40 bytes respectively.
+
+    const int BSRStructSize = 104;
+    const int BlockJacobiStructSize = 40;
+
+    [Test]
+    public unsafe void SparseStructs_AreExpectedSize()
+    {
+        Assert.AreEqual(BSRStructSize, UnsafeUtility.SizeOf<floatBSR>(), "floatBSR");
+        Assert.AreEqual(BSRStructSize, UnsafeUtility.SizeOf<doubleBSR>(), "doubleBSR");
+        Assert.AreEqual(BlockJacobiStructSize, UnsafeUtility.SizeOf<floatBlockJacobi>(), "floatBlockJacobi");
+        Assert.AreEqual(BlockJacobiStructSize, UnsafeUtility.SizeOf<doubleBlockJacobi>(), "doubleBlockJacobi");
     }
 }

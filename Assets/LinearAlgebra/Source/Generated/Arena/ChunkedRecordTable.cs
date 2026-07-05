@@ -11,16 +11,21 @@ namespace LinearAlgebra
     /// from the one source of truth (the RFC's failure modes 1 and 2).
     ///
     /// <para><b>Live, family-by-family.</b> <c>ArenaCore</c> owns one table per migrated family/pool
-    /// (currently float/double's <c>fProxyVecRecords</c>/<c>fProxyMatRecords</c>/temp* -- see
-    /// <c>Arena.fProxy.cs</c>, <c>fProxyRecords.fProxy.cs</c>): fProxyN/fProxyMxN hold a stable
-    /// <c>fProxyVecRecord*</c>/<c>fProxyMatRecord*</c> into one of these tables instead of being
-    /// tracked by a separate value copy. <c>Arena.Clear()</c>/<c>ClearTemp()</c> walk a table's
+    /// (float/double's <c>fProxyVecRecords</c>/<c>fProxyMatRecords</c>/temp* -- see
+    /// <c>Arena.fProxy.cs</c>, <c>fProxyRecords.fProxy.cs</c>; the int-family and bool
+    /// equivalents live in their own sibling Arena partials; the sparse
+    /// <c>fProxyBSRRecords</c>/<c>fProxyBlockJacobiRecords</c> -- see <c>Arena.Sparse.fProxy.cs</c>,
+    /// <c>fProxyBSRRecords.fProxy.cs</c>): fProxyN/fProxyMxN (and the other migrated types) hold a
+    /// stable <c>fProxyVecRecord*</c>/<c>fProxyMatRecord*</c> into one of these tables instead of
+    /// being tracked by a separate value copy. <c>Arena.Clear()</c>/<c>ClearTemp()</c> walk a table's
     /// <c>Count</c>/<c>IsAlive</c>/<c>Resolve</c> surface, dispose each alive record's payload, and
     /// <see cref="Free"/> the slot; <c>fProxyN</c>/<c>fProxyMxN.Dispose()</c> does the same for a
-    /// single record (see those types' Dispose() for the ordering rationale). Not-yet-migrated
-    /// families (int/short/long/uint, bool, the sparse BSR types) still use the original growable-
-    /// UnsafeList-of-value-copies model and don't touch this table -- see the migration's per-family
-    /// status in <c>ArenaCore</c>'s own class doc (<c>Arena.cs</c>). Exercised both end-to-end
+    /// single record (see those types' Dispose() for the ordering rationale). Not-yet-migrated:
+    /// <c>fProxyBSRBuilder</c> (deliberately -- its own <c>State*</c> indirection already makes a
+    /// value-copy tracking list safe), <c>Pivot</c>/<c>Indices</c> (deliberately out of scope --
+    /// no arena identity, never grow). Both still use the original growable-UnsafeList-of-value-
+    /// copies model and don't touch this table -- see the migration's per-family status in
+    /// <c>ArenaCore</c>'s own class doc (<c>Arena.cs</c>). Exercised both end-to-end
     /// (<c>ArenaWiringTests.fProxy.cs</c>) and directly against its own primitives
     /// (<c>ChunkedRecordTableTests</c>).</para>
     ///

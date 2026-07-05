@@ -21,38 +21,45 @@ namespace LinearAlgebra
     /// only <see cref="Arena"/>'s own partials (same assembly) reach through <c>_core-&gt;</c>;
     /// nothing outside the library touches ArenaCore directly.
     ///
-    /// <para><b>Migrated families (float/double, int/short/long/uint, bool)</b> -- docs/rfc-memory-
-    /// model.md §4 Option A -- own pointer-stable <see cref="ChunkedRecordTable{TRecord}"/> tables
-    /// (<c>fProxyVecRecords</c>/<c>fProxyMatRecords</c>/temp* -- see <c>fProxyRecords.fProxy.cs</c>,
-    /// <c>Arena.fProxy.cs</c>; <c>iProxyVecRecords</c>/<c>iProxyMatRecords</c>/temp* -- see
-    /// <c>iProxyRecords.iProxy.cs</c>, <c>Arena.iProxy.cs</c>; <c>BoolVecRecords</c>/
-    /// <c>BoolMatRecords</c>/temp* -- see <c>boolRecords.bool.cs</c>, <c>Arena.bool.cs</c>): each
-    /// family's N/MxN struct holds a stable record pointer instead of being tracked by a separate
-    /// value copy, and Dispose()/Clear()/ClearTemp() free individual slots.
-    /// <b>Not-yet-migrated families</b> (<c>fProxyBSRs</c>/BSRBuilders/BlockJacobis, <c>Pivots</c>,
-    /// <c>IndexBuffers</c>) still use the original growable-UnsafeList-of-value-copies model:
-    /// tracked by <c>.Add</c>, bulk-freed by <c>.Clear()</c>/<c>.Dispose()</c> on the whole list,
-    /// with no per-instance early-dispose bookkeeping. Both models coexist during the family-by-
-    /// family migration; see <see cref="AllocationsCount"/>'s doc for the one user-visible
-    /// consequence.</para>
+    /// <para><b>Migrated families (float/double, int/short/long/uint, bool, sparse BSR/BlockJacobi)</b>
+    /// -- docs/rfc-memory-model.md §4 Option A -- own pointer-stable
+    /// <see cref="ChunkedRecordTable{TRecord}"/> tables (<c>fProxyVecRecords</c>/
+    /// <c>fProxyMatRecords</c>/temp* -- see <c>fProxyRecords.fProxy.cs</c>, <c>Arena.fProxy.cs</c>;
+    /// <c>iProxyVecRecords</c>/<c>iProxyMatRecords</c>/temp* -- see <c>iProxyRecords.iProxy.cs</c>,
+    /// <c>Arena.iProxy.cs</c>; <c>BoolVecRecords</c>/<c>BoolMatRecords</c>/temp* -- see
+    /// <c>boolRecords.bool.cs</c>, <c>Arena.bool.cs</c>; <c>fProxyBSRRecords</c>/
+    /// <c>fProxyBlockJacobiRecords</c> (no temp* -- BSR has no temp-pool variant) -- see
+    /// <c>fProxyBSRRecords.fProxy.cs</c>, <c>Arena.Sparse.fProxy.cs</c>): each family's struct holds
+    /// a stable record pointer instead of being tracked by a separate value copy, and
+    /// Dispose()/Clear()/ClearTemp() free individual slots.
+    /// <b>Not-yet-migrated</b>: <c>fProxyBSRBuilders</c>, <c>Pivots</c>, <c>IndexBuffers</c> --
+    /// still use the original growable-UnsafeList-of-value-copies model: tracked by <c>.Add</c>,
+    /// bulk-freed by <c>.Clear()</c>/<c>.Dispose()</c> on the whole list, with no per-instance
+    /// early-dispose bookkeeping. All three stay this way DELIBERATELY, not as an unfinished
+    /// migration step: Pivot/Indices have no arena identity to protect and never grow once
+    /// allocated (out of scope for this RFC); fProxyBSRBuilder's only mutable-relevant field is
+    /// its own heap-Malloc'd <c>State*</c> (see <c>fProxyBSRBuilder.cs</c>), which is already
+    /// pointer-stable and identical across every value-copy, so there is no divergence risk (RFC
+    /// failure mode 1) left for a record table to fix. See <see cref="AllocationsCount"/>'s doc for
+    /// the one user-visible consequence of this mixed model.</para>
     /// </summary>
     internal unsafe partial struct ArenaCore
     {
         /// <summary>
-        /// Live allocation count across every tracked family. TRANSIENT cross-family asymmetry
-        /// during the family-by-family migration (docs/rfc-memory-model.md §4 Option A): migrated
-        /// families (float/double, int/short/long/uint, bool) decrement this THE MOMENT an
-        /// individual N/MxN instance is Dispose()'d (their AliveCount reflects live records
-        /// exactly); not-yet-migrated families (the sparse BSR/BSRBuilder/BlockJacobi trio) still
-        /// use the old value-copy tracking lists, whose `.Length` only shrinks in bulk on the next
-        /// Clear()/ClearTemp() -- an individual disposed instance of those types stays counted
-        /// until then. This asymmetry resolves once every family has been migrated onto the
-        /// record-table model. (Bool allocations were never included in this count at all, even
-        /// before the migration -- a pre-existing gap, not something this migration changed.)
+        /// Live allocation count across every tracked family. PERMANENT (not transient) asymmetry
+        /// for one deliberately-unmigrated family (docs/rfc-memory-model.md §4 Option A): every
+        /// record-table-backed family (float/double, int/short/long/uint, bool, sparse
+        /// BSR/BlockJacobi) decrements this THE MOMENT an individual instance is Dispose()'d
+        /// (their AliveCount reflects live records exactly); fProxyBSRBuilders alone still uses
+        /// the old value-copy tracking list, whose `.Length` only shrinks in bulk on the next
+        /// Clear()/ClearTemp() -- an individual disposed builder stays counted until then. This
+        /// stays permanent by design: see ArenaCore's class doc for why the builder was left off
+        /// the record-table model. (Bool allocations were never included in this count at all,
+        /// even before its migration -- a pre-existing gap, unrelated to this asymmetry.)
         /// </summary>
         public int AllocationsCount =>
             //+copyReplaceFill[+]
-            fProxyVecRecords.AliveCount + fProxyMatRecords.AliveCount + fProxyBSRs.Length + fProxyBSRBuilders.Length + fProxyBlockJacobis.Length
+            fProxyVecRecords.AliveCount + fProxyMatRecords.AliveCount + fProxyBSRRecords.AliveCount + fProxyBSRBuilders.Length + fProxyBlockJacobiRecords.AliveCount
             //-copyReplaceFill
             +
             //+copyReplaceFill[+]
@@ -99,9 +106,9 @@ namespace LinearAlgebra
             fProxyMatRecords.Init(Allocator);
             fProxyTempVecRecords.Init(Allocator);
             fProxyTempMatRecords.Init(Allocator);
-            fProxyBSRs = new UnsafeList<fProxyBSR>(4, Allocator);
+            fProxyBSRRecords.Init(Allocator);
             fProxyBSRBuilders = new UnsafeList<fProxyBSRBuilder>(4, Allocator);
-            fProxyBlockJacobis = new UnsafeList<fProxyBlockJacobi>(4, Allocator);
+            fProxyBlockJacobiRecords.Init(Allocator);
             //-copyReplace
 
             //+copyReplace
@@ -169,17 +176,26 @@ namespace LinearAlgebra
                     fProxyMatRecords.Free(i);
                 }
 
-            for (int i = 0; i < fProxyBSRs.Length; i++)
-                fProxyBSRs[i].Dispose();
-            fProxyBSRs.Clear();
+            for (int i = 0; i < fProxyBSRRecords.Count; i++)
+                if (fProxyBSRRecords.IsAlive(i))
+                {
+                    var rec = fProxyBSRRecords.Resolve(i);
+                    rec->RowPtr.Dispose();
+                    rec->ColInd.Dispose();
+                    rec->Values.Dispose();
+                    fProxyBSRRecords.Free(i);
+                }
 
             for (int i = 0; i < fProxyBSRBuilders.Length; i++)
                 fProxyBSRBuilders[i].Dispose();
             fProxyBSRBuilders.Clear();
 
-            for (int i = 0; i < fProxyBlockJacobis.Length; i++)
-                fProxyBlockJacobis[i].Dispose();
-            fProxyBlockJacobis.Clear();
+            for (int i = 0; i < fProxyBlockJacobiRecords.Count; i++)
+                if (fProxyBlockJacobiRecords.IsAlive(i))
+                {
+                    fProxyBlockJacobiRecords.Resolve(i)->DInv.Dispose();
+                    fProxyBlockJacobiRecords.Free(i);
+                }
             //-copyReplace
 
             //+copyReplace
@@ -294,9 +310,9 @@ namespace LinearAlgebra
             fProxyMatRecords.Dispose();
             fProxyTempMatRecords.Dispose();
             fProxyTempVecRecords.Dispose();
-            fProxyBSRs.Dispose();
+            fProxyBSRRecords.Dispose();
             fProxyBSRBuilders.Dispose();
-            fProxyBlockJacobis.Dispose();
+            fProxyBlockJacobiRecords.Dispose();
             //-copyReplace
 
             //+copyReplace

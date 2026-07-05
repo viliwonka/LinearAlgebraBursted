@@ -39,13 +39,43 @@ namespace LinearAlgebra.Sparse
         /// <summary>Number of stored (nonzero) blocks.</summary>
         public int Nnzb => ColInd.Length;
 
-        // CSR-of-blocks index structure (arena-owned UnsafeLists):
-        public UnsafeList<int> RowPtr;     // length BlockRows+1
-        public UnsafeList<int> ColInd;     // length nnzb (block-column of each stored block)
-        public UnsafeList<float> Values;  // length nnzb*BR*BC (flat, row-major per block)
+        // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<floatBSRRecord>
+        // (docs/rfc-memory-model.md §4 Option A). null for a standalone (non-arena) matrix, in which
+        // case RowPtr/ColInd/Values resolve to the inline fields below instead -- see those
+        // properties. Replaces the old `Arena _arena` handle field: retiring it keeps this struct's
+        // size unchanged (both are a single pointer-width field), and the record's own `Owner`
+        // back-pointer is where a future Copy()/cross-type shortcut would resolve through instead.
+        [NativeDisableUnsafePtrRestriction] private unsafe floatBSRRecord* _rec;
 
-        // Value handle to the shared ArenaCore, not a raw pointer (see Arena.cs); copies stay live (FM2).
-        private Arena _arena;
+        // Standalone-path backing store -- the ONLY thing that changes for a non-arena matrix.
+        // Stay default(UnsafeList<...>) whenever _rec != null (arena-tracked).
+        private UnsafeList<int> _inlineRowPtr;
+        private UnsafeList<int> _inlineColInd;
+        private UnsafeList<float> _inlineValues;
+
+        // CSR-of-blocks index structure. Dual-mode: arena-tracked resolves through the record,
+        // standalone keeps the inline field untouched -- mirrors floatN.Data (Arena/floatN.cs).
+        // Indexed reads/writes (e.g. RowPtr[i] = ...) still mutate the underlying native buffer
+        // through the returned UnsafeList's own internal pointer even though this getter returns a
+        // header copy -- only a WHOLE-FIELD reassignment from outside this file would be unsafe,
+        // and there is none (grepped repo-wide).
+        public unsafe UnsafeList<int> RowPtr
+        {
+            get => _rec != null ? _rec->RowPtr : _inlineRowPtr;
+            private set { if (_rec != null) _rec->RowPtr = value; else _inlineRowPtr = value; }
+        }
+
+        public unsafe UnsafeList<int> ColInd
+        {
+            get => _rec != null ? _rec->ColInd : _inlineColInd;
+            private set { if (_rec != null) _rec->ColInd = value; else _inlineColInd = value; }
+        }
+
+        public unsafe UnsafeList<float> Values
+        {
+            get => _rec != null ? _rec->Values : _inlineValues;
+            private set { if (_rec != null) _rec->Values = value; else _inlineValues = value; }
+        }
 
         /// <summary>
         /// Allocates a compressed BSR matrix with the given block-grid shape and a fixed
@@ -54,7 +84,11 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe floatBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, Allocator allocator, bool uninit = false, bool symmetric = false)
         {
-            _arena = default;
+            _rec = null;
+            _inlineRowPtr = default;
+            _inlineColInd = default;
+            _inlineValues = default;
+
             BlockRows = blockRows;
             BlockCols = blockCols;
             this.BR = BR;
@@ -81,12 +115,17 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Creates a new BSR matrix of the given shape from an arena. Same allocation shape
-        /// as the Allocator overload, but tracked by the arena for disposal.
+        /// Arena-tracked constructor. <paramref name="rec"/> is a slot already carved from the
+        /// arena's record table by the caller (Arena.floatBSR) -- this ctor only fills in the
+        /// record's RowPtr/ColInd/Values, it does not allocate or own the slot itself. Same
+        /// pre-allocated-record contract as floatN's arena-tracked ctor (Arena/floatN.cs).
         /// </summary>
-        public unsafe floatBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, in Arena arena, bool uninit = false, bool symmetric = false)
+        internal unsafe floatBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, floatBSRRecord* rec, Allocator allocator, bool uninit = false, bool symmetric = false)
         {
-            _arena = arena;
+            _rec = rec;
+            _inlineRowPtr = default;
+            _inlineColInd = default;
+            _inlineValues = default;
 
             BlockRows = blockRows;
             BlockCols = blockCols;
@@ -97,7 +136,6 @@ namespace LinearAlgebra.Sparse
                 throw new ArgumentException("floatBSR: symmetric storage requires BR==BC and blockRows==blockCols");
             Symmetric = symmetric;
 
-            var allocator = arena.Allocator;
             var options = uninit ? NativeArrayOptions.UninitializedMemory : NativeArrayOptions.ClearMemory;
 
             var rowPtr = new UnsafeList<int>(blockRows + 1, allocator, options);
@@ -114,15 +152,36 @@ namespace LinearAlgebra.Sparse
             Values = values;
         }
 
-        public void Dispose()
+        public unsafe void Dispose()
         {
 #if LINALG_DEBUG
             // poison the buffer so a read-after-dispose surfaces as NaN instead of stale data
             for (int i = 0; i < Values.Length; i++) Values[i] = float.NaN;
 #endif
-            RowPtr.Dispose();
-            ColInd.Dispose();
-            Values.Dispose();
+            if (_rec != null)
+            {
+                // Cache the lists BEFORE Free(): Free() marks the slot dead and does not itself
+                // clear the record's payload -- read them into locals first rather than reading
+                // _rec-> again after the slot is dead. Free() runs BEFORE the native Dispose()
+                // calls: an ALIASED double-dispose (a different struct copy sharing this SAME
+                // record) throws HERE, from the table's own double-Free guard, before any native
+                // memory would be touched a second time -- see floatN.Dispose() (Arena/floatN.cs)
+                // for the full ordering rationale, which this mirrors exactly.
+                var rowPtr = _rec->RowPtr;
+                var colInd = _rec->ColInd;
+                var values = _rec->Values;
+                _rec->Table->Free(_rec->SelfIndex);
+                rowPtr.Dispose();
+                colInd.Dispose();
+                values.Dispose();
+                _rec = null;
+            }
+            else
+            {
+                _inlineRowPtr.Dispose();
+                _inlineColInd.Dispose();
+                _inlineValues.Dispose();
+            }
         }
 
         /// <summary>

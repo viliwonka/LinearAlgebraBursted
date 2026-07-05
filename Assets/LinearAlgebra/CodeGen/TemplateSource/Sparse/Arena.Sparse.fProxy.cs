@@ -6,9 +6,20 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        internal UnsafeList<fProxyBSR> fProxyBSRs;
+        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A), same
+        // design as fProxyVecRecords/fProxyMatRecords (see Arena/fProxyRecords.fProxy.cs,
+        // Arena/Arena.fProxy.cs) -- fProxyBSR/fProxyBlockJacobi now hold a stable
+        // fProxyBSRRecord*/fProxyBlockJacobiRecord* into one of these instead of being tracked by
+        // a separate value copy. No temp-pool counterpart (BSR has no isTemp/fProxyTempBSR
+        // analogue). fProxyBSRBuilders stays on the OLD growable-list-of-value-copies model
+        // DELIBERATELY: a builder's only mutable-relevant field is its heap-Malloc'd `State*`
+        // (see fProxyBSRBuilder.cs), which is already pointer-stable and shared identically by
+        // every value-copy -- there is no divergence risk (RFC failure mode 1) left to fix by
+        // wrapping it in a second layer of record-table indirection, so migrating it would add
+        // surface without closing a real bug.
+        internal ChunkedRecordTable<fProxyBSRRecord> fProxyBSRRecords;
         internal UnsafeList<fProxyBSRBuilder> fProxyBSRBuilders;
-        internal UnsafeList<fProxyBlockJacobi> fProxyBlockJacobis;
+        internal ChunkedRecordTable<fProxyBlockJacobiRecord> fProxyBlockJacobiRecords;
     }
 
     // Core bump-allocator primitives for the block-sparse matrix type, mirroring how
@@ -23,9 +34,11 @@ namespace LinearAlgebra
         /// </summary>
         public fProxyBSR fProxyBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false, bool symmetric = false)
         {
-            var mat = new fProxyBSR(blockRows, blockCols, BR, BC, nnzb, in this, uninit, symmetric);
-            _core->fProxyBSRs.Add(in mat);
-            return mat;
+            fProxyBSRRecord* rec = _core->fProxyBSRRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->fProxyBSRRecords;
+            rec->SelfIndex = slot;
+            return new fProxyBSR(blockRows, blockCols, BR, BC, nnzb, rec, Allocator, uninit, symmetric);
         }
 
         /// <summary>
@@ -46,9 +59,11 @@ namespace LinearAlgebra
         /// </summary>
         public fProxyBlockJacobi fProxyBlockJacobi(in fProxyBSR A)
         {
-            var pc = new fProxyBlockJacobi(in A, in this);
-            _core->fProxyBlockJacobis.Add(in pc);
-            return pc;
+            fProxyBlockJacobiRecord* rec = _core->fProxyBlockJacobiRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->fProxyBlockJacobiRecords;
+            rec->SelfIndex = slot;
+            return new fProxyBlockJacobi(in A, rec, Allocator);
         }
 
         /// <summary>

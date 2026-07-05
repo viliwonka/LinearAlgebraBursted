@@ -139,6 +139,12 @@ purpose. Companion to `docs/naming-style-guide.md` (the conventions these mistak
   `Arena.cs` sans its `//singularFile//`…) never write a literal proxy name even in prose — reference
   concrete safe names (`floatN`, `intN`) instead, and keep `//singularFile//` markers intact. Grep new
   token-free-named files for proxy substrings before regen.
+  VARIANT (hit during the sparse-record migration): a token-free-NAMED file whose content contains
+  `fProxy` but NOT `iProxy` substrings rides a routing quirk — writing `iProxy` in prose (e.g. "see
+  Arena.iProxy.cs") into such a file flips its classification and the prose itself gets substituted
+  (`Arena.iProxy.cs` → `Arena.long.cs` in generated output). Same rule, sharper edge: in token-free-named
+  files, NEITHER proxy token may appear in content, even naming another FILE. Reference generated names
+  (`Arena.int.cs`) instead.
 - **A brand-new codegen-generated CONCRETE type name (e.g. `uintN`, the product of substituting a
   proxy token) does not exist as a real type anywhere in `TemplateSource`'s own raw, unprocessed
   compile** — only the proxy token itself (`iProxyN`, wired up as a real placeholder struct in

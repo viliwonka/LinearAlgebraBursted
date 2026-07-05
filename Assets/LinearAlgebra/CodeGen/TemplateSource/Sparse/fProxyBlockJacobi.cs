@@ -33,12 +33,23 @@ namespace LinearAlgebra.Sparse
 
         public int Rows => BlockRows * BR;
 
-        /// <summary>Inverted diagonal blocks, flat row-major per block: DInv[i*BR*BR + r*BR + c]
-        /// holds (A_ii⁻¹)[r,c]. Length nb*BR*BR.</summary>
-        public readonly UnsafeList<fProxy> DInv;
+        // Arena-tracked path: a stable pointer into the arena's
+        // ChunkedRecordTable<fProxyBlockJacobiRecord> (docs/rfc-memory-model.md §4 Option A). null
+        // for a standalone (non-arena) preconditioner, in which case DInv resolves to the inline
+        // field below instead. Replaces the old `Arena _arena` handle field -- same size trade as
+        // fProxyBSR/fProxyN. Readonly (this struct is `readonly partial struct`): assigned once per
+        // constructor, never reassigned afterward -- see Dispose()'s comment for what that costs.
+        [NativeDisableUnsafePtrRestriction] private readonly unsafe fProxyBlockJacobiRecord* _rec;
 
-        // Value handle to the shared ArenaCore, not a raw pointer (see Arena.cs); copies stay live (FM2).
-        private readonly Arena _arena;
+        // Standalone-path backing store -- stays default(UnsafeList<fProxy>) whenever _rec != null.
+        private readonly UnsafeList<fProxy> _inlineDInv;
+
+        /// <summary>Inverted diagonal blocks, flat row-major per block: DInv[i*BR*BR + r*BR + c]
+        /// holds (A_ii⁻¹)[r,c]. Length nb*BR*BR. Dual-mode, mirrors fProxyBSR.RowPtr/ColInd/Values:
+        /// get-only (no setter is possible on a readonly struct) -- both constructors below write
+        /// the computed inverse directly to whichever backing field is live instead of going
+        /// through a property setter.</summary>
+        public unsafe UnsafeList<fProxy> DInv => _rec != null ? _rec->DInv : _inlineDInv;
 
         /// <summary>
         /// Builds the preconditioner from A's diagonal blocks. A must be square
@@ -47,7 +58,8 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe fProxyBlockJacobi(in fProxyBSR A, Allocator allocator)
         {
-            _arena = default;
+            _rec = null;
+            _inlineDInv = default;
 
             if (A.BlockRows != A.BlockCols || A.BR != A.BC)
                 throw new ArgumentException("fProxyBlockJacobi: A must be square (BlockRows==BlockCols, BR==BC)");
@@ -115,20 +127,24 @@ namespace LinearAlgebra.Sparse
                 Dcopy.Dispose();
             }
 
-            DInv = dinv;
+            _inlineDInv = dinv;
         }
 
         /// <summary>
-        /// Same construction, tracked by an arena (disposed with the arena). Takes the arena by
-        /// `in`: it only reads arena.Allocator and stores the (currently unused, future-
-        /// proofing) `_arena` handle -- a plain value copy, safe regardless of `in`/`ref` now
-        /// that Arena is a thin copyable handle to a heap-allocated ArenaCore (see Arena.cs).
-        /// The arena-OWNING factory that actually registers this instance for disposal is
-        /// `Arena.fProxyBlockJacobi(in fProxyBSR)`.
+        /// Arena-tracked constructor. <paramref name="rec"/> is a slot already carved from the
+        /// arena's record table by the caller (Arena.fProxyBlockJacobi) -- same pre-allocated-
+        /// record contract as fProxyBSR's arena-tracked ctor. Chains into the Allocator ctor above
+        /// to reuse its diagonal-block LU-inversion loop unchanged (readonly fields may be
+        /// assigned in ANY instance constructor of the declaring type, including one reached via
+        /// `: this(...)` -- so re-assigning `_rec`/adopting the computed list here, after the
+        /// chained-to ctor already ran, is legal), then adopts the freshly-built list into the
+        /// record instead of leaving it on the standalone path.
         /// </summary>
-        public unsafe fProxyBlockJacobi(in fProxyBSR A, in Arena arena) : this(in A, arena.Allocator)
+        internal unsafe fProxyBlockJacobi(in fProxyBSR A, fProxyBlockJacobiRecord* rec, Allocator allocator) : this(in A, allocator)
         {
-            _arena = arena;
+            rec->DInv = _inlineDInv;
+            _inlineDInv = default;
+            _rec = rec;
         }
 
         /// <summary>
@@ -169,13 +185,34 @@ namespace LinearAlgebra.Sparse
             }
         }
 
-        public void Dispose()
+        /// <summary>
+        /// Disposes the DInv buffer. Note: unlike fProxyN/fProxyBSR's mutable-struct Dispose(),
+        /// this CANNOT null <c>_rec</c> afterward (the struct is `readonly`, so no instance method
+        /// may reassign a field, not even its own). Consequence: an ALIASED double-dispose (a
+        /// different struct copy sharing this SAME record) still throws here, from the table's own
+        /// double-Free guard, exactly like fProxyN/fProxyBSR -- but a SAME-COPY double-dispose
+        /// (calling Dispose() twice on the identical variable) also throws here instead of
+        /// degrading to a safe no-op the second time, since `_rec` is still non-null on the second
+        /// call. This is a strictly-no-worse-than-before tradeoff: the pre-migration Dispose() had
+        /// no double-dispose protection at all (silent double-free UB); the standalone
+        /// (non-arena) path is unchanged either way, for the same readonly-field reason.
+        /// </summary>
+        public unsafe void Dispose()
         {
 #if LINALG_DEBUG
             // poison the buffer so a read-after-dispose surfaces as NaN instead of stale data
             for (int i = 0; i < DInv.Length; i++) DInv[i] = fProxy.NaN;
 #endif
-            DInv.Dispose();
+            if (_rec != null)
+            {
+                var dinv = _rec->DInv;
+                _rec->Table->Free(_rec->SelfIndex);
+                dinv.Dispose();
+            }
+            else
+            {
+                _inlineDInv.Dispose();
+            }
         }
     }
 }
