@@ -6,7 +6,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Workspace-overload tests for Eigen.eigenvaluesSymmetric and its workspace fProxyEigenSymCache
+// Workspace-overload tests for Eigen.valuesSymmetric and its workspace fProxyEigenSymCache
 // (Arena.fProxyEigenSymCache(n)). eigenvaluesSymmetric DESTROYS its input matrix, so every call
 // runs on a private copy.
 //
@@ -63,12 +63,12 @@ public class fProxyEigenSymWorkspaceTests
 
             var Aa = A.Copy();
             var eigA = arena.fProxyVec(n);
-            bool okA = Eigen.eigenvaluesSymmetric(ref Aa, ref eigA);
+            bool okA = Eigen.valuesSymmetric(ref Aa, ref eigA);
 
             var Aw = A.Copy();
             var eigW = arena.fProxyVec(n);
             var ws = arena.fProxyEigenSymCache(n);
-            bool okW = Eigen.eigenvaluesSymmetric(ref Aw, ref eigW, ref ws);
+            bool okW = Eigen.valuesSymmetric(ref Aw, ref eigW, ref ws);
 
             Assert.IsTrue(okA == okW);
             Assert.IsTrue(Analysis.isZero(eigA - eigW, Tol()));
@@ -89,17 +89,17 @@ public class fProxyEigenSymWorkspaceTests
             // warm on A1
             var A1c = A1.Copy();
             var eig1 = arena.fProxyVec(n);
-            Eigen.eigenvaluesSymmetric(ref A1c, ref eig1, ref ws);
+            Eigen.valuesSymmetric(ref A1c, ref eig1, ref ws);
 
             // reuse on A2
             var A2w = A2.Copy();
             var eigW = arena.fProxyVec(n);
-            bool okW = Eigen.eigenvaluesSymmetric(ref A2w, ref eigW, ref ws);
+            bool okW = Eigen.valuesSymmetric(ref A2w, ref eigW, ref ws);
 
             // fresh allocating reference on A2
             var A2a = A2.Copy();
             var eigA = arena.fProxyVec(n);
-            bool okA = Eigen.eigenvaluesSymmetric(ref A2a, ref eigA);
+            bool okA = Eigen.valuesSymmetric(ref A2a, ref eigA);
 
             Assert.IsTrue(okW == okA);
             Assert.IsTrue(Analysis.isZero(eigW - eigA, Tol()));
@@ -129,7 +129,7 @@ public class fProxyEigenSymWorkspaceTests
             var eig = arena.fProxyVec(n);
             var ws = arena.fProxyEigenSymCache(n + 1);   // wrong n
             Assert.Throws<ArgumentException>(
-                () => Eigen.eigenvaluesSymmetric(ref A, ref eig, ref ws));
+                () => Eigen.valuesSymmetric(ref A, ref eig, ref ws));
         }
         finally { arena.Dispose(); }
     }

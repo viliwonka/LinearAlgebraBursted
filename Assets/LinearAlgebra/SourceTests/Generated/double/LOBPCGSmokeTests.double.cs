@@ -225,7 +225,7 @@ public class doubleLOBPCGSmokeTests
         var Afull = A.Copy();
         var eigAll = arena.doubleVec(n);
         var Vall = arena.doubleMat(n, n);
-        Assert.IsTrue(Eigen.eigenSymmetric(ref Afull, ref eigAll, ref Vall));
+        Assert.IsTrue(Eigen.symmetric(ref Afull, ref eigAll, ref Vall));
 
         var eig = LOBPCG.lobpcg(ref arena, in A, k, out _, out var info);
         Assert.IsTrue(info.Solved, info.ToString());
@@ -320,7 +320,7 @@ public class doubleLOBPCGSmokeTests
 
         var Bcopy = B.Copy();
         var L = arena.doubleMat(n, n);
-        Assert.IsTrue(Cholesky.choleskyDecomposition(in Bcopy, ref L).Solved);
+        Assert.IsTrue(CHO.decomp(in Bcopy, ref L).Solved);
 
         var Ahat = arena.doubleMat(n, n);
         for (int i = 0; i < n; i++)
@@ -329,7 +329,7 @@ public class doubleLOBPCGSmokeTests
 
         var eigAll = arena.doubleVec(n);
         var Vall = arena.doubleMat(n, n);
-        Assert.IsTrue(Eigen.eigenSymmetric(ref Ahat, ref eigAll, ref Vall));
+        Assert.IsTrue(Eigen.symmetric(ref Ahat, ref eigAll, ref Vall));
 
         var ws = arena.doubleLOBPCGCache(n, k);
         var info = LOBPCG.lobpcg(in A, in B, ref ws, k, Consts.doubleSqrtEps, 1000);

@@ -6,7 +6,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Workspace-overload tests for SVD.svdRandomized (Halko-Martinsson-Tropp) and its workspace
+// Workspace-overload tests for SVD.randomized (Halko-Martinsson-Tropp) and its workspace
 // floatSVDRandomizedCache (Arena.floatSVDRandomizedCache(m, n, k, oversample) and the
 // default-oversample (m, n, k) factory).
 //
@@ -44,7 +44,7 @@ public class floatSvdRandomizedWorkspaceTests
             }
         }
 
-        // A = B (m x r) * C (r x n): exactly rank r, so svdRandomized with k >= r is well determined.
+        // A = B (m x r) * C (r x n): exactly rank r, so randomized with k >= r is well determined.
         static floatMxN RankR(ref Arena arena, int m, int n, int r, uint seed)
         {
             var B = arena.floatRandomMat(m, r, (float)(-2f), (float)2f, seed);
@@ -61,11 +61,11 @@ public class floatSvdRandomizedWorkspaceTests
             var A = RankR(ref arena, m, n, 5, 9001);
 
             var UkA = arena.floatMat(m, k); var SkA = arena.floatVec(k); var VkA = arena.floatMat(n, k);
-            bool okA = SVD.svdRandomized(in A, ref UkA, ref SkA, ref VkA, k, oversample, powerIters, seed, maxIter);
+            bool okA = SVD.randomized(in A, ref UkA, ref SkA, ref VkA, k, oversample, powerIters, seed, maxIter);
 
             var ws = arena.floatSVDRandomizedCache(m, n, k, oversample);
             var UkW = arena.floatMat(m, k); var SkW = arena.floatVec(k); var VkW = arena.floatMat(n, k);
-            bool okW = SVD.svdRandomized(in A, ref UkW, ref SkW, ref VkW, k, oversample, powerIters, seed, maxIter, ref ws);
+            bool okW = SVD.randomized(in A, ref UkW, ref SkW, ref VkW, k, oversample, powerIters, seed, maxIter, ref ws);
 
             Assert.IsTrue(okA == okW);
             Assert.IsTrue(Analysis.isZero(SkA - SkW, Tol()));
@@ -85,11 +85,11 @@ public class floatSvdRandomizedWorkspaceTests
             var A = RankR(ref arena, m, n, 4, 9002);
 
             var UkA = arena.floatMat(m, k); var SkA = arena.floatVec(k); var VkA = arena.floatMat(n, k);
-            bool okA = SVD.svdRandomized(in A, ref UkA, ref SkA, ref VkA, k, seed);
+            bool okA = SVD.randomized(in A, ref UkA, ref SkA, ref VkA, k, seed);
 
             var ws = arena.floatSVDRandomizedCache(m, n, k);   // default oversample 10
             var UkW = arena.floatMat(m, k); var SkW = arena.floatVec(k); var VkW = arena.floatMat(n, k);
-            bool okW = SVD.svdRandomized(in A, ref UkW, ref SkW, ref VkW, k, seed, ref ws);
+            bool okW = SVD.randomized(in A, ref UkW, ref SkW, ref VkW, k, seed, ref ws);
 
             Assert.IsTrue(okA == okW);
             Assert.IsTrue(Analysis.isZero(SkA - SkW, Tol()));
@@ -114,15 +114,15 @@ public class floatSvdRandomizedWorkspaceTests
 
             // warm the workspace on A1
             var U1 = arena.floatMat(m, k); var S1 = arena.floatVec(k); var V1 = arena.floatMat(n, k);
-            SVD.svdRandomized(in A1, ref U1, ref S1, ref V1, k, oversample, powerIters, seed, maxIter, ref ws);
+            SVD.randomized(in A1, ref U1, ref S1, ref V1, k, oversample, powerIters, seed, maxIter, ref ws);
 
             // reuse on A2
             var UW = arena.floatMat(m, k); var SW = arena.floatVec(k); var VW = arena.floatMat(n, k);
-            bool okW = SVD.svdRandomized(in A2, ref UW, ref SW, ref VW, k, oversample, powerIters, seed, maxIter, ref ws);
+            bool okW = SVD.randomized(in A2, ref UW, ref SW, ref VW, k, oversample, powerIters, seed, maxIter, ref ws);
 
             // fresh allocating reference on A2
             var UA = arena.floatMat(m, k); var SA = arena.floatVec(k); var VA = arena.floatMat(n, k);
-            bool okA = SVD.svdRandomized(in A2, ref UA, ref SA, ref VA, k, oversample, powerIters, seed, maxIter);
+            bool okA = SVD.randomized(in A2, ref UA, ref SA, ref VA, k, oversample, powerIters, seed, maxIter);
 
             Assert.IsTrue(okW == okA);
             Assert.IsTrue(Analysis.isZero(SW - SA, Tol()));
@@ -154,7 +154,7 @@ public class floatSvdRandomizedWorkspaceTests
             var Uk = arena.floatMat(m, k); var Sk = arena.floatVec(k); var Vk = arena.floatMat(n, k);
             var ws = arena.floatSVDRandomizedCache(m + 1, n, k, oversample);   // wrong m
             Assert.Throws<ArgumentException>(
-                () => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, 2, 123u, 75, ref ws));
+                () => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, 2, 123u, 75, ref ws));
         }
         finally { arena.Dispose(); }
     }
@@ -171,7 +171,7 @@ public class floatSvdRandomizedWorkspaceTests
             // ws sketch width l = min(3 + 0, 6) = 3, but the call uses oversample 2 -> l = min(5, 6) = 5.
             var ws = arena.floatSVDRandomizedCache(m, n, k, 0);
             Assert.Throws<ArgumentException>(
-                () => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 2, 2, 123u, 75, ref ws));
+                () => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 2, 2, 123u, 75, ref ws));
         }
         finally { arena.Dispose(); }
     }

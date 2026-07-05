@@ -1,5 +1,5 @@
 using System;
-#pragma warning disable 618 // intentionally exercises the deprecated Jacobi svdDecomposition / eigenDecomposition (kept for reference)
+#pragma warning disable 618 // intentionally exercises the deprecated Jacobi svdDecomposition / Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
 using LinearAlgebra.Gallery;   // opt-in: arena.doubleCauchy(x,y), arena.doubleMagic(n), ...
@@ -14,7 +14,7 @@ using Unity.Mathematics;
 // (docs/spec-gallery.md, Phase 2 table; production template Gallery.Phase2.double.cs).
 // Each case pins a generator against its DOCUMENTED closed form (Cauchy/GCD/Redheffer determinants,
 // magic constant, Rosser/Prolate eigenvalues, Parter singular values, Grcar/Lotkin structure) using
-// the library's own ops (LU.determinant, Cholesky, Eigen.eigenDecomposition, SVD.singularValues).
+// the library's own ops (LU.determinant, Cholesky, Eigen.decompInPlace, SVD.singularValues).
 //
 // Tolerances are per-precision: they scale with Consts.doubleSqrtEps (float ≈ 3.45e-4, double ≈ 1.49e-8)
 // so the SAME expression is loose for float and tight for double, matching the GalleryTests /
@@ -256,7 +256,7 @@ public class doubleGalleryPhase2Tests
             for (int i = 0; i < 8; i++) tr += A[i, i];
             AssertClose(tr, (double)4040, (double)1E-3);
 
-            // documented spectrum, DESCENDING (eigenDecomposition returns descending)
+            // documented spectrum, DESCENDING (Eigen.decompInPlace returns descending)
             var expected = arena.doubleVec(8);
             expected[0] = (double)1020.4202;
             expected[1] = (double)1019.9936;
@@ -270,7 +270,7 @@ public class doubleGalleryPhase2Tests
             var Ac = A.Copy();
             var eig = arena.doubleVec(8);
             var V = arena.doubleMat(8, 8);
-            AssertTrue(Eigen.eigenDecomposition(ref Ac, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             // sum of eigenvalues equals trace regardless of precision (robust invariant).
             double esum = (double)0;
@@ -332,7 +332,7 @@ public class doubleGalleryPhase2Tests
             var Ac = A.Copy();
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Ac, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             // documented (0,1): allow a precision-gated margin on both ends.
             double lo = IsDouble() ? (double)1E-7 : (double)1E-2;
@@ -437,13 +437,13 @@ public class doubleGalleryPhase2Tests
             return p;
         }
 
-        // det via LU on a copy (luDecompositionInPlace destroys its input).
+        // det via LU on a copy (LU.decompInPlace destroys its input).
         double Determinant(in doubleMxN M)
         {
             int n = M.M_Rows;
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            LU.decompInPlace(ref LUmat, ref pivot);
             double det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;
@@ -460,7 +460,7 @@ public class doubleGalleryPhase2Tests
         void AssertCholeskyOk(ref Arena arena, in doubleMxN A)
         {
             var L = arena.doubleMat(A.M_Rows, A.N_Cols);
-            AssertTrue(Cholesky.choleskyDecomposition(in A, ref L));
+            AssertTrue(CHO.decomp(in A, ref L));
         }
 
         void AssertClose(double a, double b, double precision)

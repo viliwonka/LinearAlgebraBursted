@@ -13,7 +13,7 @@ namespace LinearAlgebra
         /// Computes the singular values of any-shape A into S (length k = min(M_Rows, N_Cols)),
         /// sorted in descending order. A is NOT modified — for wide A its transpose is decomposed,
         /// since A and Aᵀ share the same singular values. Uses the fast values-only Golub-Kahan path
-        /// (svdValues), which needs no orthogonal factors. Allocates SVD scratch from A's arena.
+        /// (values), which needs no orthogonal factors. Allocates SVD scratch from A's arena.
         /// Returns k (= S.N). Shared by matrixL2 / cond / rank.
         /// </summary>
         public static int singularValues(in fProxyMxN A, ref fProxyN S)
@@ -29,13 +29,13 @@ namespace LinearAlgebra
                 return 0;
 
             if (m >= n) {
-                // svdValues takes A as input (not modified) — no copy needed.
-                svdValues(in A, ref S);
+                // values takes A as input (not modified) — no copy needed.
+                values(in A, ref S);
             }
             else {
                 // Wide: decompose Aᵀ (n x m, tall); same singular values as A.
                 fProxyMxN At = Blas.trans(A);
-                svdValues(in At, ref S);
+                values(in At, ref S);
             }
 
             return k;

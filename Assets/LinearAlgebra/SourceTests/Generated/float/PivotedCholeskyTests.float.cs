@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for pivoted (rank-revealing) Cholesky: Cholesky.choleskyDecompositionPivot / choleskyPivotSolve.
+// Tests for pivoted (rank-revealing) Cholesky: CHOP.decomp / CHOP.decompSolve / CHOP.solveInPlace.
 // PᵀAP = LLᵀ with symmetric (diagonal) pivoting, largest remaining diagonal first (LAPACK xPSTRF).
 //
 // Properties / vectors exercised (see each test method for the exact numbers): full-rank SPD
@@ -28,7 +28,7 @@ public class floatPivotedCholeskyTests
             var L = arena.floatMat(6);
             var P = new Pivot(6, Allocator.Persistent);
 
-            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            CHOP.decomp(in A, ref L, ref P);
 
             P.Dispose();
             arena.Dispose();
@@ -107,7 +107,7 @@ public class floatPivotedCholeskyTests
                 var L = arena.floatMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
 
-                var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+                var pivInfo = CHOP.decomp(in A, ref L, ref P);
                 bool ok = pivInfo; int rank = pivInfo.rank;
                 RecordEq(ok ? 1 : 0, 1);
                 RecordEq(rank, n);
@@ -123,7 +123,7 @@ public class floatPivotedCholeskyTests
                 var b = Blas.dot(A, xOrig);
                 var Lc = arena.floatMat(n);
                 var Pc = new Pivot(n, Allocator.Persistent);
-                Cholesky.choleskyPivotSolve(in A, ref Lc, ref Pc, ref b); // b <- x
+                CHOP.solveInPlace(in A, ref Lc, ref Pc, ref b); // b <- x
                 for (int i = 0; i < n; i++) b[i] -= xOrig[i];
                 RecordBound(Norms.L2(in b), (float)1E-3f);
 
@@ -147,7 +147,7 @@ public class floatPivotedCholeskyTests
             var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            var pivInfo = CHOP.decomp(in A, ref L, ref P);
             bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 3);
@@ -175,7 +175,7 @@ public class floatPivotedCholeskyTests
                 var L = arena.floatMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
 
-                var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+                var pivInfo = CHOP.decomp(in A, ref L, ref P);
                 bool ok = pivInfo; int rank = pivInfo.rank;
                 RecordEq(ok ? 1 : 0, 1);
                 RecordEq(rank, r);
@@ -188,7 +188,7 @@ public class floatPivotedCholeskyTests
 
                 var Ls = arena.floatMat(n);
                 var Ps = new Pivot(n, Allocator.Persistent);
-                Cholesky.choleskyPivotSolve(in A, ref Ls, ref Ps, ref b); // b <- x
+                CHOP.solveInPlace(in A, ref Ls, ref Ps, ref b); // b <- x
 
                 // A·x ≈ A·xRange (consistency) and x ≈ xRange (exact recovery, scaled by ‖xRange‖).
                 float scale = Norms.L2(in xRange) + (float)1f;
@@ -222,7 +222,7 @@ public class floatPivotedCholeskyTests
 
                 var L = arena.floatMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
-                Cholesky.choleskyPivotSolve(in A, ref L, ref P, ref b); // b <- x
+                CHOP.solveInPlace(in A, ref L, ref P, ref b); // b <- x
 
                 // consistency: A·x ≈ bForResidual.
                 var Ax = Blas.dot(A, b);
@@ -260,7 +260,7 @@ public class floatPivotedCholeskyTests
             var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            bool ok = CHOP.decomp(in A, ref L, ref P);
             RecordEq(ok ? 1 : 0, 0); // indefinite => false
 
             P.Dispose();
@@ -282,7 +282,7 @@ public class floatPivotedCholeskyTests
             var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            bool ok = CHOP.decomp(in A, ref L, ref P);
             RecordEq(ok ? 1 : 0, 0);
 
             P.Dispose();
@@ -291,7 +291,7 @@ public class floatPivotedCholeskyTests
 
         // Stage-3 direct-solve-status coverage: an indefinite matrix must report
         // DirectSolveStatus.Indefinite (not just a falsy implicit-bool) from
-        // choleskyDecompositionPivot, and RankRevealingInfo.Solved must be false.
+        // CHOP.decomp, and RankInfo.Solved must be false.
         void IndefiniteStatus()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -303,7 +303,7 @@ public class floatPivotedCholeskyTests
             var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            RankRevealingInfo info = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            RankInfo info = CHOP.decomp(in A, ref L, ref P);
             RecordEq((int)info.status, (int)DirectSolveStatus.Indefinite);
             RecordEq(info.Solved ? 1 : 0, 0);
             RecordEq(info ? 1 : 0, 0);
@@ -321,14 +321,14 @@ public class floatPivotedCholeskyTests
             var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            var pivInfo = CHOP.decomp(in A, ref L, ref P);
             bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 0);
 
             // solve: x = 0 for any b.
             var b = arena.floatRandomVec(n, -1f, 1f, 999);
-            Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b);
+            CHOP.decompSolve(ref L, in P, rank, ref b);
             RecordBound(Norms.L2(in b), (float)1E-6f);
 
             P.Dispose();
@@ -351,7 +351,7 @@ public class floatPivotedCholeskyTests
             var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            var pivInfo = CHOP.decomp(in A, ref L, ref P);
             bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 1);
@@ -375,7 +375,7 @@ public class floatPivotedCholeskyTests
             var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            bool ok = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            bool ok = CHOP.decomp(in A, ref L, ref P);
             RecordEq(ok ? 1 : 0, 0); // indefinite => false
 
             P.Dispose();
@@ -394,7 +394,7 @@ public class floatPivotedCholeskyTests
             var L = arena.floatMat(n);
             var P = new Pivot(n, Allocator.Persistent);
 
-            var pivInfo = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P);
+            var pivInfo = CHOP.decomp(in A, ref L, ref P);
             bool ok = pivInfo; int rank = pivInfo.rank;
             RecordEq(ok ? 1 : 0, 1);
             RecordEq(rank, 1);
@@ -402,7 +402,7 @@ public class floatPivotedCholeskyTests
 
             var b = arena.floatVec(n);
             b[0] = 8f;
-            Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b);
+            CHOP.decompSolve(ref L, in P, rank, ref b);
             RecordBound(math.abs(b[0] - (float)2f), (float)1E-5f);
 
             P.Dispose();
@@ -428,7 +428,7 @@ public class floatPivotedCholeskyTests
 
                 var L = arena.floatMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
-                bool ok = Cholesky.choleskyPivotSolve(in A, ref L, ref P, ref b); // b <- x
+                bool ok = CHOP.solveInPlace(in A, ref L, ref P, ref b); // b <- x
                 RecordEq(ok ? 1 : 0, 1);
 
                 // normal equations: A(Ax) == A b  <=>  A(Ax - b) == 0  (residual ⟂ range(A)).

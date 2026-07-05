@@ -47,13 +47,13 @@ public class floatSolversTests {
 
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             var b = arena.floatRandomVec(dim, -1f, 1f);
 
             var y = Blas.dot(b, Q);
 
-            Solvers.solveUpperTriangular(ref R, ref y);
+            Solvers.triUpper(ref R, ref y);
 
             var Ax = Blas.dot(A, y);
 

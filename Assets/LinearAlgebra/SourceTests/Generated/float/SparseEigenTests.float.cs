@@ -380,7 +380,7 @@ public class floatSparseEigenTests
             AssertTrue(ok, (float)1);
 
             var eigenvalues = arena.floatVec(n);
-            bool okEig = Eigen.eigenvaluesSymmetric(ref ARef, ref eigenvalues);
+            bool okEig = Eigen.valuesSymmetric(ref ARef, ref eigenvalues);
             AssertTrue(okEig, (float)2);
 
             // eigenvaluesSymmetric sorts DESCENDING -> the smallest eigenvalue is the last entry.
@@ -428,7 +428,7 @@ public class floatSparseEigenTests
 
             // Trusted dense reference spectrum on the independent copy.
             var eigRef = arena.floatVec(n);
-            bool okEig = Eigen.eigenvaluesSymmetric(ref ARef, ref eigRef);
+            bool okEig = Eigen.valuesSymmetric(ref ARef, ref eigRef);
             AssertTrue(okEig, (float)5);
 
             for (int i = 0; i < n; i++)
@@ -606,7 +606,7 @@ public class floatSparseEigenTests
             AssertTrue(lambda < (float)0, (float)2);   // sign branch: dominant eigenvalue is negative
 
             var eigRef = arena.floatVec(dim);
-            bool okEig = Eigen.eigenvaluesSymmetric(ref ARef, ref eigRef);
+            bool okEig = Eigen.valuesSymmetric(ref ARef, ref eigRef);
             AssertTrue(okEig, (float)3);
 
             // Descending sort -> the most-negative (largest-magnitude) eigenvalue is at index dim-1.

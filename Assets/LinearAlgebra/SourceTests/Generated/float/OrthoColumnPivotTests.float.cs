@@ -8,7 +8,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for column-pivoted (rank-revealing) QR: QR.qrDecompositionColumnPivot.
+// Tests for column-pivoted (rank-revealing) QR: QRCP.decompInPlace.
 // A*P = Q*R with the pivot chosen greedily (Businger–Golub) so |R[d,d]| is non-increasing.
 //
 // Test vectors / properties sourced from the literature:
@@ -35,7 +35,7 @@ public class floatOrthoColumnPivotTests
             var R = arena.floatMat(6);
             var P = new Pivot(6, Allocator.Persistent);
 
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             P.Dispose();
             arena.Dispose();
@@ -95,7 +95,7 @@ public class floatOrthoColumnPivotTests
                     var R = arena.floatMat(n);
                     var A = Q.Copy();
 
-                    QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+                    QRCP.decompInPlace(ref Q, ref R, ref P);
 
                     AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
 
@@ -119,7 +119,7 @@ public class floatOrthoColumnPivotTests
                     var R = arena.floatMat(dim);
                     var A = Q.Copy();
 
-                    QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+                    QRCP.decompInPlace(ref Q, ref R, ref P);
 
                     AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
 
@@ -150,7 +150,7 @@ public class floatOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             // Reconstruction must still hold...
             AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
@@ -182,7 +182,7 @@ public class floatOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
 
@@ -228,7 +228,7 @@ public class floatOrthoColumnPivotTests
             var P = new Pivot(dim, Allocator.Persistent);
             var A = Q.Copy();
 
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
 
@@ -257,7 +257,7 @@ public class floatOrthoColumnPivotTests
             var P = new Pivot(dim, Allocator.Persistent);
             var A = Q.Copy();
 
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
 
@@ -276,7 +276,7 @@ public class floatOrthoColumnPivotTests
             var P = new Pivot(1, Allocator.Persistent);
             var A = Q.Copy();
 
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
             RecordEq(P[0], 0);
@@ -298,7 +298,7 @@ public class floatOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
             for (int d = 0; d < n; d++)
@@ -327,7 +327,7 @@ public class floatOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
             RecordEq(P[0], 0); // largest stays first
@@ -352,7 +352,7 @@ public class floatOrthoColumnPivotTests
             var P = new Pivot(n, Allocator.Persistent);
             var A = Q.Copy();
 
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             AssertQRCP(in A, in Q, in R, in P, (float)1E-4f);
 
@@ -464,7 +464,7 @@ public class floatOrthoColumnPivotTests
     }
 
     // ────────────────────────────────────────────────────────────────────────────────
-    // SOLVER: QR.qrcpDirectSolve — QRCP-based rank-safe least-squares (BASIC / truncated
+    // SOLVER: QRCP.solveInPlace — QRCP-based rank-safe least-squares (BASIC / truncated
     // solution). Solves min‖A x − b‖ for a possibly rank-deficient A (m >= n). Returns the
     // detected numerical rank and the basic solution (≤ rank nonzeros in permuted order):
     // minimal RESIDUAL but NOT minimum norm. At full column rank it reduces to ordinary QR-LS.
@@ -528,7 +528,7 @@ public class floatOrthoColumnPivotTests
             var b = arena.floatRandomVec(m, -5f, 5f, 9091);
 
             var x = arena.floatVec(n);
-            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank; // qrcp leaves A,b intact
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank; // qrcp leaves A,b intact
 
             RecordEq(rank, n);
             if (Analysis.isAnyNan(in x)) { Fail0(0, 0); return; }
@@ -537,7 +537,7 @@ public class floatOrthoColumnPivotTests
             var Aqr = A.Copy();
             var bqr = b.Copy();
             var xRef = arena.floatVec(n);
-            QR.qrDirectSolve(ref Aqr, ref bqr, ref xRef);
+            QR.solveInPlace(ref Aqr, ref bqr, ref xRef);
 
             float tol = (float)Consts.floatSqrtEps * (float)10;
             for (int k = 0; k < n; k++)
@@ -567,7 +567,7 @@ public class floatOrthoColumnPivotTests
             var u = arena.floatVec(dim);
             var x = arena.floatVec(dim);
 
-            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u).rank;
 
             RecordEq(rank, dim);
             if (!Analysis.isAnyNan(in x))
@@ -602,7 +602,7 @@ public class floatOrthoColumnPivotTests
             var b = arena.floatRandomVec(m, -3f, 3f, 5511);
 
             var x = arena.floatVec(n);
-            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 3);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -649,7 +649,7 @@ public class floatOrthoColumnPivotTests
             mean /= (float)dim;
 
             var x = arena.floatVec(dim);
-            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -702,7 +702,7 @@ public class floatOrthoColumnPivotTests
             var x = arena.floatVec(n);
 
             float explicitTol = (float)(math.max(m, n)) * (float)Consts.floatZeroThreshold;
-            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, explicitTol).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, explicitTol).rank;
 
             RecordEq(rank, 3);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -735,7 +735,7 @@ public class floatOrthoColumnPivotTests
             var b = arena.floatRandomVec(m, -5f, 5f, 5151);
 
             var x = arena.floatVec(n);
-            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 0);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -759,7 +759,7 @@ public class floatOrthoColumnPivotTests
             b[0] = (float)10f;
 
             var x = arena.floatVec(1);
-            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
 
             RecordEq(rank, 1);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -785,14 +785,14 @@ public class floatOrthoColumnPivotTests
             var b = arena.floatRandomVec(m, -3f, 3f, 2424);
 
             var xAuto = arena.floatVec(n);
-            int rankAuto = QR.qrcpDirectSolve(ref A, ref b, ref xAuto).rank; // default overload
+            int rankAuto = QRCP.solveInPlace(ref A, ref b, ref xAuto).rank; // default overload
 
             var xNeg = arena.floatVec(n);
-            int rankNeg = QR.qrcpDirectSolve(ref A, ref b, ref xNeg, (float)(-1)).rank; // sentinel
+            int rankNeg = QRCP.solveInPlace(ref A, ref b, ref xNeg, (float)(-1)).rank; // sentinel
 
             float explicitTol = (float)(math.max(m, n)) * (float)Consts.floatZeroThreshold;
             var xExpl = arena.floatVec(n);
-            int rankExpl = QR.qrcpDirectSolve(ref A, ref b, ref xExpl, explicitTol).rank;
+            int rankExpl = QRCP.solveInPlace(ref A, ref b, ref xExpl, explicitTol).rank;
 
             RecordEq(rankNeg, rankAuto);
             RecordEq(rankExpl, rankAuto);
@@ -830,7 +830,7 @@ public class floatOrthoColumnPivotTests
             var u = arena.floatVec(m);
             var x = arena.floatVec(n);
 
-            int rank = QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, (float)(-1)).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, (float)(-1)).rank;
 
             RecordEq(rank, 1);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -847,7 +847,7 @@ public class floatOrthoColumnPivotTests
         }
 
         // (10) Stage-3 direct-solve-status coverage: on a rank-deficient A (exact linear
-        // dependency, true rank 3 of 4), qrcpDirectSolve must return a RankRevealingInfo with
+        // dependency, true rank 3 of 4), QRCP.solveInPlace must return a RankInfo with
         // status == RankDeficient, rank == the detected reduced rank, and Solved == true (a
         // rank-deficient basic solution is still usable) -- distinct from a hard failure.
         void RankRevealingInfoStatus()
@@ -862,7 +862,7 @@ public class floatOrthoColumnPivotTests
             var b = arena.floatRandomVec(m, -3f, 3f, 5511);
             var x = arena.floatVec(n);
 
-            RankRevealingInfo info = QR.qrcpDirectSolve(ref A, ref b, ref x);
+            RankInfo info = QRCP.solveInPlace(ref A, ref b, ref x);
 
             RecordEq(info.rank, 3);
             RecordEq((int)info.status, (int)DirectSolveStatus.RankDeficient);
@@ -982,7 +982,7 @@ public class floatOrthoColumnPivotTests
         var A = arena.floatMat(2, 3);
         var b = arena.floatVec(2);
         var x = arena.floatVec(3);
-        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x));
+        Assert.Catch<ArgumentException>(() => QRCP.solveInPlace(ref A, ref b, ref x));
         arena.Dispose();
     }
 
@@ -993,7 +993,7 @@ public class floatOrthoColumnPivotTests
         var A = arena.floatMat(4, 3);
         var b = arena.floatVec(3); // should be 4
         var x = arena.floatVec(3);
-        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x));
+        Assert.Catch<ArgumentException>(() => QRCP.solveInPlace(ref A, ref b, ref x));
         arena.Dispose();
     }
 
@@ -1004,7 +1004,7 @@ public class floatOrthoColumnPivotTests
         var A = arena.floatMat(4, 3);
         var b = arena.floatVec(4);
         var x = arena.floatVec(2); // should be 3
-        Assert.Catch<ArgumentException>(() => QR.qrcpDirectSolve(ref A, ref b, ref x));
+        Assert.Catch<ArgumentException>(() => QRCP.solveInPlace(ref A, ref b, ref x));
         arena.Dispose();
     }
 }

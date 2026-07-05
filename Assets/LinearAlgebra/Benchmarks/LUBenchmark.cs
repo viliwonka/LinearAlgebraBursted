@@ -8,7 +8,7 @@ using LinearAlgebra;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // LU with partial pivoting. Each Execute copies a pristine source into U (which luDecomposition
+    // LU with partial pivoting. Each Execute copies a pristine source into U (which LU.decompInPlace
     // overwrites) and allocates a fresh Pivot in Temp (O(N), negligible vs the O(N^3) factorization),
     // so every timed sample does identical work.
 
@@ -27,7 +27,7 @@ namespace LinearAlgebra.Benchmarks
                     U[r, c] = Src[r, c];
 
             var P = new Pivot(rows, Allocator.Temp);
-            LU.luDecomposition(ref U, ref L, ref P);
+            LU.decompInPlace(ref U, ref L, ref P);
             P.Dispose();
         }
     }
@@ -47,7 +47,7 @@ namespace LinearAlgebra.Benchmarks
                     U[r, c] = Src[r, c];
 
             var P = new Pivot(rows, Allocator.Temp);
-            LU.luDecomposition(ref U, ref L, ref P);
+            LU.decompInPlace(ref U, ref L, ref P);
             P.Dispose();
         }
     }
@@ -62,7 +62,7 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== LU factorization with partial pivoting (time = copy-in + luDecomposition) ===");
+            sb.AppendLine("=== LU factorization with partial pivoting (time = copy-in + LU.decompInPlace) ===");
             sb.AppendLine(Bench.Header());
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchFloat(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchDouble(n));

@@ -6,7 +6,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Workspace-overload tests for Bidiag.bidiagonalize / bidiagonalizeValues and their shared workspace
+// Workspace-overload tests for Bidiag.decomp / values and their shared workspace
 // fProxyBidiagCache (Arena.fProxyBidiagCache(m, n)).
 //
 // The ws overload is the real body (caller-owned W/leftU/uVec/vVec/wScratch); the allocating overload
@@ -50,11 +50,11 @@ public class fProxyBidiagWorkspaceTests
             var A = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, seed);
 
             var Ua = arena.fProxyMat(m, n); var Ba = arena.fProxyMat(n, n); var Va = arena.fProxyMat(n, n);
-            Bidiag.bidiagonalize(in A, ref Ua, ref Ba, ref Va);
+            Bidiag.decomp(in A, ref Ua, ref Ba, ref Va);
 
             var ws = arena.fProxyBidiagCache(m, n);
             var Uw = arena.fProxyMat(m, n); var Bw = arena.fProxyMat(n, n); var Vw = arena.fProxyMat(n, n);
-            Bidiag.bidiagonalize(in A, ref Uw, ref Bw, ref Vw, ref ws);
+            Bidiag.decomp(in A, ref Uw, ref Bw, ref Vw, ref ws);
 
             Assert.IsTrue(Analysis.isZero(Ua - Uw, Tol()));
             Assert.IsTrue(Analysis.isZero(Ba - Bw, Tol()));
@@ -69,11 +69,11 @@ public class fProxyBidiagWorkspaceTests
             var A = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, seed);
 
             var da = arena.fProxyVec(n); var ea = arena.fProxyVec(n);
-            Bidiag.bidiagonalizeValues(in A, ref da, ref ea);
+            Bidiag.values(in A, ref da, ref ea);
 
             var ws = arena.fProxyBidiagCache(m, n);
             var dw = arena.fProxyVec(n); var ew = arena.fProxyVec(n);
-            Bidiag.bidiagonalizeValues(in A, ref dw, ref ew, ref ws);
+            Bidiag.values(in A, ref dw, ref ew, ref ws);
 
             Assert.IsTrue(Analysis.isZero(da - dw, Tol()));
             Assert.IsTrue(Analysis.isZero(ea - ew, Tol()));
@@ -93,22 +93,22 @@ public class fProxyBidiagWorkspaceTests
 
             // full bidiagonalize: warm on A1, reuse on A2, compare to fresh allocating on A2.
             var U1 = arena.fProxyMat(m, n); var B1 = arena.fProxyMat(n, n); var V1 = arena.fProxyMat(n, n);
-            Bidiag.bidiagonalize(in A1, ref U1, ref B1, ref V1, ref ws);
+            Bidiag.decomp(in A1, ref U1, ref B1, ref V1, ref ws);
             var Uw = arena.fProxyMat(m, n); var Bw = arena.fProxyMat(n, n); var Vw = arena.fProxyMat(n, n);
-            Bidiag.bidiagonalize(in A2, ref Uw, ref Bw, ref Vw, ref ws);
+            Bidiag.decomp(in A2, ref Uw, ref Bw, ref Vw, ref ws);
             var Ua = arena.fProxyMat(m, n); var Ba = arena.fProxyMat(n, n); var Va = arena.fProxyMat(n, n);
-            Bidiag.bidiagonalize(in A2, ref Ua, ref Ba, ref Va);
+            Bidiag.decomp(in A2, ref Ua, ref Ba, ref Va);
             Assert.IsTrue(Analysis.isZero(Uw - Ua, Tol()));
             Assert.IsTrue(Analysis.isZero(Bw - Ba, Tol()));
             Assert.IsTrue(Analysis.isZero(Vw - Va, Tol()));
 
             // values: same reused workspace.
             var d1 = arena.fProxyVec(n); var e1 = arena.fProxyVec(n);
-            Bidiag.bidiagonalizeValues(in A1, ref d1, ref e1, ref ws);
+            Bidiag.values(in A1, ref d1, ref e1, ref ws);
             var dw = arena.fProxyVec(n); var ew = arena.fProxyVec(n);
-            Bidiag.bidiagonalizeValues(in A2, ref dw, ref ew, ref ws);
+            Bidiag.values(in A2, ref dw, ref ew, ref ws);
             var da = arena.fProxyVec(n); var ea = arena.fProxyVec(n);
-            Bidiag.bidiagonalizeValues(in A2, ref da, ref ea);
+            Bidiag.values(in A2, ref da, ref ea);
             Assert.IsTrue(Analysis.isZero(dw - da, Tol()));
             Assert.IsTrue(Analysis.isZero(ew - ea, Tol()));
 
@@ -137,7 +137,7 @@ public class fProxyBidiagWorkspaceTests
             var U = arena.fProxyMat(m, n); var B = arena.fProxyMat(n, n); var V = arena.fProxyMat(n, n);
             var ws = arena.fProxyBidiagCache(m + 1, n);   // wrong m
             Assert.Throws<ArgumentException>(
-                () => Bidiag.bidiagonalize(in A, ref U, ref B, ref V, ref ws));
+                () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
         }
         finally { arena.Dispose(); }
     }
@@ -153,12 +153,12 @@ public class fProxyBidiagWorkspaceTests
             var d = arena.fProxyVec(n); var e = arena.fProxyVec(n);
             var ws = arena.fProxyBidiagCache(m, n + 1);   // wrong n (W/vVec/wScratch all wrong)
             Assert.Throws<ArgumentException>(
-                () => Bidiag.bidiagonalizeValues(in A, ref d, ref e, ref ws));
+                () => Bidiag.values(in A, ref d, ref e, ref ws));
         }
         finally { arena.Dispose(); }
     }
 
-    // needLeftU subtlety: bidiagonalizeValues never touches leftU, so a leftU-less workspace (common
+    // needLeftU subtlety: Bidiag.values never touches leftU, so a leftU-less workspace (common
     // buffers correct, leftU = default) must NOT throw on the leftU check; the full bidiagonalize,
     // which reconstructs U from leftU, MUST throw on the same workspace.
     [Test]
@@ -180,12 +180,12 @@ public class fProxyBidiagWorkspaceTests
             };
 
             var d = arena.fProxyVec(n); var e = arena.fProxyVec(n);
-            Assert.DoesNotThrow(() => Bidiag.bidiagonalizeValues(in A, ref d, ref e, ref ws));
+            Assert.DoesNotThrow(() => Bidiag.values(in A, ref d, ref e, ref ws));
 
             // same workspace fails the full bidiagonalize (needs leftU).
             var U = arena.fProxyMat(m, n); var B = arena.fProxyMat(n, n); var V = arena.fProxyMat(n, n);
             Assert.Throws<ArgumentException>(
-                () => Bidiag.bidiagonalize(in A, ref U, ref B, ref V, ref ws));
+                () => Bidiag.decomp(in A, ref U, ref B, ref V, ref ws));
         }
         finally { arena.Dispose(); }
     }

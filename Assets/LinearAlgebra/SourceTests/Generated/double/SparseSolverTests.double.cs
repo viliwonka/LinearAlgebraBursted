@@ -330,7 +330,7 @@ public class doubleSparseSolverTests
             var A2 = A.Copy();
             var b2 = b.Copy();
             var xQR = arena.doubleVec(dim);
-            QR.qrDirectSolve(ref A2, ref b2, ref xQR);
+            QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in xConcrete, in xQR, Tol());
 
             arena.Dispose();
@@ -557,10 +557,10 @@ public class doubleSparseSolverTests
             // constructed to be nonsingular (odd n+1 -> no exactly-zero eigenvalue), so LU succeeds.
             var LUcopy = A.Copy();
             var pivot = new Pivot(dim, Allocator.Temp);
-            bool okLU = LU.luDecompositionInPlace(ref LUcopy, ref pivot);
+            bool okLU = LU.decompInPlace(ref LUcopy, ref pivot);
             Assert.IsTrue(okLU);
             var xLU = b.Copy();
-            LU.luSolve(ref LUcopy, in pivot, ref xLU);
+            LU.decompSolve(ref LUcopy, in pivot, ref xLU);
             AssertVecEq(in xDense, in xLU, LooseTol());
             pivot.Dispose();
 
@@ -638,10 +638,10 @@ public class doubleSparseSolverTests
             // Direct LU reference on COPIES (luDecompositionInPlace + luSolve are DESTRUCTIVE).
             var LUcopy = A.Copy();
             var pivot = new Pivot(dim, Allocator.Temp);
-            bool okLU = LU.luDecompositionInPlace(ref LUcopy, ref pivot);
+            bool okLU = LU.decompInPlace(ref LUcopy, ref pivot);
             Assert.IsTrue(okLU);
             var xLU = b.Copy();
-            LU.luSolve(ref LUcopy, in pivot, ref xLU);
+            LU.decompSolve(ref LUcopy, in pivot, ref xLU);
             AssertVecEq(in xBcg, in xLU, LooseTol());
             pivot.Dispose();
 
@@ -735,7 +735,7 @@ public class doubleSparseSolverTests
             var A2 = A.Copy();
             var b2 = b.Copy();
             var xQR = arena.doubleVec(n);
-            QR.qrDirectSolve(ref A2, ref b2, ref xQR);
+            QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
             var bsm = DenseToBSR1x1(ref arena, in A, m * n);
@@ -765,7 +765,7 @@ public class doubleSparseSolverTests
             var A2 = A.Copy();
             var b2 = b.Copy();
             var xQR = arena.doubleVec(n);
-            QR.qrDirectSolve(ref A2, ref b2, ref xQR);
+            QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
             var bsm = DenseToBSR1x1(ref arena, in A, m * n);
@@ -965,7 +965,7 @@ public class doubleSparseSolverTests
             var A2 = A.Copy();
             var b2 = b.Copy();
             var xQR = arena.doubleVec(n);
-            QR.qrDirectSolve(ref A2, ref b2, ref xQR);
+            QR.solveInPlace(ref A2, ref b2, ref xQR);
             AssertVecEq(in x, in xQR, LooseTol());
 
             var bsm = DenseToBSR1x1(ref arena, in A, m * n);
@@ -1367,7 +1367,7 @@ public class doubleSparseSolverTests
         {
             var Q = arena.doubleRandomMat(m, n, -1f, 1f, seed);
             var R = arena.doubleMat(n, n);
-            QR.qrDecomposition(ref Q, ref R);           // Q now has orthonormal columns
+            QR.decompInPlace(ref Q, ref R);           // Q now has orthonormal columns
 
             var A = arena.doubleMat(m, n);
             for (int j = 0; j < n; j++)
@@ -1657,7 +1657,7 @@ public class doubleSparseSolverTests
             for (int i = 0; i < n; i++) btil[m + i] = (double)0;
 
             var xref = arena.doubleVec(n);
-            QR.qrDirectSolve(ref Atil, ref btil, ref xref);
+            QR.solveInPlace(ref Atil, ref btil, ref xref);
             return xref;
         }
     }

@@ -10,7 +10,7 @@ namespace LinearAlgebra.Benchmarks
 {
     // QR Householder factorization (also forms Q explicitly). Each Execute copies a pristine source
     // into the working matrix and factors it, so every timed sample does identical work
-    // (qrDecomposition overwrites its input). The O(N^2) copy against an O(N^3) factorization is
+    // (decompInPlace overwrites its input). The O(N^2) copy against an O(N^3) factorization is
     // < 1% for N >= 128 and is included in the reported time.
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -27,7 +27,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
         }
     }
 
@@ -45,7 +45,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
         }
     }
 
@@ -60,7 +60,7 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== QR Householder factorization (time = copy-in + qrDecomposition, forms Q) ===");
+            sb.AppendLine("=== QR Householder factorization (time = copy-in + decompInPlace, forms Q) ===");
             sb.AppendLine(Bench.Header());
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchFloat(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchDouble(n));

@@ -4,7 +4,7 @@ using NUnit.Framework;
 using Unity.Collections;
 
 // Content-correctness tests for the MANAGED-side ToString() of the small info/result structs
-// (SolveInfo / LstsqInfo / DirectSolveInfo / RankRevealingInfo / EigenSolveInfo / LanczosInfo,
+// (SolveInfo / LstsqInfo / DirectSolveInfo / RankInfo / EigenSolveInfo / LanczosInfo,
 // OP/Solvers.Info.cs + OP/Eigen.Info.cs) and the Pivot / Indices permutation types
 // (Pivot/Pivot.cs, Indices/Indices.cs). These types are NOT templated (type-agnostic; their
 // numbers are reported as plain int/double), so this test file is a plain copy-through (no
@@ -106,19 +106,19 @@ public class DebugInfoTests
         Assert.AreEqual("DirectSolveInfo(Singular)", info.ToString());
     }
 
-    // ---------------- RankRevealingInfo (QRCP / pivoted Cholesky) ----------------
+    // ---------------- RankInfo (QRCP / pivoted Cholesky) ----------------
 
     [Test]
-    public void RankRevealingInfo_RankDeficient_ToStringIsExact()
+    public void RankInfo_RankDeficient_ToStringIsExact()
     {
-        var info = new RankRevealingInfo { status = DirectSolveStatus.RankDeficient, rank = 3 };
-        Assert.AreEqual("RankRevealingInfo(RankDeficient, rank=3)", info.ToString());
+        var info = new RankInfo { status = DirectSolveStatus.RankDeficient, rank = 3 };
+        Assert.AreEqual("RankInfo(RankDeficient, rank=3)", info.ToString());
     }
 
     [Test]
-    public void RankRevealingInfo_Success_ToStringCarriesRank()
+    public void RankInfo_Success_ToStringCarriesRank()
     {
-        var info = new RankRevealingInfo { status = DirectSolveStatus.Success, rank = 5 };
+        var info = new RankInfo { status = DirectSolveStatus.Success, rank = 5 };
         string s = info.ToString();
         StringAssert.Contains("Success", s);
         StringAssert.Contains("rank=5", s);
@@ -185,7 +185,7 @@ public class DebugInfoTests
         var solve = new SolveInfo { status = IterativeSolveStatus.Converged, iterations = 1 };
         var lstsq = new LstsqInfo { status = IterativeSolveStatus.MaxIterations, iterations = 2 };
         var direct = new DirectSolveInfo { status = DirectSolveStatus.Success };
-        var rank = new RankRevealingInfo { status = DirectSolveStatus.RankDeficient, rank = 3 };
+        var rank = new RankInfo { status = DirectSolveStatus.RankDeficient, rank = 3 };
         var eigen = new EigenSolveInfo { status = IterativeSolveStatus.Converged, iterations = 4, residual = 1e-9 };
         var lanczos = new LanczosInfo { status = IterativeSolveStatus.Converged, produced = 5 };
 

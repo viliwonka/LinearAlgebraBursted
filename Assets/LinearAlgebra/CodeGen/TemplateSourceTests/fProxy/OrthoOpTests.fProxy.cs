@@ -23,7 +23,7 @@ public class fProxyOrthoOpTests
             var Q = arena.fProxyRandomMat(dim*2, dim);
             var R = arena.fProxyMat(dim);
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             arena.Dispose();
         }
@@ -121,7 +121,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R);
 
@@ -142,7 +142,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
 
             AssertQR(in A, in Q, in R);
@@ -161,7 +161,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R);
 
@@ -179,7 +179,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-05f);
 
@@ -197,7 +197,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-03f);
 
@@ -215,7 +215,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R);
 
@@ -254,7 +254,7 @@ public class fProxyOrthoOpTests
 
                 var A = Q.Copy();
 
-                QR.qrDecomposition(ref Q, ref R);
+                QR.decompInPlace(ref Q, ref R);
 
                 AssertQR(in A, in Q, in R);
             }
@@ -271,7 +271,7 @@ public class fProxyOrthoOpTests
 
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R);
 
@@ -294,7 +294,7 @@ public class fProxyOrthoOpTests
             var R = arena.fProxyMat(n);
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-4f);
 
@@ -319,7 +319,7 @@ public class fProxyOrthoOpTests
             var R = arena.fProxyMat(n);
             var A = Q.Copy();
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-3f);
 
@@ -381,7 +381,7 @@ public class fProxyOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.fProxyMat(dim);
 
-                QR.qrDecomposition(ref Q, ref R);
+                QR.decompInPlace(ref Q, ref R);
 
                 errorSum += ErrorCheckQR(in A, in Q, in R);
 
@@ -462,7 +462,7 @@ public class fProxyOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.fProxyMat(systemDim);
 
-                QR.qrDecomposition(ref Q, ref R);
+                QR.decompInPlace(ref Q, ref R);
 
                 for(uint j = 0; j < randomVecTests; j++) {
 
@@ -470,7 +470,7 @@ public class fProxyOrthoOpTests
                     fProxyN b = Blas.dot(A, xOrig);
                     fProxyN y = Blas.dot(b, Q);
 
-                    Solvers.solveUpperTriangular(ref R, ref y);
+                    Solvers.triUpper(ref R, ref y);
 
                     y.subInPlace(xOrig);
                     fProxy zeroError = Analysis.MaxZeroError(y);
@@ -517,7 +517,7 @@ public class fProxyOrthoOpTests
                 var Q = A.Copy();
                 var R = arena.fProxyMat(sysDimN);
 
-                QR.qrDecomposition(ref Q, ref R);
+                QR.decompInPlace(ref Q, ref R);
 
                 for (uint j = 0; j < randomVecTests; j++) {
 
@@ -525,7 +525,7 @@ public class fProxyOrthoOpTests
                     fProxyN b = Blas.dot(A, xOrig);
                     fProxyN y = Blas.dot(b, Q);
 
-                    Solvers.solveUpperTriangular(ref R, ref y);
+                    Solvers.triUpper(ref R, ref y);
 
                     y.subInPlace(xOrig);
                     fProxy zeroError = Analysis.MaxZeroError(y);
@@ -568,7 +568,7 @@ public class fProxyOrthoOpTests
                 fProxyN b = Blas.dot(A, xOrig);
                 fProxyN x = arena.fProxyVec(systemDim);
 
-                QR.qrDirectSolve(ref A, ref b, ref x);
+                QR.solveInPlace(ref A, ref b, ref x);
 
                 if (Analysis.isAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
@@ -614,7 +614,7 @@ public class fProxyOrthoOpTests
                 fProxyN b = Blas.dot(A, xOrig);
                 fProxyN x = arena.fProxyVec(sysDimN);
 
-                QR.qrDirectSolve(ref A, ref b, ref x);
+                QR.solveInPlace(ref A, ref b, ref x);
 
                 if (Analysis.isAnyNan(in x)) {
                     throw new System.Exception("SolveSystemTestJob: NaN detected");
@@ -822,7 +822,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(dim, dim);
             var Q    = arena.fProxyMat(dim, dim);
-            LQ.lqDecomposition(ref A, ref L, ref Q);
+            LQ.decomp(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-6f);
             arena.Dispose();
         }
@@ -835,7 +835,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(dim, dim);
             var Q    = arena.fProxyMat(dim, dim);
-            LQ.lqDecomposition(ref A, ref L, ref Q);
+            LQ.decomp(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -848,7 +848,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(m, m);
             var Q    = arena.fProxyMat(m, n);
-            LQ.lqDecomposition(ref A, ref L, ref Q);
+            LQ.decomp(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -861,7 +861,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(m, m);
             var Q    = arena.fProxyMat(m, n);
-            LQ.lqDecomposition(ref A, ref L, ref Q);
+            LQ.decomp(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -877,7 +877,7 @@ public class fProxyOrthoOpTests
             var origA = A.Copy();
             var L    = arena.fProxyMat(m, m);
             var Q    = arena.fProxyMat(m, n);
-            LQ.lqDecomposition(ref A, ref L, ref Q);
+            LQ.decomp(ref A, ref L, ref Q);
             AssertLQ(in origA, in L, in Q, 1E-4f);
             arena.Dispose();
         }
@@ -905,7 +905,7 @@ public class fProxyOrthoOpTests
             var L = arena.fProxyMat(m, m);
             var Q = arena.fProxyMat(m, n);
 
-            LQ.lqDecomposition(ref A, ref L, ref Q);
+            LQ.decomp(ref A, ref L, ref Q);
 
             AssertLQ(in origA, in L, in Q, 1E-2f);
 
@@ -987,7 +987,7 @@ public class fProxyOrthoOpTests
             Blas.dot(in A, in xTrue, ref b);
             // solve
             var x = arena.fProxyVec(n);
-            LQ.lqMinNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -1003,7 +1003,7 @@ public class fProxyOrthoOpTests
             var b = arena.fProxyVec(m);
             Blas.dot(in A, in xTrue, ref b);
             var x = arena.fProxyVec(n);
-            LQ.lqMinNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -1019,7 +1019,7 @@ public class fProxyOrthoOpTests
             var b = arena.fProxyVec(m);
             Blas.dot(in A, in xTrue, ref b);
             var x = arena.fProxyVec(n);
-            LQ.lqMinNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(ref A, ref b, ref x);
             AssertClose(in x, in xTrue, 1E-4f);
             arena.Dispose();
         }
@@ -1032,7 +1032,7 @@ public class fProxyOrthoOpTests
             var A = arena.fProxyRandomMat(m, n, -2f, 2f, 77777);
             var b = arena.fProxyRandomVec(m, -1f, 1f, 88888);
             var x = arena.fProxyVec(n);
-            LQ.lqMinNormSolve(ref A, ref b, ref x);
+            LQ.minNormSolve(ref A, ref b, ref x);
             // residual = A x - b
             var Ax   = arena.fProxyVec(m);
             Blas.dot(in A, in x, ref Ax);

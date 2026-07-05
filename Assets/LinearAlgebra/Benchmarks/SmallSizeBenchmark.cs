@@ -43,7 +43,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
         }
     }
 
@@ -61,18 +61,18 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
         }
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SmallLQJobFloat : IJob
     {
-        public floatMxN A;     // m x n (m <= n); not modified by lqDecomposition
+        public floatMxN A;     // m x n (m <= n); not modified by LQ.decomp
         public floatMxN L;     // m x m
         public floatMxN Q;     // m x n
 
-        public void Execute() => LQ.lqDecomposition(ref A, ref L, ref Q);
+        public void Execute() => LQ.decomp(ref A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -82,7 +82,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN L;
         public doubleMxN Q;
 
-        public void Execute() => LQ.lqDecomposition(ref A, ref L, ref Q);
+        public void Execute() => LQ.decomp(ref A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -91,7 +91,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN A;
         public floatMxN L;
 
-        public void Execute() => Cholesky.choleskyDecomposition(in A, ref L);
+        public void Execute() => CHO.decomp(in A, ref L);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -100,7 +100,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN A;
         public doubleMxN L;
 
-        public void Execute() => Cholesky.choleskyDecomposition(in A, ref L);
+        public void Execute() => CHO.decomp(in A, ref L);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -118,7 +118,7 @@ namespace LinearAlgebra.Benchmarks
                     U[r, c] = Src[r, c];
 
             var P = new Pivot(rows, Allocator.Temp);
-            LU.luDecomposition(ref U, ref L, ref P);
+            LU.decompInPlace(ref U, ref L, ref P);
             P.Dispose();
         }
     }
@@ -138,7 +138,7 @@ namespace LinearAlgebra.Benchmarks
                     U[r, c] = Src[r, c];
 
             var P = new Pivot(rows, Allocator.Temp);
-            LU.luDecomposition(ref U, ref L, ref P);
+            LU.decompInPlace(ref U, ref L, ref P);
             P.Dispose();
         }
     }
@@ -162,37 +162,37 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== Small square QR (qrDecomposition, time = copy-in + factor; blocked path kicks in only at N>=64) ===");
+            sb.AppendLine("=== Small square QR (QR.decompInPlace, time = copy-in + factor; blocked path kicks in only at N>=64) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("float", n, QRFloat(n, n)));
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("double", n, QRDouble(n, n)));
             sb.AppendLine();
 
-            sb.AppendLine("=== Tall QR (qrDecomposition, m x n, m > n; forms thin Q; spans the N_Cols>=64 gate - n=32 unblocked, n=64 already blocked) ===");
+            sb.AppendLine("=== Tall QR (QR.decompInPlace, m x n, m > n; forms thin Q; spans the N_Cols>=64 gate - n=32 unblocked, n=64 already blocked) ===");
             sb.AppendLine(HeaderTimeShape());
             for (int i = 0; i < TallM.Length; i++) sb.AppendLine(RowTimeShape("float", TallM[i], TallN[i], QRFloat(TallM[i], TallN[i])));
             for (int i = 0; i < TallM.Length; i++) sb.AppendLine(RowTimeShape("double", TallM[i], TallN[i], QRDouble(TallM[i], TallN[i])));
             sb.AppendLine();
 
-            sb.AppendLine("=== Small square LQ (lqDecomposition; blocked path kicks in only at M_Rows>=512) ===");
+            sb.AppendLine("=== Small square LQ (LQ.decomp; blocked path kicks in only at M_Rows>=512) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("float", n, LQFloat(n, n)));
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("double", n, LQDouble(n, n)));
             sb.AppendLine();
 
-            sb.AppendLine("=== Wide LQ (lqDecomposition, m x n, n > m; all far below the M_Rows>=512 gate) ===");
+            sb.AppendLine("=== Wide LQ (LQ.decomp, m x n, n > m; all far below the M_Rows>=512 gate) ===");
             sb.AppendLine(HeaderTimeShape());
             for (int i = 0; i < WideM.Length; i++) sb.AppendLine(RowTimeShape("float", WideM[i], WideN[i], LQFloat(WideM[i], WideN[i])));
             for (int i = 0; i < WideM.Length; i++) sb.AppendLine(RowTimeShape("double", WideM[i], WideN[i], LQDouble(WideM[i], WideN[i])));
             sb.AppendLine();
 
-            sb.AppendLine("=== Small square Cholesky (choleskyDecomposition, SPD input; blocked path kicks in only at N>=256) ===");
+            sb.AppendLine("=== Small square Cholesky (CHO.decomp, SPD input; blocked path kicks in only at N>=256) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("float", n, CholFloat(n)));
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("double", n, CholDouble(n)));
             sb.AppendLine();
 
-            sb.AppendLine("=== Small square LU (luDecomposition, partial pivoting; blocked path kicks in only at N>=256) ===");
+            sb.AppendLine("=== Small square LU (LU.decompInPlace, partial pivoting; blocked path kicks in only at N>=256) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("float", n, LUFloat(n)));
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("double", n, LUDouble(n)));

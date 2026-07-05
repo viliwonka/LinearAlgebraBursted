@@ -28,7 +28,7 @@ namespace LinearAlgebra
             UnityEngine.Debug.Log($"{str}");
         }
 
-        public static void Log(in RankRevealingInfo info)
+        public static void Log(in RankInfo info)
         {
             FixedString128Bytes str = info.ToFixedString();
             UnityEngine.Debug.Log($"{str}");

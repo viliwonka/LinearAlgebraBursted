@@ -4,7 +4,7 @@ namespace LinearAlgebra
 {
     public static partial class SVD
     {
-        /// <summary>Throws unless <paramref name="ws"/> matches Arena.fProxySVDThinCache(m, n) sizing (BidiagWs is validated separately, by bidiagonalize itself).</summary>
+        /// <summary>Throws unless <paramref name="ws"/> matches Arena.fProxySVDThinCache(m, n) sizing (BidiagWs is validated separately, by Bidiag.decomp itself).</summary>
         static void RequireSvdThinWorkspace(in fProxySVDThinCache ws, int m, int n)
         {
             bool ok =
@@ -19,15 +19,15 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Reusable scratch for SVD.svdThin (Golub-Kahan bidiagonalization + implicit-shift bidiagonal QR).
+    /// Reusable scratch for SVD.thin (Golub-Kahan bidiagonalization + implicit-shift bidiagonal QR).
     /// Allocate ONCE (sized for the matrix shape) via Arena.fProxySVDThinCache(m, n) and reuse it across
-    /// many same-shape calls to avoid the per-call Allocator.Temp allocations svdThin's allocating
+    /// many same-shape calls to avoid the per-call Allocator.Temp allocations thin's allocating
     /// overload makes internally.
     ///
-    /// BidiagWs is the nested workspace Bidiag.bidiagonalize needs (see fProxyBidiagCache); B (n x n) is
+    /// BidiagWs is the nested workspace Bidiag.decomp needs (see fProxyBidiagCache); B (n x n) is
     /// the bidiagonal factor; dVec/eVec (length n) are the diagonal/superdiagonal the bidiagonal QR
     /// diagonalizes; Ut (n x m) / Vt (n x n) are the transposed accumulators the QR sweep rotates
-    /// (unit-stride rows, same trick as eigenSymmetric/svdDecomposition).
+    /// (unit-stride rows, same trick as Eigen.symmetric/svdDecomposition).
     /// </summary>
     public struct fProxySVDThinCache
     {
@@ -42,9 +42,9 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates an svdThin workspace for an m x n (m >= n) system — see
+        /// Allocates an thin workspace for an m x n (m >= n) system — see
         /// <see cref="fProxySVDThinCache"/> for layout. Persistent in this arena; create once outside a
-        /// hot loop and pass to svdThin's ref-workspace overload.
+        /// hot loop and pass to thin's ref-workspace overload.
         /// </summary>
         public static fProxySVDThinCache fProxySVDThinCache(this ref Arena arena, int m, int n)
         {

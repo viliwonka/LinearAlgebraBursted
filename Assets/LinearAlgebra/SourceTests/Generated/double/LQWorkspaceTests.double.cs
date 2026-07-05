@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Phase-2 solver-workspace tests for LQ: the caller-provided-scratch overloads
-// (lqDecomposition(...,ref doubleLQCache) / lqMinNormSolve(...,ref doubleLQMinNormSolveCache)) must
+// (decomp(...,ref doubleLQCache) / minNormSolve(...,ref doubleLQMinNormCache)) must
 // produce results identical to the allocating wrappers (they run the SAME kernel), and a mis-sized/
 // reused workspace must behave correctly (throw on bad size, produce identical results across reuse).
 public class doubleLQWorkspaceTests
@@ -52,14 +52,14 @@ public class doubleLQWorkspaceTests
             var Aa = A0.Copy();
             var La = arena.doubleMat(m, m);
             var Qa = arena.doubleMat(m, n);
-            LQ.lqDecomposition(ref Aa, ref La, ref Qa);
+            LQ.decomp(ref Aa, ref La, ref Qa);
 
             // workspace-struct form must match the allocating form
             var Ab = A0.Copy();
             var Lb = arena.doubleMat(m, m);
             var Qb = arena.doubleMat(m, n);
             var ws = arena.doubleLQCache(m, n);
-            LQ.lqDecomposition(ref Ab, ref Lb, ref Qb, ref ws);
+            LQ.decomp(ref Ab, ref Lb, ref Qb, ref ws);
 
             Assert.IsTrue(Analysis.isZero(La - Lb, Tol()));
             Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
@@ -79,12 +79,12 @@ public class doubleLQWorkspaceTests
 
             var Aa = A0.Copy();
             var xa = arena.doubleVec(n);
-            LQ.lqMinNormSolve(ref Aa, ref b, ref xa);
+            LQ.minNormSolve(ref Aa, ref b, ref xa);
 
             var Ab = A0.Copy();
             var xb = arena.doubleVec(n);
-            var ws = arena.doubleLQMinNormSolveCache(m, n);
-            LQ.lqMinNormSolve(ref Ab, ref b, ref xb, ref ws);
+            var ws = arena.doubleLQMinNormCache(m, n);
+            LQ.minNormSolve(ref Ab, ref b, ref xb, ref ws);
 
             Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
 
@@ -99,7 +99,7 @@ public class doubleLQWorkspaceTests
             int m = 4, n = 8;
 
             var lqWs = arena.doubleLQCache(m, n);                     // allocated ONCE, reused below
-            var solveWs = arena.doubleLQMinNormSolveCache(m, n);      // allocated ONCE, reused below
+            var solveWs = arena.doubleLQMinNormCache(m, n);      // allocated ONCE, reused below
 
             for (int t = 0; t < 3; t++)
             {
@@ -111,12 +111,12 @@ public class doubleLQWorkspaceTests
                 var Aa = A0.Copy();
                 var La = arena.doubleMat(m, m);
                 var Qa = arena.doubleMat(m, n);
-                LQ.lqDecomposition(ref Aa, ref La, ref Qa);
+                LQ.decomp(ref Aa, ref La, ref Qa);
 
                 var Aw = A0.Copy();
                 var Lw = arena.doubleMat(m, m);
                 var Qw = arena.doubleMat(m, n);
-                LQ.lqDecomposition(ref Aw, ref Lw, ref Qw, ref lqWs);
+                LQ.decomp(ref Aw, ref Lw, ref Qw, ref lqWs);
 
                 Assert.IsTrue(Analysis.isZero(La - Lw, Tol()));
                 Assert.IsTrue(Analysis.isZero(Qa - Qw, Tol()));
@@ -126,11 +126,11 @@ public class doubleLQWorkspaceTests
 
                 var Asa = A0.Copy();
                 var xa = arena.doubleVec(n);
-                LQ.lqMinNormSolve(ref Asa, ref b, ref xa);
+                LQ.minNormSolve(ref Asa, ref b, ref xa);
 
                 var Asw = A0.Copy();
                 var xw = arena.doubleVec(n);
-                LQ.lqMinNormSolve(ref Asw, ref b, ref xw, ref solveWs);
+                LQ.minNormSolve(ref Asw, ref b, ref xw, ref solveWs);
 
                 Assert.IsTrue(Analysis.isZero(xa - xw, Tol()));
             }
@@ -160,7 +160,7 @@ public class doubleLQWorkspaceTests
             var Q = arena.doubleMat(4, 8);
             var ws = arena.doubleLQCache(4, 8);
             ws.W = arena.doubleMat(3, 8);   // wrong: must be m x n = 4 x 8
-            Assert.Throws<ArgumentException>(() => LQ.lqDecomposition(ref A, ref L, ref Q, ref ws));
+            Assert.Throws<ArgumentException>(() => LQ.decomp(ref A, ref L, ref Q, ref ws));
         }
         finally { arena.Dispose(); }
     }
@@ -176,7 +176,7 @@ public class doubleLQWorkspaceTests
             var Q = arena.doubleMat(4, 8);
             var ws = arena.doubleLQCache(4, 8);
             ws.v = arena.doubleVec(5);    // wrong: must be length n = 8
-            Assert.Throws<ArgumentException>(() => LQ.lqDecomposition(ref A, ref L, ref Q, ref ws));
+            Assert.Throws<ArgumentException>(() => LQ.decomp(ref A, ref L, ref Q, ref ws));
         }
         finally { arena.Dispose(); }
     }
@@ -190,14 +190,14 @@ public class doubleLQWorkspaceTests
             var A = arena.doubleMat(4, 8);
             var b = arena.doubleVec(4);
             var x = arena.doubleVec(8);
-            var ws = arena.doubleLQMinNormSolveCache(4, 8);
+            var ws = arena.doubleLQMinNormCache(4, 8);
             ws.L = arena.doubleMat(3, 3);   // wrong: must be m x m = 4 x 4
-            Assert.Throws<ArgumentException>(() => LQ.lqMinNormSolve(ref A, ref b, ref x, ref ws));
+            Assert.Throws<ArgumentException>(() => LQ.minNormSolve(ref A, ref b, ref x, ref ws));
         }
         finally { arena.Dispose(); }
     }
 
-    // Arena.doubleLQCache(m, n) / doubleLQMinNormSolveCache(m, n) must size every field for m x n.
+    // Arena.doubleLQCache(m, n) / doubleLQMinNormCache(m, n) must size every field for m x n.
     [Test]
     public void LQWorkspace_Factory_SizesCorrectly()
     {
@@ -209,7 +209,7 @@ public class doubleLQWorkspaceTests
             Assert.AreEqual(8, lqWs.W.N_Cols);
             Assert.AreEqual(8, lqWs.v.N);
 
-            var solveWs = arena.doubleLQMinNormSolveCache(4, 8);
+            var solveWs = arena.doubleLQMinNormCache(4, 8);
             Assert.AreEqual(4, solveWs.L.M_Rows);
             Assert.AreEqual(4, solveWs.L.N_Cols);
             Assert.AreEqual(4, solveWs.Q.M_Rows);

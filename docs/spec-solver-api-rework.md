@@ -52,15 +52,16 @@ solveInPlace  (ref A_to_LU, ref Pivot P, ref b_to_x)       // NEW: decompInPlace
 ```
 `luDecompositionNoPivot` → `decompNoPivot` (same safe-A treatment) — see OQ-6.
 
-### Cholesky
+### CHO (Cholesky, class RENAMED — joins the caps family QR/LU/SVD; SciPy `cho_` precedent)
 ```
-decomp        (in A, ref L)                                // rename; already safe; L-aliases-A stays documented (OQ-3)
+decomp        (in A, ref L)                                // rename; already safe
+decompInPlace (ref A_to_L)                                 // NEW explicit method (OQ-3); replaces the documented aliasing trick
 decompSolve   (ref L, ref b_to_x)                          // = choleskySolve(ref L, ref b)
-solveInPlace  (ref A_to_L, ref b_to_x)                     // NEW (POSV): aliasing decomp + decompSolve; zero scratch; exits usable
+solveInPlace  (ref A_to_L, ref b_to_x)                     // NEW (POSV): decompInPlace + decompSolve; zero scratch; exits usable
 ```
 DELETE `choleskySolve(in A, ref L, ref b)` (2-line composition in disguise).
 
-### CholeskyPivot (NEW CLASS — split from Cholesky)
+### CHOP (pivoted Cholesky, NEW CLASS — split from Cholesky; CHO + Pivot)
 ```
 decomp        (in A, ref L, ref Pivot P[, relTol])         // = choleskyDecompositionPivot; returns RankRevealingInfo
 decompSolve   (ref L, in Pivot P, int rank, ref b_to_x[, relTol]) // = choleskyPivotSolve(ref L,...)
@@ -108,7 +109,7 @@ minNormSolve  (ref A, ref b, ref x[, ref ws])              // unchanged semantic
    with `uninit: true`." (Verified true today; promote from incidental to guaranteed.)
 2. Iterative-solver `ref x`: "initial guess (warm start); overwritten with solution."
    (Mostly documented already; make uniform.)
-3. `solveInPlace` exits: usable-factors families (LU/Cholesky/CholeskyPivot/QRCP) document
+3. `solveInPlace` exits: usable-factors families (LU/CHO/CHOP/QRCP) document
    "A holds the factorization on return; valid input to decompSolve." QR documents destroyed.
 4. `InPlace` token definition goes into docs/naming-style-guide.md.
 
@@ -137,7 +138,7 @@ it (OQ-7).
 
 - Mechanical: rename sweep across TemplateSourceTests; regen; suite must stay green (4575).
 - New tests: (a) `decomp` preserves A (LU/QR/QRCP — the behavior changes); (b) `solveInPlace`
-  exits are valid factors (LU/Cholesky/CholeskyPivot/QRCP: follow-up decompSolve matches
+  exits are valid factors (LU/CHO/CHOP/QRCP: follow-up decompSolve matches
   fresh solve bit-for-bit); (c) uninit-x contract (fill x with NaN sentinel, solve, assert
   clean result — direct solvers only); (d) QRCP.solveInPlace result bit-identical to old
   qrcpDirectSolve on full-rank + rank-deficient cases.
@@ -146,17 +147,17 @@ it (OQ-7).
 
 ## Commit plan
 
-1. Mechanical renames + class splits (QRCP, CholeskyPivot) + param renames + SVD/Eigen
-   bare-name sweep + doc contracts. Pure-composition/trap deletions land here too
-   (`Solvers.solveQR(A,b,x)` alias, `choleskySolve(in A, ref L, ref b)` — call sites
-   rewritten to the explicit composition). No semantic change to surviving methods.
-   Suite green. NOTE transitional state: `QRCP.solveInPlace` keeps the old (copying)
-   signature in this commit; its name matches semantics only after commit 2.
+1. Mechanical renames + class splits (QRCP, CHOP) + Cholesky class rename to CHO + param
+   renames + SVD/Eigen bare-name sweep + doc contracts. Pure-composition/trap deletions
+   land here too (`Solvers.solveQR(A,b,x)` alias, `choleskySolve(in A, ref L, ref b)` —
+   call sites rewritten to the explicit composition). No semantic change to surviving
+   methods. Suite green. NOTE transitional state: `QRCP.solveInPlace` keeps the old
+   (copying) signature in this commit; its name matches semantics only after commit 2.
    Destructive `luDecomposition(ref U, ref L, ref P)` transitionally becomes a
    `decompInPlace(ref A_to_U, ref L, ref P)` overload (arity-distinct from compact form);
    deleted in commit 2.
 2. Behavior changes: safe `decomp` variants (LU/QR/QRCP) + remaining deletions + new
-   `solveInPlace` drivers (LU/Cholesky/CholeskyPivot) + explicit `Cholesky.decompInPlace`
+   `solveInPlace` drivers (LU/CHO/CHOP) + explicit `CHO.decompInPlace`
    + QRCP no-copy optimization. New tests. Also delete the [Obsolete] Jacobi
    `svdDecomposition` (pre-release, no shims policy).
 3. `fProxyQRCache` + level-3 on zero-alloc path. Benchmark re-run.
@@ -184,3 +185,33 @@ it (OQ-7).
 - **OQ-8 (lqMinNormSolve destructive variant)**: ✅ deferred.
 - **OQ-9 (migration)**: ✅ hard rename, no [Obsolete] shims.
 - **OQ-10 (multi-RHS)**: ✅ deferred to a future spec, after this rework lands.
+- **OQ-11 (class names, added post-approval)**: ✅ `Cholesky` → **`CHO`**, pivoted class =
+  **`CHOP`** (user decision; SciPy `cho_` precedent; joins the ≤3-letter caps class family
+  QR/LU/LQ/SVD/BSR/FFT — with CHOP as the 4-letter compound CHO+Pivot).
+- **OQ-12 (wider echo sweep, added post-approval)**: ✅ user approved these commit-1
+  additions: PCA gets the `fit` verb + route (`pcaCovariance`→`fitCov`, `pcaSVD`→`fitSvd`,
+  `pcaSVDTruncated`→`fitSvdTruncated`, `pcaRandomized`→`fitRandomized`,
+  `pcaTransform`→`transform`) — bare route names were rejected because `PCA.covariance`
+  would collide conceptually with `Stats.covariance`; mid-name acronyms are lowerCamel
+  (`fitSvd` not `fitSVD`);
+  Rand strips `random`/`randomMatrix` (`orthogonal[InPlace]`, `spd[InPlace]`,
+  `stochastic[InPlace]`, `conditioned[InPlace]`, `withRank[InPlace]`; `next*` methods are
+  the Unity idiom, not echoes — keep); Bidiag joins the grid (`bidiagonalize`→`decomp`,
+  `bidiagonalizeValues`→`values`, tokened to current mutation semantics);
+  `Norms.NormalizeColumns`→`normalizeColumns` (casing bug); Solvers triangular primitives
+  `solveUpperTriangular`→`triUpper`, `solveLowerTriangular`→`triLower` (+`LU` variants);
+  `RankRevealingInfo`→`RankInfo`; `fProxyLQMinNormSolveCache`→`fProxyLQMinNormCache`.
+  `KMeans.kmeans`→`KMeans.fit` (sklearn precedent — the rename GAINS familiarity).
+  KEPT: FFT family `fft`/`ifft`/`rfft`/`irfft`/`dft`/`idft` (single FFT class, no DFT
+  split — the literature tokens beat any descriptive rename; `rfft` has no searchable
+  "forward"-style equivalent, and fft-vs-dft method names carry the algorithm
+  distinction), `LOBPCG.lobpcg` (scipy precedent),
+  `Eigen.powerIteration`/`inversePowerIteration` (algorithm proper names), Query's
+  descriptive names, `multivariateNormal`. `Eigen.eigenDecomposition`→`Eigen.decomp`
+  (grid token, not bare `decomposition`).
+  CLASS-CASING RULE (→ style guide): all-caps only for literature-recognized
+  acronyms/initialisms (QR, LU, LQ, SVD, BSR, FFT, LOBPCG, CHO, CHOP, QRCP); truncated
+  words stay Pascal (Rand, Bidiag, Blas, Comp). Also for the style guide: `InPlace` has
+  two documented senses — solvers ("input storage is the workspace, consumed") and
+  fill-methods ("writes into caller buffer instead of allocating"); both are "operates
+  in your storage".

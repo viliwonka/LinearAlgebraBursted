@@ -29,7 +29,7 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Outcome of a DIRECT (non-iterative, factorization-based) solver call, carried by the result
-    /// structs <see cref="DirectSolveInfo"/> / <see cref="RankRevealingInfo"/>. Mirrors
+    /// structs <see cref="DirectSolveInfo"/> / <see cref="RankInfo"/>. Mirrors
     /// <see cref="IterativeSolveStatus"/>'s role for the Krylov solvers: their <c>Solved</c>
     /// convenience property (and implicit bool conversion) means <c>if (solver(...))</c> keeps
     /// reading as "did it succeed" while the enum preserves WHY a factorization failed. Type-agnostic
@@ -58,14 +58,14 @@ namespace LinearAlgebra
 
         /// <summary>A rank-revealing factorization (QRCP, pivoted Cholesky) completed but detected
         /// numerical rank below the full dimension. Unlike the other failure statuses, this still
-        /// carries a USABLE result -- see <see cref="RankRevealingInfo"/>.</summary>
+        /// carries a USABLE result -- see <see cref="RankInfo"/>.</summary>
         RankDeficient = 4,
     }
 
     /// <summary>
     /// Burst-safe enum-to-name helpers for <see cref="IterativeSolveStatus"/> and
     /// <see cref="DirectSolveStatus"/>, used by every *_Info.ToFixedString() (<c>SolveInfo</c> /
-    /// <c>LstsqInfo</c> / <c>DirectSolveInfo</c> / <c>RankRevealingInfo</c> / <c>EigenSolveInfo</c> /
+    /// <c>LstsqInfo</c> / <c>DirectSolveInfo</c> / <c>RankInfo</c> / <c>EigenSolveInfo</c> /
     /// <c>LanczosInfo</c>). A manual <c>switch</c> returning a <see cref="FixedString32Bytes"/>
     /// literal per case -- <c>enum.ToString()</c> is NOT Burst-legal.
     /// </summary>

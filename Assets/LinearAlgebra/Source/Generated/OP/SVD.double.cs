@@ -29,7 +29,7 @@ namespace LinearAlgebra
         /// instead of strided columns).
         /// </summary>
         /// <remarks>Deprecated; see the [Obsolete] message below for the preferred replacement.</remarks>
-        [System.Obsolete("Prefer SVD.svdThin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
+        [System.Obsolete("Prefer SVD.thin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.values for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref doubleMxN U, ref doubleN S, ref doubleMxN V,
                                             int maxSweeps, double eps)
         {
@@ -202,13 +202,13 @@ namespace LinearAlgebra
         // self-referential obsolete warning (618) on the forwarding calls.
 #pragma warning disable 618
         /// <summary>svdDecomposition with default eps (Consts.doubleZeroThreshold).</summary>
-        [System.Obsolete("Prefer SVD.svdThin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
+        [System.Obsolete("Prefer SVD.thin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.values for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref doubleMxN U, ref doubleN S, ref doubleMxN V,
                                             int maxSweeps)
             => svdDecomposition(ref U, ref S, ref V, maxSweeps, Consts.doubleZeroThreshold);
 
         /// <summary>svdDecomposition with default maxSweeps (30) and eps (Consts.doubleZeroThreshold).</summary>
-        [System.Obsolete("Prefer SVD.svdThin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.svdValues for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
+        [System.Obsolete("Prefer SVD.thin (Golub-Kahan, ~3x faster) for the full SVD, or SVD.values for singular values only. This one-sided Jacobi SVD is retained for reference.", false)]
         public static bool svdDecomposition(ref doubleMxN U, ref doubleN S, ref doubleMxN V)
             => svdDecomposition(ref U, ref S, ref V, 30, Consts.doubleZeroThreshold);
 #pragma warning restore 618
@@ -216,7 +216,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Singular VALUES only of A (m x n, m >= n), via the Golub-Kahan bidiagonal path: reduce A to
         /// upper bidiagonal form with Householder reflectors (NOT forming U/V) and diagonalize the
-        /// bidiagonal with the rotation-free implicit-shift QR. Like the full svdThin it operates
+        /// bidiagonal with the rotation-free implicit-shift QR. Like the full thin it operates
         /// on A directly, so it keeps the condition number κ(A) (not κ(A)²) — small singular values are
         /// not lost — but it skips ALL the orthogonal-factor work, making it the fast values-only path.
         ///
@@ -224,19 +224,19 @@ namespace LinearAlgebra
         /// descending and non-negative. Returns the convergence flag of the bidiagonal QR. Allocates an
         /// O(mn) Temp workspace.
         /// </summary>
-        public static bool svdValues(in doubleMxN A, ref doubleN S, int maxIter, double eps)
+        public static bool values(in doubleMxN A, ref doubleN S, int maxIter, double eps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("svdValues: A must have m >= n (more rows than columns)");
+                throw new ArgumentException("values: A must have m >= n (more rows than columns)");
             if (S.N != n)
-                throw new ArgumentException("svdValues: S.N must equal A.N_Cols");
+                throw new ArgumentException("values: S.N must equal A.N_Cols");
             if (maxIter < 1)
-                throw new ArgumentException("svdValues: maxIter must be >= 1");
+                throw new ArgumentException("values: maxIter must be >= 1");
             if (eps <= (double)0)
-                throw new ArgumentException("svdValues: eps must be > 0");
+                throw new ArgumentException("values: eps must be > 0");
 
             if (n == 0)
                 return true;
@@ -244,7 +244,7 @@ namespace LinearAlgebra
             var dVec = new doubleN(n, Allocator.Temp, false);
             var eVec = new doubleN(n, Allocator.Temp, false);
 
-            Bidiag.bidiagonalizeValues(in A, ref dVec, ref eVec);
+            Bidiag.values(in A, ref dVec, ref eVec);
             bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIter);
 
             if (ok)
@@ -271,28 +271,28 @@ namespace LinearAlgebra
             return ok;
         }
 
-        /// <summary>svdValues with default maxIter (75) and eps (Consts.doubleZeroThreshold).</summary>
-        public static bool svdValues(in doubleMxN A, ref doubleN S)
-            => svdValues(in A, ref S, 75, Consts.doubleZeroThreshold);
+        /// <summary>values with default maxIter (75) and eps (Consts.doubleZeroThreshold).</summary>
+        public static bool values(in doubleMxN A, ref doubleN S)
+            => values(in A, ref S, 75, Consts.doubleZeroThreshold);
 
         /// <summary>
-        /// svdValues using a reusable workspace (Arena.doubleSVDValuesCache(m, n)) — zero-alloc.
+        /// values using a reusable workspace (Arena.doubleSVDValuesCache(m, n)) — zero-alloc.
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
-        public static bool svdValues(in doubleMxN A, ref doubleN S, ref doubleSVDValuesCache ws,
+        public static bool values(in doubleMxN A, ref doubleN S, ref doubleSVDValuesCache ws,
                                      int maxIter, double eps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("svdValues: A must have m >= n (more rows than columns)");
+                throw new ArgumentException("values: A must have m >= n (more rows than columns)");
             if (S.N != n)
-                throw new ArgumentException("svdValues: S.N must equal A.N_Cols");
+                throw new ArgumentException("values: S.N must equal A.N_Cols");
             if (maxIter < 1)
-                throw new ArgumentException("svdValues: maxIter must be >= 1");
+                throw new ArgumentException("values: maxIter must be >= 1");
             if (eps <= (double)0)
-                throw new ArgumentException("svdValues: eps must be > 0");
+                throw new ArgumentException("values: eps must be > 0");
             RequireSvdValuesWorkspace(in ws, n);
 
             if (n == 0)
@@ -301,7 +301,7 @@ namespace LinearAlgebra
             var dVec = ws.dVec;
             var eVec = ws.eVec;
 
-            Bidiag.bidiagonalizeValues(in A, ref dVec, ref eVec, ref ws.BidiagWs);
+            Bidiag.values(in A, ref dVec, ref eVec, ref ws.BidiagWs);
             bool ok = bidiagonalQRValues(ref dVec, ref eVec, n, maxIter);
 
             if (ok)
@@ -326,9 +326,9 @@ namespace LinearAlgebra
             return ok;
         }
 
-        /// <summary>svdValues (workspace) with default maxIter (75) and eps (Consts.doubleZeroThreshold).</summary>
-        public static bool svdValues(in doubleMxN A, ref doubleN S, ref doubleSVDValuesCache ws)
-            => svdValues(in A, ref S, ref ws, 75, Consts.doubleZeroThreshold);
+        /// <summary>values (workspace) with default maxIter (75) and eps (Consts.doubleZeroThreshold).</summary>
+        public static bool values(in doubleMxN A, ref doubleN S, ref doubleSVDValuesCache ws)
+            => values(in A, ref S, ref ws, 75, Consts.doubleZeroThreshold);
 
         // pythag(a,b) = sqrt(a^2 + b^2) without destructive under/overflow.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -360,38 +360,38 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Full SVD A = U * diag(S) * Vᵀ via Golub-Kahan: Householder bidiagonalization
-        /// (Bidiag.bidiagonalize) followed by the implicit-shift bidiagonal QR (Golub-Reinsch).
+        /// (Bidiag.decomp) followed by the implicit-shift bidiagonal QR (Golub-Reinsch).
         /// A (m x n, m >= n) is NOT modified. On output U (m x n) has orthonormal columns (left
         /// singular vectors), S (length n) the singular values (non-negative, DESCENDING), and V
         /// (n x n, NOT transposed) the right singular vectors. Returns true on convergence; false if
         /// the bidiagonal QR hit maxIter (outputs then undefined). Allocates an n x n + 2*n Temp
-        /// workspace (plus whatever Bidiag.bidiagonalize uses). For m &lt; n, transpose A and swap U/V.
+        /// workspace (plus whatever Bidiag.decomp uses). For m &lt; n, transpose A and swap U/V.
         /// </summary>
-        public static bool svdThin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
+        public static bool thin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
                                    int maxIter, double eps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("svdThin: A must have m >= n (more rows than columns)");
+                throw new ArgumentException("thin: A must have m >= n (more rows than columns)");
             if (U.M_Rows != m || U.N_Cols != n)
-                throw new ArgumentException("svdThin: U must be m x n");
+                throw new ArgumentException("thin: U must be m x n");
             if (S.N != n)
-                throw new ArgumentException("svdThin: S.N must equal A.N_Cols");
+                throw new ArgumentException("thin: S.N must equal A.N_Cols");
             if (!V.IsSquare || V.M_Rows != n)
-                throw new ArgumentException("svdThin: V must be square with side equal to A.N_Cols");
+                throw new ArgumentException("thin: V must be square with side equal to A.N_Cols");
             if (maxIter < 1)
-                throw new ArgumentException("svdThin: maxIter must be >= 1");
+                throw new ArgumentException("thin: maxIter must be >= 1");
             if (eps <= (double)0)
-                throw new ArgumentException("svdThin: eps must be > 0");
+                throw new ArgumentException("thin: eps must be > 0");
 
             if (n == 0)
                 return true;
 
             // Phase 1: A = U * B * Vᵀ, B upper bidiagonal.
             var B = new doubleMxN(n, n, Allocator.Temp, false);
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+            Bidiag.decomp(in A, ref U, ref B, ref V);
 
             // Extract the bidiagonal in NR convention: d = diagonal, e the superdiagonal with
             // e[0] = 0 and e[i] = B[i-1, i] for i = 1..n-1.
@@ -404,7 +404,7 @@ namespace LinearAlgebra
 
             // Transpose U (m x n) -> Ut (n x m) and V (n x n) -> Vt (n x n) so the bidiagonal QR's
             // plane rotations hit CONTIGUOUS rows (unit-stride, SIMD via UnsafeOP.jacobiRotate)
-            // instead of strided columns — same trick that vectorized eigenSymmetric / svdDecomposition.
+            // instead of strided columns — same trick that vectorized Eigen.symmetric / svdDecomposition.
             bool ok;
             {
                 var Ut = new doubleMxN(n, m, Allocator.Temp, false);
@@ -456,38 +456,38 @@ namespace LinearAlgebra
             return ok;
         }
 
-        /// <summary>svdThin with default eps (Consts.doubleZeroThreshold).</summary>
-        public static bool svdThin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
+        /// <summary>thin with default eps (Consts.doubleZeroThreshold).</summary>
+        public static bool thin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
                                    int maxIter)
-            => svdThin(in A, ref U, ref S, ref V, maxIter, Consts.doubleZeroThreshold);
+            => thin(in A, ref U, ref S, ref V, maxIter, Consts.doubleZeroThreshold);
 
-        /// <summary>svdThin with default maxIter (75) and eps (Consts.doubleZeroThreshold).</summary>
-        public static bool svdThin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V)
-            => svdThin(in A, ref U, ref S, ref V, 75, Consts.doubleZeroThreshold);
+        /// <summary>thin with default maxIter (75) and eps (Consts.doubleZeroThreshold).</summary>
+        public static bool thin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V)
+            => thin(in A, ref U, ref S, ref V, 75, Consts.doubleZeroThreshold);
 
         /// <summary>
-        /// svdThin using a reusable workspace (Arena.doubleSVDThinCache(m, n)) — zero-alloc (including
-        /// the inner Bidiag.bidiagonalize call, via the workspace's nested BidiagWs). Semantics
+        /// thin using a reusable workspace (Arena.doubleSVDThinCache(m, n)) — zero-alloc (including
+        /// the inner Bidiag.decomp call, via the workspace's nested BidiagWs). Semantics
         /// identical to the allocating overload; see that one for full documentation.
         /// </summary>
-        public static bool svdThin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
+        public static bool thin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
                                    ref doubleSVDThinCache ws, int maxIter, double eps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("svdThin: A must have m >= n (more rows than columns)");
+                throw new ArgumentException("thin: A must have m >= n (more rows than columns)");
             if (U.M_Rows != m || U.N_Cols != n)
-                throw new ArgumentException("svdThin: U must be m x n");
+                throw new ArgumentException("thin: U must be m x n");
             if (S.N != n)
-                throw new ArgumentException("svdThin: S.N must equal A.N_Cols");
+                throw new ArgumentException("thin: S.N must equal A.N_Cols");
             if (!V.IsSquare || V.M_Rows != n)
-                throw new ArgumentException("svdThin: V must be square with side equal to A.N_Cols");
+                throw new ArgumentException("thin: V must be square with side equal to A.N_Cols");
             if (maxIter < 1)
-                throw new ArgumentException("svdThin: maxIter must be >= 1");
+                throw new ArgumentException("thin: maxIter must be >= 1");
             if (eps <= (double)0)
-                throw new ArgumentException("svdThin: eps must be > 0");
+                throw new ArgumentException("thin: eps must be > 0");
             RequireSvdThinWorkspace(in ws, m, n);
 
             if (n == 0)
@@ -495,9 +495,9 @@ namespace LinearAlgebra
 
             // Phase 1: A = U * B * Vᵀ, B upper bidiagonal (caller-workspace scratch, zero-alloc).
             var B = ws.B;
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V, ref ws.BidiagWs);
+            Bidiag.decomp(in A, ref U, ref B, ref V, ref ws.BidiagWs);
 
-            // Extract bidiagonal in NR convention — see svdThin's allocating overload above.
+            // Extract bidiagonal in NR convention — see thin's allocating overload above.
             var dVec = ws.dVec;
             var eVec = ws.eVec;
             for (int i = 0; i < n; i++) dVec[i] = B[i, i];
@@ -552,15 +552,15 @@ namespace LinearAlgebra
             return ok;
         }
 
-        /// <summary>svdThin (workspace) with default eps (Consts.doubleZeroThreshold).</summary>
-        public static bool svdThin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
+        /// <summary>thin (workspace) with default eps (Consts.doubleZeroThreshold).</summary>
+        public static bool thin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
                                    ref doubleSVDThinCache ws, int maxIter)
-            => svdThin(in A, ref U, ref S, ref V, ref ws, maxIter, Consts.doubleZeroThreshold);
+            => thin(in A, ref U, ref S, ref V, ref ws, maxIter, Consts.doubleZeroThreshold);
 
-        /// <summary>svdThin (workspace) with default maxIter (75) and eps (Consts.doubleZeroThreshold).</summary>
-        public static bool svdThin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
+        /// <summary>thin (workspace) with default maxIter (75) and eps (Consts.doubleZeroThreshold).</summary>
+        public static bool thin(in doubleMxN A, ref doubleMxN U, ref doubleN S, ref doubleMxN V,
                                    ref doubleSVDThinCache ws)
-            => svdThin(in A, ref U, ref S, ref V, ref ws, 75, Consts.doubleZeroThreshold);
+            => thin(in A, ref U, ref S, ref V, ref ws, 75, Consts.doubleZeroThreshold);
 
         // Implicit-shift QR diagonalization of an upper-bidiagonal matrix (d diagonal, e superdiagonal,
         // e[0]=0); accumulates left rotations into Ut (n x m) ROWS and right into Vt (n x n) ROWS — the
@@ -684,11 +684,11 @@ namespace LinearAlgebra
         }
 
         // SVD of a p×p UPPER-BIDIAGONAL matrix given directly by diagonal d[0..p-1] and superdiagonal
-        // e (e[0]=0, e[i]=B[i-1,i]). Skips the Householder bidiagonalization svdThin would redo on an
+        // e (e[0]=0, e[i]=B[i-1,i]). Skips the Householder bidiagonalization thin would redo on an
         // already-bidiagonal matrix. Writes P (p×p, left singular vectors as COLUMNS), S (singular values,
         // DESCENDING, non-negative), Q (p×p, right singular vectors as COLUMNS). Ut/Vt are p×p caller-owned
         // scratch (the transposed accumulators bidiagonalQR fills). d and e are DESTROYED. No allocation.
-        // Mirrors svdThin's post-bidiagonalize tail exactly (bidiagonalQR on transposed accumulators, then
+        // Mirrors thin's post-bidiagonalize tail exactly (bidiagonalQR on transposed accumulators, then
         // transpose back, then descending selection sort carrying columns). Returns bidiagonalQR's flag.
         static bool bidiagonalSvdFromDE(ref doubleN d, ref doubleN e, ref doubleMxN Ut, ref doubleMxN Vt,
                                         ref doubleMxN P, ref doubleN S, ref doubleMxN Q, int p, int maxIter)
@@ -712,7 +712,7 @@ namespace LinearAlgebra
             bool ok = bidiagonalQR(ref Ut, ref d, ref e, ref Vt, p, p, maxIter);
             if (!ok) return false;
 
-            // Transpose Ut→P and Vt→Q (svdThin's transpose-back-to-column-form step).
+            // Transpose Ut→P and Vt→Q (thin's transpose-back-to-column-form step).
             for (int i = 0; i < p; i++)
                 for (int j = 0; j < p; j++)
                 {
@@ -723,7 +723,7 @@ namespace LinearAlgebra
             // Copy d→S.
             for (int i = 0; i < p; i++) S[i] = d[i];
 
-            // Descending selection sort carrying columns of P and Q (identical to svdThin's sort).
+            // Descending selection sort carrying columns of P and Q (identical to thin's sort).
             for (int j = 0; j < p; j++)
             {
                 int maxIdx = j;

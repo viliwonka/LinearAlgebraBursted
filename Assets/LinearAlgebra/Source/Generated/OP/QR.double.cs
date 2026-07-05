@@ -12,7 +12,9 @@ namespace LinearAlgebra
 {
     public static partial class QR {
 
-        static double sign(double x) {
+        // internal (not private): shared with QRCP.decompInPlace/solveInPlace, which live in a
+        // separate class after the QR/QRCP split but reuse the same Householder kernels.
+        internal static double sign(double x) {
             return x < 0 ? -1 : 1;
         }
 
@@ -21,7 +23,7 @@ namespace LinearAlgebra
         // scale-invariant — a fixed absolute constant mis-classifies every column of a uniformly
         // tiny-magnitude matrix as a zero column and silently produces a garbage decomposition.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void genHouseholder(ref doubleMxN Q, ref doubleN u, int k, double zeroThreshold) {
+        internal static void genHouseholder(ref doubleMxN Q, ref doubleN u, int k, double zeroThreshold) {
 
             for (int r = k; r < u.N; r++)
                 u[r] = Q[r, k];
@@ -65,7 +67,7 @@ namespace LinearAlgebra
         // remaining columns [p0+pb, N) are updated once per PANEL as a block GEMM instead of once per
         // COLUMN; see qrDecompositionBlockedCore.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe void applyReflectorRightCols(ref doubleMxN Q, ref doubleN u, ref doubleN w, int d, int colEnd)
+        internal static unsafe void applyReflectorRightCols(ref doubleMxN Q, ref doubleN u, ref doubleN w, int d, int colEnd)
         {
             int M = Q.M_Rows;
             int N = Q.N_Cols;
@@ -89,9 +91,9 @@ namespace LinearAlgebra
 
         // Un-restricted form: applies to the full trailing block [d, N_Cols). Used by every path
         // that has not been raised to the blocked (compact-WY) factorization — the zero-alloc
-        // qrDecomposition overload, qrDecompositionColumnPivot, qrDirectSolve, and Q-reconstruction.
+        // decompInPlace overload, QRCP.decompInPlace, solveInPlace, and Q-reconstruction.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe void applyReflectorRight(ref doubleMxN Q, ref doubleN u, ref doubleN w, int d)
+        internal static unsafe void applyReflectorRight(ref doubleMxN Q, ref doubleN u, ref doubleN w, int d)
         {
             applyReflectorRightCols(ref Q, ref u, ref w, d, Q.N_Cols);
         }
@@ -102,37 +104,38 @@ namespace LinearAlgebra
         // Always reports DirectSolveStatus.Success — this factorization has no failure mode (a
         // zero-norm column is handled via the sign-convention fallback in genHouseholder, not
         // rejected).
+        /// <param name="A_to_Q">On entry A; on exit the orthogonal factor Q.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo qrDecomposition(ref doubleMxN Q, ref doubleMxN R, ref doubleN u, ref doubleN w)
+        public static DirectSolveInfo decompInPlace(ref doubleMxN A_to_Q, ref doubleMxN R, ref doubleN u, ref doubleN w)
         {
-            if (Q.M_Rows < Q.N_Cols)
-                throw new ArgumentException("QR.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
+            if (A_to_Q.M_Rows < A_to_Q.N_Cols)
+                throw new ArgumentException("QR.decompInPlace: Matrix R must be square or tall (more or equal rows than cols)");
 
-            if (u.N != Q.M_Rows)
-                throw new ArgumentException("QR.qrDecomposition: scratch vector u.N must equal Q.M_Rows");
+            if (u.N != A_to_Q.M_Rows)
+                throw new ArgumentException("QR.decompInPlace: scratch vector u.N must equal A_to_Q.M_Rows");
 
-            if (w.N < Q.N_Cols)
-                throw new ArgumentException("QR.qrDecomposition: scratch vector w.N must be at least Q.N_Cols");
+            if (w.N < A_to_Q.N_Cols)
+                throw new ArgumentException("QR.decompInPlace: scratch vector w.N must be at least A_to_Q.N_Cols");
 
-            int qrSteps = Q.N_Cols;
+            int qrSteps = A_to_Q.N_Cols;
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
-            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in Q);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A_to_Q);
 
             for (int d = 0; d < qrSteps; d++)
             {
-                genHouseholder(ref Q, ref u, d, zeroThreshold);
+                genHouseholder(ref A_to_Q, ref u, d, zeroThreshold);
 
                 // Apply the reflector to the trailing submatrix: Q[d:, d:] -= u·(uᵀ·Q[d:, d:]).
                 // Vectorised, zero-alloc (w is caller scratch). See applyReflectorRight.
-                applyReflectorRight(ref Q, ref u, ref w, d);
+                applyReflectorRight(ref A_to_Q, ref u, ref w, d);
 
-                R[d, d] = Q[d, d];
+                R[d, d] = A_to_Q[d, d];
 
                 // copy v into Q below diagonal, will be used to reconstruct Q
-                for (int i = d; i < Q.M_Rows; i++)
+                for (int i = d; i < A_to_Q.M_Rows; i++)
                 {
-                    Q[i, d] = u[i];
+                    A_to_Q[i, d] = u[i];
                 }
             }
             // Copy the upper triangular part of Q into R
@@ -145,38 +148,38 @@ namespace LinearAlgebra
                 }
                 else if (c > r)
                 {
-                    R[r, c] = Q[r, c];
+                    R[r, c] = A_to_Q[r, c];
                 }
             }
 
             // Reconstruct Q from vectors stored inside Q columns
 
             // Initialize upper part of Q to identity matrix, including diagonals
-            for (int r = 0; r < Q.M_Rows; r++)
+            for (int r = 0; r < A_to_Q.M_Rows; r++)
             {
-                for (int c = r; c < Q.N_Cols; c++)
+                for (int c = r; c < A_to_Q.N_Cols; c++)
                 {
                     if (c > r)
                     {
-                        Q[r, c] = 0;
+                        A_to_Q[r, c] = 0;
                     }
                 }
             }
 
             // Apply Householder transformations in reverse order
             // Reconstruct the Householder vector v from the original Q
-            for (int d = Q.N_Cols - 1; d >= 0; d--)
+            for (int d = A_to_Q.N_Cols - 1; d >= 0; d--)
             {
                 // includes diagonal elements
-                for (int i = d; i < Q.M_Rows; i++)
+                for (int i = d; i < A_to_Q.M_Rows; i++)
                 {
-                    u[i] = Q[i, d];
-                    Q[i, d] = i == d? 1 : 0;
+                    u[i] = A_to_Q[i, d];
+                    A_to_Q[i, d] = i == d? 1 : 0;
                 }
 
                 // Apply the reflector to the trailing columns: Q[d:, d:] -= u·(uᵀ·Q[d:, d:]).
                 // Same vectorised, zero-alloc helper as the factorization apply above.
-                applyReflectorRight(ref Q, ref u, ref w, d);
+                applyReflectorRight(ref A_to_Q, ref u, ref w, d);
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -196,7 +199,7 @@ namespace LinearAlgebra
         //   factorization applies (I - V T Vᵀ)ᵀ = I - V Tᵀ Vᵀ   → wyTriTransMul (Tᵀ)
         //   reconstruction applies  I - V T Vᵀ  (un-transposed)  → wyTriMul (T)
         //
-        // Scratch (all caller-provided, sized by the qrDecomposition(Q,R) allocating wrapper):
+        // Scratch (all caller-provided, sized by the decompInPlace(Q,R) allocating wrapper):
         //   u       length M_Rows        — Householder vector (per-column panel factor step).
         //   w       length N_Cols        — per-column reflector-apply accumulator (panel-local).
         //   Vpanel  length M_Rows*QR_BLOCK — clean contiguous panel, reused for factor+reconstruct;
@@ -350,11 +353,12 @@ namespace LinearAlgebra
         // Back-compat workspace overload: takes only the u scratch (length Q.M_Rows) and allocates
         // the small w accumulator (length Q.N_Cols) from Allocator.Temp. Behaviour is identical to
         // the 4-arg primitive; use that one to be fully zero-alloc in a hot loop.
+        /// <param name="A_to_Q">On entry A; on exit the orthogonal factor Q.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo qrDecomposition(ref doubleMxN Q, ref doubleMxN R, ref doubleN u)
+        public static DirectSolveInfo decompInPlace(ref doubleMxN A_to_Q, ref doubleMxN R, ref doubleN u)
         {
-            var w = new doubleN(Q.N_Cols, Allocator.Temp, false);
-            var info = qrDecomposition(ref Q, ref R, ref u, ref w);
+            var w = new doubleN(A_to_Q.N_Cols, Allocator.Temp, false);
+            var info = decompInPlace(ref A_to_Q, ref R, ref u, ref w);
             w.Dispose();
             return info;
         }
@@ -367,27 +371,28 @@ namespace LinearAlgebra
         // blocked — they keep the original zero-alloc contract; only this allocating convenience
         // wrapper (used by, e.g., the benchmark and most call sites that don't hoist scratch) gets
         // the speedup.
+        /// <param name="A_to_Q">On entry A; on exit the orthogonal factor Q.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo qrDecomposition(ref doubleMxN Q, ref doubleMxN R)
+        public static DirectSolveInfo decompInPlace(ref doubleMxN A_to_Q, ref doubleMxN R)
         {
             // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
             const int QR_BLOCK = 32;
 
-            if (Q.M_Rows < Q.N_Cols)
-                throw new ArgumentException("QR.qrDecomposition: Matrix R must be square or tall (more or equal rows than cols)");
+            if (A_to_Q.M_Rows < A_to_Q.N_Cols)
+                throw new ArgumentException("QR.decompInPlace: Matrix R must be square or tall (more or equal rows than cols)");
 
-            if (Q.N_Cols < 2 * QR_BLOCK)
+            if (A_to_Q.N_Cols < 2 * QR_BLOCK)
             {
-                var uSmall = new doubleN(Q.M_Rows, Allocator.Temp, false);
-                var wSmall = new doubleN(Q.N_Cols, Allocator.Temp, false);
-                var infoSmall = qrDecomposition(ref Q, ref R, ref uSmall, ref wSmall);
+                var uSmall = new doubleN(A_to_Q.M_Rows, Allocator.Temp, false);
+                var wSmall = new doubleN(A_to_Q.N_Cols, Allocator.Temp, false);
+                var infoSmall = decompInPlace(ref A_to_Q, ref R, ref uSmall, ref wSmall);
                 wSmall.Dispose();
                 uSmall.Dispose();
                 return infoSmall;
             }
 
-            int m = Q.M_Rows;
-            int n = Q.N_Cols;
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
 
             var u = new doubleN(m, Allocator.Temp, true);
             var w = new doubleN(n, Allocator.Temp, true);
@@ -397,7 +402,7 @@ namespace LinearAlgebra
             var tcolBuf = new doubleN(QR_BLOCK, Allocator.Temp, true);
             var VfullBuf = new doubleN(m * n, Allocator.Temp, true);
 
-            qrDecompositionBlockedCore(ref Q, ref R, ref u, ref w, ref Vpanel, ref Tbuf, ref Wbuf, ref tcolBuf, ref VfullBuf);
+            qrDecompositionBlockedCore(ref A_to_Q, ref R, ref u, ref w, ref Vpanel, ref Tbuf, ref Wbuf, ref tcolBuf, ref VfullBuf);
 
             VfullBuf.Dispose();
             tcolBuf.Dispose();
@@ -410,184 +415,69 @@ namespace LinearAlgebra
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
-        // Column-pivoted (rank-revealing) QR — Businger–Golub. Factorizes A·P = Q·R, where the
-        // column permutation P is chosen greedily so the pivot at each step is the trailing column
-        // of largest 2-norm. This forces the magnitudes of the R diagonal to be non-increasing
-        // (|R[0,0]| >= |R[1,1]| >= ... >= |R[n-1,n-1]|), so trailing near-zero diagonal entries
-        // reveal the numerical rank — the stable choice for rank-deficient least squares where the
-        // plain (un-pivoted) qrDecomposition above requires full column rank.
-        //
-        //   Q  in:  A (m x n, m >= n)              out: orthogonal Q (m x n)
-        //   R  out: upper triangular R (n x n)
-        //   P  out: column Pivot, size n. Reset internally. Result column j is original column P[j];
-        //           equivalently A[:, P[j]] == (Q*R)[:, j].
-        //   u  scratch Householder vector, length EXACTLY Q.M_Rows.
-        //
-        // Partial column norms are recomputed exactly at each step (rows d..m-1) rather than
-        // downdated. That is the same O(n^2 m) order as the reflector sweep itself, and it sidesteps
-        // the catastrophic-cancellation failure mode of norm downdating (LAPACK xGEQPF needs a
-        // recompute guard precisely because the cheap downdate loses all accuracy near rank
-        // deficiency) — for the modest matrices this library targets, exact recompute is both
-        // simpler and unconditionally robust.
-        // Always reports DirectSolveStatus.Success — this factorization has no failure mode; it does
-        // NOT itself compute an integer rank (see qrcpDirectSolve for the rank-revealing consumer).
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo qrDecompositionColumnPivot(ref doubleMxN Q, ref doubleMxN R, ref Pivot P, ref doubleN u)
-        {
-            if (Q.M_Rows < Q.N_Cols)
-                throw new ArgumentException("QR.qrDecompositionColumnPivot: Matrix must be square or tall (M_Rows >= N_Cols)");
+        /// <summary>
+        /// Solve QRx = b for x, with Q,R from a precomputed decomposition (solve for multiple
+        /// b vectors reusing one decomposition). Caller provides the destination x (length
+        /// Q.N_Cols); x must be distinct from b. Zero-alloc: Qᵀb is formed directly into x with
+        /// the ref-dest dot — no internal temporary. dim(b) = Q.M_Rows >= dim(x) = Q.N_Cols.
+        /// Always reports DirectSolveStatus.Success — this primitive assumes a valid (non-singular)
+        /// triangular factor and does not itself detect a bad one.
+        /// </summary>
+        /// <param name="Q">Ortho matrix Q from decompInPlace.</param>
+        /// <param name="R">Upper triangular matrix R from decompInPlace.</param>
+        /// <param name="b">Known vector (length Q.M_Rows). Preserved (read-only).</param>
+        /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true. Solution destination (length Q.N_Cols), must not alias b.</param>
+        public static DirectSolveInfo decompSolve(ref doubleMxN Q, ref doubleMxN R, ref doubleN b, ref doubleN x) {
+            // Solve Ax = b for x
+            // A = QR
+            // QRx = b
+            // Rx = Q^T b
+            // x = R^-1 Q^T b
 
-            if (u.N != Q.M_Rows)
-                throw new ArgumentException("QR.qrDecompositionColumnPivot: scratch vector u.N must equal Q.M_Rows");
+            if (x.N != Q.N_Cols)
+                throw new ArgumentException("QR.decompSolve: x.N must equal Q.N_Cols");
 
-            if (P.N != Q.N_Cols)
-                throw new ArgumentException("QR.qrDecompositionColumnPivot: pivot P.N must equal Q.N_Cols");
-
-            if (R.M_Rows != Q.N_Cols || R.N_Cols != Q.N_Cols)
-                throw new ArgumentException("QR.qrDecompositionColumnPivot: R must be N_Cols x N_Cols");
-
-            P.Reset();
-
-            int m = Q.M_Rows;
-            int n = Q.N_Cols;
-
-            // Reflector-apply accumulator (length n) + per-column squared-norm buffer for pivoting.
-            // Allocated once per call (O(n) « O(n³)); this path has no zero-alloc w contract, unlike
-            // qrDecomposition's 4-arg overload.
-            var w = new doubleN(n, Allocator.Temp, false);
-            var colNorm2 = new doubleN(n, Allocator.Temp, false);
-
-            // scale-relative zero-column threshold (see genHouseholder); LInf(Q) == max |entry|.
-            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in Q);
-
-            for (int d = 0; d < n; d++)
-            {
-                // --- column pivot: among trailing columns d..n-1, pick the one whose partial 2-norm
-                //     over rows d..m-1 is largest (recomputed exactly), and bring it to position d. ---
-
-                // Squared 2-norms of all trailing columns built in ONE row-major sweep (unit-stride,
-                // vectorised addSquares) rather than n separate down-a-column reductions — the same
-                // restructuring as the reflector apply. Recomputed exactly each step (not downdated).
-                // Bitwise identical to the per-column form: each colNorm2[c] sums rows d..m-1 in the
-                // same ascending order.
-                unsafe
-                {
-                    double* qp = Q.Data.Ptr;
-                    double* cn = colNorm2.Data.Ptr;
-                    int L = n - d;
-                    UnsafeUtility.MemClear(cn + d, (long)L * UnsafeUtility.SizeOf<double>());
-                    for (int r = d; r < m; r++)
-                        UnsafeOP.addSquares(cn + d, qp + (long)r * n + d, L);
-                }
-
-                double diagNorm2 = colNorm2[d];
-                int pivotCol = d;
-                double maxNorm2 = diagNorm2;
-                for (int c = d + 1; c < n; c++)
-                {
-                    if (colNorm2[c] > maxNorm2)
-                    {
-                        maxNorm2 = colNorm2[c];
-                        pivotCol = c;
-                    }
-                }
-
-                // Only pivot when the best column beats the incumbent by more than the accumulated
-                // rounding noise of the norm sums (~ #terms * eps). This leaves numerically-tied
-                // columns in place — notably the Kahan matrix, whose columns all have norm exactly 1
-                // and which is provably invariant under column pivoting; a bare `>` would let a
-                // ~1 ulp difference induce a spurious (and non-reproducible) permutation.
-                double pivotRelTol = (double)(8 * m) * Consts.doubleEpsilon;
-                if (pivotCol != d && maxNorm2 > diagNorm2 * ((double)1 + pivotRelTol))
-                {
-                    // Full-column swap (all rows): rows < d hold finished R entries that must travel
-                    // with the column; rows >= d hold the live sub-matrix. Stored Householder vectors
-                    // of earlier steps live in columns < d and are untouched (both indices are >= d).
-                    Swap.Columns(ref Q, d, pivotCol);
-                    P.Swap(d, pivotCol);
-                }
-
-                genHouseholder(ref Q, ref u, d, zeroThreshold);
-
-                // Apply the reflector to the trailing submatrix (vectorised, see applyReflectorRight).
-                applyReflectorRight(ref Q, ref u, ref w, d);
-
-                // R[d,d] and the stored Householder vector — see qrDecomposition (same pattern).
-                R[d, d] = Q[d, d];
-
-                for (int i = d; i < m; i++)
-                    Q[i, d] = u[i];
-            }
-
-            // Copy the upper triangular part of Q into R
-            for (int r = 0; r < R.M_Rows; r++)
-            for (int c = 0; c < R.N_Cols; c++)
-            {
-                if (c < r)
-                    R[r, c] = 0;
-                else if (c > r)
-                    R[r, c] = Q[r, c];
-            }
-
-            // Reconstruct Q from the Householder vectors stored in its columns (identical to the
-            // un-pivoted qrDecomposition: pivoting only reordered the columns, not this step).
-            for (int r = 0; r < m; r++)
-                for (int c = r; c < n; c++)
-                    if (c > r)
-                        Q[r, c] = 0;
-
-            for (int d = n - 1; d >= 0; d--)
-            {
-                for (int i = d; i < m; i++)
-                {
-                    u[i] = Q[i, d];
-                    Q[i, d] = i == d ? 1 : 0;
-                }
-
-                // Apply the reflector to the trailing columns (vectorised, see applyReflectorRight).
-                applyReflectorRight(ref Q, ref u, ref w, d);
-            }
-
-            colNorm2.Dispose();
-            w.Dispose();
-
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            // x = Q^T b (or b^T Q). The ref-dest dot guards x-aliases-b and zeroes x first.
+            Blas.dot(in b, in Q, ref x);
+            // Solve Rx = Q^T b for x, in place
+            return Solvers.triUpper(ref R, ref x);
         }
 
-        // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
-        // The caller still owns P (its size carries the column count and it is reset internally).
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo qrDecompositionColumnPivot(ref doubleMxN Q, ref doubleMxN R, ref Pivot P)
-        {
-            var u = new doubleN(Q.M_Rows, Allocator.Temp, false);
-            var info = qrDecompositionColumnPivot(ref Q, ref R, ref P, ref u);
-            u.Dispose();
-            return info;
+        /// <summary>
+        /// decompSolve convenience: allocates the solution vector x (length Q.N_Cols) from the arena
+        /// and returns it. Use the ref-destination overload in hot loops to avoid the allocation.
+        /// </summary>
+        public static doubleN decompSolve(ref doubleMxN Q, ref doubleMxN R, ref doubleN b) {
+            doubleN x = b.doubleTempVec(Q.N_Cols);
+            decompSolve(ref Q, ref R, ref b, ref x);
+            return x;
         }
 
         // b is transformed into y = Q^T b, then solved for x; Q and b get modified (destroyed).
         // PRECONDITION: A has FULL COLUMN RANK. This un-pivoted solve back-substitutes through R's
         // diagonal; a rank-deficient A produces a zero on that diagonal and the result x is then
         // Inf/NaN (no guard). For rank-deficient / least-norm problems use the rank-revealing paths
-        // instead: QR.qrDecompositionColumnPivot (QRCP), SVD.pinvSolve, or
-        // Cholesky.choleskyPivotSolve.
+        // instead: QRCP.decompInPlace / QRCP.solveInPlace, SVD.pinvSolve, or CHOP.solveInPlace.
         // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
         // EXACTLY A.M_Rows. Hoist u out of a hot loop to skip the per-call Allocator.Temp alloc.
         // Always reports DirectSolveStatus.Success — see the PRECONDITION note above: a
         // rank-deficient A silently divides by a zero R diagonal instead of being detected here.
+        /// <param name="A">Destroyed; contents undefined after return (becomes R + stored reflectors scratch).</param>
+        /// <param name="b">Destroyed; contents undefined after return (becomes Qᵀb scratch).</param>
+        /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo qrDirectSolve(ref doubleMxN A, ref doubleN b, ref doubleN x, ref doubleN u) {
+        public static DirectSolveInfo solveInPlace(ref doubleMxN A, ref doubleN b, ref doubleN x, ref doubleN u) {
             if (A.M_Rows < A.N_Cols)
-                throw new ArgumentException("QR.qrDirectSolve: Matrix A must be square or tall (more or equal rows than cols)");
+                throw new ArgumentException("QR.solveInPlace: Matrix A must be square or tall (more or equal rows than cols)");
 
             if (b.N != A.M_Rows)
-                throw new ArgumentException("QR.qrDirectSolve: b.N must equal A.M_Rows");
+                throw new ArgumentException("QR.solveInPlace: b.N must equal A.M_Rows");
 
             if (x.N != A.N_Cols)
-                throw new ArgumentException("QR.qrDirectSolve: x.N must equal A.N_Cols");
+                throw new ArgumentException("QR.solveInPlace: x.N must equal A.N_Cols");
 
             if (u.N != A.M_Rows)
-                throw new ArgumentException("QR.qrDirectSolve: scratch vector u.N must equal A.M_Rows");
+                throw new ArgumentException("QR.solveInPlace: scratch vector u.N must equal A.M_Rows");
 
             int qrSteps = A.N_Cols;
 
@@ -623,183 +513,19 @@ namespace LinearAlgebra
             // b was transformed to y, where y = Q^T b
             // Solve Rx = y
 
-            return Solvers.solveUpperTriangular(ref A, ref x);
+            return Solvers.triUpper(ref A, ref x);
         }
 
         // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
+        /// <param name="A">Destroyed; contents undefined after return (becomes R + stored reflectors scratch).</param>
+        /// <param name="b">Destroyed; contents undefined after return (becomes Qᵀb scratch).</param>
+        /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo qrDirectSolve(ref doubleMxN A, ref doubleN b, ref doubleN x) {
+        public static DirectSolveInfo solveInPlace(ref doubleMxN A, ref doubleN b, ref doubleN x) {
             var u = new doubleN(A.M_Rows, Allocator.Temp, false);
-            var info = qrDirectSolve(ref A, ref b, ref x, ref u);
+            var info = solveInPlace(ref A, ref b, ref x, ref u);
             u.Dispose();
             return info;
-        }
-
-        /// <summary>
-        /// QRCP-based rank-safe least-squares: basic (truncated) solution. Solves A x ≈ b (m >= n)
-        /// for a possibly rank-deficient A using column-pivoted QR (Businger-Golub, A·P = Q·R) to
-        /// expose the numerical rank r: the R diagonal is non-increasing, so r = count of leading
-        /// entries with |R[i,i]| &gt; tol, where tol = relTol * |R[0,0]| and relTol defaults to
-        /// max(m,n) * Consts.doubleZeroThreshold (matching SVD.pinvSolve / MatrixMetrics.rank). A
-        /// negative relTol is an "auto" sentinel that selects that same default.
-        ///
-        /// Only the leading r×r block of R is back-substituted (divide-safe by construction: every
-        /// used R diagonal exceeds tol); the remaining (n-r) free variables are set to zero in the
-        /// permuted ordering, then P is un-applied to recover x. This is the BASIC (truncated)
-        /// solution: it minimizes the residual ‖Ax - b‖ but is NOT the minimum-norm solution — use
-        /// SVD.pinvSolve for that. When A has full column rank (r == n) the result is identical to
-        /// ordinary QR least-squares.
-        /// </summary>
-        /// <param name="A">m x n matrix (m >= n). Not modified (copied into Q scratch).</param>
-        /// <param name="b">Right-hand side, length m. Must not alias x.</param>
-        /// <param name="x">Solution, length n.</param>
-        /// <param name="Q">Scratch: m x n (receives orthogonal factor; consumed).</param>
-        /// <param name="R">Scratch: n x n (receives upper-triangular factor; consumed).</param>
-        /// <param name="P">Scratch: column Pivot of size n (reset internally).</param>
-        /// <param name="u">Scratch: length EXACTLY m (Householder workspace; first n entries are
-        /// repurposed for the un-permute scatter after the decomposition).</param>
-        /// <param name="relTol">Rank threshold ratio; tol = relTol * |R[0,0]|. Negative = auto default.</param>
-        /// <returns>Status Success (r == n, full rank) or RankDeficient (r &lt; n, still a usable
-        /// truncated least-squares solution); rank = detected r. See
-        /// <see cref="RankRevealingInfo.Solved"/>.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankRevealingInfo qrcpDirectSolve(ref doubleMxN A, ref doubleN b, ref doubleN x,
-                                           ref doubleMxN Q, ref doubleMxN R, ref Pivot P,
-                                           ref doubleN u, double relTol)
-        {
-            int m = A.M_Rows;
-            int n = A.N_Cols;
-
-            if (m < n)
-                throw new ArgumentException("QR.qrcpDirectSolve: A must be square or tall (M_Rows >= N_Cols)");
-            if (b.N != m)
-                throw new ArgumentException("QR.qrcpDirectSolve: b.N must equal A.M_Rows");
-            if (x.N != n)
-                throw new ArgumentException("QR.qrcpDirectSolve: x.N must equal A.N_Cols");
-            if (Q.M_Rows != m || Q.N_Cols != n)
-                throw new ArgumentException("QR.qrcpDirectSolve: Q must be M_Rows x N_Cols");
-            if (R.M_Rows != n || R.N_Cols != n)
-                throw new ArgumentException("QR.qrcpDirectSolve: R must be N_Cols x N_Cols");
-            if (P.N != n)
-                throw new ArgumentException("QR.qrcpDirectSolve: P.N must equal A.N_Cols");
-            if (u.N != m)
-                throw new ArgumentException("QR.qrcpDirectSolve: u.N must equal A.M_Rows");
-
-            // Negative relTol is an "auto" sentinel: use the library-standard rank threshold
-            // (same default as SVD.pinvSolve / MatrixMetrics.rank). This also makes the threshold
-            // divide-safe (tol >= 0), so a stray negative can never inflate rank into a divide-by-tiny.
-            if (relTol < (double)0)
-                relTol = (double)(math.max(m, n)) * Consts.doubleZeroThreshold;
-
-            // Degenerate: zero-column system.
-            if (n == 0) return new RankRevealingInfo { status = DirectSolveStatus.Success, rank = 0 };
-
-            // Step 1: copy A into Q (qrDecompositionColumnPivot destroys its input).
-            Q.Data.CopyFrom(A.Data);
-
-            // Step 2: QRCP — A·P = Q·R. P is reset and built inside this call.
-            qrDecompositionColumnPivot(ref Q, ref R, ref P, ref u);
-
-            // Step 3: determine numerical rank r from R's non-increasing diagonal.
-            // tol = relTol * |R[0,0]|. When R[0,0] == 0 tol == 0, and |R[0,0]| > 0 is false
-            // → rank stays 0. NaN in R[0,0] → tol = NaN → all comparisons false → rank = 0.
-            double tol = relTol * math.abs(R[0, 0]);
-            int rank = 0;
-            for (int i = 0; i < n; i++)
-            {
-                if (math.abs(R[i, i]) > tol)
-                    rank++;
-                else
-                    break;
-            }
-
-            // Step 4: zero matrix (rank == 0) → x = 0, done.
-            if (rank == 0)
-            {
-                for (int j = 0; j < n; j++)
-                    x[j] = (double)0;
-                return new RankRevealingInfo { status = DirectSolveStatus.RankDeficient, rank = 0 };
-            }
-
-            int r = rank;
-
-            // Step 5: form c = Qᵀ b into x.
-            // dot(in b, in Q, ref x) computes x[j] = Σ_i Q[i,j]·b[i] = (Qᵀb)[j].
-            // dot zeroes x via MemClear before accumulating, so x needs no prior initialisation.
-            // Guard: x must not alias b (enforced inside dot by pointer comparison).
-            Blas.dot(in b, in Q, ref x);
-
-            // Step 6: back-solve the leading r×r block of R in place.
-            // x holds c = Qᵀb; overwrite x[0..r-1] with the triangular solution.
-            // Every R[i,i] for i < r satisfies |R[i,i]| > tol, so no divide-by-zero.
-            for (int i = r - 1; i >= 0; i--)
-            {
-                double sum = (double)0;
-                for (int j = i + 1; j < r; j++)
-                    sum += R[i, j] * x[j];
-                x[i] = (x[i] - sum) / R[i, i];
-            }
-            // Zero the free variables (columns beyond the numerical rank).
-            for (int j = r; j < n; j++)
-                x[j] = (double)0;
-
-            // Step 7: un-permute — scatter from permuted ordering back to original column ordering.
-            // QRCP gives A·P = Q·R where P[j] = original column index promoted to position j.
-            // The permuted solution z (in x) satisfies: x_final[P[j]] = z[j].
-            // Borrow u[0..n-1] as scatter scratch (u is no longer needed after Step 2).
-            for (int j = 0; j < n; j++)
-                u[j] = x[j];
-            for (int j = 0; j < n; j++)
-                x[P[j]] = u[j];
-
-            return new RankRevealingInfo
-            {
-                status = (r < n) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,
-                rank = r
-            };
-        }
-
-        // Default-tolerance overload: passes the auto sentinel (relTol < 0), so the primitive
-        // uses max(m,n) * Consts.doubleZeroThreshold (consistent with SVD.pinvSolve / MatrixMetrics.rank).
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankRevealingInfo qrcpDirectSolve(ref doubleMxN A, ref doubleN b, ref doubleN x,
-                                           ref doubleMxN Q, ref doubleMxN R, ref Pivot P,
-                                           ref doubleN u)
-        {
-            return qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, (double)(-1));
-        }
-
-        /// <summary>
-        /// Allocating convenience wrapper: allocates Q (m×n), R (n×n), P (n-Pivot) and u (m)
-        /// from Allocator.Temp and delegates to the zero-alloc primitive. Use the primitive in
-        /// hot loops to avoid repeated Temp allocs.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankRevealingInfo qrcpDirectSolve(ref doubleMxN A, ref doubleN b, ref doubleN x,
-                                           double relTol)
-        {
-            int m = A.M_Rows;
-            int n = A.N_Cols;
-            var Q = new doubleMxN(m, n, Allocator.Temp, false);
-            var R = new doubleMxN(n, n, Allocator.Temp, false);
-            var P = new Pivot(n, Allocator.Temp);
-            var u = new doubleN(m, Allocator.Temp, false);
-            var info = qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, relTol);
-            u.Dispose();
-            P.Dispose();
-            R.Dispose();
-            Q.Dispose();
-            return info;
-        }
-
-        /// <summary>
-        /// Allocating convenience wrapper with default tolerance (max(m,n) * Consts.doubleZeroThreshold,
-        /// matching SVD.pinvSolve / MatrixMetrics.rank).
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankRevealingInfo qrcpDirectSolve(ref doubleMxN A, ref doubleN b, ref doubleN x)
-        {
-            return qrcpDirectSolve(ref A, ref b, ref x, (double)(-1));
         }
     }
 }

@@ -15,12 +15,12 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Reusable scratch for SVD.svdValues (Golub-Kahan bidiagonalization, values-only + implicit-shift
+    /// Reusable scratch for SVD.values (Golub-Kahan bidiagonalization, values-only + implicit-shift
     /// bidiagonal QR, values-only). Allocate ONCE via Arena.fProxySVDValuesCache(m, n) and reuse it across
-    /// many same-shape calls to avoid the per-call Allocator.Temp allocations svdValues's allocating
+    /// many same-shape calls to avoid the per-call Allocator.Temp allocations values's allocating
     /// overload makes internally.
     ///
-    /// BidiagWs is the nested workspace Bidiag.bidiagonalizeValues needs (see fProxyBidiagCache); dVec/eVec
+    /// BidiagWs is the nested workspace Bidiag.values needs (see fProxyBidiagCache); dVec/eVec
     /// (length n) are the diagonal/superdiagonal the values-only bidiagonal QR diagonalizes in place.
     /// </summary>
     public struct fProxySVDValuesCache
@@ -33,9 +33,9 @@ namespace LinearAlgebra
     public static partial class ArenaExtensions
     {
         /// <summary>
-        /// Allocates an svdValues workspace for an m x n (m >= n) system — see
+        /// Allocates an values workspace for an m x n (m >= n) system — see
         /// <see cref="fProxySVDValuesCache"/> for layout. Persistent in this arena; create once outside a
-        /// hot loop and pass to svdValues's ref-workspace overload.
+        /// hot loop and pass to values's ref-workspace overload.
         /// </summary>
         public static fProxySVDValuesCache fProxySVDValuesCache(this ref Arena arena, int m, int n)
         {

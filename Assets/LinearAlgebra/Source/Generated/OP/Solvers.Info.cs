@@ -129,15 +129,15 @@ namespace LinearAlgebra
     /// value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>) means old success-test
     /// call shapes still compile unchanged:
     /// <code>
-    ///   if (LU.luDecomposition(ref U, ref L, ref P)) { ... }   // implicit bool -> "did it succeed?"
-    ///   bool ok = Cholesky.choleskyDecomposition(in A, ref L); // same
-    ///   var info = LU.luDecompositionInPlace(ref LU, ref P);
+    ///   if (LU.decompInPlace(ref A_to_U, ref L, ref P)) { ... } // implicit bool -> "did it succeed?"
+    ///   bool ok = CHO.decomp(in A, ref L);                      // same
+    ///   var info = LU.decompInPlace(ref A_to_LU, ref P);
     ///   if (!info.Solved) { /* singular */ }
     /// </code>
     ///
     /// The <see cref="status"/> field is filled ONLY from what the solver already determined during
     /// its normal control flow (an existing bool return, an existing early-return condition) --
-    /// never from a new check. Most direct solves that don't factorize (e.g. luSolve given an
+    /// never from a new check. Most direct solves that don't factorize (e.g. LU.decompSolve given an
     /// already-valid factor, the triangular-solve primitives) always report
     /// <see cref="DirectSolveStatus.Success"/>: they have no failure mode of their own, and do not
     /// re-verify a factor's validity.
@@ -171,8 +171,9 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Result of a RANK-REVEALING direct solver or decomposition call -- QRCP
-    /// (<see cref="QR.qrcpDirectSolve"/>) and pivoted Cholesky
-    /// (<see cref="Cholesky.choleskyDecompositionPivot"/> / <see cref="Cholesky.choleskyPivotSolve"/>).
+    /// (<see cref="QRCP.solveInPlace(ref fProxyMxN, ref fProxyN, ref fProxyN, ref fProxyMxN, ref fProxyMxN, ref Pivot, ref fProxyN, fProxy)"/>)
+    /// and pivoted Cholesky (<see cref="CHOP.decomp(in fProxyMxN, ref fProxyMxN, ref Pivot, ref fProxyCHOPCache)"/> /
+    /// <see cref="CHOP.decompSolve(ref fProxyMxN, in Pivot, int, ref fProxyN, ref fProxyCHOPCache)"/>).
     /// Unlike <see cref="DirectSolveInfo"/>, a rank-deficient input is NOT a hard failure here: both
     /// algorithms still produce a usable (least-squares / minimum-norm) result when the detected
     /// rank is below the full dimension, so <see cref="Solved"/> is true for
@@ -184,7 +185,7 @@ namespace LinearAlgebra
     /// rank it already counts, the status its existing control flow already determines) -- no new
     /// passes over the factor.
     /// </summary>
-    public struct RankRevealingInfo
+    public struct RankInfo
     {
         /// <summary>Why the solve/decomposition stopped -- see <see cref="DirectSolveStatus"/>.</summary>
         public DirectSolveStatus status;
@@ -200,14 +201,14 @@ namespace LinearAlgebra
 
         /// <summary>Implicit success test, so <c>if (solve(...))</c> keeps compiling; true for both
         /// full-rank and (still-usable) rank-deficient results.</summary>
-        public static implicit operator bool(RankRevealingInfo i) =>
+        public static implicit operator bool(RankInfo i) =>
             i.status == DirectSolveStatus.Success || i.status == DirectSolveStatus.RankDeficient;
 
-        /// <summary>Burst-safe compact summary, e.g. <c>RankRevealingInfo(RankDeficient, rank=3)</c>.
+        /// <summary>Burst-safe compact summary, e.g. <c>RankInfo(RankDeficient, rank=3)</c>.
         /// Never allocates managed memory.</summary>
         public FixedString128Bytes ToFixedString()
         {
-            FixedString128Bytes str = "RankRevealingInfo(";
+            FixedString128Bytes str = "RankInfo(";
             str.Append(status.Name());
             FixedString128Bytes tail = $", rank={rank})";
             str.Append(tail);

@@ -134,7 +134,7 @@ public class fProxyCholeskyTests
             var A = BuildSPD(ref arena, dim, 90125);
             var L = arena.fProxyMat(dim, dim);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
             // L must be lower triangular (strict upper zeroed).
@@ -161,8 +161,11 @@ public class fProxyCholeskyTests
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 4242);
             var bOrig = b.Copy();
 
-            // factor + solve in one call; b is overwritten with x.
-            bool ok = Cholesky.choleskySolve(in A, ref L, ref b);
+            // factor + solve, as the explicit two-call composition (choleskySolve(in A, ref L, ref b)
+            // was deleted -- it was a 2-line composition in disguise); b is overwritten with x.
+            DirectSolveInfo info = CHO.decomp(in A, ref L);
+            if (info.Solved) info = CHO.decompSolve(ref L, ref b);
+            bool ok = info.Solved;
             Assert.IsTrue(ok);
 
             // Verify A·x ≈ bOrig
@@ -184,11 +187,11 @@ public class fProxyCholeskyTests
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 5151);
             var bOrig = b.Copy();
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
             // Solve using the pre-computed factor.
-            Cholesky.choleskySolve(ref L, ref b);
+            CHO.decompSolve(ref L, ref b);
 
             var Ax = Blas.dot(A, b);
             Assert.IsTrue(Analysis.isZero(bOrig - Ax, Tol()));
@@ -207,7 +210,7 @@ public class fProxyCholeskyTests
 
             var L = arena.fProxyMat(2, 2);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
             fProxy tol = Tol();
@@ -232,7 +235,7 @@ public class fProxyCholeskyTests
             var A = arena.fProxyIdentityMat(dim);
             var L = arena.fProxyMat(dim, dim);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
             // chol(I) = I
@@ -241,7 +244,7 @@ public class fProxyCholeskyTests
             // Solving I x = b returns x = b.
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 9090);
             var bOrig = b.Copy();
-            Cholesky.choleskySolve(ref L, ref b);
+            CHO.decompSolve(ref L, ref b);
             Assert.IsTrue(Analysis.isZero(bOrig - b, Tol()));
 
             arena.Dispose();
@@ -259,14 +262,16 @@ public class fProxyCholeskyTests
 
                 var L = arena.fProxyMat(2, 2);
 
-                bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+                bool ok = CHO.decomp(in A, ref L);
                 Assert.IsFalse(ok);
                 // On false, no NaN must be produced.
                 Assert.IsFalse(Analysis.isAnyNan(in L));
 
-                // choleskySolve factor+solve overload must also report failure.
+                // factor+solve composition must also report failure.
                 var b = arena.fProxyRandomVec(2, -1f, 1f, 13);
-                bool solved = Cholesky.choleskySolve(in A, ref L, ref b);
+                DirectSolveInfo solveInfo = CHO.decomp(in A, ref L);
+                if (solveInfo.Solved) solveInfo = CHO.decompSolve(ref L, ref b);
+                bool solved = solveInfo.Solved;
                 Assert.IsFalse(solved);
             }
 
@@ -276,7 +281,7 @@ public class fProxyCholeskyTests
                 var A = arena.fProxyMat(dim, dim);
                 var L = arena.fProxyMat(dim, dim);
 
-                bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+                bool ok = CHO.decomp(in A, ref L);
                 Assert.IsFalse(ok);
                 Assert.IsFalse(Analysis.isAnyNan(in L));
             }
@@ -290,7 +295,7 @@ public class fProxyCholeskyTests
 
                 var L = arena.fProxyMat(3, 3);
 
-                bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+                bool ok = CHO.decomp(in A, ref L);
                 Assert.IsFalse(ok);
                 Assert.IsFalse(Analysis.isAnyNan(in L));
             }
@@ -300,7 +305,7 @@ public class fProxyCholeskyTests
 
         // Stage-3 direct-solve-status coverage: a non-PD matrix must report
         // DirectSolveStatus.NotPositiveDefinite (not just a falsy implicit-bool) from both
-        // choleskyDecomposition and the factor-and-solve choleskySolve overload.
+        // decomp and the factor-and-solve composition.
         void NotSPDStatus()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -310,13 +315,14 @@ public class fProxyCholeskyTests
             A[1, 0] = 2f; A[1, 1] = 1f; // same matrix as NotSPD's Case 1 (indefinite)
 
             var L = arena.fProxyMat(2, 2);
-            DirectSolveInfo decompInfo = Cholesky.choleskyDecomposition(in A, ref L);
+            DirectSolveInfo decompInfo = CHO.decomp(in A, ref L);
             Assert.IsTrue(decompInfo.status == DirectSolveStatus.NotPositiveDefinite);
             Assert.IsFalse(decompInfo.Solved);
             Assert.IsFalse(decompInfo);
 
             var b = arena.fProxyRandomVec(2, -1f, 1f, 17);
-            DirectSolveInfo solveInfo = Cholesky.choleskySolve(in A, ref L, ref b);
+            DirectSolveInfo solveInfo = CHO.decomp(in A, ref L);
+            if (solveInfo.Solved) solveInfo = CHO.decompSolve(ref L, ref b);
             Assert.IsTrue(solveInfo.status == DirectSolveStatus.NotPositiveDefinite);
             Assert.IsFalse(solveInfo.Solved);
 
@@ -335,17 +341,19 @@ public class fProxyCholeskyTests
 
             var bChol = b.Copy();
             var L = arena.fProxyMat(dim, dim);
-            bool ok = Cholesky.choleskySolve(in A, ref L, ref bChol);
+            DirectSolveInfo info = CHO.decomp(in A, ref L);
+            if (info.Solved) info = CHO.decompSolve(ref L, ref bChol);
+            bool ok = info.Solved;
             Assert.IsTrue(ok);
 
             // LU solve on the same system (in-place LU with pivot).
             var lu = A.Copy();
             var pivot = new Pivot(dim, Allocator.Temp);
-            bool luOk = LinearAlgebra.LU.luDecompositionInPlace(ref lu, ref pivot);
+            bool luOk = LinearAlgebra.LU.decompInPlace(ref lu, ref pivot);
             Assert.IsTrue(luOk);
 
             var bLU = b.Copy();
-            LinearAlgebra.LU.luSolve(ref lu, in pivot, ref bLU);
+            LinearAlgebra.LU.decompSolve(ref lu, in pivot, ref bLU);
             pivot.Dispose();
 
             // The two solutions must agree.
@@ -364,14 +372,14 @@ public class fProxyCholeskyTests
 
             var L = arena.fProxyMat(1, 1);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
             Assert.IsTrue(math.abs(L[0, 0] - 3f) < Tol());
 
             // Solve 9·x = b -> A·x ≈ b.
             var b = arena.fProxyRandomVec(1, -1f, 1f, 77);
             var bOrig = b.Copy();
-            Cholesky.choleskySolve(ref L, ref b);
+            CHO.decompSolve(ref L, ref b);
             var Ax = Blas.dot(A, b);
             Assert.IsTrue(Analysis.isZero(bOrig - Ax, Tol()));
 
@@ -391,7 +399,7 @@ public class fProxyCholeskyTests
 
             // L and A are distinct handles over the SAME underlying data.
             var L = A;
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
             // Reconstruct L·Lᵀ and compare against the ORIGINAL A.
@@ -413,7 +421,7 @@ public class fProxyCholeskyTests
             var A = arena.fProxyMinIJ(dim);
             var L = arena.fProxyMat(dim, dim);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
             Assert.IsTrue(Analysis.isLowerTriangular(L, Tol()));
@@ -436,7 +444,7 @@ public class fProxyCholeskyTests
             var A = arena.fProxyGCD(dim);
             var L = arena.fProxyMat(dim, dim);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
             Assert.IsTrue(Analysis.isLowerTriangular(L, Tol()));
@@ -460,13 +468,15 @@ public class fProxyCholeskyTests
             var A = arena.fProxyFiedler(dim);
             var L = arena.fProxyMat(dim, dim);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsFalse(ok);
             Assert.IsFalse(Analysis.isAnyNan(in L));
 
-            // factor+solve overload must also report failure.
+            // factor+solve composition must also report failure.
             var b = arena.fProxyRandomVec(dim, -1f, 1f, 17);
-            bool solved = Cholesky.choleskySolve(in A, ref L, ref b);
+            DirectSolveInfo solveInfo = CHO.decomp(in A, ref L);
+            if (solveInfo.Solved) solveInfo = CHO.decompSolve(ref L, ref b);
+            bool solved = solveInfo.Solved;
             Assert.IsFalse(solved);
 
             arena.Dispose();
@@ -481,7 +491,7 @@ public class fProxyCholeskyTests
             var A = BuildSPD(ref arena, dim, seed);
             var L = arena.fProxyMat(dim, dim);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
             Assert.IsTrue(Analysis.isLowerTriangular(L, Tol()));
@@ -509,7 +519,7 @@ public class fProxyCholeskyTests
 
             var L = arena.fProxyMat(dim, dim);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsFalse(ok);
             Assert.IsFalse(Analysis.isAnyNan(in L));
 
@@ -526,7 +536,7 @@ public class fProxyCholeskyTests
             var Aorig = A.Copy();
 
             var L = A;
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);
 
             var Lt = Blas.trans(L);

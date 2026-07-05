@@ -18,7 +18,7 @@ namespace LinearAlgebra.Realtime
     /// Indexed oldest→newest (<c>this[0]</c> = oldest retained sample, <c>this[Count-1]</c> = newest).
     /// <see cref="AsMatrix(ref fProxyMxN)"/> materializes the window time-ordered into a contiguous
     /// Count×Features matrix so it can feed any existing kernel (covariance → eigendecomposition = PCA;
-    /// AsMatrix + qrDirectSolve = least-squares trajectory fit; <see cref="Mean"/> = moving average).
+    /// AsMatrix + QR.solveInPlace = least-squares trajectory fit; <see cref="Mean"/> = moving average).
     ///
     /// Create with <c>arena.fProxyRollingWindow(capacity, features)</c>; the backing buffer is a
     /// persistent arena allocation that lives until the arena is disposed. fProxy-only.
@@ -167,7 +167,7 @@ namespace LinearAlgebra.Realtime
         /// <summary>
         /// Sample covariance of the features over the window (Features × Features, ÷(Count-1)), written
         /// into dest. Requires Count ≥ 2. Zero-alloc apart from one internal temp matrix (TEMP pool).
-        /// Pair with <c>Eigen.eigenDecomposition</c> on the result for realtime PCA / dominant motion.
+        /// Pair with <c>Eigen.decompInPlace</c> on the result for realtime PCA / dominant motion.
         /// </summary>
         public void Covariance(ref fProxyMxN dest)
         {

@@ -64,7 +64,7 @@ public class fProxyLiteratureTests
 
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            LU.decompInPlace(ref LUmat, ref pivot);
             fProxy det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -120,7 +120,7 @@ public class fProxyLiteratureTests
             var A2 = arena.fProxyLauchli(3, eps);   // (3+1)x3 = 4x3
             var b2 = Blas.dot(A2, xTrue);
             var xQr = arena.fProxyVec(3);
-            QR.qrDirectSolve(ref A2, ref b2, ref xQr);
+            QR.solveInPlace(ref A2, ref b2, ref xQr);
             for (int k = 0; k < 3; k++)
                 AssertClose(xQr[k], xTrue[k], (fProxy)1E-2);
 
@@ -137,12 +137,12 @@ public class fProxyLiteratureTests
             var P = arena.fProxyPascal(n);
 
             var L = arena.fProxyMat(n, n);
-            AssertTrue(Cholesky.choleskyDecomposition(in P, ref L));
+            AssertTrue(CHO.decomp(in P, ref L));
 
             // det(Pascal) = 1 (LU destroys its input, so factor a copy)
             var LUmat = P.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            LU.decompInPlace(ref LUmat, ref pivot);
             fProxy det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -178,7 +178,7 @@ public class fProxyLiteratureTests
 
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref W, ref eig, ref V, 100));   // destroys W; must converge
+            AssertTrue(Eigen.decompInPlace(ref W, ref eig, ref V, 100));   // destroys W; must converge
 
             AssertTrue(Analysis.isOrthogonal(V, (fProxy)1E-3));
 
@@ -214,13 +214,13 @@ public class fProxyLiteratureTests
             AssertClose(Analysis.cond(in T), lamMax / lamMin, (fProxy)1E-2);
 
             var L = arena.fProxyMat(n, n);
-            AssertTrue(Cholesky.choleskyDecomposition(in T, ref L));
+            AssertTrue(CHO.decomp(in T, ref L));
 
             // eigenvalues match the closed form, descending: eig[i] = 2 - 2cos((n-i)π/(n+1))
             var Tc = T.Copy();           // eigenDecomposition destroys its input
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Tc, ref eig, ref V));   // must converge
+            AssertTrue(Eigen.decompInPlace(ref Tc, ref eig, ref V));   // must converge
 
             AssertTrue(Analysis.isOrthogonal(V, (fProxy)1E-3));
 
@@ -248,7 +248,7 @@ public class fProxyLiteratureTests
 
             var Q = A.Copy();
             var R = arena.fProxyMat(n, n);
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             fProxyMxN recon = Blas.dot(Q, R);
             fProxy err = Analysis.MaxZeroError(A - recon);
@@ -269,7 +269,7 @@ public class fProxyLiteratureTests
             A[1, 0] = (fProxy)2; A[1, 1] = (fProxy)1;
 
             var L = arena.fProxyMat(2, 2);
-            bool spd = Cholesky.choleskyDecomposition(in A, ref L);
+            bool spd = CHO.decomp(in A, ref L);
 
             if (spd && Fail[0] == (fProxy)0)
             {

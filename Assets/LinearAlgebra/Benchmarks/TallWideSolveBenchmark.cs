@@ -11,10 +11,10 @@ namespace LinearAlgebra.Benchmarks
     // Non-square solve paths: the rectangular problems the square LU/Cholesky benchmarks never touch.
     //
     //   TALL  (m = 2n, more equations than unknowns): the OVERDETERMINED least-squares problem
-    //         min ||A x - b||.  Householder QR — qrDecomposition (forms the thin Q) and the
-    //         no-Q-reconstruction direct solve qrDirectSolve.
+    //         min ||A x - b||.  Householder QR — decompInPlace (forms the thin Q) and the
+    //         no-Q-reconstruction direct solve solveInPlace.
     //   WIDE  (n = 2m, more unknowns than equations): the UNDERDETERMINED minimum-norm problem
-    //         min ||x|| s.t. A x = b.  LQ — lqDecomposition (A = L Q) and lqMinNormSolve
+    //         min ||x|| s.t. A x = b.  LQ — decomp (A = L Q) and minNormSolve
     //         (x = Qᵀ L⁻¹ b).
     //
     // Sized by the SMALLER dimension k (the N column), with a fixed 2:1 aspect: tall is 2k x k,
@@ -23,7 +23,7 @@ namespace LinearAlgebra.Benchmarks
     //
     // All four share the same leading-term flop count — the QR/LQ reflector sweep over a 2k x k panel,
     // QrFlops(2k, k) = (10/3) k^3 — so the GFLOP/s column is directly comparable across them and
-    // against the square QR benchmark. Forming Q (qrDecomposition / lqDecomposition) does extra work
+    // against the square QR benchmark. Forming Q (QR.decompInPlace / LQ.decomp) does extra work
     // on top, so their GFLOP/s is a lower bound; the solves skip it.
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -40,7 +40,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
         }
     }
 
@@ -58,7 +58,7 @@ namespace LinearAlgebra.Benchmarks
                 for (int c = 0; c < cols; c++)
                     Q[r, c] = Src[r, c];
 
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
         }
     }
 
@@ -81,7 +81,7 @@ namespace LinearAlgebra.Benchmarks
                     A[r, c] = Src[r, c];
             }
 
-            QR.qrDirectSolve(ref A, ref b, ref x);
+            QR.solveInPlace(ref A, ref b, ref x);
         }
     }
 
@@ -104,7 +104,7 @@ namespace LinearAlgebra.Benchmarks
                     A[r, c] = Src[r, c];
             }
 
-            QR.qrDirectSolve(ref A, ref b, ref x);
+            QR.solveInPlace(ref A, ref b, ref x);
         }
     }
 
@@ -115,7 +115,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN L;     // m x m
         public floatMxN Q;     // m x n
 
-        public void Execute() => LQ.lqDecomposition(ref A, ref L, ref Q);
+        public void Execute() => LQ.decomp(ref A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -125,7 +125,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN L;
         public doubleMxN Q;
 
-        public void Execute() => LQ.lqDecomposition(ref A, ref L, ref Q);
+        public void Execute() => LQ.decomp(ref A, ref L, ref Q);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -135,7 +135,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN b;       // length m; not modified (copied internally)
         public floatN x;       // length n, min-norm solution
 
-        public void Execute() => LQ.lqMinNormSolve(ref A, ref b, ref x);
+        public void Execute() => LQ.minNormSolve(ref A, ref b, ref x);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -145,7 +145,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN b;
         public doubleN x;
 
-        public void Execute() => LQ.lqMinNormSolve(ref A, ref b, ref x);
+        public void Execute() => LQ.minNormSolve(ref A, ref b, ref x);
     }
 
     public static class TallWideSolveBenchmark
@@ -159,25 +159,25 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== Tall QR factorization (qrDecomposition, A is 2k x k; forms thin Q); N column = k ===");
+            sb.AppendLine("=== Tall QR factorization (decompInPlace, A is 2k x k; forms thin Q); N column = k ===");
             sb.AppendLine(Bench.Header());
             foreach (var k in Bench.Sizes) sb.AppendLine(TallQRFloat(k));
             foreach (var k in Bench.Sizes) sb.AppendLine(TallQRDouble(k));
             sb.AppendLine();
 
-            sb.AppendLine("=== Overdetermined least squares (qrDirectSolve, A is 2k x k; no Q reconstruction); N column = k ===");
+            sb.AppendLine("=== Overdetermined least squares (solveInPlace, A is 2k x k; no Q reconstruction); N column = k ===");
             sb.AppendLine(Bench.Header());
             foreach (var k in Bench.Sizes) sb.AppendLine(TallLSFloat(k));
             foreach (var k in Bench.Sizes) sb.AppendLine(TallLSDouble(k));
             sb.AppendLine();
 
-            sb.AppendLine("=== Wide LQ factorization (lqDecomposition, A is k x 2k); N column = k ===");
+            sb.AppendLine("=== Wide LQ factorization (decomp, A is k x 2k); N column = k ===");
             sb.AppendLine(Bench.Header());
             foreach (var k in Bench.Sizes) sb.AppendLine(WideLQFloat(k));
             foreach (var k in Bench.Sizes) sb.AppendLine(WideLQDouble(k));
             sb.AppendLine();
 
-            sb.AppendLine("=== Underdetermined minimum-norm (lqMinNormSolve, A is k x 2k); N column = k ===");
+            sb.AppendLine("=== Underdetermined minimum-norm (minNormSolve, A is k x 2k); N column = k ===");
             sb.AppendLine(Bench.Header());
             foreach (var k in Bench.Sizes) sb.AppendLine(WideMinNormFloat(k));
             foreach (var k in Bench.Sizes) sb.AppendLine(WideMinNormDouble(k));

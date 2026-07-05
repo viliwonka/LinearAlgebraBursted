@@ -6,10 +6,35 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
 `docs/perf-vectorization-lessons.md` (Burst vectorization rules).
 
 ## Method naming
-- **camelCase**, with one sub-rule: a **leading** acronym is lowercased (`svdThin`, `luDecomposition`,
-  `qrDecomposition`, `fft`) because camelCase needs a lowercase first letter; a **trailing/mid**
-  acronym stays LOUD (`eigenvaluesQR`, `normalizeL2`).
-- In-place suffix is **`Inpl`**, not `Inplace` (e.g. `mulInpl`, not `mulInplace`).
+- **camelCase**, with one sub-rule: a **leading** acronym is lowercased (`fft`) because camelCase
+  needs a lowercase first letter; a **trailing/mid** acronym stays LOUD (`valuesQR`, `normalizeL2`).
+- **Bare methods on algorithm classes, no class-name echo**: the class names the algorithm
+  (`LU`, `CHO`, `QR`, `QRCP`, `SVD`, `Eigen`, `PCA`, `Bidiag`), the method names the operation —
+  `SVD.thin`, not `SVD.svdThin`; `CHO.decomp`, not `Cholesky.choleskyDecomposition`;
+  `PCA.covariance`, not `PCA.pcaCovariance`. Precedent: `Blas.dot`, `Norms.L1`, `Solvers.cg`.
+  Exception: a class that genuinely IS the operation (`FFT.fft`, `LOBPCG.lobpcg`) keeps the echo —
+  there the echo names the operation, not the class.
+- **Direct-solver/decomposition token grid** (four tokens, one meaning each — see
+  `docs/spec-solver-api-rework.md` for the full rationale):
+
+  | Token | Meaning |
+  |---|---|
+  | `decomp` | factor; input preserved; factors into caller buffers |
+  | `decompInPlace` | factor into the input's own storage; input destroyed (becomes a factor) |
+  | `decompSolve` | solve from existing factors; factors read-only; solve-many tier |
+  | `solveInPlace` | one-shot solve, fastest path for the algorithm, destructive |
+
+  No safe one-shot solves: nothing in this family copies a buffer to protect the caller. Want the
+  input preserved → `decomp` + `decompSolve`, or copy explicitly before calling `*InPlace`.
+- **Param transformation names**: a `ref` param whose exit state is a *documented, usable value* is
+  named `in_to_out`, case-faithful to the types involved (`A_to_Q`, `A_to_LU`, `A_to_L`, `b_to_x`).
+  A `ref` param whose exit state is scratch/undefined keeps its plain name, and the XML doc says
+  "destroyed; contents undefined after return" (e.g. `QR.solveInPlace`'s `A`, `b`).
+- **Output-only params** (direct-solver `x`/similar) are uninit-safe: "output only; prior contents
+  ignored; safe to allocate with `uninit: true`."
+- In-place suffix is **`Inpl`** for elementwise/arithmetic ops, not `Inplace` (e.g. `mulInpl`, not
+  `mulInplace`) — distinct from the factorization family's own `InPlace` token above (`decompInPlace`,
+  `solveInPlace`), which is spelled out because it's a semantic contract token, not a bare suffix.
 - Predicates are **lowercase camelCase** (`isSymmetric`, `isDiagonal`, `whichTrue`) — NOT Pascal
   `Is...`. Confirmed against Unity.Mathematics' own convention (`math.isnan`, `math.isfinite`,
   `math.isinf` — always lowercase, never `IsNan`).
@@ -17,14 +42,19 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
   Exceptions below for why "static" is load-bearing, not just style.
 
 ## Type naming
-- Acronyms in **type names** are LOUD: `SVD`, `QR`, `LQ`, `FFT`, `LU` (contrast with the
-  leading-acronym-lowercase rule for methods above — these are different rules for different things).
+- Acronyms in **type names** are LOUD: `SVD`, `QR`, `QRCP`, `LQ`, `FFT`, `LU`, `CHO`, `CHOP`
+  (contrast with the leading-acronym-lowercase rule for methods above — these are different rules
+  for different things). `CHO`/`CHOP` (Cholesky / pivoted-Cholesky) joins the QR/LU/SVD/BSR
+  all-caps-shorthand family — SciPy's `cho_factor` precedent; `CHOP` = `CHO` + `Pivot`.
 - **`_OP` suffix** = a stateless bag of free functions over buffers (`Stats_OP`, `Norms_OP`,
   `Elem_OP`) — a category marker, paired with a semantic prefix describing *what* it bags. A class
   named just `_OP` with no semantic prefix (the historical `fProxy_OP`) is a smell — split it or
   name it for its content (this project did both: split into `Linear_OP` + `Elem_OP`).
-- **No suffix** = a named factorization/algorithm (`LU`, `SVD`, `Cholesky`, `Eigen`, `Bidiag`, `QR`,
-  `LQ`, `Solvers`) — the algorithm's own name is the description, no `_OP` needed.
+- **No suffix** = a named factorization/algorithm (`LU`, `SVD`, `CHO`, `CHOP`, `Eigen`, `Bidiag`,
+  `QR`, `QRCP`, `LQ`, `Solvers`) — the algorithm's own name is the description, no `_OP` needed. A
+  rank-revealing/pivoted variant of an existing algorithm gets its OWN class (`QRCP` split from
+  `QR`, `CHOP` split from `CHO`) rather than growing the base class's arity — the pivot/rank contract
+  is different enough to earn its own namespace-of-one.
 - **`_WS` suffix** = a reusable zero-alloc workspace struct (`fProxyBidiag_WS`, `fProxySVDThin_WS`).
 - **A class name containing `fProxy`/`iProxy`** is SPLIT — codegen generates a *separate* class per
   concrete type (`floatFoo`, `doubleFoo`, ...). A **bare name** (no proxy token) is MERGED — codegen

@@ -126,7 +126,7 @@ public class fProxySolverBatteryTests
             int n = A.M_Rows;
 
             var L = arena.fProxyMat(n, n);
-            AssertTrue(Cholesky.choleskyDecomposition(in A, ref L));
+            AssertTrue(CHO.decomp(in A, ref L));
 
             // rec = L · Lᵀ
             var Lt = arena.fProxyMat(n, n);
@@ -138,7 +138,7 @@ public class fProxySolverBatteryTests
             AssertTrue(MaxAbsDiff(in A, in rec) <= tol);
         }
 
-        // Indefinite inputs MUST be rejected (choleskyDecomposition returns false): Fiedler(n≥2) and
+        // Indefinite inputs MUST be rejected (decomp returns false): Fiedler(n≥2) and
         // Clement(n≥2) both have a zero diagonal → first pivot non-positive; Rosser is indefinite
         // (negative eigenvalues) → a later pivot goes non-positive.
         void CholeskyRejectIndefinite()
@@ -147,15 +147,15 @@ public class fProxySolverBatteryTests
 
             var F = arena.fProxyFiedler(3);
             var Lf = arena.fProxyMat(3, 3);
-            AssertTrue(!Cholesky.choleskyDecomposition(in F, ref Lf));
+            AssertTrue(!CHO.decomp(in F, ref Lf));
 
             var C = arena.fProxyClement(3);
             var Lc = arena.fProxyMat(3, 3);
-            AssertTrue(!Cholesky.choleskyDecomposition(in C, ref Lc));
+            AssertTrue(!CHO.decomp(in C, ref Lc));
 
             var R = arena.fProxyRosser();
             var Lr = arena.fProxyMat(8, 8);
-            AssertTrue(!Cholesky.choleskyDecomposition(in R, ref Lr));
+            AssertTrue(!CHO.decomp(in R, ref Lr));
 
             arena.Dispose();
         }
@@ -228,10 +228,10 @@ public class fProxySolverBatteryTests
 
             var LUm = A.Copy();
             var P = new Pivot(n, Allocator.Temp);
-            AssertTrue(LU.luDecompositionInPlace(ref LUm, ref P));
+            AssertTrue(LU.decompInPlace(ref LUm, ref P));
 
             var x = b.Copy();                 // luSolve overwrites b with x
-            LU.luSolve(ref LUm, in P, ref x);
+            LU.decompSolve(ref LUm, in P, ref x);
 
             // residual ‖A x − b‖ with the ORIGINAL A,b (backward-stable ⇒ tiny)
             fProxy resTol = (MatMaxAbs(in A) + (fProxy)1) * (fProxy)100 * Consts.fProxySqrtEps;
@@ -247,7 +247,7 @@ public class fProxySolverBatteryTests
         // QR (Householder) — square solve + overdetermined least squares.
         // =====================================================================
 
-        // Well-conditioned square systems solved via qrDirectSolve (Solvers.solveQR): residual small.
+        // Well-conditioned square systems solved via QR.solveInPlace: residual small.
         // Laplacian1D(8) (cond ≈ 41) and Pei(5,2) (eigenvalues {7,2,2,2,2}, cond ≈ 3.5).
         void QRDirectSolveSquare()
         {
@@ -271,10 +271,10 @@ public class fProxySolverBatteryTests
 
             var b = Blas.dot(A, xTrue);
 
-            var Aw = A.Copy();   // qrDirectSolve destroys A and b
+            var Aw = A.Copy();   // solveInPlace destroys A and b
             var bw = b.Copy();
             var x = arena.fProxyVec(n);
-            Solvers.solveQR(ref Aw, ref bw, ref x);
+            QR.solveInPlace(ref Aw, ref bw, ref x);
 
             fProxy resTol = (MatMaxAbs(in A) + (fProxy)1) * (fProxy)100 * Consts.fProxySqrtEps;
             AssertTrue(ResidualNorm(in A, in x, in b) <= resTol);
@@ -301,7 +301,7 @@ public class fProxySolverBatteryTests
             var Aw = A.Copy();
             var bw = b.Copy();
             var x = arena.fProxyVec(n);
-            Solvers.solveQR(ref Aw, ref bw, ref x);   // x has length A.N_Cols = 3
+            QR.solveInPlace(ref Aw, ref bw, ref x);   // x has length A.N_Cols = 3
 
             fProxy xtol = (fProxy)50 * Consts.fProxySqrtEps;
             for (int i = 0; i < n; i++)
@@ -346,7 +346,7 @@ public class fProxySolverBatteryTests
             var Q = A.Copy();
             var R = arena.fProxyMat(n, n);
             var P = new Pivot(n, Allocator.Temp);
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             fProxy rankTol = (fProxy)50 * Consts.fProxySqrtEps;
             for (int d = 1; d < n; d++)
@@ -366,7 +366,7 @@ public class fProxySolverBatteryTests
             var Q = A.Copy();   // overwritten with Q (m × n)
             var R = arena.fProxyMat(n, n);
             var P = new Pivot(n, Allocator.Temp);
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
 
             // QRProduct = Q · R (m × n)
             var QRProduct = arena.fProxyMat(m, n);
@@ -503,7 +503,7 @@ public class fProxySolverBatteryTests
             var Ac = A.Copy();
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Ac, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             // VᵀV ≈ I
             var VtV = arena.fProxyMat(n, n);
@@ -540,7 +540,7 @@ public class fProxySolverBatteryTests
             var Tc = T.Copy();
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Tc, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Tc, ref eig, ref V));
 
             fProxy pi = (fProxy)math.PI_DBL;
             fProxy tol = (fProxy)50 * Consts.fProxySqrtEps;
@@ -564,7 +564,7 @@ public class fProxySolverBatteryTests
             var Cc = C.Copy();
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Cc, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Cc, ref eig, ref V));
 
             fProxy tol = (fProxy)50 * Consts.fProxySqrtEps;
             AssertClose(eig[0], (fProxy)3, tol);
@@ -586,7 +586,7 @@ public class fProxySolverBatteryTests
             var Fc = F.Copy();
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Fc, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Fc, ref eig, ref V));
 
             // smallest |λ| ≈ 0.56 ⇒ a small gate cleanly separates signs.
             fProxy gate = (fProxy)1E-2;
@@ -613,7 +613,7 @@ public class fProxySolverBatteryTests
             var Dc = D.Copy();
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Dc, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Dc, ref eig, ref V));
 
             fProxy halfPi = (fProxy)(math.PI_DBL * 0.5);
             fProxy band = (fProxy)10 * Consts.fProxySqrtEps;
@@ -650,7 +650,7 @@ public class fProxySolverBatteryTests
             var Ac = A.Copy();
             var eig = arena.fProxyVec(8);
             var V = arena.fProxyMat(8, 8);
-            AssertTrue(Eigen.eigenDecomposition(ref Ac, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             fProxy esum = (fProxy)0;
             for (int i = 0; i < 8; i++) esum += eig[i];
@@ -664,7 +664,7 @@ public class fProxySolverBatteryTests
         }
 
         // =====================================================================
-        // Non-symmetric eigen (QR algorithm) — eigenvaluesQR.
+        // Non-symmetric eigen (QR algorithm) — valuesQR.
         // =====================================================================
 
         // Frank(4): all eigenvalues real (imag ≈ 0) and positive (≈ {7.31, 2.07, 0.48, 0.137}).
@@ -678,7 +678,7 @@ public class fProxySolverBatteryTests
             var Fc = F.Copy();
             var re = arena.fProxyVec(n);
             var im = arena.fProxyVec(n);
-            AssertTrue(Eigen.eigenvaluesQR(ref Fc, ref re, ref im));
+            AssertTrue(Eigen.valuesQR(ref Fc, ref re, ref im));
 
             for (int i = 0; i < n; i++)
             {
@@ -690,7 +690,7 @@ public class fProxySolverBatteryTests
         }
 
         // Companion of (x−1)(x−2)(x−3) = x³ − 6x² + 11x − 6 ⇒ coeffs {−6, 11, −6}.
-        // eigenvaluesQR returns the roots {3, 2, 1} (descending, real).
+        // valuesQR returns the roots {3, 2, 1} (descending, real).
         void EigenQRCompanion()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -701,7 +701,7 @@ public class fProxySolverBatteryTests
 
             var re = arena.fProxyVec(3);
             var im = arena.fProxyVec(3);
-            AssertTrue(Eigen.eigenvaluesQR(ref C, ref re, ref im));
+            AssertTrue(Eigen.valuesQR(ref C, ref re, ref im));
 
             fProxy tol = (fProxy)1E-2;
             AssertClose(re[0], (fProxy)3, tol);
@@ -780,13 +780,13 @@ public class fProxySolverBatteryTests
         // helpers
         // =====================================================================
 
-        // det via LU on a copy (luDecompositionInPlace destroys its input).
+        // det via LU on a copy (decompInPlace destroys its input).
         fProxy Determinant(in fProxyMxN M)
         {
             int n = M.M_Rows;
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            LU.decompInPlace(ref LUmat, ref pivot);
             fProxy det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;

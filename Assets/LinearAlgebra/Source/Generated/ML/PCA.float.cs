@@ -7,26 +7,26 @@ namespace LinearAlgebra.ML
     /// Principal Component Analysis over a data matrix X (rows = samples n, columns = features p —
     /// matches StatsOP's orientation). Four fit routes, a 2x2 of fast/accurate x full/partial:
     ///
-    ///   pcaCovariance    — full, fast. Eigendecomposes the p x p covariance/correlation matrix. The
+    ///   fitCov           — full, fast. Eigendecomposes the p x p covariance/correlation matrix. The
     ///                      only route that handles WIDE data (p > n). Squares the condition number
-    ///                      (kappa^2) -- prefer pcaSVD for near-degenerate data.
-    ///   pcaSVD           — full, accurate. SVD of the centered data directly (no Gram, no kappa^2).
+    ///                      (kappa^2) -- prefer fitSvd for near-degenerate data.
+    ///   fitSvd           — full, accurate. SVD of the centered data directly (no Gram, no kappa^2).
     ///                      Requires n >= p.
-    ///   pcaSVDTruncated  — partial (top-k), EXACT. Golub-Kahan-Lanczos top-k SVD. Requires n >= p
-    ///                      (svdTruncated itself enforces this -- see the method doc below).
-    ///   pcaRandomized    — partial (top-k), fast-approximate (Halko-Martinsson-Tropp). Requires n >= p.
+    ///   fitSvdTruncated  — partial (top-k), EXACT. Golub-Kahan-Lanczos top-k SVD. Requires n >= p
+    ///                      (SVD.truncated itself enforces this -- see the method doc below).
+    ///   fitRandomized    — partial (top-k), fast-approximate (Halko-Martinsson-Tropp). Requires n >= p.
     ///                      Pays off only when p is large and k &lt;&lt; p.
     ///
     /// Every fit returns/fills a <see cref="floatPCAModel"/> (arena-owned buffers): the caller keeps it
-    /// to project new data via <see cref="pcaTransform"/> or to read axes/variances for reduction work.
+    /// to project new data via <see cref="transform"/> or to read axes/variances for reduction work.
     ///
-    /// THE denominator convention (makes pcaCovariance and pcaSVD agree on explainedVariance): both use
+    /// THE denominator convention (makes fitCov and fitSvd agree on explainedVariance): both use
     /// the SAMPLE (n-1) convention, NOT StatsOP.standardizeColumns'/colVariance's population (n) one:
     ///   Covariance mode:  explainedVariance[i] = S[i]^2 / (n-1)  (== the covariance-matrix eigenvalues).
     ///   Correlation mode: standardize with SAMPLE std-dev sqrt(Sigma(x-mean)^2/(n-1)); then
     ///                     S[i]^2/(n-1) == the correlation-matrix eigenvalues.
     ///
-    /// THE correlation degenerate-feature trap: pcaCovariance(Correlation) builds its own correlation
+    /// THE correlation degenerate-feature trap: fitCov(Correlation) builds its own correlation
     /// matrix R = Cov ./ (sampleStd (x) sampleStd) inline, zeroing the ENTIRE row/column (including the
     /// diagonal) of a zero-variance feature. It deliberately does NOT reuse StatsOP.correlation(), which
     /// puts a spurious 1 on that diagonal -- that would emit a unit eigenvalue the SVD route can't match
@@ -45,8 +45,8 @@ namespace LinearAlgebra.ML
     /// Realtime pattern: allocate the model once via Arena.floatPCAModel(p, k), call the `ref` fit each
     /// frame, ClearTemp() at end of frame reclaims all internal scratch.
     ///
-    /// Deterministic by default: pcaRandomized / pcaSVDTruncated forward the exact default seed
-    /// (0x9E3779B1u) svdRandomized/svdTruncated already use, so default calls are bitwise-reproducible.
+    /// Deterministic by default: fitRandomized / fitSvdTruncated forward the exact default seed
+    /// (0x9E3779B1u) SVD.randomized/SVD.truncated already use, so default calls are bitwise-reproducible.
     /// </summary>
     public static partial class PCA
     {
@@ -62,18 +62,18 @@ namespace LinearAlgebra.ML
                 throw new ArgumentException(method + ": X.N_Cols (p) must be >= 1");
         }
 
-        // svdThin/svdRandomized/svdTruncated all require m (samples) >= n (features) internally; PCA
+        // SVD.thin/randomized/truncated all require m (samples) >= n (features) internally; PCA
         // surfaces that as a guard with a clearer message BEFORE touching the temp pool (rather than
         // letting the kernel throw its own generic message after Xc has already been allocated).
         static void RequireTallShape(in floatMxN X, string method)
         {
             if (X.M_Rows < X.N_Cols)
-                throw new ArgumentException(method + ": requires samples>=features (X.M_Rows >= X.N_Cols); use pcaCovariance for wide data");
+                throw new ArgumentException(method + ": requires samples>=features (X.M_Rows >= X.N_Cols); use fitCov for wide data");
         }
 
         // RequireTopK lives in PCA.Shared.cs (type-agnostic, emitted once).
 
-        // model shape guard for the two FULL routes (pcaCovariance/pcaSVD): components p x p,
+        // model shape guard for the two FULL routes (fitCov/fitSvd): components p x p,
         // explainedVariance/-Ratio length p, mean/scale length p.
         static void RequireModelShapeFull(in floatPCAModel model, int p, string method)
         {
@@ -89,7 +89,7 @@ namespace LinearAlgebra.ML
                 throw new ArgumentException(method + ": model.scale.N must equal p");
         }
 
-        // model shape guard for the two TOP-K routes (pcaSVDTruncated/pcaRandomized): components p x k,
+        // model shape guard for the two TOP-K routes (fitSvdTruncated/fitRandomized): components p x k,
         // explainedVariance/-Ratio length k, mean/scale length p.
         static void RequireModelShapeTopK(in floatPCAModel model, int p, int k, string method)
         {
@@ -134,7 +134,7 @@ namespace LinearAlgebra.ML
         }
 
         // Per-feature SAMPLE std-dev std[c] = sqrt(Sigma_r (X[r,c]-mean[c])^2 / (n-1)), direct
-        // row-major accumulation. Shared by pcaCovariance (Correlation) AND BuildWorkingCopy so BOTH
+        // row-major accumulation. Shared by fitCov (Correlation) AND BuildWorkingCopy so BOTH
         // routes compute std with bit-identical roundoff -> a borderline-constant column is classified
         // degenerate (std==0) identically by both, keeping the cross-route oracle honest (a Gram-derived
         // sqrt(C[j,j]) could disagree with a direct row-sum on which feature underflows to zero).
@@ -154,7 +154,7 @@ namespace LinearAlgebra.ML
         // center-and-divide by the SAMPLE std-dev (Correlation; degenerate feature -> scale=1, zero
         // column). Fills `scale`. Returns totalVariance computed directly from X (never from the
         // possibly-truncated explainedVariance the caller will fill afterward). `mean` must already be
-        // filled (colMean). Used by pcaSVD / pcaSVDTruncated / pcaRandomized (NOT pcaCovariance, which
+        // filled (colMean). Used by fitSvd / fitSvdTruncated / fitRandomized (NOT fitCov, which
         // builds its own p x p Cov/R matrix instead of an n x p working copy).
         static float BuildWorkingCopy(in floatMxN X, PCAScaling scaling, in floatN mean,
                                        ref floatN scale, ref floatMxN Xc)
@@ -200,7 +200,7 @@ namespace LinearAlgebra.ML
         }
 
         // Converts singular values S[0..k) in-place to variances: S[i] <- S[i]^2 / (n-1) (the
-        // denominator-trap scaling shared by pcaSVD / pcaSVDTruncated / pcaRandomized).
+        // denominator-trap scaling shared by fitSvd / fitSvdTruncated / fitRandomized).
         static void SingularValuesToVariances(ref floatN S, int k, int n)
         {
             for (int i = 0; i < k; i++)
@@ -232,19 +232,19 @@ namespace LinearAlgebra.ML
         }
 
         // =====================================================================================
-        // 1. pcaCovariance — full, fast (covariance/correlation eigensolve; handles wide p>n)
+        // 1. fitCov — full, fast (covariance/correlation eigensolve; handles wide p>n)
         // =====================================================================================
 
         /// <summary>
         /// Full PCA via eigendecomposition of the p x p covariance (or correlation) matrix built from X.
         /// The only route that handles WIDE data (p > n): a p x p eigensolve is cheap regardless of n.
-        /// Squares the condition number (kappa^2) relative to pcaSVD -- prefer pcaSVD for near-degenerate
+        /// Squares the condition number (kappa^2) relative to fitSvd -- prefer fitSvd for near-degenerate
         /// data. model.k is set to p (X.N_Cols). Correlation mode builds its own R matrix inline (see
         /// the type doc's degenerate-feature trap) rather than reusing StatsOP.correlation().
         /// </summary>
-        public static bool pcaCovariance(in floatMxN X, ref floatPCAModel model, PCAScaling scaling)
+        public static bool fitCov(in floatMxN X, ref floatPCAModel model, PCAScaling scaling)
         {
-            const string method = "PCA.pcaCovariance";
+            const string method = "PCA.fitCov";
             RequireBasicShape(in X, method);
 
             int p = X.N_Cols;
@@ -252,7 +252,7 @@ namespace LinearAlgebra.ML
 
             Stats.colMean(in X, ref model.mean);
 
-            // C is PCA-built scratch each call (temp pool) -- eigenSymmetric destroys it.
+            // C is PCA-built scratch each call (temp pool) -- symmetric destroys it.
             var C = X.floatTempMat(p, p);
             Stats.covarianceInto(in X, ref C);
 
@@ -286,7 +286,7 @@ namespace LinearAlgebra.ML
                 // StatsOP.correlation's convention of 1 there — see the type doc's degenerate-feature trap).
                 // Each cell (i,j) is visited exactly once so the in-place overwrite never reads an
                 // already-transformed neighbor. Stays exactly symmetric (C[i,j]==C[j,i], si*sj==sj*si) so
-                // eigenSymmetric's symmetry check passes.
+                // symmetric's symmetry check passes.
                 for (int i = 0; i < p; i++)
                 {
                     float si = sampleStd[i];
@@ -301,44 +301,44 @@ namespace LinearAlgebra.ML
                 }
             }
 
-            bool converged = Eigen.eigenSymmetric(ref C, ref model.explainedVariance, ref model.components);
+            bool converged = Eigen.symmetric(ref C, ref model.explainedVariance, ref model.components);
 
             FinalizeModel(ref model, p, totalVariance, converged);
             return converged;
         }
 
-        /// <summary>pcaCovariance with scaling = PCAScaling.Covariance.</summary>
-        public static bool pcaCovariance(in floatMxN X, ref floatPCAModel model)
-            => pcaCovariance(in X, ref model, PCAScaling.Covariance);
+        /// <summary>fitCov with scaling = PCAScaling.Covariance.</summary>
+        public static bool fitCov(in floatMxN X, ref floatPCAModel model)
+            => fitCov(in X, ref model, PCAScaling.Covariance);
 
         /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
-        public static floatPCAModel pcaCovariance(ref Arena arena, in floatMxN X, PCAScaling scaling)
+        public static floatPCAModel fitCov(ref Arena arena, in floatMxN X, PCAScaling scaling)
         {
-            const string method = "PCA.pcaCovariance";
+            const string method = "PCA.fitCov";
             RequireBasicShape(in X, method);
 
             int p = X.N_Cols;
             var model = arena.floatPCAModel(p, p);
-            pcaCovariance(in X, ref model, scaling);
+            fitCov(in X, ref model, scaling);
             return model;
         }
 
-        /// <summary>pcaCovariance (allocating) with scaling = PCAScaling.Covariance.</summary>
-        public static floatPCAModel pcaCovariance(ref Arena arena, in floatMxN X)
-            => pcaCovariance(ref arena, in X, PCAScaling.Covariance);
+        /// <summary>fitCov (allocating) with scaling = PCAScaling.Covariance.</summary>
+        public static floatPCAModel fitCov(ref Arena arena, in floatMxN X)
+            => fitCov(ref arena, in X, PCAScaling.Covariance);
 
         // =====================================================================================
-        // 2. pcaSVD — full, accurate (svdThin on a centered/standardized copy; requires n >= p)
+        // 2. fitSvd — full, accurate (SVD.thin on a centered/standardized copy; requires n >= p)
         // =====================================================================================
 
         /// <summary>
         /// Full PCA via SVD of the centered (or standardized) data directly -- no Gram matrix, no
         /// kappa^2 accuracy loss. Requires X.M_Rows (n) >= X.N_Cols (p); throws otherwise (use
-        /// pcaCovariance for wide data). model.k is set to p.
+        /// fitCov for wide data). model.k is set to p.
         /// </summary>
-        public static bool pcaSVD(in floatMxN X, ref floatPCAModel model, PCAScaling scaling, int maxIter)
+        public static bool fitSvd(in floatMxN X, ref floatPCAModel model, PCAScaling scaling, int maxIter)
         {
-            const string method = "PCA.pcaSVD";
+            const string method = "PCA.fitSvd";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -351,9 +351,9 @@ namespace LinearAlgebra.ML
             var Xc = X.floatTempMat(n, p);
             float totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
 
-            // svdThin reads A while writing U -- a SEPARATE n x p temp, never Xc itself.
+            // SVD.thin reads A while writing U -- a SEPARATE n x p temp, never Xc itself.
             var U = X.floatTempMat(n, p);
-            bool converged = SVD.svdThin(in Xc, ref U, ref model.explainedVariance, ref model.components, maxIter);
+            bool converged = SVD.thin(in Xc, ref U, ref model.explainedVariance, ref model.components, maxIter);
 
             if (converged)
                 SingularValuesToVariances(ref model.explainedVariance, p, n);
@@ -362,52 +362,52 @@ namespace LinearAlgebra.ML
             return converged;
         }
 
-        /// <summary>pcaSVD with maxIter = svdThin's default (75).</summary>
-        public static bool pcaSVD(in floatMxN X, ref floatPCAModel model, PCAScaling scaling)
-            => pcaSVD(in X, ref model, scaling, 75);
+        /// <summary>fitSvd with maxIter = SVD.thin's default (75).</summary>
+        public static bool fitSvd(in floatMxN X, ref floatPCAModel model, PCAScaling scaling)
+            => fitSvd(in X, ref model, scaling, 75);
 
-        /// <summary>pcaSVD with scaling = PCAScaling.Covariance and maxIter = 75.</summary>
-        public static bool pcaSVD(in floatMxN X, ref floatPCAModel model)
-            => pcaSVD(in X, ref model, PCAScaling.Covariance, 75);
+        /// <summary>fitSvd with scaling = PCAScaling.Covariance and maxIter = 75.</summary>
+        public static bool fitSvd(in floatMxN X, ref floatPCAModel model)
+            => fitSvd(in X, ref model, PCAScaling.Covariance, 75);
 
         /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
-        public static floatPCAModel pcaSVD(ref Arena arena, in floatMxN X, PCAScaling scaling)
+        public static floatPCAModel fitSvd(ref Arena arena, in floatMxN X, PCAScaling scaling)
         {
-            const string method = "PCA.pcaSVD";
+            const string method = "PCA.fitSvd";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
             int p = X.N_Cols;
             var model = arena.floatPCAModel(p, p);
-            pcaSVD(in X, ref model, scaling, 75);
+            fitSvd(in X, ref model, scaling, 75);
             return model;
         }
 
-        /// <summary>pcaSVD (allocating) with scaling = PCAScaling.Covariance.</summary>
-        public static floatPCAModel pcaSVD(ref Arena arena, in floatMxN X)
-            => pcaSVD(ref arena, in X, PCAScaling.Covariance);
+        /// <summary>fitSvd (allocating) with scaling = PCAScaling.Covariance.</summary>
+        public static floatPCAModel fitSvd(ref Arena arena, in floatMxN X)
+            => fitSvd(ref arena, in X, PCAScaling.Covariance);
 
         // =====================================================================================
-        // 3. pcaSVDTruncated — exact top-k (Golub-Kahan-Lanczos)
+        // 3. fitSvdTruncated — exact top-k (Golub-Kahan-Lanczos)
         // =====================================================================================
         //
-        // NOTE ON SHAPE: SVD.svdTruncated's core overload enforces A.M_Rows >= A.N_Cols internally
-        // (same requirement as svdThin/svdRandomized) -- it is NOT shape-free despite appearances from
+        // NOTE ON SHAPE: SVD.truncated's core overload enforces A.M_Rows >= A.N_Cols internally
+        // (same requirement as SVD.thin/randomized) -- it is NOT shape-free despite appearances from
         // its `k <= N_Cols` guard alone. PCA therefore applies the same RequireTallShape guard as
-        // pcaSVD/pcaRandomized, BEFORE allocating Xc, so invalid (wide) input never touches the temp
-        // pool. pcaSVDTruncated does NOT support wide (p>n) data.
+        // fitSvd/fitRandomized, BEFORE allocating Xc, so invalid (wide) input never touches the temp
+        // pool. fitSvdTruncated does NOT support wide (p>n) data.
 
         /// <summary>
-        /// Exact top-k PCA via Golub-Kahan-Lanczos bidiagonalization (SVD.svdTruncated) on the centered
+        /// Exact top-k PCA via Golub-Kahan-Lanczos bidiagonalization (SVD.truncated) on the centered
         /// (or standardized) data -- avoids the full O(n p^2) SVD when only the leading few components
         /// are needed. Requires X.M_Rows (n) >= X.N_Cols (p) (see the shape note above); 0 &lt; k &lt;=
         /// min(n, p). model.k is set to k. explainedVarianceRatio is computed against the FULL
         /// totalVariance, so top-k ratios sum to less than 1.
         /// </summary>
-        public static bool pcaSVDTruncated(in floatMxN X, ref floatPCAModel model, int k,
+        public static bool fitSvdTruncated(in floatMxN X, ref floatPCAModel model, int k,
                                             PCAScaling scaling, int oversample, uint seed, int maxIter)
         {
-            const string method = "PCA.pcaSVDTruncated";
+            const string method = "PCA.fitSvdTruncated";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -422,7 +422,7 @@ namespace LinearAlgebra.ML
             float totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
 
             var Uk = X.floatTempMat(n, k);
-            SVD.svdTruncated(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
+            SVD.truncated(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
                               k, oversample, seed, maxIter, out bool converged);
 
             if (converged)
@@ -433,21 +433,21 @@ namespace LinearAlgebra.ML
         }
 
         /// <summary>
-        /// pcaSVDTruncated forwarding svdTruncated's own "generous default Krylov width" formula
+        /// fitSvdTruncated forwarding SVD.truncated's own "generous default Krylov width" formula
         /// verbatim (oversample = max(k, 12), so p = min(n, max(2k, k+12))), its default seed
         /// (0x9E3779B1u) and default maxIter (75).
         /// </summary>
-        public static bool pcaSVDTruncated(in floatMxN X, ref floatPCAModel model, int k, PCAScaling scaling)
-            => pcaSVDTruncated(in X, ref model, k, scaling, math.max(k, 12), 0x9E3779B1u, 75);
+        public static bool fitSvdTruncated(in floatMxN X, ref floatPCAModel model, int k, PCAScaling scaling)
+            => fitSvdTruncated(in X, ref model, k, scaling, math.max(k, 12), 0x9E3779B1u, 75);
 
-        /// <summary>pcaSVDTruncated with scaling = PCAScaling.Covariance.</summary>
-        public static bool pcaSVDTruncated(in floatMxN X, ref floatPCAModel model, int k)
-            => pcaSVDTruncated(in X, ref model, k, PCAScaling.Covariance);
+        /// <summary>fitSvdTruncated with scaling = PCAScaling.Covariance.</summary>
+        public static bool fitSvdTruncated(in floatMxN X, ref floatPCAModel model, int k)
+            => fitSvdTruncated(in X, ref model, k, PCAScaling.Covariance);
 
         /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
-        public static floatPCAModel pcaSVDTruncated(ref Arena arena, in floatMxN X, int k, PCAScaling scaling)
+        public static floatPCAModel fitSvdTruncated(ref Arena arena, in floatMxN X, int k, PCAScaling scaling)
         {
-            const string method = "PCA.pcaSVDTruncated";
+            const string method = "PCA.fitSvdTruncated";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -456,29 +456,29 @@ namespace LinearAlgebra.ML
             RequireTopK(k, n, p, method);
 
             var model = arena.floatPCAModel(p, k);
-            pcaSVDTruncated(in X, ref model, k, scaling);
+            fitSvdTruncated(in X, ref model, k, scaling);
             return model;
         }
 
-        /// <summary>pcaSVDTruncated (allocating) with scaling = PCAScaling.Covariance.</summary>
-        public static floatPCAModel pcaSVDTruncated(ref Arena arena, in floatMxN X, int k)
-            => pcaSVDTruncated(ref arena, in X, k, PCAScaling.Covariance);
+        /// <summary>fitSvdTruncated (allocating) with scaling = PCAScaling.Covariance.</summary>
+        public static floatPCAModel fitSvdTruncated(ref Arena arena, in floatMxN X, int k)
+            => fitSvdTruncated(ref arena, in X, k, PCAScaling.Covariance);
 
         // =====================================================================================
-        // 4. pcaRandomized — approximate top-k (Halko-Martinsson-Tropp; requires n >= p)
+        // 4. fitRandomized — approximate top-k (Halko-Martinsson-Tropp; requires n >= p)
         // =====================================================================================
 
         /// <summary>
-        /// Approximate top-k PCA via randomized SVD (SVD.svdRandomized) on the centered (or
+        /// Approximate top-k PCA via randomized SVD (SVD.randomized) on the centered (or
         /// standardized) data. Pays off when p is large and k &lt;&lt; p; at small p prefer
-        /// pcaCovariance, for exact top-k prefer pcaSVDTruncated. Requires X.M_Rows (n) >= X.N_Cols (p);
-        /// throws otherwise (use pcaCovariance for wide data). 0 &lt; k &lt;= min(n, p). model.k is set
-        /// to k. Deterministic by default (seed = 0x9E3779B1u, svdRandomized's own default).
+        /// fitCov, for exact top-k prefer fitSvdTruncated. Requires X.M_Rows (n) >= X.N_Cols (p);
+        /// throws otherwise (use fitCov for wide data). 0 &lt; k &lt;= min(n, p). model.k is set
+        /// to k. Deterministic by default (seed = 0x9E3779B1u, SVD.randomized's own default).
         /// </summary>
-        public static bool pcaRandomized(in floatMxN X, ref floatPCAModel model, int k,
+        public static bool fitRandomized(in floatMxN X, ref floatPCAModel model, int k,
                                           PCAScaling scaling, int oversample, int powerIters, uint seed, int maxIter)
         {
-            const string method = "PCA.pcaRandomized";
+            const string method = "PCA.fitRandomized";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -493,7 +493,7 @@ namespace LinearAlgebra.ML
             float totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
 
             var Uk = X.floatTempMat(n, k);
-            bool converged = SVD.svdRandomized(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
+            bool converged = SVD.randomized(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
                                                 k, oversample, powerIters, seed, maxIter);
 
             if (converged)
@@ -503,19 +503,19 @@ namespace LinearAlgebra.ML
             return converged;
         }
 
-        /// <summary>pcaRandomized forwarding svdRandomized's own defaults verbatim: oversample=10,
+        /// <summary>fitRandomized forwarding SVD.randomized's own defaults verbatim: oversample=10,
         /// powerIters=2, seed=0x9E3779B1u, maxIter=75.</summary>
-        public static bool pcaRandomized(in floatMxN X, ref floatPCAModel model, int k, PCAScaling scaling)
-            => pcaRandomized(in X, ref model, k, scaling, 10, 2, 0x9E3779B1u, 75);
+        public static bool fitRandomized(in floatMxN X, ref floatPCAModel model, int k, PCAScaling scaling)
+            => fitRandomized(in X, ref model, k, scaling, 10, 2, 0x9E3779B1u, 75);
 
-        /// <summary>pcaRandomized with scaling = PCAScaling.Covariance.</summary>
-        public static bool pcaRandomized(in floatMxN X, ref floatPCAModel model, int k)
-            => pcaRandomized(in X, ref model, k, PCAScaling.Covariance);
+        /// <summary>fitRandomized with scaling = PCAScaling.Covariance.</summary>
+        public static bool fitRandomized(in floatMxN X, ref floatPCAModel model, int k)
+            => fitRandomized(in X, ref model, k, PCAScaling.Covariance);
 
         /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
-        public static floatPCAModel pcaRandomized(ref Arena arena, in floatMxN X, int k, PCAScaling scaling)
+        public static floatPCAModel fitRandomized(ref Arena arena, in floatMxN X, int k, PCAScaling scaling)
         {
-            const string method = "PCA.pcaRandomized";
+            const string method = "PCA.fitRandomized";
             RequireBasicShape(in X, method);
             RequireTallShape(in X, method);
 
@@ -524,13 +524,13 @@ namespace LinearAlgebra.ML
             RequireTopK(k, n, p, method);
 
             var model = arena.floatPCAModel(p, k);
-            pcaRandomized(in X, ref model, k, scaling);
+            fitRandomized(in X, ref model, k, scaling);
             return model;
         }
 
-        /// <summary>pcaRandomized (allocating) with scaling = PCAScaling.Covariance.</summary>
-        public static floatPCAModel pcaRandomized(ref Arena arena, in floatMxN X, int k)
-            => pcaRandomized(ref arena, in X, k, PCAScaling.Covariance);
+        /// <summary>fitRandomized (allocating) with scaling = PCAScaling.Covariance.</summary>
+        public static floatPCAModel fitRandomized(ref Arena arena, in floatMxN X, int k)
+            => fitRandomized(ref arena, in X, k, PCAScaling.Covariance);
 
         // =====================================================================================
         // Projection
@@ -543,9 +543,9 @@ namespace LinearAlgebra.ML
         /// model.components.M_Rows); model.k must equal model.components.N_Cols (defends a
         /// hand-assembled or stale model); scores must be X.M_Rows x model.k.
         /// </summary>
-        public static void pcaTransform(in floatMxN X, in floatPCAModel model, ref floatMxN scores)
+        public static void transform(in floatMxN X, in floatPCAModel model, ref floatMxN scores)
         {
-            const string method = "PCA.pcaTransform";
+            const string method = "PCA.transform";
             int p = X.N_Cols;
             int nNew = X.M_Rows;
 
@@ -564,10 +564,10 @@ namespace LinearAlgebra.ML
             Blas.dot(in Xs, in model.components, ref scores);
         }
 
-        /// <summary>Allocating pcaTransform: allocates and returns a fresh X.M_Rows x model.k scores matrix.</summary>
-        public static floatMxN pcaTransform(ref Arena arena, in floatMxN X, in floatPCAModel model)
+        /// <summary>Allocating transform: allocates and returns a fresh X.M_Rows x model.k scores matrix.</summary>
+        public static floatMxN transform(ref Arena arena, in floatMxN X, in floatPCAModel model)
         {
-            const string method = "PCA.pcaTransform";
+            const string method = "PCA.transform";
             int p = X.N_Cols;
 
             if (model.mean.N != p || model.scale.N != p || model.components.M_Rows != p)
@@ -576,7 +576,7 @@ namespace LinearAlgebra.ML
                 throw new ArgumentException(method + ": model.k must equal model.components.N_Cols (stale model)");
 
             var scores = arena.floatMat(X.M_Rows, model.k);
-            pcaTransform(in X, in model, ref scores);
+            transform(in X, in model, ref scores);
             return scores;
         }
     }

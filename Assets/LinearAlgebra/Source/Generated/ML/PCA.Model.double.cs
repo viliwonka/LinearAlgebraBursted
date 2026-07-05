@@ -5,15 +5,15 @@ using LinearAlgebra.ML;
 namespace LinearAlgebra.ML
 {
     /// <summary>
-    /// A fitted PCA model: the axes/variances needed to project new data (<see cref="PCA.pcaTransform"/>)
-    /// or to read off variances for a reduction decision. Every <c>PCA</c> fit route (pcaCovariance /
-    /// pcaSVD / pcaSVDTruncated / pcaRandomized) fills one of these. Allocate via
+    /// A fitted PCA model: the axes/variances needed to project new data (<see cref="PCA.transform"/>)
+    /// or to read off variances for a reduction decision. Every <c>PCA</c> fit route (fitCov /
+    /// fitSvd / fitSvdTruncated / fitRandomized) fills one of these. Allocate via
     /// <c>Arena.doublePCAModel(p, k)</c> (p = X.N_Cols features, k = number of components) and reuse across
     /// same-shape fits (realtime pattern: fit each frame into the same model, <c>ClearTemp()</c> reclaims the
     /// internal scratch each fit allocates from the arena's temp pool).
     ///
     /// This is a buffer-carrying (double-prefixed) struct rather than a plain scalar diagnostics struct
-    /// (like <c>SolveInfo</c>/<c>EigenSolveInfo</c>) because PCA has a downstream <c>pcaTransform</c> stage
+    /// (like <c>SolveInfo</c>/<c>EigenSolveInfo</c>) because PCA has a downstream <c>transform</c> stage
     /// that consumes <c>mean</c>/<c>scale</c>/<c>components</c>/<c>k</c> together as a unit — the same
     /// justification every <c>Cache</c> (<c>doubleKMeansCache</c>, <c>doubleSVDThinCache</c>) already has for
     /// bundling arena buffer handles into one struct.
@@ -33,7 +33,7 @@ namespace LinearAlgebra.ML
         /// <see cref="converged"/> is false.</summary>
         public doubleN explainedVarianceRatio;
 
-        /// <summary>Length p. Per-feature mean, needed to center new data in <c>pcaTransform</c>.</summary>
+        /// <summary>Length p. Per-feature mean, needed to center new data in <c>transform</c>.</summary>
         public doubleN mean;
 
         /// <summary>Length p. Per-feature divisor applied before projecting: all ones (PCAScaling.Covariance)
@@ -41,8 +41,8 @@ namespace LinearAlgebra.ML
         /// a divide-by-zero).</summary>
         public doubleN scale;
 
-        /// <summary>Number of components: == p (X.N_Cols) for the full routes (pcaCovariance/pcaSVD), or the
-        /// requested top-k for pcaSVDTruncated/pcaRandomized.</summary>
+        /// <summary>Number of components: == p (X.N_Cols) for the full routes (fitCov/fitSvd), or the
+        /// requested top-k for fitSvdTruncated/fitRandomized.</summary>
         public int k;
 
         /// <summary>Underlying eigensolve/SVD convergence flag. All other fields (except mean/scale, which

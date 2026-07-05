@@ -135,20 +135,20 @@ namespace LinearAlgebra
         /// <param name="B">Output n×n upper bidiagonal factor. Caller-allocated.</param>
         /// <param name="V">Output n×n right orthogonal factor. Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void bidiagonalize(in doubleMxN A, ref doubleMxN U, ref doubleMxN B, ref doubleMxN V,
+        public static void decomp(in doubleMxN A, ref doubleMxN U, ref doubleMxN B, ref doubleMxN V,
                                          ref doubleBidiagCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("Bidiag.bidiagonalize: A must have m >= n");
+                throw new ArgumentException("Bidiag.decomp: A must have m >= n");
             if (U.M_Rows != m || U.N_Cols != n)
-                throw new ArgumentException("Bidiag.bidiagonalize: U must be m x n");
+                throw new ArgumentException("Bidiag.decomp: U must be m x n");
             if (B.M_Rows != n || B.N_Cols != n)
-                throw new ArgumentException("Bidiag.bidiagonalize: B must be n x n");
+                throw new ArgumentException("Bidiag.decomp: B must be n x n");
             if (V.M_Rows != n || V.N_Cols != n)
-                throw new ArgumentException("Bidiag.bidiagonalize: V must be n x n");
+                throw new ArgumentException("Bidiag.decomp: V must be n x n");
             RequireBidiagWorkspace(in ws, m, n, true);
 
             // Initialize V = I_n, B = 0 (will fill bands at end)
@@ -234,11 +234,11 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// bidiagonalize allocating its O(mn) scratch from Allocator.Temp. See the ref-workspace
+        /// decomp allocating its O(mn) scratch from Allocator.Temp. See the ref-workspace
         /// overload for semantics.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void bidiagonalize(in doubleMxN A, ref doubleMxN U, ref doubleMxN B, ref doubleMxN V)
+        public static void decomp(in doubleMxN A, ref doubleMxN U, ref doubleMxN B, ref doubleMxN V)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -250,7 +250,7 @@ namespace LinearAlgebra
                 vVec = new doubleN(n, Allocator.Temp, false),
                 wScratch = new doubleN(n, Allocator.Temp, false)
             };
-            bidiagonalize(in A, ref U, ref B, ref V, ref ws);
+            decomp(in A, ref U, ref B, ref V, ref ws);
             ws.wScratch.Dispose();
             ws.vVec.Dispose();
             ws.uVec.Dispose();
@@ -262,7 +262,7 @@ namespace LinearAlgebra
         /// VALUES-ONLY Golub-Kahan-Householder bidiagonalization: reduce A (m×n, m≥n) to the
         /// diagonal d and superdiagonal e of its upper-bidiagonal form B, WITHOUT forming the
         /// orthogonal factors U or V. NR convention: e[0] = 0, e[i] = B[i-1, i] for i = 1..n-1.
-        /// <para>This skips the U backward pass and the V accumulation of <see cref="bidiagonalize"/>
+        /// <para>This skips the U backward pass and the V accumulation of <see cref="decomp"/>
         /// (≈ the column-rotation O(mn²)+O(n³) work), so when only the singular values are wanted it is
         /// far cheaper. Feed (d, e) into SVD's rotation-free bidiagonal QR.</para>
         /// <para>A is NOT modified (worked on ws.W, a copy). Zero-alloc: uses the caller-provided
@@ -272,18 +272,18 @@ namespace LinearAlgebra
         /// <param name="d">Output diagonal, length n. Caller-allocated.</param>
         /// <param name="e">Output superdiagonal, length n (e[0]=0). Caller-allocated.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void bidiagonalizeValues(in doubleMxN A, ref doubleN d, ref doubleN e,
+        public static void values(in doubleMxN A, ref doubleN d, ref doubleN e,
                                                ref doubleBidiagCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("Bidiag.bidiagonalizeValues: A must have m >= n");
+                throw new ArgumentException("Bidiag.values: A must have m >= n");
             if (d.N != n)
-                throw new ArgumentException("Bidiag.bidiagonalizeValues: d.N must equal A.N_Cols");
+                throw new ArgumentException("Bidiag.values: d.N must equal A.N_Cols");
             if (e.N != n)
-                throw new ArgumentException("Bidiag.bidiagonalizeValues: e.N must equal A.N_Cols");
+                throw new ArgumentException("Bidiag.values: e.N must equal A.N_Cols");
             RequireBidiagWorkspace(in ws, m, n, false);
 
             if (n == 0)
@@ -323,11 +323,11 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// bidiagonalizeValues allocating its O(mn) scratch from Allocator.Temp. See the ref-workspace
+        /// values allocating its O(mn) scratch from Allocator.Temp. See the ref-workspace
         /// overload for semantics.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void bidiagonalizeValues(in doubleMxN A, ref doubleN d, ref doubleN e)
+        public static void values(in doubleMxN A, ref doubleN d, ref doubleN e)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -338,7 +338,7 @@ namespace LinearAlgebra
                 vVec = new doubleN(n, Allocator.Temp, false),
                 wScratch = new doubleN(n, Allocator.Temp, false)
             };
-            bidiagonalizeValues(in A, ref d, ref e, ref ws);
+            values(in A, ref d, ref e, ref ws);
             ws.wScratch.Dispose();
             ws.vVec.Dispose();
             ws.uVec.Dispose();

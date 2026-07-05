@@ -544,7 +544,7 @@ namespace LinearAlgebra
         /// Builds an orthonormal Krylov basis v_1..v_m (m = <paramref name="steps"/>) via the
         /// classical 3-term Lanczos recurrence and the corresponding symmetric tridiagonal T (diag
         /// alpha_1..alpha_m, off-diag beta_2..beta_m), then reuses
-        /// <see cref="eigenvaluesSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyEigenSymCache)"/> on
+        /// <see cref="valuesSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyEigenSymCache)"/> on
         /// T to obtain the Ritz values -- approximate eigenvalues of A. The EXTREMAL Ritz values
         /// (largest and smallest) converge fastest and are already accurate for m &lt;&lt; A.Rows;
         /// with m == A.Rows and full reorthogonalization, T is orthogonally similar to A and the
@@ -570,7 +570,7 @@ namespace LinearAlgebra
         /// Krylov vector (copied out of V for A.Apply, which requires distinct in/out buffers) and
         /// the work vector; <c>ws.alpha</c>/<c>ws.beta</c> (length steps) are T's diagonal/off-
         /// diagonal; <c>ws.T</c> (steps x steps) and <c>ws.symWs</c> back the
-        /// eigenvaluesSymmetric call. On input, row 0 of <c>ws.V</c> is the seed for v_1: if it has
+        /// valuesSymmetric call. On input, row 0 of <c>ws.V</c> is the seed for v_1: if it has
         /// zero 2-norm it is seeded deterministically as V[0,i] = 1 + (i &amp; 3) (mirrors
         /// <see cref="powerIteration{TOp}"/>'s seeding), then normalized either way.
         ///
@@ -589,11 +589,11 @@ namespace LinearAlgebra
         /// on the real block), so the padding can never mix into the real spectrum under sorting.
         ///
         /// On output: <paramref name="eigenvalues"/> (length steps, caller-allocated) holds the
-        /// Ritz values sorted DESCENDING (same convention as eigenvaluesSymmetric) in its first
+        /// Ritz values sorted DESCENDING (same convention as valuesSymmetric) in its first
         /// <c>produced</c> entries -- eigenvalues[0] is the largest Ritz value,
         /// eigenvalues[produced-1] the smallest. Entries [produced, steps) are the padding
         /// described above and are MEANINGLESS -- ignore them. The returned
-        /// <see cref="LanczosInfo.status"/> is Converged iff eigenvaluesSymmetric's QL iteration
+        /// <see cref="LanczosInfo.status"/> is Converged iff valuesSymmetric's QL iteration
         /// converged on the (possibly padded) tridiagonal; only trust the eigenvalues when Solved.
         ///
         /// Does not allocate.
@@ -606,7 +606,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("lanczos: eigenvalues.N must equal steps");
 
             lanczosTridiag(in A, ref ws, out int produced, steps, breakdownTol);
-            bool ok = eigenvaluesSymmetric(ref ws.T, ref eigenvalues, ref ws.symWs);
+            bool ok = valuesSymmetric(ref ws.T, ref eigenvalues, ref ws.symWs);
             return new LanczosInfo { produced = produced, status = ok ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations };
         }
 
@@ -614,7 +614,7 @@ namespace LinearAlgebra
         // (eigenvalues + Ritz vectors): seed v_1, run the twice-reorthogonalized bidiagonalization
         // building the Krylov basis ws.V, and assemble the (early-breakdown-padded) symmetric
         // tridiagonal ws.T. Sets `produced`. Callers then apply their own symmetric eigensolver to
-        // ws.T (eigenvaluesSymmetric for values, eigenSymmetric for values + eigenvectors).
+        // ws.T (valuesSymmetric for values, symmetric for values + eigenvectors).
         static void lanczosTridiag<TOp>(in TOp A, ref fProxyLanczosCache ws, out int produced,
                                         int steps, fProxy breakdownTol)
             where TOp : struct, IfProxyLinearOperator
@@ -741,7 +741,7 @@ namespace LinearAlgebra
                 }
 
                 // Separation between the real block (all Ritz values >= -bound) and the padding is
-                // scaled by max(1, bound), not a fixed 1: eigenvaluesSymmetric's QL computes each
+                // scaled by max(1, bound), not a fixed 1: valuesSymmetric's QL computes each
                 // value with ~eps*||T|| error, so at large ||T|| a fixed unit gap could be swamped
                 // and let a real Ritz value sort below the padding. A relative gap keeps the padding
                 // strictly, robustly below every real value regardless of spectrum magnitude.
@@ -834,7 +834,7 @@ namespace LinearAlgebra
         /// Lanczos with RITZ VECTORS: same twice-reorthogonalized tridiagonalization as
         /// <see cref="lanczos{TOp}"/> (via the shared <c>lanczosTridiag</c>), but also returns
         /// approximate EIGENVECTORS. After building the Krylov basis ws.V and tridiagonal ws.T, it
-        /// eigendecomposes T with <see cref="eigenSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/>
+        /// eigendecomposes T with <see cref="symmetric(ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/>
         /// (eigenvalues DESCENDING into <paramref name="eigenvalues"/>, T's eigenvectors into the
         /// COLUMNS of <paramref name="Yt"/>), then forms each Ritz vector
         /// ritz[i] = sum_j Yt[j,i]·v_(j+1) -- the i-th approximate eigenvector of A, stored as ROW i
@@ -849,9 +849,9 @@ namespace LinearAlgebra
         ///
         /// <paramref name="Yt"/> is steps x steps scratch (T's eigenvectors); <paramref name="ritz"/>
         /// is steps x A.Rows output. NOTE: unlike <see cref="lanczos{TOp}"/> this is NOT zero-alloc --
-        /// <see cref="eigenSymmetric(ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/> allocates three
+        /// <see cref="symmetric(ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/> allocates three
         /// length-steps Temp vectors internally. Returns a <see cref="LanczosInfo"/> (produced,
-        /// status = eigenSymmetric's convergence flag).
+        /// status = symmetric's convergence flag).
         /// </summary>
         public static LanczosInfo lanczosVectors<TOp>(in TOp A, ref fProxyLanczosCache ws, ref fProxyMxN Yt,
                                                ref fProxyN eigenvalues, ref fProxyMxN ritz,
@@ -869,7 +869,7 @@ namespace LinearAlgebra
 
             lanczosTridiag(in A, ref ws, out int produced, steps, breakdownTol);
 
-            bool ok = eigenSymmetric(ref ws.T, ref eigenvalues, ref Yt);
+            bool ok = symmetric(ref ws.T, ref eigenvalues, ref Yt);
 
             // Ritz vector i (row i of ritz) = sum_{j < produced} Yt[j,i] * v_(j+1) (row j of ws.V).
             for (int i = 0; i < produced; i++)
@@ -965,36 +965,39 @@ namespace LinearAlgebra
         ///     sign differences.
         ///   - Does not allocate.
         /// </summary>
-        [System.Obsolete("Prefer Eigen.eigenSymmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.eigenvaluesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
-        public static bool eigenDecomposition(ref fProxyMxN A, ref fProxyN eigenvalues,
+        /// <param name="A_to_D">On entry A (must be symmetric); on exit driven to approximately
+        /// diagonal (the diagonal duplicates the separate <paramref name="eigenvalues"/> output,
+        /// pre-sort) — not a documented usable factor on its own, treat as destroyed.</param>
+        [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
+        public static bool decompInPlace(ref fProxyMxN A_to_D, ref fProxyN eigenvalues,
                                               ref fProxyMxN V, int maxSweeps, fProxy eps)
         {
-            if (!A.IsSquare)
-                throw new ArgumentException("Eigen.eigenDecomposition: A must be square");
+            if (!A_to_D.IsSquare)
+                throw new ArgumentException("Eigen.decompInPlace: A_to_D must be square");
 
-            int n = A.N_Cols;
+            int n = A_to_D.N_Cols;
 
             if (eigenvalues.N != n)
-                throw new ArgumentException("Eigen.eigenDecomposition: eigenvalues.N must equal A dimension");
+                throw new ArgumentException("Eigen.decompInPlace: eigenvalues.N must equal A_to_D dimension");
 
             if (!V.IsSquare || V.M_Rows != n)
-                throw new ArgumentException("Eigen.eigenDecomposition: V must be square with side equal to A dimension");
+                throw new ArgumentException("Eigen.decompInPlace: V must be square with side equal to A_to_D dimension");
 
             if (maxSweeps < 1)
-                throw new ArgumentException("Eigen.eigenDecomposition: maxSweeps must be >= 1");
+                throw new ArgumentException("Eigen.decompInPlace: maxSweeps must be >= 1");
 
             if (eps <= (fProxy)0)
-                throw new ArgumentException("Eigen.eigenDecomposition: eps must be > 0");
+                throw new ArgumentException("Eigen.decompInPlace: eps must be > 0");
 
             // Symmetry guard: check that A is symmetric within eps-relative tolerance
             for (int i = 0; i < n; i++) {
                 for (int j = i + 1; j < n; j++) {
-                    fProxy aij = A[i, j];
-                    fProxy aji = A[j, i];
+                    fProxy aij = A_to_D[i, j];
+                    fProxy aji = A_to_D[j, i];
                     fProxy diff = math.abs(aij - aji);
                     fProxy relScale = (fProxy)1 + math.abs(aij) + math.abs(aji);
                     if (diff > eps * relScale)
-                        throw new ArgumentException("Eigen.eigenDecomposition: Matrix must be symmetric");
+                        throw new ArgumentException("Eigen.decompInPlace: Matrix must be symmetric");
                 }
             }
 
@@ -1015,18 +1018,18 @@ namespace LinearAlgebra
                 for (int p = 0; p < n - 1; p++) {
                     for (int q = p + 1; q < n; q++) {
 
-                        fProxy apq = A[p, q];
+                        fProxy apq = A_to_D[p, q];
 
                         // Skip exact zeros
                         if (apq == (fProxy)0)
                             continue;
 
                         // Skip when off-diagonal is negligible relative to the diagonal
-                        if (math.abs(apq) <= eps * (fProxy)0.5 * (math.abs(A[p, p]) + math.abs(A[q, q])))
+                        if (math.abs(apq) <= eps * (fProxy)0.5 * (math.abs(A_to_D[p, p]) + math.abs(A_to_D[q, q])))
                             continue;
 
                         // Compute rotation angle: theta = (A[q,q] - A[p,p]) / (2 * A[p,q])
-                        fProxy theta = (A[q, q] - A[p, p]) / ((fProxy)2 * apq);
+                        fProxy theta = (A_to_D[q, q] - A_to_D[p, p]) / ((fProxy)2 * apq);
 
                         // sign(theta) with 0 -> +1
                         fProxy signTheta = theta >= (fProxy)0 ? (fProxy)1 : (fProxy)(-1);
@@ -1046,24 +1049,24 @@ namespace LinearAlgebra
                         fProxy s = t * c;
 
                         // Apply symmetric rotation to A
-                        fProxy app = A[p, p];
-                        fProxy aqq = A[q, q];
-                        A[p, p] = app - t * apq;
-                        A[q, q] = aqq + t * apq;
-                        A[p, q] = (fProxy)0;
-                        A[q, p] = (fProxy)0;
+                        fProxy app = A_to_D[p, p];
+                        fProxy aqq = A_to_D[q, q];
+                        A_to_D[p, p] = app - t * apq;
+                        A_to_D[q, q] = aqq + t * apq;
+                        A_to_D[p, q] = (fProxy)0;
+                        A_to_D[q, p] = (fProxy)0;
 
                         for (int i = 0; i < n; i++) {
                             if (i == p || i == q)
                                 continue;
-                            fProxy aip = A[i, p];
-                            fProxy aiq = A[i, q];
+                            fProxy aip = A_to_D[i, p];
+                            fProxy aiq = A_to_D[i, q];
                             fProxy newAip = c * aip - s * aiq;
                             fProxy newAiq = s * aip + c * aiq;
-                            A[i, p] = newAip;
-                            A[p, i] = newAip;
-                            A[i, q] = newAiq;
-                            A[q, i] = newAiq;
+                            A_to_D[i, p] = newAip;
+                            A_to_D[p, i] = newAip;
+                            A_to_D[i, q] = newAiq;
+                            A_to_D[q, i] = newAiq;
                         }
 
                         // Rotate columns p and q of V
@@ -1086,7 +1089,7 @@ namespace LinearAlgebra
 
             // Extract diagonal of (now approximately diagonal) A into eigenvalues
             for (int i = 0; i < n; i++)
-                eigenvalues[i] = A[i, i];
+                eigenvalues[i] = A_to_D[i, i];
 
             // Selection sort: descending by value (not magnitude)
             for (int j = 0; j < n; j++) {
@@ -1117,17 +1120,17 @@ namespace LinearAlgebra
         // The default-argument overloads forward to the deprecated primitive; suppress the
         // self-referential obsolete warning (618) on the forwarding calls.
 #pragma warning disable 618
-        /// <summary>eigenDecomposition with default eps (Consts.fProxyZeroThreshold).</summary>
-        [System.Obsolete("Prefer Eigen.eigenSymmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.eigenvaluesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
-        public static bool eigenDecomposition(ref fProxyMxN A, ref fProxyN eigenvalues,
+        /// <summary>decompInPlace with default eps (Consts.fProxyZeroThreshold).</summary>
+        [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
+        public static bool decompInPlace(ref fProxyMxN A_to_D, ref fProxyN eigenvalues,
                                               ref fProxyMxN V, int maxSweeps)
-            => eigenDecomposition(ref A, ref eigenvalues, ref V, maxSweeps, Consts.fProxyZeroThreshold);
+            => decompInPlace(ref A_to_D, ref eigenvalues, ref V, maxSweeps, Consts.fProxyZeroThreshold);
 
-        /// <summary>eigenDecomposition with default maxSweeps (30) and eps (Consts.fProxyZeroThreshold).</summary>
-        [System.Obsolete("Prefer Eigen.eigenSymmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.eigenvaluesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
-        public static bool eigenDecomposition(ref fProxyMxN A, ref fProxyN eigenvalues,
+        /// <summary>decompInPlace with default maxSweeps (30) and eps (Consts.fProxyZeroThreshold).</summary>
+        [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
+        public static bool decompInPlace(ref fProxyMxN A_to_D, ref fProxyN eigenvalues,
                                               ref fProxyMxN V)
-            => eigenDecomposition(ref A, ref eigenvalues, ref V, 30, Consts.fProxyZeroThreshold);
+            => decompInPlace(ref A_to_D, ref eigenvalues, ref V, 30, Consts.fProxyZeroThreshold);
 #pragma warning restore 618
 
         // copysign: magnitude of a with the sign of b (b >= 0 -> +|a|). EISPACK SIGN(a,b).
@@ -1147,33 +1150,33 @@ namespace LinearAlgebra
         /// <summary>
         /// All eigenVALUES of a SYMMETRIC real matrix, via Householder tridiagonalization followed by
         /// the implicit-shift QL iteration (EISPACK tred1 + tql1, GVL Alg. 8.3.1). Much faster than the
-        /// cyclic-Jacobi eigenDecomposition: the O(n^3) reduction is a sequence of gemv + symmetric
+        /// cyclic-Jacobi decompInPlace: the O(n^3) reduction is a sequence of gemv + symmetric
         /// rank-2 updates (the rank-2 update is axpy → vectorises), and the QL sweep that follows is
-        /// only O(n^2). No eigenvectors (use eigenDecomposition if you need them).
+        /// only O(n^2). No eigenvectors (use decompInPlace if you need them).
         ///
         /// A must be symmetric (checked within eps-relative tolerance) and is DESTROYED. On output
         /// eigenvalues[i] holds the i-th eigenvalue, sorted DESCENDING. Returns true on convergence;
         /// false if QL hit maxIterPerEig for some eigenvalue (outputs then undefined). Does not allocate
         /// beyond three length-n Temp scratch vectors.
         /// </summary>
-        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy eps,
+        public static bool valuesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy eps,
                                                  ref fProxyEigenSymCache ws)
         {
             if (!A.IsSquare)
-                throw new ArgumentException("Eigen.eigenvaluesSymmetric: A must be square");
+                throw new ArgumentException("Eigen.valuesSymmetric: A must be square");
 
             int n = A.M_Rows;
 
             if (eigenvalues.N != n)
-                throw new ArgumentException("Eigen.eigenvaluesSymmetric: eigenvalues.N must equal A dimension");
+                throw new ArgumentException("Eigen.valuesSymmetric: eigenvalues.N must equal A dimension");
 
             if (maxIterPerEig < 1)
-                throw new ArgumentException("Eigen.eigenvaluesSymmetric: maxIterPerEig must be >= 1");
+                throw new ArgumentException("Eigen.valuesSymmetric: maxIterPerEig must be >= 1");
 
             if (eps <= (fProxy)0)
-                throw new ArgumentException("Eigen.eigenvaluesSymmetric: eps must be > 0");
+                throw new ArgumentException("Eigen.valuesSymmetric: eps must be > 0");
 
-            // Symmetry guard (same as eigenDecomposition). The reduction reads the full symmetric
+            // Symmetry guard (same as decompInPlace). The reduction reads the full symmetric
             // matrix (the gemv uses whole rows), so both triangles must agree.
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
@@ -1182,7 +1185,7 @@ namespace LinearAlgebra
                     fProxy diff = math.abs(aij - aji);
                     fProxy relScale = (fProxy)1 + math.abs(aij) + math.abs(aji);
                     if (diff > eps * relScale)
-                        throw new ArgumentException("Eigen.eigenvaluesSymmetric: Matrix must be symmetric");
+                        throw new ArgumentException("Eigen.valuesSymmetric: Matrix must be symmetric");
                 }
 
             RequireEigenSymWorkspace(in ws, n);
@@ -1282,7 +1285,7 @@ namespace LinearAlgebra
             // Global tridiagonal scale. The deflation test below is floored by this so a cluster of
             // ZERO eigenvalues can still deflate: there the local |d[m]|+|d[m+1]| collapses to ~0, but
             // the sub-diagonal noise floor is set by the GLOBAL scale, so a purely local threshold
-            // never triggers in float and QL spins to maxIter (the rank-deficient svdValues case).
+            // never triggers in float and QL spins to maxIter (the rank-deficient values case).
             fProxy anorm = math.abs(eigenvalues[0]) + math.abs(eVec[0]);
             for (int i = 1; i < n; i++)
             {
@@ -1333,7 +1336,7 @@ namespace LinearAlgebra
                 } while (m != l);
             }
 
-            // sort descending (selection sort, matching eigenDecomposition)
+            // sort descending (selection sort, matching decompInPlace)
             for (int j = 0; j < n; j++)
             {
                 int maxIdx = j;
@@ -1351,15 +1354,15 @@ namespace LinearAlgebra
             return true;
         }
 
-        /// <summary>eigenvaluesSymmetric (ref workspace) with default maxIterPerEig (30) and eps (Consts.fProxyZeroThreshold).</summary>
-        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyEigenSymCache ws)
-            => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.fProxyZeroThreshold, ref ws);
+        /// <summary>valuesSymmetric (ref workspace) with default maxIterPerEig (30) and eps (Consts.fProxyZeroThreshold).</summary>
+        public static bool valuesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyEigenSymCache ws)
+            => valuesSymmetric(ref A, ref eigenvalues, 30, Consts.fProxyZeroThreshold, ref ws);
 
         /// <summary>
-        /// eigenvaluesSymmetric allocating its tridiagonalization scratch (three length-n vectors) from
+        /// valuesSymmetric allocating its tridiagonalization scratch (three length-n vectors) from
         /// Allocator.Temp. See the ref-workspace overload for semantics. A is overwritten (destroyed).
         /// </summary>
-        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy eps)
+        public static bool valuesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, int maxIterPerEig, fProxy eps)
         {
             int n = A.M_Rows;
             var ws = new fProxyEigenSymCache
@@ -1368,21 +1371,21 @@ namespace LinearAlgebra
                 vVec = new fProxyN(n, Allocator.Temp, false),
                 pVec = new fProxyN(n, Allocator.Temp, false)
             };
-            bool ok = eigenvaluesSymmetric(ref A, ref eigenvalues, maxIterPerEig, eps, ref ws);
+            bool ok = valuesSymmetric(ref A, ref eigenvalues, maxIterPerEig, eps, ref ws);
             ws.eVec.Dispose();
             ws.vVec.Dispose();
             ws.pVec.Dispose();
             return ok;
         }
 
-        /// <summary>eigenvaluesSymmetric with default maxIterPerEig (30) and eps (Consts.fProxyZeroThreshold).</summary>
-        public static bool eigenvaluesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues)
-            => eigenvaluesSymmetric(ref A, ref eigenvalues, 30, Consts.fProxyZeroThreshold);
+        /// <summary>valuesSymmetric with default maxIterPerEig (30) and eps (Consts.fProxyZeroThreshold).</summary>
+        public static bool valuesSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues)
+            => valuesSymmetric(ref A, ref eigenvalues, 30, Consts.fProxyZeroThreshold);
 
         /// <summary>
         /// Full eigenDECOMPOSITION of a SYMMETRIC real matrix via Householder tridiagonalization with
         /// orthogonal accumulation (tred2) + implicit-shift QL with eigenvector accumulation (tql2).
-        /// Same result as the cyclic-Jacobi eigenDecomposition but far faster: the O(n^3)
+        /// Same result as the cyclic-Jacobi decompInPlace but far faster: the O(n^3)
         /// tridiagonalization is gemv + rank-2 axpy updates (vectorises) and runs ONCE, where Jacobi
         /// does several full sweeps of strided column rotations.
         ///
@@ -1391,25 +1394,25 @@ namespace LinearAlgebra
         /// A = V * diag(eigenvalues) * Vᵀ and VᵀV = I. Returns true on convergence; false if QL hit
         /// maxIterPerEig (outputs then undefined). Allocates three length-n Temp scratch vectors.
         /// </summary>
-        public static bool eigenSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyMxN V,
+        public static bool symmetric(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyMxN V,
                                           int maxIterPerEig, fProxy eps)
         {
             if (!A.IsSquare)
-                throw new ArgumentException("Eigen.eigenSymmetric: A must be square");
+                throw new ArgumentException("Eigen.symmetric: A must be square");
 
             int n = A.M_Rows;
 
             if (eigenvalues.N != n)
-                throw new ArgumentException("Eigen.eigenSymmetric: eigenvalues.N must equal A dimension");
+                throw new ArgumentException("Eigen.symmetric: eigenvalues.N must equal A dimension");
 
             if (!V.IsSquare || V.M_Rows != n)
-                throw new ArgumentException("Eigen.eigenSymmetric: V must be square with side equal to A dimension");
+                throw new ArgumentException("Eigen.symmetric: V must be square with side equal to A dimension");
 
             if (maxIterPerEig < 1)
-                throw new ArgumentException("Eigen.eigenSymmetric: maxIterPerEig must be >= 1");
+                throw new ArgumentException("Eigen.symmetric: maxIterPerEig must be >= 1");
 
             if (eps <= (fProxy)0)
-                throw new ArgumentException("Eigen.eigenSymmetric: eps must be > 0");
+                throw new ArgumentException("Eigen.symmetric: eps must be > 0");
 
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
@@ -1418,7 +1421,7 @@ namespace LinearAlgebra
                     fProxy diff = math.abs(aij - aji);
                     fProxy relScale = (fProxy)1 + math.abs(aij) + math.abs(aji);
                     if (diff > eps * relScale)
-                        throw new ArgumentException("Eigen.eigenSymmetric: Matrix must be symmetric");
+                        throw new ArgumentException("Eigen.symmetric: Matrix must be symmetric");
                 }
 
             if (n == 0) return true;
@@ -1441,7 +1444,7 @@ namespace LinearAlgebra
                 fProxy* v  = vVec.Data.Ptr;
                 fProxy* p  = pVec.Data.Ptr;
 
-                // Matrix scale for the deflation test — see eigenvaluesSymmetric.
+                // Matrix scale for the deflation test — see valuesSymmetric.
                 fProxy matScale = (fProxy)0;
                 for (long ii = 0; ii < (long)n * n; ii++)
                 {
@@ -1463,7 +1466,7 @@ namespace LinearAlgebra
                     }
                     fProxy x0 = ap[(long)m0 * n + k];
 
-                    // See eigenvaluesSymmetric: deflate near-negligible columns before vtv underflows
+                    // See valuesSymmetric: deflate near-negligible columns before vtv underflows
                     // and beta = 2/vtv overflows to Inf (which would make the rank-2 update form NaN).
                     if (math.sqrt(sigma) <= belowNormTol)
                     {
@@ -1518,7 +1521,7 @@ namespace LinearAlgebra
                 eVec[n - 1] = (fProxy)0;
                 for (int i = 0; i < n; i++) eigenvalues[i] = ap[(long)i * n + i];
 
-                // Global tridiagonal scale (see eigenvaluesSymmetric): floors the deflation threshold
+                // Global tridiagonal scale (see valuesSymmetric): floors the deflation threshold
                 // so clustered zero eigenvalues still deflate instead of spinning QL to maxIter.
                 fProxy anorm = math.abs(eigenvalues[0]) + math.abs(eVec[0]);
                 for (int i = 1; i < n; i++)
@@ -1547,7 +1550,7 @@ namespace LinearAlgebra
                         for (m = l; m < n - 1; m++)
                         {
                             fProxy dd = math.abs(eigenvalues[m]) + math.abs(eigenvalues[m + 1]);
-                            // machine-eps relative, floored by anorm — see eigenvaluesSymmetric.
+                            // machine-eps relative, floored by anorm — see valuesSymmetric.
                             if (math.abs(eVec[m]) <= (fProxy)8 * Consts.fProxyEpsilon * (dd + anorm)) break;
                         }
                         if (m != l)
@@ -1616,9 +1619,9 @@ namespace LinearAlgebra
             return true;
         }
 
-        /// <summary>eigenSymmetric with default maxIterPerEig (30) and eps (Consts.fProxyZeroThreshold).</summary>
-        public static bool eigenSymmetric(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyMxN V)
-            => eigenSymmetric(ref A, ref eigenvalues, ref V, 30, Consts.fProxyZeroThreshold);
+        /// <summary>symmetric with default maxIterPerEig (30) and eps (Consts.fProxyZeroThreshold).</summary>
+        public static bool symmetric(ref fProxyMxN A, ref fProxyN eigenvalues, ref fProxyMxN V)
+            => symmetric(ref A, ref eigenvalues, ref V, 30, Consts.fProxyZeroThreshold);
 
         /// <summary>
         /// All eigenvalues of a GENERAL (non-symmetric) real square matrix, via the QR algorithm:
@@ -1627,7 +1630,7 @@ namespace LinearAlgebra
         /// arithmetic only — complex-conjugate eigenvalue pairs are produced from the 2x2 Schur
         /// blocks, so NO complex number type is needed.
         ///
-        /// Unlike eigenDecomposition (symmetric-only Jacobi) and powerIteration (dominant pair only),
+        /// Unlike decompInPlace (symmetric-only Jacobi) and powerIteration (dominant pair only),
         /// this handles arbitrary real matrices including those with complex eigenvalues (e.g.
         /// rotations). It returns eigenVALUES only (no eigenvectors).
         ///
@@ -1640,23 +1643,23 @@ namespace LinearAlgebra
         /// Returns true if every eigenvalue converged within maxIterPerRoot iterations; false if the
         /// iteration limit was hit (outputs then undefined). Does not allocate.
         /// </summary>
-        public static unsafe bool eigenvaluesQR(ref fProxyMxN A, ref fProxyN eigenvaluesReal,
+        public static unsafe bool valuesQR(ref fProxyMxN A, ref fProxyN eigenvaluesReal,
                                                 ref fProxyN eigenvaluesImag, int maxIterPerRoot)
         {
             if (!A.IsSquare)
-                throw new ArgumentException("Eigen.eigenvaluesQR: A must be square");
+                throw new ArgumentException("Eigen.valuesQR: A must be square");
 
             int n = A.N_Cols;
             fProxy* ap = A.Data.Ptr;   // row r starts at ap + (long)r * n (square: stride = n)
 
             if (eigenvaluesReal.N != n)
-                throw new ArgumentException("Eigen.eigenvaluesQR: eigenvaluesReal.N must equal A dimension");
+                throw new ArgumentException("Eigen.valuesQR: eigenvaluesReal.N must equal A dimension");
 
             if (eigenvaluesImag.N != n)
-                throw new ArgumentException("Eigen.eigenvaluesQR: eigenvaluesImag.N must equal A dimension");
+                throw new ArgumentException("Eigen.valuesQR: eigenvaluesImag.N must equal A dimension");
 
             if (maxIterPerRoot < 1)
-                throw new ArgumentException("Eigen.eigenvaluesQR: maxIterPerRoot must be >= 1");
+                throw new ArgumentException("Eigen.valuesQR: maxIterPerRoot must be >= 1");
 
             if (n == 0)
                 return true;
@@ -1914,9 +1917,9 @@ namespace LinearAlgebra
             return true;
         }
 
-        /// <summary>eigenvaluesQR with default maxIterPerRoot (30, the EISPACK hqr limit).</summary>
-        public static bool eigenvaluesQR(ref fProxyMxN A, ref fProxyN eigenvaluesReal,
+        /// <summary>valuesQR with default maxIterPerRoot (30, the EISPACK hqr limit).</summary>
+        public static bool valuesQR(ref fProxyMxN A, ref fProxyN eigenvaluesReal,
                                          ref fProxyN eigenvaluesImag)
-            => eigenvaluesQR(ref A, ref eigenvaluesReal, ref eigenvaluesImag, 30);
+            => valuesQR(ref A, ref eigenvaluesReal, ref eigenvaluesImag, 30);
     }
 }

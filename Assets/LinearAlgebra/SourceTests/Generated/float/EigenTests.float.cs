@@ -199,7 +199,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(converged);
 
@@ -228,7 +228,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(converged);
 
@@ -261,7 +261,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(converged);
 
@@ -304,7 +304,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(converged);
 
@@ -353,7 +353,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(converged);
 
@@ -419,7 +419,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref Aeig, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref Aeig, ref eig, ref V);
             Assert.IsTrue(converged);
 
             // eigenvalues all >= -tol (PSD)
@@ -474,7 +474,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(converged);
 
@@ -514,7 +514,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
             Assert.IsFalse(Analysis.isAnyNan(in V));
@@ -550,7 +550,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
 
@@ -582,7 +582,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
             Assert.IsFalse(Analysis.isAnyNan(in V));
@@ -618,7 +618,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
             Assert.IsFalse(Analysis.isAnyNan(in V));
@@ -673,7 +673,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool converged = Eigen.eigenDecomposition(ref A, ref eig, ref V);
+            bool converged = Eigen.decompInPlace(ref A, ref eig, ref V);
             Assert.IsTrue(converged);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
             Assert.IsFalse(Analysis.isAnyNan(in V));
@@ -714,7 +714,7 @@ public class floatEigenTests
             var V = arena.floatMat(n, n);
 
             // maxSweeps = 1: convergence not asserted.
-            Eigen.eigenDecomposition(ref A, ref eig, ref V, 1);
+            Eigen.decompInPlace(ref A, ref eig, ref V, 1);
 
             Assert.IsFalse(Analysis.isAnyNan(in eig));
             Assert.IsFalse(Analysis.isAnyNan(in V));
@@ -814,7 +814,7 @@ public class floatEigenTests
             // reference: dominant eigenvalue by value (== by magnitude here, well separated)
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            bool econv = Eigen.eigenDecomposition(ref Aeig, ref eig, ref V);
+            bool econv = Eigen.decompInPlace(ref Aeig, ref eig, ref V);
             Assert.IsTrue(econv);
 
             // dominant by magnitude: compare |eig[0]| vs |eig[n-1]|
@@ -1056,7 +1056,7 @@ public class floatEigenTests
             var A = arena.floatIdentityMat(n);
             var eig = arena.floatVec(n);
 
-            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1087,7 +1087,7 @@ public class floatEigenTests
 
             var eig = arena.floatVec(n);
 
-            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1118,7 +1118,7 @@ public class floatEigenTests
 
             var eig = arena.floatVec(n);
 
-            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1143,7 +1143,7 @@ public class floatEigenTests
 
             var eig = arena.floatVec(n);
 
-            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
             AssertClose(eig[0], (float)(-3.25), (float)100 * Consts.floatZeroThreshold);
@@ -1179,11 +1179,11 @@ public class floatEigenTests
 
             var eigJac = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            bool jacOk = Eigen.eigenDecomposition(ref Ajac, ref eigJac, ref V);
+            bool jacOk = Eigen.decompInPlace(ref Ajac, ref eigJac, ref V);
             Assert.IsTrue(jacOk);
 
             var eigQL = arena.floatVec(n);
-            bool qlOk = Eigen.eigenvaluesSymmetric(ref Aql, ref eigQL);
+            bool qlOk = Eigen.valuesSymmetric(ref Aql, ref eigQL);
             Assert.IsTrue(qlOk);
 
             Assert.IsFalse(Analysis.isAnyNan(in eigQL));
@@ -1231,7 +1231,7 @@ public class floatEigenTests
 
             var eig = arena.floatVec(n);
 
-            bool ok = Eigen.eigenvaluesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1265,7 +1265,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1302,7 +1302,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1341,7 +1341,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
 
@@ -1375,7 +1375,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1402,7 +1402,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in V));
@@ -1453,7 +1453,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1485,11 +1485,11 @@ public class floatEigenTests
 
             var eigSym = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            bool symOk = Eigen.eigenSymmetric(ref Asym, ref eigSym, ref V);
+            bool symOk = Eigen.symmetric(ref Asym, ref eigSym, ref V);
             Assert.IsTrue(symOk);
 
             var eigVal = arena.floatVec(n);
-            bool valOk = Eigen.eigenvaluesSymmetric(ref Aval, ref eigVal);
+            bool valOk = Eigen.valuesSymmetric(ref Aval, ref eigVal);
             Assert.IsTrue(valOk);
 
             Assert.IsFalse(Analysis.isAnyNan(in eigSym));
@@ -1537,7 +1537,7 @@ public class floatEigenTests
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
 
-            bool ok = Eigen.eigenSymmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1756,7 +1756,7 @@ public class floatEigenTests
         var eig = arena.floatVec(4);
         var V = arena.floatMat(4, 4);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1770,7 +1770,7 @@ public class floatEigenTests
         var eig = arena.floatVec(3);
         var V = arena.floatMat(4, 4);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1784,7 +1784,7 @@ public class floatEigenTests
         var eig = arena.floatVec(4);
         var V = arena.floatMat(3, 3);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1798,7 +1798,7 @@ public class floatEigenTests
         var eig = arena.floatVec(4);
         var V = arena.floatMat(4, 4);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V, 0));
+        Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V, 0));
 
         arena.Dispose();
     }
@@ -1815,7 +1815,7 @@ public class floatEigenTests
         var eig = arena.floatVec(2);
         var V = arena.floatMat(2, 2);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenDecomposition(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.decompInPlace(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1831,7 +1831,7 @@ public class floatEigenTests
 
         var eig = arena.floatVec(2);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenvaluesSymmetric(ref A, ref eig));
+        Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetric(ref A, ref eig));
 
         arena.Dispose();
     }
@@ -1844,7 +1844,7 @@ public class floatEigenTests
         var A = arena.floatMat(3, 4);
         var eig = arena.floatVec(4);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenvaluesSymmetric(ref A, ref eig));
+        Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetric(ref A, ref eig));
 
         arena.Dispose();
     }
@@ -1857,7 +1857,7 @@ public class floatEigenTests
         var A = arena.floatMat(4, 4);
         var eig = arena.floatVec(3);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenvaluesSymmetric(ref A, ref eig));
+        Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetric(ref A, ref eig));
 
         arena.Dispose();
     }
@@ -1871,7 +1871,7 @@ public class floatEigenTests
         var eig = arena.floatVec(4);
         var V = arena.floatMat(4, 4);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenSymmetric(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.symmetric(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1888,7 +1888,7 @@ public class floatEigenTests
         var eig = arena.floatVec(2);
         var V = arena.floatMat(2, 2);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenSymmetric(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.symmetric(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1902,7 +1902,7 @@ public class floatEigenTests
         var eig = arena.floatVec(3);
         var V = arena.floatMat(4, 4);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenSymmetric(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.symmetric(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1916,7 +1916,7 @@ public class floatEigenTests
         var eig = arena.floatVec(4);
         var V = arena.floatMat(3, 3);
 
-        Assert.Catch<ArgumentException>(() => Eigen.eigenSymmetric(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.symmetric(ref A, ref eig, ref V));
 
         arena.Dispose();
     }

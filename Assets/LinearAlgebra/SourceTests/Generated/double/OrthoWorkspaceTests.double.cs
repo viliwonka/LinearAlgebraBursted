@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Phase-2 solver-workspace tests for QR: the caller-provided-scratch QR overloads
-// (qrDecomposition(...,ref u) / qrDirectSolve(...,ref u)) must produce results identical
+// (decompInPlace(...,ref u) / solveInPlace(...,ref u)) must produce results identical
 // to the allocating wrappers (they run the SAME kernel), and a mis-sized scratch must throw.
 public class doubleOrthoWorkspaceTests
 {
@@ -44,7 +44,7 @@ public class doubleOrthoWorkspaceTests
             }
         }
 
-        // qrDecomposition(ref Q, ref R, ref u) must equal qrDecomposition(ref Q, ref R).
+        // decompInPlace(ref Q, ref R, ref u) must equal decompInPlace(ref Q, ref R).
         void DecompEquiv(int M, int N)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -54,13 +54,13 @@ public class doubleOrthoWorkspaceTests
             // allocating reference
             var Qa = A.Copy();
             var Ra = arena.doubleMat(N);
-            QR.qrDecomposition(ref Qa, ref Ra);
+            QR.decompInPlace(ref Qa, ref Ra);
 
             // caller-scratch form
             var Qb = A.Copy();
             var Rb = arena.doubleMat(N);
             var u = arena.doubleVec(M);
-            QR.qrDecomposition(ref Qb, ref Rb, ref u);
+            QR.decompInPlace(ref Qb, ref Rb, ref u);
 
             Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
             Assert.IsTrue(Analysis.isZero(Ra - Rb, Tol()));
@@ -68,7 +68,7 @@ public class doubleOrthoWorkspaceTests
             arena.Dispose();
         }
 
-        // qrDirectSolve(ref A, ref b, ref x, ref u) must equal qrDirectSolve(ref A, ref b, ref x).
+        // solveInPlace(ref A, ref b, ref x, ref u) must equal solveInPlace(ref A, ref b, ref x).
         void DirectSolveEquiv()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -81,25 +81,25 @@ public class doubleOrthoWorkspaceTests
 
             var xOrig = arena.doubleRandomVec(dim, -3f, 3f, 99001);
 
-            // allocating reference (qrDirectSolve destroys A and b, so use fresh copies)
+            // allocating reference (solveInPlace destroys A and b, so use fresh copies)
             var Aa = A0.Copy();
             var ba = Blas.dot(A0, xOrig);
             var xa = arena.doubleVec(dim);
-            QR.qrDirectSolve(ref Aa, ref ba, ref xa);
+            QR.solveInPlace(ref Aa, ref ba, ref xa);
 
             // caller-scratch form
             var Ab = A0.Copy();
             var bb = Blas.dot(A0, xOrig);
             var xb = arena.doubleVec(dim);
             var u = arena.doubleVec(dim);
-            QR.qrDirectSolve(ref Ab, ref bb, ref xb, ref u);
+            QR.solveInPlace(ref Ab, ref bb, ref xb, ref u);
 
             Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
 
             arena.Dispose();
         }
 
-        // Solvers.solveQR (precomputed-QR path): the ref-dest overload must recover xOrig from a
+        // QR.decompSolve (precomputed-QR path): the ref-dest overload must recover xOrig from a
         // consistent b = A xOrig (square M==N, or tall/overdetermined M>N), and the allocating
         // convenience must agree with it bit-for-bit. xOrig has length N (= Q.N_Cols).
         void SolveQRSolve(int M, int N)
@@ -111,20 +111,20 @@ public class doubleOrthoWorkspaceTests
                 A[d, d] += 5f;
 
             var xOrig = arena.doubleRandomVec(N, -3f, 3f, 60221);
-            var b = Blas.dot(A, xOrig);   // consistent RHS; read-only in solveQR, reusable
+            var b = Blas.dot(A, xOrig);   // consistent RHS; read-only in decompSolve, reusable
 
-            // Precompute QR of A (qrDecomposition overwrites Q with the orthogonal factor)
+            // Precompute QR of A (decompInPlace overwrites Q with the orthogonal factor)
             var Q = A.Copy();
             var R = arena.doubleMat(N);
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             // ref-destination overload recovers x (length N)
             var x = arena.doubleVec(N);
-            Solvers.solveQR(ref Q, ref R, ref b, ref x);
+            QR.decompSolve(ref Q, ref R, ref b, ref x);
             Assert.IsTrue(Analysis.isZero(x - xOrig, SolveTol()));
 
             // allocating convenience must match the ref form exactly (same kernel)
-            var xc = Solvers.solveQR(ref Q, ref R, ref b);
+            var xc = QR.decompSolve(ref Q, ref R, ref b);
             Assert.IsTrue(Analysis.isZero(xc - x, Tol()));
 
             arena.Dispose();
@@ -150,7 +150,7 @@ public class doubleOrthoWorkspaceTests
             var Q = arena.doubleMat(6, 4);
             var R = arena.doubleMat(4);
             var badU = arena.doubleVec(3);   // must be length 6 (Q.M_Rows)
-            Assert.Throws<ArgumentException>(() => QR.qrDecomposition(ref Q, ref R, ref badU));
+            Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref badU));
         }
         finally { arena.Dispose(); }
     }
@@ -165,12 +165,12 @@ public class doubleOrthoWorkspaceTests
             var b = arena.doubleVec(6);
             var x = arena.doubleVec(4);
             var badU = arena.doubleVec(4);   // must be length 6 (A.M_Rows)
-            Assert.Throws<ArgumentException>(() => QR.qrDirectSolve(ref A, ref b, ref x, ref badU));
+            Assert.Throws<ArgumentException>(() => QR.solveInPlace(ref A, ref b, ref x, ref badU));
         }
         finally { arena.Dispose(); }
     }
 
-    // solveQR ref-dest: destination x of the wrong length must throw (Solvers guard x.N != Q.N_Cols).
+    // decompSolve ref-dest: destination x of the wrong length must throw (Solvers guard x.N != Q.N_Cols).
     [Test]
     public void SolveQR_BadDestSize_Throws()
     {
@@ -181,16 +181,16 @@ public class doubleOrthoWorkspaceTests
             for (int d = 0; d < 4; d++) A[d, d] = 2f;   // nonsingular so QR is well-defined
             var Q = A.Copy();
             var R = arena.doubleMat(4);
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             var b = arena.doubleVec(4);
             var badX = arena.doubleVec(3);   // must be length 4 (Q.N_Cols)
-            Assert.Throws<ArgumentException>(() => Solvers.solveQR(ref Q, ref R, ref b, ref badX));
+            Assert.Throws<ArgumentException>(() => QR.decompSolve(ref Q, ref R, ref b, ref badX));
         }
         finally { arena.Dispose(); }
     }
 
-    // solveQR ref-dest: x must not alias b (the underlying ref-dest vec·mat dot guards this).
+    // decompSolve ref-dest: x must not alias b (the underlying ref-dest vec·mat dot guards this).
     [Test]
     public void SolveQR_DestAliasesB_Throws()
     {
@@ -201,11 +201,11 @@ public class doubleOrthoWorkspaceTests
             for (int d = 0; d < 4; d++) A[d, d] = 2f;
             var Q = A.Copy();
             var R = arena.doubleMat(4);
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             var b = arena.doubleVec(4);
             var aliasB = b;   // shares b's buffer; length 4 == Q.N_Cols so it passes the dim guard
-            Assert.Throws<ArgumentException>(() => Solvers.solveQR(ref Q, ref R, ref b, ref aliasB));
+            Assert.Throws<ArgumentException>(() => QR.decompSolve(ref Q, ref R, ref b, ref aliasB));
         }
         finally { arena.Dispose(); }
     }

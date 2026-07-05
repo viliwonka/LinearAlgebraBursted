@@ -9,7 +9,7 @@ using Unity.Jobs;
 // Workspace-overload tests for SVD family ops with reusable workspaces.
 //
 // nullspaceBasis, rangeBasis, and lowRankApprox share fProxySVDFullCache.
-// svdTruncated (GKL bidiagonalization) uses its own fProxySVDTruncatedCache.
+// truncated (GKL bidiagonalization) uses its own fProxySVDTruncatedCache.
 //
 // Each op has a `ref <WorkspaceType> ws` overload (caller-owned scratch) PLUS an allocating
 // overload. They run the same kernel with the same seed, so for identical inputs the outputs
@@ -107,11 +107,11 @@ public class fProxySvdFullWorkspaceTests
             var A = arena.fProxyRandomMat(m, n, (fProxy)(-3f), (fProxy)3f, 3003);
 
             var UkA = arena.fProxyMat(m, k); var SkA = arena.fProxyVec(k); var VkA = arena.fProxyMat(n, k);
-            SVD.svdTruncated(in A, ref UkA, ref SkA, ref VkA, k, out bool cA);
+            SVD.truncated(in A, ref UkA, ref SkA, ref VkA, k, out bool cA);
 
             var ws = arena.fProxySVDTruncatedCache(m, n, k);
             var UkW = arena.fProxyMat(m, k); var SkW = arena.fProxyVec(k); var VkW = arena.fProxyMat(n, k);
-            SVD.svdTruncated(in A, ref UkW, ref SkW, ref VkW, k, ref ws, out bool cW);
+            SVD.truncated(in A, ref UkW, ref SkW, ref VkW, k, ref ws, out bool cW);
 
             Assert.IsTrue(cA == cW);
             Assert.IsTrue(Analysis.isZero(SkA - SkW, Tol()));
@@ -151,7 +151,7 @@ public class fProxySvdFullWorkspaceTests
             var A2 = RankDeficient(ref arena, m, n, 3, 6006);
 
             var ws = arena.fProxySVDFullCache(m, n);           // for nullspace / range / lowRank
-            var wsTrunc = arena.fProxySVDTruncatedCache(m, n, k);  // for svdTruncated (GKL)
+            var wsTrunc = arena.fProxySVDTruncatedCache(m, n, k);  // for truncated (GKL)
 
             // ---- nullspace ----
             var nb1 = arena.fProxyMat(n, n);
@@ -175,11 +175,11 @@ public class fProxySvdFullWorkspaceTests
 
             // ---- truncated ----
             var U1 = arena.fProxyMat(m, k); var S1 = arena.fProxyVec(k); var V1 = arena.fProxyMat(n, k);
-            SVD.svdTruncated(in A1, ref U1, ref S1, ref V1, k, ref wsTrunc, out bool _);
+            SVD.truncated(in A1, ref U1, ref S1, ref V1, k, ref wsTrunc, out bool _);
             var UW = arena.fProxyMat(m, k); var SW = arena.fProxyVec(k); var VW = arena.fProxyMat(n, k);
-            SVD.svdTruncated(in A2, ref UW, ref SW, ref VW, k, ref wsTrunc, out bool _);
+            SVD.truncated(in A2, ref UW, ref SW, ref VW, k, ref wsTrunc, out bool _);
             var UA = arena.fProxyMat(m, k); var SA = arena.fProxyVec(k); var VA = arena.fProxyMat(n, k);
-            SVD.svdTruncated(in A2, ref UA, ref SA, ref VA, k, out bool _);
+            SVD.truncated(in A2, ref UA, ref SA, ref VA, k, out bool _);
             Assert.IsTrue(Analysis.isZero(SW - SA, Tol()));
             Assert.IsTrue(Analysis.isZero(UW - UA, Tol()));
             Assert.IsTrue(Analysis.isZero(VW - VA, Tol()));
@@ -247,7 +247,7 @@ public class fProxySvdFullWorkspaceTests
             var Uk = arena.fProxyMat(6, 2); var Sk = arena.fProxyVec(2); var Vk = arena.fProxyMat(4, 2);
             var ws = arena.fProxySVDTruncatedCache(7, 4, 2);   // wrong m (7 vs A's 6)
             Assert.Throws<ArgumentException>(
-                () => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, 2, ref ws, out bool _));
+                () => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 2, ref ws, out bool _));
         }
         finally { arena.Dispose(); }
     }

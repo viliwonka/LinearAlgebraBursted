@@ -132,7 +132,7 @@ public class doubleAccuracySweepTests
             // Blocked path: the allocating overload routes to the compact-WY level-3 core at n>=64.
             var Qb = A.Copy();
             var Rb = arena.doubleMat(n, n);
-            QR.qrDecomposition(ref Qb, ref Rb);
+            QR.decompInPlace(ref Qb, ref Rb);
             Assert.IsFalse(Analysis.isAnyNan(in Qb));
             Assert.IsFalse(Analysis.isAnyNan(in Rb));
 
@@ -143,7 +143,7 @@ public class doubleAccuracySweepTests
             var Qr = A.Copy();
             var Rr = arena.doubleMat(n, n);
             var u  = arena.doubleVec(m);
-            QR.qrDecomposition(ref Qr, ref Rr, ref u);
+            QR.decompInPlace(ref Qr, ref Rr, ref u);
 
             double recon    = ReconResidual2(in A, in Qb, in Rb); // ‖A − Q·R‖_F / ‖A‖_F (blocked), double.
             double orth     = OrthoErrorCols(in Qb);              // ‖QᵀQ − I‖_F (blocked), double.
@@ -199,7 +199,7 @@ public class doubleAccuracySweepTests
             var L = arena.doubleMat(m, m);
             var Q = arena.doubleMat(m, n);
 
-            LQ.lqDecomposition(ref A, ref L, ref Q);
+            LQ.decomp(ref A, ref L, ref Q);
 
             Assert.IsFalse(Analysis.isAnyNan(in L));
             Assert.IsFalse(Analysis.isAnyNan(in Q));
@@ -229,7 +229,7 @@ public class doubleAccuracySweepTests
 
             var L = arena.doubleMat(n, n);
 
-            bool ok = Cholesky.choleskyDecomposition(in A, ref L);
+            bool ok = CHO.decomp(in A, ref L);
             Assert.IsTrue(ok);                               // Lehmer stays numerically PD.
             Assert.IsFalse(Analysis.isAnyNan(in L));
 
@@ -258,7 +258,7 @@ public class doubleAccuracySweepTests
             var L = arena.doubleIdentityMat(n);
             var pivot = new Pivot(n, Allocator.Temp);
 
-            bool ok = LU.luDecomposition(ref U, ref L, ref pivot);
+            bool ok = LU.decompInPlace(ref U, ref L, ref pivot);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in U));
             Assert.IsFalse(Analysis.isAnyNan(in L));
@@ -292,11 +292,11 @@ public class doubleAccuracySweepTests
             var L = arena.doubleIdentityMat(n);
             var pivot = new Pivot(n, Allocator.Temp);
 
-            bool ok = LU.luDecomposition(ref U, ref L, ref pivot);
+            bool ok = LU.decompInPlace(ref U, ref L, ref pivot);
             Assert.IsTrue(ok);
 
             var x = b.Copy();
-            LU.luSolve(ref L, ref U, in pivot, ref x);
+            LU.decompSolve(ref L, ref U, in pivot, ref x);
             Assert.IsFalse(Analysis.isAnyNan(in x));
 
             // Residual r = A·x − b, all in double.

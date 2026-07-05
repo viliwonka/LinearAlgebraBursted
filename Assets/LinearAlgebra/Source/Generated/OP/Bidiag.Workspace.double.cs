@@ -7,8 +7,8 @@ namespace LinearAlgebra
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an m x n bidiagonalization. The common
         /// buffers (W m x n, uVec m, vVec n, wScratch n) are always required; leftU (m x n) is required
-        /// only by the full <see cref="bidiagonalize"/> (which reconstructs U), not by
-        /// <see cref="bidiagonalizeValues"/>. Matches Arena.doubleBidiagCache(m, n).
+        /// only by the full <see cref="decomp"/> (which reconstructs U), not by
+        /// <see cref="values"/>. Matches Arena.doubleBidiagCache(m, n).
         /// </summary>
         static void RequireBidiagWorkspace(in doubleBidiagCache ws, int m, int n, bool needLeftU)
         {
@@ -25,12 +25,12 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Reusable scratch for Golub-Kahan-Householder bidiagonalization (Bidiag.bidiagonalize /
-    /// bidiagonalizeValues). Allocate ONCE via Arena.doubleBidiagCache(m, n) and reuse it across
+    /// Reusable scratch for Golub-Kahan-Householder bidiagonalization (Bidiag.decomp /
+    /// values). Allocate ONCE via Arena.doubleBidiagCache(m, n) and reuse it across
     /// same-shape calls so repeated bidiagonalizations are zero-alloc.
     ///
     /// W (m x n) is the working copy of A reduced in place; leftU (m x n) stores the left reflectors
-    /// for the U backward pass (used only by bidiagonalize, not bidiagonalizeValues); uVec (m),
+    /// for the U backward pass (used only by decomp, not values); uVec (m),
     /// vVec (n) are the Householder vectors and wScratch (n) is the apply-reflector scratch.
     /// </summary>
     public struct doubleBidiagCache

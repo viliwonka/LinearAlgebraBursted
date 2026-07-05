@@ -27,7 +27,7 @@ namespace LinearAlgebra.Benchmarks
                     Q[r, c] = Src[r, c];
 
             var P = new Pivot(Q.N_Cols, Allocator.Temp);
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
             P.Dispose();
         }
     }
@@ -47,7 +47,7 @@ namespace LinearAlgebra.Benchmarks
                     Q[r, c] = Src[r, c];
 
             var P = new Pivot(Q.N_Cols, Allocator.Temp);
-            QR.qrDecompositionColumnPivot(ref Q, ref R, ref P);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
             P.Dispose();
         }
     }
@@ -70,7 +70,7 @@ namespace LinearAlgebra.Benchmarks
             for (int i = 0; i < rows; i++)
                 b[i] = bSrc[i];
 
-            QR.qrDirectSolve(ref A, ref b, ref x);
+            QR.solveInPlace(ref A, ref b, ref x);
         }
     }
 
@@ -92,11 +92,11 @@ namespace LinearAlgebra.Benchmarks
             for (int i = 0; i < rows; i++)
                 b[i] = bSrc[i];
 
-            QR.qrDirectSolve(ref A, ref b, ref x);
+            QR.solveInPlace(ref A, ref b, ref x);
         }
     }
 
-    // qrcpDirectSolve: QRCP-based rank-safe LS solve using the zero-alloc primitive.
+    // QRCP.solveInPlace: QRCP-based rank-safe LS solve using the zero-alloc primitive.
     // A is copied into Q internally (A is NOT modified); b is read via dot(in b, in Q, ref x)
     // (b is NOT modified). Q, R, u are pre-allocated arena scratch. Pivot is per-Execute Temp alloc.
 
@@ -113,7 +113,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var P = new Pivot(A.N_Cols, Allocator.Temp);
-            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u);
+            QRCP.solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u);
             P.Dispose();
         }
     }
@@ -131,7 +131,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             var P = new Pivot(A.N_Cols, Allocator.Temp);
-            QR.qrcpDirectSolve(ref A, ref b, ref x, ref Q, ref R, ref P, ref u);
+            QRCP.solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u);
             P.Dispose();
         }
     }
@@ -139,7 +139,7 @@ namespace LinearAlgebra.Benchmarks
     public static class QRVariantsBenchmark
     {
         // (4/3) N^3 leading term (approximate). QRCP adds an O(N^3) exact pivot-norm recompute on top,
-        // and qrDirectSolve skips the Q reconstruction, so GFLOP/s here is only a rough comparator —
+        // and QR.solveInPlace skips the Q reconstruction, so GFLOP/s here is only a rough comparator —
         // the time columns and the A/B speedup are the honest signal.
         static double Flops(int n) => (4.0 / 3.0) * n * (double)n * n;
 
@@ -153,19 +153,19 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Bench.Sizes) sb.AppendLine(QRCPDouble(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== qrDirectSolve (Householder least-squares solve; no Q reconstruction) ===");
+            sb.AppendLine("=== QR.solveInPlace (Householder least-squares solve; no Q reconstruction) ===");
             sb.AppendLine(Bench.Header());
             foreach (var n in Bench.Sizes) sb.AppendLine(SolveFloat(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(SolveDouble(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== qrcpDirectSolve (QRCP rank-safe LS solve; zero-alloc primitive) ===");
+            sb.AppendLine("=== QRCP.solveInPlace (QRCP rank-safe LS solve; zero-alloc primitive) ===");
             sb.AppendLine(Bench.Header());
             foreach (var n in Bench.Sizes) sb.AppendLine(QRCPSolveFloat(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(QRCPSolveDouble(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== TALL overdetermined least squares (m x n, m > n): qrDirectSolve vs qrcpDirectSolve ===");
+            sb.AppendLine("=== TALL overdetermined least squares (m x n, m > n): QR.solveInPlace vs QRCP.solveInPlace ===");
             sb.AppendLine(HeaderTall());
             foreach (var s in TallSizes) sb.AppendLine(SolveTallFloat(s[0], s[1]));
             foreach (var s in TallSizes) sb.AppendLine(SolveTallDouble(s[0], s[1]));
@@ -336,7 +336,7 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
-            return RowTall("float", "qrDirectSolve", m, n, stat, TallFlops(m, n));
+            return RowTall("float", "QR.solveInPlace", m, n, stat, TallFlops(m, n));
         }
 
         static string SolveTallDouble(int m, int n)
@@ -362,7 +362,7 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
-            return RowTall("double", "qrDirectSolve", m, n, stat, TallFlops(m, n));
+            return RowTall("double", "QR.solveInPlace", m, n, stat, TallFlops(m, n));
         }
 
         static string QRCPSolveTallFloat(int m, int n)
@@ -389,7 +389,7 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
-            return RowTall("float", "qrcpDirectSolve", m, n, stat, TallFlops(m, n));
+            return RowTall("float", "QRCP.solveInPlace", m, n, stat, TallFlops(m, n));
         }
 
         static string QRCPSolveTallDouble(int m, int n)
@@ -416,7 +416,7 @@ namespace LinearAlgebra.Benchmarks
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
-            return RowTall("double", "qrcpDirectSolve", m, n, stat, TallFlops(m, n));
+            return RowTall("double", "QRCP.solveInPlace", m, n, stat, TallFlops(m, n));
         }
 
         static string QRCPSolveDouble(int n)

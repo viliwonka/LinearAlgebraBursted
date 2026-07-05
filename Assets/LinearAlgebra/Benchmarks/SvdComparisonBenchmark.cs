@@ -13,8 +13,8 @@ using Random = Unity.Mathematics.Random;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // SVD method comparison: svdThin (full Golub-Kahan) vs svdTruncated (GKL Lanczos with full
-    // reorthogonalization) vs svdRandomized (Halko-Martinsson-Tropp random projection).
+    // SVD method comparison: thin (full Golub-Kahan) vs truncated (GKL Lanczos with full
+    // reorthogonalization) vs randomized (Halko-Martinsson-Tropp random projection).
     //
     // Both SPEED and NUMERICAL ACCURACY are reported.  Accuracy is measured against a KNOWN SVD:
     //   A = U · diag(Σ) · Vᵀ,  Σ[i] = 100 · 0.95^i  (geometric decay),
@@ -30,9 +30,9 @@ namespace LinearAlgebra.Benchmarks
     //   1024×128  (n=128)
     //   2048×256  (n=256)
     //
-    // k sweep: round(3%), round(7%), round(21%) of n.  svdThin uses k = n (full).
-    // svdRandomized defaults: oversample=10, powerIters=2, seed=0x9E3779B1 (library default).
-    // svdTruncated defaults: p = min(n, max(2k, k+12)).
+    // k sweep: round(3%), round(7%), round(21%) of n.  thin uses k = n (full).
+    // randomized defaults: oversample=10, powerIters=2, seed=0x9E3779B1 (library default).
+    // truncated defaults: p = min(n, max(2k, k+12)).
 
     // =====================================================================
     //  Setup jobs — build A from a known SVD (not timed)
@@ -60,11 +60,11 @@ namespace LinearAlgebra.Benchmarks
             var R = new floatMxN(n, n, Allocator.Temp, false);
             var gauss = new floatGaussian(0f, 1f);
             Rand.randomInPlace(ref rng, ref G, ref gauss);
-            QR.qrDecomposition(ref G, ref R);   // G → Q in-place
+            QR.decompInPlace(ref G, ref R);   // G → Q in-place
 
             // V (n x n) Haar-uniform orthogonal
             var V = new floatMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInPlace(ref rng, ref V);
+            Rand.orthogonalInPlace(ref rng, ref V);
 
             // A[i,j] = Σ_t  Sigma[t] · G[i,t] · V[j,t]   (double accumulation for accuracy)
             for (int i = 0; i < m; i++)
@@ -100,10 +100,10 @@ namespace LinearAlgebra.Benchmarks
             var R = new doubleMxN(n, n, Allocator.Temp, false);
             var gauss = new doubleGaussian(0.0, 1.0);
             Rand.randomInPlace(ref rng, ref G, ref gauss);
-            QR.qrDecomposition(ref G, ref R);
+            QR.decompInPlace(ref G, ref R);
 
             var V = new doubleMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInPlace(ref rng, ref V);
+            Rand.orthogonalInPlace(ref rng, ref V);
 
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
@@ -119,7 +119,7 @@ namespace LinearAlgebra.Benchmarks
     }
 
     // =====================================================================
-    //  Timing jobs: svdThin (full Golub-Kahan)
+    //  Timing jobs: thin (full Golub-Kahan)
     // =====================================================================
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -129,7 +129,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN U;
         public floatN S;
         public floatMxN V;
-        public void Execute() => SVD.svdThin(in A, ref U, ref S, ref V);
+        public void Execute() => SVD.thin(in A, ref U, ref S, ref V);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -139,11 +139,11 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN U;
         public doubleN S;
         public doubleMxN V;
-        public void Execute() => SVD.svdThin(in A, ref U, ref S, ref V);
+        public void Execute() => SVD.thin(in A, ref U, ref S, ref V);
     }
 
     // =====================================================================
-    //  Timing jobs: svdTruncated (GKL Lanczos + full reorthogonalization)
+    //  Timing jobs: truncated (GKL Lanczos + full reorthogonalization)
     // =====================================================================
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -156,7 +156,7 @@ namespace LinearAlgebra.Benchmarks
         public int k;
         public floatSVDTruncatedCache ws;
         // Uses the 1-k-arg overload: oversample = max(k,12), seed = 0x9E3779B1, maxIter = 75.
-        public void Execute() => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out bool _);
+        public void Execute() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out bool _);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -168,11 +168,11 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN Vk;
         public int k;
         public doubleSVDTruncatedCache ws;
-        public void Execute() => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out bool _);
+        public void Execute() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out bool _);
     }
 
     // =====================================================================
-    //  Timing jobs: svdRandomized (Halko-Martinsson-Tropp)
+    //  Timing jobs: randomized (Halko-Martinsson-Tropp)
     // =====================================================================
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -185,7 +185,7 @@ namespace LinearAlgebra.Benchmarks
         public int k;
         public floatSVDRandomizedCache ws;
         // oversample=10, powerIters=2, seed=0x9E3779B1 (library defaults).
-        public void Execute() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
+        public void Execute() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -197,7 +197,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN Vk;
         public int k;
         public doubleSVDRandomizedCache ws;
-        public void Execute() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
+        public void Execute() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
     }
 
     // =====================================================================
@@ -216,12 +216,12 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== SVD method comparison: svdThin vs svdTruncated(GKL) vs svdRandomized(HMT) ===");
+            sb.AppendLine("=== SVD method comparison: thin vs truncated(GKL) vs randomized(HMT) ===");
             sb.AppendLine("    Tall matrices (spec: 64x512 / 128x1024 / 256x2048 wide, TRANSPOSED so m>=n).");
             sb.AppendLine("    Known SVD: A=U*diag(Sigma)*Vt, U in Stiefel(n,m), V in O(n), Sigma[i]=100*0.95^i.");
-            sb.AppendLine("    svdThin: full Golub-Kahan bidiagonal (k=n, all singular values).");
-            sb.AppendLine("    svdTruncated (GKL): Lanczos bidiag + full DGKS reortho, p=min(n,max(2k,k+12)).");
-            sb.AppendLine("    svdRandomized (HMT): Gaussian sketch, oversample=10, powerIters=2, seed=0x9E3779B1.");
+            sb.AppendLine("    thin: full Golub-Kahan bidiagonal (k=n, all singular values).");
+            sb.AppendLine("    truncated (GKL): Lanczos bidiag + full DGKS reortho, p=min(n,max(2k,k+12)).");
+            sb.AppendLine("    randomized (HMT): Gaussian sketch, oversample=10, powerIters=2, seed=0x9E3779B1.");
             sb.AppendLine("    sigma-rel-err = max_{i<k} |S[i]-Sigma[i]| / Sigma[0].");
             sb.AppendLine("    EY-opt = Eckart-Young lower bound = sqrt(sum_{i>=k} Sigma[i]^2) / ||A||_F.");
             sb.AppendLine();
@@ -272,7 +272,7 @@ namespace LinearAlgebra.Benchmarks
             new SvdCmpBuildJobFloat { A = A, SigmaTrue = sigmaTrue, seed = BuildSeed }.Run();
             double normA = FNormF(A);
 
-            // svdThin — k = n (full decomposition)
+            // thin — k = n (full decomposition)
             {
                 var U = arena.floatMat(m, n);
                 var S = arena.floatVec(n);
@@ -282,7 +282,7 @@ namespace LinearAlgebra.Benchmarks
                 double sigErr   = SigErrF(S, sigmaTrue, n);
                 double reconErr = ReconErrF(A, U, S, V, n, normA);
                 double eyOpt    = EYOptF(sigmaTrue, n, normA);
-                sb.AppendLine(CmpRow("float", "svdThin", m, n, n, stat, sigErr, reconErr, eyOpt));
+                sb.AppendLine(CmpRow("float", "thin", m, n, n, stat, sigErr, reconErr, eyOpt));
             }
 
             foreach (int k in KVals(n))
@@ -291,7 +291,7 @@ namespace LinearAlgebra.Benchmarks
                 var Sk = arena.floatVec(k);
                 var Vk = arena.floatMat(n, k);
 
-                // svdTruncated (GKL)
+                // truncated (GKL)
                 {
                     var ws   = arena.floatSVDTruncatedCache(m, n, k);
                     var job  = new SvdCmpTruncJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
@@ -302,7 +302,7 @@ namespace LinearAlgebra.Benchmarks
                     sb.AppendLine(CmpRow("float", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
                 }
 
-                // svdRandomized (HMT, oversample=10 matches workspace default)
+                // randomized (HMT, oversample=10 matches workspace default)
                 {
                     var ws   = arena.floatSVDRandomizedCache(m, n, k);
                     var job  = new SvdCmpRandJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
@@ -330,7 +330,7 @@ namespace LinearAlgebra.Benchmarks
             new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = BuildSeed }.Run();
             double normA = FNormD(A);
 
-            // svdThin — k = n
+            // thin — k = n
             {
                 var U = arena.doubleMat(m, n);
                 var S = arena.doubleVec(n);
@@ -340,7 +340,7 @@ namespace LinearAlgebra.Benchmarks
                 double sigErr   = SigErrD(S, sigmaTrue, n);
                 double reconErr = ReconErrD(A, U, S, V, n, normA);
                 double eyOpt    = EYOptD(sigmaTrue, n, normA);
-                sb.AppendLine(CmpRow("double", "svdThin", m, n, n, stat, sigErr, reconErr, eyOpt));
+                sb.AppendLine(CmpRow("double", "thin", m, n, n, stat, sigErr, reconErr, eyOpt));
             }
 
             foreach (int k in KVals(n))
@@ -349,7 +349,7 @@ namespace LinearAlgebra.Benchmarks
                 var Sk = arena.doubleVec(k);
                 var Vk = arena.doubleMat(n, k);
 
-                // svdTruncated (GKL)
+                // truncated (GKL)
                 {
                     var ws   = arena.doubleSVDTruncatedCache(m, n, k);
                     var job  = new SvdCmpTruncJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
@@ -360,7 +360,7 @@ namespace LinearAlgebra.Benchmarks
                     sb.AppendLine(CmpRow("double", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
                 }
 
-                // svdRandomized (HMT)
+                // randomized (HMT)
                 {
                     var ws   = arena.doubleSVDRandomizedCache(m, n, k);
                     var job  = new SvdCmpRandJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };

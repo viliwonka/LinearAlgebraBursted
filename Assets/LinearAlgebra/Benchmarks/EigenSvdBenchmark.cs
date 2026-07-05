@@ -17,7 +17,7 @@ namespace LinearAlgebra.Benchmarks
     // SIMD vectorisation: a vectorised float path should run ~1.5-2x faster than double;
     // non-vectorised paths run at roughly equal speed.
     //
-    // The deprecated one-sided-Jacobi svdDecomposition and cyclic-Jacobi eigenDecomposition are NOT
+    // The deprecated one-sided-Jacobi svdDecomposition and cyclic-Jacobi decompInPlace are NOT
     // benched here: they are [Obsolete], redundant with the above, and O(sweeps*n^3) with strided
     // column access — the cyclic-Jacobi eigen alone runs into minutes at n=1024. Their historical
     // comparison numbers live in git history if ever needed again.
@@ -25,19 +25,19 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SvdValuesJobFloat : IJob
     {
-        public floatMxN A;     // not modified (svdValues works on a Temp copy)
+        public floatMxN A;     // not modified (values works on a Temp copy)
         public floatN S;
 
-        public void Execute() => SVD.svdValues(in A, ref S);
+        public void Execute() => SVD.values(in A, ref S);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SvdValuesJobDouble : IJob
     {
-        public doubleMxN A;    // not modified (svdValues works on a Temp copy)
+        public doubleMxN A;    // not modified (values works on a Temp copy)
         public doubleN S;
 
-        public void Execute() => SVD.svdValues(in A, ref S);
+        public void Execute() => SVD.values(in A, ref S);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -53,7 +53,7 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = Src[r, c];
-            Eigen.eigenvaluesSymmetric(ref A, ref E);
+            Eigen.valuesSymmetric(ref A, ref E);
         }
     }
 
@@ -70,7 +70,7 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = Src[r, c];
-            Eigen.eigenvaluesSymmetric(ref A, ref E);
+            Eigen.valuesSymmetric(ref A, ref E);
         }
     }
 
@@ -88,7 +88,7 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = Src[r, c];
-            Eigen.eigenSymmetric(ref A, ref E, ref V);
+            Eigen.symmetric(ref A, ref E, ref V);
         }
     }
 
@@ -106,7 +106,7 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = Src[r, c];
-            Eigen.eigenSymmetric(ref A, ref E, ref V);
+            Eigen.symmetric(ref A, ref E, ref V);
         }
     }
 
@@ -124,7 +124,7 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = Src[r, c];
-            Eigen.eigenvaluesQR(ref A, ref Re, ref Im, 100);
+            Eigen.valuesQR(ref A, ref Re, ref Im, 100);
         }
     }
 
@@ -142,19 +142,19 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = Src[r, c];
-            Eigen.eigenvaluesQR(ref A, ref Re, ref Im, 100);
+            Eigen.valuesQR(ref A, ref Re, ref Im, 100);
         }
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SvdGKJobFloat : IJob
     {
-        public floatMxN A;     // input, not modified (svdThin takes A `in`)
+        public floatMxN A;     // input, not modified (thin takes A `in`)
         public floatMxN U;
         public floatN S;
         public floatMxN V;
 
-        public void Execute() => SVD.svdThin(in A, ref U, ref S, ref V);
+        public void Execute() => SVD.thin(in A, ref U, ref S, ref V);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -165,7 +165,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN S;
         public doubleMxN V;
 
-        public void Execute() => SVD.svdThin(in A, ref U, ref S, ref V);
+        public void Execute() => SVD.thin(in A, ref U, ref S, ref V);
     }
 
     public static class EigenSvdBenchmark
@@ -174,31 +174,31 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== Golub-Kahan full SVD (svdThin; bidiag + implicit-shift QR, ms) ===");
+            sb.AppendLine("=== Golub-Kahan full SVD (thin; bidiag + implicit-shift QR, ms) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Bench.Sizes) sb.AppendLine(SvdGK(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(SvdGKD(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== SVD singular values only (svdValues, Golub-Kahan bidiagonal; ms) ===");
+            sb.AppendLine("=== SVD singular values only (values, Golub-Kahan bidiagonal; ms) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Bench.Sizes) sb.AppendLine(SvdVals(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(SvdValsD(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== Householder symmetric eigenvalues (eigenvaluesSymmetric; values only, ms) ===");
+            sb.AppendLine("=== Householder symmetric eigenvalues (valuesSymmetric; values only, ms) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Bench.Sizes) sb.AppendLine(EigSym(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(EigSymD(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== Householder symmetric eigen + vectors (eigenSymmetric; ms) ===");
+            sb.AppendLine("=== Householder symmetric eigen + vectors (symmetric; ms) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Bench.Sizes) sb.AppendLine(EigSymVec(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(EigSymVecD(n));
             sb.AppendLine();
 
-            sb.AppendLine("=== General eigenvalues, QR iteration (eigenvaluesQR; iterative, ms only) ===");
+            sb.AppendLine("=== General eigenvalues, QR iteration (valuesQR; iterative, ms only) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Bench.Sizes) sb.AppendLine(EigQR(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(EigQRD(n));

@@ -126,7 +126,7 @@ public class doubleLUTests
 
             var A = U.Copy();
 
-            bool success = LU.luDecompositionNoPivot(ref U, ref L);
+            bool success = LU.decompNoPivotInPlace(ref U, ref L);
 
             Assert.IsTrue(success);
 
@@ -145,7 +145,7 @@ public class doubleLUTests
 
             var A = U.Copy();
 
-            bool success = LU.luDecompositionNoPivot(ref U, ref L);
+            bool success = LU.decompNoPivotInPlace(ref U, ref L);
 
             Assert.IsTrue(success);
 
@@ -197,7 +197,7 @@ public class doubleLUTests
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.luDecomposition(ref U, ref L, ref pivot);
+            bool success = LU.decompInPlace(ref U, ref L, ref pivot);
 
             Assert.IsTrue(success);
 
@@ -227,7 +227,7 @@ public class doubleLUTests
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.luDecomposition(ref U, ref L, ref pivot);
+            bool success = LU.decompInPlace(ref U, ref L, ref pivot);
 
             Assert.IsTrue(success);
 
@@ -251,7 +251,7 @@ public class doubleLUTests
                 var U = arena.doubleMat(dim, dim);
                 var L = arena.doubleIdentityMat(dim);
 
-                bool noPivot = LU.luDecompositionNoPivot(ref U, ref L);
+                bool noPivot = LU.decompNoPivotInPlace(ref U, ref L);
                 Assert.IsFalse(noPivot);
                 Assert.IsFalse(Analysis.isAnyNan(in U));
                 Assert.IsFalse(Analysis.isAnyNan(in L));
@@ -259,13 +259,13 @@ public class doubleLUTests
                 var Up = arena.doubleMat(dim, dim);
                 var Lp = arena.doubleIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool pivoted = LU.luDecomposition(ref Up, ref Lp, ref pivot);
+                bool pivoted = LU.decompInPlace(ref Up, ref Lp, ref pivot);
                 Assert.IsFalse(pivoted);
                 Assert.IsFalse(Analysis.isAnyNan(in Up));
                 Assert.IsFalse(Analysis.isAnyNan(in Lp));
 
                 var LUmat = arena.doubleMat(dim, dim);
-                bool inPlace = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+                bool inPlace = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsFalse(inPlace);
                 Assert.IsFalse(Analysis.isAnyNan(in LUmat));
 
@@ -285,7 +285,7 @@ public class doubleLUTests
                 var A = U.Copy();
                 var L = arena.doubleIdentityMat(dim);
 
-                bool noPivot = LU.luDecompositionNoPivot(ref U, ref L);
+                bool noPivot = LU.decompNoPivotInPlace(ref U, ref L);
                 Assert.IsFalse(noPivot);
                 Assert.IsFalse(Analysis.isAnyNan(in U));
                 Assert.IsFalse(Analysis.isAnyNan(in L));
@@ -293,13 +293,13 @@ public class doubleLUTests
                 var Up = A.Copy();
                 var Lp = arena.doubleIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool pivoted = LU.luDecomposition(ref Up, ref Lp, ref pivot);
+                bool pivoted = LU.decompInPlace(ref Up, ref Lp, ref pivot);
                 Assert.IsFalse(pivoted);
                 Assert.IsFalse(Analysis.isAnyNan(in Up));
                 Assert.IsFalse(Analysis.isAnyNan(in Lp));
 
                 var LUmat = A.Copy();
-                bool inPlace = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+                bool inPlace = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsFalse(inPlace);
                 Assert.IsFalse(Analysis.isAnyNan(in LUmat));
 
@@ -316,12 +316,12 @@ public class doubleLUTests
                 var L = arena.doubleIdentityMat(2);
 
                 var Unp = U.Copy();
-                bool noPivot = LU.luDecompositionNoPivot(ref Unp, ref L);
+                bool noPivot = LU.decompNoPivotInPlace(ref Unp, ref L);
                 Assert.IsFalse(noPivot);
 
                 var LUmat = U.Copy();
                 var pivot = new Pivot(2, Allocator.Temp);
-                bool inPlace = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+                bool inPlace = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsTrue(inPlace);
                 Assert.IsFalse(Analysis.isAnyNan(in LUmat));
 
@@ -342,7 +342,7 @@ public class doubleLUTests
             var U = arena.doubleMat(dim, dim); // zero matrix -> singular
             var L = arena.doubleIdentityMat(dim);
 
-            DirectSolveInfo noPivotInfo = LU.luDecompositionNoPivot(ref U, ref L);
+            DirectSolveInfo noPivotInfo = LU.decompNoPivotInPlace(ref U, ref L);
             Assert.IsTrue(noPivotInfo.status == DirectSolveStatus.Singular);
             Assert.IsFalse(noPivotInfo.Solved);
             Assert.IsFalse(noPivotInfo);
@@ -350,12 +350,12 @@ public class doubleLUTests
             var Up = arena.doubleMat(dim, dim);
             var Lp = arena.doubleIdentityMat(dim);
             var pivot = new Pivot(dim, Allocator.Temp);
-            DirectSolveInfo pivotedInfo = LU.luDecomposition(ref Up, ref Lp, ref pivot);
+            DirectSolveInfo pivotedInfo = LU.decompInPlace(ref Up, ref Lp, ref pivot);
             Assert.IsTrue(pivotedInfo.status == DirectSolveStatus.Singular);
             Assert.IsFalse(pivotedInfo.Solved);
 
             var LUmat = arena.doubleMat(dim, dim);
-            DirectSolveInfo inPlaceInfo = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            DirectSolveInfo inPlaceInfo = LU.decompInPlace(ref LUmat, ref pivot);
             Assert.IsTrue(inPlaceInfo.status == DirectSolveStatus.Singular);
             Assert.IsFalse(inPlaceInfo.Solved);
 
@@ -384,11 +384,11 @@ public class doubleLUTests
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
 
-                bool success = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+                bool success = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsTrue(success);
 
                 var x_Solved = b.Copy();
-                LU.luSolve(ref LUmat, in pivot, ref x_Solved);
+                LU.decompSolve(ref LUmat, in pivot, ref x_Solved);
 
                 Assert.IsFalse(Analysis.isAnyNan(in x_Solved));
 
@@ -417,7 +417,7 @@ public class doubleLUTests
                 var LUmat = A.Copy();
                 var pivot = new Pivot(dim, Allocator.Temp);
 
-                bool success = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+                bool success = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsTrue(success);
 
                 // Verify the permutation is not a simple involution (P applied twice != identity),
@@ -429,7 +429,7 @@ public class doubleLUTests
                 Assert.IsFalse(isInvolution);
 
                 var x_Solved = b.Copy();
-                LU.luSolve(ref LUmat, in pivot, ref x_Solved);
+                LU.decompSolve(ref LUmat, in pivot, ref x_Solved);
 
                 Assert.IsFalse(Analysis.isAnyNan(in x_Solved));
 
@@ -451,7 +451,7 @@ public class doubleLUTests
                 var I = arena.doubleIdentityMat(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
 
-                bool success = LU.luDecompositionInPlace(ref I, ref pivot);
+                bool success = LU.decompInPlace(ref I, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in I, in pivot);
@@ -471,7 +471,7 @@ public class doubleLUTests
                 double expected = 2f * -3f * 0.5f * 4f; // -12
 
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInPlace(ref D, ref pivot);
+                bool success = LU.decompInPlace(ref D, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in D, in pivot);
@@ -490,7 +490,7 @@ public class doubleLUTests
                 A[2, 0] = 2f; A[2, 1] = 1f; A[2, 2] = 0f;
 
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInPlace(ref A, ref pivot);
+                bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in A, in pivot);
@@ -509,7 +509,7 @@ public class doubleLUTests
                 P[2, 0] = 1f;
 
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInPlace(ref P, ref pivot);
+                bool success = LU.decompInPlace(ref P, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in P, in pivot);
@@ -522,7 +522,7 @@ public class doubleLUTests
         }
 
         // GALLERY KNOWN-ANSWER: famous unit-determinant matrices. det is computed via
-        // luDecompositionInPlace + LU.determinant (the file's established sequence).
+        // LU.decompInPlace + LU.determinant (the file's established sequence).
         //  - Pascal(5):  symmetric Pascal, det = 1.
         //  - MinIJ(5):   A[i,j]=min(i,j)+1, det = 1.
         //  - Frank(5):   upper-Hessenberg Frank, det = 1 (ill-conditioned but integer-valued, so
@@ -536,7 +536,7 @@ public class doubleLUTests
                 int dim = 5;
                 var A = arena.doublePascal(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInPlace(ref A, ref pivot);
+                bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in A, in pivot);
@@ -550,7 +550,7 @@ public class doubleLUTests
                 int dim = 5;
                 var A = arena.doubleMinIJ(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInPlace(ref A, ref pivot);
+                bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in A, in pivot);
@@ -564,7 +564,7 @@ public class doubleLUTests
                 int dim = 5;
                 var A = arena.doubleFrank(dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool success = LU.luDecompositionInPlace(ref A, ref pivot);
+                bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
                 double det = LU.determinant(in A, in pivot);
@@ -589,7 +589,7 @@ public class doubleLUTests
             for (int d = 0; d < dim; d++)
                 A1[d, d] += 15f;
             var LU1 = A1.Copy();
-            bool s1 = LU.luDecompositionInPlace(ref LU1, ref pivot);
+            bool s1 = LU.decompInPlace(ref LU1, ref pivot);
             Assert.IsTrue(s1);
 
             // Second decomposition reuses the SAME pivot object; Reset() must clean it.
@@ -604,11 +604,11 @@ public class doubleLUTests
             var b = Blas.dot(A2, x_Known);
 
             var LU2 = A2.Copy();
-            bool s2 = LU.luDecompositionInPlace(ref LU2, ref pivot);
+            bool s2 = LU.decompInPlace(ref LU2, ref pivot);
             Assert.IsTrue(s2);
 
             var x_Solved = b.Copy();
-            LU.luSolve(ref LU2, in pivot, ref x_Solved);
+            LU.decompSolve(ref LU2, in pivot, ref x_Solved);
 
             Assert.IsFalse(Analysis.isAnyNan(in x_Solved));
 
@@ -691,13 +691,13 @@ public class doubleLUTests
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.luDecomposition(ref U, ref L, ref pivot);
+            bool success = LU.decompInPlace(ref U, ref L, ref pivot);
 
             Assert.IsTrue(success);
 
             var x_Solved = b.Copy();
 
-            LU.luSolve(ref L, ref U, in pivot, ref x_Solved);
+            LU.decompSolve(ref L, ref U, in pivot, ref x_Solved);
 
             if (Analysis.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
@@ -742,13 +742,13 @@ public class doubleLUTests
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            bool success = LU.decompInPlace(ref LUmat, ref pivot);
 
             Assert.IsTrue(success);
 
             var x_Solved = b.Copy();
 
-            LU.luSolve(ref LUmat, in pivot, ref x_Solved);
+            LU.decompSolve(ref LUmat, in pivot, ref x_Solved);
 
             if (Analysis.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
@@ -772,12 +772,12 @@ public class doubleLUTests
         // ================================================================================
         // BLOCKED (level-3) LU coverage.
         //
-        // LU.luDecomposition(ref U, ref L, ref P) switches to the LAPACK-style right-looking
+        // LU.decompInPlace(ref U, ref L, ref P) switches to the LAPACK-style right-looking
         // blocked (compact-WY GEMM trailing update) path at M_Rows >= LU_BLOCK_MIN_N = 8*32 = 256;
         // below that it runs the plain unblocked rank-1 sweep. The blocked path is DESIGNED to keep
         // the partial-pivoting sequence bit-identical to the unblocked form, so it must produce the
         // SAME pivot array and (within GEMM summation-order rounding) the same L/U as the independent,
-        // untouched, level-2 compact factorization LU.luDecompositionInPlace(ref LU, ref P) — which is
+        // untouched, level-2 compact factorization LU.decompInPlace(ref LU, ref P) — which is
         // used here as the reference ORACLE for both correctness and accuracy.
         //
         // In the in-place compact form: factor row i lives at physical row P[i]; LU[P[i], j] with j < i
@@ -838,7 +838,7 @@ public class doubleLUTests
             var L = arena.doubleIdentityMat(dim);
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool ok = LU.luDecomposition(ref U, ref L, ref pivot);
+            bool ok = LU.decompInPlace(ref U, ref L, ref pivot);
 
             Assert.IsFalse(ok);
             Assert.IsFalse(Analysis.isAnyNan(in U));
@@ -874,13 +874,13 @@ public class doubleLUTests
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.luDecomposition(ref U, ref L, ref pivot);
+            bool success = LU.decompInPlace(ref U, ref L, ref pivot);
 
             Assert.IsTrue(success);
 
             var x_Solved = b.Copy();
 
-            LU.luSolve(ref L, ref U, in pivot, ref x_Solved);
+            LU.decompSolve(ref L, ref U, in pivot, ref x_Solved);
 
             if (Analysis.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
@@ -924,7 +924,7 @@ public class doubleLUTests
             return A;
         }
 
-        // Points (1)/(2): blocked luDecomposition vs unblocked compact luDecompositionInPlace oracle.
+        // Points (1)/(2): blocked LU.decompInPlace (3-arg) vs unblocked compact LU.decompInPlace (2-arg) oracle.
         // Asserts identical pivots, matching L/U factors, and no backward-error regression.
         private void BlockedVsReference(ref Arena arena, in doubleMxN A)
         {
@@ -934,7 +934,7 @@ public class doubleLUTests
             var U = A.Copy();
             var L = arena.doubleIdentityMat(dim);
             var pB = new Pivot(dim, Allocator.Temp);
-            bool okB = LU.luDecomposition(ref U, ref L, ref pB);
+            bool okB = LU.decompInPlace(ref U, ref L, ref pB);
             Assert.IsTrue(okB);
             Assert.IsFalse(Analysis.isAnyNan(in U));
             Assert.IsFalse(Analysis.isAnyNan(in L));
@@ -942,7 +942,7 @@ public class doubleLUTests
             // --- reference: independent unblocked compact in-place factorization ---
             var LUref = A.Copy();
             var pR = new Pivot(dim, Allocator.Temp);
-            bool okR = LU.luDecompositionInPlace(ref LUref, ref pR);
+            bool okR = LU.decompInPlace(ref LUref, ref pR);
             Assert.IsTrue(okR);
 
             // (a) pivot arrays identical elementwise
@@ -997,14 +997,14 @@ public class doubleLUTests
             var U = A.Copy();
             var L = arena.doubleIdentityMat(dim);
             var pB = new Pivot(dim, Allocator.Temp);
-            bool okB = LU.luDecomposition(ref U, ref L, ref pB);
+            bool okB = LU.decompInPlace(ref U, ref L, ref pB);
             Assert.IsTrue(okB);
             Assert.IsFalse(Analysis.isAnyNan(in U));
             Assert.IsFalse(Analysis.isAnyNan(in L));
 
             var LUref = A.Copy();
             var pR = new Pivot(dim, Allocator.Temp);
-            bool okR = LU.luDecompositionInPlace(ref LUref, ref pR);
+            bool okR = LU.decompInPlace(ref LUref, ref pR);
             Assert.IsTrue(okR);
 
             double resBlocked = ResidualPALU(ref arena, in A, in L, in U, in pB);

@@ -10,7 +10,7 @@ namespace LinearAlgebra.Gallery
     /// into its own "Phase 2" file (Cauchy, GCD, Redheffer, Magic, Rosser, Parter, Prolate, Grcar,
     /// Lotkin — sections 13-21 below; merged here, same partial class, no API change).
     /// Batch B of the Literature Gallery (Batch A: Gallery.SPD.double.cs).
-    /// Targets: eigenDecomposition, eigenvaluesQR, SVD, QR/QRCP, least-squares, FFT cross-check, det.
+    /// Targets: Eigen.decompInPlace, Eigen.valuesQR, SVD, QR/QRCP, least-squares, FFT cross-check, det.
     /// Opt in via <c>using LinearAlgebra.Gallery;</c> then call e.g. <c>arena.doubleFrank(n)</c>.
     /// </summary>
     public static partial class doubleGallery

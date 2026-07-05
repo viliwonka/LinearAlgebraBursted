@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Least-squares residual tests for the (un-pivoted) Householder QR solver QR.qrDirectSolve.
+// Least-squares residual tests for the (un-pivoted) Householder QR solver QR.solveInPlace.
 // The existing QR solve tests only cover CONSISTENT right-hand sides (b = A*xOrig, zero residual).
 // These add genuinely INCONSISTENT overdetermined systems, where min ||Ax - b|| has a non-zero
 // residual r = b - Ax, and verify the defining least-squares property: r is orthogonal to the
@@ -56,11 +56,11 @@ public class fProxyQRLeastSquaresResidualTests
             var b = arena.fProxyVec(3);
             b[0] = 6f; b[1] = 0f; b[2] = 0f;
 
-            var Awork = A.Copy();   // qrDirectSolve destroys A and b
+            var Awork = A.Copy();   // solveInPlace destroys A and b
             var bwork = b.Copy();
             var x = arena.fProxyVec(2);
 
-            QR.qrDirectSolve(ref Awork, ref bwork, ref x);
+            QR.solveInPlace(ref Awork, ref bwork, ref x);
 
             if (Analysis.isAnyNan(in x))
                 throw new System.Exception("TestJob: NaN detected");
@@ -97,7 +97,7 @@ public class fProxyQRLeastSquaresResidualTests
                 var bwork = b.Copy();
                 var x = arena.fProxyVec(n);
 
-                QR.qrDirectSolve(ref Awork, ref bwork, ref x);
+                QR.solveInPlace(ref Awork, ref bwork, ref x);
 
                 if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");
@@ -142,7 +142,7 @@ public class fProxyQRLeastSquaresResidualTests
                 var bwork = b.Copy();
                 var x = arena.fProxyVec(n);
 
-                QR.qrDirectSolve(ref Awork, ref bwork, ref x);
+                QR.solveInPlace(ref Awork, ref bwork, ref x);
 
                 if (Analysis.isAnyNan(in x))
                     throw new System.Exception("TestJob: NaN detected");

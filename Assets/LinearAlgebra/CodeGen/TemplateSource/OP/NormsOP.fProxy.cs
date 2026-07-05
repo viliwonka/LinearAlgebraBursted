@@ -49,60 +49,60 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void NormalizeL2(in fProxyN   x) => fProxyNormsCore.NormalizeL2(x);
+        public static void normalizeL2(in fProxyN   x) => fProxyNormsCore.NormalizeL2(x);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void NormalizeL2(in fProxyMxN x) => fProxyNormsCore.NormalizeL2(x);
+        public static void normalizeL2(in fProxyMxN x) => fProxyNormsCore.NormalizeL2(x);
 
         // returns length before normalization
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeL2(in fProxyN   x, int start, int end) => fProxyNormsCore.NormalizeL2(x, start, end);
+        public static fProxy normalizeL2(in fProxyN   x, int start, int end) => fProxyNormsCore.NormalizeL2(x, start, end);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeL2(in fProxyMxN x, int start, int end) => fProxyNormsCore.NormalizeL2(x, start, end);
+        public static fProxy normalizeL2(in fProxyMxN x, int start, int end) => fProxyNormsCore.NormalizeL2(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeL1(in fProxyN   x) => fProxyNormsCore.NormalizeL1(x);
+        public static fProxy normalizeL1(in fProxyN   x) => fProxyNormsCore.NormalizeL1(x);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeL1(in fProxyMxN x) => fProxyNormsCore.NormalizeL1(x);
+        public static fProxy normalizeL1(in fProxyMxN x) => fProxyNormsCore.NormalizeL1(x);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeL1(in fProxyN   x, int start, int end) => fProxyNormsCore.NormalizeL1(x, start, end);
+        public static fProxy normalizeL1(in fProxyN   x, int start, int end) => fProxyNormsCore.NormalizeL1(x, start, end);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeL1(in fProxyMxN x, int start, int end) => fProxyNormsCore.NormalizeL1(x, start, end);
+        public static fProxy normalizeL1(in fProxyMxN x, int start, int end) => fProxyNormsCore.NormalizeL1(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLMax(in fProxyN   x) => fProxyNormsCore.NormalizeLMax(x);
+        public static fProxy normalizeLMax(in fProxyN   x) => fProxyNormsCore.NormalizeLMax(x);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLMax(in fProxyMxN x) => fProxyNormsCore.NormalizeLMax(x);
+        public static fProxy normalizeLMax(in fProxyMxN x) => fProxyNormsCore.NormalizeLMax(x);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLMax(in fProxyN   x, int start, int end) => fProxyNormsCore.NormalizeLMax(x, start, end);
+        public static fProxy normalizeLMax(in fProxyN   x, int start, int end) => fProxyNormsCore.NormalizeLMax(x, start, end);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLMax(in fProxyMxN x, int start, int end) => fProxyNormsCore.NormalizeLMax(x, start, end);
+        public static fProxy normalizeLMax(in fProxyMxN x, int start, int end) => fProxyNormsCore.NormalizeLMax(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLP(in fProxyN   x, fProxy p) => fProxyNormsCore.NormalizeLP(x, p);
+        public static fProxy normalizeLP(in fProxyN   x, fProxy p) => fProxyNormsCore.NormalizeLP(x, p);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLP(in fProxyMxN x, fProxy p) => fProxyNormsCore.NormalizeLP(x, p);
+        public static fProxy normalizeLP(in fProxyMxN x, fProxy p) => fProxyNormsCore.NormalizeLP(x, p);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLP(in fProxyN   x, int start, int end, fProxy p) => fProxyNormsCore.NormalizeLP(x, start, end, p);
+        public static fProxy normalizeLP(in fProxyN   x, int start, int end, fProxy p) => fProxyNormsCore.NormalizeLP(x, start, end, p);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static fProxy NormalizeLP(in fProxyMxN x, int start, int end, fProxy p) => fProxyNormsCore.NormalizeLP(x, start, end, p);
+        public static fProxy normalizeLP(in fProxyMxN x, int start, int end, fProxy p) => fProxyNormsCore.NormalizeLP(x, start, end, p);
 
         // ---- Enum-dispatch normalize ----
 
         /// <summary>Normalize x to unit norm in-place, using the specified <paramref name="n"/> (L1/L2/Linf).
-        /// Delegates to the corresponding <c>NormalizeL1</c>/<c>NormalizeL2</c>/<c>NormalizeLMax</c> kernel.</summary>
+        /// Delegates to the corresponding <c>normalizeL1</c>/<c>normalizeL2</c>/<c>normalizeLMax</c> kernel.</summary>
         /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
         /// <b>whole-matrix</b> scope (all elements as a single distribution); use
-        /// <see cref="NormalizeRows"/> or <see cref="NormalizeColumns"/> for per-axis normalization.</remarks>
+        /// <see cref="normalizeRows"/> or <see cref="normalizeColumns"/> for per-axis normalization.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Normalize(in fProxyN   x, Norm n) => fProxyNormsCore.Normalize(x, n);
+        public static void normalize(in fProxyN   x, Norm n) => fProxyNormsCore.Normalize(x, n);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Normalize(in fProxyMxN x, Norm n) => fProxyNormsCore.Normalize(x, n);
+        public static void normalize(in fProxyMxN x, Norm n) => fProxyNormsCore.Normalize(x, n);
 
         // Zero-norm row → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
-        public static void NormalizeRows(ref fProxyMxN A, Norm n)
+        public static void normalizeRows(ref fProxyMxN A, Norm n)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
 
@@ -142,7 +142,7 @@ namespace LinearAlgebra
         }
 
         // Zero-norm column → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
-        public static void NormalizeColumns(ref fProxyMxN A, Norm n)
+        public static void normalizeColumns(ref fProxyMxN A, Norm n)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
 

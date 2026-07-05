@@ -20,9 +20,9 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Reusable scratch for LQ.lqDecomposition. Allocate ONCE (sized for the matrix shape) via
+    /// Reusable scratch for LQ.decomp. Allocate ONCE (sized for the matrix shape) via
     /// Arena.fProxyLQCache(m, n) and reuse it across many same-shape calls to avoid the per-call
-    /// Allocator.Temp allocations lqDecomposition's allocating overload makes internally.
+    /// Allocator.Temp allocations decomp's allocating overload makes internally.
     ///
     /// W (m x n) holds the working copy of A, reduced to [L | 0] in place during the forward sweep
     /// (the discarded upper part of each row is then reused to stash that row's Householder reflector

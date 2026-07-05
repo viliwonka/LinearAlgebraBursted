@@ -9,7 +9,7 @@ using LinearAlgebra;
 namespace LinearAlgebra.Benchmarks
 {
     // The end-to-end "solve Ax=b" entry points, as opposed to decompositions.md's factorization-only
-    // benchmarks: LU.luSolve, Cholesky.choleskySolve, QR.qrDirectSolve (square). Each Execute copies a
+    // benchmarks: LU.decompSolve, CHO.decomp+decompSolve, QR.solveInPlace (square). Each Execute copies a
     // pristine source into the working buffers (factorization/solve destroys them), so every timed
     // sample does identical work. solvers.md notes the triangular-solve step itself is O(n^2), dominated
     // by the O(n^3) factorization in every case here — these numbers are effectively the factorization
@@ -18,7 +18,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LuSolveJobFloat : IJob
     {
-        public floatMxN U;     // receives Src, overwritten by luDecomposition
+        public floatMxN U;     // receives Src, overwritten by decompInPlace
         public floatMxN L;
         public floatMxN Src;
         public floatN b;       // receives bSrc, overwritten with the solution
@@ -33,8 +33,8 @@ namespace LinearAlgebra.Benchmarks
             for (int i = 0; i < n; i++) b[i] = bSrc[i];
 
             var P = new Pivot(n, Allocator.Temp);
-            LU.luDecomposition(ref U, ref L, ref P);
-            LU.luSolve(ref L, ref U, in P, ref b);
+            LU.decompInPlace(ref U, ref L, ref P);
+            LU.decompSolve(ref L, ref U, in P, ref b);
             P.Dispose();
         }
     }
@@ -57,14 +57,16 @@ namespace LinearAlgebra.Benchmarks
             for (int i = 0; i < n; i++) b[i] = bSrc[i];
 
             var P = new Pivot(n, Allocator.Temp);
-            LU.luDecomposition(ref U, ref L, ref P);
-            LU.luSolve(ref L, ref U, in P, ref b);
+            LU.decompInPlace(ref U, ref L, ref P);
+            LU.decompSolve(ref L, ref U, in P, ref b);
             P.Dispose();
         }
     }
 
-    // choleskySolve(in A, ref L, ref b) factors + solves in one call; A and L are distinct buffers so
-    // A is NOT destroyed (only b, which is re-copied from bSrc each Execute).
+    // CHO.decomp + CHO.decompSolve factor-then-solve, as the explicit two-call composition
+    // (choleskySolve(in A, ref L, ref b) was deleted — it was this exact composition in disguise).
+    // A and L are distinct buffers so A is NOT destroyed (only b, which is re-copied from bSrc each
+    // Execute).
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct CholSolveJobFloat : IJob
     {
@@ -76,7 +78,8 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < bSrc.N; i++) b[i] = bSrc[i];
-            Cholesky.choleskySolve(in A, ref L, ref b);
+            var info = CHO.decomp(in A, ref L);
+            if (info.Solved) CHO.decompSolve(ref L, ref b);
         }
     }
 
@@ -91,14 +94,15 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < bSrc.N; i++) b[i] = bSrc[i];
-            Cholesky.choleskySolve(in A, ref L, ref b);
+            var info = CHO.decomp(in A, ref L);
+            if (info.Solved) CHO.decompSolve(ref L, ref b);
         }
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct QrSquareSolveJobFloat : IJob
     {
-        public floatMxN A;     // receives Src, destroyed by qrDirectSolve
+        public floatMxN A;     // receives Src, destroyed by solveInPlace
         public floatMxN Src;
         public floatN b;
         public floatN bSrc;
@@ -112,7 +116,7 @@ namespace LinearAlgebra.Benchmarks
                     A[r, c] = Src[r, c];
             for (int i = 0; i < n; i++) b[i] = bSrc[i];
 
-            QR.qrDirectSolve(ref A, ref b, ref x);
+            QR.solveInPlace(ref A, ref b, ref x);
         }
     }
 
@@ -133,7 +137,7 @@ namespace LinearAlgebra.Benchmarks
                     A[r, c] = Src[r, c];
             for (int i = 0; i < n; i++) b[i] = bSrc[i];
 
-            QR.qrDirectSolve(ref A, ref b, ref x);
+            QR.solveInPlace(ref A, ref b, ref x);
         }
     }
 

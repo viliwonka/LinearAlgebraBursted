@@ -44,7 +44,7 @@ namespace LinearAlgebra.ML
         /// <paramref name="iters"/>      Actual iteration count in [1, maxIter].
         /// <paramref name="ws"/>         Pre-allocated workspace — Arena.doubleKMeansCache(N, D, k).
         /// </summary>
-        public static void kmeans(
+        public static void fit(
             in doubleMxN X,
             int k,
             uint seed,
@@ -58,11 +58,11 @@ namespace LinearAlgebra.ML
         {
             // ---- input guards ----
             if (X.M_Rows == 0 || X.N_Cols == 0)
-                throw new InvalidOperationException("KMeans.kmeans: X is empty");
+                throw new InvalidOperationException("KMeans.fit: X is empty");
             if (k <= 0)
-                throw new ArgumentException("KMeans.kmeans: k must be >= 1");
+                throw new ArgumentException("KMeans.fit: k must be >= 1");
             if (maxIter < 1)
-                throw new ArgumentException("KMeans.kmeans: maxIter must be >= 1");
+                throw new ArgumentException("KMeans.fit: maxIter must be >= 1");
 
             int N = X.M_Rows;
             int D = X.N_Cols;
@@ -71,36 +71,36 @@ namespace LinearAlgebra.ML
             // ---- shape checks for caller-supplied outputs ----
             if (centroids.M_Rows != k || centroids.N_Cols != D)
                 throw new ArgumentException(
-                    "KMeans.kmeans: centroids must be k×D after clamping k to min(k,N)");
+                    "KMeans.fit: centroids must be k×D after clamping k to min(k,N)");
             if (assignment.N != N)
                 throw new ArgumentException(
-                    "KMeans.kmeans: assignment.N must equal X.M_Rows (N)");
+                    "KMeans.fit: assignment.N must equal X.M_Rows (N)");
 
             // ---- workspace shape checks ----
             if (ws.Gram.M_Rows != N || ws.Gram.N_Cols != k)
                 throw new ArgumentException(
-                    "KMeans.kmeans: ws.Gram must be N×k");
+                    "KMeans.fit: ws.Gram must be N×k");
             if (ws.Ct.M_Rows != D || ws.Ct.N_Cols != k)
                 throw new ArgumentException(
-                    "KMeans.kmeans: ws.Ct must be D×k");
+                    "KMeans.fit: ws.Ct must be D×k");
             if (ws.PointNormSq.N != N)
                 throw new ArgumentException(
-                    "KMeans.kmeans: ws.PointNormSq.N must equal N");
+                    "KMeans.fit: ws.PointNormSq.N must equal N");
             if (ws.CentNormSq.N != k)
                 throw new ArgumentException(
-                    "KMeans.kmeans: ws.CentNormSq.N must equal k");
+                    "KMeans.fit: ws.CentNormSq.N must equal k");
             if (ws.PrevAssignment.N != N)
                 throw new ArgumentException(
-                    "KMeans.kmeans: ws.PrevAssignment.N must equal N");
+                    "KMeans.fit: ws.PrevAssignment.N must equal N");
             if (ws.NewCentroids.M_Rows != k || ws.NewCentroids.N_Cols != D)
                 throw new ArgumentException(
-                    "KMeans.kmeans: ws.NewCentroids must be k×D");
+                    "KMeans.fit: ws.NewCentroids must be k×D");
             if (ws.ClusterCounts.N != k)
                 throw new ArgumentException(
-                    "KMeans.kmeans: ws.ClusterCounts.N must equal k");
+                    "KMeans.fit: ws.ClusterCounts.N must equal k");
             if (ws.D2Weights.N != N)
                 throw new ArgumentException(
-                    "KMeans.kmeans: ws.D2Weights.N must equal N");
+                    "KMeans.fit: ws.D2Weights.N must equal N");
 
             // ---- precompute point squared norms (once, before the Lloyd loop) ----
             for (int n = 0; n < N; n++)
@@ -270,10 +270,10 @@ namespace LinearAlgebra.ML
         // =========================================================================
 
         /// <summary>
-        /// Calls <see cref="kmeans(in doubleMxN,int,uint,int,KMeansInit,ref doubleMxN,ref Indices,out double,out int,ref doubleKMeansCache)"/>
+        /// Calls <see cref="fit(in doubleMxN,int,uint,int,KMeansInit,ref doubleMxN,ref Indices,out double,out int,ref doubleKMeansCache)"/>
         /// with <c>init = KMeansInit.KMeansPlusPlus</c>.
         /// </summary>
-        public static void kmeans(
+        public static void fit(
             in doubleMxN X,
             int k,
             uint seed,
@@ -283,7 +283,7 @@ namespace LinearAlgebra.ML
             out double inertia,
             out int iters,
             ref doubleKMeansCache ws)
-            => kmeans(in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
+            => fit(in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
                       ref centroids, ref assignment, out inertia, out iters, ref ws);
 
         // =========================================================================
@@ -299,7 +299,7 @@ namespace LinearAlgebra.ML
         /// For multiple restarts: call the workspace overload directly so scratch can be
         /// reused across calls. Compare <paramref name="inertia"/> values and keep the best.
         /// </summary>
-        public static void kmeans(
+        public static void fit(
             ref Arena arena,
             in doubleMxN X,
             int k,
@@ -313,11 +313,11 @@ namespace LinearAlgebra.ML
         {
             // Validate before allocating so invalid args cannot orphan arena memory.
             if (X.M_Rows == 0 || X.N_Cols == 0)
-                throw new InvalidOperationException("KMeans.kmeans: X is empty");
+                throw new InvalidOperationException("KMeans.fit: X is empty");
             if (k <= 0)
-                throw new ArgumentException("KMeans.kmeans: k must be >= 1");
+                throw new ArgumentException("KMeans.fit: k must be >= 1");
             if (maxIter < 1)
-                throw new ArgumentException("KMeans.kmeans: maxIter must be >= 1");
+                throw new ArgumentException("KMeans.fit: maxIter must be >= 1");
 
             int N = X.M_Rows;
             int D = X.N_Cols;
@@ -325,7 +325,7 @@ namespace LinearAlgebra.ML
             centroids  = arena.doubleMat(kk, D);
             assignment = arena.Indices(N);
             var ws     = arena.doubleKMeansCache(N, D, kk);
-            kmeans(in X, k, seed, maxIter, init, ref centroids, ref assignment,
+            fit(in X, k, seed, maxIter, init, ref centroids, ref assignment,
                    out inertia, out iters, ref ws);
         }
 
@@ -334,10 +334,10 @@ namespace LinearAlgebra.ML
         // =========================================================================
 
         /// <summary>
-        /// Calls <see cref="kmeans(ref Arena,in doubleMxN,int,uint,int,KMeansInit,out doubleMxN,out Indices,out double,out int)"/>
+        /// Calls <see cref="fit(ref Arena,in doubleMxN,int,uint,int,KMeansInit,out doubleMxN,out Indices,out double,out int)"/>
         /// with <c>init = KMeansInit.KMeansPlusPlus</c>.
         /// </summary>
-        public static void kmeans(
+        public static void fit(
             ref Arena arena,
             in doubleMxN X,
             int k,
@@ -347,7 +347,7 @@ namespace LinearAlgebra.ML
             out Indices assignment,
             out double inertia,
             out int iters)
-            => kmeans(ref arena, in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
+            => fit(ref arena, in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
                       out centroids, out assignment, out inertia, out iters);
 
         // =========================================================================

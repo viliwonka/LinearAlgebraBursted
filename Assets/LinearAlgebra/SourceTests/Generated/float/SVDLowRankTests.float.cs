@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for SVD.svdTruncated / SVD.lowRankApprox. The spectrum from svdValues is the oracle:
+// Tests for SVD.truncated / SVD.lowRankApprox. The spectrum from values is the oracle:
 // truncated Sk must equal the leading full singular values; Uk/Vk must be orthonormal; and the
 // rank-k approximation's Frobenius error must equal the spectral tail sqrt(Σ_{i>=k} σ_i²)
 // (Eckart-Young). lowRankApprox must agree with Uk diag(Sk) Vkᵀ.
@@ -32,7 +32,7 @@ public class floatSVDLowRankTests
             GklIllConditioned_60x20,         // cond~1e3, k=3, os=4 → p=7
             GklConvergedFalse_RankDeficient, // rank-3 A, k=5 → tail σ near-zero, graceful handling
             GklConvergedFalse_TooFewSteps,   // oversample=0 → p=k → betaLast large → converged=false
-            GklConvergedFalse_MaxIter1,      // maxIter=1 → inner svdThin fails → converged=false
+            GklConvergedFalse_MaxIter1,      // maxIter=1 → inner thin fails → converged=false
             // --- known-Σ (randsvd, Higham Test Matrix Toolbox) truncation in the p<n regime ---
             GklGeometricTrunc_80x30,         // geometric Σ=ρ^i (ρ=0.5), k=3, p=23<30
             GklFlatCliffTrunc_70x25,         // Σ=[100,80,60,1e-3,…], k=3, p=9<25
@@ -93,8 +93,8 @@ public class floatSVDLowRankTests
         {
             var U = new floatMxN(m, m, Allocator.Temp, false);
             var V = new floatMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInPlace(ref rng, ref U);
-            Rand.randomOrthogonalInPlace(ref rng, ref V);
+            Rand.orthogonalInPlace(ref rng, ref U);
+            Rand.orthogonalInPlace(ref rng, ref V);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -145,7 +145,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, out bool cT);
             Assert.IsTrue(cT);
 
             // Sk equals the leading full singular values.
@@ -187,7 +187,7 @@ public class floatSVDLowRankTests
         {
             int n = A.N_Cols;
             var fullS = arena.floatVec(n);
-            SVD.svdValues(in A, ref fullS);
+            SVD.values(in A, ref fullS);
             normA2 = (float)0;
             for (int i = 0; i < n; i++) normA2 += fullS[i] * fullS[i];
             return fullS;
@@ -244,7 +244,7 @@ public class floatSVDLowRankTests
             var Ufull = arena.floatMat(m, n);
             var Sfull = arena.floatVec(n);
             var Vfull = arena.floatMat(n, n);
-            bool okFull = SVD.svdThin(in A, ref Ufull, ref Sfull, ref Vfull);
+            bool okFull = SVD.thin(in A, ref Ufull, ref Sfull, ref Vfull);
             Assert.IsTrue(okFull);
 
             // k=3 with oversample=9 → p=min(12,12)=12 (full Krylov, exact result)
@@ -261,7 +261,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, out bool cT);
             Assert.IsTrue(cT);
 
             float svTol = (float)8 * Consts.floatSqrtEps * (Sfull[0] + (float)1);
@@ -295,14 +295,14 @@ public class floatSVDLowRankTests
 
             // Full spectrum oracle
             var Sfull = arena.floatVec(n);
-            SVD.svdValues(in A, ref Sfull);
+            SVD.values(in A, ref Sfull);
 
             int k = 4;
             int oversample = 4;   // p = min(8,8) = 8 = n: full Krylov
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xCAFEBABEu, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xCAFEBABEu, 75, out bool cT);
             Assert.IsTrue(cT);
 
             float svTol = (float)8 * Consts.floatSqrtEps * (Sfull[0] + (float)1);
@@ -325,14 +325,14 @@ public class floatSVDLowRankTests
 
             // Full spectrum oracle
             var Sfull = arena.floatVec(n);
-            SVD.svdValues(in A, ref Sfull);
+            SVD.values(in A, ref Sfull);
 
             int k = 4;
             int oversample = 6;  // p = min(10,10) = 10 = n: full Krylov
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xBEEFCAFEu, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xBEEFCAFEu, 75, out bool cT);
             Assert.IsTrue(cT);
 
             // Reconstruction error squared
@@ -368,7 +368,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x12345678u, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x12345678u, 75, out bool cT);
             Assert.IsTrue(cT);
 
             AssertOrthoCols(in Uk, m, k, (float)1E-3f);
@@ -406,11 +406,11 @@ public class floatSVDLowRankTests
         {
             Ularge = new floatMxN(m, m, Allocator.Temp, false);
             Vmat   = new floatMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInPlace(ref rng, ref Ularge);
-            Rand.randomOrthogonalInPlace(ref rng, ref Vmat);
+            Rand.orthogonalInPlace(ref rng, ref Ularge);
+            Rand.orthogonalInPlace(ref rng, ref Vmat);
         }
 
-        // Check GKL top-k against svdThin oracle. Asserts converged=true, σ within svTol of oracle,
+        // Check GKL top-k against thin oracle. Asserts converged=true, σ within svTol of oracle,
         // |dot| for singular vectors ≥ 1-vecTol, orthonormality within orthoTol.
         void CheckTruncVsThin(in floatMxN A, int k, int oversample, uint seed, int m, int n,
                               float svTol, float vecTol, float orthoTol, ref Arena arena)
@@ -418,12 +418,12 @@ public class floatSVDLowRankTests
             var Ufull = arena.floatMat(m, n);
             var Sfull = arena.floatVec(n);
             var Vfull = arena.floatMat(n, n);
-            Assert.IsTrue(SVD.svdThin(in A, ref Ufull, ref Sfull, ref Vfull));
+            Assert.IsTrue(SVD.thin(in A, ref Ufull, ref Sfull, ref Vfull));
 
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, out bool cT);
             Assert.IsTrue(cT);  // clear spectral gap guarantees convergence
 
             for (int t = 0; t < k; t++)
@@ -527,7 +527,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xF00DB4BEu, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xF00DB4BEu, 75, out bool cT);
             Assert.IsTrue(cT);
 
             // All three recovered σ must be close to 10 (the cluster value)
@@ -537,11 +537,11 @@ public class floatSVDLowRankTests
             AssertOrthoCols(in Uk, m, k, (float)1E-3f);
             AssertOrthoCols(in Vk, n, k, (float)1E-3f);
 
-            // Compare against svdThin oracle (all three should give ≈10)
+            // Compare against thin oracle (all three should give ≈10)
             var Uf = arena.floatMat(m, n);
             var Sf = arena.floatVec(n);
             var Vf = arena.floatMat(n, n);
-            Assert.IsTrue(SVD.svdThin(in A, ref Uf, ref Sf, ref Vf));
+            Assert.IsTrue(SVD.thin(in A, ref Uf, ref Sf, ref Vf));
             for (int t = 0; t < k; t++)
                 AssertClose(Sk[t], Sf[t], (float)0.05f);
 
@@ -592,13 +592,13 @@ public class floatSVDLowRankTests
 
             // True top-r singular values (oracle)
             var Sfull = arena.floatVec(n);
-            SVD.svdValues(in A, ref Sfull);
+            SVD.values(in A, ref Sfull);
 
             int k = 5, oversample = 5;
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x99887766u, 75, out bool _cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x99887766u, 75, out bool _cT);
 
             // Top-r singular values must be captured correctly
             float svTol = (float)1E-2f * (Sfull[0] + (float)1);
@@ -629,7 +629,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xAABBCCDDu, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xAABBCCDDu, 75, out bool cT);
 
             // With p=k and no oversampling the residual is far from zero → converged=false
             Assert.IsFalse(cT);
@@ -638,7 +638,7 @@ public class floatSVDLowRankTests
         }
 
         // Test 7: maxIter=1 forces the inner bidiagonal QR (on p×p B) to not converge.
-        // Exercises the svdThin-failure branch → converged=false even with p < n.
+        // Exercises the thin-failure branch → converged=false even with p < n.
         void GklConvergedFalse_MaxIter1()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -651,7 +651,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x12AB34CDu, 1, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x12AB34CDu, 1, out bool cT);
 
             // With maxIter=1 the inner bidiagonal QR will not converge for a non-trivial matrix
             Assert.IsFalse(cT);
@@ -683,7 +683,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, 20, 0x1111AAAAu, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 20, 0x1111AAAAu, 75, out bool cT);
             Assert.IsTrue(cT);
 
             float svTol = (float)8 * Consts.floatSqrtEps * (sigma[0] + (float)1);
@@ -695,7 +695,7 @@ public class floatSVDLowRankTests
         }
 
         // Flat-then-cliff Σ=[100,80,60, 1e-3,…]. k=3, oversample=6 → p=9 < n=25. Huge spectral gap at
-        // index 3 → top-3 converge almost immediately; compare values + vectors against svdThin oracle.
+        // index 3 → top-3 converge almost immediately; compare values + vectors against thin oracle.
         void GklFlatCliffTrunc_70x25()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -734,7 +734,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, 17, 0x3333CCCCu, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 17, 0x3333CCCCu, 75, out bool cT);
             Assert.IsTrue(cT);
 
             float svTol = (float)8 * Consts.floatSqrtEps * (sigma[0] + (float)1);
@@ -747,7 +747,7 @@ public class floatSVDLowRankTests
 
         // Clustered Σ=[10,10,10, 3,2,1.5,1, …]: the top-3 are a degenerate cluster, so individual u/v
         // are non-unique but the rank-3 SUBSPACE is well-defined. Assert the rank-3 projector
-        // Pk = Uk·Ukᵀ matches the svdThin oracle's top-3 projector (and likewise for V), plus Sk≈10.
+        // Pk = Uk·Ukᵀ matches the thin oracle's top-3 projector (and likewise for V), plus Sk≈10.
         // k=3, oversample=15 → p=18 < n=24. Gap 3/10=0.3 → residual ≈10·0.3^15 ≈1.4e-6 → converged.
         void GklClusterProjector_50x24()
         {
@@ -774,16 +774,16 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, 15, 0x4444DDDDu, 75, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 15, 0x4444DDDDu, 75, out bool cT);
             Assert.IsTrue(cT);
 
             for (int t = 0; t < k; t++) AssertClose(Sk[t], (float)10, (float)0.05f);
 
-            // svdThin oracle; compare the rank-3 projectors Σ_t u_t u_tᵀ (subspace, not per-vector).
+            // thin oracle; compare the rank-3 projectors Σ_t u_t u_tᵀ (subspace, not per-vector).
             var Uf = arena.floatMat(m, n);
             var Sf = arena.floatVec(n);
             var Vf = arena.floatMat(n, n);
-            Assert.IsTrue(SVD.svdThin(in A, ref Uf, ref Sf, ref Vf));
+            Assert.IsTrue(SVD.thin(in A, ref Uf, ref Sf, ref Vf));
 
             AssertProjectorMatch(in Uk, in Uf, m, k, (float)1E-2f);
             AssertProjectorMatch(in Vk, in Vf, n, k, (float)1E-2f);
@@ -812,7 +812,7 @@ public class floatSVDLowRankTests
         // Tolerances reuse the GklTruncated style: svTol = 8·√ε·(σ₀+1), orthoTol = 1e-3.
         // ====================================================================================
 
-        // Run svdTruncated with an explicit partialReorth flag against a prescribed (oracle) Σ.
+        // Run truncated with an explicit partialReorth flag against a prescribed (oracle) Σ.
         // Asserts converged, per-index σ match, orthonormal Uk/Vk, and the Eckart-Young optimum
         // ‖A − UkΣkVkᵀ‖_F² == Σ_{i≥k} σ_i². Recovered Sk are copied into SkOut for cross-compare.
         void RunTruncWithReorth(in floatMxN A, in floatN sigmaTrue, int k, int oversample, uint seed,
@@ -822,7 +822,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, partialReorth, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, partialReorth, out bool cT);
             Assert.IsTrue(cT);
 
             for (int t = 0; t < k; t++) { AssertClose(Sk[t], sigmaTrue[t], svTol); SkOut[t] = Sk[t]; }
@@ -853,7 +853,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, out bool cT);
             Assert.IsTrue(cT);
 
             for (int t = 0; t < k; t++) AssertClose(Sk[t], sigmaTrue[t], svTol);
@@ -972,7 +972,7 @@ public class floatSVDLowRankTests
             var Uk = arena.floatMat(m, k);
             var Sk = arena.floatVec(k);
             var Vk = arena.floatMat(n, k);
-            SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, 8, 0xD44B0B0Du, 75, true, out bool cT);
+            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 8, 0xD44B0B0Du, 75, true, out bool cT);
             Assert.IsTrue(cT);
 
             AssertOrthoCols(in Uk, m, k, (float)1E-3f);
@@ -1130,7 +1130,7 @@ public class floatSVDLowRankTests
         var Uk = arena.floatMat(6, 5);
         var Sk = arena.floatVec(5);
         var Vk = arena.floatMat(4, 5);
-        Assert.Catch<ArgumentException>(() => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, 5, out bool _)); // k=5 > n=4
+        Assert.Catch<ArgumentException>(() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 5, out bool _)); // k=5 > n=4
         arena.Dispose();
     }
 
@@ -1142,7 +1142,7 @@ public class floatSVDLowRankTests
         var Uk = arena.floatMat(3, 2);
         var Sk = arena.floatVec(2);
         var Vk = arena.floatMat(5, 2);
-        Assert.Catch<ArgumentException>(() => SVD.svdTruncated(in A, ref Uk, ref Sk, ref Vk, 2, out bool _));
+        Assert.Catch<ArgumentException>(() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 2, out bool _));
         arena.Dispose();
     }
 

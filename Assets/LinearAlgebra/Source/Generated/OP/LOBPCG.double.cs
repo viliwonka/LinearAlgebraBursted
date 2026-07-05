@@ -13,8 +13,8 @@ namespace LinearAlgebra
     /// <see cref="IdoubleLinearOperator"/> / optional <see cref="IdoublePreconditioner"/> --
     /// same Burst-monomorphized static-dispatch shape as <see cref="Solvers.cg{TOp}"/> /
     /// <see cref="Solvers.pcg{TOp,TPre}"/>. Reuses the dense
-    /// <see cref="Eigen.eigenSymmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/> solver for the
-    /// small (&lt;= 3k) Rayleigh-Ritz sub-problem and <see cref="Cholesky.choleskyDecomposition"/>
+    /// <see cref="Eigen.symmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/> solver for the
+    /// small (&lt;= 3k) Rayleigh-Ritz sub-problem and <see cref="CHO.decomp(in doubleMxN, ref doubleMxN)"/>
     /// for both orthogonalization and the generalized-to-standard eigenproblem reduction.
     ///
     /// DESIGN NOTES (see the coder's final report for the full write-up; summarized here for
@@ -81,10 +81,10 @@ namespace LinearAlgebra
     /// <b>Rayleigh-Ritz / rank deficiency (safeguard 2):</b> forms Gram = S^T S and H = S^T A S for
     /// S = [X_active; W_active(deflated); P_active(deflated)] (m = 3*numActive, or 2*numActive
     /// before P exists), Cholesky-factors Gram (with one Tikhonov-ridge retry on failure/a tiny
-    /// relative pivot -- mirrors <see cref="Cholesky.choleskyPivotSolve"/>'s own ridge-retry
-    /// recovery, and the retry attempt is re-checked against the SAME pivot tolerance rather than
-    /// accepted on bare Cholesky success), reduces to the standard eigenproblem Ahat = L^-1 H L^-T,
-    /// solves it with <see cref="Eigen.eigenSymmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/>,
+    /// relative pivot -- mirrors <see cref="CHOP.decompSolve(ref doubleMxN, in Pivot, int, ref doubleN, ref doubleCHOPCache)"/>'s
+    /// own ridge-retry recovery, and the retry attempt is re-checked against the SAME pivot tolerance
+    /// rather than accepted on bare Cholesky success), reduces to the standard eigenproblem Ahat = L^-1 H L^-T,
+    /// solves it with <see cref="Eigen.symmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/>,
     /// and recovers the combination coefficients C = L^-T Y. If the 3-block Cholesky fails/is too
     /// ill-conditioned this iteration DROPS P and retries with just [X_active; W_active] -- "the
     /// standard fix" the spec calls for. If even THAT fails (after its own ridge retry), this
@@ -130,7 +130,7 @@ namespace LinearAlgebra
     /// smaller-shaped logical view (<see cref="View"/> -- <see cref="doubleMxN.M_Rows"/>/
     /// <see cref="doubleMxN.N_Cols"/> are plain mutable fields independent of the backing store, so
     /// a value-copy with different dims is a free reinterpretation of the SAME buffer, not a new
-    /// allocation). The one exception: <see cref="Eigen.eigenSymmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/>
+    /// allocation). The one exception: <see cref="Eigen.symmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/>
     /// itself is not zero-alloc (it allocates three length-m Temp vectors internally, already true
     /// of every existing caller e.g. <see cref="Eigen.lanczosVectors{TOp}"/>), and this method's own
     /// small O(m) row/column scratch inside the triangular-solve helpers is likewise a bounded
@@ -1119,7 +1119,7 @@ namespace LinearAlgebra
 
         // Attempts Cholesky of an m x m Gram view; on failure OR a suspiciously tiny relative
         // pivot, adds a small Tikhonov ridge (scaled to Gram's own diagonal) and retries once --
-        // mirrors Cholesky.choleskyPivotSolve's own ridge-retry recovery for a borderline
+        // mirrors CHOP.decompSolve's own ridge-retry recovery for a borderline
         // semidefinite Gram. The ridge-retry attempt is checked against the SAME pivotRelTol (not
         // merely "Cholesky did not report a negative pivot") -- a ridge just barely large enough to
         // make Gram numerically SPD can still leave L badly conditioned, and accepting that
@@ -1131,10 +1131,10 @@ namespace LinearAlgebra
             // local value (not a class-level const): Cholesky/QR/etc. in this codebase already
             // hoist their tuning constants into method scope for the same reason -- a class-level
             // const of the same name would collide across the float/double generated partials
-            // (CS0102; see Cholesky.double.cs's CHOL_BLOCK comment).
+            // (CS0102; see CHO.double.cs's CHOL_BLOCK comment).
             double pivotRelTol = Consts.doubleSqrtEps;
 
-            var info = Cholesky.choleskyDecomposition(in Gram, ref L);
+            var info = CHO.decomp(in Gram, ref L);
             if (info.Solved && MinMaxDiagRatio(in L, m) >= pivotRelTol)
                 return true;
 
@@ -1145,7 +1145,7 @@ namespace LinearAlgebra
 
             for (int i = 0; i < m; i++) Gram[i, i] += ridge;
 
-            info = Cholesky.choleskyDecomposition(in Gram, ref L);
+            info = CHO.decomp(in Gram, ref L);
             return info.Solved && MinMaxDiagRatio(in L, m) >= pivotRelTol;
         }
 
@@ -1187,7 +1187,7 @@ namespace LinearAlgebra
             // ill-conditioning that can corrupt the L^-1 H L^-T transform. Every individual
             // generalized Rayleigh quotient is, by definition, within [lambda_min, lambda_max] of
             // the pencil (A, B) -- the SAME immunity argument as the standard (B=I) case, which is
-            // just this formula's Gram[i,i]==1 special case. If the Ritz values eigenSymmetric
+            // just this formula's Gram[i,i]==1 special case. If the Ritz values symmetric
             // returns fall wildly outside the range spanned by these trustworthy individual
             // quotients, that is conclusive evidence the transform corrupted the problem -- observed: Ritz values far below
             // lambda_min, even wildly negative (down to -1E13 and beyond), while the Cholesky
@@ -1218,7 +1218,7 @@ namespace LinearAlgebra
             var Atrans = View(in ws.Atrans, m);
             FormAtrans(ref Hv, ref Lv, ref Atrans, m);
 
-            // Symmetrize (roundoff insurance -- eigenSymmetric requires exact-within-eps symmetry;
+            // Symmetrize (roundoff insurance -- symmetric requires exact-within-eps symmetry;
             // the two triangular-solve passes above are mathematically symmetric but not bit-exact).
             for (int i = 0; i < m; i++)
                 for (int j = i + 1; j < m; j++)
@@ -1230,7 +1230,7 @@ namespace LinearAlgebra
 
             var Yv = View(in ws.Y, m);
             var eigSmall = new doubleN(m, Allocator.Temp);
-            bool eigOk = Eigen.eigenSymmetric(ref Atrans, ref eigSmall, ref Yv);
+            bool eigOk = Eigen.symmetric(ref Atrans, ref eigSmall, ref Yv);
 
             if (eigOk)
             {
@@ -1252,7 +1252,7 @@ namespace LinearAlgebra
                 var Cv = View(in ws.C, m);
                 RecoverC(ref Yv, ref Lv, ref Cv, m);
 
-                // eigenSymmetric sorts DESCENDING -- the numActive SMALLEST real eigenvalues are
+                // symmetric sorts DESCENDING -- the numActive SMALLEST real eigenvalues are
                 // the LAST numActive entries.
                 for (int j = 0; j < numActive; j++)
                     ws.lambda[j] = eigSmall[m - numActive + j];
@@ -1273,14 +1273,14 @@ namespace LinearAlgebra
             for (int r = 0; r < m; r++)
             {
                 for (int c = 0; c < m; c++) tmp[c] = H[r, c];
-                Solvers.solveLowerTriangular(ref L, ref tmp);
+                Solvers.triLower(ref L, ref tmp);
                 for (int c = 0; c < m; c++) Atrans[r, c] = tmp[c];
             }
 
             for (int c = 0; c < m; c++)
             {
                 for (int r = 0; r < m; r++) tmp[r] = Atrans[r, c];
-                Solvers.solveLowerTriangular(ref L, ref tmp);
+                Solvers.triLower(ref L, ref tmp);
                 for (int r = 0; r < m; r++) Atrans[r, c] = tmp[r];
             }
 
@@ -1288,7 +1288,7 @@ namespace LinearAlgebra
         }
 
         // c_j = L^-T y_j for every column j of Y (back-substitution against L read transposed,
-        // (L^T)[r,c] = L[c,r] -- L^T is upper triangular). Mirrors Cholesky's own private
+        // (L^T)[r,c] = L[c,r] -- L^T is upper triangular). Mirrors CHO's own private
         // SolveUpperTriangularTransposed in miniature (duplicated here rather than exposing that
         // private helper across files for one small, stable, easily-reviewed piece of math).
         static void RecoverC(ref doubleMxN Y, ref doubleMxN L, ref doubleMxN C, int m)

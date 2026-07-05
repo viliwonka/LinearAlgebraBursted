@@ -135,7 +135,7 @@ public class doubleBidiagTests
             var U = arena.doubleMat(n, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+            Bidiag.decomp(in A, ref U, ref B, ref V);
             AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
             arena.Dispose();
         }
@@ -155,7 +155,7 @@ public class doubleBidiagTests
             var U = arena.doubleMat(n, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+            Bidiag.decomp(in A, ref U, ref B, ref V);
             AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
             arena.Dispose();
         }
@@ -168,7 +168,7 @@ public class doubleBidiagTests
             var U = arena.doubleMat(n, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+            Bidiag.decomp(in A, ref U, ref B, ref V);
             AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
             arena.Dispose();
         }
@@ -181,7 +181,7 @@ public class doubleBidiagTests
             var U = arena.doubleMat(n, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+            Bidiag.decomp(in A, ref U, ref B, ref V);
             AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
             arena.Dispose();
         }
@@ -194,7 +194,7 @@ public class doubleBidiagTests
             var U = arena.doubleMat(m, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+            Bidiag.decomp(in A, ref U, ref B, ref V);
             AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
             arena.Dispose();
         }
@@ -207,12 +207,12 @@ public class doubleBidiagTests
             var U = arena.doubleMat(m, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+            Bidiag.decomp(in A, ref U, ref B, ref V);
             AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
             arena.Dispose();
         }
 
-        // bidiagonalizeValues must produce EXACTLY the bidiagonal bands of the full bidiagonalize:
+        // Bidiag.values must produce EXACTLY the bidiagonal bands of the full Bidiag.decomp:
         // both use identical reflectors/applies, so d[k]=B[k,k], e[0]=0, e[k]=B[k-1,k].
         void CheckValuesMatchFull(int m, int n, double lo, double hi, uint seed)
         {
@@ -221,11 +221,11 @@ public class doubleBidiagTests
             var U = arena.doubleMat(m, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+            Bidiag.decomp(in A, ref U, ref B, ref V);
 
             var d = arena.doubleVec(n);
             var e = arena.doubleVec(n);
-            Bidiag.bidiagonalizeValues(in A, ref d, ref e);
+            Bidiag.values(in A, ref d, ref e);
 
             for (int k = 0; k < n; k++)
                 AssertClose(d[k], B[k, k], (double)1E-4f);
@@ -245,7 +245,7 @@ public class doubleBidiagTests
             var U = arena.doubleMat(m, n);
             var B = arena.doubleMat(n, n);
             var V = arena.doubleMat(n, n);
-            Bidiag.bidiagonalize(in A, ref U, ref B, ref V);
+            Bidiag.decomp(in A, ref U, ref B, ref V);
             AssertBidiag(in A, in U, in B, in V, ref arena, (double)1E-4f);
             arena.Dispose();
         }
@@ -287,7 +287,7 @@ public class doubleBidiagTests
         var U = arena.doubleMat(3, 5);
         var B = arena.doubleMat(5, 5);
         var V = arena.doubleMat(5, 5);
-        Assert.Catch<ArgumentException>(() => Bidiag.bidiagonalize(in A, ref U, ref B, ref V));
+        Assert.Catch<ArgumentException>(() => Bidiag.decomp(in A, ref U, ref B, ref V));
         arena.Dispose();
     }
 
@@ -299,7 +299,7 @@ public class doubleBidiagTests
         var U = arena.doubleMat(6, 3);   // wrong: should be 6x4
         var B = arena.doubleMat(4, 4);
         var V = arena.doubleMat(4, 4);
-        Assert.Catch<ArgumentException>(() => Bidiag.bidiagonalize(in A, ref U, ref B, ref V));
+        Assert.Catch<ArgumentException>(() => Bidiag.decomp(in A, ref U, ref B, ref V));
         arena.Dispose();
     }
 
@@ -311,7 +311,7 @@ public class doubleBidiagTests
         var U = arena.doubleMat(6, 4);
         var B = arena.doubleMat(3, 4);   // wrong: should be 4x4
         var V = arena.doubleMat(4, 4);
-        Assert.Catch<ArgumentException>(() => Bidiag.bidiagonalize(in A, ref U, ref B, ref V));
+        Assert.Catch<ArgumentException>(() => Bidiag.decomp(in A, ref U, ref B, ref V));
         arena.Dispose();
     }
 
@@ -322,7 +322,7 @@ public class doubleBidiagTests
         var A = arena.doubleMat(3, 5);
         var d = arena.doubleVec(5);
         var e = arena.doubleVec(5);
-        Assert.Catch<ArgumentException>(() => Bidiag.bidiagonalizeValues(in A, ref d, ref e));
+        Assert.Catch<ArgumentException>(() => Bidiag.values(in A, ref d, ref e));
         arena.Dispose();
     }
 
@@ -333,7 +333,7 @@ public class doubleBidiagTests
         var A = arena.doubleMat(6, 4);
         var d = arena.doubleVec(3);   // wrong: should be length 4
         var e = arena.doubleVec(4);
-        Assert.Catch<ArgumentException>(() => Bidiag.bidiagonalizeValues(in A, ref d, ref e));
+        Assert.Catch<ArgumentException>(() => Bidiag.values(in A, ref d, ref e));
         arena.Dispose();
     }
 
@@ -345,7 +345,7 @@ public class doubleBidiagTests
         var U = arena.doubleMat(6, 4);
         var B = arena.doubleMat(4, 4);
         var V = arena.doubleMat(3, 3);   // wrong: should be 4x4
-        Assert.Catch<ArgumentException>(() => Bidiag.bidiagonalize(in A, ref U, ref B, ref V));
+        Assert.Catch<ArgumentException>(() => Bidiag.decomp(in A, ref U, ref B, ref V));
         arena.Dispose();
     }
 }

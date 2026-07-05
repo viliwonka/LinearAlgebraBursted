@@ -185,10 +185,13 @@ public class fProxyConjugateGradientTests
             bool ok = Solvers.cg(in A, in b, ref xCG);
             Assert.IsTrue(ok);
 
-            // Cholesky solve on the same system (b overwritten with x).
+            // Cholesky solve on the same system (b overwritten with x), as the explicit two-call
+            // composition (choleskySolve(in A, ref L, ref b) was deleted).
             var bChol = b.Copy();
             var L = arena.fProxyMat(dim, dim);
-            bool cholOk = Cholesky.choleskySolve(in A, ref L, ref bChol);
+            DirectSolveInfo cholInfo = CHO.decomp(in A, ref L);
+            if (cholInfo.Solved) cholInfo = CHO.decompSolve(ref L, ref bChol);
+            bool cholOk = cholInfo.Solved;
             Assert.IsTrue(cholOk);
 
             Assert.IsTrue(Analysis.isZero(xCG - bChol, Tol()));

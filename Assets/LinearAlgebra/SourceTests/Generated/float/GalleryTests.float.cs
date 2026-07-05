@@ -1,5 +1,5 @@
 using System;
-#pragma warning disable 618 // intentionally exercises the deprecated Jacobi svdDecomposition / eigenDecomposition (kept for reference)
+#pragma warning disable 618 // intentionally exercises the deprecated Jacobi svdDecomposition / Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
 using LinearAlgebra.Gallery;   // opt-in: arena.floatPascal(n), arena.floatFrank(n), ...
@@ -13,10 +13,10 @@ using Unity.Mathematics;
 // Property + algorithm-exercise tests for the famous-test-matrix gallery (docs/spec-gallery.md).
 // Each case pins a generator against its DOCUMENTED closed form (determinant, eigenvalues, definiteness,
 // FFT cross-check) rather than a self-consistency check, then a few cases feed the generators into the
-// existing solvers (CG, eigenvaluesQR) as honest inputs.
+// existing solvers (CG, Eigen.valuesQR) as honest inputs.
 //
-// Verification reuses the library's own ops (LU.determinant, Cholesky, Eigen.eigenDecomposition /
-// eigenvaluesQR, FFT.fft). Tolerances are per-precision: they scale with Consts.floatSqrtEps
+// Verification reuses the library's own ops (LU.determinant, Cholesky, Eigen.decompInPlace /
+// Eigen.valuesQR, FFT.fft). Tolerances are per-precision: they scale with Consts.floatSqrtEps
 // (float ≈ 3.45e-4, double ≈ 1.49e-8) so the SAME expression is loose for float and tight for double,
 // matching the LiteratureTests / RandomMatrixTests idiom. Ill-conditioned generators (Hilbert, Frank,
 // Pascal at larger n, Moler) use small n and generous multiples; exact-in-float properties (Hadamard
@@ -160,7 +160,7 @@ public class floatGalleryTests
             var Tc = T.Copy();
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Tc, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Tc, ref eig, ref V));
 
             float pi = (float)math.PI_DBL;
             for (int i = 0; i < n; i++)
@@ -214,7 +214,7 @@ public class floatGalleryTests
             var Ac = A.Copy();
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Ac, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Ac, ref eig, ref V));
 
             float tol = (float)50 * Consts.floatSqrtEps;
             AssertClose(eig[0], alpha + (float)n, tol);   // α + n = 7
@@ -263,7 +263,7 @@ public class floatGalleryTests
             var Cc = C.Copy();
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Cc, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Cc, ref eig, ref V));
 
             float tol = (float)50 * Consts.floatSqrtEps;
             AssertClose(eig[0], (float)3, tol);
@@ -289,7 +289,7 @@ public class floatGalleryTests
             var Fc = F.Copy();
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Fc, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Fc, ref eig, ref V));
 
             // eigenvalues are bounded away from 0 (smallest |λ| ≈ 0.56), so a small gate is safe.
             float gate = (float)1E-2;
@@ -318,7 +318,7 @@ public class floatGalleryTests
             var Dc = D.Copy();
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Dc, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Dc, ref eig, ref V));
 
             float halfPi = (float)(math.PI_DBL * 0.5);
             float band = (float)10 * Consts.floatSqrtEps;   // covers the ~1e-7 boundary margin
@@ -335,7 +335,7 @@ public class floatGalleryTests
         }
 
         // Frank: upper Hessenberg, det = 1, eigenvalues real + positive. n=3 entries exact; det at n=4;
-        // eigenvaluesQR at n=4 returns all-real all-positive.
+        // Eigen.valuesQR at n=4 returns all-real all-positive.
         void FrankProps()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -350,11 +350,11 @@ public class floatGalleryTests
             var F4 = arena.floatFrank(4);
             AssertClose(Determinant(in F4), (float)1, (float)0.05);
 
-            // eigenvaluesQR: all real (imag ≈ 0) and positive (Frank4 ≈ {7.31, 2.07, 0.48, 0.137})
+            // Eigen.valuesQR: all real (imag ≈ 0) and positive (Frank4 ≈ {7.31, 2.07, 0.48, 0.137})
             var Fc = F4.Copy();
             var re = arena.floatVec(4);
             var im = arena.floatVec(4);
-            AssertTrue(Eigen.eigenvaluesQR(ref Fc, ref re, ref im));
+            AssertTrue(Eigen.valuesQR(ref Fc, ref re, ref im));
             for (int i = 0; i < 4; i++)
             {
                 AssertClose(im[i], (float)0, (float)1E-2);   // real spectrum
@@ -386,7 +386,7 @@ public class floatGalleryTests
         }
 
         // Companion of (x−1)(x−2)(x−3) = x³ − 6x² + 11x − 6 ⇒ coeffs {−6, 11, −6} (coeffs[k] = coeff of xᵏ).
-        // eigenvaluesQR returns the roots {3,2,1} (descending, real).
+        // Eigen.valuesQR returns the roots {3,2,1} (descending, real).
         void CompanionEig()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -397,7 +397,7 @@ public class floatGalleryTests
 
             var re = arena.floatVec(3);
             var im = arena.floatVec(3);
-            AssertTrue(Eigen.eigenvaluesQR(ref C, ref re, ref im));
+            AssertTrue(Eigen.valuesQR(ref C, ref re, ref im));
 
             float tol = (float)1E-2;
             AssertClose(re[0], (float)3, tol);
@@ -462,7 +462,7 @@ public class floatGalleryTests
             var Cc = C.Copy();
             var evRe = arena.floatVec(n);
             var evIm = arena.floatVec(n);
-            AssertTrue(Eigen.eigenvaluesQR(ref Cc, ref evRe, ref evIm));
+            AssertTrue(Eigen.valuesQR(ref Cc, ref evRe, ref evIm));
 
             // DFT of c via the library FFT (in place ⇒ copy the real part, zero imag)
             var fRe = c.Copy();
@@ -502,7 +502,7 @@ public class floatGalleryTests
             var Tc = T.Copy();
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            AssertTrue(Eigen.eigenvaluesQR(ref Tc, ref re, ref im));
+            AssertTrue(Eigen.valuesQR(ref Tc, ref re, ref im));
             for (int i = 0; i < n; i++)
             {
                 AssertClose(re[i], (float)1, (float)1E-3);
@@ -525,7 +525,7 @@ public class floatGalleryTests
             var Wc = W.Copy();
             var eig = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Wc, ref eig, ref V));
+            AssertTrue(Eigen.decompInPlace(ref Wc, ref eig, ref V));
 
             // near-pair: the top two are far closer to each other than to the third eigenvalue.
             float topGap = math.abs(eig[0] - eig[1]);
@@ -590,13 +590,13 @@ public class floatGalleryTests
         // helpers
         // =====================================================================
 
-        // det via LU on a copy (luDecompositionInPlace destroys its input).
+        // det via LU on a copy (LU.decompInPlace destroys its input).
         float Determinant(in floatMxN M)
         {
             int n = M.M_Rows;
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            LU.decompInPlace(ref LUmat, ref pivot);
             float det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;
@@ -613,7 +613,7 @@ public class floatGalleryTests
         void AssertCholeskyOk(ref Arena arena, in floatMxN A)
         {
             var L = arena.floatMat(A.M_Rows, A.N_Cols);
-            AssertTrue(Cholesky.choleskyDecomposition(in A, ref L));
+            AssertTrue(CHO.decomp(in A, ref L));
         }
 
         // descending selection sort, in place

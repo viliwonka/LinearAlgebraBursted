@@ -18,7 +18,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN A;
         public floatMxN L;
 
-        public void Execute() => Cholesky.choleskyDecomposition(in A, ref L);
+        public void Execute() => CHO.decomp(in A, ref L);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -27,7 +27,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN A;
         public doubleMxN L;
 
-        public void Execute() => Cholesky.choleskyDecomposition(in A, ref L);
+        public void Execute() => CHO.decomp(in A, ref L);
     }
 
     // Pivoted (rank-revealing) Cholesky P^T A P = L L^T. Same (1/3)N^3 factor work plus the
@@ -41,12 +41,12 @@ namespace LinearAlgebra.Benchmarks
     {
         public floatMxN A;
         public floatMxN L;
-        public floatCholeskyPivotCache ws;
+        public floatCHOPCache ws;
 
         public void Execute()
         {
             var P = new Pivot(A.M_Rows, Allocator.Temp);
-            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, ref ws);
+            CHOP.decomp(in A, ref L, ref P, ref ws);
             P.Dispose();
         }
     }
@@ -56,12 +56,12 @@ namespace LinearAlgebra.Benchmarks
     {
         public doubleMxN A;
         public doubleMxN L;
-        public doubleCholeskyPivotCache ws;
+        public doubleCHOPCache ws;
 
         public void Execute()
         {
             var P = new Pivot(A.M_Rows, Allocator.Temp);
-            Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, ref ws);
+            CHOP.decomp(in A, ref L, ref P, ref ws);
             P.Dispose();
         }
     }
@@ -142,7 +142,7 @@ namespace LinearAlgebra.Benchmarks
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatMat(n, n);
             var L = arena.floatMat(n, n);
-            var ws = arena.floatCholeskyPivotCache(n);
+            var ws = arena.floatCHOPCache(n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)
@@ -167,7 +167,7 @@ namespace LinearAlgebra.Benchmarks
             var arena = new Arena(Allocator.Persistent);
             var A = arena.doubleMat(n, n);
             var L = arena.doubleMat(n, n);
-            var ws = arena.doubleCholeskyPivotCache(n);
+            var ws = arena.doubleCHOPCache(n);
 
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int i = 0; i < n; i++)

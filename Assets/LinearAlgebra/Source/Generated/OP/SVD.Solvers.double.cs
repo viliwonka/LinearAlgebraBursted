@@ -19,7 +19,7 @@ namespace LinearAlgebra
         /// relTol &lt; 0 selects auto tolerance: relTol = max(m, n) * Consts.doubleZeroThreshold.
         /// Singular values S[j] &lt;= relTol * S[0] are treated as zero.
         /// Allocates temporaries from A's arena via doubleTempVec/doubleTempMat (not an InPlace op).
-        /// Returns the numerical rank used; converged is svdThin's return value.
+        /// Returns the numerical rank used; converged is thin's return value.
         /// </summary>
         // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVDCache. Hoist these
         // out of a hot loop solving many same-shape systems to avoid per-call allocs.
@@ -52,7 +52,7 @@ namespace LinearAlgebra
 
             if (m >= n) {
                 // Tall or square case: A = U * diag(S) * V^T; U receives the left factor, M = V.
-                converged = svdThin(in A, ref U, ref S, ref M, maxSweeps);
+                converged = thin(in A, ref U, ref S, ref M, maxSweeps);
 
                 // Auto tolerance
                 if (relTol < (double)0)
@@ -96,7 +96,7 @@ namespace LinearAlgebra
 
                 Blas.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
 
-                converged = svdThin(in At, ref U, ref S, ref M, maxSweeps);
+                converged = thin(in At, ref U, ref S, ref M, maxSweeps);
 
                 // Auto tolerance
                 if (relTol < (double)0)
@@ -226,7 +226,7 @@ namespace LinearAlgebra
 
             if (m >= n) {
                 // A = U * diag(S) * V^T; U receives the left factor, M = V
-                converged = svdThin(in A, ref U, ref S, ref M, maxSweeps);
+                converged = thin(in A, ref U, ref S, ref M, maxSweeps);
 
                 if (relTol < (double)0)
                     relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
@@ -263,7 +263,7 @@ namespace LinearAlgebra
 
                 Blas.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
 
-                converged = svdThin(in At, ref U, ref S, ref M, maxSweeps);
+                converged = thin(in At, ref U, ref S, ref M, maxSweeps);
 
                 if (relTol < (double)0)
                     relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;

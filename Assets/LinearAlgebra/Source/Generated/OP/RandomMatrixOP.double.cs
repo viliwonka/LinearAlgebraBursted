@@ -16,7 +16,7 @@ namespace LinearAlgebra
     /// normal return path.
     ///
     /// <para><b>Multivariate-normal workflow</b>: factor Σ exactly ONCE via
-    /// <c>Cholesky.choleskyDecomposition(in Sigma, ref L)</c> — check the returned
+    /// <c>CHO.decomp(in Sigma, ref L)</c> — check the returned
     /// <c>DirectSolveInfo.Solved</c> (false means Σ is not SPD; on a failed return L is partially
     /// overwritten and must not be reused). Then call <c>multivariateNormalInPlace</c> or
     /// <c>multivariateNormalRowsInPlace</c> many times with the same L. Σ may be a covariance or a
@@ -32,7 +32,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Draws one sample from N(<paramref name="mean"/>, Σ) using the pre-computed lower
-        /// Cholesky factor L (Σ = L·Lᵀ, from <c>Cholesky.choleskyDecomposition</c>).
+        /// Cholesky factor L (Σ = L·Lᵀ, from <c>CHO.decomp</c>).
         /// Algorithm: fill <paramref name="zScratch"/> with N(0,1); then
         /// <c>dest = L·zScratch + mean</c>. Zero-alloc — caller provides scratch.
         /// <paramref name="dest"/> must not alias <paramref name="zScratch"/> (enforced by the
@@ -155,13 +155,13 @@ namespace LinearAlgebra
         /// </list>
         ///
         /// Temp scratch: G (n×n) and R (n×n) — both disposed before return. The QR step
-        /// allocates an additional n-element Temp vector internally (disposed inside qrDecomposition).
+        /// allocates an additional n-element Temp vector internally (disposed inside decompInPlace).
         /// Throws <see cref="ArgumentException"/> if dest is not square.
         /// </summary>
-        public static void randomOrthogonalInPlace(ref Random rng, ref doubleMxN dest)
+        public static void orthogonalInPlace(ref Random rng, ref doubleMxN dest)
         {
             if (!dest.IsSquare)
-                throw new ArgumentException("randomOrthogonalInPlace: dest must be square");
+                throw new ArgumentException("orthogonalInPlace: dest must be square");
             int n = dest.M_Rows;
             if (n == 0) return;
 
@@ -174,7 +174,7 @@ namespace LinearAlgebra
             Rand.randomInPlace(ref rng, ref G, ref gauss);
 
             // Step 2: QR decomposition — G is overwritten with Q, R holds upper-triangular factor
-            QR.qrDecomposition(ref G, ref R);
+            QR.decompInPlace(ref G, ref R);
 
             // Step 3: Haar sign fix (Mezzadri 2007) — see algorithm doc above for the WHY.
             for (int i = 0; i < n; i++)
@@ -205,7 +205,7 @@ namespace LinearAlgebra
         /// [<paramref name="minEig"/>, <paramref name="maxEig"/>].
         ///
         /// Algorithm: A = Q·Λ·Qᵀ where Q is Haar-uniform orthogonal (from
-        /// <see cref="randomOrthogonalInPlace"/>) and Λ = diag(λ₁,…,λₙ) with
+        /// <see cref="orthogonalInPlace"/>) and Λ = diag(λ₁,…,λₙ) with
         /// λᵢ ~ Uniform(minEig, maxEig). Qᵀ is computed BEFORE Q's columns are scaled by Λ.
         /// After forming A = QΛQᵀ, exact symmetry is enforced via A ← (A + Aᵀ)/2 to cancel
         /// floating-point asymmetry introduced by finite-precision matrix multiplication.
@@ -215,16 +215,16 @@ namespace LinearAlgebra
         /// Throws if dest is not square, <c>0 &lt; minEig ≤ maxEig</c> is violated, or either
         /// eigenvalue bound is non-finite (±Inf or NaN would otherwise silently produce NaN matrices).
         /// </summary>
-        public static void randomSpdInPlace(ref Random rng, ref doubleMxN dest, double minEig, double maxEig)
+        public static void spdInPlace(ref Random rng, ref doubleMxN dest, double minEig, double maxEig)
         {
             if (!dest.IsSquare)
-                throw new ArgumentException("randomSpdInPlace: dest must be square");
+                throw new ArgumentException("spdInPlace: dest must be square");
             if (!math.isfinite(minEig) || !math.isfinite(maxEig))
-                throw new ArgumentException("randomSpdInPlace: minEig and maxEig must be finite");
+                throw new ArgumentException("spdInPlace: minEig and maxEig must be finite");
             if (!(minEig > (double)0))
-                throw new ArgumentException("randomSpdInPlace: minEig must be > 0");
+                throw new ArgumentException("spdInPlace: minEig must be > 0");
             if (!(minEig <= maxEig))
-                throw new ArgumentException("randomSpdInPlace: minEig must be <= maxEig");
+                throw new ArgumentException("spdInPlace: minEig must be <= maxEig");
 
             int n = dest.M_Rows;
             if (n == 0) return;
@@ -234,7 +234,7 @@ namespace LinearAlgebra
             var Qt = new doubleMxN(n, n, Allocator.Temp);
 
             // Draw a Haar-uniform orthogonal Q
-            randomOrthogonalInPlace(ref rng, ref Q);
+            orthogonalInPlace(ref rng, ref Q);
 
             // Qt = Qᵀ — must be computed BEFORE we scale Q's columns (otherwise Qt = (QΛ)ᵀ = ΛQᵀ)
             Blas.trans(in Q, ref Qt);
@@ -281,16 +281,16 @@ namespace LinearAlgebra
         /// σᵢ = cond^(1−i/(k−1)). For k = 1 (trivial rank-1 case) σ₀ = 1.
         ///
         /// For a symmetric or SPD matrix with controlled condition number, use
-        /// <see cref="randomSpdInPlace"/> with minEig=1, maxEig=cond instead.
+        /// <see cref="spdInPlace"/> with minEig=1, maxEig=cond instead.
         ///
         /// Temp scratch: U (m×m), V (n×n), Vᵀ (n×n), UΣ (m×n) — all disposed before return.
         /// Throws if <paramref name="cond"/> &lt; 1, is NaN, or is infinite (non-finite values
         /// would otherwise silently propagate NaN/Inf through the singular-value power computation).
         /// </summary>
-        public static void randomMatrixWithConditionInPlace(ref Random rng, ref doubleMxN dest, double cond)
+        public static void conditionedInPlace(ref Random rng, ref doubleMxN dest, double cond)
         {
             if (!(cond >= (double)1) || !math.isfinite(cond))
-                throw new ArgumentException("randomMatrixWithConditionInPlace: cond must be finite and >= 1");
+                throw new ArgumentException("conditionedInPlace: cond must be finite and >= 1");
 
             int m = dest.M_Rows;
             int n = dest.N_Cols;
@@ -300,12 +300,12 @@ namespace LinearAlgebra
 
             // U: m×m Haar-uniform orthogonal
             var U = new doubleMxN(m, m, Allocator.Temp);
-            randomOrthogonalInPlace(ref rng, ref U);
+            orthogonalInPlace(ref rng, ref U);
 
             // V: n×n Haar-uniform orthogonal (independent of U), then Vᵀ
             var V  = new doubleMxN(n, n, Allocator.Temp);
             var Vt = new doubleMxN(n, n, Allocator.Temp);
-            randomOrthogonalInPlace(ref rng, ref V);
+            orthogonalInPlace(ref rng, ref V);
             Blas.trans(in V, ref Vt);
             V.Dispose();
 
@@ -358,14 +358,14 @@ namespace LinearAlgebra
         /// Temp scratch: A (m×rank) and B (rank×n) — both disposed before return.
         /// Throws if rank &lt; 0 or rank &gt; min(m,n).
         /// </summary>
-        public static void randomMatrixWithRankInPlace(ref Random rng, ref doubleMxN dest, int rank)
+        public static void withRankInPlace(ref Random rng, ref doubleMxN dest, int rank)
         {
             int m = dest.M_Rows;
             int n = dest.N_Cols;
             int maxRank = math.min(m, n);
 
             if (rank < 0 || rank > maxRank)
-                throw new ArgumentException("randomMatrixWithRankInPlace: rank must be in [0, min(m,n)]");
+                throw new ArgumentException("withRankInPlace: rank must be in [0, min(m,n)]");
 
             if (rank == 0)
             {
@@ -402,7 +402,7 @@ namespace LinearAlgebra
         /// If a row sum is 0 (astronomically unlikely with [0,1) draws, but guarded), the row is
         /// set to the uniform distribution 1/n. Zero-alloc; no Temp allocations.
         /// </summary>
-        public static void randomStochasticInPlace(ref Random rng, ref doubleMxN dest)
+        public static void stochasticInPlace(ref Random rng, ref doubleMxN dest)
         {
             int m = dest.M_Rows;
             int n = dest.N_Cols;

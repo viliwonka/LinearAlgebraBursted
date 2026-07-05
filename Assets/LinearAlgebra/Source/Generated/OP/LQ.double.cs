@@ -96,7 +96,7 @@ namespace LinearAlgebra
 
         // Un-restricted form: applies to the full trailing block [rowStart, M_Rows). Used by every
         // path that has not been raised to the blocked (compact-WY) factorization — the zero-alloc
-        // lqDecomposition overload and the unblocked lqKernel.
+        // decomp overload and the unblocked lqKernel.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe void applyHouseholderRight(ref doubleMxN M, ref doubleN v, int rowStart, int colStart)
         {
@@ -182,7 +182,7 @@ namespace LinearAlgebra
         // reconstructs in place over the same buffer that stores the reflectors, LQ needs no
         // clean-snapshot copy (nothing here overwrites W while reconstruction is still reading it).
         //
-        // Scratch (all caller-provided, sized by the lqDecomposition(A,L,Q) allocating wrapper):
+        // Scratch (all caller-provided, sized by the decomp(A,L,Q) allocating wrapper):
         //   v       length N_Cols        — Householder vector (per-row panel factor step).
         //   Vpanel  length LQ_BLOCK*N_Cols — clean contiguous panel (pb x (n-p0)), reused for
         //           factor+reconstruct; leading dimension == the CURRENT (n-p0), not N_Cols.
@@ -339,7 +339,7 @@ namespace LinearAlgebra
         // plain rank-1 sweep (lqKernel), which has no panel/GEMM overhead and is already fast enough
         // at that size. The zero-alloc ws overload is NOT blocked — it keeps calling lqKernel to
         // preserve its workspace contract; only this allocating convenience wrapper (used by, e.g.,
-        // the benchmark and lqMinNormSolve's allocating overload) gets the speedup.
+        // the benchmark and minNormSolve's allocating overload) gets the speedup.
         //
         // LQ_BLOCK_MIN_M is a measured (not derived) crossover, unlike QR's simple ">= 2*QR_BLOCK"
         // gate: LQ's fold step (UnsafeOP.lqYeqCVt) is reduction-shaped rather than axpy-shaped (see
@@ -355,7 +355,7 @@ namespace LinearAlgebra
         // zero-norm row is handled via the sign-convention fallback in genHouseholderRow, not
         // rejected).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo lqDecomposition(ref doubleMxN A, ref doubleMxN L, ref doubleMxN Q)
+        public static DirectSolveInfo decomp(ref doubleMxN A, ref doubleMxN L, ref doubleMxN Q)
         {
             // See lqDecompositionBlockedCore for why this is a method-local const, not a class field.
             const int LQ_BLOCK = 64;
@@ -365,11 +365,11 @@ namespace LinearAlgebra
             int n = A.N_Cols;
 
             if (m > n)
-                throw new ArgumentException("LQ.lqDecomposition: A must be wide or square (M_Rows <= N_Cols)");
+                throw new ArgumentException("LQ.decomp: A must be wide or square (M_Rows <= N_Cols)");
             if (L.M_Rows != m || L.N_Cols != m)
-                throw new ArgumentException("LQ.lqDecomposition: L must be m x m");
+                throw new ArgumentException("LQ.decomp: L must be m x m");
             if (Q.M_Rows != m || Q.N_Cols != n)
-                throw new ArgumentException("LQ.lqDecomposition: Q must be m x n");
+                throw new ArgumentException("LQ.decomp: Q must be m x n");
 
             if (m == 0 || n == 0)
                 return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -408,21 +408,21 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// lqDecomposition using a reusable workspace (Arena.doubleLQCache(m, n)) — zero-alloc.
+        /// decomp using a reusable workspace (Arena.doubleLQCache(m, n)) — zero-alloc.
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo lqDecomposition(ref doubleMxN A, ref doubleMxN L, ref doubleMxN Q, ref doubleLQCache ws)
+        public static DirectSolveInfo decomp(ref doubleMxN A, ref doubleMxN L, ref doubleMxN Q, ref doubleLQCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m > n)
-                throw new ArgumentException("LQ.lqDecomposition: A must be wide or square (M_Rows <= N_Cols)");
+                throw new ArgumentException("LQ.decomp: A must be wide or square (M_Rows <= N_Cols)");
             if (L.M_Rows != m || L.N_Cols != m)
-                throw new ArgumentException("LQ.lqDecomposition: L must be m x m");
+                throw new ArgumentException("LQ.decomp: L must be m x m");
             if (Q.M_Rows != m || Q.N_Cols != n)
-                throw new ArgumentException("LQ.lqDecomposition: Q must be m x n");
+                throw new ArgumentException("LQ.decomp: Q must be m x n");
             RequireLQWorkspace(in ws, m, n);
 
             if (m == 0 || n == 0)
@@ -450,30 +450,30 @@ namespace LinearAlgebra
         /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). Not modified.</param>
         /// <param name="b">Right-hand side vector, length m.</param>
         /// <param name="x">Solution output (min-2-norm), length n. Must not alias b.</param>
-        // Always reports DirectSolveStatus.Success — lqDecomposition has no failure mode and this
+        // Always reports DirectSolveStatus.Success — decomp has no failure mode and this
         // solve does not itself detect rank deficiency in A (PRECONDITION: A has full row rank).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo lqMinNormSolve(ref doubleMxN A, ref doubleN b, ref doubleN x)
+        public static DirectSolveInfo minNormSolve(ref doubleMxN A, ref doubleN b, ref doubleN x)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m > n)
-                throw new ArgumentException("LQ.lqMinNormSolve: A must be wide or square (M_Rows <= N_Cols)");
+                throw new ArgumentException("LQ.minNormSolve: A must be wide or square (M_Rows <= N_Cols)");
             if (b.N != m)
-                throw new ArgumentException("LQ.lqMinNormSolve: b.N must equal A.M_Rows");
+                throw new ArgumentException("LQ.minNormSolve: b.N must equal A.M_Rows");
             if (x.N != n)
-                throw new ArgumentException("LQ.lqMinNormSolve: x.N must equal A.N_Cols");
+                throw new ArgumentException("LQ.minNormSolve: x.N must equal A.N_Cols");
 
             var L = new doubleMxN(m, m, Allocator.Temp, false);
             var Q = new doubleMxN(m, n, Allocator.Temp, false);
 
-            lqDecomposition(ref A, ref L, ref Q);
+            decomp(ref A, ref L, ref Q);
 
-            // Step 1: forward-solve L y = b.  y starts as a copy of b (solveLowerTriangular is in-place).
+            // Step 1: forward-solve L y = b.  y starts as a copy of b (triLower is in-place).
             var y = new doubleN(m, Allocator.Temp, false);
             y.Data.CopyFrom(b.Data);
-            Solvers.solveLowerTriangular(ref L, ref y);
+            Solvers.triLower(ref L, ref y);
 
             // Step 2: x = Qᵀ y.  dot(in y, in Q, ref x) computes yᵀ Q = (Qᵀ y)ᵀ → n-vector.
             Blas.dot(in y, in Q, ref x);
@@ -486,34 +486,34 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// lqMinNormSolve using a reusable workspace (Arena.doubleLQMinNormSolveCache(m, n)) —
-        /// zero-alloc end to end (including the nested lqDecomposition call).
+        /// minNormSolve using a reusable workspace (Arena.doubleLQMinNormCache(m, n)) —
+        /// zero-alloc end to end (including the nested decomp call).
         /// Semantics identical to the allocating overload; see that one for full documentation.
         /// </summary>
         // Always reports DirectSolveStatus.Success — see the allocating overload.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo lqMinNormSolve(ref doubleMxN A, ref doubleN b, ref doubleN x, ref doubleLQMinNormSolveCache ws)
+        public static DirectSolveInfo minNormSolve(ref doubleMxN A, ref doubleN b, ref doubleN x, ref doubleLQMinNormCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
             if (m > n)
-                throw new ArgumentException("LQ.lqMinNormSolve: A must be wide or square (M_Rows <= N_Cols)");
+                throw new ArgumentException("LQ.minNormSolve: A must be wide or square (M_Rows <= N_Cols)");
             if (b.N != m)
-                throw new ArgumentException("LQ.lqMinNormSolve: b.N must equal A.M_Rows");
+                throw new ArgumentException("LQ.minNormSolve: b.N must equal A.M_Rows");
             if (x.N != n)
-                throw new ArgumentException("LQ.lqMinNormSolve: x.N must equal A.N_Cols");
+                throw new ArgumentException("LQ.minNormSolve: x.N must equal A.N_Cols");
             RequireLQMinNormSolveWorkspace(in ws, m, n);
 
             var L = ws.L;
             var Q = ws.Q;
 
-            lqDecomposition(ref A, ref L, ref Q, ref ws.LQWs);
+            decomp(ref A, ref L, ref Q, ref ws.LQWs);
 
             // Same two steps as the allocating overload (forward-solve L y = b, then x = Qᵀ y).
             var y = ws.y;
             y.Data.CopyFrom(b.Data);
-            Solvers.solveLowerTriangular(ref L, ref y);
+            Solvers.triLower(ref L, ref y);
             Blas.dot(in y, in Q, ref x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };

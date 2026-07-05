@@ -15,25 +15,26 @@ namespace LinearAlgebra
         // PRECONDITION: U is non-singular — every diagonal U[r,r] must be nonzero. A zero diagonal
         // (a singular/rank-deficient triangular factor) divides by zero and yields Inf/NaN; this
         // primitive does not guard it. For rank-deficient systems use the rank-revealing paths
-        // (QR.qrDecompositionColumnPivot, SVD.pinvSolve, or Cholesky.choleskyPivotSolve).
+        // (QRCP.decompInPlace, SVD.pinvSolve, or CHOP.solveInPlace).
         // Always reports DirectSolveStatus.Success — this primitive assumes a valid (non-singular)
         // triangular factor and does not itself detect a bad one.
-        public static DirectSolveInfo solveUpperTriangular(ref floatMxN U, ref floatN x)
+        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        public static DirectSolveInfo triUpper(ref floatMxN U, ref floatN b_to_x)
         {
             if(U.M_Rows < U.N_Cols)
-                throw new ArgumentException("Solvers.solveUpperTriangular: Matrix must be square or tall (M_Rows >= N_Cols)");
+                throw new ArgumentException("Solvers.triUpper: Matrix must be square or tall (M_Rows >= N_Cols)");
 
-            if(U.N_Cols != x.N)
-                throw new ArgumentException("Solvers.solveUpperTriangular: Matrix and vector must have same number of columns");
+            if(U.N_Cols != b_to_x.N)
+                throw new ArgumentException("Solvers.triUpper: Matrix and vector must have same number of columns");
 
             for (int r = U.N_Cols - 1; r >= 0; r--)
             {
                 float sum = 0;
 
                 for (int c = r + 1; c < U.N_Cols; c++)
-                    sum += U[r, c] * x[c];
+                    sum += U[r, c] * b_to_x[c];
 
-                x[r] = (x[r] - sum) / U[r, r];
+                b_to_x[r] = (b_to_x[r] - sum) / U[r, r];
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -41,24 +42,25 @@ namespace LinearAlgebra
 
         // Solve Lx = b for x
         // PRECONDITION: L is non-singular — every diagonal L[r,r] must be nonzero (see
-        // solveUpperTriangular; a zero diagonal divides by zero -> Inf/NaN, unguarded).
-        // Always reports DirectSolveStatus.Success — see solveUpperTriangular.
-        public static DirectSolveInfo solveLowerTriangular(ref floatMxN L, ref floatN x)
+        // triUpper; a zero diagonal divides by zero -> Inf/NaN, unguarded).
+        // Always reports DirectSolveStatus.Success — see triUpper.
+        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        public static DirectSolveInfo triLower(ref floatMxN L, ref floatN b_to_x)
         {
             if (L.IsSquare == false)
-                throw new ArgumentException("Solvers.solveLowerTriangular: Matrix must be square");
+                throw new ArgumentException("Solvers.triLower: Matrix must be square");
 
-            if (L.M_Rows != x.N)
-                throw new ArgumentException("Solvers.solveLowerTriangular: Matrix and vector must have same number of rows");
+            if (L.M_Rows != b_to_x.N)
+                throw new ArgumentException("Solvers.triLower: Matrix and vector must have same number of rows");
 
             for (int r = 0; r < L.M_Rows; r++)
             {
                 float sum = 0;
 
                 for (int c = 0; c < r; c++)
-                    sum += L[r, c] * x[c];
+                    sum += L[r, c] * b_to_x[c];
 
-                x[r] = (x[r] - sum) / L[r, r];
+                b_to_x[r] = (b_to_x[r] - sum) / L[r, r];
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -66,87 +68,46 @@ namespace LinearAlgebra
 
         // Solve Ly = b for, where y = Ux
         // RP = Row Pivot
-        // Always reports DirectSolveStatus.Success — see solveUpperTriangular.
-        public static DirectSolveInfo solveLowerTriangularLU(ref floatMxN L, in Pivot RP, ref floatN x) {
+        // Always reports DirectSolveStatus.Success — see triUpper.
+        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        public static DirectSolveInfo triLowerLU(ref floatMxN L, in Pivot RP, ref floatN b_to_x) {
             if (L.IsSquare == false)
-                throw new ArgumentException("Solvers.solveLowerTriangularLU: Matrix must be square");
+                throw new ArgumentException("Solvers.triLowerLU: Matrix must be square");
 
-            if (L.M_Rows != x.N)
-                throw new ArgumentException("Solvers.solveLowerTriangularLU: Matrix and vector must have same number of rows");
+            if (L.M_Rows != b_to_x.N)
+                throw new ArgumentException("Solvers.triLowerLU: Matrix and vector must have same number of rows");
 
             for (int r = 0; r < L.M_Rows; r++) {
                 float sum = 0;
 
                 for (int c = 0; c < r; c++)
-                    sum += L[RP[r], c] * x[c];
+                    sum += L[RP[r], c] * b_to_x[c];
 
-                x[r] = (x[r] - sum);
+                b_to_x[r] = (b_to_x[r] - sum);
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
-        // Always reports DirectSolveStatus.Success — see solveUpperTriangular.
-        public static DirectSolveInfo solveUpperTriangularLU(ref floatMxN U, in Pivot RP, ref floatN x) {
+        // Always reports DirectSolveStatus.Success — see triUpper.
+        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        public static DirectSolveInfo triUpperLU(ref floatMxN U, in Pivot RP, ref floatN b_to_x) {
             if(U.IsSquare == false)
-                throw new ArgumentException("Solvers.solveUpperTriangularLU: Matrix must be square");
+                throw new ArgumentException("Solvers.triUpperLU: Matrix must be square");
 
-            if (U.N_Cols != x.N)
-                throw new ArgumentException("Solvers.solveUpperTriangularLU: Matrix and vector must have same number of columns");
+            if (U.N_Cols != b_to_x.N)
+                throw new ArgumentException("Solvers.triUpperLU: Matrix and vector must have same number of columns");
 
             for (int r = U.N_Cols - 1; r >= 0; r--) {
                 float sum = 0;
 
                 for (int c = r + 1; c < U.N_Cols; c++)
-                    sum += U[RP[r], c] * x[c];
+                    sum += U[RP[r], c] * b_to_x[c];
 
-                x[r] = (x[r] - sum) / U[RP[r], r];
+                b_to_x[r] = (b_to_x[r] - sum) / U[RP[r], r];
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
-        }
-
-        /// <summary>
-        /// Solve QRx = b for x, with Q,R from a precomputed QR decomposition (solve for multiple
-        /// b vectors reusing one decomposition). Caller provides the destination x (length
-        /// Q.N_Cols); x must be distinct from b. Zero-alloc: Qᵀb is formed directly into x with
-        /// the ref-dest dot — no internal temporary. dim(b) = Q.M_Rows >= dim(x) = Q.N_Cols.
-        /// Always reports DirectSolveStatus.Success — see solveUpperTriangular.
-        /// </summary>
-        /// <param name="Q">Ortho matrix Q from QR decomposition</param>
-        /// <param name="R">Upper triangular matrix R from QR decomposition</param>
-        /// <param name="b">Known vector (length Q.M_Rows)</param>
-        /// <param name="x">Solution destination (length Q.N_Cols), must not alias b</param>
-        public static DirectSolveInfo solveQR(ref floatMxN Q, ref floatMxN R, ref floatN b, ref floatN x) {
-            // Solve Ax = b for x
-            // A = QR
-            // QRx = b
-            // Rx = Q^T b
-            // x = R^-1 Q^T b
-
-            if (x.N != Q.N_Cols)
-                throw new ArgumentException("solveQR: x.N must equal Q.N_Cols");
-
-            // x = Q^T b (or b^T Q). The ref-dest dot guards x-aliases-b and zeroes x first.
-            Blas.dot(in b, in Q, ref x);
-            // Solve Rx = Q^T b for x, in place
-            return solveUpperTriangular(ref R, ref x);
-        }
-
-        /// <summary>
-        /// solveQR convenience: allocates the solution vector x (length Q.N_Cols) from the arena
-        /// and returns it. Use the ref-destination overload in hot loops to avoid the allocation.
-        /// </summary>
-        public static floatN solveQR(ref floatMxN Q, ref floatMxN R, ref floatN b) {
-            floatN x = b.floatTempVec(Q.N_Cols);
-            solveQR(ref Q, ref R, ref b, ref x);
-            return x;
-        }
-
-        // Solve Ax = b for x
-        public static DirectSolveInfo solveQR(ref floatMxN A, ref floatN b, ref floatN x)
-        {
-            return QR.qrDirectSolve(ref A, ref b, ref x);
         }
 
         // Shared factory for the square-solver diagnostics struct (cg/pcg/minres/biCGStab/cgne).

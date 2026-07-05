@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for SVD.svdRandomized (Halko-Martinsson-Tropp). svdValues is the true-spectrum oracle.
+// Tests for SVD.randomized (Halko-Martinsson-Tropp). values is the true-spectrum oracle.
 // Invariants checked on every case: Uk/Vk orthonormal columns; Sk descending; the compression bound
 // Sk[i] <= σ_i(A) (singular values of QᵀA never exceed A's); the leading value is recovered well.
 // For exactly low-rank A with k >= rank the reconstruction Uk diag(Sk) Vkᵀ ≈ A.
@@ -48,13 +48,13 @@ public class doubleSVDRandomizedTests
 
         // randsvd (Higham Test Matrix Toolbox): build A = U·diag(σ)·Vᵀ with Haar-random orthogonal
         // U (m×m) and V (n×n) and a caller-prescribed σ (length n, descending). The exact singular
-        // values are then KNOWN — a stronger oracle than comparing to svdThin. Temp bases disposed here.
+        // values are then KNOWN — a stronger oracle than comparing to thin. Temp bases disposed here.
         void BuildRandSvd(ref Unity.Mathematics.Random rng, int m, int n, in doubleN sigma, ref doubleMxN A)
         {
             var U = new doubleMxN(m, m, Allocator.Temp, false);
             var V = new doubleMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInPlace(ref rng, ref U);
-            Rand.randomOrthogonalInPlace(ref rng, ref V);
+            Rand.orthogonalInPlace(ref rng, ref U);
+            Rand.orthogonalInPlace(ref rng, ref V);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -109,7 +109,7 @@ public class doubleSVDRandomizedTests
 
             // oracle spectrum + ||A||_F
             var fullS = arena.doubleVec(n);
-            SVD.svdValues(in A, ref fullS);
+            SVD.values(in A, ref fullS);
             double normA = (double)0;
             for (int i = 0; i < n; i++) normA += fullS[i] * fullS[i];
             normA = math.sqrt(normA);
@@ -117,7 +117,7 @@ public class doubleSVDRandomizedTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            bool ok = SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, 75);
+            bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, 75);
             Assert.IsTrue(ok);
 
             AssertOrthoCols(in Uk, m, k, (double)1E-3f);
@@ -208,7 +208,7 @@ public class doubleSVDRandomizedTests
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
             // oversample 10 (p=18), powerIters 2 — HMT-recommended regime.
-            bool ok = SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0001u, 75);
+            bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0001u, 75);
             Assert.IsTrue(ok);
 
             AssertOrthoCols(in Uk, m, k, (double)1E-3f);
@@ -259,7 +259,7 @@ public class doubleSVDRandomizedTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            bool ok = SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0002u, 75);
+            bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0xBEEF0002u, 75);
             Assert.IsTrue(ok);
 
             double err2 = 0;
@@ -304,11 +304,11 @@ public class doubleSVDRandomizedTests
             uint sketchSeed = 0xD0D0BEEFu;
 
             var Uk0 = arena.doubleMat(m, k); var Sk0 = arena.doubleVec(k); var Vk0 = arena.doubleMat(n, k);
-            bool ok0 = SVD.svdRandomized(in A, ref Uk0, ref Sk0, ref Vk0, k, 10, 0, sketchSeed, 75);
+            bool ok0 = SVD.randomized(in A, ref Uk0, ref Sk0, ref Vk0, k, 10, 0, sketchSeed, 75);
             Assert.IsTrue(ok0);
 
             var Uk2 = arena.doubleMat(m, k); var Sk2 = arena.doubleVec(k); var Vk2 = arena.doubleMat(n, k);
-            bool ok2 = SVD.svdRandomized(in A, ref Uk2, ref Sk2, ref Vk2, k, 10, 2, sketchSeed, 75);
+            bool ok2 = SVD.randomized(in A, ref Uk2, ref Sk2, ref Vk2, k, 10, 2, sketchSeed, 75);
             Assert.IsTrue(ok2);
 
             // Total relative error over the top-k must not increase with power iterations.
@@ -359,7 +359,7 @@ public class doubleSVDRandomizedTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            bool ok = SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9ABCDEF0u, 75);
+            bool ok = SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9ABCDEF0u, 75);
             Assert.IsTrue(ok);
 
             AssertOrthoCols(in Uk, m, k, (double)1E-3f);
@@ -408,7 +408,7 @@ public class doubleSVDRandomizedTests
         var Uk = arena.doubleMat(6, 5);
         var Sk = arena.doubleVec(5);
         var Vk = arena.doubleMat(4, 5);
-        Assert.Catch<ArgumentException>(() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, 5)); // k=5 > n=4
+        Assert.Catch<ArgumentException>(() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, 5)); // k=5 > n=4
         arena.Dispose();
     }
 
@@ -420,7 +420,7 @@ public class doubleSVDRandomizedTests
         var Uk = arena.doubleMat(3, 2);
         var Sk = arena.doubleVec(2);
         var Vk = arena.doubleMat(5, 2);
-        Assert.Catch<ArgumentException>(() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, 2));
+        Assert.Catch<ArgumentException>(() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, 2));
         arena.Dispose();
     }
 }

@@ -16,7 +16,7 @@ namespace LinearAlgebra
         // Truncated SVD via Golub-Kahan-Lanczos (GKL) bidiagonalization.
         // Computes the top-k singular triplets of A (m x n, m >= n) by building a p-step Lanczos
         // bidiagonalization (p = min(k + oversample, n)) on A directly (NOT on AᵀA — avoids κ²
-        // accuracy loss), then solving the small p×p bidiagonal SVD exactly via svdThin.
+        // accuracy loss), then solving the small p×p bidiagonal SVD exactly via thin.
         //
         // Two reorthogonalization strategies are available via the `partialReorth` toggle:
         //   false — DGKS double reorthogonalization (Daniel-Gragg-Kaufman-Stewart) applied to BOTH
@@ -36,7 +36,7 @@ namespace LinearAlgebra
         //   - All arithmetic uses native fProxy precision; stability comes from reorthogonalization,
         //     not from higher-precision accumulation.
         //
-        // lowRankApprox uses svdThin instead (full SVD + slice — see its own doc). Scratch layout:
+        // lowRankApprox uses thin instead (full SVD + slice — see its own doc). Scratch layout:
         // see fProxySVDTruncatedCache.
 
         /// <summary>
@@ -56,7 +56,7 @@ namespace LinearAlgebra
         /// <paramref name="ws"/> is the GKL scratch; size it with
         /// Arena.fProxySVDTruncatedCache(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
-        public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
+        public static void truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
                                         bool partialReorth, ref fProxySVDTruncatedCache ws, out bool converged)
         {
@@ -64,22 +64,22 @@ namespace LinearAlgebra
             int n = A.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("svdTruncated: A must have m >= n (more rows than columns)");
+                throw new ArgumentException("truncated: A must have m >= n (more rows than columns)");
             if (k < 0 || k > n)
-                throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
+                throw new ArgumentException("truncated: k must be in [0, A.N_Cols]");
             if (oversample < 0)
-                throw new ArgumentException("svdTruncated: oversample must be >= 0");
+                throw new ArgumentException("truncated: oversample must be >= 0");
             if (Uk.M_Rows != m || Uk.N_Cols != k)
-                throw new ArgumentException("svdTruncated: Uk must be m x k");
+                throw new ArgumentException("truncated: Uk must be m x k");
             if (Sk.N != k)
-                throw new ArgumentException("svdTruncated: Sk must have length k");
+                throw new ArgumentException("truncated: Sk must have length k");
             if (Vk.M_Rows != n || Vk.N_Cols != k)
-                throw new ArgumentException("svdTruncated: Vk must be n x k");
+                throw new ArgumentException("truncated: Vk must be n x k");
             if (maxIter < 1)
-                throw new ArgumentException("svdTruncated: maxIter must be >= 1");
+                throw new ArgumentException("truncated: maxIter must be >= 1");
 
             int p = math.min(k + oversample, n);
-            RequireSvdTruncatedWorkspace(in ws, m, n, p, "svdTruncated");
+            RequireSvdTruncatedWorkspace(in ws, m, n, p, "truncated");
 
             converged = true;
 
@@ -511,45 +511,45 @@ namespace LinearAlgebra
             }
         }
 
-        /// <summary>svdTruncated (ref workspace) with default partialReorth=true.</summary>
-        public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
+        /// <summary>truncated (ref workspace) with default partialReorth=true.</summary>
+        public static void truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
                                         ref fProxySVDTruncatedCache ws, out bool converged)
-            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
+            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
 
-        /// <summary>svdTruncated (ref workspace) with default maxIter (75) and partialReorth=true.</summary>
-        public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
+        /// <summary>truncated (ref workspace) with default maxIter (75) and partialReorth=true.</summary>
+        public static void truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed,
                                         ref fProxySVDTruncatedCache ws, out bool converged)
-            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, ref ws, out converged);
+            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, ref ws, out converged);
 
-        /// <summary>svdTruncated (ref workspace) with default seed and maxIter (75) and partialReorth=true.</summary>
-        public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
+        /// <summary>truncated (ref workspace) with default seed and maxIter (75) and partialReorth=true.</summary>
+        public static void truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample,
                                         ref fProxySVDTruncatedCache ws, out bool converged)
-            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x9E3779B1u, 75, true, ref ws, out converged);
+            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
-        /// svdTruncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12))
+        /// truncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12))
         /// and partialReorth=true.
         /// Pass a workspace from Arena.fProxySVDTruncatedCache(m, n, k) (no oversample overload)
         /// which uses the same generous formula.
         /// </summary>
-        public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
+        public static void truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, ref fProxySVDTruncatedCache ws, out bool converged)
-            => svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
+            => truncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
 
         /// <summary>
-        /// svdTruncated allocating all scratch from A's arena (explicit oversample/seed/maxIter/partialReorth).
+        /// truncated allocating all scratch from A's arena (explicit oversample/seed/maxIter/partialReorth).
         /// See the ref-workspace overload for semantics.
         /// </summary>
-        public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
+        public static void truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed, int maxIter, bool partialReorth, out bool converged)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
-            if (oversample < 0) throw new ArgumentException("svdTruncated: oversample must be >= 0");
+            if (k < 0 || k > n) throw new ArgumentException("truncated: k must be in [0, A.N_Cols]");
+            if (oversample < 0) throw new ArgumentException("truncated: oversample must be >= 0");
             int p = math.min(k + oversample, n);
             var ws = new fProxySVDTruncatedCache
             {
@@ -572,21 +572,21 @@ namespace LinearAlgebra
                 mu    = A.fProxyTempVec(p + 1),
                 nu    = A.fProxyTempVec(p + 1)
             };
-            svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, partialReorth, ref ws, out converged);
+            truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, partialReorth, ref ws, out converged);
         }
 
         /// <summary>
-        /// svdTruncated allocating all scratch from A's arena (explicit oversample/seed/maxIter),
+        /// truncated allocating all scratch from A's arena (explicit oversample/seed/maxIter),
         /// with default partialReorth=true.
         /// See the ref-workspace overload for semantics.
         /// </summary>
-        public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
+        public static void truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, int oversample, uint seed, int maxIter, out bool converged)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
-            if (oversample < 0) throw new ArgumentException("svdTruncated: oversample must be >= 0");
+            if (k < 0 || k > n) throw new ArgumentException("truncated: k must be in [0, A.N_Cols]");
+            if (oversample < 0) throw new ArgumentException("truncated: oversample must be >= 0");
             int p = math.min(k + oversample, n);
             var ws = new fProxySVDTruncatedCache
             {
@@ -609,19 +609,19 @@ namespace LinearAlgebra
                 mu    = A.fProxyTempVec(p + 1),
                 nu    = A.fProxyTempVec(p + 1)
             };
-            svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
+            truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
         }
 
         /// <summary>
-        /// svdTruncated (allocating) with generous default Krylov width p = min(n, max(2k, k+12)),
+        /// truncated (allocating) with generous default Krylov width p = min(n, max(2k, k+12)),
         /// default seed (0x9E3779B1u), default maxIter (75), and default partialReorth=true.
         /// </summary>
-        public static void svdTruncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
+        public static void truncated(in fProxyMxN A, ref fProxyMxN Uk, ref fProxyN Sk, ref fProxyMxN Vk,
                                         int k, out bool converged)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
-            if (k < 0 || k > n) throw new ArgumentException("svdTruncated: k must be in [0, A.N_Cols]");
+            if (k < 0 || k > n) throw new ArgumentException("truncated: k must be in [0, A.N_Cols]");
             int p = math.min(n, math.max(2 * k, k + 12));
             var ws = new fProxySVDTruncatedCache
             {
@@ -645,14 +645,14 @@ namespace LinearAlgebra
                 nu    = A.fProxyTempVec(p + 1)
             };
             // Use oversample = max(k, 12) which gives p = min(k + max(k,12), n) = min(max(2k,k+12), n)
-            svdTruncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
+            truncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
         }
 
         /// <summary>
         /// Best rank-k approximation of A (m x n, m >= n) written into Ak (m x n, caller-allocated):
         /// Ak = Σ_{t&lt;k} σ_t u_t v_tᵀ = Uk diag(Sk) Vkᵀ. This is the matrix that minimizes
         /// ||A - Ak|| over all rank-k matrices (Eckart-Young); the Frobenius error is sqrt(Σ_{i&gt;=k} σ_i²).
-        /// Uses the FULL Golub-Kahan SVD (svdThin) internally — EXACT, not approximate. 0 &lt;= k &lt;= n.
+        /// Uses the FULL Golub-Kahan SVD (thin) internally — EXACT, not approximate. 0 &lt;= k &lt;= n.
         /// A is NOT modified. <paramref name="converged"/> is the SVD's flag (when false Ak is undefined).
         /// <paramref name="ws"/> is full-SVD scratch reused across calls; size it with
         /// Arena.fProxySVDFullCache(m, n).
@@ -683,7 +683,7 @@ namespace LinearAlgebra
             if (n == 0 || k == 0)
                 return;
 
-            converged = svdThin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
+            converged = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
             if (!converged)
                 return;
 

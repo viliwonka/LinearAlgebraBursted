@@ -23,7 +23,7 @@ namespace LinearAlgebra.Benchmarks
         public floatKMeansCache ws;
 
         public void Execute() =>
-            KMeans.kmeans(in X, 16, 12345u, 10, KMeansInit.Uniform,
+            KMeans.fit(in X, 16, 12345u, 10, KMeansInit.Uniform,
                                  ref centroids, ref assignment, out float _, out int _, ref ws);
     }
 
@@ -36,7 +36,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleKMeansCache ws;
 
         public void Execute() =>
-            KMeans.kmeans(in X, 16, 12345u, 10, KMeansInit.Uniform,
+            KMeans.fit(in X, 16, 12345u, 10, KMeansInit.Uniform,
                                   ref centroids, ref assignment, out double _, out int _, ref ws);
     }
 
@@ -45,7 +45,7 @@ namespace LinearAlgebra.Benchmarks
         const int D = 64;
         const int K = 16;
 
-        public static void Run() => Bench.WriteReport("benchmark-kmeans.txt", Section);
+        public static void Run() => Bench.WriteReport("benchmark-fit.txt", Section);
 
         public static void Section(StringBuilder sb)
         {

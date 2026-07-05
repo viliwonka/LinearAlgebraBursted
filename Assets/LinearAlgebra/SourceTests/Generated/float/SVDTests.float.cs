@@ -48,7 +48,7 @@ public class floatSVDTests
             GolubKahanClustered,
             GolubKahanZero,
             GolubKahanRank3,
-            // --- svdThin known-Σ (randsvd / Higham Test Matrix Toolbox): A = U·diag(Σ)·Vᵀ, Haar U/V,
+            // --- thin known-Σ (randsvd / Higham Test Matrix Toolbox): A = U·diag(Σ)·Vᵀ, Haar U/V,
             //     prescribed Σ → exact singular values KNOWN. Sweeps the Higham randsvd modes. ---
             ThinKnownGeometric_30x10,
             ThinKnownArithmetic_24x8,
@@ -167,8 +167,8 @@ public class floatSVDTests
         {
             var U = new floatMxN(m, m, Allocator.Temp, false);
             var V = new floatMxN(n, n, Allocator.Temp, false);
-            Rand.randomOrthogonalInPlace(ref rng, ref U);
-            Rand.randomOrthogonalInPlace(ref rng, ref V);
+            Rand.orthogonalInPlace(ref rng, ref U);
+            Rand.orthogonalInPlace(ref rng, ref V);
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                 {
@@ -192,13 +192,13 @@ public class floatSVDTests
                 }
         }
 
-        // Core known-Σ svdThin check: recovered S == prescribed σ (svTol), UᵀU=I, VᵀV=I, A == U diag(S) Vᵀ.
+        // Core known-Σ thin check: recovered S == prescribed σ (svTol), UᵀU=I, VᵀV=I, A == U diag(S) Vᵀ.
         void CheckThinKnown(in floatMxN A, in floatN sigma, int m, int n, ref Arena arena)
         {
             var U = arena.floatMat(m, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
+            Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
             // svTol & ortho/recon tolerances scale with the numeric type via Consts.floatSqrtEps
@@ -280,8 +280,8 @@ public class floatSVDTests
             arena.Dispose();
         }
 
-        // WIDE aspect: build a tall T (15×6) with known Σ; T = Wᵀ for the wide W = Tᵀ (6×15). svdThin
-        // requires m≥n, so the documented route for a wide matrix is svdThin(in trans(W)) = svdThin(T),
+        // WIDE aspect: build a tall T (15×6) with known Σ; T = Wᵀ for the wide W = Tᵀ (6×15). thin
+        // requires m≥n, so the documented route for a wide matrix is thin(in trans(W)) = thin(T),
         // which must recover W's singular values. Validates the transpose contract for wide inputs.
         void ThinKnownWideViaTranspose_6x15()
         {
@@ -308,7 +308,7 @@ public class floatSVDTests
             var U = arena.floatMat(n, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
+            Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
             AssertDescendingNonNegative(in S, n);
@@ -332,7 +332,7 @@ public class floatSVDTests
             var U = arena.floatMat(n, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            Assert.IsTrue(SVD.svdThin(in A, ref U, ref S, ref V));
+            Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
             AssertDescendingNonNegative(in S, n);
@@ -723,7 +723,7 @@ public class floatSVDTests
             arena.Dispose();
         }
 
-        // ---- svdValues (singular VALUES only, A unmodified) ----
+        // ---- values (singular VALUES only, A unmodified) ----
 
         // Identity n=5 -> all singular values 1.
         public void SVValuesIdentity()
@@ -735,7 +735,7 @@ public class floatSVDTests
             var A = arena.floatIdentityMat(n);
             var S = arena.floatVec(n);
 
-            bool ok = SVD.svdValues(in A, ref S);
+            bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
@@ -769,7 +769,7 @@ public class floatSVDTests
 
             var S = arena.floatVec(n);
 
-            bool ok = SVD.svdValues(in A, ref S);
+            bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
@@ -802,7 +802,7 @@ public class floatSVDTests
 
             var S = arena.floatVec(n);
 
-            bool ok = SVD.svdValues(in A, ref S);
+            bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
@@ -832,7 +832,7 @@ public class floatSVDTests
 
             var S = arena.floatVec(n);
 
-            bool ok = SVD.svdValues(in A, ref S);
+            bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
@@ -855,8 +855,8 @@ public class floatSVDTests
             arena.Dispose();
         }
 
-        // Cross-check svdValues vs the trusted svdDecomposition for m >= n (square AND tall).
-        // svdDecomposition destroys its U argument; svdValues takes A `in` (must be unmodified).
+        // Cross-check values vs the trusted svdDecomposition for m >= n (square AND tall).
+        // svdDecomposition destroys its U argument; values takes A `in` (must be unmodified).
         public void SVValuesCross(int m, int n, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -873,7 +873,7 @@ public class floatSVDTests
 
             // values-only path on the untouched A
             var S = arena.floatVec(n);
-            bool ok = SVD.svdValues(in A, ref S);
+            bool ok = SVD.values(in A, ref S);
             Assert.IsTrue(ok);
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
@@ -890,7 +890,7 @@ public class floatSVDTests
                 AssertClose(S[i], Sref[i], tol);
             }
 
-            // svdValues must NOT have modified A.
+            // values must NOT have modified A.
             AssertMatrixUnchanged(in A, in Apristine, m, n);
 
             arena.Dispose();
@@ -916,7 +916,7 @@ public class floatSVDTests
             var U = arena.floatMat(m, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
+            bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
@@ -958,7 +958,7 @@ public class floatSVDTests
             var U = arena.floatMat(n, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
+            bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
@@ -990,7 +990,7 @@ public class floatSVDTests
             var U = arena.floatMat(n, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
+            bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in S));
 
@@ -1016,7 +1016,7 @@ public class floatSVDTests
             var U = arena.floatMat(n, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
+            bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in S));
             for (int i = 0; i < n; i++)
@@ -1055,7 +1055,7 @@ public class floatSVDTests
             var U = arena.floatMat(n, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            bool ok = SVD.svdThin(in A, ref U, ref S, ref V);
+            bool ok = SVD.thin(in A, ref U, ref S, ref V);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
@@ -1259,7 +1259,7 @@ public class floatSVDTests
         var A = arena.floatMat(2, 3);
         var S = arena.floatVec(3);
 
-        Assert.Catch<ArgumentException>(() => SVD.svdValues(in A, ref S));
+        Assert.Catch<ArgumentException>(() => SVD.values(in A, ref S));
 
         arena.Dispose();
     }
@@ -1272,7 +1272,7 @@ public class floatSVDTests
         var A = arena.floatMat(4, 3);
         var S = arena.floatVec(2);
 
-        Assert.Catch<ArgumentException>(() => SVD.svdValues(in A, ref S));
+        Assert.Catch<ArgumentException>(() => SVD.values(in A, ref S));
 
         arena.Dispose();
     }

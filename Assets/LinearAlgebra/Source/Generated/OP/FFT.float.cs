@@ -10,7 +10,7 @@ using Unity.Mathematics;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// 1D discrete Fourier transform. Like <c>eigenvaluesQR</c>, this avoids a complex TYPE by storing
+    /// 1D discrete Fourier transform. Like <c>Eigen.valuesQR</c>, this avoids a complex TYPE by storing
     /// the real and imaginary parts in two parallel <c>floatN</c> arrays.
     ///
     /// Two algorithms: <see cref="fft"/>/<see cref="ifft"/> are in-place Cooley–Tukey (O(N log N),

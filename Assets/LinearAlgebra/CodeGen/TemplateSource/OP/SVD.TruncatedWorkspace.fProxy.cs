@@ -30,7 +30,7 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Reusable scratch storage for svdTruncated (Golub-Kahan-Lanczos). Allocate ONCE via
+    /// Reusable scratch storage for truncated (Golub-Kahan-Lanczos). Allocate ONCE via
     /// Arena.fProxySVDTruncatedCache(m, n, k, oversample) and reuse across same-shape calls.
     ///
     /// Layout (p = min(k+oversample, n)): UL (p x m) holds the left Lanczos basis u_1..u_p as
@@ -44,7 +44,7 @@ namespace LinearAlgebra
     /// and superdiagonal; mu/nu (length p+1 each) hold the ω-recurrence estimates of orthogonality
     /// loss among the left/right Lanczos bases (used by the partial-reorth path; inert otherwise).
     ///
-    /// svdTruncated is FULLY zero-alloc on workspace reuse: the inner bidiagonal SVD runs entirely
+    /// truncated is FULLY zero-alloc on workspace reuse: the inner bidiagonal SVD runs entirely
     /// in dB/eB/UtB/VtB + BsvdWs (all persistent arena memory), with no Allocator.Temp usage.
     /// </summary>
     public struct fProxySVDTruncatedCache
@@ -69,7 +69,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Allocates a GKL-truncated-SVD workspace for an m x n (m >= n) matrix, target rank k, and
         /// oversampling p_extra (p = min(k + oversample, n)) — see <see cref="fProxySVDTruncatedCache"/>
-        /// for layout. Pass the SAME k and oversample to svdTruncated's ref-workspace overload.
+        /// for layout. Pass the SAME k and oversample to truncated's ref-workspace overload.
         /// </summary>
         public static fProxySVDTruncatedCache fProxySVDTruncatedCache(this ref Arena arena, int m, int n, int k, int oversample)
         {
@@ -99,7 +99,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Allocates a GKL-truncated-SVD workspace with the generous default Krylov width
-        /// p = min(n, max(2*k, k+12)) — matches the svdTruncated convenience overloads that do
+        /// p = min(n, max(2*k, k+12)) — matches the truncated convenience overloads that do
         /// not take an explicit oversample. For k in [1,12], p >= k+12; for k > 12, p >= 2*k.
         /// </summary>
         public static fProxySVDTruncatedCache fProxySVDTruncatedCache(this ref Arena arena, int m, int n, int k)

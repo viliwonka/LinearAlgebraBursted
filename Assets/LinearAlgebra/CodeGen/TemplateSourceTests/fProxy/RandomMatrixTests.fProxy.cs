@@ -1,5 +1,5 @@
 using System;
-#pragma warning disable 618 // intentionally exercises the deprecated Jacobi svdDecomposition / eigenDecomposition (kept for reference)
+#pragma warning disable 618 // intentionally exercises the deprecated Jacobi svdDecomposition / Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
 
@@ -13,12 +13,12 @@ using Random = Unity.Mathematics.Random;
 // Tests for Chunk 3 of the random-generation layer: structured / property matrices
 // (Rand). Verification is PROPERTY-based — we construct the matrix and then
 // independently check the property it is supposed to have, reusing the library's own ops:
-//   * randomOrthogonalInPlace   -> QᵀQ ≈ I  (dot(Q,Q,transposeA:true)); determinism.
-//   * randomSpdInPlace          -> symmetry, Cholesky succeeds (PD), eigenvalues ∈ [minEig,maxEig]
-//                               (Eigen.eigenDecomposition), trace ∈ [n·minEig, n·maxEig].
-//   * randomMatrixWithConditionInPlace -> σ_max/σ_min ≈ cond via SVD.singularValues.
-//   * randomMatrixWithRankInPlace      -> #{σ_i > S[0]·thr} == rank via SVD.singularValues; rank 0 exact zeros.
-//   * randomStochasticInPlace   -> each row sums to 1, entries in [0,1].
+//   * orthogonalInPlace   -> QᵀQ ≈ I  (dot(Q,Q,transposeA:true)); determinism.
+//   * spdInPlace          -> symmetry, Cholesky succeeds (PD), eigenvalues ∈ [minEig,maxEig]
+//                               (Eigen.decompInPlace), trace ∈ [n·minEig, n·maxEig].
+//   * conditionedInPlace -> σ_max/σ_min ≈ cond via SVD.singularValues.
+//   * withRankInPlace      -> #{σ_i > S[0]·thr} == rank via SVD.singularValues; rank 0 exact zeros.
+//   * stochasticInPlace   -> each row sums to 1, entries in [0,1].
 //   * multivariateNormal*    -> empirical mean ≈ mean (cholL = I) and empirical covariance ≈ LLᵀ.
 //
 // FIXED seeds only (Monte-Carlo statistics must be reproducible). Tolerances are per-precision —
@@ -76,7 +76,7 @@ public class fProxyRandomMatrixTests
         }
 
         // =====================================================================
-        // randomOrthogonalInPlace
+        // orthogonalInPlace
         // =====================================================================
 
         // QᵀQ ≈ I for a few sizes. Householder-QR + Haar sign fix => Q orthogonal.
@@ -94,7 +94,7 @@ public class fProxyRandomMatrixTests
 
             var rng = new Random(seed);
             var Q = arena.fProxyMat(n, n);
-            Rand.randomOrthogonalInPlace(ref rng, ref Q);
+            Rand.orthogonalInPlace(ref rng, ref Q);
 
             // QᵀQ
             var QtQ = arena.fProxyMat(n, n);
@@ -121,11 +121,11 @@ public class fProxyRandomMatrixTests
 
             var r1 = new Random(424242u);
             var Q1 = arena.fProxyMat(n, n);
-            Rand.randomOrthogonalInPlace(ref r1, ref Q1);
+            Rand.orthogonalInPlace(ref r1, ref Q1);
 
             var r2 = new Random(424242u);
             var Q2 = arena.fProxyMat(n, n);
-            Rand.randomOrthogonalInPlace(ref r2, ref Q2);
+            Rand.orthogonalInPlace(ref r2, ref Q2);
 
             for (int i = 0; i < Q1.Length; i++)
                 AssertClose(Q1[i], Q2[i], (fProxy)0);
@@ -134,7 +134,7 @@ public class fProxyRandomMatrixTests
         }
 
         // =====================================================================
-        // randomSpdInPlace
+        // spdInPlace
         // =====================================================================
 
         // (a) symmetry, (b) positive-definite via Cholesky, (c) eigenvalues in [minEig,maxEig]
@@ -150,7 +150,7 @@ public class fProxyRandomMatrixTests
                 int n = 4 + (int)t;             // 4..9
                 var rng = new Random(5000u + t * 37u);
                 var A = arena.fProxyMat(n, n);
-                Rand.randomSpdInPlace(ref rng, ref A, minEig, maxEig);
+                Rand.spdInPlace(ref rng, ref A, minEig, maxEig);
 
                 // (a) symmetry — implementation symmetrises exactly, so this is tight.
                 fProxy symTol = (fProxy)8 * Consts.fProxySqrtEps;
@@ -160,13 +160,13 @@ public class fProxyRandomMatrixTests
 
                 // (b) positive-definite: Cholesky must succeed.
                 var L = arena.fProxyMat(n, n);
-                AssertTrue(Cholesky.choleskyDecomposition(in A, ref L));
+                AssertTrue(CHO.decomp(in A, ref L));
 
                 // (c) eigenvalues ∈ [minEig, maxEig] (Jacobi destroys its input -> copy).
                 var Acopy = arena.fProxyMat(in A);
                 var evals = arena.fProxyVec(n);
                 var V = arena.fProxyMat(n, n);
-                AssertTrue(Eigen.eigenDecomposition(ref Acopy, ref evals, ref V));
+                AssertTrue(Eigen.decompInPlace(ref Acopy, ref evals, ref V));
 
                 fProxy eigTol = (fProxy)200 * Consts.fProxySqrtEps * maxEig;
                 fProxy traceLam = (fProxy)0, traceA = (fProxy)0;
@@ -196,11 +196,11 @@ public class fProxyRandomMatrixTests
 
             var r1 = new Random(96321u);
             var A1 = arena.fProxyMat(n, n);
-            Rand.randomSpdInPlace(ref r1, ref A1, (fProxy)1, (fProxy)10);
+            Rand.spdInPlace(ref r1, ref A1, (fProxy)1, (fProxy)10);
 
             var r2 = new Random(96321u);
             var A2 = arena.fProxyMat(n, n);
-            Rand.randomSpdInPlace(ref r2, ref A2, (fProxy)1, (fProxy)10);
+            Rand.spdInPlace(ref r2, ref A2, (fProxy)1, (fProxy)10);
 
             for (int i = 0; i < A1.Length; i++)
                 AssertClose(A1[i], A2[i], (fProxy)0);
@@ -209,7 +209,7 @@ public class fProxyRandomMatrixTests
         }
 
         // =====================================================================
-        // randomMatrixWithConditionInPlace
+        // conditionedInPlace
         // =====================================================================
 
         void ConditionNumberSquare() => CheckCondition(5, 5, (fProxy)50, 6001u);
@@ -222,7 +222,7 @@ public class fProxyRandomMatrixTests
 
             var rng = new Random(seed);
             var A = arena.fProxyMat(m, n);
-            Rand.randomMatrixWithConditionInPlace(ref rng, ref A, cond);
+            Rand.conditionedInPlace(ref rng, ref A, cond);
 
             int k = math.min(m, n);
             var S = arena.fProxyVec(k);
@@ -244,7 +244,7 @@ public class fProxyRandomMatrixTests
 
             var rng = new Random(6003u);
             var A = arena.fProxyMat(1, 4);
-            Rand.randomMatrixWithConditionInPlace(ref rng, ref A, (fProxy)50);
+            Rand.conditionedInPlace(ref rng, ref A, (fProxy)50);
 
             var S = arena.fProxyVec(1);    // k = min(1,4) = 1
             SVD.singularValues(in A, ref S);
@@ -257,7 +257,7 @@ public class fProxyRandomMatrixTests
         }
 
         // =====================================================================
-        // randomMatrixWithRankInPlace
+        // withRankInPlace
         // =====================================================================
 
         // numerical rank == requested rank for every rank in [1, min(m,n)], over several seeds.
@@ -274,7 +274,7 @@ public class fProxyRandomMatrixTests
                 {
                     var rng = new Random(7000u + (uint)rank * 101u + t * 13u);
                     var A = arena.fProxyMat(m, n);
-                    Rand.randomMatrixWithRankInPlace(ref rng, ref A, rank);
+                    Rand.withRankInPlace(ref rng, ref A, rank);
 
                     int got = NumericalRank(in arena, in A);
                     RecordEq(got, rank);
@@ -298,7 +298,7 @@ public class fProxyRandomMatrixTests
             var rng0 = new Random(8001u);
             var A0 = arena.fProxyMat(m, n);
             for (int i = 0; i < A0.Length; i++) A0[i] = (fProxy)999;   // poison
-            Rand.randomMatrixWithRankInPlace(ref rng0, ref A0, 0);
+            Rand.withRankInPlace(ref rng0, ref A0, 0);
             for (int i = 0; i < A0.Length; i++)
                 AssertClose(A0[i], (fProxy)0, (fProxy)0);    // exact
             RecordEq(NumericalRank(in arena, in A0), 0);
@@ -306,7 +306,7 @@ public class fProxyRandomMatrixTests
             // full rank.
             var rngF = new Random(8002u);
             var AF = arena.fProxyMat(m, n);
-            Rand.randomMatrixWithRankInPlace(ref rngF, ref AF, k);
+            Rand.withRankInPlace(ref rngF, ref AF, k);
             RecordEq(NumericalRank(in arena, in AF), k);
 
             arena.Dispose();
@@ -331,7 +331,7 @@ public class fProxyRandomMatrixTests
         }
 
         // =====================================================================
-        // randomStochasticInPlace
+        // stochasticInPlace
         // =====================================================================
 
         void Stochastic()
@@ -348,7 +348,7 @@ public class fProxyRandomMatrixTests
 
             var rng = new Random(seed);
             var A = arena.fProxyMat(m, n);
-            Rand.randomStochasticInPlace(ref rng, ref A);
+            Rand.stochasticInPlace(ref rng, ref A);
 
             fProxy sumTol = (fProxy)20 * Consts.fProxySqrtEps;
             for (int r = 0; r < m; r++)
@@ -567,7 +567,7 @@ public class fProxyRandomMatrixTests
             var rng = new Random(1u);
             var dest = arena.fProxyMat(3, 4);
             Assert.Throws<ArgumentException>(
-                () => Rand.randomOrthogonalInPlace(ref rng, ref dest));
+                () => Rand.orthogonalInPlace(ref rng, ref dest));
         }
         finally { arena.Dispose(); }
     }
@@ -582,22 +582,22 @@ public class fProxyRandomMatrixTests
 
             var nonSquare = arena.fProxyMat(3, 4);
             Assert.Throws<ArgumentException>(
-                () => Rand.randomSpdInPlace(ref rng, ref nonSquare, (fProxy)1, (fProxy)2));
+                () => Rand.spdInPlace(ref rng, ref nonSquare, (fProxy)1, (fProxy)2));
 
             var A = arena.fProxyMat(3, 3);
             // minEig <= 0
             Assert.Throws<ArgumentException>(
-                () => Rand.randomSpdInPlace(ref rng, ref A, (fProxy)0, (fProxy)2));
+                () => Rand.spdInPlace(ref rng, ref A, (fProxy)0, (fProxy)2));
             Assert.Throws<ArgumentException>(
-                () => Rand.randomSpdInPlace(ref rng, ref A, (fProxy)(-1), (fProxy)2));
+                () => Rand.spdInPlace(ref rng, ref A, (fProxy)(-1), (fProxy)2));
             // minEig > maxEig
             Assert.Throws<ArgumentException>(
-                () => Rand.randomSpdInPlace(ref rng, ref A, (fProxy)5, (fProxy)2));
+                () => Rand.spdInPlace(ref rng, ref A, (fProxy)5, (fProxy)2));
             // non-finite bounds
             Assert.Throws<ArgumentException>(
-                () => Rand.randomSpdInPlace(ref rng, ref A, (fProxy)fProxy.PositiveInfinity, (fProxy)2));
+                () => Rand.spdInPlace(ref rng, ref A, (fProxy)fProxy.PositiveInfinity, (fProxy)2));
             Assert.Throws<ArgumentException>(
-                () => Rand.randomSpdInPlace(ref rng, ref A, (fProxy)1, (fProxy)float.NaN));
+                () => Rand.spdInPlace(ref rng, ref A, (fProxy)1, (fProxy)float.NaN));
         }
         finally { arena.Dispose(); }
     }
@@ -613,12 +613,12 @@ public class fProxyRandomMatrixTests
 
             // cond < 1
             Assert.Throws<ArgumentException>(
-                () => Rand.randomMatrixWithConditionInPlace(ref rng, ref A, (fProxy)0.5));
+                () => Rand.conditionedInPlace(ref rng, ref A, (fProxy)0.5));
             // non-finite cond
             Assert.Throws<ArgumentException>(
-                () => Rand.randomMatrixWithConditionInPlace(ref rng, ref A, (fProxy)fProxy.PositiveInfinity));
+                () => Rand.conditionedInPlace(ref rng, ref A, (fProxy)fProxy.PositiveInfinity));
             Assert.Throws<ArgumentException>(
-                () => Rand.randomMatrixWithConditionInPlace(ref rng, ref A, (fProxy)float.NaN));
+                () => Rand.conditionedInPlace(ref rng, ref A, (fProxy)float.NaN));
         }
         finally { arena.Dispose(); }
     }
@@ -633,9 +633,9 @@ public class fProxyRandomMatrixTests
             var A = arena.fProxyMat(5, 3);   // min(m,n) = 3
 
             Assert.Throws<ArgumentException>(
-                () => Rand.randomMatrixWithRankInPlace(ref rng, ref A, -1));
+                () => Rand.withRankInPlace(ref rng, ref A, -1));
             Assert.Throws<ArgumentException>(
-                () => Rand.randomMatrixWithRankInPlace(ref rng, ref A, 4)); // > min(m,n)
+                () => Rand.withRankInPlace(ref rng, ref A, 4)); // > min(m,n)
         }
         finally { arena.Dispose(); }
     }

@@ -14,11 +14,11 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Reusable scratch for the full-SVD-family ops that each compute one Golub-Kahan SVD of an m x n
-    /// (m >= n) matrix and slice it: svdTruncated, lowRankApprox, nullspaceBasis, rangeBasis. Allocate
+    /// (m >= n) matrix and slice it: truncated, lowRankApprox, nullspaceBasis, rangeBasis. Allocate
     /// ONCE via Arena.doubleSVDFullCache(m, n) and reuse across same-shape calls to avoid per-call temp
     /// allocations.
     ///
-    /// Layout matches svdThin's (U, S, V): U is m x n (left singular vectors), S is length n (singular
+    /// Layout matches thin's (U, S, V): U is m x n (left singular vectors), S is length n (singular
     /// values), V is n x n (right singular vectors).
     ///
     /// NOTE: removes the per-call U/S/V temp-pool allocations; the inner Golub-Kahan SVD still uses a
@@ -36,7 +36,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Allocates a full-SVD-family workspace for an m x n (m >= n) system — see
         /// <see cref="doubleSVDFullCache"/> for layout. Persistent in this arena; pass to the workspace
-        /// overloads of svdTruncated / lowRankApprox / nullspaceBasis / rangeBasis.
+        /// overloads of truncated / lowRankApprox / nullspaceBasis / rangeBasis.
         /// </summary>
         public static doubleSVDFullCache doubleSVDFullCache(this ref Arena arena, int m, int n)
         {

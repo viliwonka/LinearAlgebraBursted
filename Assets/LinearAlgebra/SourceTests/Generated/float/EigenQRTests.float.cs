@@ -1,5 +1,5 @@
 using System;
-#pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi eigenDecomposition (kept for reference)
+#pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi decompInPlace (kept for reference)
 
 using LinearAlgebra;
 using LinearAlgebra.Gallery;
@@ -9,7 +9,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for the general (non-symmetric) QR eigenvalue algorithm: Eigen.eigenvaluesQR
+// Tests for the general (non-symmetric) QR eigenvalue algorithm: Eigen.valuesQR
 // (Hessenberg reduction + Francis double-shift QR -> real Schur form; eigenvalues as real/imag
 // component arrays, sorted by (real, then imag) descending).
 //
@@ -20,7 +20,7 @@ using Unity.Mathematics;
 //    power iteration and Jacobi cannot find).
 //  - 2x2 rotation by θ: eigenvalues cosθ ± i·sinθ.
 //  - Block diag(2, rotation): a real eigenvalue alongside a complex-conjugate pair.
-//  - Random symmetric: cross-checked against eigenDecomposition (Jacobi); all eigenvalues real.
+//  - Random symmetric: cross-checked against decompInPlace (Jacobi); all eigenvalues real.
 //  - Random general: sum of eigenvalues == trace, imaginary parts sum to 0 (conjugate pairs cancel).
 public class floatEigenQRTests
 {
@@ -33,7 +33,7 @@ public class floatEigenQRTests
             var A = arena.floatRandomMat(6, 6, -2f, 2f, 12345);
             var re = arena.floatVec(6);
             var im = arena.floatVec(6);
-            Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            Eigen.valuesQR(ref A, ref re, ref im);
             arena.Dispose();
         }
     }
@@ -90,7 +90,7 @@ public class floatEigenQRTests
 
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             float tol = (float)1E-4f;
@@ -115,7 +115,7 @@ public class floatEigenQRTests
 
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             float tol = (float)1E-3f;
@@ -140,7 +140,7 @@ public class floatEigenQRTests
 
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             // companion eigenproblems are mildly stiff; scale-relative tolerance.
@@ -164,7 +164,7 @@ public class floatEigenQRTests
 
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             float tol = (float)1E-5f;
@@ -190,7 +190,7 @@ public class floatEigenQRTests
 
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             float tol = (float)1E-4f;
@@ -214,7 +214,7 @@ public class floatEigenQRTests
 
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             float tol = (float)1E-4f;
@@ -226,8 +226,8 @@ public class floatEigenQRTests
             arena.Dispose();
         }
 
-        // Random symmetric matrix: all eigenvalues real; cross-check eigenvaluesQR against the
-        // symmetric Jacobi eigenDecomposition (both sorted descending by value).
+        // Random symmetric matrix: all eigenvalues real; cross-check valuesQR against the
+        // symmetric Jacobi decompInPlace (both sorted descending by value).
         void SymmetricCrossCheckJacobi()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -248,12 +248,12 @@ public class floatEigenQRTests
 
                 var re = arena.floatVec(n);
                 var im = arena.floatVec(n);
-                bool ok = Eigen.eigenvaluesQR(ref Aqr, ref re, ref im);
+                bool ok = Eigen.valuesQR(ref Aqr, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
 
                 var jac = arena.floatVec(n);
                 var V = arena.floatMat(n, n);
-                Eigen.eigenDecomposition(ref Ajac, ref jac, ref V); // sorts desc by value
+                Eigen.decompInPlace(ref Ajac, ref jac, ref V); // sorts desc by value
 
                 float tol = (float)1E-3f;
                 for (int i = 0; i < n; i++)
@@ -284,7 +284,7 @@ public class floatEigenQRTests
 
                 var re = arena.floatVec(n);
                 var im = arena.floatVec(n);
-                bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+                bool ok = Eigen.valuesQR(ref A, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
 
                 float sumRe = 0, sumIm = 0;
@@ -317,7 +317,7 @@ public class floatEigenQRTests
 
                 var re = arena.floatVec(n);
                 var im = arena.floatVec(n);
-                bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+                bool ok = Eigen.valuesQR(ref A, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
                 for (int i = 0; i < n; i++)
                 {
@@ -334,7 +334,7 @@ public class floatEigenQRTests
 
                 var re = arena.floatVec(n);
                 var im = arena.floatVec(n);
-                bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+                bool ok = Eigen.valuesQR(ref A, ref re, ref im);
                 RecordEq(ok ? 1 : 0, 1);
                 for (int i = 0; i < n; i++)
                 {
@@ -357,13 +357,13 @@ public class floatEigenQRTests
             int n = 5;
             var A = arena.floatFrank(n);
 
-            // trace must be read before eigenvaluesQR destroys A.
+            // trace must be read before valuesQR destroys A.
             float trace = 0;
             for (int i = 0; i < n; i++) trace += A[i, i];
 
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             float tol = (float)1E-2f;
@@ -405,7 +405,7 @@ public class floatEigenQRTests
 
             var re = arena.floatVec(n);
             var im = arena.floatVec(n);
-            bool ok = Eigen.eigenvaluesQR(ref A, ref re, ref im);
+            bool ok = Eigen.valuesQR(ref A, ref re, ref im);
             RecordEq(ok ? 1 : 0, 1);
 
             // Same scale-relative tolerance rationale as CompanionKnownRoots (mildly stiff).

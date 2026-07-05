@@ -2,26 +2,26 @@ using System;
 
 namespace LinearAlgebra
 {
-    public static partial class Cholesky
+    public static partial class CHOP
     {
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n x n pivoted-Cholesky problem. W (n x n,
-        /// the symmetric working copy) is needed by choleskyDecompositionPivot; bt (n, the permuted RHS)
-        /// by choleskyPivotSolve. Matches Arena.floatCholeskyPivotCache(n).
+        /// the symmetric working copy) is needed by decomp; bt (n, the permuted RHS)
+        /// by decompSolve. Matches Arena.fProxyCHOPCache(n).
         /// </summary>
-        static void RequireCholeskyPivotWorkspace(in floatCholeskyPivotCache ws, int n,
+        static void RequireCholeskyPivotWorkspace(in fProxyCHOPCache ws, int n,
                                                   bool needW, bool needBt)
         {
             if (needW && (ws.W.M_Rows != n || ws.W.N_Cols != n))
-                throw new ArgumentException("Cholesky: workspace W must be n x n (use Arena.floatCholeskyPivotCache(n))");
+                throw new ArgumentException("CHOP: workspace W must be n x n (use Arena.fProxyCHOPCache(n))");
             if (needBt && ws.bt.N != n)
-                throw new ArgumentException("Cholesky: workspace bt must have length n (use Arena.floatCholeskyPivotCache(n))");
+                throw new ArgumentException("CHOP: workspace bt must have length n (use Arena.fProxyCHOPCache(n))");
         }
     }
 
     /// <summary>
-    /// Reusable scratch for pivoted (rank-revealing) Cholesky (Cholesky.choleskyDecompositionPivot /
-    /// choleskyPivotSolve). Allocate ONCE via Arena.floatCholeskyPivotCache(n) and reuse it across
+    /// Reusable scratch for pivoted (rank-revealing) Cholesky (CHOP.decomp /
+    /// decompSolve). Allocate ONCE via Arena.fProxyCHOPCache(n) and reuse it across
     /// same-size calls. W (n x n) is the destroyable symmetric working copy the decomposition pivots
     /// on; bt (n) is the permuted right-hand side the solve gathers into.
     ///
@@ -30,24 +30,24 @@ namespace LinearAlgebra
     /// has no matrix-view type to slice an n x n buffer to a rank x rank stride) and remain per-call
     /// Allocator.Temp; only the full-rank path is fully zero-alloc with this workspace.
     /// </summary>
-    public struct floatCholeskyPivotCache
+    public struct fProxyCHOPCache
     {
-        public floatMxN W;
-        public floatN bt;
+        public fProxyMxN W;
+        public fProxyN bt;
     }
 
     public static partial class ArenaExtensions
     {
         /// <summary>
         /// Allocates a pivoted-Cholesky workspace for an n x n matrix. See
-        /// <see cref="floatCholeskyPivotCache"/> for reuse guidance.
+        /// <see cref="fProxyCHOPCache"/> for reuse guidance.
         /// </summary>
-        public static floatCholeskyPivotCache floatCholeskyPivotCache(this ref Arena arena, int n)
+        public static fProxyCHOPCache fProxyCHOPCache(this ref Arena arena, int n)
         {
-            return new floatCholeskyPivotCache
+            return new fProxyCHOPCache
             {
-                W = arena.floatMat(n, n),
-                bt = arena.floatVec(n)
+                W = arena.fProxyMat(n, n),
+                bt = arena.fProxyVec(n)
             };
         }
     }

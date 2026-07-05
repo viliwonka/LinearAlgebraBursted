@@ -12,7 +12,7 @@ namespace LinearAlgebra.Benchmarks
     // All three are time-only: the cost is dominated by iterative convergence, so GFLOP/s would be
     // misleading. A is never modified; workspaces are built once outside the timing loop.
 
-    // ---- svdRandomized ----
+    // ---- randomized ----
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SvdRandomizedJobFloat : IJob
@@ -23,7 +23,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN Vk;         // n x k
         public floatSVDRandomizedCache ws;
 
-        public void Execute() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, 16, ref ws);
+        public void Execute() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, 16, ref ws);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -35,7 +35,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN Vk;
         public doubleSVDRandomizedCache ws;
 
-        public void Execute() => SVD.svdRandomized(in A, ref Uk, ref Sk, ref Vk, 16, ref ws);
+        public void Execute() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, 16, ref ws);
     }
 
     // ---- pinvSolve ----
@@ -90,7 +90,7 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== svdRandomized (Halko-Martinsson-Tropp, top-k singular triplets, k=16; ms) ===");
+            sb.AppendLine("=== randomized (Halko-Martinsson-Tropp, top-k singular triplets, k=16; ms) ===");
             sb.AppendLine("    Randomized low-rank path: GEMM sketch -> QR range-finder -> small exact SVD.");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in Bench.Sizes) sb.AppendLine(SvdRandFloat(n));
@@ -110,7 +110,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine();
         }
 
-        // ---- svdRandomized ----
+        // ---- randomized ----
 
         static string SvdRandFloat(int n)
         {

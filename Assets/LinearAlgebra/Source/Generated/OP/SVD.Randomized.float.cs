@@ -48,7 +48,7 @@ namespace LinearAlgebra
         /// <paramref name="ws"/> holds all scratch; size it with
         /// Arena.floatSVDRandomizedCache(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
-        public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
+        public static bool randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter,
                                          ref floatSVDRandomizedCache ws)
         {
@@ -67,15 +67,15 @@ namespace LinearAlgebra
 
             Blas.dot(in A, in ws.Omega, ref ws.Y);          // Y = A Ω
 
-            // Q = orth(Y): qrDecomposition overwrites Y with the thin orthonormal Q (m x ℓ).
-            QR.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+            // Q = orth(Y): decompInPlace overwrites Y with the thin orthonormal Q (m x ℓ).
+            QR.decompInPlace(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
 
             // Subspace iteration: Y = A (Aᵀ Q), re-orthonormalize.
             for (int it = 0; it < powerIters; it++)
             {
                 Blas.dot(in A, in ws.Y, ref ws.Z, true);    // Z = Aᵀ Q   (n x ℓ)
                 Blas.dot(in A, in ws.Z, ref ws.Y);          // Y = A Z    (m x ℓ)
-                QR.qrDecomposition(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
+                QR.decompInPlace(ref ws.Y, ref ws.R, ref ws.qu, ref ws.qw);
             }
 
             // B = Qᵀ A (ℓ x n); solve its SVD exactly via Bᵀ (n x ℓ, tall): Bᵀ = Up Σ Vpᵀ, so
@@ -83,7 +83,7 @@ namespace LinearAlgebra
             Blas.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
             Blas.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
 
-            bool ok = svdThin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
+            bool ok = thin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
             if (!ok)
                 return false;
 
@@ -98,21 +98,21 @@ namespace LinearAlgebra
             return true;
         }
 
-        /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
-        public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
+        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
+        public static bool randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, uint seed, ref floatSVDRandomizedCache ws)
-            => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75, ref ws);
+            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75, ref ws);
 
-        /// <summary>svdRandomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
-        public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
+        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
+        public static bool randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, ref floatSVDRandomizedCache ws)
-            => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
+            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
 
         /// <summary>
-        /// svdRandomized allocating all scratch (O(mℓ + nℓ)) from A's arena. See the ref-workspace
+        /// randomized allocating all scratch (O(mℓ + nℓ)) from A's arena. See the ref-workspace
         /// overload for semantics.
         /// </summary>
-        public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
+        public static bool randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter)
         {
             int m = A.M_Rows;
@@ -136,16 +136,16 @@ namespace LinearAlgebra
                 Vp = A.floatTempMat(l, l),
                 UA = A.floatTempMat(m, l)
             };
-            return svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, maxIter, ref ws);
+            return randomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, maxIter, ref ws);
         }
 
-        /// <summary>svdRandomized (allocating) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
-        public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
+        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
+        public static bool randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, uint seed)
-            => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75);
+            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75);
 
-        /// <summary>svdRandomized (allocating) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
-        public static bool svdRandomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk, int k)
-            => svdRandomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75);
+        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
+        public static bool randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk, int k)
+            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75);
     }
 }

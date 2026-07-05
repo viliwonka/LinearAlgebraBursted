@@ -6,9 +6,9 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Workspace-overload tests for pivoted Cholesky: Cholesky.choleskyDecompositionPivot /
-// choleskyPivotSolve and their shared workspace floatCholeskyPivotCache
-// (Arena.floatCholeskyPivotCache(n)). W (n x n) is the destroyable symmetric working copy the
+// Workspace-overload tests for pivoted Cholesky: CHOP.decomp /
+// CHOP.decompSolve / CHOP.solveInPlace and their shared workspace floatCHOPCache
+// (Arena.floatCHOPCache(n)). W (n x n) is the destroyable symmetric working copy the
 // decomposition pivots on; bt (n) is the permuted RHS the solve gathers into.
 //
 // The ws overloads are the real bodies; the allocating overloads delegate with Temp scratch, so for
@@ -82,14 +82,14 @@ public class floatCholeskyPivotWorkspaceTests
 
             var La = arena.floatMat(n, n);
             var Pa = new Pivot(n, Allocator.Persistent);
-            var infoA = Cholesky.choleskyDecompositionPivot(in A, ref La, ref Pa);
+            var infoA = CHOP.decomp(in A, ref La, ref Pa);
             bool okA = infoA.Solved;
             int rankA = infoA.rank;
 
-            var ws = arena.floatCholeskyPivotCache(n);
+            var ws = arena.floatCHOPCache(n);
             var Lw = arena.floatMat(n, n);
             var Pw = new Pivot(n, Allocator.Persistent);
-            var infoW = Cholesky.choleskyDecompositionPivot(in A, ref Lw, ref Pw, ref ws);
+            var infoW = CHOP.decomp(in A, ref Lw, ref Pw, ref ws);
             bool okW = infoW.Solved;
             int rankW = infoW.rank;
 
@@ -103,7 +103,7 @@ public class floatCholeskyPivotWorkspaceTests
             arena.Dispose();
         }
 
-        // Compare the two choleskyPivotSolve(ref L, in P, rank, ...) overloads on a common factor.
+        // Compare the two CHOP.decompSolve(ref L, in P, rank, ...) overloads on a common factor.
         void SolveEquivFullRank()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -113,16 +113,16 @@ public class floatCholeskyPivotWorkspaceTests
             // shared factor (allocating decomposition; L/P/rank fed to both solve forms).
             var L = arena.floatMat(n, n);
             var P = new Pivot(n, Allocator.Persistent);
-            int rank = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P).rank;
+            int rank = CHOP.decomp(in A, ref L, ref P).rank;
 
             var b = arena.floatRandomVec(n, (float)(-3f), (float)3f, 4004);
 
             var ba = b.Copy();
-            Cholesky.choleskyPivotSolve(ref L, in P, rank, ref ba);
+            CHOP.decompSolve(ref L, in P, rank, ref ba);
 
-            var ws = arena.floatCholeskyPivotCache(n);
+            var ws = arena.floatCHOPCache(n);
             var bw = b.Copy();
-            Cholesky.choleskyPivotSolve(ref L, in P, rank, ref bw, ref ws);
+            CHOP.decompSolve(ref L, in P, rank, ref bw, ref ws);
 
             Assert.IsTrue(Analysis.isZero(ba - bw, Tol()));
 
@@ -142,13 +142,13 @@ public class floatCholeskyPivotWorkspaceTests
             var La = arena.floatMat(n, n);
             var Pa = new Pivot(n, Allocator.Persistent);
             var ba = b.Copy();
-            bool okA = Cholesky.choleskyPivotSolve(in A, ref La, ref Pa, ref ba);
+            bool okA = CHOP.solveInPlace(in A, ref La, ref Pa, ref ba);
 
-            var ws = arena.floatCholeskyPivotCache(n);
+            var ws = arena.floatCHOPCache(n);
             var Lw = arena.floatMat(n, n);
             var Pw = new Pivot(n, Allocator.Persistent);
             var bw = b.Copy();
-            bool okW = Cholesky.choleskyPivotSolve(in A, ref Lw, ref Pw, ref bw, ref ws);
+            bool okW = CHOP.solveInPlace(in A, ref Lw, ref Pw, ref bw, ref ws);
 
             Assert.IsTrue(okA == okW);
             Assert.IsTrue(Analysis.isZero(ba - bw, Tol()));
@@ -170,25 +170,25 @@ public class floatCholeskyPivotWorkspaceTests
             var b1 = arena.floatRandomVec(n, (float)(-2f), (float)2f, 1111);
             var b2 = arena.floatRandomVec(n, (float)(-2f), (float)2f, 2222);
 
-            var ws = arena.floatCholeskyPivotCache(n);   // allocated ONCE
+            var ws = arena.floatCHOPCache(n);   // allocated ONCE
 
             // warm on (A1, b1)
             var L1 = arena.floatMat(n, n);
             var P1 = new Pivot(n, Allocator.Persistent);
             var b1c = b1.Copy();
-            Cholesky.choleskyPivotSolve(in A1, ref L1, ref P1, ref b1c, ref ws);
+            CHOP.solveInPlace(in A1, ref L1, ref P1, ref b1c, ref ws);
 
             // reuse on (A2, b2)
             var Lw = arena.floatMat(n, n);
             var Pw = new Pivot(n, Allocator.Persistent);
             var b2w = b2.Copy();
-            bool okW = Cholesky.choleskyPivotSolve(in A2, ref Lw, ref Pw, ref b2w, ref ws);
+            bool okW = CHOP.solveInPlace(in A2, ref Lw, ref Pw, ref b2w, ref ws);
 
             // fresh allocating reference on (A2, b2)
             var La = arena.floatMat(n, n);
             var Pa = new Pivot(n, Allocator.Persistent);
             var b2a = b2.Copy();
-            bool okA = Cholesky.choleskyPivotSolve(in A2, ref La, ref Pa, ref b2a);
+            bool okA = CHOP.solveInPlace(in A2, ref La, ref Pa, ref b2a);
 
             Assert.IsTrue(okW == okA);
             Assert.IsTrue(Analysis.isZero(b2w - b2a, Tol()));
@@ -227,9 +227,9 @@ public class floatCholeskyPivotWorkspaceTests
             int n = 6;
             var A = ManagedSPD(ref arena, n);
             var L = arena.floatMat(n, n);
-            var ws = arena.floatCholeskyPivotCache(n + 1);   // W wrong (needW)
+            var ws = arena.floatCHOPCache(n + 1);   // W wrong (needW)
             Assert.Throws<ArgumentException>(
-                () => Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, ref ws));
+                () => CHOP.decomp(in A, ref L, ref P, ref ws));
         }
         finally { P.Dispose(); arena.Dispose(); }
     }
@@ -244,13 +244,13 @@ public class floatCholeskyPivotWorkspaceTests
             int n = 6;
             var A = ManagedSPD(ref arena, n);
             var L = arena.floatMat(n, n);
-            int rank = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P).rank;
+            int rank = CHOP.decomp(in A, ref L, ref P).rank;
 
             var b = arena.floatVec(n);
             // bt wrong length (needBt) while W is fine.
-            var badWs = new floatCholeskyPivotCache { W = arena.floatMat(n, n), bt = arena.floatVec(n + 1) };
+            var badWs = new floatCHOPCache { W = arena.floatMat(n, n), bt = arena.floatVec(n + 1) };
             Assert.Throws<ArgumentException>(
-                () => Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b, ref badWs));
+                () => CHOP.decompSolve(ref L, in P, rank, ref b, ref badWs));
         }
         finally { P.Dispose(); arena.Dispose(); }
     }
@@ -269,30 +269,30 @@ public class floatCholeskyPivotWorkspaceTests
             var L = arena.floatMat(n, n);
 
             // decomposition with W only (bt = default) must succeed.
-            var wsNoBt = new floatCholeskyPivotCache { W = arena.floatMat(n, n), bt = default };
+            var wsNoBt = new floatCHOPCache { W = arena.floatMat(n, n), bt = default };
             Assert.DoesNotThrow(
-                () => Cholesky.choleskyDecompositionPivot(in A, ref L, ref P, ref wsNoBt));
+                () => CHOP.decomp(in A, ref L, ref P, ref wsNoBt));
 
-            int rank = Cholesky.choleskyDecompositionPivot(in A, ref L, ref P).rank;
+            int rank = CHOP.decomp(in A, ref L, ref P).rank;
 
             // solve with bt only (W = default) must succeed.
             var b = arena.floatVec(n);
             for (int i = 0; i < n; i++) b[i] = (float)(i + 1);
-            var wsNoW = new floatCholeskyPivotCache { W = default, bt = arena.floatVec(n) };
+            var wsNoW = new floatCHOPCache { W = default, bt = arena.floatVec(n) };
             Assert.DoesNotThrow(
-                () => Cholesky.choleskyPivotSolve(ref L, in P, rank, ref b, ref wsNoW));
+                () => CHOP.decompSolve(ref L, in P, rank, ref b, ref wsNoW));
         }
         finally { P.Dispose(); arena.Dispose(); }
     }
 
-    // Arena.floatCholeskyPivotCache(n): W (n x n), bt (n).
+    // Arena.floatCHOPCache(n): W (n x n), bt (n).
     [Test]
     public void CholeskyPivotWorkspace_Factory_SizesCorrectly()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var ws = arena.floatCholeskyPivotCache(7);
+            var ws = arena.floatCHOPCache(7);
             Assert.AreEqual(7, ws.W.M_Rows);
             Assert.AreEqual(7, ws.W.N_Cols);
             Assert.AreEqual(7, ws.bt.N);

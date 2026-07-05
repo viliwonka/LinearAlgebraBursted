@@ -13,8 +13,8 @@ namespace LinearAlgebra.Sparse
     /// BR x BR inverse-and-multiply reduces to that automatically for BR=1.
     ///
     /// Built ONCE from a compressed <see cref="floatBSR"/> (an O(nb * BR^3) one-time cost via
-    /// LU decomposition on each tiny diagonal block -- reuses <see cref="LU.luDecompositionInPlace"/>
-    /// / <see cref="LU.luSolve(ref floatMxN, in Pivot, ref floatN)"/>, no new inverse
+    /// LU decomposition on each tiny diagonal block -- reuses <see cref="LU.decompInPlace(ref floatMxN, ref Pivot)"/>
+    /// / <see cref="LU.decompSolve(ref floatMxN, in Pivot, ref floatN)"/>, no new inverse
     /// primitive), then <see cref="Apply"/> is a zero-alloc block-diagonal matvec every PCG
     /// iteration.
     ///
@@ -132,7 +132,7 @@ namespace LinearAlgebra.Sparse
                         Dcopy[r, c] = A.Values[srcOff + r * BR + c];
 
                 var P = new Pivot(BR, Allocator.Temp);
-                bool ok = LU.luDecompositionInPlace(ref Dcopy, ref P);
+                bool ok = LU.decompInPlace(ref Dcopy, ref P);
 
                 if (!ok)
                 {
@@ -150,7 +150,7 @@ namespace LinearAlgebra.Sparse
                     for (int r = 0; r < BR; r++)
                         col[r] = (r == c) ? (float)1 : (float)0;
 
-                    LU.luSolve(ref Dcopy, in P, ref col);
+                    LU.decompSolve(ref Dcopy, in P, ref col);
 
                     for (int r = 0; r < BR; r++)
                         dinv[dstOff + r * BR + c] = col[r];

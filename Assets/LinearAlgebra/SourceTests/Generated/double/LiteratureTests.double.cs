@@ -64,7 +64,7 @@ public class doubleLiteratureTests
 
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            LU.decompInPlace(ref LUmat, ref pivot);
             double det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -120,7 +120,7 @@ public class doubleLiteratureTests
             var A2 = arena.doubleLauchli(3, eps);   // (3+1)x3 = 4x3
             var b2 = Blas.dot(A2, xTrue);
             var xQr = arena.doubleVec(3);
-            QR.qrDirectSolve(ref A2, ref b2, ref xQr);
+            QR.solveInPlace(ref A2, ref b2, ref xQr);
             for (int k = 0; k < 3; k++)
                 AssertClose(xQr[k], xTrue[k], (double)1E-2);
 
@@ -137,12 +137,12 @@ public class doubleLiteratureTests
             var P = arena.doublePascal(n);
 
             var L = arena.doubleMat(n, n);
-            AssertTrue(Cholesky.choleskyDecomposition(in P, ref L));
+            AssertTrue(CHO.decomp(in P, ref L));
 
             // det(Pascal) = 1 (LU destroys its input, so factor a copy)
             var LUmat = P.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
-            LU.luDecompositionInPlace(ref LUmat, ref pivot);
+            LU.decompInPlace(ref LUmat, ref pivot);
             double det = LU.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
@@ -178,7 +178,7 @@ public class doubleLiteratureTests
 
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref W, ref eig, ref V, 100));   // destroys W; must converge
+            AssertTrue(Eigen.decompInPlace(ref W, ref eig, ref V, 100));   // destroys W; must converge
 
             AssertTrue(Analysis.isOrthogonal(V, (double)1E-3));
 
@@ -214,13 +214,13 @@ public class doubleLiteratureTests
             AssertClose(Analysis.cond(in T), lamMax / lamMin, (double)1E-2);
 
             var L = arena.doubleMat(n, n);
-            AssertTrue(Cholesky.choleskyDecomposition(in T, ref L));
+            AssertTrue(CHO.decomp(in T, ref L));
 
             // eigenvalues match the closed form, descending: eig[i] = 2 - 2cos((n-i)π/(n+1))
             var Tc = T.Copy();           // eigenDecomposition destroys its input
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
-            AssertTrue(Eigen.eigenDecomposition(ref Tc, ref eig, ref V));   // must converge
+            AssertTrue(Eigen.decompInPlace(ref Tc, ref eig, ref V));   // must converge
 
             AssertTrue(Analysis.isOrthogonal(V, (double)1E-3));
 
@@ -248,7 +248,7 @@ public class doubleLiteratureTests
 
             var Q = A.Copy();
             var R = arena.doubleMat(n, n);
-            QR.qrDecomposition(ref Q, ref R);
+            QR.decompInPlace(ref Q, ref R);
 
             doubleMxN recon = Blas.dot(Q, R);
             double err = Analysis.MaxZeroError(A - recon);
@@ -269,7 +269,7 @@ public class doubleLiteratureTests
             A[1, 0] = (double)2; A[1, 1] = (double)1;
 
             var L = arena.doubleMat(2, 2);
-            bool spd = Cholesky.choleskyDecomposition(in A, ref L);
+            bool spd = CHO.decomp(in A, ref L);
 
             if (spd && Fail[0] == (double)0)
             {

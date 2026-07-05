@@ -12,7 +12,7 @@ namespace LinearAlgebra
         // Fundamental-subspace bases from the SVD A = U diag(S) Vᵀ. With a numerical rank r =
         // #{ S[j] > tol } (tol = relTol * S[0]; relTol < 0 -> auto = max(m,n)*eps), the trailing
         // right-singular vectors span the NULLSPACE and the leading left-singular vectors span the
-        // RANGE (column space). A is m x n with m >= n (the same precondition as svdThin); the
+        // RANGE (column space). A is m x n with m >= n (the same precondition as thin); the
         // wide m < n case needs the orthogonal complement of a thin factor and is left for later.
         //
         // Each op needs one full Golub-Kahan SVD (U m x n, S n, V n x n) of scratch. The allocating
@@ -50,7 +50,7 @@ namespace LinearAlgebra
             if (n == 0)
                 return 0;
 
-            converged = svdThin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
+            converged = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
             if (!converged)
                 return 0;
 
@@ -137,7 +137,7 @@ namespace LinearAlgebra
             if (n == 0)
                 return 0;
 
-            converged = svdThin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
+            converged = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
             if (!converged)
                 return 0;
 

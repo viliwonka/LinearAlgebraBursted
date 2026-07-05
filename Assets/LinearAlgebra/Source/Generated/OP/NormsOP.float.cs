@@ -49,60 +49,60 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void NormalizeL2(in floatN   x) => floatNormsCore.NormalizeL2(x);
+        public static void normalizeL2(in floatN   x) => floatNormsCore.NormalizeL2(x);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void NormalizeL2(in floatMxN x) => floatNormsCore.NormalizeL2(x);
+        public static void normalizeL2(in floatMxN x) => floatNormsCore.NormalizeL2(x);
 
         // returns length before normalization
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeL2(in floatN   x, int start, int end) => floatNormsCore.NormalizeL2(x, start, end);
+        public static float normalizeL2(in floatN   x, int start, int end) => floatNormsCore.NormalizeL2(x, start, end);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeL2(in floatMxN x, int start, int end) => floatNormsCore.NormalizeL2(x, start, end);
+        public static float normalizeL2(in floatMxN x, int start, int end) => floatNormsCore.NormalizeL2(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeL1(in floatN   x) => floatNormsCore.NormalizeL1(x);
+        public static float normalizeL1(in floatN   x) => floatNormsCore.NormalizeL1(x);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeL1(in floatMxN x) => floatNormsCore.NormalizeL1(x);
+        public static float normalizeL1(in floatMxN x) => floatNormsCore.NormalizeL1(x);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeL1(in floatN   x, int start, int end) => floatNormsCore.NormalizeL1(x, start, end);
+        public static float normalizeL1(in floatN   x, int start, int end) => floatNormsCore.NormalizeL1(x, start, end);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeL1(in floatMxN x, int start, int end) => floatNormsCore.NormalizeL1(x, start, end);
+        public static float normalizeL1(in floatMxN x, int start, int end) => floatNormsCore.NormalizeL1(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLMax(in floatN   x) => floatNormsCore.NormalizeLMax(x);
+        public static float normalizeLMax(in floatN   x) => floatNormsCore.NormalizeLMax(x);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLMax(in floatMxN x) => floatNormsCore.NormalizeLMax(x);
+        public static float normalizeLMax(in floatMxN x) => floatNormsCore.NormalizeLMax(x);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLMax(in floatN   x, int start, int end) => floatNormsCore.NormalizeLMax(x, start, end);
+        public static float normalizeLMax(in floatN   x, int start, int end) => floatNormsCore.NormalizeLMax(x, start, end);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLMax(in floatMxN x, int start, int end) => floatNormsCore.NormalizeLMax(x, start, end);
+        public static float normalizeLMax(in floatMxN x, int start, int end) => floatNormsCore.NormalizeLMax(x, start, end);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLP(in floatN   x, float p) => floatNormsCore.NormalizeLP(x, p);
+        public static float normalizeLP(in floatN   x, float p) => floatNormsCore.NormalizeLP(x, p);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLP(in floatMxN x, float p) => floatNormsCore.NormalizeLP(x, p);
+        public static float normalizeLP(in floatMxN x, float p) => floatNormsCore.NormalizeLP(x, p);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLP(in floatN   x, int start, int end, float p) => floatNormsCore.NormalizeLP(x, start, end, p);
+        public static float normalizeLP(in floatN   x, int start, int end, float p) => floatNormsCore.NormalizeLP(x, start, end, p);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float NormalizeLP(in floatMxN x, int start, int end, float p) => floatNormsCore.NormalizeLP(x, start, end, p);
+        public static float normalizeLP(in floatMxN x, int start, int end, float p) => floatNormsCore.NormalizeLP(x, start, end, p);
 
         // ---- Enum-dispatch normalize ----
 
         /// <summary>Normalize x to unit norm in-place, using the specified <paramref name="n"/> (L1/L2/Linf).
-        /// Delegates to the corresponding <c>NormalizeL1</c>/<c>NormalizeL2</c>/<c>NormalizeLMax</c> kernel.</summary>
+        /// Delegates to the corresponding <c>normalizeL1</c>/<c>normalizeL2</c>/<c>normalizeLMax</c> kernel.</summary>
         /// <remarks>Flat form — treats the input as one 1-D array. For a matrix this is the
         /// <b>whole-matrix</b> scope (all elements as a single distribution); use
-        /// <see cref="NormalizeRows"/> or <see cref="NormalizeColumns"/> for per-axis normalization.</remarks>
+        /// <see cref="normalizeRows"/> or <see cref="normalizeColumns"/> for per-axis normalization.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Normalize(in floatN   x, Norm n) => floatNormsCore.Normalize(x, n);
+        public static void normalize(in floatN   x, Norm n) => floatNormsCore.Normalize(x, n);
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Normalize(in floatMxN x, Norm n) => floatNormsCore.Normalize(x, n);
+        public static void normalize(in floatMxN x, Norm n) => floatNormsCore.Normalize(x, n);
 
         // Zero-norm row → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
-        public static void NormalizeRows(ref floatMxN A, Norm n)
+        public static void normalizeRows(ref floatMxN A, Norm n)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
 
@@ -142,7 +142,7 @@ namespace LinearAlgebra
         }
 
         // Zero-norm column → left at 0 (NaN-safe !(norm > 0) guard). No allocation.
-        public static void NormalizeColumns(ref floatMxN A, Norm n)
+        public static void normalizeColumns(ref floatMxN A, Norm n)
         {
             if (A.M_Rows == 0 || A.N_Cols == 0) return;
 
