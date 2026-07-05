@@ -110,4 +110,44 @@ public class ArenaLayoutTests
 
         Assert.Throws<System.InvalidOperationException>(() => arena.Pivot(1));
     }
+
+    // ---- struct-size regression guard for the record-pointer migration -----------------------------
+    //
+    // The migration's premise is ZERO struct growth: each vector/matrix struct swapped its old 8-byte
+    // `Arena _arena` handle for an 8-byte record pointer (_rec), while the backing UnsafeList<T> --
+    // once the sole inline Data field -- became the _inlineData field used only on the standalone
+    // (non-arena) path. Net: no new fields, no size change. UnsafeList<T> is a fixed-size handle
+    // (Ptr + length + capacity + allocator) independent of T, so every N-type is the same size and
+    // every MxN-type is the same size across all numeric families AND bool. These pinned byte counts
+    // trip immediately if a future edit adds a field to any of these structs. The float/double
+    // baselines cross-check the 32B/48B numbers claimed in commit a79c212.
+    //
+    // Measured empirically (Windows/x64, Unity 6000.3.2f1): every N == 32 bytes, every MxN == 48.
+
+    const int VecStructSize = 32;
+    const int MatStructSize = 48;
+
+    [Test]
+    public unsafe void VectorStructs_AreExpectedSize()
+    {
+        Assert.AreEqual(VecStructSize, UnsafeUtility.SizeOf<floatN>(), "floatN");
+        Assert.AreEqual(VecStructSize, UnsafeUtility.SizeOf<doubleN>(), "doubleN");
+        Assert.AreEqual(VecStructSize, UnsafeUtility.SizeOf<intN>(), "intN");
+        Assert.AreEqual(VecStructSize, UnsafeUtility.SizeOf<shortN>(), "shortN");
+        Assert.AreEqual(VecStructSize, UnsafeUtility.SizeOf<longN>(), "longN");
+        Assert.AreEqual(VecStructSize, UnsafeUtility.SizeOf<uintN>(), "uintN");
+        Assert.AreEqual(VecStructSize, UnsafeUtility.SizeOf<boolN>(), "boolN");
+    }
+
+    [Test]
+    public unsafe void MatrixStructs_AreExpectedSize()
+    {
+        Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<floatMxN>(), "floatMxN");
+        Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<doubleMxN>(), "doubleMxN");
+        Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<intMxN>(), "intMxN");
+        Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<shortMxN>(), "shortMxN");
+        Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<longMxN>(), "longMxN");
+        Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<uintMxN>(), "uintMxN");
+        Assert.AreEqual(MatStructSize, UnsafeUtility.SizeOf<boolMxN>(), "boolMxN");
+    }
 }

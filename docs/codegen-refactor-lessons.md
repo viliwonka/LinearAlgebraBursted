@@ -127,6 +127,18 @@ purpose. Companion to `docs/naming-style-guide.md` (the conventions these mistak
   reproducing the literal `//+`/`//-`/`/*+`/bracket token sequence; grep the whole diff for each
   marker's exact start token after writing ANY comment that discusses codegen mechanics, not just
   once at the end.
+- **A proxy-token SUBSTRING anywhere in a file's CONTENT — even inside a plain comment — changes how
+  the whole file is classified and emitted, if the FILENAME carries no proxy token.** The converter
+  (`TemplateConverter.cs:37-39`) treats a file as singular only when neither its filename NOR its
+  content contains a proxy token; a non-singular file whose filename lacks the token still gets routed
+  to multi-emission with the family chosen purely by content (`:64-82`), and the per-type output path
+  comes from `relativePath.Replace(proxy, typeStr)` (`:88`) — a NO-OP when the filename has no token.
+  Result: all per-type emissions collapse onto ONE output path, last-write-wins, with whatever the
+  final iteration substituted (observed as `"longN/fProxyN.Dispose()"` garbage in generated output
+  during the bool records migration). So in any token-free-NAMED file (`boolRecords.bool.cs`,
+  `Arena.cs` sans its `//singularFile//`…) never write a literal proxy name even in prose — reference
+  concrete safe names (`floatN`, `intN`) instead, and keep `//singularFile//` markers intact. Grep new
+  token-free-named files for proxy substrings before regen.
 - **A brand-new codegen-generated CONCRETE type name (e.g. `uintN`, the product of substituting a
   proxy token) does not exist as a real type anywhere in `TemplateSource`'s own raw, unprocessed
   compile** — only the proxy token itself (`iProxyN`, wired up as a real placeholder struct in

@@ -6,10 +6,14 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        internal UnsafeList<intN> intVectors;
-        internal UnsafeList<intMxN> intMatrices;
-        internal UnsafeList<intN> intTempVectors;
-        internal UnsafeList<intMxN> intTempMatrices;
+        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A) -- replace
+        // the old value-copy-tracking UnsafeList<intN>/UnsafeList<intMxN> lists. intN/
+        // intMxN now hold a stable intVecRecord*/intMatRecord* pointing INTO one of these
+        // tables instead of storing their Data inline + being tracked by a separate value copy.
+        internal ChunkedRecordTable<intVecRecord> intVecRecords;
+        internal ChunkedRecordTable<intMatRecord> intMatRecords;
+        internal ChunkedRecordTable<intVecRecord> intTempVecRecords;
+        internal ChunkedRecordTable<intMatRecord> intTempMatRecords;
     }
 
     public unsafe partial struct Arena {
@@ -18,15 +22,20 @@ namespace LinearAlgebra
 
         public intN intVec(int N, bool uninit = false) {
 
-            var vec = new intN(N, in this, uninit);
-            _core->intVectors.Add(in vec);
-            return vec;
+            intVecRecord* rec = _core->intVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intVecRecords;
+            rec->SelfIndex = slot;
+            return new intN(N, rec, Allocator, uninit);
         }
 
         public intN intVec(int N, int s)
         {
-            var vec = new intN(N, in this, true);
-            _core->intVectors.Add(in vec);
+            intVecRecord* rec = _core->intVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intVecRecords;
+            rec->SelfIndex = slot;
+            var vec = new intN(N, rec, Allocator, true);
             unsafe {
                 UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
             }
@@ -35,44 +44,56 @@ namespace LinearAlgebra
 
         internal intN intVec(in intN orig)
         {
-            var vec = new intN(in orig);
-            _core->intVectors.Add(in vec);   // persistent (backs Copy()); was wrongly the temp list
-            return vec;
+            intVecRecord* rec = _core->intVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intVecRecords;
+            rec->SelfIndex = slot;
+            return new intN(in orig, rec, Allocator);   // persistent (backs Copy()); was wrongly the temp list
         }
 
         internal intN intTempVec(int N, bool uninit = false)
         {
-            var vec = new intN(N, in this, uninit);
-            _core->intTempVectors.Add(in vec);
-            return vec;
+            intVecRecord* rec = _core->intTempVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intTempVecRecords;
+            rec->SelfIndex = slot;
+            return new intN(N, rec, Allocator, uninit);
         }
 
         internal intN intTempVec(in intN orig)
         {
-            var vec = new intN(in orig);
-            _core->intTempVectors.Add(in vec);
-            return vec;
+            intVecRecord* rec = _core->intTempVecRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intTempVecRecords;
+            rec->SelfIndex = slot;
+            return new intN(in orig, rec, Allocator);
         }
         #endregion
 
         #region MATRIX
         public intMxN intMat(int dim, bool uninit = false)
         {
-            // forward to the (rows, cols) overload so the matrix is TRACKED (was leaking on Dispose).
+            // forward to the (rows, cols) overload so the matrix is TRACKED in intMatRecords —
+            // the direct `new intMxN(...)` here was untracked and leaked on Dispose.
             return intMat(dim, dim, uninit);
         }
 
         public intMxN intMat(int M_rows, int N_cols, bool uninit = false)
         {
-            var matrix = new intMxN(M_rows, N_cols, in this, uninit);
-            _core->intMatrices.Add(in matrix);
-            return matrix;
+            intMatRecord* rec = _core->intMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intMatRecords;
+            rec->SelfIndex = slot;
+            return new intMxN(M_rows, N_cols, rec, Allocator, uninit);
         }
 
         public intMxN intMat(int M_rows, int N_cols, int s)
         {
-            var matrix = new intMxN(M_rows, N_cols, in this, false);
-            _core->intMatrices.Add(in matrix);
+            intMatRecord* rec = _core->intMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intMatRecords;
+            rec->SelfIndex = slot;
+            var matrix = new intMxN(M_rows, N_cols, rec, Allocator, false);
             unsafe
             {
                 UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
@@ -82,41 +103,55 @@ namespace LinearAlgebra
 
         public intMxN intMat(in intMxN orig)
         {
-            var matrix = new intMxN(in orig);
-            _core->intMatrices.Add(in matrix);
-            return matrix;
+            intMatRecord* rec = _core->intMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intMatRecords;
+            rec->SelfIndex = slot;
+            return new intMxN(in orig, rec, Allocator);
         }
 
         internal intMxN intTempMat(int M_rows, int M_cols, bool uninit = false)
         {
-            var matrix = new intMxN(M_rows, M_cols, in this, uninit);
-            _core->intTempMatrices.Add(in matrix);
-            return matrix;
+            intMatRecord* rec = _core->intTempMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intTempMatRecords;
+            rec->SelfIndex = slot;
+            return new intMxN(M_rows, M_cols, rec, Allocator, uninit);
         }
 
         internal intMxN intTempMat(in intMxN orig)
         {
-            var matrix = new intMxN(orig);
-            _core->intTempMatrices.Add(in matrix);
-            return matrix;
+            intMatRecord* rec = _core->intTempMatRecords.Allocate(out int slot);
+            rec->Owner = _core;
+            rec->Table = &_core->intTempMatRecords;
+            rec->SelfIndex = slot;
+            return new intMxN(in orig, rec, Allocator);
         }
         #endregion
 
-        // --- debug pool checks (see Arena.fProxy) ---
+        // --- debug pool checks (see Arena.fProxy.cs for the full rationale) ---
         public bool isPersistent(in intN v) {
-            for (int i = 0; i < _core->intVectors.Length; i++) if (_core->intVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->intVecRecords.Count; i++)
+                if (_core->intVecRecords.IsAlive(i) && _core->intVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
+                    return true;
             return false;
         }
         public bool isTemp(in intN v) {
-            for (int i = 0; i < _core->intTempVectors.Length; i++) if (_core->intTempVectors[i].Data.Ptr == v.Data.Ptr) return true;
+            for (int i = 0; i < _core->intTempVecRecords.Count; i++)
+                if (_core->intTempVecRecords.IsAlive(i) && _core->intTempVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)
+                    return true;
             return false;
         }
         public bool isPersistent(in intMxN m) {
-            for (int i = 0; i < _core->intMatrices.Length; i++) if (_core->intMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->intMatRecords.Count; i++)
+                if (_core->intMatRecords.IsAlive(i) && _core->intMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
+                    return true;
             return false;
         }
         public bool isTemp(in intMxN m) {
-            for (int i = 0; i < _core->intTempMatrices.Length; i++) if (_core->intTempMatrices[i].Data.Ptr == m.Data.Ptr) return true;
+            for (int i = 0; i < _core->intTempMatRecords.Count; i++)
+                if (_core->intTempMatRecords.IsAlive(i) && _core->intTempMatRecords.Resolve(i)->Data.Ptr == m.Data.Ptr)
+                    return true;
             return false;
         }
 

@@ -5,10 +5,11 @@ using LinearAlgebra.Sparse;
 //singularFile//
 //alsoExpand[uint]// ArenaCore merges every generated type's pools into this ONE file via the
 //copyReplace/copyReplaceFill blocks below (unlike a per-type file, which would emit a separate
-//Arena.<type>.cs per type). The uint pools themselves are declared in Arena.iProxy.cs's
-//alsoExpand-widened partial (uintVectors/uintMatrices/uintTempVectors/uintTempMatrices) - this flag
-//widens the iProxy-token blocks below the SAME way, so Init/Clear/ClearTemp/Dispose/*AllocationsCount
-//actually construct/clear/dispose those pools instead of leaving them default-constructed garbage.
+//Arena.<type>.cs per type). The uint record tables themselves are declared in Arena.iProxy.cs's
+//alsoExpand-widened partial (uintVecRecords/uintMatRecords/uintTempVecRecords/uintTempMatRecords) -
+//this flag widens the iProxy-token blocks below the SAME way, so Init/Clear/ClearTemp/Dispose/
+//*AllocationsCount actually construct/clear/dispose/count those tables instead of leaving them
+//default-constructed garbage.
 namespace LinearAlgebra
 {
     /// <summary>
@@ -20,29 +21,34 @@ namespace LinearAlgebra
     /// only <see cref="Arena"/>'s own partials (same assembly) reach through <c>_core-&gt;</c>;
     /// nothing outside the library touches ArenaCore directly.
     ///
-    /// <para><b>Migrated families (float/double)</b> -- docs/rfc-memory-model.md §4 Option A -- own
-    /// pointer-stable <see cref="ChunkedRecordTable{TRecord}"/> tables
+    /// <para><b>Migrated families (float/double, int/short/long/uint, bool)</b> -- docs/rfc-memory-
+    /// model.md §4 Option A -- own pointer-stable <see cref="ChunkedRecordTable{TRecord}"/> tables
     /// (<c>fProxyVecRecords</c>/<c>fProxyMatRecords</c>/temp* -- see <c>fProxyRecords.fProxy.cs</c>,
-    /// <c>Arena.fProxy.cs</c>): fProxyN/fProxyMxN hold a stable record pointer instead of being
-    /// tracked by a separate value copy, and Dispose()/Clear()/ClearTemp() free individual slots.
-    /// <b>Not-yet-migrated families</b> (<c>fProxyBSRs</c>/BSRBuilders/BlockJacobis, all of
-    /// <c>iProxy*</c>, <c>Bool*</c>, <c>Pivots</c>, <c>IndexBuffers</c>) still use the original
-    /// growable-UnsafeList-of-value-copies model: tracked by <c>.Add</c>, bulk-freed by
-    /// <c>.Clear()</c>/<c>.Dispose()</c> on the whole list, with no per-instance early-dispose
-    /// bookkeeping. Both models coexist during the family-by-family migration; see
-    /// <see cref="AllocationsCount"/>'s doc for the one user-visible consequence.</para>
+    /// <c>Arena.fProxy.cs</c>; <c>iProxyVecRecords</c>/<c>iProxyMatRecords</c>/temp* -- see
+    /// <c>iProxyRecords.iProxy.cs</c>, <c>Arena.iProxy.cs</c>; <c>BoolVecRecords</c>/
+    /// <c>BoolMatRecords</c>/temp* -- see <c>boolRecords.bool.cs</c>, <c>Arena.bool.cs</c>): each
+    /// family's N/MxN struct holds a stable record pointer instead of being tracked by a separate
+    /// value copy, and Dispose()/Clear()/ClearTemp() free individual slots.
+    /// <b>Not-yet-migrated families</b> (<c>fProxyBSRs</c>/BSRBuilders/BlockJacobis, <c>Pivots</c>,
+    /// <c>IndexBuffers</c>) still use the original growable-UnsafeList-of-value-copies model:
+    /// tracked by <c>.Add</c>, bulk-freed by <c>.Clear()</c>/<c>.Dispose()</c> on the whole list,
+    /// with no per-instance early-dispose bookkeeping. Both models coexist during the family-by-
+    /// family migration; see <see cref="AllocationsCount"/>'s doc for the one user-visible
+    /// consequence.</para>
     /// </summary>
     internal unsafe partial struct ArenaCore
     {
         /// <summary>
         /// Live allocation count across every tracked family. TRANSIENT cross-family asymmetry
         /// during the family-by-family migration (docs/rfc-memory-model.md §4 Option A): migrated
-        /// families (float/double) decrement this THE MOMENT an individual fProxyN/fProxyMxN is
-        /// Dispose()'d (their AliveCount reflects live records exactly); not-yet-migrated families
-        /// (int/short/long/uint, bool) still use the old value-copy tracking lists, whose `.Length`
-        /// only shrinks in bulk on the next Clear()/ClearTemp() -- an individual disposed instance of
-        /// those types stays counted until then. This asymmetry resolves once every family has been
-        /// migrated onto the record-table model.
+        /// families (float/double, int/short/long/uint, bool) decrement this THE MOMENT an
+        /// individual N/MxN instance is Dispose()'d (their AliveCount reflects live records
+        /// exactly); not-yet-migrated families (the sparse BSR/BSRBuilder/BlockJacobi trio) still
+        /// use the old value-copy tracking lists, whose `.Length` only shrinks in bulk on the next
+        /// Clear()/ClearTemp() -- an individual disposed instance of those types stays counted
+        /// until then. This asymmetry resolves once every family has been migrated onto the
+        /// record-table model. (Bool allocations were never included in this count at all, even
+        /// before the migration -- a pre-existing gap, not something this migration changed.)
         /// </summary>
         public int AllocationsCount =>
             //+copyReplaceFill[+]
@@ -50,7 +56,7 @@ namespace LinearAlgebra
             //-copyReplaceFill
             +
             //+copyReplaceFill[+]
-            iProxyVectors.Length + iProxyMatrices.Length
+            iProxyVecRecords.AliveCount + iProxyMatRecords.AliveCount
             //-copyReplaceFill
         ;
 
@@ -60,7 +66,7 @@ namespace LinearAlgebra
             //-copyReplaceFill
             +
             //+copyReplaceFill[+]
-            iProxyTempVectors.Length + iProxyTempMatrices.Length
+            iProxyTempVecRecords.AliveCount + iProxyTempMatRecords.AliveCount
             //-copyReplaceFill
         ;
 
@@ -69,14 +75,17 @@ namespace LinearAlgebra
         public Allocator Allocator;
         public bool Initialized;
 
-        // internal (not private): Arena.bool.cs's factory methods on the sibling Arena type
-        // reach these directly via _core->BoolVectors etc., mirroring the not-yet-migrated
-        // iProxyVectors/iProxyMatrices tracking lists (bool hasn't moved to the record-table model
-        // either -- see the ArenaCore class doc above for which families have and haven't).
-        internal UnsafeList<boolN> BoolVectors;
-        internal UnsafeList<boolMxN> BoolMatrices;
-        internal UnsafeList<boolN> TempBoolVectors;
-        internal UnsafeList<boolMxN> TempBoolMatrices;
+        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A), same
+        // design as fProxyVecRecords/iProxyVecRecords above -- just declared directly here (rather
+        // than in a per-type Arena.<type>.cs, the way fProxy/iProxy split theirs out) since bool has
+        // only one concrete type, so there is no per-type file to split them into (see
+        // boolRecords.bool.cs for the record struct definitions themselves). internal (not private):
+        // Arena.bool.cs's factory methods on the sibling Arena type reach these directly via
+        // _core->BoolVecRecords etc.
+        internal ChunkedRecordTable<boolVecRecord> BoolVecRecords;
+        internal ChunkedRecordTable<boolMatRecord> BoolMatRecords;
+        internal ChunkedRecordTable<boolVecRecord> TempBoolVecRecords;
+        internal ChunkedRecordTable<boolMatRecord> TempBoolMatRecords;
 
         private UnsafeList<Pivot> Pivots;
         private UnsafeList<Indices> IndexBuffers;
@@ -96,17 +105,17 @@ namespace LinearAlgebra
             //-copyReplace
 
             //+copyReplace
-            iProxyVectors = new UnsafeList<iProxyN>(8, Allocator);
-            iProxyMatrices = new UnsafeList<iProxyMxN>(8, Allocator);
-            iProxyTempVectors = new UnsafeList<iProxyN>(8, Allocator);
-            iProxyTempMatrices = new UnsafeList<iProxyMxN>(8, Allocator);
+            iProxyVecRecords.Init(Allocator);
+            iProxyMatRecords.Init(Allocator);
+            iProxyTempVecRecords.Init(Allocator);
+            iProxyTempMatRecords.Init(Allocator);
             //-copyReplace
 
-            BoolVectors = new UnsafeList<boolN>(2, Allocator);
-            BoolMatrices = new UnsafeList<boolMxN>(2, Allocator);
+            BoolVecRecords.Init(Allocator);
+            BoolMatRecords.Init(Allocator);
 
-            TempBoolVectors = new UnsafeList<boolN>(2, Allocator);
-            TempBoolMatrices = new UnsafeList<boolMxN>(2, Allocator);
+            TempBoolVecRecords.Init(Allocator);
+            TempBoolMatRecords.Init(Allocator);
 
             Pivots = new UnsafeList<Pivot>(2, Allocator);
             IndexBuffers = new UnsafeList<Indices>(4, Allocator);
@@ -174,22 +183,34 @@ namespace LinearAlgebra
             //-copyReplace
 
             //+copyReplace
-            for (int i = 0; i < iProxyVectors.Length; i++)
-                iProxyVectors[i].Dispose();
-            iProxyVectors.Clear();
+            for (int i = 0; i < iProxyVecRecords.Count; i++)
+                if (iProxyVecRecords.IsAlive(i))
+                {
+                    iProxyVecRecords.Resolve(i)->Data.Dispose();
+                    iProxyVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < iProxyMatrices.Length; i++)
-                iProxyMatrices[i].Dispose();
-            iProxyMatrices.Clear();
+            for (int i = 0; i < iProxyMatRecords.Count; i++)
+                if (iProxyMatRecords.IsAlive(i))
+                {
+                    iProxyMatRecords.Resolve(i)->Data.Dispose();
+                    iProxyMatRecords.Free(i);
+                }
             //-copyReplace
 
-            for (int i = 0; i < BoolVectors.Length; i++)
-                BoolVectors[i].Dispose();
-            BoolVectors.Clear();
+            for (int i = 0; i < BoolVecRecords.Count; i++)
+                if (BoolVecRecords.IsAlive(i))
+                {
+                    BoolVecRecords.Resolve(i)->Data.Dispose();
+                    BoolVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < BoolMatrices.Length; i++)
-                BoolMatrices[i].Dispose();
-            BoolMatrices.Clear();
+            for (int i = 0; i < BoolMatRecords.Count; i++)
+                if (BoolMatRecords.IsAlive(i))
+                {
+                    BoolMatRecords.Resolve(i)->Data.Dispose();
+                    BoolMatRecords.Free(i);
+                }
 
             for (int i = 0; i < Pivots.Length; i++)
                 Pivots[i].Dispose();
@@ -229,22 +250,34 @@ namespace LinearAlgebra
             //-copyReplace
 
             //+copyReplace
-            for (int i = 0; i < iProxyTempVectors.Length; i++)
-                iProxyTempVectors[i].Dispose();
-            iProxyTempVectors.Clear();
+            for (int i = 0; i < iProxyTempVecRecords.Count; i++)
+                if (iProxyTempVecRecords.IsAlive(i))
+                {
+                    iProxyTempVecRecords.Resolve(i)->Data.Dispose();
+                    iProxyTempVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < iProxyTempMatrices.Length; i++)
-                iProxyTempMatrices[i].Dispose();
-            iProxyTempMatrices.Clear();
+            for (int i = 0; i < iProxyTempMatRecords.Count; i++)
+                if (iProxyTempMatRecords.IsAlive(i))
+                {
+                    iProxyTempMatRecords.Resolve(i)->Data.Dispose();
+                    iProxyTempMatRecords.Free(i);
+                }
             //-copyReplace
 
-            for (int i = 0; i < TempBoolVectors.Length; i++)
-                TempBoolVectors[i].Dispose();
-            TempBoolVectors.Clear();
+            for (int i = 0; i < TempBoolVecRecords.Count; i++)
+                if (TempBoolVecRecords.IsAlive(i))
+                {
+                    TempBoolVecRecords.Resolve(i)->Data.Dispose();
+                    TempBoolVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < TempBoolMatrices.Length; i++)
-                TempBoolMatrices[i].Dispose();
-            TempBoolMatrices.Clear();
+            for (int i = 0; i < TempBoolMatRecords.Count; i++)
+                if (TempBoolMatRecords.IsAlive(i))
+                {
+                    TempBoolMatRecords.Resolve(i)->Data.Dispose();
+                    TempBoolMatRecords.Free(i);
+                }
         }
 
         /// <summary>
@@ -267,16 +300,16 @@ namespace LinearAlgebra
             //-copyReplace
 
             //+copyReplace
-            iProxyVectors.Dispose();
-            iProxyMatrices.Dispose();
-            iProxyTempMatrices.Dispose();
-            iProxyTempVectors.Dispose();
+            iProxyVecRecords.Dispose();
+            iProxyMatRecords.Dispose();
+            iProxyTempMatRecords.Dispose();
+            iProxyTempVecRecords.Dispose();
             //-copyReplace
 
-            BoolVectors.Dispose();
-            BoolMatrices.Dispose();
-            TempBoolMatrices.Dispose();
-            TempBoolVectors.Dispose();
+            BoolVecRecords.Dispose();
+            BoolMatRecords.Dispose();
+            TempBoolMatRecords.Dispose();
+            TempBoolVecRecords.Dispose();
 
             Pivots.Dispose();
             IndexBuffers.Dispose();

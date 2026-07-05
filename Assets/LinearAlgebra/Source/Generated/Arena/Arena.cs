@@ -14,29 +14,34 @@ namespace LinearAlgebra
     /// only <see cref="Arena"/>'s own partials (same assembly) reach through <c>_core-&gt;</c>;
     /// nothing outside the library touches ArenaCore directly.
     ///
-    /// <para><b>Migrated families (float/double)</b> -- docs/rfc-memory-model.md §4 Option A -- own
-    /// pointer-stable <see cref="ChunkedRecordTable{TRecord}"/> tables
+    /// <para><b>Migrated families (float/double, int/short/long/uint, bool)</b> -- docs/rfc-memory-
+    /// model.md §4 Option A -- own pointer-stable <see cref="ChunkedRecordTable{TRecord}"/> tables
     /// (<c>fProxyVecRecords</c>/<c>fProxyMatRecords</c>/temp* -- see <c>fProxyRecords.fProxy.cs</c>,
-    /// <c>Arena.fProxy.cs</c>): fProxyN/fProxyMxN hold a stable record pointer instead of being
-    /// tracked by a separate value copy, and Dispose()/Clear()/ClearTemp() free individual slots.
-    /// <b>Not-yet-migrated families</b> (<c>fProxyBSRs</c>/BSRBuilders/BlockJacobis, all of
-    /// <c>iProxy*</c>, <c>Bool*</c>, <c>Pivots</c>, <c>IndexBuffers</c>) still use the original
-    /// growable-UnsafeList-of-value-copies model: tracked by <c>.Add</c>, bulk-freed by
-    /// <c>.Clear()</c>/<c>.Dispose()</c> on the whole list, with no per-instance early-dispose
-    /// bookkeeping. Both models coexist during the family-by-family migration; see
-    /// <see cref="AllocationsCount"/>'s doc for the one user-visible consequence.</para>
+    /// <c>Arena.fProxy.cs</c>; <c>iProxyVecRecords</c>/<c>iProxyMatRecords</c>/temp* -- see
+    /// <c>iProxyRecords.iProxy.cs</c>, <c>Arena.iProxy.cs</c>; <c>BoolVecRecords</c>/
+    /// <c>BoolMatRecords</c>/temp* -- see <c>boolRecords.bool.cs</c>, <c>Arena.bool.cs</c>): each
+    /// family's N/MxN struct holds a stable record pointer instead of being tracked by a separate
+    /// value copy, and Dispose()/Clear()/ClearTemp() free individual slots.
+    /// <b>Not-yet-migrated families</b> (<c>fProxyBSRs</c>/BSRBuilders/BlockJacobis, <c>Pivots</c>,
+    /// <c>IndexBuffers</c>) still use the original growable-UnsafeList-of-value-copies model:
+    /// tracked by <c>.Add</c>, bulk-freed by <c>.Clear()</c>/<c>.Dispose()</c> on the whole list,
+    /// with no per-instance early-dispose bookkeeping. Both models coexist during the family-by-
+    /// family migration; see <see cref="AllocationsCount"/>'s doc for the one user-visible
+    /// consequence.</para>
     /// </summary>
     internal unsafe partial struct ArenaCore
     {
         /// <summary>
         /// Live allocation count across every tracked family. TRANSIENT cross-family asymmetry
         /// during the family-by-family migration (docs/rfc-memory-model.md §4 Option A): migrated
-        /// families (float/double) decrement this THE MOMENT an individual fProxyN/fProxyMxN is
-        /// Dispose()'d (their AliveCount reflects live records exactly); not-yet-migrated families
-        /// (int/short/long/uint, bool) still use the old value-copy tracking lists, whose `.Length`
-        /// only shrinks in bulk on the next Clear()/ClearTemp() -- an individual disposed instance of
-        /// those types stays counted until then. This asymmetry resolves once every family has been
-        /// migrated onto the record-table model.
+        /// families (float/double, int/short/long/uint, bool) decrement this THE MOMENT an
+        /// individual N/MxN instance is Dispose()'d (their AliveCount reflects live records
+        /// exactly); not-yet-migrated families (the sparse BSR/BSRBuilder/BlockJacobi trio) still
+        /// use the old value-copy tracking lists, whose `.Length` only shrinks in bulk on the next
+        /// Clear()/ClearTemp() -- an individual disposed instance of those types stays counted
+        /// until then. This asymmetry resolves once every family has been migrated onto the
+        /// record-table model. (Bool allocations were never included in this count at all, even
+        /// before the migration -- a pre-existing gap, not something this migration changed.)
         /// </summary>
         public int AllocationsCount =>
             
@@ -46,13 +51,13 @@ namespace LinearAlgebra
             
             +
             
-            intVectors.Length + intMatrices.Length
+            intVecRecords.AliveCount + intMatRecords.AliveCount
             +
-            shortVectors.Length + shortMatrices.Length
+            shortVecRecords.AliveCount + shortMatRecords.AliveCount
             +
-            longVectors.Length + longMatrices.Length
+            longVecRecords.AliveCount + longMatRecords.AliveCount
             +
-            uintVectors.Length + uintMatrices.Length
+            uintVecRecords.AliveCount + uintMatRecords.AliveCount
             
         ;
 
@@ -64,13 +69,13 @@ namespace LinearAlgebra
             
             +
             
-            intTempVectors.Length + intTempMatrices.Length
+            intTempVecRecords.AliveCount + intTempMatRecords.AliveCount
             +
-            shortTempVectors.Length + shortTempMatrices.Length
+            shortTempVecRecords.AliveCount + shortTempMatRecords.AliveCount
             +
-            longTempVectors.Length + longTempMatrices.Length
+            longTempVecRecords.AliveCount + longTempMatRecords.AliveCount
             +
-            uintTempVectors.Length + uintTempMatrices.Length
+            uintTempVecRecords.AliveCount + uintTempMatRecords.AliveCount
             
         ;
 
@@ -79,14 +84,17 @@ namespace LinearAlgebra
         public Allocator Allocator;
         public bool Initialized;
 
-        // internal (not private): Arena.bool.cs's factory methods on the sibling Arena type
-        // reach these directly via _core->BoolVectors etc., mirroring the not-yet-migrated
-        // iProxyVectors/iProxyMatrices tracking lists (bool hasn't moved to the record-table model
-        // either -- see the ArenaCore class doc above for which families have and haven't).
-        internal UnsafeList<boolN> BoolVectors;
-        internal UnsafeList<boolMxN> BoolMatrices;
-        internal UnsafeList<boolN> TempBoolVectors;
-        internal UnsafeList<boolMxN> TempBoolMatrices;
+        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A), same
+        // design as fProxyVecRecords/iProxyVecRecords above -- just declared directly here (rather
+        // than in a per-type Arena.<type>.cs, the way fProxy/iProxy split theirs out) since bool has
+        // only one concrete type, so there is no per-type file to split them into (see
+        // boolRecords.bool.cs for the record struct definitions themselves). internal (not private):
+        // Arena.bool.cs's factory methods on the sibling Arena type reach these directly via
+        // _core->BoolVecRecords etc.
+        internal ChunkedRecordTable<boolVecRecord> BoolVecRecords;
+        internal ChunkedRecordTable<boolMatRecord> BoolMatRecords;
+        internal ChunkedRecordTable<boolVecRecord> TempBoolVecRecords;
+        internal ChunkedRecordTable<boolMatRecord> TempBoolMatRecords;
 
         private UnsafeList<Pivot> Pivots;
         private UnsafeList<Indices> IndexBuffers;
@@ -114,32 +122,32 @@ namespace LinearAlgebra
             
 
             
-            intVectors = new UnsafeList<intN>(8, Allocator);
-            intMatrices = new UnsafeList<intMxN>(8, Allocator);
-            intTempVectors = new UnsafeList<intN>(8, Allocator);
-            intTempMatrices = new UnsafeList<intMxN>(8, Allocator);
+            intVecRecords.Init(Allocator);
+            intMatRecords.Init(Allocator);
+            intTempVecRecords.Init(Allocator);
+            intTempMatRecords.Init(Allocator);
             
-            shortVectors = new UnsafeList<shortN>(8, Allocator);
-            shortMatrices = new UnsafeList<shortMxN>(8, Allocator);
-            shortTempVectors = new UnsafeList<shortN>(8, Allocator);
-            shortTempMatrices = new UnsafeList<shortMxN>(8, Allocator);
+            shortVecRecords.Init(Allocator);
+            shortMatRecords.Init(Allocator);
+            shortTempVecRecords.Init(Allocator);
+            shortTempMatRecords.Init(Allocator);
             
-            longVectors = new UnsafeList<longN>(8, Allocator);
-            longMatrices = new UnsafeList<longMxN>(8, Allocator);
-            longTempVectors = new UnsafeList<longN>(8, Allocator);
-            longTempMatrices = new UnsafeList<longMxN>(8, Allocator);
+            longVecRecords.Init(Allocator);
+            longMatRecords.Init(Allocator);
+            longTempVecRecords.Init(Allocator);
+            longTempMatRecords.Init(Allocator);
             
-            uintVectors = new UnsafeList<uintN>(8, Allocator);
-            uintMatrices = new UnsafeList<uintMxN>(8, Allocator);
-            uintTempVectors = new UnsafeList<uintN>(8, Allocator);
-            uintTempMatrices = new UnsafeList<uintMxN>(8, Allocator);
+            uintVecRecords.Init(Allocator);
+            uintMatRecords.Init(Allocator);
+            uintTempVecRecords.Init(Allocator);
+            uintTempMatRecords.Init(Allocator);
             
 
-            BoolVectors = new UnsafeList<boolN>(2, Allocator);
-            BoolMatrices = new UnsafeList<boolMxN>(2, Allocator);
+            BoolVecRecords.Init(Allocator);
+            BoolMatRecords.Init(Allocator);
 
-            TempBoolVectors = new UnsafeList<boolN>(2, Allocator);
-            TempBoolMatrices = new UnsafeList<boolMxN>(2, Allocator);
+            TempBoolVecRecords.Init(Allocator);
+            TempBoolMatRecords.Init(Allocator);
 
             Pivots = new UnsafeList<Pivot>(2, Allocator);
             IndexBuffers = new UnsafeList<Indices>(4, Allocator);
@@ -233,46 +241,76 @@ namespace LinearAlgebra
             
 
             
-            for (int i = 0; i < intVectors.Length; i++)
-                intVectors[i].Dispose();
-            intVectors.Clear();
+            for (int i = 0; i < intVecRecords.Count; i++)
+                if (intVecRecords.IsAlive(i))
+                {
+                    intVecRecords.Resolve(i)->Data.Dispose();
+                    intVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < intMatrices.Length; i++)
-                intMatrices[i].Dispose();
-            intMatrices.Clear();
+            for (int i = 0; i < intMatRecords.Count; i++)
+                if (intMatRecords.IsAlive(i))
+                {
+                    intMatRecords.Resolve(i)->Data.Dispose();
+                    intMatRecords.Free(i);
+                }
             
-            for (int i = 0; i < shortVectors.Length; i++)
-                shortVectors[i].Dispose();
-            shortVectors.Clear();
+            for (int i = 0; i < shortVecRecords.Count; i++)
+                if (shortVecRecords.IsAlive(i))
+                {
+                    shortVecRecords.Resolve(i)->Data.Dispose();
+                    shortVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < shortMatrices.Length; i++)
-                shortMatrices[i].Dispose();
-            shortMatrices.Clear();
+            for (int i = 0; i < shortMatRecords.Count; i++)
+                if (shortMatRecords.IsAlive(i))
+                {
+                    shortMatRecords.Resolve(i)->Data.Dispose();
+                    shortMatRecords.Free(i);
+                }
             
-            for (int i = 0; i < longVectors.Length; i++)
-                longVectors[i].Dispose();
-            longVectors.Clear();
+            for (int i = 0; i < longVecRecords.Count; i++)
+                if (longVecRecords.IsAlive(i))
+                {
+                    longVecRecords.Resolve(i)->Data.Dispose();
+                    longVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < longMatrices.Length; i++)
-                longMatrices[i].Dispose();
-            longMatrices.Clear();
+            for (int i = 0; i < longMatRecords.Count; i++)
+                if (longMatRecords.IsAlive(i))
+                {
+                    longMatRecords.Resolve(i)->Data.Dispose();
+                    longMatRecords.Free(i);
+                }
             
-            for (int i = 0; i < uintVectors.Length; i++)
-                uintVectors[i].Dispose();
-            uintVectors.Clear();
+            for (int i = 0; i < uintVecRecords.Count; i++)
+                if (uintVecRecords.IsAlive(i))
+                {
+                    uintVecRecords.Resolve(i)->Data.Dispose();
+                    uintVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < uintMatrices.Length; i++)
-                uintMatrices[i].Dispose();
-            uintMatrices.Clear();
+            for (int i = 0; i < uintMatRecords.Count; i++)
+                if (uintMatRecords.IsAlive(i))
+                {
+                    uintMatRecords.Resolve(i)->Data.Dispose();
+                    uintMatRecords.Free(i);
+                }
             
 
-            for (int i = 0; i < BoolVectors.Length; i++)
-                BoolVectors[i].Dispose();
-            BoolVectors.Clear();
+            for (int i = 0; i < BoolVecRecords.Count; i++)
+                if (BoolVecRecords.IsAlive(i))
+                {
+                    BoolVecRecords.Resolve(i)->Data.Dispose();
+                    BoolVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < BoolMatrices.Length; i++)
-                BoolMatrices[i].Dispose();
-            BoolMatrices.Clear();
+            for (int i = 0; i < BoolMatRecords.Count; i++)
+                if (BoolMatRecords.IsAlive(i))
+                {
+                    BoolMatRecords.Resolve(i)->Data.Dispose();
+                    BoolMatRecords.Free(i);
+                }
 
             for (int i = 0; i < Pivots.Length; i++)
                 Pivots[i].Dispose();
@@ -326,46 +364,76 @@ namespace LinearAlgebra
             
 
             
-            for (int i = 0; i < intTempVectors.Length; i++)
-                intTempVectors[i].Dispose();
-            intTempVectors.Clear();
+            for (int i = 0; i < intTempVecRecords.Count; i++)
+                if (intTempVecRecords.IsAlive(i))
+                {
+                    intTempVecRecords.Resolve(i)->Data.Dispose();
+                    intTempVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < intTempMatrices.Length; i++)
-                intTempMatrices[i].Dispose();
-            intTempMatrices.Clear();
+            for (int i = 0; i < intTempMatRecords.Count; i++)
+                if (intTempMatRecords.IsAlive(i))
+                {
+                    intTempMatRecords.Resolve(i)->Data.Dispose();
+                    intTempMatRecords.Free(i);
+                }
             
-            for (int i = 0; i < shortTempVectors.Length; i++)
-                shortTempVectors[i].Dispose();
-            shortTempVectors.Clear();
+            for (int i = 0; i < shortTempVecRecords.Count; i++)
+                if (shortTempVecRecords.IsAlive(i))
+                {
+                    shortTempVecRecords.Resolve(i)->Data.Dispose();
+                    shortTempVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < shortTempMatrices.Length; i++)
-                shortTempMatrices[i].Dispose();
-            shortTempMatrices.Clear();
+            for (int i = 0; i < shortTempMatRecords.Count; i++)
+                if (shortTempMatRecords.IsAlive(i))
+                {
+                    shortTempMatRecords.Resolve(i)->Data.Dispose();
+                    shortTempMatRecords.Free(i);
+                }
             
-            for (int i = 0; i < longTempVectors.Length; i++)
-                longTempVectors[i].Dispose();
-            longTempVectors.Clear();
+            for (int i = 0; i < longTempVecRecords.Count; i++)
+                if (longTempVecRecords.IsAlive(i))
+                {
+                    longTempVecRecords.Resolve(i)->Data.Dispose();
+                    longTempVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < longTempMatrices.Length; i++)
-                longTempMatrices[i].Dispose();
-            longTempMatrices.Clear();
+            for (int i = 0; i < longTempMatRecords.Count; i++)
+                if (longTempMatRecords.IsAlive(i))
+                {
+                    longTempMatRecords.Resolve(i)->Data.Dispose();
+                    longTempMatRecords.Free(i);
+                }
             
-            for (int i = 0; i < uintTempVectors.Length; i++)
-                uintTempVectors[i].Dispose();
-            uintTempVectors.Clear();
+            for (int i = 0; i < uintTempVecRecords.Count; i++)
+                if (uintTempVecRecords.IsAlive(i))
+                {
+                    uintTempVecRecords.Resolve(i)->Data.Dispose();
+                    uintTempVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < uintTempMatrices.Length; i++)
-                uintTempMatrices[i].Dispose();
-            uintTempMatrices.Clear();
+            for (int i = 0; i < uintTempMatRecords.Count; i++)
+                if (uintTempMatRecords.IsAlive(i))
+                {
+                    uintTempMatRecords.Resolve(i)->Data.Dispose();
+                    uintTempMatRecords.Free(i);
+                }
             
 
-            for (int i = 0; i < TempBoolVectors.Length; i++)
-                TempBoolVectors[i].Dispose();
-            TempBoolVectors.Clear();
+            for (int i = 0; i < TempBoolVecRecords.Count; i++)
+                if (TempBoolVecRecords.IsAlive(i))
+                {
+                    TempBoolVecRecords.Resolve(i)->Data.Dispose();
+                    TempBoolVecRecords.Free(i);
+                }
 
-            for (int i = 0; i < TempBoolMatrices.Length; i++)
-                TempBoolMatrices[i].Dispose();
-            TempBoolMatrices.Clear();
+            for (int i = 0; i < TempBoolMatRecords.Count; i++)
+                if (TempBoolMatRecords.IsAlive(i))
+                {
+                    TempBoolMatRecords.Resolve(i)->Data.Dispose();
+                    TempBoolMatRecords.Free(i);
+                }
         }
 
         /// <summary>
@@ -396,31 +464,31 @@ namespace LinearAlgebra
             
 
             
-            intVectors.Dispose();
-            intMatrices.Dispose();
-            intTempMatrices.Dispose();
-            intTempVectors.Dispose();
+            intVecRecords.Dispose();
+            intMatRecords.Dispose();
+            intTempMatRecords.Dispose();
+            intTempVecRecords.Dispose();
             
-            shortVectors.Dispose();
-            shortMatrices.Dispose();
-            shortTempMatrices.Dispose();
-            shortTempVectors.Dispose();
+            shortVecRecords.Dispose();
+            shortMatRecords.Dispose();
+            shortTempMatRecords.Dispose();
+            shortTempVecRecords.Dispose();
             
-            longVectors.Dispose();
-            longMatrices.Dispose();
-            longTempMatrices.Dispose();
-            longTempVectors.Dispose();
+            longVecRecords.Dispose();
+            longMatRecords.Dispose();
+            longTempMatRecords.Dispose();
+            longTempVecRecords.Dispose();
             
-            uintVectors.Dispose();
-            uintMatrices.Dispose();
-            uintTempMatrices.Dispose();
-            uintTempVectors.Dispose();
+            uintVecRecords.Dispose();
+            uintMatRecords.Dispose();
+            uintTempMatRecords.Dispose();
+            uintTempVecRecords.Dispose();
             
 
-            BoolVectors.Dispose();
-            BoolMatrices.Dispose();
-            TempBoolMatrices.Dispose();
-            TempBoolVectors.Dispose();
+            BoolVecRecords.Dispose();
+            BoolMatRecords.Dispose();
+            TempBoolMatRecords.Dispose();
+            TempBoolVecRecords.Dispose();
 
             Pivots.Dispose();
             IndexBuffers.Dispose();
