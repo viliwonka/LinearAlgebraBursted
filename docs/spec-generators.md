@@ -95,7 +95,7 @@ So a radial gradient is `sample2D(new Field2.Radial(), …)`; a horizontal gradi
 Pairs with the windows (§6) and wavetables (§4). Plan when built:
 - **`dft` / `idft`** — direct O(N²), exact, ANY N. Simple, good baseline & for small N.
 - **`fft` / `ifft`** — radix-2 Cooley–Tukey, O(N log N), N a power of 2.
-- **No complex TYPE** — use split real/imag arrays (the `eigenvaluesQR` precedent): `fft(ref re, ref im)` in-place, or `rfft(in real, ref re, ref im)` for real input. Helpers: `magnitude`/`phase`/`powerSpectrum` (re,im → vector).
+- **No complex TYPE** — use split real/imag arrays (the `Eigen.valuesQR` precedent): `fft(ref re, ref im)` in-place, or `rfft(in real, ref re, ref im)` for real input. Helpers: `magnitude`/`phase`/`powerSpectrum` (re,im → vector).
 - Typical games/DSP pipeline: rolling-window samples → `window(Hann)` → `rfft` → `powerSpectrum` (beat/pitch/feature detection). Own spec doc when scheduled.
 
 ---
