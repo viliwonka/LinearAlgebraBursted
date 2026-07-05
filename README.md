@@ -75,6 +75,8 @@ noted per row; full tables (more sizes, both precisions) live in each feature's 
 | SVD, truncated GKL (`SVD.svdTruncated`) | 2048×256, k≈21%, float | 6.2–6.9× faster after vectorizing the Lanczos basis | commit `4203c72` |
 | Eigensolve, symmetric (`Eigen.eigenSymmetric`, values only) | 256×256, float | ~75× faster than cyclic Jacobi | commit `4902032` |
 | FFT, real input (`FFT.rfft` vs. full `fft`) | N = 1,048,576, float | 1.5× faster (24.0ms → 15.9ms) | commit `dc3bd3f` |
+| Eigensolve, k smallest (`LOBPCG.lobpcg`) | dense SPD 512×512, k=4, float | 84.9ms median for a fixed 50-iteration budget | 2026-07-05, commit `0714c97` |
+| Iterative solve, block-Jacobi PCG vs. plain CG (`Solvers.pcg`) | 768×768 SPD BSR, b=3, 7% fill, float | 0.030ms (CG) vs. 0.045ms (PCG) — preconditioning overhead exceeds its payoff on this well-conditioned case | 2026-07-05, commit `0714c97` |
 
 See [docs/features](docs/features) — each linked doc below carries the deeper benchmark table.
 

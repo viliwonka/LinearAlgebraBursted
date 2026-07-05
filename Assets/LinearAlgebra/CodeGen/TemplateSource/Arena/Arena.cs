@@ -584,6 +584,18 @@ namespace LinearAlgebra
     /// <c>Dispose()</c> (e.g. <c>fProxyN.Dispose()</c>), which also mutates a record table but sits
     /// at a different altitude than Arena/ArenaCore's own entry points -- see <c>_busy</c>'s field
     /// doc (ArenaCore, above) for that known gap.</para>
+    ///
+    /// <para><b>The two-tier model (which API belongs on which thread):</b> the arena is the
+    /// AUTHORING tier -- operators (<c>a + b</c>), <c>Copy()</c>/<c>TempCopy()</c>, cross-type
+    /// shortcuts, and the temp pool, all main-thread. Easy arithmetic structurally REQUIRES the
+    /// arena: a C# operator receives only its operands, so the result's allocator must ride inside
+    /// them (that is what each struct's internal owner reference is). The COMPUTE tier -- in-place/
+    /// ref-destination APIs on pre-allocated buffers, plus standalone <c>Allocator.Temp</c> scratch
+    /// -- is the job-safe tier; every kernel in this library lives there. The trap: the arena rides
+    /// invisibly inside every arena-tracked struct, so <c>var c = a + b;</c> INSIDE a job is an
+    /// arena mutation from a worker thread -- exactly the race the contract above forbids, reached
+    /// without ever passing the arena anywhere. Full writeup: docs/features/dense-types.md,
+    /// "The two-tier model".</para>
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe partial struct Arena : System.IDisposable

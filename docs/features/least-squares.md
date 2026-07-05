@@ -50,3 +50,12 @@ ideal density ratio (~7-8× vs. the ~14× square solvers get at 7% fill) because
 traversal (`ApplyT`) is less cache-friendly than a forward `spMV` — see
 [sparse-bsr.md](sparse-bsr.md) for the materialized-transpose mitigation (commit `06035da`, measured
 perf-neutral on its own, commit `724ceb0`).
+
+Direct least-squares solve, overdetermined `QR.qrDirectSolve` (`Benchmarks/TallWideSolveBenchmark.cs`,
+"Overdetermined least squares" section), A is 2k×k, k=1024 (2048×1024). AMD Ryzen 9 9950X3D, single
+CCD pinned, 2026-07-05, commit `0714c97`, Unity Editor batchmode (checks likely on):
+
+| dtype | min(ms) | med(ms) | GFLOP/s~ |
+|---|---|---|---|
+| float | 97.96 | 98.92 | 36.18 |
+| double | 162.93 | 163.90 | 21.84 |

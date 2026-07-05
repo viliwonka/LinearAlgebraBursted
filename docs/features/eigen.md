@@ -46,6 +46,14 @@ This is the intended tool for sparse smallest-eigenpair problems (structural-sta
 modal-analysis use cases, the Fiedler vector) that `lanczos`/`inversePowerIteration` aren't the best
 fit for; the dense small-scale case is still better served by `eigenSymmetric`.
 
+**Generalized pencil form** — `lobpcg` also solves `A·x = λ·B·x` with B SPD: every overload has a
+`+B` twin (generic operator, dense, BSR, BSR+block-Jacobi) that B-orthonormalizes the basis and
+returns B-orthonormal eigenvectors, ascending. `B = I` forwarders are bit-identical to the standard
+path. The buckling recipe (documented with a worked sample in the class doc): for
+`K_E·φ + λ·K_G·φ = 0` put the SPD elastic stiffness `K_E` in the **B slot** and the (typically
+indefinite) geometric stiffness `K_G` in the A slot; the returned ascending `μ[0]` (most negative)
+gives the smallest positive critical load as `λ_cr = −1/μ[0]`.
+
 ## Diagnostics structs
 
 Eigensolvers follow the same by-value, implicit-`bool` diagnostics convention as
@@ -76,5 +84,29 @@ The reduction's O(n³) hot loop is `gemv` + a symmetric rank-2 update (two conti
 row) and runs once; Jacobi does several full sweeps of strided column rotations — an algorithm choice,
 not a micro-optimization.
 
-`powerIteration`/`inversePowerIteration`/`lanczos`/`lanczosVectors`/`LOBPCG.lobpcg` — not yet
-benchmarked.
+Current absolute number at a larger representative size, N=1024 (`Benchmarks/EigenSvdBenchmark.cs`).
+AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `0714c97`, Unity Editor batchmode (checks
+likely on):
+
+| Method | dtype | med(ms) |
+|---|---|---|
+| `eigenvaluesSymmetric` (values only) | float | 162.97 |
+| `eigenvaluesSymmetric` | double | 195.59 |
+| `eigenSymmetric` (values + vectors) | float | 428.56 |
+| `eigenSymmetric` | double | 545.01 |
+
+`LOBPCG.lobpcg` (`Benchmarks/LOBPCGBenchmark.cs`), dense SPD `A = MᵀM + I`, N=512, k=4 smallest,
+maxIter fixed at 50 (deterministic timing — same convention as the other iterative-solver
+benchmarks; `tol` is set near machine-epsilon so the budget is never met early). Same
+machine/date/commit/config as above:
+
+| dtype | med(ms) | iterations | converged | maxResidual |
+|---|---|---|---|---|
+| float | 84.91 | 50 | 0/4 | 7.2×10⁻² |
+| double | 85.34 | 50 | 0/4 | 2.2×10⁻² |
+
+(`converged`/`maxResidual` show the fixed 50-iteration budget makes real but incomplete progress on
+this well-conditioned test matrix — the point of this benchmark is the per-iteration cost, not a
+convergence demonstration; a real caller would set a reachable `tol` instead.)
+
+`powerIteration`/`inversePowerIteration`/`lanczos`/`lanczosVectors` — still not benchmarked.

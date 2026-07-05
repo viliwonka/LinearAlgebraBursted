@@ -20,11 +20,14 @@ namespace LinearAlgebra.Benchmarks
                 QRBenchmark.Section(sb);
                 QRVariantsBenchmark.Section(sb);
                 TallWideSolveBenchmark.Section(sb);
+                DirectSolveBenchmark.Section(sb);
                 SmallSizeBenchmark.Section(sb);
                 EigenSvdBenchmark.Section(sb);
                 SvdSolversBenchmark.Section(sb);
+                LOBPCGBenchmark.Section(sb);
                 IterativeBenchmark.Section(sb);
                 SparseSolverBenchmark.Section(sb);
+                PCGBenchmark.Section(sb);
                 KMeansBenchmark.Section(sb);
                 FFTBenchmark.Section(sb);
 

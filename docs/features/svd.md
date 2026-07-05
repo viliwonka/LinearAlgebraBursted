@@ -43,3 +43,13 @@ not an algorithm change (same output, cited by commit):
 `svdTruncated` is now the fastest *exact* top-k method for small/mid k (beats both `svdThin` and
 `svdRandomized` by 3–4×); `svdRandomized` only wins at high k% on large matrices (not independently
 re-benchmarked after the `svdTruncated` fix).
+
+Current absolute numbers at a larger representative size, N=1024 square (`Benchmarks/EigenSvdBenchmark.cs`).
+AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `0714c97`, Unity Editor batchmode (checks likely on):
+
+| Method | dtype | med(ms) |
+|---|---|---|
+| `svdThin` (full SVD) | float | 522.45 |
+| `svdThin` | double | 735.77 |
+| `svdValues` (values only) | float | 188.44 |
+| `svdValues` | double | 233.35 |

@@ -48,3 +48,16 @@ See [decompositions.md](decompositions.md) for the factorization costs each solv
 the README's benchmark table for `QR.qrDirectSolve`'s measured 74.7× vectorization win (commit
 `eadf6a8`). No standalone benchmark isolates the triangular-solve step itself (it's O(n²), dominated
 by the O(n³) factorization in every measured case).
+
+End-to-end "solve `Ax=b`" (factor + triangular solve, `Benchmarks/DirectSolveBenchmark.cs`), square
+N=1024. AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `0714c97`, Unity Editor batchmode
+(`ENABLE_UNITY_COLLECTIONS_CHECKS` likely on — not the release/player-build shape):
+
+| Solve | min(ms) | med(ms) |
+|---|---|---|
+| `LU.luSolve` (partial-pivot LU), float | 16.62 | 16.67 |
+| `LU.luSolve`, double | 26.42 | 26.51 |
+| `Cholesky.choleskySolve`, float | 12.21 | 12.23 |
+| `Cholesky.choleskySolve`, double | 16.44 | 16.63 |
+| `QR.qrDirectSolve` (square), float | 37.84 | 37.98 |
+| `QR.qrDirectSolve` (square), double | 63.21 | 63.52 |

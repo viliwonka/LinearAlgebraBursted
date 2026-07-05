@@ -40,3 +40,13 @@ Single-thread, this machine, `Burst IJob.Run`, each row a distinct optimization 
 
 Workspace-vs-no-workspace (~1.3–1.9×) is a design tradeoff, not a bug fix — see
 [docs/fft.md](../fft.md) for when each is the right default.
+
+Current absolute numbers, N=1,048,576 (2²⁰, `Benchmarks/FFTBenchmark.cs`). AMD Ryzen 9 9950X3D,
+single CCD pinned, 2026-07-05, commit `0714c97`, Unity Editor batchmode (checks likely on):
+
+| Path | dtype | med(ms) |
+|---|---|---|
+| `fft` (no workspace, in-place) | float | 23.82 |
+| `fft` (no workspace) | double | 27.43 |
+| `fft(ws)` (twiddle-table workspace) | float | 14.37 |
+| `fft(ws)` | double | 17.67 |

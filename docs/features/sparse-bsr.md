@@ -57,3 +57,21 @@ All measured on a 9950X3D, single CCD pinned for repeatability (commit `c3df68b`
 `9c0ae85`, general kernels only); after both the symmetric and full kernels were unrolled equally,
 the gap closes further to ~break-even (~1.02×, commit `6481455`). Symmetric storage is a **memory**
 win (½ footprint), not a compute win — each stored upper block still does two block-multiplies.
+
+**Block-Jacobi PCG vs. plain CG, same BSR system** (`Benchmarks/PCGBenchmark.cs` — `Solvers.pcg`
+wasn't covered by any benchmark before this; a block-tridiagonal SPD system, b=3, nb=256, N=768,
+K=40 fixed iterations, tol=0). AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `0714c97`,
+Unity Editor batchmode (checks likely on):
+
+| dtype | solver | med(ms) | residual |
+|---|---|---|---|
+| float | CG | 0.030 | 9.25×10⁻⁸ |
+| float | PCG (block-Jacobi) | 0.045 | 8.64×10⁻⁸ |
+| double | CG | 0.079 | 2.15×10⁻¹⁶ |
+| double | PCG (block-Jacobi) | 0.122 | 2.07×10⁻¹⁶ |
+
+On this well-conditioned, already-diagonally-strong test system the block-Jacobi preconditioner adds
+~50% per-iteration overhead (one extra `Apply` for `M`) without buying back enough iterations to pay
+for itself — expected, since Jacobi preconditioning's real win shows up on ill-conditioned systems
+(see `least-squares.md`'s AᵀA-Jacobi preconditioner, measured on a purpose-built ill-conditioned case)
+not on a benchmark's synthetic well-conditioned one.
