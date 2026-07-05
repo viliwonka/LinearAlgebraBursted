@@ -302,6 +302,12 @@ namespace LinearAlgebra
                 for (int j = 0; j < n; j++)
                     L[i, j] = 0;
 
+            // NOTE on orientation: U/"upper triangle" below refers ONLY to this method's internal
+            // scratch (W) and its row-wise sweep — a computational device chosen for a unit-stride
+            // inner loop. The PUBLIC output L is genuinely lower-triangular, same contract as plain
+            // choleskyDecomposition's L (both consumed identically by solveLowerTriangular +
+            // SolveUpperTriangularTransposed) — see the scatter into L's COLUMN k a few lines below.
+            //
             // Working symmetric matrix W (caller workspace) holds the UPPER triangle only: W[i,j], j>=i.
             // Factor as A = U^T U with U upper-triangular: the right-looking sweep broadcasts the freshly
             // computed factor ROW U[k, k..] (contiguous in row-major) and subtracts its rank-1 contribution
