@@ -49,7 +49,41 @@ namespace LinearAlgebra.Sparse
         /// get-only (no setter is possible on a readonly struct) -- both constructors below write
         /// the computed inverse directly to whichever backing field is live instead of going
         /// through a property setter.</summary>
-        public unsafe UnsafeList<float> DInv => _rec != null ? _rec->DInv : _inlineDInv;
+        public unsafe UnsafeList<float> DInv
+        {
+            get
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                AssertRecordAlive();
+#endif
+                return _rec != null ? _rec->DInv : _inlineDInv;
+            }
+        }
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        // Editor/test-only guard (ENABLE_UNITY_COLLECTIONS_CHECKS is defined automatically by the
+        // Unity Editor, including every test run, and compiles out of player builds entirely --
+        // struct size is identical in both configs either way, since this adds no field).
+        // floatBlockJacobi has no spare bits to pack a
+        // generation stamp into (40B = 4 BlockRows + 4 BR + 8 _rec + 24 UnsafeList<float>, exactly
+        // -- see docs/rfc-memory-model.md §6.2 and ArenaLayoutTests.SparseStructsAreExpectedSize),
+        // so this only checks Alive: it catches a read after Dispose() on THIS record, but not a
+        // stale handle into a slot that has since been recycled by a fresh Allocate() (that needs a
+        // generation stamp, which floatBSR itself carries in its own padding hole). Readonly
+        // struct: this method doesn't (and, being readonly, couldn't) mutate any field.
+        //
+        // Uses ChunkedRecordTable's IsAliveFast(TRecord*) -- a direct pointer cast, no index, no
+        // chunk-scan lookup -- rather than the index-based IsAlive(int) (i.e. NOT _rec->Table->
+        // IsAlive(_rec->SelfIndex)): Apply() reads DInv every PCG iteration (i.e. per element in
+        // the sense that matters here), so the index-based path's chunk scan would be a real
+        // per-call cost. See IsAliveFast's own doc comment (ChunkedRecordTable.cs) for the
+        // container-of rationale.
+        private unsafe void AssertRecordAlive()
+        {
+            if (_rec != null && !ChunkedRecordTable<floatBlockJacobiRecord>.IsAliveFast(_rec))
+                throw new InvalidOperationException("floatBlockJacobi.DInv: use of disposed/cleared arena allocation");
+        }
+#endif
 
         /// <summary>
         /// Builds the preconditioner from A's diagonal blocks. A must be square
@@ -199,10 +233,13 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe void Dispose()
         {
-#if LINALG_DEBUG
-            // poison the buffer so a read-after-dispose surfaces as NaN instead of stale data
-            for (int i = 0; i < DInv.Length; i++) DInv[i] = float.NaN;
-#endif
+            // LINALG_DEBUG NaN-poison-on-dispose removed (2026-07-05): the symbol was defined
+            // nowhere in the project, so that block was dead code that had never executed.
+            // Superseded by the record table's own unconditional guard below -- a double-dispose
+            // throws deterministically via Free()'s double-Free check, in every build config, not
+            // just a debug one -- plus the ENABLE_UNITY_COLLECTIONS_CHECKS generational overlay on
+            // DInv, which catches a stale read (use-after-dispose/Clear) instead of returning
+            // garbage.
             if (_rec != null)
             {
                 var dinv = _rec->DInv;

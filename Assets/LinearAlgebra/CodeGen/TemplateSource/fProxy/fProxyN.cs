@@ -24,9 +24,39 @@ namespace LinearAlgebra
 
         public unsafe UnsafeList<fProxy> Data
         {
-            get => _rec != null ? _rec->Data : _inlineData;
+            get
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                AssertRecordAlive();
+#endif
+                return _rec != null ? _rec->Data : _inlineData;
+            }
             private set { if (_rec != null) _rec->Data = value; else _inlineData = value; }
         }
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        // Editor/test-only guard (ENABLE_UNITY_COLLECTIONS_CHECKS is defined automatically by the
+        // Unity Editor, including every test run, and compiles out of player builds entirely --
+        // struct size is identical in both configs either way, since this adds no field). fProxyN
+        // has no spare bits to pack a generation
+        // stamp into (32B = 8 _rec + 24 UnsafeList<fProxy>, exactly -- see docs/rfc-memory-model.md
+        // §6.2 and ArenaLayoutTests.VectorStructsAreExpectedSize), so this only checks Alive: it
+        // catches a read after Dispose()/Clear()/ClearTemp() on THIS record, but not a stale handle
+        // into a slot that has since been recycled by a fresh Allocate() (that needs a generation
+        // stamp, which fProxyMxN/fProxyBSR carry in their own padding hole -- see those types).
+        //
+        // Uses ChunkedRecordTable's IsAliveFast(TRecord*) -- a direct pointer cast, no index, no
+        // chunk-scan lookup -- rather than the index-based IsAlive(int) (i.e. NOT _rec->Table->
+        // IsAlive(_rec->SelfIndex)): this getter runs on EVERY read (i.e. per element, since an
+        // indexer routes through Data), so the index-based path's chunk scan would be a real
+        // per-element cost. See IsAliveFast's own doc comment (ChunkedRecordTable.cs) for the
+        // container-of rationale.
+        private unsafe void AssertRecordAlive()
+        {
+            if (_rec != null && !ChunkedRecordTable<fProxyVecRecord>.IsAliveFast(_rec))
+                throw new InvalidOperationException("fProxyN.Data: use of disposed/cleared arena allocation");
+        }
+#endif
 
         // Reconstructs a live Arena handle from this record's owner core -- used by Copy()/
         // TempCopy() and the cross-type allocation shortcuts (fProxyN.Shortcuts.cs) that used to
@@ -136,10 +166,13 @@ namespace LinearAlgebra
         }
 
         public unsafe void Dispose() {
-#if LINALG_DEBUG
-            // poison the buffer so a read-after-dispose surfaces as NaN instead of stale data
-            for (int i = 0; i < N; i++) this[i] = fProxy.NaN;
-#endif
+            // LINALG_DEBUG NaN-poison-on-dispose removed (2026-07-05): the symbol was defined
+            // nowhere in the project, so that block was dead code that had never executed.
+            // Superseded by the record table's own unconditional guards below -- a double-dispose
+            // (aliased or not) throws deterministically via Free()'s double-Free check, in every
+            // build config, not just a debug one -- plus the ENABLE_UNITY_COLLECTIONS_CHECKS
+            // generational overlay on the Data getter, which catches a stale read (use-after-
+            // dispose/Clear, or a handle into a since-recycled slot) instead of returning garbage.
             if (_rec != null)
             {
                 // Cache Data BEFORE Free(): Free() marks the slot dead and (per

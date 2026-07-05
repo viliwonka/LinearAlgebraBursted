@@ -25,9 +25,39 @@ namespace LinearAlgebra
 
         public unsafe UnsafeList<bool> Data
         {
-            get => _rec != null ? _rec->Data : _inlineData;
+            get
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                AssertRecordAlive();
+#endif
+                return _rec != null ? _rec->Data : _inlineData;
+            }
             private set { if (_rec != null) _rec->Data = value; else _inlineData = value; }
         }
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        // Editor/test-only guard (ENABLE_UNITY_COLLECTIONS_CHECKS is defined automatically by the
+        // Unity Editor, including every test run, and compiles out of player builds entirely --
+        // struct size is identical in both configs either way, since this adds no field). boolN
+        // has no spare bits to pack a generation
+        // stamp into (32B = 8 _rec + 24 UnsafeList<bool>, exactly -- see docs/rfc-memory-model.md
+        // §6.2 and ArenaLayoutTests.VectorStructsAreExpectedSize), so this only checks Alive: it
+        // catches a read after Dispose()/Clear()/ClearTemp() on THIS record, but not a stale handle
+        // into a slot that has since been recycled by a fresh Allocate() (that needs a generation
+        // stamp, which fProxyMxN/fProxyBSR carry in their own padding hole -- see those types).
+        //
+        // Uses ChunkedRecordTable's IsAliveFast(TRecord*) -- a direct pointer cast, no index, no
+        // chunk-scan lookup -- rather than the index-based IsAlive(int) (i.e. NOT _rec->Table->
+        // IsAlive(_rec->SelfIndex)): this getter runs on EVERY read (i.e. per element, since an
+        // indexer routes through Data), so the index-based path's chunk scan would be a real
+        // per-element cost. See IsAliveFast's own doc comment (ChunkedRecordTable.cs) for the
+        // container-of rationale.
+        private unsafe void AssertRecordAlive()
+        {
+            if (_rec != null && !ChunkedRecordTable<boolVecRecord>.IsAliveFast(_rec))
+                throw new InvalidOperationException("boolN.Data: use of disposed/cleared arena allocation");
+        }
+#endif
 
         // Reconstructs a live Arena handle from this record's owner core -- used by Copy()/
         // TempCopy() and the cross-type allocation shortcuts (boolN.Shortcuts.cs) that used to

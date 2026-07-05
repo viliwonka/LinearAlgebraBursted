@@ -362,4 +362,144 @@ public class iProxyArenaWiringTests
         }
         finally { m.Dispose(); }
     }
+
+    // ---- Generational-overlay guard tests (Stage E; ENABLE_UNITY_COLLECTIONS_CHECKS-only) -----------
+    // Stage E added a checks-gated "generational overlay" to the arena-tracked structs' Data getter:
+    // reading through a STALE handle -- one whose slot was Disposed / arena.Clear()'d / ClearTemp()'d,
+    // or (option (c) only) freed and then RECYCLED by an unrelated fresh allocation -- throws
+    // InvalidOperationException instead of silently returning a dead/garbage buffer. iProxyN is
+    // option (b) (Alive-only: the 32B struct has no spare padding for a generation stamp); iProxyMxN is
+    // option (c) (Alive + a free `_gen` stamp riding in its trailing padding hole), so it ADDITIONALLY
+    // catches the recycled-slot case that Alive alone cannot. Mirrors ArenaWiringTests.fProxy.cs; the
+    // small non-negative sentinels (5) hold identically across the int/short/long/uint expansions.
+    // Whole methods are compiled under the same symbol the guard is (so they can't go vacuous when
+    // checks are off), mirroring RollingWindowTests' out-of-range throw tests.
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+
+    // (b) VECTOR read-after-Dispose. iProxyN.Dispose() nulls the DISPOSER's OWN _rec, so the stale read
+    // must go through an ALIAS whose _rec still points at the freed record -> Alive is false -> throws.
+    [Test]
+    public void Vector_ReadAfterDispose_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var v = arena.iProxyVec(4, (iProxy)0);
+            var alias = v;                 // struct copy -- shares v's (about-to-die) record
+            v.Dispose();                   // frees the slot; alias._rec now dangles onto a dead slot
+            Assert.Throws<InvalidOperationException>(() => { var _ = alias.Data; });
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // (b) VECTOR read after arena.Clear(). Clear() Frees every live slot but leaves the caller's struct
+    // copy alone, so v._rec still points at the now-dead record -> throws. (Clear, NOT Dispose, which
+    // would also free the table's chunk memory -- a raw-memory UAF the Alive guard can't observe.)
+    [Test]
+    public void Vector_ReadAfterArenaClear_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var v = arena.iProxyVec(4, (iProxy)0);
+            arena.Clear();                 // frees v's slot; v is still a (now stale) handle
+            Assert.Throws<InvalidOperationException>(() => { var _ = v.Data; });
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // (b) VECTOR read after arena.ClearTemp(). A TempCopy() lives in the temp pool; ClearTemp() drains
+    // it, Freeing the temp slot. The stale temp handle throws; the persistent seed survives.
+    [Test]
+    public void Vector_ReadAfterClearTemp_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var seed = arena.iProxyVec(4, (iProxy)0);
+            var tv = seed.TempCopy();      // temp-pool allocation
+            arena.ClearTemp();             // frees the temp slot; tv._rec now dangles
+            Assert.Throws<InvalidOperationException>(() => { var _ = tv.Data; });
+            Assert.AreEqual(4, seed.N);    // seed (persistent) untouched by ClearTemp
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // (c) MATRIX read-after-Dispose / after-Clear / after-ClearTemp: the vector cases mirrored through
+    // iProxyMxN's Alive+generation guard. Same alias-for-dispose requirement (mutable struct).
+    [Test]
+    public void Matrix_ReadAfterDispose_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var m = arena.iProxyMat(3, 4, (iProxy)0);
+            var alias = m;
+            m.Dispose();
+            Assert.Throws<InvalidOperationException>(() => { var _ = alias.Data; });
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Matrix_ReadAfterArenaClear_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var m = arena.iProxyMat(3, 4, (iProxy)0);
+            arena.Clear();
+            Assert.Throws<InvalidOperationException>(() => { var _ = m.Data; });
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void Matrix_ReadAfterClearTemp_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var seed = arena.iProxyMat(3, 3, (iProxy)0);
+            var tm = seed.TempCopy();
+            arena.ClearTemp();
+            Assert.Throws<InvalidOperationException>(() => { var _ = tm.Data; });
+            Assert.AreEqual(9, seed.Length);   // seed (persistent) untouched by ClearTemp
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // (c) THE generation-stamp payoff -- the one case option (c) buys over option (b). A stale handle
+    // into a slot freed and then RECYCLED by a fresh, unrelated allocation: Alive alone would read true
+    // again for the new occupant, but iProxyMxN's _gen (stamped at v1's construction) no longer matches
+    // the table's CURRENT generation for that slot, so the stale read throws -- while v2 (on the
+    // recycled slot) reads & writes fine. The 1 -> 0 -> 1 count trace pins that v2 reused v1's EXACT
+    // freed slot, so it is the GENERATION mismatch (not a dead slot) that trips the guard for the alias.
+    [Test]
+    public void Matrix_StaleGenerationAfterSlotRecycle_OldThrows_NewWorks()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var v1 = arena.iProxyMat(2, 3, (iProxy)0);
+            var alias = v1;                // captures v1's record pointer AND its generation stamp
+            Assert.AreEqual(1, arena.AllocationsCount);
+
+            v1.Dispose();                  // frees v1's slot onto the table's LIFO free list
+            Assert.AreEqual(0, arena.AllocationsCount);
+
+            var v2 = arena.iProxyMat(2, 3, (iProxy)0);  // recycles v1's EXACT slot; generation bumped
+            Assert.AreEqual(1, arena.AllocationsCount);
+
+            // alias: slot is alive again (for v2), but its stamped generation is stale -> throws.
+            Assert.Throws<InvalidOperationException>(() => { var _ = alias.Data; });
+
+            // v2: same slot, current generation -> reads/writes cleanly.
+            Assert.DoesNotThrow(() => { var _ = v2.Data; });
+            v2[0, 0] = (iProxy)5;
+            Assert.AreEqual(5, (int)v2[0, 0]);
+        }
+        finally { arena.Dispose(); }
+    }
+#endif
 }

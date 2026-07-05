@@ -385,4 +385,126 @@ public class fProxySparseArenaWiringTests
         }
         finally { arena.Dispose(); }
     }
+
+    // ---- Generational-overlay guard tests (Stage E; ENABLE_UNITY_COLLECTIONS_CHECKS-only) -----------
+    // Stage E added a checks-gated "generational overlay" to the arena-tracked structs' data getters:
+    // reading through a STALE handle -- one whose slot was Disposed or arena.Clear()'d, or (option (c)
+    // only) freed and then RECYCLED by an unrelated fresh allocation -- throws InvalidOperationException
+    // instead of silently returning a dead/garbage buffer. fProxyBSR is option (c): its
+    // RowPtr/ColInd/Values getters SHARE one AssertRecordValid() (Alive + a free `_gen` stamp in the
+    // struct's internal padding hole), so it ADDITIONALLY catches the recycled-slot case. fProxyBlockJacobi
+    // is option (b) (Alive-only: no spare padding), guarding its DInv getter.
+    //
+    // NO ClearTemp case here for EITHER type: neither fProxyBSR nor fProxyBlockJacobi has a temp-pool
+    // counterpart (no fProxyTempBSR / no ClearTemp-tracked BlockJacobi pool -- see Arena.Sparse.fProxy.cs),
+    // so the "TempCopy + ClearTemp + stale read" scenario the dense N/MxN families cover simply does not
+    // exist on the sparse side. Whole methods are compiled under the same symbol the guard is (so they
+    // can't go vacuous when checks are off), mirroring RollingWindowTests' out-of-range throw tests.
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+
+    // (c) BSR read-after-Dispose. fProxyBSR is a mutable struct and Dispose() nulls the DISPOSER's OWN
+    // _rec (so the disposed variable itself reads harmlessly standalone -- see SameInstanceDoubleDispose_
+    // BSR_IsNoOp), so the stale read must go through an ALIAS whose _rec still points at the freed
+    // record. RowPtr/ColInd/Values share one AssertRecordValid(); pin two of the three call sites.
+    [Test]
+    public void BSR_ReadAfterDispose_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.fProxyBSR(1, 1, 2, 2, 1);
+            var alias = A;                 // struct copy -- shares A's (about-to-die) record
+            A.Dispose();                   // frees the slot; alias._rec now dangles onto a dead slot
+            Assert.Throws<InvalidOperationException>(() => { var _ = alias.RowPtr; });
+            Assert.Throws<InvalidOperationException>(() => { var _ = alias.ColInd; });
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // (c) BSR read after arena.Clear(). Clear() Frees every live slot but leaves the caller's struct
+    // copy alone, so A._rec still points at the now-dead record -> the Values getter throws. (Clear,
+    // NOT a full arena.Dispose, which would also free the record table's chunk memory -- a raw-memory
+    // use-after-free the guard can't safely observe.)
+    [Test]
+    public void BSR_ReadAfterArenaClear_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.fProxyBSR(1, 1, 2, 2, 1);
+            arena.Clear();                 // frees A's slot; A is still a (now stale) handle
+            Assert.Throws<InvalidOperationException>(() => { var _ = A.Values; });
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // (c) THE generation-stamp payoff for BSR -- the one case option (c) buys over option (b). A stale
+    // handle into a slot freed and then RECYCLED by a fresh, unrelated allocation: Alive alone would
+    // read true again for the new occupant, but fProxyBSR's _gen (stamped at v1's construction) no
+    // longer matches the table's CURRENT generation for that slot, so the stale read throws -- while v2
+    // (on the recycled slot) reads & writes fine. The 1 -> 0 -> 1 count trace pins that v2 reused v1's
+    // EXACT freed slot, so it is the GENERATION mismatch (not a dead slot) that trips the guard.
+    [Test]
+    public void BSR_StaleGenerationAfterSlotRecycle_OldThrows_NewWorks()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var v1 = arena.fProxyBSR(1, 1, 2, 2, 1);
+            var alias = v1;                // captures v1's record pointer AND its generation stamp
+            Assert.AreEqual(1, arena.AllocationsCount);
+
+            v1.Dispose();                  // frees v1's slot onto the table's LIFO free list
+            Assert.AreEqual(0, arena.AllocationsCount);
+
+            var v2 = arena.fProxyBSR(1, 1, 2, 2, 1);   // recycles v1's EXACT slot; generation bumped
+            Assert.AreEqual(1, arena.AllocationsCount);
+
+            // alias: slot is alive again (for v2), but its stamped generation is stale -> throws.
+            Assert.Throws<InvalidOperationException>(() => { var _ = alias.RowPtr; });
+
+            // v2: same slot, current generation -> reads cleanly and is a usable buffer. RowPtr is
+            // get-only, so cache into a local before the indexer write (CS1612 -- see file header).
+            Assert.DoesNotThrow(() => { var _ = v2.RowPtr; });
+            var rp = v2.RowPtr;            // length blockRows+1 == 2
+            rp[0] = 0; rp[1] = 1;
+            Assert.AreEqual(1, v2.RowPtr[1]);
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // (b) BLOCKJACOBI read-after-Dispose. fProxyBlockJacobi is a READONLY struct, so Dispose() CANNOT
+    // null its _rec afterward -- the SAME variable's _rec still points at the freed slot, so reading its
+    // DInv getter throws with NO alias needed (unlike the mutable fProxyN/fProxyBSR families). This is
+    // the same readonly asymmetry SameInstanceDoubleDispose_BlockJacobi_Throws pins for Dispose().
+    [Test]
+    public void BlockJacobi_ReadAfterDispose_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = BuildSquareInvertible(ref arena);
+            var M = arena.fProxyBlockJacobi(in A);
+            M.Dispose();                   // readonly struct: _rec is NOT nulled
+            Assert.Throws<InvalidOperationException>(() => { var _ = M.DInv; });
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // (b) BLOCKJACOBI read after arena.Clear(). Clear() Frees the preconditioner's slot; the stale M
+    // handle's DInv getter throws (Alive is false). Same Clear-not-Dispose rationale as the BSR case.
+    [Test]
+    public void BlockJacobi_ReadAfterArenaClear_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = BuildSquareInvertible(ref arena);
+            var M = arena.fProxyBlockJacobi(in A);
+            arena.Clear();                 // frees M's slot; M is still a (now stale) handle
+            Assert.Throws<InvalidOperationException>(() => { var _ = M.DInv; });
+        }
+        finally { arena.Dispose(); }
+    }
+#endif
 }

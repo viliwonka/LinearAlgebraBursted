@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using System.Runtime.InteropServices;
 
 namespace LinearAlgebra
 {
@@ -58,9 +59,14 @@ namespace LinearAlgebra
     /// <see cref="Free"/>) alongside its <typeparamref name="TRecord"/> payload. <c>Alive</c> is live
     /// release-code state, consumed via <see cref="IsAlive"/> by <c>Arena.Clear()</c>/<c>ClearTemp()</c>
     /// (skip an already-Dispose()'d record instead of double-freeing it) and guarded by
-    /// <see cref="Free"/> itself (rejects a double-Free). <c>Generation</c> is NOT consumed by
-    /// anything yet -- it exists now so the future DEBUG generational-validation overlay (RFC §6.2,
-    /// Option B) has somewhere to live without another migration later.</para>
+    /// <see cref="Free"/> itself (rejects a double-Free). <c>Generation</c>, read via
+    /// <see cref="GetGeneration"/>, backs the <c>ENABLE_UNITY_COLLECTIONS_CHECKS</c>-only
+    /// generational-validation overlay (RFC §6.2, Option B): fProxyMxN/longMxN/boolMxN/fProxyBSR
+    /// each carry a small stamp of their own (packed into an existing padding hole -- see those
+    /// types' own <c>_gen</c> doc comments) captured at allocation time and compared against this
+    /// table's current generation on every read, to catch a stale handle into a since-recycled
+    /// slot. fProxyN/longN/boolN/fProxyBlockJacobi have no spare bits for a stamp, so they check
+    /// <see cref="IsAlive"/> alone (catches use-after-dispose, not use-after-recycle).</para>
     ///
     /// <para><b>Burst.</b> Unmanaged generic (<c>where TRecord : unmanaged</c>), the one raw pointer
     /// held in a field (<c>Chunk.Slots</c>) is <c>[NativeDisableUnsafePtrRestriction]</c>, no managed
@@ -72,6 +78,16 @@ namespace LinearAlgebra
         // Table-owned bookkeeping alongside the record payload. Kept OUT of TRecord itself so a
         // future family record struct doesn't need to know anything about the table's slot
         // machinery.
+        //
+        // [StructLayout(Sequential)] + Record FIRST is a HARD CONTRACT, not incidental: a
+        // TRecord* handed out by Allocate/Resolve (i.e. the fProxyVecRecord*/fProxyMatRecord*/etc.
+        // that fProxyN/fProxyMxN/etc. hold as `_rec`) points at THIS SAME ADDRESS as the Slot that
+        // contains it, precisely because Record is the struct's first field at offset 0. That is
+        // what makes IsAliveFast/GenerationFast below a valid "container-of" pointer cast
+        // (TRecord* -> Slot*) instead of undefined behavior. If Record ever stops being the first
+        // field (or a field is inserted before it), that cast reads garbage instead of
+        // Alive/Generation -- do not reorder without updating IsAliveFast/GenerationFast too.
+        [StructLayout(LayoutKind.Sequential)]
         private struct Slot
         {
             public TRecord Record;
@@ -173,8 +189,10 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Marks a slot dead and pushes it onto the free list for reuse by a later
-        /// <see cref="Allocate"/>. Bumps the slot's <c>Generation</c> -- bookkeeping for the future
-        /// DEBUG overlay; nothing consumes it yet.
+        /// <see cref="Allocate"/>. Bumps the slot's <c>Generation</c> -- read back later via
+        /// <see cref="GetGeneration"/>/<see cref="GenerationFast"/> by the
+        /// <c>ENABLE_UNITY_COLLECTIONS_CHECKS</c> generational-validation overlay (see this class's
+        /// own doc, "Bookkeeping" paragraph) to detect a stale handle into a since-recycled slot.
         /// </summary>
         /// <exception cref="System.InvalidOperationException">
         /// The slot is already dead. Unconditional (not DEBUG-gated): a double-Free would otherwise
@@ -218,6 +236,26 @@ namespace LinearAlgebra
             EnsureInitialized();
             return SlotPtr(slotIndex)->Generation;
         }
+
+        /// <summary>
+        /// Fast O(1) Alive check, bypassing <see cref="EnsureInitialized"/> and <see cref="SlotPtr"/>'s
+        /// chunk scan entirely: <paramref name="rec"/> -- the very <typeparamref name="TRecord"/>*
+        /// a math struct's <c>_rec</c> field already holds -- IS a valid <c>Slot*</c> at the exact
+        /// same address, because <see cref="Slot"/> is <c>[StructLayout(Sequential)]</c> with
+        /// <c>Record</c> as its guaranteed-first field (see that field's own comment). One pointer
+        /// read, no index, no lookup.
+        ///
+        /// <para>Exists for the <c>ENABLE_UNITY_COLLECTIONS_CHECKS</c> generational-overlay guards
+        /// (<c>AssertRecordAlive</c>/<c>AssertRecordValid</c> across fProxyN/fProxyMxN/fProxyBSR/
+        /// etc.), which run on EVERY guarded getter/property read -- i.e. per element, since an
+        /// indexer routes through <c>Data</c>. The index-based <see cref="IsAlive"/> would re-walk
+        /// the chunk directory on every one of those reads; this does not.</para>
+        /// </summary>
+        internal static unsafe bool IsAliveFast(TRecord* rec) => ((Slot*)rec)->Alive;
+
+        /// <summary>Fast O(1) generation read -- see <see cref="IsAliveFast"/> for the container-of
+        /// rationale and why the guards use this instead of the index-based <see cref="GetGeneration"/>.</summary>
+        internal static unsafe int GenerationFast(TRecord* rec) => ((Slot*)rec)->Generation;
 
         /// <summary>
         /// Frees every chunk block plus the directory/free-list themselves. Does NOT itself walk or
@@ -274,7 +312,12 @@ namespace LinearAlgebra
         // always a previously-issued slot index, so idx < Count <= (that chunk's StartIndex +
         // Capacity). Chunk counts stay small for the arena sizes this library targets (see the
         // chunk-sizing doc above), so this is effectively O(1) in practice, and it is not a hot path
-        // regardless -- it resolves once per Allocate/Free/Resolve call, never per element.
+        // regardless -- it resolves once per Allocate/Free/Resolve call, never per element. This
+        // "never per element" claim depends on callers NOT routing the ENABLE_UNITY_COLLECTIONS_
+        // CHECKS generational-overlay guards through IsAlive(int)/GetGeneration(int) (both of which
+        // call this): those guards fire on every guarded getter/property read (i.e. per element),
+        // so they use IsAliveFast/GenerationFast instead -- a direct TRecord*->Slot* cast that
+        // bypasses this scan (and EnsureInitialized) entirely. See those methods' doc comments.
         private Slot* SlotPtr(int idx)
         {
             // Single unsigned comparison covers idx < 0 AND idx >= Count in one branch: casting a
