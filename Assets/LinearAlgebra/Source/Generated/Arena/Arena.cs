@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Runtime.InteropServices;
+using System.Threading;
 using LinearAlgebra.Sparse;
 //singularFile//
 namespace LinearAlgebra
@@ -38,6 +39,105 @@ namespace LinearAlgebra
     /// </summary>
     internal unsafe partial struct ArenaCore
     {
+        // ---- concurrency guards (docs/rfc-memory-model.md's single-threaded-by-contract Arena
+        // has never had anything enforcing that contract -- these two mechanisms make a violation
+        // detectable instead of silently corrupting the record tables). Both live HERE, inside the
+        // heap-Malloc'd ArenaCore, rather than as fields on the pointer-sized Arena handle struct --
+        // see Arena's own class doc below ("Threading contract" paragraph) for why, and for the
+        // [NativeContainer]/AtomicSafetyHandle protocol conflict that decision resolves.
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        /// <summary>
+        /// Dispose-lifetime safety handle. Created once in <see cref="Init"/>, released once in
+        /// <see cref="Dispose"/>. Manually checked (via <c>AtomicSafetyHandle.CheckWriteAndThrow</c>/
+        /// <c>CheckExistsAndThrow</c>) at the top of every guarded mutating entry point below --
+        /// NOT wired into Unity's [NativeContainer] job-reflection protocol, because that protocol
+        /// requires the handle to be a field directly on the struct a job captures BY VALUE (see
+        /// e.g. Unity.Collections' own <c>NativeList&lt;T&gt;.m_Safety</c>), and the struct jobs
+        /// capture here is <see cref="Arena"/> (a bare <c>ArenaCore*</c>), not this heap-resident
+        /// <see cref="ArenaCore"/> -- putting the handle on <c>Arena</c> instead would grow
+        /// <c>sizeof(Arena)</c> under ENABLE_UNITY_COLLECTIONS_CHECKS and break
+        /// ArenaLayoutTests.Arena_IsPointerSized's unconditional pointer-size pin. Chose to keep
+        /// Arena pointer-sized rather than chase automatic schedule-time rejection; see Arena's
+        /// class doc for the full tradeoff writeup. What this still buys us: a live handle used
+        /// (from any thread) after <see cref="Dispose"/> released it throws a clear exception
+        /// instead of reading/writing through torn-down state.
+        /// </summary>
+        internal AtomicSafetyHandle Safety;
+#endif
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        /// <summary>
+        /// Race tripwire. 0 == free, 1 == a guarded mutating body is currently executing. Not a
+        /// mutex -- it never blocks or waits, it only detects two mutating calls overlapping in
+        /// time and throws on the second one. Guards ONLY the bodies of the ArenaCore-level
+        /// factory/Allocate/Clear/ClearTemp/Dispose/Pivot/Indices entry points enumerated in
+        /// docs/features/dense-types.md's threading-contract section.
+        ///
+        /// <para><b>Known gap, called out deliberately rather than silently:</b> an individual
+        /// buffer's OWN <c>Dispose()</c> (e.g. <c>fProxyN.Dispose()</c>/<c>fProxyMxN.Dispose()</c>
+        /// and their iProxy/bool/BSR/BlockJacobi counterparts) also mutates a record table --
+        /// it calls <c>_rec-&gt;Table-&gt;Free(_rec-&gt;SelfIndex)</c> directly -- but is NOT
+        /// guarded here. Two threads freeing different (or the same) allocations from the same
+        /// arena concurrently, or one thread freeing while another allocates from the SAME table,
+        /// is therefore a real, un-caught race surface, arguably a more common one in practice
+        /// than a factory racing another factory. It was scoped out because it sits at a different
+        /// altitude (every math struct's own per-instance lifecycle method, not an Arena/ArenaCore
+        /// entry point) and because gating it would mean threading a guard through every
+        /// numeric/bool/sparse family's Dispose() -- treated here the same as "element reads/
+        /// writes on the math structs", which this sweep also left ungated. Flagged as a follow-up
+        /// candidate, not implemented.</para>
+        ///
+        /// <para>Deliberately does NOT attempt same-thread-reentrancy detection via thread
+        /// identity (Burst has no <c>Thread.CurrentThread</c>, and the job system's per-worker
+        /// <c>JobsUtility.ThreadIndex</c> is only meaningful inside a scheduled job, not from
+        /// ordinary managed callers). Instead, reentrancy is avoided STRUCTURALLY: of the handful
+        /// of factory overloads that forward to another guarded overload (e.g.
+        /// <c>fProxyMat(int,bool)</c> -&gt; <c>fProxyMat(int,int,bool)</c>), only the terminal
+        /// overload that actually touches a record table is guarded -- the forwarding wrapper
+        /// itself does not call <see cref="EnterMutation"/>, so nesting never happens. Audited
+        /// (2026-07-05) across every <c>Arena.*.cs</c>/<c>Arena.Sparse.*.cs</c> factory and every
+        /// <c>ArenaExtensions.*.cs</c> convenience method built on top of them: extension methods
+        /// only ever call base factories SEQUENTIALLY (each one fully enters and exits its own
+        /// guard before the next starts), never while still inside another guarded call.</para>
+        /// </summary>
+        private int _busy;
+
+        /// <summary>
+        /// Marks entry into a guarded mutating body: checks <see cref="Safety"/> (throws if this
+        /// core was already Dispose()'d), then arms the <see cref="_busy"/> tripwire (throws if
+        /// another mutating call is already in flight). Combined into one call so every guarded
+        /// call site -- including the per-type factory methods in <c>Arena.fProxy.cs</c>/
+        /// <c>Arena.iProxy.cs</c>/<c>Arena.bool.cs</c>/<c>Arena.Sparse.fProxy.cs</c>, which live
+        /// outside this file and don't otherwise reference <c>AtomicSafetyHandle</c> -- only needs
+        /// <c>_core-&gt;EnterMutation()</c> / <c>_core-&gt;ExitMutation()</c>, not two separate
+        /// checks. See <see cref="_busy"/>'s doc for why this is safe against legitimate
+        /// same-thread nesting (there isn't any left to trip on -- reentrancy is avoided
+        /// structurally, not by counting).
+        /// </summary>
+        /// <exception cref="System.InvalidOperationException">
+        /// Two mutating calls overlapped. Names the single-threaded contract so the exception
+        /// itself points at the fix (one arena per concurrent job/thread).
+        /// </exception>
+        internal void EnterMutation()
+        {
+            AtomicSafetyHandle.CheckWriteAndThrow(Safety);
+
+            if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
+                throw new System.InvalidOperationException("Arena: concurrent mutating access detected -- two threads/jobs called into the same Arena at the same time. An Arena is single-threaded by contract (see Arena's class doc): allocate everything before scheduling jobs, and give each concurrent job its own arena instead of sharing one.");
+        }
+
+        /// <summary>
+        /// Marks exit from a guarded mutating body. Every <see cref="EnterMutation"/> call site
+        /// pairs this in a <c>finally</c> block, so it still runs if the guarded body throws for
+        /// an unrelated reason (e.g. a bad argument) -- otherwise that thread's own legitimate
+        /// exception would permanently wedge the tripwire for every later call.
+        /// </summary>
+        internal void ExitMutation()
+        {
+            Interlocked.Exchange(ref _busy, 0);
+        }
+#endif
+
         /// <summary>
         /// Live allocation count across every tracked family. PERMANENT (not transient) asymmetry
         /// for one deliberately-unmigrated family (docs/rfc-memory-model.md §4 Option A): every
@@ -110,6 +210,10 @@ namespace LinearAlgebra
         {
             Allocator = allocator;
 
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            Safety = AtomicSafetyHandle.Create();
+#endif
+
             
             floatVecRecords.Init(Allocator);
             floatMatRecords.Init(Allocator);
@@ -167,9 +271,18 @@ namespace LinearAlgebra
 
         public Pivot Pivot(int size)
         {
-            var pivot = new Pivot(size, this.Allocator);
-            Pivots.Add(in pivot);
-            return pivot;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            EnterMutation();
+            try
+            {
+#endif
+                var pivot = new Pivot(size, this.Allocator);
+                Pivots.Add(in pivot);
+                return pivot;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { ExitMutation(); }
+#endif
         }
 
         /// <summary>
@@ -178,12 +291,48 @@ namespace LinearAlgebra
         /// </summary>
         public Indices Indices(int n)
         {
-            var buf = new Indices(n, this.Allocator);
-            IndexBuffers.Add(in buf);
-            return buf;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            EnterMutation();
+            try
+            {
+#endif
+                var buf = new Indices(n, this.Allocator);
+                IndexBuffers.Add(in buf);
+                return buf;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { ExitMutation(); }
+#endif
         }
 
+        /// <summary>
+        /// Disposes every tracked (persistent AND temp) allocation. Public, guarded entry point --
+        /// see <see cref="ClearCore"/>/<see cref="ClearTempCore"/> for the actual unguarded work.
+        /// </summary>
         public void Clear()
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            EnterMutation();
+            try
+            {
+#endif
+                ClearCore();
+                ClearTempCore();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { ExitMutation(); }
+#endif
+        }
+
+        /// <summary>
+        /// Disposes every PERSISTENT-pool allocation (leaves temp pools alone -- see
+        /// <see cref="ClearTempCore"/>). Split out of <see cref="Clear"/> as an UNGUARDED core so
+        /// that <see cref="Clear"/>, <see cref="Dispose"/> can each acquire the concurrency guard
+        /// exactly ONCE and then call this directly, instead of one guarded method calling
+        /// another and tripping the tripwire on itself (see <c>_busy</c>'s doc for why reentrancy
+        /// is avoided structurally rather than by counting).
+        /// </summary>
+        private void ClearCore()
         {
             // Ordering note (dispose-then-Free, the OPPOSITE of fProxyN/fProxyMxN.Dispose()'s
             // Free-then-dispose): this loop is the sole owner walking its OWN record tables
@@ -345,13 +494,38 @@ namespace LinearAlgebra
                 IndexBuffers[i].Dispose();
             IndexBuffers.Clear();
 
-            ClearTemp();
+            // Calls the TEMP pool's unguarded core directly, NOT the public guarded ClearTemp() --
+            // this method is itself only ever reached from inside an already-guarded Clear()/
+            // Dispose() body, so calling back into a second EnterMutation() here would trip the
+            // tripwire on ourselves (see _busy's doc).
+            ClearTempCore();
         }
 
         /// <summary>
-        /// dispose only temporary allocations, produced from operations
+        /// Disposes only temporary allocations, produced from operations. Public, guarded entry
+        /// point -- see <see cref="ClearTempCore"/> for the actual unguarded work, which
+        /// <see cref="ClearCore"/> also calls directly to avoid nested guard acquisition.
         /// </summary>
         public void ClearTemp()
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            EnterMutation();
+            try
+            {
+#endif
+                ClearTempCore();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { ExitMutation(); }
+#endif
+        }
+
+        /// <summary>
+        /// Unguarded temp-pool disposal core -- see <see cref="ClearCore"/>'s doc for why this is
+        /// split out (so <see cref="ClearCore"/> and <see cref="ClearTemp"/> can each acquire the
+        /// concurrency guard exactly once, instead of nesting it).
+        /// </summary>
+        private void ClearTempCore()
         {
             // Same dispose-then-Free ordering as Clear() above, and safe for the identical reason:
             // this loop is the sole owner sequentially walking its OWN temp record table, gated by
@@ -465,61 +639,87 @@ namespace LinearAlgebra
         /// Disposes every tracked element AND the tracking lists themselves, then marks this
         /// core as torn down. Does NOT free the ArenaCore block itself -- that is the owning
         /// <see cref="Arena"/> handle's job (it knows the allocator the block was Malloc'd with).
+        ///
+        /// <para>Guarded like every other mutating entry point (see <c>_busy</c>/<c>Safety</c>'s
+        /// docs), PLUS an upfront existence check that fires if THIS SAME core was already
+        /// Dispose()'d once before (the documented "disposing a second copy... double-frees the
+        /// core block" footgun on <see cref="Arena"/>'s own class doc) -- turning what used to be
+        /// silent memory corruption into a clear exception, best-effort only: it depends on the
+        /// already-freed block's bytes not yet having been reused (reading <c>Safety</c> through a
+        /// freed <c>_core</c> pointer is technically undefined behavior, same as any other field
+        /// read on a disposed core -- this is a diagnostic aid, not a guarantee).</para>
         /// </summary>
         public void Dispose()
         {
-            Clear();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            if (!AtomicSafetyHandle.IsDefaultValue(Safety))
+                AtomicSafetyHandle.CheckExistsAndThrow(Safety);
+            EnterMutation();
+            try
+            {
+#endif
+                // Calls the unguarded cores directly, NOT the public Clear()/ClearTemp() -- this
+                // body already holds the guard (EnterMutation above), so routing back through the
+                // guarded public entry points would nest and trip the tripwire on itself.
+                ClearCore();
+                ClearTempCore();
 
-            
-            floatVecRecords.Dispose();
-            floatMatRecords.Dispose();
-            floatTempMatRecords.Dispose();
-            floatTempVecRecords.Dispose();
-            floatBSRRecords.Dispose();
-            floatBSRBuilders.Dispose();
-            floatBlockJacobiRecords.Dispose();
-            
-            doubleVecRecords.Dispose();
-            doubleMatRecords.Dispose();
-            doubleTempMatRecords.Dispose();
-            doubleTempVecRecords.Dispose();
-            doubleBSRRecords.Dispose();
-            doubleBSRBuilders.Dispose();
-            doubleBlockJacobiRecords.Dispose();
-            
+                
+                floatVecRecords.Dispose();
+                floatMatRecords.Dispose();
+                floatTempMatRecords.Dispose();
+                floatTempVecRecords.Dispose();
+                floatBSRRecords.Dispose();
+                floatBSRBuilders.Dispose();
+                floatBlockJacobiRecords.Dispose();
+                
+                doubleVecRecords.Dispose();
+                doubleMatRecords.Dispose();
+                doubleTempMatRecords.Dispose();
+                doubleTempVecRecords.Dispose();
+                doubleBSRRecords.Dispose();
+                doubleBSRBuilders.Dispose();
+                doubleBlockJacobiRecords.Dispose();
+                
 
-            
-            intVecRecords.Dispose();
-            intMatRecords.Dispose();
-            intTempMatRecords.Dispose();
-            intTempVecRecords.Dispose();
-            
-            shortVecRecords.Dispose();
-            shortMatRecords.Dispose();
-            shortTempMatRecords.Dispose();
-            shortTempVecRecords.Dispose();
-            
-            longVecRecords.Dispose();
-            longMatRecords.Dispose();
-            longTempMatRecords.Dispose();
-            longTempVecRecords.Dispose();
-            
-            uintVecRecords.Dispose();
-            uintMatRecords.Dispose();
-            uintTempMatRecords.Dispose();
-            uintTempVecRecords.Dispose();
-            
+                
+                intVecRecords.Dispose();
+                intMatRecords.Dispose();
+                intTempMatRecords.Dispose();
+                intTempVecRecords.Dispose();
+                
+                shortVecRecords.Dispose();
+                shortMatRecords.Dispose();
+                shortTempMatRecords.Dispose();
+                shortTempVecRecords.Dispose();
+                
+                longVecRecords.Dispose();
+                longMatRecords.Dispose();
+                longTempMatRecords.Dispose();
+                longTempVecRecords.Dispose();
+                
+                uintVecRecords.Dispose();
+                uintMatRecords.Dispose();
+                uintTempMatRecords.Dispose();
+                uintTempVecRecords.Dispose();
+                
 
-            BoolVecRecords.Dispose();
-            BoolMatRecords.Dispose();
-            TempBoolMatRecords.Dispose();
-            TempBoolVecRecords.Dispose();
+                BoolVecRecords.Dispose();
+                BoolMatRecords.Dispose();
+                TempBoolMatRecords.Dispose();
+                TempBoolVecRecords.Dispose();
 
-            Pivots.Dispose();
-            IndexBuffers.Dispose();
+                Pivots.Dispose();
+                IndexBuffers.Dispose();
 
-            Initialized = false;
-            Allocator = Allocator.Invalid;
+                Initialized = false;
+                Allocator = Allocator.Invalid;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { ExitMutation(); }
+
+            AtomicSafetyHandle.Release(Safety);
+#endif
         }
     }
 
@@ -537,10 +737,41 @@ namespace LinearAlgebra
     /// exactly once, on the authoritative handle -- disposing a second copy, or disposing after the
     /// original has already been disposed, double-frees the core block (undefined behavior).</para>
     ///
-    /// <para><b>Not thread-safe:</b> like Unity's native containers, a single <c>Arena</c> must not
-    /// be allocated from or disposed from more than one thread concurrently -- the core's tracking
-    /// lists (<c>UnsafeList.Add</c> + realloc) are not atomic. Use one arena per job/thread rather
-    /// than sharing one arena across threads.</para>
+    /// <para><b>Threading contract (authoritative statement):</b> an <c>Arena</c> is
+    /// single-threaded BY CONTRACT -- exactly like Unity's own native containers, nothing about it
+    /// is safe to touch from two threads/jobs at once. Concretely:
+    /// <list type="bullet">
+    /// <item><description><b>Allocate before you schedule.</b> Do all of an arena's persistent
+    /// allocations (and any <c>Pivot</c>/<c>Indices</c> buffers a factorization needs) on the
+    /// scheduling thread BEFORE handing data derived from it to a job. A job's <c>Execute()</c>
+    /// CAN call arena factories/Clear/ClearTemp (they are Burst-compilable), but only if no OTHER
+    /// thread is touching the SAME arena at the same time -- see the next point.</description></item>
+    /// <item><description><b>One arena per concurrently-running job/thread.</b> If two jobs may run
+    /// at the same time (no dependency between them), each needs its OWN <c>Arena</c> instance.
+    /// Sharing one arena across concurrent jobs is exactly the bug this contract exists to name --
+    /// two <c>ChunkedRecordTable&lt;T&gt;.Allocate</c>/<c>Free</c> calls (or a factory racing a
+    /// <c>Clear</c>) interleaving their chunk-directory/free-list mutations corrupts the arena
+    /// silently, no exception, just wrong answers or a crash later.</description></item>
+    /// <item><description><b>Complete jobs before Clear()/Dispose().</b> Never call
+    /// <c>Clear()</c>/<c>ClearTemp()</c>/<c>Dispose()</c> while a job that still holds (or might
+    /// still schedule work against) this arena is in flight. Wait on the job's <c>JobHandle</c>
+    /// first.</description></item>
+    /// </list>
+    /// Detection, not prevention: under <c>ENABLE_UNITY_COLLECTIONS_CHECKS</c>, every mutating
+    /// entry point (the factory methods, <c>Clear</c>, <c>ClearTemp</c>, <c>Dispose</c>,
+    /// <c>Pivot</c>, <c>Indices</c>) is wrapped by an <see cref="ArenaCore"/>-resident interlocked
+    /// tripwire that throws <see cref="System.InvalidOperationException"/> the instant two such
+    /// calls overlap in time, plus an <c>AtomicSafetyHandle</c> that throws if the arena is used
+    /// after <see cref="Dispose"/> already released it. Neither mechanism makes concurrent access
+    /// SAFE -- both only turn an otherwise-silent race into a loud, deterministic-ish exception (see
+    /// <c>ArenaCore</c>'s own field docs, and docs/features/dense-types.md, for the full writeup
+    /// including why this is NOT wired into Unity's automatic [NativeContainer] job-scheduling
+    /// enforcement). NOT gated by either mechanism, out of scope for this pass: element
+    /// reads/writes on the math structs themselves (fProxyN/fProxyMxN/etc. indexers -- same as the
+    /// rest of this library's per-buffer safety story), AND an individual buffer's own
+    /// <c>Dispose()</c> (e.g. <c>fProxyN.Dispose()</c>), which also mutates a record table but sits
+    /// at a different altitude than Arena/ArenaCore's own entry points -- see <c>_busy</c>'s field
+    /// doc (ArenaCore, above) for that known gap.</para>
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public unsafe partial struct Arena : System.IDisposable

@@ -20,53 +20,114 @@ namespace LinearAlgebra
 
         #region VECTOR
 
+        // Guarded (docs/features/dense-types.md's threading contract): _core->EnterMutation()/
+        // ExitMutation() bracket every TERMINAL factory body below (the ones that actually touch
+        // a record table's Allocate) under ENABLE_UNITY_COLLECTIONS_CHECKS -- see ArenaCore's
+        // _busy field doc (Arena.cs) for why this is safe against reentrancy without a counter.
+        // Each also starts with an UNCONDITIONAL `_core == null` guard (matching Pivot/Indices
+        // above) -- without it, calling a factory on a disposed/default handle dereferences a null
+        // _core before EnterMutation() (or the Allocate call, without checks) ever runs.
         public longN longVec(int N, bool uninit = false) {
-
-            longVecRecord* rec = _core->longVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longVecRecords;
-            rec->SelfIndex = slot;
-            return new longN(N, rec, Allocator, uninit);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                longVecRecord* rec = _core->longVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longVecRecords;
+                rec->SelfIndex = slot;
+                return new longN(N, rec, Allocator, uninit);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         public longN longVec(int N, long s)
         {
-            longVecRecord* rec = _core->longVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longVecRecords;
-            rec->SelfIndex = slot;
-            var vec = new longN(N, rec, Allocator, true);
-            unsafe {
-                UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                longVecRecord* rec = _core->longVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longVecRecords;
+                rec->SelfIndex = slot;
+                var vec = new longN(N, rec, Allocator, true);
+                unsafe {
+                    UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
+                }
+                return vec;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
             }
-            return vec;
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal longN longVec(in longN orig)
         {
-            longVecRecord* rec = _core->longVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longVecRecords;
-            rec->SelfIndex = slot;
-            return new longN(in orig, rec, Allocator);   // persistent (backs Copy()); was wrongly the temp list
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                longVecRecord* rec = _core->longVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longVecRecords;
+                rec->SelfIndex = slot;
+                return new longN(in orig, rec, Allocator);   // persistent (backs Copy()); was wrongly the temp list
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal longN longTempVec(int N, bool uninit = false)
         {
-            longVecRecord* rec = _core->longTempVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longTempVecRecords;
-            rec->SelfIndex = slot;
-            return new longN(N, rec, Allocator, uninit);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                longVecRecord* rec = _core->longTempVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longTempVecRecords;
+                rec->SelfIndex = slot;
+                return new longN(N, rec, Allocator, uninit);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal longN longTempVec(in longN orig)
         {
-            longVecRecord* rec = _core->longTempVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longTempVecRecords;
-            rec->SelfIndex = slot;
-            return new longN(in orig, rec, Allocator);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                longVecRecord* rec = _core->longTempVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longTempVecRecords;
+                rec->SelfIndex = slot;
+                return new longN(in orig, rec, Allocator);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
         #endregion
 
@@ -74,62 +135,123 @@ namespace LinearAlgebra
         public longMxN longMat(int dim, bool uninit = false)
         {
             // forward to the (rows, cols) overload so the matrix is TRACKED in longMatRecords —
-            // the direct `new longMxN(...)` here was untracked and leaked on Dispose.
+            // the direct `new longMxN(...)` here was untracked and leaked on Dispose. NOT
+            // guarded here (pure forwarding wrapper) -- the (rows, cols) overload below is the
+            // terminal call that actually touches a record table, so IT holds the guard (and the
+            // null check); guarding both would nest EnterMutation() on the same thread and trip
+            // the tripwire on ourselves (see ArenaCore's _busy field doc).
             return longMat(dim, dim, uninit);
         }
 
         public longMxN longMat(int M_rows, int N_cols, bool uninit = false)
         {
-            longMatRecord* rec = _core->longMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longMatRecords;
-            rec->SelfIndex = slot;
-            return new longMxN(M_rows, N_cols, rec, Allocator, uninit);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                longMatRecord* rec = _core->longMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longMatRecords;
+                rec->SelfIndex = slot;
+                return new longMxN(M_rows, N_cols, rec, Allocator, uninit);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         public longMxN longMat(int M_rows, int N_cols, long s)
         {
-            longMatRecord* rec = _core->longMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longMatRecords;
-            rec->SelfIndex = slot;
-            var matrix = new longMxN(M_rows, N_cols, rec, Allocator, false);
-            unsafe
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
             {
-                UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
+#endif
+                longMatRecord* rec = _core->longMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longMatRecords;
+                rec->SelfIndex = slot;
+                var matrix = new longMxN(M_rows, N_cols, rec, Allocator, false);
+                unsafe
+                {
+                    UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
+                }
+                return matrix;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
             }
-            return matrix;
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         public longMxN longMat(in longMxN orig)
         {
-            longMatRecord* rec = _core->longMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longMatRecords;
-            rec->SelfIndex = slot;
-            return new longMxN(in orig, rec, Allocator);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                longMatRecord* rec = _core->longMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longMatRecords;
+                rec->SelfIndex = slot;
+                return new longMxN(in orig, rec, Allocator);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal longMxN longTempMat(int M_rows, int M_cols, bool uninit = false)
         {
-            longMatRecord* rec = _core->longTempMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longTempMatRecords;
-            rec->SelfIndex = slot;
-            return new longMxN(M_rows, M_cols, rec, Allocator, uninit);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                longMatRecord* rec = _core->longTempMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longTempMatRecords;
+                rec->SelfIndex = slot;
+                return new longMxN(M_rows, M_cols, rec, Allocator, uninit);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal longMxN longTempMat(in longMxN orig)
         {
-            longMatRecord* rec = _core->longTempMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->longTempMatRecords;
-            rec->SelfIndex = slot;
-            return new longMxN(in orig, rec, Allocator);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                longMatRecord* rec = _core->longTempMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->longTempMatRecords;
+                rec->SelfIndex = slot;
+                return new longMxN(in orig, rec, Allocator);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
         #endregion
 
         // --- debug pool checks (see Arena.fProxy.cs for the full rationale) ---
+        // READ-ONLY: not guarded (element reads are out of scope -- see the threading-contract doc
+        // on Arena's class comment).
         public bool isPersistent(in longN v) {
             for (int i = 0; i < _core->longVecRecords.Count; i++)
                 if (_core->longVecRecords.IsAlive(i) && _core->longVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)

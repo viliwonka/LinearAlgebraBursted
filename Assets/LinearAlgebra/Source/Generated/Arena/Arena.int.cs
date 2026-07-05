@@ -20,53 +20,114 @@ namespace LinearAlgebra
 
         #region VECTOR
 
+        // Guarded (docs/features/dense-types.md's threading contract): _core->EnterMutation()/
+        // ExitMutation() bracket every TERMINAL factory body below (the ones that actually touch
+        // a record table's Allocate) under ENABLE_UNITY_COLLECTIONS_CHECKS -- see ArenaCore's
+        // _busy field doc (Arena.cs) for why this is safe against reentrancy without a counter.
+        // Each also starts with an UNCONDITIONAL `_core == null` guard (matching Pivot/Indices
+        // above) -- without it, calling a factory on a disposed/default handle dereferences a null
+        // _core before EnterMutation() (or the Allocate call, without checks) ever runs.
         public intN intVec(int N, bool uninit = false) {
-
-            intVecRecord* rec = _core->intVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intVecRecords;
-            rec->SelfIndex = slot;
-            return new intN(N, rec, Allocator, uninit);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                intVecRecord* rec = _core->intVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intVecRecords;
+                rec->SelfIndex = slot;
+                return new intN(N, rec, Allocator, uninit);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         public intN intVec(int N, int s)
         {
-            intVecRecord* rec = _core->intVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intVecRecords;
-            rec->SelfIndex = slot;
-            var vec = new intN(N, rec, Allocator, true);
-            unsafe {
-                UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                intVecRecord* rec = _core->intVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intVecRecords;
+                rec->SelfIndex = slot;
+                var vec = new intN(N, rec, Allocator, true);
+                unsafe {
+                    UnsafeMathOP.setAll(vec.Data.Ptr, N, s);
+                }
+                return vec;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
             }
-            return vec;
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal intN intVec(in intN orig)
         {
-            intVecRecord* rec = _core->intVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intVecRecords;
-            rec->SelfIndex = slot;
-            return new intN(in orig, rec, Allocator);   // persistent (backs Copy()); was wrongly the temp list
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                intVecRecord* rec = _core->intVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intVecRecords;
+                rec->SelfIndex = slot;
+                return new intN(in orig, rec, Allocator);   // persistent (backs Copy()); was wrongly the temp list
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal intN intTempVec(int N, bool uninit = false)
         {
-            intVecRecord* rec = _core->intTempVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intTempVecRecords;
-            rec->SelfIndex = slot;
-            return new intN(N, rec, Allocator, uninit);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                intVecRecord* rec = _core->intTempVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intTempVecRecords;
+                rec->SelfIndex = slot;
+                return new intN(N, rec, Allocator, uninit);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal intN intTempVec(in intN orig)
         {
-            intVecRecord* rec = _core->intTempVecRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intTempVecRecords;
-            rec->SelfIndex = slot;
-            return new intN(in orig, rec, Allocator);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                intVecRecord* rec = _core->intTempVecRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intTempVecRecords;
+                rec->SelfIndex = slot;
+                return new intN(in orig, rec, Allocator);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
         #endregion
 
@@ -74,62 +135,123 @@ namespace LinearAlgebra
         public intMxN intMat(int dim, bool uninit = false)
         {
             // forward to the (rows, cols) overload so the matrix is TRACKED in intMatRecords —
-            // the direct `new intMxN(...)` here was untracked and leaked on Dispose.
+            // the direct `new intMxN(...)` here was untracked and leaked on Dispose. NOT
+            // guarded here (pure forwarding wrapper) -- the (rows, cols) overload below is the
+            // terminal call that actually touches a record table, so IT holds the guard (and the
+            // null check); guarding both would nest EnterMutation() on the same thread and trip
+            // the tripwire on ourselves (see ArenaCore's _busy field doc).
             return intMat(dim, dim, uninit);
         }
 
         public intMxN intMat(int M_rows, int N_cols, bool uninit = false)
         {
-            intMatRecord* rec = _core->intMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intMatRecords;
-            rec->SelfIndex = slot;
-            return new intMxN(M_rows, N_cols, rec, Allocator, uninit);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                intMatRecord* rec = _core->intMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intMatRecords;
+                rec->SelfIndex = slot;
+                return new intMxN(M_rows, N_cols, rec, Allocator, uninit);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         public intMxN intMat(int M_rows, int N_cols, int s)
         {
-            intMatRecord* rec = _core->intMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intMatRecords;
-            rec->SelfIndex = slot;
-            var matrix = new intMxN(M_rows, N_cols, rec, Allocator, false);
-            unsafe
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
             {
-                UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
+#endif
+                intMatRecord* rec = _core->intMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intMatRecords;
+                rec->SelfIndex = slot;
+                var matrix = new intMxN(M_rows, N_cols, rec, Allocator, false);
+                unsafe
+                {
+                    UnsafeMathOP.setAll(matrix.Data.Ptr, matrix.Length, s);
+                }
+                return matrix;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
             }
-            return matrix;
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         public intMxN intMat(in intMxN orig)
         {
-            intMatRecord* rec = _core->intMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intMatRecords;
-            rec->SelfIndex = slot;
-            return new intMxN(in orig, rec, Allocator);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                intMatRecord* rec = _core->intMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intMatRecords;
+                rec->SelfIndex = slot;
+                return new intMxN(in orig, rec, Allocator);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal intMxN intTempMat(int M_rows, int M_cols, bool uninit = false)
         {
-            intMatRecord* rec = _core->intTempMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intTempMatRecords;
-            rec->SelfIndex = slot;
-            return new intMxN(M_rows, M_cols, rec, Allocator, uninit);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                intMatRecord* rec = _core->intTempMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intTempMatRecords;
+                rec->SelfIndex = slot;
+                return new intMxN(M_rows, M_cols, rec, Allocator, uninit);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         internal intMxN intTempMat(in intMxN orig)
         {
-            intMatRecord* rec = _core->intTempMatRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->intTempMatRecords;
-            rec->SelfIndex = slot;
-            return new intMxN(in orig, rec, Allocator);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.intVec/intMat: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                intMatRecord* rec = _core->intTempMatRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->intTempMatRecords;
+                rec->SelfIndex = slot;
+                return new intMxN(in orig, rec, Allocator);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
         #endregion
 
         // --- debug pool checks (see Arena.fProxy.cs for the full rationale) ---
+        // READ-ONLY: not guarded (element reads are out of scope -- see the threading-contract doc
+        // on Arena's class comment).
         public bool isPersistent(in intN v) {
             for (int i = 0; i < _core->intVecRecords.Count; i++)
                 if (_core->intVecRecords.IsAlive(i) && _core->intVecRecords.Resolve(i)->Data.Ptr == v.Data.Ptr)

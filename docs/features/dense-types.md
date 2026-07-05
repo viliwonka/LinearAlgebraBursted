@@ -24,9 +24,60 @@ of the same handle double-frees**; treat an `Arena` like a single owned resource
   produces); call it once per frame/loop iteration to keep temp allocations from accumulating.
 - `arena.Dispose()` — disposes everything (persistent + temp) and frees the core itself.
 
-**Threading contract (from the type's own doc comment):** an `Arena` is not thread-safe — like
-Unity's native containers, a single instance must not be allocated from or disposed from more than
-one thread concurrently. Use one arena per job/thread rather than sharing one across threads.
+**Threading contract (from the type's own doc comment):** an `Arena` is single-threaded by contract
+— like Unity's native containers, a single instance must not be mutated (allocated from, cleared, or
+disposed) from more than one thread/job concurrently. Concretely:
+
+- **Allocate before you schedule.** Do an arena's persistent allocations (and any `Pivot`/`Indices`
+  buffers a factorization needs) on the scheduling thread before handing data derived from it to a
+  job. A job's `Execute()` can itself call arena factories/`Clear`/`ClearTemp` (they're
+  Burst-compilable), but only if no other thread is touching the same arena at the same time.
+- **One arena per concurrently-running job/thread.** If two jobs may run at the same time (no
+  dependency between them), give each its own `Arena`. Sharing one arena across concurrent jobs
+  races the record tables' chunk-directory/free-list bookkeeping — silently, with no exception, just
+  wrong answers or a crash later.
+- **Complete jobs before `Clear()`/`ClearTemp()`/`Dispose()`.** Wait on a job's `JobHandle` before
+  tearing down (or clearing) an arena it might still touch.
+
+### Concurrency guards (detection, not prevention)
+
+Nothing about `Arena`/`ArenaCore` makes concurrent misuse safe — the contract above still has to be
+followed. What exists is *detection*: under `ENABLE_UNITY_COLLECTIONS_CHECKS`, every mutating entry
+point (the `arena.floatVec`/`floatMat`/... factories, `fProxyBSR`/`fProxyBSRBuilder`/
+`fProxyBlockJacobi`, `Clear`, `ClearTemp`, `Dispose`, `Pivot`, `Indices`) is wrapped by two
+independent mechanisms so a contract violation throws instead of corrupting memory silently:
+
+1. **Race tripwire.** An `int` flag inside `ArenaCore` (heap-resident, so it doesn't affect
+   `sizeof(Arena)`) is armed via `Interlocked.CompareExchange` on entry to a guarded body and
+   released via `Interlocked.Exchange` on exit. If a second thread/job enters a guarded body while
+   the flag is already armed, it throws `InvalidOperationException` immediately — this is the
+   mechanism that actually catches two jobs racing the same arena. It is not a mutex: it never
+   blocks, it only detects overlap. Reentrancy (one guarded method legitimately calling another,
+   e.g. `Clear()` internally clearing the temp pool too) is handled structurally, by routing
+   internal calls through unguarded "core" helpers instead of nesting the guard — not by counting,
+   since Burst has no `Thread.CurrentThread` to distinguish legitimate same-thread nesting from a
+   genuine second thread.
+2. **`AtomicSafetyHandle`.** `ArenaCore` also owns an `AtomicSafetyHandle`, created in `Init` and
+   released in `Dispose`, checked at the top of every guarded entry point. This catches a live
+   handle used (from any thread) after `Dispose()` already released it.
+
+**Why not Unity's `[NativeContainer]` job-scheduling protocol** (the mechanism that makes the job
+debugger reject two `IJob`s capturing the same container without a dependency, *at Schedule time*)?
+That protocol requires the `AtomicSafetyHandle` to be a field directly on the struct a job captures
+by value — Unity's own `NativeList<T>`/`NativeReference<T>` carry `m_Safety` inline for exactly this
+reason. The struct a job captures here is `Arena`, which is deliberately pinned to a single
+pointer's width (`ArenaLayoutTests.Arena_IsPointerSized`) so it stays cheap to copy and pass around;
+adding an `AtomicSafetyHandle` field to it would grow `sizeof(Arena)` under
+`ENABLE_UNITY_COLLECTIONS_CHECKS` and break that pin. The handle instead lives inside the
+heap-allocated `ArenaCore` that `Arena` points to, which keeps `Arena` pointer-sized but means there
+is no automatic Schedule-time rejection — only the manual checks above, which fire once the
+conflicting code actually runs, not the moment it's scheduled.
+
+**Known gap:** an individual buffer's own `Dispose()` (e.g. `floatN.Dispose()`) also mutates a
+record table (frees its slot) but is *not* guarded by the tripwire — it sits at a different altitude
+than the Arena/ArenaCore entry points above (every numeric/bool/sparse type's own per-instance
+lifecycle method, closer in spirit to "element access"). Two threads disposing different allocations
+from the same arena concurrently is therefore still a real, undetected race.
 
 ## Vectors & matrices
 

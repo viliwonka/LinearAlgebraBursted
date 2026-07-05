@@ -34,11 +34,22 @@ namespace LinearAlgebra
         /// </summary>
         public floatBSR floatBSR(int blockRows, int blockCols, int BR, int BC, int nnzb, bool uninit = false, bool symmetric = false)
         {
-            floatBSRRecord* rec = _core->floatBSRRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->floatBSRRecords;
-            rec->SelfIndex = slot;
-            return new floatBSR(blockRows, blockCols, BR, BC, nnzb, rec, Allocator, uninit, symmetric);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.floatBSR/floatBSRBuilder/floatBlockJacobi: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                floatBSRRecord* rec = _core->floatBSRRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->floatBSRRecords;
+                rec->SelfIndex = slot;
+                return new floatBSR(blockRows, blockCols, BR, BC, nnzb, rec, Allocator, uninit, symmetric);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         /// <summary>
@@ -48,9 +59,20 @@ namespace LinearAlgebra
         /// </summary>
         public floatBSRBuilder floatBSRBuilder(int blockRows, int blockCols, int BR, int BC, int capacityHint = 8)
         {
-            var builder = new floatBSRBuilder(blockRows, blockCols, BR, BC, in this, capacityHint);
-            _core->floatBSRBuilders.Add(in builder);
-            return builder;
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.floatBSR/floatBSRBuilder/floatBlockJacobi: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                var builder = new floatBSRBuilder(blockRows, blockCols, BR, BC, in this, capacityHint);
+                _core->floatBSRBuilders.Add(in builder);
+                return builder;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         /// <summary>
@@ -59,11 +81,22 @@ namespace LinearAlgebra
         /// </summary>
         public floatBlockJacobi floatBlockJacobi(in floatBSR A)
         {
-            floatBlockJacobiRecord* rec = _core->floatBlockJacobiRecords.Allocate(out int slot);
-            rec->Owner = _core;
-            rec->Table = &_core->floatBlockJacobiRecords;
-            rec->SelfIndex = slot;
-            return new floatBlockJacobi(in A, rec, Allocator);
+            if (_core == null)
+                throw new System.InvalidOperationException("Arena.floatBSR/floatBSRBuilder/floatBlockJacobi: arena is not initialized (default or disposed).");
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            _core->EnterMutation();
+            try
+            {
+#endif
+                floatBlockJacobiRecord* rec = _core->floatBlockJacobiRecords.Allocate(out int slot);
+                rec->Owner = _core;
+                rec->Table = &_core->floatBlockJacobiRecords;
+                rec->SelfIndex = slot;
+                return new floatBlockJacobi(in A, rec, Allocator);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            }
+            finally { _core->ExitMutation(); }
+#endif
         }
 
         /// <summary>
@@ -83,6 +116,13 @@ namespace LinearAlgebra
         /// zero benefit. This is safe to feed straight into floatBSROperator's two-arg ctor:
         /// BSR.spMV already special-cases Symmetric internally, exactly matching what
         /// spMVT itself does for a symmetric A (forwards straight to spMV).
+        ///
+        /// NOT itself guarded by the concurrency tripwire (docs/features/dense-types.md):
+        /// this is a COMPOSITION of two already-guarded factory calls
+        /// (<see cref="floatBSRBuilder(int,int,int,int,int)"/>, then
+        /// <c>floatBSR</c> via <c>builder.ToBSR</c>) run sequentially, each fully entering and
+        /// exiting its own guard before the next starts -- wrapping this method too would nest
+        /// EnterMutation() on the same thread and trip the tripwire on ourselves.
         /// </summary>
         public unsafe floatBSR floatBSRTranspose(in floatBSR A)
         {
