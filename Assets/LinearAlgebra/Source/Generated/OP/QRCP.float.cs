@@ -15,6 +15,17 @@ namespace LinearAlgebra
     /// the pivoted family carries its own Pivot/rank contract; shares QR's private Householder
     /// kernels (genHouseholder / applyReflectorRight, marked internal for this reason).
     /// </summary>
+    /// <remarks>
+    /// NO floatQRCache here (deliberate — see docs/spec-solver-api-rework.md OQ-7): the pivot
+    /// decision at each step depends on trailing column norms recomputed AFTER the previous step's
+    /// reflector is applied, so panels of columns can't be factored ahead of their pivot choice —
+    /// this kernel is inherently level-2 (unblocked) and will never use the compact-WY buffers
+    /// (Vpanel/Tbuf/Wbuf/tcolBuf/VfullBuf) that make up most of QR's cache. Sharing that cache here
+    /// would leave those five fields permanently dead for every QRCP call. QRCP's own scratch need
+    /// (u, plus an internal w/colNorm2 pair the decompInPlace/solveInPlace overloads still allocate
+    /// from Allocator.Temp) stays as-is; widening it to a dedicated zero-alloc workspace is a
+    /// separate, smaller future change, not part of this commit.
+    /// </remarks>
     public static partial class QRCP {
 
         // Column-pivoted (rank-revealing) QR — Businger–Golub. Factorizes A·P = Q·R, where the

@@ -12,6 +12,17 @@ namespace LinearAlgebra
 {
     public static partial class QR {
 
+        // ---- Scratch contract across decomp / decompInPlace / solveInPlace ----
+        //   (no scratch param)      — allocating convenience: Allocator.Temp scratch, BLOCKED
+        //                              (level-3 / compact-WY) once N_Cols >= 2*QR_BLOCK.
+        //   ref u[, ref w]          — caller-provided scratch, LEVEL-2 (unblocked) kernel: the
+        //                              minimal zero-alloc path, cheapest for small N.
+        //   ref floatQRCache cache — caller-provided scratch, BLOCKED (same kernel, same gate as
+        //                              the allocating overload — bit-identical results); zero-alloc
+        //                              AND fastest for repeated large-N use. solveInPlace's cache
+        //                              overload only ever touches cache.u/cache.w — its fused kernel
+        //                              never forms Q, so the blocked-WY buffers are unused there.
+
         // internal (not private): shared with QRCP.decompInPlace/solveInPlace, which live in a
         // separate class after the QR/QRCP split but reuse the same Householder kernels.
         internal static float sign(float x) {
@@ -98,9 +109,12 @@ namespace LinearAlgebra
             applyReflectorRightCols(ref Q, ref u, ref w, d, Q.N_Cols);
         }
 
-        // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
-        // EXACTLY Q.M_Rows; w is a workspace vector of length >= Q.N_Cols (the reflector-apply
-        // accumulator). Hoist both out of a hot loop to skip the per-call Allocator.Temp allocs.
+        // Caller-provided scratch overload — LEVEL-2 (unblocked) zero-alloc tier: u is a workspace
+        // vector of length EXACTLY Q.M_Rows; w is a workspace vector of length >= Q.N_Cols (the
+        // reflector-apply accumulator). Hoist both out of a hot loop to skip the per-call
+        // Allocator.Temp allocs. This is the minimal-scratch path (cheapest for small N); for a
+        // zero-alloc path that ALSO gains the level-3 blocked kernel at large N, use the
+        // ref floatQRCache overload instead. See the scratch-contract note at the top of this class.
         // Always reports DirectSolveStatus.Success — this factorization has no failure mode (a
         // zero-norm column is handled via the sign-convention fallback in genHouseholder, not
         // rejected).
@@ -415,6 +429,34 @@ namespace LinearAlgebra
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
+        // Cache overload: zero-alloc (caller-owned floatQRCache, see Arena.floatQRCache) AND
+        // BLOCKED once N_Cols >= 2*QR_BLOCK — the same gate, and the same qrDecompositionBlockedCore
+        // call, as the fully-allocating overload above, so results are bit-identical to it; only the
+        // scratch's allocation source differs (arena-owned buffers vs Allocator.Temp). Below the gate,
+        // falls back to the unblocked ref-u,w kernel using cache.u/cache.w — again bit-identical to
+        // the allocating overload's own small-N fallback.
+        /// <param name="A_to_Q">On entry A; on exit the orthogonal factor Q.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decompInPlace(ref floatMxN A_to_Q, ref floatMxN R, ref floatQRCache cache)
+        {
+            // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
+            const int QR_BLOCK = 32;
+
+            if (A_to_Q.M_Rows < A_to_Q.N_Cols)
+                throw new ArgumentException("QR.decompInPlace: Matrix R must be square or tall (more or equal rows than cols)");
+
+            bool blocked = A_to_Q.N_Cols >= 2 * QR_BLOCK;
+            RequireQRWorkspace(in cache, A_to_Q.M_Rows, A_to_Q.N_Cols, blocked);
+
+            if (!blocked)
+                return decompInPlace(ref A_to_Q, ref R, ref cache.u, ref cache.w);
+
+            qrDecompositionBlockedCore(ref A_to_Q, ref R, ref cache.u, ref cache.w,
+                ref cache.Vpanel, ref cache.Tbuf, ref cache.Wbuf, ref cache.tcolBuf, ref cache.VfullBuf);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
         // ---- decomp: A-preserving variants (copy A into Q, then delegate to decompInPlace) ----
 
         /// <summary>
@@ -471,6 +513,25 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// decomp routed through caller-owned <see cref="floatQRCache"/> scratch: A is copied into Q
+        /// (one memcpy), then factored via decompInPlace's cache overload — zero-alloc AND gains the
+        /// blocked (level-3) kernel the same way (bit-identical to the fully-allocating overload above;
+        /// see decompInPlace's cache overload).
+        /// </summary>
+        /// <remarks>If the cache is mis-sized for A's shape, this throws AFTER Q has already been
+        /// overwritten with a copy of A (still un-factored); A itself is always preserved.</remarks>
+        /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decomp(in floatMxN A, ref floatMxN Q, ref floatMxN R, ref floatQRCache cache)
+        {
+            if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
+                throw new ArgumentException("QR.decomp: Q must have the same dimensions as A");
+
+            Q.Data.CopyFrom(A.Data);
+            return decompInPlace(ref Q, ref R, ref cache);
+        }
+
+        /// <summary>
         /// Solve QRx = b for x, with Q,R from a precomputed decomposition (solve for multiple
         /// b vectors reusing one decomposition). Caller provides the destination x (length
         /// Q.N_Cols); x must be distinct from b. Zero-alloc: Qᵀb is formed directly into x with
@@ -513,15 +574,19 @@ namespace LinearAlgebra
         // diagonal; a rank-deficient A produces a zero on that diagonal and the result x is then
         // Inf/NaN (no guard). For rank-deficient / least-norm problems use the rank-revealing paths
         // instead: QRCP.decompInPlace / QRCP.solveInPlace, SVD.pinvSolve, or CHOP.solveInPlace.
-        // Caller-provided scratch overload (zero-alloc): u is a workspace vector of length
-        // EXACTLY A.M_Rows. Hoist u out of a hot loop to skip the per-call Allocator.Temp alloc.
+        // Caller-provided scratch overload — LEVEL-2 zero-alloc tier: u is a workspace vector of
+        // length EXACTLY A.M_Rows; w is a workspace vector of length >= A.N_Cols (the reflector-apply
+        // accumulator). Hoist both out of a hot loop to skip the per-call Allocator.Temp allocs. This
+        // is the minimal-scratch path; for a zero-alloc path via a reusable cache struct, use the
+        // ref floatQRCache overload instead (this fused kernel never forms Q, so that overload does
+        // NOT gain the level-3 blocked kernel — see the scratch-contract note at the top of this class).
         // Always reports DirectSolveStatus.Success — see the PRECONDITION note above: a
         // rank-deficient A silently divides by a zero R diagonal instead of being detected here.
         /// <param name="A">Destroyed; contents undefined after return (becomes R + stored reflectors scratch).</param>
         /// <param name="b">Destroyed; contents undefined after return (becomes Qᵀb scratch).</param>
         /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static DirectSolveInfo solveInPlace(ref floatMxN A, ref floatN b, ref floatN x, ref floatN u) {
+        public static DirectSolveInfo solveInPlace(ref floatMxN A, ref floatN b, ref floatN x, ref floatN u, ref floatN w) {
             if (A.M_Rows < A.N_Cols)
                 throw new ArgumentException("QR.solveInPlace: Matrix A must be square or tall (more or equal rows than cols)");
 
@@ -534,10 +599,10 @@ namespace LinearAlgebra
             if (u.N != A.M_Rows)
                 throw new ArgumentException("QR.solveInPlace: scratch vector u.N must equal A.M_Rows");
 
-            int qrSteps = A.N_Cols;
+            if (w.N < A.N_Cols)
+                throw new ArgumentException("QR.solveInPlace: scratch vector w.N must be at least A.N_Cols");
 
-            // Reflector-apply accumulator (length N_Cols). Allocated once per call (O(n) « O(n³)).
-            var w = new floatN(A.N_Cols, Allocator.Temp, false);
+            int qrSteps = A.N_Cols;
 
             // scale-relative zero-column threshold (see genHouseholder); LInf(A) == max |entry|.
             float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
@@ -559,8 +624,6 @@ namespace LinearAlgebra
                     b[r] -= u[r] * dotProduct;
             }
 
-            w.Dispose();
-
             // copy b into x (x may be smaller dimension than b)
             for (int r = 0; r < A.N_Cols; r++)
                 x[r] = b[r];
@@ -571,7 +634,22 @@ namespace LinearAlgebra
             return Solvers.triUpper(ref A, ref x);
         }
 
-        // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
+        // Allocating wrapper: allocates the reflector-apply accumulator w (Allocator.Temp) and
+        // delegates to the 5-arg (u, w) primitive above. Behaviour (and results) identical to it;
+        // use that one to be fully zero-alloc in a hot loop.
+        /// <param name="A">Destroyed; contents undefined after return (becomes R + stored reflectors scratch).</param>
+        /// <param name="b">Destroyed; contents undefined after return (becomes Qᵀb scratch).</param>
+        /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo solveInPlace(ref floatMxN A, ref floatN b, ref floatN x, ref floatN u) {
+            var w = new floatN(A.N_Cols, Allocator.Temp, false);
+            var info = solveInPlace(ref A, ref b, ref x, ref u, ref w);
+            w.Dispose();
+            return info;
+        }
+
+        // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates. This is
+        // the allocating/convenience tier (see the scratch-contract note at the top of this class).
         /// <param name="A">Destroyed; contents undefined after return (becomes R + stored reflectors scratch).</param>
         /// <param name="b">Destroyed; contents undefined after return (becomes Qᵀb scratch).</param>
         /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true.</param>
@@ -581,6 +659,22 @@ namespace LinearAlgebra
             var info = solveInPlace(ref A, ref b, ref x, ref u);
             u.Dispose();
             return info;
+        }
+
+        // Cache overload: zero-alloc (caller-owned floatQRCache, see Arena.floatQRCache) — routes
+        // to the SAME fused, never-forms-Q kernel as the (ref u) / (ref u, ref w) overloads (using
+        // cache.u/cache.w in place of caller- or Temp-provided scratch), so results are bit-identical
+        // to the allocating overload above. Does NOT engage the level-3 blocked kernel: solveInPlace
+        // never forms Q, so the cache's blocked-WY buffers (Vpanel/Tbuf/Wbuf/tcolBuf/VfullBuf) are
+        // simply unused here — see the scratch-contract note at the top of this class. Its win is
+        // purely the eliminated per-call Allocator.Temp allocation of u and w.
+        /// <param name="A">Destroyed; contents undefined after return (becomes R + stored reflectors scratch).</param>
+        /// <param name="b">Destroyed; contents undefined after return (becomes Qᵀb scratch).</param>
+        /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo solveInPlace(ref floatMxN A, ref floatN b, ref floatN x, ref floatQRCache cache) {
+            RequireQRWorkspace(in cache, A.M_Rows, A.N_Cols, needBlocked: false);
+            return solveInPlace(ref A, ref b, ref x, ref cache.u, ref cache.w);
         }
     }
 }

@@ -1,0 +1,86 @@
+using System;
+
+namespace LinearAlgebra
+{
+    public static partial class QR
+    {
+        /// <summary>
+        /// Throws if <paramref name="ws"/> is not sized for an m x n QR problem. u (m) and w (n) are
+        /// needed by every cache overload (decomp/decompInPlace/solveInPlace); the five blocked-WY
+        /// buffers (Vpanel, Tbuf, Wbuf, tcolBuf, VfullBuf) are needed only when the caller is about to
+        /// engage the level-3 blocked kernel (decomp/decompInPlace once N_Cols &gt;= 2*QR_BLOCK) — NOT
+        /// by solveInPlace, whose fused kernel never forms Q and so has no use for them. Matches
+        /// Arena.floatQRCache(m, n).
+        /// </summary>
+        static void RequireQRWorkspace(in floatQRCache ws, int m, int n, bool needBlocked)
+        {
+            // Panel width for the blocked (level-3 / compact-WY) path. Method-local (not a class
+            // field): QR merges across the float/double generated partials, so a class-level const
+            // of this name would collide (CS0102) — see qrDecompositionBlockedCore.
+            const int QR_BLOCK = 32;
+
+            bool ok =
+                ws.u.N == m &&
+                ws.w.N == n &&
+                (!needBlocked ||
+                 (ws.Vpanel.N == m * QR_BLOCK &&
+                  ws.Tbuf.N == QR_BLOCK * QR_BLOCK &&
+                  ws.Wbuf.N == QR_BLOCK * n &&
+                  ws.tcolBuf.N == QR_BLOCK &&
+                  ws.VfullBuf.N == m * n));
+
+            if (!ok)
+                throw new ArgumentException("QR: workspace must be sized for m x n (use Arena.floatQRCache(m, n))");
+        }
+    }
+
+    /// <summary>
+    /// Reusable scratch for QR's cache overloads (decomp / decompInPlace / solveInPlace). Allocate
+    /// ONCE via Arena.floatQRCache(m, n) and reuse across same-shape calls to avoid the per-call
+    /// Allocator.Temp allocations the allocating overloads make internally.
+    ///
+    /// u (length m) and w (length n) are the Householder-reflector scratch shared by every overload
+    /// (the same pair the raw <c>ref u, ref w</c> level-2 overloads take). Vpanel (m*QR_BLOCK), Tbuf
+    /// (QR_BLOCK*QR_BLOCK), Wbuf (QR_BLOCK*n), tcolBuf (QR_BLOCK) and VfullBuf (m*n) are the level-3
+    /// (compact-WY) blocked-factorization buffers — see qrDecompositionBlockedCore. decomp/decompInPlace
+    /// engage them once N_Cols &gt;= 2*QR_BLOCK (the same gate, and the same kernel, as the fully
+    /// allocating overload — so the cache overload is bit-identical to it, just fed from arena-owned
+    /// buffers instead of Allocator.Temp). solveInPlace's fused kernel never forms Q, so it only ever
+    /// touches u/w — the blocked buffers sit unused for that call, exactly as CHOP's rank-Gram buffers
+    /// or Bidiag's leftU sit unused for calls that don't need them.
+    /// </summary>
+    public struct floatQRCache
+    {
+        public floatN u;
+        public floatN w;
+        public floatN Vpanel;
+        public floatN Tbuf;
+        public floatN Wbuf;
+        public floatN tcolBuf;
+        public floatN VfullBuf;
+    }
+
+    public static partial class ArenaExtensions
+    {
+        /// <summary>
+        /// Allocates a QR workspace for an m x n (m &gt;= n) system. See <see cref="floatQRCache"/>
+        /// for reuse guidance and per-field purpose.
+        /// </summary>
+        public static floatQRCache floatQRCache(this ref Arena arena, int m, int n)
+        {
+            // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
+            const int QR_BLOCK = 32;
+
+            return new floatQRCache
+            {
+                u = arena.floatVec(m),
+                w = arena.floatVec(n),
+                Vpanel = arena.floatVec(m * QR_BLOCK),
+                Tbuf = arena.floatVec(QR_BLOCK * QR_BLOCK),
+                Wbuf = arena.floatVec(QR_BLOCK * n),
+                tcolBuf = arena.floatVec(QR_BLOCK),
+                VfullBuf = arena.floatVec(m * n)
+            };
+        }
+    }
+}

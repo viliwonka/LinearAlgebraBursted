@@ -1,0 +1,431 @@
+using System;
+
+using LinearAlgebra;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+
+// Phase-2 solver-workspace tests for QR's fProxyQRCache overloads (decomp / decompInPlace /
+// solveInPlace, ref fProxyQRCache). The cache overloads run the SAME kernels as the allocating
+// wrappers — bit-identical results — but source their scratch from a caller-owned workspace instead
+// of Allocator.Temp. decomp/decompInPlace engage the level-3 BLOCKED (compact-WY) kernel once
+// N_Cols >= 2*QR_BLOCK (= 64), so equivalence is checked both BELOW and AT/ABOVE that gate.
+// solveInPlace's fused kernel never forms Q, so its cache overload only ever touches cache.u/cache.w;
+// the five blocked-WY buffers stay unused there (an asymmetry the guard tests below pin down).
+public class fProxyQRCacheWorkspaceTests
+{
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct WorkspaceEquivJob : IJob
+    {
+        public enum TestType
+        {
+            DecompCacheBelowSmall,   // N_Cols = 16  (< 64, unblocked fallback)
+            DecompCacheBelow40,      // N_Cols = 40  (< 64, unblocked fallback)
+            DecompCacheGate,         // N_Cols = 64  (== 2*QR_BLOCK, blocked kernel)
+            DecompCacheAbove,        // N_Cols = 96  (> 64, blocked, non-aligned last panel)
+            DecompCacheTall,         // M > N, N_Cols = 72 (blocked, tall)
+            DecompPreservingCache,   // A-preserving decomp(in A, ...) cache overload, blocked
+            SolveCacheSquareSmall,   // square solve, dim 16
+            SolveCacheSquareLarge,   // square solve, dim 80 (> gate, but solve never blocks)
+            SolveCacheTall,          // overdetermined consistent solve, 24 x 16
+            WorkspaceReuse,          // one cache reused across decomp + solve, several iterations
+        }
+
+        public TestType Type;
+
+        // The cache overload runs the SAME kernel as the allocating form, so results are bit-identical
+        // in principle. Keep a small per-precision tolerance for robustness (matches OrthoWorkspaceTests).
+        static fProxy Tol() => 256 * Consts.fProxySqrtEps;
+
+        // Reconstruction / orthogonality "is this a valid QR at all" sanity net — the tight pin is the
+        // bit-identity check above. 1E-3f is the value the blocked-QR reconstruction tests use.
+        static fProxy ReconTol() => 1E-3f;
+
+        // Looser per-solve bound for an actual numeric QR solve (matches OrthoWorkspaceTests).
+        static fProxy SolveTol() => 2000 * Consts.fProxySqrtEps;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.DecompCacheBelowSmall:  DecompCacheEquiv(24, 16, 73101); break;
+                case TestType.DecompCacheBelow40:     DecompCacheEquiv(40, 40, 51221); break;
+                case TestType.DecompCacheGate:        DecompCacheEquiv(64, 64, 60817); break;
+                case TestType.DecompCacheAbove:       DecompCacheEquiv(96, 96, 41903); break;
+                case TestType.DecompCacheTall:        DecompCacheEquiv(100, 72, 33417); break;
+                case TestType.DecompPreservingCache:  DecompPreservingCacheEquiv(96, 80, 88123); break;
+                case TestType.SolveCacheSquareSmall:  SolveCacheEquiv(16, 16, 51237); break;
+                case TestType.SolveCacheSquareLarge:  SolveCacheEquiv(80, 80, 20990); break;
+                case TestType.SolveCacheTall:         SolveCacheEquiv(24, 16, 77441); break;
+                case TestType.WorkspaceReuse:         WorkspaceReuse(); break;
+            }
+        }
+
+        // decompInPlace(ref Q, ref R, ref cache) must equal decompInPlace(ref Q, ref R) bit-for-bit
+        // (same kernel, same block gate) AND be a valid QR (A ≈ Q*R, Q orthonormal, R upper triangular).
+        void DecompCacheEquiv(int m, int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
+            for (int d = 0; d < n; d++)   // boost leading diagonal for conditioning
+                A[d, d] += (fProxy)5f;
+
+            // allocating reference (routes through the blocked core once n >= 64)
+            var Qa = A.Copy();
+            var Ra = arena.fProxyMat(n);
+            QR.decompInPlace(ref Qa, ref Ra);
+
+            // cache overload — same kernel, arena-owned scratch
+            var Qb = A.Copy();
+            var Rb = arena.fProxyMat(n);
+            var cache = arena.fProxyQRCache(m, n);
+            QR.decompInPlace(ref Qb, ref Rb, ref cache);
+
+            // bit-identity vs the allocating overload
+            Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Ra - Rb, Tol()));
+
+            // and a genuinely valid QR of A
+            Assert.IsTrue(Analysis.isZero(A - Blas.dot(Qb, Rb), ReconTol()));
+            Assert.IsTrue(Analysis.isOrthogonal(Qb, ReconTol()));
+            Assert.IsTrue(Analysis.isUpperTriangular(Rb, ReconTol()));
+
+            arena.Dispose();
+        }
+
+        // A-preserving decomp(in A, ref Q, ref R, ref cache): A must be untouched, and Q/R must match
+        // the allocating decomp(in A, ref Q, ref R) bit-for-bit (blocked size to exercise the WY buffers).
+        void DecompPreservingCacheEquiv(int m, int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, seed);
+            for (int d = 0; d < n; d++) A[d, d] += (fProxy)5f;
+
+            fProxy checksumBefore = (fProxy)0;
+            for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (fProxy)(i + 1);
+
+            // allocating reference
+            var Qa = arena.fProxyMat(m, n);
+            var Ra = arena.fProxyMat(n);
+            QR.decomp(in A, ref Qa, ref Ra);
+
+            // cache overload
+            var Qb = arena.fProxyMat(m, n);
+            var Rb = arena.fProxyMat(n);
+            var cache = arena.fProxyQRCache(m, n);
+            QR.decomp(in A, ref Qb, ref Rb, ref cache);
+
+            // A preserved by the cache overload (position-weighted checksum catches any mutation)
+            fProxy checksumAfter = (fProxy)0;
+            for (int i = 0; i < A.Length; i++) checksumAfter += A[i] * (fProxy)(i + 1);
+            Assert.IsTrue(checksumAfter == checksumBefore);
+
+            // bit-identity vs the allocating decomp, and a valid QR of A
+            Assert.IsTrue(Analysis.isZero(Qa - Qb, Tol()));
+            Assert.IsTrue(Analysis.isZero(Ra - Rb, Tol()));
+            Assert.IsTrue(Analysis.isZero(A - Blas.dot(Qb, Rb), ReconTol()));
+            Assert.IsTrue(Analysis.isOrthogonal(Qb, ReconTol()));
+
+            arena.Dispose();
+        }
+
+        // solveInPlace(ref A, ref b, ref x, ref cache) must equal solveInPlace(ref A, ref b, ref x)
+        // bit-for-bit (solveInPlace destroys A and b, so fresh copies per variant) and recover xOrig
+        // from a consistent RHS b = A xOrig (square or overdetermined-consistent).
+        void SolveCacheEquiv(int m, int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A0 = arena.fProxyRandomMat(m, n, -1f, 1f, seed);
+            for (int d = 0; d < n; d++)   // well-conditioned columns
+                A0[d, d] += (fProxy)5f;
+
+            var xOrig = arena.fProxyRandomVec(n, -3f, 3f, seed ^ 0x9E3779B9u);
+            var bOrig = Blas.dot(A0, xOrig);   // consistent RHS (length m)
+
+            // allocating reference
+            var Aa = A0.Copy();
+            var ba = bOrig.Copy();
+            var xa = arena.fProxyVec(n);
+            QR.solveInPlace(ref Aa, ref ba, ref xa);
+
+            // cache overload
+            var Ab = A0.Copy();
+            var bb = bOrig.Copy();
+            var xb = arena.fProxyVec(n);
+            var cache = arena.fProxyQRCache(m, n);
+            QR.solveInPlace(ref Ab, ref bb, ref xb, ref cache);
+
+            // bit-identity vs the allocating overload, and correct recovery of xOrig
+            Assert.IsTrue(Analysis.isZero(xa - xb, Tol()));
+            Assert.IsTrue(Analysis.isZero(xb - xOrig, SolveTol()));
+
+            arena.Dispose();
+        }
+
+        // Reuse ONE cache across several consecutive decomp AND solve calls with fresh random matrices:
+        // each result must match a fresh allocating call, proving no stale state leaks through the
+        // blocked-WY buffers across reuse. Size >= 64 columns so those buffers are actually exercised.
+        void WorkspaceReuse()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 96, n = 96;
+
+            var cache = arena.fProxyQRCache(m, n);   // allocated ONCE, reused across every call below
+
+            for (int t = 0; t < 3; t++)
+            {
+                var A0 = arena.fProxyRandomMat(m, n, -1f, 1f, (uint)(3000 + t * 13));
+                for (int d = 0; d < n; d++)
+                    A0[d, d] += (fProxy)5f;
+
+                // decompInPlace: allocating reference vs reused cache (blocked kernel)
+                var Qa = A0.Copy();
+                var Ra = arena.fProxyMat(n);
+                QR.decompInPlace(ref Qa, ref Ra);
+
+                var Qw = A0.Copy();
+                var Rw = arena.fProxyMat(n);
+                QR.decompInPlace(ref Qw, ref Rw, ref cache);
+
+                Assert.IsTrue(Analysis.isZero(Qa - Qw, Tol()));
+                Assert.IsTrue(Analysis.isZero(Ra - Rw, Tol()));
+
+                // solveInPlace: allocating reference vs the SAME reused cache
+                var xOrig = arena.fProxyRandomVec(n, -3f, 3f, (uint)(4000 + t * 17));
+                var bOrig = Blas.dot(A0, xOrig);
+
+                var Asa = A0.Copy();
+                var ba = bOrig.Copy();
+                var xa = arena.fProxyVec(n);
+                QR.solveInPlace(ref Asa, ref ba, ref xa);
+
+                var Asw = A0.Copy();
+                var bw = bOrig.Copy();
+                var xw = arena.fProxyVec(n);
+                QR.solveInPlace(ref Asw, ref bw, ref xw, ref cache);
+
+                Assert.IsTrue(Analysis.isZero(xa - xw, Tol()));
+            }
+
+            arena.Dispose();
+        }
+    }
+
+    public static Array GetEnums() => Enum.GetValues(typeof(WorkspaceEquivJob.TestType));
+
+    [TestCaseSource("GetEnums")]
+    public void WorkspaceEquivTests(WorkspaceEquivJob.TestType type)
+    {
+        new WorkspaceEquivJob() { Type = type }.Run();
+    }
+
+    // ---- mis-sized cache guards (managed [Test]; run on a normal C# thread, outside a job) ----
+    //
+    // decomp/decompInPlace validate u & w ALWAYS, but the five blocked-WY buffers (Vpanel/Tbuf/Wbuf/
+    // tcolBuf/VfullBuf) ONLY when N_Cols >= 64 (needBlocked). solveInPlace validates ONLY u & w — its
+    // fused kernel never touches the blocked buffers. Both asymmetries are pinned below.
+
+    // u and w are checked at ANY size — use a small (below-gate) matrix.
+    [Test]
+    public void QrDecompCache_BadU_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var Q = arena.fProxyMat(6, 4);
+            var R = arena.fProxyMat(4);
+            var cache = arena.fProxyQRCache(6, 4);
+            cache.u = arena.fProxyVec(5);   // wrong: must be length m = 6
+            Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void QrDecompCache_BadW_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var Q = arena.fProxyMat(6, 4);
+            var R = arena.fProxyMat(4);
+            var cache = arena.fProxyQRCache(6, 4);
+            cache.w = arena.fProxyVec(3);   // wrong: must be length n = 4
+            Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // The five blocked-WY buffers are validated ONLY for N_Cols >= 64 — use a 64x64 matrix so the
+    // needBlocked branch of RequireQRWorkspace actually runs.
+    [Test]
+    public void QrDecompCache_BadVpanel_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var Q = arena.fProxyMat(64, 64);
+            var R = arena.fProxyMat(64);
+            var cache = arena.fProxyQRCache(64, 64);
+            cache.Vpanel = arena.fProxyVec(100);   // wrong: must be m*32 = 2048
+            Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void QrDecompCache_BadTbuf_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var Q = arena.fProxyMat(64, 64);
+            var R = arena.fProxyMat(64);
+            var cache = arena.fProxyQRCache(64, 64);
+            cache.Tbuf = arena.fProxyVec(100);   // wrong: must be 32*32 = 1024
+            Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void QrDecompCache_BadWbuf_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var Q = arena.fProxyMat(64, 64);
+            var R = arena.fProxyMat(64);
+            var cache = arena.fProxyQRCache(64, 64);
+            cache.Wbuf = arena.fProxyVec(100);   // wrong: must be 32*n = 2048
+            Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void QrDecompCache_BadTcolBuf_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var Q = arena.fProxyMat(64, 64);
+            var R = arena.fProxyMat(64);
+            var cache = arena.fProxyQRCache(64, 64);
+            cache.tcolBuf = arena.fProxyVec(16);   // wrong: must be 32
+            Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void QrDecompCache_BadVfullBuf_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var Q = arena.fProxyMat(64, 64);
+            var R = arena.fProxyMat(64);
+            var cache = arena.fProxyQRCache(64, 64);
+            cache.VfullBuf = arena.fProxyVec(100);   // wrong: must be m*n = 4096
+            Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // Design asymmetry #1: BELOW the block gate (N_Cols < 64) the blocked-WY buffers are NEVER touched,
+    // so a mis-sized Vpanel must NOT throw — the unblocked fallback ignores it entirely.
+    [Test]
+    public void QrDecompCache_BelowGate_BadBlockedBuffer_DoesNotThrow()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var Q = arena.fProxyMat(16, 16);
+            for (int d = 0; d < 16; d++) Q[d, d] += (fProxy)5f;
+            var R = arena.fProxyMat(16);
+            var cache = arena.fProxyQRCache(16, 16);
+            cache.Vpanel = arena.fProxyVec(3);   // garbage size, but unblocked path never reads it
+            Assert.DoesNotThrow(() => QR.decompInPlace(ref Q, ref R, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // solveInPlace validates u & w (at any size)...
+    [Test]
+    public void QrSolveInPlaceCache_BadU_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.fProxyMat(6, 4);
+            var b = arena.fProxyVec(6);
+            var x = arena.fProxyVec(4);
+            var cache = arena.fProxyQRCache(6, 4);
+            cache.u = arena.fProxyVec(5);   // wrong: must be length A.M_Rows = 6
+            Assert.Throws<ArgumentException>(() => QR.solveInPlace(ref A, ref b, ref x, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    [Test]
+    public void QrSolveInPlaceCache_BadW_Throws()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.fProxyMat(6, 4);
+            var b = arena.fProxyVec(6);
+            var x = arena.fProxyVec(4);
+            var cache = arena.fProxyQRCache(6, 4);
+            cache.w = arena.fProxyVec(3);   // wrong: must be length A.N_Cols = 4
+            Assert.Throws<ArgumentException>(() => QR.solveInPlace(ref A, ref b, ref x, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // Design asymmetry #2: solveInPlace's fused kernel NEVER forms Q, so it never validates or reads
+    // the blocked-WY buffers — a mis-sized Vpanel must NOT throw even at a large (>= gate) size.
+    [Test]
+    public void QrSolveInPlaceCache_BadBlockedBuffer_DoesNotThrow()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            var A = arena.fProxyMat(80, 80);
+            for (int d = 0; d < 80; d++) A[d, d] += (fProxy)5f;   // well-conditioned so the solve is finite
+            var b = arena.fProxyVec(80);
+            var x = arena.fProxyVec(80);
+            var cache = arena.fProxyQRCache(80, 80);
+            cache.Vpanel = arena.fProxyVec(3);   // garbage size, but solveInPlace never reads it
+            Assert.DoesNotThrow(() => QR.solveInPlace(ref A, ref b, ref x, ref cache));
+        }
+        finally { arena.Dispose(); }
+    }
+
+    // Arena.fProxyQRCache(m, n) must size every field: u=m, w=n, Vpanel=m*32, Tbuf=32*32,
+    // Wbuf=32*n, tcolBuf=32, VfullBuf=m*n.
+    [Test]
+    public void QRCacheWorkspace_Factory_SizesCorrectly()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        try
+        {
+            const int QR_BLOCK = 32;
+            int m = 10, n = 6;
+            var cache = arena.fProxyQRCache(m, n);
+            Assert.AreEqual(m, cache.u.N);
+            Assert.AreEqual(n, cache.w.N);
+            Assert.AreEqual(m * QR_BLOCK, cache.Vpanel.N);
+            Assert.AreEqual(QR_BLOCK * QR_BLOCK, cache.Tbuf.N);
+            Assert.AreEqual(QR_BLOCK * n, cache.Wbuf.N);
+            Assert.AreEqual(QR_BLOCK, cache.tcolBuf.N);
+            Assert.AreEqual(m * n, cache.VfullBuf.N);
+        }
+        finally { arena.Dispose(); }
+    }
+}
