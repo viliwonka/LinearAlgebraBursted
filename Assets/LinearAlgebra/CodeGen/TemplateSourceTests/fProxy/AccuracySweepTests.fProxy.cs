@@ -254,11 +254,11 @@ public class fProxyAccuracySweepTests
             fProxyMxN A = lehmer ? arena.fProxyLehmer(n)     // κ ~ 1e5, LU hits no zero pivot.
                                  : WellCondLU(ref arena, n, seed);
 
-            var U = A.Copy();
+            var U = arena.fProxyMat(n, n);
             var L = arena.fProxyIdentityMat(n);
             var pivot = new Pivot(n, Allocator.Temp);
 
-            bool ok = LU.decompInPlace(ref U, ref L, ref pivot);
+            bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in U));
             Assert.IsFalse(Analysis.isAnyNan(in L));
@@ -288,11 +288,11 @@ public class fProxyAccuracySweepTests
             var xTrue = arena.fProxyRandomVec(n, 1f, 10f, seed == 0 ? 424242u : seed + 1u);
             var b = Blas.dot(A, xTrue);
 
-            var U = A.Copy();
+            var U = arena.fProxyMat(n, n);
             var L = arena.fProxyIdentityMat(n);
             var pivot = new Pivot(n, Allocator.Temp);
 
-            bool ok = LU.decompInPlace(ref U, ref L, ref pivot);
+            bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
             Assert.IsTrue(ok);
 
             var x = b.Copy();

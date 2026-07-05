@@ -1,5 +1,5 @@
 using System;
-#pragma warning disable 618 // intentionally exercises the deprecated Jacobi svdDecomposition (kept for reference)
+#pragma warning disable 618 // intentionally exercises the deprecated cyclic-Jacobi Eigen.decompInPlace (kept for reference)
 
 using LinearAlgebra;
 using LinearAlgebra.Gallery;   // opt-in: arena.floatHilbert(n), arena.floatKahan(n,θ), ...

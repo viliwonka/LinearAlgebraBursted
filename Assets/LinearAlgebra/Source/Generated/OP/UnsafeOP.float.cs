@@ -754,7 +754,9 @@ namespace LinearAlgebra.Internal
         // latency-bound on a single loop-carried chain (recovers FMA-pipeline ILP, and lets Burst
         // pack lanes). a,b must be distinct non-overlapping ranges. NOTE: the 4-way partial-sum order
         // differs from a sequential sum, so results are rounding-level (not bitwise) different from a
-        // naive accumulate — fine for the one-sided Jacobi SVD Gram step. Used by svdDecomposition.
+        // naive accumulate — fine for the one-sided Jacobi SVD Gram step. Was used by the deleted
+        // SVD.svdDecomposition (Obsolete one-sided Jacobi path, removed; see git history); currently
+        // unused, kept as a general-purpose primitive.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void gram2x2([NoAlias] float* a, [NoAlias] float* b,
                                    out float aa, out float bb, out float ab, int n) {

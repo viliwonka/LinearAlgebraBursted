@@ -51,6 +51,9 @@ public class fProxyOrthoOpTests
             QRDecompBlockedNonAligned_200x127,
             QRDecompBlockedNonAligned_160x96,
             QRDecompBlockedNonAligned_256x150,
+            // Solver API rework (commit 2) coverage.
+            QRDecompPreservesA,
+            QRUninitXContract,
         }
 
         public TestType Type;
@@ -106,6 +109,12 @@ public class fProxyOrthoOpTests
                     break;
                 case TestType.QRDecompBlockedNonAligned_256x150:
                     QRDecompBlockedNonAligned(256, 150, 700150);
+                    break;
+                case TestType.QRDecompPreservesA:
+                    QRDecompPreservesA();
+                    break;
+                case TestType.QRUninitXContract:
+                    QRUninitXContract();
                     break;
             }
         }
@@ -322,6 +331,101 @@ public class fProxyOrthoOpTests
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-3f);
+
+            arena.Dispose();
+        }
+
+        // Solver API rework (commit 2): QR.decomp must not modify A. Checksum (position-weighted
+        // sum, so a permutation or a single altered entry both trip it) before/after the call.
+        void QRDecompPreservesA()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 12, n = 6;
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 909090);
+            for (int d = 0; d < n; d++) A[d, d] += 5f;
+
+            fProxy checksumBefore = (fProxy)0;
+            for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (fProxy)(i + 1);
+
+            var Q = arena.fProxyMat(m, n);
+            var R = arena.fProxyMat(n);
+            QR.decomp(in A, ref Q, ref R);
+
+            fProxy checksumAfter = (fProxy)0;
+            for (int i = 0; i < A.Length; i++) checksumAfter += A[i] * (fProxy)(i + 1);
+
+            if (checksumAfter != checksumBefore && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = checksumAfter;
+                Fail[2] = checksumBefore;
+                Fail[3] = checksumAfter - checksumBefore;
+            }
+            Assert.IsTrue(checksumAfter == checksumBefore);
+
+            // and the decomposition itself must still be correct (A intact, matches Q*R).
+            AssertQR(in A, in Q, in R, 1E-4f);
+
+            arena.Dispose();
+        }
+
+        // Uninit-x contract: QR.solveInPlace and QR.decompSolve must treat x as OUTPUT ONLY -- prior
+        // garbage (here, NaN sentinels) must not survive into the result.
+        void QRUninitXContract()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 8;
+            var A = arena.fProxyRandomMat(dim, dim, -5f, 5f, 13131);
+            for (int d = 0; d < dim; d++) A[d, d] += 10f;
+            var xKnown = arena.fProxyRandomVec(dim, -3f, 3f, 24242);
+            var b = Blas.dot(A, xKnown);
+
+            // QR.solveInPlace: x pre-filled with NaN.
+            {
+                var Awork = A.Copy();
+                var bwork = b.Copy();
+                var x = arena.fProxyVec(dim);
+                for (int i = 0; i < dim; i++) x[i] = fProxy.NaN;
+
+                QR.solveInPlace(ref Awork, ref bwork, ref x);
+
+                Assert.IsFalse(Analysis.isAnyNan(in x));
+                for (int i = 0; i < dim; i++)
+                {
+                    fProxy diff = Unity.Mathematics.math.abs(x[i] - xKnown[i]);
+                    if (!(diff <= (fProxy)1E-3f) && Fail[0] == (fProxy)0)
+                    {
+                        Fail[0] = (fProxy)1; Fail[1] = x[i]; Fail[2] = xKnown[i]; Fail[3] = diff;
+                    }
+                    Assert.IsTrue(diff <= (fProxy)1E-3f);
+                }
+            }
+
+            // QR.decompSolve: x pre-filled with NaN, Q/R from a fresh decompInPlace.
+            {
+                var Q = A.Copy();
+                var R = arena.fProxyMat(dim);
+                QR.decompInPlace(ref Q, ref R);
+
+                var x = arena.fProxyVec(dim);
+                for (int i = 0; i < dim; i++) x[i] = fProxy.NaN;
+                var bcopy = b.Copy();
+
+                QR.decompSolve(ref Q, ref R, ref bcopy, ref x);
+
+                Assert.IsFalse(Analysis.isAnyNan(in x));
+                for (int i = 0; i < dim; i++)
+                {
+                    fProxy diff = Unity.Mathematics.math.abs(x[i] - xKnown[i]);
+                    if (!(diff <= (fProxy)1E-3f) && Fail[0] == (fProxy)0)
+                    {
+                        Fail[0] = (fProxy)1; Fail[1] = x[i]; Fail[2] = xKnown[i]; Fail[3] = diff;
+                    }
+                    Assert.IsTrue(diff <= (fProxy)1E-3f);
+                }
+            }
 
             arena.Dispose();
         }
@@ -953,6 +1057,8 @@ public class fProxyOrthoOpTests
             KnownSolutionWide_4x9,
             KnownSolutionWide_8x16,
             ResidualCheck,
+            // Solver API rework (commit 2): uninit-x contract.
+            UninitXContract,
         }
 
         public TestType Type;
@@ -968,6 +1074,7 @@ public class fProxyOrthoOpTests
                 case TestType.KnownSolutionWide_4x9:  KnownSolutionWide_4x9();  break;
                 case TestType.KnownSolutionWide_8x16: KnownSolutionWide_8x16(); break;
                 case TestType.ResidualCheck:            ResidualCheck();            break;
+                case TestType.UninitXContract:          UninitXContract();          break;
             }
         }
 
@@ -1035,6 +1142,37 @@ public class fProxyOrthoOpTests
             LQ.minNormSolve(ref A, ref b, ref x);
             // residual = A x - b
             var Ax   = arena.fProxyVec(m);
+            Blas.dot(in A, in x, ref Ax);
+            Ax.subInPlace(b);
+            fProxy residual = Analysis.MaxZeroError(Ax);
+            if (!(residual <= (fProxy)1E-4f) && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = residual;
+                Fail[2] = (fProxy)1E-4f;
+                Fail[3] = residual - (fProxy)1E-4f;
+            }
+            Assert.IsTrue(residual <= (fProxy)1E-4f);
+            arena.Dispose();
+        }
+
+        // Uninit-x contract: LQ.minNormSolve must treat x as OUTPUT ONLY -- prior garbage (here, NaN
+        // sentinels) must not survive into the result.
+        void UninitXContract()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 5, n = 12;
+            var A = arena.fProxyRandomMat(m, n, -2f, 2f, 191919);
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 292929);
+
+            var x = arena.fProxyVec(n);
+            for (int i = 0; i < n; i++) x[i] = fProxy.NaN;
+
+            LQ.minNormSolve(ref A, ref b, ref x);
+
+            Assert.IsFalse(Analysis.isAnyNan(in x));
+
+            var Ax = arena.fProxyVec(m);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
             fProxy residual = Analysis.MaxZeroError(Ax);

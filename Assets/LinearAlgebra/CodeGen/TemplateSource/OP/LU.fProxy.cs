@@ -13,81 +13,90 @@ namespace LinearAlgebra
     public static partial class LU {
 
         /// <summary>
-        /// LU decomposition with no pivoting.
-        /// A_to_U = A (input matrix, overwritten with upper triangular U)
-        /// L = I (identity matrix, overwritten with lower triangular L)
-        /// A = L * U
+        /// LU decomposition with no pivoting, preserving A: A is copied into U (one memcpy), then
+        /// factored in place. A = L * U.
+        /// U (caller-allocated, same dimensions as A) receives the upper-triangular factor.
+        /// L must be caller-initialized to the identity matrix (same dimensions); it is overwritten
+        /// below the diagonal with the lower-triangular factor.
         /// Returns Success; Singular if a zero pivot is encountered (singular matrix).
         /// On Singular: no NaN/Inf is written.
-        /// TRANSITIONAL: still destroys A_to_U (final safe decompNoPivot lands in commit 2).
         /// </summary>
-        /// <param name="A_to_U">On entry A; on exit the upper-triangular factor U.</param>
-        public static DirectSolveInfo decompNoPivotInPlace(ref fProxyMxN A_to_U, ref fProxyMxN L)
+        /// <param name="U">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the upper-triangular factor.</param>
+        public static DirectSolveInfo decompNoPivot(in fProxyMxN A, ref fProxyMxN L, ref fProxyMxN U)
         {
-            if (!A_to_U.IsSquare)
-                throw new System.ArgumentException("decompNoPivotInPlace: A_to_U needs to be square");
+            if (!A.IsSquare)
+                throw new System.ArgumentException("decompNoPivot: A needs to be square");
 
             if (!L.IsSquare)
-                throw new System.ArgumentException("decompNoPivotInPlace: L needs to be square");
+                throw new System.ArgumentException("decompNoPivot: L needs to be square");
 
-            if (A_to_U.M_Rows != L.M_Rows)
-                throw new System.ArgumentException("decompNoPivotInPlace: A_to_U and L need to have the same dimensions");
+            if (!U.IsSquare)
+                throw new System.ArgumentException("decompNoPivot: U needs to be square");
 
-            int m = A_to_U.M_Rows;
+            if (A.M_Rows != L.M_Rows || A.M_Rows != U.M_Rows)
+                throw new System.ArgumentException("decompNoPivot: A, L and U need to have the same dimensions");
+
+            U.Data.CopyFrom(A.Data);
+
+            int m = U.M_Rows;
 
             if (m == 0) return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
             for(int k = 0; k < m - 1; k++) {
 
                 // Calculate L and U
-                fProxy Ukk = A_to_U[k, k];
+                fProxy Ukk = U[k, k];
 
                 if (Ukk == 0)
                     return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
                 for(int j = k + 1; j < m; j++) {
 
-                    fProxy Ljk = A_to_U[j, k] / Ukk;
+                    fProxy Ljk = U[j, k] / Ukk;
 
                     L[j, k] = Ljk;
 
                     for (int i = k + 1; i < m; i++) {
-                        A_to_U[j, i] -= Ljk * A_to_U[k, i];
+                        U[j, i] -= Ljk * U[k, i];
                     }
 
                     // U is exactly upper-triangular
-                    A_to_U[j, k] = 0;
+                    U[j, k] = 0;
                 }
             }
 
             // Check last diagonal
-            if (A_to_U[m - 1, m - 1] == 0)
+            if (U[m - 1, m - 1] == 0)
                 return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
-        // PA = L * U (A_to_U initially A, L initially I, P reset and modified in place)
+        // PA = L * U (U starts as a copy of A, L initially I, P reset and modified in place)
         /// <summary>
-        /// Performs LU decomposition with partial pivoting.
+        /// Performs LU decomposition with partial pivoting, preserving A: A is copied into U (one
+        /// memcpy), then factored in place. L must be caller-initialized to the identity matrix.
         /// Returns Success; Singular if a zero pivot is encountered (singular matrix).
         /// On Singular: no NaN/Inf is written, P remains a valid permutation.
-        /// TRANSITIONAL: destroys A_to_U (becomes the U factor) -- the safe A-preserving decomp
-        /// lands in commit 2. Arity-distinct from the compact decompInPlace(ref A_to_LU, ref Pivot)
-        /// overload below.
+        /// Arity-distinct from the compact decompInPlace(ref A_to_LU, ref Pivot) overload below.
         /// </summary>
-        /// <param name="A_to_U">On entry A; on exit the upper-triangular factor U.</param>
-        public static DirectSolveInfo decompInPlace(ref fProxyMxN A_to_U, ref fProxyMxN L, ref Pivot P) {
-            if (!A_to_U.IsSquare)
-                throw new System.ArgumentException("decompInPlace: A_to_U needs to be square");
+        /// <param name="U">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the upper-triangular factor.</param>
+        public static DirectSolveInfo decomp(in fProxyMxN A, ref fProxyMxN L, ref fProxyMxN U, ref Pivot P) {
+            if (!A.IsSquare)
+                throw new System.ArgumentException("decomp: A needs to be square");
 
             if (!L.IsSquare)
-                throw new System.ArgumentException("decompInPlace: L needs to be square");
+                throw new System.ArgumentException("decomp: L needs to be square");
 
-            if (A_to_U.M_Rows != L.M_Rows)
-                throw new System.ArgumentException("decompInPlace: A_to_U and L need to have the same dimensions");
+            if (!U.IsSquare)
+                throw new System.ArgumentException("decomp: U needs to be square");
 
-            int m = A_to_U.M_Rows;
+            if (A.M_Rows != L.M_Rows || A.M_Rows != U.M_Rows)
+                throw new System.ArgumentException("decomp: A, L and U need to have the same dimensions");
+
+            U.Data.CopyFrom(A.Data);
+
+            int m = U.M_Rows;
 
             if (P.N != m) throw new System.ArgumentException("pivot size must equal matrix dimension");
 
@@ -113,11 +122,11 @@ namespace LinearAlgebra
                 for (int k = 0; k < m - 1; k++) {
 
                     int pivotIndex = k;
-                    fProxy pivotValue = math.abs(A_to_U[k, k]);
+                    fProxy pivotValue = math.abs(U[k, k]);
 
                     // Find largest pivot in rows
                     for(int r = k + 1; r < m; r++) {
-                        fProxy absValue = math.abs(A_to_U[r, k]);
+                        fProxy absValue = math.abs(U[r, k]);
                         if(absValue > pivotValue) {
                             pivotIndex = r;
                             pivotValue = absValue;
@@ -132,7 +141,7 @@ namespace LinearAlgebra
                     P.Swap(k, pivotIndex);
 
                     // swap submatrix U rows
-                    Swap.Rows(ref A_to_U, k, pivotIndex, k, m);
+                    Swap.Rows(ref U, k, pivotIndex, k, m);
 
                     // swap already calculated L rows
                     Swap.Rows(ref L, k, pivotIndex, 0, k);
@@ -143,15 +152,15 @@ namespace LinearAlgebra
                     // SIMD-vectorises this O(n^3) hot loop (float ~2x double). Bitwise identical to the
                     // scalar form: each column i is updated independently, and (-Ljk)*U[k,i] added to
                     // U[j,i] equals U[j,i] - Ljk*U[k,i] exactly in IEEE.
-                    fProxy Ukk = A_to_U[k, k];
+                    fProxy Ukk = U[k, k];
                     unsafe
                     {
-                        fProxy* up = A_to_U.Data.Ptr;
+                        fProxy* up = U.Data.Ptr;
                         fProxy* rowK = up + (long)k * m;
                         int len = m - (k + 1);
                         for (int j = k + 1; j < m; j++) {
 
-                            fProxy Ljk = A_to_U[j, k] / Ukk;
+                            fProxy Ljk = U[j, k] / Ukk;
 
                             L[j, k] = Ljk;
 
@@ -159,13 +168,13 @@ namespace LinearAlgebra
                             UnsafeOP.axpy(rowJ + (k + 1), rowK + (k + 1), -Ljk, len);
 
                             // U is exactly upper-triangular
-                            A_to_U[j, k] = 0;
+                            U[j, k] = 0;
                         }
                     }
                 }
 
                 // Check last diagonal
-                if (A_to_U[m - 1, m - 1] == 0)
+                if (U[m - 1, m - 1] == 0)
                     return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
                 return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -199,7 +208,7 @@ namespace LinearAlgebra
             // `if (U[m-1,m-1]==0)` check after the loop matches the unblocked form exactly.
             unsafe
             {
-                fProxy* up = A_to_U.Data.Ptr;
+                fProxy* up = U.Data.Ptr;
                 fProxy* lp = L.Data.Ptr;
 
                 // Ubuf: contiguous copy of the strided U12 panel block (kb x ntrail, row stride
@@ -221,10 +230,10 @@ namespace LinearAlgebra
                     for (int k = k0; k < kMax; k++) {
 
                         int pivotIndex = k;
-                        fProxy pivotValue = math.abs(A_to_U[k, k]);
+                        fProxy pivotValue = math.abs(U[k, k]);
 
                         for (int r = k + 1; r < m; r++) {
-                            fProxy absValue = math.abs(A_to_U[r, k]);
+                            fProxy absValue = math.abs(U[r, k]);
                             if (absValue > pivotValue) {
                                 pivotIndex = r;
                                 pivotValue = absValue;
@@ -242,17 +251,17 @@ namespace LinearAlgebra
 
                         // swap FULL trailing width [k,m) — not just the panel — so the trailing block
                         // A22 is already pre-permuted when the GEMM below runs.
-                        Swap.Rows(ref A_to_U, k, pivotIndex, k, m);
+                        Swap.Rows(ref U, k, pivotIndex, k, m);
 
                         // swap already calculated L rows (multipliers already computed travel too)
                         Swap.Rows(ref L, k, pivotIndex, 0, k);
 
-                        fProxy Ukk = A_to_U[k, k];
+                        fProxy Ukk = U[k, k];
                         fProxy* rowK = up + (long)k * m;
                         int len = panelEnd - (k + 1);
                         for (int j = k + 1; j < m; j++) {
 
-                            fProxy Ljk = A_to_U[j, k] / Ukk;
+                            fProxy Ljk = U[j, k] / Ukk;
 
                             L[j, k] = Ljk;
 
@@ -262,7 +271,7 @@ namespace LinearAlgebra
                             }
 
                             // U is exactly upper-triangular
-                            A_to_U[j, k] = 0;
+                            U[j, k] = 0;
                         }
                     }
 
@@ -296,7 +305,7 @@ namespace LinearAlgebra
                         //     instead of kb rank-1 axpy passes over the trailing block. L21 =
                         //     L[rStart:m, k0:rStart] (ntrail x kb, strided leading dim m), A22 =
                         //     U[rStart:m, rStart:m] (strided leading dim m). [NoAlias] is truthful:
-                        //     Ubuf is a separate Temp buffer; L21 (in L) and A22 (in A_to_U) are different
+                        //     Ubuf is a separate Temp buffer; L21 (in L) and A22 (in U) are different
                         //     matrices.
                         UnsafeOP.wySubVW(lp + (long)rStart * m + k0, m, up + (long)rStart * m + rStart, m, ntrail, kb, ntrail, ubufp);
                     }
@@ -307,7 +316,7 @@ namespace LinearAlgebra
 
             // Check last diagonal (mirrors the unblocked form's final check; the blocked k-loop above
             // never pivot-searches column m-1, matching the unblocked k<m-1 bound).
-            if (A_to_U[m - 1, m - 1] == 0)
+            if (U[m - 1, m - 1] == 0)
                 return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -357,7 +366,7 @@ namespace LinearAlgebra
 
                 int Pk = P[k];
 
-                // Calculate L and U. Same vectorised axpy elimination as decompInPlace(ref A_to_U, ...),
+                // Calculate L and U. Same vectorised axpy elimination as decomp(in A, ref L, ref U, ...),
                 // but on the physical (pivot-indirected) rows Pj, Pk — still distinct (Pj != Pk), so
                 // [NoAlias] holds. Bitwise identical to the scalar form.
                 fProxy Ukk = A_to_LU[Pk, k];
@@ -419,7 +428,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Solve LUx = Pb for x using separate L and U matrices with pivot.
         /// b is overwritten with x. Always reports DirectSolveStatus.Success — this assumes a
-        /// valid factor from a decompInPlace(ref A_to_U, ref L, ref Pivot) that returned Success;
+        /// valid factor from a decomp(in A, ref L, ref U, ref Pivot) that returned Success;
         /// it does not re-verify it.
         /// Throws ArgumentException if dimensions are inconsistent.
         /// </summary>
@@ -468,6 +477,24 @@ namespace LinearAlgebra
                 det *= LU[P[i], i];
 
             return det;
+        }
+
+        /// <summary>
+        /// Factor-and-solve LUx = b in one call (GESV): factors A in place (compact LU form, partial
+        /// pivoting) then solves for x. b is overwritten with x. Returns Singular (forwarded from the
+        /// factorization) WITHOUT solving if A is singular.
+        /// A_to_LU holds the compact LU factorization on return; valid input to decompSolve for
+        /// solving additional right-hand sides without refactoring.
+        /// </summary>
+        /// <param name="A_to_LU">On entry A; on exit the compact LU factor (L below the diagonal, U on/above it).</param>
+        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        public static DirectSolveInfo solveInPlace(ref fProxyMxN A_to_LU, ref Pivot P, ref fProxyN b_to_x) {
+            var info = decompInPlace(ref A_to_LU, ref P);
+            if (!info.Solved)
+                return info;
+
+            decompSolve(ref A_to_LU, in P, ref b_to_x);
+            return info;
         }
     }
 }

@@ -1,5 +1,4 @@
 using System;
-#pragma warning disable 618 // intentionally exercises the deprecated Jacobi svdDecomposition (kept for reference)
 
 using LinearAlgebra;
 using LinearAlgebra.Gallery;
@@ -21,15 +20,6 @@ public class floatSVDTests
     {
         public enum TestType
         {
-            SVDIdentity,
-            SVDDiagonal,
-            SVDKnown2x2,
-            SVDRandomSquare,
-            SVDRectangularTall,
-            SVDRankDeficient,
-            SVDZero,
-            SVDSingleColumn,
-            SVDNonConvergence,
             SVDGalleryHadamard,
             SVDGalleryParter,
             SVValuesIdentity,
@@ -57,7 +47,9 @@ public class floatSVDTests
             ThinKnownFlatCliff_40x12,
             ThinKnownWideViaTranspose_6x15,
             ThinGalleryHilbert_8,
-            ThinGalleryKahan_12
+            ThinGalleryKahan_12,
+            // Solver API rework (commit 2): uninit-x contract.
+            PinvSolveUninitXContract
         }
 
         public TestType Type;
@@ -69,33 +61,6 @@ public class floatSVDTests
         {
             switch(Type)
             {
-                case TestType.SVDIdentity:
-                    SVDIdentity();
-                break;
-                case TestType.SVDDiagonal:
-                    SVDDiagonal();
-                break;
-                case TestType.SVDKnown2x2:
-                    SVDKnown2x2();
-                break;
-                case TestType.SVDRandomSquare:
-                    SVDRandomSquare();
-                break;
-                case TestType.SVDRectangularTall:
-                    SVDRectangularTall();
-                break;
-                case TestType.SVDRankDeficient:
-                    SVDRankDeficient();
-                break;
-                case TestType.SVDZero:
-                    SVDZero();
-                break;
-                case TestType.SVDSingleColumn:
-                    SVDSingleColumn();
-                break;
-                case TestType.SVDNonConvergence:
-                    SVDNonConvergence();
-                break;
                 case TestType.SVDGalleryHadamard:
                     SVDGalleryHadamard();
                 break;
@@ -158,6 +123,7 @@ public class floatSVDTests
                 case TestType.ThinKnownWideViaTranspose_6x15:  ThinKnownWideViaTranspose_6x15();  break;
                 case TestType.ThinGalleryHilbert_8:            ThinGalleryHilbert_8();            break;
                 case TestType.ThinGalleryKahan_12:             ThinGalleryKahan_12();             break;
+                case TestType.PinvSolveUninitXContract:        PinvSolveUninitXContract();        break;
             }
         }
 
@@ -345,6 +311,54 @@ public class floatSVDTests
             arena.Dispose();
         }
 
+        // Solver API rework (commit 2): SVD.pinvSolve must treat x as OUTPUT ONLY -- prior garbage
+        // (here, NaN sentinels) must not survive into the result.
+        void PinvSolveUninitXContract()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 8, n = 4;
+            var A = arena.floatRandomMat(m, n, -5f, 5f, 434343);
+            for (int d = 0; d < n; d++) A[d, d] += (float)10f;
+            var xKnown = arena.floatRandomVec(n, -3f, 3f, 545454);
+            var b = arena.floatVec(m);
+            Blas.dot(in A, in xKnown, ref b);
+
+            var x = arena.floatVec(n);
+            for (int i = 0; i < n; i++) x[i] = float.NaN;
+
+            int rank = SVD.pinvSolve(ref A, in b, ref x, out bool converged);
+
+            Assert.IsTrue(converged);
+            RecordEq(rank, n);
+            Assert.IsFalse(Analysis.isAnyNan(in x));
+
+            for (int i = 0; i < n; i++)
+            {
+                float diff = math.abs(x[i] - xKnown[i]);
+                float tol = (float)Consts.floatSqrtEps * (float)10 * (math.abs(xKnown[i]) + (float)1);
+                if (!(diff <= tol) && Fail[0] == (float)0)
+                {
+                    Fail[0] = (float)1; Fail[1] = x[i]; Fail[2] = xKnown[i]; Fail[3] = diff;
+                }
+                Assert.IsTrue(diff <= tol);
+            }
+
+            arena.Dispose();
+        }
+
+        void RecordEq(int got, int expected)
+        {
+            if (got != expected && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = (float)got;
+                Fail[2] = (float)expected;
+                Fail[3] = (float)(got - expected);
+            }
+            Assert.AreEqual(expected, got);
+        }
+
         // Fail layout: [1]=val, [2]=limit, [3]=limit-val
         void AssertGEf(float val, float limit)
         {
@@ -357,303 +371,6 @@ public class floatSVDTests
             if (Fail[0] == (float)0) { Fail[0] = (float)1; Fail[1] = got; Fail[2] = expected; Fail[3] = diff; }
         }
 
-        public void SVDIdentity()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 4;
-
-            var U = arena.floatIdentityMat(dim);
-            var S = arena.floatVec(dim);
-            var V = arena.floatMat(dim, dim);
-
-            var A = U.Copy();
-
-            bool success = SVD.svdDecomposition(ref U, ref S, ref V);
-
-            Assert.IsTrue(success);
-
-            for (int i = 0; i < dim; i++)
-                AssertClose(S[i], (float)1f, 1E-4f);
-
-            Assert.IsTrue(Analysis.isOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis.isOrthogonal(V, 1E-4f));
-
-            AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
-
-            arena.Dispose();
-        }
-
-        public void SVDDiagonal()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 4;
-
-            var U = arena.floatMat(dim, dim);
-            U[0, 0] = 3f;
-            U[1, 1] = -2f;
-            U[2, 2] = 0.5f;
-            U[3, 3] = 5f;
-
-            var S = arena.floatVec(dim);
-            var V = arena.floatMat(dim, dim);
-
-            var A = U.Copy();
-
-            bool success = SVD.svdDecomposition(ref U, ref S, ref V);
-
-            Assert.IsTrue(success);
-
-            // Singular values are |eigenvalues|, sorted descending: 5, 3, 2, 0.5
-            AssertClose(S[0], (float)5f, 1E-4f);
-            AssertClose(S[1], (float)3f, 1E-4f);
-            AssertClose(S[2], (float)2f, 1E-4f);
-            AssertClose(S[3], (float)0.5f, 1E-4f);
-
-            // descending and non-negative
-            AssertDescendingNonNegative(in S, dim);
-
-            AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
-
-            arena.Dispose();
-        }
-
-        public void SVDKnown2x2()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 2;
-
-            // A = [[3, 0], [4, 5]]
-            var U = arena.floatMat(dim, dim);
-            U[0, 0] = 3f; U[0, 1] = 0f;
-            U[1, 0] = 4f; U[1, 1] = 5f;
-
-            var S = arena.floatVec(dim);
-            var V = arena.floatMat(dim, dim);
-
-            var A = U.Copy();
-
-            bool success = SVD.svdDecomposition(ref U, ref S, ref V);
-
-            Assert.IsTrue(success);
-
-            // singular values: sqrt(45) ~ 6.7082039, sqrt(5) ~ 2.2360680
-            AssertClose(S[0], (float)6.7082039f, 1E-3f);
-            AssertClose(S[1], (float)2.2360680f, 1E-3f);
-
-            AssertDescendingNonNegative(in S, dim);
-
-            Assert.IsTrue(Analysis.isOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis.isOrthogonal(V, 1E-4f));
-
-            AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
-
-            arena.Dispose();
-        }
-
-        public void SVDRandomSquare()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 8;
-
-            var U = arena.floatRandomMat(dim, dim, -10f, 10f, 314221);
-            var S = arena.floatVec(dim);
-            var V = arena.floatMat(dim, dim);
-
-            var A = U.Copy();
-
-            bool success = SVD.svdDecomposition(ref U, ref S, ref V);
-
-            Assert.IsTrue(success);
-
-            Assert.IsFalse(Analysis.isAnyNan(in U));
-            Assert.IsFalse(Analysis.isAnyNan(in S));
-            Assert.IsFalse(Analysis.isAnyNan(in V));
-
-            Assert.IsTrue(Analysis.isOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis.isOrthogonal(V, 1E-4f));
-
-            AssertDescendingNonNegative(in S, dim);
-
-            AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
-
-            arena.Dispose();
-        }
-
-        public void SVDRectangularTall()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int m = 6;
-            int n = 3;
-
-            var U = arena.floatRandomMat(m, n, -10f, 10f, 778231);
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
-
-            var A = U.Copy();
-
-            bool success = SVD.svdDecomposition(ref U, ref S, ref V);
-
-            Assert.IsTrue(success);
-
-            Assert.IsFalse(Analysis.isAnyNan(in U));
-            Assert.IsFalse(Analysis.isAnyNan(in S));
-            Assert.IsFalse(Analysis.isAnyNan(in V));
-
-            // U is 6x3 with orthonormal columns -> U^T U = I_3
-            Assert.IsTrue(Analysis.isOrthogonal(U, 1E-4f));
-            Assert.IsTrue(Analysis.isOrthogonal(V, 1E-4f));
-
-            AssertDescendingNonNegative(in S, n);
-
-            AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
-
-            arena.Dispose();
-        }
-
-        public void SVDRankDeficient()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 4;
-
-            var U = arena.floatRandomMat(dim, dim, -5f, 5f, 559013);
-            // make column 2 an exact copy of column 0 -> rank deficient
-            for (int i = 0; i < dim; i++)
-                U[i, 2] = U[i, 0];
-
-            var S = arena.floatVec(dim);
-            var V = arena.floatMat(dim, dim);
-
-            var A = U.Copy();
-
-            bool success = SVD.svdDecomposition(ref U, ref S, ref V);
-
-            Assert.IsTrue(success);
-
-            Assert.IsFalse(Analysis.isAnyNan(in U));
-            Assert.IsFalse(Analysis.isAnyNan(in S));
-            Assert.IsFalse(Analysis.isAnyNan(in V));
-
-            // exactly one zero singular value (smallest), the third is non-trivial
-            Assert.IsTrue(S[3] < 1E-4f);
-            Assert.IsTrue(S[2] > 1E-4f);
-
-            AssertDescendingNonNegative(in S, dim);
-
-            AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
-
-            // first 3 columns of U are orthonormal (the column matching zero sigma is zeroed)
-            for (int a = 0; a < 3; a++) {
-                for (int b = a; b < 3; b++) {
-                    float dotcol = (float)0f;
-                    for (int i = 0; i < dim; i++)
-                        dotcol += U[i, a] * U[i, b];
-                    float expected = (a == b) ? (float)1f : (float)0f;
-                    AssertClose(dotcol, expected, 1E-4f);
-                }
-            }
-
-            arena.Dispose();
-        }
-
-        public void SVDZero()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 3;
-
-            var U = arena.floatMat(dim, dim);
-            var S = arena.floatVec(dim);
-            var V = arena.floatMat(dim, dim);
-
-            var A = U.Copy();
-
-            bool success = SVD.svdDecomposition(ref U, ref S, ref V);
-
-            Assert.IsTrue(success);
-
-            Assert.IsFalse(Analysis.isAnyNan(in U));
-            Assert.IsFalse(Analysis.isAnyNan(in S));
-            Assert.IsFalse(Analysis.isAnyNan(in V));
-
-            for (int i = 0; i < dim; i++)
-                AssertClose(S[i], (float)0f, 1E-4f);
-
-            // U is all zeros (every column matches a zero singular value)
-            Assert.IsTrue(Analysis.isZero(in U, 1E-4f));
-
-            // V stays identity (no rotations applied)
-            Assert.IsTrue(Analysis.isIdentity(in V, 1E-4f));
-
-            arena.Dispose();
-        }
-
-        public void SVDSingleColumn()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int m = 5;
-            int n = 1;
-
-            var U = arena.floatMat(m, n);
-            U[0, 0] = 1f;
-            U[1, 0] = 2f;
-            U[2, 0] = 3f;
-            U[3, 0] = 4f;
-            U[4, 0] = 5f;
-
-            var S = arena.floatVec(n);
-            var V = arena.floatMat(n, n);
-
-            var A = U.Copy();
-
-            bool success = SVD.svdDecomposition(ref U, ref S, ref V);
-
-            Assert.IsTrue(success);
-
-            // S[0] == column 2-norm = sqrt(1+4+9+16+25) = sqrt(55) ~ 7.4161985
-            AssertClose(S[0], (float)7.4161985f, 1E-3f);
-
-            // U column has unit norm
-            float normSq = (float)0f;
-            for (int i = 0; i < m; i++)
-                normSq += U[i, 0] * U[i, 0];
-            AssertClose(normSq, (float)1f, 1E-4f);
-
-            AssertReconstruct(in A, in U, in S, in V, ref arena, 1E-4f);
-
-            arena.Dispose();
-        }
-
-        public void SVDNonConvergence()
-        {
-            var arena = new Arena(Allocator.Persistent);
-
-            int dim = 8;
-
-            var U = arena.floatHilbertMat(dim);
-            var S = arena.floatVec(dim);
-            var V = arena.floatMat(dim, dim);
-
-            // maxSweeps = 1: regardless of convergence bool, outputs must be finite,
-            // S descending and non-negative.
-            SVD.svdDecomposition(ref U, ref S, ref V, 1);
-
-            // The return value is intentionally not asserted (may or may not converge).
-
-            Assert.IsFalse(Analysis.isAnyNan(in U));
-            Assert.IsFalse(Analysis.isAnyNan(in S));
-            Assert.IsFalse(Analysis.isAnyNan(in V));
-
-            AssertDescendingNonNegative(in S, dim);
-
-            arena.Dispose();
-        }
 
         // GALLERY KNOWN-ANSWER (Gallery.Special): the 4x4 Sylvester-Walsh Hadamard matrix satisfies
         // HᵀH = n·I, so ALL singular values equal √n = √4 = 2 and the condition number is exactly 1.
@@ -855,8 +572,8 @@ public class floatSVDTests
             arena.Dispose();
         }
 
-        // Cross-check values vs the trusted svdDecomposition for m >= n (square AND tall).
-        // svdDecomposition destroys its U argument; values takes A `in` (must be unmodified).
+        // Cross-check values vs the trusted Golub-Kahan full SVD (SVD.thin) for m >= n (square AND
+        // tall). thin factors a copy of A; values takes A `in` (must be unmodified).
         public void SVValuesCross(int m, int n, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -864,11 +581,12 @@ public class floatSVDTests
             var A = arena.floatRandomMat(m, n, -10f, 10f, seed);
             var Apristine = A.Copy();
 
-            // reference path: copy of A consumed by svdDecomposition
-            var U = A.Copy();
+            // reference path: full thin SVD on a copy of A
+            var Aref = A.Copy();
+            var U = arena.floatMat(m, n);
             var Sref = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            bool okRef = SVD.svdDecomposition(ref U, ref Sref, ref V);
+            bool okRef = SVD.thin(in Aref, ref U, ref Sref, ref V);
             Assert.IsTrue(okRef);
 
             // values-only path on the untouched A
@@ -896,8 +614,10 @@ public class floatSVDTests
             arena.Dispose();
         }
 
-        // Cross-check the Golub-Kahan full SVD vs the trusted one-sided Jacobi svdDecomposition,
-        // plus reconstruction A = U diag(S) Vᵀ and orthonormal U,V. A must be unmodified.
+        // Validates the Golub-Kahan full SVD (SVD.thin) via reconstruction A = U diag(S) Vᵀ and
+        // orthonormal U,V, across square and tall shapes (A must be unmodified). Orthogonal U,V plus
+        // an accurate reconstruction is sufficient to pin S as the true singular values -- no external
+        // oracle needed (see ThinKnown* for the known-Σ variant of this same guarantee).
         public void GolubKahanCross(int m, int n, uint seed)
         {
             var arena = new Arena(Allocator.Persistent);
@@ -905,14 +625,6 @@ public class floatSVDTests
             var A = arena.floatRandomMat(m, n, -10f, 10f, seed);
             var Apristine = A.Copy();
 
-            // oracle: one-sided Jacobi (destroys its U arg = copy of A)
-            var Uref = A.Copy();
-            var Sref = arena.floatVec(n);
-            var Vref = arena.floatMat(n, n);
-            bool okRef = SVD.svdDecomposition(ref Uref, ref Sref, ref Vref);
-            Assert.IsTrue(okRef);
-
-            // Golub-Kahan on the untouched A
             var U = arena.floatMat(m, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
@@ -921,14 +633,6 @@ public class floatSVDTests
 
             Assert.IsFalse(Analysis.isAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
-
-            // singular values agree with the oracle (both descending, scale-aware tol)
-            for (int i = 0; i < n; i++)
-            {
-                float scale = math.max(math.abs(S[i]), math.abs(Sref[i]));
-                float tol = (float)1E-3f + (float)1E-3f * scale;
-                AssertClose(S[i], Sref[i], tol);
-            }
 
             float reconTol = (float)1E-3f + (float)1E-4f * math.abs(S[0]);
             AssertReconstruct(in A, in U, in S, in V, ref arena, reconTol);
@@ -1045,13 +749,6 @@ public class floatSVDTests
                     A[i, j] = u1[i] * v1[j] + u2[i] * v2[j] + u3[i] * v3[j];
             var Apristine = A.Copy();
 
-            // oracle
-            var Uref = A.Copy();
-            var Sref = arena.floatVec(n);
-            var Vref = arena.floatMat(n, n);
-            bool okRef = SVD.svdDecomposition(ref Uref, ref Sref, ref Vref);
-            Assert.IsTrue(okRef);
-
             var U = arena.floatMat(n, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
@@ -1060,12 +757,6 @@ public class floatSVDTests
             Assert.IsFalse(Analysis.isAnyNan(in S));
             AssertDescendingNonNegative(in S, n);
 
-            for (int i = 0; i < n; i++)
-            {
-                float scale = math.max(math.abs(S[i]), math.abs(Sref[i]));
-                float tol = (float)1E-3f + (float)1E-3f * scale;
-                AssertClose(S[i], Sref[i], tol);
-            }
             // bottom three singular values are the (interior) zeros
             for (int i = 3; i < n; i++)
                 AssertClose(S[i], (float)0f, (float)1E-3f + (float)1E-3f * S[0]);
@@ -1196,62 +887,6 @@ public class floatSVDTests
     // Managed throw-tests: argument validation runs on the main thread (not in a Burst job).
 
     [Test]
-    public void SVDThrowsOnWideMatrix()
-    {
-        var arena = new Arena(Allocator.Persistent);
-
-        var U = arena.floatMat(2, 3);
-        var S = arena.floatVec(3);
-        var V = arena.floatMat(3, 3);
-
-        Assert.Catch<ArgumentException>(() => SVD.svdDecomposition(ref U, ref S, ref V));
-
-        arena.Dispose();
-    }
-
-    [Test]
-    public void SVDThrowsOnWrongSLength()
-    {
-        var arena = new Arena(Allocator.Persistent);
-
-        var U = arena.floatMat(4, 3);
-        var S = arena.floatVec(2);
-        var V = arena.floatMat(3, 3);
-
-        Assert.Catch<ArgumentException>(() => SVD.svdDecomposition(ref U, ref S, ref V));
-
-        arena.Dispose();
-    }
-
-    [Test]
-    public void SVDThrowsOnWrongVSize()
-    {
-        var arena = new Arena(Allocator.Persistent);
-
-        var U = arena.floatMat(4, 3);
-        var S = arena.floatVec(3);
-        var V = arena.floatMat(2, 2);
-
-        Assert.Catch<ArgumentException>(() => SVD.svdDecomposition(ref U, ref S, ref V));
-
-        arena.Dispose();
-    }
-
-    [Test]
-    public void SVDThrowsOnBadMaxSweeps()
-    {
-        var arena = new Arena(Allocator.Persistent);
-
-        var U = arena.floatMat(4, 3);
-        var S = arena.floatVec(3);
-        var V = arena.floatMat(3, 3);
-
-        Assert.Catch<ArgumentException>(() => SVD.svdDecomposition(ref U, ref S, ref V, 0));
-
-        arena.Dispose();
-    }
-
-    [Test]
     public void SVValuesThrowsOnWideMatrix()
     {
         var arena = new Arena(Allocator.Persistent);
@@ -1273,20 +908,6 @@ public class floatSVDTests
         var S = arena.floatVec(2);
 
         Assert.Catch<ArgumentException>(() => SVD.values(in A, ref S));
-
-        arena.Dispose();
-    }
-
-    [Test]
-    public void SVDThrowsOnBadEps()
-    {
-        var arena = new Arena(Allocator.Persistent);
-
-        var U = arena.floatMat(4, 3);
-        var S = arena.floatVec(3);
-        var V = arena.floatMat(3, 3);
-
-        Assert.Catch<ArgumentException>(() => SVD.svdDecomposition(ref U, ref S, ref V, 30, (float)0f));
 
         arena.Dispose();
     }

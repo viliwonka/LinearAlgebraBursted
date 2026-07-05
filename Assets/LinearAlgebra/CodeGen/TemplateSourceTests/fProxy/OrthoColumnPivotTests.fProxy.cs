@@ -57,6 +57,8 @@ public class fProxyOrthoColumnPivotTests
             AllZero,
             ZeroColumnMiddle,
             DuplicateColumns,
+            // Solver API rework (commit 2) coverage.
+            DecompPreservesA,
         }
 
         public TestType Type;
@@ -78,6 +80,7 @@ public class fProxyOrthoColumnPivotTests
                 case TestType.AllZero:                  AllZero();                  break;
                 case TestType.ZeroColumnMiddle:         ZeroColumnMiddle();         break;
                 case TestType.DuplicateColumns:         DuplicateColumns();         break;
+                case TestType.DecompPreservesA:         DecompPreservesA();         break;
             }
         }
 
@@ -368,6 +371,43 @@ public class fProxyOrthoColumnPivotTests
             arena.Dispose();
         }
 
+        // Solver API rework (commit 2): QRCP.decomp must not modify A. Checksum (position-weighted
+        // sum, so a permutation or a single altered entry both trip it) before/after the call.
+        void DecompPreservesA()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 5;
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 606060);
+            for (int d = 0; d < n; d++) A[d, d] += 4f;
+
+            fProxy checksumBefore = (fProxy)0;
+            for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (fProxy)(i + 1);
+
+            var Q = arena.fProxyMat(m, n);
+            var R = arena.fProxyMat(n);
+            var P = new Pivot(n, Allocator.Persistent);
+            QRCP.decomp(in A, ref Q, ref R, ref P);
+
+            fProxy checksumAfter = (fProxy)0;
+            for (int i = 0; i < A.Length; i++) checksumAfter += A[i] * (fProxy)(i + 1);
+
+            if (checksumAfter != checksumBefore && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = checksumAfter;
+                Fail[2] = checksumBefore;
+                Fail[3] = checksumAfter - checksumBefore;
+            }
+            Assert.IsTrue(checksumAfter == checksumBefore);
+
+            // and the decomposition itself must still be correct (A intact, matches Q*R via P).
+            AssertQRCP(in A, in Q, in R, in P, (fProxy)1E-4f);
+
+            P.Dispose();
+            arena.Dispose();
+        }
+
         // Reconstruction (A permuted by P == Q*R), R upper-triangular, Q orthogonal, and the
         // monotone-magnitude diagonal guarantee of column pivoting.
         void AssertQRCP(in fProxyMxN A, in fProxyMxN Q, in fProxyMxN R, in Pivot P, fProxy precision)
@@ -488,6 +528,8 @@ public class fProxyOrthoColumnPivotTests
             AutoSentinel,           // (8) relTol=-1 == default overload == explicit default tol
             KnownValueRegression,   // (9) hand-computable rank-deficient basic solution
             RankRevealingInfoStatus,// (10) Stage-3: RankRevealingInfo.status/rank/Solved on rank-deficient A
+            NoCopyEquivalenceFullRank,      // (11) commit-2: no-copy solveInPlace == copying-then-solveInPlace
+            NoCopyEquivalenceRankDeficient, // (12) same, rank-deficient A
         }
 
         public TestType Type;
@@ -509,6 +551,8 @@ public class fProxyOrthoColumnPivotTests
                 case TestType.AutoSentinel:            AutoSentinel();            break;
                 case TestType.KnownValueRegression:    KnownValueRegression();    break;
                 case TestType.RankRevealingInfoStatus: RankRevealingInfoStatus(); break;
+                case TestType.NoCopyEquivalenceFullRank:      NoCopyEquivalenceFullRank();      break;
+                case TestType.NoCopyEquivalenceRankDeficient: NoCopyEquivalenceRankDeficient(); break;
             }
         }
 
@@ -526,15 +570,16 @@ public class fProxyOrthoColumnPivotTests
 
             // generic b (not in range(A)) so it is a genuine least-squares (not exact) problem
             var b = arena.fProxyRandomVec(m, -5f, 5f, 9091);
+            var A_pristine = A.Copy(); // solveInPlace now destroys A (becomes Q); preserve for the QR reference below
 
             var x = arena.fProxyVec(n);
-            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank; // qrcp leaves A,b intact
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank; // b stays intact; A -> Q
 
             RecordEq(rank, n);
             if (Analysis.isAnyNan(in x)) { Fail0(0, 0); return; }
 
             // reference: ordinary QR-LS (destroys its inputs -> feed copies)
-            var Aqr = A.Copy();
+            var Aqr = A_pristine.Copy();
             var bqr = b.Copy();
             var xRef = arena.fProxyVec(n);
             QR.solveInPlace(ref Aqr, ref bqr, ref xRef);
@@ -547,7 +592,7 @@ public class fProxyOrthoColumnPivotTests
         }
 
         // (2) Square full-rank: the basic solution solves A x = b exactly (residual ~ 0).
-        // Uses the PRIMITIVE default-tolerance overload (Q/R/P/u scratch).
+        // Uses the PRIMITIVE default-tolerance overload (R/P/u scratch; A_to_Q becomes Q).
         void FullRankSquare()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -561,13 +606,12 @@ public class fProxyOrthoColumnPivotTests
             var b = Blas.dot(A, xOrig); // b in range(A) -> exact solution exists
             var A_copy = A.Copy();          // for residual check after the solve
 
-            var Q = arena.fProxyMat(dim, dim);
             var R = arena.fProxyMat(dim);
             var P = new Pivot(dim, Allocator.Persistent);
             var u = arena.fProxyVec(dim);
             var x = arena.fProxyVec(dim);
 
-            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u).rank;
 
             RecordEq(rank, dim);
             if (!Analysis.isAnyNan(in x))
@@ -695,14 +739,13 @@ public class fProxyOrthoColumnPivotTests
 
             var b = arena.fProxyRandomVec(m, -2f, 2f, 1212);
 
-            var Q = arena.fProxyMat(m, n);
             var R = arena.fProxyMat(n);
             var P = new Pivot(n, Allocator.Persistent);
             var u = arena.fProxyVec(m);
             var x = arena.fProxyVec(n);
 
             fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroThreshold;
-            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, explicitTol).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u, explicitTol).rank;
 
             RecordEq(rank, 3);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -784,15 +827,20 @@ public class fProxyOrthoColumnPivotTests
                 A[r, 2] = A[r, 0] - A[r, 1]; // rank 3
             var b = arena.fProxyRandomVec(m, -3f, 3f, 2424);
 
+            // solveInPlace now destroys A (becomes Q) -- each call needs its own pristine copy so
+            // all three exercise the IDENTICAL input.
             var xAuto = arena.fProxyVec(n);
-            int rankAuto = QRCP.solveInPlace(ref A, ref b, ref xAuto).rank; // default overload
+            var Aauto = A.Copy();
+            int rankAuto = QRCP.solveInPlace(ref Aauto, ref b, ref xAuto).rank; // default overload
 
             var xNeg = arena.fProxyVec(n);
-            int rankNeg = QRCP.solveInPlace(ref A, ref b, ref xNeg, (fProxy)(-1)).rank; // sentinel
+            var Aneg = A.Copy();
+            int rankNeg = QRCP.solveInPlace(ref Aneg, ref b, ref xNeg, (fProxy)(-1)).rank; // sentinel
 
             fProxy explicitTol = (fProxy)(math.max(m, n)) * (fProxy)Consts.fProxyZeroThreshold;
             var xExpl = arena.fProxyVec(n);
-            int rankExpl = QRCP.solveInPlace(ref A, ref b, ref xExpl, explicitTol).rank;
+            var Aexpl = A.Copy();
+            int rankExpl = QRCP.solveInPlace(ref Aexpl, ref b, ref xExpl, explicitTol).rank;
 
             RecordEq(rankNeg, rankAuto);
             RecordEq(rankExpl, rankAuto);
@@ -824,13 +872,12 @@ public class fProxyOrthoColumnPivotTests
             var b = arena.fProxyVec(m);
             b[0] = (fProxy)6f; b[1] = (fProxy)1f; b[2] = (fProxy)1f;
 
-            var Q = arena.fProxyMat(m, n);
             var R = arena.fProxyMat(n);
             var P = new Pivot(n, Allocator.Persistent);
             var u = arena.fProxyVec(m);
             var x = arena.fProxyVec(n);
 
-            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, (fProxy)(-1)).rank;
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u, (fProxy)(-1)).rank;
 
             RecordEq(rank, 1);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
@@ -870,6 +917,72 @@ public class fProxyOrthoColumnPivotTests
             RecordEq(info ? 1 : 0, 1); // implicit bool must also be true
 
             arena.Dispose();
+        }
+
+        // (11)/(12) commit-2 no-copy optimization: solveInPlace factors A_to_Q's own buffer directly
+        // (no separate Q scratch param). Buffer identity must not matter: running the primitive on
+        // one copy of A must be bit-identical to running it on an INDEPENDENT second copy (proves the
+        // no-copy change is a pure perf optimization, not an observable behavior change) -- and each
+        // copy's exit must equal the Q that a fresh QRCP.decompInPlace produces on a third identical
+        // copy of the same original A.
+        void NoCopyEquivalenceFullRank() => NoCopyEquivalence(10, 6, 707070, false);
+        void NoCopyEquivalenceRankDeficient() => NoCopyEquivalence(8, 5, 808080, true);
+
+        void NoCopyEquivalence(int m, int n, uint seed, bool rankDeficient)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var A0 = arena.fProxyRandomMat(m, n, -3f, 3f, seed);
+            for (int d = 0; d < n; d++) A0[d, d] += 6f;
+            if (rankDeficient)
+                for (int r = 0; r < m; r++)
+                    A0[r, n - 1] = A0[r, 0] + A0[r, 1]; // exact dependency -> rank n-1
+
+            var b = arena.fProxyRandomVec(m, -3f, 3f, seed + 1);
+
+            // Path 1: solveInPlace on one independent copy of A0.
+            var Adirect = A0.Copy();
+            var xDirect = arena.fProxyVec(n);
+            RankInfo infoDirect = QRCP.solveInPlace(ref Adirect, ref b, ref xDirect);
+
+            // Path 2: solveInPlace on a SEPARATE independent copy -- proves buffer identity is
+            // irrelevant to the result (b is read-only, so the same b is reused for both calls).
+            var Acopy = A0.Copy();
+            var xCopy = arena.fProxyVec(n);
+            RankInfo infoCopy = QRCP.solveInPlace(ref Acopy, ref b, ref xCopy);
+
+            RecordEq((int)infoDirect.status, (int)infoCopy.status);
+            RecordEq(infoDirect.rank, infoCopy.rank);
+            for (int i = 0; i < n; i++)
+                AssertBitIdentical(xDirect[i], xCopy[i]);
+
+            // Both exits (now holding Q) must also be bit-identical to each other.
+            for (int i = 0; i < Adirect.Length; i++)
+                AssertBitIdentical(Adirect[i], Acopy[i]);
+
+            // And bit-identical to the Q a fresh decompInPlace produces on a third identical copy.
+            var Aref = A0.Copy();
+            var Rref = arena.fProxyMat(n);
+            var Pref = new Pivot(n, Allocator.Persistent);
+            QRCP.decompInPlace(ref Aref, ref Rref, ref Pref);
+
+            for (int i = 0; i < Aref.Length; i++)
+                AssertBitIdentical(Adirect[i], Aref[i]);
+
+            Pref.Dispose();
+            arena.Dispose();
+        }
+
+        void AssertBitIdentical(fProxy a, fProxy b)
+        {
+            if (a != b && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1;
+                Fail[1] = a;
+                Fail[2] = b;
+                Fail[3] = a - b;
+            }
+            Assert.IsTrue(a == b);
         }
 
         // ---- helpers ----

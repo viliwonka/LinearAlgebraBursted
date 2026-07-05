@@ -174,6 +174,39 @@ namespace LinearAlgebra
             return info;
         }
 
+        // ---- decomp: A-preserving variants (copy A into Q, then delegate to decompInPlace) ----
+
+        /// <summary>
+        /// Column-pivoted QR preserving A: A is copied into Q (one memcpy), then factored via
+        /// decompInPlace. Q (caller-allocated, same dimensions as A) receives the orthogonal factor.
+        /// Always reports DirectSolveStatus.Success — see decompInPlace.
+        /// </summary>
+        /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decomp(in fProxyMxN A, ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u)
+        {
+            if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
+                throw new ArgumentException("QRCP.decomp: Q must have the same dimensions as A");
+
+            Q.Data.CopyFrom(A.Data);
+            return decompInPlace(ref Q, ref R, ref P, ref u);
+        }
+
+        /// <summary>
+        /// decomp allocating its scratch vector u (Allocator.Temp). See the 5-arg overload for
+        /// semantics.
+        /// </summary>
+        /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decomp(in fProxyMxN A, ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P)
+        {
+            if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
+                throw new ArgumentException("QRCP.decomp: Q must have the same dimensions as A");
+
+            Q.Data.CopyFrom(A.Data);
+            return decompInPlace(ref Q, ref R, ref P);
+        }
+
         /// <summary>
         /// QRCP-based rank-safe least-squares: basic (truncated) solution. Solves A x ≈ b (m >= n)
         /// for a possibly rank-deficient A using column-pivoted QR (Businger-Golub, A·P = Q·R) to
@@ -189,14 +222,13 @@ namespace LinearAlgebra
         /// SVD.pinvSolve for that. When A has full column rank (r == n) the result is identical to
         /// ordinary QR least-squares.
         ///
-        /// TRANSITIONAL (commit 1): despite the solveInPlace name, this still copies A into the
-        /// caller-provided Q scratch rather than factoring A's own buffer — the commit-2 no-copy
-        /// optimization (dropping the Q param, A_to_Q becomes the usable factor) has not landed yet.
+        /// NO-COPY: factors A_to_Q's own buffer directly (no memcpy, no separate Q scratch param) —
+        /// A_to_Q holds the usable orthogonal factor (alongside R and P) on return. b is preserved
+        /// (read only via dot, never written).
         /// </summary>
-        /// <param name="A">m x n matrix (m >= n). Not modified (copied into Q scratch).</param>
-        /// <param name="b">Right-hand side, length m. Must not alias x.</param>
+        /// <param name="A_to_Q">On entry A (m x n, m >= n); on exit the orthogonal factor Q.</param>
+        /// <param name="b">Right-hand side, length m. Preserved (read-only). Must not alias x.</param>
         /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true. Solution, length n.</param>
-        /// <param name="Q">Scratch: m x n (receives orthogonal factor; consumed).</param>
         /// <param name="R">Scratch: n x n (receives upper-triangular factor; consumed).</param>
         /// <param name="P">Scratch: column Pivot of size n (reset internally).</param>
         /// <param name="u">Scratch: length EXACTLY m (Householder workspace; first n entries are
@@ -206,27 +238,25 @@ namespace LinearAlgebra
         /// truncated least-squares solution); rank = detected r. See
         /// <see cref="RankInfo.Solved"/>.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
-                                           ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P,
+        public static RankInfo solveInPlace(ref fProxyMxN A_to_Q, ref fProxyN b, ref fProxyN x,
+                                           ref fProxyMxN R, ref Pivot P,
                                            ref fProxyN u, fProxy relTol)
         {
-            int m = A.M_Rows;
-            int n = A.N_Cols;
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
 
             if (m < n)
-                throw new ArgumentException("QRCP.solveInPlace: A must be square or tall (M_Rows >= N_Cols)");
+                throw new ArgumentException("QRCP.solveInPlace: A_to_Q must be square or tall (M_Rows >= N_Cols)");
             if (b.N != m)
-                throw new ArgumentException("QRCP.solveInPlace: b.N must equal A.M_Rows");
+                throw new ArgumentException("QRCP.solveInPlace: b.N must equal A_to_Q.M_Rows");
             if (x.N != n)
-                throw new ArgumentException("QRCP.solveInPlace: x.N must equal A.N_Cols");
-            if (Q.M_Rows != m || Q.N_Cols != n)
-                throw new ArgumentException("QRCP.solveInPlace: Q must be M_Rows x N_Cols");
+                throw new ArgumentException("QRCP.solveInPlace: x.N must equal A_to_Q.N_Cols");
             if (R.M_Rows != n || R.N_Cols != n)
                 throw new ArgumentException("QRCP.solveInPlace: R must be N_Cols x N_Cols");
             if (P.N != n)
-                throw new ArgumentException("QRCP.solveInPlace: P.N must equal A.N_Cols");
+                throw new ArgumentException("QRCP.solveInPlace: P.N must equal A_to_Q.N_Cols");
             if (u.N != m)
-                throw new ArgumentException("QRCP.solveInPlace: u.N must equal A.M_Rows");
+                throw new ArgumentException("QRCP.solveInPlace: u.N must equal A_to_Q.M_Rows");
 
             // Negative relTol is an "auto" sentinel: use the library-standard rank threshold
             // (same default as SVD.pinvSolve / MatrixMetrics.rank). This also makes the threshold
@@ -237,13 +267,11 @@ namespace LinearAlgebra
             // Degenerate: zero-column system.
             if (n == 0) return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            // Step 1: copy A into Q (decompInPlace destroys its input).
-            Q.Data.CopyFrom(A.Data);
+            // Step 1: QRCP — A·P = Q·R, factored directly into A_to_Q's own buffer (no copy).
+            // P is reset and built inside this call.
+            decompInPlace(ref A_to_Q, ref R, ref P, ref u);
 
-            // Step 2: QRCP — A·P = Q·R. P is reset and built inside this call.
-            decompInPlace(ref Q, ref R, ref P, ref u);
-
-            // Step 3: determine numerical rank r from R's non-increasing diagonal.
+            // Step 2: determine numerical rank r from R's non-increasing diagonal.
             // tol = relTol * |R[0,0]|. When R[0,0] == 0 tol == 0, and |R[0,0]| > 0 is false
             // → rank stays 0. NaN in R[0,0] → tol = NaN → all comparisons false → rank = 0.
             fProxy tol = relTol * math.abs(R[0, 0]);
@@ -256,7 +284,7 @@ namespace LinearAlgebra
                     break;
             }
 
-            // Step 4: zero matrix (rank == 0) → x = 0, done.
+            // Step 3: zero matrix (rank == 0) → x = 0, done.
             if (rank == 0)
             {
                 for (int j = 0; j < n; j++)
@@ -266,13 +294,13 @@ namespace LinearAlgebra
 
             int r = rank;
 
-            // Step 5: form c = Qᵀ b into x.
-            // dot(in b, in Q, ref x) computes x[j] = Σ_i Q[i,j]·b[i] = (Qᵀb)[j].
+            // Step 4: form c = Qᵀ b into x.
+            // dot(in b, in A_to_Q, ref x) computes x[j] = Σ_i A_to_Q[i,j]·b[i] = (Qᵀb)[j].
             // dot zeroes x via MemClear before accumulating, so x needs no prior initialisation.
             // Guard: x must not alias b (enforced inside dot by pointer comparison).
-            Blas.dot(in b, in Q, ref x);
+            Blas.dot(in b, in A_to_Q, ref x);
 
-            // Step 6: back-solve the leading r×r block of R in place.
+            // Step 5: back-solve the leading r×r block of R in place.
             // x holds c = Qᵀb; overwrite x[0..r-1] with the triangular solution.
             // Every R[i,i] for i < r satisfies |R[i,i]| > tol, so no divide-by-zero.
             for (int i = r - 1; i >= 0; i--)
@@ -286,10 +314,10 @@ namespace LinearAlgebra
             for (int j = r; j < n; j++)
                 x[j] = (fProxy)0;
 
-            // Step 7: un-permute — scatter from permuted ordering back to original column ordering.
+            // Step 6: un-permute — scatter from permuted ordering back to original column ordering.
             // QRCP gives A·P = Q·R where P[j] = original column index promoted to position j.
             // The permuted solution z (in x) satisfies: x_final[P[j]] = z[j].
-            // Borrow u[0..n-1] as scatter scratch (u is no longer needed after Step 2).
+            // Borrow u[0..n-1] as scatter scratch (u is no longer needed after Step 1).
             for (int j = 0; j < n; j++)
                 u[j] = x[j];
             for (int j = 0; j < n; j++)
@@ -305,33 +333,31 @@ namespace LinearAlgebra
         // Default-tolerance overload: passes the auto sentinel (relTol < 0), so the primitive
         // uses max(m,n) * Consts.fProxyZeroThreshold (consistent with SVD.pinvSolve / MatrixMetrics.rank).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
-                                           ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P,
+        public static RankInfo solveInPlace(ref fProxyMxN A_to_Q, ref fProxyN b, ref fProxyN x,
+                                           ref fProxyMxN R, ref Pivot P,
                                            ref fProxyN u)
         {
-            return solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, (fProxy)(-1));
+            return solveInPlace(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, (fProxy)(-1));
         }
 
         /// <summary>
-        /// Allocating convenience wrapper: allocates Q (m×n), R (n×n), P (n-Pivot) and u (m)
-        /// from Allocator.Temp and delegates to the zero-alloc primitive. Use the primitive in
-        /// hot loops to avoid repeated Temp allocs.
+        /// Allocating convenience wrapper: allocates R (n×n), P (n-Pivot) and u (m) from
+        /// Allocator.Temp and delegates to the zero-alloc primitive. Use the primitive in hot loops
+        /// to avoid repeated Temp allocs.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x,
+        public static RankInfo solveInPlace(ref fProxyMxN A_to_Q, ref fProxyN b, ref fProxyN x,
                                            fProxy relTol)
         {
-            int m = A.M_Rows;
-            int n = A.N_Cols;
-            var Q = new fProxyMxN(m, n, Allocator.Temp, false);
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
             var R = new fProxyMxN(n, n, Allocator.Temp, false);
             var P = new Pivot(n, Allocator.Temp);
             var u = new fProxyN(m, Allocator.Temp, false);
-            var info = solveInPlace(ref A, ref b, ref x, ref Q, ref R, ref P, ref u, relTol);
+            var info = solveInPlace(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, relTol);
             u.Dispose();
             P.Dispose();
             R.Dispose();
-            Q.Dispose();
             return info;
         }
 
@@ -340,9 +366,9 @@ namespace LinearAlgebra
         /// matching SVD.pinvSolve / MatrixMetrics.rank).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankInfo solveInPlace(ref fProxyMxN A, ref fProxyN b, ref fProxyN x)
+        public static RankInfo solveInPlace(ref fProxyMxN A_to_Q, ref fProxyN b, ref fProxyN x)
         {
-            return solveInPlace(ref A, ref b, ref x, (fProxy)(-1));
+            return solveInPlace(ref A_to_Q, ref b, ref x, (fProxy)(-1));
         }
     }
 }

@@ -58,11 +58,6 @@ namespace LinearAlgebra
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = rank };
 
-            // zero L (only the lower-triangle columns 0..rank-1 get written below).
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < n; j++)
-                    L[i, j] = 0;
-
             // NOTE on orientation: U/"upper triangle" below refers ONLY to this method's internal
             // scratch (W) and its row-wise sweep — a computational device chosen for a unit-stride
             // inner loop. The PUBLIC output L is genuinely lower-triangular, same contract as plain
@@ -77,10 +72,21 @@ namespace LinearAlgebra
             // was the cache cliff). The returned factor L is LOWER-triangular (P^T A P = L L^T, L = U^T);
             // each finished U row is scattered into L's column k (an O(n) strided write, « the O(n^3)
             // factor). Only A's lower triangle is read (A is assumed symmetric): W[i,j] := A[j,i], j>=i.
+            //
+            // Read A into W BEFORE touching L: this ordering is what makes decompInPlace-style self-
+            // aliasing (L passed as the SAME buffer as A, see CHOP.solveInPlace's destructive overload)
+            // safe -- A is fully captured into W before L's own (independent) zero-fill below would
+            // otherwise clobber it.
             var W = ws.W;
             for (int i = 0; i < n; i++)
                 for (int j = i; j < n; j++)
                     W[i, j] = A[j, i];
+
+            // zero L (only the lower-triangle columns 0..rank-1 get written below). A is no longer
+            // read past this point, so it is safe for L to alias A from here on.
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    L[i, j] = 0;
 
             // scale-relative numerical-zero / indefinite tolerance. Scanned over all (upper-triangle)
             // entries, not just the diagonal: for a genuine PSD matrix the largest magnitude IS on the
@@ -325,43 +331,41 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Pivoted-Cholesky factor-and-solve in one call: factors A (rank-revealing) and solves
+        /// Pivoted-Cholesky factor-and-solve in one call: factors A_to_L IN PLACE (rank-revealing,
+        /// L aliases A's own storage -- see decomp's read-before-write ordering note) and solves
         /// A x = b, b overwritten with x. Returns Indefinite (forwarded from the decomposition)
         /// WITHOUT solving if A is indefinite. For a rank-deficient (PSD) A this returns
         /// RankDeficient (with the detected rank) and the minimum-norm least-squares solution.
-        ///
-        /// TRANSITIONAL (commit 1): despite the solveInPlace name, A is still preserved (`in`) —
-        /// this rename lands ahead of the commit-2 behavior change that makes it genuinely
-        /// destructive (A_to_L). Kept here only for the mechanical rename; do not rely on the name
-        /// implying destructive semantics yet.
+        /// A_to_L holds the factorization on return; valid input to decompSolve.
         /// </summary>
+        /// <param name="A_to_L">On entry A; on exit the lower-triangular factor L.</param>
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static RankInfo solveInPlace(in floatMxN A, ref floatMxN L, ref Pivot P, ref floatN b_to_x) {
-            var decompInfo = decomp(in A, ref L, ref P);
+        public static RankInfo solveInPlace(ref floatMxN A_to_L, ref Pivot P, ref floatN b_to_x) {
+            var decompInfo = decomp(in A_to_L, ref A_to_L, ref P);
             if (!decompInfo.Solved)
                 return decompInfo;
 
-            decompSolve(ref L, in P, decompInfo.rank, ref b_to_x);
+            decompSolve(ref A_to_L, in P, decompInfo.rank, ref b_to_x);
             return decompInfo;
         }
 
         /// <summary>
-        /// Pivoted-Cholesky factor-and-solve using a caller workspace (W for the factorization, bt for
-        /// the solve). Returns Indefinite (forwarded from the decomposition) WITHOUT solving if A is
-        /// indefinite. For a rank-deficient (PSD) A this returns RankDeficient (with the detected
-        /// rank) and the minimum-norm least-squares solution.
-        ///
-        /// TRANSITIONAL (commit 1): see the non-workspace overload's note — A is still preserved
-        /// (`in`) despite the solveInPlace name; commit 2 makes this genuinely destructive.
+        /// Pivoted-Cholesky factor-and-solve in place using a caller workspace (W for the
+        /// factorization, bt for the solve). Same destructive contract as the non-workspace overload:
+        /// A_to_L is factored using its own storage and holds the factorization on return. Returns
+        /// Indefinite (forwarded from the decomposition) WITHOUT solving if A is indefinite. For a
+        /// rank-deficient (PSD) A this returns RankDeficient (with the detected rank) and the
+        /// minimum-norm least-squares solution.
         /// </summary>
+        /// <param name="A_to_L">On entry A; on exit the lower-triangular factor L.</param>
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static RankInfo solveInPlace(in floatMxN A, ref floatMxN L, ref Pivot P, ref floatN b_to_x,
+        public static RankInfo solveInPlace(ref floatMxN A_to_L, ref Pivot P, ref floatN b_to_x,
                                               ref floatCHOPCache ws) {
-            var decompInfo = decomp(in A, ref L, ref P, ref ws);
+            var decompInfo = decomp(in A_to_L, ref A_to_L, ref P, ref ws);
             if (!decompInfo.Solved)
                 return decompInfo;
 
-            decompSolve(ref L, in P, decompInfo.rank, ref b_to_x, ref ws);
+            decompSolve(ref A_to_L, in P, decompInfo.rank, ref b_to_x, ref ws);
             return decompInfo;
         }
     }

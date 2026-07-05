@@ -24,11 +24,7 @@ namespace LinearAlgebra
         /// is encountered, which also catches NaN). On NotPositiveDefinite: no NaN/Inf is written,
         /// since the check happens before the sqrt.
         ///
-        /// L may alias A (in-place factorization): each A entry is read before it is overwritten, so
-        /// passing the same matrix as both A and L is safe — but then A's strict upper triangle is
-        /// destroyed (zeroed). On a NotPositiveDefinite return with L aliasing A, the lower triangle
-        /// is left partially overwritten, so treat A as destroyed on failure. See decompInPlace
-        /// (commit 2) for the documented in-place path.
+        /// For the in-place variant (factor into A's own storage), use decompInPlace instead.
         /// </summary>
         public static DirectSolveInfo decomp(in doubleMxN A, ref doubleMxN L) {
             if (!A.IsSquare)
@@ -235,6 +231,34 @@ namespace LinearAlgebra
             SolveUpperTriangularTransposed(ref L, ref b_to_x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// Cholesky factorization in place: A_to_L is factored using its own storage (L aliases A
+        /// internally -- each entry is read before it is overwritten, so this is safe). On return,
+        /// A_to_L holds the lower-triangular factor L (strict upper triangle zeroed); valid input to
+        /// decompSolve. On NotPositiveDefinite the lower triangle is left partially overwritten --
+        /// treat A_to_L as destroyed on failure.
+        /// </summary>
+        /// <param name="A_to_L">On entry A; on exit the lower-triangular factor L.</param>
+        public static DirectSolveInfo decompInPlace(ref doubleMxN A_to_L) => decomp(in A_to_L, ref A_to_L);
+
+        /// <summary>
+        /// Factor-and-solve A x = b in one call (POSV): factors A in place (L aliases A's own storage)
+        /// then solves for x. b is overwritten with x. Returns NotPositiveDefinite (forwarded from the
+        /// factorization) WITHOUT solving if A is not positive-definite.
+        /// A_to_L holds the lower-triangular factor L on return; valid input to decompSolve for
+        /// solving additional right-hand sides without refactoring.
+        /// </summary>
+        /// <param name="A_to_L">On entry A; on exit the lower-triangular factor L.</param>
+        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        public static DirectSolveInfo solveInPlace(ref doubleMxN A_to_L, ref doubleN b_to_x) {
+            var info = decompInPlace(ref A_to_L);
+            if (!info.Solved)
+                return info;
+
+            decompSolve(ref A_to_L, ref b_to_x);
+            return info;
         }
 
         // Solve Lᵀ x = b for x in place, where L is lower-triangular (so Lᵀ is upper-triangular).

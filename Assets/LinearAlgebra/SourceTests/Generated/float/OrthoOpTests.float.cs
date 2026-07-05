@@ -51,6 +51,9 @@ public class floatOrthoOpTests
             QRDecompBlockedNonAligned_200x127,
             QRDecompBlockedNonAligned_160x96,
             QRDecompBlockedNonAligned_256x150,
+            // Solver API rework (commit 2) coverage.
+            QRDecompPreservesA,
+            QRUninitXContract,
         }
 
         public TestType Type;
@@ -106,6 +109,12 @@ public class floatOrthoOpTests
                     break;
                 case TestType.QRDecompBlockedNonAligned_256x150:
                     QRDecompBlockedNonAligned(256, 150, 700150);
+                    break;
+                case TestType.QRDecompPreservesA:
+                    QRDecompPreservesA();
+                    break;
+                case TestType.QRUninitXContract:
+                    QRUninitXContract();
                     break;
             }
         }
@@ -322,6 +331,101 @@ public class floatOrthoOpTests
             QR.decompInPlace(ref Q, ref R);
 
             AssertQR(in A, in Q, in R, 1E-3f);
+
+            arena.Dispose();
+        }
+
+        // Solver API rework (commit 2): QR.decomp must not modify A. Checksum (position-weighted
+        // sum, so a permutation or a single altered entry both trip it) before/after the call.
+        void QRDecompPreservesA()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 12, n = 6;
+            var A = arena.floatRandomMat(m, n, -3f, 3f, 909090);
+            for (int d = 0; d < n; d++) A[d, d] += 5f;
+
+            float checksumBefore = (float)0;
+            for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (float)(i + 1);
+
+            var Q = arena.floatMat(m, n);
+            var R = arena.floatMat(n);
+            QR.decomp(in A, ref Q, ref R);
+
+            float checksumAfter = (float)0;
+            for (int i = 0; i < A.Length; i++) checksumAfter += A[i] * (float)(i + 1);
+
+            if (checksumAfter != checksumBefore && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = checksumAfter;
+                Fail[2] = checksumBefore;
+                Fail[3] = checksumAfter - checksumBefore;
+            }
+            Assert.IsTrue(checksumAfter == checksumBefore);
+
+            // and the decomposition itself must still be correct (A intact, matches Q*R).
+            AssertQR(in A, in Q, in R, 1E-4f);
+
+            arena.Dispose();
+        }
+
+        // Uninit-x contract: QR.solveInPlace and QR.decompSolve must treat x as OUTPUT ONLY -- prior
+        // garbage (here, NaN sentinels) must not survive into the result.
+        void QRUninitXContract()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 8;
+            var A = arena.floatRandomMat(dim, dim, -5f, 5f, 13131);
+            for (int d = 0; d < dim; d++) A[d, d] += 10f;
+            var xKnown = arena.floatRandomVec(dim, -3f, 3f, 24242);
+            var b = Blas.dot(A, xKnown);
+
+            // QR.solveInPlace: x pre-filled with NaN.
+            {
+                var Awork = A.Copy();
+                var bwork = b.Copy();
+                var x = arena.floatVec(dim);
+                for (int i = 0; i < dim; i++) x[i] = float.NaN;
+
+                QR.solveInPlace(ref Awork, ref bwork, ref x);
+
+                Assert.IsFalse(Analysis.isAnyNan(in x));
+                for (int i = 0; i < dim; i++)
+                {
+                    float diff = Unity.Mathematics.math.abs(x[i] - xKnown[i]);
+                    if (!(diff <= (float)1E-3f) && Fail[0] == (float)0)
+                    {
+                        Fail[0] = (float)1; Fail[1] = x[i]; Fail[2] = xKnown[i]; Fail[3] = diff;
+                    }
+                    Assert.IsTrue(diff <= (float)1E-3f);
+                }
+            }
+
+            // QR.decompSolve: x pre-filled with NaN, Q/R from a fresh decompInPlace.
+            {
+                var Q = A.Copy();
+                var R = arena.floatMat(dim);
+                QR.decompInPlace(ref Q, ref R);
+
+                var x = arena.floatVec(dim);
+                for (int i = 0; i < dim; i++) x[i] = float.NaN;
+                var bcopy = b.Copy();
+
+                QR.decompSolve(ref Q, ref R, ref bcopy, ref x);
+
+                Assert.IsFalse(Analysis.isAnyNan(in x));
+                for (int i = 0; i < dim; i++)
+                {
+                    float diff = Unity.Mathematics.math.abs(x[i] - xKnown[i]);
+                    if (!(diff <= (float)1E-3f) && Fail[0] == (float)0)
+                    {
+                        Fail[0] = (float)1; Fail[1] = x[i]; Fail[2] = xKnown[i]; Fail[3] = diff;
+                    }
+                    Assert.IsTrue(diff <= (float)1E-3f);
+                }
+            }
 
             arena.Dispose();
         }
@@ -953,6 +1057,8 @@ public class floatOrthoOpTests
             KnownSolutionWide_4x9,
             KnownSolutionWide_8x16,
             ResidualCheck,
+            // Solver API rework (commit 2): uninit-x contract.
+            UninitXContract,
         }
 
         public TestType Type;
@@ -968,6 +1074,7 @@ public class floatOrthoOpTests
                 case TestType.KnownSolutionWide_4x9:  KnownSolutionWide_4x9();  break;
                 case TestType.KnownSolutionWide_8x16: KnownSolutionWide_8x16(); break;
                 case TestType.ResidualCheck:            ResidualCheck();            break;
+                case TestType.UninitXContract:          UninitXContract();          break;
             }
         }
 
@@ -1035,6 +1142,37 @@ public class floatOrthoOpTests
             LQ.minNormSolve(ref A, ref b, ref x);
             // residual = A x - b
             var Ax   = arena.floatVec(m);
+            Blas.dot(in A, in x, ref Ax);
+            Ax.subInPlace(b);
+            float residual = Analysis.MaxZeroError(Ax);
+            if (!(residual <= (float)1E-4f) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = residual;
+                Fail[2] = (float)1E-4f;
+                Fail[3] = residual - (float)1E-4f;
+            }
+            Assert.IsTrue(residual <= (float)1E-4f);
+            arena.Dispose();
+        }
+
+        // Uninit-x contract: LQ.minNormSolve must treat x as OUTPUT ONLY -- prior garbage (here, NaN
+        // sentinels) must not survive into the result.
+        void UninitXContract()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 5, n = 12;
+            var A = arena.floatRandomMat(m, n, -2f, 2f, 191919);
+            var b = arena.floatRandomVec(m, -1f, 1f, 292929);
+
+            var x = arena.floatVec(n);
+            for (int i = 0; i < n; i++) x[i] = float.NaN;
+
+            LQ.minNormSolve(ref A, ref b, ref x);
+
+            Assert.IsFalse(Analysis.isAnyNan(in x));
+
+            var Ax = arena.floatVec(m);
             Blas.dot(in A, in x, ref Ax);
             Ax.subInPlace(b);
             float residual = Analysis.MaxZeroError(Ax);

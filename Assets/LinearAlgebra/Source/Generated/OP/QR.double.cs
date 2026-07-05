@@ -415,6 +415,55 @@ namespace LinearAlgebra
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
+        // ---- decomp: A-preserving variants (copy A into Q, then delegate to decompInPlace) ----
+
+        /// <summary>
+        /// QR decomposition preserving A: A is copied into Q (one memcpy), then factored via
+        /// decompInPlace. Q (caller-allocated, same dimensions as A) receives the orthogonal factor;
+        /// R (N_Cols x N_Cols) the upper-triangular factor. Zero-alloc primitive (caller-provided u, w
+        /// scratch) — see decompInPlace for the scratch-size contract.
+        /// Always reports DirectSolveStatus.Success — see decompInPlace.
+        /// </summary>
+        /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decomp(in doubleMxN A, ref doubleMxN Q, ref doubleMxN R, ref doubleN u, ref doubleN w)
+        {
+            if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
+                throw new ArgumentException("QR.decomp: Q must have the same dimensions as A");
+
+            Q.Data.CopyFrom(A.Data);
+            return decompInPlace(ref Q, ref R, ref u, ref w);
+        }
+
+        /// <summary>
+        /// decomp allocating its w scratch (Allocator.Temp). See the 5-arg overload for semantics.
+        /// </summary>
+        /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decomp(in doubleMxN A, ref doubleMxN Q, ref doubleMxN R, ref doubleN u)
+        {
+            if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
+                throw new ArgumentException("QR.decomp: Q must have the same dimensions as A");
+
+            Q.Data.CopyFrom(A.Data);
+            return decompInPlace(ref Q, ref R, ref u);
+        }
+
+        /// <summary>
+        /// decomp allocating all scratch (Allocator.Temp) and routing through the blocked (level-3)
+        /// path once N_Cols is large enough. See decompInPlace's 2-arg overload for the size gate.
+        /// </summary>
+        /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decomp(in doubleMxN A, ref doubleMxN Q, ref doubleMxN R)
+        {
+            if (Q.M_Rows != A.M_Rows || Q.N_Cols != A.N_Cols)
+                throw new ArgumentException("QR.decomp: Q must have the same dimensions as A");
+
+            Q.Data.CopyFrom(A.Data);
+            return decompInPlace(ref Q, ref R);
+        }
+
         /// <summary>
         /// Solve QRx = b for x, with Q,R from a precomputed decomposition (solve for multiple
         /// b vectors reusing one decomposition). Caller provides the destination x (length

@@ -965,23 +965,23 @@ namespace LinearAlgebra
         ///     sign differences.
         ///   - Does not allocate.
         /// </summary>
-        /// <param name="A_to_D">On entry A (must be symmetric); on exit driven to approximately
-        /// diagonal (the diagonal duplicates the separate <paramref name="eigenvalues"/> output,
-        /// pre-sort) — not a documented usable factor on its own, treat as destroyed.</param>
+        /// <param name="A">On entry A (must be symmetric); destroyed; contents undefined after
+        /// return (driven to approximately diagonal internally, but that is not a documented
+        /// usable factor -- read <paramref name="eigenvalues"/> instead).</param>
         [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
-        public static bool decompInPlace(ref fProxyMxN A_to_D, ref fProxyN eigenvalues,
+        public static bool decompInPlace(ref fProxyMxN A, ref fProxyN eigenvalues,
                                               ref fProxyMxN V, int maxSweeps, fProxy eps)
         {
-            if (!A_to_D.IsSquare)
-                throw new ArgumentException("Eigen.decompInPlace: A_to_D must be square");
+            if (!A.IsSquare)
+                throw new ArgumentException("Eigen.decompInPlace: A must be square");
 
-            int n = A_to_D.N_Cols;
+            int n = A.N_Cols;
 
             if (eigenvalues.N != n)
-                throw new ArgumentException("Eigen.decompInPlace: eigenvalues.N must equal A_to_D dimension");
+                throw new ArgumentException("Eigen.decompInPlace: eigenvalues.N must equal A dimension");
 
             if (!V.IsSquare || V.M_Rows != n)
-                throw new ArgumentException("Eigen.decompInPlace: V must be square with side equal to A_to_D dimension");
+                throw new ArgumentException("Eigen.decompInPlace: V must be square with side equal to A dimension");
 
             if (maxSweeps < 1)
                 throw new ArgumentException("Eigen.decompInPlace: maxSweeps must be >= 1");
@@ -992,8 +992,8 @@ namespace LinearAlgebra
             // Symmetry guard: check that A is symmetric within eps-relative tolerance
             for (int i = 0; i < n; i++) {
                 for (int j = i + 1; j < n; j++) {
-                    fProxy aij = A_to_D[i, j];
-                    fProxy aji = A_to_D[j, i];
+                    fProxy aij = A[i, j];
+                    fProxy aji = A[j, i];
                     fProxy diff = math.abs(aij - aji);
                     fProxy relScale = (fProxy)1 + math.abs(aij) + math.abs(aji);
                     if (diff > eps * relScale)
@@ -1018,18 +1018,18 @@ namespace LinearAlgebra
                 for (int p = 0; p < n - 1; p++) {
                     for (int q = p + 1; q < n; q++) {
 
-                        fProxy apq = A_to_D[p, q];
+                        fProxy apq = A[p, q];
 
                         // Skip exact zeros
                         if (apq == (fProxy)0)
                             continue;
 
                         // Skip when off-diagonal is negligible relative to the diagonal
-                        if (math.abs(apq) <= eps * (fProxy)0.5 * (math.abs(A_to_D[p, p]) + math.abs(A_to_D[q, q])))
+                        if (math.abs(apq) <= eps * (fProxy)0.5 * (math.abs(A[p, p]) + math.abs(A[q, q])))
                             continue;
 
                         // Compute rotation angle: theta = (A[q,q] - A[p,p]) / (2 * A[p,q])
-                        fProxy theta = (A_to_D[q, q] - A_to_D[p, p]) / ((fProxy)2 * apq);
+                        fProxy theta = (A[q, q] - A[p, p]) / ((fProxy)2 * apq);
 
                         // sign(theta) with 0 -> +1
                         fProxy signTheta = theta >= (fProxy)0 ? (fProxy)1 : (fProxy)(-1);
@@ -1049,24 +1049,24 @@ namespace LinearAlgebra
                         fProxy s = t * c;
 
                         // Apply symmetric rotation to A
-                        fProxy app = A_to_D[p, p];
-                        fProxy aqq = A_to_D[q, q];
-                        A_to_D[p, p] = app - t * apq;
-                        A_to_D[q, q] = aqq + t * apq;
-                        A_to_D[p, q] = (fProxy)0;
-                        A_to_D[q, p] = (fProxy)0;
+                        fProxy app = A[p, p];
+                        fProxy aqq = A[q, q];
+                        A[p, p] = app - t * apq;
+                        A[q, q] = aqq + t * apq;
+                        A[p, q] = (fProxy)0;
+                        A[q, p] = (fProxy)0;
 
                         for (int i = 0; i < n; i++) {
                             if (i == p || i == q)
                                 continue;
-                            fProxy aip = A_to_D[i, p];
-                            fProxy aiq = A_to_D[i, q];
+                            fProxy aip = A[i, p];
+                            fProxy aiq = A[i, q];
                             fProxy newAip = c * aip - s * aiq;
                             fProxy newAiq = s * aip + c * aiq;
-                            A_to_D[i, p] = newAip;
-                            A_to_D[p, i] = newAip;
-                            A_to_D[i, q] = newAiq;
-                            A_to_D[q, i] = newAiq;
+                            A[i, p] = newAip;
+                            A[p, i] = newAip;
+                            A[i, q] = newAiq;
+                            A[q, i] = newAiq;
                         }
 
                         // Rotate columns p and q of V
@@ -1089,7 +1089,7 @@ namespace LinearAlgebra
 
             // Extract diagonal of (now approximately diagonal) A into eigenvalues
             for (int i = 0; i < n; i++)
-                eigenvalues[i] = A_to_D[i, i];
+                eigenvalues[i] = A[i, i];
 
             // Selection sort: descending by value (not magnitude)
             for (int j = 0; j < n; j++) {
@@ -1122,15 +1122,15 @@ namespace LinearAlgebra
 #pragma warning disable 618
         /// <summary>decompInPlace with default eps (Consts.fProxyZeroThreshold).</summary>
         [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
-        public static bool decompInPlace(ref fProxyMxN A_to_D, ref fProxyN eigenvalues,
+        public static bool decompInPlace(ref fProxyMxN A, ref fProxyN eigenvalues,
                                               ref fProxyMxN V, int maxSweeps)
-            => decompInPlace(ref A_to_D, ref eigenvalues, ref V, maxSweeps, Consts.fProxyZeroThreshold);
+            => decompInPlace(ref A, ref eigenvalues, ref V, maxSweeps, Consts.fProxyZeroThreshold);
 
         /// <summary>decompInPlace with default maxSweeps (30) and eps (Consts.fProxyZeroThreshold).</summary>
         [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
-        public static bool decompInPlace(ref fProxyMxN A_to_D, ref fProxyN eigenvalues,
+        public static bool decompInPlace(ref fProxyMxN A, ref fProxyN eigenvalues,
                                               ref fProxyMxN V)
-            => decompInPlace(ref A_to_D, ref eigenvalues, ref V, 30, Consts.fProxyZeroThreshold);
+            => decompInPlace(ref A, ref eigenvalues, ref V, 30, Consts.fProxyZeroThreshold);
 #pragma warning restore 618
 
         // copysign: magnitude of a with the sign of b (b >= 0 -> +|a|). EISPACK SIGN(a,b).

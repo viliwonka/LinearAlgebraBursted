@@ -38,6 +38,9 @@ public class fProxyCholeskyTests
             BlockedRoundTrip400,
             BlockedNotSPD,
             BlockedAliasing,
+            // Solver API rework (commit 2): CHO.solveInPlace's exit factor is a valid decompSolve
+            // input, bit-identical to a fresh decomp + decompSolve on the same original A.
+            SolveInPlaceExitIsUsableFactor,
         }
 
         public TestType Type;
@@ -106,6 +109,9 @@ public class fProxyCholeskyTests
                     break;
                 case TestType.BlockedAliasing:
                     BlockedAliasing();
+                    break;
+                case TestType.SolveInPlaceExitIsUsableFactor:
+                    SolveInPlaceExitIsUsableFactor();
                     break;
             }
         }
@@ -195,6 +201,42 @@ public class fProxyCholeskyTests
 
             var Ax = Blas.dot(A, b);
             Assert.IsTrue(Analysis.isZero(bOrig - Ax, Tol()));
+
+            arena.Dispose();
+        }
+
+        // Solver API rework (commit 2): CHO.solveInPlace's exit (A_to_L) must be a valid decompSolve
+        // input -- solving a SECOND right-hand side through it must be bit-identical to a completely
+        // independent decomp + decompSolve on the same original matrix.
+        void SolveInPlaceExitIsUsableFactor()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int dim = 11;
+            var A = BuildSPD(ref arena, dim, 909091);
+
+            var b1 = arena.fProxyRandomVec(dim, -1f, 1f, 1212);
+            var b2 = arena.fProxyRandomVec(dim, -1f, 1f, 3434);
+
+            // path under test: solveInPlace (first RHS), then decompSolve (second RHS) off its exit.
+            var Afused = A.Copy();
+            var x1 = b1.Copy();
+            var info = CHO.solveInPlace(ref Afused, ref x1);
+            Assert.IsTrue(info.Solved);
+
+            var x2 = b2.Copy();
+            CHO.decompSolve(ref Afused, ref x2);
+
+            // oracle: fresh decomp + decompSolve on an independent copy, same second RHS.
+            var L = arena.fProxyMat(dim, dim);
+            var infoRef = CHO.decomp(in A, ref L);
+            Assert.IsTrue(infoRef.Solved);
+
+            var x2ref = b2.Copy();
+            CHO.decompSolve(ref L, ref x2ref);
+
+            for (int i = 0; i < dim; i++)
+                Assert.IsTrue(x2[i] == x2ref[i]);
 
             arena.Dispose();
         }
@@ -653,5 +695,11 @@ public class fProxyCholeskyTests
     public void BlockedAliasingTest()
     {
         new CholeskyTestJob() { Type = CholeskyTestJob.TestType.BlockedAliasing }.Run();
+    }
+
+    [Test]
+    public void SolveInPlaceExitIsUsableFactorTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveInPlaceExitIsUsableFactor }.Run();
     }
 }

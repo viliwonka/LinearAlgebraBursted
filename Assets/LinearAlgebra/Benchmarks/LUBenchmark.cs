@@ -8,9 +8,9 @@ using LinearAlgebra;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // LU with partial pivoting. Each Execute copies a pristine source into U (which LU.decompInPlace
-    // overwrites) and allocates a fresh Pivot in Temp (O(N), negligible vs the O(N^3) factorization),
-    // so every timed sample does identical work.
+    // LU with partial pivoting. Each Execute factors a pristine Src into U/L via the safe LU.decomp
+    // (which copies Src into U internally) and allocates a fresh Pivot in Temp (O(N), negligible vs
+    // the O(N^3) factorization), so every timed sample does identical work.
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LUJobFloat : IJob
@@ -21,13 +21,9 @@ namespace LinearAlgebra.Benchmarks
 
         public void Execute()
         {
-            int rows = U.M_Rows, cols = U.N_Cols;
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    U[r, c] = Src[r, c];
-
+            int rows = Src.M_Rows;
             var P = new Pivot(rows, Allocator.Temp);
-            LU.decompInPlace(ref U, ref L, ref P);
+            LU.decomp(in Src, ref L, ref U, ref P);
             P.Dispose();
         }
     }
@@ -41,13 +37,9 @@ namespace LinearAlgebra.Benchmarks
 
         public void Execute()
         {
-            int rows = U.M_Rows, cols = U.N_Cols;
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    U[r, c] = Src[r, c];
-
+            int rows = Src.M_Rows;
             var P = new Pivot(rows, Allocator.Temp);
-            LU.decompInPlace(ref U, ref L, ref P);
+            LU.decomp(in Src, ref L, ref U, ref P);
             P.Dispose();
         }
     }
@@ -62,7 +54,7 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== LU factorization with partial pivoting (time = copy-in + LU.decompInPlace) ===");
+            sb.AppendLine("=== LU factorization with partial pivoting (time = LU.decomp, copies Src internally) ===");
             sb.AppendLine(Bench.Header());
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchFloat(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchDouble(n));

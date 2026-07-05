@@ -139,16 +139,16 @@ public class floatCholeskyPivotWorkspaceTests
             var A = (r >= n) ? SPD(ref arena, n, seed) : Gram(ref arena, n, r, seed);
             var b = arena.floatRandomVec(n, (float)(-2f), (float)2f, seed + 100u);
 
-            var La = arena.floatMat(n, n);
             var Pa = new Pivot(n, Allocator.Persistent);
             var ba = b.Copy();
-            bool okA = CHOP.solveInPlace(in A, ref La, ref Pa, ref ba);
+            var Aa = A.Copy(); // solveInPlace is destructive; each call needs its own copy of A
+            bool okA = CHOP.solveInPlace(ref Aa, ref Pa, ref ba);
 
             var ws = arena.floatCHOPCache(n);
-            var Lw = arena.floatMat(n, n);
             var Pw = new Pivot(n, Allocator.Persistent);
             var bw = b.Copy();
-            bool okW = CHOP.solveInPlace(in A, ref Lw, ref Pw, ref bw, ref ws);
+            var Aw = A.Copy();
+            bool okW = CHOP.solveInPlace(ref Aw, ref Pw, ref bw, ref ws);
 
             Assert.IsTrue(okA == okW);
             Assert.IsTrue(Analysis.isZero(ba - bw, Tol()));
@@ -173,22 +173,22 @@ public class floatCholeskyPivotWorkspaceTests
             var ws = arena.floatCHOPCache(n);   // allocated ONCE
 
             // warm on (A1, b1)
-            var L1 = arena.floatMat(n, n);
             var P1 = new Pivot(n, Allocator.Persistent);
             var b1c = b1.Copy();
-            CHOP.solveInPlace(in A1, ref L1, ref P1, ref b1c, ref ws);
+            var A1c = A1.Copy(); // solveInPlace is destructive; each call needs its own copy of A
+            CHOP.solveInPlace(ref A1c, ref P1, ref b1c, ref ws);
 
             // reuse on (A2, b2)
-            var Lw = arena.floatMat(n, n);
             var Pw = new Pivot(n, Allocator.Persistent);
             var b2w = b2.Copy();
-            bool okW = CHOP.solveInPlace(in A2, ref Lw, ref Pw, ref b2w, ref ws);
+            var A2w = A2.Copy();
+            bool okW = CHOP.solveInPlace(ref A2w, ref Pw, ref b2w, ref ws);
 
             // fresh allocating reference on (A2, b2)
-            var La = arena.floatMat(n, n);
             var Pa = new Pivot(n, Allocator.Persistent);
             var b2a = b2.Copy();
-            bool okA = CHOP.solveInPlace(in A2, ref La, ref Pa, ref b2a);
+            var A2a = A2.Copy();
+            bool okA = CHOP.solveInPlace(ref A2a, ref Pa, ref b2a);
 
             Assert.IsTrue(okW == okA);
             Assert.IsTrue(Analysis.isZero(b2w - b2a, Tol()));

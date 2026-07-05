@@ -18,7 +18,7 @@ namespace LinearAlgebra.Benchmarks
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LuSolveJobFloat : IJob
     {
-        public floatMxN U;     // receives Src, overwritten by decompInPlace
+        public floatMxN U;     // receives Src via LU.decomp (copies internally)
         public floatMxN L;
         public floatMxN Src;
         public floatN b;       // receives bSrc, overwritten with the solution
@@ -26,14 +26,11 @@ namespace LinearAlgebra.Benchmarks
 
         public void Execute()
         {
-            int n = U.M_Rows;
-            for (int r = 0; r < n; r++)
-                for (int c = 0; c < n; c++)
-                    U[r, c] = Src[r, c];
+            int n = Src.M_Rows;
             for (int i = 0; i < n; i++) b[i] = bSrc[i];
 
             var P = new Pivot(n, Allocator.Temp);
-            LU.decompInPlace(ref U, ref L, ref P);
+            LU.decomp(in Src, ref L, ref U, ref P);
             LU.decompSolve(ref L, ref U, in P, ref b);
             P.Dispose();
         }
@@ -50,14 +47,11 @@ namespace LinearAlgebra.Benchmarks
 
         public void Execute()
         {
-            int n = U.M_Rows;
-            for (int r = 0; r < n; r++)
-                for (int c = 0; c < n; c++)
-                    U[r, c] = Src[r, c];
+            int n = Src.M_Rows;
             for (int i = 0; i < n; i++) b[i] = bSrc[i];
 
             var P = new Pivot(n, Allocator.Temp);
-            LU.decompInPlace(ref U, ref L, ref P);
+            LU.decomp(in Src, ref L, ref U, ref P);
             LU.decompSolve(ref L, ref U, in P, ref b);
             P.Dispose();
         }

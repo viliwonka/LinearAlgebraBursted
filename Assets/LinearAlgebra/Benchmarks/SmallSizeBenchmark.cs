@@ -112,13 +112,9 @@ namespace LinearAlgebra.Benchmarks
 
         public void Execute()
         {
-            int rows = U.M_Rows, cols = U.N_Cols;
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    U[r, c] = Src[r, c];
-
+            int rows = Src.M_Rows;
             var P = new Pivot(rows, Allocator.Temp);
-            LU.decompInPlace(ref U, ref L, ref P);
+            LU.decomp(in Src, ref L, ref U, ref P);
             P.Dispose();
         }
     }
@@ -132,13 +128,9 @@ namespace LinearAlgebra.Benchmarks
 
         public void Execute()
         {
-            int rows = U.M_Rows, cols = U.N_Cols;
-            for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
-                    U[r, c] = Src[r, c];
-
+            int rows = Src.M_Rows;
             var P = new Pivot(rows, Allocator.Temp);
-            LU.decompInPlace(ref U, ref L, ref P);
+            LU.decomp(in Src, ref L, ref U, ref P);
             P.Dispose();
         }
     }
@@ -192,7 +184,7 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("double", n, CholDouble(n)));
             sb.AppendLine();
 
-            sb.AppendLine("=== Small square LU (LU.decompInPlace, partial pivoting; blocked path kicks in only at N>=256) ===");
+            sb.AppendLine("=== Small square LU (LU.decomp, partial pivoting; blocked path kicks in only at N>=256) ===");
             sb.AppendLine(Bench.HeaderTime());
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("float", n, LUFloat(n)));
             foreach (var n in SquareSizes) sb.AppendLine(Bench.RowTime("double", n, LUDouble(n)));

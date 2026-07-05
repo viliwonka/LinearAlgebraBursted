@@ -129,7 +129,7 @@ namespace LinearAlgebra
     /// value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>) means old success-test
     /// call shapes still compile unchanged:
     /// <code>
-    ///   if (LU.decompInPlace(ref A_to_U, ref L, ref P)) { ... } // implicit bool -> "did it succeed?"
+    ///   if (LU.decomp(in A, ref L, ref U, ref P)) { ... }       // implicit bool -> "did it succeed?"
     ///   bool ok = CHO.decomp(in A, ref L);                      // same
     ///   var info = LU.decompInPlace(ref A_to_LU, ref P);
     ///   if (!info.Solved) { /* singular */ }
@@ -171,7 +171,7 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Result of a RANK-REVEALING direct solver or decomposition call -- QRCP
-    /// (<see cref="QRCP.solveInPlace(ref fProxyMxN, ref fProxyN, ref fProxyN, ref fProxyMxN, ref fProxyMxN, ref Pivot, ref fProxyN, fProxy)"/>)
+    /// (<see cref="QRCP.solveInPlace(ref fProxyMxN, ref fProxyN, ref fProxyN, ref fProxyMxN, ref Pivot, ref fProxyN, fProxy)"/>)
     /// and pivoted Cholesky (<see cref="CHOP.decomp(in fProxyMxN, ref fProxyMxN, ref Pivot, ref fProxyCHOPCache)"/> /
     /// <see cref="CHOP.decompSolve(ref fProxyMxN, in Pivot, int, ref fProxyN, ref fProxyCHOPCache)"/>).
     /// Unlike <see cref="DirectSolveInfo"/>, a rank-deficient input is NOT a hard failure here: both

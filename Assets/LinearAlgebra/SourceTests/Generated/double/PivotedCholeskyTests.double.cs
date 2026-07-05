@@ -67,6 +67,9 @@ public class doublePivotedCholeskyTests
             Rank1Outer,
             SingleElement,
             OutOfRangeLeastSquares,
+            // Solver API rework (commit 2): CHOP.solveInPlace's exit (A_to_L) is a valid decompSolve
+            // input, bit-identical to a fresh decomp + decompSolve on the same original A.
+            SolveInPlaceExitIsUsableFactor,
         }
 
         public TestType Type;
@@ -90,6 +93,7 @@ public class doublePivotedCholeskyTests
                 case TestType.Rank1Outer:                       Rank1Outer();                       break;
                 case TestType.SingleElement:                    SingleElement();                    break;
                 case TestType.OutOfRangeLeastSquares:           OutOfRangeLeastSquares();           break;
+                case TestType.SolveInPlaceExitIsUsableFactor:   SolveInPlaceExitIsUsableFactor();   break;
             }
         }
 
@@ -121,9 +125,8 @@ public class doublePivotedCholeskyTests
                 // exact solve: b = A xOrig => x == xOrig.
                 var xOrig = arena.doubleRandomVec(n, -3f, 3f, 71000 + t * 7);
                 var b = Blas.dot(A, xOrig);
-                var Lc = arena.doubleMat(n);
                 var Pc = new Pivot(n, Allocator.Persistent);
-                CHOP.solveInPlace(in A, ref Lc, ref Pc, ref b); // b <- x
+                CHOP.solveInPlace(ref A, ref Pc, ref b); // destructive: A -> its own factor; b <- x
                 for (int i = 0; i < n; i++) b[i] -= xOrig[i];
                 RecordBound(Norms.L2(in b), (double)1E-3f);
 
@@ -186,9 +189,8 @@ public class doublePivotedCholeskyTests
                 var xRange = Blas.dot(A, w);
                 var b = Blas.dot(A, xRange);
 
-                var Ls = arena.doubleMat(n);
                 var Ps = new Pivot(n, Allocator.Persistent);
-                CHOP.solveInPlace(in A, ref Ls, ref Ps, ref b); // b <- x
+                CHOP.solveInPlace(ref A, ref Ps, ref b); // destructive: A -> its own factor; b <- x
 
                 // A·x ≈ A·xRange (consistency) and x ≈ xRange (exact recovery, scaled by ‖xRange‖).
                 double scale = Norms.L2(in xRange) + (double)1f;
@@ -220,9 +222,9 @@ public class doublePivotedCholeskyTests
                 var b = Blas.dot(A, xOrig);     // b ∈ range(A)
                 var bForResidual = b.Copy();
 
-                var L = arena.doubleMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
-                CHOP.solveInPlace(in A, ref L, ref P, ref b); // b <- x
+                var Awork = A.Copy(); // solveInPlace is destructive; A is still needed below
+                CHOP.solveInPlace(ref Awork, ref P, ref b); // b <- x
 
                 // consistency: A·x ≈ bForResidual.
                 var Ax = Blas.dot(A, b);
@@ -426,9 +428,9 @@ public class doublePivotedCholeskyTests
                 // arbitrary b, generically NOT in range(A) since rank r < n.
                 var b = arena.doubleRandomVec(n, -2f, 2f, 77000 + t * 13);
 
-                var L = arena.doubleMat(n);
                 var P = new Pivot(n, Allocator.Persistent);
-                bool ok = CHOP.solveInPlace(in A, ref L, ref P, ref b); // b <- x
+                var Awork = A.Copy(); // solveInPlace is destructive; A is still needed below
+                bool ok = CHOP.solveInPlace(ref Awork, ref P, ref b); // b <- x
                 RecordEq(ok ? 1 : 0, 1);
 
                 // normal equations: A(Ax) == A b  <=>  A(Ax - b) == 0  (residual ⟂ range(A)).
@@ -448,6 +450,69 @@ public class doublePivotedCholeskyTests
             }
 
             arena.Dispose();
+        }
+
+        // Solver API rework (commit 2): CHOP.solveInPlace's exit (A_to_L, P) must be a valid
+        // decompSolve input -- solving a SECOND right-hand side through it (with the SAME detected
+        // rank) must be bit-identical to a completely independent decomp + decompSolve on the same
+        // original matrix. Covers both full-rank and rank-deficient A.
+        void SolveInPlaceExitIsUsableFactor()
+        {
+            SolveInPlaceExitIsUsableFactorCase(6, 6, 111222u); // full rank
+            SolveInPlaceExitIsUsableFactorCase(7, 4, 333444u); // rank-deficient (rank 4 of 7)
+        }
+
+        void SolveInPlaceExitIsUsableFactorCase(int n, int r, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var B = arena.doubleRandomMat(n, r, -1f, 1f, seed);
+            var A = Gram(in arena, in B);
+            if (r >= n)
+                for (int d = 0; d < n; d++) A[d, d] += (double)n; // diagonal boost -> well-conditioned full rank
+
+            var b1 = arena.doubleRandomVec(n, -2f, 2f, seed + 1u);
+            var b2 = arena.doubleRandomVec(n, -2f, 2f, seed + 2u);
+
+            // path under test: solveInPlace (first RHS) on a copy of A, then decompSolve (second
+            // RHS) off its exit.
+            var Afused = A.Copy();
+            var Pfused = new Pivot(n, Allocator.Persistent);
+            var x1 = b1.Copy();
+            var info = CHOP.solveInPlace(ref Afused, ref Pfused, ref x1);
+            Assert.IsTrue(info.Solved);
+
+            var x2 = b2.Copy();
+            CHOP.decompSolve(ref Afused, in Pfused, info.rank, ref x2);
+
+            // oracle: fresh decomp + decompSolve on an independent copy, same second RHS and rank.
+            var L = arena.doubleMat(n, n);
+            var Pref = new Pivot(n, Allocator.Persistent);
+            var infoRef = CHOP.decomp(in A, ref L, ref Pref);
+            Assert.IsTrue(infoRef.Solved);
+            RecordEq(infoRef.rank, info.rank);
+
+            var x2ref = b2.Copy();
+            CHOP.decompSolve(ref L, in Pref, infoRef.rank, ref x2ref);
+
+            for (int i = 0; i < n; i++)
+                RecordEqExact(x2[i], x2ref[i]);
+
+            Pfused.Dispose();
+            Pref.Dispose();
+            arena.Dispose();
+        }
+
+        void RecordEqExact(double got, double expected)
+        {
+            if (got != expected && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1;
+                Fail[1] = got;
+                Fail[2] = expected;
+                Fail[3] = got - expected;
+            }
+            Assert.IsTrue(got == expected);
         }
 
         // PᵀAP == LLᵀ (computed directly as Σ_k L[i,k]L[j,k]), L lower-triangular, and columns

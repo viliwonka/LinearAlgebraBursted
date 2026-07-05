@@ -384,7 +384,8 @@ public class doubleEigenTests
 
         // 6x6 PSD matrix A = B^T B. Eigenvalues must all be >= -tol and equal the singular
         // values of A (which for symmetric PSD equal the eigenvalues) in the same descending
-        // order. Both eigenDecomposition and svdDecomposition destroy their input, so copy.
+        // order. eigenDecomposition destroys its input, so copy; SVD.values takes A `in`
+        // (preserved), so no copy is needed for the SVD side.
         // A = B^T B with B entries ~ +-3 -> eigenvalues up to ~ order 100; scale tolerance.
         public void EigenPSDvsSVD()
         {
@@ -414,7 +415,6 @@ public class doubleEigenTests
                 }
 
             var Aeig = A.Copy();   // destroyed by eigenDecomposition
-            var Asvd = A.Copy();   // destroyed by svdDecomposition
 
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
@@ -437,10 +437,9 @@ public class doubleEigenTests
                 Assert.IsTrue(nonNeg);
             }
 
-            // singular values via SVD on a fresh copy
+            // singular values via SVD.values on the untouched A (preserved, no copy needed)
             var S = arena.doubleVec(n);
-            var Vsvd = arena.doubleMat(n, n);
-            bool svdOk = SVD.svdDecomposition(ref Asvd, ref S, ref Vsvd);
+            bool svdOk = SVD.values(in A, ref S);
             Assert.IsTrue(svdOk);
 
             // Compare eigenvalues to singular values, same descending order.

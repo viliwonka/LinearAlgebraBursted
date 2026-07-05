@@ -38,7 +38,11 @@ public class doubleLUTests
             LUBlockedRefAccuracy300,
             LUBlockedIllConditioned256,
             LUBlockedSingular256,
-            LUBlockedSolve300
+            LUBlockedSolve300,
+            // Solver API rework (commit 2) coverage: safe decomp/decompNoPivot preserve A, and
+            // solveInPlace's exit factor is a valid decompSolve input (bit-identical to fresh decomp).
+            LUDecompVariantsPreserveA,
+            LUSolveInPlaceExitIsUsableFactor
         }
 
         public TestType Type;
@@ -104,6 +108,12 @@ public class doubleLUTests
                 case TestType.LUBlockedSolve300:
                     LUBlockedSolve300();
                     break;
+                case TestType.LUDecompVariantsPreserveA:
+                    LUDecompVariantsPreserveA();
+                    break;
+                case TestType.LUSolveInPlaceExitIsUsableFactor:
+                    LUSolveInPlaceExitIsUsableFactor();
+                    break;
 
             }
         }
@@ -126,7 +136,7 @@ public class doubleLUTests
 
             var A = U.Copy();
 
-            bool success = LU.decompNoPivotInPlace(ref U, ref L);
+            bool success = LU.decompNoPivot(in A, ref L, ref U);
 
             Assert.IsTrue(success);
 
@@ -145,7 +155,7 @@ public class doubleLUTests
 
             var A = U.Copy();
 
-            bool success = LU.decompNoPivotInPlace(ref U, ref L);
+            bool success = LU.decompNoPivot(in A, ref L, ref U);
 
             Assert.IsTrue(success);
 
@@ -197,7 +207,7 @@ public class doubleLUTests
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.decompInPlace(ref U, ref L, ref pivot);
+            bool success = LU.decomp(in A, ref L, ref U, ref pivot);
 
             Assert.IsTrue(success);
 
@@ -227,7 +237,7 @@ public class doubleLUTests
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.decompInPlace(ref U, ref L, ref pivot);
+            bool success = LU.decomp(in A, ref L, ref U, ref pivot);
 
             Assert.IsTrue(success);
 
@@ -248,18 +258,20 @@ public class doubleLUTests
 
             // Case 1: zero matrix is singular -> all variants must return false.
             {
-                var U = arena.doubleMat(dim, dim);
+                var A = arena.doubleMat(dim, dim);
                 var L = arena.doubleIdentityMat(dim);
+                var U = arena.doubleMat(dim, dim);
 
-                bool noPivot = LU.decompNoPivotInPlace(ref U, ref L);
+                bool noPivot = LU.decompNoPivot(in A, ref L, ref U);
                 Assert.IsFalse(noPivot);
                 Assert.IsFalse(Analysis.isAnyNan(in U));
                 Assert.IsFalse(Analysis.isAnyNan(in L));
 
-                var Up = arena.doubleMat(dim, dim);
+                var Ap = arena.doubleMat(dim, dim);
                 var Lp = arena.doubleIdentityMat(dim);
+                var Up = arena.doubleMat(dim, dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool pivoted = LU.decompInPlace(ref Up, ref Lp, ref pivot);
+                bool pivoted = LU.decomp(in Ap, ref Lp, ref Up, ref pivot);
                 Assert.IsFalse(pivoted);
                 Assert.IsFalse(Analysis.isAnyNan(in Up));
                 Assert.IsFalse(Analysis.isAnyNan(in Lp));
@@ -274,26 +286,26 @@ public class doubleLUTests
 
             // Case 2: two identical rows -> rank deficient -> all variants return false.
             {
-                var U = arena.doubleRandomMat(dim, dim, 1f, 10f, 8821);
+                var A = arena.doubleRandomMat(dim, dim, 1f, 10f, 8821);
                 // force diagonal dominance so only the duplicated rows cause singularity
                 for (int d = 0; d < dim; d++)
-                    U[d, d] += 20f;
+                    A[d, d] += 20f;
                 // make row 5 an exact copy of row 2
                 for (int c = 0; c < dim; c++)
-                    U[5, c] = U[2, c];
+                    A[5, c] = A[2, c];
 
-                var A = U.Copy();
                 var L = arena.doubleIdentityMat(dim);
+                var U = arena.doubleMat(dim, dim);
 
-                bool noPivot = LU.decompNoPivotInPlace(ref U, ref L);
+                bool noPivot = LU.decompNoPivot(in A, ref L, ref U);
                 Assert.IsFalse(noPivot);
                 Assert.IsFalse(Analysis.isAnyNan(in U));
                 Assert.IsFalse(Analysis.isAnyNan(in L));
 
-                var Up = A.Copy();
                 var Lp = arena.doubleIdentityMat(dim);
+                var Up = arena.doubleMat(dim, dim);
                 var pivot = new Pivot(dim, Allocator.Temp);
-                bool pivoted = LU.decompInPlace(ref Up, ref Lp, ref pivot);
+                bool pivoted = LU.decomp(in A, ref Lp, ref Up, ref pivot);
                 Assert.IsFalse(pivoted);
                 Assert.IsFalse(Analysis.isAnyNan(in Up));
                 Assert.IsFalse(Analysis.isAnyNan(in Lp));
@@ -309,17 +321,17 @@ public class doubleLUTests
             // Case 3: [[0,1],[1,0]] : no-pivot fails on zero leading pivot,
             // but in-place (with partial pivoting) succeeds.
             {
-                var U = arena.doubleMat(2, 2);
-                U[0, 0] = 0f; U[0, 1] = 1f;
-                U[1, 0] = 1f; U[1, 1] = 0f;
+                var A = arena.doubleMat(2, 2);
+                A[0, 0] = 0f; A[0, 1] = 1f;
+                A[1, 0] = 1f; A[1, 1] = 0f;
 
                 var L = arena.doubleIdentityMat(2);
+                var Unp = arena.doubleMat(2, 2);
 
-                var Unp = U.Copy();
-                bool noPivot = LU.decompNoPivotInPlace(ref Unp, ref L);
+                bool noPivot = LU.decompNoPivot(in A, ref L, ref Unp);
                 Assert.IsFalse(noPivot);
 
-                var LUmat = U.Copy();
+                var LUmat = A.Copy();
                 var pivot = new Pivot(2, Allocator.Temp);
                 bool inPlace = LU.decompInPlace(ref LUmat, ref pivot);
                 Assert.IsTrue(inPlace);
@@ -339,18 +351,19 @@ public class doubleLUTests
             var arena = new Arena(Allocator.Persistent);
 
             int dim = 8;
-            var U = arena.doubleMat(dim, dim); // zero matrix -> singular
+            var A = arena.doubleMat(dim, dim); // zero matrix -> singular
             var L = arena.doubleIdentityMat(dim);
+            var U = arena.doubleMat(dim, dim);
 
-            DirectSolveInfo noPivotInfo = LU.decompNoPivotInPlace(ref U, ref L);
+            DirectSolveInfo noPivotInfo = LU.decompNoPivot(in A, ref L, ref U);
             Assert.IsTrue(noPivotInfo.status == DirectSolveStatus.Singular);
             Assert.IsFalse(noPivotInfo.Solved);
             Assert.IsFalse(noPivotInfo);
 
-            var Up = arena.doubleMat(dim, dim);
             var Lp = arena.doubleIdentityMat(dim);
+            var Up = arena.doubleMat(dim, dim);
             var pivot = new Pivot(dim, Allocator.Temp);
-            DirectSolveInfo pivotedInfo = LU.decompInPlace(ref Up, ref Lp, ref pivot);
+            DirectSolveInfo pivotedInfo = LU.decomp(in A, ref Lp, ref Up, ref pivot);
             Assert.IsTrue(pivotedInfo.status == DirectSolveStatus.Singular);
             Assert.IsFalse(pivotedInfo.Solved);
 
@@ -686,12 +699,12 @@ public class doubleLUTests
 
             var b = Blas.dot(A, x_Known);
 
-            var U = A.Copy();
+            var U = arena.doubleMat(dim, dim);
             var L = arena.doubleIdentityMat(dim);
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.decompInPlace(ref U, ref L, ref pivot);
+            bool success = LU.decomp(in A, ref L, ref U, ref pivot);
 
             Assert.IsTrue(success);
 
@@ -772,7 +785,7 @@ public class doubleLUTests
         // ================================================================================
         // BLOCKED (level-3) LU coverage.
         //
-        // LU.decompInPlace(ref U, ref L, ref P) switches to the LAPACK-style right-looking
+        // LU.decomp(in A, ref L, ref U, ref P) switches to the LAPACK-style right-looking
         // blocked (compact-WY GEMM trailing update) path at M_Rows >= LU_BLOCK_MIN_N = 8*32 = 256;
         // below that it runs the plain unblocked rank-1 sweep. The blocked path is DESIGNED to keep
         // the partial-pivoting sequence bit-identical to the unblocked form, so it must produce the
@@ -834,11 +847,11 @@ public class doubleLUTests
             for (int c = 0; c < dim; c++)
                 A[137, c] = A[42, c];
 
-            var U = A.Copy();
+            var U = arena.doubleMat(dim, dim);
             var L = arena.doubleIdentityMat(dim);
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool ok = LU.decompInPlace(ref U, ref L, ref pivot);
+            bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
 
             Assert.IsFalse(ok);
             Assert.IsFalse(Analysis.isAnyNan(in U));
@@ -869,12 +882,12 @@ public class doubleLUTests
 
             var b = Blas.dot(A, x_Known);
 
-            var U = A.Copy();
+            var U = arena.doubleMat(dim, dim);
             var L = arena.doubleIdentityMat(dim);
 
             var pivot = new Pivot(dim, Allocator.Temp);
 
-            bool success = LU.decompInPlace(ref U, ref L, ref pivot);
+            bool success = LU.decomp(in A, ref L, ref U, ref pivot);
 
             Assert.IsTrue(success);
 
@@ -906,6 +919,116 @@ public class doubleLUTests
             arena.Dispose();
         }
 
+        // ================================================================================
+        // Solver API rework (commit 2): safe decomp/decompNoPivot preserve A; solveInPlace's exit
+        // factor is a usable decompSolve input.
+        // ================================================================================
+
+        // LU.decomp and LU.decompNoPivot must not modify A. Checksum (position-weighted sum, so a
+        // permutation or a single altered entry both trip it) before/after each call.
+        void LUDecompVariantsPreserveA()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 9;
+
+            // LU.decomp (pivoted, safe)
+            {
+                var A = arena.doubleRandomMat(dim, dim, -5f, 5f, 424242);
+                for (int d = 0; d < dim; d++) A[d, d] += 15f;
+                double checksumBefore = Checksum(in A);
+
+                var L = arena.doubleIdentityMat(dim);
+                var U = arena.doubleMat(dim, dim);
+                var pivot = new Pivot(dim, Allocator.Temp);
+                bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
+                Assert.IsTrue(ok);
+
+                AssertExactEqual(checksumBefore, Checksum(in A));
+                pivot.Dispose();
+            }
+
+            // LU.decompNoPivot (safe)
+            {
+                var A = arena.doubleRandomMat(dim, dim, -5f, 5f, 535353);
+                for (int d = 0; d < dim; d++) A[d, d] += 15f;
+                double checksumBefore = Checksum(in A);
+
+                var L = arena.doubleIdentityMat(dim);
+                var U = arena.doubleMat(dim, dim);
+                bool ok = LU.decompNoPivot(in A, ref L, ref U);
+                Assert.IsTrue(ok);
+
+                AssertExactEqual(checksumBefore, Checksum(in A));
+            }
+
+            arena.Dispose();
+        }
+
+        // LU.solveInPlace's exit (A_to_LU, P) must be a valid decompSolve input: solving a SECOND
+        // right-hand side through it must be bit-identical to a completely independent
+        // decompInPlace + decompSolve on the same original matrix.
+        void LUSolveInPlaceExitIsUsableFactor()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 10;
+
+            var A = arena.doubleRandomMat(dim, dim, -5f, 5f, 314159);
+            for (int d = 0; d < dim; d++) A[d, d] += 20f;
+
+            var xKnown1 = arena.doubleRandomVec(dim, 1f, 5f, 111);
+            var b1 = Blas.dot(A, xKnown1);
+            var xKnown2 = arena.doubleRandomVec(dim, 1f, 5f, 222);
+            var b2 = Blas.dot(A, xKnown2);
+
+            // path under test: solveInPlace (first RHS), then decompSolve (second RHS) off its exit.
+            var Afused = A.Copy();
+            var pivotFused = new Pivot(dim, Allocator.Temp);
+            var x1 = b1.Copy();
+            var info = LU.solveInPlace(ref Afused, ref pivotFused, ref x1);
+            Assert.IsTrue(info.Solved);
+
+            var x2 = b2.Copy();
+            LU.decompSolve(ref Afused, in pivotFused, ref x2);
+
+            // oracle: fresh decompInPlace + decompSolve on an independent copy, same second RHS.
+            var Aref = A.Copy();
+            var pivotRef = new Pivot(dim, Allocator.Temp);
+            var infoRef = LU.decompInPlace(ref Aref, ref pivotRef);
+            Assert.IsTrue(infoRef.Solved);
+
+            var x2ref = b2.Copy();
+            LU.decompSolve(ref Aref, in pivotRef, ref x2ref);
+
+            for (int i = 0; i < dim; i++)
+                AssertExactEqual(x2ref[i], x2[i]);
+
+            pivotFused.Dispose();
+            pivotRef.Dispose();
+            arena.Dispose();
+        }
+
+        // Position-weighted sum: differs if ANY entry changes or two entries are transposed.
+        private double Checksum(in doubleMxN M)
+        {
+            double s = (double)0;
+            for (int i = 0; i < M.Length; i++)
+                s += M[i] * (double)(i + 1);
+            return s;
+        }
+
+        // Fail layout: [1]=got, [2]=expected, [3]=diff
+        private void AssertExactEqual(double expected, double got)
+        {
+            if (got != expected && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1;
+                Fail[1] = got;
+                Fail[2] = expected;
+                Fail[3] = got - expected;
+            }
+            Assert.IsTrue(got == expected);
+        }
+
         // true only when double expands to double (doubleEpsilon ≈ 2.2e-16 < 1e-10).
         private bool IsDouble() => (double)Consts.doubleEpsilon < 1e-10;
 
@@ -924,17 +1047,17 @@ public class doubleLUTests
             return A;
         }
 
-        // Points (1)/(2): blocked LU.decompInPlace (3-arg) vs unblocked compact LU.decompInPlace (2-arg) oracle.
+        // Points (1)/(2): blocked LU.decomp (in A, ref L, ref U, ref P) vs unblocked compact LU.decompInPlace (2-arg) oracle.
         // Asserts identical pivots, matching L/U factors, and no backward-error regression.
         private void BlockedVsReference(ref Arena arena, in doubleMxN A)
         {
             int dim = A.M_Rows;
 
             // --- blocked path (separate L, U, P) ---
-            var U = A.Copy();
+            var U = arena.doubleMat(dim, dim);
             var L = arena.doubleIdentityMat(dim);
             var pB = new Pivot(dim, Allocator.Temp);
-            bool okB = LU.decompInPlace(ref U, ref L, ref pB);
+            bool okB = LU.decomp(in A, ref L, ref U, ref pB);
             Assert.IsTrue(okB);
             Assert.IsFalse(Analysis.isAnyNan(in U));
             Assert.IsFalse(Analysis.isAnyNan(in L));
@@ -994,10 +1117,10 @@ public class doubleLUTests
         {
             int dim = A.M_Rows;
 
-            var U = A.Copy();
+            var U = arena.doubleMat(dim, dim);
             var L = arena.doubleIdentityMat(dim);
             var pB = new Pivot(dim, Allocator.Temp);
-            bool okB = LU.decompInPlace(ref U, ref L, ref pB);
+            bool okB = LU.decomp(in A, ref L, ref U, ref pB);
             Assert.IsTrue(okB);
             Assert.IsFalse(Analysis.isAnyNan(in U));
             Assert.IsFalse(Analysis.isAnyNan(in L));
