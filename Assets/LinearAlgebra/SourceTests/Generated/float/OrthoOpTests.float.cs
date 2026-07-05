@@ -54,6 +54,8 @@ public class floatOrthoOpTests
             // Solver API rework (commit 2) coverage.
             QRDecompPreservesA,
             QRUninitXContract,
+            // Commit 2.5 (2f-i): QR.decomp A-preservation at the BLOCKED-path scale (N_Cols >= 64).
+            QRDecompPreservesABlocked,
         }
 
         public TestType Type;
@@ -115,6 +117,9 @@ public class floatOrthoOpTests
                     break;
                 case TestType.QRUninitXContract:
                     QRUninitXContract();
+                    break;
+                case TestType.QRDecompPreservesABlocked:
+                    QRDecompPreservesABlocked();
                     break;
             }
         }
@@ -426,6 +431,45 @@ public class floatOrthoOpTests
                     Assert.IsTrue(diff <= (float)1E-3f);
                 }
             }
+
+            arena.Dispose();
+        }
+
+        // (2f-i) Blocked-path A-preservation: QR.decomp at N_Cols >= 2*QR_BLOCK = 64 engages the
+        // level-3 blocked (compact-WY GEMM trailing-update) path; it still must not modify A. Uses a
+        // tall well-conditioned 96x64 shape (matching QRDecompBlockedNonAligned's construction). The
+        // existing QRDecompPreservesA only reaches the unblocked path (12x6).
+        void QRDecompPreservesABlocked()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 96, n = 64;
+            var random = new Unity.Mathematics.Random(960640);
+            var A = arena.floatRandomMat(m, n, -5f, 5f, 960640);
+            for (int d = 0; d < n; d++)
+                A[d, d] += 5.1f + 10f * random.NextFloat();
+
+            float checksumBefore = (float)0;
+            for (int i = 0; i < A.Length; i++) checksumBefore += A[i] * (float)(i + 1);
+
+            var Q = arena.floatMat(m, n);
+            var R = arena.floatMat(n);
+            QR.decomp(in A, ref Q, ref R);
+
+            float checksumAfter = (float)0;
+            for (int i = 0; i < A.Length; i++) checksumAfter += A[i] * (float)(i + 1);
+
+            if (checksumAfter != checksumBefore && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = checksumAfter;
+                Fail[2] = checksumBefore;
+                Fail[3] = checksumAfter - checksumBefore;
+            }
+            Assert.IsTrue(checksumAfter == checksumBefore);
+
+            // decomposition itself must still be correct (A intact, matches Q*R).
+            AssertQR(in A, in Q, in R, 1E-3f);
 
             arena.Dispose();
         }

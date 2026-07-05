@@ -15,7 +15,7 @@ namespace LinearAlgebra
         /// Minimum-norm least-squares solve: x = argmin ||A x - b||2 (minimum ||x|| among minimizers).
         /// Works for any shape (m >= n and m &lt; n) and any rank, including rank 0.
         /// A is NOT modified (the Golub-Kahan path takes it as input). b is not modified. x (length
-        /// N_Cols) is overwritten.
+        /// N_Cols): output only; prior contents ignored; safe to allocate with uninit: true.
         /// relTol &lt; 0 selects auto tolerance: relTol = max(m, n) * Consts.fProxyZeroThreshold.
         /// Singular values S[j] &lt;= relTol * S[0] are treated as zero.
         /// Allocates temporaries from A's arena via fProxyTempVec/fProxyTempMat (not an InPlace op).

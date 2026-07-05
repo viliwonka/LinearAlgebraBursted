@@ -253,6 +253,14 @@ namespace LinearAlgebra
         /// <param name="A_to_L">On entry A; on exit the lower-triangular factor L.</param>
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
         public static DirectSolveInfo solveInPlace(ref doubleMxN A_to_L, ref doubleN b_to_x) {
+            // Validate everything decompInPlace/decompSolve would check BEFORE either runs, so a
+            // caller error (e.g. a mis-sized b_to_x) cannot destroy A_to_L first.
+            if (!A_to_L.IsSquare)
+                throw new ArgumentException("solveInPlace: A_to_L needs to be square");
+
+            if (b_to_x.N != A_to_L.M_Rows)
+                throw new ArgumentException("solveInPlace: b_to_x.N must equal A_to_L.M_Rows");
+
             var info = decompInPlace(ref A_to_L);
             if (!info.Solved)
                 return info;

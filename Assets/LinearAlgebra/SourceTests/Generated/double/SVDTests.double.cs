@@ -49,7 +49,20 @@ public class doubleSVDTests
             ThinGalleryHilbert_8,
             ThinGalleryKahan_12,
             // Solver API rework (commit 2): uninit-x contract.
-            PinvSolveUninitXContract
+            PinvSolveUninitXContract,
+            // Commit 2.5 SVD coverage restoration:
+            //  2b  independent-algorithm cross-check (σ_i^2 == eig(AᵀA)_i) + Frobenius identity.
+            CrossCheckEigenSquare8,
+            CrossCheckEigenTall12x8,
+            CrossCheckEigenClustered12x8,
+            //  2c(i)  known-Σ via Gram-Schmidt on COHERENT vectors (different statistics than randsvd).
+            KnownSigmaGramSchmidtCoherent,
+            //  2d  ports of deleted Golub-Kahan edge cases.
+            Known2x2GolubKahan,
+            SingleColumn5x1,
+            NonConvergenceHilbert8,
+            //  2e  determinant invariant |det A| == Π σ_i.
+            DetEqualsProductSingularValues
         }
 
         public TestType Type;
@@ -124,6 +137,14 @@ public class doubleSVDTests
                 case TestType.ThinGalleryHilbert_8:            ThinGalleryHilbert_8();            break;
                 case TestType.ThinGalleryKahan_12:             ThinGalleryKahan_12();             break;
                 case TestType.PinvSolveUninitXContract:        PinvSolveUninitXContract();        break;
+                case TestType.CrossCheckEigenSquare8:          CrossCheckEigenRandom(8, 8, 0x5EED0011u);   break;
+                case TestType.CrossCheckEigenTall12x8:         CrossCheckEigenRandom(12, 8, 0x5EED0012u);  break;
+                case TestType.CrossCheckEigenClustered12x8:    CrossCheckEigenClustered12x8();    break;
+                case TestType.KnownSigmaGramSchmidtCoherent:   KnownSigmaGramSchmidtCoherent();   break;
+                case TestType.Known2x2GolubKahan:              Known2x2GolubKahan();              break;
+                case TestType.SingleColumn5x1:                 SingleColumn5x1();                 break;
+                case TestType.NonConvergenceHilbert8:          NonConvergenceHilbert8();          break;
+                case TestType.DetEqualsProductSingularValues:  DetEqualsProductSingularValues();  break;
             }
         }
 
@@ -343,6 +364,297 @@ public class doubleSVDTests
                 }
                 Assert.IsTrue(diff <= tol);
             }
+
+            arena.Dispose();
+        }
+
+        // ================================================================================
+        // Commit 2.5 SVD coverage restoration (replaces oracle role of the deleted Jacobi SVD).
+        // ================================================================================
+
+        // (2b) Independent-algorithm cross-check. The singular values from Golub-Kahan (SVD.values)
+        // must satisfy σ_i^2 == λ_i where λ_i are the eigenvalues of the Gram matrix AᵀA obtained
+        // from a GENUINELY DIFFERENT algorithm (Householder tridiagonalization + implicit QL in
+        // Eigen.valuesSymmetric) -- so agreement is real, independent validation, not circular.
+        // ALSO checks the Frobenius identity Σσ_i^2 == ‖A‖_F^2 (free, holds for ANY A).
+        void CrossCheckEigenRandom(int m, int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleRandomMat(m, n, -5f, 5f, seed);
+            CrossCheckEigenCore(ref arena, in A, m, n);
+            arena.Dispose();
+        }
+
+        // Clustered-σ variant: [10,10,10,3,2,1,0.5,0.25] embedded in a 12x8 A via Haar U/V (randsvd).
+        void CrossCheckEigenClustered12x8()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 12, n = 8;
+            var sigma = arena.doubleVec(n);
+            sigma[0]=(double)10; sigma[1]=(double)10; sigma[2]=(double)10; sigma[3]=(double)3;
+            sigma[4]=(double)2;  sigma[5]=(double)1;  sigma[6]=(double)0.5f; sigma[7]=(double)0.25f;
+            var A = arena.doubleMat(m, n);
+            var rng = new Unity.Mathematics.Random(0x5EED0013u);
+            BuildRandSvd(ref rng, m, n, in sigma, ref A);
+            CrossCheckEigenCore(ref arena, in A, m, n);
+            arena.Dispose();
+        }
+
+        void CrossCheckEigenCore(ref Arena arena, in doubleMxN A, int m, int n)
+        {
+            // (1) singular values via Golub-Kahan; A preserved.
+            var S = arena.doubleVec(n);
+            Assert.IsTrue(SVD.values(in A, ref S));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+            AssertDescendingNonNegative(in S, n);
+
+            // (2) Gram matrix AᵀA (n x n, symmetric).
+            var At = Blas.trans(A);
+            var AtA = Blas.dot(At, A);
+
+            // (3) eigenvalues of AᵀA (DESTROYS AtA; sorted DESCENDING -- same convention as S).
+            var lambda = arena.doubleVec(n);
+            Assert.IsTrue(Eigen.valuesSymmetric(ref AtA, ref lambda));
+
+            // (4) σ_i^2 ≈ λ_i, LOOSE tolerance scaled by σ_0^2 (squaring roughly squares κ, so tiny
+            // trailing σ can have large relative error in this comparison -- that's expected). The
+            // constant is intentionally generous: this cross-check validates AGREEMENT between two
+            // independent algorithms, whose σ^2-vs-λ discrepancy on clustered spectra runs ~1e-7
+            // relative in DOUBLE (well above double's sqrtEps≈1.5e-8) yet stays ~1e-3 relative in
+            // FLOAT (sqrtEps≈3.4e-4) -- 64·sqrtEps·σ_0^2 covers both with margin while remaining far
+            // below the O(σ_0^2) error a genuine algorithm bug would produce.
+            double sigma0sq = S[0] * S[0];
+            double tol = (double)64 * Consts.doubleSqrtEps * (sigma0sq + (double)1);
+            for (int i = 0; i < n; i++)
+            {
+                double si2 = S[i] * S[i];
+                double diff = math.abs(si2 - lambda[i]);
+                if (!(diff <= tol) && Fail[0] == (double)0)
+                {
+                    Fail[0] = (double)1; Fail[1] = si2; Fail[2] = lambda[i]; Fail[3] = diff;
+                }
+                Assert.IsTrue(diff <= tol);
+            }
+
+            // (5) Frobenius identity Σσ_i^2 == ‖A‖_F^2.
+            AssertFrobeniusIdentity(in A, in S, n, (double)64 * Consts.doubleSqrtEps);
+        }
+
+        // Frobenius identity: Σ σ_i^2 == ‖A‖_F^2 (== Norms.L2(A)^2). Holds for ANY matrix -- a
+        // reconstruction-independent invariant. tolFactor is a RELATIVE bound scaled by the squared
+        // norm (per-precision via Consts.doubleSqrtEps).
+        void AssertFrobeniusIdentity(in doubleMxN A, in doubleN S, int n, double tolFactor)
+        {
+            double sumSq = (double)0;
+            for (int i = 0; i < n; i++) sumSq += S[i] * S[i];
+            double fro = Norms.L2(in A);
+            double froSq = fro * fro;
+            double tol = tolFactor * (froSq + (double)1);
+            double diff = math.abs(sumSq - froSq);
+            if (!(diff <= tol) && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1; Fail[1] = sumSq; Fail[2] = froSq; Fail[3] = diff;
+            }
+            Assert.IsTrue(diff <= tol);
+        }
+
+        // (2c-i) Known-Σ via Gram-Schmidt on DELIBERATELY COHERENT (overlapping-ramp) vectors --
+        // different statistics than BuildRandSvd's Haar-random U/V. Build k=3 orthonormal u_i (m-vec)
+        // and v_i (n-vec) by MGS on overlapping ramps, form A = Σ σ_i u_i v_iᵀ with hand-chosen
+        // descending σ = [10,4,1]; SVD.thin must recover exactly those (+ zeros).
+        void KnownSigmaGramSchmidtCoherent()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 12, n = 10, k = 3;
+
+            // coherent overlapping-ramp raw vectors (independent, so MGS yields a full rank-k basis).
+            var Umat = arena.doubleMat(m, k);
+            var Vmat = arena.doubleMat(n, k);
+            for (int c = 0; c < k; c++)
+            {
+                for (int i = 0; i < m; i++) Umat[i, c] = (double)math.max(0, i - 2 * c + 3);
+                for (int i = 0; i < n; i++) Vmat[i, c] = (double)math.max(0, i - 3 * c + 4);
+            }
+            GramSchmidtColumns(ref Umat, m, k);
+            GramSchmidtColumns(ref Vmat, n, k);
+
+            var sigma3 = arena.doubleVec(k);
+            sigma3[0] = (double)10; sigma3[1] = (double)4; sigma3[2] = (double)1;
+
+            var A = arena.doubleMat(m, n);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double acc = 0;
+                    for (int c = 0; c < k; c++)
+                        acc += (double)sigma3[c] * (double)Umat[i, c] * (double)Vmat[j, c];
+                    A[i, j] = (double)acc;
+                }
+
+            var U = arena.doubleMat(m, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+            Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+            AssertDescendingNonNegative(in S, n);
+
+            double svTol = (double)8 * Consts.doubleSqrtEps * (sigma3[0] + (double)1);
+            AssertClose(S[0], (double)10, svTol);
+            AssertClose(S[1], (double)4,  svTol);
+            AssertClose(S[2], (double)1,  svTol);
+            for (int i = k; i < n; i++) AssertClose(S[i], (double)0, svTol);
+
+            AssertReconstruct(in A, in U, in S, in V, ref arena, svTol);
+
+            arena.Dispose();
+        }
+
+        // Modified Gram-Schmidt orthonormalization of the k COLUMNS of M (rows x k), in place.
+        // double accumulation internally (like BuildRandSvd) then cast to double.
+        void GramSchmidtColumns(ref doubleMxN M, int rows, int k)
+        {
+            for (int c = 0; c < k; c++)
+            {
+                for (int p = 0; p < c; p++)
+                {
+                    double dot = 0;
+                    for (int i = 0; i < rows; i++) dot += (double)M[i, p] * (double)M[i, c];
+                    for (int i = 0; i < rows; i++) M[i, c] = (double)((double)M[i, c] - dot * (double)M[i, p]);
+                }
+                double nrm = 0;
+                for (int i = 0; i < rows; i++) nrm += (double)M[i, c] * (double)M[i, c];
+                nrm = math.sqrt(nrm);
+                for (int i = 0; i < rows; i++) M[i, c] = (double)((double)M[i, c] / nrm);
+            }
+        }
+
+        // (2d) Ported from the deleted Jacobi-oracle SVDKnown2x2, now against Golub-Kahan SVD.thin.
+        // A = [[3,0],[4,5]] -> singular values sqrt(45)≈6.7082039, sqrt(5)≈2.2360680 (descending).
+        void Known2x2GolubKahan()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 2;
+
+            var A = arena.doubleMat(dim, dim);
+            A[0, 0] = 3f; A[0, 1] = 0f;
+            A[1, 0] = 4f; A[1, 1] = 5f;
+
+            var U = arena.doubleMat(dim, dim);
+            var S = arena.doubleVec(dim);
+            var V = arena.doubleMat(dim, dim);
+            Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+
+            AssertClose(S[0], (double)6.7082039f, (double)1E-3f);
+            AssertClose(S[1], (double)2.2360680f, (double)1E-3f);
+            AssertDescendingNonNegative(in S, dim);
+            Assert.IsTrue(Analysis.isOrthogonal(U, (double)1E-4f));
+            Assert.IsTrue(Analysis.isOrthogonal(V, (double)1E-4f));
+            AssertReconstruct(in A, in U, in S, in V, ref arena, (double)1E-4f);
+
+            arena.Dispose();
+        }
+
+        // (2d) Ported from the deleted SVDSingleColumn. 5x1 column [1,2,3,4,5]: single singular value
+        // = column 2-norm = sqrt(55)≈7.4161985 (m=5 >= n=1 satisfies thin's requirement).
+        void SingleColumn5x1()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 5, n = 1;
+
+            var A = arena.doubleMat(m, n);
+            A[0, 0] = 1f; A[1, 0] = 2f; A[2, 0] = 3f; A[3, 0] = 4f; A[4, 0] = 5f;
+
+            var U = arena.doubleMat(m, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+            Assert.IsTrue(SVD.thin(in A, ref U, ref S, ref V));
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+
+            AssertClose(S[0], (double)7.4161985f, (double)1E-3f);
+
+            // U column has unit norm.
+            double normSq = (double)0f;
+            for (int i = 0; i < m; i++) normSq += U[i, 0] * U[i, 0];
+            AssertClose(normSq, (double)1f, (double)1E-4f);
+
+            AssertReconstruct(in A, in U, in S, in V, ref arena, (double)1E-4f);
+
+            arena.Dispose();
+        }
+
+        // (2d) Ported from the deleted SVDNonConvergence, adapted to the CURRENT Golub-Kahan
+        // implementation. maxIter=1 cannot isolate an 8x8 bidiagonal block in a single per-value
+        // iteration, so the bidiagonal QR genuinely returns false (non-convergent). In the current
+        // impl, S is written ONLY inside `if (ok)`, so on non-convergence S retains its (zero) pre-fill
+        // while U/V still hold the finite orthonormal output of the unconditional Bidiag.decomp. The
+        // REAL, checkable regression guard: NO NaN/Inf is EVER written to S/U/V regardless of
+        // convergence, and S stays descending & non-negative. The convergence flag itself is NOT
+        // hard-asserted (matching the deleted test's own choice).
+        void NonConvergenceHilbert8()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 8;
+            var A = arena.doubleHilbert(n);
+
+            // pre-fill outputs with normal (zero) starting values, NOT a NaN sentinel.
+            var U = arena.doubleMat(n, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+
+            SVD.thin(in A, ref U, ref S, ref V, 1);
+
+            Assert.IsFalse(Analysis.isAnyNan(in S));
+            Assert.IsFalse(Analysis.isAnyNan(in U));
+            Assert.IsFalse(Analysis.isAnyNan(in V));
+            Assert.IsFalse(Analysis.isAnyInf(in S));
+            Assert.IsFalse(Analysis.isAnyInf(in U));
+            Assert.IsFalse(Analysis.isAnyInf(in V));
+            AssertDescendingNonNegative(in S, n);
+
+            // Same guarantee for the values-only path.
+            var S2 = arena.doubleVec(n);
+            SVD.values(in A, ref S2, 1, Consts.doubleZeroThreshold);
+            Assert.IsFalse(Analysis.isAnyNan(in S2));
+            Assert.IsFalse(Analysis.isAnyInf(in S2));
+            AssertDescendingNonNegative(in S2, n);
+
+            arena.Dispose();
+        }
+
+        // (2e) Determinant invariant: for a well-conditioned square A, |det A| == Π σ_i. det via LU
+        // (with pivot sign) on a COPY; Π σ via SVD.values on the untouched ORIGINAL. Loose RELATIVE
+        // tolerance growing mildly with n (accumulated product of n rounded factors).
+        void DetEqualsProductSingularValues()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int n = 7;
+
+            // well-conditioned: diagonal-boosted random (avoids singular/near-singular).
+            var A = arena.doubleRandomMat(n, n, -3f, 3f, 6543210);
+            for (int d = 0; d < n; d++) A[d, d] += (double)(2 * n);
+
+            // |det| via LU on a COPY.
+            var Acopy = A.Copy();
+            var pivot = new Pivot(n, Allocator.Temp);
+            Assert.IsTrue(LU.decompInPlace(ref Acopy, ref pivot));
+            double detAbs = math.abs(LU.determinant(in Acopy, in pivot));
+            pivot.Dispose();
+
+            // Π σ_i via SVD.values on the ORIGINAL untouched A.
+            var S = arena.doubleVec(n);
+            Assert.IsTrue(SVD.values(in A, ref S));
+            double prod = (double)1;
+            for (int i = 0; i < n; i++) prod *= S[i];
+
+            double relTol = (double)n * (double)8 * Consts.doubleSqrtEps;
+            double denom = math.max((double)1, math.abs(prod));
+            double relDiff = math.abs(detAbs - prod) / denom;
+            if (!(relDiff <= relTol) && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1; Fail[1] = detAbs; Fail[2] = prod; Fail[3] = relDiff;
+            }
+            Assert.IsTrue(relDiff <= relTol);
 
             arena.Dispose();
         }
@@ -765,6 +1077,23 @@ public class doubleSVDTests
             Assert.IsTrue(Analysis.isOrthogonal(U, (double)1E-3f));
             Assert.IsTrue(Analysis.isOrthogonal(V, (double)1E-3f));
             AssertMatrixUnchanged(in A, in Apristine, n, n);
+
+            // (2c-ii) Explicit DETECTED RANK via the tail: count σ_i above a relative threshold; the
+            // matrix is a sum of k=3 rank-1 outer products so exactly n-k = 3 trailing σ are ~0 and
+            // the detected rank must be 3.
+            int k = 3;
+            double rankTol = (double)8 * Consts.doubleSqrtEps;
+            int detectedRank = 0;
+            for (int i = 0; i < n; i++)
+                if (S[i] > rankTol * S[0]) detectedRank++;
+            if (detectedRank != k && Fail[0] == (double)0)
+            {
+                Fail[0] = (double)1; Fail[1] = (double)detectedRank; Fail[2] = (double)k; Fail[3] = (double)(detectedRank - k);
+            }
+            Assert.IsTrue(detectedRank == k);
+
+            // (2c-ii) Frobenius identity Σσ_i^2 == ‖A‖_F^2 (holds for ANY A).
+            AssertFrobeniusIdentity(in A, in S, n, (double)64 * Consts.doubleSqrtEps);
 
             arena.Dispose();
         }

@@ -953,6 +953,12 @@ public class doubleOrthoColumnPivotTests
 
             RecordEq((int)infoDirect.status, (int)infoCopy.status);
             RecordEq(infoDirect.rank, infoCopy.rank);
+            // (2f-iii) The two no-copy paths agreeing isn't enough: pin the ABSOLUTE detected rank so
+            // a bug that consistently reports the WRONG rank (e.g. always full rank) can't slip
+            // through and the rank-deficient/truncation path is actually exercised. The construction
+            // forces column n-1 = col0 + col1, an exact dependency making true rank n-1.
+            if (rankDeficient)
+                RecordEq(infoDirect.rank, n - 1);
             for (int i = 0; i < n; i++)
                 AssertBitIdentical(xDirect[i], xCopy[i]);
 

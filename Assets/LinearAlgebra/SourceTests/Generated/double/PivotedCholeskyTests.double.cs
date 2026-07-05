@@ -70,6 +70,8 @@ public class doublePivotedCholeskyTests
             // Solver API rework (commit 2): CHOP.solveInPlace's exit (A_to_L) is a valid decompSolve
             // input, bit-identical to a fresh decomp + decompSolve on the same original A.
             SolveInPlaceExitIsUsableFactor,
+            // Commit 2.5 (2a): driver short-circuit purity -- indefinite input leaves b_to_x untouched.
+            SolveInPlaceShortCircuitPurity,
         }
 
         public TestType Type;
@@ -94,6 +96,7 @@ public class doublePivotedCholeskyTests
                 case TestType.SingleElement:                    SingleElement();                    break;
                 case TestType.OutOfRangeLeastSquares:           OutOfRangeLeastSquares();           break;
                 case TestType.SolveInPlaceExitIsUsableFactor:   SolveInPlaceExitIsUsableFactor();   break;
+                case TestType.SolveInPlaceShortCircuitPurity:   SolveInPlaceShortCircuitPurity();   break;
             }
         }
 
@@ -500,6 +503,35 @@ public class doublePivotedCholeskyTests
 
             Pfused.Dispose();
             Pref.Dispose();
+            arena.Dispose();
+        }
+
+        // Commit 2.5 (2a): driver short-circuit purity. CHOP.solveInPlace on an INDEFINITE matrix
+        // must (a) return the Indefinite failure status and (b) leave b_to_x BIT-IDENTICAL to its
+        // pre-call snapshot. Guards the `if (!decompInfo.Solved) return decompInfo;` early return:
+        // without it, decompSolve would run on a garbage/partial factor and corrupt b.
+        void SolveInPlaceShortCircuitPurity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int n = 2;
+            var A = arena.doubleMat(n, n);
+            A[0, 0] = 1f; A[0, 1] = 2f; A[1, 0] = 2f; A[1, 1] = 1f; // indefinite (eig 3, -1)
+
+            var b = arena.doubleRandomVec(n, -1f, 1f, 24680);
+            var bSnapshot = b.Copy(); // capture BEFORE the call
+
+            var P = new Pivot(n, Allocator.Persistent);
+            RankInfo info = CHOP.solveInPlace(ref A, ref P, ref b);
+
+            RecordEq((int)info.status, (int)DirectSolveStatus.Indefinite);
+            RecordEq(info.Solved ? 1 : 0, 0);
+
+            // b_to_x untouched: bit-identical (==, not within-tolerance) to its snapshot.
+            for (int i = 0; i < n; i++)
+                RecordEqExact(b[i], bSnapshot[i]);
+
+            P.Dispose();
             arena.Dispose();
         }
 

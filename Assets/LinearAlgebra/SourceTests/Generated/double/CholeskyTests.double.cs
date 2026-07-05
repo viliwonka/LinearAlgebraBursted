@@ -41,6 +41,8 @@ public class doubleCholeskyTests
             // Solver API rework (commit 2): CHO.solveInPlace's exit factor is a valid decompSolve
             // input, bit-identical to a fresh decomp + decompSolve on the same original A.
             SolveInPlaceExitIsUsableFactor,
+            // Commit 2.5 (2a): driver short-circuit purity -- non-PD input leaves b_to_x untouched.
+            SolveInPlaceShortCircuitPurity,
         }
 
         public TestType Type;
@@ -112,6 +114,9 @@ public class doubleCholeskyTests
                     break;
                 case TestType.SolveInPlaceExitIsUsableFactor:
                     SolveInPlaceExitIsUsableFactor();
+                    break;
+                case TestType.SolveInPlaceShortCircuitPurity:
+                    SolveInPlaceShortCircuitPurity();
                     break;
             }
         }
@@ -237,6 +242,34 @@ public class doubleCholeskyTests
 
             for (int i = 0; i < dim; i++)
                 Assert.IsTrue(x2[i] == x2ref[i]);
+
+            arena.Dispose();
+        }
+
+        // Commit 2.5 (2a): driver short-circuit purity. CHO.solveInPlace on a NON-PD matrix must
+        // (a) return the NotPositiveDefinite failure status and (b) leave b_to_x BIT-IDENTICAL to its
+        // pre-call snapshot. Guards the `if (!info.Solved) return info;` early return in the fused
+        // POSV driver: without it, decompSolve would run on a garbage/partial factor and corrupt b.
+        void SolveInPlaceShortCircuitPurity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // Indefinite [[1,2],[2,1]] (eigenvalues 3, -1) -- reused from NotSPD/NotSPDStatus.
+            var A = arena.doubleMat(2, 2);
+            A[0, 0] = 1f; A[0, 1] = 2f;
+            A[1, 0] = 2f; A[1, 1] = 1f;
+
+            var b = arena.doubleRandomVec(2, -1f, 1f, 13579);
+            var bSnapshot = b.Copy(); // capture BEFORE the call
+
+            DirectSolveInfo info = CHO.solveInPlace(ref A, ref b);
+
+            Assert.IsTrue(info.status == DirectSolveStatus.NotPositiveDefinite);
+            Assert.IsFalse(info.Solved);
+
+            // b_to_x untouched: bit-identical (==, not within-tolerance) to its snapshot.
+            for (int i = 0; i < 2; i++)
+                Assert.IsTrue(b[i] == bSnapshot[i]);
 
             arena.Dispose();
         }
@@ -701,5 +734,11 @@ public class doubleCholeskyTests
     public void SolveInPlaceExitIsUsableFactorTest()
     {
         new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveInPlaceExitIsUsableFactor }.Run();
+    }
+
+    [Test]
+    public void SolveInPlaceShortCircuitPurityTest()
+    {
+        new CholeskyTestJob() { Type = CholeskyTestJob.TestType.SolveInPlaceShortCircuitPurity }.Run();
     }
 }

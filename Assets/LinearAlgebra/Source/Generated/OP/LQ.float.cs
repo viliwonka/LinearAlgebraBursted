@@ -449,7 +449,7 @@ namespace LinearAlgebra
         /// </summary>
         /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). Not modified.</param>
         /// <param name="b">Right-hand side vector, length m.</param>
-        /// <param name="x">Solution output (min-2-norm), length n. Must not alias b.</param>
+        /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true. Solution (min-2-norm), length n. Must not alias b.</param>
         // Always reports DirectSolveStatus.Success — decomp has no failure mode and this
         // solve does not itself detect rank deficiency in A (PRECONDITION: A has full row rank).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

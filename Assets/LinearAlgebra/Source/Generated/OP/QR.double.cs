@@ -424,6 +424,8 @@ namespace LinearAlgebra
         /// scratch) — see decompInPlace for the scratch-size contract.
         /// Always reports DirectSolveStatus.Success — see decompInPlace.
         /// </summary>
+        /// <remarks>If R, u, or w is the wrong size, this throws AFTER Q has already been overwritten
+        /// with a copy of A (still un-factored); A itself is always preserved.</remarks>
         /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo decomp(in doubleMxN A, ref doubleMxN Q, ref doubleMxN R, ref doubleN u, ref doubleN w)
@@ -438,6 +440,8 @@ namespace LinearAlgebra
         /// <summary>
         /// decomp allocating its w scratch (Allocator.Temp). See the 5-arg overload for semantics.
         /// </summary>
+        /// <remarks>If R or u is the wrong size, this throws AFTER Q has already been overwritten
+        /// with a copy of A (still un-factored); A itself is always preserved.</remarks>
         /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo decomp(in doubleMxN A, ref doubleMxN Q, ref doubleMxN R, ref doubleN u)
@@ -453,6 +457,8 @@ namespace LinearAlgebra
         /// decomp allocating all scratch (Allocator.Temp) and routing through the blocked (level-3)
         /// path once N_Cols is large enough. See decompInPlace's 2-arg overload for the size gate.
         /// </summary>
+        /// <remarks>If R is the wrong size, this throws AFTER Q has already been overwritten with a
+        /// copy of A (still un-factored); A itself is always preserved.</remarks>
         /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo decomp(in doubleMxN A, ref doubleMxN Q, ref doubleMxN R)

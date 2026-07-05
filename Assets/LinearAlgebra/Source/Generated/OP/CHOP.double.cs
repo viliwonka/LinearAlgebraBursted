@@ -189,7 +189,23 @@ namespace LinearAlgebra
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static RankInfo decomp(in doubleMxN A, ref doubleMxN L, ref Pivot P) {
-            int n = A.IsSquare ? A.M_Rows : 0;
+            // Replicate the ref-workspace overload's dimension checks BEFORE allocating ws.W, so a
+            // caller error can't leak the Temp allocation (thrown mid-call, past the alloc but
+            // before the Dispose below).
+            if (!A.IsSquare)
+                throw new ArgumentException("decomp: A needs to be square");
+
+            if (!L.IsSquare)
+                throw new ArgumentException("decomp: L needs to be square");
+
+            if (A.M_Rows != L.M_Rows)
+                throw new ArgumentException("decomp: A and L need to have the same dimensions");
+
+            int n = A.M_Rows;
+
+            if (P.N != n)
+                throw new ArgumentException("decomp: P.N must equal A dimension");
+
             var ws = new doubleCHOPCache
             {
                 W = new doubleMxN(n, n, Allocator.Temp),
@@ -319,7 +335,23 @@ namespace LinearAlgebra
         /// Temp in both forms). Always reports DirectSolveStatus.Success — see that overload.
         /// </summary>
         public static DirectSolveInfo decompSolve(ref doubleMxN L, in Pivot P, int rank, ref doubleN b_to_x) {
-            int n = L.IsSquare ? L.M_Rows : 0;
+            // Replicate the ref-workspace overload's dimension checks BEFORE allocating ws.bt, so a
+            // caller error can't leak the Temp allocation (thrown mid-call, past the alloc but
+            // before the Dispose below).
+            if (!L.IsSquare)
+                throw new ArgumentException("decompSolve: L must be square");
+
+            int n = L.M_Rows;
+
+            if (b_to_x.N != n)
+                throw new ArgumentException("decompSolve: b_to_x.N must equal L.M_Rows");
+
+            if (P.N != n)
+                throw new ArgumentException("decompSolve: P.N must equal L.M_Rows");
+
+            if (rank < 0 || rank > n)
+                throw new ArgumentException("decompSolve: rank must be in [0, n]");
+
             var ws = new doubleCHOPCache
             {
                 W = default,
@@ -341,6 +373,20 @@ namespace LinearAlgebra
         /// <param name="A_to_L">On entry A; on exit the lower-triangular factor L.</param>
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
         public static RankInfo solveInPlace(ref doubleMxN A_to_L, ref Pivot P, ref doubleN b_to_x) {
+            // Validate everything decomp/decompSolve would check BEFORE decomp runs, so a caller
+            // error (e.g. a mis-sized b_to_x) cannot destroy A_to_L first (L aliases A_to_L's own
+            // storage inside decomp).
+            if (!A_to_L.IsSquare)
+                throw new ArgumentException("solveInPlace: A_to_L needs to be square");
+
+            int n = A_to_L.M_Rows;
+
+            if (P.N != n)
+                throw new ArgumentException("solveInPlace: P.N must equal A_to_L dimension");
+
+            if (b_to_x.N != n)
+                throw new ArgumentException("solveInPlace: b_to_x.N must equal A_to_L.M_Rows");
+
             var decompInfo = decomp(in A_to_L, ref A_to_L, ref P);
             if (!decompInfo.Solved)
                 return decompInfo;
@@ -361,6 +407,22 @@ namespace LinearAlgebra
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
         public static RankInfo solveInPlace(ref doubleMxN A_to_L, ref Pivot P, ref doubleN b_to_x,
                                               ref doubleCHOPCache ws) {
+            // Validate everything decomp/decompSolve would check — including the FULL workspace
+            // (both W and bt) — BEFORE decomp runs, so a caller error (e.g. a mis-sized bt or
+            // b_to_x) cannot destroy A_to_L first (L aliases A_to_L's own storage inside decomp).
+            if (!A_to_L.IsSquare)
+                throw new ArgumentException("solveInPlace: A_to_L needs to be square");
+
+            int n = A_to_L.M_Rows;
+
+            if (P.N != n)
+                throw new ArgumentException("solveInPlace: P.N must equal A_to_L dimension");
+
+            if (b_to_x.N != n)
+                throw new ArgumentException("solveInPlace: b_to_x.N must equal A_to_L.M_Rows");
+
+            RequireCholeskyPivotWorkspace(in ws, n, true, true);
+
             var decompInfo = decomp(in A_to_L, ref A_to_L, ref P, ref ws);
             if (!decompInfo.Solved)
                 return decompInfo;

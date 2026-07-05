@@ -42,7 +42,11 @@ public class floatLUTests
             // Solver API rework (commit 2) coverage: safe decomp/decompNoPivot preserve A, and
             // solveInPlace's exit factor is a valid decompSolve input (bit-identical to fresh decomp).
             LUDecompVariantsPreserveA,
-            LUSolveInPlaceExitIsUsableFactor
+            LUSolveInPlaceExitIsUsableFactor,
+            // Commit 2.5 hardening: solveInPlace driver short-circuit purity (singular input leaves
+            // b_to_x bit-identical) + blocked-path (dim=256) A-preservation.
+            LUSolveInPlaceShortCircuitPurity,
+            LUDecompPreservesABlocked
         }
 
         public TestType Type;
@@ -113,6 +117,12 @@ public class floatLUTests
                     break;
                 case TestType.LUSolveInPlaceExitIsUsableFactor:
                     LUSolveInPlaceExitIsUsableFactor();
+                    break;
+                case TestType.LUSolveInPlaceShortCircuitPurity:
+                    LUSolveInPlaceShortCircuitPurity();
+                    break;
+                case TestType.LUDecompPreservesABlocked:
+                    LUDecompPreservesABlocked();
                     break;
 
             }
@@ -972,8 +982,11 @@ public class floatLUTests
             var arena = new Arena(Allocator.Persistent);
             int dim = 10;
 
-            var A = arena.floatRandomMat(dim, dim, -5f, 5f, 314159);
-            for (int d = 0; d < dim; d++) A[d, d] += 20f;
+            // Non-trivial pivoting: MakeWellConditionedPivoting row-reverses a diagonally-dominant
+            // matrix, so partial pivoting must undo a genuine (non-identity) permutation. A plain
+            // diagonally-dominant fill would swap no rows, hiding any pivot-indexing bug in the fused
+            // solveInPlace vs the independent decompInPlace+decompSolve oracle.
+            var A = MakeWellConditionedPivoting(ref arena, dim, 314159);
 
             var xKnown1 = arena.floatRandomVec(dim, 1f, 5f, 111);
             var b1 = Blas.dot(A, xKnown1);
@@ -1004,6 +1017,69 @@ public class floatLUTests
 
             pivotFused.Dispose();
             pivotRef.Dispose();
+            arena.Dispose();
+        }
+
+        // (2a) Driver short-circuit purity: LU.solveInPlace on a SINGULAR matrix must (a) report the
+        // Singular failure status and (b) leave b_to_x BIT-IDENTICAL to its pre-call snapshot. This
+        // guards the `if (!info.Solved) return info;` early return in the fused GESV driver: if that
+        // short-circuit were removed, decompSolve would run on the garbage/partial factor and corrupt
+        // b_to_x.
+        void LUSolveInPlaceShortCircuitPurity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 8;
+
+            // Singular: two identical rows (row 5 == row 2), diagonally boosted so ONLY that
+            // duplication causes singularity (reuses LUDecompSingular's construction).
+            var A = arena.floatRandomMat(dim, dim, 1f, 10f, 8821);
+            for (int d = 0; d < dim; d++) A[d, d] += 20f;
+            for (int c = 0; c < dim; c++) A[5, c] = A[2, c];
+
+            var b = arena.floatRandomVec(dim, -3f, 3f, 246810);
+            var bSnapshot = b.Copy(); // capture BEFORE the call
+
+            var pivot = new Pivot(dim, Allocator.Temp);
+            DirectSolveInfo info = LU.solveInPlace(ref A, ref pivot, ref b);
+
+            // (a) failure status forwarded; not Solved.
+            if (info.status != DirectSolveStatus.Singular && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1; Fail[1] = (float)(int)info.status;
+                Fail[2] = (float)(int)DirectSolveStatus.Singular; Fail[3] = (float)0;
+            }
+            Assert.IsTrue(info.status == DirectSolveStatus.Singular);
+            Assert.IsFalse(info.Solved);
+
+            // (b) b_to_x untouched: bit-identical (==, not within-tolerance) to its snapshot.
+            for (int i = 0; i < dim; i++)
+                AssertExactEqual(bSnapshot[i], b[i]);
+
+            pivot.Dispose();
+            arena.Dispose();
+        }
+
+        // (2f-i) Blocked-path A-preservation: LU.decomp at dim=256 engages the level-3 blocked
+        // (compact-WY GEMM trailing-update) path (LU_BLOCK_MIN_N = 8*32 = 256); it still must not
+        // modify A. Checksum (position-weighted) before/after. The existing LUDecompVariantsPreserveA
+        // only reaches the unblocked path (dim=9).
+        void LUDecompPreservesABlocked()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 256;
+
+            var A = MakeWellConditionedPivoting(ref arena, dim, 424243);
+            float checksumBefore = Checksum(in A);
+
+            var L = arena.floatIdentityMat(dim);
+            var U = arena.floatMat(dim, dim);
+            var pivot = new Pivot(dim, Allocator.Temp);
+            bool ok = LU.decomp(in A, ref L, ref U, ref pivot);
+            Assert.IsTrue(ok);
+
+            AssertExactEqual(checksumBefore, Checksum(in A));
+
+            pivot.Dispose();
             arena.Dispose();
         }
 

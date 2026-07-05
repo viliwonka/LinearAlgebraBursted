@@ -21,6 +21,8 @@ namespace LinearAlgebra
         /// Returns Success; Singular if a zero pivot is encountered (singular matrix).
         /// On Singular: no NaN/Inf is written.
         /// </summary>
+        /// <remarks>L must not alias U or A (unchecked) — L and U are written independently, so an
+        /// aliased L would read back partially-factored U entries instead of the identity seed.</remarks>
         /// <param name="U">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the upper-triangular factor.</param>
         public static DirectSolveInfo decompNoPivot(in fProxyMxN A, ref fProxyMxN L, ref fProxyMxN U)
         {
@@ -80,6 +82,10 @@ namespace LinearAlgebra
         /// On Singular: no NaN/Inf is written, P remains a valid permutation.
         /// Arity-distinct from the compact decompInPlace(ref A_to_LU, ref Pivot) overload below.
         /// </summary>
+        /// <remarks>L must not alias U or A (unchecked) — L and U are written independently, so an
+        /// aliased L would read back partially-factored U entries instead of the identity seed.
+        /// If P is the wrong size, this throws AFTER U has already been overwritten with a copy of
+        /// A (still un-factored); A itself is always preserved.</remarks>
         /// <param name="U">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the upper-triangular factor.</param>
         public static DirectSolveInfo decomp(in fProxyMxN A, ref fProxyMxN L, ref fProxyMxN U, ref Pivot P) {
             if (!A.IsSquare)
@@ -489,6 +495,19 @@ namespace LinearAlgebra
         /// <param name="A_to_LU">On entry A; on exit the compact LU factor (L below the diagonal, U on/above it).</param>
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
         public static DirectSolveInfo solveInPlace(ref fProxyMxN A_to_LU, ref Pivot P, ref fProxyN b_to_x) {
+            // Validate everything decompInPlace/decompSolve would check BEFORE either runs, so a
+            // caller error (e.g. a mis-sized b_to_x) cannot destroy A_to_LU first.
+            if (!A_to_LU.IsSquare)
+                throw new System.ArgumentException("solveInPlace: A_to_LU needs to be square");
+
+            int m = A_to_LU.M_Rows;
+
+            if (P.N != m)
+                throw new System.ArgumentException("pivot size must equal matrix dimension");
+
+            if (b_to_x.N != m)
+                throw new System.ArgumentException("solveInPlace: b_to_x.N must equal A_to_LU.M_Rows");
+
             var info = decompInPlace(ref A_to_LU, ref P);
             if (!info.Solved)
                 return info;

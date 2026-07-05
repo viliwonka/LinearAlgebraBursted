@@ -38,6 +38,8 @@ namespace LinearAlgebra
         // simpler and unconditionally robust.
         // Always reports DirectSolveStatus.Success — this factorization has no failure mode; it does
         // NOT itself compute an integer rank (see solveInPlace for the rank-revealing consumer).
+        /// <remarks>R must not alias A_to_Q (unchecked) — A_to_Q's upper triangle is read to build R
+        /// while A_to_Q is simultaneously being overwritten with the Q reconstruction.</remarks>
         /// <param name="A_to_Q">On entry A; on exit the orthogonal factor Q.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo decompInPlace(ref fProxyMxN A_to_Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u)
@@ -164,6 +166,7 @@ namespace LinearAlgebra
 
         // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
         // The caller still owns P (its size carries the column count and it is reset internally).
+        /// <remarks>R must not alias A_to_Q (unchecked) — see the 4-arg overload.</remarks>
         /// <param name="A_to_Q">On entry A; on exit the orthogonal factor Q.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo decompInPlace(ref fProxyMxN A_to_Q, ref fProxyMxN R, ref Pivot P)
@@ -181,6 +184,9 @@ namespace LinearAlgebra
         /// decompInPlace. Q (caller-allocated, same dimensions as A) receives the orthogonal factor.
         /// Always reports DirectSolveStatus.Success — see decompInPlace.
         /// </summary>
+        /// <remarks>R must not alias A_to_Q/Q (unchecked) — see decompInPlace. If R, P, or u is the
+        /// wrong size, this throws AFTER Q has already been overwritten with a copy of A (still
+        /// un-factored); A itself is always preserved.</remarks>
         /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo decomp(in fProxyMxN A, ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u)
@@ -196,6 +202,9 @@ namespace LinearAlgebra
         /// decomp allocating its scratch vector u (Allocator.Temp). See the 5-arg overload for
         /// semantics.
         /// </summary>
+        /// <remarks>R must not alias A_to_Q/Q (unchecked). If R or P is the wrong size, this throws
+        /// AFTER Q has already been overwritten with a copy of A (still un-factored); A itself is
+        /// always preserved.</remarks>
         /// <param name="Q">Output only; prior contents ignored; safe to allocate with uninit: true. Receives the orthogonal factor.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo decomp(in fProxyMxN A, ref fProxyMxN Q, ref fProxyMxN R, ref Pivot P)
@@ -237,6 +246,7 @@ namespace LinearAlgebra
         /// <returns>Status Success (r == n, full rank) or RankDeficient (r &lt; n, still a usable
         /// truncated least-squares solution); rank = detected r. See
         /// <see cref="RankInfo.Solved"/>.</returns>
+        /// <remarks>R must not alias A_to_Q (unchecked) — see decompInPlace.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static RankInfo solveInPlace(ref fProxyMxN A_to_Q, ref fProxyN b, ref fProxyN x,
                                            ref fProxyMxN R, ref Pivot P,
@@ -351,6 +361,17 @@ namespace LinearAlgebra
         {
             int m = A_to_Q.M_Rows;
             int n = A_to_Q.N_Cols;
+
+            // Replicate the primitive's own dimension checks (see the 7-arg overload above) BEFORE
+            // allocating R/P/u, so a caller error can't leak the Temp allocations (thrown mid-call,
+            // past the allocs but before the Dispose calls below).
+            if (m < n)
+                throw new ArgumentException("QRCP.solveInPlace: A_to_Q must be square or tall (M_Rows >= N_Cols)");
+            if (b.N != m)
+                throw new ArgumentException("QRCP.solveInPlace: b.N must equal A_to_Q.M_Rows");
+            if (x.N != n)
+                throw new ArgumentException("QRCP.solveInPlace: x.N must equal A_to_Q.N_Cols");
+
             var R = new fProxyMxN(n, n, Allocator.Temp, false);
             var P = new Pivot(n, Allocator.Temp);
             var u = new fProxyN(m, Allocator.Temp, false);
