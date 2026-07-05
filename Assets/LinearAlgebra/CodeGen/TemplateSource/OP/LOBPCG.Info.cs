@@ -36,9 +36,11 @@ namespace LinearAlgebra
         /// (0..k). Equals k iff <see cref="status"/> is Converged.</summary>
         public int converged;
 
-        /// <summary>Worst-case (maximum) relative residual ‖A x_i - lambda_i x_i‖ / max(|lambda_i|,
-        /// 1) over all k returned pairs, widened to <c>double</c> regardless of the solve's
-        /// precision (matching every other *_Info.residual/rnorm convention in this library).
+        /// <summary>Worst-case (maximum) relative residual ‖A x_i - lambda_i B x_i‖ / max(|lambda_i|,
+        /// 1) over all k returned pairs (B=I for the standard, non-generalized entry points, which
+        /// reduces this to the familiar ‖A x_i - lambda_i x_i‖), widened to <c>double</c> regardless
+        /// of the solve's precision (matching every other *_Info.residual/rnorm convention in this
+        /// library).
         /// Filled from the per-pair residual norms the solver already tracks (locked pairs keep
         /// their locking-time value) -- never a fresh matvec. <see cref="double.NaN"/> on a
         /// Breakdown return, where X/lambda are undefined.</summary>

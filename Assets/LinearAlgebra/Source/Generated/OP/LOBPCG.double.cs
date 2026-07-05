@@ -137,31 +137,136 @@ namespace LinearAlgebra
     /// <c>Allocator.Temp</c> vector -- consistent with, not a regression from, that established
     /// precedent.
     ///
-    /// <b>Convergence:</b> per-pair 2-norm relative residual ||A x_i - lambda_i x_i|| /
-    /// max(|lambda_i|, 1) &lt;= tol. Returns a <see cref="LOBPCGInfo"/> (reuses
-    /// <see cref="IterativeSolveStatus"/> -- Converged/MaxIterations/Breakdown, no new enum).
+    /// <b>Convergence:</b> per-pair 2-norm relative residual ||A x_i - lambda_i B x_i|| /
+    /// max(|lambda_i|, 1) &lt;= tol (B=I reduces this to the Euclidean ||A x_i - lambda_i x_i||
+    /// used throughout the discussion above -- see "Generalized eigenproblem" below for B != I).
+    /// Returns a <see cref="LOBPCGInfo"/> (reuses <see cref="IterativeSolveStatus"/> --
+    /// Converged/MaxIterations/Breakdown, no new enum).
     ///
     /// <b>Output order:</b> eigenvalues/eigenvectors are returned ASCENDING (index 0 = smallest) --
     /// unlike every OTHER Eigen method in this library (which sorts descending), because LOBPCG's
     /// entire purpose is "the k smallest", so smallest-first is the natural presentation here.
+    ///
+    /// <b>Generalized eigenproblem (A x = lambda B x, B SPD):</b> every overload above the
+    /// standard (single-operator) form threads a second operator B through the SAME algorithm --
+    /// B-inner products (u^T B v) replace Euclidean ones (u^T v) everywhere a Gram matrix is
+    /// formed: the basis blocks X/W/P are B-ORTHONORMALIZED (Gram = S^T B S instead of S^T S) and
+    /// Rayleigh-Ritz solves the pencil (S^T A S, S^T B S) -- the SAME Cholesky-based
+    /// generalized-to-standard reduction already used for the standard case's Rayleigh-Ritz step
+    /// (<see cref="TryRayleighRitz"/>) IS the textbook generalized-eigenproblem reduction once its
+    /// Gram argument is S^T B S rather than S^T S; nothing about that reduction itself changed.
+    /// Residuals are r_i = A x_i - theta_i B x_i (theta_i the current Ritz value estimate);
+    /// convergence remains the EUCLIDEAN 2-norm of this residual relative to max(|theta_i|, 1) --
+    /// standard practice (the residual measures how far x_i is from satisfying the pencil, it is
+    /// not itself a B-weighted distance). Requires BX/BW/BP (the B-images of X/W/P, mirroring
+    /// AX/AW/AP) -- see <see cref="doubleLOBPCGCache"/>'s BX/BW/BP fields. The safeguard-3
+    /// plausibility envelope generalizes verbatim: each individual quotient becomes
+    /// (s^T A s)/(s^T B s) = H[i,i]/Gram[i,i], where Gram is now the B-Gram -- the SAME immunity
+    /// argument applies (a plain ratio of two already-computed dot products, no matrix inversion,
+    /// so it stays trustworthy regardless of the Cholesky-based reduction's own conditioning).
+    /// Convergence theory: LOBPCG requires only B SPD -- A itself may be INDEFINITE (this is
+    /// exactly the buckling case below) and the method is still guaranteed to converge to the
+    /// algebraically smallest eigenvalues of the pencil; it does NOT require A positive (semi)definite.
+    ///
+    /// <b>B=I strategy (bit-identical standard path):</b> rather than hand-duplicating the whole
+    /// algorithm for the plain (Euclidean, B=I) case, every standard-path overload
+    /// (<see cref="lobpcg{TOp,TPre}"/> and everything built on it) forwards into the SAME
+    /// generalized core with B played by <see cref="doubleIdentityOperator"/> (Apply is an exact
+    /// bit-copy, z = r). Every place the generalized algorithm reads a "B-image" in place of a raw
+    /// Euclidean block (BX for X, BW for W, BP for P) is a direct SUBSTITUTION -- no new arithmetic
+    /// operation (no extra division/normalization) was introduced alongside it -- so for B=I, every
+    /// substituted quantity holds BITS IDENTICAL to the block it substitutes, and every downstream
+    /// formula that reads it reproduces the pre-generalization Euclidean formula bit-for-bit (each
+    /// substitution site is documented inline with this reasoning). The ONE intentional exception:
+    /// the bootstrap Rayleigh-quotient seed for lambda (dot(X,AX), computed once before iteration 0)
+    /// deliberately stays the plain Euclidean quotient rather than dividing by dot(X,BX) -- the
+    /// "more correct" generalized quotient -- specifically because that division would cost
+    /// bit-identical-ness for B=I (dot(X,BX) is only extremely close to, not exactly, 1.0 in
+    /// floating point after Cholesky-QR) for zero practical benefit: this seed is immediately
+    /// superseded by the first real Rayleigh-Ritz iteration regardless of its accuracy (unlike e.g.
+    /// Newton's method, LOBPCG's subspace correction does not depend sensitively on a bootstrap
+    /// value's precision). This is the sole documented deviation from "every substitution is a
+    /// bit-identical no-op for B=I" in this file. Verification note: since this replaces the
+    /// prior standard-only implementation rather than living alongside it, "bit-identical" is
+    /// supported by the by-construction argument above plus the unmodified 27-test standard-path
+    /// regression suite continuing to pass -- not by a mechanical byte-diff against a captured
+    /// pre-change baseline (the old code path no longer exists to diff against).
+    ///
+    /// Cost trade-off: the unified implementation pays a real (if small) constant-factor overhead
+    /// on the standard path even when B is the identity -- three extra "B.Apply" batches per
+    /// iteration (BX/BW/BP), each just a buffer copy for the identity case, plus the extra Deflate/
+    /// OrthonormalizeBlockB bookkeeping over BW/BP. This was accepted deliberately in exchange for
+    /// zero code duplication and a strong bit-identical guarantee, matching the spec's explicit
+    /// preference; a hand-specialized Euclidean-only fast path was considered and rejected as the
+    /// higher-risk, higher-maintenance option (two divergent copies of a very safeguard-heavy loop).
+    ///
+    /// <b>Fresh-matvec principle extends to B:</b> exactly like AX/AP (see the "AX/AP freshness"
+    /// note above), BX and BP are recomputed via a FRESH <c>B.Apply</c> at the same points AX/AP
+    /// are -- NEVER maintained by mirroring a linear combination across an iteration boundary. BW,
+    /// like AW, gets exactly ONE fresh <c>B.Apply</c> per iteration (right when W is formed from
+    /// the preconditioned residual) and is then carried through THAT SAME iteration's Deflate/
+    /// OrthonormalizeBlockB calls via linearity (B is linear, so this mirroring is exact up to
+    /// ordinary floating-point rounding of a SINGLE transform -- it does not compound across
+    /// iterations the way the rejected AX/AP-mirroring design did, because it is never carried past
+    /// one iteration's boundary before the next fresh <c>B.Apply</c> supersedes it). The one-time
+    /// initial X seed is a partial exception: its own Euclidean orthonormalization is UNCHANGED
+    /// (deliberately not B-aware -- see <see cref="OrthonormalizeBlock"/>'s call site comment for
+    /// why), so BX's very first value comes from a single fresh <c>B.Apply</c> issued right after
+    /// that seed step, mirroring AX's own initial treatment exactly.
+    ///
+    /// <b>Buckling mapping (K_E phi = -lambda K_G phi convention):</b> the standard linear-buckling
+    /// eigenproblem is K_E*phi + lambda*K_G*phi = 0, i.e. K_E*phi = -lambda*K_G*phi, where K_E is
+    /// the (SPD) elastic stiffness matrix and K_G is the geometric/stress stiffness matrix evaluated
+    /// at some REFERENCE load level (typically INDEFINITE: members in compression contribute
+    /// negative-definite-like terms, tension members positive) -- the same convention used by e.g.
+    /// Nastran SOL 105 / Abaqus *BUCKLE. lambda is the LOAD MULTIPLIER: the critical buckling load
+    /// is lambda_cr times the reference load. Rearranging: K_G*phi = mu*K_E*phi where
+    /// mu = -1/lambda_cr -- a pencil with K_G (indefinite) in the A slot and K_E (SPD) in the B
+    /// slot, exactly this method's required shape (only B needs to be SPD; A indefinite is fine --
+    /// see "Convergence theory" above). The SMALLEST (most negative) mu returned corresponds to the
+    /// SMALLEST positive lambda_cr -- i.e. the FIRST critical load, exactly the quantity a buckling
+    /// analysis wants, and exactly what LOBPCG natively targets with NO extra mode-selection needed:
+    /// <code>
+    ///   // K_E: SPD elastic stiffness. K_G: geometric stiffness at the reference load (indefinite).
+    ///   var mu = LOBPCG.lobpcg(in K_G, in K_E, ref ws, k, tol, maxIter); // A=K_G, B=K_E
+    ///   // mu is ASCENDING; mu[0] is the most negative (first/critical) mode, PROVIDED it is
+    ///   // actually negative -- a mu[i] &gt;= 0 is not a buckling mode under this reference load
+    ///   // direction (no positive critical multiplier exists for that mode) and should be
+    ///   // discarded/flagged, not divided.
+    ///   for (int i = 0; i &lt; k; i++)
+    ///       if (mu[i] &lt; 0) lambdaCritical[i] = -1 / mu[i]; // buckling load multiplier
+    /// </code>
+    /// Verified on a small analytic example (see the LOBPCG generalized smoke tests): a
+    /// diagonal-congruent K_G/K_E pair with a KNOWN mixed-sign spectrum reproduces the expected
+    /// mu's, and the recovered lambda_cr matches a direct K_E*phi = -lambda*K_G*phi solve for the
+    /// SAME analytic system. If a different sign convention is used upstream (some texts define
+    /// K_G with the OPPOSITE sign, i.e. K_E*phi = +lambda*K_G*phi), flip the sign in the final
+    /// division (lambda_cr = +1/mu) accordingly -- the pencil construction and "smallest mu"
+    /// targeting are unaffected; only the final scalar's sign flips with the convention.
     /// </summary>
     public static partial class LOBPCG
     {
         /// <summary>
-        /// Zero-alloc (at O(n) scale) LOBPCG primitive, preconditioned. See the class doc comment
-        /// for the full algorithm/robustness write-up. <paramref name="ws"/> is warm-startable:
-        /// pre-fill <c>ws.X</c> with a guess (it is orthonormalized unconditionally at the start,
-        /// whether seeded or supplied); the all-zero block is seeded deterministically first.
+        /// Zero-alloc (at O(n) scale) LOBPCG primitive for the GENERALIZED symmetric eigenproblem
+        /// A x = lambda B x (B SPD -- see the class doc comment's "Generalized eigenproblem" /
+        /// "B=I strategy" / "Fresh-matvec principle extends to B" sections for the full math and
+        /// design rationale). <paramref name="ws"/> is warm-startable: pre-fill <c>ws.X</c> with a
+        /// guess (it is orthonormalized unconditionally at the start, whether seeded or supplied);
+        /// the all-zero block is seeded deterministically first.
         /// </summary>
-        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref doubleLOBPCGCache ws,
-                                                    int k, double tol, int maxIter)
+        public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref doubleLOBPCGCache ws,
+                                                          int k, double tol, int maxIter)
             where TOp : struct, IdoubleLinearOperator
+            where TBOp : struct, IdoubleLinearOperator
             where TPre : struct, IdoublePreconditioner
         {
             if (A.Rows != A.Cols)
                 throw new ArgumentException("LOBPCG: A must be square");
 
             int n = A.Rows;
+
+            if (B.Rows != n || B.Cols != n)
+                throw new ArgumentException("LOBPCG: B must be n x n, matching A (B must be SPD -- not verified at runtime, the same unchecked contract as A's symmetry)");
 
             if (k < 1 || k > n)
                 throw new ArgumentException("LOBPCG: k must be in [1, A.Rows]");
@@ -202,7 +307,16 @@ namespace LinearAlgebra
             // ws.AX is not yet meaningful here (freshly recomputed via A.Apply right below) --
             // passed through purely so the SAME combination applied to X is mirrored onto it too
             // (harmless busywork on not-yet-meaningful data), letting the initial seed reuse the
-            // exact same helper every OTHER block orthonormalization in this file uses.
+            // exact same helper every OTHER block orthonormalization in this file uses. This
+            // initial orthonormalization is DELIBERATELY EUCLIDEAN ONLY (V^T V, not the
+            // B-inner-product V^T B V): it only needs to leave X non-degenerate/well-conditioned
+            // before the first real Rayleigh-Ritz iteration, which correctly forms and reduces the
+            // ACTUAL Gram = X^T B X of whatever X turns out to be (Cholesky/ridge-retry are already
+            // robust to an arbitrary SPD Gram, not just an identity one). Keeping this call
+            // UNCHANGED (same helper, same arguments) is what makes the standard (B=I) path's
+            // bootstrap bit-identical to the pre-generalization implementation -- see
+            // <see cref="OrthonormalizeBlockB"/> for the B-aware sibling used by W/P below, which
+            // genuinely needs a pre-computed B-image and so cannot reuse this same bootstrap shape.
             if (!OrthonormalizeBlock(ref ws.X, ref ws.AX, k, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
                 return new LOBPCGInfo { iterations = 0, converged = 0, maxResidual = double.NaN, status = IterativeSolveStatus.Breakdown };
 
@@ -213,6 +327,23 @@ namespace LinearAlgebra
                 for (int c = 0; c < n; c++) ws.AX[i, c] = ws.rowOut[c];
             }
 
+            // BX = B.Apply(X), fresh, right after AX -- mirrors AX's own freshness exactly (see the
+            // class doc's "fresh-matvec principle extends to B"). For the B=I forwarding path
+            // (TBOp == doubleIdentityOperator) this is an exact bit-copy of X, so every later
+            // computation reading BX in place of a Euclidean X reproduces the pre-generalization
+            // formula bit-for-bit.
+            for (int i = 0; i < k; i++)
+            {
+                for (int c = 0; c < n; c++) ws.rowIn[c] = ws.X[i, c];
+                B.Apply(in ws.rowIn, ref ws.rowOut);
+                for (int c = 0; c < n; c++) ws.BX[i, c] = ws.rowOut[c];
+            }
+
+            // Bootstrap Rayleigh-quotient seed for lambda -- deliberately the plain EUCLIDEAN
+            // quotient dot(X,AX), NOT divided by dot(X,BX) (the "more correct" generalized
+            // quotient): see the class doc's "B=I strategy" note for why (this seed is immediately
+            // superseded by the first real Rayleigh-Ritz iteration regardless of its accuracy, so
+            // the division would only cost bit-identical-ness for B=I with no practical benefit).
             for (int i = 0; i < k; i++)
             {
                 double d = (double)0;
@@ -232,7 +363,10 @@ namespace LinearAlgebra
                     double rn2 = (double)0;
                     for (int c = 0; c < n; c++)
                     {
-                        double rv = ws.AX[i, c] - ws.lambda[i] * ws.X[i, c];
+                        // Generalized residual r_i = A x_i - lambda_i B x_i (standard practice --
+                        // see the class doc). For B=I, ws.BX[i,c] is bit-identical to ws.X[i,c], so
+                        // this reproduces the original "A x - lambda x" formula bit-for-bit.
+                        double rv = ws.AX[i, c] - ws.lambda[i] * ws.BX[i, c];
                         ws.R[i, c] = rv;
                         rn2 += rv * rv;
                     }
@@ -256,10 +390,11 @@ namespace LinearAlgebra
                         {
                             Swap.Rows(ref ws.X, i, last);
                             Swap.Rows(ref ws.AX, i, last);
+                            Swap.Rows(ref ws.BX, i, last);
                             Swap.Vec(ref ws.lambda, i, last);
                             Swap.Vec(ref ws.residual, i, last);
 
-                            // P/AP (the search direction) and R (this row's own just-computed raw
+                            // P/AP/BP (the search direction) and R (this row's own just-computed raw
                             // residual, which forms W a few lines below) must move WITH the pair
                             // that is moving into row i (previously row `last`), or the next steps
                             // read a search direction / residual belonging to a DIFFERENT
@@ -268,6 +403,7 @@ namespace LinearAlgebra
                             // lock, never exercises it).
                             Swap.Rows(ref ws.P, i, last);
                             Swap.Rows(ref ws.AP, i, last);
+                            Swap.Rows(ref ws.BP, i, last);
                             Swap.Rows(ref ws.R, i, last);
                         }
                         numActive--;
@@ -284,7 +420,7 @@ namespace LinearAlgebra
                     return new LOBPCGInfo { iterations = iter, converged = k, maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.Converged };
                 }
 
-                // ---- W = M^-1 R (active), AW = A W (active) -- the ONE matvec batch/iteration ----
+                // ---- W = M^-1 R (active), AW = A W, BW = B W (active) -- ONE matvec batch each/iteration ----
                 for (int i = 0; i < numActive; i++)
                 {
                     for (int c = 0; c < n; c++) ws.rowIn[c] = ws.R[i, c];
@@ -297,21 +433,32 @@ namespace LinearAlgebra
                     A.Apply(in ws.rowIn, ref ws.rowOut);
                     for (int c = 0; c < n; c++) ws.AW[i, c] = ws.rowOut[c];
                 }
+                // BW = B W, fresh -- mirrors AW's own single fresh compute this iteration (see the
+                // class doc's "fresh-matvec principle extends to B"); maintained via linearity
+                // through the Deflate/OrthonormalizeBlockB calls below within THIS iteration only
+                // (bounded, not chained across iterations -- exactly how AW already works).
+                for (int i = 0; i < numActive; i++)
+                {
+                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.W[i, c];
+                    B.Apply(in ws.rowIn, ref ws.rowOut);
+                    for (int c = 0; c < n; c++) ws.BW[i, c] = ws.rowOut[c];
+                }
 
-                // ---- deflate against X, then INTERNALLY orthonormalize (safeguard 1) ----
+                // ---- B-deflate against X, then INTERNALLY B-orthonormalize (safeguard 1) ----
                 // Deflation alone leaves W's OWN Gram an arbitrary SPD matrix (its rows can differ
                 // in scale by orders of magnitude, e.g. once some pairs' residuals have shrunk much
                 // more than others) -- feeding that directly into the combined Rayleigh-Ritz Gram
                 // relies on ONE Cholesky to absorb both the deflation AND that scale spread, which
                 // is exactly the ill-conditioned-basis failure mode that produces spurious Ritz
                 // values (below lambda_min, even negative) instead of tripping the rank-deficiency
-                // safeguard. Cholesky-QR-normalizing W (and P) INTERNALLY right here -- via the same
-                // FactorGram (with its ridge retry) used everywhere else -- keeps the combined Gram
-                // close to the identity, so the final Rayleigh-Ritz Cholesky is well-conditioned by
-                // construction and a genuine rank deficiency reliably trips the correct safeguard.
-                Deflate(ref ws.W, ref ws.AW, numActive, in ws.X, in ws.AX, k, n);
+                // safeguard. Cholesky-QR-normalizing W (and P) INTERNALLY right here, w.r.t. the
+                // B-inner-product -- via the same FactorGram (with its ridge retry) used everywhere
+                // else -- keeps the combined B-Gram close to the identity, so the final
+                // Rayleigh-Ritz Cholesky is well-conditioned by construction and a genuine rank
+                // deficiency reliably trips the correct safeguard.
+                Deflate(ref ws.W, ref ws.AW, ref ws.BW, numActive, in ws.X, in ws.AX, in ws.BX, k, n);
 
-                if (!OrthonormalizeBlock(ref ws.W, ref ws.AW, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
+                if (!OrthonormalizeBlockB(ref ws.W, ref ws.AW, ref ws.BW, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut, ref ws.rowAux))
                 {
                     // W collapsed entirely onto the already-known (locked+active X) subspace --
                     // a genuinely degenerate iteration. Stall (leave X/lambda untouched) rather
@@ -323,14 +470,14 @@ namespace LinearAlgebra
                 bool haveP0 = haveP;
                 if (haveP0)
                 {
-                    Deflate(ref ws.P, ref ws.AP, numActive, in ws.X, in ws.AX, k, n);
-                    Deflate(ref ws.P, ref ws.AP, numActive, in ws.W, in ws.AW, numActive, n);
+                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.X, in ws.AX, in ws.BX, k, n);
+                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.W, in ws.AW, in ws.BW, numActive, n);
 
                     // If P has become (nearly) linearly dependent on X/W -- e.g. after many
                     // iterations P can drift toward the span already covered -- drop it for just
                     // this iteration (safeguard 2's "standard fix") rather than treating it as a
                     // hard stall; W alone is still a perfectly good (steepest-descent) basis.
-                    if (!OrthonormalizeBlock(ref ws.P, ref ws.AP, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
+                    if (!OrthonormalizeBlockB(ref ws.P, ref ws.AP, ref ws.BP, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut, ref ws.rowAux))
                         haveP0 = false;
                 }
 
@@ -354,23 +501,29 @@ namespace LinearAlgebra
 
                 UpdateActiveBlock(ref ws, numActive, usedP, n, k);
 
-                // Recompute AX FRESH via a matvec -- UpdateActiveBlock deliberately does NOT also
-                // mirror-combine AX (see its own doc comment): propagating AX through many
-                // iterations of Cholesky-QR/Rayleigh-Ritz combinations (never re-touching A)
+                // Recompute AX/BX FRESH via a matvec each -- UpdateActiveBlock deliberately does
+                // NOT also mirror-combine AX/BX (see its own doc comment): propagating AX through
+                // many iterations of Cholesky-QR/Rayleigh-Ritz combinations (never re-touching A)
                 // accumulates rounding error that compounds -- exactly the observed failure mode
                 // (residual shrinks nicely for ~15-20 iterations, then stalls and creeps back up
                 // instead of continuing to converge). This is the canonical "R = A X - X diag(theta)"
-                // fresh-residual formulation; the one extra matvec/iteration (over numActive rows
-                // only) is a small, worthwhile price for a residual that stays exact to working
-                // precision indefinitely.
+                // fresh-residual formulation (generalized: "- B X diag(theta)"); the extra
+                // matvecs/iteration (over numActive rows only) are a small, worthwhile price for a
+                // residual that stays exact to working precision indefinitely.
                 for (int i = 0; i < numActive; i++)
                 {
                     for (int c = 0; c < n; c++) ws.rowIn[c] = ws.X[i, c];
                     A.Apply(in ws.rowIn, ref ws.rowOut);
                     for (int c = 0; c < n; c++) ws.AX[i, c] = ws.rowOut[c];
                 }
+                for (int i = 0; i < numActive; i++)
+                {
+                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.X[i, c];
+                    B.Apply(in ws.rowIn, ref ws.rowOut);
+                    for (int c = 0; c < n; c++) ws.BX[i, c] = ws.rowOut[c];
+                }
 
-                // Same fix for AP: P is reformed EVERY iteration from a combination of the
+                // Same fix for AP/BP: P is reformed EVERY iteration from a combination of the
                 // CURRENT W and the OLD P (chained iteration to iteration, just like AX used to
                 // be), and -- unlike AX, which only feeds the residual/convergence check -- an
                 // inaccurate AP corrupts next iteration's [X,W,P] Gram/H directly (H's P-columns
@@ -378,12 +531,19 @@ namespace LinearAlgebra
                 // (this is what actually produced Ritz values below lambda_min, even wildly
                 // negative, as soon as P entered the mix -- not merely a conditioning threshold
                 // issue, since the SAME marginal conditioning is completely harmless in the
-                // P-less 2-block path above).
+                // P-less 2-block path above). BP is refreshed for the SAME reason -- it feeds the
+                // next iteration's B-Gram directly.
                 for (int i = 0; i < numActive; i++)
                 {
                     for (int c = 0; c < n; c++) ws.rowIn[c] = ws.P[i, c];
                     A.Apply(in ws.rowIn, ref ws.rowOut);
                     for (int c = 0; c < n; c++) ws.AP[i, c] = ws.rowOut[c];
+                }
+                for (int i = 0; i < numActive; i++)
+                {
+                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.P[i, c];
+                    B.Apply(in ws.rowIn, ref ws.rowOut);
+                    for (int c = 0; c < n; c++) ws.BP[i, c] = ws.rowOut[c];
                 }
 
                 haveP = true;
@@ -392,6 +552,32 @@ namespace LinearAlgebra
             SortAscending(ref ws, k);
             return new LOBPCGInfo { iterations = maxIter, converged = k - numActive, maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
         }
+
+        /// <summary>lobpcg (generalized, preconditioned) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref doubleLOBPCGCache ws, int k, double tol)
+            where TOp : struct, IdoubleLinearOperator
+            where TBOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => lobpcg(in A, in B, in M, ref ws, k, tol, 1000);
+
+        /// <summary>lobpcg (generalized, preconditioned) with default tol (Consts.doubleSqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref doubleLOBPCGCache ws, int k)
+            where TOp : struct, IdoubleLinearOperator
+            where TBOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => lobpcg(in A, in B, in M, ref ws, k, Consts.doubleSqrtEps, 1000);
+
+        /// <summary>
+        /// lobpcg (STANDARD, B=I) primitive, preconditioned. Forwards into the generalized
+        /// <see cref="lobpcg{TOp,TBOp,TPre}"/> with <see cref="doubleIdentityOperator"/> in the B
+        /// slot -- see the class doc comment's "B=I strategy" note for why this reproduces the
+        /// pre-generalization algorithm bit-for-bit (identity's Apply is an exact bit-copy) rather
+        /// than requiring a hand-duplicated standard-only implementation.
+        /// </summary>
+        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref doubleLOBPCGCache ws, int k, double tol, int maxIter)
+            where TOp : struct, IdoubleLinearOperator
+            where TPre : struct, IdoublePreconditioner
+            => lobpcg(in A, new doubleIdentityOperator(A.Rows), in M, ref ws, k, tol, maxIter);
 
         /// <summary>lobpcg (preconditioned) with default maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref doubleLOBPCGCache ws, int k, double tol)
@@ -428,6 +614,22 @@ namespace LinearAlgebra
             where TOp : struct, IdoubleLinearOperator
             => lobpcg(in A, ref ws, k, Consts.doubleSqrtEps, 1000);
 
+        // NOTE: there is deliberately NO standalone `lobpcg<TOp,TBOp>(in TOp A, in TBOp B, ref ws,
+        // int k, double tol, int maxIter)` unpreconditioned-generic-generalized convenience overload
+        // mirroring `lobpcg<TOp>` above: with 2 open type parameters and the same positional value-
+        // argument shape (T, T, ref cache, int, double, int), it would be IDENTICAL, at the C#
+        // signature level, to the existing `lobpcg<TOp,TPre>(in TOp A, in TPre M, ref ws, int k,
+        // double tol, int maxIter)` above -- generic constraints (IdoubleLinearOperator vs
+        // IdoublePreconditioner) do NOT participate in overload/signature matching, so declaring
+        // both would be a compile error (CS0111, "already defines a member with the same parameter
+        // types"), not merely an ambiguous call. Callers who have their own custom TOp/TBOp operator
+        // structs and want an unpreconditioned generalized solve call the 3-type-param core directly
+        // with an explicit identity preconditioner: <c>lobpcg(in A, in B, new
+        // doubleIdentityPreconditioner(), ref ws, k, tol, maxIter)</c>. The CONCRETE (dense/BSR)
+        // unpreconditioned-generalized overloads below are unaffected (they forward straight into
+        // the 3-type-param core with an inline identity preconditioner) since concrete parameter
+        // types never collide the way two same-shaped open generic signatures do.
+
         /// <summary>
         /// LOBPCG over a dense <see cref="doubleMxN"/> -- zero-alloc primitive, unpreconditioned.
         /// Forwards into <see cref="lobpcg{TOp}"/> via <see cref="doubleDenseOperator"/>.
@@ -442,6 +644,26 @@ namespace LinearAlgebra
         /// <summary>lobpcg over a dense matrix with default tol (Consts.doubleSqrtEps) and maxIter (1000).</summary>
         public static LOBPCGInfo lobpcg(in doubleMxN A, ref doubleLOBPCGCache ws, int k)
             => lobpcg(in A, ref ws, k, Consts.doubleSqrtEps, 1000);
+
+        /// <summary>
+        /// LOBPCG over a dense pencil (A, B) -- GENERALIZED eigenproblem A x = lambda B x, zero-alloc
+        /// primitive, unpreconditioned. Forwards DIRECTLY into the 3-type-param
+        /// <see cref="lobpcg{TOp,TBOp,TPre}"/> core with an inline <see cref="doubleIdentityPreconditioner"/>
+        /// (see the NOTE above this dense group's generic sibling would have occupied -- a standalone
+        /// generic unpreconditioned-generalized rung is not declarable, but this CONCRETE overload is
+        /// unaffected). See the class doc comment's "Buckling mapping" note for the canonical
+        /// A=K_G/B=K_E truss-buckling usage.
+        /// </summary>
+        public static LOBPCGInfo lobpcg(in doubleMxN A, in doubleMxN B, ref doubleLOBPCGCache ws, int k, double tol, int maxIter)
+            => lobpcg(new doubleDenseOperator(in A), new doubleDenseOperator(in B), new doubleIdentityPreconditioner(), ref ws, k, tol, maxIter);
+
+        /// <summary>lobpcg (generalized) over a dense pencil with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in doubleMxN A, in doubleMxN B, ref doubleLOBPCGCache ws, int k, double tol)
+            => lobpcg(in A, in B, ref ws, k, tol, 1000);
+
+        /// <summary>lobpcg (generalized) over a dense pencil with default tol (Consts.doubleSqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in doubleMxN A, in doubleMxN B, ref doubleLOBPCGCache ws, int k)
+            => lobpcg(in A, in B, ref ws, k, Consts.doubleSqrtEps, 1000);
 
         /// <summary>
         /// LOBPCG over a dense SYMMETRIC matrix -- allocates the workspace from <paramref
@@ -465,6 +687,23 @@ namespace LinearAlgebra
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
 
         /// <summary>
+        /// LOBPCG over a dense pencil (A, B) -- GENERALIZED eigenproblem, allocating. See the
+        /// standard dense overload's doc comment for the buffer-ownership contract.
+        /// </summary>
+        public static doubleN lobpcg(ref Arena arena, in doubleMxN A, in doubleMxN B, int k, out doubleMxN eigenvectors,
+                                      out LOBPCGInfo info, double tol, int maxIter)
+        {
+            var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
+            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating, generalized) over a dense pencil with default tol/maxIter.</summary>
+        public static doubleN lobpcg(ref Arena arena, in doubleMxN A, in doubleMxN B, int k, out doubleMxN eigenvectors, out LOBPCGInfo info)
+            => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
+
+        /// <summary>
         /// LOBPCG over a block-sparse (BSR) matrix -- zero-alloc primitive, unpreconditioned.
         /// Forwards into <see cref="lobpcg{TOp}"/> via <c>doubleBSROperator</c>.
         /// </summary>
@@ -479,6 +718,25 @@ namespace LinearAlgebra
         public static LOBPCGInfo lobpcg(in doubleBSR A, ref doubleLOBPCGCache ws, int k)
             => lobpcg(in A, ref ws, k, Consts.doubleSqrtEps, 1000);
 
+        /// <summary>
+        /// LOBPCG over a block-sparse pencil (A, B) -- GENERALIZED eigenproblem, zero-alloc
+        /// primitive, unpreconditioned. Forwards DIRECTLY into the 3-type-param
+        /// <see cref="lobpcg{TOp,TBOp,TPre}"/> core (via <c>doubleBSROperator</c> for both A and B)
+        /// with an inline <see cref="doubleIdentityPreconditioner"/> -- see the dense pencil
+        /// overload's NOTE for why there is no generic unpreconditioned-generalized rung to route
+        /// through here.
+        /// </summary>
+        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, ref doubleLOBPCGCache ws, int k, double tol, int maxIter)
+            => lobpcg(new doubleBSROperator(in A), new doubleBSROperator(in B), new doubleIdentityPreconditioner(), ref ws, k, tol, maxIter);
+
+        /// <summary>lobpcg (generalized) over a BSR pencil with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, ref doubleLOBPCGCache ws, int k, double tol)
+            => lobpcg(in A, in B, ref ws, k, tol, 1000);
+
+        /// <summary>lobpcg (generalized) over a BSR pencil with default tol (Consts.doubleSqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, ref doubleLOBPCGCache ws, int k)
+            => lobpcg(in A, in B, ref ws, k, Consts.doubleSqrtEps, 1000);
+
         /// <summary>lobpcg (allocating) over a BSR matrix. See the dense overload's doc comment.</summary>
         public static doubleN lobpcg(ref Arena arena, in doubleBSR A, int k, out doubleMxN eigenvectors,
                                       out LOBPCGInfo info, double tol, int maxIter)
@@ -492,6 +750,23 @@ namespace LinearAlgebra
         /// <summary>lobpcg (allocating) over a BSR matrix with default tol/maxIter.</summary>
         public static doubleN lobpcg(ref Arena arena, in doubleBSR A, int k, out doubleMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
+
+        /// <summary>
+        /// LOBPCG over a block-sparse pencil (A, B) -- GENERALIZED eigenproblem, allocating. See
+        /// the standard BSR overload's doc comment for the buffer-ownership contract.
+        /// </summary>
+        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBSR B, int k, out doubleMxN eigenvectors,
+                                      out LOBPCGInfo info, double tol, int maxIter)
+        {
+            var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
+            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with default tol/maxIter.</summary>
+        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBSR B, int k, out doubleMxN eigenvectors, out LOBPCGInfo info)
+            => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
 
         /// <summary>
         /// LOBPCG over a block-sparse (BSR) matrix with its matching block-Jacobi preconditioner --
@@ -513,6 +788,26 @@ namespace LinearAlgebra
         public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBlockJacobi M, ref doubleLOBPCGCache ws, int k)
             => lobpcg(in A, in M, ref ws, k, Consts.doubleSqrtEps, 1000);
 
+        /// <summary>
+        /// LOBPCG over a block-sparse pencil (A, B) -- GENERALIZED eigenproblem -- with A's matching
+        /// block-Jacobi preconditioner. Forwards into <see cref="lobpcg{TOp,TBOp,TPre}"/> via
+        /// <c>doubleBSROperator</c>/<c>doubleBlockJacobi</c>. Note the preconditioner M is built from
+        /// (and approximates the inverse of) A only -- it operates on the RAW residual r = A x -
+        /// lambda B x exactly like the standard-path block-Jacobi preconditioner does, B does not
+        /// enter M's construction or Apply.
+        /// </summary>
+        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, ref doubleLOBPCGCache ws,
+                                         int k, double tol, int maxIter)
+            => lobpcg(new doubleBSROperator(in A), new doubleBSROperator(in B), in M, ref ws, k, tol, maxIter);
+
+        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, ref doubleLOBPCGCache ws, int k, double tol)
+            => lobpcg(in A, in B, in M, ref ws, k, tol, 1000);
+
+        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default tol (Consts.doubleSqrtEps) and maxIter (1000).</summary>
+        public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, ref doubleLOBPCGCache ws, int k)
+            => lobpcg(in A, in B, in M, ref ws, k, Consts.doubleSqrtEps, 1000);
+
         /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi. See the dense overload's doc comment.</summary>
         public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBlockJacobi M, int k,
                                       out doubleMxN eigenvectors, out LOBPCGInfo info, double tol, int maxIter)
@@ -528,6 +823,24 @@ namespace LinearAlgebra
                                       out doubleMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in M, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
 
+        /// <summary>
+        /// LOBPCG over a block-sparse pencil (A, B) with block-Jacobi -- GENERALIZED eigenproblem,
+        /// allocating. See the standard BSR+block-Jacobi overload's doc comment.
+        /// </summary>
+        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, int k,
+                                      out doubleMxN eigenvectors, out LOBPCGInfo info, double tol, int maxIter)
+        {
+            var ws = arena.doubleLOBPCGCache(A.M_Rows, k);
+            info = lobpcg(in A, in B, in M, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            return ws.lambda;
+        }
+
+        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with block-Jacobi and default tol/maxIter.</summary>
+        public static doubleN lobpcg(ref Arena arena, in doubleBSR A, in doubleBSR B, in doubleBlockJacobi M, int k,
+                                      out doubleMxN eigenvectors, out LOBPCGInfo info)
+            => lobpcg(ref arena, in A, in B, in M, k, out eigenvectors, out info, Consts.doubleSqrtEps, 1000);
+
         // ==================================================================================
         // Private helpers
         // ==================================================================================
@@ -535,14 +848,17 @@ namespace LinearAlgebra
         // Aliasing guard: every scratch buffer in the workspace must be distinct -- same rationale
         // as cg<TOp>'s guard (elementwise updates below don't self-check aliasing). A local
         // loop-based check (mirrors Solvers.RequireDistinctBuffers) rather than a hand-expanded OR
-        // chain: 21 buffers -> 210 pairs, impractical to hand-write/review. Includes the O(k)-scale
+        // chain: 25 buffers -> 300 pairs, impractical to hand-write/review. Includes the O(k)-scale
         // Rayleigh-Ritz scratch (Gram/H/L/Atrans/Y/C) alongside the O(n)-scale buffers -- all six
         // live simultaneously within a single TryRayleighRitz call (Gram/H built together, L
         // factored from Gram, Atrans formed from H/L, Y from Atrans, C from Y/L), so an aliased
-        // pair among THEM is just as much a correctness hazard as an aliased O(n) pair.
+        // pair among THEM is just as much a correctness hazard as an aliased O(n) pair. BX/BW/BP
+        // (the generalized-eigenproblem B-images of X/W/P) and rowAux (OrthonormalizeBlockB's third
+        // row-combination scratch) are included for the SAME reason -- every one of them is live
+        // simultaneously with the buffers it is combined against.
         static unsafe void RequireDistinctBuffers(in doubleLOBPCGCache ws)
         {
-            const int count = 21;
+            const int count = 25;
             long* ptrs = stackalloc long[count];
             ptrs[0] = (long)ws.X.Data.Ptr;
             ptrs[1] = (long)ws.AX.Data.Ptr;
@@ -565,6 +881,10 @@ namespace LinearAlgebra
             ptrs[18] = (long)ws.Atrans.Data.Ptr;
             ptrs[19] = (long)ws.Y.Data.Ptr;
             ptrs[20] = (long)ws.C.Data.Ptr;
+            ptrs[21] = (long)ws.BX.Data.Ptr;
+            ptrs[22] = (long)ws.BW.Data.Ptr;
+            ptrs[23] = (long)ws.BP.Data.Ptr;
+            ptrs[24] = (long)ws.rowAux.Data.Ptr;
 
             for (int i = 0; i < count; i++)
                 for (int j = i + 1; j < count; j++)
@@ -645,6 +965,58 @@ namespace LinearAlgebra
             return true;
         }
 
+        // GENERALIZED (B-inner-product) sibling of OrthonormalizeBlock: Cholesky-QR-orthonormalizes
+        // the first `rows` rows of V IN PLACE w.r.t. the B-inner-product (Gram = V^T B V instead of
+        // V^T V), carrying AV *and* BV along via the SAME combination (linearity applies to BOTH A
+        // and B: A(sum c_r v_r) = sum c_r (A v_r), likewise for B). Requires BV to already hold a
+        // VALID B-image of V on entry (this routine only ever WRITES BV via the same row-combination
+        // used for V/AV, it never independently recomputes it -- see the class doc's "fresh-matvec
+        // principle extends to B": the caller is responsible for BV's freshness, this helper just
+        // mirrors whatever transform it applies to V onto BV too). Used for the per-iteration W/P
+        // blocks (never for the initial X seed, which stays Euclidean-only -- see
+        // <see cref="OrthonormalizeBlock"/>'s own call site comment for why). `rowTmp`/`rowTmp2`/
+        // `rowTmp3` (length n each) are caller-provided scratch for V/AV/BV respectively. Returns
+        // false if V's rows cannot be B-orthonormalized at all (rank-deficient even after
+        // FactorGram's ridge retry); callers stall or drop P accordingly, exactly like
+        // OrthonormalizeBlock's own failure contract.
+        static bool OrthonormalizeBlockB(ref doubleMxN V, ref doubleMxN AV, ref doubleMxN BV, int rows, int n,
+                                          ref doubleMxN Gram, ref doubleMxN L, ref doubleN rowTmp, ref doubleN rowTmp2, ref doubleN rowTmp3)
+        {
+            var G = View(in Gram, rows);
+            var Lv = View(in L, rows);
+
+            FillGramSub(ref G, 0, in V, rows, 0, in BV, rows, n, true);
+
+            if (!FactorGram(ref G, ref Lv, rows))
+                return false;
+
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < n; c++) { rowTmp[c] = V[i, c]; rowTmp2[c] = AV[i, c]; rowTmp3[c] = BV[i, c]; }
+
+                for (int r = 0; r < i; r++)
+                {
+                    double coef = Lv[i, r];
+                    for (int c = 0; c < n; c++)
+                    {
+                        rowTmp[c] -= coef * V[r, c];
+                        rowTmp2[c] -= coef * AV[r, c];
+                        rowTmp3[c] -= coef * BV[r, c];
+                    }
+                }
+
+                double inv = (double)1 / Lv[i, i];
+                for (int c = 0; c < n; c++)
+                {
+                    V[i, c] = rowTmp[c] * inv;
+                    AV[i, c] = rowTmp2[c] * inv;
+                    BV[i, c] = rowTmp3[c] * inv;
+                }
+            }
+
+            return true;
+        }
+
         // Fills Gram[rowOff+i, colOff+j] = dot(Vb[i,:], Wb[j,:]) and mirrors the SAME value into
         // [colOff+j, rowOff+i] (Gram is symmetric by construction). `sameBlock` (Vb/Wb identical,
         // rowOff==colOff) restricts the fill to the upper triangle i<=j to avoid redundant work.
@@ -684,38 +1056,50 @@ namespace LinearAlgebra
             }
         }
 
-        // Deflates each of the first `activeCount` rows of V/AV against the first `againstCount`
-        // rows of Against/AgainstA, TWICE (classical "reorthogonalize twice" folklore -- mirrors
-        // Eigen.lanczos's own choice). AV is updated with the SAME coefficient (linearity:
-        // A(v - c x) = Av - c(Ax)), so this never costs an extra matvec.
-        static void Deflate(ref doubleMxN V, ref doubleMxN AV, int activeCount,
-                             in doubleMxN Against, in doubleMxN AgainstA, int againstCount, int n)
+        // Deflates each of the first `activeCount` rows of V/AV/BV against the first `againstCount`
+        // rows of Against/AgainstA/AgainstB, TWICE (classical "reorthogonalize twice" folklore --
+        // mirrors Eigen.lanczos's own choice), w.r.t. the B-INNER-PRODUCT: coeff = <Against_i,
+        // V_a>_B = dot(AgainstB_i, V_a) (AgainstB = B * Against, already the B-image of the
+        // reference block -- valid on entry, e.g. ws.BX or an already-B-deflated ws.BW). AV/BV are
+        // updated with the SAME coefficient (linearity: A(v - c x) = Av - c(Ax), likewise for B: B(v
+        // - c x) = Bv - c(Bx)), so this never costs an extra matvec for either. For B=I,
+        // AgainstB bits are identical to Against bits (see the class doc's "B=I strategy"), so
+        // coeff and every update below reproduce the pre-generalization Euclidean Deflate formula
+        // bit-for-bit.
+        static void Deflate(ref doubleMxN V, ref doubleMxN AV, ref doubleMxN BV, int activeCount,
+                             in doubleMxN Against, in doubleMxN AgainstA, in doubleMxN AgainstB, int againstCount, int n)
         {
             for (int pass = 0; pass < 2; pass++)
                 for (int a = 0; a < activeCount; a++)
                     for (int i = 0; i < againstCount; i++)
                     {
                         double coeff = (double)0;
-                        for (int c = 0; c < n; c++) coeff += Against[i, c] * V[a, c];
+                        for (int c = 0; c < n; c++) coeff += AgainstB[i, c] * V[a, c];
 
                         for (int c = 0; c < n; c++)
                         {
                             V[a, c] -= coeff * Against[i, c];
                             AV[a, c] -= coeff * AgainstA[i, c];
+                            BV[a, c] -= coeff * AgainstB[i, c];
                         }
                     }
         }
 
         // Builds the combined Gram/H (2-block [X,W] or 3-block [X,W,P]) for the active window.
+        // Gram is now the B-Gram (S^T B S): every FillGramSub call reads the RAW block as its first
+        // operand and that block's B-IMAGE (BX/BW/BP) as its second -- for B=I those B-images are
+        // bit-identical copies (see the class doc's "B=I strategy"), so this reproduces the
+        // pre-generalization Euclidean Gram (S^T S) bit-for-bit. H stays S^T A S, unaffected by B.
         static void BuildProjected(ref doubleMxN Gram, ref doubleMxN H, int numActive, bool useP,
-                                    in doubleMxN X, in doubleMxN AX, in doubleMxN W, in doubleMxN AW,
-                                    in doubleMxN P, in doubleMxN AP, int n)
+                                    in doubleMxN X, in doubleMxN AX, in doubleMxN BX,
+                                    in doubleMxN W, in doubleMxN AW, in doubleMxN BW,
+                                    in doubleMxN P, in doubleMxN AP, in doubleMxN BP, int n)
         {
             int offX = 0, offW = numActive, offP = 2 * numActive;
 
-            FillGramSub(ref Gram, offX, in X, numActive, offX, in X, numActive, n, true);
-            FillGramSub(ref Gram, offX, in X, numActive, offW, in W, numActive, n, false);
-            FillGramSub(ref Gram, offW, in W, numActive, offW, in W, numActive, n, true);
+            FillGramSub(ref Gram, offX, in X, numActive, offX, in BX, numActive, n, true);
+            FillGramSub(ref Gram, offX, in X, numActive, offW, in BW, numActive, n, false);
+            FillGramSub(ref Gram, offW, in W, numActive, offW, in BW, numActive, n, true);
 
             FillHSub(ref H, offX, in X, numActive, offX, in AX, numActive, n, true);
             FillHSub(ref H, offX, in X, numActive, offW, in AW, numActive, n, false);
@@ -723,9 +1107,9 @@ namespace LinearAlgebra
 
             if (useP)
             {
-                FillGramSub(ref Gram, offX, in X, numActive, offP, in P, numActive, n, false);
-                FillGramSub(ref Gram, offW, in W, numActive, offP, in P, numActive, n, false);
-                FillGramSub(ref Gram, offP, in P, numActive, offP, in P, numActive, n, true);
+                FillGramSub(ref Gram, offX, in X, numActive, offP, in BP, numActive, n, false);
+                FillGramSub(ref Gram, offW, in W, numActive, offP, in BP, numActive, n, false);
+                FillGramSub(ref Gram, offP, in P, numActive, offP, in BP, numActive, n, true);
 
                 FillHSub(ref H, offX, in X, numActive, offP, in AP, numActive, n, false);
                 FillHSub(ref H, offW, in W, numActive, offP, in AP, numActive, n, false);
@@ -793,17 +1177,19 @@ namespace LinearAlgebra
             var Hv = View(in ws.H, m);
             var Lv = View(in ws.L, m);
 
-            BuildProjected(ref G, ref Hv, numActive, useP, in ws.X, in ws.AX, in ws.W, in ws.AW, in ws.P, in ws.AP, n);
+            BuildProjected(ref G, ref Hv, numActive, useP, in ws.X, in ws.AX, in ws.BX, in ws.W, in ws.AW, in ws.BW, in ws.P, in ws.AP, in ws.BP, n);
 
             // Cheap, numerically TRUSTWORTHY plausibility envelope for the eventual Ritz values
             // (safeguard 3), computed BEFORE the Cholesky-based reduction below: H[i,i]/G[i,i] is
-            // the exact Rayleigh quotient of one individual, already-unit-normalized basis row (a
-            // row of X, W, or P) -- a plain dot-product ratio, no matrix inversion involved, so it
-            // is immune to the ill-conditioning that can corrupt the L^-1 H L^-T transform. Every
-            // individual Rayleigh quotient is, by definition, within [lambda_min(A), lambda_max(A)]
-            // of the FULL operator. If the Ritz values eigenSymmetric returns fall wildly outside
-            // the range spanned by these trustworthy individual quotients, that is conclusive
-            // evidence the transform corrupted the problem -- observed: Ritz values far below
+            // the exact GENERALIZED Rayleigh quotient (s^T A s)/(s^T B s) of one individual,
+            // already-B-unit-normalized basis row (a row of X, W, or P) -- a plain ratio of two
+            // already-computed dot products, no matrix inversion involved, so it is immune to the
+            // ill-conditioning that can corrupt the L^-1 H L^-T transform. Every individual
+            // generalized Rayleigh quotient is, by definition, within [lambda_min, lambda_max] of
+            // the pencil (A, B) -- the SAME immunity argument as the standard (B=I) case, which is
+            // just this formula's Gram[i,i]==1 special case. If the Ritz values eigenSymmetric
+            // returns fall wildly outside the range spanned by these trustworthy individual
+            // quotients, that is conclusive evidence the transform corrupted the problem -- observed: Ritz values far below
             // lambda_min, even wildly negative (down to -1E13 and beyond), while the Cholesky
             // diag-ratio check (FactorGram's pivotRelTol) reported a perfectly comfortable pivot;
             // diagRatio alone is a poor proxy for THIS failure mode. Reject the whole attempt (so
@@ -934,12 +1320,13 @@ namespace LinearAlgebra
         // then swapped in; the frozen locked rows [numActive, k) are carried forward first since
         // Xnext is about to become the new X wholesale.
         //
-        // Deliberately does NOT also mirror-combine AX/AP the same way (an earlier version did):
-        // the caller ALWAYS immediately recomputes AX/AP via a fresh A.Apply right after this call
-        // returns (see the "AX/AP freshness" class doc note), which unconditionally overwrites
-        // whatever this method would have written -- so computing axv/apv here was pure wasted
-        // work (an extra O(3k) multiply-adds per element, i.e. O(3k^2 n) per iteration) with the
-        // result immediately discarded.
+        // Deliberately does NOT also mirror-combine AX/AP (or BX/BP) the same way (an earlier
+        // version did, for AX/AP): the caller ALWAYS immediately recomputes AX/BX/AP/BP via a fresh
+        // A.Apply/B.Apply right after this call returns (see the "AX/AP freshness" / "fresh-matvec
+        // principle extends to B" class doc notes), which unconditionally overwrites whatever this
+        // method would have written -- so computing axv/bxv/apv/bpv here was pure wasted work (an
+        // extra O(3k) multiply-adds per element, i.e. O(3k^2 n) per iteration, doubled again for the
+        // B-images) with the result immediately discarded.
         static void UpdateActiveBlock(ref doubleLOBPCGCache ws, int numActive, bool useP, int n, int k)
         {
             int m = useP ? 3 * numActive : 2 * numActive;
@@ -1000,6 +1387,12 @@ namespace LinearAlgebra
                     Swap.Vec(ref ws.residual, i, best);
                     Swap.Rows(ref ws.X, i, best);
                     Swap.Rows(ref ws.AX, i, best);
+                    // BX kept row-consistent with X/AX for the SAME "internally introspectable
+                    // cache state" reason AX itself is swapped here -- neither actually matters
+                    // functionally for a follow-up call on this SAME cache (both AX and BX are
+                    // unconditionally refreshed via a fresh Apply at the very start of any call,
+                    // warm-started or not).
+                    Swap.Rows(ref ws.BX, i, best);
                 }
             }
         }

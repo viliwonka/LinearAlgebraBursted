@@ -80,6 +80,33 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Identity LINEAR OPERATOR: y = x (an exact bit-copy), Rows == Cols == the size fixed at
+    /// construction. The operator-shaped sibling of <see cref="doubleIdentityPreconditioner"/> --
+    /// used e.g. by <see cref="LOBPCG.lobpcg{TOp,TPre}"/> to forward the STANDARD (B=I) generalized
+    /// eigenproblem entry points into the single generalized <see cref="LOBPCG.lobpcg{TOp,TBOp,TPre}"/>
+    /// core with B played by this identity, rather than hand-duplicating a Euclidean-only
+    /// implementation. Because Apply/ApplyT are an exact bit-copy (no arithmetic), every downstream
+    /// formula that substitutes a raw block for its "B-image" reproduces the original Euclidean-only
+    /// formula bit-for-bit when B is this operator -- see LOBPCG's class doc comment's "B=I
+    /// strategy" note for the full argument. Readonly and holds only an int: a value copy is free.
+    /// </summary>
+    public readonly struct doubleIdentityOperator : IdoubleLinearOperator
+    {
+        public readonly int N;
+
+        public doubleIdentityOperator(int n)
+        {
+            N = n;
+        }
+
+        public int Rows => N;
+        public int Cols => N;
+
+        public void Apply(in doubleN x, ref doubleN y) => y.Data.CopyFrom(x.Data);
+        public void ApplyT(in doubleN x, ref doubleN y) => y.Data.CopyFrom(x.Data);
+    }
+
+    /// <summary>
     /// Right column-scaling wrapper: presents the operator A·D where D = diag(d) is a diagonal
     /// scaling of the INPUT (column) space, over any inner <typeparamref name="TInner"/> operator.
     /// Composes with every generic solver with NO solver change (they are already generic over

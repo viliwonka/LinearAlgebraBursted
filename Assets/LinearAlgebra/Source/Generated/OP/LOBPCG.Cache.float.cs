@@ -34,6 +34,13 @@ namespace LinearAlgebra
             if (ws.APnext.M_Rows != k || ws.APnext.N_Cols != n)
                 throw new ArgumentException("LOBPCG: workspace APnext must be k x n (use Arena.floatLOBPCGCache(n, k))");
 
+            if (ws.BX.M_Rows != k || ws.BX.N_Cols != n)
+                throw new ArgumentException("LOBPCG: workspace BX must be k x n (use Arena.floatLOBPCGCache(n, k))");
+            if (ws.BW.M_Rows != k || ws.BW.N_Cols != n)
+                throw new ArgumentException("LOBPCG: workspace BW must be k x n (use Arena.floatLOBPCGCache(n, k))");
+            if (ws.BP.M_Rows != k || ws.BP.N_Cols != n)
+                throw new ArgumentException("LOBPCG: workspace BP must be k x n (use Arena.floatLOBPCGCache(n, k))");
+
             if (ws.lambda.N != k)
                 throw new ArgumentException("LOBPCG: workspace lambda must have length k (use Arena.floatLOBPCGCache(n, k))");
             if (ws.residual.N != k)
@@ -41,6 +48,8 @@ namespace LinearAlgebra
 
             if (ws.rowIn.N != n || ws.rowOut.N != n)
                 throw new ArgumentException("LOBPCG: workspace rowIn/rowOut must have length n (use Arena.floatLOBPCGCache(n, k))");
+            if (ws.rowAux.N != n)
+                throw new ArgumentException("LOBPCG: workspace rowAux must have length n (use Arena.floatLOBPCGCache(n, k))");
 
             int cap = 3 * k;
             if (!ws.Gram.IsSquare || ws.Gram.M_Rows != cap)
@@ -59,8 +68,10 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Reusable scratch for <see cref="LOBPCG.lobpcg{TOp,TPre}"/> (blocked LOBPCG for the k
-    /// smallest eigenpairs of an n-dimensional symmetric operator). Sized for k eigenpairs over an
+    /// Reusable scratch for <see cref="LOBPCG.lobpcg{TOp,TBOp,TPre}"/> (blocked LOBPCG for the k
+    /// smallest eigenpairs of an n-dimensional symmetric operator, or the k smallest of the
+    /// GENERALIZED pencil (A, B) -- the SAME cache and its SAME shape serve both, see
+    /// <see cref="BX"/>/<see cref="BW"/>/<see cref="BP"/>). Sized for k eigenpairs over an
     /// n-dimensional operator. Allocate ONCE via <c>Arena.floatLOBPCGCache(n, k)</c> and reuse it
     /// across same-shape calls so repeated solves are zero-alloc at the O(n) scale (see the
     /// class doc comment on <see cref="LOBPCG"/> for the one exception: the tiny O(k)-sized
@@ -115,18 +126,39 @@ namespace LinearAlgebra
         /// every codegen'd caller) but are dead weight -- do not rely on their contents.</summary>
         public floatMxN Xnext, AXnext, Pnext, APnext;
 
+        /// <summary>k x n each. GENERALIZED-eigenproblem B-images of <see cref="X"/>/<see cref="W"/>/
+        /// <see cref="P"/> (B applied row-wise) -- see the <c>LOBPCG</c> class doc comment's
+        /// "Generalized eigenproblem" / "fresh-matvec principle extends to B" notes. <c>BX</c>/
+        /// <c>BP</c> are recomputed via a FRESH <c>B.Apply</c> at the same points <see cref="AX"/>/
+        /// <see cref="AP"/> are (never mirror-combined across an iteration boundary); <c>BW</c> gets
+        /// ONE fresh <c>B.Apply</c> per iteration (mirroring <see cref="AW"/>) and is then carried
+        /// through that SAME iteration's deflation/internal-orthonormalization via linearity. For
+        /// the standard (B=I) forwarding path these are exact bit-copies of X/W/P respectively --
+        /// see the class doc's "B=I strategy" note for why that keeps the standard path
+        /// bit-identical to the pre-generalization implementation despite the extra buffers.</summary>
+        public floatMxN BX, BW, BP;
+
         /// <summary>Length k. Current Ritz value estimates (in/out; sorted ascending only at the
         /// final return).</summary>
         public floatN lambda;
 
-        /// <summary>Length k. Per-pair 2-norm residual ‖A x_i - lambda_i x_i‖, latest computed
-        /// value (frozen at its locking-time value for already-converged pairs).</summary>
+        /// <summary>Length k. Per-pair 2-norm residual ‖A x_i - lambda_i B x_i‖ (B=I reduces this
+        /// to ‖A x_i - lambda_i x_i‖), latest computed value (frozen at its locking-time value for
+        /// already-converged pairs).</summary>
         public floatN residual;
 
         /// <summary>Length n each. Scratch row buffers used whenever a single operator/
         /// preconditioner Apply call needs to read from or write into one row of a k x n block
         /// (Apply operates on <see cref="floatN"/>, not a matrix row).</summary>
         public floatN rowIn, rowOut;
+
+        /// <summary>Length n. Third row-combination scratch used only by
+        /// <c>LOBPCG.OrthonormalizeBlockB</c> (the B-aware sibling of <c>OrthonormalizeBlock</c>) to
+        /// carry a block's B-image (BW or BP) through the SAME Cholesky-QR row combination applied
+        /// to that block itself and its A-image -- <see cref="rowIn"/>/<see cref="rowOut"/> already
+        /// serve as the other two (V/AV) scratch slots there, so a third distinct buffer is needed
+        /// for BV.</summary>
+        public floatN rowAux;
 
         /// <summary>3k x 3k each. Backing store for the small dense Rayleigh-Ritz sub-problem
         /// (Gram = S^T S, H = S^T A S, L = Cholesky factor of Gram, Atrans = the transformed
@@ -141,7 +173,9 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Allocates an LOBPCG workspace for a k-eigenpair solve over an n-dimensional symmetric
-        /// operator. See <see cref="floatLOBPCGCache"/> for reuse guidance.
+        /// operator (standard B=I or generalized pencil (A, B) -- the SAME layout serves both, see
+        /// <see cref="floatLOBPCGCache"/>'s BX/BW/BP fields). See <see cref="floatLOBPCGCache"/>
+        /// for reuse guidance.
         /// </summary>
         public static floatLOBPCGCache floatLOBPCGCache(this ref Arena arena, int n, int k)
         {
@@ -159,10 +193,14 @@ namespace LinearAlgebra
                 AXnext = arena.floatMat(k, n),
                 Pnext = arena.floatMat(k, n),
                 APnext = arena.floatMat(k, n),
+                BX = arena.floatMat(k, n),
+                BW = arena.floatMat(k, n),
+                BP = arena.floatMat(k, n),
                 lambda = arena.floatVec(k),
                 residual = arena.floatVec(k),
                 rowIn = arena.floatVec(n),
                 rowOut = arena.floatVec(n),
+                rowAux = arena.floatVec(n),
                 Gram = arena.floatMat(cap, cap),
                 H = arena.floatMat(cap, cap),
                 L = arena.floatMat(cap, cap),
