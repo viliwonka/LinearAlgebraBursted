@@ -161,7 +161,19 @@ it (OQ-7).
    + QRCP no-copy optimization. New tests. Also delete the [Obsolete] Jacobi
    `svdDecomposition` (pre-release, no shims policy).
 3. `fProxyQRCache` + level-3 on zero-alloc path. Benchmark re-run.
-4. Docs sweep: README, docs/features/*, naming-style-guide.md.
+4. Docs sweep: README (benchmark table method names + quick-start + feature bullets),
+   stale inline comments referencing old names (review-1 list: TallWideSolveBenchmark:114,
+   SparseSolverTests, SolverBatteryTests:233, EigenTests, LQWorkspaceTests:110/124),
+   test FILE renames to match new classes (CholeskyTests→CHOTests,
+   PivotedCholeskyTests→CHOPTests, OrthoOpTests/OrthoColumnPivotTests/OrthoWorkspaceTests→
+   QR*/QRCP* equivalents) + stale test-local labels (RankRevealingInfoStatus),
+   docs/features/*, naming-style-guide.md (incl. sparse forward-guidance: future sparse
+   factorizations — IC0/ILU0 — adopt the same token grid). Rider: rename the Internal
+   sparse kernel fossils `bsmMatVec*` → `bsrMatVec*` (old BSM name; Internal-only).
+   Before this commit, run a GRID-COMPLETENESS AUDIT: verify every cell of the target-API
+   table exists exactly as specced (no missing solveInPlace/decompInPlace variants — the
+   perf-critical destructive paths especially), and that no old name survives outside
+   git history.
 
 ## Open questions — ALL RESOLVED 2026-07-05
 
