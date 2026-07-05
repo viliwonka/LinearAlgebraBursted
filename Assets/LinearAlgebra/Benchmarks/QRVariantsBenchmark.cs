@@ -164,6 +164,32 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Bench.Sizes) sb.AppendLine(QRCPSolveFloat(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(QRCPSolveDouble(n));
             sb.AppendLine();
+
+            sb.AppendLine("=== TALL overdetermined least squares (m x n, m > n): qrDirectSolve vs qrcpDirectSolve ===");
+            sb.AppendLine(HeaderTall());
+            foreach (var s in TallSizes) sb.AppendLine(SolveTallFloat(s[0], s[1]));
+            foreach (var s in TallSizes) sb.AppendLine(SolveTallDouble(s[0], s[1]));
+            foreach (var s in TallSizes) sb.AppendLine(QRCPSolveTallFloat(s[0], s[1]));
+            foreach (var s in TallSizes) sb.AppendLine(QRCPSolveTallDouble(s[0], s[1]));
+            sb.AppendLine();
+        }
+
+        // Tall least-squares shapes. The reflector sweep's leading term is 2 n^2 (m - n/3).
+        static readonly int[][] TallSizes = { new[] { 2048, 512 }, new[] { 2048, 1024 } };
+        static double TallFlops(int m, int n) => 2.0 * n * (double)n * (m - n / 3.0);
+
+        static string HeaderTall()
+        {
+            return string.Format("{0,-7} {1,-24} {2,11} {3,11} {4,11} {5,11} {6,12}",
+                "dtype", "kernel m x n", "min(ms)", "med(ms)", "mean(ms)", "max(ms)", "GFLOP/s~");
+        }
+
+        static string RowTall(string dtype, string kernel, int m, int n, Bench.Stat st, double flops)
+        {
+            double gflops = flops / (st.Median / 1000.0) / 1e9;
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "{0,-7} {1,-24} {2,11:F4} {3,11:F4} {4,11:F4} {5,11:F4} {6,12:F2}",
+                dtype, kernel + " " + m + "x" + n, st.Min, st.Median, st.Mean, st.Max, gflops);
         }
 
         static string QRCPFloat(int n)
@@ -285,6 +311,112 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.Row("float", n, stat, Flops(n));
+        }
+
+        static string SolveTallFloat(int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(m, n);
+            var Src = arena.floatMat(m, n);
+            var b = arena.floatVec(m);
+            var bSrc = arena.floatVec(m);
+            var x = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
+            for (int r = 0; r < m; r++)
+            {
+                bSrc[r] = rng.NextFloat(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextFloat(-1f, 1f);
+            }
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new QRSolveJobFloat { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return RowTall("float", "qrDirectSolve", m, n, stat, TallFlops(m, n));
+        }
+
+        static string SolveTallDouble(int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(m, n);
+            var Src = arena.doubleMat(m, n);
+            var b = arena.doubleVec(m);
+            var bSrc = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
+            for (int r = 0; r < m; r++)
+            {
+                bSrc[r] = rng.NextDouble(-1.0, 1.0);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1.0, 1.0);
+            }
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new QRSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return RowTall("double", "qrDirectSolve", m, n, stat, TallFlops(m, n));
+        }
+
+        static string QRCPSolveTallFloat(int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(m, n);
+            var b = arena.floatVec(m);
+            var x = arena.floatVec(n);
+            var Q = arena.floatMat(m, n);
+            var R = arena.floatMat(n, n);
+            var u = arena.floatVec(m);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
+            for (int r = 0; r < m; r++)
+            {
+                b[r] = rng.NextFloat(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    A[r, c] = rng.NextFloat(-1f, 1f);
+            }
+            for (int d = 0; d < n; d++)
+                A[d, d] += n;
+
+            var job = new QRCPSolveJobFloat { A = A, b = b, x = x, Q = Q, R = R, u = u };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return RowTall("float", "qrcpDirectSolve", m, n, stat, TallFlops(m, n));
+        }
+
+        static string QRCPSolveTallDouble(int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(m, n);
+            var b = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
+            var Q = arena.doubleMat(m, n);
+            var R = arena.doubleMat(n, n);
+            var u = arena.doubleVec(m);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
+            for (int r = 0; r < m; r++)
+            {
+                b[r] = rng.NextDouble(-1.0, 1.0);
+                for (int c = 0; c < n; c++)
+                    A[r, c] = rng.NextDouble(-1.0, 1.0);
+            }
+            for (int d = 0; d < n; d++)
+                A[d, d] += n;
+
+            var job = new QRCPSolveJobDouble { A = A, b = b, x = x, Q = Q, R = R, u = u };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return RowTall("double", "qrcpDirectSolve", m, n, stat, TallFlops(m, n));
         }
 
         static string QRCPSolveDouble(int n)

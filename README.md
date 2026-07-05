@@ -62,23 +62,27 @@ arena.ClearTemp();                          // free the temporaries above
 arena.Dispose();                            // free everything, dispose the arena
 ```
 
-## Benchmarks at a glance
+## Benchmarks
 
-Measured, single-machine numbers for the solvers most people call directly. Machine and commit are
-noted per row; full tables (more sizes, both precisions) live in each feature's mini-doc.
+Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded Burst, median of
+9 runs. Full tables — more sizes, double precision — live in each feature's doc under
+[docs/features](docs/features).
 
-| Solver | Representative case | Measured result | Source |
-|---|---|---|---|
-| Direct solve, dense QR (`QR.qrDirectSolve`) | 1024×1024, float | 74.7× faster after a cache-locality fix (2684ms→35.9ms; 0.53→39.9 GFLOP/s) | commit `eadf6a8` |
-| Least-squares, QRCP (`QR.qrcpDirectSolve`) | 1024×1024, float | 61.6× faster after the same fix (5889ms→95.5ms; 0.24→15.0 GFLOP/s) | commit `eadf6a8` |
-| Iterative solve, CG, dense vs. sparse (`Solvers.cg`) | 768×768 SPD, 7% block fill, double | 13× faster on the sparse (BSR) operand (8.59ms → 0.66ms) | commit `754ff4a` |
-| SVD, truncated GKL (`SVD.svdTruncated`) | 2048×256, k≈21%, float | 6.2–6.9× faster after vectorizing the Lanczos basis | commit `4203c72` |
-| Eigensolve, symmetric (`Eigen.eigenSymmetric`, values only) | 256×256, float | ~75× faster than cyclic Jacobi | commit `4902032` |
-| FFT, real input (`FFT.rfft` vs. full `fft`) | N = 1,048,576, float | 1.5× faster (24.0ms → 15.9ms) | commit `dc3bd3f` |
-| Eigensolve, k smallest (`LOBPCG.lobpcg`) | dense SPD 512×512, k=4, float | 84.9ms median for a fixed 50-iteration budget | 2026-07-05, commit `0714c97` |
-| Iterative solve, block-Jacobi PCG vs. plain CG (`Solvers.pcg`) | 768×768 SPD BSR, b=3, 7% fill, float | 0.030ms (CG) vs. 0.045ms (PCG) — preconditioning overhead exceeds its payoff on this well-conditioned case | 2026-07-05, commit `0714c97` |
-
-See [docs/features](docs/features) — each linked doc below carries the deeper benchmark table.
+| Algorithm | Case | Results |
+|---|---|---|
+| LU solve — `LU.luSolve` | 1024×1024, float | 16.7 ms |
+| Cholesky solve — `Cholesky.choleskySolve` | SPD 1024×1024, float | 12.2 ms |
+| QR solve — `QR.qrDirectSolve` | 1024×1024, float | 38.4 ms |
+| QR least squares — `QR.qrDirectSolve` | 2048×512, float | 34.5 ms |
+| QRCP least squares, rank-safe — `QR.qrcpDirectSolve` | 2048×512, float | 72.7 ms |
+| CG, iterative solve — `Solvers.cg` | SPD 768×768, double; dense vs. sparse BSR (3×3 blocks, 7% fill), 40 iterations | dense 8.62 ms, sparse 0.25 ms |
+| Symmetric eigendecomposition — `Eigen.eigenSymmetric` | 1024×1024, float, values + vectors | 428.6 ms |
+| Eigenvalues only — `Eigen.eigenvaluesSymmetric` | 1024×1024, float | 163.0 ms |
+| Smallest eigenpairs — `LOBPCG.lobpcg` | SPD 512×512, k=4, float, 50 iterations | 84.9 ms |
+| SVD, thin — `SVD.svdThin` | 1024×1024, float | 522.5 ms |
+| SVD, truncated top-k — `SVD.svdTruncated` | 2048×256, k=54, float | 27.6 ms |
+| FFT — `FFT.fft` | N = 1,048,576, float | 26.1 ms |
+| Real FFT — `FFT.rfft` | N = 1,048,576, float | 18.7 ms |
 
 ## Features
 

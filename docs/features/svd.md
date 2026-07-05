@@ -53,3 +53,13 @@ AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `0714c97`, Unity Edit
 | `svdThin` | double | 735.77 |
 | `svdValues` (values only) | float | 188.44 |
 | `svdValues` | double | 233.35 |
+
+`svdTruncated` absolute numbers, tall 2048×256 (`Benchmarks/SvdComparisonBenchmark.cs`), same
+machine/config, commit `95a1897` — for reference, `svdThin` (full, k=256) on the same matrix is
+52.0ms float / 70.7ms double:
+
+| k (of n=256) | float med(ms) | double med(ms) |
+|---|---|---|
+| 8 (3%) | 4.13 | 4.41 |
+| 18 (7%) | 7.73 | 8.14 |
+| 54 (21%) | 27.55 | 27.45 |
