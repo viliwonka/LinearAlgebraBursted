@@ -11,7 +11,9 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
 - **Bare methods on algorithm classes, no class-name echo**: the class names the algorithm
   (`LU`, `CHO`, `QR`, `QRCP`, `SVD`, `Eigen`, `PCA`, `Bidiag`), the method names the operation —
   `SVD.thin`, not `SVD.svdThin`; `CHO.decomp`, not `Cholesky.choleskyDecomposition`;
-  `PCA.covariance`, not `PCA.pcaCovariance`. Precedent: `Blas.dot`, `Norms.L1`, `Solvers.cg`.
+  `PCA.fitCov`, not `PCA.pcaCovariance` (the bare `PCA.covariance` was deliberately rejected —
+  it would read as "computes a covariance matrix" and collide conceptually with `Stats.covariance`;
+  model-fitting methods take the `fit` verb + route). Precedent: `Blas.dot`, `Norms.L1`, `Solvers.cg`.
   Exception: a class that genuinely IS the operation (`FFT.fft`, `LOBPCG.lobpcg`) keeps the echo —
   there the echo names the operation, not the class. Contrast `KMeans`: it used to echo
   (`KMeans.kmeans`) but was rebased to `KMeans.fit` (sklearn precedent) — `KMeans` is a class that
