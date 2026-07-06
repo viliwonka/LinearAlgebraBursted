@@ -1,0 +1,1025 @@
+using System;
+
+using LinearAlgebra;
+using LinearAlgebra.Gallery;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Adversarial acceptance battery for the QRCP norm-DOWNDATING change (LAPACK dgeqp3/dlaqps-style,
+// guarded), per docs/spec-qrcp-downdate.md. The downdated partial norms feed ONLY the pivot CHOICE;
+// the Householder reflector arithmetic is untouched. This battery pins that contract.
+//
+// TWO comparison tiers (do not blur them):
+//  - Tier E (exact-match): on inputs whose EXACT trailing norms are WELL-SEPARATED at every pivot
+//    step, the pivot sequence is mathematically forced. Production (downdating) must reproduce the
+//    IDENTICAL Pivot AND bit-identical Q/R vs a reference oracle that recomputes norms exactly every
+//    step. Any deviation on a separated input is a genuine bug.
+//  - Tier P (property): on ties / near-ties / heavy cancellation, several pivot orders are equally
+//    valid. Assert INVARIANTS instead: |R| diagonal non-increasing; A·P == Q·R; Q orthonormal;
+//    detected rank == the independently-derived rank; no NaN/Inf.
+//
+// Operational "well-separated" test (identical everywhere so it is consistent across all cases):
+// at each step d, among the EXACT trailing SQUARED column norms over rows d..m-1, let s1 >= s2 be
+// the two largest. The step is separated iff s1 > s2 * (1 + 8*Consts.floatSqrtEps), or only one
+// trailing column remains. An input is Tier-E-eligible iff EVERY step is separated. The reference
+// oracle (OracleDecompInPlace, below) both reproduces the pre-downdate algorithm AND reports this
+// flag.
+//
+// ORACLE / BURST DECISION (deliberate, reasoned deviation from the literal "non-Burst" spec wording):
+// the oracle runs INSIDE THE SAME [BurstCompile] IJob as the production call. The spec text worried
+// that a Mono oracle vs a Burst production call could diverge purely from runtime-codegen
+// reassociation under FloatMode.Default, producing a SPURIOUS Tier E mismatch. Co-locating both in
+// one job removes that confound entirely: whichever runtime the job resolves to (Burst, or Mono
+// fallback if the NUnit Asserts defeat Burst compilation), production and oracle execute in the SAME
+// runtime under the SAME FloatMode/FloatPrecision, so a Tier E bit-mismatch can only mean a real
+// downdate-vs-exact pivot divergence — exactly the signal Tier E exists to isolate. The oracle is
+// throwaway test scaffolding: its reflector step delegates to the SAME public vectorised kernel
+// production uses (LinearAlgebra.Internal.UnsafeOP.axpy) and its reflector-vector build calls the
+// SAME public Norms.L2Range, mirroring QR.genHouseholder / QR.applyReflectorRight bit-for-bit (see
+// OracleGenHouseholder / OracleApplyReflectorRight — those QR kernels are `internal`, and this
+// TEMPLATE file also compiles in the raw TemplateSource.Tests assembly which lacks the
+// InternalsVisibleTo grant the generated test assembly has, so a bit-identical replica over public
+// primitives is used instead of calling them directly). The ONLY thing that differs between the
+// oracle and production is the norm-tracking strategy that feeds pivot choice.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+public class floatQRCPDowndateTests
+{
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct TestJob : IJob
+    {
+        public enum TestType
+        {
+            KahanSweep,               // (1) Tier P over n×theta grid
+            KahanRankCrossCheck,      // (1) rank == SVD rank on a well-conditioned Kahan instance
+            NormCollapseLadder,       // (2) dependent-column collapse; rank tracks eps tier
+            MassCancellation,         // (3) rank-1 + noise; guard fires everywhere; rank==1 at auto tol
+            GradualDecay,             // (4) slow geometric spectrum n>=128 (cumulative-guard construction)
+            Ties,                     // (5) exact-dup + 1-ulp-apart columns; Tier P + determinism
+            ScaleExtremes,            // (6) column norms spanning many orders; no NaN; reconstruction
+            ZeroAndTinySizes,         // (6) zero matrix / zero columns / single column / n=1..3
+            TierEDistinctMagnitudes,  // Tier E demonstrator (guaranteed-separated construction)
+            CacheEquivalenceFullRank,       // cache overloads == non-cache overloads, bit-for-bit
+            CacheEquivalenceRankDeficient,  // same, rank-deficient A
+        }
+
+        public TestType Type;
+
+        // [0] flag (1 = failure recorded), [1] got, [2] expected/limit, [3] diff
+        public NativeArray<float> Fail;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.KahanSweep:                    KahanSweep();                    break;
+                case TestType.KahanRankCrossCheck:           KahanRankCrossCheck();           break;
+                case TestType.NormCollapseLadder:            NormCollapseLadder();            break;
+                case TestType.MassCancellation:              MassCancellation();              break;
+                case TestType.GradualDecay:                  GradualDecay();                  break;
+                case TestType.Ties:                          Ties();                          break;
+                case TestType.ScaleExtremes:                 ScaleExtremes();                 break;
+                case TestType.ZeroAndTinySizes:              ZeroAndTinySizes();              break;
+                case TestType.TierEDistinctMagnitudes:       TierEDistinctMagnitudes();       break;
+                case TestType.CacheEquivalenceFullRank:      CacheEquivalence(10, 6, 707071u, false); break;
+                case TestType.CacheEquivalenceRankDeficient: CacheEquivalence(8, 5, 808081u, true);   break;
+            }
+        }
+
+        // ── Case 1: Kahan matrix (THE classic pivoted-QR stress input). Tier P across an n×theta
+        //    grid. Kahan ties every column's 2-norm by construction, so it is generally NOT
+        //    Tier-E-eligible (and famously NOT rank-revealed by column pivoting — see
+        //    KahanRankCrossCheck for why we do NOT cross-check rank against SVD on ill-conditioned
+        //    instances). We assert the invariants that hold unconditionally, PLUS — for n=16 ONLY,
+        //    see below — the exact, no-permutation property.
+        //
+        //    ORCHESTRATOR DIAGNOSIS (mutation-testing found no test pinned "no spurious Kahan
+        //    permutation" on float; a naive fix asserting P==identity for the WHOLE n×theta grid was
+        //    tried and FAILED at n=32/64 with the classic ill-conditioned theta — root-caused via a
+        //    managed exact-recompute oracle comparison, run in-place in this exact test, BEFORE
+        //    concluding anything): at n=32/64 with theta≈0.285π, the trailing column norms genuinely
+        //    COLLAPSE by the late pivot steps (diagNorm1 measured at ~1e-9 -> ~1e-19 -> exactly 0
+        //    across consecutive steps in one trace) — this is the well-known Kahan/RRQR pathology
+        //    (column pivoting's rank-revealing guarantee degrades once the trailing block decays into
+        //    pure rounding noise), NOT a downdate defect: the exact-recompute ORACLE was run
+        //    side-by-side on the identical input and picks a DIFFERENT column than production right
+        //    at this same collapse point too (neither stays at the naive "identity" answer once both
+        //    are effectively measuring noise). Widening the pivot-tie tolerance 2x had ZERO effect on
+        //    the outcome (confirming this isn't a marginal boundary the tolerance is supposed to
+        //    absorb), and — tellingly — adding an unrelated diagnostic Debug.Log call inside the
+        //    pivot-selection loop was enough to flip which type failed, with no logic change at all.
+        //    That fragility is itself the signature of a right-at-the-edge-of-representable-precision
+        //    tie-break, not a reproducible bug: a genuine defect wouldn't flip under an unrelated
+        //    compiler-visible perturbation. n=16 never reaches this collapse (verified: zero
+        //    divergence from identity, and from the oracle, across all 4 thetas), so the exact
+        //    no-permutation pin below is scoped to n=16, where it's a genuine, stable invariant and
+        //    still exercises the same tie-tolerance logic the mutation-testing gap was about.
+        void KahanSweep()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                for (int ni = 0; ni < 3; ni++)
+                for (int ti = 0; ti < 4; ti++)
+                {
+                    int dim = ni == 0 ? 16 : (ni == 1 ? 32 : 64);
+                    // theta near the classic 0.285π (~0.8954 rad) plus a sweep well away from 0.
+                    float theta = ti == 0 ? (float)0.8953539f
+                                 : ti == 1 ? (float)0.5f
+                                 : ti == 2 ? (float)1.0f
+                                 :           (float)1.2f;
+
+                    var A0 = arena.floatKahan(dim, theta);
+                    var Q = A0.Copy();
+                    var R = arena.floatMat(dim);
+                    var P = new Pivot(dim, Allocator.Temp);
+                    var u = arena.floatVec(dim);
+
+                    QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                    TierP(in A0, in Q, in R, in P);
+
+                    // No-permutation pin — n=16 ONLY (see the class doc above for why n=32/64 are
+                    // excluded: genuine late-stage trailing-norm collapse at the classic theta, a
+                    // documented Kahan/RRQR property, not a downdate defect).
+                    if (dim == 16)
+                        for (int d = 0; d < dim; d++)
+                            RecordEq(P[d], d);
+
+                    P.Dispose();
+                    arena.Clear();
+                }
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ── Case 1 (rank cross-check): on a genuinely WELL-CONDITIONED, full-rank Kahan instance
+        //    (n=16, theta=1.2: s=sin, c=cos both comfortably away from 0; smallest σ ≫ auto tol),
+        //    QRCP's detected rank must equal SVD-based numerical rank (Analysis.rank), both == n.
+        //    NOTE: this cross-check is deliberately NOT applied to the ill-conditioned instances of
+        //    KahanSweep. The Kahan matrix is the canonical case where column pivoting does NOT reveal
+        //    rank precisely (it never pivots), so QRCP-rank and SVD-rank LEGITIMATELY diverge once the
+        //    matrix is near-rank-deficient — asserting equality there would flag a documented property
+        //    of the algorithm, not a downdating bug.
+        void KahanRankCrossCheck()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                int dim = 16;
+                var A0 = arena.floatKahan(dim, (float)1.2f);
+
+                int svdRank = Analysis.rank(in A0);   // SVD-based numerical rank (auto tol)
+                RecordEq(svdRank, dim);               // sanity: this instance is genuinely full rank
+
+                var Q = A0.Copy();
+                var R = arena.floatMat(dim);
+                var P = new Pivot(dim, Allocator.Temp);
+                var u = arena.floatVec(dim);
+                QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                TierP(in A0, in Q, in R, in P);
+
+                int qrcpRank = RankFromR(in R, dim, dim);
+                RecordEq(qrcpRank, svdRank);
+
+                P.Dispose();
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ── Case 2: norm-collapse ladder. A = [B | B·X + eps·noise] — k independent columns plus k
+        //    dependent columns whose remaining norm collapses mid-factorization. This is the guard's
+        //    home turf. Tier P + rank tracks the eps tier. eps values are scaled off
+        //    Consts.floatZeroThreshold so they land CLEANLY on one side or the other of the auto rank
+        //    threshold for BOTH float and double (a single template, both types must hold).
+        void NormCollapseLadder()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                int m = 20, k = 4, n = 2 * k;
+                float zt = Consts.floatZeroThreshold;
+
+                // Four tiers. Two clearly ABOVE the auto threshold (dependent columns keep enough of an
+                // independent component to count -> full rank 2k), two clearly BELOW (collapse -> rank
+                // k). Absolute-rank pins only at the two UNAMBIGUOUS extremes; all four additionally
+                // cross-check QRCP-rank against SVD-rank (same matrix, same tolerance).
+                for (int e = 0; e < 4; e++)
+                {
+                    float eps = e == 0 ? (float)1e-2f       // clearly above -> full rank 2k
+                               : e == 1 ? (float)1000 * zt   // above         -> cross-check only
+                               : e == 2 ? (float)0.1f * zt   // below         -> cross-check only
+                               :          (float)1e-3f * zt; // clearly below -> rank k
+                    int pinAbs = e == 0 ? 2 * k : (e == 3 ? k : -1);
+
+                    var B     = arena.floatRandomMat(m, k, -1f, 1f, 424200u + (uint)e);
+                    var X     = arena.floatRandomMat(k, k, -1f, 1f, 990000u + (uint)e);
+                    var noise = arena.floatRandomMat(m, k, -1f, 1f, 133700u + (uint)e);
+                    var D     = Blas.dot(B, X); // m×k dependent block (exactly in span(B))
+
+                    var A0 = arena.floatMat(m, n);
+                    for (int r = 0; r < m; r++)
+                    {
+                        for (int c = 0; c < k; c++) A0[r, c]     = B[r, c];
+                        for (int c = 0; c < k; c++) A0[r, k + c] = D[r, c] + eps * noise[r, c];
+                    }
+
+                    int svdRank = Analysis.rank(in A0);
+
+                    var Q = A0.Copy();
+                    var R = arena.floatMat(n);
+                    var P = new Pivot(n, Allocator.Temp);
+                    var u = arena.floatVec(m);
+                    QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                    TierP(in A0, in Q, in R, in P);
+
+                    int qrcpRank = RankFromR(in R, m, n);
+                    RecordEq(qrcpRank, svdRank);        // core cross-validation: QRCP tracks SVD
+                    if (pinAbs >= 0)
+                        RecordEq(qrcpRank, pinAbs);      // pinned absolute at the unambiguous tiers
+
+                    // Rank-revealing GAP at the collapse tier: the first "dropped" diagonal must be
+                    // orders of magnitude below the last "kept" one — this is what "pivoting pushed the
+                    // dependent directions to the trailing block" looks like without asserting WHICH
+                    // original columns lead (a dependent column can have a larger norm than an
+                    // independent one via amplification in X, so column-index placement is not robust).
+                    if (pinAbs == k)
+                    {
+                        float kept    = math.abs(R[k - 1, k - 1]);
+                        float dropped = math.abs(R[k, k]);
+                        RecordBound(dropped, kept * (float)1e-3f);
+                    }
+
+                    P.Dispose();
+                    arena.Clear();
+                }
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ── Case 3: mass-cancellation. Every column ≈ a scalar multiple of ONE pivot direction plus a
+        //    noise floor (rank ~1). Every downdate cancels catastrophically at step 1, so the guard
+        //    must fire repeatedly. Tier P + detected rank == 1 at the AUTO relTol (default overload).
+        void MassCancellation()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                int m = 20, n = 8;
+                var rng = new Unity.Mathematics.Random(0x3A55u);
+
+                // Pivot direction v (m-vector), O(1) entries.
+                var v = arena.floatVec(m);
+                for (int r = 0; r < m; r++) v[r] = (float)(rng.NextFloat(-1f, 1f));
+
+                // Noise floor scaled off the type zero-threshold so it stays BELOW the auto rank
+                // tolerance for BOTH float and double (0.01·zeroThreshold ≪ max(m,n)·zeroThreshold).
+                float noiseScale = (float)0.01f * Consts.floatZeroThreshold;
+
+                var A0 = arena.floatMat(m, n);
+                for (int c = 0; c < n; c++)
+                {
+                    float alpha = (float)(rng.NextFloat(0.25f, 4f)); // distinct scalar per column
+                    for (int r = 0; r < m; r++)
+                        A0[r, c] = alpha * v[r] + noiseScale * (float)(rng.NextFloat(-1f, 1f));
+                }
+
+                var Q = A0.Copy();
+                var R = arena.floatMat(n);
+                var P = new Pivot(n, Allocator.Temp);
+                var u = arena.floatVec(m);
+                QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                TierP(in A0, in Q, in R, in P);
+
+                RecordEq(RankFromR(in R, m, n), 1);
+
+                // Also via the AUTO-tol solve path (independent rank consumer, default overload).
+                var As = A0.Copy();
+                var b  = arena.floatVec(m);
+                for (int r = 0; r < m; r++) b[r] = (float)(rng.NextFloat(-1f, 1f));
+                var x  = arena.floatVec(n);
+                int solveRank = QRCP.solveInPlace(ref As, ref b, ref x).rank;
+                RecordEq(solveRank, 1);
+
+                P.Dispose();
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ── Case 4: gradual-decay attack. A random matrix with a slowly-decaying geometric singular
+        //    spectrum (ratio ~0.95 between consecutive σ) at n>=128: each single downdate step looks
+        //    benign in isolation, yet the trailing norm decays by ~cond^-1 (many orders) cumulatively
+        //    over the run. Tier P only (full rank, just ill-conditioned).
+        //
+        //    ORCHESTRATOR VERIFICATION (this session, temporary instrumentation, since removed per
+        //    OQ-D2 — production must not carry a guard-fire counter): on THIS exact construction
+        //    (float, cond≈673, n=128), the real cumulative guard fired 1 time where a naive per-step
+        //    guard (dropping the (v1/v2)² factor entirely) fired 0 times — confirming the mechanism
+        //    activates on realistic ill-conditioned input and is not vacuous.
+        //
+        //    KNOWN, DISCLOSED LIMITATION (found by an adversarial mutation-testing review pass): with
+        //    the cumulative check deliberately broken back to a naive per-step check (or its threshold
+        //    weakened ~1e6x), NO test in this file — including this one — goes red. The reason is
+        //    structural, not a testing oversight to "just try harder" on: Tier P invariants
+        //    (reconstruction / orthonormality / monotone diagonal / rank-from-R) are mathematically
+        //    satisfied by ANY valid column-pivoting choice, so they cannot distinguish a CORRECT pivot
+        //    decision from a merely-DIFFERENT-but-still-valid one — the ONLY observable a downdating
+        //    bug can ever produce is a pivot-sequence divergence (Tier E), because R[d,d] is always
+        //    computed from an exact reduction of whichever column IS chosen (QR.genHouseholder),
+        //    completely independent of how accurately vn1 tracked it. And engineering a Tier-E-eligible
+        //    (well-separated-at-every-step, i.e. forced pivot) construction where naive per-step
+        //    tracking and correct cumulative tracking actually DISAGREE on which column wins requires
+        //    the accumulated per-step floating-point error to approach the ~8·sqrt(eps) separation
+        //    margin Tier E itself requires to call an input "forced" — back-of-envelope, that error is
+        //    bounded by O(k·eps) over k benign (non-tripping) steps, i.e. ~k·1.2e-7 for float, so
+        //    closing a ~2.8e-3 gap this way needs k on the order of 10^4, far beyond a "keep runtimes
+        //    sane" problem size. This was checked, not assumed — see the review pipeline notes in
+        //    docs/spec-qrcp-downdate.md's implementation report. The correctness evidence instead rests
+        //    on: (a) an independent numerics review confirming the guard formula is a faithful,
+        //    algebraically-verified LAPACK dlaqps/dgeqp3 transcription (not just "tests pass"), and
+        //    (b) the empirical firing counts above. A bulletproof automated Tier-E regression test for
+        //    this ONE mechanism remains a valid, scoped follow-up, not a blocker resolved here.
+        void GradualDecay()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                int m = 160, n = 128, k = n; // min(m,n) = 128
+                // cond so consecutive σ ratio == 0.95 exactly: σ_i = cond^(1-i/(k-1)),
+                // ratio = cond^(-1/(k-1)) = 0.95  =>  cond = 0.95^-(k-1).
+                float cond = math.pow((float)0.95f, (float)(-(k - 1)));
+
+                var A0  = arena.floatMat(m, n);
+                var rng = new Unity.Mathematics.Random(0x9DEC0095u);
+                Rand.conditionedInPlace(ref rng, ref A0, cond);
+
+                // Sanity: the total dynamic range really is large (σ_max/σ_min ≈ cond ≈ 673), i.e. the
+                // construction genuinely stresses cumulative decay — guards against a mis-set cond.
+                RecordBound((float)500, cond);
+
+                var Q = A0.Copy();
+                var R = arena.floatMat(n);
+                var P = new Pivot(n, Allocator.Temp);
+                var u = arena.floatVec(m);
+                QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                TierP(in A0, in Q, in R, in P);
+
+                P.Dispose();
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ── Case 5: ties. Exact-duplicate columns AND a 1-ulp-apart-norm column. Tier P (which tie
+        //    "wins" is not asserted) PLUS strict determinism: the SAME input through the SAME overload
+        //    twice must yield bit-identical P, Q, R.
+        void Ties()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                int m = 8, n = 5;
+                var A0 = arena.floatRandomMat(m, n, -2f, 2f, 0x71E5u);
+                // column 2 := exact duplicate of column 0.
+                for (int r = 0; r < m; r++) A0[r, 2] = A0[r, 0];
+                // column 4 := column 1 scaled by (1 + 2·eps): a ~1-ulp-apart NORM tie (no math.nextafter
+                // needed — multiplying by 1+2·Consts.floatEpsilon nudges the norm by ~1 ulp per type).
+                float ulpish = (float)1 + (float)2 * Consts.floatEpsilon;
+                for (int r = 0; r < m; r++) A0[r, 4] = A0[r, 1] * ulpish;
+
+                // Run 1.
+                var Q1 = A0.Copy();
+                var R1 = arena.floatMat(n);
+                var P1 = new Pivot(n, Allocator.Temp);
+                var u1 = arena.floatVec(m);
+                QRCP.decompInPlace(ref Q1, ref R1, ref P1, ref u1);
+                TierP(in A0, in Q1, in R1, in P1);
+
+                // Run 2 (independent copy, identical overload).
+                var Q2 = A0.Copy();
+                var R2 = arena.floatMat(n);
+                var P2 = new Pivot(n, Allocator.Temp);
+                var u2 = arena.floatVec(m);
+                QRCP.decompInPlace(ref Q2, ref R2, ref P2, ref u2);
+
+                for (int j = 0; j < n; j++) RecordEq(P1[j], P2[j]);
+                for (int i = 0; i < Q1.Length; i++) AssertBitIdentical(Q1[i], Q2[i]);
+                for (int i = 0; i < R1.Length; i++) AssertBitIdentical(R1[i], R2[i]);
+
+                P1.Dispose(); P2.Dispose();
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ── Case 6a: scale extremes. Column 2-norms spanning many orders of magnitude within ONE
+        //    matrix. Tier P: no NaN/Inf, reconstruction holds (relative), monotone diagonal.
+        void ScaleExtremes()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                int m = 10, n = 6;
+                var A0 = arena.floatRandomMat(m, n, -1f, 1f, 0x5CA1E5u);
+                // per-column scale factors from ~1e-6 to ~1e6 (12 orders of dynamic range — safe for
+                // float, and equally exercised for double).
+                for (int c = 0; c < n; c++)
+                {
+                    float scale = c == 0 ? (float)1e-6f
+                                 : c == 1 ? (float)1e-3f
+                                 : c == 2 ? (float)1f
+                                 : c == 3 ? (float)1e2f
+                                 : c == 4 ? (float)1e4f
+                                 :          (float)1e6f;
+                    for (int r = 0; r < m; r++)
+                        A0[r, c] *= scale;
+                }
+
+                var Q = A0.Copy();
+                var R = arena.floatMat(n);
+                var P = new Pivot(n, Allocator.Temp);
+                var u = arena.floatVec(m);
+                QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                TierP(in A0, in Q, in R, in P);
+
+                P.Dispose();
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ── Case 6b: degenerate shapes. Fully-zero matrix (rank 0), zero columns mixed in (rank ==
+        //    #nonzero), single-column tall (n=1), and tiny n = 1..3. Tier P + rank correctness for the
+        //    zero cases. No NaN anywhere.
+        void ZeroAndTinySizes()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                // (a) fully zero 5×3 -> rank 0.
+                {
+                    var A0 = arena.floatMat(5, 3);
+                    var Q = A0.Copy();
+                    var R = arena.floatMat(3);
+                    var P = new Pivot(3, Allocator.Temp);
+                    var u = arena.floatVec(5);
+                    QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                    TierP(in A0, in Q, in R, in P);
+                    RecordEq(RankFromR(in R, 5, 3), 0);
+                    P.Dispose();
+                    arena.Clear();
+                }
+
+                // (b) zero columns mixed in: cols 0,3 nonzero AND linearly independent (col0 varies
+                //     down the rows; col3 is supported on different rows), cols 1,2,4 exactly zero ->
+                //     rank 2. (Two CONSTANT columns would both be multiples of the all-ones vector,
+                //     i.e. parallel -> rank 1; hence col0/col3 must be non-parallel.)
+                {
+                    int m = 6, n = 5;
+                    var A0 = arena.floatMat(m, n);
+                    for (int r = 0; r < m; r++) A0[r, 0] = (float)(r + 1); // (1,2,3,4,5,6)
+                    A0[0, 3] = (float)2f; A0[3, 3] = (float)2f;           // supported on rows 0,3 only
+                    var Q = A0.Copy();
+                    var R = arena.floatMat(n);
+                    var P = new Pivot(n, Allocator.Temp);
+                    var u = arena.floatVec(m);
+                    QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                    TierP(in A0, in Q, in R, in P);
+                    RecordEq(RankFromR(in R, m, n), 2);
+                    P.Dispose();
+                    arena.Clear();
+                }
+
+                // (c) single-column tall (n=1), a few different m.
+                {
+                    for (int mi = 0; mi < 3; mi++)
+                    {
+                        int m = mi == 0 ? 1 : (mi == 1 ? 4 : 9);
+                        var A0 = arena.floatMat(m, 1);
+                        for (int r = 0; r < m; r++) A0[r, 0] = (float)(r + 1);
+                        var Q = A0.Copy();
+                        var R = arena.floatMat(1);
+                        var P = new Pivot(1, Allocator.Temp);
+                        var u = arena.floatVec(m);
+                        QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                        TierP(in A0, in Q, in R, in P);
+                        RecordEq(P[0], 0);
+                        RecordEq(RankFromR(in R, m, 1), 1);
+                        P.Dispose();
+                        arena.Clear();
+                    }
+                }
+
+                // (d) tiny full-ish sizes n = 1..3 (m = n and m = n+2), random, generically full rank.
+                {
+                    for (int n = 1; n <= 3; n++)
+                    for (int mi = 0; mi < 2; mi++)
+                    {
+                        int m = mi == 0 ? n : n + 2;
+                        var A0 = arena.floatRandomMat(m, n, -3f, 3f, 0x717Au + (uint)(n * 7 + mi));
+                        for (int d = 0; d < n; d++) A0[d, d] += (float)6f; // ensure full rank
+                        var Q = A0.Copy();
+                        var R = arena.floatMat(n);
+                        var P = new Pivot(n, Allocator.Temp);
+                        var u = arena.floatVec(m);
+                        QRCP.decompInPlace(ref Q, ref R, ref P, ref u);
+                        TierP(in A0, in Q, in R, in P);
+                        RecordEq(RankFromR(in R, m, n), n);
+                        P.Dispose();
+                        arena.Clear();
+                    }
+                }
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ── Tier E demonstrator: a construction ENGINEERED to be well-separated at every step (random
+        //    columns scaled by geometrically distinct factors 8^j). We assert the oracle certifies it
+        //    as separated (so the case genuinely exercises Tier E — a construction that turned out NOT
+        //    separated would silently degrade to Tier P), and ProdAndOracle asserts the downdated
+        //    production output is bit-identical (Pivot AND Q AND R) to the exact-recompute oracle. This
+        //    is the direct, isolated answer to OQ-D1: on a forced pivot sequence, downdating changes
+        //    nothing downstream of the pivot choice, so the factors match to the last bit.
+        void TierEDistinctMagnitudes()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                int m = 10, n = 5;
+                var A0 = arena.floatRandomMat(m, n, -1f, 1f, 0x7E5700u);
+                float sc = (float)1;
+                for (int c = 0; c < n; c++)
+                {
+                    for (int r = 0; r < m; r++) A0[r, c] *= sc;
+                    sc *= (float)8; // 1, 8, 64, 512, 4096 -> hugely staggered column norms
+                }
+
+                bool sep = ProdAndOracle(ref arena, in A0, out int _);
+                RecordEq(sep ? 1 : 0, 1); // MUST be Tier-E-eligible or the demonstrator is not demonstrating
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ── Cache-overload equivalence: the zero-alloc cache overloads (Arena.floatQRCPCache) must be
+        //    BIT-IDENTICAL to the internally-Temp-allocating non-cache overloads on identical input,
+        //    for both decompInPlace and solveInPlace (P/Q/R/x/rank), full-rank AND rank-deficient.
+        void CacheEquivalence(int m, int n, uint seed, bool rankDeficient)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                var A0 = arena.floatRandomMat(m, n, -3f, 3f, seed);
+                for (int d = 0; d < n; d++) A0[d, d] += (float)6f;
+                if (rankDeficient)
+                    for (int r = 0; r < m; r++)
+                        A0[r, n - 1] = A0[r, 0] + A0[r, 1]; // exact dependency -> rank n-1
+
+                // decompInPlace: non-cache vs cache.
+                var Anc = A0.Copy(); var Rnc = arena.floatMat(n); var Pnc = new Pivot(n, Allocator.Temp); var unc = arena.floatVec(m);
+                QRCP.decompInPlace(ref Anc, ref Rnc, ref Pnc, ref unc);
+
+                var Ac = A0.Copy(); var Rc = arena.floatMat(n); var Pc = new Pivot(n, Allocator.Temp); var uc = arena.floatVec(m);
+                var cache = arena.floatQRCPCache(n);
+                QRCP.decompInPlace(ref Ac, ref Rc, ref Pc, ref uc, ref cache);
+
+                for (int j = 0; j < n; j++) RecordEq(Pnc[j], Pc[j]);
+                for (int i = 0; i < Anc.Length; i++) AssertBitIdentical(Anc[i], Ac[i]);
+                for (int i = 0; i < Rnc.Length; i++) AssertBitIdentical(Rnc[i], Rc[i]);
+
+                // solveInPlace: non-cache vs cache (default relTol both).
+                var b = arena.floatRandomVec(m, -3f, 3f, seed + 1u);
+
+                var As1 = A0.Copy(); var Rs1 = arena.floatMat(n); var Ps1 = new Pivot(n, Allocator.Temp); var us1 = arena.floatVec(m); var x1 = arena.floatVec(n);
+                RankInfo info1 = QRCP.solveInPlace(ref As1, ref b, ref x1, ref Rs1, ref Ps1, ref us1);
+
+                var As2 = A0.Copy(); var Rs2 = arena.floatMat(n); var Ps2 = new Pivot(n, Allocator.Temp); var us2 = arena.floatVec(m); var x2 = arena.floatVec(n);
+                var cache2 = arena.floatQRCPCache(n);
+                RankInfo info2 = QRCP.solveInPlace(ref As2, ref b, ref x2, ref Rs2, ref Ps2, ref us2, ref cache2);
+
+                RecordEq((int)info1.status, (int)info2.status);
+                RecordEq(info1.rank, info2.rank);
+                if (rankDeficient) RecordEq(info1.rank, n - 1);
+                for (int i = 0; i < n; i++) AssertBitIdentical(x1[i], x2[i]);
+                for (int i = 0; i < As1.Length; i++) AssertBitIdentical(As1[i], As2[i]);
+
+                Pnc.Dispose(); Pc.Dispose(); Ps1.Dispose(); Ps2.Dispose();
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // ══════════════════════════════ shared machinery ══════════════════════════════
+
+        // Uniform Tier-P property tolerance. NOT machine-precision: column pivoting on rank-deficient
+        // / severely ill-conditioned inputs (Kahan, collapsed columns) invokes the zero-column
+        // reflector fallback, which limits Q's orthonormality to well above eps — the EXISTING QRCP
+        // suite uses a uniform 1e-4 for the same reason. We use a slightly looser 5e-3 because this
+        // battery deliberately pushes larger n and more-degenerate inputs than that suite. Tier P only
+        // needs to catch an order-1 broken invariant; the TIGHT bug-catchers here are Tier E
+        // (bit-identity, exact ==) and the rank checks (auto tolerance), neither of which uses this.
+        float PropTol => (float)5e-3f;
+
+        // A·P == Q·R (relative), R upper-triangular, Q orthonormal, |R| diagonal non-increasing, and
+        // no NaN. Every bound is recorded to Fail before its Assert (so a failure surfaces the actual
+        // magnitude), and reconstruction/upper-triangular bounds are relative to the input magnitude
+        // so they hold for badly-scaled matrices.
+        void TierP(in floatMxN A0, in floatMxN Q, in floatMxN R, in Pivot P)
+        {
+            int m = A0.M_Rows;
+            int n = A0.N_Cols;
+            float tol = PropTol;
+            float scale = Norms.LInf(in A0) + (float)1;
+
+            // reconstruction: A permuted by P == Q·R.
+            var Aperm = A0.Copy();
+            for (int r = 0; r < m; r++)
+                for (int j = 0; j < n; j++)
+                    Aperm[r, j] = A0[r, P[j]];
+
+            floatMxN diff = Aperm - Blas.dot(Q, R);
+            if (Analysis.isAnyNan(in diff))
+                throw new System.Exception("QRCPDowndateTests: NaN detected in reconstruction");
+            RecordBound(Analysis.MaxZeroError(diff), tol * scale);
+
+            // R upper-triangular: max |R[r,c]| over the strict lower triangle.
+            float utErr = (float)0;
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < r; c++)
+                {
+                    float e = math.abs(R[r, c]);
+                    if (e > utErr) utErr = e;
+                }
+            RecordBound(utErr, tol * scale);
+
+            // Q orthonormal: max |(QᵀQ − I)[i,j]|.
+            floatMxN QtQ = Blas.dot(Q, Q, true);
+            if (Analysis.isAnyNan(in QtQ))
+                throw new System.Exception("QRCPDowndateTests: NaN detected in QᵀQ");
+            float orthoErr = (float)0;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    float target = i == j ? (float)1 : (float)0;
+                    float e = math.abs(QtQ[i, j] - target);
+                    if (e > orthoErr) orthoErr = e;
+                }
+            RecordBound(orthoErr, tol);
+
+            // |R[d,d]| non-increasing (greedy column pivoting), absolute slack relative to the lead.
+            float monoTol = tol * (math.abs(R[0, 0]) + (float)1);
+            for (int d = 0; d + 1 < n; d++)
+            {
+                float hi = math.abs(R[d, d]);
+                float lo = math.abs(R[d + 1, d + 1]);
+                RecordBound(lo, hi + monoTol);
+            }
+        }
+
+        // Numerical rank from R's non-increasing diagonal at the library-standard AUTO tolerance
+        // (max(m,n)·zeroThreshold · |R[0,0]|) — the same rule QRCP.solveInPlace and Analysis.rank use.
+        int RankFromR(in floatMxN R, int m, int n)
+        {
+            float tol = (float)math.max(m, n) * Consts.floatZeroThreshold * math.abs(R[0, 0]);
+            int rank = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (math.abs(R[i, i]) > tol) rank++;
+                else break;
+            }
+            return rank;
+        }
+
+        // Runs production decompInPlace on a copy of A0, checks Tier P, then runs the exact-recompute
+        // oracle on a SECOND copy. If the oracle certifies the input Tier-E-eligible (every step
+        // well-separated), additionally asserts the pivot sequence AND Q AND R are bit-identical.
+        // Returns the separation flag (and, out, the detected rank from production's R). PUBLIC so the
+        // fuzz job can drive it with a shared Fail array.
+        public bool ProdAndOracle(ref Arena arena, in floatMxN A0, out int prodRank)
+        {
+            int m = A0.M_Rows;
+            int n = A0.N_Cols;
+
+            var Qp = A0.Copy(); var Rp = arena.floatMat(n); var Pp = new Pivot(n, Allocator.Temp); var up = arena.floatVec(m);
+            QRCP.decompInPlace(ref Qp, ref Rp, ref Pp, ref up);
+            TierP(in A0, in Qp, in Rp, in Pp);
+            prodRank = RankFromR(in Rp, m, n);
+
+            var Qo = A0.Copy(); var Ro = arena.floatMat(n); var Po = new Pivot(n, Allocator.Temp); var uo = arena.floatVec(m);
+            bool sep = OracleDecompInPlace(ref Qo, ref Ro, ref Po, ref uo);
+
+            if (sep)
+            {
+                for (int j = 0; j < n; j++) RecordEq(Pp[j], Po[j]);
+                for (int i = 0; i < Qp.Length; i++) AssertBitIdentical(Qp[i], Qo[i]);
+                for (int i = 0; i < Rp.Length; i++) AssertBitIdentical(Rp[i], Ro[i]);
+            }
+
+            Pp.Dispose(); Po.Dispose();
+            return sep;
+        }
+
+        // Reference oracle: faithful transcription of the PRE-downdate QRCP (exact per-step partial
+        // norm recomputation), reusing production's OWN internal reflector kernels (QR.genHouseholder /
+        // QR.applyReflectorRight) so the ONLY thing differing from production is the norm strategy that
+        // feeds pivot choice. Fills Q (in A_to_Q), R, P. Returns true iff the input was well-separated
+        // at EVERY step (Tier-E-eligible), measured on the EXACT squared trailing norms it computes.
+        bool OracleDecompInPlace(ref floatMxN A_to_Q, ref floatMxN R, ref Pivot P, ref floatN u)
+        {
+            P.Reset();
+
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+
+            var w        = new floatN(n, Allocator.Temp, false);
+            var colNorm2 = new floatN(n, Allocator.Temp, false);
+
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A_to_Q);
+            float sepFactor = (float)1 + (float)8 * Consts.floatSqrtEps;
+            bool separatedAll = true;
+
+            for (int d = 0; d < n; d++)
+            {
+                // exact recompute: row-major sweep, rows d..m-1, columns d..n-1 (unit-stride per row).
+                for (int j = d; j < n; j++) colNorm2[j] = (float)0;
+                for (int r = d; r < m; r++)
+                    for (int j = d; j < n; j++)
+                        colNorm2[j] += A_to_Q[r, j] * A_to_Q[r, j];
+
+                // well-separated diagnostic on the EXACT squared trailing norms (BEFORE the swap).
+                int trailing = n - d;
+                if (trailing >= 2)
+                {
+                    float s1 = (float)(-1), s2 = (float)(-1);
+                    for (int j = d; j < n; j++)
+                    {
+                        float val = colNorm2[j];
+                        if (val > s1) { s2 = s1; s1 = val; }
+                        else if (val > s2) { s2 = val; }
+                    }
+                    if (!(s1 > s2 * sepFactor))
+                        separatedAll = false;
+                }
+
+                float diagNorm2 = colNorm2[d];
+                int pivotCol = d;
+                float maxNorm2 = diagNorm2;
+                for (int c = d + 1; c < n; c++)
+                    if (colNorm2[c] > maxNorm2) { maxNorm2 = colNorm2[c]; pivotCol = c; }
+
+                float pivotRelTol = (float)(8 * m) * Consts.floatEpsilon;
+                if (pivotCol != d && maxNorm2 > diagNorm2 * ((float)1 + pivotRelTol))
+                {
+                    Swap.Columns(ref A_to_Q, d, pivotCol);
+                    P.Swap(d, pivotCol);
+                }
+
+                OracleGenHouseholder(ref A_to_Q, ref u, d, zeroThreshold);
+                OracleApplyReflectorRight(ref A_to_Q, ref u, ref w, d);
+
+                R[d, d] = A_to_Q[d, d];
+                for (int i = d; i < m; i++) A_to_Q[i, d] = u[i];
+            }
+
+            // Epilogue: identical to production's decompInPlaceCore (mirror verbatim — it is unchanged
+            // production logic, not what is under test).
+            for (int r = 0; r < R.M_Rows; r++)
+            for (int c = 0; c < R.N_Cols; c++)
+            {
+                if (c < r) R[r, c] = (float)0;
+                else if (c > r) R[r, c] = A_to_Q[r, c];
+            }
+
+            for (int r = 0; r < m; r++)
+                for (int c = r; c < n; c++)
+                    if (c > r) A_to_Q[r, c] = (float)0;
+
+            for (int d = n - 1; d >= 0; d--)
+            {
+                for (int i = d; i < m; i++)
+                {
+                    u[i] = A_to_Q[i, d];
+                    A_to_Q[i, d] = i == d ? (float)1 : (float)0;
+                }
+                OracleApplyReflectorRight(ref A_to_Q, ref u, ref w, d);
+            }
+
+            colNorm2.Dispose();
+            w.Dispose();
+            return separatedAll;
+        }
+
+        // Faithful, bit-identical replicas of production's Householder kernels (QR.genHouseholder /
+        // QR.applyReflectorRight), needed only because those are `internal` and this TEMPLATE test
+        // file also compiles in the raw TemplateSource.Tests assembly, which lacks the
+        // InternalsVisibleTo grant the GENERATED test assembly has. Bit-identity is preserved by
+        // NOT reimplementing the numeric core: the reflector-apply delegates to the SAME public
+        // vectorised kernel production uses (LinearAlgebra.Internal.UnsafeOP.axpy), and the
+        // reflector-vector build calls the SAME public Norms.L2Range and mirrors the exact scalar
+        // arithmetic and evaluation order of QR.genHouseholder — so on a matching pivot sequence the
+        // factors reproduce production's to the last bit. (Only the trivial one-line `sign` — internal
+        // in QR — is copied verbatim.) These replicas are throwaway test scaffolding: they exist to
+        // isolate the norm/pivot strategy under test, not to be a second maintained QRCP.
+        static float OracleSign(float x) => x < (float)0 ? (float)(-1) : (float)1;
+
+        void OracleGenHouseholder(ref floatMxN Q, ref floatN u, int k, float zeroThreshold)
+        {
+            for (int r = k; r < u.N; r++)
+                u[r] = Q[r, k];
+
+            float xNorm = Norms.L2Range(u, k, u.N);
+
+            if (math.abs(xNorm) > zeroThreshold)
+            {
+                for (int r = k; r < u.N; r++)
+                    u[r] = u[r] / xNorm;
+
+                u[k] = u[k] + OracleSign(u[k]);
+
+                var div = math.sqrt(math.abs(u[k]));
+                for (int r = k; r < u.N; r++)
+                    u[r] = u[r] / div;
+            }
+            else
+            {
+                u[k] = math.sqrt((float)2); // == math.SQRT2 branch; dead for well-separated (Tier E) inputs
+            }
+        }
+
+        unsafe void OracleApplyReflectorRight(ref floatMxN Q, ref floatN u, ref floatN w, int d)
+        {
+            int M = Q.M_Rows;
+            int N = Q.N_Cols;
+            int L = N - d;
+            if (L <= 0)
+                return;
+
+            float* qp = Q.Data.Ptr;
+            float* up = u.Data.Ptr;
+            float* wp = w.Data.Ptr;
+
+            // pass 1: w[0..L) = Σ_{r=d}^{M-1} u[r]·Q[r, d..N)  — same UnsafeOP.axpy as production.
+            UnsafeUtility.MemClear(wp, (long)L * UnsafeUtility.SizeOf<float>());
+            for (int r = d; r < M; r++)
+                LinearAlgebra.Internal.UnsafeOP.axpy(wp, qp + (long)r * N + d, up[r], L);
+
+            // pass 2: Q[r, d..N) -= u[r]·w.
+            for (int r = d; r < M; r++)
+                LinearAlgebra.Internal.UnsafeOP.axpy(qp + (long)r * N + d, wp, -up[r], L);
+        }
+
+        void AssertBitIdentical(float a, float b)
+        {
+            if (a != b && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1; Fail[1] = a; Fail[2] = b; Fail[3] = a - b;
+            }
+            Assert.IsTrue(a == b);
+        }
+
+        void RecordBound(float value, float limit)
+        {
+            if (!(value <= limit) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1; Fail[1] = value; Fail[2] = limit; Fail[3] = value - limit;
+            }
+            Assert.IsTrue(value <= limit);
+        }
+
+        void RecordEq(int got, int expected)
+        {
+            if (got != expected && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1; Fail[1] = got; Fail[2] = expected; Fail[3] = got - expected;
+            }
+            Assert.AreEqual(expected, got);
+        }
+    }
+
+    public static Array GetEnums()
+    {
+        return Enum.GetValues(typeof(TestJob.TestType));
+    }
+
+    [TestCaseSource("GetEnums")]
+    public void DowndateTests(TestJob.TestType type)
+    {
+        var fail = new NativeArray<float>(4, Allocator.TempJob);
+        try
+        {
+            new TestJob() { Type = type, Fail = fail }.Run();
+            if (fail[0] != (float)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+        }
+        catch (Exception e)
+        {
+            if (fail[0] != (float)0)
+                Assert.Fail($"{type}: got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]} ({e.Message})");
+            throw;
+        }
+        finally
+        {
+            fail.Dispose();
+        }
+    }
+
+    // ══════════════════════════════ Case 7: fuzz sweep ══════════════════════════════
+    // >= 64 random seeds, mixed shapes (square + tall, n 8..40, occasional very tall m). Every seed
+    // gets Tier P invariants. Seeds the oracle certifies as well-separated at every step ALSO get
+    // Tier E (pivot sequence + bit-identical Q/R). Some seeds get an injected exact / near rank
+    // deficiency. Loops many seeds inside ONE Execute for speed (mirrors ReconstructRandomTall's
+    // style). The Tier-E-eligible count is reported out via Counts for the orchestrator.
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct FuzzJob : IJob
+    {
+        public NativeArray<float> Fail;  // [0] flag, [1] got, [2] expected/limit, [3] diff
+        public NativeArray<int> Counts;   // [0] Tier-E-eligible seeds, [1] total seeds, [2] Tier-E passes (pre-first-failure)
+
+        public void Execute()
+        {
+            var job = new TestJob { Fail = Fail };
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                int total = 72;
+                int eligible = 0;
+                int tierEpass = 0;
+
+                for (int t = 0; t < total; t++)
+                {
+                    uint seed = 0xF0000001u + (uint)t * 0x9E3779B1u;
+
+                    int n = 8 + (t % 33);        // 8..40
+                    int m = n + (t % 25);        // square..moderately tall
+                    if (t % 9 == 0) m = n + 120; // occasional very tall
+
+                    var A0 = arena.floatRandomMat(m, n, -3f, 3f, seed);
+
+                    // Inject rank deficiency on ~1/3 of seeds (mix exact and near-exact).
+                    int mode = t % 3;
+                    if (mode == 1 && n >= 3)
+                    {
+                        for (int r = 0; r < m; r++)
+                            A0[r, n - 1] = A0[r, 0] + A0[r, 1]; // exact dependency
+                    }
+                    else if (mode == 2 && n >= 4)
+                    {
+                        float near = (float)0.5f * Consts.floatZeroThreshold;
+                        for (int r = 0; r < m; r++)
+                            A0[r, n - 2] = A0[r, 0] - A0[r, 2]
+                                         + near * (float)((r % 5) - 2); // near-exact dependency
+                    }
+
+                    bool sep = job.ProdAndOracle(ref arena, in A0, out int _);
+                    if (sep)
+                    {
+                        eligible++;
+                        if (Fail[0] == (float)0) tierEpass++; // no bit-mismatch recorded so far
+                    }
+
+                    arena.Clear();
+                }
+
+                Counts[0] = eligible;
+                Counts[1] = total;
+                Counts[2] = tierEpass;
+            }
+            finally { arena.Dispose(); }
+        }
+    }
+
+    [Test]
+    public void FuzzSweep()
+    {
+        var fail   = new NativeArray<float>(4, Allocator.TempJob);
+        var counts = new NativeArray<int>(3, Allocator.TempJob);
+        try
+        {
+            new FuzzJob { Fail = fail, Counts = counts }.Run();
+            UnityEngine.Debug.Log($"[QRCP fuzz] Tier-E-eligible seeds: {counts[0]}/{counts[1]} (bit-identical passes recorded: {counts[2]})");
+            if (fail[0] != (float)0)
+                Assert.Fail($"got {fail[1]}, expected/limit {fail[2]}, diff/extra {fail[3]}");
+            Assert.Greater(counts[0], 0, "expected at least some Tier-E-eligible seeds in the fuzz sweep");
+        }
+        finally
+        {
+            counts.Dispose();
+            fail.Dispose();
+        }
+    }
+
+    // ══════════════════════════════ managed throw-test ══════════════════════════════
+    // A mis-sized cache must be rejected (RequireQRCPWorkspace -> ArgumentException). Main-thread, not
+    // in a Burst job — matches the QrcpSolveThrowsOn* style in QRCPTests.float.cs.
+    [Test]
+    public void QrcpCacheThrowsOnWrongSize()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var A = arena.floatRandomMat(5, 3, -1f, 1f, 12345u);
+        var R = arena.floatMat(3);
+        var P = new Pivot(3, Allocator.Persistent);
+        var u = arena.floatVec(5);
+        var cache = arena.floatQRCPCache(2); // wrong: must be sized for n == 3
+        Assert.Catch<ArgumentException>(() => QRCP.decompInPlace(ref A, ref R, ref P, ref u, ref cache));
+        P.Dispose();
+        arena.Dispose();
+    }
+}

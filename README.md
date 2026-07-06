@@ -75,7 +75,7 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 | Cholesky solve — `CHO.solveInPlace` | SPD 1024×1024, float | 12.2 ms |
 | QR solve — `QR.solveInPlace` | 1024×1024, float | 38.4 ms |
 | QR least squares — `QR.solveInPlace` | 2048×512, float | 34.5 ms |
-| QRCP least squares, rank-safe — `QRCP.solveInPlace` | 2048×512, float | 72.7 ms |
+| QRCP least squares, rank-safe — `QRCP.solveInPlace` | 2048×512, float | 63.9 ms |
 | CG, iterative solve — `Solvers.cg` | SPD 1024×1024, double; dense vs. sparse BSR (4×4 blocks, 7% fill), 40 iterations | dense 15.05 ms, sparse 0.37 ms |
 | Symmetric eigendecomposition — `Eigen.symmetric` | 1024×1024, float, values + vectors | 428.6 ms |
 | Eigenvalues only — `Eigen.valuesSymmetric` | 1024×1024, float | 163.0 ms |
