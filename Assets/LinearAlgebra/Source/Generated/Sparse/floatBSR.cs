@@ -58,7 +58,7 @@ namespace LinearAlgebra.Sparse
         public int Nnzb => ColInd.Length;
 
         // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<floatBSRRecord>
-        // (docs/rfc-memory-model.md §4 Option A). null for a standalone (non-arena) matrix, in which
+        // (docs/dev/rfc-memory-model.md §4 Option A). null for a standalone (non-arena) matrix, in which
         // case RowPtr/ColInd/Values resolve to the inline fields below instead -- see those
         // properties. Replaces the old `Arena _arena` handle field: retiring it keeps this struct's
         // size unchanged (both are a single pointer-width field), and the record's own `Owner`

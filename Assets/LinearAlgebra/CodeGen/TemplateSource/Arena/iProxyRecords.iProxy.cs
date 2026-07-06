@@ -9,7 +9,7 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Arena-owned, pointer-stable allocation record backing an iProxyN (docs/rfc-memory-model.md
+    /// Arena-owned, pointer-stable allocation record backing an iProxyN (docs/dev/rfc-memory-model.md
     /// §4 Option A, §7 step 4 -- mirrors fProxyVecRecord, see fProxyRecords.fProxy.cs for the full
     /// rationale). Lives inside one of ArenaCore's <see cref="ChunkedRecordTable{TRecord}"/> tables
     /// (persistent or temp pool -- see <see cref="Table"/>, declared on Arena.iProxy.cs's ArenaCore

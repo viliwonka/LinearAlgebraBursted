@@ -6,7 +6,7 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A) -- replace
+        // Pointer-stable allocation-record tables (docs/dev/rfc-memory-model.md §4 Option A) -- replace
         // the old value-copy-tracking UnsafeList<uintN>/UnsafeList<uintMxN> lists. uintN/
         // uintMxN now hold a stable uintVecRecord*/uintMatRecord* pointing INTO one of these
         // tables instead of storing their Data inline + being tracked by a separate value copy.

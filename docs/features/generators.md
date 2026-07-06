@@ -1,6 +1,6 @@
 # Generators
 
-Procedural vector/matrix builders. Design doc: [spec-generators.md](../spec-generators.md). Each has
+Procedural vector/matrix builders. Design doc: [spec-generators.md](../dev/spec-generators.md). Each has
 a zero-alloc `ref dest` primitive (`Generate.xxx`) and an ergonomic allocating `arena.floatXxx(...)`
 wrapper (`ArenaExtensions.Generators.float.cs`) — use the `ref` form in per-frame loops.
 

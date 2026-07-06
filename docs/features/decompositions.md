@@ -3,11 +3,11 @@
 Dense factorizations. Every family follows the same four-token grid — `decomp` (factor, input
 preserved), `decompInPlace` (factor into the input's own storage, input destroyed), `decompSolve`
 (solve from existing factors, solve-many tier), `solveInPlace` (one-shot fused solve, fastest path,
-destructive) — see [naming-style-guide](../naming-style-guide.md) for the full contract and
-[spec-solver-api-rework](../spec-solver-api-rework.md) for the rationale. Each also has a zero-alloc
+destructive) — see [naming-style-guide](../dev/naming-style-guide.md) for the full contract and
+[spec-solver-api-rework](../dev/spec-solver-api-rework.md) for the rationale. Each also has a zero-alloc
 `ref`-workspace overload plus an allocating convenience wrapper; several route their allocating
 overload through a blocked (level-3, compact-WY/SYRK/GETRF-style) core above a measured size
-crossover — see [level3-blocking-guide](../level3-blocking-guide.md) for how that's done and why the
+crossover — see [level3-blocking-guide](../dev/level3-blocking-guide.md) for how that's done and why the
 gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceiling, see [blas.md](blas.md)).
 
 - **`LU.decomp(in A, ref L, ref U, ref Pivot P)`** — partial-pivoting LU, `PA = LU`, A preserved.
@@ -48,7 +48,7 @@ gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceili
   also only reads A.
 - **`Bidiag.decomp(in A, ref U, ref B, ref V, ref ws)`** / **`Bidiag.values(in A, ref d, ref e, ref
   ws)`** — Golub-Kahan-Householder reduction; feeds [svd.md](svd.md)'s `SVD.thin`/`SVD.values`. Not
-  yet raised to level-3 (tracked in [level3-blocking-guide](../level3-blocking-guide.md) as GEBRD, the
+  yet raised to level-3 (tracked in [level3-blocking-guide](../dev/level3-blocking-guide.md) as GEBRD, the
   hardest of this family to block — interleaved left/right reflectors).
 
 ## Performance

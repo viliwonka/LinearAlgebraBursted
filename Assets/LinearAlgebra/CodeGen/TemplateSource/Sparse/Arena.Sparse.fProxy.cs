@@ -6,7 +6,7 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A), same
+        // Pointer-stable allocation-record tables (docs/dev/rfc-memory-model.md §4 Option A), same
         // design as fProxyVecRecords/fProxyMatRecords (see Arena/fProxyRecords.fProxy.cs,
         // Arena/Arena.fProxy.cs) -- fProxyBSR/fProxyBlockJacobi now hold a stable
         // fProxyBSRRecord*/fProxyBlockJacobiRecord* into one of these instead of being tracked by

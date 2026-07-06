@@ -1,8 +1,8 @@
 # Codegen & Rename-Refactor Lessons (LinearAlgebraBursted)
 
 Hard-won rules from the pre-release naming/API-finalization sweep (2026-06-30/07-01). Terse on
-purpose. Companion to `docs/naming-style-guide.md` (the conventions these mistakes were made
-*trying to reach*) and `docs/perf-vectorization-lessons.md` (the same format, for kernel perf).
+purpose. Companion to `docs/dev/naming-style-guide.md` (the conventions these mistakes were made
+*trying to reach*) and `docs/dev/perf-vectorization-lessons.md` (the same format, for kernel perf).
 
 ## PowerShell scripting traps
 - **`-eq`/`-ne` are CASE-INSENSITIVE by default.** A rename script's `if ($text -ne $original)`
@@ -53,7 +53,7 @@ purpose. Companion to `docs/naming-style-guide.md` (the conventions these mistak
   `L2<T>(in T a) where T : IUnsafefloatArray` and the double fragment's equivalent are IDENTICAL
   signatures once merged into one partial class — the `where` clause is invisible to the compiler
   for this purpose. Attempting to merge `Norms_OP` (drop the `fProxy` prefix) hit exactly this as
-  CS0111 and had to be reverted to `fProxyNorms_OP`. See `docs/naming-style-guide.md`'s "Split vs
+  CS0111 and had to be reverted to `fProxyNorms_OP`. See `docs/dev/naming-style-guide.md`'s "Split vs
   merge safety" section for the full checklist — check BOTH criteria (arg-less/output-only methods,
   AND under-constrained generics) before attempting a merge, not just the first one.
 - **A failed merge attempted mid-bootstrap-trap leaves stale generated files with the BROKEN bare

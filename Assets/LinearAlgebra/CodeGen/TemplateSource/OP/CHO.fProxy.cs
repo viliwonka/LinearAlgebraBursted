@@ -54,7 +54,7 @@ namespace LinearAlgebra
             // only (a different, equally-valid summation order); A = L*Lᵀ to working precision.
             //
             // Above a size threshold this is further raised to LEVEL-3 (blocked, right-looking POTRF;
-            // see docs/level3-blocking-guide.md recipe B), mirroring LAPACK's DPOTRF: a CHOL_BLOCK-wide
+            // see docs/dev/level3-blocking-guide.md recipe B), mirroring LAPACK's DPOTRF: a CHOL_BLOCK-wide
             // diagonal block L11 is factored with the same rank-1 sweep above (narrowed to the panel's
             // own jb rows/cols — DPOTF2), the below-panel strip L21 is then solved for in one shot by
             // forward substitution against L11 (UnsafeOP.trsmLowerPanel — DTRSM), and finally the whole
@@ -89,7 +89,7 @@ namespace LinearAlgebra
                 const int CHOL_BLOCK = 32;
 
                 // Size gate: MEASURED crossover, not the naive 2*CHOL_BLOCK (see
-                // docs/level3-blocking-guide.md landmine "size gate" — LQ needed the same kind of
+                // docs/dev/level3-blocking-guide.md landmine "size gate" — LQ needed the same kind of
                 // margin, LQ_BLOCK=64 but gate m>=512, i.e. 8x the block width). Benchmarked: n=128
                 // (4 panels) is measurably SLOWER than the plain sweep — the panel/TRSM/SYRK
                 // bookkeeping isn't amortised yet — while n=256 (8 panels) is the first size that wins

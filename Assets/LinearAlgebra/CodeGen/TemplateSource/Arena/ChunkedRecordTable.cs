@@ -6,7 +6,7 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// A pointer-stable, chunked slot table for arena-owned allocation records
-    /// (docs/rfc-memory-model.md §4 Option A / A1, §6.1, §7 step 2). A family-specific record struct
+    /// (docs/dev/rfc-memory-model.md §4 Option A / A1, §6.1, §7 step 2). A family-specific record struct
     /// is carved out of a table like this one and addressed by a raw <c>TRecord*</c> that never moves
     /// for the record's lifetime -- so a copy of a math struct holding that pointer can never diverge
     /// from the one source of truth (the RFC's failure modes 1 and 2).

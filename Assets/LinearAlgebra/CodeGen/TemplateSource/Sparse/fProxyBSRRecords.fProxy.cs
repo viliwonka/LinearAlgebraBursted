@@ -4,7 +4,7 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// Arena-owned, pointer-stable allocation record backing a fProxyBSR (docs/rfc-memory-model.md
+    /// Arena-owned, pointer-stable allocation record backing a fProxyBSR (docs/dev/rfc-memory-model.md
     /// §4 Option A, §7 step 4 -- mirrors fProxyVecRecord/fProxyMatRecord, see
     /// Arena/fProxyRecords.fProxy.cs). Lives inside ArenaCore's <see cref="ChunkedRecordTable{TRecord}"/>
     /// (ArenaCore.fProxyBSRRecords, see Arena.Sparse.fProxy.cs) and is addressed by fProxyBSR's

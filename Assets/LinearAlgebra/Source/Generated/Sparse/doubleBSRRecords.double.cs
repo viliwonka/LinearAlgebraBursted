@@ -4,7 +4,7 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// Arena-owned, pointer-stable allocation record backing a doubleBSR (docs/rfc-memory-model.md
+    /// Arena-owned, pointer-stable allocation record backing a doubleBSR (docs/dev/rfc-memory-model.md
     /// §4 Option A, §7 step 4 -- mirrors doubleVecRecord/doubleMatRecord, see
     /// Arena/doubleRecords.double.cs). Lives inside ArenaCore's <see cref="ChunkedRecordTable{TRecord}"/>
     /// (ArenaCore.doubleBSRRecords, see Arena.Sparse.double.cs) and is addressed by doubleBSR's

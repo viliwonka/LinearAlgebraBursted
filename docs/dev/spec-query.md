@@ -1,7 +1,7 @@
 # Spec: QueryOP — search & selection inside vectors/matrices
 
 *Historical document — method names predate the 2026-07 solver-API rework (see
-docs/spec-solver-api-rework.md for the mapping).*
+docs/dev/spec-solver-api-rework.md for the mapping).*
 
 Status: **IMPLEMENTED** (2026-06-26). Shipped as `QueryOP` for float/double/int/short/long (index
 buffers use the shared `Indices` struct, not `int[]`). Supersedes an earlier combined Views/Query

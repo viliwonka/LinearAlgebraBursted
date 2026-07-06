@@ -46,7 +46,7 @@ namespace LinearAlgebra
         // needs Mv (a per-row reduction) — the awkward direction for row-major storage, unlike a
         // left-multiply's uᵀM (a sum of scaled rows, expressible as pure axpy — see QR/Bidiag's
         // applyReflectorRight/applyHouseholderLeft). A single running-sum reduction can't be
-        // auto-vectorized under strict FloatMode (see docs/perf-vectorization-lessons.md); 4
+        // auto-vectorized under strict FloatMode (see docs/dev/perf-vectorization-lessons.md); 4
         // independent accumulator chains restore ILP across the unrolled lanes. Measured: 4 wins
         // decisively over 8 (register pressure from 8 live accumulators regressed ~1.7x at N=1024
         // vs 4's ~3x win over the naive single-accumulator form — see benchmark-tallwide.txt history).

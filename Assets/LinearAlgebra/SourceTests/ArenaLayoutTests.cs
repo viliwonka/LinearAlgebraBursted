@@ -5,7 +5,7 @@ using NUnit.Framework;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
-// Concrete (NOT codegen'd) tests for the Arena memory-model split (docs/rfc-memory-model.md §4
+// Concrete (NOT codegen'd) tests for the Arena memory-model split (docs/dev/rfc-memory-model.md §4
 // Option A / §6.0). Arena itself is not proxy-typed, so these are hand-authored rather than
 // generated. They pin the invariants that make failure mode 2 (the dangling-arena-pointer bug)
 // structurally impossible: Arena is now a thin single-pointer handle over a heap-Malloc'd

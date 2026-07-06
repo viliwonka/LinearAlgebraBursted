@@ -138,7 +138,7 @@ namespace LinearAlgebra.Internal
         // a whole C row per p, AND re-streams the whole of matB once per output row — that double
         // re-streaming, not the FLOP count, is why the untiled kernel is bandwidth- not compute-bound).
         //
-        // Determinism (see the matMatDot spec / docs/level3-blocking-guide.md): every C[i,j] is STILL
+        // Determinism (see the matMatDot spec / docs/dev/level3-blocking-guide.md): every C[i,j] is STILL
         // exactly one running accumulator summing p ascending 0..n-1 with the SAME `c += a*b`
         // expression as the fallback. Tiling only changes WHICH independent accumulators run
         // interleaved (ILP across the MR*NR chains) — never how any ONE accumulator sums (no
@@ -161,7 +161,7 @@ namespace LinearAlgebra.Internal
         // AVX2 accumulator vectors — the upper edge before spilling; do not go to 16x16, that's 32) won
         // at every measured size up to N=2048 for both types (float 1024: 86 vs baseline's 69 GFLOP/s;
         // float 2048: 71 vs baseline's 54; double tracks the same shape) and is what's left in place —
-        // no size gate needed. See docs/level3-blocking-guide.md for the general blocking background.
+        // no size gate needed. See docs/dev/level3-blocking-guide.md for the general blocking background.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDot([NoAlias] fProxy* matA, [NoAlias] fProxy* matB, [NoAlias] fProxy* matC, int m, int n, int k)
         {

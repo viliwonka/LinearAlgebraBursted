@@ -1,7 +1,7 @@
 # Print & export
 
 `Print` — split into a Burst-callable inspection surface and a managed unbounded export surface.
-Design doc: [spec-debug-print.md](../spec-debug-print.md).
+Design doc: [spec-debug-print.md](../dev/spec-debug-print.md).
 
 ## Burst `Log`/`Spy` (bounded, callable from inside a job)
 

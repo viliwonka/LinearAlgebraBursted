@@ -1,7 +1,7 @@
 # Level-3 (GEMM) Blocking Guide
 
 *Historical document — method names predate the 2026-07 solver-API rework (see
-docs/spec-solver-api-rework.md for the mapping).*
+docs/dev/spec-solver-api-rework.md for the mapping).*
 
 How to raise a dense O(n³) kernel from level-2 (gemv / rank-1 / per-row-dot inner loops, memory-
 bandwidth bound) to level-3 (GEMM block updates). Written from the QR/LQ compact-WY work (commits

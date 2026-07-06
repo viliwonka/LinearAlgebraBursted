@@ -5,7 +5,7 @@ using Unity.Collections;
 using Unity.Jobs;
 
 // Regression suite for failure mode 2 (FM2) of the Arena memory-model fix
-// (docs/rfc-memory-model.md §1 / §2.2 / §4 Option A / §6.0 / §6.1).
+// (docs/dev/rfc-memory-model.md §1 / §2.2 / §4 Option A / §6.0 / §6.1).
 //
 // THE OLD BUG (FM2): Arena used to be a plain struct holding all its mutable tracking state inline,
 // and every math struct captured arena identity by RAW ADDRESS (`Arena* _arenaPtr`, set via

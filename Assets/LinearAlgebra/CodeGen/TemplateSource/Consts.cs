@@ -70,7 +70,7 @@ namespace LinearAlgebra {
         // (bidiagonal QR, tridiagonal QL, Hessenberg QR) -- LAPACK dbdsqr's scaling (MAXITR=6,
         // i.e. an effective 6*n total across n values) rather than a flat constant: a flat cap
         // does not grow with the problem, so a large clustered/graded spectrum can legitimately
-        // exhaust it (see docs/spec-svd-eigen-convergence.md). Floored at 75 (the library's
+        // exhaust it (see docs/dev/spec-svd-eigen-convergence.md). Floored at 75 (the library's
         // original flat constant) so tiny problems keep the same sane minimum they always had.
         // `n` is whatever per-value dimension is actually being iterated at each call site (the
         // full matrix side for thin/values/valuesSymmetric/symmetric/valuesQR; the smaller

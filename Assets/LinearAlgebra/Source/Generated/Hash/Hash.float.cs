@@ -47,7 +47,7 @@ namespace LinearAlgebra
         // always a uint buffer, regardless of A's element type - but the literal text "uintN" is a pure
         // codegen OUTPUT (produced only by substituting the iProxy token inside its own int-family
         // rotation) and does not exist as a real type anywhere in TemplateSource's own standalone
-        // compile, so it cannot be hand-written here directly (see docs/naming-style-guide.md's
+        // compile, so it cannot be hand-written here directly (see docs/dev/naming-style-guide.md's
         // alsoExpand note). Writing the real placeholder token `iProxyN` as the choose marker's
         // raw-compile-time filler, then always CHOOSING the literal "uintN" (same value for both
         // float and double), keeps this file standalone-compilable while still emitting exactly

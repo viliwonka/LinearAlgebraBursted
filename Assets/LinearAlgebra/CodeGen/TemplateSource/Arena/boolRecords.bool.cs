@@ -4,7 +4,7 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Arena-owned, pointer-stable allocation record backing a boolN (docs/rfc-memory-model.md §4
+    /// Arena-owned, pointer-stable allocation record backing a boolN (docs/dev/rfc-memory-model.md §4
     /// Option A, §7 step 4 -- mirrors the analogous per-type record struct every other migrated
     /// family carries, e.g. floatVecRecord/intVecRecord). Lives inside one of the
     /// <see cref="ChunkedRecordTable{TRecord}"/> tables declared directly on ArenaCore in

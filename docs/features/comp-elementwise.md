@@ -1,7 +1,7 @@
 # Comp — element-wise operations
 
 `floatComp`/`doubleComp`/`intComp`/`shortComp`/`longComp`/`uintComp`/`boolComp` are per-type static
-classes (kept split, not merged — see [naming-style-guide](../naming-style-guide.md)'s split/merge
+classes (kept split, not merged — see [naming-style-guide](../dev/naming-style-guide.md)'s split/merge
 checklist) of generic `<T> where T : unmanaged, IUnsafe*Array` methods, so one body serves both
 `floatN` and `floatMxN` alike. All mutating methods use the **`InPlace`** suffix (not `Inpl`).
 

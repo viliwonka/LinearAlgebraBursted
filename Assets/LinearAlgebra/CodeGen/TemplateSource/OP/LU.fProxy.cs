@@ -115,7 +115,7 @@ namespace LinearAlgebra
             // would collide across them (CS0102; see QR_BLOCK / CHOL_BLOCK).
             const int LU_BLOCK = 32;
 
-            // Size gate: MEASURED crossover, not the naive 4*LU_BLOCK (see docs/level3-blocking-guide.md
+            // Size gate: MEASURED crossover, not the naive 4*LU_BLOCK (see docs/dev/level3-blocking-guide.md
             // "size gate" — Cholesky needed the same kind of margin, CHOL_BLOCK=32 but gate n>=256, i.e.
             // 8x the block width). Benchmarked: n=128 (4 panels) is a wash/slightly slower for float —
             // the panel/TRSM/GEMM bookkeeping isn't amortised yet — while n=256 (8 panels) is the first
@@ -190,7 +190,7 @@ namespace LinearAlgebra
             // Each LU_BLOCK-wide panel is factored with the SAME rank-1 sweep as the small-matrix
             // path above (partial pivoting over the FULL remaining column height, so the pivot
             // sequence is bit-identical to the unblocked form — see "why the pivot sequence stays
-            // identical" below, and docs/level3-blocking-guide.md recipe B), but its elimination axpy
+            // identical" below, and docs/dev/level3-blocking-guide.md recipe B), but its elimination axpy
             // is narrowed to the panel's own columns (DGETF2-style). The panel's contribution to the
             // columns to its right is then applied ONCE per panel as a level-3 TRSM (U12 = L11^-1 *
             // A12, unit-lower forward substitution) followed by a single GEMM trailing update

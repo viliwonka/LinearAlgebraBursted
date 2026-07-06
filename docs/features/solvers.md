@@ -3,8 +3,8 @@
 The direct (non-iterative) solve entry points live on the factorization classes themselves — each of
 the decompositions in [decompositions.md](decompositions.md) exposes its own
 `decompSolve`/`solveInPlace`, following the shared `decomp`/`decompInPlace`/`decompSolve`/`solveInPlace`
-token grid (see [naming-style-guide](../naming-style-guide.md) and
-[spec-solver-api-rework](../spec-solver-api-rework.md)). They are built on the triangular-solve
+token grid (see [naming-style-guide](../dev/naming-style-guide.md) and
+[spec-solver-api-rework](../dev/spec-solver-api-rework.md)). They are built on the triangular-solve
 primitives, which live on [`Blas`](blas.md) as the substitution counterpart to its GEMM/GEMV kernels.
 Iterative and least-squares solvers live on `Krylov` and are covered in
 [least-squares.md](least-squares.md); this page is the direct (non-iterative) family plus the

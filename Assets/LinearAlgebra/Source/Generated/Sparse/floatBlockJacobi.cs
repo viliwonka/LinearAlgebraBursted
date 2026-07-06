@@ -34,7 +34,7 @@ namespace LinearAlgebra.Sparse
         public int Rows => BlockRows * BR;
 
         // Arena-tracked path: a stable pointer into the arena's
-        // ChunkedRecordTable<floatBlockJacobiRecord> (docs/rfc-memory-model.md §4 Option A). null
+        // ChunkedRecordTable<floatBlockJacobiRecord> (docs/dev/rfc-memory-model.md §4 Option A). null
         // for a standalone (non-arena) preconditioner, in which case DInv resolves to the inline
         // field below instead. Replaces the old `Arena _arena` handle field -- same size trade as
         // floatBSR/floatN. Readonly (this struct is `readonly partial struct`): assigned once per
@@ -66,7 +66,7 @@ namespace LinearAlgebra.Sparse
         // struct size is identical in both configs either way, since this adds no field).
         // floatBlockJacobi has no spare bits to pack a
         // generation stamp into (40B = 4 BlockRows + 4 BR + 8 _rec + 24 UnsafeList<float>, exactly
-        // -- see docs/rfc-memory-model.md §6.2 and ArenaLayoutTests.SparseStructsAreExpectedSize),
+        // -- see docs/dev/rfc-memory-model.md §6.2 and ArenaLayoutTests.SparseStructsAreExpectedSize),
         // so this only checks Alive: it catches a read after Dispose() on THIS record, but not a
         // stale handle into a slot that has since been recycled by a fresh Allocate() (that needs a
         // generation stamp, which floatBSR itself carries in its own padding hole). Readonly

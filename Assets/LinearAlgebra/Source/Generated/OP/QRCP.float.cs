@@ -110,7 +110,7 @@ namespace LinearAlgebra
         // ---- shared core: every decompInPlace/decomp/solveInPlace overload routes through this ----
 
         // Guarded LAPACK dgeqp3/dlaqps-style norm downdating (transcribed unsquared, per
-        // docs/spec-qrcp-downdate.md). Householder reflectors preserve a column's norm over rows
+        // docs/dev/spec-qrcp-downdate.md). Householder reflectors preserve a column's norm over rows
         // d..m-1 exactly (orthogonal transform restricted to that row range), so the norm over rows
         // d+1..m-1 differs from the PREVIOUS step's tracked norm only by the row-d entry the
         // reflector apply just wrote:
@@ -183,7 +183,7 @@ namespace LinearAlgebra
             // norms: the old test compared squared norms via maxNorm2 > diagNorm2*(1+pivotRelTol);
             // sqrt(1+pivotRelTol) is the equivalent unsquared-domain multiplier, so pivot selection
             // is unchanged whenever vn1 holds exact norms (true at d=0, and after any guard-triggered
-            // re-sum) and separation-preserving otherwise — see docs/spec-qrcp-downdate.md OQ-D1.
+            // re-sum) and separation-preserving otherwise — see docs/dev/spec-qrcp-downdate.md OQ-D1.
             // m is fixed for the whole call, so this is hoisted out of the per-step loop.
             float pivotRelTol = (float)(8 * m) * Consts.floatEpsilon;
             float pivotRelTolRoot = math.sqrt((float)1 + pivotRelTol);
@@ -363,7 +363,7 @@ namespace LinearAlgebra
         // panel. The enabler is norm DOWNDATING (see decompInPlaceCore): pivot selection needs the
         // current column norms, not the current column DATA, so vn1 lets us choose pivots while the
         // trailing matrix stays stale between flushes. Full derivation + range table:
-        // docs/spec-qrcp-blocked.md. The reflectors are stored exactly as QR's (τ≡1 Householder
+        // docs/dev/spec-qrcp-blocked.md. The reflectors are stored exactly as QR's (τ≡1 Householder
         // vectors in the lower triangle), so Q is reconstructed by the SAME blocked-WY kernel QR uses
         // (QR.reconstructQBlocked) — only pivoting differs, and that is confined to the factorization.
         //
@@ -405,7 +405,7 @@ namespace LinearAlgebra
         {
             // Factorization panel width. A method-local const (QRCP is a partial class shared by the
             // float/double generated files, so a class-level const of this name would collide, CS0102).
-            // 32 measured the sweep optimum (docs/spec-qrcp-blocked.md OQ-B1: 16 and 64 both lost ~2-10%
+            // 32 measured the sweep optimum (docs/dev/spec-qrcp-blocked.md OQ-B1: 16 and 64 both lost ~2-10%
             // at 2048x512 float) — same width QR settled on; the pivoted core's heavier per-step level-2
             // work doesn't shift the optimum the way the spec speculated it might.
             const int QRCP_BLOCK = 32;

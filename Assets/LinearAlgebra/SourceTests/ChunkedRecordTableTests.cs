@@ -7,7 +7,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Concrete (NOT codegen'd) tests for LinearAlgebra.ChunkedRecordTable<TRecord> -- the Stage-B
-// pointer-stable arena record table (docs/rfc-memory-model.md §4 Option A / A1, §6.1, §7 step 2).
+// pointer-stable arena record table (docs/dev/rfc-memory-model.md §4 Option A / A1, §6.1, §7 step 2).
 // The table is internal, hand-authored, and generic over an `unmanaged` record type, so -- like
 // ArenaLayoutTests.cs / UIntTypeTests.cs -- these are hand-written rather than expanded from an
 // fProxy/iProxy template. Visibility into the internal type is granted to this test assembly via

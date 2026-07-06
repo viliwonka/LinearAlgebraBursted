@@ -11,12 +11,12 @@ namespace LinearAlgebra
     /// Allocator/Initialized. This struct is never copied by user code: it is Malloc'd ONCE per
     /// arena and addressed exclusively through the stable <see cref="Arena"/> handle's <c>_core</c>
     /// pointer, which is what gives the arena a stable identity-by-address (see
-    /// docs/rfc-memory-model.md, failure mode 2). Field/method visibility is <c>internal</c> --
+    /// docs/dev/rfc-memory-model.md, failure mode 2). Field/method visibility is <c>internal</c> --
     /// only <see cref="Arena"/>'s own partials (same assembly) reach through <c>_core-&gt;</c>;
     /// nothing outside the library touches ArenaCore directly.
     ///
     /// <para><b>Migrated families (float/double, int/short/long/uint, bool, sparse BSR/BlockJacobi)</b>
-    /// -- docs/rfc-memory-model.md §4 Option A -- own pointer-stable
+    /// -- docs/dev/rfc-memory-model.md §4 Option A -- own pointer-stable
     /// <see cref="ChunkedRecordTable{TRecord}"/> tables (<c>fProxyVecRecords</c>/
     /// <c>fProxyMatRecords</c>/temp* -- see <c>fProxyRecords.fProxy.cs</c>, <c>Arena.fProxy.cs</c>;
     /// <c>iProxyVecRecords</c>/<c>iProxyMatRecords</c>/temp* -- see <c>iProxyRecords.iProxy.cs</c>,
@@ -39,7 +39,7 @@ namespace LinearAlgebra
     /// </summary>
     internal unsafe partial struct ArenaCore
     {
-        // ---- concurrency guards (docs/rfc-memory-model.md's single-threaded-by-contract Arena
+        // ---- concurrency guards (docs/dev/rfc-memory-model.md's single-threaded-by-contract Arena
         // has never had anything enforcing that contract -- these two mechanisms make a violation
         // detectable instead of silently corrupting the record tables). Both live HERE, inside the
         // heap-Malloc'd ArenaCore, rather than as fields on the pointer-sized Arena handle struct --
@@ -140,7 +140,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Live allocation count across every tracked family. PERMANENT (not transient) asymmetry
-        /// for one deliberately-unmigrated family (docs/rfc-memory-model.md §4 Option A): every
+        /// for one deliberately-unmigrated family (docs/dev/rfc-memory-model.md §4 Option A): every
         /// record-table-backed family (float/double, int/short/long/uint, bool, sparse
         /// BSR/BlockJacobi) decrements this THE MOMENT an individual instance is Dispose()'d
         /// (their AliveCount reflects live records exactly); fProxyBSRBuilders alone still uses
@@ -191,7 +191,7 @@ namespace LinearAlgebra
         public Allocator Allocator;
         public bool Initialized;
 
-        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A), same
+        // Pointer-stable allocation-record tables (docs/dev/rfc-memory-model.md §4 Option A), same
         // design as fProxyVecRecords/iProxyVecRecords above -- just declared directly here (rather
         // than in a per-type Arena.<type>.cs, the way fProxy/iProxy split theirs out) since bool has
         // only one concrete type, so there is no per-type file to split them into (see
@@ -729,7 +729,7 @@ namespace LinearAlgebra
     /// only copies the <c>_core</c> pointer, so every copy shares exactly ONE core -- this is what
     /// makes arena identity stable-by-address (a defensive copy the compiler makes for an `in
     /// Arena` parameter can no longer dangle, since it still points at the same live core; see
-    /// docs/rfc-memory-model.md, failure mode 2 -- retires the old "must take `ref Arena`, not `in
+    /// docs/dev/rfc-memory-model.md, failure mode 2 -- retires the old "must take `ref Arena`, not `in
     /// Arena`" convention). A default(Arena)/standalone handle has <c>_core == null</c>.
     ///
     /// <para><b>Ownership contract:</b> like a Unity <c>NativeContainer</c>, every copy is a view
@@ -812,7 +812,7 @@ namespace LinearAlgebra
             // UnsafeUtility.Malloc does NOT clear memory -- the block starts as garbage bytes.
             // That used to be harmless (every ArenaCore field was unconditionally REASSIGNED in
             // Init() below, so nobody ever read the garbage). It stopped being harmless once
-            // ChunkedRecordTable<T> joined the field set (docs/rfc-memory-model.md §4 Option A):
+            // ChunkedRecordTable<T> joined the field set (docs/dev/rfc-memory-model.md §4 Option A):
             // its Init() GUARDS against double-init by checking `_chunks.IsCreated`, and garbage
             // bytes can spuriously read back as "already created" -- so the very FIRST Init() call
             // on a freshly Malloc'd core could throw "Init called twice". Zeroing the block first
@@ -845,7 +845,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Wraps an EXISTING (already-initialized) ArenaCore -- used internally to reconstruct a
         /// live Arena handle from a record's <c>Owner</c> back-pointer
-        /// (docs/rfc-memory-model.md §4 Option A), e.g. fProxyN/fProxyMxN's <c>Copy()</c>/
+        /// (docs/dev/rfc-memory-model.md §4 Option A), e.g. fProxyN/fProxyMxN's <c>Copy()</c>/
         /// <c>TempCopy()</c> and their cross-type allocation shortcuts -- replaces the old private
         /// <c>Arena _arena</c> field those used to read directly. Does NOT allocate or own the
         /// core: disposing a handle built this way is exactly as safe/unsafe as disposing any other

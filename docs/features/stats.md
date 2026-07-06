@@ -40,7 +40,7 @@ Whole-array only — no per-axis reductions, covariance, or in-place transforms 
 ## Histogram & resampling
 
 Two smaller features that live alongside Stats (design doc:
-[spec-histogram-resample.md](../spec-histogram-resample.md)):
+[spec-histogram-resample.md](../dev/spec-histogram-resample.md)):
 
 - **`Histogram`** — `histogramInto(in data, lo, hi, ref Indices counts)` (+ an auto-range overload
   that finds finite min/max in one pass), `densityInto`, `cdfInto` (monotone, last bin pinned to

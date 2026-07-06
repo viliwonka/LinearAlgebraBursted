@@ -56,7 +56,7 @@ namespace LinearAlgebra
         // [StructLayout(Sequential)] and natural alignment, M_Rows(4)+N_Cols(4)+_rec(8)+
         // _inlineData(24)+Length(4) = 44 bytes, and this struct's 8-byte alignment (forced by the
         // pointer/UnsafeList fields) rounds that up to 48 regardless -- there were already 4 unused
-        // trailing bytes here (docs/rfc-memory-model.md §6.2's "padding analysis", confirmed by
+        // trailing bytes here (docs/dev/rfc-memory-model.md §6.2's "padding analysis", confirmed by
         // ArenaLayoutTests.MatrixStructsAreExpectedSize staying at 48 with this field present). Only
         // meaningful when _rec != null: AssertRecordValid() compares it against the table's CURRENT
         // GetGeneration(SelfIndex) to detect a stale handle into a since-recycled slot (Alive alone,

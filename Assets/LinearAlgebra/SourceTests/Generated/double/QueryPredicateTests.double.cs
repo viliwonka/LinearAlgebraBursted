@@ -10,7 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Tests for the predicate-filtered / score-based QueryOP extension (Query partial class).
-// Spec: docs/spec-predicate-queries.md (Section 6 = T1..T5).
+// Spec: docs/dev/spec-predicate-queries.md (Section 6 = T1..T5).
 //
 // Groups under test (mirroring the spec):
 //   A — Flat / scalar predicate ops: findFirst, count, any, all, findAll (vector + matrix flat).

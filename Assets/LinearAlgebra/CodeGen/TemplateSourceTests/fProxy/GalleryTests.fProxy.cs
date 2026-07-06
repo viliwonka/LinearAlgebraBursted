@@ -10,7 +10,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Property + algorithm-exercise tests for the famous-test-matrix gallery (docs/spec-gallery.md).
+// Property + algorithm-exercise tests for the famous-test-matrix gallery (docs/dev/spec-gallery.md).
 // Each case pins a generator against its DOCUMENTED closed form (determinant, eigenvalues, definiteness,
 // FFT cross-check) rather than a self-consistency check, then a few cases feed the generators into the
 // existing solvers (CG, Eigen.valuesQR) as honest inputs.

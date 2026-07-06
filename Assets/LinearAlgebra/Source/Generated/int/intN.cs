@@ -11,7 +11,7 @@ namespace LinearAlgebra
     public partial struct intN : IDisposable, IUnsafeintArray {
 
         // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<intVecRecord>
-        // (docs/rfc-memory-model.md §4 Option A). null for a standalone (non-arena) vector, in which
+        // (docs/dev/rfc-memory-model.md §4 Option A). null for a standalone (non-arena) vector, in which
         // case Data resolves to the inline _inlineData field below instead -- see the Data property.
         // Replaces the old `Arena _arena` handle field: retiring it keeps this struct's size
         // unchanged (both are a single pointer-width field), and the record's own `Owner`
@@ -41,7 +41,7 @@ namespace LinearAlgebra
         // Unity Editor, including every test run, and compiles out of player builds entirely --
         // struct size is identical in both configs either way, since this adds no field). intN
         // has no spare bits to pack a generation
-        // stamp into (32B = 8 _rec + 24 UnsafeList<int>, exactly -- see docs/rfc-memory-model.md
+        // stamp into (32B = 8 _rec + 24 UnsafeList<int>, exactly -- see docs/dev/rfc-memory-model.md
         // §6.2 and ArenaLayoutTests.VectorStructsAreExpectedSize), so this only checks Alive: it
         // catches a read after Dispose()/Clear()/ClearTemp() on THIS record, but not a stale handle
         // into a slot that has since been recycled by a fresh Allocate() (that needs a generation

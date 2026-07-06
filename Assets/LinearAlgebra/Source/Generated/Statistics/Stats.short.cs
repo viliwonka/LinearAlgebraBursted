@@ -5,13 +5,13 @@ using System.Runtime.CompilerServices;
 namespace LinearAlgebra
 {
     // Public statistics surface for the SIGNED integer family (int/short/long -- uint is
-    // deliberately excluded, see docs/naming-style-guide.md: difference/accumulation code is
+    // deliberately excluded, see docs/dev/naming-style-guide.md: difference/accumulation code is
     // the unsigned-hostile category). Sibling of StatsOP.fProxy.cs's `Stats` facade -- merges
     // into the SAME bare partial class, forwarding to the distinct intStatsCore/shortStatsCore/
     // longStatsCore generic bodies (see StatsCore.short.cs) so the type-identical generic
     // signatures never collide -- the same reason StatsOP.fProxy.cs's facade forwards to
     // floatStatsCore/doubleStatsCore instead of merging the generic bodies directly (see
-    // docs/naming-style-guide.md's "Split vs merge safety").
+    // docs/dev/naming-style-guide.md's "Split vs merge safety").
     //
     // RETURN-TYPE WIDENING (locked convention): sum -> long (widened accumulator, avoids
     // overflow); mean/variance/stdDev/varianceSample/stdDevSample/median -> double (need a

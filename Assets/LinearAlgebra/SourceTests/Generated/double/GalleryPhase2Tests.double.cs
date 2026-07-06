@@ -11,7 +11,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Property + algorithm-exercise tests for the Phase-2 famous-test-matrix gallery
-// (docs/spec-gallery.md, Phase 2 table; production template Gallery.Phase2.double.cs).
+// (docs/dev/spec-gallery.md, Phase 2 table; production template Gallery.Phase2.double.cs).
 // Each case pins a generator against its DOCUMENTED closed form (Cauchy/GCD/Redheffer determinants,
 // magic constant, Rosser/Prolate eigenvalues, Parter singular values, Grcar/Lotkin structure) using
 // the library's own ops (Analysis.determinant, Cholesky, Eigen.decompInPlace, SVD.singularValues).

@@ -5,7 +5,7 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Arena-owned, pointer-stable allocation record backing a fProxyN
-    /// (docs/rfc-memory-model.md §4 Option A, §7 step 4). Lives inside one of ArenaCore's
+    /// (docs/dev/rfc-memory-model.md §4 Option A, §7 step 4). Lives inside one of ArenaCore's
     /// <see cref="ChunkedRecordTable{TRecord}"/> tables (persistent or temp pool -- see
     /// <see cref="Table"/>) and is addressed by fProxyN's private <c>fProxyVecRecord*</c> field.
     /// Never copied by user code: a struct copy of fProxyN just copies the pointer to this SAME

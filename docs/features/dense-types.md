@@ -3,7 +3,7 @@
 `floatN`/`floatMxN` and their `double`/`int`/`short`/`long`/`uint`/`bool` counterparts are the
 library's vector and matrix types. Matrices are row-major (`Data[r*N_Cols+c]`) — the opposite of
 `Unity.Mathematics`' column-major layout, so any conversion between the two is a transpose, not a
-reinterpret-cast; see [spec-interop.md](../spec-interop.md)'s "Row-major ↔ column-major" section for
+reinterpret-cast; see [spec-interop.md](../dev/spec-interop.md)'s "Row-major ↔ column-major" section for
 the full correctness argument.
 
 ## Arena

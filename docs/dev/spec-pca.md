@@ -1,7 +1,7 @@
 # Spec: PCA (Principal Component Analysis) — `LinearAlgebra.ML`
 
 *Historical document — method names predate the 2026-07 solver-API rework (see
-docs/spec-solver-api-rework.md for the mapping).*
+docs/dev/spec-solver-api-rework.md for the mapping).*
 
 Status: coder-ready (design locked after a fable design review — verdicts folded in). Mirrors the
 k-means precedent (`ML/KMeans*.cs`, class `fProxyKMeans_OP`, namespace `LinearAlgebra.ML`). New files

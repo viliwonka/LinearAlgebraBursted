@@ -1,7 +1,7 @@
 # Spec: complete the Debug / Print / Export surface
 
 *Historical document — method names predate the 2026-07 solver-API rework (see
-docs/spec-solver-api-rework.md for the mapping).*
+docs/dev/spec-solver-api-rework.md for the mapping).*
 
 Goal: fill the gaps in the library's inspection surface so every result type and matrix type
 can be printed (Burst) and exported (managed). Everything lives in `public static partial class

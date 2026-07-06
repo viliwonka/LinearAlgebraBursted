@@ -2,8 +2,7 @@
 
 `FFT`. 1D transforms over **split real/imaginary** arrays (`floatN re`, `floatN im`) — there is no
 complex type. Convention: forward `X[k] = Σ x[n]·exp(-2πi·kn/N)` (no forward scaling); the inverse
-divides by N, so `ifft(fft(x)) == x`. A deeper usage write-up (workspace tradeoffs, accuracy notes)
-lives in [docs/fft.md](../fft.md).
+divides by N, so `ifft(fft(x)) == x`.
 
 ## Entry points
 
@@ -25,11 +24,33 @@ Workspace `floatFFTCache` (twiddle tables + rfft/mixed-radix scratch) is built o
 `arena.floatFFTCache(n)`, persistent, disposed with the arena; single-use-at-a-time (one per thread
 for parallel transforms, FFTW "plan" semantics).
 
+## Which one to use
+
+All FFT/IFFT/rfft lengths must be a **power of two** — use `dft` for arbitrary N.
+
+- **One-shot or a few transforms → no-workspace `fft(re, im)`.** Table-free, zero-allocation, nothing
+  to set up (dispatches to a radix-4 recurrence for power-of-4 lengths, radix-2 otherwise).
+- **Many transforms of the same size → build a workspace once and reuse it.** The twiddle-table build
+  amortizes after only ~1–3 transforms, so this is the right default for any repeated use:
+
+```csharp
+var ws = arena.floatFFTCache(1024);   // builds the twiddle table on creation
+for (int f = 0; f < frames; f++)
+    FFT.fft(ref re, ref im, in ws);   // zero-alloc, reuses the plan
+```
+
+## Accuracy
+
+The workspace builds its twiddle table at double precision (no recurrence drift); the no-workspace
+recurrence accumulates a small twiddle drift at very large `float` N — negligible for typical use, but
+prefer the workspace if you need maximum accuracy on huge float transforms. The transforms are
+validated by a stability suite: fft-vs-dft cross-check, Parseval energy, linearity, analytic
+transforms (impulse/constant/exponential/shift), rfft↔fft consistency, and large-N round-trips.
+
 ## Performance
 
 The transforms use an in-place mixed-radix (radix-4/2) core. The twiddle-table workspace is ~1.3–1.9×
-faster than the no-workspace path but must be built once — see [docs/fft.md](../fft.md) for when each
-is the right default.
+faster than the no-workspace path but must be built once (see *Which one to use* above).
 
 Ryzen 9 9950X3D, single-thread Burst, median of 9. N=1,048,576 (2²⁰,
 `Benchmarks/FFTBenchmark.cs`); this size is memory-bandwidth-bound, so absolute ms varies a few % with

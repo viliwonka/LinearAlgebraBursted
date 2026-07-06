@@ -6,7 +6,7 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        // Pointer-stable allocation-record tables (docs/rfc-memory-model.md §4 Option A), same
+        // Pointer-stable allocation-record tables (docs/dev/rfc-memory-model.md §4 Option A), same
         // design as floatVecRecords/floatMatRecords (see Arena/floatRecords.float.cs,
         // Arena/Arena.float.cs) -- floatBSR/floatBlockJacobi now hold a stable
         // floatBSRRecord*/floatBlockJacobiRecord* into one of these instead of being tracked by

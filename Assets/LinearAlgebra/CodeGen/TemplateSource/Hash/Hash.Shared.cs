@@ -8,7 +8,7 @@ namespace LinearAlgebra
     // one for bool - see the sibling files in this same folder) all partial-merge into this SAME
     // `Hash` class, and this kernel would otherwise have to live twice (once per merged fragment)
     // and collide as CS0111/CS0101 - so it lives here instead, emitted exactly once. See
-    // docs/naming-style-guide.md's "Split vs merge safety" and the identical rationale on
+    // docs/dev/naming-style-guide.md's "Split vs merge safety" and the identical rationale on
     // Query.Shared.cs's decodeIndex.
     //
     // NOTE FOR EDITORS: this file must never contain the literal proxy-token substrings that name

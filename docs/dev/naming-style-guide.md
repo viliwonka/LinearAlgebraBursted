@@ -2,8 +2,8 @@
 
 Reference for keeping new code consistent with the rest of the library — written for a linter/
 reviewer agent to check changes against, not just for humans. Terse on purpose. Companion to
-`docs/codegen-refactor-lessons.md` (mistakes/pitfalls hit while building this) and
-`docs/perf-vectorization-lessons.md` (Burst vectorization rules).
+`docs/dev/codegen-refactor-lessons.md` (mistakes/pitfalls hit while building this) and
+`docs/dev/perf-vectorization-lessons.md` (Burst vectorization rules).
 
 ## Method naming
 - **camelCase**, with one sub-rule: a **leading** acronym is lowercased (`fft`) because camelCase
@@ -20,7 +20,7 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
   runs an algorithm, not itself a verb, so it follows the no-echo rule like `SVD`/`CHO`, not the
   `FFT`/`LOBPCG` exception.
 - **Direct-solver/decomposition token grid** (four tokens, one meaning each — see
-  `docs/spec-solver-api-rework.md` for the full rationale):
+  `docs/dev/spec-solver-api-rework.md` for the full rationale):
 
   | Token | Meaning |
   |---|---|

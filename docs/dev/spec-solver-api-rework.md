@@ -111,7 +111,7 @@ minNormSolve  (ref A, ref b, ref x[, ref ws])              // unchanged semantic
    (Mostly documented already; make uniform.)
 3. `solveInPlace` exits: usable-factors families (LU/CHO/CHOP/QRCP) document
    "A holds the factorization on return; valid input to decompSolve." QR documents destroyed.
-4. `InPlace` token definition goes into docs/naming-style-guide.md.
+4. `InPlace` token definition goes into docs/dev/naming-style-guide.md.
 
 ## Deletions (recap)
 

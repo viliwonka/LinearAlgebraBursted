@@ -1140,7 +1140,7 @@ namespace LinearAlgebra
         /// this constant is NOT scaled by Consts.sweepBudget like the other Eigen/SVD defaults --
         /// decompInPlace's "sweep" is a FULL-MATRIX Jacobi sweep (O(n^2) rotations each), a
         /// fundamentally different iteration unit from the per-value QR/QL sweeps the LAPACK dbdsqr
-        /// scaling targets (see docs/spec-svd-eigen-convergence.md); classical Jacobi converges in a
+        /// scaling targets (see docs/dev/spec-svd-eigen-convergence.md); classical Jacobi converges in a
         /// small constant number of sweeps essentially independent of n. Also deprecated/reference-only.</summary>
         [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static EigenInfo decompInPlace(ref floatMxN A, ref floatN eigenvalues,

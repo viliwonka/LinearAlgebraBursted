@@ -1,16 +1,16 @@
 ﻿# Spec: Predicate-Filtered Queries -- QueryOP extension
 
-Status: **SPEC** (2026-06-28). Promotes the "Tier C" sketch in docs/spec-query.md (Group 4 footer
+Status: **SPEC** (2026-06-28). Promotes the "Tier C" sketch in docs/dev/spec-query.md (Group 4 footer
 and the masked-nearest gap flagged in the Call-site validation section) to a coder-ready
 implementation spec. All operators live in fProxyQuery_OP (partial class) and follow every
-cross-cutting policy from docs/spec-query.md: camelCase, row+col symmetry, Indices+count
+cross-cutting policy from docs/dev/spec-query.md: camelCase, row+col symmetry, Indices+count
 convention, zero-alloc, no managed allocs, Burst struct-functor pattern.
 
 ---
 
 ## 1. Motivation and context
 
-docs/spec-query.md explicitly flags two unresolved gaps:
+docs/dev/spec-query.md explicitly flags two unresolved gaps:
 
 - **Tier C, Group 4 footer:** predicate functor sketch (IfProxyPredicate, IfProxyRowScore)
   described as "build when a real use appears."
@@ -27,7 +27,7 @@ fills both gaps in one session.
 
 ### 2a. Pass matrix+index, not an extracted fProxyN
 
-The docs/spec-query.md sketch used Test(in fProxyN row) -- passing an extracted row-vector.
+The docs/dev/spec-query.md sketch used Test(in fProxyN row) -- passing an extracted row-vector.
 This is rejected because:
 
 - fProxyN is a value type with its own UnsafeList<fProxy> storage. Constructing one from a matrix

@@ -3,11 +3,11 @@
 namespace LinearAlgebra
 {
     // Structural predicates for the SIGNED integer family (int/short/long -- uint is
-    // deliberately excluded from this surface, see docs/naming-style-guide.md). Merges into the
+    // deliberately excluded from this surface, see docs/dev/naming-style-guide.md). Merges into the
     // SAME bare partial class as Analysis.fProxy.cs's `Analysis` (safe: every method here takes
     // a concrete intN/intMxN parameter, never a bare generic <T>, so this follows the same
     // merge rule that already lets float and double coexist in one Analysis -- see
-    // docs/naming-style-guide.md's "Split vs merge safety").
+    // docs/dev/naming-style-guide.md's "Split vs merge safety").
     //
     // DELIBERATELY NO EPSILON/TOLERANCE PARAMETER: integer arithmetic is exact (no rounding
     // error to tolerate), so every predicate here is an exact-equality check. float/double

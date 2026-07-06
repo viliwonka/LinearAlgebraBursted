@@ -1,6 +1,6 @@
 # ML — k-means & PCA
 
-`LinearAlgebra.ML`. Design docs: [spec-kmeans.md](../spec-kmeans.md), [spec-pca.md](../spec-pca.md).
+`LinearAlgebra.ML`. Design docs: [spec-kmeans.md](../dev/spec-kmeans.md), [spec-pca.md](../dev/spec-pca.md).
 
 ## k-means
 
