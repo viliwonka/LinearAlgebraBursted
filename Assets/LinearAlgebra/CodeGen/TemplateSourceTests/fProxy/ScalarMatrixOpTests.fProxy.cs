@@ -13,7 +13,7 @@ using Unity.Mathematics;
 //  - `normalizeLP` summed pow(x,p) without abs -> NaN for negative entries with non-even p.
 public class fProxyScalarMatrixOpTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

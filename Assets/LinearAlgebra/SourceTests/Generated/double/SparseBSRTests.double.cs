@@ -19,7 +19,7 @@ using Unity.Mathematics;
 // cannot execute inside a Burst-compiled job.
 public class doubleSparseBSRTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct SparseBSRTestJob : IJob
     {
         public enum TestType

@@ -18,7 +18,7 @@ using Unity.Jobs;
 //                     with a leftU-less workspace must NOT throw, but a full bidiagonalize must.
 public class doubleBidiagWorkspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default, CompileSynchronously = true)]
     public struct WorkspaceJob : IJob
     {
         public enum TestType

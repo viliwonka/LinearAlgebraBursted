@@ -23,7 +23,7 @@ using Random = Unity.Mathematics.Random;
 // methods on the main thread. FIXED seeds only.
 public class floatRandomWeightedTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         public enum TestType

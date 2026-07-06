@@ -25,7 +25,7 @@ using Random = Unity.Mathematics.Random;
 // the Chunk-1 RandomTests.fProxy.cs convention. FIXED seeds only.
 public class intRandomTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         public enum TestType

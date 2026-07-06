@@ -10,7 +10,7 @@ using Unity.Jobs;
 // `rhs - lhs`, which negates the result since subtraction is not commutative.
 public class intScalarMatrixOpTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         // [0] flag, [1] got, [2] expected

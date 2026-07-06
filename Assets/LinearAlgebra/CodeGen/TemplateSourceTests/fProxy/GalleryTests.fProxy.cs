@@ -25,7 +25,7 @@ using Unity.Mathematics;
 // Argument-validation throws run on the managed thread (Assert.Throws), like the sibling guard tests.
 public class fProxyGalleryTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

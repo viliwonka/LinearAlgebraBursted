@@ -28,7 +28,7 @@ using Unity.Mathematics;
 // Burst job, so they are plain managed [Test]s.
 public class doubleSparseArenaWiringTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public unsafe struct WiringTestJob : IJob
     {
         public enum TestType

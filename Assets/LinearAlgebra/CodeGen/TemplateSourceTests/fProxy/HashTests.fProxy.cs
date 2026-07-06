@@ -26,7 +26,7 @@ using Unity.Mathematics;
 // raw pass, exactly the trap the production code routes around with choose markers.
 public class fProxyHashTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct HashTestJob : IJob
     {
         public enum TestType

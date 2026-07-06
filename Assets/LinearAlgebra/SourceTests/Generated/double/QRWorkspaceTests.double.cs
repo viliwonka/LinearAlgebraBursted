@@ -11,7 +11,7 @@ using Unity.Jobs;
 // to the allocating wrappers (they run the SAME kernel), and a mis-sized scratch must throw.
 public class doubleQRWorkspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceEquivJob : IJob
     {
         public enum TestType

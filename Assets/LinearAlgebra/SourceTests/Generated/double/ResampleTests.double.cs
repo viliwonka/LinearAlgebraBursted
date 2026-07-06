@@ -21,7 +21,7 @@ using Unity.Mathematics;
 // In-job (Burst) tests cover values; managed-thread Assert.Throws tests cover the validation paths.
 public class doubleResampleTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

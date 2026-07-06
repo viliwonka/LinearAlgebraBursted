@@ -49,7 +49,7 @@ using Unity.Mathematics;
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 public class floatQRCPDowndateTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -927,7 +927,7 @@ public class floatQRCPDowndateTests
     // Tier E (pivot sequence + bit-identical Q/R). Some seeds get an injected exact / near rank
     // deficiency. Loops many seeds inside ONE Execute for speed (mirrors ReconstructRandomTall's
     // style). The Tier-E-eligible count is reported out via Counts for the orchestrator.
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct FuzzJob : IJob
     {
         public NativeArray<float> Fail;  // [0] flag, [1] got, [2] expected/limit, [3] diff

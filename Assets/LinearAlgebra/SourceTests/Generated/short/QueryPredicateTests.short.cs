@@ -25,7 +25,7 @@ public class shortQueryPredicateTests
         public bool Test(short x) => x > t;
     }
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         public enum TestType

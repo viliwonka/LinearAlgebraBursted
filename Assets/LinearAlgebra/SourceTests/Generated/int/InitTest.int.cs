@@ -7,7 +7,7 @@ using Unity.Jobs;
 
 public class intInitTest
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct InitVecTestJob : IJob
     {
         public void Execute()
@@ -35,7 +35,7 @@ public class intInitTest
         new InitVecTestJob().Run();
     }
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct InitMatrixTestJob : IJob
     {
         public void Execute()

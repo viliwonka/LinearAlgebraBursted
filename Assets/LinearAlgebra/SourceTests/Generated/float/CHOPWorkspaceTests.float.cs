@@ -19,7 +19,7 @@ using Unity.Jobs;
 //                     a bt-less workspace must NOT throw, and a solve with a W-less workspace must NOT.
 public class floatCHOPWorkspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceJob : IJob
     {
         public enum TestType

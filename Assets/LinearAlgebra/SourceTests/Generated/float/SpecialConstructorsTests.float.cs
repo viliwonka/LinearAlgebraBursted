@@ -11,7 +11,7 @@ using Unity.Jobs;
 
 public class floatSpecialConstructorsTests {
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High)] 
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High)] 
     public struct TestJob : IJob
     {
         public enum TestType

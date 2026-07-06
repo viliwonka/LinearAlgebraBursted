@@ -13,7 +13,7 @@ using UnityEngine.TestTools;
 
 public class iProxyDotOperationTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct DotOperationTestsJob : IJob
     {
         public enum TestType

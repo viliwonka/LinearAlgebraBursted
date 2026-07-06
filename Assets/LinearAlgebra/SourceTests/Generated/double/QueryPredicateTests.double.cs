@@ -87,7 +87,7 @@ public class doubleQueryPredicateTests
     struct AlwaysTrueCol  : IdoubleColPredicate { public bool Test(in doubleMxN A, int c) => true; }
     struct AlwaysFalseCol : IdoubleColPredicate { public bool Test(in doubleMxN A, int c) => false; }
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

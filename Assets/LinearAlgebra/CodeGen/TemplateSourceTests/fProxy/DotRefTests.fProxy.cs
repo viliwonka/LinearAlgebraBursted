@@ -7,7 +7,7 @@ using Unity.Mathematics;
 
 public class fProxyDotRefTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct DotRefTestJob : IJob
     {
         public enum TestType

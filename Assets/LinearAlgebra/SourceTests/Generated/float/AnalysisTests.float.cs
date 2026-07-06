@@ -6,7 +6,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 public class floatAnalysisTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct AnalysisTestJob : IJob
     {
         public enum TestType

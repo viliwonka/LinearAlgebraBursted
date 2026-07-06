@@ -25,7 +25,7 @@ public class intQueryPredicateTests
         public bool Test(int x) => x > t;
     }
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         public enum TestType

@@ -7,7 +7,7 @@ using Unity.Mathematics;
 
 public class longDotRefTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct DotRefTestJob : IJob
     {
         public enum TestType

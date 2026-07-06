@@ -41,7 +41,7 @@ using UnityEngine;
 // ============================================================================================
 public class doubleAccuracySweepTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default, CompileSynchronously = true)]
     public struct AccuracyJob : IJob
     {
         public enum TestType

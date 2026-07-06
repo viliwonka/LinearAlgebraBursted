@@ -17,7 +17,7 @@ using Unity.Mathematics;
 // on the managed thread (Assert.Throws cannot run inside a Burst job).
 public class longStatsTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct StatsTestJob : IJob
     {
         public enum TestType

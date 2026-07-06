@@ -11,7 +11,7 @@ using UnityEngine.TestTools;
 
 public class floatQRTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct AssemblyTestJob : IJob
     {
         public void Execute()
@@ -29,7 +29,7 @@ public class floatQRTests
         }
     }
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -498,7 +498,7 @@ public class floatQRTests
         }
     }
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct PrecisionReconstructTestJob : IJob {
 
         public enum TestType {
@@ -554,7 +554,7 @@ public class floatQRTests
         }
     }
 
-    [BurstCompile(FloatMode = FloatMode.Deterministic, FloatPrecision = FloatPrecision.High)]
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Deterministic, FloatPrecision = FloatPrecision.High)]
     public struct SolveSystemTestJob : IJob {
 
         public enum TestType {
@@ -916,7 +916,7 @@ public class floatQRTests
 
     // ---- LQ decomposition tests ----
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LQTestJob : IJob
     {
         public enum TestType
@@ -1092,7 +1092,7 @@ public class floatQRTests
 
     // ---- LQ min-norm solver tests ----
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LQMinNormTestJob : IJob
     {
         public enum TestType

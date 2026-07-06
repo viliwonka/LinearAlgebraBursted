@@ -31,7 +31,7 @@ using Unity.Jobs;
 // not reproduce it even with the old bug present.
 public class fProxyArenaHandleTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct InArenaDanglingTestJob : IJob
     {
         public enum TestType

@@ -15,7 +15,7 @@ using Unity.Jobs;
 // the five blocked-WY buffers stay unused there (an asymmetry the guard tests below pin down).
 public class floatQRCacheWorkspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceEquivJob : IJob
     {
         public enum TestType

@@ -28,7 +28,7 @@ using Random = Unity.Mathematics.Random;
 // Throw-tests run on the managed thread (Assert.Throws), like the sibling guard tests.
 public class doubleRandomMatrixTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

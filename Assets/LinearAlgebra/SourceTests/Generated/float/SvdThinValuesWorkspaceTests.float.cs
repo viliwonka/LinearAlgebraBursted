@@ -12,7 +12,7 @@ using Unity.Jobs;
 // must behave correctly (throw on bad size, produce identical results across repeated reuse).
 public class floatSvdThinValuesWorkspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceEquivJob : IJob
     {
         public enum TestType

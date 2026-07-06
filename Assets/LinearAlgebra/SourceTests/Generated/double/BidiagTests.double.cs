@@ -8,7 +8,7 @@ using Unity.Jobs;
 
 public class doubleBidiagTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default, CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         public enum TestType

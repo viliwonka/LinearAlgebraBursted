@@ -18,7 +18,7 @@ using Random = Unity.Mathematics.Random;
 // diagnostics); managed-throw guards are plain [Test] methods on the main thread. FIXED seeds.
 public class BoolRandomTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         public enum TestType

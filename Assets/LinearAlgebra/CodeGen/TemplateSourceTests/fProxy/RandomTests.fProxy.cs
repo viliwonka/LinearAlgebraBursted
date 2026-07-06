@@ -23,7 +23,7 @@ using Random = Unity.Mathematics.Random;
 // tolerances. Never use a time-based seed.
 public class fProxyRandomTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

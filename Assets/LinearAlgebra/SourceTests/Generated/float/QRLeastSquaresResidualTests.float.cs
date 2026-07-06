@@ -18,7 +18,7 @@ using Unity.Mathematics;
 // with residual r = [1,-2,1] (||r||^2 = 6) and Aᵀr = 0.
 public class floatQRLeastSquaresResidualTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

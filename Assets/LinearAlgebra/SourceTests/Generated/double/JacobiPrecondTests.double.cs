@@ -14,7 +14,7 @@ using Unity.Mathematics;
 // the Symmetric-BSR reject runs on the managed thread with Assert.Throws.
 public class doubleJacobiPrecondTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct JacobiPrecondTestJob : IJob
     {
         public enum TestType

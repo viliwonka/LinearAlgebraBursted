@@ -16,7 +16,7 @@ using Unity.Mathematics;
 // pinned constants are shared across types in the managed HashSourceTests.cs.
 public class BoolHashTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct HashTestJob : IJob
     {
         public enum TestType

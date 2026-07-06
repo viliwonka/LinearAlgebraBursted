@@ -10,7 +10,7 @@ using Unity.Mathematics;
 
 public class fProxyPivotTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestsJob : IJob
     {
         public enum TestType

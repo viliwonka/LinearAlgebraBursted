@@ -21,7 +21,7 @@ using Unity.Mathematics;
 // DROPS it once any other element is present).
 public class longNormsTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct NormsTestJob : IJob
     {
         public enum TestType

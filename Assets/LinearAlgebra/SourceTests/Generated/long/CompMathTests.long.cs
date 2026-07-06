@@ -14,7 +14,7 @@ using Unity.Jobs;
 // the production kernel; uint's min/max/mad are covered concretely in SourceTests/UIntTypeTests.cs.)
 public class longCompMathTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestsJob : IJob
     {
         public enum TestType

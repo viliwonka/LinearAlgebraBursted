@@ -8,7 +8,7 @@ using Unity.Mathematics;
 
 public class floatCHOTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct CHOTestJob : IJob
     {
         public enum TestType

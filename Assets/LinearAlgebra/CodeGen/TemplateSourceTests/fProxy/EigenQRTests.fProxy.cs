@@ -24,7 +24,7 @@ using Unity.Mathematics;
 //  - Random general: sum of eigenvalues == trace, imaginary parts sum to 0 (conjugate pairs cancel).
 public class fProxyEigenQRTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct AssemblyTestJob : IJob
     {
         public void Execute()
@@ -38,7 +38,7 @@ public class fProxyEigenQRTests
         }
     }
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

@@ -21,7 +21,7 @@ using Unity.Mathematics;
 // float/double sibling template's note). Never spell `uintN` literally: it does not exist raw.
 public class intHashTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct HashTestJob : IJob
     {
         public enum TestType

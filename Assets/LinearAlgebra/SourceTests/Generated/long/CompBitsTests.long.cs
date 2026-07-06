@@ -9,7 +9,7 @@ using Unity.Jobs;
 
 public class longCompBitsTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestsJob : IJob
     {
         public enum TestType

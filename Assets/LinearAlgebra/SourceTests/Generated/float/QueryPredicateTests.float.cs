@@ -87,7 +87,7 @@ public class floatQueryPredicateTests
     struct AlwaysTrueCol  : IfloatColPredicate { public bool Test(in floatMxN A, int c) => true; }
     struct AlwaysFalseCol : IfloatColPredicate { public bool Test(in floatMxN A, int c) => false; }
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

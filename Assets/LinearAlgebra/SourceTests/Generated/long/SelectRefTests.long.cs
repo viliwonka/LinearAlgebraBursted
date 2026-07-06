@@ -11,7 +11,7 @@ using Unity.Jobs;
 // of hand-written uint select cases alongside its other hand-authored unsigned coverage.)
 public class longSelectRefTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct SelectRefTestJob : IJob
     {
         public enum TestType

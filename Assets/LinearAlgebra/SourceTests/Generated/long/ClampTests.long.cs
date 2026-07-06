@@ -13,7 +13,7 @@ using Unity.Jobs;
 // Passing lo > hi throws ArgumentException (eager validation, same as Cholesky / FFT guards).
 public class longClampTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct ClampTestJob : IJob
     {
         public enum TestType

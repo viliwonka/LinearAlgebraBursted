@@ -20,7 +20,7 @@ using Unity.Jobs;
 //     managed [Test]s on the normal C# thread.
 public class floatArenaWiringTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public unsafe struct WiringTestJob : IJob
     {
         public enum TestType

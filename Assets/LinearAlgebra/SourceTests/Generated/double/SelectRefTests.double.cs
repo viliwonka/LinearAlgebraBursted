@@ -7,7 +7,7 @@ using Unity.Mathematics;
 
 public class doubleSelectRefTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct SelectRefTestJob : IJob
     {
         public enum TestType

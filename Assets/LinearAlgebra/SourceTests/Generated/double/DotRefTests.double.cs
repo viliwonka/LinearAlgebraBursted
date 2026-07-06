@@ -7,7 +7,7 @@ using Unity.Mathematics;
 
 public class doubleDotRefTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct DotRefTestJob : IJob
     {
         public enum TestType

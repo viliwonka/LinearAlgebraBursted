@@ -23,7 +23,7 @@ using Unity.Mathematics;
 // the managed test thread with Assert.Throws, since NUnit's Assert.Throws cannot execute in Burst.
 public class fProxySparseEigenTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SparseEigenTestJob : IJob
     {
         public enum TestType

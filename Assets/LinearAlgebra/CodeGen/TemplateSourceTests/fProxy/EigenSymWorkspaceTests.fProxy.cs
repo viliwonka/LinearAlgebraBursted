@@ -18,7 +18,7 @@ using Unity.Jobs;
 //   (c) MIS-SIZED   — a workspace sized for the wrong n throws ArgumentException (managed).
 public class fProxyEigenSymWorkspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceJob : IJob
     {
         public enum TestType

@@ -20,7 +20,7 @@ using Unity.Mathematics;
 // modes (argument order, wrong mutation target).
 public class doubleCompMathTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestsJob : IJob
     {
         public enum TestType

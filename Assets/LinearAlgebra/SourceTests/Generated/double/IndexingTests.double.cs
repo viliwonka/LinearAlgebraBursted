@@ -20,7 +20,7 @@ public class doubleIndexingTests {
         RandomCalc,
     }
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct IndexingTestJob : IJob
     {
         public TestType TestType;

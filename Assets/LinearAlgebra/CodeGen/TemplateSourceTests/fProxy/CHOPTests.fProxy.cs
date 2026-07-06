@@ -16,7 +16,7 @@ using Unity.Mathematics;
 // (rank 0) and rank-1 outer product (rank 1).
 public class fProxyCHOPTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct AssemblyTestJob : IJob
     {
         public void Execute()
@@ -50,7 +50,7 @@ public class fProxyCHOPTests
         }
     }
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

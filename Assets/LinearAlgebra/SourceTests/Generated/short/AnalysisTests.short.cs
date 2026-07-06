@@ -14,7 +14,7 @@ using Unity.Jobs;
 // variants here. All square-only predicates must return false (NOT throw) for a non-square matrix.
 public class shortAnalysisTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct AnalysisTestJob : IJob
     {
         public enum TestType

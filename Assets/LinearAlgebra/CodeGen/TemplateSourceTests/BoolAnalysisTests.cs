@@ -9,7 +9,7 @@ using Unity.Mathematics;
 
 public class BoolAnalysisTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestsJob : IJob
     {
         public enum TestType

@@ -12,7 +12,7 @@ using Unity.Jobs;
 // reused workspace must behave correctly (throw on bad size, produce identical results across reuse).
 public class floatLQWorkspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceEquivJob : IJob
     {
         public enum TestType

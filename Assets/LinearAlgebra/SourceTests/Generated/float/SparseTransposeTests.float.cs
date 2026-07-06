@@ -23,7 +23,7 @@ using Unity.Mathematics;
 // Assert.Throws methods are needed.
 public class floatSparseTransposeTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct SparseTransposeTestJob : IJob
     {
         public enum TestType

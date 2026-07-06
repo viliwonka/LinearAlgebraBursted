@@ -15,7 +15,7 @@ using Unity.Jobs;
 //exercised explicitly throughout (tzcnt/lzcnt/countbits of the type's OWN bit width, not 32).
 public class iProxyCompBitsTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestsJob : IJob
     {
         public enum TestType

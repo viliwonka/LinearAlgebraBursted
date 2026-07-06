@@ -14,7 +14,7 @@ using UnityEngine.TestTools;
 
 public class doubleSolversTests {
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         public enum TestType

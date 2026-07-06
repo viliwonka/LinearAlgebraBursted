@@ -25,7 +25,7 @@ using Unity.Mathematics;
 // Indices out-of-range indexer test are plain [Test] methods on the main thread.
 public class doubleQueryTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

@@ -32,7 +32,7 @@ using Unity.Mathematics;
 // exact arithmetic (coincident integer blobs, exact means), so tiny sqrtEps-scaled bands suffice.
 public class floatKMeansTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

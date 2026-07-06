@@ -8,7 +8,7 @@ using Unity.Jobs;
 
 public class intOperationsTest {
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct BasicVecOpTestJob : IJob
     {
         public void Execute()
@@ -84,7 +84,7 @@ public class intOperationsTest {
         new BasicVecOpTestJob().Run();
     }
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct BasicMatOpTestJob : IJob
     {
         public void Execute()
@@ -134,7 +134,7 @@ public class intOperationsTest {
         new BasicMatOpTestJob().Run();
     }
     
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct BasicPreciseOPTestJob : IJob
     {
         public enum TestType

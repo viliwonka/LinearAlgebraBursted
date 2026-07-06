@@ -24,7 +24,7 @@ using Unity.Jobs;
 // Runs inside a [BurstCompile] IJob, matching every other Sparse test suite.
 public class fProxySparseUnrollTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct SparseUnrollTestJob : IJob
     {
         public enum TestType

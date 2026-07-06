@@ -8,7 +8,7 @@ using Unity.Mathematics;
 
 public class floatConjugateGradientTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct ConjugateGradientTestJob : IJob
     {
         public enum TestType

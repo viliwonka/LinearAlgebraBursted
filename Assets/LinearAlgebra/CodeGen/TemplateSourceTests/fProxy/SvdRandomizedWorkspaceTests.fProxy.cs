@@ -20,7 +20,7 @@ using Unity.Jobs;
 //   (c) MIS-SIZED   — a workspace sized for the wrong dimension throws ArgumentException (managed).
 public class fProxySvdRandomizedWorkspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceJob : IJob
     {
         public enum TestType

@@ -7,7 +7,7 @@ using Unity.Jobs;
 
 public class intTransposeTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TransposeTestsJob : IJob
     {
         public enum TestType

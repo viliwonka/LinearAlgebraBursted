@@ -12,7 +12,7 @@ using Unity.Mathematics;
 // out of bounds (copy[-1]). Quartiles use the linear-interpolation percentile (numpy 'linear').
 public class doubleFullStatsTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

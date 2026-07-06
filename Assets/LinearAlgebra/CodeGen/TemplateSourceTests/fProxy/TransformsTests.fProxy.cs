@@ -17,7 +17,7 @@ using Unity.Mathematics;
 // rather than hand-coding loops, so an assertion failure pins the transform, not the oracle.
 public class fProxyTransformsTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

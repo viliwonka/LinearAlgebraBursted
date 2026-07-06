@@ -33,7 +33,7 @@ using Unity.Mathematics;
 // diagnostics); managed-throw guards are plain [Test] methods on the main thread.
 public class shortQueryTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         public enum TestType

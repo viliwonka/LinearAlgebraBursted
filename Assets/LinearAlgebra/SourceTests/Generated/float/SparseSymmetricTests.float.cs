@@ -19,7 +19,7 @@ using Unity.Mathematics;
 // Assert.Throws (NUnit's Assert.Throws cannot execute inside a Burst-compiled job).
 public class floatSparseSymmetricTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct SparseSymmetricTestJob : IJob
     {
         public enum TestType

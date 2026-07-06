@@ -13,7 +13,7 @@ using Unity.Mathematics;
 // For exactly low-rank A with k >= rank the reconstruction Uk diag(Sk) Vkᵀ ≈ A.
 public class floatSVDRandomizedTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType

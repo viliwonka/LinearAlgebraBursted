@@ -25,7 +25,7 @@ public class iProxyQueryPredicateTests
         public bool Test(iProxy x) => x > t;
     }
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestJob : IJob
     {
         public enum TestType

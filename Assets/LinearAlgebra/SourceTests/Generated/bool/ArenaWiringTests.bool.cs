@@ -26,7 +26,7 @@ using Unity.Jobs;
 // IJob; guard/throw assertions (Assert.Throws can't run inside Burst) are plain managed [Test]s.
 public class boolArenaWiringTests
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public unsafe struct WiringTestJob : IJob
     {
         public enum TestType
