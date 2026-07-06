@@ -3,8 +3,7 @@
 `FFT`. 1D transforms over **split real/imaginary** arrays (`floatN re`, `floatN im`) — there is no
 complex type. Convention: forward `X[k] = Σ x[n]·exp(-2πi·kn/N)` (no forward scaling); the inverse
 divides by N, so `ifft(fft(x)) == x`. A deeper usage write-up (workspace tradeoffs, accuracy notes)
-lives in [docs/fft.md](../fft.md) — written before the `FFT`/`floatFFTCache` naming landed, so read
-past `floatFFT_OP`/`floatFFT_WS` as the same classes under their current names.
+lives in [docs/fft.md](../fft.md).
 
 ## Entry points
 

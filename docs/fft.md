@@ -1,7 +1,7 @@
 # FFT / DFT — usage
 
-1D Fourier transforms over **split real/imaginary** arrays (`fProxyN re`, `fProxyN im`) —
-there is no complex type. Available for `float` and `double` via `floatFFT_OP` / `doubleFFT_OP`.
+1D Fourier transforms over **split real/imaginary** arrays (`floatN re`, `floatN im`) —
+there is no complex type. Available for `float` and `double` on the `FFT` class.
 
 Convention: forward `X[k] = Σ x[n]·exp(-2πi·kn/N)` (no forward scaling); the inverse divides by N,
 so `ifft(fft(x)) == x`.
@@ -14,7 +14,7 @@ so `ifft(fft(x)) == x`.
 | `fft(ref re, ref im, in ws)` · `ifft(…)` | workspace (plan), **fastest**. Power-of-two only. |
 | `rfft(in real, ref re, ref im [, in ws])` · `irfft(…)` | real input → half spectrum (length N/2+1). |
 | `dft(in inRe, in inIm, ref outRe, ref outIm)` · `idft(…)` | direct O(N²), works for **any N**. |
-| `arena.fProxyMagnitude / fProxyPowerSpectrum / fProxyPhase(in re, in im)` | spectrum post-processing. |
+| `arena.floatMagnitude / floatPowerSpectrum / floatPhase(in re, in im)` | spectrum post-processing. |
 
 ## Which one to use
 
@@ -29,15 +29,15 @@ All FFT/IFFT/rfft lengths must be a **power of two** — use `dft` for arbitrary
   any repeated use.
 
 ```csharp
-var ws = arena.floatFFT_WS(1024);     // builds the twiddle table on creation
+var ws = arena.floatFFTCache(1024);   // builds the twiddle table on creation
 for (int f = 0; f < frames; f++)
-    floatFFT_OP.fft(ref re, ref im, in ws);    // zero-alloc, reuses the plan
+    FFT.fft(ref re, ref im, in ws);   // zero-alloc, reuses the plan
 ```
 
 ## Workspace notes
 
-- Built on creation by the arena factory (`arena.floatFFT_WS(n)`); disposed with the arena —
-  no manual `Dispose`. This matches every other workspace in the library (`floatSVD_WS`, …).
+- Built on creation by the arena factory (`arena.floatFFTCache(n)`); disposed with the arena —
+  no manual `Dispose`. This matches every other workspace in the library (`floatSVDCache`, …).
 - Holds the twiddle tables plus the rfft/mixed-radix scratch, so repeated `fft/ifft/rfft/irfft(ws)`
   allocate nothing.
 - **Single-use-at-a-time**: the scratch is shared, so use one workspace per thread for parallel
