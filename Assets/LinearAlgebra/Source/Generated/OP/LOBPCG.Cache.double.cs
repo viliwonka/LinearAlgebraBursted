@@ -2,7 +2,7 @@ using System;
 
 namespace LinearAlgebra
 {
-    public static partial class LOBPCG
+    public static partial class Eigen
     {
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an n-dimensional symmetric operator
@@ -68,7 +68,7 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Reusable scratch for <see cref="LOBPCG.lobpcg{TOp,TBOp,TPre}"/> (blocked LOBPCG for the k
+    /// Reusable scratch for <see cref="Eigen.lobpcg{TOp,TBOp,TPre}"/> (blocked LOBPCG for the k
     /// smallest eigenpairs of an n-dimensional symmetric operator, or the k smallest of the
     /// GENERALIZED pencil (A, B) -- the SAME cache and its SAME shape serve both, see
     /// <see cref="BX"/>/<see cref="BW"/>/<see cref="BP"/>). Sized for k eigenpairs over an
@@ -153,7 +153,7 @@ namespace LinearAlgebra
         public doubleN rowIn, rowOut;
 
         /// <summary>Length n. Third row-combination scratch used only by
-        /// <c>LOBPCG.OrthonormalizeBlockB</c> (the B-aware sibling of <c>OrthonormalizeBlock</c>) to
+        /// <c>Eigen.OrthonormalizeBlockB</c> (the B-aware sibling of <c>OrthonormalizeBlock</c>) to
         /// carry a block's B-image (BW or BP) through the SAME Cholesky-QR row combination applied
         /// to that block itself and its A-image -- <see cref="rowIn"/>/<see cref="rowOut"/> already
         /// serve as the other two (V/AV) scratch slots there, so a third distinct buffer is needed
@@ -165,7 +165,7 @@ namespace LinearAlgebra
         /// standard-form matrix L^-1 H L^-T, Y = Atrans's eigenvectors, C = the recovered
         /// combination coefficients L^-T Y). Only the leading m x m block is used in any given
         /// iteration (m = 2*numActive or 3*numActive &lt;= 3k) via a same-buffer, smaller-shaped
-        /// LOGICAL view (see <c>LOBPCG.View</c>) -- never a fresh allocation.</summary>
+        /// LOGICAL view (see <c>Eigen.View</c>) -- never a fresh allocation.</summary>
         public doubleMxN Gram, H, L, Atrans, Y, C;
     }
 

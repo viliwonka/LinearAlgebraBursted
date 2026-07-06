@@ -1,9 +1,17 @@
 # LinearAlgebraBursted
 
-A linear algebra library for Unity, compiled entirely through [Burst](https://docs.unity3d.com/Packages/com.unity.burst@latest).
+A linear algebra library for Unity, supported entirely by [Burst](https://docs.unity3d.com/Packages/com.unity.burst@latest).
 It extends `Unity.Mathematics` past its fixed 4×4 ceiling: arbitrary-size vectors and matrices for
-`float`/`double`/`int`/`short`/`long`/`uint`/`bool`, an arena allocator, dense and block-sparse
-factorizations/solvers, eigensolvers, FFT, statistics, and a small ML layer.
+`float`/`double`/`int`/`bool` and others. 
+
+It's meant to be deterministic, simple, tested, optimized.
+
+It has things you would expect from linear algebra / math library:
+- Dense / Sparse matrices,
+- Solvers / eigen,
+- Decompositions,
+- Statistics,
+- FFT
 
 The public API is still being reviewed and may change before `1.0` (current version `0.1.0`).
 
@@ -71,42 +79,43 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 
 | Algorithm | Case | Results |
 |---|---|---|
-| LU solve — `LU.solveInPlace` | 1024×1024, float | 15.3 ms |
-| Cholesky solve — `CHO.solveInPlace` | SPD 1024×1024, float | 12.1 ms |
-| QR solve — `QR.solveInPlace` | 1024×1024, float | 36.3 ms |
-| QR least squares — `QR.solveInPlace` | 2048×512, float | 31.2 ms |
-| QRCP least squares, rank-safe — `QRCP.solveInPlace` | 2048×512, float | 36.2 ms |
-| LQ minimum-norm solve — `LQ.minNormSolve` | underdetermined 512×1024, float | 12.3 ms |
-| CG, iterative solve — `Solvers.cg` | SPD 1024×1024, double; dense vs. sparse BSR (4×4 blocks, 7% fill), 40 iterations | dense 15.05 ms, sparse 0.37 ms |
-| Symmetric eigendecomposition — `Eigen.symmetric` | 1024×1024, float, values + vectors | 420.3 ms |
-| Eigenvalues only — `Eigen.valuesSymmetric` | 1024×1024, float | 161.9 ms |
-| Smallest eigenpairs — `LOBPCG.lobpcg` | SPD 512×512, k=4, float, 50 iterations | 84.3 ms (50-iteration budget ≈ 1.7 ms/iter) |
-| SVD, thin (full) — `SVD.thin` | 2048×512, float | 186.8 ms |
-| SVD, truncated top-k — `SVD.truncated` | 2048×512, k=21, float | 17.6 ms |
-| SVD, randomized top-k — `SVD.randomized` | 2048×512, k=21, float | 29.5 ms |
-| FFT — `FFT.fft` | N = 1,048,576, float | 23.5 ms |
-| Real FFT — `FFT.rfft` | N = 1,048,576, float | 18.3 ms |
+| `LU.solveInPlace` LU | 1024×1024, float | 15.3 ms |
+| `CHO.solveInPlace` Cholesky | 1024×1024, float | 12.1 ms |
+| `QR.solveInPlace` QR | 1024×1024, float | 36.3 ms |
+| `QR.solveInPlace` QR least squares | 2048×512, float | 31.2 ms |
+| `QRCP.solveInPlace` pivoted QR, least squares | 2048×512, float | 36.2 ms |
+| `LQ.minNormSolve` LQ, underdetermined system | 512×1024, float | 12.3 ms |
+| `Solvers.cg` CG, iterative SPD solver, dense | 1024×1024, double; dense BSR (4×4 blocks, 7% fill), 40 iterations | 15.05 ms |
+| `Solvers.cg` CG, iterative SPD solver, sparse | 1024×1024, double; sparse BSR (4×4 blocks, 7% fill), 40 iterations | 0.37 ms |
+| `Eigen.symmetric` Symmetric eigen decomp  | 1024×1024, float, values + vectors | 420.3 ms |
+| `Eigen.valuesSymmetric` Symmetric eigen, values only | 1024×1024, float | 161.9 ms |
+| `Eigen.lobpcg` Smallest eigenpairs, SPD solver | 512×512, k=4, float, 50 iterations | 84.3 ms (1.7 ms/iter) |
+| `SVD.thin` full SVD | 2048×512, float | 186.8 ms |
+| `SVD.truncated` truncated SVD w/ top-k only | 2048×512, k=21, float | 17.6 ms |
+| `SVD.randomized` randomized SVD w/ top-k only  | 2048×512, k=21, float | 29.5 ms |
+| `FFT.fft` FFT  | N = 1,048,576, float | 23.5 ms |
+|`FFT.rfft` Real FFT | N = 1,048,576, float | 18.3 ms |
 
 ## Features
 
-- [**Types**](docs/features/dense-types.md) vectors, matrices, the `Arena` allocator
-- [**Element-wise ops**](docs/features/comp-elementwise.md) `Comp`: arithmetic, math functions, clamp, in-place
-- [**Core linear algebra**](docs/features/blas.md) `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
-- [**Decompositions**](docs/features/decompositions.md) LU, CHO/CHOP, QR/QRCP,LQ
-- [**Direct solvers**](docs/features/solvers.md) tri/LU/CHO/QR solve
-- [**Least squares**](docs/features/least-squares.md) QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning
-- [**SVD**](docs/features/svd.md) thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation
-- [**Eigensolvers**](docs/features/eigen.md) symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG
-- [**Sparse (BSR)**](docs/features/sparse-bsr.md) block-CSR storage, builder assembly, sparse solvers/eigensolvers
-- [**FFT**](docs/features/fft.md) real valued rfft/irfft, complex fft/ifft, dft
-- [**Statistics**](docs/features/stats.md) vector/row/col reductions, covariance/correlation, transforms
-- [**Random**](docs/features/random.md) distribution samplers, weighted pick/shuffle, multivariate normal, structured matrices
-- [**Query**](docs/features/query.md) nearest/k-nearest/radius search, argmax/argmin, predicate-filtered variants
-- [**Select & bit ops**](docs/features/select-bits.md) element-wise select, integer bit intrinsics, bool logic
-- [**Hash**](docs/features/hash.md) vector/matrix, col/row reduction
-- [**ML**](docs/features/ml.md) k-means, PCA
-- [**Generators**](docs/features/generators.md) linspace, easing curves, LFO/wave, DSP windows, kernels
-- [**Print & export**](docs/features/print-export.md) `Print.Log`/`Print.Spy`, managed CSV/text export
+- [**Types**](docs/features/dense-types.md): vectors, matrices, the `Arena` allocator
+- [**Element-wise ops**](docs/features/comp-elementwise.md): Per component arithmetic, math functions, clamp
+- [**Core linear algebra**](docs/features/blas.md): `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
+- [**Decompositions**](docs/features/decompositions.md): LU, CHO/CHOP, QR/QRCP,LQ
+- [**Direct solvers**](docs/features/solvers.md): tri/LU/CHO/QR solve
+- [**Least squares**](docs/features/least-squares.md): QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning
+- [**SVD**](docs/features/svd.md): thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation
+- [**Eigensolvers**](docs/features/eigen.md): symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG
+- [**Sparse (BSR)**](docs/features/sparse-bsr.md): block-CSR storage, builder assembly, sparse solvers/eigensolvers
+- [**FFT**](docs/features/fft.md): real valued rfft/irfft, complex fft/ifft, dft
+- [**Statistics**](docs/features/stats.md): vector/row/col reductions, covariance/correlation, transforms
+- [**Random**](docs/features/random.md): distribution samplers, weighted pick/shuffle, multivariate normal, structured matrices
+- [**Query**](docs/features/query.md): nearest/k-nearest/radius search, argmax/argmin, predicate-filtered variants
+- [**Select & bit ops**](docs/features/select-bits.md): element-wise select, integer bit intrinsics, bool logic
+- [**Hash**](docs/features/hash.md): vector/matrix, col/row reduction
+- [**ML**](docs/features/ml.md): k-means, PCA
+- [**Generators**](docs/features/generators.md): linspace, easing curves, LFO/wave, DSP windows, kernels
+- [**Print & export**](docs/features/print-export.md): `Print.Log`/`Print.Spy`, managed CSV/text export
 
 ## Determinism
 

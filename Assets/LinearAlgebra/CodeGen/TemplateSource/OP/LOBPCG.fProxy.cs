@@ -228,7 +228,7 @@ namespace LinearAlgebra
     /// analysis wants, and exactly what LOBPCG natively targets with NO extra mode-selection needed:
     /// <code>
     ///   // K_E: SPD elastic stiffness. K_G: geometric stiffness at the reference load (indefinite).
-    ///   var mu = LOBPCG.lobpcg(in K_G, in K_E, ref ws, k, tol, maxIter); // A=K_G, B=K_E
+    ///   var mu = Eigen.lobpcg(in K_G, in K_E, ref ws, k, tol, maxIter); // A=K_G, B=K_E
     ///   // mu is ASCENDING; mu[0] is the most negative (first/critical) mode, PROVIDED it is
     ///   // actually negative -- a mu[i] &gt;= 0 is not a buckling mode under this reference load
     ///   // direction (no positive critical multiplier exists for that mode) and should be
@@ -244,7 +244,7 @@ namespace LinearAlgebra
     /// division (lambda_cr = +1/mu) accordingly -- the pencil construction and "smallest mu"
     /// targeting are unaffected; only the final scalar's sign flips with the convention.
     /// </summary>
-    public static partial class LOBPCG
+    public static partial class Eigen
     {
         /// <summary>
         /// Zero-alloc (at O(n) scale) LOBPCG primitive for the GENERALIZED symmetric eigenproblem

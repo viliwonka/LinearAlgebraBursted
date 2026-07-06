@@ -67,7 +67,7 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Identity preconditioner: z = r (no-op copy). Gives a <c>TPre</c>-generic solver (e.g.
-    /// <see cref="LOBPCG.lobpcg{TOp,TPre}"/>) a concrete, zero-cost "no preconditioner" instance so
+    /// <see cref="Eigen.lobpcg{TOp,TPre}"/>) a concrete, zero-cost "no preconditioner" instance so
     /// its UNPRECONDITIONED entry point can forward into the single preconditioned generic
     /// implementation with a one-line call instead of duplicating a large loop body -- the same
     /// role <see cref="doubleDenseOperator"/> plays for dense callers of a <c>TOp</c>-generic
@@ -82,8 +82,8 @@ namespace LinearAlgebra
     /// <summary>
     /// Identity LINEAR OPERATOR: y = x (an exact bit-copy), Rows == Cols == the size fixed at
     /// construction. The operator-shaped sibling of <see cref="doubleIdentityPreconditioner"/> --
-    /// used e.g. by <see cref="LOBPCG.lobpcg{TOp,TPre}"/> to forward the STANDARD (B=I) generalized
-    /// eigenproblem entry points into the single generalized <see cref="LOBPCG.lobpcg{TOp,TBOp,TPre}"/>
+    /// used e.g. by <see cref="Eigen.lobpcg{TOp,TPre}"/> to forward the STANDARD (B=I) generalized
+    /// eigenproblem entry points into the single generalized <see cref="Eigen.lobpcg{TOp,TBOp,TPre}"/>
     /// core with B played by this identity, rather than hand-duplicating a Euclidean-only
     /// implementation. Because Apply/ApplyT are an exact bit-copy (no arithmetic), every downstream
     /// formula that substitutes a raw block for its "B-image" reproduces the original Euclidean-only

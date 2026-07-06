@@ -8,7 +8,7 @@ using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 
-// SCRATCH / smoke-test coverage for the new LOBPCG.lobpcg implementation, written by the coder
+// SCRATCH / smoke-test coverage for the new Eigen.lobpcg implementation, written by the coder
 // agent purely to sanity-check the algorithm while iterating (per the task brief: "author tests
 // only for what you need to iterate, mark clearly what needs independent verification"). This is
 // NOT the comprehensive suite the spec calls for (analytic Laplacian oracle across k=1..4,
@@ -36,7 +36,7 @@ public class floatLOBPCGSmokeTests
         var A = arena.floatMat(n, n);
         for (int i = 0; i < n; i++) A[i, i] = (float)(i + 1); // eigenvalues 1..6
 
-        var eig = LOBPCG.lobpcg(ref arena, in A, 2, out var vecs, out var info);
+        var eig = Eigen.lobpcg(ref arena, in A, 2, out var vecs, out var info);
 
         Assert.IsTrue(info.Solved, info.ToString());
         Assert.AreEqual(2, info.converged);
@@ -67,7 +67,7 @@ public class floatLOBPCGSmokeTests
         int n = 12;
         var A = arena.floatLaplacian1D(n);
 
-        var eig = LOBPCG.lobpcg(ref arena, in A, 3, out var vecs, out var info);
+        var eig = Eigen.lobpcg(ref arena, in A, 3, out var vecs, out var info);
 
         Assert.IsTrue(info.Solved, info.ToString());
 
@@ -88,7 +88,7 @@ public class floatLOBPCGSmokeTests
         int n = 10;
         var A = arena.floatLaplacian1D(n);
 
-        var eig = LOBPCG.lobpcg(ref arena, in A, 1, out _, out var info);
+        var eig = Eigen.lobpcg(ref arena, in A, 1, out _, out var info);
         Assert.IsTrue(info.Solved);
 
         var v = arena.floatVec(n);
@@ -139,10 +139,10 @@ public class floatLOBPCGSmokeTests
         int k = 2;
 
         var wsUnprecond = arena.floatLOBPCGCache(n, k);
-        var infoUnprecond = LOBPCG.lobpcg(in A, ref wsUnprecond, k, Consts.floatSqrtEps, 500);
+        var infoUnprecond = Eigen.lobpcg(in A, ref wsUnprecond, k, Consts.floatSqrtEps, 500);
 
         var wsPrecond = arena.floatLOBPCGCache(n, k);
-        var infoPrecond = LOBPCG.lobpcg(in A, in M, ref wsPrecond, k, Consts.floatSqrtEps, 500);
+        var infoPrecond = Eigen.lobpcg(in A, in M, ref wsPrecond, k, Consts.floatSqrtEps, 500);
 
         Assert.IsTrue(infoUnprecond.Solved, infoUnprecond.ToString());
         Assert.IsTrue(infoPrecond.Solved, infoPrecond.ToString());
@@ -172,7 +172,7 @@ public class floatLOBPCGSmokeTests
         int k = 4;
         var A = arena.floatLaplacian1D(n);
 
-        var eig = LOBPCG.lobpcg(ref arena, in A, k, out var vecs, out var info, Consts.floatSqrtEps, 300);
+        var eig = Eigen.lobpcg(ref arena, in A, k, out var vecs, out var info, Consts.floatSqrtEps, 300);
 
         Assert.AreNotEqual(IterativeSolveStatus.Breakdown, info.status);
 
@@ -200,7 +200,7 @@ public class floatLOBPCGSmokeTests
         var A = arena.floatMat(n, n);
         for (int i = 0; i < n; i++) A[i, i] = (float)(i + 1); // eigenvalues 1..20
 
-        var eig = LOBPCG.lobpcg(ref arena, in A, k, out _, out var info);
+        var eig = Eigen.lobpcg(ref arena, in A, k, out _, out var info);
 
         Assert.IsTrue(info.Solved, info.ToString());
         Assert.AreEqual(k, info.converged);
@@ -227,7 +227,7 @@ public class floatLOBPCGSmokeTests
         var Vall = arena.floatMat(n, n);
         Assert.IsTrue(Eigen.symmetric(ref Afull, ref eigAll, ref Vall));
 
-        var eig = LOBPCG.lobpcg(ref arena, in A, k, out _, out var info);
+        var eig = Eigen.lobpcg(ref arena, in A, k, out _, out var info);
         Assert.IsTrue(info.Solved, info.ToString());
 
         for (int j = 0; j < k; j++)
@@ -246,7 +246,7 @@ public class floatLOBPCGSmokeTests
         int n = 12, k = 4;
         var A = arena.floatLaplacian1D(n);
 
-        var eig = LOBPCG.lobpcg(ref arena, in A, k, out var vecs, out var info);
+        var eig = Eigen.lobpcg(ref arena, in A, k, out var vecs, out var info);
         Assert.IsTrue(info.Solved, info.ToString());
 
         for (int i = 0; i < k; i++)
@@ -274,7 +274,7 @@ public class floatLOBPCGSmokeTests
         A[1, 1] = (float)1;
         for (int i = 2; i < n; i++) A[i, i] = (float)i; // 2,3,4,5,6,7
 
-        var eig = LOBPCG.lobpcg(ref arena, in A, k, out var vecs, out var info);
+        var eig = Eigen.lobpcg(ref arena, in A, k, out var vecs, out var info);
         Assert.IsTrue(info.Solved, info.ToString());
 
         Assert.AreEqual((float)1, eig[0], Tol());
@@ -332,7 +332,7 @@ public class floatLOBPCGSmokeTests
         Assert.IsTrue(Eigen.symmetric(ref Ahat, ref eigAll, ref Vall));
 
         var ws = arena.floatLOBPCGCache(n, k);
-        var info = LOBPCG.lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 1000);
+        var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 1000);
         Assert.IsTrue(info.Solved, info.ToString());
 
         for (int j = 0; j < k; j++)
@@ -363,8 +363,8 @@ public class floatLOBPCGSmokeTests
         var I = arena.floatMat(n, n);
         for (int i = 0; i < n; i++) I[i, i] = (float)1;
 
-        var eigStd = LOBPCG.lobpcg(ref arena, in A, k, out var vecsStd, out var infoStd);
-        var eigGen = LOBPCG.lobpcg(ref arena, in A, in I, k, out var vecsGen, out var infoGen);
+        var eigStd = Eigen.lobpcg(ref arena, in A, k, out var vecsStd, out var infoStd);
+        var eigGen = Eigen.lobpcg(ref arena, in A, in I, k, out var vecsGen, out var infoGen);
 
         Assert.IsTrue(infoStd.Solved, infoStd.ToString());
         Assert.IsTrue(infoGen.Solved, infoGen.ToString());
@@ -421,7 +421,7 @@ public class floatLOBPCGSmokeTests
 
         int k = 2;
         var ws = arena.floatLOBPCGCache(n, k);
-        var info = LOBPCG.lobpcg(in Kg, in Ke, ref ws, k, Consts.floatSqrtEps, 2000);
+        var info = Eigen.lobpcg(in Kg, in Ke, ref ws, k, Consts.floatSqrtEps, 2000);
         Assert.IsTrue(info.Solved, info.ToString());
 
         Assert.AreEqual(-1.0, (double)ws.lambda[0], 1e-2);
@@ -446,7 +446,7 @@ public class floatLOBPCGSmokeTests
         for (int i = 0; i < n; i++) B[i, i] = (float)(i + 1);
 
         var ws = arena.floatLOBPCGCache(n, k);
-        var info = LOBPCG.lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 1000);
+        var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 1000);
         Assert.IsTrue(info.Solved, info.ToString());
 
         var xi = arena.floatVec(n);
@@ -515,7 +515,7 @@ public class floatLOBPCGSmokeTests
 
         int k = 2;
         var ws = arena.floatLOBPCGCache(n, k);
-        var info = LOBPCG.lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 1000);
+        var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 1000);
 
         Assert.IsTrue(info.Solved, info.ToString());
         for (int i = 0; i < k; i++)

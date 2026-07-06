@@ -8,7 +8,7 @@ using LinearAlgebra;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // LOBPCG.lobpcg (k smallest eigenpairs of a symmetric operator) — not covered by
+    // Eigen.lobpcg (k smallest eigenpairs of a symmetric operator) — not covered by
     // EigenSvdBenchmark.cs (that file predates LOBPCG's generalization). Dense SPD input
     // A = MᵀM + I (same recipe as IterativeBenchmark.cs — guarantees SPD, well-conditioned smallest
     // eigenvalues clustered near 1). tol is set near machine-epsilon so every timed sample runs the
@@ -32,7 +32,7 @@ namespace LinearAlgebra.Benchmarks
         public float tol;
         public NativeArray<LOBPCGInfo> infoOut; // length 1
 
-        public void Execute() => infoOut[0] = LOBPCG.lobpcg(in A, ref ws, k, tol, maxIter);
+        public void Execute() => infoOut[0] = Eigen.lobpcg(in A, ref ws, k, tol, maxIter);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -44,7 +44,7 @@ namespace LinearAlgebra.Benchmarks
         public double tol;
         public NativeArray<LOBPCGInfo> infoOut; // length 1
 
-        public void Execute() => infoOut[0] = LOBPCG.lobpcg(in A, ref ws, k, tol, maxIter);
+        public void Execute() => infoOut[0] = Eigen.lobpcg(in A, ref ws, k, tol, maxIter);
     }
 
     public static class LOBPCGBenchmark
@@ -57,7 +57,7 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine(string.Format("=== LOBPCG.lobpcg, dense SPD (A = M^T M + I), k={0} smallest, maxIter={1} (ms) ===", K, MaxIter));
+            sb.AppendLine(string.Format("=== Eigen.lobpcg, dense SPD (A = M^T M + I), k={0} smallest, maxIter={1} (ms) ===", K, MaxIter));
             sb.AppendLine(string.Format("{0,-7} {1,-6} {2,11} {3,11} {4,10} {5,10} {6,14}",
                 "dtype", "N", "min(ms)", "med(ms)", "iters", "converged", "maxResidual"));
             sb.AppendLine(BenchFloat());

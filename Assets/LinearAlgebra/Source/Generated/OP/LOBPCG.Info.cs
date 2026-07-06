@@ -4,12 +4,12 @@ using Unity.Collections;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Result of a blocked LOBPCG solve (<c>LOBPCG.lobpcg</c>). Every overload RETURNS this by
+    /// Result of a blocked LOBPCG solve (<c>Eigen.lobpcg</c>). Every overload RETURNS this by
     /// value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>) means the same
     /// success-test call shape used by every other iterative solver in this library compiles:
     /// <code>
-    ///   if (LOBPCG.lobpcg(in A, ref ws, k, tol, maxIter)) { ... }
-    ///   var info = LOBPCG.lobpcg(in A, in M, ref ws, k);
+    ///   if (Eigen.lobpcg(in A, ref ws, k, tol, maxIter)) { ... }
+    ///   var info = Eigen.lobpcg(in A, in M, ref ws, k);
     ///   if (info.Solved) Debug.Log(info.converged);
     /// </code>
     ///

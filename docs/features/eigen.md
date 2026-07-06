@@ -29,7 +29,7 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
   Lanczos tridiagonalization + `Eigen.valuesSymmetric` on the result → Ritz **values**.
   **`lanczosVectors<TOp>(...)`** — same tridiagonalization, then forms Ritz **vectors** too (not
   zero-alloc — allocates 3 Temp vectors internally via `Eigen.symmetric`).
-- **`LOBPCG.lobpcg<TOp[,TPre]>(in A[, in M], ref ws, int k, float tol, int maxIter)`** — blocked
+- **`Eigen.lobpcg<TOp[,TPre]>(in A[, in M], ref ws, int k, float tol, int maxIter)`** — blocked
   Locally Optimal Block Preconditioned Conjugate Gradient: the `k` SMALLEST eigenpairs of a symmetric
   operator, via deflation-based locking (a converged pair is frozen and projected out of the active
   subspace) and a small dense Rayleigh-Ritz sub-problem solved with `Eigen.symmetric` (a 3-block
@@ -64,7 +64,7 @@ eigensolver enum):
 |---|---|---|
 | `EigenSolveInfo` | `iterations`, `residual` (double, `‖Av-λv‖`), `status` | `powerIteration`, `inversePowerIteration` |
 | `LanczosInfo` | `produced` (≤ `steps`, less only on early breakdown), `status` | `lanczos`, `lanczosVectors` |
-| `LOBPCGInfo` | `iterations`, `converged` (0..k pairs locked), `maxResidual` (double, worst-case relative residual over all k pairs), `status` | `LOBPCG.lobpcg` |
+| `LOBPCGInfo` | `iterations`, `converged` (0..k pairs locked), `maxResidual` (double, worst-case relative residual over all k pairs), `status` | `Eigen.lobpcg` |
 
 ## Performance
 
@@ -81,7 +81,7 @@ Ryzen 9 9950X3D, single-thread Burst, median of 9. N=1024 (`Benchmarks/EigenSvdB
 | `Eigen.symmetric` (values + vectors) | float | 420.25 |
 | `Eigen.symmetric` | double | 542.04 |
 
-`LOBPCG.lobpcg` (`Benchmarks/LOBPCGBenchmark.cs`), dense SPD `A = MᵀM + I`, N=512, k=4 smallest,
+`Eigen.lobpcg` (`Benchmarks/LOBPCGBenchmark.cs`), dense SPD `A = MᵀM + I`, N=512, k=4 smallest,
 maxIter fixed at 50 (deterministic timing; `tol` is set near machine-epsilon so the budget is never
 met early):
 
