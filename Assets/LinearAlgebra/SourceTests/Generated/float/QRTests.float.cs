@@ -1103,6 +1103,9 @@ public class floatQRTests
             ResidualCheck,
             // Large m (>= LQ_BLOCK_MIN_M): exercises the blocked factor-only path in lqFactorInPlace.
             ResidualCheckLargeBlocked,
+            // Mid m (256 <= m < 512): the per-type gate split — float takes the BLOCKED core here,
+            // double stays UNBLOCKED. Guards that both routes agree at the size where they diverge.
+            ResidualCheckMidBlocked,
             // Solver API rework (commit 2): uninit-x contract.
             UninitXContract,
         }
@@ -1121,6 +1124,7 @@ public class floatQRTests
                 case TestType.KnownSolutionWide_8x16: KnownSolutionWide_8x16(); break;
                 case TestType.ResidualCheck:            ResidualCheck();            break;
                 case TestType.ResidualCheckLargeBlocked: ResidualCheckLargeBlocked(); break;
+                case TestType.ResidualCheckMidBlocked:   ResidualCheckMidBlocked();   break;
                 case TestType.UninitXContract:          UninitXContract();          break;
             }
         }
@@ -1221,6 +1225,35 @@ public class floatQRTests
             Ax.subInPlace(b);
             float residual = Analysis.MaxZeroError(Ax);
             float tol = (float)1E-3f;   // larger system, looser float tolerance
+            if (!(residual <= tol) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = residual;
+                Fail[2] = tol;
+                Fail[3] = residual - tol;
+            }
+            Assert.IsTrue(residual <= tol);
+            arena.Dispose();
+        }
+
+        // Residual check at 256 <= m < 512: float routes to the BLOCKED core (floatLqBlockMinM=256)
+        // while double stays on the UNBLOCKED kernel (doubleLqBlockMinM=512). Confirms the split gate
+        // routes each type correctly and both produce a valid min-norm solution at the divergence size.
+        void ResidualCheckMidBlocked()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 300, n = 400;   // 256 <= m < 512 -> float blocked, double unblocked
+            var A = arena.floatRandomMat(m, n, -2f, 2f, 151617);
+            for (int d = 0; d < m; d++)
+                A[d, d] += (float)20f;
+            var b = arena.floatRandomVec(m, -1f, 1f, 181920);
+            var x = arena.floatVec(n);
+            LQ.minNormSolve(ref A, ref b, ref x);
+            var Ax = arena.floatVec(m);
+            Blas.dot(in A, in x, ref Ax);
+            Ax.subInPlace(b);
+            float residual = Analysis.MaxZeroError(Ax);
+            float tol = (float)1E-3f;
             if (!(residual <= tol) && Fail[0] == (float)0)
             {
                 Fail[0] = (float)1;

@@ -352,16 +352,18 @@ namespace LinearAlgebra
         // preserve its workspace contract; only this allocating convenience wrapper (used by, e.g.,
         // the benchmark and minNormSolve's allocating overload) gets the speedup.
         //
-        // LQ_BLOCK_MIN_M is a measured (not derived) crossover, unlike QR's simple ">= 2*QR_BLOCK"
-        // gate: LQ's fold step (UnsafeOP.lqYeqCVt) is reduction-shaped rather than axpy-shaped (see
-        // its doc comment), so its per-panel overhead amortises more slowly, and double's crossover
-        // measured LATER than float's — a matrix that already pays off for float can still REGRESS
-        // for double (measured: k=256 was a ~9% win for float but a ~20% loss for double). Since the
-        // routing gate is shared by both generated types (this is a proxy template), it must be
-        // conservative enough for the SLOWER-to-cross type. Measured on TallWideSolveBenchmark
-        // (A is k x 2k): k=256 (4 row-panels) regressed for double; k=512 (8 row-panels) was a clear
-        // win for both float (~30%) and double (~7%) at N=512, and both improved further at N=1024
-        // (float ~39%, double ~19%) — so this gate gives every blocked size a verified improvement.
+        // LQ_BLOCK_MIN_M (Consts.doubleLqBlockMinM -> float 256 / double 512) is a measured, not
+        // derived, crossover — unlike QR's simple ">= 2*QR_BLOCK" gate. LQ's fold step
+        // (UnsafeOP.lqYeqCVt) is reduction-shaped rather than axpy-shaped (see its doc comment), so its
+        // per-panel overhead amortises slowly and is bandwidth-bound; double streams 2x the bytes per
+        // element, so it crosses over LATER than float (measured: k=256 was a ~9% win for float but a
+        // ~20% loss for double; k=512 wins for both). The gate is therefore SPLIT per generated type
+        // (Consts.floatLqBlockMinM / doubleLqBlockMinM) rather than shared, each pinned to its own
+        // break-even. The values are intrinsically CPU-specific (cache size / bandwidth) and err HIGH
+        // on purpose: the sub-gate unblocked path is always correct, so only a too-LOW gate can regress
+        // (on a weaker cache), while a worse CPU crosses over earlier and still captures the win at a
+        // high gate. Measured on TallWideSolveBenchmark (A is k x 2k): float wins from k=256 (~9%),
+        // double from k=512 (~7% at N=512, ~19% at N=1024).
         // Always reports DirectSolveStatus.Success — this factorization has no failure mode (a
         // zero-norm row is handled via the sign-convention fallback in genHouseholderRow, not
         // rejected).
@@ -370,7 +372,7 @@ namespace LinearAlgebra
         {
             // See lqDecompositionBlockedCore for why this is a method-local const, not a class field.
             const int LQ_BLOCK = 64;
-            const int LQ_BLOCK_MIN_M = 512;
+            const int LQ_BLOCK_MIN_M = Consts.doubleLqBlockMinM;   // float 256 / double 512 (see Consts)
 
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -457,7 +459,7 @@ namespace LinearAlgebra
         static void lqFactorInPlace(ref doubleMxN W, ref doubleMxN L, ref doubleN v, double zeroThreshold)
         {
             const int LQ_BLOCK = 64;
-            const int LQ_BLOCK_MIN_M = 512;
+            const int LQ_BLOCK_MIN_M = Consts.doubleLqBlockMinM;   // float 256 / double 512 (see Consts)
 
             int m = W.M_Rows;
             int n = W.N_Cols;

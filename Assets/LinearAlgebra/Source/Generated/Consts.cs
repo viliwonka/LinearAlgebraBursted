@@ -19,6 +19,19 @@ namespace LinearAlgebra {
         public const double doubleEpsilon = 2.220446049250313e-16;  // machine epsilon, 2^-52
         public const double doubleSqrtEps = 1.4901161193847656e-8;  // sqrt(doubleEpsilon): best localization of a smooth minimum
 
+        // Row-count gate above which LQ factorization switches from the unblocked (level-2) kernel to
+        // the blocked compact-WY (level-3) core. MEASURED, cache-dependent crossover, not derived: it
+        // is intrinsically CPU-specific (L2/L3 size, bandwidth-to-compute ratio), so these are pinned
+        // CONSERVATIVELY (err HIGH). Below the gate the always-correct unblocked path runs, so a
+        // too-high gate only forgoes upside, while a too-low gate can REGRESS on a weaker cache; a
+        // worse CPU (smaller cache) crosses over EARLIER, so a high gate still captures its blocking
+        // win. float and double differ because LQ's trailing-update fold is memory-reduction-bound and
+        // double streams 2x the bytes per element, so double stays bandwidth-starved (blocking pays
+        // off) only at a larger size: measured on this dev box float wins from ~256 row-panels, double
+        // not until ~512. Tuned on TallWideSolveBenchmark (A is k x 2k).
+        public const int floatLqBlockMinM  = 256;
+        public const int doubleLqBlockMinM = 512;
+
         // Default PER-VALUE sweep/iteration budget for the SVD/Eigen QR-type diagonalizations
         // (bidiagonal QR, tridiagonal QL, Hessenberg QR) -- LAPACK dbdsqr's scaling (MAXITR=6,
         // i.e. an effective 6*n total across n values) rather than a flat constant: a flat cap
