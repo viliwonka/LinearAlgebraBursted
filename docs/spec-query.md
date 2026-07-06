@@ -4,8 +4,8 @@
 docs/spec-solver-api-rework.md for the mapping).*
 
 Status: **IMPLEMENTED** (2026-06-26). Shipped as `QueryOP` for float/double/int/short/long (index
-buffers use the shared `Indices` struct, not `int[]`). Supersedes the Query half of
-`docs/spec-views-and-query.md`. **Views are DROPPED** (see that doc's banner). Games-oriented Burst
+buffers use the shared `Indices` struct, not `int[]`). Supersedes an earlier combined Views/Query
+research sketch — **views were dropped**, only query shipped. Games-oriented Burst
 library — favour small, zero-alloc, Burst-compatible designs; do **not** chase numpy/matlab completeness.
 This doc is retained as the design rationale; the code is the source of truth.
 
