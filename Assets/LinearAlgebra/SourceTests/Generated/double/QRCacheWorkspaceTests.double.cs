@@ -260,17 +260,18 @@ public class doubleQRCacheWorkspaceTests
         finally { arena.Dispose(); }
     }
 
-    // The five blocked-WY buffers are validated ONLY for N_Cols >= 64 — use a 64x64 matrix so the
-    // needBlocked branch of RequireQRWorkspace actually runs.
+    // The five blocked-WY buffers are validated ONLY when the per-type block gate engages
+    // (Consts.floatQrBlockMinN=128 / doubleQrBlockMinN=512) — use a 512x512 matrix so the needBlocked
+    // branch of RequireQRWorkspace runs for BOTH generated types.
     [Test]
     public void QrDecompCache_BadVpanel_Throws()
     {
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(64, 64);
-            var R = arena.doubleMat(64);
-            var cache = arena.doubleQRCache(64, 64);
+            var Q = arena.doubleMat(512, 512);
+            var R = arena.doubleMat(512);
+            var cache = arena.doubleQRCache(512, 512);
             cache.Vpanel = arena.doubleVec(100);   // wrong: must be m*32 = 2048
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
@@ -283,9 +284,9 @@ public class doubleQRCacheWorkspaceTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(64, 64);
-            var R = arena.doubleMat(64);
-            var cache = arena.doubleQRCache(64, 64);
+            var Q = arena.doubleMat(512, 512);
+            var R = arena.doubleMat(512);
+            var cache = arena.doubleQRCache(512, 512);
             cache.Tbuf = arena.doubleVec(100);   // wrong: must be 32*32 = 1024
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
@@ -298,9 +299,9 @@ public class doubleQRCacheWorkspaceTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(64, 64);
-            var R = arena.doubleMat(64);
-            var cache = arena.doubleQRCache(64, 64);
+            var Q = arena.doubleMat(512, 512);
+            var R = arena.doubleMat(512);
+            var cache = arena.doubleQRCache(512, 512);
             cache.Wbuf = arena.doubleVec(100);   // wrong: must be 32*n = 2048
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
@@ -313,9 +314,9 @@ public class doubleQRCacheWorkspaceTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(64, 64);
-            var R = arena.doubleMat(64);
-            var cache = arena.doubleQRCache(64, 64);
+            var Q = arena.doubleMat(512, 512);
+            var R = arena.doubleMat(512);
+            var cache = arena.doubleQRCache(512, 512);
             cache.tcolBuf = arena.doubleVec(16);   // wrong: must be 32
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }
@@ -328,9 +329,9 @@ public class doubleQRCacheWorkspaceTests
         var arena = new Arena(Allocator.Persistent);
         try
         {
-            var Q = arena.doubleMat(64, 64);
-            var R = arena.doubleMat(64);
-            var cache = arena.doubleQRCache(64, 64);
+            var Q = arena.doubleMat(512, 512);
+            var R = arena.doubleMat(512);
+            var cache = arena.doubleQRCache(512, 512);
             cache.VfullBuf = arena.doubleVec(100);   // wrong: must be m*n = 4096
             Assert.Throws<ArgumentException>(() => QR.decompInPlace(ref Q, ref R, ref cache));
         }

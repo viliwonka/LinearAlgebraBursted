@@ -423,7 +423,7 @@ namespace LinearAlgebra
             if (A_to_Q.M_Rows < A_to_Q.N_Cols)
                 throw new ArgumentException("QR.decompInPlace: Matrix R must be square or tall (more or equal rows than cols)");
 
-            if (A_to_Q.N_Cols < 2 * QR_BLOCK)
+            if (A_to_Q.N_Cols < Consts.doubleQrBlockMinN)   // float/double split (see Consts); default 2*QR_BLOCK
             {
                 var uSmall = new doubleN(A_to_Q.M_Rows, Allocator.Temp, false);
                 var wSmall = new doubleN(A_to_Q.N_Cols, Allocator.Temp, false);
@@ -473,7 +473,7 @@ namespace LinearAlgebra
             if (A_to_Q.M_Rows < A_to_Q.N_Cols)
                 throw new ArgumentException("QR.decompInPlace: Matrix R must be square or tall (more or equal rows than cols)");
 
-            bool blocked = A_to_Q.N_Cols >= 2 * QR_BLOCK;
+            bool blocked = A_to_Q.N_Cols >= Consts.doubleQrBlockMinN;   // float/double split (see Consts)
             RequireQRWorkspace(in cache, A_to_Q.M_Rows, A_to_Q.N_Cols, blocked);
 
             if (!blocked)

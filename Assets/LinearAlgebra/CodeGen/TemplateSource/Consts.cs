@@ -15,6 +15,10 @@ namespace LinearAlgebra {
         public const float fProxyEpsilon = 1.1920929e-7f;
         public const float fProxySqrtEps = 3.4526698e-4f;
         public const int fProxyLqBlockMinM = 512;
+        public const int fProxyQrBlockMinN = 64;
+        public const int fProxyQrcpBlockMinN = 64;
+        public const int fProxyCholBlockMinN = 256;
+        public const int fProxyLuBlockMinN = 256;
         //-deleteThis
         public const float floatZeroThreshold = 1e-6f;
         public const float floatEpsilon = 1.1920929e-7f;   // machine epsilon, 2^-23
@@ -36,6 +40,31 @@ namespace LinearAlgebra {
         // not until ~512. Tuned on TallWideSolveBenchmark (A is k x 2k).
         public const int floatLqBlockMinM  = 256;
         public const int doubleLqBlockMinM = 512;
+
+        // Per-type level-3 blocking gates for the other factorizations (same rationale as LQ above:
+        // MEASURED, cache-dependent, err HIGH). QR/QRCP gate on N_Cols (column panels), Cholesky/LU on
+        // the matrix side n/m. Pinned from a same-session blocked-vs-unblocked sweep on the QR /
+        // Cholesky / LU / QRVariants benchmarks (each value = the smallest swept size where the blocked
+        // core actually beat the plain sweep for that type). The fProxy* placeholders above carry the
+        // template-compile default.
+        //
+        // The float-vs-double ordering is NOT universal — it depends on where the bandwidth pressure
+        // sits, which is why every gate was measured rather than derived:
+        //   * QR / QRCP / Cholesky reconstruct-or-fold work is memory-reduction-bound, so DOUBLE (2x
+        //     the bytes) stays starved and crosses over LATER -> higher double gate.
+        //   * LU's trailing update is a proper GEMM; there the UNBLOCKED path is what re-streams the
+        //     trailing matrix, and double's 2x traffic makes that hurt SOONER -> double crosses EARLIER
+        //     (lower double gate than float). Opposite ordering, caught only because we benched.
+        // Old shared gates (QR/QRCP 64, Cholesky/LU 256) were actively regressing double below its true
+        // crossover (double QR at N=64 was ~40% slower blocked; Cholesky double at 256 ~15% slower).
+        public const int floatQrBlockMinN    = 128;    // float wins from 128 (64 ~neutral)
+        public const int doubleQrBlockMinN   = 512;    // double loses <=256, wins from 512
+        public const int floatQrcpBlockMinN  = 64;     // float wins at every size
+        public const int doubleQrcpBlockMinN = 512;    // double loses <=256, wins from 512
+        public const int floatCholBlockMinN  = 1024;   // float loses <=512, wins from 1024
+        public const int doubleCholBlockMinN = 512;    // double loses at 256, wins from 512
+        public const int floatLuBlockMinN    = 256;    // float loses at 128, wins from 256
+        public const int doubleLuBlockMinN   = 128;    // double wins from 128 (GEMM update: crosses earlier)
 
         // Default PER-VALUE sweep/iteration budget for the SVD/Eigen QR-type diagonalizations
         // (bidiagonal QR, tridiagonal QL, Hessenberg QR) -- LAPACK dbdsqr's scaling (MAXITR=6,

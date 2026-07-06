@@ -95,7 +95,7 @@ namespace LinearAlgebra
                 // bookkeeping isn't amortised yet — while n=256 (8 panels) is the first size that wins
                 // for both float and double. A shared float/double threshold uses the slower type's
                 // crossover.
-                const int CHOL_BLOCK_MIN_N = 8 * CHOL_BLOCK;
+                const int CHOL_BLOCK_MIN_N = Consts.floatCholBlockMinN;   // float/double split (see Consts); default 8*CHOL_BLOCK
 
                 if (n < CHOL_BLOCK_MIN_N)
                 {

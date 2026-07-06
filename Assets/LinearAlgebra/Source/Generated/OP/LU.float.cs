@@ -121,7 +121,7 @@ namespace LinearAlgebra
             // the panel/TRSM/GEMM bookkeeping isn't amortised yet — while n=256 (8 panels) is the first
             // size that clearly wins for both float and double. Below this, the plain per-column sweep
             // is used unchanged.
-            const int LU_BLOCK_MIN_N = 8 * LU_BLOCK;
+            const int LU_BLOCK_MIN_N = Consts.floatLuBlockMinN;   // float/double split (see Consts); default 8*LU_BLOCK
 
             if (m < LU_BLOCK_MIN_N) {
                 // Small matrix: plain right-looking rank-1 sweep with partial pivoting, unchanged.
