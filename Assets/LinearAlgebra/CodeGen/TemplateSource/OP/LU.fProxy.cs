@@ -464,28 +464,6 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Compute the determinant from the compact in-place LU form with pivot.
-        /// Returns P.Sign * product of diagonal elements LU[P[i], i].
-        /// Throws ArgumentException if LU is not square or P.N != LU.M_Rows.
-        /// </summary>
-        public static fProxy determinant(in fProxyMxN LU, in Pivot P) {
-
-            if (!LU.IsSquare)
-                throw new System.ArgumentException("determinant: LU must be square");
-
-            if (P.N != LU.M_Rows)
-                throw new System.ArgumentException("determinant: P.N must equal LU.M_Rows");
-
-            int m = LU.M_Rows;
-            fProxy det = P.Sign;
-
-            for (int i = 0; i < m; i++)
-                det *= LU[P[i], i];
-
-            return det;
-        }
-
-        /// <summary>
         /// Factor-and-solve LUx = b in one call (GESV): factors A in place (compact LU form, partial
         /// pivoting) then solves for x. b is overwritten with x. Returns Singular (forwarded from the
         /// factorization) WITHOUT solving if A is singular.

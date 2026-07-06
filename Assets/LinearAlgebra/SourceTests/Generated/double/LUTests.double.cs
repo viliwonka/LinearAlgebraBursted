@@ -477,7 +477,7 @@ public class doubleLUTests
                 bool success = LU.decompInPlace(ref I, ref pivot);
                 Assert.IsTrue(success);
 
-                double det = LU.determinant(in I, in pivot);
+                double det = Analysis.determinant(in I, in pivot);
                 AssertClose(det, (double)1f, 1E-4f);
 
                 pivot.Dispose();
@@ -497,7 +497,7 @@ public class doubleLUTests
                 bool success = LU.decompInPlace(ref D, ref pivot);
                 Assert.IsTrue(success);
 
-                double det = LU.determinant(in D, in pivot);
+                double det = Analysis.determinant(in D, in pivot);
                 AssertCloseRel(det, expected, 1E-4f);
 
                 pivot.Dispose();
@@ -516,7 +516,7 @@ public class doubleLUTests
                 bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
-                double det = LU.determinant(in A, in pivot);
+                double det = Analysis.determinant(in A, in pivot);
                 AssertCloseRel(det, (double)3f, 1E-4f);
 
                 pivot.Dispose();
@@ -535,7 +535,7 @@ public class doubleLUTests
                 bool success = LU.decompInPlace(ref P, ref pivot);
                 Assert.IsTrue(success);
 
-                double det = LU.determinant(in P, in pivot);
+                double det = Analysis.determinant(in P, in pivot);
                 AssertCloseRel(det, (double)(-1f), 1E-4f);
 
                 pivot.Dispose();
@@ -545,7 +545,7 @@ public class doubleLUTests
         }
 
         // GALLERY KNOWN-ANSWER: famous unit-determinant matrices. det is computed via
-        // LU.decompInPlace + LU.determinant (the file's established sequence).
+        // LU.decompInPlace + Analysis.determinant (the file's established sequence).
         //  - Pascal(5):  symmetric Pascal, det = 1.
         //  - MinIJ(5):   A[i,j]=min(i,j)+1, det = 1.
         //  - Frank(5):   upper-Hessenberg Frank, det = 1 (ill-conditioned but integer-valued, so
@@ -562,7 +562,7 @@ public class doubleLUTests
                 bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
-                double det = LU.determinant(in A, in pivot);
+                double det = Analysis.determinant(in A, in pivot);
                 AssertCloseRel(det, (double)1f, 1E-4f);
 
                 pivot.Dispose();
@@ -576,7 +576,7 @@ public class doubleLUTests
                 bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
-                double det = LU.determinant(in A, in pivot);
+                double det = Analysis.determinant(in A, in pivot);
                 AssertCloseRel(det, (double)1f, 1E-4f);
 
                 pivot.Dispose();
@@ -590,7 +590,7 @@ public class doubleLUTests
                 bool success = LU.decompInPlace(ref A, ref pivot);
                 Assert.IsTrue(success);
 
-                double det = LU.determinant(in A, in pivot);
+                double det = Analysis.determinant(in A, in pivot);
                 AssertCloseRel(det, (double)1f, 1E-4f);
 
                 pivot.Dispose();

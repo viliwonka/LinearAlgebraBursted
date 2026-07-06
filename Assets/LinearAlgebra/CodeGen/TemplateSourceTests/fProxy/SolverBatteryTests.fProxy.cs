@@ -789,7 +789,7 @@ public class fProxySolverBatteryTests
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
-            fProxy det = LU.determinant(in LUmat, in pivot);
+            fProxy det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;
         }

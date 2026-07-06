@@ -789,7 +789,7 @@ public class doubleSolverBatteryTests
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
-            double det = LU.determinant(in LUmat, in pivot);
+            double det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;
         }

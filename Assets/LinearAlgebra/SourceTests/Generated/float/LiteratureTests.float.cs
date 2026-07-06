@@ -65,7 +65,7 @@ public class floatLiteratureTests
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
-            float det = LU.determinant(in LUmat, in pivot);
+            float det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
             AssertClose(det, (float)12, (float)1E-1);
@@ -144,7 +144,7 @@ public class floatLiteratureTests
             var LUmat = P.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
-            float det = LU.determinant(in LUmat, in pivot);
+            float det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
             AssertClose(det, (float)1, (float)1E-2);

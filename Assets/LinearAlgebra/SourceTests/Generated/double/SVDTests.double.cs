@@ -640,7 +640,7 @@ public class doubleSVDTests
             var Acopy = A.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
             Assert.IsTrue(LU.decompInPlace(ref Acopy, ref pivot));
-            double detAbs = math.abs(LU.determinant(in Acopy, in pivot));
+            double detAbs = math.abs(Analysis.determinant(in Acopy, in pivot));
             pivot.Dispose();
 
             // Π σ_i via SVD.values on the ORIGINAL untouched A.

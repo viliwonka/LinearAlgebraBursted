@@ -100,7 +100,7 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 
 - [**Types**](docs/features/dense-types.md): vectors, matrices, the `Arena` allocator
 - [**Element-wise ops**](docs/features/comp-elementwise.md): Per component arithmetic, math functions, clamp
-- [**Core linear algebra**](docs/features/blas.md): `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
+- [**LA primitives**](docs/features/la-primitives.md): `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
 - [**Decompositions**](docs/features/decompositions.md): LU, CHO/CHOP, QR/QRCP,LQ
 - [**Direct solvers**](docs/features/solvers.md): tri/LU/CHO/QR solve
 - [**Least squares**](docs/features/least-squares.md): QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning

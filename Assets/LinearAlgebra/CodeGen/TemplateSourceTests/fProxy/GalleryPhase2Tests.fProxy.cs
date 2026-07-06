@@ -14,7 +14,7 @@ using Unity.Mathematics;
 // (docs/spec-gallery.md, Phase 2 table; production template Gallery.Phase2.fProxy.cs).
 // Each case pins a generator against its DOCUMENTED closed form (Cauchy/GCD/Redheffer determinants,
 // magic constant, Rosser/Prolate eigenvalues, Parter singular values, Grcar/Lotkin structure) using
-// the library's own ops (LU.determinant, Cholesky, Eigen.decompInPlace, SVD.singularValues).
+// the library's own ops (Analysis.determinant, Cholesky, Eigen.decompInPlace, SVD.singularValues).
 //
 // Tolerances are per-precision: they scale with Consts.fProxySqrtEps (float ≈ 3.45e-4, double ≈ 1.49e-8)
 // so the SAME expression is loose for float and tight for double, matching the GalleryTests /
@@ -444,7 +444,7 @@ public class fProxyGalleryPhase2Tests
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
-            fProxy det = LU.determinant(in LUmat, in pivot);
+            fProxy det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;
         }

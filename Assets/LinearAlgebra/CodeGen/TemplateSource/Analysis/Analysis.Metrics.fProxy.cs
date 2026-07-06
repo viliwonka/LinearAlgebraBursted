@@ -1,13 +1,15 @@
 #define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using System;
+using Unity.Collections;
 using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // Scalar matrix characterizations (trace / condition number / numerical rank). These summarize
-    // a matrix rather than compute a product, so they live on Analysis alongside the structural
-    // predicates (isSymmetric / isOrthogonal / ...) -- NOT on Blas. determinant lives on LU.
+    // Scalar matrix characterizations (trace / condition number / numerical rank / determinant).
+    // These summarize a matrix as a single number, so they live on Analysis alongside the structural
+    // predicates (isSymmetric / isOrthogonal / ...) -- NOT on Blas. The matrix-in overloads factor
+    // internally into Temp (determinant/logDeterminant via LU, cond/rank via SVD) and leave A intact.
     public static partial class Analysis
     {
         /// <summary>
@@ -77,5 +79,86 @@ namespace LinearAlgebra
 
         /// <summary>Numerical rank with the automatic tolerance (relTol &lt; 0).</summary>
         public static int rank(in fProxyMxN A) => rank(in A, (fProxy)(-1));
+
+        /// <summary>
+        /// Determinant det(A) via partial-pivoting LU (the standard O(n³) method): sign · Π U[i,i].
+        /// A must be square. Allocates LU scratch (an n×n copy + a pivot) in Temp; A is not modified.
+        /// A singular A returns exactly 0. NOTE: this is a product of n numbers and therefore
+        /// over/underflows the float/double range for even moderate n (e.g. det ≈ 2¹⁰²⁴ → Inf) --
+        /// for anything but small matrices prefer <see cref="logDeterminant"/>.
+        /// </summary>
+        public static fProxy determinant(in fProxyMxN A)
+        {
+            if (!A.IsSquare)
+                throw new ArgumentException("determinant: A must be square");
+
+            int n = A.M_Rows;
+            if (n == 0)
+                return (fProxy)1;               // determinant of the empty matrix is 1 (empty product)
+
+            fProxyMxN lu = A.TempCopy();         // LU is destructive; factor a copy, leave A intact
+            var P = new Pivot(n, Allocator.Temp);
+            LU.decompInPlace(ref lu, ref P);
+            return determinant(in lu, in P);
+        }
+
+        /// <summary>
+        /// Determinant read directly off a compact in-place LU factor and its pivot (zero-alloc) --
+        /// sign · Π LU[P[i], i]. Free after any LU factorization/solve you already ran; use the
+        /// matrix-in overload if you only have A. Throws if LU is not square or P.N != LU.M_Rows.
+        /// </summary>
+        public static fProxy determinant(in fProxyMxN LU, in Pivot P)
+        {
+            if (!LU.IsSquare)
+                throw new ArgumentException("determinant: LU must be square");
+
+            if (P.N != LU.M_Rows)
+                throw new ArgumentException("determinant: P.N must equal LU.M_Rows");
+
+            int m = LU.M_Rows;
+            fProxy det = P.Sign;
+
+            for (int i = 0; i < m; i++)
+                det *= LU[P[i], i];
+
+            return det;
+        }
+
+        /// <summary>
+        /// Log-determinant: returns log|det(A)| with the sign returned separately (the "slogdet"
+        /// form) -- the numerically robust way to get a determinant's magnitude. Unlike
+        /// <see cref="determinant(in fProxyMxN)"/>, the sum Σ log|U[i,i]| stays finite where the raw
+        /// product would over/underflow, so this is the right choice for anything but small matrices
+        /// (and for the log-likelihood terms that need log|det| directly, e.g. a Gaussian's
+        /// −½·log|det(Σ)|). det(A) is recoverable as <c>sign · exp(logAbsDet)</c> when that is in
+        /// range. A must be square; allocates LU scratch in Temp, A is not modified.
+        /// A singular A returns (sign 0, negative infinity).
+        /// </summary>
+        /// <param name="sign">On exit: +1, −1, or 0 (singular) -- the sign of det(A).</param>
+        public static fProxy logDeterminant(in fProxyMxN A, out fProxy sign)
+        {
+            if (!A.IsSquare)
+                throw new ArgumentException("logDeterminant: A must be square");
+
+            int n = A.M_Rows;
+            if (n == 0) { sign = (fProxy)1; return (fProxy)0; }   // empty matrix: det 1, log 0
+
+            fProxyMxN lu = A.TempCopy();
+            var P = new Pivot(n, Allocator.Temp);
+            LU.decompInPlace(ref lu, ref P);
+
+            fProxy s = P.Sign;
+            fProxy logAbs = (fProxy)0;
+            for (int i = 0; i < n; i++)
+            {
+                fProxy d = lu[P[i], i];
+                if (d < (fProxy)0) s = -s;
+                else if (d == (fProxy)0) s = (fProxy)0;          // singular -> det 0
+                logAbs += math.log(math.abs(d));                 // |d| == 0 -> log = -infinity
+            }
+
+            sign = s;
+            return logAbs;
+        }
     }
 }

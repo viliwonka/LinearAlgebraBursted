@@ -13,7 +13,8 @@ gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceili
 - **`LU.decomp(in A, ref L, ref U, ref Pivot P)`** — partial-pivoting LU, `PA = LU`, A preserved.
   Blocked (GETRF-style: panel factor + TRSM + one GEMM trailing update) above `n ≥ 256`. Also
   `LU.decompInPlace(ref A_to_LU, ref Pivot P)` (compact in-place form), `LU.decompSolve`/
-  `LU.solveInPlace`, and `LU.determinant(in LU, in Pivot)`.
+  `LU.solveInPlace`. (`determinant`/`logDeterminant` are scalar characterizations and live on
+  [`Analysis`](la-primitives.md).)
 - **`CHO.decomp(in A, ref L)`** — `A = LLᵀ`, SPD, A preserved. Blocked (POTRF: panel + TRSM + SYRK
   trailing update) above `n ≥ 256`. Also `CHO.decompInPlace(ref A_to_L)`, `CHO.decompSolve`,
   `CHO.solveInPlace`. **`CHOP.decomp(in A, ref L, ref Pivot P, ref ws)`** — rank-revealing

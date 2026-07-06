@@ -22,6 +22,8 @@ public class floatAnalysisTests
             isLowerTriangular,
             IsLowerTriangularEpsilon,
             isOrthogonal,
+            Determinant,
+            LogDeterminant,
         }
 
         public TestType Type;
@@ -62,6 +64,12 @@ public class floatAnalysisTests
                     break;
                 case TestType.isOrthogonal:
                     isOrthogonal();
+                    break;
+                case TestType.Determinant:
+                    Determinant();
+                    break;
+                case TestType.LogDeterminant:
+                    LogDeterminant();
                     break;
             }
         }
@@ -320,6 +328,110 @@ public class floatAnalysisTests
             arena.Dispose();
         }
 
+        void Determinant()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // identity -> det = 1 (matrix-in path; A must be left intact, like cond/rank)
+            {
+                int dim = 5;
+                floatMxN A = arena.floatIdentityMat(dim);
+                Assert.IsTrue(math.abs(Analysis.determinant(in A) - (float)1) < (float)1E-4f);
+                Assert.IsTrue(Analysis.isIdentity(A, 1E-6f));           // A not modified
+            }
+
+            // diagonal [2,-3,0.5,4] -> det = -12
+            {
+                int dim = 4;
+                floatMxN A = arena.floatMat(dim, dim);
+                A[0, 0] = 2f; A[1, 1] = -3f; A[2, 2] = 0.5f; A[3, 3] = 4f;
+                Assert.IsTrue(math.abs(Analysis.determinant(in A) - (float)(-12f)) < (float)1E-3f);
+            }
+
+            // matrix-in path agrees with the zero-alloc from-factor overload on the same A
+            {
+                int dim = 6;
+                floatMxN A = arena.floatRandomMat(dim, dim, -2f, 2f);
+                float viaMatrix = Analysis.determinant(in A);
+
+                floatMxN lu = A.Copy();
+                var P = new Pivot(dim, Allocator.Temp);
+                LU.decompInPlace(ref lu, ref P);
+                float viaFactor = Analysis.determinant(in lu, in P);
+                P.Dispose();
+
+                Assert.IsTrue(math.abs(viaMatrix - viaFactor) < (float)1E-3f * (math.abs(viaFactor) + (float)1));
+            }
+
+            // singular (row 0 == row 1) -> det = 0
+            {
+                int dim = 3;
+                floatMxN A = arena.floatMat(dim, dim);
+                A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
+                A[1, 0] = 1f; A[1, 1] = 2f; A[1, 2] = 3f;
+                A[2, 0] = 4f; A[2, 1] = 5f; A[2, 2] = 7f;
+                Assert.IsTrue(math.abs(Analysis.determinant(in A)) < (float)1E-4f);
+            }
+
+            arena.Dispose();
+        }
+
+        void LogDeterminant()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            // identity -> log|det| = 0, sign = +1
+            {
+                int dim = 5;
+                floatMxN A = arena.floatIdentityMat(dim);
+                float logAbs = Analysis.logDeterminant(in A, out float sign);
+                Assert.IsTrue(math.abs(logAbs) < (float)1E-4f);
+                Assert.IsTrue(math.abs(sign - (float)1) < (float)1E-6f);
+            }
+
+            // diagonal [2,-3,0.5,4] -> det = -12: sign = -1, sign*exp(logAbs) recovers det
+            {
+                int dim = 4;
+                floatMxN A = arena.floatMat(dim, dim);
+                A[0, 0] = 2f; A[1, 1] = -3f; A[2, 2] = 0.5f; A[3, 3] = 4f;
+                float logAbs = Analysis.logDeterminant(in A, out float sign);
+                Assert.IsTrue(math.abs(sign - (float)(-1f)) < (float)1E-6f);
+                float recovered = sign * math.exp(logAbs);
+                Assert.IsTrue(math.abs(recovered - (float)(-12f)) < (float)1E-3f);
+            }
+
+            // singular (row 1 == 2*row 0) -> sign = 0, log|det| = -infinity
+            {
+                int dim = 3;
+                floatMxN A = arena.floatMat(dim, dim);
+                A[0, 0] = 1f; A[0, 1] = 2f; A[0, 2] = 3f;
+                A[1, 0] = 2f; A[1, 1] = 4f; A[1, 2] = 6f;
+                A[2, 0] = 4f; A[2, 1] = 5f; A[2, 2] = 7f;
+                float logAbs = Analysis.logDeterminant(in A, out float sign);
+                Assert.IsTrue(math.abs(sign) < (float)1E-6f);
+                Assert.IsTrue(math.isinf(logAbs) && logAbs < (float)0);
+            }
+
+            // the whole point of slogdet: the plain product OVERFLOWS to Inf, log|det| stays finite.
+            // 10*I at dim 400 -> det = 10^400, past both float (~1e38) and double (~1e308) range.
+            {
+                int dim = 400;
+                floatMxN A = arena.floatMat(dim, dim);
+                for (int i = 0; i < dim; i++)
+                    A[i, i] = (float)10f;
+
+                Assert.IsTrue(math.isinf(Analysis.determinant(in A)));           // product overflows
+
+                float logAbs = Analysis.logDeterminant(in A, out float sign);
+                Assert.IsFalse(math.isinf(logAbs));                              // log stays finite
+                float expected = (float)dim * math.log((float)10f);
+                Assert.IsTrue(math.abs(logAbs - expected) < (float)0.5f);
+                Assert.IsTrue(math.abs(sign - (float)1) < (float)1E-6f);
+            }
+
+            arena.Dispose();
+        }
+
     }
 
     [Test]
@@ -386,6 +498,18 @@ public class floatAnalysisTests
     public void IsOrthogonalTest()
     {
         new AnalysisTestJob() { Type = AnalysisTestJob.TestType.isOrthogonal }.Run();
+    }
+
+    [Test]
+    public void DeterminantTest()
+    {
+        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.Determinant }.Run();
+    }
+
+    [Test]
+    public void LogDeterminantTest()
+    {
+        new AnalysisTestJob() { Type = AnalysisTestJob.TestType.LogDeterminant }.Run();
     }
 
 

@@ -15,7 +15,7 @@ using Unity.Mathematics;
 // FFT cross-check) rather than a self-consistency check, then a few cases feed the generators into the
 // existing solvers (CG, Eigen.valuesQR) as honest inputs.
 //
-// Verification reuses the library's own ops (LU.determinant, Cholesky, Eigen.decompInPlace /
+// Verification reuses the library's own ops (Analysis.determinant, Cholesky, Eigen.decompInPlace /
 // Eigen.valuesQR, FFT.fft). Tolerances are per-precision: they scale with Consts.doubleSqrtEps
 // (float ≈ 3.45e-4, double ≈ 1.49e-8) so the SAME expression is loose for float and tight for double,
 // matching the LiteratureTests / RandomMatrixTests idiom. Ill-conditioned generators (Hilbert, Frank,
@@ -597,7 +597,7 @@ public class doubleGalleryTests
             var LUmat = M.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
-            double det = LU.determinant(in LUmat, in pivot);
+            double det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
             return det;
         }

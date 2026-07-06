@@ -65,7 +65,7 @@ public class fProxyLiteratureTests
             var LUmat = V.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
-            fProxy det = LU.determinant(in LUmat, in pivot);
+            fProxy det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
             AssertClose(det, (fProxy)12, (fProxy)1E-1);
@@ -144,7 +144,7 @@ public class fProxyLiteratureTests
             var LUmat = P.Copy();
             var pivot = new Pivot(n, Allocator.Temp);
             LU.decompInPlace(ref LUmat, ref pivot);
-            fProxy det = LU.determinant(in LUmat, in pivot);
+            fProxy det = Analysis.determinant(in LUmat, in pivot);
             pivot.Dispose();
 
             AssertClose(det, (fProxy)1, (fProxy)1E-2);
