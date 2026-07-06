@@ -61,3 +61,11 @@ machine/config, commit `95a1897` — for reference, `SVD.thin` (full, k=256) on 
 | 8 (3%) | 4.13 | 4.41 |
 | 18 (7%) | 7.73 | 8.14 |
 | 54 (21%) | 27.55 | 27.45 |
+
+`SVD.truncated` at a genuine SQUARE 1024×1024 (`Benchmarks/SvdComparisonBenchmark.cs`'s dedicated
+section) — same k=54 as the 2048×256 row above, different shape/n, for a matched-k comparison. Same
+machine/config, 2026-07-06, commit `f938c66`:
+
+| Size | k | float med(ms) | double med(ms) |
+|---|---|---|---|
+| 1024×1024 | 54 (5%) | 48.5 | 49.8 |

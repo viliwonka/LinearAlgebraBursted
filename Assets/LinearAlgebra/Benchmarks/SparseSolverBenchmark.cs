@@ -647,6 +647,8 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("goes one level deeper: symmetric upper-block storage (Symmetric=true, ToBSRSymmetric)");
             sb.AppendLine("vs full block-CSR storage on the IDENTICAL SPD matrix -- bsrMatVecSym touches half as");
             sb.AppendLine("many stored blocks as the full traversal, so this isolates that ~2x memory/FLOP win.");
+            sb.AppendLine("Section 1x is a dedicated N=1024 CG-only case at b=4 (256 blocks of 4x4, an unrolled");
+            sb.AppendLine("kernel size) -- 1024 isn't divisible by the b=3 workhorse size Section 1 sweeps.");
             sb.AppendLine();
 
             Section0Float(sb);
@@ -655,6 +657,8 @@ namespace LinearAlgebra.Benchmarks
             Section0bDouble(sb);
             Section1Float(sb);
             Section1Double(sb);
+            Section1xFloat(sb);
+            Section1xDouble(sb);
             Section2Float(sb);
             Section2Double(sb);
             Section3Float(sb);
@@ -1192,6 +1196,115 @@ namespace LinearAlgebra.Benchmarks
             sparse = builder.ToBSR(ref arena);
         }
 
+        // ==== block-matrix builders, parameterized block size (used ONLY by the dedicated b=4/N=1024 =====
+        //      subsection below -- Section 1 above keeps its own BR=3-hardcoded builders untouched since
+        //      its numbers are cited in docs). Same recipe as BuildBlockSPDFloat/Double, generalized so
+        //      the block size isn't tied to the file-wide BR=3 constant.
+
+        static void BuildBlockSPDFloatSized(ref Arena arena, int nb, int br, float density, uint seed, out floatMxN dense, out floatBSR sparse)
+        {
+            int dim = nb * br;
+            dense = arena.floatMat(dim, dim);
+            var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzb);
+            var builder = arena.floatBSRBuilder(nb, nb, br, br, nnzb);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+            float strong = dim;
+            const float offScale = 0.3f;
+
+            for (int i = 0; i < nb; i++)
+            {
+                var Mi = arena.floatMat(br, br);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        Mi[r, c] = rng.NextFloat(-1f, 1f);
+                var Di = Blas.dot(Mi, Mi, true);
+                for (int d = 0; d < br; d++) Di[d, d] += strong;
+
+                builder.AddBlock(i, i, in Di);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        dense[i * br + r, i * br + c] = Di[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.floatMat(br, br);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        block[r, c] = rng.NextFloat(-offScale, offScale);
+
+                builder.AddBlock(bi, bj, in block);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        dense[bi * br + r, bj * br + c] = block[r, c];
+
+                var blockT = arena.floatMat(br, br);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        blockT[r, c] = block[c, r];
+
+                builder.AddBlock(bj, bi, in blockT);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        dense[bj * br + r, bi * br + c] = blockT[r, c];
+            }
+
+            sparse = builder.ToBSR(ref arena);
+        }
+
+        static void BuildBlockSPDDoubleSized(ref Arena arena, int nb, int br, float density, uint seed, out doubleMxN dense, out doubleBSR sparse)
+        {
+            int dim = nb * br;
+            dense = arena.doubleMat(dim, dim);
+            var pairs = ChooseOffDiagPairsSymmetric(nb, density, seed, out int nnzb);
+            var builder = arena.doubleBSRBuilder(nb, nb, br, br, nnzb);
+            var rng = new Random(seed ^ 0x9E3779B9u);
+            double strong = dim;
+            const double offScale = 0.3;
+
+            for (int i = 0; i < nb; i++)
+            {
+                var Mi = arena.doubleMat(br, br);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        Mi[r, c] = rng.NextDouble(-1.0, 1.0);
+                var Di = Blas.dot(Mi, Mi, true);
+                for (int d = 0; d < br; d++) Di[d, d] += strong;
+
+                builder.AddBlock(i, i, in Di);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        dense[i * br + r, i * br + c] = Di[r, c];
+            }
+
+            foreach (var pos in pairs)
+            {
+                int bi = pos.Bi, bj = pos.Bj;
+                var block = arena.doubleMat(br, br);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        block[r, c] = rng.NextDouble(-offScale, offScale);
+
+                builder.AddBlock(bi, bj, in block);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        dense[bi * br + r, bj * br + c] = block[r, c];
+
+                var blockT = arena.doubleMat(br, br);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        blockT[r, c] = block[c, r];
+
+                builder.AddBlock(bj, bi, in blockT);
+                for (int r = 0; r < br; r++)
+                    for (int c = 0; c < br; c++)
+                        dense[bj * br + r, bi * br + c] = blockT[r, c];
+            }
+
+            sparse = builder.ToBSR(ref arena);
+        }
+
         // ==== Section 0: operator matvec throughput (dense GEMV vs sparse spMV) =========================
         //
         // The purest dense-vs-sparse signal: REPS back-to-back matvecs y = A x in each storage form on
@@ -1476,6 +1589,67 @@ namespace LinearAlgebra.Benchmarks
                     arena.Dispose();
                 }
             }
+        }
+
+        // ==== Section 1x: SPD block-sparse, b=4, N=1024 (CG only, 7% fill) ==============================
+        //
+        // The b=3 sweep above (Section 1) tops out at N=768 because 1024 isn't divisible by 3. b=4 IS
+        // one of the compile-time-unrolled bsrMatVecB4 kernel sizes (see SparseOP.fProxy.cs's spMV
+        // dispatch switch), so nb=256 blocks of 4x4 gives a genuine 1024x1024 CG dense-vs-sparse
+        // comparison at the same convention as Section 1 (7% block density, K=40 iterations, tol=0).
+        // Only CG is timed here (not MINRES) -- this subsection exists specifically to backfill the
+        // README's 1024x1024 CG row, not to duplicate the full Section-1 solver sweep.
+
+        const int N_B4 = 1024, BR4 = 4, NB_B4 = N_B4 / BR4; // 256 blocks of 4x4
+
+        static void Section1xFloat(StringBuilder sb)
+        {
+            float density = Densities[0]; // 7%
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 1x. SPD block-sparse (b={0}, N={1}): cg, K={2}, tol=0 [float] ---", BR4, N_B4, K_CG));
+            sb.AppendLine(RowHeader());
+
+            var arena = new Arena(Allocator.Persistent);
+            BuildBlockSPDFloatSized(ref arena, NB_B4, BR4, density, Seed(N_B4, density, 111), out var dense, out var sparse);
+            var b = arena.floatRandomVec(N_B4, -1f, 1f, Seed(N_B4, density, 112));
+
+            var xCgD = arena.floatVec(N_B4); var rCgD = arena.floatVec(N_B4); var pCgD = arena.floatVec(N_B4); var ApCgD = arena.floatVec(N_B4);
+            var cgDenseJob = new CGDenseJobFloat { A = dense, b = b, x = xCgD, r = rCgD, p = pCgD, Ap = ApCgD, K = K_CG };
+            var cgDenseStat = Bench.Time(() => cgDenseJob.Run());
+            sb.AppendLine(Row("float", N_B4, density, "CG-dense", cgDenseStat, ResidualLinSys(in dense, in xCgD, in b)));
+
+            var xCgS = arena.floatVec(N_B4); var rCgS = arena.floatVec(N_B4); var pCgS = arena.floatVec(N_B4); var ApCgS = arena.floatVec(N_B4);
+            var cgSparseJob = new CGSparseJobFloat { A = sparse, b = b, x = xCgS, r = rCgS, p = pCgS, Ap = ApCgS, K = K_CG };
+            var cgSparseStat = Bench.Time(() => cgSparseJob.Run());
+            sb.AppendLine(Row("float", N_B4, density, "CG-sparse", cgSparseStat, ResidualLinSys(in dense, in xCgS, in b)));
+
+            arena.Dispose();
+        }
+
+        static void Section1xDouble(StringBuilder sb)
+        {
+            float density = Densities[0]; // 7%
+            sb.AppendLine();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
+                "--- 1x. SPD block-sparse (b={0}, N={1}): cg, K={2}, tol=0 [double] ---", BR4, N_B4, K_CG));
+            sb.AppendLine(RowHeader());
+
+            var arena = new Arena(Allocator.Persistent);
+            BuildBlockSPDDoubleSized(ref arena, NB_B4, BR4, density, Seed(N_B4, density, 113), out var dense, out var sparse);
+            var b = arena.doubleRandomVec(N_B4, -1.0, 1.0, Seed(N_B4, density, 114));
+
+            var xCgD = arena.doubleVec(N_B4); var rCgD = arena.doubleVec(N_B4); var pCgD = arena.doubleVec(N_B4); var ApCgD = arena.doubleVec(N_B4);
+            var cgDenseJob = new CGDenseJobDouble { A = dense, b = b, x = xCgD, r = rCgD, p = pCgD, Ap = ApCgD, K = K_CG };
+            var cgDenseStat = Bench.Time(() => cgDenseJob.Run());
+            sb.AppendLine(Row("double", N_B4, density, "CG-dense", cgDenseStat, ResidualLinSys(in dense, in xCgD, in b)));
+
+            var xCgS = arena.doubleVec(N_B4); var rCgS = arena.doubleVec(N_B4); var pCgS = arena.doubleVec(N_B4); var ApCgS = arena.doubleVec(N_B4);
+            var cgSparseJob = new CGSparseJobDouble { A = sparse, b = b, x = xCgS, r = rCgS, p = pCgS, Ap = ApCgS, K = K_CG };
+            var cgSparseStat = Bench.Time(() => cgSparseJob.Run());
+            sb.AppendLine(Row("double", N_B4, density, "CG-sparse", cgSparseStat, ResidualLinSys(in dense, in xCgS, in b)));
+
+            arena.Dispose();
         }
 
         // ==== Section 2: non-symmetric -> biCGStab =======================================================

@@ -233,6 +233,71 @@ namespace LinearAlgebra.Benchmarks
                 BenchSizeDouble(sb, m, n);
                 sb.AppendLine();
             }
+
+            Section1024Square(sb);
+        }
+
+        // ---- Dedicated square 1024x1024 case: truncated ONLY, k=54 (fixed, not %-of-n) ----------------
+        //
+        // The sweep above uses tall shapes (m>=n, 8:1) with k as a %-of-n; this adds a genuine SQUARE
+        // 1024x1024 case at a fixed k=54 -- the same k used for the 2048x256 row in docs/features/svd.md
+        // -- so the two rows are directly comparable at matched k, different shape/n. thin/randomized
+        // are not re-run here: thin's absolute cost at 1024^2 is already benchmarked separately
+        // (Benchmarks/EigenSvdBenchmark.cs), and this section exists specifically to backfill the
+        // README's truncated-at-1024^2 row, not to duplicate the full sweep above.
+
+        static void Section1024Square(StringBuilder sb)
+        {
+            const int m = 1024, n = 1024, k = 54;
+            sb.AppendLine("--- Dedicated: SVD.truncated at 1024x1024 (square), k=54 (matches the 2048x256 k=54 row) ---");
+            sb.AppendLine(CmpHeader());
+
+            BenchTrunc1024Float(sb, m, n, k);
+            BenchTrunc1024Double(sb, m, n, k);
+        }
+
+        static void BenchTrunc1024Float(StringBuilder sb, int m, int n, int k)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A         = arena.floatMat(m, n);
+            var sigmaTrue = arena.floatVec(n);
+            new SvdCmpBuildJobFloat { A = A, SigmaTrue = sigmaTrue, seed = BuildSeed }.Run();
+            double normA = FNormF(A);
+
+            var Uk = arena.floatMat(m, k);
+            var Sk = arena.floatVec(k);
+            var Vk = arena.floatMat(n, k);
+            var ws   = arena.floatSVDTruncatedCache(m, n, k);
+            var job  = new SvdCmpTruncJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+            double sigErr   = SigErrF(Sk, sigmaTrue, k);
+            double reconErr = ReconErrF(A, Uk, Sk, Vk, k, normA);
+            double eyOpt    = EYOptF(sigmaTrue, k, normA);
+            sb.AppendLine(CmpRow("float", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
+
+            arena.Dispose();
+        }
+
+        static void BenchTrunc1024Double(StringBuilder sb, int m, int n, int k)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A         = arena.doubleMat(m, n);
+            var sigmaTrue = arena.doubleVec(n);
+            new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = BuildSeed }.Run();
+            double normA = FNormD(A);
+
+            var Uk = arena.doubleMat(m, k);
+            var Sk = arena.doubleVec(k);
+            var Vk = arena.doubleMat(n, k);
+            var ws   = arena.doubleSVDTruncatedCache(m, n, k);
+            var job  = new SvdCmpTruncJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+            double sigErr   = SigErrD(Sk, sigmaTrue, k);
+            double reconErr = ReconErrD(A, Uk, Sk, Vk, k, normA);
+            double eyOpt    = EYOptD(sigmaTrue, k, normA);
+            sb.AppendLine(CmpRow("double", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
+
+            arena.Dispose();
         }
 
         // ---- Table formatting ----

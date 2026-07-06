@@ -53,6 +53,16 @@ All measured on a 9950X3D, single CCD pinned for repeatability (commit `c3df68b`
 | Square (CG/MINRES) | 33% | ~2.7–3× |
 | Rectangular (CGLS/LSQR) | 7% | ~7–8× (undershoots the ideal ~14×; `ApplyT`'s transpose scatter is the gap — materializing `AT` per above measured perf-neutral on this benchmark, commit `724ceb0`) |
 
+**CG at a genuine N=1024, block size b=4 (7% fill)** — the b=3 sweep above tops out at N=768 since
+1024 isn't divisible by 3; b=4 is another compile-time-unrolled kernel size (`bsrMatVecB4`), giving a
+real 1024×1024 dense-vs-sparse CG case (`Benchmarks/SparseSolverBenchmark.cs`, Section 1x). AMD Ryzen
+9 9950X3D, single CCD pinned, 2026-07-06, commit `f938c66`, Unity Editor batchmode (checks likely on):
+
+| dtype | CG-dense med(ms) | CG-sparse med(ms) | speedup |
+|---|---|---|---|
+| float | 3.68 | 0.09 | ~40× |
+| double | 15.05 | 0.37 | ~40× |
+
 **Symmetric vs. full storage spMV** — modest, ~1.05–1.22× before the block-unroll work (commit
 `9c0ae85`, general kernels only); after both the symmetric and full kernels were unrolled equally,
 the gap closes further to ~break-even (~1.02×, commit `6481455`). Symmetric storage is a **memory**

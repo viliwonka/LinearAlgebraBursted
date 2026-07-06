@@ -76,12 +76,12 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 | QR solve — `QR.solveInPlace` | 1024×1024, float | 38.4 ms |
 | QR least squares — `QR.solveInPlace` | 2048×512, float | 34.5 ms |
 | QRCP least squares, rank-safe — `QRCP.solveInPlace` | 2048×512, float | 72.7 ms |
-| CG, iterative solve — `Solvers.cg` | SPD 768×768, double; dense vs. sparse BSR (3×3 blocks, 7% fill), 40 iterations | dense 8.62 ms, sparse 0.25 ms |
+| CG, iterative solve — `Solvers.cg` | SPD 1024×1024, double; dense vs. sparse BSR (4×4 blocks, 7% fill), 40 iterations | dense 15.05 ms, sparse 0.37 ms |
 | Symmetric eigendecomposition — `Eigen.symmetric` | 1024×1024, float, values + vectors | 428.6 ms |
 | Eigenvalues only — `Eigen.valuesSymmetric` | 1024×1024, float | 163.0 ms |
-| Smallest eigenpairs — `LOBPCG.lobpcg` | SPD 512×512, k=4, float, 50 iterations | 84.9 ms |
+| Smallest eigenpairs — `LOBPCG.lobpcg` | SPD 512×512, k=4, float, 50 iterations | 84.9 ms (50-iteration budget ≈ 1.7 ms/iter; dense operator — sparse operators are the intended use) |
 | SVD, thin — `SVD.thin` | 1024×1024, float | 522.5 ms |
-| SVD, truncated top-k — `SVD.truncated` | 2048×256, k=54, float | 27.6 ms |
+| SVD, truncated top-k — `SVD.truncated` | 1024×1024, k=54, float | 48.5 ms |
 | FFT — `FFT.fft` | N = 1,048,576, float | 26.1 ms |
 | Real FFT — `FFT.rfft` | N = 1,048,576, float | 18.7 ms |
 
