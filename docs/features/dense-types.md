@@ -118,9 +118,8 @@ exception; in player builds it is silent corruption.)
 ## Temp pool & threading in practice
 
 The temp pool is a convenience, not a hard requirement — every allocating op has a `ref`-destination
-primitive that writes into a buffer you already own and allocates nothing (see
-[zero-alloc-ops](../zero-alloc-ops.md)). Reach for the temp pool in one-shot/setup code and the
-zero-alloc primitives inside per-frame loops.
+primitive that writes into a buffer you already own and allocates nothing. Reach for the temp pool in
+one-shot/setup code and the zero-alloc primitives inside per-frame loops.
 
 ## Performance
 

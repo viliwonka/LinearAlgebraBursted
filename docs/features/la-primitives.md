@@ -4,8 +4,10 @@ Three merged (bare-name) classes covering the primitives everything else is buil
 
 ## Blas — dot, transpose, outer product, GEMM
 
-Every op has a zero-alloc `ref`-destination primitive and an allocating wrapper of the same name
-(see [zero-alloc-ops](../zero-alloc-ops.md) for the aliasing-guard rules):
+Every op has a zero-alloc `ref`-destination primitive and an allocating wrapper of the same name. The
+`ref` form validates dimensions and — for the contracting/permuting ops (`dot`/`outerDot`/`trans`,
+where one input element feeds many outputs) — throws if the destination buffer aliases an input;
+inputs may always alias each other freely:
 
 - `dot(floatN a, floatN b)` / `dot(a, b, start, end)` - vector dot,
 - `dot(in floatMxN A, in floatN x, ref floatN result)` mat vec dot,
