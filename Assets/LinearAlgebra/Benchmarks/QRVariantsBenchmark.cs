@@ -96,22 +96,23 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
-    // QRCP.solveInPlace: QRCP-based rank-safe LS solve using the zero-alloc, no-copy primitive.
-    // A_to_Q is factored directly (no separate Q scratch) -- destroyed, becomes the orthogonal
-    // factor Q. b is read via dot(in b, in A_to_Q, ref x) (b is NOT modified). Since Bench.Time
-    // re-runs Execute() many times, A_to_Q is re-copied from a pristine Src each Execute (matching
-    // the QRCPJobFloat/Double pattern above) so every timed sample factors identical data.
+    // QRCP.solveInPlace: QRCP-based rank-safe LS solve using the zero-alloc, no-copy primitive — the
+    // fused destructive fast path (applies Qᵀ to b during factorization, never reconstructs Q). It
+    // DESTROYS both A_to_Q (reflectors + R) and b (overwritten with Qᵀb). Since Bench.Time re-runs
+    // Execute() many times, A_to_Q is re-copied from a pristine Src and b from bSrc each Execute
+    // (matching the QRSolveJob pattern) so every timed sample factors identical data.
     // R, u are pre-allocated arena scratch. Pivot is per-Execute Temp alloc.
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct QRCPSolveJobFloat : IJob
     {
-        public floatMxN A;     // n x n scratch; receives Src, destroyed (becomes Q) by solveInPlace
+        public floatMxN A;     // n x n scratch; receives Src, destroyed by solveInPlace
         public floatMxN Src;   // pristine source, re-copied into A each Execute
-        public floatN b;       // n, NOT modified
+        public floatN b;       // m, destroyed (becomes Qᵀb); reset from bSrc each Execute
+        public floatN bSrc;    // pristine RHS
         public floatN x;       // n, solution output
         public floatMxN R;     // n x n scratch
-        public floatN u;       // n scratch
+        public floatN u;       // m scratch
 
         public void Execute()
         {
@@ -119,6 +120,8 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < cols; c++)
                     A[r, c] = Src[r, c];
+            for (int i = 0; i < rows; i++)
+                b[i] = bSrc[i];
 
             var P = new Pivot(A.N_Cols, Allocator.Temp);
             QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u);
@@ -132,6 +135,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN A;
         public doubleMxN Src;
         public doubleN b;
+        public doubleN bSrc;
         public doubleN x;
         public doubleMxN R;
         public doubleN u;
@@ -142,6 +146,8 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < cols; c++)
                     A[r, c] = Src[r, c];
+            for (int i = 0; i < rows; i++)
+                b[i] = bSrc[i];
 
             var P = new Pivot(A.N_Cols, Allocator.Temp);
             QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u);
@@ -305,6 +311,7 @@ namespace LinearAlgebra.Benchmarks
             var A = arena.floatMat(n, n);
             var Src = arena.floatMat(n, n);
             var b = arena.floatVec(n);
+            var bSrc = arena.floatVec(n);
             var x = arena.floatVec(n);
             var R = arena.floatMat(n, n);
             var u = arena.floatVec(n);
@@ -312,14 +319,14 @@ namespace LinearAlgebra.Benchmarks
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
             {
-                b[r] = rng.NextFloat(-1f, 1f);
+                bSrc[r] = rng.NextFloat(-1f, 1f);
                 for (int c = 0; c < n; c++)
                     Src[r, c] = rng.NextFloat(-1f, 1f);
             }
             for (int d = 0; d < n; d++)
                 Src[d, d] += n;
 
-            var job = new QRCPSolveJobFloat { A = A, Src = Src, b = b, x = x, R = R, u = u };
+            var job = new QRCPSolveJobFloat { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
@@ -384,6 +391,7 @@ namespace LinearAlgebra.Benchmarks
             var A = arena.floatMat(m, n);
             var Src = arena.floatMat(m, n);
             var b = arena.floatVec(m);
+            var bSrc = arena.floatVec(m);
             var x = arena.floatVec(n);
             var R = arena.floatMat(n, n);
             var u = arena.floatVec(m);
@@ -391,14 +399,14 @@ namespace LinearAlgebra.Benchmarks
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
             for (int r = 0; r < m; r++)
             {
-                b[r] = rng.NextFloat(-1f, 1f);
+                bSrc[r] = rng.NextFloat(-1f, 1f);
                 for (int c = 0; c < n; c++)
                     Src[r, c] = rng.NextFloat(-1f, 1f);
             }
             for (int d = 0; d < n; d++)
                 Src[d, d] += n;
 
-            var job = new QRCPSolveJobFloat { A = A, Src = Src, b = b, x = x, R = R, u = u };
+            var job = new QRCPSolveJobFloat { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
@@ -411,6 +419,7 @@ namespace LinearAlgebra.Benchmarks
             var A = arena.doubleMat(m, n);
             var Src = arena.doubleMat(m, n);
             var b = arena.doubleVec(m);
+            var bSrc = arena.doubleVec(m);
             var x = arena.doubleVec(n);
             var R = arena.doubleMat(n, n);
             var u = arena.doubleVec(m);
@@ -418,14 +427,14 @@ namespace LinearAlgebra.Benchmarks
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
             for (int r = 0; r < m; r++)
             {
-                b[r] = rng.NextDouble(-1.0, 1.0);
+                bSrc[r] = rng.NextDouble(-1.0, 1.0);
                 for (int c = 0; c < n; c++)
                     Src[r, c] = rng.NextDouble(-1.0, 1.0);
             }
             for (int d = 0; d < n; d++)
                 Src[d, d] += n;
 
-            var job = new QRCPSolveJobDouble { A = A, Src = Src, b = b, x = x, R = R, u = u };
+            var job = new QRCPSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
@@ -438,6 +447,7 @@ namespace LinearAlgebra.Benchmarks
             var A = arena.doubleMat(n, n);
             var Src = arena.doubleMat(n, n);
             var b = arena.doubleVec(n);
+            var bSrc = arena.doubleVec(n);
             var x = arena.doubleVec(n);
             var R = arena.doubleMat(n, n);
             var u = arena.doubleVec(n);
@@ -445,14 +455,14 @@ namespace LinearAlgebra.Benchmarks
             var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
             for (int r = 0; r < n; r++)
             {
-                b[r] = rng.NextDouble(-1.0, 1.0);
+                bSrc[r] = rng.NextDouble(-1.0, 1.0);
                 for (int c = 0; c < n; c++)
                     Src[r, c] = rng.NextDouble(-1.0, 1.0);
             }
             for (int d = 0; d < n; d++)
                 Src[d, d] += n;
 
-            var job = new QRCPSolveJobDouble { A = A, Src = Src, b = b, x = x, R = R, u = u };
+            var job = new QRCPSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();

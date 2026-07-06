@@ -134,8 +134,20 @@ namespace LinearAlgebra
         // when ANY column trips the guard is simpler, no more expensive (the sweep touches every
         // trailing column per row regardless of how many needed it), and strictly more accurate for
         // the columns that didn't strictly need re-summing.
+        // Form-Q entry (decomp path): factor + reconstruct Q, never touch b.
         static DirectSolveInfo decompInPlaceCore(ref fProxyMxN A_to_Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u,
                                                   ref fProxyN vn1, ref fProxyN vn2)
+        {
+            unsafe { return decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, null, false); }
+        }
+
+        // fusedSolve mirrors the blocked core's (decompInPlaceBlockedCore): when true, apply each
+        // reflector to bp as it is generated (bp becomes Qᵀb) and SKIP Q reconstruction — the fast
+        // destructive solve at small n. When false (decomp path) bp is ignored (pass null) and Q is
+        // reconstructed. Keeps QRCP.solveInPlace's destroys-A-and-b contract uniform across the size
+        // gate (the unblocked path would otherwise leave A=Q and b intact, an inconsistent contract).
+        static unsafe DirectSolveInfo decompInPlaceCore(ref fProxyMxN A_to_Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u,
+                                                  ref fProxyN vn1, ref fProxyN vn2, fProxy* bp, bool fusedSolve)
         {
             P.Reset();
 
@@ -220,6 +232,17 @@ namespace LinearAlgebra
                 for (int i = d; i < m; i++)
                     A_to_Q[i, d] = u[i];
 
+                // --- fused solve: apply this reflector to b (b -= u·(uᵀb), rows [d, m)) so b becomes
+                //     Qᵀb as reflectors are generated — no Q ever formed (see decompInPlaceBlockedCore). ---
+                if (fusedSolve)
+                {
+                    fProxy dotb = (fProxy)0;
+                    for (int r = d; r < m; r++)
+                        dotb += u[r] * bp[r];
+                    for (int r = d; r < m; r++)
+                        bp[r] -= u[r] * dotb;
+                }
+
                 // --- downdate trailing norms for the NEXT step (guarded, see the method doc above) ---
                 bool anyExact = false;
                 for (int j = d + 1; j < n; j++)
@@ -286,22 +309,26 @@ namespace LinearAlgebra
             }
 
             // Reconstruct Q from the Householder vectors stored in its columns (identical to the
-            // un-pivoted QR.decompInPlace: pivoting only reordered the columns, not this step).
-            for (int r = 0; r < m; r++)
-                for (int c = r; c < n; c++)
-                    if (c > r)
-                        A_to_Q[r, c] = 0;
-
-            for (int d = n - 1; d >= 0; d--)
+            // un-pivoted QR.decompInPlace: pivoting only reordered the columns, not this step) — decomp
+            // path only. The fused solve already has Qᵀb in bp and leaves A_to_Q destroyed.
+            if (!fusedSolve)
             {
-                for (int i = d; i < m; i++)
-                {
-                    u[i] = A_to_Q[i, d];
-                    A_to_Q[i, d] = i == d ? 1 : 0;
-                }
+                for (int r = 0; r < m; r++)
+                    for (int c = r; c < n; c++)
+                        if (c > r)
+                            A_to_Q[r, c] = 0;
 
-                // Apply the reflector to the trailing columns (vectorised, see QR.applyReflectorRight).
-                QR.applyReflectorRight(ref A_to_Q, ref u, ref w, d);
+                for (int d = n - 1; d >= 0; d--)
+                {
+                    for (int i = d; i < m; i++)
+                    {
+                        u[i] = A_to_Q[i, d];
+                        A_to_Q[i, d] = i == d ? 1 : 0;
+                    }
+
+                    // Apply the reflector to the trailing columns (vectorised, see QR.applyReflectorRight).
+                    QR.applyReflectorRight(ref A_to_Q, ref u, ref w, d);
+                }
             }
 
             w.Dispose();
@@ -357,8 +384,24 @@ namespace LinearAlgebra
         //      spot; the first trip cuts the panel short (kb = k+1) — dlaqps returns KB for this reason.
         // Panel end: one GEMM flush of the deferred trailing update, THEN an exact re-sum of the marked
         // columns over the now-updated trailing matrix.
+        //
+        // fusedSolve toggles the destructive fast-solve path: when true, each reflector is also applied
+        // to bp (a length-m right-hand side) as it is generated — building Qᵀb in place in the reflector
+        // generation order (== Qᵀ order) — and Q reconstruction is SKIPPED entirely (A_to_Q is left
+        // destroyed: reflectors + partial R, not the orthogonal factor). This mirrors QR.solveInPlace's
+        // fused kernel and lets QRCP.solveInPlace avoid the ~⅓-of-runtime Q reconstruction. When false
+        // (the decomp path) bp is ignored (pass null) and Q is reconstructed as usual.
+
+        // Form-Q entry (decomp path): factor + reconstruct Q, never touch b.
         static unsafe DirectSolveInfo decompInPlaceBlockedCore(ref fProxyMxN A_to_Q, ref fProxyMxN R, ref Pivot P,
                                                                ref fProxyN u, ref fProxyN vn1, ref fProxyN vn2)
+        {
+            return decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, null, false);
+        }
+
+        static unsafe DirectSolveInfo decompInPlaceBlockedCore(ref fProxyMxN A_to_Q, ref fProxyMxN R, ref Pivot P,
+                                                               ref fProxyN u, ref fProxyN vn1, ref fProxyN vn2,
+                                                               fProxy* bp, bool fusedSolve)
         {
             // Factorization panel width. A method-local const (QRCP is a partial class shared by the
             // float/double generated files, so a class-level const of this name would collide, CS0102).
@@ -387,13 +430,19 @@ namespace LinearAlgebra
             var F = new fProxyN(n * QRCP_BLOCK, Allocator.Temp, true);
             var acc = new fProxyN(n, Allocator.Temp, true);
             var mark = new fProxyN(n, Allocator.Temp, false);
-            // Blocked-WY reconstruction buffers — sized for max(QRCP_BLOCK, RECON_BLOCK) so they satisfy
-            // both the flush GEMM (<= QRCP_BLOCK wide) and QR.reconstructQBlocked (RECON_BLOCK wide).
-            var Vpanel = new fProxyN(m * rb, Allocator.Temp, true);
-            var Tbuf = new fProxyN(rb * rb, Allocator.Temp, true);
+            // Wbuf is needed by BOTH the per-panel flush (<= QRCP_BLOCK wide) and, in the decomp path,
+            // QR.reconstructQBlocked (RECON_BLOCK wide) — sized for max(QRCP_BLOCK, RECON_BLOCK). The
+            // other four reconstruction buffers are reconstruction-ONLY, so the fused solve path (which
+            // skips reconstruction) does not allocate them (default handles stay un-disposed below).
             var Wbuf = new fProxyN(rb * n, Allocator.Temp, true);
-            var tcolBuf = new fProxyN(rb, Allocator.Temp, true);
-            var VfullBuf = new fProxyN(m * n, Allocator.Temp, true);
+            fProxyN Vpanel = default, Tbuf = default, tcolBuf = default, VfullBuf = default;
+            if (!fusedSolve)
+            {
+                Vpanel = new fProxyN(m * rb, Allocator.Temp, true);
+                Tbuf = new fProxyN(rb * rb, Allocator.Temp, true);
+                tcolBuf = new fProxyN(rb, Allocator.Temp, true);
+                VfullBuf = new fProxyN(m * n, Allocator.Temp, true);
+            }
 
             // scale-relative zero-column threshold (see QR.genHouseholder); computed once on the
             // original A, exactly as the unblocked core does.
@@ -488,6 +537,17 @@ namespace LinearAlgebra
                     R[d, d] = A_to_Q[d, d] - up[d] * beta;
                     for (int r = d; r < m; r++)
                         Ap[(long)r * n + d] = up[r];
+
+                    // --- fused solve: apply this reflector to b (b -= u·(uᵀb), rows [d, m)) so b
+                    //     accumulates Qᵀb as reflectors are generated — no Q ever formed. ---
+                    if (fusedSolve)
+                    {
+                        fProxy dotb = (fProxy)0;
+                        for (int r = d; r < m; r++)
+                            dotb += up[r] * bp[r];
+                        for (int r = d; r < m; r++)
+                            bp[r] -= up[r] * dotb;
+                    }
 
                     // --- 5. one combined pass acc[jl] = Σ_{r=rk}^{m-1} u[r]·A[r, p0+jl], jl in [0,width) ---
                     //     Reflector columns (jl<k, now holding u_i) give acc[jl] = uₖᵀuᵢ (the compact-WY
@@ -608,14 +668,18 @@ namespace LinearAlgebra
                 else if (c > r) R[r, c] = A_to_Q[r, c];
             }
 
-            // Reconstruct Q from the stored reflectors via the shared blocked-WY kernel.
-            QR.reconstructQBlocked(ref A_to_Q, ref Vpanel, ref Tbuf, ref Wbuf, ref tcolBuf, ref VfullBuf);
+            // Reconstruct Q from the stored reflectors via the shared blocked-WY kernel — decomp path
+            // only. The fused solve already has Qᵀb in bp and leaves A_to_Q destroyed (no Q needed).
+            if (!fusedSolve)
+            {
+                QR.reconstructQBlocked(ref A_to_Q, ref Vpanel, ref Tbuf, ref Wbuf, ref tcolBuf, ref VfullBuf);
+                VfullBuf.Dispose();
+                tcolBuf.Dispose();
+                Tbuf.Dispose();
+                Vpanel.Dispose();
+            }
 
-            VfullBuf.Dispose();
-            tcolBuf.Dispose();
             Wbuf.Dispose();
-            Tbuf.Dispose();
-            Vpanel.Dispose();
             mark.Dispose();
             acc.Dispose();
             F.Dispose();
@@ -708,12 +772,15 @@ namespace LinearAlgebra
         /// SVD.pinvSolve for that. When A has full column rank (r == n) the result is identical to
         /// ordinary QR least-squares.
         ///
-        /// NO-COPY: factors A_to_Q's own buffer directly (no memcpy, no separate Q scratch param) —
-        /// A_to_Q holds the usable orthogonal factor (alongside R and P) on return. b is preserved
-        /// (read only via dot, never written).
+        /// DESTRUCTIVE FAST PATH (mirrors QR.solveInPlace): factors A_to_Q's own buffer in place (no
+        /// memcpy, no separate Q scratch) and applies Qᵀ to b as the reflectors are generated, so it
+        /// never forms or reconstructs Q — the whole point, since reconstruction is ~⅓ of the runtime.
+        /// On return A_to_Q is DESTROYED (stored reflectors + partial R, contents undefined) and b is
+        /// DESTROYED (overwritten with Qᵀb). Need the orthogonal factor Q? Use QRCP.decompInPlace /
+        /// QRCP.decomp instead, which reconstruct it.
         /// </summary>
-        /// <param name="A_to_Q">On entry A (m x n, m >= n); on exit the orthogonal factor Q.</param>
-        /// <param name="b">Right-hand side, length m. Preserved (read-only). Must not alias x.</param>
+        /// <param name="A_to_Q">On entry A (m x n, m >= n); DESTROYED on exit (NOT the orthogonal factor — use decompInPlace for Q).</param>
+        /// <param name="b">Right-hand side, length m. DESTROYED (overwritten with Qᵀb). Must not alias x.</param>
         /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true. Solution, length n.</param>
         /// <param name="R">Scratch: n x n (receives upper-triangular factor; consumed).</param>
         /// <param name="P">Scratch: column Pivot of size n (reset internally).</param>
@@ -754,20 +821,25 @@ namespace LinearAlgebra
             // Degenerate: zero-column system.
             if (n == 0) return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            // Step 1: QRCP — A·P = Q·R, factored directly into A_to_Q's own buffer (no copy).
-            // P is reset and built inside this call.
-            decompInPlace(ref A_to_Q, ref R, ref P, ref u);
-
-            return solveInPlaceFinish(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, relTol);
+            // Fused destructive solve (A_to_Q and b BOTH destroyed): apply Qᵀ to b during the blocked
+            // factorization and skip Q reconstruction — see solveInPlaceFusedDispatch. vn1/vn2 are the
+            // norm-downdating scratch (Temp here; the cache overload supplies its own).
+            var vn1 = new fProxyN(n, Allocator.Temp, false);
+            var vn2 = new fProxyN(n, Allocator.Temp, false);
+            var info = solveInPlaceFusedDispatch(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, ref vn1, ref vn2, relTol);
+            vn2.Dispose();
+            vn1.Dispose();
+            return info;
         }
 
         /// <summary>
         /// solveInPlace routed through caller-owned <see cref="fProxyQRCPCache"/> scratch (vn1/vn2)
-        /// for the internal decomposition step — see decompInPlace's cache overload. Same semantics
-        /// as the 7-arg primitive above.
+        /// for the internal factorization — avoids the per-call Temp vn1/vn2 the 7-arg primitive
+        /// allocates. Same DESTRUCTIVE fast-path semantics as the 7-arg primitive above (A_to_Q and b
+        /// both destroyed; Q is never formed).
         /// </summary>
-        /// <param name="A_to_Q">On entry A (m x n, m >= n); on exit the orthogonal factor Q.</param>
-        /// <param name="b">Right-hand side, length m. Preserved (read-only). Must not alias x.</param>
+        /// <param name="A_to_Q">On entry A (m x n, m >= n); DESTROYED on exit (NOT the orthogonal factor — use decompInPlace for Q).</param>
+        /// <param name="b">Right-hand side, length m. DESTROYED (overwritten with Qᵀb). Must not alias x.</param>
         /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true. Solution, length n.</param>
         /// <param name="R">Scratch: n x n (receives upper-triangular factor; consumed).</param>
         /// <param name="P">Scratch: column Pivot of size n (reset internally).</param>
@@ -802,9 +874,8 @@ namespace LinearAlgebra
 
             RequireQRCPWorkspace(in cache, n);
 
-            decompCoreDispatch(ref A_to_Q, ref R, ref P, ref u, ref cache.vn1, ref cache.vn2);
-
-            return solveInPlaceFinish(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, relTol);
+            // Fused destructive solve through the caller's vn1/vn2 — see solveInPlaceFusedDispatch.
+            return solveInPlaceFusedDispatch(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, ref cache.vn1, ref cache.vn2, relTol);
         }
 
         // Default-tolerance cache overload: passes the auto sentinel (relTol < 0) — see the 7-arg
@@ -817,10 +888,35 @@ namespace LinearAlgebra
             return solveInPlace(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, ref cache, (fProxy)(-1));
         }
 
+        // Destructive fused-solve dispatch: the fast path for QRCP.solveInPlace. Once N_Cols is wide
+        // enough to block (>= 2*QRCP_BLOCK), it applies Qᵀ to b DURING the blocked factorization and
+        // skips Q reconstruction (decompInPlaceBlockedCore's fusedSolve mode) — saving the ~⅓ of
+        // runtime that reconstruction costs — then finishes straight from Qᵀb. Below the gate it uses
+        // the unblocked core (which forms Q cheaply at small n) plus the dot-based finish, unchanged.
+        // BOTH A_to_Q and b are destroyed. Callers supply vn1/vn2 (cache) or Temp-allocate them.
+        static unsafe RankInfo solveInPlaceFusedDispatch(ref fProxyMxN A_to_Q, ref fProxyN b, ref fProxyN x,
+                                                         ref fProxyMxN R, ref Pivot P, ref fProxyN u,
+                                                         ref fProxyN vn1, ref fProxyN vn2, fProxy relTol)
+        {
+            // See decompInPlaceBlockedCore for why this is a method-local const, not a class field.
+            const int QRCP_BLOCK = 32;
+
+            if (A_to_Q.N_Cols >= 2 * QRCP_BLOCK)
+                decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, true);
+            else
+                decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, true);
+
+            // b now holds Qᵀb (both cores fused), consumed directly by the finish.
+            return solveInPlaceFinish(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, relTol);
+        }
+
         // Shared tail: rank detection from R's diagonal + back-substitution + un-permute. Factored
         // out so the plain-scratch and cache-scratch overloads above (which differ only in HOW the
         // decomposition step is reached) share one copy of this logic — see decompInPlaceCore for the
         // analogous split on the decomposition side.
+        // Both solve cores (blocked + unblocked) run in fused mode, so on entry b ALREADY holds Qᵀb
+        // (each reflector was applied to it during factorization) and A_to_Q is destroyed — NOT Q.
+        // So c = leading n entries of b; no dot(b, Q). Rank, back-substitution and un-permute follow.
         static RankInfo solveInPlaceFinish(ref fProxyMxN A_to_Q, ref fProxyN b, ref fProxyN x,
                                             ref fProxyMxN R, ref Pivot P, ref fProxyN u, fProxy relTol)
         {
@@ -849,11 +945,10 @@ namespace LinearAlgebra
 
             int r = rank;
 
-            // Step 4: form c = Qᵀ b into x.
-            // dot(in b, in A_to_Q, ref x) computes x[j] = Σ_i A_to_Q[i,j]·b[i] = (Qᵀb)[j].
-            // dot zeroes x via MemClear before accumulating, so x needs no prior initialisation.
-            // Guard: x must not alias b (enforced inside dot by pointer comparison).
-            Blas.dot(in b, in A_to_Q, ref x);
+            // Step 4: c = Qᵀb into x. b already holds Qᵀb (fused factorization), so c is just its
+            // leading n entries — x[j] = (Qᵀb)[j] = b[j] for j in [0, n).
+            for (int j = 0; j < n; j++)
+                x[j] = b[j];
 
             // Step 5: back-solve the leading r×r block of R in place.
             // x holds c = Qᵀb; overwrite x[0..r-1] with the triangular solution.

@@ -530,6 +530,7 @@ public class doubleQRCPTests
             RankInfoStatus,         // (10) Stage-3: RankInfo.status/rank/Solved on rank-deficient A
             NoCopyEquivalenceFullRank,      // (11) commit-2: no-copy solveInPlace == copying-then-solveInPlace
             NoCopyEquivalenceRankDeficient, // (12) same, rank-deficient A
+            BlockedFusedSolve,              // (13) large n (>= 2*QRCP_BLOCK): fused blocked solve == QR-LS
         }
 
         public TestType Type;
@@ -553,6 +554,7 @@ public class doubleQRCPTests
                 case TestType.RankInfoStatus:          RankInfoStatus();          break;
                 case TestType.NoCopyEquivalenceFullRank:      NoCopyEquivalenceFullRank();      break;
                 case TestType.NoCopyEquivalenceRankDeficient: NoCopyEquivalenceRankDeficient(); break;
+                case TestType.BlockedFusedSolve:              BlockedFusedSolve();              break;
             }
         }
 
@@ -570,17 +572,17 @@ public class doubleQRCPTests
 
             // generic b (not in range(A)) so it is a genuine least-squares (not exact) problem
             var b = arena.doubleRandomVec(m, -5f, 5f, 9091);
-            var A_pristine = A.Copy(); // solveInPlace now destroys A (becomes Q); preserve for the QR reference below
+            var A_pristine = A.Copy(); // solveInPlace destroys A (reflectors, NOT Q now); preserve for the QR reference
+            var bqr = b.Copy();        // solveInPlace destroys b too (overwritten with Qᵀb); copy for the QR reference
 
             var x = arena.doubleVec(n);
-            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank; // b stays intact; A -> Q
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank; // A and b BOTH destroyed (fused fast path)
 
             RecordEq(rank, n);
             if (Analysis.isAnyNan(in x)) { Fail0(0, 0); return; }
 
-            // reference: ordinary QR-LS (destroys its inputs -> feed copies)
+            // reference: ordinary QR-LS (destroys its inputs -> Aqr copy + bqr copy above)
             var Aqr = A_pristine.Copy();
-            var bqr = b.Copy();
             var xRef = arena.doubleVec(n);
             QR.solveInPlace(ref Aqr, ref bqr, ref xRef);
 
@@ -592,7 +594,7 @@ public class doubleQRCPTests
         }
 
         // (2) Square full-rank: the basic solution solves A x = b exactly (residual ~ 0).
-        // Uses the PRIMITIVE default-tolerance overload (R/P/u scratch; A_to_Q becomes Q).
+        // Uses the PRIMITIVE default-tolerance overload (R/P/u scratch; A_to_Q and b both destroyed).
         void FullRankSquare()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -605,6 +607,7 @@ public class doubleQRCPTests
             var xOrig = arena.doubleRandomVec(dim, -3f, 3f, 1337);
             var b = Blas.dot(A, xOrig); // b in range(A) -> exact solution exists
             var A_copy = A.Copy();          // for residual check after the solve
+            var b0 = b.Copy();              // solveInPlace destroys b (fused); keep original for the residual
 
             var R = arena.doubleMat(dim);
             var P = new Pivot(dim, Allocator.Persistent);
@@ -621,8 +624,8 @@ public class doubleQRCPTests
                     AssertClose(x[k], xOrig[k], tol * (math.abs(xOrig[k]) + (double)1));
 
                 // residual ~ 0
-                double res = ResidualNorm(in A_copy, in x, in b);
-                RecordBound(res, tol * ((double)1 + VecNorm(in b)));
+                double res = ResidualNorm(in A_copy, in x, in b0);
+                RecordBound(res, tol * ((double)1 + VecNorm(in b0)));
             }
 
             P.Dispose();
@@ -644,6 +647,7 @@ public class doubleQRCPTests
             var A_copy = A.Copy();
 
             var b = arena.doubleRandomVec(m, -3f, 3f, 5511);
+            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for residual/pinv
 
             var x = arena.doubleVec(n);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
@@ -651,18 +655,18 @@ public class doubleQRCPTests
             RecordEq(rank, 3);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
-            double resQrcp = ResidualNorm(in A_copy, in x, in b);
+            double resQrcp = ResidualNorm(in A_copy, in x, in b0);
             double normQrcp = VecNorm(in x);
 
             // pinv reference (no longer modifies A) — same residual, minimum norm
             var Apinv = A_copy.Copy();
             var xPinv = arena.doubleVec(n);
-            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b, ref xPinv);
+            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             bool converged = pinvInfo;
             int pinvRank = pinvInfo.rank;
 
             RecordEq(pinvRank, 3);
-            double resPinv = ResidualNorm(in A_copy, in xPinv, in b);
+            double resPinv = ResidualNorm(in A_copy, in xPinv, in b0);
             double normPinv = VecNorm(in xPinv);
 
             // (a) SAME residual (both are residual-minimal). Residual is second-order flat at the
@@ -690,6 +694,7 @@ public class doubleQRCPTests
             var A_copy = A.Copy();
 
             var b = arena.doubleRandomVec(dim, -4f, 4f, 24680);
+            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for residual/pinv
             double mean = (double)0;
             for (int i = 0; i < dim; i++) mean += b[i];
             mean /= (double)dim;
@@ -707,16 +712,16 @@ public class doubleQRCPTests
                 AssertClose(Ax[i], mean, tol * (math.abs(mean) + (double)1));
 
             // residual minimal vs pinv, and basic norm >= min norm
-            double resQrcp = ResidualNorm(in A_copy, in x, in b);
+            double resQrcp = ResidualNorm(in A_copy, in x, in b0);
             double normQrcp = VecNorm(in x);
 
             var Apinv = A_copy.Copy();
             var xPinv = arena.doubleVec(dim);
-            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b, ref xPinv);
+            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             bool converged = pinvInfo;
             int pinvRank = pinvInfo.rank;
             RecordEq(pinvRank, 1);
-            double resPinv = ResidualNorm(in A_copy, in xPinv, in b);
+            double resPinv = ResidualNorm(in A_copy, in xPinv, in b0);
             double normPinv = VecNorm(in xPinv);
 
             AssertClose(resQrcp, resPinv, (double)Consts.doubleSqrtEps * (double)4 * (resPinv + (double)1));
@@ -742,6 +747,7 @@ public class doubleQRCPTests
             var A_copy = A.Copy();
 
             var b = arena.doubleRandomVec(m, -2f, 2f, 1212);
+            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for residual/pinv
 
             var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
@@ -754,15 +760,15 @@ public class doubleQRCPTests
             RecordEq(rank, 3);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
-            double resQrcp = ResidualNorm(in A_copy, in x, in b);
+            double resQrcp = ResidualNorm(in A_copy, in x, in b0);
 
             var Apinv = A_copy.Copy();
             var xPinv = arena.doubleVec(n);
-            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b, ref xPinv);
+            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             bool converged = pinvInfo;
             int pinvRank = pinvInfo.rank;
             RecordEq(pinvRank, 3);
-            double resPinv = ResidualNorm(in A_copy, in xPinv, in b);
+            double resPinv = ResidualNorm(in A_copy, in xPinv, in b0);
 
             AssertClose(resQrcp, resPinv, (double)Consts.doubleSqrtEps * (double)4 * (resPinv + (double)1));
 
@@ -806,6 +812,7 @@ public class doubleQRCPTests
 
             var b = arena.doubleVec(1);
             b[0] = (double)10f;
+            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for the residual
 
             var x = arena.doubleVec(1);
             int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
@@ -814,7 +821,7 @@ public class doubleQRCPTests
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
 
             AssertClose(x[0], (double)2.5f, (double)Consts.doubleSqrtEps * (double)10);
-            RecordBound(ResidualNorm(in A_copy, in x, in b), (double)Consts.doubleSqrtEps * (double)10);
+            RecordBound(ResidualNorm(in A_copy, in x, in b0), (double)Consts.doubleSqrtEps * (double)10);
 
             arena.Dispose();
         }
@@ -833,20 +840,20 @@ public class doubleQRCPTests
                 A[r, 2] = A[r, 0] - A[r, 1]; // rank 3
             var b = arena.doubleRandomVec(m, -3f, 3f, 2424);
 
-            // solveInPlace now destroys A (becomes Q) -- each call needs its own pristine copy so
-            // all three exercise the IDENTICAL input.
+            // solveInPlace destroys BOTH A and b (fused fast path) -- each call needs its own pristine
+            // A copy AND its own b copy so all three exercise the IDENTICAL input.
             var xAuto = arena.doubleVec(n);
-            var Aauto = A.Copy();
-            int rankAuto = QRCP.solveInPlace(ref Aauto, ref b, ref xAuto).rank; // default overload
+            var Aauto = A.Copy(); var bAuto = b.Copy();
+            int rankAuto = QRCP.solveInPlace(ref Aauto, ref bAuto, ref xAuto).rank; // default overload
 
             var xNeg = arena.doubleVec(n);
-            var Aneg = A.Copy();
-            int rankNeg = QRCP.solveInPlace(ref Aneg, ref b, ref xNeg, (double)(-1)).rank; // sentinel
+            var Aneg = A.Copy(); var bNeg = b.Copy();
+            int rankNeg = QRCP.solveInPlace(ref Aneg, ref bNeg, ref xNeg, (double)(-1)).rank; // sentinel
 
             double explicitTol = (double)(math.max(m, n)) * (double)Consts.doubleZeroThreshold;
             var xExpl = arena.doubleVec(n);
-            var Aexpl = A.Copy();
-            int rankExpl = QRCP.solveInPlace(ref Aexpl, ref b, ref xExpl, explicitTol).rank;
+            var Aexpl = A.Copy(); var bExpl = b.Copy();
+            int rankExpl = QRCP.solveInPlace(ref Aexpl, ref bExpl, ref xExpl, explicitTol).rank;
 
             RecordEq(rankNeg, rankAuto);
             RecordEq(rankExpl, rankAuto);
@@ -877,6 +884,7 @@ public class doubleQRCPTests
 
             var b = arena.doubleVec(m);
             b[0] = (double)6f; b[1] = (double)1f; b[2] = (double)1f;
+            var b0 = b.Copy();   // solveInPlace destroys b (fused); keep original for the residual
 
             var R = arena.doubleMat(n);
             var P = new Pivot(n, Allocator.Persistent);
@@ -892,7 +900,7 @@ public class doubleQRCPTests
             AssertClose(x[0], (double)0f, tol); // free variable (original col0) zeroed
             AssertClose(x[1], (double)3f, tol); // pivoted col1 carries the rank-1 solution
 
-            double res = ResidualNorm(in A_copy, in x, in b);
+            double res = ResidualNorm(in A_copy, in x, in b0);
             AssertClose(res, math.sqrt((double)2f), tol);
 
             P.Dispose();
@@ -925,12 +933,12 @@ public class doubleQRCPTests
             arena.Dispose();
         }
 
-        // (11)/(12) commit-2 no-copy optimization: solveInPlace factors A_to_Q's own buffer directly
-        // (no separate Q scratch param). Buffer identity must not matter: running the primitive on
-        // one copy of A must be bit-identical to running it on an INDEPENDENT second copy (proves the
-        // no-copy change is a pure perf optimization, not an observable behavior change) -- and each
-        // copy's exit must equal the Q that a fresh QRCP.decompInPlace produces on a third identical
-        // copy of the same original A.
+        // (11)/(12) no-copy optimization: solveInPlace factors A_to_Q's own buffer directly (no
+        // separate Q scratch param). Buffer identity must not matter: running the fused primitive on
+        // one independent (A, b) copy pair must be bit-identical (x, status, rank, and the destroyed
+        // A-buffer) to running it on a SEPARATE independent pair -- proving the no-copy/in-place design
+        // is a pure perf choice, not an observable behavior change. (The fused solve no longer forms Q,
+        // so there is no Q exit to cross-check against decompInPlace here — that lives in the decomp tests.)
         void NoCopyEquivalenceFullRank() => NoCopyEquivalence(10, 6, 707070, false);
         void NoCopyEquivalenceRankDeficient() => NoCopyEquivalence(8, 5, 808080, true);
 
@@ -944,18 +952,21 @@ public class doubleQRCPTests
                 for (int r = 0; r < m; r++)
                     A0[r, n - 1] = A0[r, 0] + A0[r, 1]; // exact dependency -> rank n-1
 
-            var b = arena.doubleRandomVec(m, -3f, 3f, seed + 1);
+            var b0 = arena.doubleRandomVec(m, -3f, 3f, seed + 1);
 
-            // Path 1: solveInPlace on one independent copy of A0.
+            // Path 1: solveInPlace on one independent (A, b) copy pair.
             var Adirect = A0.Copy();
+            var bDirect = b0.Copy();
             var xDirect = arena.doubleVec(n);
-            RankInfo infoDirect = QRCP.solveInPlace(ref Adirect, ref b, ref xDirect);
+            RankInfo infoDirect = QRCP.solveInPlace(ref Adirect, ref bDirect, ref xDirect);
 
-            // Path 2: solveInPlace on a SEPARATE independent copy -- proves buffer identity is
-            // irrelevant to the result (b is read-only, so the same b is reused for both calls).
+            // Path 2: solveInPlace on a SEPARATE independent copy pair -- proves buffer identity is
+            // irrelevant to the result. (The fused fast path destroys BOTH A and b, so each run needs
+            // its own pair; the old b-is-read-only reuse no longer holds.)
             var Acopy = A0.Copy();
+            var bCopy = b0.Copy();
             var xCopy = arena.doubleVec(n);
-            RankInfo infoCopy = QRCP.solveInPlace(ref Acopy, ref b, ref xCopy);
+            RankInfo infoCopy = QRCP.solveInPlace(ref Acopy, ref bCopy, ref xCopy);
 
             RecordEq((int)infoDirect.status, (int)infoCopy.status);
             RecordEq(infoDirect.rank, infoCopy.rank);
@@ -968,20 +979,54 @@ public class doubleQRCPTests
             for (int i = 0; i < n; i++)
                 AssertBitIdentical(xDirect[i], xCopy[i]);
 
-            // Both exits (now holding Q) must also be bit-identical to each other.
+            // The destroyed A-buffers (stored reflectors + R, NOT Q — the fused solve never
+            // reconstructs Q) must be bit-identical to each other too: the factorization is
+            // deterministic and independent of b, so buffer identity can't change it. (Q itself is
+            // produced by QRCP.decompInPlace and covered by the decomposition tests, not here.)
             for (int i = 0; i < Adirect.Length; i++)
                 AssertBitIdentical(Adirect[i], Acopy[i]);
 
-            // And bit-identical to the Q a fresh decompInPlace produces on a third identical copy.
-            var Aref = A0.Copy();
-            var Rref = arena.doubleMat(n);
-            var Pref = new Pivot(n, Allocator.Persistent);
-            QRCP.decompInPlace(ref Aref, ref Rref, ref Pref);
+            arena.Dispose();
+        }
 
-            for (int i = 0; i < Aref.Length; i++)
-                AssertBitIdentical(Adirect[i], Aref[i]);
+        // (13) Large n (m=200, n=96 >= 2*QRCP_BLOCK): forces the fused BLOCKED solve path
+        // (decompInPlaceBlockedCore's fusedSolve mode + Qᵀb + no Q reconstruction — the fast path all
+        // the small cases above miss). Well-conditioned overdetermined full-rank system: the fused
+        // solution must equal ordinary QR least-squares and be residual-minimal, and rank must be n.
+        void BlockedFusedSolve()
+        {
+            var arena = new Arena(Allocator.Persistent);
 
-            Pref.Dispose();
+            int m = 200, n = 96;
+            var A = arena.doubleRandomMat(m, n, -2f, 2f, 0xF0DE71u);
+            for (int d = 0; d < n; d++)
+                A[d, d] += (double)n; // diagonally dominant -> full column rank, well-conditioned
+            var A_copy = A.Copy();
+
+            var b = arena.doubleRandomVec(m, -2f, 2f, 0x5013u);
+            var b0 = b.Copy();  // solveInPlace destroys b (fused); keep original for residual + QR ref
+
+            var x = arena.doubleVec(n);
+            int rank = QRCP.solveInPlace(ref A, ref b, ref x).rank;
+
+            RecordEq(rank, n);
+            if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
+
+            // reference: ordinary (un-pivoted) QR least-squares on copies (it destroys its inputs).
+            var Aqr = A_copy.Copy();
+            var bqr = b0.Copy();
+            var xRef = arena.doubleVec(n);
+            QR.solveInPlace(ref Aqr, ref bqr, ref xRef);
+
+            double tol = (double)Consts.doubleSqrtEps * (double)20;
+            for (int k = 0; k < n; k++)
+                AssertClose(x[k], xRef[k], tol * (math.abs(xRef[k]) + (double)1));
+
+            // residual-minimal (QRCP basic solution == QR-LS residual at full rank).
+            double resQrcp = ResidualNorm(in A_copy, in x, in b0);
+            double resQr = ResidualNorm(in A_copy, in xRef, in b0);
+            AssertClose(resQrcp, resQr, tol * (resQr + (double)1));
+
             arena.Dispose();
         }
 

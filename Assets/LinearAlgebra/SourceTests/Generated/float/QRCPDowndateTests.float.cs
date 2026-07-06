@@ -588,15 +588,16 @@ public class floatQRCPDowndateTests
                 for (int i = 0; i < Anc.Length; i++) AssertBitIdentical(Anc[i], Ac[i]);
                 for (int i = 0; i < Rnc.Length; i++) AssertBitIdentical(Rnc[i], Rc[i]);
 
-                // solveInPlace: non-cache vs cache (default relTol both).
-                var b = arena.floatRandomVec(m, -3f, 3f, seed + 1u);
+                // solveInPlace: non-cache vs cache (default relTol both). solveInPlace destroys b
+                // (fused), so each call gets its own copy of the identical RHS.
+                var b0 = arena.floatRandomVec(m, -3f, 3f, seed + 1u);
 
-                var As1 = A0.Copy(); var Rs1 = arena.floatMat(n); var Ps1 = new Pivot(n, Allocator.Temp); var us1 = arena.floatVec(m); var x1 = arena.floatVec(n);
-                RankInfo info1 = QRCP.solveInPlace(ref As1, ref b, ref x1, ref Rs1, ref Ps1, ref us1);
+                var As1 = A0.Copy(); var b1 = b0.Copy(); var Rs1 = arena.floatMat(n); var Ps1 = new Pivot(n, Allocator.Temp); var us1 = arena.floatVec(m); var x1 = arena.floatVec(n);
+                RankInfo info1 = QRCP.solveInPlace(ref As1, ref b1, ref x1, ref Rs1, ref Ps1, ref us1);
 
-                var As2 = A0.Copy(); var Rs2 = arena.floatMat(n); var Ps2 = new Pivot(n, Allocator.Temp); var us2 = arena.floatVec(m); var x2 = arena.floatVec(n);
+                var As2 = A0.Copy(); var b2 = b0.Copy(); var Rs2 = arena.floatMat(n); var Ps2 = new Pivot(n, Allocator.Temp); var us2 = arena.floatVec(m); var x2 = arena.floatVec(n);
                 var cache2 = arena.floatQRCPCache(n);
-                RankInfo info2 = QRCP.solveInPlace(ref As2, ref b, ref x2, ref Rs2, ref Ps2, ref us2, ref cache2);
+                RankInfo info2 = QRCP.solveInPlace(ref As2, ref b2, ref x2, ref Rs2, ref Ps2, ref us2, ref cache2);
 
                 RecordEq((int)info1.status, (int)info2.status);
                 RecordEq(info1.rank, info2.rank);
