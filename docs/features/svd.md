@@ -69,3 +69,12 @@ machine/config, 2026-07-06, commit `f938c66`:
 | Size | k | float med(ms) | double med(ms) |
 |---|---|---|---|
 | 1024×1024 | 54 (5%) | 48.5 | 49.8 |
+
+`SVD.truncated` vs `SVD.randomized` head-to-head, tall 2048×512 (the least-squares benchmark
+shape), k=21 (~4%) — the low-k% regime where the exact GKL route beats the randomized sketch.
+Same machine/config, 2026-07-06, commit `8c10d52`:
+
+| Method | float med(ms) | double med(ms) |
+|---|---|---|
+| `SVD.truncated` | 17.71 | 18.70 |
+| `SVD.randomized` (oversample=10, powerIters=2) | 33.16 | 31.58 |

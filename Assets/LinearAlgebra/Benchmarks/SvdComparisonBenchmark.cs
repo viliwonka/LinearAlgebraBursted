@@ -235,6 +235,65 @@ namespace LinearAlgebra.Benchmarks
             }
 
             Section1024Square(sb);
+            SectionTall2048x512(sb);
+        }
+
+        // ---- Dedicated tall 2048x512 (m > n, the LS-benchmark shape): truncated vs randomized, k=21 ----
+        // Backs the README rows: top-k extraction from a tall data matrix (samples x features).
+        static void SectionTall2048x512(StringBuilder sb)
+        {
+            const int m = 2048, n = 512, k = 21;
+            sb.AppendLine("--- Dedicated: SVD.truncated vs SVD.randomized at 2048x512 (tall), k=21 ---");
+            sb.AppendLine(CmpHeader());
+
+            BenchTrunc1024Float(sb, m, n, k);
+            BenchTrunc1024Double(sb, m, n, k);
+            BenchRandDedicatedFloat(sb, m, n, k);
+            BenchRandDedicatedDouble(sb, m, n, k);
+        }
+
+        static void BenchRandDedicatedFloat(StringBuilder sb, int m, int n, int k)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A         = arena.floatMat(m, n);
+            var sigmaTrue = arena.floatVec(n);
+            new SvdCmpBuildJobFloat { A = A, SigmaTrue = sigmaTrue, seed = BuildSeed }.Run();
+            double normA = FNormF(A);
+
+            var Uk = arena.floatMat(m, k);
+            var Sk = arena.floatVec(k);
+            var Vk = arena.floatMat(n, k);
+            var ws   = arena.floatSVDRandomizedCache(m, n, k);
+            var job  = new SvdCmpRandJobFloat { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+            double sigErr   = SigErrF(Sk, sigmaTrue, k);
+            double reconErr = ReconErrF(A, Uk, Sk, Vk, k, normA);
+            double eyOpt    = EYOptF(sigmaTrue, k, normA);
+            sb.AppendLine(CmpRow("float", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
+
+            arena.Dispose();
+        }
+
+        static void BenchRandDedicatedDouble(StringBuilder sb, int m, int n, int k)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A         = arena.doubleMat(m, n);
+            var sigmaTrue = arena.doubleVec(n);
+            new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = BuildSeed }.Run();
+            double normA = FNormD(A);
+
+            var Uk = arena.doubleMat(m, k);
+            var Sk = arena.doubleVec(k);
+            var Vk = arena.doubleMat(n, k);
+            var ws   = arena.doubleSVDRandomizedCache(m, n, k);
+            var job  = new SvdCmpRandJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+            double sigErr   = SigErrD(Sk, sigmaTrue, k);
+            double reconErr = ReconErrD(A, Uk, Sk, Vk, k, normA);
+            double eyOpt    = EYOptD(sigmaTrue, k, normA);
+            sb.AppendLine(CmpRow("double", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
+
+            arena.Dispose();
         }
 
         // ---- Dedicated square 1024x1024 case: truncated ONLY, k=54 (fixed, not %-of-n) ----------------
