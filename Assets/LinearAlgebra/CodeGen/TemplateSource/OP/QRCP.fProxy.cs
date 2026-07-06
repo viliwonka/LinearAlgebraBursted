@@ -18,14 +18,18 @@ namespace LinearAlgebra
     /// <remarks>
     /// Partial column norms are DOWNDATED (LAPACK dgeqp3/dlaqps-style, unsquared, guarded) rather
     /// than recomputed exactly at every step — see <see cref="fProxyQRCPCache"/> and
-    /// decompInPlaceCore. <see cref="fProxyQRCPCache"/> carries exactly the two n-sized vectors
-    /// (vn1, vn2) that downdating needs; it deliberately does NOT fold in QR's blocked-WY buffers
-    /// (Vpanel/Tbuf/Wbuf/tcolBuf/VfullBuf) — this kernel is inherently level-2 (the pivot at each
-    /// step depends on trailing norms known only after the previous step's reflector is applied, so
-    /// panels of columns can't be factored ahead of their pivot choice) and will never engage QR's
-    /// level-3 path. The `w` reflector-apply accumulator (length n) is small (O(n), not O(mn)) and
-    /// stays a per-call Allocator.Temp allocation in decompInPlaceCore, unchanged from before this
-    /// change — folding it into the cache too is a candidate future follow-up, not part of this one.
+    /// decompInPlaceCore. That downdating is what unlocks a level-3 path: pivot selection needs the
+    /// current column NORMS, not the current column DATA, so once N_Cols >= 2*QRCP_BLOCK the
+    /// factorization runs the LAPACK dlaqps-style partially-blocked panel core
+    /// (decompInPlaceBlockedCore) — a whole panel of reflectors is factored against a deferred
+    /// F-matrix and its trailing update flushed once as a rank-kb GEMM, and Q is reconstructed by the
+    /// same blocked-WY kernel QR uses (QR.reconstructQBlocked). Below that gate the unblocked
+    /// per-reflector core runs (decompCoreDispatch chooses). <see cref="fProxyQRCPCache"/> still
+    /// carries only the two n-sized downdating vectors (vn1, vn2); the blocked core's larger working
+    /// buffers (F, the flush GEMM scratch, and the reconstruction WY buffers) are Allocator.Temp
+    /// allocated per call inside decompInPlaceBlockedCore — one set per factorization, negligible
+    /// against its O(n²m) work — rather than folded into the cache. Promoting them into the cache for
+    /// a fully zero-alloc blocked path (as QR's cache does) is a candidate follow-up, not part of this.
     /// </remarks>
     public static partial class QRCP {
 
@@ -69,7 +73,7 @@ namespace LinearAlgebra
             // AFTER every validation above so a caller error can't leak them (validate-before-alloc).
             var vn1 = new fProxyN(A_to_Q.N_Cols, Allocator.Temp, false);
             var vn2 = new fProxyN(A_to_Q.N_Cols, Allocator.Temp, false);
-            var info = decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2);
+            var info = decompCoreDispatch(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2);
             vn2.Dispose();
             vn1.Dispose();
             return info;
@@ -100,7 +104,7 @@ namespace LinearAlgebra
 
             RequireQRCPWorkspace(in cache, A_to_Q.N_Cols);
 
-            return decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref cache.vn1, ref cache.vn2);
+            return decompCoreDispatch(ref A_to_Q, ref R, ref P, ref u, ref cache.vn1, ref cache.vn2);
         }
 
         // ---- shared core: every decompInPlace/decomp/solveInPlace overload routes through this ----
@@ -305,6 +309,320 @@ namespace LinearAlgebra
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
+        // ---- level-3 dispatch: pick the blocked (dlaqps-style) core once the problem is wide enough ----
+
+        // Every decomposition path (decompInPlace / decomp / solveInPlace, plain- and cache-scratch)
+        // routes through here. Mirrors QR's size gate: the partially-blocked panel core only earns its
+        // extra bookkeeping (an F matrix, a per-panel GEMM flush, blocked Q reconstruction) once
+        // N_Cols >= 2*QRCP_BLOCK; below that the original per-reflector unblocked core (decompInPlaceCore)
+        // is already fast and has no panel overhead. Both cores take the SAME vn1/vn2 downdating scratch.
+        static DirectSolveInfo decompCoreDispatch(ref fProxyMxN A_to_Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u,
+                                                  ref fProxyN vn1, ref fProxyN vn2)
+        {
+            // See decompInPlaceBlockedCore for why this is a method-local const, not a class field.
+            const int QRCP_BLOCK = 32;
+
+            if (A_to_Q.N_Cols >= 2 * QRCP_BLOCK)
+                return decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2);
+
+            return decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2);
+        }
+
+        // ---- blocked (LAPACK dgeqp3/dlaqps-style) partially-blocked panel core ----
+        //
+        // Raises QRCP from level-2 (each reflector's trailing update applied immediately as two
+        // memory-bound passes) to level-3: the trailing update of a whole panel of up to QRCP_BLOCK
+        // reflectors is DEFERRED and applied once, as a single rank-kb GEMM (UnsafeOP.wySubVW), per
+        // panel. The enabler is norm DOWNDATING (see decompInPlaceCore): pivot selection needs the
+        // current column norms, not the current column DATA, so vn1 lets us choose pivots while the
+        // trailing matrix stays stale between flushes. Full derivation + range table:
+        // docs/spec-qrcp-blocked.md. The reflectors are stored exactly as QR's (τ≡1 Householder
+        // vectors in the lower triangle), so Q is reconstructed by the SAME blocked-WY kernel QR uses
+        // (QR.reconstructQBlocked) — only pivoting differs, and that is confined to the factorization.
+        //
+        // F is the (width x kb) accumulator with the invariant A_true = A_stale − V·Fᵀ over the panel's
+        // not-yet-flushed rows; V is the panel's stored reflectors. Per panel step k (panel-local, the
+        // pivot lands on global column/row d = rk = p0+k):
+        //   1. pivot by max vn1 over trailing columns; the full-column swap in A carries each column's
+        //      already-written R prefix with it (R is extracted from A's upper triangle at the end),
+        //      so no separate R swap is needed — only vn1/vn2/P and the k filled F rows are swapped.
+        //   2. bring ONLY the pivot column up to date wrt the k prior reflectors (A[:,d] −= V·F[k,·]ᵀ).
+        //   3. generate the Householder reflector; 4. take R[d,d] from it and store the reflector.
+        //   5. ONE combined pass acc = uᵀ·A over the panel width: acc's reflector-column entries are
+        //      the compact-WY aux (uₖᵀuᵢ), its trailing entries are the direct term of F's new column.
+        //   6. F's new column = direct − F·aux (correction).  7. bring row rk of the trailing part up
+        //      to date (it becomes R and feeds the norm downdate).  8. downdate vn1 with the same
+        //      guarded formula as the unblocked core BUT, because the trailing matrix is stale
+        //      mid-panel, a tripped column is MARKED (its vn1 left stale) rather than re-summed on the
+        //      spot; the first trip cuts the panel short (kb = k+1) — dlaqps returns KB for this reason.
+        // Panel end: one GEMM flush of the deferred trailing update, THEN an exact re-sum of the marked
+        // columns over the now-updated trailing matrix.
+        static unsafe DirectSolveInfo decompInPlaceBlockedCore(ref fProxyMxN A_to_Q, ref fProxyMxN R, ref Pivot P,
+                                                               ref fProxyN u, ref fProxyN vn1, ref fProxyN vn2)
+        {
+            // Factorization panel width. A method-local const (QRCP is a partial class shared by the
+            // float/double generated files, so a class-level const of this name would collide, CS0102).
+            // 32 measured the sweep optimum (docs/spec-qrcp-blocked.md OQ-B1: 16 and 64 both lost ~2-10%
+            // at 2048x512 float) — same width QR settled on; the pivoted core's heavier per-step level-2
+            // work doesn't shift the optimum the way the spec speculated it might.
+            const int QRCP_BLOCK = 32;
+
+            // Q reconstruction runs QR's shared blocked-WY kernel, which is hardwired to a 32-wide
+            // block (QR_BLOCK) — so its scratch (Vpanel/Tbuf/Wbuf/tcolBuf) is sized for the LARGER of
+            // the two widths, keeping the factorization NB free to differ from reconstruction's fixed 32
+            // (at NB=32 they coincide and rb==QRCP_BLOCK; the max() just guards a future NB change).
+            const int RECON_BLOCK = 32;
+            int rb = QRCP_BLOCK > RECON_BLOCK ? QRCP_BLOCK : RECON_BLOCK;
+
+            P.Reset();
+
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+
+            // Deferred-update scratch (Allocator.Temp — one set per call, negligible against the
+            // O(n²m) factorization). F is row-major (F[jl,k] at Fp[jl*QRCP_BLOCK+k]): row jl is a
+            // trailing A-column, contiguous over the panel step k, which makes the step-2/5/7 dots and
+            // the flush transpose cache-friendly. acc is the uᵀA accumulator (also carries the WY aux).
+            // mark flags guard-tripped columns (fProxy 0/1 — new fProxyN(.., false) zero-inits).
+            var F = new fProxyN(n * QRCP_BLOCK, Allocator.Temp, true);
+            var acc = new fProxyN(n, Allocator.Temp, true);
+            var mark = new fProxyN(n, Allocator.Temp, false);
+            // Blocked-WY reconstruction buffers — sized for max(QRCP_BLOCK, RECON_BLOCK) so they satisfy
+            // both the flush GEMM (<= QRCP_BLOCK wide) and QR.reconstructQBlocked (RECON_BLOCK wide).
+            var Vpanel = new fProxyN(m * rb, Allocator.Temp, true);
+            var Tbuf = new fProxyN(rb * rb, Allocator.Temp, true);
+            var Wbuf = new fProxyN(rb * n, Allocator.Temp, true);
+            var tcolBuf = new fProxyN(rb, Allocator.Temp, true);
+            var VfullBuf = new fProxyN(m * n, Allocator.Temp, true);
+
+            // scale-relative zero-column threshold (see QR.genHouseholder); computed once on the
+            // original A, exactly as the unblocked core does.
+            fProxy zeroThreshold = Consts.fProxyZeroThreshold * Norms.LInf(in A_to_Q);
+
+            fProxy* Ap = A_to_Q.Data.Ptr;
+            fProxy* Fp = F.Data.Ptr;
+            fProxy* accp = acc.Data.Ptr;
+            fProxy* markp = mark.Data.Ptr;
+            fProxy* up = u.Data.Ptr;
+            fProxy* vn1p = vn1.Data.Ptr;
+            fProxy* vn2p = vn2.Data.Ptr;
+
+            // Initial partial norms == exact full column norms (single row-major addSquares sweep);
+            // vn2 == vn1 (no decay yet). Identical to the unblocked core's init.
+            {
+                fProxy* vp = vn1p;
+                UnsafeUtility.MemClear(vp, (long)n * UnsafeUtility.SizeOf<fProxy>());
+                for (int r = 0; r < m; r++)
+                    UnsafeOP.addSquares(vp, Ap + (long)r * n, n);
+            }
+            for (int j = 0; j < n; j++)
+            {
+                fProxy nrm = math.sqrt(vn1p[j]);
+                vn1p[j] = nrm;
+                vn2p[j] = nrm;
+            }
+
+            // Same relative tie tolerance as the unblocked core (see decompInPlaceCore).
+            fProxy pivotRelTol = (fProxy)(8 * m) * Consts.fProxyEpsilon;
+            fProxy pivotRelTolRoot = math.sqrt((fProxy)1 + pivotRelTol);
+
+            int p0 = 0;
+            while (p0 < n)
+            {
+                int pb = math.min(QRCP_BLOCK, n - p0);
+                int width = n - p0;
+                int kb = pb;                              // shortened to k+1 if a column trips (below)
+
+                for (int k = 0; k < pb; k++)
+                {
+                    int d = p0 + k;
+                    int rk = d;
+
+                    // --- 1. pivot: largest tracked partial norm among trailing columns [d, n) ---
+                    fProxy diagNorm1 = vn1p[d];
+                    int pivotCol = d;
+                    fProxy maxNorm1 = diagNorm1;
+                    for (int c = d + 1; c < n; c++)
+                        if (vn1p[c] > maxNorm1) { maxNorm1 = vn1p[c]; pivotCol = c; }
+
+                    // Tie guard (see decompInPlaceCore): only pivot past accumulated rounding noise.
+                    if (pivotCol != d && maxNorm1 > diagNorm1 * pivotRelTolRoot)
+                    {
+                        Swap.Columns(ref A_to_Q, d, pivotCol);   // full column: carries the R prefix too
+                        P.Swap(d, pivotCol);
+                        fProxy tv1 = vn1p[d]; vn1p[d] = vn1p[pivotCol]; vn1p[pivotCol] = tv1;
+                        fProxy tv2 = vn2p[d]; vn2p[d] = vn2p[pivotCol]; vn2p[pivotCol] = tv2;
+                        // Swap the k already-filled F rows (columns 0..k-1) for the two A-columns —
+                        // panel-local rows k (the pivot slot) and pivotCol-p0.
+                        int jlp = pivotCol - p0;
+                        fProxy* Frk = Fp + (long)k * QRCP_BLOCK;
+                        fProxy* Frp = Fp + (long)jlp * QRCP_BLOCK;
+                        for (int i = 0; i < k; i++) { fProxy tf = Frk[i]; Frk[i] = Frp[i]; Frp[i] = tf; }
+                    }
+
+                    // --- 2. bring the pivot column up to date: A[r,d] −= Σ_{i<k} u_i[r]·F[k,i] ---
+                    //     u_i is stored in A[:, p0+i]; F row k is contiguous. Rows [rk, m) only (rows
+                    //     above rk are finished R entries, already made true by prior row updates).
+                    if (k > 0)
+                    {
+                        fProxy* Frk = Fp + (long)k * QRCP_BLOCK;
+                        for (int r = rk; r < m; r++)
+                        {
+                            fProxy* Aseg = Ap + (long)r * n + p0;   // A[r, p0 + i]
+                            fProxy s = (fProxy)0;
+                            for (int i = 0; i < k; i++)
+                                s += Aseg[i] * Frk[i];
+                            Aseg[k] -= s;                            // Aseg[k] == A[r, d]
+                        }
+                    }
+
+                    // --- 3. Householder reflector for the (now up-to-date) column d ---
+                    QR.genHouseholder(ref A_to_Q, ref u, d, zeroThreshold);
+
+                    // --- 4. R[d,d] = reflector applied to its own column, then store the reflector ---
+                    //     beta = uᵀ·col_d (ascending rows) ⇒ R[d,d] = A[d,d] − u[d]·beta, matching what
+                    //     applyReflectorRight would write. col_d still holds the original data here.
+                    fProxy beta = (fProxy)0;
+                    for (int r = d; r < m; r++)
+                        beta += up[r] * Ap[(long)r * n + d];
+                    R[d, d] = A_to_Q[d, d] - up[d] * beta;
+                    for (int r = d; r < m; r++)
+                        Ap[(long)r * n + d] = up[r];
+
+                    // --- 5. one combined pass acc[jl] = Σ_{r=rk}^{m-1} u[r]·A[r, p0+jl], jl in [0,width) ---
+                    //     Reflector columns (jl<k, now holding u_i) give acc[jl] = uₖᵀuᵢ (the compact-WY
+                    //     aux); trailing columns (jl>k, still original data) give F's direct term. One
+                    //     unit-stride axpy per row — the read-only GEMV pass over the stale trailing
+                    //     matrix that replaces the unblocked kernel's two memory-bound passes.
+                    UnsafeUtility.MemClear(accp, (long)width * UnsafeUtility.SizeOf<fProxy>());
+                    for (int r = rk; r < m; r++)
+                        UnsafeOP.axpy(accp, Ap + (long)r * n + p0, up[r], width);
+
+                    // --- 6. new F column: F[jl,k] = acc[jl] − Σ_{i<k} F[jl,i]·acc[i]  (trailing jl only) ---
+                    for (int jl = k + 1; jl < width; jl++)
+                    {
+                        fProxy* Fjl = Fp + (long)jl * QRCP_BLOCK;
+                        fProxy s = accp[jl];
+                        for (int i = 0; i < k; i++)
+                            s -= Fjl[i] * accp[i];
+                        Fjl[k] = s;
+                    }
+
+                    // --- 7. bring row rk of the trailing part up to date (becomes R; feeds the downdate) ---
+                    //     A[rk, p0+jl] −= Σ_{i=0}^{k} u_i[rk]·F[jl,i]  — 0..k INCLUSIVE of the reflector
+                    //     just generated (its contribution to this row arrives via F's new column).
+                    {
+                        fProxy* Ark = Ap + (long)rk * n + p0;       // A[rk, p0 + i]
+                        for (int jl = k + 1; jl < width; jl++)
+                        {
+                            fProxy* Fjl = Fp + (long)jl * QRCP_BLOCK;
+                            fProxy s = (fProxy)0;
+                            for (int i = 0; i <= k; i++)
+                                s += Ark[i] * Fjl[i];
+                            Ark[jl] -= s;                            // Ark[jl] == A[rk, p0+jl]
+                        }
+                    }
+
+                    // --- 8. downdate trailing norms (guarded). Trip ⇒ MARK (leave vn1 stale) + cut panel.
+                    //     Unlike the unblocked core we must NOT re-sum on the spot: the trailing matrix
+                    //     is stale below row rk mid-panel, so an immediate re-sum would be wrong. LAPACK
+                    //     defers to panel end; we mark and, on the first trip, cut the panel short. ---
+                    bool tripped = false;
+                    {
+                        fProxy* Ark = Ap + (long)rk * n;
+                        for (int jl = k + 1; jl < width; jl++)
+                        {
+                            int c = p0 + jl;
+                            fProxy v1 = vn1p[c];
+                            if (v1 <= (fProxy)0)
+                                continue;
+
+                            fProxy v2 = vn2p[c];
+                            if (v2 <= (fProxy)0)
+                            {
+                                markp[c] = (fProxy)1; tripped = true; continue;   // defensive; see unblocked core
+                            }
+
+                            fProxy ratio = math.abs(Ark[c]) / v1;
+                            fProxy temp = math.max((fProxy)0, ((fProxy)1 + ratio) * ((fProxy)1 - ratio));
+                            fProxy dse = v1 / v2;
+                            fProxy temp2 = temp * dse * dse;
+
+                            if (temp2 <= Consts.fProxySqrtEps) { markp[c] = (fProxy)1; tripped = true; }
+                            else vn1p[c] = v1 * math.sqrt(temp);
+                        }
+                    }
+
+                    if (tripped) { kb = k + 1; break; }
+                }
+
+                // --- panel flush: one rank-kb GEMM applies the whole panel's deferred trailing update.
+                //     A[rows cStart.., cols cStart..) −= V·Fᵀ, with V = the kb stored reflectors and
+                //     W := Fᵀ (kb x cw) built by transposing F's flush rows. Row rk_last is already
+                //     current from step 7, so the flush starts one row below it (cStart = p0+kb). ---
+                int cStart = p0 + kb;
+                int cw = n - cStart;
+                int frows = m - cStart;
+                if (cw > 0 && frows > 0)
+                {
+                    fProxy* Wp = Wbuf.Data.Ptr;
+                    for (int i = 0; i < kb; i++)
+                    {
+                        fProxy* Wi = Wp + (long)i * cw;
+                        for (int jl2 = 0; jl2 < cw; jl2++)
+                            Wi[jl2] = Fp[(long)(kb + jl2) * QRCP_BLOCK + i];   // Wᵀ: W[i,jl'] = F[kb+jl', i]
+                    }
+                    fProxy* Vp = Ap + (long)cStart * n + p0;        // V: rows [cStart,m), cols [p0, p0+kb)
+                    fProxy* Cp = Ap + (long)cStart * n + cStart;    // C: rows [cStart,m), cols [cStart,n)
+                    UnsafeOP.wySubVW(Vp, n, Cp, n, frows, kb, cw, Wp);
+                }
+
+                // --- re-sum marked columns over the now-updated trailing matrix (rows [cStart, m)) ---
+                if (cw > 0)
+                {
+                    for (int c = cStart; c < n; c++)
+                    {
+                        if (markp[c] == (fProxy)0)
+                            continue;
+                        fProxy s = (fProxy)0;
+                        for (int r = cStart; r < m; r++)
+                        {
+                            fProxy a = Ap[(long)r * n + c];
+                            s += a * a;
+                        }
+                        fProxy nrm = math.sqrt(s);
+                        vn1p[c] = nrm;
+                        vn2p[c] = nrm;
+                        markp[c] = (fProxy)0;
+                    }
+                }
+
+                p0 += kb;                                  // advance by kb (not pb) so cut columns re-enter
+            }
+
+            // R off-diagonal from A's upper triangle (each R[d,d] was written per step above).
+            for (int r = 0; r < R.M_Rows; r++)
+            for (int c = 0; c < R.N_Cols; c++)
+            {
+                if (c < r) R[r, c] = 0;
+                else if (c > r) R[r, c] = A_to_Q[r, c];
+            }
+
+            // Reconstruct Q from the stored reflectors via the shared blocked-WY kernel.
+            QR.reconstructQBlocked(ref A_to_Q, ref Vpanel, ref Tbuf, ref Wbuf, ref tcolBuf, ref VfullBuf);
+
+            VfullBuf.Dispose();
+            tcolBuf.Dispose();
+            Wbuf.Dispose();
+            Tbuf.Dispose();
+            Vpanel.Dispose();
+            mark.Dispose();
+            acc.Dispose();
+            F.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
         // Allocating wrapper: allocates the scratch vector u (Allocator.Temp) and delegates.
         // The caller still owns P (its size carries the column count and it is reset internally).
         /// <remarks>R must not alias A_to_Q (unchecked) — see the 4-arg overload.</remarks>
@@ -484,7 +802,7 @@ namespace LinearAlgebra
 
             RequireQRCPWorkspace(in cache, n);
 
-            decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref cache.vn1, ref cache.vn2);
+            decompCoreDispatch(ref A_to_Q, ref R, ref P, ref u, ref cache.vn1, ref cache.vn2);
 
             return solveInPlaceFinish(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, relTol);
         }

@@ -23,13 +23,15 @@ namespace LinearAlgebra
     /// guard compares decay since vn2, not just the current step's own ratio, so gradual decay across
     /// many steps still gets caught (see decompInPlaceCore).
     ///
-    /// Deliberately does NOT include u (the Householder scratch, length m) or w (the reflector-apply
-    /// accumulator, length n): QRCP's pivot at each step depends on norms known only after the
-    /// previous step's reflector is applied, so this kernel is inherently level-2 and will never gain
-    /// QR's level-3 blocked buffers — this cache exists solely to give the downdating state a home
-    /// (revisiting OQ-7 of docs/spec-solver-api-rework.md: QRCP now earns a cache, with no dead
-    /// fields). Allocate ONCE via Arena.fProxyQRCPCache(n) and reuse across same-shape calls to avoid
-    /// the per-call Allocator.Temp allocations the non-cache overloads make internally.
+    /// Deliberately holds ONLY vn1/vn2, not u (the Householder scratch, length m), w, or the blocked
+    /// core's larger working buffers (F, flush GEMM scratch, the reconstruction WY buffers). The
+    /// level-3 blocked core (decompInPlaceBlockedCore, engaged once N_Cols >= 2*QRCP_BLOCK) still
+    /// takes its vn1/vn2 downdating state from here but Allocator.Temp-allocates those larger buffers
+    /// per call — so this cache stays minimal with no dead fields (revisiting OQ-7 of
+    /// docs/spec-solver-api-rework.md: QRCP earns a cache purely for the downdating state). Promoting
+    /// the blocked buffers in here for a fully zero-alloc blocked path (as fProxyQRCache does for QR)
+    /// is a candidate follow-up. Allocate ONCE via Arena.fProxyQRCPCache(n) and reuse across
+    /// same-shape calls to avoid the per-call Allocator.Temp allocations the non-cache overloads make.
     /// </summary>
     public struct fProxyQRCPCache
     {

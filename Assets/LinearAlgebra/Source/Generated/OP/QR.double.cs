@@ -309,6 +309,34 @@ namespace LinearAlgebra
             }
 
             // ---- reconstruct Q from the stored reflectors, panels right to left ----
+            reconstructQBlocked(ref Q, ref Vpanel, ref Tbuf, ref Wbuf, ref tcolBuf, ref VfullBuf);
+        }
+
+        // Reconstruct the orthogonal factor Q from Householder reflectors stored in Q's lower triangle
+        // (the τ≡1 convention, H_i = I - u_i u_iᵀ), using the compact-WY blocked kernel — panels right
+        // to left. Split out of qrDecompositionBlockedCore so QRCP's blocked factorization can reuse
+        // the SAME reconstruction (its reflectors are stored identically): only pivoting differs, which
+        // is entirely on the factorization side. Reads Q's lower triangle (the stored reflectors) and
+        // overwrites Q in place with the reconstructed orthogonal factor.
+        //
+        // Scratch (same buffers, same sizes, as qrDecompositionBlockedCore's reconstruction phase):
+        //   Vpanel  m*QR_BLOCK, Tbuf QR_BLOCK*QR_BLOCK, Wbuf QR_BLOCK*N_Cols, tcolBuf QR_BLOCK,
+        //   VfullBuf m*N_Cols (the clean masked reflector snapshot).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe void reconstructQBlocked(ref doubleMxN Q,
+            ref doubleN Vpanel, ref doubleN Tbuf, ref doubleN Wbuf, ref doubleN tcolBuf, ref doubleN VfullBuf)
+        {
+            // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
+            const int QR_BLOCK = 32;
+
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+
+            double* Qp = Q.Data.Ptr;
+            double* Vp = Vpanel.Data.Ptr;
+            double* T = Tbuf.Data.Ptr;
+            double* Wmat = Wbuf.Data.Ptr;
+            double* tcol = tcolBuf.Data.Ptr;
 
             // Snapshot the stored reflectors into a clean, masked (r >= c ? Q[r,c] : 0) full copy
             // BEFORE Q is overwritten below — reconstruction both reads V and writes Q in place.

@@ -63,6 +63,7 @@ public class floatQRCPDowndateTests
             ScaleExtremes,            // (6) column norms spanning many orders; no NaN; reconstruction
             ZeroAndTinySizes,         // (6) zero matrix / zero columns / single column / n=1..3
             TierEDistinctMagnitudes,  // Tier E demonstrator (guaranteed-separated construction)
+            BlockedPanels,            // level-3 blocked core: panel-boundary sizes + guard-cut mid-panel
             CacheEquivalenceFullRank,       // cache overloads == non-cache overloads, bit-for-bit
             CacheEquivalenceRankDeficient,  // same, rank-deficient A
         }
@@ -85,6 +86,7 @@ public class floatQRCPDowndateTests
                 case TestType.ScaleExtremes:                 ScaleExtremes();                 break;
                 case TestType.ZeroAndTinySizes:              ZeroAndTinySizes();              break;
                 case TestType.TierEDistinctMagnitudes:       TierEDistinctMagnitudes();       break;
+                case TestType.BlockedPanels:                 BlockedPanels();                 break;
                 case TestType.CacheEquivalenceFullRank:      CacheEquivalence(10, 6, 707071u, false); break;
                 case TestType.CacheEquivalenceRankDeficient: CacheEquivalence(8, 5, 808081u, true);   break;
             }
@@ -605,6 +607,131 @@ public class floatQRCPDowndateTests
                 Pnc.Dispose(); Pc.Dispose(); Ps1.Dispose(); Ps2.Dispose();
             }
             finally { arena.Dispose(); }
+        }
+
+        // ── Blocked (level-3 dlaqps panel) core. Everything above tops out at n = 128 in ONE case
+        //    (GradualDecay, TierP-only) and n = 64 in another (Kahan, TierP-only); nothing here pinned
+        //    the blocked path's PIVOT decisions or its guard-cut/re-sum branch. This case targets the
+        //    blocked core (N_Cols >= 2*QRCP_BLOCK = 64) directly:
+        //
+        //    (a) Well-separated staggered-magnitude inputs at panel-boundary shapes — n = 64 (== 2*NB,
+        //        exactly two full panels), 65 (2*NB+1, a 1-wide trailing panel), 96 (three panels) and
+        //        128, both square and tall. Column c is scaled to a geometric norm target spanning ~1e6,
+        //        so the trailing norms stay well-separated at every step (Tier-E-eligible). The blocked
+        //        production factorization must then pick the SAME pivot sequence as the exact-recompute
+        //        oracle, and agree on Q and R to a tight tolerance — NOT bit-identically: blocked forms
+        //        trailing values by GEMM accumulation vs the oracle's rank-1 chain, a different summation
+        //        order (docs/spec-qrcp-blocked.md OQ-B2), the same reason the blocked QR path isn't
+        //        bit-identical to its unblocked small-n path.
+        //    (b) A rank-1-plus-tiny-noise input at n = 80 (mass cancellation): the norm guard trips
+        //        mid-panel on nearly every column, exercising the mark / cut-panel-short / deferred
+        //        re-sum branch that the unblocked core does NOT have. Rank must collapse to 1 (auto tol).
+        void BlockedPanels()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            try
+            {
+                // (a) panel-boundary shapes, staggered well-separated norms. n = 64 (2*NB), 65 (2*NB+1),
+                //     96 (3 panels), 128 (4 panels), each square and/or tall.
+                int eligible = 0;
+                const int shapes = 6;
+                for (int s = 0; s < shapes; s++)
+                {
+                    int n = s == 0 ? 64 : s == 1 ? 65 : s == 2 ? 96 : s == 3 ? 96 : s == 4 ? 128 : 128;
+                    int m = s == 0 ? 64 : s == 1 ? 65 : s == 2 ? 96 : s == 3 ? 140 : s == 4 ? 128 : 200;
+                    var A0 = arena.floatRandomMat(m, n, -1f, 1f, 0xB10C0000u + (uint)s);
+                    // Scale column c to a geometric norm target 1 .. 1e3 (ratio 1e3^(1/(n-1)) between
+                    // neighbours — above the Tier-E separation margin, yet a modest enough total range
+                    // that the scale-relative zero-column threshold (1e-6·LInf ≈ 1e-3 here) stays well
+                    // below every column's norm on FLOAT. A wider stagger (e.g. 1e6) would push that
+                    // threshold up to ~1 and mis-classify the smallest columns as zero columns —
+                    // corrupting Q's orthonormality — which is a float-precision artifact of the input,
+                    // not a blocked-core defect (double, with more headroom, tolerates the wider range).
+                    for (int c = 0; c < n; c++)
+                    {
+                        float t = n > 1 ? (float)c / (float)(n - 1) : (float)0;
+                        float scale = math.pow((float)1e3f, t);
+                        for (int r = 0; r < m; r++) A0[r, c] *= scale;
+                    }
+                    if (ProdVsOracleTol(ref arena, in A0, (float)1e-3f)) eligible++;
+                    arena.Clear();
+                }
+                // The staggered construction is engineered to be Tier-E-eligible; require the tight
+                // pivot/Q/R check to have actually run at least once (else it is not testing the
+                // blocked pivot path it claims to). Matches the fuzz sweep's ">0 eligible" philosophy.
+                RecordBound((float)1, (float)eligible);   // eligible >= 1
+
+                // (b) guard-cut mid-panel: rank-1 + sub-tolerance noise at a blocked size -> rank 1.
+                {
+                    int m = 100, n = 80;
+                    var rng = new Unity.Mathematics.Random(0x6C07u);
+                    var v = arena.floatVec(m);
+                    for (int r = 0; r < m; r++) v[r] = (float)(rng.NextFloat(-1f, 1f));
+                    float noiseScale = (float)0.01f * Consts.floatZeroThreshold;
+
+                    var A0 = arena.floatMat(m, n);
+                    for (int c = 0; c < n; c++)
+                    {
+                        float alpha = (float)(rng.NextFloat(0.25f, 4f));
+                        for (int r = 0; r < m; r++)
+                            A0[r, c] = alpha * v[r] + noiseScale * (float)(rng.NextFloat(-1f, 1f));
+                    }
+
+                    var Q = A0.Copy();
+                    var R = arena.floatMat(n);
+                    var P = new Pivot(n, Allocator.Temp);
+                    var u = arena.floatVec(m);
+                    QRCP.decompInPlace(ref Q, ref R, ref P, ref u);   // blocked (n = 80 >= 64)
+                    TierP(in A0, in Q, in R, in P);
+                    RecordEq(RankFromR(in R, m, n), 1);
+                    P.Dispose();
+                }
+            }
+            finally { arena.Dispose(); }
+        }
+
+        // Blocked-vs-oracle for a Tier-E-eligible input: production decompInPlace (BLOCKED at these
+        // sizes) must match the exact-recompute oracle's pivot sequence EXACTLY and its Q/R within
+        // relTol (absolute for Q's O(1) entries; scaled by the matrix magnitude for R). Returns the
+        // oracle's separation flag; the tight asserts only fire when it certifies eligibility. This is
+        // the toleranced sibling of ProdAndOracle (which demands bit-identity — valid only for the
+        // unblocked path, whose summation order matches the oracle's).
+        bool ProdVsOracleTol(ref Arena arena, in floatMxN A0, float relTol)
+        {
+            int m = A0.M_Rows;
+            int n = A0.N_Cols;
+
+            var Qp = A0.Copy(); var Rp = arena.floatMat(n); var Pp = new Pivot(n, Allocator.Temp); var up = arena.floatVec(m);
+            QRCP.decompInPlace(ref Qp, ref Rp, ref Pp, ref up);
+            TierP(in A0, in Qp, in Rp, in Pp);
+
+            var Qo = A0.Copy(); var Ro = arena.floatMat(n); var Po = new Pivot(n, Allocator.Temp); var uo = arena.floatVec(m);
+            bool sep = OracleDecompInPlace(ref Qo, ref Ro, ref Po, ref uo);
+
+            if (sep)
+            {
+                float scale = Norms.LInf(in A0) + (float)1;
+                for (int j = 0; j < n; j++) RecordEq(Pp[j], Po[j]);
+
+                float qDiff = (float)0;
+                for (int i = 0; i < Qp.Length; i++)
+                {
+                    float e = math.abs(Qp[i] - Qo[i]);
+                    if (e > qDiff) qDiff = e;
+                }
+                RecordBound(qDiff, relTol);
+
+                float rDiff = (float)0;
+                for (int i = 0; i < Rp.Length; i++)
+                {
+                    float e = math.abs(Rp[i] - Ro[i]);
+                    if (e > rDiff) rDiff = e;
+                }
+                RecordBound(rDiff, relTol * scale);
+            }
+
+            Pp.Dispose(); Po.Dispose();
+            return sep;
         }
 
         // ══════════════════════════════ shared machinery ══════════════════════════════
