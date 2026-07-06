@@ -88,25 +88,25 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 
 ## Features
 
-- **Dense types** — [vectors, matrices, the `Arena` allocator](docs/features/dense-types.md)
-- **Element-wise ops** — [`Comp`: arithmetic, math functions, clamp, in-place](docs/features/comp-elementwise.md)
-- **Core linear algebra** — [`Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics](docs/features/blas.md)
-- **Decompositions** — [LU, CHO/CHOP, QR/LQ (+ QRCP), Bidiag](docs/features/decompositions.md)
-- **Direct solvers** — [triangular/LU/CHO/QR solve, the diagnostics-struct convention](docs/features/solvers.md)
-- **Least squares** — [QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning](docs/features/least-squares.md)
-- **SVD** — [thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation](docs/features/svd.md)
-- **Eigensolvers** — [symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG](docs/features/eigen.md)
-- **Sparse (BSR)** — [block-CSR storage, builder assembly, unrolled spMV, sparse solvers/eigensolvers](docs/features/sparse-bsr.md)
-- **FFT** — [power-of-two FFT/IFFT, radix-4, real-input rfft/irfft, arbitrary-N DFT](docs/features/fft.md)
-- **Statistics** — [whole-array & row/col reductions, covariance/correlation, transforms](docs/features/stats.md)
-- **Random** — [distribution samplers, weighted pick/shuffle, multivariate normal, structured matrices](docs/features/random.md)
-- **Query** — [nearest/k-nearest/radius search, argmax/argmin, predicate-filtered variants](docs/features/query.md)
-- **Select & bit ops** — [element-wise select, integer bit intrinsics, bool logic](docs/features/select-bits.md)
-- **Hash** — [xxHash32 over vectors/matrices, lockstep desync-checksum use case](docs/features/hash.md)
-- **Realtime** — [`RollingWindow`: ring-buffer moving average/covariance](docs/features/realtime.md)
-- **ML** — [k-means, PCA (4 fit routes)](docs/features/ml.md)
-- **Generators** — [linspace, easing curves, LFO/wave, DSP windows, kernels](docs/features/generators.md)
-- **Print & export** — [Burst `Print.Log`/`Print.Spy`, managed CSV/text export](docs/features/print-export.md)
+- [**Dense types**](docs/features/dense-types.md) — vectors, matrices, the `Arena` allocator
+- [**Element-wise ops**](docs/features/comp-elementwise.md) — `Comp`: arithmetic, math functions, clamp, in-place
+- [**Core linear algebra**](docs/features/blas.md) — `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
+- [**Decompositions**](docs/features/decompositions.md) — LU, CHO/CHOP, QR/LQ (+ QRCP), Bidiag
+- [**Direct solvers**](docs/features/solvers.md) — triangular/LU/CHO/QR solve, the diagnostics-struct convention
+- [**Least squares**](docs/features/least-squares.md) — QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning
+- [**SVD**](docs/features/svd.md) — thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation
+- [**Eigensolvers**](docs/features/eigen.md) — symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG
+- [**Sparse (BSR)**](docs/features/sparse-bsr.md) — block-CSR storage, builder assembly, unrolled spMV, sparse solvers/eigensolvers
+- [**FFT**](docs/features/fft.md) — power-of-two FFT/IFFT, radix-4, real-input rfft/irfft, arbitrary-N DFT
+- [**Statistics**](docs/features/stats.md) — whole-array & row/col reductions, covariance/correlation, transforms
+- [**Random**](docs/features/random.md) — distribution samplers, weighted pick/shuffle, multivariate normal, structured matrices
+- [**Query**](docs/features/query.md) — nearest/k-nearest/radius search, argmax/argmin, predicate-filtered variants
+- [**Select & bit ops**](docs/features/select-bits.md) — element-wise select, integer bit intrinsics, bool logic
+- [**Hash**](docs/features/hash.md) — xxHash32 over vectors/matrices, lockstep desync-checksum use case
+- [**Realtime**](docs/features/realtime.md) — `RollingWindow`: ring-buffer moving average/covariance
+- [**ML**](docs/features/ml.md) — k-means, PCA (4 fit routes)
+- [**Generators**](docs/features/generators.md) — linspace, easing curves, LFO/wave, DSP windows, kernels
+- [**Print & export**](docs/features/print-export.md) — Burst `Print.Log`/`Print.Spy`, managed CSV/text export
 
 ## Determinism
 
