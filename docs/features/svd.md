@@ -70,11 +70,19 @@ machine/config, 2026-07-06, commit `f938c66`:
 |---|---|---|---|
 | 1024×1024 | 54 (5%) | 48.5 | 49.8 |
 
-`SVD.truncated` vs `SVD.randomized` head-to-head, tall 2048×512 (the least-squares benchmark
-shape), k=21 (~4%) — the low-k% regime where the exact GKL route beats the randomized sketch.
-Same machine/config, 2026-07-06, commit `8c10d52`:
+Three-way head-to-head on the SAME matrix, tall 2048×512 (the least-squares benchmark shape),
+k=21 (~4%) — the low-k% regime where the exact GKL route beats the randomized sketch. Same
+machine/config, 2026-07-06, one session, commit `2277dba`:
 
 | Method | float med(ms) | double med(ms) |
 |---|---|---|
-| `SVD.truncated` | 17.71 | 18.70 |
-| `SVD.randomized` (oversample=10, powerIters=2) | 33.16 | 31.58 |
+| `SVD.thin` (full, k=512) | 201.13 | 296.88 |
+| `SVD.truncated` | 17.75 | 18.76 |
+| `SVD.randomized` (oversample=10, powerIters=2) | 29.44 | 36.46 |
+
+⚠️ The thin rows pass an explicit `maxIter = 30·n`: the DEFAULT cap is a flat 75 sweeps
+regardless of n, and on this benchmark's deeply graded spectrum (σᵢ = 100·0.95^i, tail
+≈4×10⁻¹² at n=512) **double** precision legitimately needs more than 75 total sweeps —
+with the default it returns non-converged (`false`, S untouched). Float is unaffected
+(the tail deflates as numerical zeros). If your spectra are steeply graded and you solve
+in double at n ≳ 512, pass a scaled `maxIter`.

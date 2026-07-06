@@ -80,9 +80,9 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 | Symmetric eigendecomposition — `Eigen.symmetric` | 1024×1024, float, values + vectors | 428.6 ms |
 | Eigenvalues only — `Eigen.valuesSymmetric` | 1024×1024, float | 163.0 ms |
 | Smallest eigenpairs — `LOBPCG.lobpcg` | SPD 512×512, k=4, float, 50 iterations | 84.9 ms (50-iteration budget ≈ 1.7 ms/iter) |
-| SVD, thin — `SVD.thin` | 1024×1024, float | 522.5 ms |
-| SVD, truncated top-k — `SVD.truncated` | 2048×512, k=21, float | 17.7 ms |
-| SVD, randomized top-k — `SVD.randomized` | 2048×512, k=21, float | 33.2 ms |
+| SVD, thin (full) — `SVD.thin` | 2048×512, float | 201.1 ms |
+| SVD, truncated top-k — `SVD.truncated` | 2048×512, k=21, float | 17.8 ms |
+| SVD, randomized top-k — `SVD.randomized` | 2048×512, k=21, float | 29.4 ms |
 | FFT — `FFT.fft` | N = 1,048,576, float | 26.1 ms |
 | Real FFT — `FFT.rfft` | N = 1,048,576, float | 18.7 ms |
 
