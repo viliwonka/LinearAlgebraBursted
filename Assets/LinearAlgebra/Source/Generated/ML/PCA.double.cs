@@ -241,8 +241,11 @@ namespace LinearAlgebra.ML
         /// Squares the condition number (kappa^2) relative to fitSvd -- prefer fitSvd for near-degenerate
         /// data. model.k is set to p (X.N_Cols). Correlation mode builds its own R matrix inline (see
         /// the type doc's degenerate-feature trap) rather than reusing StatsOP.correlation().
+        /// Returns true iff the underlying <see cref="Eigen.symmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/>
+        /// converged; <paramref name="info"/> carries its full <see cref="EigenInfo"/> diagnostics
+        /// (discard with <c>out _</c> if unneeded).
         /// </summary>
-        public static bool fitCov(in doubleMxN X, ref doublePCAModel model, PCAScaling scaling)
+        public static bool fitCov(in doubleMxN X, ref doublePCAModel model, PCAScaling scaling, out EigenInfo info)
         {
             const string method = "PCA.fitCov";
             RequireBasicShape(in X, method);
@@ -301,15 +304,20 @@ namespace LinearAlgebra.ML
                 }
             }
 
-            bool converged = Eigen.symmetric(ref C, ref model.explainedVariance, ref model.components);
+            info = Eigen.symmetric(ref C, ref model.explainedVariance, ref model.components);
+            bool converged = info;
 
             FinalizeModel(ref model, p, totalVariance, converged);
             return converged;
         }
 
         /// <summary>fitCov with scaling = PCAScaling.Covariance.</summary>
+        public static bool fitCov(in doubleMxN X, ref doublePCAModel model, out EigenInfo info)
+            => fitCov(in X, ref model, PCAScaling.Covariance, out info);
+
+        /// <summary>fitCov with scaling = PCAScaling.Covariance, discarding the EigenInfo diagnostics.</summary>
         public static bool fitCov(in doubleMxN X, ref doublePCAModel model)
-            => fitCov(in X, ref model, PCAScaling.Covariance);
+            => fitCov(in X, ref model, PCAScaling.Covariance, out _);
 
         /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static doublePCAModel fitCov(ref Arena arena, in doubleMxN X, PCAScaling scaling)
@@ -319,7 +327,7 @@ namespace LinearAlgebra.ML
 
             int p = X.N_Cols;
             var model = arena.doublePCAModel(p, p);
-            fitCov(in X, ref model, scaling);
+            fitCov(in X, ref model, scaling, out _);
             return model;
         }
 
@@ -334,9 +342,12 @@ namespace LinearAlgebra.ML
         /// <summary>
         /// Full PCA via SVD of the centered (or standardized) data directly -- no Gram matrix, no
         /// kappa^2 accuracy loss. Requires X.M_Rows (n) >= X.N_Cols (p); throws otherwise (use
-        /// fitCov for wide data). model.k is set to p.
+        /// fitCov for wide data). model.k is set to p. Returns true iff the underlying
+        /// <see cref="SVD.thin(in doubleMxN, ref doubleMxN, ref doubleN, ref doubleMxN, int)"/>
+        /// converged; <paramref name="info"/> carries its full <see cref="SVDInfo"/> diagnostics
+        /// (discard with <c>out _</c> if unneeded).
         /// </summary>
-        public static bool fitSvd(in doubleMxN X, ref doublePCAModel model, PCAScaling scaling, int maxIter)
+        public static bool fitSvd(in doubleMxN X, ref doublePCAModel model, PCAScaling scaling, int maxIter, out SVDInfo info)
         {
             const string method = "PCA.fitSvd";
             RequireBasicShape(in X, method);
@@ -353,7 +364,8 @@ namespace LinearAlgebra.ML
 
             // SVD.thin reads A while writing U -- a SEPARATE n x p temp, never Xc itself.
             var U = X.doubleTempMat(n, p);
-            bool converged = SVD.thin(in Xc, ref U, ref model.explainedVariance, ref model.components, maxIter);
+            info = SVD.thin(in Xc, ref U, ref model.explainedVariance, ref model.components, maxIter);
+            bool converged = info;
 
             if (converged)
                 SingularValuesToVariances(ref model.explainedVariance, p, n);
@@ -362,13 +374,25 @@ namespace LinearAlgebra.ML
             return converged;
         }
 
-        /// <summary>fitSvd with maxIter = SVD.thin's default (75).</summary>
-        public static bool fitSvd(in doubleMxN X, ref doublePCAModel model, PCAScaling scaling)
-            => fitSvd(in X, ref model, scaling, 75);
+        /// <summary>fitSvd discarding the SVDInfo diagnostics.</summary>
+        public static bool fitSvd(in doubleMxN X, ref doublePCAModel model, PCAScaling scaling, int maxIter)
+            => fitSvd(in X, ref model, scaling, maxIter, out _);
 
-        /// <summary>fitSvd with scaling = PCAScaling.Covariance and maxIter = 75.</summary>
+        /// <summary>fitSvd with maxIter = SVD.thin's default (Consts.sweepBudget(X.N_Cols)).</summary>
+        public static bool fitSvd(in doubleMxN X, ref doublePCAModel model, PCAScaling scaling, out SVDInfo info)
+            => fitSvd(in X, ref model, scaling, Consts.sweepBudget(X.N_Cols), out info);
+
+        /// <summary>fitSvd with maxIter = SVD.thin's default (Consts.sweepBudget(X.N_Cols)), discarding the SVDInfo diagnostics.</summary>
+        public static bool fitSvd(in doubleMxN X, ref doublePCAModel model, PCAScaling scaling)
+            => fitSvd(in X, ref model, scaling, Consts.sweepBudget(X.N_Cols), out _);
+
+        /// <summary>fitSvd with scaling = PCAScaling.Covariance and maxIter = Consts.sweepBudget(X.N_Cols).</summary>
+        public static bool fitSvd(in doubleMxN X, ref doublePCAModel model, out SVDInfo info)
+            => fitSvd(in X, ref model, PCAScaling.Covariance, Consts.sweepBudget(X.N_Cols), out info);
+
+        /// <summary>fitSvd with scaling = PCAScaling.Covariance and maxIter = Consts.sweepBudget(X.N_Cols), discarding the SVDInfo diagnostics.</summary>
         public static bool fitSvd(in doubleMxN X, ref doublePCAModel model)
-            => fitSvd(in X, ref model, PCAScaling.Covariance, 75);
+            => fitSvd(in X, ref model, PCAScaling.Covariance, Consts.sweepBudget(X.N_Cols), out _);
 
         /// <summary>Validates inputs, allocates the model (p x p) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static doublePCAModel fitSvd(ref Arena arena, in doubleMxN X, PCAScaling scaling)
@@ -379,7 +403,7 @@ namespace LinearAlgebra.ML
 
             int p = X.N_Cols;
             var model = arena.doublePCAModel(p, p);
-            fitSvd(in X, ref model, scaling, 75);
+            fitSvd(in X, ref model, scaling, Consts.sweepBudget(X.N_Cols), out _);
             return model;
         }
 
@@ -402,10 +426,13 @@ namespace LinearAlgebra.ML
         /// (or standardized) data -- avoids the full O(n p^2) SVD when only the leading few components
         /// are needed. Requires X.M_Rows (n) >= X.N_Cols (p) (see the shape note above); 0 &lt; k &lt;=
         /// min(n, p). model.k is set to k. explainedVarianceRatio is computed against the FULL
-        /// totalVariance, so top-k ratios sum to less than 1.
+        /// totalVariance, so top-k ratios sum to less than 1. Returns true iff the underlying
+        /// <see cref="SVD.truncated(in doubleMxN, ref doubleMxN, ref doubleN, ref doubleMxN, int, int, uint, int, bool, ref doubleSVDTruncatedCache)"/>
+        /// converged; <paramref name="info"/> carries its full <see cref="SVDInfo"/> diagnostics
+        /// (discard with <c>out _</c> if unneeded).
         /// </summary>
         public static bool fitSvdTruncated(in doubleMxN X, ref doublePCAModel model, int k,
-                                            PCAScaling scaling, int oversample, uint seed, int maxIter)
+                                            PCAScaling scaling, int oversample, uint seed, int maxIter, out SVDInfo info)
         {
             const string method = "PCA.fitSvdTruncated";
             RequireBasicShape(in X, method);
@@ -422,8 +449,9 @@ namespace LinearAlgebra.ML
             double totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
 
             var Uk = X.doubleTempMat(n, k);
-            SVD.truncated(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
-                              k, oversample, seed, maxIter, out bool converged);
+            info = SVD.truncated(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
+                              k, oversample, seed, maxIter);
+            bool converged = info;
 
             if (converged)
                 SingularValuesToVariances(ref model.explainedVariance, k, n);
@@ -432,17 +460,33 @@ namespace LinearAlgebra.ML
             return converged;
         }
 
+        /// <summary>fitSvdTruncated discarding the SVDInfo diagnostics.</summary>
+        public static bool fitSvdTruncated(in doubleMxN X, ref doublePCAModel model, int k,
+                                            PCAScaling scaling, int oversample, uint seed, int maxIter)
+            => fitSvdTruncated(in X, ref model, k, scaling, oversample, seed, maxIter, out _);
+
         /// <summary>
         /// fitSvdTruncated forwarding SVD.truncated's own "generous default Krylov width" formula
         /// verbatim (oversample = max(k, 12), so p = min(n, max(2k, k+12))), its default seed
-        /// (0x9E3779B1u) and default maxIter (75).
+        /// (0x9E3779B1u) and default maxIter (Consts.sweepBudget(p)).
         /// </summary>
+        public static bool fitSvdTruncated(in doubleMxN X, ref doublePCAModel model, int k, PCAScaling scaling, out SVDInfo info)
+        {
+            int p = math.min(X.N_Cols, math.max(2 * k, k + 12));
+            return fitSvdTruncated(in X, ref model, k, scaling, math.max(k, 12), 0x9E3779B1u, Consts.sweepBudget(p), out info);
+        }
+
+        /// <summary>fitSvdTruncated forwarding SVD.truncated's own defaults, discarding the SVDInfo diagnostics.</summary>
         public static bool fitSvdTruncated(in doubleMxN X, ref doublePCAModel model, int k, PCAScaling scaling)
-            => fitSvdTruncated(in X, ref model, k, scaling, math.max(k, 12), 0x9E3779B1u, 75);
+            => fitSvdTruncated(in X, ref model, k, scaling, out _);
 
         /// <summary>fitSvdTruncated with scaling = PCAScaling.Covariance.</summary>
+        public static bool fitSvdTruncated(in doubleMxN X, ref doublePCAModel model, int k, out SVDInfo info)
+            => fitSvdTruncated(in X, ref model, k, PCAScaling.Covariance, out info);
+
+        /// <summary>fitSvdTruncated with scaling = PCAScaling.Covariance, discarding the SVDInfo diagnostics.</summary>
         public static bool fitSvdTruncated(in doubleMxN X, ref doublePCAModel model, int k)
-            => fitSvdTruncated(in X, ref model, k, PCAScaling.Covariance);
+            => fitSvdTruncated(in X, ref model, k, PCAScaling.Covariance, out _);
 
         /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static doublePCAModel fitSvdTruncated(ref Arena arena, in doubleMxN X, int k, PCAScaling scaling)
@@ -456,7 +500,7 @@ namespace LinearAlgebra.ML
             RequireTopK(k, n, p, method);
 
             var model = arena.doublePCAModel(p, k);
-            fitSvdTruncated(in X, ref model, k, scaling);
+            fitSvdTruncated(in X, ref model, k, scaling, out _);
             return model;
         }
 
@@ -474,9 +518,13 @@ namespace LinearAlgebra.ML
         /// fitCov, for exact top-k prefer fitSvdTruncated. Requires X.M_Rows (n) >= X.N_Cols (p);
         /// throws otherwise (use fitCov for wide data). 0 &lt; k &lt;= min(n, p). model.k is set
         /// to k. Deterministic by default (seed = 0x9E3779B1u, SVD.randomized's own default).
+        /// Returns true iff the underlying
+        /// <see cref="SVD.randomized(in doubleMxN, ref doubleMxN, ref doubleN, ref doubleMxN, int, int, int, uint, int)"/>
+        /// converged; <paramref name="info"/> carries its full <see cref="SVDInfo"/> diagnostics
+        /// (discard with <c>out _</c> if unneeded).
         /// </summary>
         public static bool fitRandomized(in doubleMxN X, ref doublePCAModel model, int k,
-                                          PCAScaling scaling, int oversample, int powerIters, uint seed, int maxIter)
+                                          PCAScaling scaling, int oversample, int powerIters, uint seed, int maxIter, out SVDInfo info)
         {
             const string method = "PCA.fitRandomized";
             RequireBasicShape(in X, method);
@@ -493,8 +541,9 @@ namespace LinearAlgebra.ML
             double totalVariance = BuildWorkingCopy(in X, scaling, in model.mean, ref model.scale, ref Xc);
 
             var Uk = X.doubleTempMat(n, k);
-            bool converged = SVD.randomized(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
+            info = SVD.randomized(in Xc, ref Uk, ref model.explainedVariance, ref model.components,
                                                 k, oversample, powerIters, seed, maxIter);
+            bool converged = info;
 
             if (converged)
                 SingularValuesToVariances(ref model.explainedVariance, k, n);
@@ -503,14 +552,27 @@ namespace LinearAlgebra.ML
             return converged;
         }
 
+        /// <summary>fitRandomized discarding the SVDInfo diagnostics.</summary>
+        public static bool fitRandomized(in doubleMxN X, ref doublePCAModel model, int k,
+                                          PCAScaling scaling, int oversample, int powerIters, uint seed, int maxIter)
+            => fitRandomized(in X, ref model, k, scaling, oversample, powerIters, seed, maxIter, out _);
+
         /// <summary>fitRandomized forwarding SVD.randomized's own defaults verbatim: oversample=10,
-        /// powerIters=2, seed=0x9E3779B1u, maxIter=75.</summary>
+        /// powerIters=2, seed=0x9E3779B1u, maxIter=Consts.sweepBudget(l) (l = min(k+10, X.N_Cols)).</summary>
+        public static bool fitRandomized(in doubleMxN X, ref doublePCAModel model, int k, PCAScaling scaling, out SVDInfo info)
+            => fitRandomized(in X, ref model, k, scaling, 10, 2, 0x9E3779B1u, Consts.sweepBudget(math.min(k + 10, X.N_Cols)), out info);
+
+        /// <summary>fitRandomized forwarding SVD.randomized's own defaults, discarding the SVDInfo diagnostics.</summary>
         public static bool fitRandomized(in doubleMxN X, ref doublePCAModel model, int k, PCAScaling scaling)
-            => fitRandomized(in X, ref model, k, scaling, 10, 2, 0x9E3779B1u, 75);
+            => fitRandomized(in X, ref model, k, scaling, out _);
 
         /// <summary>fitRandomized with scaling = PCAScaling.Covariance.</summary>
+        public static bool fitRandomized(in doubleMxN X, ref doublePCAModel model, int k, out SVDInfo info)
+            => fitRandomized(in X, ref model, k, PCAScaling.Covariance, out info);
+
+        /// <summary>fitRandomized with scaling = PCAScaling.Covariance, discarding the SVDInfo diagnostics.</summary>
         public static bool fitRandomized(in doubleMxN X, ref doublePCAModel model, int k)
-            => fitRandomized(in X, ref model, k, PCAScaling.Covariance);
+            => fitRandomized(in X, ref model, k, PCAScaling.Covariance, out _);
 
         /// <summary>Validates inputs, allocates the model (p x k) from <paramref name="arena"/>, then delegates to the ref-model overload. Guards fire before any arena allocation.</summary>
         public static doublePCAModel fitRandomized(ref Arena arena, in doubleMxN X, int k, PCAScaling scaling)
@@ -524,7 +586,7 @@ namespace LinearAlgebra.ML
             RequireTopK(k, n, p, method);
 
             var model = arena.doublePCAModel(p, k);
-            fitRandomized(in X, ref model, k, scaling);
+            fitRandomized(in X, ref model, k, scaling, out _);
             return model;
         }
 

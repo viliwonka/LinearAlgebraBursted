@@ -80,9 +80,11 @@ machine/config, 2026-07-06, one session, commit `2277dba`:
 | `SVD.truncated` | 17.75 | 18.76 |
 | `SVD.randomized` (oversample=10, powerIters=2) | 29.44 | 36.46 |
 
-⚠️ The thin rows pass an explicit `maxIter = 30·n`: the DEFAULT cap is a flat 75 sweeps
-regardless of n, and on this benchmark's deeply graded spectrum (σᵢ = 100·0.95^i, tail
-≈4×10⁻¹² at n=512) **double** precision legitimately needs more than 75 total sweeps —
-with the default it returns non-converged (`false`, S untouched). Float is unaffected
-(the tail deflates as numerical zeros). If your spectra are steeply graded and you solve
-in double at n ≳ 512, pass a scaled `maxIter`.
+The default `maxIter` scales with the problem: `Consts.sweepBudget(n) = max(75, 6·n)`
+(LAPACK dbdsqr's MAXITR=6 per-value heuristic with a small-n backstop). On this
+benchmark's deeply graded spectrum (σᵢ = 100·0.95^i, tail ≈4×10⁻¹² at n=512) even
+double precision converges comfortably inside that default — the convergence battery
+(`ConvergenceBudgetTests`) asserts ≤¼ of the budget is used across graded, clustered,
+and random spectra up to n=1024. On non-convergence the returned `SVDInfo`/`EigenInfo`
+reports `MaxIterations` (and SVD-backed solvers report `DirectSolveStatus.NotConverged`)
+instead of silently returning garbage.

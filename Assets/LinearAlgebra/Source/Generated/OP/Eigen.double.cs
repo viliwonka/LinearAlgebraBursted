@@ -955,8 +955,11 @@ namespace LinearAlgebra
         /// lambda[0] &gt;= lambda[1] &gt;= ... &gt;= lambda[n-1]. This means negative eigenvalues
         /// appear last. The corresponding eigenvector columns of V are reordered to match.
         ///
-        /// Returns true if convergence was reached within maxSweeps (a sweep with zero
-        /// Jacobi rotations), false if the sweep limit was exhausted.
+        /// Returns an <see cref="EigenInfo"/> (implicit-bool == Converged): Converged if a sweep with
+        /// zero Jacobi rotations was reached within maxSweeps, MaxIterations if the sweep limit was
+        /// exhausted. sweeps is the number of full-matrix Jacobi sweeps consumed (all-or-nothing:
+        /// converged is n on Converged, 0 on MaxIterations -- this solver does not resolve individual
+        /// eigenvalues independently the way the QR/QL-based solvers do).
         ///
         /// Notes:
         ///   - Works for any real symmetric matrix including indefinite ones; eigenvalues
@@ -969,7 +972,7 @@ namespace LinearAlgebra
         /// return (driven to approximately diagonal internally, but that is not a documented
         /// usable factor -- read <paramref name="eigenvalues"/> instead).</param>
         [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
-        public static bool decompInPlace(ref doubleMxN A, ref doubleN eigenvalues,
+        public static EigenInfo decompInPlace(ref doubleMxN A, ref doubleN eigenvalues,
                                               ref doubleMxN V, int maxSweeps, double eps)
         {
             if (!A.IsSquare)
@@ -1002,7 +1005,7 @@ namespace LinearAlgebra
             }
 
             if (n == 0)
-                return true;
+                return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
 
             // Initialize V to identity
             for (int i = 0; i < n; i++)
@@ -1010,6 +1013,7 @@ namespace LinearAlgebra
                     V[i, j] = (i == j) ? (double)1 : (double)0;
 
             bool converged = false;
+            int sweepsUsed = maxSweeps;
 
             for (int sweep = 0; sweep < maxSweeps; sweep++) {
 
@@ -1083,6 +1087,7 @@ namespace LinearAlgebra
 
                 if (rotations == 0) {
                     converged = true;
+                    sweepsUsed = sweep + 1;
                     break;
                 }
             }
@@ -1114,7 +1119,12 @@ namespace LinearAlgebra
                 }
             }
 
-            return converged;
+            return new EigenInfo
+            {
+                status = converged ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations,
+                sweeps = sweepsUsed,
+                converged = converged ? n : 0
+            };
         }
 
         // The default-argument overloads forward to the deprecated primitive; suppress the
@@ -1122,13 +1132,18 @@ namespace LinearAlgebra
 #pragma warning disable 618
         /// <summary>decompInPlace with default eps (Consts.doubleZeroThreshold).</summary>
         [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
-        public static bool decompInPlace(ref doubleMxN A, ref doubleN eigenvalues,
+        public static EigenInfo decompInPlace(ref doubleMxN A, ref doubleN eigenvalues,
                                               ref doubleMxN V, int maxSweeps)
             => decompInPlace(ref A, ref eigenvalues, ref V, maxSweeps, Consts.doubleZeroThreshold);
 
-        /// <summary>decompInPlace with default maxSweeps (30) and eps (Consts.doubleZeroThreshold).</summary>
+        /// <summary>decompInPlace with default maxSweeps (30) and eps (Consts.doubleZeroThreshold). NOTE:
+        /// this constant is NOT scaled by Consts.sweepBudget like the other Eigen/SVD defaults --
+        /// decompInPlace's "sweep" is a FULL-MATRIX Jacobi sweep (O(n^2) rotations each), a
+        /// fundamentally different iteration unit from the per-value QR/QL sweeps the LAPACK dbdsqr
+        /// scaling targets (see docs/spec-svd-eigen-convergence.md); classical Jacobi converges in a
+        /// small constant number of sweeps essentially independent of n. Also deprecated/reference-only.</summary>
         [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
-        public static bool decompInPlace(ref doubleMxN A, ref doubleN eigenvalues,
+        public static EigenInfo decompInPlace(ref doubleMxN A, ref doubleN eigenvalues,
                                               ref doubleMxN V)
             => decompInPlace(ref A, ref eigenvalues, ref V, 30, Consts.doubleZeroThreshold);
 #pragma warning restore 618
@@ -1155,11 +1170,12 @@ namespace LinearAlgebra
         /// only O(n^2). No eigenvectors (use decompInPlace if you need them).
         ///
         /// A must be symmetric (checked within eps-relative tolerance) and is DESTROYED. On output
-        /// eigenvalues[i] holds the i-th eigenvalue, sorted DESCENDING. Returns true on convergence;
-        /// false if QL hit maxIterPerEig for some eigenvalue (outputs then undefined). Does not allocate
+        /// eigenvalues[i] holds the i-th eigenvalue, sorted DESCENDING. Returns an
+        /// <see cref="EigenInfo"/> (implicit-bool == Converged); MaxIterations if QL hit
+        /// maxIterPerEig for some eigenvalue (outputs then undefined). Does not allocate
         /// beyond three length-n Temp scratch vectors.
         /// </summary>
-        public static bool valuesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double eps,
+        public static EigenInfo valuesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double eps,
                                                  ref doubleEigenSymCache ws)
         {
             if (!A.IsSquare)
@@ -1190,8 +1206,8 @@ namespace LinearAlgebra
 
             RequireEigenSymWorkspace(in ws, n);
 
-            if (n == 0) return true;
-            if (n == 1) { eigenvalues[0] = A[0, 0]; return true; }
+            if (n == 0) return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
+            if (n == 1) { eigenvalues[0] = A[0, 0]; return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 1 }; }
 
             var eVec = ws.eVec;   // off-diagonal e[i] couples d[i], d[i+1]
             var vVec = ws.vVec;   // Householder vector (entries m0..n-1)
@@ -1294,7 +1310,10 @@ namespace LinearAlgebra
             }
 
             // ---- implicit-shift QL on the tridiagonal (d = eigenvalues, e), values only ----
-            // e[i] couples d[i] and d[i+1]; e[n-1] = 0.
+            // e[i] couples d[i] and d[i+1]; e[n-1] = 0. sweeps/convergedCount feed EigenInfo: `iter`
+            // is the number of QL steps consumed by eigenvalue l (see EigenInfo.sweeps doc comment).
+            int sweeps = 0;
+            int convergedCount = 0;
             for (int l = 0; l < n; l++)
             {
                 int iter = 0;
@@ -1309,7 +1328,8 @@ namespace LinearAlgebra
                     }
                     if (m != l)
                     {
-                        if (iter++ >= maxIterPerEig) { return false; }
+                        if (iter++ >= maxIterPerEig)
+                            return new EigenInfo { status = IterativeSolveStatus.MaxIterations, sweeps = maxIterPerEig, converged = convergedCount };
 
                         double g = (eigenvalues[l + 1] - eigenvalues[l]) / ((double)2 * eVec[l]);
                         double r = pythag(g, (double)1);
@@ -1334,6 +1354,9 @@ namespace LinearAlgebra
                         eigenvalues[l] -= pp; eVec[l] = g; eVec[m] = 0;
                     }
                 } while (m != l);
+
+                if (iter > sweeps) sweeps = iter;
+                convergedCount++;
             }
 
             // sort descending (selection sort, matching decompInPlace)
@@ -1351,18 +1374,18 @@ namespace LinearAlgebra
                 }
             }
 
-            return true;
+            return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = sweeps, converged = convergedCount };
         }
 
-        /// <summary>valuesSymmetric (ref workspace) with default maxIterPerEig (30) and eps (Consts.doubleZeroThreshold).</summary>
-        public static bool valuesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleEigenSymCache ws)
-            => valuesSymmetric(ref A, ref eigenvalues, 30, Consts.doubleZeroThreshold, ref ws);
+        /// <summary>valuesSymmetric (ref workspace) with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and eps (Consts.doubleZeroThreshold).</summary>
+        public static EigenInfo valuesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleEigenSymCache ws)
+            => valuesSymmetric(ref A, ref eigenvalues, Consts.sweepBudget(A.M_Rows), Consts.doubleZeroThreshold, ref ws);
 
         /// <summary>
         /// valuesSymmetric allocating its tridiagonalization scratch (three length-n vectors) from
         /// Allocator.Temp. See the ref-workspace overload for semantics. A is overwritten (destroyed).
         /// </summary>
-        public static bool valuesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double eps)
+        public static EigenInfo valuesSymmetric(ref doubleMxN A, ref doubleN eigenvalues, int maxIterPerEig, double eps)
         {
             int n = A.M_Rows;
             var ws = new doubleEigenSymCache
@@ -1371,16 +1394,16 @@ namespace LinearAlgebra
                 vVec = new doubleN(n, Allocator.Temp, false),
                 pVec = new doubleN(n, Allocator.Temp, false)
             };
-            bool ok = valuesSymmetric(ref A, ref eigenvalues, maxIterPerEig, eps, ref ws);
+            EigenInfo info = valuesSymmetric(ref A, ref eigenvalues, maxIterPerEig, eps, ref ws);
             ws.eVec.Dispose();
             ws.vVec.Dispose();
             ws.pVec.Dispose();
-            return ok;
+            return info;
         }
 
-        /// <summary>valuesSymmetric with default maxIterPerEig (30) and eps (Consts.doubleZeroThreshold).</summary>
-        public static bool valuesSymmetric(ref doubleMxN A, ref doubleN eigenvalues)
-            => valuesSymmetric(ref A, ref eigenvalues, 30, Consts.doubleZeroThreshold);
+        /// <summary>valuesSymmetric with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and eps (Consts.doubleZeroThreshold).</summary>
+        public static EigenInfo valuesSymmetric(ref doubleMxN A, ref doubleN eigenvalues)
+            => valuesSymmetric(ref A, ref eigenvalues, Consts.sweepBudget(A.M_Rows), Consts.doubleZeroThreshold);
 
         /// <summary>
         /// Full eigenDECOMPOSITION of a SYMMETRIC real matrix via Householder tridiagonalization with
@@ -1391,10 +1414,11 @@ namespace LinearAlgebra
         ///
         /// A must be symmetric (checked within eps) and is DESTROYED. On output eigenvalues[i] is the
         /// i-th eigenvalue (sorted DESCENDING) and column i of V is its unit eigenvector, so
-        /// A = V * diag(eigenvalues) * Vᵀ and VᵀV = I. Returns true on convergence; false if QL hit
-        /// maxIterPerEig (outputs then undefined). Allocates three length-n Temp scratch vectors.
+        /// A = V * diag(eigenvalues) * Vᵀ and VᵀV = I. Returns an <see cref="EigenInfo"/>
+        /// (implicit-bool == Converged); MaxIterations if QL hit maxIterPerEig (outputs then
+        /// undefined). Allocates three length-n Temp scratch vectors.
         /// </summary>
-        public static bool symmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleMxN V,
+        public static EigenInfo symmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleMxN V,
                                           int maxIterPerEig, double eps)
         {
             if (!A.IsSquare)
@@ -1424,18 +1448,23 @@ namespace LinearAlgebra
                         throw new ArgumentException("Eigen.symmetric: Matrix must be symmetric");
                 }
 
-            if (n == 0) return true;
+            if (n == 0) return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
 
             // V starts as identity (it accumulates Q = H_0 H_1 ... then the QL rotations).
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     V[i, j] = (i == j) ? (double)1 : (double)0;
 
-            if (n == 1) { eigenvalues[0] = A[0, 0]; return true; }
+            if (n == 1) { eigenvalues[0] = A[0, 0]; return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 1 }; }
 
             var eVec = new doubleN(n, Allocator.Temp, false);
             var vVec = new doubleN(n, Allocator.Temp, false);
             var pVec = new doubleN(n, Allocator.Temp, false);
+
+            // Declared outside the unsafe block: the QL loop below sets these, and the method's
+            // final (converged) return reads them after the unsafe block closes.
+            int sweepsLocal;
+            int convergedLocal;
 
             unsafe
             {
@@ -1541,6 +1570,9 @@ namespace LinearAlgebra
                     }
 
                 // ---- implicit-shift QL with eigenvector accumulation (tql2) ----
+                // sweeps/convergedCount feed EigenInfo — see valuesSymmetric's identical convention.
+                sweepsLocal = 0;
+                convergedLocal = 0;
                 for (int l = 0; l < n; l++)
                 {
                     int iter = 0;
@@ -1555,7 +1587,11 @@ namespace LinearAlgebra
                         }
                         if (m != l)
                         {
-                            if (iter++ >= maxIterPerEig) { eVec.Dispose(); vVec.Dispose(); pVec.Dispose(); return false; }
+                            if (iter++ >= maxIterPerEig)
+                            {
+                                eVec.Dispose(); vVec.Dispose(); pVec.Dispose();
+                                return new EigenInfo { status = IterativeSolveStatus.MaxIterations, sweeps = maxIterPerEig, converged = convergedLocal };
+                            }
 
                             double g = (eigenvalues[l + 1] - eigenvalues[l]) / ((double)2 * eVec[l]);
                             double r = pythag(g, (double)1);
@@ -1584,6 +1620,9 @@ namespace LinearAlgebra
                             eigenvalues[l] -= pp; eVec[l] = g; eVec[m] = 0;
                         }
                     } while (m != l);
+
+                    if (iter > sweepsLocal) sweepsLocal = iter;
+                    convergedLocal++;
                 }
 
                 // Transpose Q back: rows → columns, so column i is eigenvector i again.
@@ -1616,12 +1655,12 @@ namespace LinearAlgebra
                 }
             }
 
-            return true;
+            return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = sweepsLocal, converged = convergedLocal };
         }
 
-        /// <summary>symmetric with default maxIterPerEig (30) and eps (Consts.doubleZeroThreshold).</summary>
-        public static bool symmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleMxN V)
-            => symmetric(ref A, ref eigenvalues, ref V, 30, Consts.doubleZeroThreshold);
+        /// <summary>symmetric with default maxIterPerEig (Consts.sweepBudget(A.M_Rows)) and eps (Consts.doubleZeroThreshold).</summary>
+        public static EigenInfo symmetric(ref doubleMxN A, ref doubleN eigenvalues, ref doubleMxN V)
+            => symmetric(ref A, ref eigenvalues, ref V, Consts.sweepBudget(A.M_Rows), Consts.doubleZeroThreshold);
 
         /// <summary>
         /// All eigenvalues of a GENERAL (non-symmetric) real square matrix, via the QR algorithm:
@@ -1638,12 +1677,13 @@ namespace LinearAlgebra
         /// On output eigenvaluesReal[i] / eigenvaluesImag[i] are the real and imaginary parts of the
         /// i-th eigenvalue. Results are sorted by (real, then imaginary) DESCENDING, so a conjugate
         /// pair a±bi appears as (a,+b) immediately before (a,-b). Read the outputs only when the
-        /// method returns true.
+        /// returned status is Converged.
         ///
-        /// Returns true if every eigenvalue converged within maxIterPerRoot iterations; false if the
-        /// iteration limit was hit (outputs then undefined). Does not allocate.
+        /// Returns an <see cref="EigenInfo"/> (implicit-bool == Converged); Converged iff every
+        /// eigenvalue converged within maxIterPerRoot iterations, MaxIterations if the iteration
+        /// limit was hit (outputs then undefined). Does not allocate.
         /// </summary>
-        public static unsafe bool valuesQR(ref doubleMxN A, ref doubleN eigenvaluesReal,
+        public static unsafe EigenInfo valuesQR(ref doubleMxN A, ref doubleN eigenvaluesReal,
                                                 ref doubleN eigenvaluesImag, int maxIterPerRoot)
         {
             if (!A.IsSquare)
@@ -1662,7 +1702,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("Eigen.valuesQR: maxIterPerRoot must be >= 1");
 
             if (n == 0)
-                return true;
+                return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
 
             // ---- Step 1: reduce A to upper Hessenberg form (elmhes: Gaussian elimination with
             //      partial pivoting via similarity transforms; preserves eigenvalues). ----
@@ -1727,6 +1767,13 @@ namespace LinearAlgebra
             int nn = n - 1;     // index of the current bottom-right active row/col
             double t = (double)0;
 
+            // sweeps/convergedCount feed EigenInfo: sweeps is the worst `its` seen at any successful
+            // root/pair extraction (its is the sweep count hqr itself already tracks per active
+            // block -- see maxIterPerRoot's own name/contract); convergedCount tallies extracted
+            // eigenvalues (1 per real root, 2 per complex-conjugate pair), reaching n on success.
+            int sweeps = 0;
+            int convergedCount = 0;
+
             while (nn >= 0)
             {
                 int its = 0;
@@ -1754,6 +1801,8 @@ namespace LinearAlgebra
                         eigenvaluesReal[nn] = x + t;
                         eigenvaluesImag[nn] = (double)0;
                         nn--;
+                        if (its > sweeps) sweeps = its;
+                        convergedCount++;
                     }
                     else
                     {
@@ -1785,12 +1834,14 @@ namespace LinearAlgebra
                                 eigenvaluesImag[nn] = -z;
                             }
                             nn -= 2;
+                            if (its > sweeps) sweeps = its;
+                            convergedCount += 2;
                         }
                         else
                         {
                             // no root yet: perform a double-shift QR sweep.
                             if (its >= maxIterPerRoot)
-                                return false;   // not converged
+                                return new EigenInfo { status = IterativeSolveStatus.MaxIterations, sweeps = maxIterPerRoot, converged = convergedCount };   // not converged
 
                             if (its == 10 || its == 20)
                             {
@@ -1914,12 +1965,12 @@ namespace LinearAlgebra
                 }
             }
 
-            return true;
+            return new EigenInfo { status = IterativeSolveStatus.Converged, sweeps = sweeps, converged = convergedCount };
         }
 
-        /// <summary>valuesQR with default maxIterPerRoot (30, the EISPACK hqr limit).</summary>
-        public static bool valuesQR(ref doubleMxN A, ref doubleN eigenvaluesReal,
+        /// <summary>valuesQR with default maxIterPerRoot (Consts.sweepBudget(A.N_Cols); the EISPACK hqr limit was flat 30).</summary>
+        public static EigenInfo valuesQR(ref doubleMxN A, ref doubleN eigenvaluesReal,
                                          ref doubleN eigenvaluesImag)
-            => valuesQR(ref A, ref eigenvaluesReal, ref eigenvaluesImag, 30);
+            => valuesQR(ref A, ref eigenvaluesReal, ref eigenvaluesImag, Consts.sweepBudget(A.N_Cols));
     }
 }

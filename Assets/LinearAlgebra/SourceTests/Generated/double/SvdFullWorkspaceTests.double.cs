@@ -22,7 +22,7 @@ using Unity.Jobs;
 //   (c) MIS-SIZED   — a workspace sized for the wrong dimension throws ArgumentException (managed).
 public class doubleSvdFullWorkspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct WorkspaceJob : IJob
     {
         public enum TestType
@@ -67,11 +67,15 @@ public class doubleSvdFullWorkspaceTests
             var A = RankDeficient(ref arena, m, n, 2, 1001);   // rank 2 -> nullspace dim 2
 
             var basisA = arena.doubleMat(n, n);
-            int dimA = SVD.nullspaceBasis(in A, ref basisA, out bool cA);
+            RankInfo infoA = SVD.nullspaceBasis(in A, ref basisA);
+            bool cA = infoA;
+            int dimA = n - infoA.rank;
 
             var ws = arena.doubleSVDFullCache(m, n);
             var basisW = arena.doubleMat(n, n);
-            int dimW = SVD.nullspaceBasis(in A, ref basisW, ref ws, out bool cW);
+            RankInfo infoW = SVD.nullspaceBasis(in A, ref basisW, ref ws);
+            bool cW = infoW;
+            int dimW = n - infoW.rank;
 
             Assert.IsTrue(dimA == dimW);
             Assert.IsTrue(cA == cW);
@@ -87,11 +91,15 @@ public class doubleSvdFullWorkspaceTests
             var A = RankDeficient(ref arena, m, n, 3, 2002);   // rank 3 -> range rank 3
 
             var basisA = arena.doubleMat(m, n);
-            int rankA = SVD.rangeBasis(in A, ref basisA, out bool cA);
+            RankInfo infoA = SVD.rangeBasis(in A, ref basisA);
+            bool cA = infoA;
+            int rankA = infoA.rank;
 
             var ws = arena.doubleSVDFullCache(m, n);
             var basisW = arena.doubleMat(m, n);
-            int rankW = SVD.rangeBasis(in A, ref basisW, ref ws, out bool cW);
+            RankInfo infoW = SVD.rangeBasis(in A, ref basisW, ref ws);
+            bool cW = infoW;
+            int rankW = infoW.rank;
 
             Assert.IsTrue(rankA == rankW);
             Assert.IsTrue(cA == cW);
@@ -107,11 +115,11 @@ public class doubleSvdFullWorkspaceTests
             var A = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, 3003);
 
             var UkA = arena.doubleMat(m, k); var SkA = arena.doubleVec(k); var VkA = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref UkA, ref SkA, ref VkA, k, out bool cA);
+            SVDInfo cA = SVD.truncated(in A, ref UkA, ref SkA, ref VkA, k);
 
             var ws = arena.doubleSVDTruncatedCache(m, n, k);
             var UkW = arena.doubleMat(m, k); var SkW = arena.doubleVec(k); var VkW = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref UkW, ref SkW, ref VkW, k, ref ws, out bool cW);
+            SVDInfo cW = SVD.truncated(in A, ref UkW, ref SkW, ref VkW, k, ref ws);
 
             Assert.IsTrue(cA == cW);
             Assert.IsTrue(Analysis.isZero(SkA - SkW, Tol()));
@@ -128,11 +136,11 @@ public class doubleSvdFullWorkspaceTests
             var A = arena.doubleRandomMat(m, n, (double)(-3f), (double)3f, 4004);
 
             var AkA = arena.doubleMat(m, n);
-            SVD.lowRankApprox(in A, ref AkA, k, out bool cA);
+            bool cA = SVD.lowRankApprox(in A, ref AkA, k);
 
             var ws = arena.doubleSVDFullCache(m, n);
             var AkW = arena.doubleMat(m, n);
-            SVD.lowRankApprox(in A, ref AkW, k, ref ws, out bool cW);
+            bool cW = SVD.lowRankApprox(in A, ref AkW, k, ref ws);
 
             Assert.IsTrue(cA == cW);
             Assert.IsTrue(Analysis.isZero(AkA - AkW, Tol()));
@@ -155,42 +163,44 @@ public class doubleSvdFullWorkspaceTests
 
             // ---- nullspace ----
             var nb1 = arena.doubleMat(n, n);
-            SVD.nullspaceBasis(in A1, ref nb1, ref ws, out bool _);          // warm the workspace on A1
+            SVD.nullspaceBasis(in A1, ref nb1, ref ws);          // warm the workspace on A1
             var nbW = arena.doubleMat(n, n);
-            int dimW = SVD.nullspaceBasis(in A2, ref nbW, ref ws, out bool _);
+            RankInfo nbWInfo = SVD.nullspaceBasis(in A2, ref nbW, ref ws);
+            int dimW = n - nbWInfo.rank;
             var nbA = arena.doubleMat(n, n);
-            int dimA = SVD.nullspaceBasis(in A2, ref nbA, out bool _);
+            RankInfo nbAInfo = SVD.nullspaceBasis(in A2, ref nbA);
+            int dimA = n - nbAInfo.rank;
             Assert.IsTrue(dimW == dimA);
             Assert.IsTrue(Analysis.isZero(nbW - nbA, Tol()));
 
             // ---- range ----
             var rb1 = arena.doubleMat(m, n);
-            SVD.rangeBasis(in A1, ref rb1, ref ws, out bool _);
+            SVD.rangeBasis(in A1, ref rb1, ref ws);
             var rbW = arena.doubleMat(m, n);
-            int rkW = SVD.rangeBasis(in A2, ref rbW, ref ws, out bool _);
+            int rkW = SVD.rangeBasis(in A2, ref rbW, ref ws).rank;
             var rbA = arena.doubleMat(m, n);
-            int rkA = SVD.rangeBasis(in A2, ref rbA, out bool _);
+            int rkA = SVD.rangeBasis(in A2, ref rbA).rank;
             Assert.IsTrue(rkW == rkA);
             Assert.IsTrue(Analysis.isZero(rbW - rbA, Tol()));
 
             // ---- truncated ----
             var U1 = arena.doubleMat(m, k); var S1 = arena.doubleVec(k); var V1 = arena.doubleMat(n, k);
-            SVD.truncated(in A1, ref U1, ref S1, ref V1, k, ref wsTrunc, out bool _);
+            SVD.truncated(in A1, ref U1, ref S1, ref V1, k, ref wsTrunc);
             var UW = arena.doubleMat(m, k); var SW = arena.doubleVec(k); var VW = arena.doubleMat(n, k);
-            SVD.truncated(in A2, ref UW, ref SW, ref VW, k, ref wsTrunc, out bool _);
+            SVD.truncated(in A2, ref UW, ref SW, ref VW, k, ref wsTrunc);
             var UA = arena.doubleMat(m, k); var SA = arena.doubleVec(k); var VA = arena.doubleMat(n, k);
-            SVD.truncated(in A2, ref UA, ref SA, ref VA, k, out bool _);
+            SVD.truncated(in A2, ref UA, ref SA, ref VA, k);
             Assert.IsTrue(Analysis.isZero(SW - SA, Tol()));
             Assert.IsTrue(Analysis.isZero(UW - UA, Tol()));
             Assert.IsTrue(Analysis.isZero(VW - VA, Tol()));
 
             // ---- low rank ----
             var Ak1 = arena.doubleMat(m, n);
-            SVD.lowRankApprox(in A1, ref Ak1, k, ref ws, out bool _);
+            SVD.lowRankApprox(in A1, ref Ak1, k, ref ws);
             var AkW = arena.doubleMat(m, n);
-            SVD.lowRankApprox(in A2, ref AkW, k, ref ws, out bool _);
+            SVD.lowRankApprox(in A2, ref AkW, k, ref ws);
             var AkA = arena.doubleMat(m, n);
-            SVD.lowRankApprox(in A2, ref AkA, k, out bool _);
+            SVD.lowRankApprox(in A2, ref AkA, k);
             Assert.IsTrue(Analysis.isZero(AkW - AkA, Tol()));
 
             arena.Dispose();
@@ -217,7 +227,7 @@ public class doubleSvdFullWorkspaceTests
             var basis = arena.doubleMat(4, 4);
             var ws = arena.doubleSVDFullCache(5, 4);   // wrong m
             Assert.Throws<ArgumentException>(
-                () => SVD.nullspaceBasis(in A, ref basis, ref ws, out bool _));
+                () => SVD.nullspaceBasis(in A, ref basis, ref ws));
         }
         finally { arena.Dispose(); }
     }
@@ -232,7 +242,7 @@ public class doubleSvdFullWorkspaceTests
             var basis = arena.doubleMat(6, 4);
             var ws = arena.doubleSVDFullCache(6, 3);   // wrong n
             Assert.Throws<ArgumentException>(
-                () => SVD.rangeBasis(in A, ref basis, ref ws, out bool _));
+                () => SVD.rangeBasis(in A, ref basis, ref ws));
         }
         finally { arena.Dispose(); }
     }
@@ -247,7 +257,7 @@ public class doubleSvdFullWorkspaceTests
             var Uk = arena.doubleMat(6, 2); var Sk = arena.doubleVec(2); var Vk = arena.doubleMat(4, 2);
             var ws = arena.doubleSVDTruncatedCache(7, 4, 2);   // wrong m (7 vs A's 6)
             Assert.Throws<ArgumentException>(
-                () => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 2, ref ws, out bool _));
+                () => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 2, ref ws));
         }
         finally { arena.Dispose(); }
     }
@@ -262,7 +272,7 @@ public class doubleSvdFullWorkspaceTests
             var Ak = arena.doubleMat(6, 4);
             var ws = arena.doubleSVDFullCache(6, 5);   // wrong n
             Assert.Throws<ArgumentException>(
-                () => SVD.lowRankApprox(in A, ref Ak, 2, ref ws, out bool _));
+                () => SVD.lowRankApprox(in A, ref Ak, 2, ref ws));
         }
         finally { arena.Dispose(); }
     }

@@ -27,7 +27,7 @@ using Unity.Mathematics;
 // use generous, sqrtEps-scaled bands. Reference values were cross-checked offline.
 public class floatSolverBatteryTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -469,7 +469,9 @@ public class floatSolverBatteryTests
 
             var Aw = A.Copy();                // pinvSolve no longer modifies A (copy kept for clarity)
             var x = arena.floatVec(n);
-            int r = SVD.pinvSolve(ref Aw, in b, ref x, out bool conv);
+            RankInfo pinvInfo = SVD.pinvSolve(ref Aw, in b, ref x);
+            bool conv = pinvInfo;
+            int r = pinvInfo.rank;
             AssertTrue(conv);
             RecordEq(r, n);
 

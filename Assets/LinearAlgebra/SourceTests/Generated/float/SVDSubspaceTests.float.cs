@@ -12,7 +12,7 @@ using Unity.Mathematics;
 // orthonormal in their used columns, (4) every column of A is reconstructable from the range basis.
 public class floatSVDSubspaceTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -96,7 +96,9 @@ public class floatSVDSubspaceTests
 
             // ---- nullspace ----
             var nbasis = arena.floatMat(n, n);
-            int dim = SVD.nullspaceBasis(in A, ref nbasis, out bool cN);
+            RankInfo nInfo = SVD.nullspaceBasis(in A, ref nbasis);
+            bool cN = nInfo;
+            int dim = n - nInfo.rank;
             Assert.IsTrue(cN);
             AssertIntEq(dim, n - expectedRank);
 
@@ -116,7 +118,9 @@ public class floatSVDSubspaceTests
 
             // ---- range ----
             var rbasis = arena.floatMat(m, n);
-            int rank = SVD.rangeBasis(in A, ref rbasis, out bool cR);
+            RankInfo rInfo = SVD.rangeBasis(in A, ref rbasis);
+            bool cR = rInfo;
+            int rank = rInfo.rank;
             Assert.IsTrue(cR);
             AssertIntEq(rank, expectedRank);
             AssertOrthoCols(in rbasis, m, rank, tol);
@@ -237,7 +241,7 @@ public class floatSVDSubspaceTests
         var arena = new Arena(Allocator.Persistent);
         var A = arena.floatMat(3, 5);
         var basis = arena.floatMat(5, 5);
-        Assert.Catch<ArgumentException>(() => SVD.nullspaceBasis(in A, ref basis, out bool _));
+        Assert.Catch<ArgumentException>(() => SVD.nullspaceBasis(in A, ref basis));
         arena.Dispose();
     }
 
@@ -247,7 +251,7 @@ public class floatSVDSubspaceTests
         var arena = new Arena(Allocator.Persistent);
         var A = arena.floatMat(6, 4);
         var basis = arena.floatMat(6, 4);   // must be n x n = 4 x 4
-        Assert.Catch<ArgumentException>(() => SVD.nullspaceBasis(in A, ref basis, out bool _));
+        Assert.Catch<ArgumentException>(() => SVD.nullspaceBasis(in A, ref basis));
         arena.Dispose();
     }
 
@@ -257,7 +261,7 @@ public class floatSVDSubspaceTests
         var arena = new Arena(Allocator.Persistent);
         var A = arena.floatMat(3, 5);
         var basis = arena.floatMat(3, 5);
-        Assert.Catch<ArgumentException>(() => SVD.rangeBasis(in A, ref basis, out bool _));
+        Assert.Catch<ArgumentException>(() => SVD.rangeBasis(in A, ref basis));
         arena.Dispose();
     }
 
@@ -267,7 +271,7 @@ public class floatSVDSubspaceTests
         var arena = new Arena(Allocator.Persistent);
         var A = arena.floatMat(6, 4);
         var basis = arena.floatMat(4, 4);   // must be m x n = 6 x 4
-        Assert.Catch<ArgumentException>(() => SVD.rangeBasis(in A, ref basis, out bool _));
+        Assert.Catch<ArgumentException>(() => SVD.rangeBasis(in A, ref basis));
         arena.Dispose();
     }
 }

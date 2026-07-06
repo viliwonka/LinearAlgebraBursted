@@ -19,11 +19,16 @@ namespace LinearAlgebra
         /// relTol &lt; 0 selects auto tolerance: relTol = max(m, n) * Consts.doubleZeroThreshold.
         /// Singular values S[j] &lt;= relTol * S[0] are treated as zero.
         /// Allocates temporaries from A's arena via doubleTempVec/doubleTempMat (not an InPlace op).
-        /// Returns the numerical rank used; converged is thin's return value.
+        /// Returns a <see cref="RankInfo"/>: <c>rank</c> is the numerical rank used (0 on a hard
+        /// failure); <c>status</c> is <see cref="DirectSolveStatus.Success"/> (full rank),
+        /// <see cref="DirectSolveStatus.RankDeficient"/> (still-usable, rank &lt; min(m,n)), or
+        /// <see cref="DirectSolveStatus.NotConverged"/> if the inner SVD did not converge within
+        /// maxSweeps — a HARD failure (<see cref="RankInfo.Solved"/> false); x is zeroed but NOT a
+        /// valid solution in that case.
         /// </summary>
         // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVDCache. Hoist these
         // out of a hot loop solving many same-shape systems to avoid per-call allocs.
-        public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
+        public static RankInfo pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x,
                                     double relTol, int maxSweeps,
                                     ref doubleN S, ref doubleMxN M, ref doubleMxN U, ref doubleMxN At)
         {
@@ -52,18 +57,21 @@ namespace LinearAlgebra
 
             if (m >= n) {
                 // Tall or square case: A = U * diag(S) * V^T; U receives the left factor, M = V.
-                converged = thin(in A, ref U, ref S, ref M, maxSweeps);
+                SVDInfo svdInfo = thin(in A, ref U, ref S, ref M, maxSweeps);
+
+                // Zero x (prior contents ignored either way, per the doc comment).
+                for (int kk = 0; kk < n; kk++)
+                    x[kk] = (double)0;
+
+                if (!svdInfo)
+                    return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
                 // Auto tolerance
                 if (relTol < (double)0)
                     relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
 
-                // Zero x
-                for (int kk = 0; kk < n; kk++)
-                    x[kk] = (double)0;
-
                 if (n == 0 || S[0] == (double)0)
-                    return 0;
+                    return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
                 double tol = relTol * S[0];
                 int rank = 0;
@@ -86,7 +94,7 @@ namespace LinearAlgebra
                     rank++;
                 }
 
-                return rank;
+                return new RankInfo { status = rank == k ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
             }
             else {
                 // Wide case: decompose A^T (n x m, tall). Right singular vectors of A are columns of
@@ -96,18 +104,21 @@ namespace LinearAlgebra
 
                 Blas.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
 
-                converged = thin(in At, ref U, ref S, ref M, maxSweeps);
+                SVDInfo svdInfo = thin(in At, ref U, ref S, ref M, maxSweeps);
+
+                // Zero x (prior contents ignored either way, per the doc comment).
+                for (int kk = 0; kk < n; kk++)
+                    x[kk] = (double)0;
+
+                if (!svdInfo)
+                    return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
                 // Auto tolerance
                 if (relTol < (double)0)
                     relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
 
-                // Zero x
-                for (int kk = 0; kk < n; kk++)
-                    x[kk] = (double)0;
-
                 if (m == 0 || S[0] == (double)0)
-                    return 0;
+                    return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
                 double tol = relTol * S[0];
                 int rank = 0;
@@ -132,7 +143,7 @@ namespace LinearAlgebra
                     rank++;
                 }
 
-                return rank;
+                return new RankInfo { status = rank == k ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
             }
         }
 
@@ -140,7 +151,7 @@ namespace LinearAlgebra
         /// pinvSolve allocating wrapper: allocates the SVD scratch (S, k x k singular-vector matrix,
         /// and A^T for the wide case) from A's arena and delegates to the zero-alloc primitive.
         /// </summary>
-        public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
+        public static RankInfo pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x,
                                     double relTol, int maxSweeps)
         {
             int m = A.M_Rows;
@@ -155,7 +166,7 @@ namespace LinearAlgebra
             if (m < n)
                 At = A.doubleTempMat(n, m);
 
-            return pinvSolve(ref A, in b, ref x, out converged, relTol, maxSweeps, ref S, ref M, ref U, ref At);
+            return pinvSolve(ref A, in b, ref x, relTol, maxSweeps, ref S, ref M, ref U, ref At);
         }
 
         /// <summary>
@@ -163,36 +174,40 @@ namespace LinearAlgebra
         /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)); the guards in
         /// the underlying scratch primitive enforce this.
         /// </summary>
-        public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
+        public static RankInfo pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x,
                                     ref doubleSVDCache ws, double relTol, int maxSweeps)
-            => pinvSolve(ref A, in b, ref x, out converged, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
+            => pinvSolve(ref A, in b, ref x, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
 
-        /// <summary>pinvSolve (workspace) with default maxSweeps (30).</summary>
-        public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
+        /// <summary>pinvSolve (workspace) with default maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        public static RankInfo pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x,
                                     ref doubleSVDCache ws, double relTol)
-            => pinvSolve(ref A, in b, ref x, out converged, ref ws, relTol, 30);
+            => pinvSolve(ref A, in b, ref x, ref ws, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pinvSolve (workspace) with default relTol (-1, auto) and maxSweeps (30).</summary>
-        public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
+        /// <summary>pinvSolve (workspace) with default relTol (-1, auto) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        public static RankInfo pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x,
                                     ref doubleSVDCache ws)
-            => pinvSolve(ref A, in b, ref x, out converged, ref ws, (double)(-1), 30);
+            => pinvSolve(ref A, in b, ref x, ref ws, (double)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pinvSolve with default maxSweeps (30).</summary>
-        public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged,
+        /// <summary>pinvSolve with default maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        public static RankInfo pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x,
                                     double relTol)
-            => pinvSolve(ref A, in b, ref x, out converged, relTol, 30);
+            => pinvSolve(ref A, in b, ref x, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pinvSolve with default relTol (-1, auto tolerance) and maxSweeps (30).</summary>
-        public static int pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x, out bool converged)
-            => pinvSolve(ref A, in b, ref x, out converged, (double)(-1), 30);
+        /// <summary>pinvSolve with default relTol (-1, auto tolerance) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        public static RankInfo pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x)
+            => pinvSolve(ref A, in b, ref x, (double)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
         /// <summary>
         /// Moore-Penrose pseudo-inverse: Aplus (N_Cols x M_Rows, caller-allocated) = V diag(1/S_i, S_i > tol) U^T.
         /// A is NOT modified (the Golub-Kahan path takes it as input). Same tolerance/rank/return
-        /// semantics as pinvSolve. Any shape.
+        /// semantics as pinvSolve: a <see cref="RankInfo"/> whose <c>status</c> is
+        /// <see cref="DirectSolveStatus.Success"/> (full rank), <see cref="DirectSolveStatus.RankDeficient"/>
+        /// (still-usable, rank &lt; min(m,n)), or <see cref="DirectSolveStatus.NotConverged"/> if the
+        /// inner SVD did not converge within maxSweeps — a HARD failure (Aplus is zeroed but NOT a
+        /// valid pseudo-inverse in that case). Any shape.
         /// </summary>
         // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVDCache.
-        public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
+        public static RankInfo pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus,
                                         double relTol, int maxSweeps,
                                         ref doubleN S, ref doubleMxN M, ref doubleMxN U, ref doubleMxN At)
         {
@@ -226,13 +241,18 @@ namespace LinearAlgebra
 
             if (m >= n) {
                 // A = U * diag(S) * V^T; U receives the left factor, M = V
-                converged = thin(in A, ref U, ref S, ref M, maxSweeps);
+                SVDInfo svdInfo = thin(in A, ref U, ref S, ref M, maxSweeps);
+
+                // Hard failure: thin's outputs are unwritten/partial — building Aplus from them
+                // would silently return garbage. Aplus stays zeroed (see the zero-init above).
+                if (!svdInfo)
+                    return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
                 if (relTol < (double)0)
                     relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
 
                 if (n == 0 || S[0] == (double)0)
-                    return 0;
+                    return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
                 double tol = relTol * S[0];
                 int rank = 0;
@@ -254,7 +274,7 @@ namespace LinearAlgebra
                     rank++;
                 }
 
-                return rank;
+                return new RankInfo { status = rank == k ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
             }
             else {
                 // Wide case: decompose A^T (n x m); U receives its left factor, M = W
@@ -263,13 +283,17 @@ namespace LinearAlgebra
 
                 Blas.trans(in A, ref At);   // At = A^T (zero-alloc, ref-dest trans)
 
-                converged = thin(in At, ref U, ref S, ref M, maxSweeps);
+                SVDInfo svdInfo = thin(in At, ref U, ref S, ref M, maxSweeps);
+
+                // Hard failure — see the tall branch above.
+                if (!svdInfo)
+                    return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
                 if (relTol < (double)0)
                     relTol = (double)math.max(m, n) * Consts.doubleZeroThreshold;
 
                 if (m == 0 || S[0] == (double)0)
-                    return 0;
+                    return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
                 double tol = relTol * S[0];
                 int rank = 0;
@@ -291,7 +315,7 @@ namespace LinearAlgebra
                     rank++;
                 }
 
-                return rank;
+                return new RankInfo { status = rank == k ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
             }
         }
 
@@ -299,7 +323,7 @@ namespace LinearAlgebra
         /// pseudoInverse allocating wrapper: allocates the SVD scratch (S, k x k singular-vector
         /// matrix, and A^T for the wide case) from A's arena and delegates to the zero-alloc primitive.
         /// </summary>
-        public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
+        public static RankInfo pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus,
                                         double relTol, int maxSweeps)
         {
             int m = A.M_Rows;
@@ -314,34 +338,34 @@ namespace LinearAlgebra
             if (m < n)
                 At = A.doubleTempMat(n, m);
 
-            return pseudoInverse(ref A, ref Aplus, out converged, relTol, maxSweeps, ref S, ref M, ref U, ref At);
+            return pseudoInverse(ref A, ref Aplus, relTol, maxSweeps, ref S, ref M, ref U, ref At);
         }
 
         /// <summary>
         /// pseudoInverse using a reusable workspace (Arena.doubleSVDCache(m, n)) — zero-alloc.
         /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)).
         /// </summary>
-        public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
+        public static RankInfo pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus,
                                         ref doubleSVDCache ws, double relTol, int maxSweeps)
-            => pseudoInverse(ref A, ref Aplus, out converged, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
+            => pseudoInverse(ref A, ref Aplus, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
 
-        /// <summary>pseudoInverse (workspace) with default maxSweeps (30).</summary>
-        public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
+        /// <summary>pseudoInverse (workspace) with default maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        public static RankInfo pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus,
                                         ref doubleSVDCache ws, double relTol)
-            => pseudoInverse(ref A, ref Aplus, out converged, ref ws, relTol, 30);
+            => pseudoInverse(ref A, ref Aplus, ref ws, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pseudoInverse (workspace) with default relTol (-1, auto) and maxSweeps (30).</summary>
-        public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
+        /// <summary>pseudoInverse (workspace) with default relTol (-1, auto) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        public static RankInfo pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus,
                                         ref doubleSVDCache ws)
-            => pseudoInverse(ref A, ref Aplus, out converged, ref ws, (double)(-1), 30);
+            => pseudoInverse(ref A, ref Aplus, ref ws, (double)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pseudoInverse with default maxSweeps (30).</summary>
-        public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged,
+        /// <summary>pseudoInverse with default maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        public static RankInfo pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus,
                                         double relTol)
-            => pseudoInverse(ref A, ref Aplus, out converged, relTol, 30);
+            => pseudoInverse(ref A, ref Aplus, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pseudoInverse with default relTol (-1, auto tolerance) and maxSweeps (30).</summary>
-        public static int pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus, out bool converged)
-            => pseudoInverse(ref A, ref Aplus, out converged, (double)(-1), 30);
+        /// <summary>pseudoInverse with default relTol (-1, auto tolerance) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        public static RankInfo pseudoInverse(ref doubleMxN A, ref doubleMxN Aplus)
+            => pseudoInverse(ref A, ref Aplus, (double)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
     }
 }

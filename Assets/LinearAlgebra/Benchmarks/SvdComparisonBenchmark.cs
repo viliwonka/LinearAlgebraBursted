@@ -142,34 +142,6 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => SVD.thin(in A, ref U, ref S, ref V);
     }
 
-    // Thin with an explicit sweep cap. The default cap is a FLAT 75 regardless of n; on this
-    // benchmark's deeply graded randsvd spectrum (sigma_i = 100*0.95^i, tail ~4e-12 at n=512)
-    // double precision keeps resolving tail values long after float has deflated them as zeros,
-    // and 75 total sweeps is not enough at n=512 -> non-convergence (S never written). The
-    // dedicated tall section passes a LAPACK-style scaled cap (30*n) instead.
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct SvdCmpThinCapJobFloat : IJob
-    {
-        public floatMxN A;
-        public floatMxN U;
-        public floatN S;
-        public floatMxN V;
-        public int maxIter;
-        public void Execute() => SVD.thin(in A, ref U, ref S, ref V, maxIter);
-    }
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct SvdCmpThinCapJobDouble : IJob
-    {
-        public doubleMxN A;
-        public doubleMxN U;
-        public doubleN S;
-        public doubleMxN V;
-        public int maxIter;
-        public void Execute() => SVD.thin(in A, ref U, ref S, ref V, maxIter);
-    }
-
     // =====================================================================
     //  Timing jobs: truncated (GKL Lanczos + full reorthogonalization)
     // =====================================================================
@@ -183,8 +155,8 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN Vk;
         public int k;
         public floatSVDTruncatedCache ws;
-        // Uses the 1-k-arg overload: oversample = max(k,12), seed = 0x9E3779B1, maxIter = 75.
-        public void Execute() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out bool _);
+        // Uses the 1-k-arg overload: oversample = max(k,12), seed = 0x9E3779B1, maxIter = Consts.sweepBudget(p).
+        public void Execute() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -196,7 +168,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN Vk;
         public int k;
         public doubleSVDTruncatedCache ws;
-        public void Execute() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws, out bool _);
+        public void Execute() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws);
     }
 
     // =====================================================================
@@ -293,7 +265,7 @@ namespace LinearAlgebra.Benchmarks
             var U = arena.floatMat(m, n);
             var S = arena.floatVec(n);
             var V = arena.floatMat(n, n);
-            var job  = new SvdCmpThinCapJobFloat { A = A, U = U, S = S, V = V, maxIter = 30 * n };
+            var job  = new SvdCmpThinJobFloat { A = A, U = U, S = S, V = V };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrF(S, sigmaTrue, n);
             double reconErr = ReconErrF(A, U, S, V, n, normA);
@@ -314,7 +286,7 @@ namespace LinearAlgebra.Benchmarks
             var U = arena.doubleMat(m, n);
             var S = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
-            var job  = new SvdCmpThinCapJobDouble { A = A, U = U, S = S, V = V, maxIter = 30 * n };
+            var job  = new SvdCmpThinJobDouble { A = A, U = U, S = S, V = V };
             var stat = Bench.Time(() => job.Run());
             double sigErr   = SigErrD(S, sigmaTrue, n);
             double reconErr = ReconErrD(A, U, S, V, n, normA);

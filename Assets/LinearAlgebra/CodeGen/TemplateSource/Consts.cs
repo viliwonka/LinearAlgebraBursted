@@ -22,6 +22,24 @@ namespace LinearAlgebra {
         public const double doubleZeroThreshold = 1e-14; // could lower this, if necessary
         public const double doubleEpsilon = 2.220446049250313e-16;  // machine epsilon, 2^-52
         public const double doubleSqrtEps = 1.4901161193847656e-8;  // sqrt(doubleEpsilon): best localization of a smooth minimum
+
+        // Default PER-VALUE sweep/iteration budget for the SVD/Eigen QR-type diagonalizations
+        // (bidiagonal QR, tridiagonal QL, Hessenberg QR) -- LAPACK dbdsqr's scaling (MAXITR=6,
+        // i.e. an effective 6*n total across n values) rather than a flat constant: a flat cap
+        // does not grow with the problem, so a large clustered/graded spectrum can legitimately
+        // exhaust it (see docs/spec-svd-eigen-convergence.md). Floored at 75 (the library's
+        // original flat constant) so tiny problems keep the same sane minimum they always had.
+        // `n` is whatever per-value dimension is actually being iterated at each call site (the
+        // full matrix side for thin/values/valuesSymmetric/symmetric/valuesQR; the smaller
+        // reduced-problem size for the GKL truncated/randomized SVD routes) -- see each call site.
+        // This is a pathological-input BACKSTOP, not a target: legitimate inputs should converge
+        // in a small fraction of it. Explicit maxIter/maxSweeps arguments are never affected by
+        // this -- only the convenience overloads' hardcoded defaults route through it.
+        public static int sweepBudget(int n)
+        {
+            int scaled = 6 * n;
+            return scaled > 75 ? scaled : 75;
+        }
     }
 
 }

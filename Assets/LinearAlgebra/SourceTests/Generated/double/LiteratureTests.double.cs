@@ -14,7 +14,7 @@ using Unity.Mathematics;
 // reference value rather than a self-consistency check.
 public class doubleLiteratureTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -111,7 +111,8 @@ public class doubleLiteratureTests
             var A1 = arena.doubleLauchli(3, eps);   // (3+1)x3 = 4x3
             var b1 = Blas.dot(A1, xTrue);   // length 4, exactly in range(A)
             var xSvd = arena.doubleVec(3);
-            SVD.pinvSolve(ref A1, in b1, ref xSvd, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref A1, in b1, ref xSvd);
+            bool converged = pinvInfo;
             AssertTrue(converged);
             for (int k = 0; k < 3; k++)
                 AssertClose(xSvd[k], xTrue[k], (double)1E-2);

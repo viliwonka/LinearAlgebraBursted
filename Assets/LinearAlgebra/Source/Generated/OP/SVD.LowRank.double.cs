@@ -49,16 +49,18 @@ namespace LinearAlgebra
         /// <paramref name="partialReorth"/> selects the reorthogonalization strategy: true = partial
         /// reorth via ω-recurrence (faster at large p), false = full DGKS at every step (maximum stability).
         /// Default is true. Existing call sites without this parameter receive partialReorth = true.
-        /// <paramref name="converged"/> is false if the inner bidiagonal QR did not converge, or if the
-        /// Krylov space was exhausted before k triplets could be formed (rank-deficient A); remaining Sk
-        /// are set to 0, Uk/Vk columns zeroed. The residual |β_last·P[p-1,t]| / (σ₀+ε) is also checked
-        /// against 8·√ε; if it exceeds this tolerance, converged is set false.
+        /// The returned <see cref="SVDInfo"/> (implicit-bool == Solved) is MaxIterations if the inner
+        /// bidiagonal QR did not converge, or if the Krylov space was exhausted before k triplets
+        /// could be formed (rank-deficient A); remaining Sk are set to 0, Uk/Vk columns zeroed. The
+        /// residual |β_last·P[p-1,t]| / (σ₀+ε) is also checked against 8·√ε; if it exceeds this
+        /// tolerance, the status is MaxIterations too. sweeps/converged reflect the inner p×p
+        /// bidiagonal QR's own counters (see <see cref="SVDInfo"/>).
         /// <paramref name="ws"/> is the GKL scratch; size it with
         /// Arena.doubleSVDTruncatedCache(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
-        public static void truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+        public static SVDInfo truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
-                                        bool partialReorth, ref doubleSVDTruncatedCache ws, out bool converged)
+                                        bool partialReorth, ref doubleSVDTruncatedCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -81,10 +83,8 @@ namespace LinearAlgebra
             int p = math.min(k + oversample, n);
             RequireSvdTruncatedWorkspace(in ws, m, n, p, "truncated");
 
-            converged = true;
-
             if (n == 0 || k == 0)
-                return;
+                return new SVDInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
 
             double scaleEps = Consts.doubleEpsilon;
             int pDone = 0;
@@ -445,17 +445,17 @@ namespace LinearAlgebra
             for (int j = 1; j < p; j++)        ws.eB[j] = (j < pDone) ? ws.beta[j - 1] : (double)0;
 
             // --- Inner SVD of the tiny p×p bidiagonal ---
-            if (!bidiagonalSvdFromDE(ref ws.dB, ref ws.eB, ref ws.UtB, ref ws.VtB,
-                                     ref ws.BsvdWs.U, ref ws.BsvdWs.S, ref ws.BsvdWs.V, p, maxIter))
-            {
-                converged = false;
-                return;
-            }
+            bool innerOk = bidiagonalSvdFromDE(ref ws.dB, ref ws.eB, ref ws.UtB, ref ws.VtB,
+                                     ref ws.BsvdWs.U, ref ws.BsvdWs.S, ref ws.BsvdWs.V, p, maxIter,
+                                     out int innerSweeps, out int innerConverged);
+            if (!innerOk)
+                return new SVDInfo { status = IterativeSolveStatus.MaxIterations, sweeps = innerSweeps, converged = innerConverged };
 
             // --- Map back to A's singular triplets ---
             int kOut = math.min(k, pDone);
 
             // --- Residual-based convergence check ---
+            bool converged;
             {
                 double betaLast = alphaBreakdown ? (double)0
                                 : (pDone > 0)    ? ws.beta[pDone - 1]
@@ -509,42 +509,52 @@ namespace LinearAlgebra
                     for (int i = 0; i < n; i++) Vk[i, t] = (double)0;
                 }
             }
+
+            return new SVDInfo
+            {
+                status = converged ? IterativeSolveStatus.Converged : IterativeSolveStatus.MaxIterations,
+                sweeps = innerSweeps,
+                converged = innerConverged
+            };
         }
 
         /// <summary>truncated (ref workspace) with default partialReorth=true.</summary>
-        public static void truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+        public static SVDInfo truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, int oversample, uint seed, int maxIter,
-                                        ref doubleSVDTruncatedCache ws, out bool converged)
-            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
+                                        ref doubleSVDTruncatedCache ws)
+            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws);
 
-        /// <summary>truncated (ref workspace) with default maxIter (75) and partialReorth=true.</summary>
-        public static void truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+        /// <summary>truncated (ref workspace) with default maxIter (Consts.sweepBudget(p), p = min(k+oversample, A.N_Cols)) and partialReorth=true.</summary>
+        public static SVDInfo truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, int oversample, uint seed,
-                                        ref doubleSVDTruncatedCache ws, out bool converged)
-            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, ref ws, out converged);
+                                        ref doubleSVDTruncatedCache ws)
+            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed,
+                         Consts.sweepBudget(math.min(k + oversample, A.N_Cols)), true, ref ws);
 
-        /// <summary>truncated (ref workspace) with default seed and maxIter (75) and partialReorth=true.</summary>
-        public static void truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+        /// <summary>truncated (ref workspace) with default seed, default maxIter (Consts.sweepBudget(p)) and partialReorth=true.</summary>
+        public static SVDInfo truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                         int k, int oversample,
-                                        ref doubleSVDTruncatedCache ws, out bool converged)
-            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x9E3779B1u, 75, true, ref ws, out converged);
+                                        ref doubleSVDTruncatedCache ws)
+            => truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x9E3779B1u,
+                         Consts.sweepBudget(math.min(k + oversample, A.N_Cols)), true, ref ws);
 
         /// <summary>
-        /// truncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12))
-        /// and partialReorth=true.
+        /// truncated (ref workspace) with generous default Krylov width p = min(n, max(2k, k+12)),
+        /// default maxIter (Consts.sweepBudget(p)) and partialReorth=true.
         /// Pass a workspace from Arena.doubleSVDTruncatedCache(m, n, k) (no oversample overload)
         /// which uses the same generous formula.
         /// </summary>
-        public static void truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
-                                        int k, ref doubleSVDTruncatedCache ws, out bool converged)
-            => truncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
+        public static SVDInfo truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                        int k, ref doubleSVDTruncatedCache ws)
+            => truncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u,
+                         Consts.sweepBudget(math.min(A.N_Cols, math.max(2 * k, k + 12))), true, ref ws);
 
         /// <summary>
         /// truncated allocating all scratch from A's arena (explicit oversample/seed/maxIter/partialReorth).
         /// See the ref-workspace overload for semantics.
         /// </summary>
-        public static void truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
-                                        int k, int oversample, uint seed, int maxIter, bool partialReorth, out bool converged)
+        public static SVDInfo truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                        int k, int oversample, uint seed, int maxIter, bool partialReorth)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -572,7 +582,7 @@ namespace LinearAlgebra
                 mu    = A.doubleTempVec(p + 1),
                 nu    = A.doubleTempVec(p + 1)
             };
-            truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, partialReorth, ref ws, out converged);
+            return truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, partialReorth, ref ws);
         }
 
         /// <summary>
@@ -580,8 +590,8 @@ namespace LinearAlgebra
         /// with default partialReorth=true.
         /// See the ref-workspace overload for semantics.
         /// </summary>
-        public static void truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
-                                        int k, int oversample, uint seed, int maxIter, out bool converged)
+        public static SVDInfo truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                        int k, int oversample, uint seed, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -609,15 +619,16 @@ namespace LinearAlgebra
                 mu    = A.doubleTempVec(p + 1),
                 nu    = A.doubleTempVec(p + 1)
             };
-            truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws, out converged);
+            return truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, maxIter, true, ref ws);
         }
 
         /// <summary>
         /// truncated (allocating) with generous default Krylov width p = min(n, max(2k, k+12)),
-        /// default seed (0x9E3779B1u), default maxIter (75), and default partialReorth=true.
+        /// default seed (0x9E3779B1u), default maxIter (Consts.sweepBudget(p)), and default
+        /// partialReorth=true.
         /// </summary>
-        public static void truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
-                                        int k, out bool converged)
+        public static SVDInfo truncated(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+                                        int k)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -645,7 +656,7 @@ namespace LinearAlgebra
                 nu    = A.doubleTempVec(p + 1)
             };
             // Use oversample = max(k, 12) which gives p = min(k + max(k,12), n) = min(max(2k,k+12), n)
-            truncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, 75, true, ref ws, out converged);
+            return truncated(in A, ref Uk, ref Sk, ref Vk, k, math.max(k, 12), 0x9E3779B1u, Consts.sweepBudget(p), true, ref ws);
         }
 
         /// <summary>
@@ -653,12 +664,13 @@ namespace LinearAlgebra
         /// Ak = Σ_{t&lt;k} σ_t u_t v_tᵀ = Uk diag(Sk) Vkᵀ. This is the matrix that minimizes
         /// ||A - Ak|| over all rank-k matrices (Eckart-Young); the Frobenius error is sqrt(Σ_{i&gt;=k} σ_i²).
         /// Uses the FULL Golub-Kahan SVD (thin) internally — EXACT, not approximate. 0 &lt;= k &lt;= n.
-        /// A is NOT modified. <paramref name="converged"/> is the SVD's flag (when false Ak is undefined).
+        /// A is NOT modified. Returns the inner SVD's <see cref="SVDInfo"/> (implicit-bool ==
+        /// Converged); on MaxIterations Ak is zeroed but NOT a valid approximation.
         /// <paramref name="ws"/> is full-SVD scratch reused across calls; size it with
         /// Arena.doubleSVDFullCache(m, n).
         /// </summary>
-        public static void lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k,
-                                         ref doubleSVDFullCache ws, out bool converged, int maxIter)
+        public static SVDInfo lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k,
+                                         ref doubleSVDFullCache ws, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -673,19 +685,17 @@ namespace LinearAlgebra
                 throw new ArgumentException("lowRankApprox: maxIter must be >= 1");
             RequireSvdFullWorkspace(in ws, m, n);
 
-            converged = true;
-
             // Ak starts at zero (rank 0); also the correct result for k == 0 / empty A.
             for (int i = 0; i < m; i++)
                 for (int j = 0; j < n; j++)
                     Ak[i, j] = (double)0;
 
             if (n == 0 || k == 0)
-                return;
+                return new SVDInfo { status = IterativeSolveStatus.Converged, sweeps = 0, converged = 0 };
 
-            converged = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
-            if (!converged)
-                return;
+            SVDInfo info = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
+            if (!info)
+                return info;
 
             // Ak += σ_t · u_t v_tᵀ for t < k
             for (int t = 0; t < k; t++)
@@ -698,18 +708,20 @@ namespace LinearAlgebra
                         Ak[i, j] += us * ws.V[j, t];
                 }
             }
+
+            return info;
         }
 
-        /// <summary>lowRankApprox (ref workspace) with default maxIter (75).</summary>
-        public static void lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k,
-                                         ref doubleSVDFullCache ws, out bool converged)
-            => lowRankApprox(in A, ref Ak, k, ref ws, out converged, 75);
+        /// <summary>lowRankApprox (ref workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static SVDInfo lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k,
+                                         ref doubleSVDFullCache ws)
+            => lowRankApprox(in A, ref Ak, k, ref ws, Consts.sweepBudget(A.N_Cols));
 
         /// <summary>
         /// lowRankApprox allocating its full-SVD scratch from A's arena.
         /// See the ref-workspace overload for semantics.
         /// </summary>
-        public static void lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k, out bool converged, int maxIter)
+        public static SVDInfo lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -719,11 +731,11 @@ namespace LinearAlgebra
                 S = A.doubleTempVec(n),
                 V = A.doubleTempMat(n, n)
             };
-            lowRankApprox(in A, ref Ak, k, ref ws, out converged, maxIter);
+            return lowRankApprox(in A, ref Ak, k, ref ws, maxIter);
         }
 
-        /// <summary>lowRankApprox (allocating) with default maxIter (75).</summary>
-        public static void lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k, out bool converged)
-            => lowRankApprox(in A, ref Ak, k, out converged, 75);
+        /// <summary>lowRankApprox (allocating) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static SVDInfo lowRankApprox(in doubleMxN A, ref doubleMxN Ak, int k)
+            => lowRankApprox(in A, ref Ak, k, Consts.sweepBudget(A.N_Cols));
     }
 }

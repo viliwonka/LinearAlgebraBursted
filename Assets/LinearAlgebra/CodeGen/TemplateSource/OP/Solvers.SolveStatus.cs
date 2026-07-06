@@ -35,7 +35,7 @@ namespace LinearAlgebra
     /// reading as "did it succeed" while the enum preserves WHY a factorization failed. Type-agnostic
     /// for the same reason as <see cref="IterativeSolveStatus"/> (CS0102).
     /// </summary>
-    public enum DirectSolveStatus
+    public enum DirectSolveStatus : int
     {
         /// <summary>The factorization/solve completed normally (full rank, positive-definite as
         /// required, non-singular).</summary>
@@ -60,6 +60,14 @@ namespace LinearAlgebra
         /// numerical rank below the full dimension. Unlike the other failure statuses, this still
         /// carries a USABLE result -- see <see cref="RankInfo"/>.</summary>
         RankDeficient = 4,
+
+        /// <summary>A rank-revealing call that is itself backed by an ITERATIVE decomposition (SVD)
+        /// -- <see cref="RankInfo"/> from <c>SVD.pinvSolve</c> / <c>SVD.nullspaceBasis</c> /
+        /// <c>SVD.rangeBasis</c> -- found that the inner SVD did not converge within its sweep
+        /// budget. Unlike <see cref="RankDeficient"/> this is a HARD failure: no rank/basis was
+        /// determined at all (the SVD outputs it would have been read from are unusable), so
+        /// <see cref="RankInfo.Solved"/> is false for this status.</summary>
+        NotConverged = 5,
     }
 
     /// <summary>
@@ -91,6 +99,7 @@ namespace LinearAlgebra
                 case DirectSolveStatus.NotPositiveDefinite: return "NotPositiveDefinite";
                 case DirectSolveStatus.Indefinite: return "Indefinite";
                 case DirectSolveStatus.RankDeficient: return "RankDeficient";
+                case DirectSolveStatus.NotConverged: return "NotConverged";
                 default: return "Unknown";
             }
         }

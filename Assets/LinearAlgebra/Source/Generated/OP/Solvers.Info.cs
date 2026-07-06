@@ -170,16 +170,88 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Result of an SVD solve (<c>SVD.thin</c> / <c>SVD.values</c> / <c>SVD.truncated</c> /
+    /// <c>SVD.randomized</c>). Every converted SVD entry point RETURNS this by value; an implicit
+    /// <c>bool</c> conversion (== <see cref="Solved"/>) means the old success-test call shapes
+    /// still compile unchanged:
+    /// <code>
+    ///   if (SVD.thin(in A, ref U, ref S, ref V)) { ... }      // implicit bool -> "did it converge?"
+    ///   bool ok = SVD.values(in A, ref S);                    // same
+    ///   var info = SVD.thin(in A, ref U, ref S, ref V);
+    ///   if (info.Solved) Debug.Log(info.sweeps);
+    /// </code>
+    ///
+    /// Reuses <see cref="IterativeSolveStatus"/> (the same enum every other iterative solver in
+    /// this library uses) rather than a dedicated SVD enum: the bidiagonal QR either fully
+    /// diagonalizes (Converged) or exhausts its per-value budget on some singular value
+    /// (MaxIterations) -- there is no breakdown mode of its own.
+    ///
+    /// <see cref="sweeps"/> and <see cref="converged"/> are filled from counters the bidiagonal QR
+    /// already tracks per singular value while it runs -- never a separate pass. NO residual field
+    /// (that is what the test oracles are for, not this struct).
+    ///
+    /// On a MaxIterations return the outputs are NOT usable: S/U/V are unwritten or partial --
+    /// always check the returned status before reading them.
+    ///
+    /// Twin of <see cref="EigenInfo"/> (same shape, deliberately a SEPARATE type -- SVD and Eigen
+    /// results are not interchangeable even though their diagnostics look alike).
+    /// </summary>
+    public struct SVDInfo
+    {
+        /// <summary>Why the SVD stopped -- see <see cref="IterativeSolveStatus"/>. SVD has no
+        /// Breakdown mode; only Converged or MaxIterations.</summary>
+        public IterativeSolveStatus status;
+
+        /// <summary>Maximum number of QR sweeps consumed by any SINGLE singular value during this
+        /// call (the worst-case bottleneck) -- compare against the per-value iteration budget
+        /// (<c>Consts.sweepBudget(n)</c>, i.e. <c>max(75, 6*n)</c>, by default) to gauge how much
+        /// margin a workload has. 0 is valid (every value deflated immediately, no sweep needed).
+        /// On MaxIterations this equals the budget that was exhausted.</summary>
+        public int sweeps;
+
+        /// <summary>Count of singular values that had already converged when the solve stopped
+        /// (0..n). Equals n iff <see cref="status"/> is Converged.</summary>
+        public int converged;
+
+        /// <summary>True iff every singular value converged (<c>status ==
+        /// IterativeSolveStatus.Converged</c>). Same value as the implicit bool conversion; use
+        /// whichever reads better.</summary>
+        public bool Solved => status == IterativeSolveStatus.Converged;
+
+        /// <summary>Implicit success test, so <c>if (SVD.thin(...))</c> / <c>bool ok =
+        /// SVD.thin(...)</c> keep compiling after the return type changed from bool to this
+        /// struct.</summary>
+        public static implicit operator bool(SVDInfo i) => i.status == IterativeSolveStatus.Converged;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>SVDInfo(Converged, sweeps=4, converged=512)</c>.
+        /// Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "SVDInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", sweeps={sweeps}, converged={converged})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+
+    /// <summary>
     /// Result of a RANK-REVEALING direct solver or decomposition call -- QRCP
     /// (<see cref="QRCP.solveInPlace(ref fProxyMxN, ref fProxyN, ref fProxyN, ref fProxyMxN, ref Pivot, ref fProxyN, fProxy)"/>)
     /// and pivoted Cholesky (<see cref="CHOP.decomp(in fProxyMxN, ref fProxyMxN, ref Pivot, ref fProxyCHOPCache)"/> /
-    /// <see cref="CHOP.decompSolve(ref fProxyMxN, in Pivot, int, ref fProxyN, ref fProxyCHOPCache)"/>).
+    /// <see cref="CHOP.decompSolve(ref fProxyMxN, in Pivot, int, ref fProxyN, ref fProxyCHOPCache)"/>), AND of the
+    /// SVD-backed rank-revealing calls (<see cref="SVD.pinvSolve(ref fProxyMxN, in fProxyN, ref fProxyN, fProxy, int)"/>,
+    /// <c>SVD.nullspaceBasis</c>, <c>SVD.rangeBasis</c>).
     /// Unlike <see cref="DirectSolveInfo"/>, a rank-deficient input is NOT a hard failure here: both
     /// algorithms still produce a usable (least-squares / minimum-norm) result when the detected
     /// rank is below the full dimension, so <see cref="Solved"/> is true for
     /// <see cref="DirectSolveStatus.Success"/> AND <see cref="DirectSolveStatus.RankDeficient"/> --
     /// only <see cref="DirectSolveStatus.Singular"/> / <see cref="DirectSolveStatus.NotPositiveDefinite"/>
-    /// / <see cref="DirectSolveStatus.Indefinite"/> are true failures.
+    /// / <see cref="DirectSolveStatus.Indefinite"/> / <see cref="DirectSolveStatus.NotConverged"/>
+    /// (the SVD-backed callers' non-convergence mapping) are true failures.
     ///
     /// Both fields are filled ONLY from values the solver already computes (the detected numerical
     /// rank it already counts, the status its existing control flow already determines) -- no new
@@ -191,7 +263,8 @@ namespace LinearAlgebra
         public DirectSolveStatus status;
 
         /// <summary>Detected numerical rank (0..n). Meaningful whenever <see cref="Solved"/> is
-        /// true; undefined on a hard failure (Singular / NotPositiveDefinite / Indefinite).</summary>
+        /// true; undefined on a hard failure (Singular / NotPositiveDefinite / Indefinite /
+        /// NotConverged).</summary>
         public int rank;
 
         /// <summary>True iff the result is usable -- either full rank

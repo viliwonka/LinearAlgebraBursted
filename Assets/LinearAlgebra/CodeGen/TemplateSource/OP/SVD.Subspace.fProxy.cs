@@ -23,17 +23,21 @@ namespace LinearAlgebra
         /// Orthonormal basis for the NULLSPACE (kernel) of A (m x n, m >= n): the set of x with Ax = 0.
         /// From A = U diag(S) Vᵀ, the nullspace is spanned by the right-singular vectors (columns of V)
         /// whose singular value is negligible. Columns 0..dim-1 of <paramref name="basis"/> (n x n,
-        /// caller-allocated) receive those vectors (orthonormal); the RETURN VALUE is dim = n - rank.
+        /// caller-allocated) receive those vectors (orthonormal); dim = n - <c>info.rank</c>.
         /// Remaining columns of basis are left untouched.
         ///
         /// relTol &lt; 0 selects the auto tolerance max(m, n) * Consts.fProxyZeroThreshold; a singular
-        /// value S[j] &lt;= relTol * S[0] counts as zero. A is NOT modified. <paramref name="converged"/>
-        /// is the SVD's convergence flag — when false the result is 0 and basis is untouched.
+        /// value S[j] &lt;= relTol * S[0] counts as zero. A is NOT modified. Returns a
+        /// <see cref="RankInfo"/> (implicit-bool == Solved): <c>status</c> is
+        /// <see cref="DirectSolveStatus.NotConverged"/> if the inner SVD did not converge (basis
+        /// untouched), else <see cref="DirectSolveStatus.Success"/>/<see cref="DirectSolveStatus.RankDeficient"/>
+        /// depending on whether A has full column rank; <c>rank</c> is A's detected numerical rank
+        /// (dim = n - rank).
         /// <paramref name="ws"/> is full-SVD scratch (m x n + n + n x n) reused across calls; size it
         /// with Arena.fProxySVDFullCache(m, n).
         /// </summary>
-        public static int nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
-                                         out bool converged, fProxy relTol, int maxIter)
+        public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
+                                         fProxy relTol, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -46,13 +50,12 @@ namespace LinearAlgebra
                 throw new ArgumentException("nullspaceBasis: maxIter must be >= 1");
             RequireSvdFullWorkspace(in ws, m, n);
 
-            converged = true;
             if (n == 0)
-                return 0;
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            converged = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
-            if (!converged)
-                return 0;
+            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
+            if (!svdInfo)
+                return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
             if (relTol < (fProxy)0)
                 relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
@@ -70,24 +73,24 @@ namespace LinearAlgebra
                     dim++;
                 }
             }
-            return dim;
+            int rank = n - dim;
+            return new RankInfo { status = rank == n ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
         }
 
-        /// <summary>nullspaceBasis (ref workspace) with default maxIter (75).</summary>
-        public static int nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
-                                         out bool converged, fProxy relTol)
-            => nullspaceBasis(in A, ref basis, ref ws, out converged, relTol, 75);
+        /// <summary>nullspaceBasis (ref workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
+                                         fProxy relTol)
+            => nullspaceBasis(in A, ref basis, ref ws, relTol, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>nullspaceBasis (ref workspace) with auto tolerance (relTol = -1) and default maxIter (75).</summary>
-        public static int nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
-                                         out bool converged)
-            => nullspaceBasis(in A, ref basis, ref ws, out converged, (fProxy)(-1), 75);
+        /// <summary>nullspaceBasis (ref workspace) with auto tolerance (relTol = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws)
+            => nullspaceBasis(in A, ref basis, ref ws, (fProxy)(-1), Consts.sweepBudget(A.N_Cols));
 
         /// <summary>
         /// nullspaceBasis allocating its full-SVD scratch (m x n + n x n + n) from A's arena.
         /// See the ref-workspace overload for semantics.
         /// </summary>
-        public static int nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, out bool converged,
+        public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis,
                                          fProxy relTol, int maxIter)
         {
             int m = A.M_Rows;
@@ -98,29 +101,30 @@ namespace LinearAlgebra
                 S = A.fProxyTempVec(n),
                 V = A.fProxyTempMat(n, n)
             };
-            return nullspaceBasis(in A, ref basis, ref ws, out converged, relTol, maxIter);
+            return nullspaceBasis(in A, ref basis, ref ws, relTol, maxIter);
         }
 
-        /// <summary>nullspaceBasis (allocating) with default maxIter (75).</summary>
-        public static int nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, out bool converged, fProxy relTol)
-            => nullspaceBasis(in A, ref basis, out converged, relTol, 75);
+        /// <summary>nullspaceBasis (allocating) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, fProxy relTol)
+            => nullspaceBasis(in A, ref basis, relTol, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>nullspaceBasis (allocating) with auto tolerance (relTol = -1) and default maxIter (75).</summary>
-        public static int nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, out bool converged)
-            => nullspaceBasis(in A, ref basis, out converged, (fProxy)(-1), 75);
+        /// <summary>nullspaceBasis (allocating) with auto tolerance (relTol = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis)
+            => nullspaceBasis(in A, ref basis, (fProxy)(-1), Consts.sweepBudget(A.N_Cols));
 
         /// <summary>
         /// Orthonormal basis for the RANGE (column space) of A (m x n, m >= n): span of A's columns.
         /// From A = U diag(S) Vᵀ, the range is spanned by the left-singular vectors (columns of U) whose
         /// singular value exceeds the tolerance. Columns 0..rank-1 of <paramref name="basis"/> (m x n,
-        /// caller-allocated) receive those vectors (orthonormal); the RETURN VALUE is rank. Remaining
-        /// columns of basis are left untouched.
+        /// caller-allocated) receive those vectors (orthonormal); rank == the returned <c>info.rank</c>.
+        /// Remaining columns of basis are left untouched.
         ///
-        /// Same tolerance / convergence semantics as <see cref="nullspaceBasis"/>. <paramref name="ws"/>
+        /// Same tolerance / convergence semantics as <see cref="nullspaceBasis"/> — returns a
+        /// <see cref="RankInfo"/> (implicit-bool == Solved). <paramref name="ws"/>
         /// is full-SVD scratch reused across calls; size it with Arena.fProxySVDFullCache(m, n).
         /// </summary>
-        public static int rangeBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
-                                     out bool converged, fProxy relTol, int maxIter)
+        public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
+                                     fProxy relTol, int maxIter)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -133,13 +137,12 @@ namespace LinearAlgebra
                 throw new ArgumentException("rangeBasis: maxIter must be >= 1");
             RequireSvdFullWorkspace(in ws, m, n);
 
-            converged = true;
             if (n == 0)
-                return 0;
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            converged = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
-            if (!converged)
-                return 0;
+            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
+            if (!svdInfo)
+                return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
             if (relTol < (fProxy)0)
                 relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
@@ -157,24 +160,23 @@ namespace LinearAlgebra
                     rank++;
                 }
             }
-            return rank;
+            return new RankInfo { status = rank == n ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
         }
 
-        /// <summary>rangeBasis (ref workspace) with default maxIter (75).</summary>
-        public static int rangeBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
-                                     out bool converged, fProxy relTol)
-            => rangeBasis(in A, ref basis, ref ws, out converged, relTol, 75);
+        /// <summary>rangeBasis (ref workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
+                                     fProxy relTol)
+            => rangeBasis(in A, ref basis, ref ws, relTol, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>rangeBasis (ref workspace) with auto tolerance (relTol = -1) and default maxIter (75).</summary>
-        public static int rangeBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
-                                     out bool converged)
-            => rangeBasis(in A, ref basis, ref ws, out converged, (fProxy)(-1), 75);
+        /// <summary>rangeBasis (ref workspace) with auto tolerance (relTol = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws)
+            => rangeBasis(in A, ref basis, ref ws, (fProxy)(-1), Consts.sweepBudget(A.N_Cols));
 
         /// <summary>
         /// rangeBasis allocating its full-SVD scratch (m x n + n x n + n) from A's arena.
         /// See the ref-workspace overload for semantics.
         /// </summary>
-        public static int rangeBasis(in fProxyMxN A, ref fProxyMxN basis, out bool converged,
+        public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis,
                                      fProxy relTol, int maxIter)
         {
             int m = A.M_Rows;
@@ -185,15 +187,15 @@ namespace LinearAlgebra
                 S = A.fProxyTempVec(n),
                 V = A.fProxyTempMat(n, n)
             };
-            return rangeBasis(in A, ref basis, ref ws, out converged, relTol, maxIter);
+            return rangeBasis(in A, ref basis, ref ws, relTol, maxIter);
         }
 
-        /// <summary>rangeBasis (allocating) with default maxIter (75).</summary>
-        public static int rangeBasis(in fProxyMxN A, ref fProxyMxN basis, out bool converged, fProxy relTol)
-            => rangeBasis(in A, ref basis, out converged, relTol, 75);
+        /// <summary>rangeBasis (allocating) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis, fProxy relTol)
+            => rangeBasis(in A, ref basis, relTol, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>rangeBasis (allocating) with auto tolerance (relTol = -1) and default maxIter (75).</summary>
-        public static int rangeBasis(in fProxyMxN A, ref fProxyMxN basis, out bool converged)
-            => rangeBasis(in A, ref basis, out converged, (fProxy)(-1), 75);
+        /// <summary>rangeBasis (allocating) with auto tolerance (relTol = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis)
+            => rangeBasis(in A, ref basis, (fProxy)(-1), Consts.sweepBudget(A.N_Cols));
     }
 }

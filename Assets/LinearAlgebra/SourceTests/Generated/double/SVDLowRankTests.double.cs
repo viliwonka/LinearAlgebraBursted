@@ -13,7 +13,7 @@ using Unity.Mathematics;
 // (Eckart-Young). lowRankApprox must agree with Uk diag(Sk) Vkᵀ.
 public class doubleSVDLowRankTests
 {
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -145,7 +145,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k);
             Assert.IsTrue(cT);
 
             // Sk equals the leading full singular values.
@@ -157,7 +157,7 @@ public class doubleSVDLowRankTests
 
             // Rank-k approximation.
             var Ak = arena.doubleMat(m, n);
-            SVD.lowRankApprox(in A, ref Ak, k, out bool cL);
+            bool cL = SVD.lowRankApprox(in A, ref Ak, k);
             Assert.IsTrue(cL);
 
             // Frobenius error squared == spectral tail Σ_{i>=k} σ_i² (Eckart-Young).
@@ -261,7 +261,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75);
             Assert.IsTrue(cT);
 
             double svTol = (double)8 * Consts.doubleSqrtEps * (Sfull[0] + (double)1);
@@ -302,7 +302,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xCAFEBABEu, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xCAFEBABEu, 75);
             Assert.IsTrue(cT);
 
             double svTol = (double)8 * Consts.doubleSqrtEps * (Sfull[0] + (double)1);
@@ -332,7 +332,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xBEEFCAFEu, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xBEEFCAFEu, 75);
             Assert.IsTrue(cT);
 
             // Reconstruction error squared
@@ -368,7 +368,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x12345678u, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x12345678u, 75);
             Assert.IsTrue(cT);
 
             AssertOrthoCols(in Uk, m, k, (double)1E-3f);
@@ -423,7 +423,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75);
             Assert.IsTrue(cT);  // clear spectral gap guarantees convergence
 
             for (int t = 0; t < k; t++)
@@ -527,7 +527,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xF00DB4BEu, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xF00DB4BEu, 75);
             Assert.IsTrue(cT);
 
             // All three recovered σ must be close to 10 (the cluster value)
@@ -598,7 +598,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x99887766u, 75, out bool _cT);
+            SVDInfo _cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x99887766u, 75);
 
             // Top-r singular values must be captured correctly
             double svTol = (double)1E-2f * (Sfull[0] + (double)1);
@@ -629,7 +629,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xAABBCCDDu, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0xAABBCCDDu, 75);
 
             // With p=k and no oversampling the residual is far from zero → converged=false
             Assert.IsFalse(cT);
@@ -651,7 +651,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x12AB34CDu, 1, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, 0x12AB34CDu, 1);
 
             // With maxIter=1 the inner bidiagonal QR will not converge for a non-trivial matrix
             Assert.IsFalse(cT);
@@ -683,7 +683,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 20, 0x1111AAAAu, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 20, 0x1111AAAAu, 75);
             Assert.IsTrue(cT);
 
             double svTol = (double)8 * Consts.doubleSqrtEps * (sigma[0] + (double)1);
@@ -734,7 +734,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 17, 0x3333CCCCu, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 17, 0x3333CCCCu, 75);
             Assert.IsTrue(cT);
 
             double svTol = (double)8 * Consts.doubleSqrtEps * (sigma[0] + (double)1);
@@ -774,7 +774,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 15, 0x4444DDDDu, 75, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 15, 0x4444DDDDu, 75);
             Assert.IsTrue(cT);
 
             for (int t = 0; t < k; t++) AssertClose(Sk[t], (double)10, (double)0.05f);
@@ -822,7 +822,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, partialReorth, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, partialReorth);
             Assert.IsTrue(cT);
 
             for (int t = 0; t < k; t++) { AssertClose(Sk[t], sigmaTrue[t], svTol); SkOut[t] = Sk[t]; }
@@ -853,7 +853,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, oversample, seed, 75, true);
             Assert.IsTrue(cT);
 
             for (int t = 0; t < k; t++) AssertClose(Sk[t], sigmaTrue[t], svTol);
@@ -972,7 +972,7 @@ public class doubleSVDLowRankTests
             var Uk = arena.doubleMat(m, k);
             var Sk = arena.doubleVec(k);
             var Vk = arena.doubleMat(n, k);
-            SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 8, 0xD44B0B0Du, 75, true, out bool cT);
+            SVDInfo cT = SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, 8, 0xD44B0B0Du, 75, true);
             Assert.IsTrue(cT);
 
             AssertOrthoCols(in Uk, m, k, (double)1E-3f);
@@ -1130,7 +1130,7 @@ public class doubleSVDLowRankTests
         var Uk = arena.doubleMat(6, 5);
         var Sk = arena.doubleVec(5);
         var Vk = arena.doubleMat(4, 5);
-        Assert.Catch<ArgumentException>(() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 5, out bool _)); // k=5 > n=4
+        Assert.Catch<ArgumentException>(() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 5)); // k=5 > n=4
         arena.Dispose();
     }
 
@@ -1142,7 +1142,7 @@ public class doubleSVDLowRankTests
         var Uk = arena.doubleMat(3, 2);
         var Sk = arena.doubleVec(2);
         var Vk = arena.doubleMat(5, 2);
-        Assert.Catch<ArgumentException>(() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 2, out bool _));
+        Assert.Catch<ArgumentException>(() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, 2));
         arena.Dispose();
     }
 
@@ -1152,7 +1152,7 @@ public class doubleSVDLowRankTests
         var arena = new Arena(Allocator.Persistent);
         var A = arena.doubleMat(6, 4);
         var Ak = arena.doubleMat(4, 6);   // must be m x n = 6 x 4
-        Assert.Catch<ArgumentException>(() => SVD.lowRankApprox(in A, ref Ak, 2, out bool _));
+        Assert.Catch<ArgumentException>(() => SVD.lowRankApprox(in A, ref Ak, 2));
         arena.Dispose();
     }
 }

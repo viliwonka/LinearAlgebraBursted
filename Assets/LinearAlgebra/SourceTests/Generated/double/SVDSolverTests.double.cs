@@ -13,7 +13,7 @@ using UnityEngine.TestTools;
 public class doubleSVDSolverTests
 {
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -89,7 +89,9 @@ public class doubleSVDSolverTests
 
             var x = arena.doubleVec(dim);
 
-            int rank = SVD.pinvSolve(ref A, in b, ref x, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             Assert.AreEqual(8, rank);
@@ -122,7 +124,9 @@ public class doubleSVDSolverTests
 
             var x = arena.doubleVec(n);
 
-            int rank = SVD.pinvSolve(ref A, in b, ref x, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             Assert.AreEqual(4, rank);
@@ -156,7 +160,9 @@ public class doubleSVDSolverTests
 
             var x = arena.doubleVec(n);
 
-            int rank = SVD.pinvSolve(ref A, in b, ref x, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             Assert.AreEqual(4, rank);
@@ -213,7 +219,9 @@ public class doubleSVDSolverTests
 
             var x = arena.doubleVec(n);
 
-            int rank = SVD.pinvSolve(ref A, in b, ref x, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             Assert.AreEqual(1, rank);
@@ -245,7 +253,9 @@ public class doubleSVDSolverTests
 
             var x = arena.doubleVec(n);
 
-            int rank = SVD.pinvSolve(ref A, in b, ref x, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             Assert.AreEqual(2, rank);
@@ -273,7 +283,9 @@ public class doubleSVDSolverTests
 
             var x = arena.doubleVec(n);
 
-            int rank = SVD.pinvSolve(ref A, in b, ref x, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             Assert.AreEqual(0, rank);
@@ -304,10 +316,13 @@ public class doubleSVDSolverTests
 
             var Aplus = arena.doubleMat(dim, dim);
 
-            int rank = SVD.pseudoInverse(ref A, ref Aplus, out bool converged);
+            RankInfo pinvInfo = SVD.pseudoInverse(ref A, ref Aplus);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             Assert.AreEqual(3, rank);
+            Assert.IsTrue(pinvInfo.status == DirectSolveStatus.Success);
 
             Assert.IsFalse(Analysis.isAnyNan(in Aplus));
 
@@ -330,10 +345,13 @@ public class doubleSVDSolverTests
 
             var Aplus = arena.doubleMat(dim, dim);
 
-            int rank = SVD.pseudoInverse(ref A, ref Aplus, out bool converged);
+            RankInfo pinvInfo = SVD.pseudoInverse(ref A, ref Aplus);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             Assert.AreEqual(1, rank);
+            Assert.IsTrue(pinvInfo.status == DirectSolveStatus.RankDeficient);
 
             Assert.IsFalse(Analysis.isAnyNan(in Aplus));
 
@@ -366,7 +384,9 @@ public class doubleSVDSolverTests
             // Aplus is n x m
             var Aplus = arena.doubleMat(n, m);
 
-            int rank = SVD.pseudoInverse(ref A, ref Aplus, out bool converged);
+            RankInfo pinvInfo = SVD.pseudoInverse(ref A, ref Aplus);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             Assert.AreEqual(1, rank);
@@ -435,7 +455,7 @@ public class doubleSVDSolverTests
         var b = arena.doubleVec(3); // should be 4
         var x = arena.doubleVec(3);
 
-        Assert.Catch<ArgumentException>(() => SVD.pinvSolve(ref A, in b, ref x, out bool converged));
+        Assert.Catch<ArgumentException>(() => SVD.pinvSolve(ref A, in b, ref x));
 
         arena.Dispose();
     }
@@ -449,7 +469,7 @@ public class doubleSVDSolverTests
         var b = arena.doubleVec(4);
         var x = arena.doubleVec(2); // should be 3
 
-        Assert.Catch<ArgumentException>(() => SVD.pinvSolve(ref A, in b, ref x, out bool converged));
+        Assert.Catch<ArgumentException>(() => SVD.pinvSolve(ref A, in b, ref x));
 
         arena.Dispose();
     }
@@ -463,7 +483,7 @@ public class doubleSVDSolverTests
         var b = arena.doubleVec(4);
         var x = arena.doubleVec(3);
 
-        Assert.Catch<ArgumentException>(() => SVD.pinvSolve(ref A, in b, ref x, out bool converged, (double)(-1f), 0));
+        Assert.Catch<ArgumentException>(() => SVD.pinvSolve(ref A, in b, ref x, (double)(-1f), 0));
 
         arena.Dispose();
     }
@@ -476,7 +496,7 @@ public class doubleSVDSolverTests
         var A = arena.doubleMat(4, 3);
         var Aplus = arena.doubleMat(4, 3); // should be 3 x 4
 
-        Assert.Catch<ArgumentException>(() => SVD.pseudoInverse(ref A, ref Aplus, out bool converged));
+        Assert.Catch<ArgumentException>(() => SVD.pseudoInverse(ref A, ref Aplus));
 
         arena.Dispose();
     }
@@ -489,7 +509,7 @@ public class doubleSVDSolverTests
         var A = arena.doubleMat(4, 3);
         var Aplus = arena.doubleMat(3, 4);
 
-        Assert.Catch<ArgumentException>(() => SVD.pseudoInverse(ref A, ref Aplus, out bool converged, (double)(-1f), 0));
+        Assert.Catch<ArgumentException>(() => SVD.pseudoInverse(ref A, ref Aplus, (double)(-1f), 0));
 
         arena.Dispose();
     }

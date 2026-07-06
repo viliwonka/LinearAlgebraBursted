@@ -15,7 +15,7 @@ using UnityEngine.TestTools;
 public class floatSVDTests
 {
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -348,7 +348,9 @@ public class floatSVDTests
             var x = arena.floatVec(n);
             for (int i = 0; i < n; i++) x[i] = float.NaN;
 
-            int rank = SVD.pinvSolve(ref A, in b, ref x, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref A, in b, ref x);
+            bool converged = pinvInfo;
+            int rank = pinvInfo.rank;
 
             Assert.IsTrue(converged);
             RecordEq(rank, n);

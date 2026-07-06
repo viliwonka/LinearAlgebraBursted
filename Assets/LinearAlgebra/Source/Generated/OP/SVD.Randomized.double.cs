@@ -42,13 +42,14 @@ namespace LinearAlgebra
         /// decaying spectra; 0 for sharply decaying / exactly low-rank). For an exactly rank-r matrix
         /// with k &gt;= r it is exact up to rounding. The cost is dominated by GEMMs (O(mnℓ)), so it
         /// beats the full O(mn²) SVD when k ≪ n. <paramref name="seed"/> seeds the Gaussian sketch
-        /// (0 -&gt; a fixed default, making the call deterministic). Returns the inner SVD's convergence
-        /// flag (false -&gt; outputs undefined). A is NOT modified.
+        /// (0 -&gt; a fixed default, making the call deterministic). Returns an <see cref="SVDInfo"/>
+        /// (implicit-bool == Solved) carrying the inner exact ℓ×ℓ SVD's convergence status
+        /// (MaxIterations -&gt; outputs undefined). A is NOT modified.
         ///
         /// <paramref name="ws"/> holds all scratch; size it with
         /// Arena.doubleSVDRandomizedCache(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
-        public static bool randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+        public static SVDInfo randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter,
                                          ref doubleSVDRandomizedCache ws)
         {
@@ -83,9 +84,9 @@ namespace LinearAlgebra
             Blas.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
             Blas.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
 
-            bool ok = thin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
-            if (!ok)
-                return false;
+            SVDInfo info = thin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
+            if (!info)
+                return info;
 
             Blas.dot(in ws.Y, in ws.Vp, ref ws.UA);         // U = Q Vp   (m x ℓ)
 
@@ -95,24 +96,24 @@ namespace LinearAlgebra
                 for (int i = 0; i < m; i++) Uk[i, t] = ws.UA[i, t];
                 for (int i = 0; i < n; i++) Vk[i, t] = ws.Up[i, t];
             }
-            return true;
+            return info;
         }
 
-        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
-        public static bool randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIter Consts.sweepBudget(l) (l = min(k+10, A.N_Cols)) and an explicit seed.</summary>
+        public static SVDInfo randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                          int k, uint seed, ref doubleSVDRandomizedCache ws)
-            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75, ref ws);
+            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, Consts.sweepBudget(math.min(k + 10, A.N_Cols)), ref ws);
 
-        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
-        public static bool randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIter Consts.sweepBudget(l) and the default seed.</summary>
+        public static SVDInfo randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                          int k, ref doubleSVDRandomizedCache ws)
-            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
+            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, Consts.sweepBudget(math.min(k + 10, A.N_Cols)), ref ws);
 
         /// <summary>
         /// randomized allocating all scratch (O(mℓ + nℓ)) from A's arena. See the ref-workspace
         /// overload for semantics.
         /// </summary>
-        public static bool randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+        public static SVDInfo randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                          int k, int oversample, int powerIters, uint seed, int maxIter)
         {
             int m = A.M_Rows;
@@ -139,13 +140,13 @@ namespace LinearAlgebra
             return randomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, maxIter, ref ws);
         }
 
-        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIter 75 and an explicit seed.</summary>
-        public static bool randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
+        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIter Consts.sweepBudget(l) (l = min(k+10, A.N_Cols)) and an explicit seed.</summary>
+        public static SVDInfo randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk,
                                          int k, uint seed)
-            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, 75);
+            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, Consts.sweepBudget(math.min(k + 10, A.N_Cols)));
 
-        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIter 75 and the default seed.</summary>
-        public static bool randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk, int k)
-            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75);
+        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIter Consts.sweepBudget(l) and the default seed.</summary>
+        public static SVDInfo randomized(in doubleMxN A, ref doubleMxN Uk, ref doubleN Sk, ref doubleMxN Vk, int k)
+            => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, Consts.sweepBudget(math.min(k + 10, A.N_Cols)));
     }
 }

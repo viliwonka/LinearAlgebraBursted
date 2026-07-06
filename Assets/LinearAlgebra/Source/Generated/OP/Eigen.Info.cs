@@ -77,6 +77,79 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// Result of a dense eigensolve (<c>Eigen.symmetric</c> / <c>Eigen.valuesSymmetric</c> /
+    /// <c>Eigen.valuesQR</c> / <c>Eigen.decompInPlace</c>). Every converted entry point RETURNS
+    /// this by value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>) means the old
+    /// success-test call shapes still compile unchanged:
+    /// <code>
+    ///   if (Eigen.symmetric(ref A, ref eigenvalues, ref V)) { ... }   // implicit bool
+    ///   bool ok = Eigen.valuesSymmetric(ref A, ref eigenvalues);      // same
+    ///   var info = Eigen.symmetric(ref A, ref eigenvalues, ref V);
+    ///   if (info.Solved) Debug.Log(info.sweeps);
+    /// </code>
+    ///
+    /// Reuses <see cref="IterativeSolveStatus"/> (the same enum every other iterative solver in
+    /// this library uses) rather than a dedicated Eigen enum: the tridiagonal QL / Hessenberg QR /
+    /// cyclic Jacobi iteration either fully converges (Converged) or exhausts its budget
+    /// (MaxIterations) -- there is no breakdown mode of its own.
+    ///
+    /// <see cref="sweeps"/> and <see cref="converged"/> are filled from counters the QL/QR/Jacobi
+    /// iteration already tracks while it runs -- never a separate pass. NO residual field (that is
+    /// what the test oracles are for, not this struct).
+    ///
+    /// On a MaxIterations return the outputs are NOT usable: eigenvalues/eigenvectors are
+    /// unwritten or partial -- always check the returned status before reading them.
+    ///
+    /// Twin of <see cref="SVDInfo"/> (same shape, DELIBERATELY a separate type per its own place --
+    /// house pattern for this file is one Info struct per family; see <c>Solvers.Info.cs</c> for
+    /// SVDInfo's own doc comment, which explains the shared shape once).
+    /// </summary>
+    public struct EigenInfo
+    {
+        /// <summary>Why the eigensolve stopped -- see <see cref="IterativeSolveStatus"/>. Eigen has
+        /// no Breakdown mode; only Converged or MaxIterations.</summary>
+        public IterativeSolveStatus status;
+
+        /// <summary>Maximum number of QL/QR sweeps (or, for the obsolete cyclic-Jacobi
+        /// <c>decompInPlace</c>, full-matrix Jacobi sweeps) consumed by any SINGLE eigenvalue
+        /// during this call (the worst-case bottleneck) -- compare against the per-value iteration
+        /// budget (<c>Consts.sweepBudget(n)</c>, i.e. <c>max(75, 6*n)</c>, by default) to gauge how
+        /// much margin a workload has. 0 is valid (every value deflated immediately). On
+        /// MaxIterations this equals the budget that was exhausted.</summary>
+        public int sweeps;
+
+        /// <summary>Count of eigenvalues that had already converged when the solve stopped (0..n).
+        /// Equals n iff <see cref="status"/> is Converged. For the all-or-nothing cyclic-Jacobi
+        /// <c>decompInPlace</c> (which does not resolve individual eigenvalues independently) this
+        /// is n on success and 0 on MaxIterations.</summary>
+        public int converged;
+
+        /// <summary>True iff every eigenvalue converged (<c>status ==
+        /// IterativeSolveStatus.Converged</c>). Same value as the implicit bool conversion; use
+        /// whichever reads better.</summary>
+        public bool Solved => status == IterativeSolveStatus.Converged;
+
+        /// <summary>Implicit success test, so <c>if (Eigen.symmetric(...))</c> / <c>bool ok =
+        /// Eigen.symmetric(...)</c> keep compiling after the return type changed from bool to this
+        /// struct.</summary>
+        public static implicit operator bool(EigenInfo i) => i.status == IterativeSolveStatus.Converged;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>EigenInfo(Converged, sweeps=3, converged=64)</c>.
+        /// Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "EigenInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", sweeps={sweeps}, converged={converged})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+
+    /// <summary>
     /// Result of a symmetric Lanczos tridiagonalization (<c>Eigen.lanczos</c> /
     /// <c>Eigen.lanczosVectors</c>). Every converted overload RETURNS this by value (the
     /// value-returning "allocating" overloads carry it as an <c>out</c> parameter alongside their

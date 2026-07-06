@@ -24,7 +24,7 @@ using Unity.Mathematics;
 public class floatQRCPTests
 {
     // Burst-compile smoke test.
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct AssemblyTestJob : IJob
     {
         public void Execute()
@@ -42,7 +42,7 @@ public class floatQRCPTests
         }
     }
 
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct TestJob : IJob
     {
         public enum TestType
@@ -513,7 +513,7 @@ public class floatQRCPTests
     // but the MINIMUM-NORM solution, so ‖x_pinv‖ <= ‖x_qrcp‖ — this pins the basic-vs-min-norm
     // distinction. All four overloads are exercised across the cases below.
     // ────────────────────────────────────────────────────────────────────────────────
-    [BurstCompile(FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct SolveTestJob : IJob
     {
         public enum TestType
@@ -657,7 +657,9 @@ public class floatQRCPTests
             // pinv reference (no longer modifies A) — same residual, minimum norm
             var Apinv = A_copy.Copy();
             var xPinv = arena.floatVec(n);
-            int pinvRank = SVD.pinvSolve(ref Apinv, in b, ref xPinv, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b, ref xPinv);
+            bool converged = pinvInfo;
+            int pinvRank = pinvInfo.rank;
 
             RecordEq(pinvRank, 3);
             float resPinv = ResidualNorm(in A_copy, in xPinv, in b);
@@ -710,7 +712,9 @@ public class floatQRCPTests
 
             var Apinv = A_copy.Copy();
             var xPinv = arena.floatVec(dim);
-            int pinvRank = SVD.pinvSolve(ref Apinv, in b, ref xPinv, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b, ref xPinv);
+            bool converged = pinvInfo;
+            int pinvRank = pinvInfo.rank;
             RecordEq(pinvRank, 1);
             float resPinv = ResidualNorm(in A_copy, in xPinv, in b);
             float normPinv = VecNorm(in xPinv);
@@ -754,7 +758,9 @@ public class floatQRCPTests
 
             var Apinv = A_copy.Copy();
             var xPinv = arena.floatVec(n);
-            int pinvRank = SVD.pinvSolve(ref Apinv, in b, ref xPinv, out bool converged);
+            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b, ref xPinv);
+            bool converged = pinvInfo;
+            int pinvRank = pinvInfo.rank;
             RecordEq(pinvRank, 3);
             float resPinv = ResidualNorm(in A_copy, in xPinv, in b);
 

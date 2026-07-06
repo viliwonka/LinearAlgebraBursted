@@ -48,7 +48,7 @@ namespace LinearAlgebra.Benchmarks
         public floatN x;
         public floatSVDCache ws;
 
-        public void Execute() => SVD.pinvSolve(ref A, in b, ref x, out bool _, ref ws);
+        public void Execute() => SVD.pinvSolve(ref A, in b, ref x, ref ws);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -59,7 +59,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleN x;
         public doubleSVDCache ws;
 
-        public void Execute() => SVD.pinvSolve(ref A, in b, ref x, out bool _, ref ws);
+        public void Execute() => SVD.pinvSolve(ref A, in b, ref x, ref ws);
     }
 
     // ---- pseudoInverse ----
@@ -71,7 +71,7 @@ namespace LinearAlgebra.Benchmarks
         public floatMxN Aplus;      // n x n
         public floatSVDCache ws;
 
-        public void Execute() => SVD.pseudoInverse(ref A, ref Aplus, out bool _, ref ws);
+        public void Execute() => SVD.pseudoInverse(ref A, ref Aplus, ref ws);
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -81,7 +81,7 @@ namespace LinearAlgebra.Benchmarks
         public doubleMxN Aplus;
         public doubleSVDCache ws;
 
-        public void Execute() => SVD.pseudoInverse(ref A, ref Aplus, out bool _, ref ws);
+        public void Execute() => SVD.pseudoInverse(ref A, ref Aplus, ref ws);
     }
 
     public static class SvdSolversBenchmark
