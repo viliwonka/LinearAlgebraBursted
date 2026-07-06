@@ -77,7 +77,7 @@ namespace LinearAlgebra
                     else
                         present = BsrBlockStored(in m, br, bc);
 
-                    str.Append(present ? 'X' : '.');
+                    str.Append(present ? 'X' : ' ');
                 }
                 str.Append(']');
                 str.Append('\n');
