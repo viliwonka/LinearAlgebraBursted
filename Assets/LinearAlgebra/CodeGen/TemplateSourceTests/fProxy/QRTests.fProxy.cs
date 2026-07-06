@@ -618,7 +618,7 @@ public class fProxyQRTests
                     fProxyN b = Blas.dot(A, xOrig);
                     fProxyN y = Blas.dot(b, Q);
 
-                    Solvers.triUpper(ref R, ref y);
+                    Blas.triUpper(ref R, ref y);
 
                     y.subInPlace(xOrig);
                     fProxy zeroError = Analysis.MaxZeroError(y);
@@ -673,7 +673,7 @@ public class fProxyQRTests
                     fProxyN b = Blas.dot(A, xOrig);
                     fProxyN y = Blas.dot(b, Q);
 
-                    Solvers.triUpper(ref R, ref y);
+                    Blas.triUpper(ref R, ref y);
 
                     y.subInPlace(xOrig);
                     fProxy zeroError = Analysis.MaxZeroError(y);

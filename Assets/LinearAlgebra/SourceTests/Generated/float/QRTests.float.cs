@@ -618,7 +618,7 @@ public class floatQRTests
                     floatN b = Blas.dot(A, xOrig);
                     floatN y = Blas.dot(b, Q);
 
-                    Solvers.triUpper(ref R, ref y);
+                    Blas.triUpper(ref R, ref y);
 
                     y.subInPlace(xOrig);
                     float zeroError = Analysis.MaxZeroError(y);
@@ -673,7 +673,7 @@ public class floatQRTests
                     floatN b = Blas.dot(A, xOrig);
                     floatN y = Blas.dot(b, Q);
 
-                    Solvers.triUpper(ref R, ref y);
+                    Blas.triUpper(ref R, ref y);
 
                     y.subInPlace(xOrig);
                     float zeroError = Analysis.MaxZeroError(y);

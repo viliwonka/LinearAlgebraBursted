@@ -226,7 +226,7 @@ namespace LinearAlgebra
                 throw new ArgumentException("decompSolve: b_to_x.N must equal L.M_Rows");
 
             // L y = b
-            Solvers.triLower(ref L, ref b_to_x);
+            Blas.triLower(ref L, ref b_to_x);
             // Lᵀ x = y
             SolveUpperTriangularTransposed(ref L, ref b_to_x);
 

@@ -1,16 +1,18 @@
-# Solvers — direct solve & the diagnostics-struct convention
+# Direct solvers & the diagnostics-struct convention
 
-`Solvers` holds the square/triangular direct-solve primitives; the factorizations in
-[decompositions.md](decompositions.md) each expose their own `decompSolve`/`solveInPlace` entry point
-built on top, following the shared `decomp`/`decompInPlace`/`decompSolve`/`solveInPlace` token grid
-(see [naming-style-guide](../naming-style-guide.md) and
-[spec-solver-api-rework](../spec-solver-api-rework.md)). Iterative and least-squares solvers are
-covered in [least-squares.md](least-squares.md); this page is the direct (non-iterative) family plus
-the diagnostics-struct convention shared by every solver in the library.
+The direct (non-iterative) solve entry points live on the factorization classes themselves — each of
+the decompositions in [decompositions.md](decompositions.md) exposes its own
+`decompSolve`/`solveInPlace`, following the shared `decomp`/`decompInPlace`/`decompSolve`/`solveInPlace`
+token grid (see [naming-style-guide](../naming-style-guide.md) and
+[spec-solver-api-rework](../spec-solver-api-rework.md)). They are built on the triangular-solve
+primitives, which live on [`Blas`](blas.md) as the substitution counterpart to its GEMM/GEMV kernels.
+Iterative and least-squares solvers live on `Krylov` and are covered in
+[least-squares.md](least-squares.md); this page is the direct (non-iterative) family plus the
+diagnostics-struct convention shared by every solver in the library.
 
 ## Direct solve family
 
-- `Solvers.triUpper(ref U, ref b_to_x)` / `Solvers.triLower(ref L, ref b_to_x)` — in-place triangular
+- `Blas.triUpper(ref U, ref b_to_x)` / `Blas.triLower(ref L, ref b_to_x)` — in-place triangular
   solves (precondition: non-singular diagonal, unguarded); `triUpperLU`/`triLowerLU` overloads also
   apply a `Pivot`.
 - `LU.decompSolve(ref LU, in Pivot P, ref b_to_x)` / `decompSolve(ref L, ref U, in Pivot P, ref

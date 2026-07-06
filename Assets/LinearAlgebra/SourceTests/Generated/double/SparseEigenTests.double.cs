@@ -293,7 +293,7 @@ public class doubleSparseEigenTests
         }
 
         // ---- Milestone C2: Eigen.inversePowerIteration<TOp> (smallest eigenpair, generic over
-        // IdoubleLinearOperator, inner solve via Solvers.cg<TOp>) -----------------------------
+        // IdoubleLinearOperator, inner solve via Krylov.cg<TOp>) -----------------------------
         //
         // (a)+(b) literature known-spectrum AND dense-vs-BSR cross-check on the 1D Laplacian.
         //

@@ -53,7 +53,7 @@ public class floatSolversTests {
 
             var y = Blas.dot(b, Q);
 
-            Solvers.triUpper(ref R, ref y);
+            Blas.triUpper(ref R, ref y);
 
             var Ax = Blas.dot(A, y);
 

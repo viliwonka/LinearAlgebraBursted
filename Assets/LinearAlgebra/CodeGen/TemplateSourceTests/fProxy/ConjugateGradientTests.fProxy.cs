@@ -161,7 +161,7 @@ public class fProxyConjugateGradientTests
 
             var x = arena.fProxyVec(dim); // zero initial guess
 
-            bool ok = Solvers.cg(in A, in b, ref x);
+            bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             var Ax = Blas.dot(A, x);
@@ -182,7 +182,7 @@ public class fProxyConjugateGradientTests
 
             // CG solve
             var xCG = arena.fProxyVec(dim);
-            bool ok = Solvers.cg(in A, in b, ref xCG);
+            bool ok = Krylov.cg(in A, in b, ref xCG);
             Assert.IsTrue(ok);
 
             // Cholesky solve on the same system (b overwritten with x), as the explicit two-call
@@ -212,12 +212,12 @@ public class fProxyConjugateGradientTests
 
             // Reference: defaults overload.
             var xDef = arena.fProxyVec(dim);
-            bool okDef = Solvers.cg(in A, in b, ref xDef);
+            bool okDef = Krylov.cg(in A, in b, ref xDef);
             Assert.IsTrue(okDef);
 
             // Explicit maxIterations/tolerance overload.
             var xExpl = arena.fProxyVec(dim);
-            bool okExpl = Solvers.cg(in A, in b, ref xExpl, dim, Consts.fProxySqrtEps);
+            bool okExpl = Krylov.cg(in A, in b, ref xExpl, dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okExpl);
             Assert.IsTrue(Analysis.isZero(xDef - xExpl, Tol()));
 
@@ -226,7 +226,7 @@ public class fProxyConjugateGradientTests
             var r = arena.fProxyVec(dim);
             var p = arena.fProxyVec(dim);
             var Ap = arena.fProxyVec(dim);
-            bool okPrim = Solvers.cg(in A, in b, ref xPrim,
+            bool okPrim = Krylov.cg(in A, in b, ref xPrim,
                                                     ref r, ref p, ref Ap,
                                                     dim, Consts.fProxySqrtEps);
             Assert.IsTrue(okPrim);
@@ -248,7 +248,7 @@ public class fProxyConjugateGradientTests
             // Non-zero initial guess must still be driven to zero.
             var x = arena.fProxyRandomVec(dim, -1f, 1f, 9999);
 
-            bool ok = Solvers.cg(in A, in b, ref x);
+            bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
             Assert.IsTrue(Analysis.isZero(in x, Tol()));
 
@@ -267,7 +267,7 @@ public class fProxyConjugateGradientTests
             var b = arena.fProxyRandomVec(2, -1f, 1f, 13);
             var x = arena.fProxyVec(2);
 
-            bool ok = Solvers.cg(in A, in b, ref x);
+            bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsFalse(ok);
 
             arena.Dispose();
@@ -290,7 +290,7 @@ public class fProxyConjugateGradientTests
             b[0] = 2f; b[1] = 2f;
 
             var x = arena.fProxyVec(2);
-            bool ok = Solvers.cg(in A, in b, ref x);
+            bool ok = Krylov.cg(in A, in b, ref x);
 
             // never produces NaN/Inf on the rank-deficient input...
             Assert.IsFalse(Analysis.isAnyNan(in x));
@@ -317,12 +317,12 @@ public class fProxyConjugateGradientTests
 
             // First solve from zero.
             var x = arena.fProxyVec(dim);
-            bool ok = Solvers.cg(in A, in b, ref x);
+            bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             // Feed the solution back as the initial guess.
             var xWarm = x.Copy();
-            bool ok2 = Solvers.cg(in A, in b, ref xWarm);
+            bool ok2 = Krylov.cg(in A, in b, ref xWarm);
             Assert.IsTrue(ok2);
 
             // x must be unchanged (still solves the system).
@@ -345,7 +345,7 @@ public class fProxyConjugateGradientTests
             var b = arena.fProxyRandomVec(1, -1f, 1f, 77);
             var x = arena.fProxyVec(1);
 
-            bool ok = Solvers.cg(in A, in b, ref x);
+            bool ok = Krylov.cg(in A, in b, ref x);
             Assert.IsTrue(ok);
 
             var Ax = Blas.dot(A, x);
@@ -368,7 +368,7 @@ public class fProxyConjugateGradientTests
 
             var x = arena.fProxyVec(dim);
 
-            bool ok = Solvers.cg(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
+            bool ok = Krylov.cg(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
             var Ax = Blas.dot(A, x);
@@ -390,7 +390,7 @@ public class fProxyConjugateGradientTests
 
             var x = arena.fProxyVec(dim);
 
-            bool ok = Solvers.cg(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
+            bool ok = Krylov.cg(in A, in b, ref x, 4 * dim, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
             var Ax = Blas.dot(A, x);

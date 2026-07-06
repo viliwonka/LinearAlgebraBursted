@@ -748,7 +748,7 @@ public class floatSolverBatteryTests
             var b = Blas.dot(A, xTrue);
 
             var x = arena.floatVec(n);
-            bool conv = Solvers.cg(in A, in b, ref x, 200, Consts.floatSqrtEps);
+            bool conv = Krylov.cg(in A, in b, ref x, 200, Consts.floatSqrtEps);
             AssertTrue(conv);
 
             // relative residual ‖A x − b‖ ≤ 100·sqrtEps·‖b‖ (CG guarantees ≤ sqrtEps·‖b‖)

@@ -293,7 +293,7 @@ public class fProxySparseEigenTests
         }
 
         // ---- Milestone C2: Eigen.inversePowerIteration<TOp> (smallest eigenpair, generic over
-        // IfProxyLinearOperator, inner solve via Solvers.cg<TOp>) -----------------------------
+        // IfProxyLinearOperator, inner solve via Krylov.cg<TOp>) -----------------------------
         //
         // (a)+(b) literature known-spectrum AND dense-vs-BSR cross-check on the 1D Laplacian.
         //

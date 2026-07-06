@@ -4,7 +4,7 @@ using Unity.Collections;
 namespace LinearAlgebra
 {
     // Burst-safe Print.Log overloads for the small, non-templated info/result structs
-    // (OP/Solvers.Info.cs, OP/Eigen.Info.cs) and the Pivot/Indices permutation types. Mirrors the
+    // (OP/SolveInfo.cs, OP/Eigen.Info.cs) and the Pivot/Indices permutation types. Mirrors the
     // fProxy/iProxy Print.Log style (Debug/Debug.fProxy.cs): FixedString + UnityEngine.Debug.Log.
     // These types are NOT templated (fProxy/iProxy), so their Log overloads live in this singular
     // file rather than a per-type template.

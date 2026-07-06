@@ -219,7 +219,7 @@ public class fProxyJacobiPrecondTests
             var w    = arena.fProxyVec(n);
             var tmpM = arena.fProxyVec(m);
             var tmpN = arena.fProxyVec(n);
-            bool ok = Solvers.lsqr(op, in b, ref y, ref u, ref vv, ref w, ref tmpM, ref tmpN, 8 * n, Consts.fProxySqrtEps);
+            bool ok = Krylov.lsqr(op, in b, ref y, ref u, ref vv, ref w, ref tmpM, ref tmpN, 8 * n, Consts.fProxySqrtEps);
             Assert.IsTrue(ok);
 
             var x = arena.fProxyVec(n);

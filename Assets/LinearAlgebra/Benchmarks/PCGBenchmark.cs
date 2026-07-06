@@ -10,7 +10,7 @@ using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // Block-Jacobi Preconditioned Conjugate Gradient (Solvers.pcg) over a representative BSR system —
+    // Block-Jacobi Preconditioned Conjugate Gradient (Krylov.pcg) over a representative BSR system —
     // the one square iterative solver SparseSolverBenchmark.cs doesn't already cover (that file
     // benchmarks plain cg/minres/biCGStab/cgls/lsqr but predates pcg). The system is a block-tridiagonal
     // SPD matrix (block size BR, a common 1D FEM/heat-equation stencil): diagonally-dominant diagonal
@@ -32,7 +32,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Solvers.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0f);
+            Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0f);
         }
     }
 
@@ -47,7 +47,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0.0;
-            Solvers.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0.0);
+            Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0.0);
         }
     }
 
@@ -61,7 +61,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0f;
-            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
+            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
         }
     }
 
@@ -75,7 +75,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute()
         {
             for (int i = 0; i < x.N; i++) x[i] = 0.0;
-            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
+            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
         }
     }
 

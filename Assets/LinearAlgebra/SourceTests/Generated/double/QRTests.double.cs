@@ -618,7 +618,7 @@ public class doubleQRTests
                     doubleN b = Blas.dot(A, xOrig);
                     doubleN y = Blas.dot(b, Q);
 
-                    Solvers.triUpper(ref R, ref y);
+                    Blas.triUpper(ref R, ref y);
 
                     y.subInPlace(xOrig);
                     double zeroError = Analysis.MaxZeroError(y);
@@ -673,7 +673,7 @@ public class doubleQRTests
                     doubleN b = Blas.dot(A, xOrig);
                     doubleN y = Blas.dot(b, Q);
 
-                    Solvers.triUpper(ref R, ref y);
+                    Blas.triUpper(ref R, ref y);
 
                     y.subInPlace(xOrig);
                     double zeroError = Analysis.MaxZeroError(y);

@@ -31,7 +31,7 @@ namespace LinearAlgebra {
 
         // NOT wrapped in copyReplace: there is no iProxy BSR equivalent, so this only needs to
         // exist for the double float/double types this file already generates. Forwards to the
-        // arena `b` carries so Solvers.double.cs can materialize A^T once per solve via
+        // arena `b` carries so Krylov.double.cs can materialize A^T once per solve via
         // `b.doubleBSRTranspose(in A)` without direct access to doubleN's private _rec field.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe doubleBSR doubleBSRTranspose(in doubleBSR A) => OwnerArena.doubleBSRTranspose(in A);

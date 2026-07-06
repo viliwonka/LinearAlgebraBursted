@@ -108,7 +108,7 @@ namespace LinearAlgebra
         /// over A^T in place of the scatter-heavy on-the-fly <see cref="BSR.spMVT"/>
         /// traversal on every Krylov iteration -- see <see cref="doubleBSROperator"/>'s two-arg
         /// constructor and the cgls/lsqr allocating <see cref="doubleBSR"/> overloads in
-        /// Solvers.double.cs, which build A^T once per solve and reuse it every iteration.
+        /// Krylov.double.cs, which build A^T once per solve and reuse it every iteration.
         ///
         /// If A.Symmetric (implies square, and A == A^T by construction -- see
         /// doubleBSR.Symmetric), returns A itself unchanged: transposing symmetric upper-block

@@ -4,12 +4,12 @@ using System;
 
 namespace LinearAlgebra
 {
-    // Type-agnostic Solvers helpers. This lives in a //singularFile// partial (emitted ONCE,
+    // Type-agnostic Krylov helpers. This lives in a //singularFile// partial (emitted ONCE,
     // NOT multiplied into float/double) because RequireDistinctBuffers has no fProxy in its
-    // signature: if it were declared in the multiplying Solvers.fProxy.cs template it would be
-    // copied identically into both Solvers.float.cs and Solvers.double.cs -- two definitions of
+    // signature: if it were declared in the multiplying Krylov.fProxy.cs template it would be
+    // copied identically into both Krylov.float.cs and Krylov.double.cs -- two definitions of
     // the same member in the same partial class -> CS0111. See docs/codegen-refactor-lessons.md.
-    public static partial class Solvers
+    public static partial class Krylov
     {
         /// <summary>
         /// Throws <see cref="ArgumentException"/>(who) if any two of the first <paramref

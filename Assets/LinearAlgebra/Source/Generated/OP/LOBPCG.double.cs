@@ -11,8 +11,8 @@ namespace LinearAlgebra
     /// Blocked Locally Optimal Block Preconditioned Conjugate Gradient (LOBPCG): the k SMALLEST
     /// eigenpairs of a symmetric operator A (A.Rows == A.Cols), generic over any
     /// <see cref="IdoubleLinearOperator"/> / optional <see cref="IdoublePreconditioner"/> --
-    /// same Burst-monomorphized static-dispatch shape as <see cref="Solvers.cg{TOp}"/> /
-    /// <see cref="Solvers.pcg{TOp,TPre}"/>. Reuses the dense
+    /// same Burst-monomorphized static-dispatch shape as <see cref="Krylov.cg{TOp}"/> /
+    /// <see cref="Krylov.pcg{TOp,TPre}"/>. Reuses the dense
     /// <see cref="Eigen.symmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/> solver for the
     /// small (&lt;= 3k) Rayleigh-Ritz sub-problem and <see cref="CHO.decomp(in doubleMxN, ref doubleMxN)"/>
     /// for both orthogonalization and the generalized-to-standard eigenproblem reduction.
@@ -594,8 +594,8 @@ namespace LinearAlgebra
         /// <summary>
         /// Zero-alloc (at O(n) scale) LOBPCG primitive, UNPRECONDITIONED. Forwards into
         /// <see cref="lobpcg{TOp,TPre}"/> via <see cref="doubleIdentityPreconditioner"/> -- a
-        /// one-line forwarder rather than a hand-duplicated loop (unlike <see cref="Solvers.cg{TOp}"/>
-        /// / <see cref="Solvers.pcg{TOp,TPre}"/>'s literal duplication -- LOBPCG's loop is
+        /// one-line forwarder rather than a hand-duplicated loop (unlike <see cref="Krylov.cg{TOp}"/>
+        /// / <see cref="Krylov.pcg{TOp,TPre}"/>'s literal duplication -- LOBPCG's loop is
         /// considerably larger, so this method mirrors the SAME "single source of truth, thin
         /// forwarder" pattern already used everywhere else in this file for dense/BSR wrapping,
         /// just applied one level further).
@@ -773,7 +773,7 @@ namespace LinearAlgebra
         /// zero-alloc primitive. Forwards into <see cref="lobpcg{TOp,TPre}"/> via
         /// <c>doubleBSROperator</c>/<c>doubleBlockJacobi</c>. This is the preconditioned entry point
         /// the sparse-BSM eigensolver roadmap calls out (matvec + block-Jacobi, matching how
-        /// <see cref="Solvers.pcg(in doubleBSR, in doubleBlockJacobi, in doubleN, ref doubleN)"/>
+        /// <see cref="Krylov.pcg(in doubleBSR, in doubleBlockJacobi, in doubleN, ref doubleN)"/>
         /// consumes it).
         /// </summary>
         public static LOBPCGInfo lobpcg(in doubleBSR A, in doubleBlockJacobi M, ref doubleLOBPCGCache ws,
@@ -847,7 +847,7 @@ namespace LinearAlgebra
 
         // Aliasing guard: every scratch buffer in the workspace must be distinct -- same rationale
         // as cg<TOp>'s guard (elementwise updates below don't self-check aliasing). A local
-        // loop-based check (mirrors Solvers.RequireDistinctBuffers) rather than a hand-expanded OR
+        // loop-based check (mirrors Krylov.RequireDistinctBuffers) rather than a hand-expanded OR
         // chain: 25 buffers -> 300 pairs, impractical to hand-write/review. Includes the O(k)-scale
         // Rayleigh-Ritz scratch (Gram/H/L/Atrans/Y/C) alongside the O(n)-scale buffers -- all six
         // live simultaneously within a single TryRayleighRitz call (Gram/H built together, L
@@ -1273,14 +1273,14 @@ namespace LinearAlgebra
             for (int r = 0; r < m; r++)
             {
                 for (int c = 0; c < m; c++) tmp[c] = H[r, c];
-                Solvers.triLower(ref L, ref tmp);
+                Blas.triLower(ref L, ref tmp);
                 for (int c = 0; c < m; c++) Atrans[r, c] = tmp[c];
             }
 
             for (int c = 0; c < m; c++)
             {
                 for (int r = 0; r < m; r++) tmp[r] = Atrans[r, c];
-                Solvers.triLower(ref L, ref tmp);
+                Blas.triLower(ref L, ref tmp);
                 for (int r = 0; r < m; r++) Atrans[r, c] = tmp[r];
             }
 

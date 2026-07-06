@@ -7,108 +7,7 @@ using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra
 {
-    public static partial class Solvers {
-
-        // Solve Ux = b for x
-        // U may be tall (M_Rows >= N_Cols): only the top N_Cols x N_Cols block is read,
-        // which is the R block produced by QR on overdetermined systems.
-        // PRECONDITION: U is non-singular — every diagonal U[r,r] must be nonzero. A zero diagonal
-        // (a singular/rank-deficient triangular factor) divides by zero and yields Inf/NaN; this
-        // primitive does not guard it. For rank-deficient systems use the rank-revealing paths
-        // (QRCP.decompInPlace, SVD.pinvSolve, or CHOP.solveInPlace).
-        // Always reports DirectSolveStatus.Success — this primitive assumes a valid (non-singular)
-        // triangular factor and does not itself detect a bad one.
-        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static DirectSolveInfo triUpper(ref doubleMxN U, ref doubleN b_to_x)
-        {
-            if(U.M_Rows < U.N_Cols)
-                throw new ArgumentException("Solvers.triUpper: Matrix must be square or tall (M_Rows >= N_Cols)");
-
-            if(U.N_Cols != b_to_x.N)
-                throw new ArgumentException("Solvers.triUpper: Matrix and vector must have same number of columns");
-
-            for (int r = U.N_Cols - 1; r >= 0; r--)
-            {
-                double sum = 0;
-
-                for (int c = r + 1; c < U.N_Cols; c++)
-                    sum += U[r, c] * b_to_x[c];
-
-                b_to_x[r] = (b_to_x[r] - sum) / U[r, r];
-            }
-
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
-        }
-
-        // Solve Lx = b for x
-        // PRECONDITION: L is non-singular — every diagonal L[r,r] must be nonzero (see
-        // triUpper; a zero diagonal divides by zero -> Inf/NaN, unguarded).
-        // Always reports DirectSolveStatus.Success — see triUpper.
-        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static DirectSolveInfo triLower(ref doubleMxN L, ref doubleN b_to_x)
-        {
-            if (L.IsSquare == false)
-                throw new ArgumentException("Solvers.triLower: Matrix must be square");
-
-            if (L.M_Rows != b_to_x.N)
-                throw new ArgumentException("Solvers.triLower: Matrix and vector must have same number of rows");
-
-            for (int r = 0; r < L.M_Rows; r++)
-            {
-                double sum = 0;
-
-                for (int c = 0; c < r; c++)
-                    sum += L[r, c] * b_to_x[c];
-
-                b_to_x[r] = (b_to_x[r] - sum) / L[r, r];
-            }
-
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
-        }
-
-        // Solve Ly = b for, where y = Ux
-        // RP = Row Pivot
-        // Always reports DirectSolveStatus.Success — see triUpper.
-        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static DirectSolveInfo triLowerLU(ref doubleMxN L, in Pivot RP, ref doubleN b_to_x) {
-            if (L.IsSquare == false)
-                throw new ArgumentException("Solvers.triLowerLU: Matrix must be square");
-
-            if (L.M_Rows != b_to_x.N)
-                throw new ArgumentException("Solvers.triLowerLU: Matrix and vector must have same number of rows");
-
-            for (int r = 0; r < L.M_Rows; r++) {
-                double sum = 0;
-
-                for (int c = 0; c < r; c++)
-                    sum += L[RP[r], c] * b_to_x[c];
-
-                b_to_x[r] = (b_to_x[r] - sum);
-            }
-
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
-        }
-
-        // Always reports DirectSolveStatus.Success — see triUpper.
-        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static DirectSolveInfo triUpperLU(ref doubleMxN U, in Pivot RP, ref doubleN b_to_x) {
-            if(U.IsSquare == false)
-                throw new ArgumentException("Solvers.triUpperLU: Matrix must be square");
-
-            if (U.N_Cols != b_to_x.N)
-                throw new ArgumentException("Solvers.triUpperLU: Matrix and vector must have same number of columns");
-
-            for (int r = U.N_Cols - 1; r >= 0; r--) {
-                double sum = 0;
-
-                for (int c = r + 1; c < U.N_Cols; c++)
-                    sum += U[RP[r], c] * b_to_x[c];
-
-                b_to_x[r] = (b_to_x[r] - sum) / U[RP[r], r];
-            }
-
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
-        }
+    public static partial class Krylov {
 
         // Shared factory for the square-solver diagnostics struct (cg/pcg/minres/biCGStab/cgne).
         // rnorm is ALWAYS a value the solver already holds -- a tracked residual norm, or a single
@@ -1390,7 +1289,7 @@ namespace LinearAlgebra
         /// ‖x - x₀‖ = ‖x‖. CAVEAT: under the niche combination of a NONZERO warm start AND damping,
         /// the augmented residual penalizes ‖x - x₀‖ (not ‖x‖), so this recovery (which does not
         /// retain x₀) does NOT return ‖b-Ax‖ -- start damped solves from x=0, or read ‖b-Ax‖ from
-        /// Solvers.lstsqResidual on the returned x. Call sites whose resNorm is ALREADY the plain
+        /// Krylov.lstsqResidual on the returned x. Call sites whose resNorm is ALREADY the plain
         /// residual (the pre-loop early exits, where no bidiagonalization/damping rotation has folded
         /// in yet, so resNorm = beta = ‖b - A·x₀‖) pass dampAug = 0 to skip the recovery. dampAug = 0
         /// makes this the identity, so the undamped path is unchanged.</summary>

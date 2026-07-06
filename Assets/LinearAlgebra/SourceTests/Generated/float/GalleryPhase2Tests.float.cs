@@ -160,7 +160,7 @@ public class floatGalleryPhase2Tests
             var b = Blas.dot(A, xTrue);   // consistent RHS
 
             var x = arena.floatVec(n);
-            bool conv = Solvers.cg(in A, in b, ref x, 500, Consts.floatSqrtEps);
+            bool conv = Krylov.cg(in A, in b, ref x, 500, Consts.floatSqrtEps);
             AssertTrue(conv);
 
             // GCD(5) is moderately conditioned ⇒ generous, precision-scaled band.

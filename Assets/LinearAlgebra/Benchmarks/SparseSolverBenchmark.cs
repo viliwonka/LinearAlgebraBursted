@@ -48,7 +48,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
+            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
         }
     }
 
@@ -63,7 +63,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
+            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f);
         }
     }
 
@@ -78,7 +78,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
+            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
         }
     }
 
@@ -93,7 +93,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
+            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0.0);
         }
     }
 
@@ -110,7 +110,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f);
+            Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f);
         }
     }
 
@@ -125,7 +125,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f);
+            Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f);
         }
     }
 
@@ -140,7 +140,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0.0);
+            Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0.0);
         }
     }
 
@@ -155,7 +155,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0.0);
+            Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0.0);
         }
     }
 
@@ -172,7 +172,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f);
+            Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f);
         }
     }
 
@@ -187,7 +187,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f);
+            Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f);
         }
     }
 
@@ -202,7 +202,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0.0);
+            Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0.0);
         }
     }
 
@@ -217,7 +217,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0.0);
+            Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0.0);
         }
     }
 
@@ -234,7 +234,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
+            Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
         }
     }
 
@@ -249,7 +249,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
+            Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
         }
     }
 
@@ -264,7 +264,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0.0);
+            Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0.0);
         }
     }
 
@@ -279,7 +279,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0.0);
+            Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0.0);
         }
     }
 
@@ -296,7 +296,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f);
+            Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f);
         }
     }
 
@@ -311,7 +311,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f);
+            Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f);
         }
     }
 
@@ -326,7 +326,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0.0);
+            Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0.0);
         }
     }
 
@@ -341,7 +341,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0.0);
+            Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0.0);
         }
     }
 
@@ -360,7 +360,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.cgls(in A, in AT, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
+            Krylov.cgls(in A, in AT, in b, ref x, ref r, ref s, ref p, ref q, K, 0f);
         }
     }
 
@@ -374,7 +374,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.cgls(in A, in AT, in b, ref x, ref r, ref s, ref p, ref q, K, 0.0);
+            Krylov.cgls(in A, in AT, in b, ref x, ref r, ref s, ref p, ref q, K, 0.0);
         }
     }
 
@@ -388,7 +388,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.lsqr(in A, in AT, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f);
+            Krylov.lsqr(in A, in AT, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f);
         }
     }
 
@@ -402,13 +402,13 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.lsqr(in A, in AT, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0.0);
+            Krylov.lsqr(in A, in AT, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0.0);
         }
     }
 
     // ---- Section 4: hand-inlined dense CG (no IfloatLinearOperator/IdoubleLinearOperator, no cg<TOp>
     //      generic dispatch -- a raw GEMV loop + axpy/dot written directly in Execute()). Same algorithm
-    //      as Solvers.cg<TOp> (see Solvers.fProxy.cs), just with every step spelled out inline against
+    //      as Krylov.cg<TOp> (see Krylov.fProxy.cs), just with every step spelled out inline against
     //      raw pointers instead of going through fProxyDenseOperator.Apply / the generic solver loop.
     //      x is reset to zero and tol is effectively 0 (K fixed iterations), matching the other jobs. ---
 
@@ -1858,7 +1858,7 @@ namespace LinearAlgebra.Benchmarks
 
         // ==== Section 4: zero-cost-abstraction probe (THE fork datapoint) ===============================
         //
-        // Generic Solvers.cg(in floatMxN/doubleMxN,...) -- which internally wraps A in
+        // Generic Krylov.cg(in floatMxN/doubleMxN,...) -- which internally wraps A in
         // floatDenseOperator/doubleDenseOperator and calls the generic cg<TOp> loop -- vs a hand-inlined
         // dense CG written directly against raw pointers in CGHandInlinedJobFloat/Double (see above), no
         // IfloatLinearOperator/IdoubleLinearOperator, no generic dispatch. Same matrix, same K, same
@@ -1871,7 +1871,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine();
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                 "--- 4. Zero-cost-abstraction probe (dense SPD, K={0}, tol=0) [float] ---", K_CG));
-            sb.AppendLine("    generic = Solvers.cg(in floatMxN,...) via cg<floatDenseOperator>;");
+            sb.AppendLine("    generic = Krylov.cg(in floatMxN,...) via cg<floatDenseOperator>;");
             sb.AppendLine("    hand-inlined = raw-pointer GEMV/axpy/dot written directly in the job, no operator interface.");
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11} {4,11} {5,10}",
                 "dtype", "N", "path", "med(ms)", "min(ms)", "ratio"));
@@ -1907,7 +1907,7 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine();
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                 "--- 4. Zero-cost-abstraction probe (dense SPD, K={0}, tol=0) [double] ---", K_CG));
-            sb.AppendLine("    generic = Solvers.cg(in doubleMxN,...) via cg<doubleDenseOperator>;");
+            sb.AppendLine("    generic = Krylov.cg(in doubleMxN,...) via cg<doubleDenseOperator>;");
             sb.AppendLine("    hand-inlined = raw-pointer GEMV/axpy/dot written directly in the job, no operator interface.");
             sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-16} {3,11} {4,11} {5,10}",
                 "dtype", "N", "path", "med(ms)", "min(ms)", "ratio"));

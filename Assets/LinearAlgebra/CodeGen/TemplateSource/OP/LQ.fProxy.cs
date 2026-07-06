@@ -559,7 +559,7 @@ namespace LinearAlgebra
             // Step 1: forward-solve L y = b.  y starts as a copy of b (triLower is in-place).
             var y = new fProxyN(m, Allocator.Temp, false);
             y.Data.CopyFrom(b.Data);
-            Solvers.triLower(ref L, ref y);
+            Blas.triLower(ref L, ref y);
 
             // Step 2: x = Qᵀ y, applied directly from W's reflectors (no dense Q).
             applyQtFromReflectors(ref W, ref y, ref x);
@@ -608,7 +608,7 @@ namespace LinearAlgebra
             // Forward-solve L y = b, then x = Qᵀ y straight from W's reflectors (no dense Q).
             var y = ws.y;
             y.Data.CopyFrom(b.Data);
-            Solvers.triLower(ref L, ref y);
+            Blas.triLower(ref L, ref y);
             applyQtFromReflectors(ref W, ref y, ref x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };

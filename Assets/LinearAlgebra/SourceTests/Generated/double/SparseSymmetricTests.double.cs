@@ -464,15 +464,15 @@ public class doubleSparseSymmetricTests
             var b = arena.doubleRandomVec(dim, (double)(-1f), (double)1f, 50000u);
 
             var xSym = arena.doubleVec(dim);
-            bool okSym = Solvers.cg(in sym, in b, ref xSym, 4 * dim, Consts.doubleSqrtEps);
+            bool okSym = Krylov.cg(in sym, in b, ref xSym, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okSym);
 
             var xFull = arena.doubleVec(dim);
-            bool okFull = Solvers.cg(in full, in b, ref xFull, 4 * dim, Consts.doubleSqrtEps);
+            bool okFull = Krylov.cg(in full, in b, ref xFull, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okFull);
 
             var xDense = arena.doubleVec(dim);
-            bool okDense = Solvers.cg(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
+            bool okDense = Krylov.cg(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okDense);
 
             AssertVecEq(in xSym, in xFull, LooseTol());
@@ -493,15 +493,15 @@ public class doubleSparseSymmetricTests
             var b = arena.doubleRandomVec(dim, (double)(-1f), (double)1f, 51000u);
 
             var xSym = arena.doubleVec(dim);
-            bool okSym = Solvers.minres(in sym, in b, ref xSym, 4 * dim, Consts.doubleSqrtEps);
+            bool okSym = Krylov.minres(in sym, in b, ref xSym, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okSym);
 
             var xFull = arena.doubleVec(dim);
-            bool okFull = Solvers.minres(in full, in b, ref xFull, 4 * dim, Consts.doubleSqrtEps);
+            bool okFull = Krylov.minres(in full, in b, ref xFull, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okFull);
 
             var xDense = arena.doubleVec(dim);
-            bool okDense = Solvers.cg(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
+            bool okDense = Krylov.cg(in dense, in b, ref xDense, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okDense);
 
             AssertVecEq(in xSym, in xFull, LooseTol());
@@ -527,11 +527,11 @@ public class doubleSparseSymmetricTests
             var mFull = arena.doubleBlockJacobi(in full);
 
             var xPcgSym = arena.doubleVec(dim);
-            bool okSym = Solvers.pcg(in sym, in mSym, in b, ref xPcgSym, 4 * dim, Consts.doubleSqrtEps);
+            bool okSym = Krylov.pcg(in sym, in mSym, in b, ref xPcgSym, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okSym);
 
             var xPcgFull = arena.doubleVec(dim);
-            bool okFull = Solvers.pcg(in full, in mFull, in b, ref xPcgFull, 4 * dim, Consts.doubleSqrtEps);
+            bool okFull = Krylov.pcg(in full, in mFull, in b, ref xPcgFull, 4 * dim, Consts.doubleSqrtEps);
             Assert.IsTrue(okFull);
 
             AssertVecEq(in xPcgSym, in xPcgFull, LooseTol());

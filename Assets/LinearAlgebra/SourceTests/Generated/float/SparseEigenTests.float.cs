@@ -293,7 +293,7 @@ public class floatSparseEigenTests
         }
 
         // ---- Milestone C2: Eigen.inversePowerIteration<TOp> (smallest eigenpair, generic over
-        // IfloatLinearOperator, inner solve via Solvers.cg<TOp>) -----------------------------
+        // IfloatLinearOperator, inner solve via Krylov.cg<TOp>) -----------------------------
         //
         // (a)+(b) literature known-spectrum AND dense-vs-BSR cross-check on the 1D Laplacian.
         //

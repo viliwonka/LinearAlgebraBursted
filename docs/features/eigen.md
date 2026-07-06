@@ -24,7 +24,7 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
 - **`powerIteration<TOp>(in A, ref v, ref w, out lambda, ...)`** — dominant eigenpair, Rayleigh
   quotient.
 - **`inversePowerIteration<TOp>(in A, ..., out lambda, ...)`** — smallest eigenpair of SPD `A`, via an
-  inner `Solvers.cg` solve each outer iteration (no explicit inverse formed).
+  inner `Krylov.cg` solve each outer iteration (no explicit inverse formed).
 - **`lanczos<TOp>(in A, ref ws, ref eigenvalues, int steps, ...)`** — twice-reorthogonalized symmetric
   Lanczos tridiagonalization + `Eigen.valuesSymmetric` on the result → Ritz **values**.
   **`lanczosVectors<TOp>(...)`** — same tridiagonalization, then forms Ritz **vectors** too (not
@@ -56,8 +56,8 @@ gives the smallest positive critical load as `λ_cr = −1/μ[0]`.
 
 ## Diagnostics structs
 
-Eigensolvers follow the same by-value, implicit-`bool` diagnostics convention as
-[`Solvers`](solvers.md), with their own structs (all reuse `IterativeSolveStatus` — no dedicated
+Eigensolvers follow the same by-value, implicit-`bool` diagnostics convention as the
+[direct solvers](solvers.md), with their own structs (all reuse `IterativeSolveStatus` — no dedicated
 eigensolver enum):
 
 | Struct | Fields | Used by |

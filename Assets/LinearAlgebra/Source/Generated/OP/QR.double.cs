@@ -584,7 +584,7 @@ namespace LinearAlgebra
             // x = Q^T b (or b^T Q). The ref-dest dot guards x-aliases-b and zeroes x first.
             Blas.dot(in b, in Q, ref x);
             // Solve Rx = Q^T b for x, in place
-            return Solvers.triUpper(ref R, ref x);
+            return Blas.triUpper(ref R, ref x);
         }
 
         /// <summary>
@@ -659,7 +659,7 @@ namespace LinearAlgebra
             // b was transformed to y, where y = Q^T b
             // Solve Rx = y
 
-            return Solvers.triUpper(ref A, ref x);
+            return Blas.triUpper(ref A, ref x);
         }
 
         // Allocating wrapper: allocates the reflector-apply accumulator w (Allocator.Temp) and

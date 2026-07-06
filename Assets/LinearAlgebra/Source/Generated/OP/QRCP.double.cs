@@ -121,7 +121,7 @@ namespace LinearAlgebra
         // steps is the failure LAPACK's guard exists for — an exact re-sum forces both back in sync.
         // tol3z is Consts.doubleSqrtEps directly: Consts.cs already defines it as the precise,
         // type-correct sqrt(Consts.doubleEpsilon) (see its own comment), and every other caller in
-        // this codebase (Eigen/LOBPCG/Solvers/SVD.LowRank) references it the same way rather than
+        // this codebase (Eigen/LOBPCG/Krylov/SVD.LowRank) references it the same way rather than
         // recomputing math.sqrt(Consts.doubleEpsilon) at runtime.
         //
         // Guard-triggered exact re-sum recomputes EVERY trailing column (not just the one that

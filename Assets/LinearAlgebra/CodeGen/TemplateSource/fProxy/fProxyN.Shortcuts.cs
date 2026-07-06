@@ -22,7 +22,7 @@ namespace LinearAlgebra {
 
         // NOT wrapped in copyReplace: there is no iProxy BSR equivalent, so this only needs to
         // exist for the fProxy float/double types this file already generates. Forwards to the
-        // arena `b` carries so Solvers.fProxy.cs can materialize A^T once per solve via
+        // arena `b` carries so Krylov.fProxy.cs can materialize A^T once per solve via
         // `b.fProxyBSRTranspose(in A)` without direct access to fProxyN's private _rec field.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe fProxyBSR fProxyBSRTranspose(in fProxyBSR A) => OwnerArena.fProxyBSRTranspose(in A);

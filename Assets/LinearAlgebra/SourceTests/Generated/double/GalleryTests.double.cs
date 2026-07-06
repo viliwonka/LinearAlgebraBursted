@@ -576,7 +576,7 @@ public class doubleGalleryTests
             var b = Blas.dot(A, xTrue);   // consistent RHS
 
             var x = arena.doubleVec(n);
-            bool conv = Solvers.cg(in A, in b, ref x, 200, Consts.doubleSqrtEps);
+            bool conv = Krylov.cg(in A, in b, ref x, 200, Consts.doubleSqrtEps);
             AssertTrue(conv);
 
             double tol = (double)100 * Consts.doubleSqrtEps;

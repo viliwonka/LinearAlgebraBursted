@@ -424,9 +424,9 @@ namespace LinearAlgebra
             pivot.ApplyInverseVec(ref b_to_x);
 
             // Solve Ly = b
-            Solvers.triLowerLU(ref LU, in pivot, ref b_to_x);
+            Blas.triLowerLU(ref LU, in pivot, ref b_to_x);
             // Solve Ux = y
-            Solvers.triUpperLU(ref LU, in pivot, ref b_to_x);
+            Blas.triUpperLU(ref LU, in pivot, ref b_to_x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
@@ -456,9 +456,9 @@ namespace LinearAlgebra
             // Solver linear system LUx = b, b is overwritten with x
 
             // Solve Ly = b
-            Solvers.triLower(ref L, ref b_to_x);
+            Blas.triLower(ref L, ref b_to_x);
             // Solve Ux = y
-            Solvers.triUpper(ref U, ref b_to_x);
+            Blas.triUpper(ref U, ref b_to_x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }

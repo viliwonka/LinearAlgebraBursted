@@ -748,7 +748,7 @@ public class fProxySolverBatteryTests
             var b = Blas.dot(A, xTrue);
 
             var x = arena.fProxyVec(n);
-            bool conv = Solvers.cg(in A, in b, ref x, 200, Consts.fProxySqrtEps);
+            bool conv = Krylov.cg(in A, in b, ref x, 200, Consts.fProxySqrtEps);
             AssertTrue(conv);
 
             // relative residual ‖A x − b‖ ≤ 100·sqrtEps·‖b‖ (CG guarantees ≤ sqrtEps·‖b‖)

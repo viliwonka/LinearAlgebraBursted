@@ -219,7 +219,7 @@ public class floatJacobiPrecondTests
             var w    = arena.floatVec(n);
             var tmpM = arena.floatVec(m);
             var tmpN = arena.floatVec(n);
-            bool ok = Solvers.lsqr(op, in b, ref y, ref u, ref vv, ref w, ref tmpM, ref tmpN, 8 * n, Consts.floatSqrtEps);
+            bool ok = Krylov.lsqr(op, in b, ref y, ref u, ref vv, ref w, ref tmpM, ref tmpN, 8 * n, Consts.floatSqrtEps);
             Assert.IsTrue(ok);
 
             var x = arena.floatVec(n);

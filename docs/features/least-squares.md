@@ -16,7 +16,7 @@ solvers for large/sparse `A`. All share the diagnostics-struct convention from
 - **`SVD.pinvSolve`** — minimum-norm least-squares for any shape/rank, via `SVD.thin`. Slowest of the
   three, most robust. See [svd.md](svd.md).
 
-## Iterative (`Solvers`, generic over `IfloatLinearOperator` — dense and [sparse BSR](sparse-bsr.md)
+## Iterative (`Krylov`, generic over `IfloatLinearOperator` — dense and [sparse BSR](sparse-bsr.md)
 share one body, see that page)
 
 - **`cgls<TOp>(in A, in b, ref x, ..., float damp)`** — CG on the normal equations, recomputes `Aᵀr`
@@ -28,7 +28,7 @@ share one body, see that page)
 
 All three return `LstsqInfo` (`rnorm`, `Arnorm`, `xnorm`, `iterations`, `status`); `Arnorm =
 ‖Aᵀ(b-Ax)‖` (damped: `‖Aᵀ(b-Ax) - damp²x‖`) is the true optimality measure and is always "free"
-(already-tracked or one dot product, never an extra matvec). `Solvers.lstsqResidual` independently
+(already-tracked or one dot product, never an extra matvec). `Krylov.lstsqResidual` independently
 recomputes a certified `LstsqInfo` for auditing (costs one extra Apply+ApplyT).
 
 ## Damping & preconditioning

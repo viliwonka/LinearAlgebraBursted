@@ -36,7 +36,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0f;
-            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, 100, 0f);
+            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, 100, 0f);
         }
     }
 
@@ -54,7 +54,7 @@ namespace LinearAlgebra.Benchmarks
         {
             int n = x.N;
             for (int i = 0; i < n; i++) x[i] = 0.0;
-            Solvers.cg(in A, in b, ref x, ref r, ref p, ref Ap, 100, 0.0);
+            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, 100, 0.0);
         }
     }
 

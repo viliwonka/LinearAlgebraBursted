@@ -13,7 +13,7 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
   `SVD.thin`, not `SVD.svdThin`; `CHO.decomp`, not `Cholesky.choleskyDecomposition`;
   `PCA.fitCov`, not `PCA.pcaCovariance` (the bare `PCA.covariance` was deliberately rejected —
   it would read as "computes a covariance matrix" and collide conceptually with `Stats.covariance`;
-  model-fitting methods take the `fit` verb + route). Precedent: `Blas.dot`, `Norms.L1`, `Solvers.cg`.
+  model-fitting methods take the `fit` verb + route). Precedent: `Blas.dot`, `Norms.L1`, `Krylov.cg`.
   Exception: a class that genuinely IS the operation (`FFT.fft`, `LOBPCG.lobpcg`) keeps the echo —
   there the echo names the operation, not the class. Contrast `KMeans`: it used to echo
   (`KMeans.kmeans`) but was rebased to `KMeans.fit` (sklearn precedent) — `KMeans` is a class that
@@ -69,7 +69,7 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
   named just `_OP` with no semantic prefix (the historical `fProxy_OP`) is a smell — split it or
   name it for its content (this project did both: split into `Linear_OP` + `Elem_OP`).
 - **No suffix** = a named factorization/algorithm (`LU`, `SVD`, `CHO`, `CHOP`, `Eigen`, `Bidiag`,
-  `QR`, `QRCP`, `LQ`, `Solvers`) — the algorithm's own name is the description, no `_OP` needed. A
+  `QR`, `QRCP`, `LQ`, `Krylov`) — the algorithm's own name is the description, no `_OP` needed. A
   rank-revealing/pivoted variant of an existing algorithm gets its OWN class (`QRCP` split from
   `QR`, `CHOP` split from `CHO`) rather than growing the base class's arity — the pivot/rank contract
   is different enough to earn its own namespace-of-one.
@@ -100,7 +100,7 @@ A class is safe to merge (drop its prefix) ONLY if **both** hold for every metho
   guarantee: a future arg-less factory method added to a currently-safe-to-merge class would force
   re-splitting it. Utility bags in the Stats/Norms mold default to staying split as a hedge against
   that; permanent-by-construction primitive bags (`Linear_OP`, the `LU`/`SVD`/`QR`/`LQ`/`CHO`/
-  `Eigen`/`Bidiag`/`Solvers` factorization family) merge freely since Arena already owns every
+  `Eigen`/`Bidiag` factorization family plus `Krylov`) merge freely since Arena already owns every
   factory-style method in the library, so this category of class will never need one.
 
 ## Arena / ArenaExtensions

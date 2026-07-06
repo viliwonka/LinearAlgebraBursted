@@ -5,7 +5,7 @@ using Unity.Collections;
 
 // Content-correctness tests for the MANAGED-side ToString() of the small info/result structs
 // (SolveInfo / LstsqInfo / DirectSolveInfo / RankInfo / EigenSolveInfo / LanczosInfo,
-// OP/Solvers.Info.cs + OP/Eigen.Info.cs) and the Pivot / Indices permutation types
+// OP/SolveInfo.cs + OP/Eigen.Info.cs) and the Pivot / Indices permutation types
 // (Pivot/Pivot.cs, Indices/Indices.cs). These types are NOT templated (type-agnostic; their
 // numbers are reported as plain int/double), so this test file is a plain copy-through (no
 // per-type placeholder in the filename or body) -- it lands in SourceTests/Generated unchanged.

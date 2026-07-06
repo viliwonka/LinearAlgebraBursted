@@ -8,9 +8,9 @@ namespace LinearAlgebra
     /// solver RETURNS this by value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>)
     /// means the old success-test call shapes still compile unchanged:
     /// <code>
-    ///   if (Solvers.lsqr(A, b, ref x)) { ... }          // implicit bool -> "did it converge?"
-    ///   bool ok = Solvers.cgls(A, b, ref x);            // same
-    ///   var info = Solvers.lsmr(A, b, ref x);           // keep the struct for diagnostics
+    ///   if (Krylov.lsqr(A, b, ref x)) { ... }          // implicit bool -> "did it converge?"
+    ///   bool ok = Krylov.cgls(A, b, ref x);            // same
+    ///   var info = Krylov.lsmr(A, b, ref x);           // keep the struct for diagnostics
     ///   if (info.Solved) Debug.Log(info.iterations);
     /// </code>
     ///
@@ -26,7 +26,7 @@ namespace LinearAlgebra
     ///       (O(1) scalars per iteration, no matvec).</item>
     /// </list>
     /// For an independently-recomputed, certified-exact residual (one extra Apply + ApplyT) call
-    /// <see cref="Solvers.lstsqResidual{TOp}"/> on the returned x instead.
+    /// <see cref="Krylov.lstsqResidual{TOp}"/> on the returned x instead.
     ///
     /// On a Converged OR MaxIterations return, x is the last iterate and the norms describe it. Only
     /// on a Breakdown return is x left partially updated / undefined.

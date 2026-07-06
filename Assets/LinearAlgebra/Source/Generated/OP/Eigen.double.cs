@@ -20,7 +20,7 @@ namespace LinearAlgebra
         /// loop — the concrete dense (<c>powerIteration(in doubleMxN, ...)</c>) and BSR
         /// (<c>powerIteration(in doubleBSR, ...)</c>) overloads below are thin forwarders that
         /// wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSROperator</c> and
-        /// call this method (mirrors <see cref="Solvers.cg{TOp}"/>).
+        /// call this method (mirrors <see cref="Krylov.cg{TOp}"/>).
         ///
         /// Finds the dominant eigenpair (lambda, v) of a square operator A (A.Rows == A.Cols).
         ///
@@ -228,7 +228,7 @@ namespace LinearAlgebra
         /// on A^-1 converges to the eigenvector of A's smallest eigenvalue -- this is the roadmap's
         /// lambda_min capability (e.g. the Fiedler vector of a graph Laplacian, or the lowest
         /// vibration mode of a stiffness matrix). Rather than forming/factoring A^-1, each outer
-        /// iteration solves A y = v with the zero-alloc generic <see cref="Solvers.cg{TOp}"/> (A
+        /// iteration solves A y = v with the zero-alloc generic <see cref="Krylov.cg{TOp}"/> (A
         /// must be SPD and nonsingular for CG to converge -- e.g.
         /// <c>LinearAlgebra.Gallery.doubleGallery.doubleLaplacian1D</c> qualifies), then normalizes
         /// y into v.
@@ -239,7 +239,7 @@ namespace LinearAlgebra
         /// Scratch layout: v (length A.Rows) is the eigenvector estimate, in/out -- WARM-STARTABLE
         /// and, like <see cref="powerIteration{TOp}"/>, deterministically seeded as
         /// v[i] = 1 + (i &amp; 3) then normalized if the caller supplies the zero vector. y is the
-        /// inner solve's solution scratch (A y = v). r, p, Ap are <see cref="Solvers.cg{TOp}"/>'s
+        /// inner solve's solution scratch (A y = v). r, p, Ap are <see cref="Krylov.cg{TOp}"/>'s
         /// own scratch, reused across every outer iteration -- zero-alloc overall. No extra scratch
         /// vector is needed for the Rayleigh-quotient recompute: once CG returns, r/p/Ap are free,
         /// so Ap doubles as the A*v scratch for that step.
@@ -266,7 +266,7 @@ namespace LinearAlgebra
         /// though the eigenpair estimate is already as good as this cgTol allows.
         ///
         /// If the inner CG solve fails to converge within cgMaxIter iterations to cgTol (A not SPD,
-        /// or numerical breakdown -- see <see cref="Solvers.cg{TOp}"/>), this method bails out
+        /// or numerical breakdown -- see <see cref="Krylov.cg{TOp}"/>), this method bails out
         /// immediately and reports Breakdown; lambda is then set to 0 (undefined) and v holds
         /// whatever CG last produced (partially updated) -- only read v/lambda when Solved.
         ///
@@ -354,7 +354,7 @@ namespace LinearAlgebra
                 // Step 1: solve A y = v via CG (reuses r/p/Ap as CG's own scratch every outer
                 // iteration -- zero additional allocation). A false return means CG broke down
                 // (A not SPD from this v, or numerical breakdown); bail out immediately.
-                bool cgOk = Solvers.cg(in A, in v, ref y, ref r, ref p, ref Ap, cgMaxIter, cgTol);
+                bool cgOk = Krylov.cg(in A, in v, ref y, ref r, ref p, ref Ap, cgMaxIter, cgTol);
                 if (!cgOk) {
                     lambda = (double)0;
                     return new EigenSolveInfo { iterations = iter, residual = double.NaN, status = IterativeSolveStatus.Breakdown };
@@ -551,7 +551,7 @@ namespace LinearAlgebra
         /// Ritz values reproduce A's ENTIRE spectrum.
         ///
         /// PRECONDITION (caller responsibility, not verified at runtime -- same contract as
-        /// <see cref="Solvers.minres{TOp}"/>'s "A must be symmetric"): A is symmetric. Lanczos is
+        /// <see cref="Krylov.minres{TOp}"/>'s "A must be symmetric"): A is symmetric. Lanczos is
         /// undefined for a non-symmetric operator (the 3-term recurrence assumes it).
         ///
         /// FULL REORTHOGONALIZATION (against every previously computed v_1..v_j), performed TWICE

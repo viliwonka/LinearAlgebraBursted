@@ -101,7 +101,7 @@ namespace LinearAlgebra
     /// unwritten or partial -- always check the returned status before reading them.
     ///
     /// Twin of <see cref="SVDInfo"/> (same shape, DELIBERATELY a separate type per its own place --
-    /// house pattern for this file is one Info struct per family; see <c>Solvers.Info.cs</c> for
+    /// house pattern for this file is one Info struct per family; see <c>SolveInfo.cs</c> for
     /// SVDInfo's own doc comment, which explains the shared shape once).
     /// </summary>
     public struct EigenInfo
