@@ -57,15 +57,15 @@ by the O(n³) factorization in every measured case).
 
 End-to-end "solve `Ax=b`" (`Benchmarks/DirectSolveBenchmark.cs`), square N=1024. LU and CHO time the
 explicit `decomp`+`decompSolve` composition (A preserved, distinct from L/U); QR times the fused
-`solveInPlace` (A and b destroyed). AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit
-`0714c97`, Unity Editor batchmode (`ENABLE_UNITY_COLLECTIONS_CHECKS` likely on — not the
+`solveInPlace` (A and b destroyed). AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of
+9, 2026-07-06, Unity Editor batchmode (`ENABLE_UNITY_COLLECTIONS_CHECKS` likely on — not the
 release/player-build shape):
 
 | Solve | min(ms) | med(ms) |
 |---|---|---|
-| `LU.decomp` + `LU.decompSolve` (partial-pivot LU), float | 16.62 | 16.67 |
-| `LU.decomp` + `LU.decompSolve`, double | 26.42 | 26.51 |
-| `CHO.decomp` + `CHO.decompSolve`, float | 12.21 | 12.23 |
-| `CHO.decomp` + `CHO.decompSolve`, double | 16.44 | 16.63 |
-| `QR.solveInPlace` (square), float | 37.84 | 37.98 |
-| `QR.solveInPlace` (square), double | 63.21 | 63.52 |
+| `LU.decomp` + `LU.decompSolve` (partial-pivot LU), float | 15.28 | 15.33 |
+| `LU.decomp` + `LU.decompSolve`, double | 26.96 | 27.01 |
+| `CHO.decomp` + `CHO.decompSolve`, float | 12.00 | 12.08 |
+| `CHO.decomp` + `CHO.decompSolve`, double | 16.54 | 16.56 |
+| `QR.solveInPlace` (square), float | 36.26 | 36.32 |
+| `QR.solveInPlace` (square), double | 62.18 | 62.79 |

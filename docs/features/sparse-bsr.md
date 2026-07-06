@@ -56,12 +56,13 @@ All measured on a 9950X3D, single CCD pinned for repeatability (commit `c3df68b`
 **CG at a genuine N=1024, block size b=4 (7% fill)** — the b=3 sweep above tops out at N=768 since
 1024 isn't divisible by 3; b=4 is another compile-time-unrolled kernel size (`bsrMatVecB4`), giving a
 real 1024×1024 dense-vs-sparse CG case (`Benchmarks/SparseSolverBenchmark.cs`, Section 1x). AMD Ryzen
-9 9950X3D, single CCD pinned, 2026-07-06, commit `f938c66`, Unity Editor batchmode (checks likely on):
+9 9950X3D, single CCD pinned (non-V-Cache), median of 9, 2026-07-06 (consolidated `AllBenchmarks`
+run), Unity Editor batchmode (checks likely on):
 
 | dtype | CG-dense med(ms) | CG-sparse med(ms) | speedup |
 |---|---|---|---|
-| float | 3.68 | 0.09 | ~40× |
-| double | 15.05 | 0.37 | ~40× |
+| float | 3.66 | 0.09 | ~40× |
+| double | 15.02 | 0.37 | ~40× |
 
 **Symmetric vs. full storage spMV** — modest, ~1.05–1.22× before the block-unroll work (commit
 `9c0ae85`, general kernels only); after both the symmetric and full kernels were unrolled equally,
@@ -70,14 +71,14 @@ win (½ footprint), not a compute win — each stored upper block still does two
 
 **Block-Jacobi PCG vs. plain CG, same BSR system** (`Benchmarks/PCGBenchmark.cs` — `Solvers.pcg`
 wasn't covered by any benchmark before this; a block-tridiagonal SPD system, b=3, nb=256, N=768,
-K=40 fixed iterations, tol=0). AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `0714c97`,
-Unity Editor batchmode (checks likely on):
+K=40 fixed iterations, tol=0). AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of 9,
+2026-07-06 (consolidated `AllBenchmarks` run), Unity Editor batchmode (checks likely on):
 
 | dtype | solver | med(ms) | residual |
 |---|---|---|---|
-| float | CG | 0.030 | 9.25×10⁻⁸ |
+| float | CG | 0.031 | 9.25×10⁻⁸ |
 | float | PCG (block-Jacobi) | 0.045 | 8.64×10⁻⁸ |
-| double | CG | 0.079 | 2.15×10⁻¹⁶ |
+| double | CG | 0.080 | 2.15×10⁻¹⁶ |
 | double | PCG (block-Jacobi) | 0.122 | 2.07×10⁻¹⁶ |
 
 On this well-conditioned, already-diagonally-strong test system the block-Jacobi preconditioner adds

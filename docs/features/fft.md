@@ -42,15 +42,17 @@ Workspace-vs-no-workspace (~1.3–1.9×) is a design tradeoff, not a bug fix —
 [docs/fft.md](../fft.md) for when each is the right default.
 
 Current absolute numbers, N=1,048,576 (2²⁰, `Benchmarks/FFTBenchmark.cs`). AMD Ryzen 9 9950X3D,
-single CCD pinned, 2026-07-05, commit `95a1897`, Unity Editor batchmode (checks likely on):
+single CCD pinned (non-V-Cache), median of 9, 2026-07-06 (consolidated `AllBenchmarks` run), Unity
+Editor batchmode (checks likely on). N=1M FFT is memory-bandwidth-bound, so absolute ms drifts a few
+% with machine memory traffic between runs:
 
 | Path | dtype | med(ms) |
 |---|---|---|
-| `fft` (no workspace, in-place) | float | 26.10 |
-| `fft` (no workspace) | double | 27.37 |
-| `fft(ws)` (twiddle-table workspace) | float | 14.11 |
-| `fft(ws)` | double | 18.41 |
-| `rfft` (real input, no workspace) | float | 18.69 |
-| `rfft` (no workspace) | double | 18.56 |
-| `rfft(ws)` (twiddle-table workspace) | float | 11.92 |
-| `rfft(ws)` | double | 14.04 |
+| `fft` (no workspace, in-place) | float | 23.52 |
+| `fft` (no workspace) | double | 25.12 |
+| `fft(ws)` (twiddle-table workspace) | float | 12.58 |
+| `fft(ws)` | double | 16.32 |
+| `rfft` (real input, no workspace) | float | 18.28 |
+| `rfft` (no workspace) | double | 18.72 |
+| `rfft(ws)` (twiddle-table workspace) | float | 9.83 |
+| `rfft(ws)` | double | 11.76 |

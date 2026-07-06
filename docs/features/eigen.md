@@ -85,15 +85,15 @@ row) and runs once; Jacobi does several full sweeps of strided column rotations 
 not a micro-optimization.
 
 Current absolute number at a larger representative size, N=1024 (`Benchmarks/EigenSvdBenchmark.cs`).
-AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `0714c97`, Unity Editor batchmode (checks
-likely on):
+AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of 9, 2026-07-06 (consolidated
+`AllBenchmarks` run), Unity Editor batchmode (checks likely on):
 
 | Method | dtype | med(ms) |
 |---|---|---|
-| `Eigen.valuesSymmetric` (values only) | float | 162.97 |
-| `Eigen.valuesSymmetric` | double | 195.59 |
-| `Eigen.symmetric` (values + vectors) | float | 428.56 |
-| `Eigen.symmetric` | double | 545.01 |
+| `Eigen.valuesSymmetric` (values only) | float | 161.86 |
+| `Eigen.valuesSymmetric` | double | 199.36 |
+| `Eigen.symmetric` (values + vectors) | float | 420.25 |
+| `Eigen.symmetric` | double | 542.04 |
 
 `LOBPCG.lobpcg` (`Benchmarks/LOBPCGBenchmark.cs`), dense SPD `A = MᵀM + I`, N=512, k=4 smallest,
 maxIter fixed at 50 (deterministic timing — same convention as the other iterative-solver
@@ -102,8 +102,8 @@ machine/date/commit/config as above:
 
 | dtype | med(ms) | iterations | converged | maxResidual |
 |---|---|---|---|---|
-| float | 84.91 | 50 | 0/4 | 7.2×10⁻² |
-| double | 85.34 | 50 | 0/4 | 2.2×10⁻² |
+| float | 84.32 | 50 | 0/4 | 7.2×10⁻² |
+| double | 84.43 | 50 | 0/4 | 2.2×10⁻² |
 
 (`converged`/`maxResidual` show the fixed 50-iteration budget makes real but incomplete progress on
 this well-conditioned test matrix — the point of this benchmark is the per-iteration cost, not a

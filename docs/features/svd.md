@@ -43,28 +43,29 @@ not an algorithm change (same output, cited by commit):
 re-benchmarked after the `truncated` fix).
 
 Current absolute numbers at a larger representative size, N=1024 square (`Benchmarks/EigenSvdBenchmark.cs`).
-AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `0714c97`, Unity Editor batchmode (checks likely on):
+AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of 9, 2026-07-06 (consolidated
+`AllBenchmarks` run), Unity Editor batchmode (checks likely on):
 
 | Method | dtype | med(ms) |
 |---|---|---|
-| `SVD.thin` (full SVD) | float | 522.45 |
-| `SVD.thin` | double | 735.77 |
-| `SVD.values` (values only) | float | 188.44 |
-| `SVD.values` | double | 233.35 |
+| `SVD.thin` (full SVD) | float | 505.80 |
+| `SVD.thin` | double | 692.85 |
+| `SVD.values` (values only) | float | 182.98 |
+| `SVD.values` | double | 229.70 |
 
 `SVD.truncated` absolute numbers, tall 2048×256 (`Benchmarks/SvdComparisonBenchmark.cs`), same
-machine/config, commit `95a1897` — for reference, `SVD.thin` (full, k=256) on the same matrix is
-52.0ms float / 70.7ms double:
+machine/config, 2026-07-06 — for reference, `SVD.thin` (full, k=256) on the same matrix is
+51.7ms float / 70.5ms double:
 
 | k (of n=256) | float med(ms) | double med(ms) |
 |---|---|---|
-| 8 (3%) | 4.13 | 4.41 |
-| 18 (7%) | 7.73 | 8.14 |
-| 54 (21%) | 27.55 | 27.45 |
+| 8 (3%) | 4.12 | 4.30 |
+| 18 (7%) | 7.68 | 7.94 |
+| 54 (21%) | 27.41 | 26.78 |
 
 `SVD.truncated` at a genuine SQUARE 1024×1024 (`Benchmarks/SvdComparisonBenchmark.cs`'s dedicated
 section) — same k=54 as the 2048×256 row above, different shape/n, for a matched-k comparison. Same
-machine/config, 2026-07-06, commit `f938c66`:
+machine/config, 2026-07-06:
 
 | Size | k | float med(ms) | double med(ms) |
 |---|---|---|---|
@@ -72,13 +73,13 @@ machine/config, 2026-07-06, commit `f938c66`:
 
 Three-way head-to-head on the SAME matrix, tall 2048×512 (the least-squares benchmark shape),
 k=21 (~4%) — the low-k% regime where the exact GKL route beats the randomized sketch. Same
-machine/config, 2026-07-06, one session, commit `2277dba`:
+machine/config, 2026-07-06:
 
 | Method | float med(ms) | double med(ms) |
 |---|---|---|
-| `SVD.thin` (full, k=512) | 201.13 | 296.88 |
-| `SVD.truncated` | 17.75 | 18.76 |
-| `SVD.randomized` (oversample=10, powerIters=2) | 29.44 | 36.46 |
+| `SVD.thin` (full, k=512) | 186.79 | 256.59 |
+| `SVD.truncated` | 17.57 | 18.36 |
+| `SVD.randomized` (oversample=10, powerIters=2) | 29.47 | 35.83 |
 
 The default `maxIter` scales with the problem: `Consts.sweepBudget(n) = max(75, 6·n)`
 (LAPACK dbdsqr's MAXITR=6 per-value heuristic with a small-n backstop). On this

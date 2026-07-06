@@ -56,13 +56,14 @@ perf-neutral on its own, commit `724ceb0`).
 
 Direct least-squares solve, overdetermined (tall m×n): plain `QR.solveInPlace` vs. rank-safe
 `QRCP.solveInPlace` on the same shapes (`Benchmarks/QRVariantsBenchmark.cs`, "TALL overdetermined
-least squares" section — the gap is the column-pivoting overhead: exact partial-norm recomputes plus
-Q reconstruction). AMD Ryzen 9 9950X3D, single CCD pinned, 2026-07-05, commit `95a1897`, Unity
-Editor batchmode (checks likely on):
+least squares" section). Both are fused (neither reconstructs Q); the remaining gap is the
+column-pivoting overhead — the per-reflector partial-norm recomputes plus the pivoted panel's extra
+bookkeeping — now ~1.15–1.3× over plain QR (was ~2× before QRCP's solve was fused, commit `2fe79c4`).
+AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of 9, 2026-07-06:
 
 | Kernel | Shape | float med(ms) | double med(ms) |
 |---|---|---|---|
-| `QR.solveInPlace` | 2048×512 | 34.46 | 51.99 |
-| `QR.solveInPlace` | 2048×1024 | 95.62 | 159.63 |
-| `QRCP.solveInPlace` | 2048×512 | 72.68 | 132.54 |
-| `QRCP.solveInPlace` | 2048×1024 | 234.71 | 413.11 |
+| `QR.solveInPlace` | 2048×512 | 31.24 | 49.01 |
+| `QR.solveInPlace` | 2048×1024 | 93.42 | 160.56 |
+| `QRCP.solveInPlace` | 2048×512 | 36.16 | 64.68 |
+| `QRCP.solveInPlace` | 2048×1024 | 104.58 | 173.96 |
