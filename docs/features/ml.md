@@ -31,10 +31,8 @@ sign-fixed), `explainedVariance`/`explainedVarianceRatio` (length k, descending)
 buffers are arena-owned — allocated via `arena.floatPCAModel(p, k)`, disposed with the arena, no
 separate `Dispose()` call needed (same pattern as the `_Cache` workspace structs).
 
-## Benchmarks
+## Performance
 
-Not independently benchmarked for either feature. k-means had one algorithmic fix verified correct
-but not re-measured with numbers: the final centroid-assignment sync (an O(N·D·k) GEMM) used to
-re-run unconditionally even on the early-convergence exit path, where it's a guaranteed no-op — now
-skipped (commit `9b72cba`). PCA's SVD-based routes inherit whatever's measured in
-[svd.md](svd.md)'s `SVD.thin`/`SVD.truncated`/`SVD.randomized` tables.
+k-means skips the final centroid-assignment sync (an O(N·D·k) GEMM) on the early-convergence exit
+path, where it would be a no-op. PCA's SVD-based routes inherit the performance of
+[svd.md](svd.md)'s `SVD.thin`/`SVD.truncated`/`SVD.randomized`.

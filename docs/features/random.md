@@ -28,10 +28,8 @@ scratch): `randomOrthogonalInPlace` (Haar-uniform, Mezzadri sign-fixed QR),
 `randomSpdInPlace(..., minEig, maxEig)`, `randomMatrixWithConditionInPlace(..., cond)`,
 `randomMatrixWithRankInPlace(..., rank)`, `randomStochasticInPlace`.
 
-## Benchmarks
+## Performance
 
-Not benchmarked. One known, template-constrained inefficiency: Box-Muller Gaussian sampling calls
-`math.sin` and `math.cos` separately instead of `math.sincos` (which computes both for the cost of
-one evaluation) — the codegen template mechanism doesn't currently support an `out`-parameter method
-across the proxy substitution, so this is left as-is (roughly doubles the trig cost of Gaussian fills
-specifically; every other sampler is unaffected).
+Setup/low-frequency generation, not a hot-loop kernel. Box-Muller Gaussian sampling calls `math.sin`
+and `math.cos` separately rather than `math.sincos`, which roughly doubles its trig cost; every other
+sampler is unaffected.

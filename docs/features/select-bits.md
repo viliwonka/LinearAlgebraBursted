@@ -23,7 +23,7 @@ intrinsics, applied element-wise across a whole `intN`/`intMxN`.
 Bool logic (`boolComp`) is covered in [comp-elementwise.md](comp-elementwise.md), alongside `Comp`'s
 other per-type variants.
 
-## Benchmarks
+## Performance
 
 Not benchmarked — these are thin per-element forwarders to `Unity.Mathematics.math` intrinsics with
 no dedicated hot-path optimization work done.

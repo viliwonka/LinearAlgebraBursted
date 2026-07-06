@@ -66,27 +66,13 @@ eigensolver enum):
 | `LanczosInfo` | `produced` (≤ `steps`, less only on early breakdown), `status` | `lanczos`, `lanczosVectors` |
 | `LOBPCGInfo` | `iterations`, `converged` (0..k pairs locked), `maxResidual` (double, worst-case relative residual over all k pairs), `status` | `LOBPCG.lobpcg` |
 
-## Benchmarks
+## Performance
 
-Single-thread, this machine, float, `Burst IJob.Run` median of 9 — Householder tridiagonalization vs.
-cyclic Jacobi, same result (commits `4902032`, `facbbff`, `4a188a5`):
+The symmetric eigensolvers use Householder tridiagonalization: its O(n³) hot loop is a `gemv` plus a
+symmetric rank-2 update, run once, rather than the repeated strided column-rotation sweeps of a Jacobi
+solver.
 
-| Method | N | Jacobi | Householder | Speedup |
-|---|---|---|---|---|
-| values only (`Eigen.valuesSymmetric`) | 256 | 213.2ms | 2.85ms | 74.9× |
-| values only | 128 | 25.7ms | 0.473ms | 54.3× |
-| values only | 64 | 3.15ms | 0.0924ms | 34× |
-| values + vectors (`Eigen.symmetric`), as shipped | 256 | 213.5ms | 35.8ms | 6.0× |
-| values + vectors, after a follow-up vectorization of the eigenvector accumulation | 256 | 213.5ms | 11.1ms | 19.2× (derived: 213.5/11.1) |
-| values + vectors | 128 | 25.6ms | 1.76ms | 14.5× |
-
-The reduction's O(n³) hot loop is `gemv` + a symmetric rank-2 update (two contiguous `axpy` calls per
-row) and runs once; Jacobi does several full sweeps of strided column rotations — an algorithm choice,
-not a micro-optimization.
-
-Current absolute number at a larger representative size, N=1024 (`Benchmarks/EigenSvdBenchmark.cs`).
-AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of 9, 2026-07-06 (consolidated
-`AllBenchmarks` run), Unity Editor batchmode (checks likely on):
+Ryzen 9 9950X3D, single-thread Burst, median of 9. N=1024 (`Benchmarks/EigenSvdBenchmark.cs`):
 
 | Method | dtype | med(ms) |
 |---|---|---|
@@ -96,9 +82,8 @@ AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of 9, 2026-07-06 (c
 | `Eigen.symmetric` | double | 542.04 |
 
 `LOBPCG.lobpcg` (`Benchmarks/LOBPCGBenchmark.cs`), dense SPD `A = MᵀM + I`, N=512, k=4 smallest,
-maxIter fixed at 50 (deterministic timing — same convention as the other iterative-solver
-benchmarks; `tol` is set near machine-epsilon so the budget is never met early). Same
-machine/date/commit/config as above:
+maxIter fixed at 50 (deterministic timing; `tol` is set near machine-epsilon so the budget is never
+met early):
 
 | dtype | med(ms) | iterations | converged | maxResidual |
 |---|---|---|---|---|

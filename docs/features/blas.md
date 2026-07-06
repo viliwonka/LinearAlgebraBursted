@@ -37,16 +37,15 @@ boolN|boolMxN)`. Scalar matrix metrics — moved here from `Blas` so "summarizes
 singular), `rank(A[, relTol])` (singular values above `relTol·σmax`, auto-tolerance if omitted).
 `determinant` lives on `LU` instead (it needs a factorization, not just a summary read).
 
-## Benchmarks
+## Performance
 
-GEMM register-tiling (8×16 micro-kernel vs. the prior untiled axpy-GEMM), single-thread, this
-machine, bit-identical output (commit `5790605`):
+`matMatDot` uses an 8×16 register-tiled micro-kernel. Ryzen 9 9950X3D, single-thread Burst:
 
 | Size | float (GFLOP/s) | double (GFLOP/s) |
 |---|---|---|
-| 512² | 70 → 93 (+33%) | 34 → 50 (+47%) |
-| 1024² | 69 → 86 (+25%) | 34 → 50 (+47%) |
+| 512² | 93 | 50 |
+| 1024² | 86 | 50 |
 
-~70 GFLOP/s (float, untiled) is the ceiling every blocked decomposition in
-[decompositions.md](decompositions.md) is measured against — none of them exceed it since they all
-route their trailing-matrix updates through this same kernel.
+This is the throughput ceiling for the blocked decompositions in
+[decompositions.md](decompositions.md) — they route their trailing-matrix updates through this same
+kernel, so none exceed it.

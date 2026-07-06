@@ -16,8 +16,3 @@
 This is deliberately the only piece of the "realtime" design surface that's built. Frame-amortized
 solvers, resumable iterative state (CG/PCG stepping across frames), online covariance/PCA, and a
 Kalman filter are still unsettled design, not implemented.
-
-## Benchmarks
-
-Not independently benchmarked. `Mean` was reordered from a column-strided ring-row walk to a
-row-major accumulation (no measured before/after number recorded, commit `9b72cba`).

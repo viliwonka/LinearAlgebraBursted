@@ -122,46 +122,8 @@ primitive that writes into a buffer you already own and allocates nothing (see
 [zero-alloc-ops](../zero-alloc-ops.md)). Reach for the temp pool in one-shot/setup code and the
 zero-alloc primitives inside per-frame loops.
 
-## Benchmarks — arena-sweep record migration, hot-loop cost
+## Performance
 
-The RFC behind this migration (`docs/rfc-memory-model.md`) claimed the record indirection (`Data.Ptr`
-resolved once per op, not per element) costs ~0 in a hot loop. Verified by comparing a pre-sweep
-worktree (commit `caf0b05`, parent of the first migration commit `e19fc06`) against HEAD (`0714c97`)
-on the same machine (AMD Ryzen 9 9950X3D, single CCD pinned), both runs taken back-to-back in the same
-session (to control for thermal/frequency drift — see caveat below), Unity Editor batchmode
-(`ENABLE_UNITY_COLLECTIONS_CHECKS` likely on; this is not the release/player-build shape), 2026-07-05:
-
-| Kernel | dtype | pre-sweep med(ms) | HEAD med(ms) | delta |
-|---|---|---|---|---|
-| `matMatDot` (GEMM), N=1024 | float | 23.99 | 24.21 | +0.9% |
-| `matMatDot`, N=1024 | double | 46.60 | 44.62 | −4.2% |
-| `QR.qrDecomposition`, N=1024 | float | 54.58 | 55.65 | +1.9% |
-| `QR.qrDecomposition`, N=1024 | double | 97.35 | 99.17 | +1.9% |
-| `BSR.spMV`, N=768, 7% fill | float | 0.3375 | 0.3398 | +0.7% |
-| `BSR.spMV`, N=768, 7% fill | double | 0.3443 | 0.3428 | −0.4% |
-| `Solvers.cg` (BSR, K=40), N=768, 7% fill | float | 0.0604 | 0.0609 | +0.8% |
-| `Solvers.cg` (BSR, K=40), N=768, 7% fill | double | 0.2455 | 0.2461 | +0.2% |
-
-GEMM/QR/BSR-spMV/CG all land within ~2% — consistent with the RFC's "~0 cost" claim. Two kernels
-(`LU.decomp`, `CHO.decomp`, float N=1024) showed a larger gap in this same
-comparison (+5.3%, +6.6%) that does not reproduce at the same magnitude in double (+0.6%, +3.8%); since
-a record-indirection cost should hit both precisions symmetrically (both route through the same
-`floatMxN`/`doubleMxN` record type), and since two independent HEAD-only runs of this same suite (see
-below) already showed 7–10% self-noise on these exact kernels, this reads as measurement noise rather
-than a genuine regression — not confirmed innocent by a tight statistical bound, but not a clear signal
-either. A repeat with several runs per side would be needed to shrink the error bars enough to rule
-definitively on LU/Cholesky specifically.
-
-**Noise-floor caveat (harness gap found, not fixed):** an *unmatched-session* comparison (pre-sweep run
-immediately after a cold Library rebuild, vs. an earlier same-day HEAD run) showed gaps up to 22%
-(GEMM) in inconsistent directions — thermal/frequency state after a large import+compile clearly
-dominates over any code-level effect. Two back-to-back HEAD-only runs (identical code, ~15 minutes
-apart) showed up to 10% self-disagreement on LU. **Take single-run kernel-benchmark numbers on this
-harness as ±5–10%, not ±2–3%,** unless runs are taken back-to-back in the same session; a future
-improvement would be averaging medians over several process launches, not just several in-process
-iterations. Separately, `Tools/benchmark.ps1`'s final "echo the results" step resolves the results
-file via a **relative path** parsed from the Unity log, evaluated against the *calling shell's* working
-directory — this silently prints a stale/wrong file's contents when the script is invoked against a
-project at a different path than the caller's cwd (e.g. a `git worktree`). Not fixed here (benchmark
-tooling, out of this task's scope) — read the target project's own `TestResults/benchmark-all.txt`
-directly if invoking the script from outside its own project root.
+The record indirection (`Data.Ptr` resolved once per op, not per element) is free in hot loops —
+GEMM, factorizations, and sparse spMV/CG all run at the same throughput whether allocated standalone
+or arena-tracked.

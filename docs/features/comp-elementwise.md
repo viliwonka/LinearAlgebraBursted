@@ -35,7 +35,7 @@ true`, matching `Unity.Mathematics.math.any/all`).
 `intComp`/`shortComp`/`longComp`/`uintComp` add bitwise ops beyond the float set — see
 [select-bits](select-bits.md).
 
-## Benchmarks
+## Performance
 
 Not independently benchmarked — `Comp` isn't measured standalone. The same axpy-shaped kernel
 (`y += a·x`, independent across elements ⇒ full SIMD) that backs `addScaledInPlace` is also what the

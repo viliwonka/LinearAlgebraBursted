@@ -21,6 +21,6 @@ wrapper (`ArenaExtensions.Generators.float.cs`) — use the `ref` form in per-fr
 - **Rank-1 builders** — `outer(in u, in v, ref floatMxN dest)` (thin wrapper over
   [`Blas.outerDot`](blas.md)), `outerSum(in u, in v, ref dest)`.
 
-## Benchmarks
+## Performance
 
 Not benchmarked — these are setup-time/low-frequency builders, not hot-loop kernels.

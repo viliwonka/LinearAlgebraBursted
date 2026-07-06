@@ -33,6 +33,6 @@ ASCII bar chart via `UnityEngine.Debug.Log`. Distinct from (and simpler than) th
 [`Histogram`](stats.md) class's binning API, which is meant for computing counts/density/CDF, not
 just eyeballing a distribution.
 
-## Benchmarks
+## Performance
 
 Not applicable — this is inspection/export tooling, not a hot-path feature.

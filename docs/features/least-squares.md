@@ -45,21 +45,17 @@ recomputes a certified `LstsqInfo` for auditing (costs one extra Apply+ApplyT).
 - **`cgne<TOp>`** (Craig's method) is the complementary case: minimum-norm solution of a *consistent*
   (typically underdetermined) system, vs. `cgls`'s overdetermined/inconsistent target.
 
-## Benchmarks
+## Performance
 
-Not independently benchmarked for the direct or iterative least-squares routes as a group. The one
-measured number is structural, not a speed one: CGLS/LSQR's sparse rectangular solve undershoots the
-ideal density ratio (~7-8× vs. the ~14× square solvers get at 7% fill) because the BSR transpose
-traversal (`ApplyT`) is less cache-friendly than a forward `spMV` — see
-[sparse-bsr.md](sparse-bsr.md) for the materialized-transpose mitigation (commit `06035da`, measured
-perf-neutral on its own, commit `724ceb0`).
+CGLS/LSQR's sparse rectangular solve reaches ~7–8× dense at 7% fill, below the ~14× the square
+solvers get, because the BSR transpose traversal (`ApplyT`) is less cache-friendly than a forward
+`spMV` — see [sparse-bsr.md](sparse-bsr.md).
 
 Direct least-squares solve, overdetermined (tall m×n): plain `QR.solveInPlace` vs. rank-safe
-`QRCP.solveInPlace` on the same shapes (`Benchmarks/QRVariantsBenchmark.cs`, "TALL overdetermined
-least squares" section). Both are fused (neither reconstructs Q); the remaining gap is the
-column-pivoting overhead — the per-reflector partial-norm recomputes plus the pivoted panel's extra
-bookkeeping — now ~1.15–1.3× over plain QR (was ~2× before QRCP's solve was fused, commit `2fe79c4`).
-AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of 9, 2026-07-06:
+`QRCP.solveInPlace` on the same shapes (`Benchmarks/QRVariantsBenchmark.cs`). Both are fused (neither
+reconstructs Q); the remaining gap is the column-pivoting overhead — per-reflector partial-norm
+recomputes plus the pivoted panel's extra bookkeeping — about 1.15–1.3× over plain QR. Ryzen 9
+9950X3D, single-thread Burst, median of 9:
 
 | Kernel | Shape | float med(ms) | double med(ms) |
 |---|---|---|---|

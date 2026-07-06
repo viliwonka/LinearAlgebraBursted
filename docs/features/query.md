@@ -19,7 +19,7 @@ flat over a vector. Full design rationale: [spec-query.md](../spec-query.md) and
   index = -1), and score-based `argMaxRowBy`/`argMinRowBy`/`topKRowsBy` (`IfloatRowScore` functor) +
   column twins.
 
-## Benchmarks
+## Performance
 
 Not benchmarked as a standalone feature. `nearestRow`/`kNearestRows` are linear scans (O(M) per
 query, O(M·k) for k-nearest via bounded insertion) — no spatial index; that tradeoff is deliberate

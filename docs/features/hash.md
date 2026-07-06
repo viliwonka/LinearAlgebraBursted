@@ -25,6 +25,6 @@ a real divergence (even one only in a sign bit or NaN payload) is exactly what y
 masked by value-equality. See [determinism](../../README.md#determinism) for the Burst `FloatMode`
 side of making that state reproducible in the first place.
 
-## Benchmarks
+## Performance
 
 Not benchmarked.

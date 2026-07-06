@@ -48,18 +48,14 @@ just to fill in a struct.
 Eigensolvers follow this same convention with their own structs (`EigenSolveInfo`, `LanczosInfo`,
 `LOBPCGInfo`) — see [eigen.md](eigen.md#diagnostics-structs) rather than duplicating them here.
 
-## Benchmarks
+## Performance
 
-See [decompositions.md](decompositions.md) for the factorization costs each solve is built on, and
-the README's benchmark table for `QR.solveInPlace`'s measured 74.7× vectorization win (commit
-`eadf6a8`). No standalone benchmark isolates the triangular-solve step itself (it's O(n²), dominated
-by the O(n³) factorization in every measured case).
+See [decompositions.md](decompositions.md) for the factorization costs each solve is built on. The
+triangular-solve step itself is O(n²) and dominated by the O(n³) factorization in every case.
 
 End-to-end "solve `Ax=b`" (`Benchmarks/DirectSolveBenchmark.cs`), square N=1024. LU and CHO time the
 explicit `decomp`+`decompSolve` composition (A preserved, distinct from L/U); QR times the fused
-`solveInPlace` (A and b destroyed). AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of
-9, 2026-07-06, Unity Editor batchmode (`ENABLE_UNITY_COLLECTIONS_CHECKS` likely on — not the
-release/player-build shape):
+`solveInPlace` (A and b destroyed). Ryzen 9 9950X3D, single-thread Burst, median of 9:
 
 | Solve | min(ms) | med(ms) |
 |---|---|---|

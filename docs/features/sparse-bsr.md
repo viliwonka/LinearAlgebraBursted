@@ -33,46 +33,38 @@ Every solver in [solvers.md](solvers.md)/[least-squares.md](least-squares.md)/[e
 generic over `IfloatLinearOperator` — the dense and BSR overloads share one body (`floatDenseOperator`
 and `floatBSROperator` are both just thin `TOp` wrappers), not a forked sparse implementation.
 
-## Benchmarks
+## Performance
 
-All measured on a 9950X3D, single CCD pinned for repeatability (commit `c3df68b`).
+Ryzen 9 9950X3D, single-thread Burst, median of 9.
 
-**Block-size-unrolled spMV vs. the general (runtime-block-size) kernel** — same result, commit `6481455`:
+**Block-size-unrolled spMV** (compile-time block sizes b∈{1,2,3,4,6}), 768², b=3:
 
-| Case | General kernel | Unrolled (b=3) | Speedup | vs. dense GEMV |
-|---|---|---|---|---|
-| float, 768², 7% fill | 0.96ms | 0.34ms | 2.8× | 38× (was 14× pre-unroll) |
-| float, 768², 33% fill | 4.46ms | 1.53ms | 2.9× | 8.5× (was 3×) |
-| double, 768², 7% fill | 1.08ms | 0.34ms | 3.2× | — |
+| Case | spMV (ms) | vs. dense GEMV |
+|---|---|---|
+| float, 7% fill | 0.34 | 38× |
+| float, 33% fill | 1.53 | 8.5× |
+| double, 7% fill | 0.34 | — |
 
-**Iterative solve, sparse (BSR) vs. dense, same system** — commit `754ff4a`, `d3f65c1`:
+**Iterative solve, sparse (BSR) vs. dense, same system:**
 
 | Solver family | Fill | Speedup vs. dense |
 |---|---|---|
-| Square (CG/MINRES) | 7% | ~11–13× (e.g. double CG N=768: 8.59ms → 0.66ms) |
+| Square (CG/MINRES) | 7% | ~11–13× |
 | Square (CG/MINRES) | 33% | ~2.7–3× |
-| Rectangular (CGLS/LSQR) | 7% | ~7–8× (undershoots the ideal ~14×; `ApplyT`'s transpose scatter is the gap — materializing `AT` per above measured perf-neutral on this benchmark, commit `724ceb0`) |
+| Rectangular (CGLS/LSQR) | 7% | ~7–8× (below the ideal ~14× — `ApplyT`'s transpose scatter is the gap) |
 
-**CG at a genuine N=1024, block size b=4 (7% fill)** — the b=3 sweep above tops out at N=768 since
-1024 isn't divisible by 3; b=4 is another compile-time-unrolled kernel size (`bsrMatVecB4`), giving a
-real 1024×1024 dense-vs-sparse CG case (`Benchmarks/SparseSolverBenchmark.cs`, Section 1x). AMD Ryzen
-9 9950X3D, single CCD pinned (non-V-Cache), median of 9, 2026-07-06 (consolidated `AllBenchmarks`
-run), Unity Editor batchmode (checks likely on):
+**CG at N=1024, block size b=4 (7% fill)**, dense vs. sparse (`Benchmarks/SparseSolverBenchmark.cs`):
 
 | dtype | CG-dense med(ms) | CG-sparse med(ms) | speedup |
 |---|---|---|---|
 | float | 3.66 | 0.09 | ~40× |
 | double | 15.02 | 0.37 | ~40× |
 
-**Symmetric vs. full storage spMV** — modest, ~1.05–1.22× before the block-unroll work (commit
-`9c0ae85`, general kernels only); after both the symmetric and full kernels were unrolled equally,
-the gap closes further to ~break-even (~1.02×, commit `6481455`). Symmetric storage is a **memory**
-win (½ footprint), not a compute win — each stored upper block still does two block-multiplies.
+Symmetric storage (upper blocks only) is a **memory** win — ½ the footprint at ~break-even spMV
+throughput, since each stored upper block still does two block-multiplies.
 
-**Block-Jacobi PCG vs. plain CG, same BSR system** (`Benchmarks/PCGBenchmark.cs` — `Solvers.pcg`
-wasn't covered by any benchmark before this; a block-tridiagonal SPD system, b=3, nb=256, N=768,
-K=40 fixed iterations, tol=0). AMD Ryzen 9 9950X3D, single CCD pinned (non-V-Cache), median of 9,
-2026-07-06 (consolidated `AllBenchmarks` run), Unity Editor batchmode (checks likely on):
+**Block-Jacobi PCG vs. plain CG, same BSR system** (`Benchmarks/PCGBenchmark.cs`; block-tridiagonal
+SPD system, b=3, nb=256, N=768, K=40 fixed iterations, tol=0):
 
 | dtype | solver | med(ms) | residual |
 |---|---|---|---|

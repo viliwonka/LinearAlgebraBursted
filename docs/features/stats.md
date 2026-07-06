@@ -52,10 +52,8 @@ Two smaller features that live alongside Stats (design doc:
   preserving resize, point-resampling, no anti-alias prefilter), `resample2DInto` (separable 2-pass).
   `EdgeMode{Clamp, Wrap, Mirror}`.
 
-## Benchmarks
+## Performance
 
-Not independently benchmarked with before/after numbers. Two structural fixes have landed (both
-verified correct, neither re-measured in isolation): `covarianceInto` moved from an O(N²) column-pair
-stride-N loop to the row-major Gram formulation above, and the `standardizeColumns`/`centerColumns`/
-`rescaleColumns`/`maxAbsColumns` apply passes were reordered from column-strided to row-major
-(commit `9b72cba`).
+`covarianceInto` uses the row-major Gram formulation above, and the `standardizeColumns` /
+`centerColumns` / `rescaleColumns` / `maxAbsColumns` apply passes are row-major (contiguous, not
+column-strided).

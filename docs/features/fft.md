@@ -26,25 +26,15 @@ Workspace `floatFFTCache` (twiddle tables + rfft/mixed-radix scratch) is built o
 `arena.floatFFTCache(n)`, persistent, disposed with the arena; single-use-at-a-time (one per thread
 for parallel transforms, FFTW "plan" semantics).
 
-## Benchmarks
+## Performance
 
-Single-thread, this machine, `Burst IJob.Run`, each row a distinct optimization (cited by commit):
+The transforms use an in-place mixed-radix (radix-4/2) core. The twiddle-table workspace is ~1.3–1.9×
+faster than the no-workspace path but must be built once — see [docs/fft.md](../fft.md) for when each
+is the right default.
 
-| Change | Size | Result | Source |
-|---|---|---|---|
-| DFT: reduce twiddle argument mod N | N=2048, float | 287 → 95.3ms (3.0×), float now ≤ double | `b46bf7c` |
-| rfft: real two-for-one packing vs. full `fft` | N=1M, float | 24.0 → 15.9ms (1.5×); ~1.7× at 64K–256K | `dc3bd3f` |
-| Radix-4, in-place mixed-radix rewrite | — | 1.7–2.0× vs. the recursive version | `7d81eed` |
-| Radix-4 wired into rfft/irfft's inner FFT | large N | 1.6–2.0× | `103c720` |
-| Zero-alloc radix-4 recurrence (no-workspace path) | — | ~1.35× vs. the old radix-2 recurrence | `6bc2adb` |
-
-Workspace-vs-no-workspace (~1.3–1.9×) is a design tradeoff, not a bug fix — see
-[docs/fft.md](../fft.md) for when each is the right default.
-
-Current absolute numbers, N=1,048,576 (2²⁰, `Benchmarks/FFTBenchmark.cs`). AMD Ryzen 9 9950X3D,
-single CCD pinned (non-V-Cache), median of 9, 2026-07-06 (consolidated `AllBenchmarks` run), Unity
-Editor batchmode (checks likely on). N=1M FFT is memory-bandwidth-bound, so absolute ms drifts a few
-% with machine memory traffic between runs:
+Ryzen 9 9950X3D, single-thread Burst, median of 9. N=1,048,576 (2²⁰,
+`Benchmarks/FFTBenchmark.cs`); this size is memory-bandwidth-bound, so absolute ms varies a few % with
+machine memory traffic:
 
 | Path | dtype | med(ms) |
 |---|---|---|
