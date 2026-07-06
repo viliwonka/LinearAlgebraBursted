@@ -123,8 +123,12 @@ namespace LinearAlgebra
         // rowStart = d, matching the forward pass: row r < d still holds its untouched e_r seed (its
         // own reflector, colStart = r, hasn't been processed yet in this decreasing-d order), so it
         // contributes a provably-zero dot product — skip it rather than compute a guaranteed no-op.
+        // reconstructQ == false (the min-norm solve's factor-only path): stop after the forward sweep
+        // and L extraction, leaving the stored reflectors in W's rows for a caller that applies Qᵀ to a
+        // vector directly (see applyQtFromReflectors) instead of materializing the dense Q. Q is unused
+        // and may be passed as default in that case.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void lqKernel(ref doubleMxN W, ref doubleMxN L, ref doubleMxN Q, ref doubleN v, double zeroThreshold)
+        private static void lqKernel(ref doubleMxN W, ref doubleMxN L, ref doubleMxN Q, ref doubleN v, double zeroThreshold, bool reconstructQ)
         {
             int m = W.M_Rows;
             int n = W.N_Cols;
@@ -146,6 +150,9 @@ namespace LinearAlgebra
                 for (int c = r + 1; c < m; c++)
                     L[r, c] = (double)0;
             }
+
+            if (!reconstructQ)
+                return;
 
             unsafe { UnsafeUtility.MemClear(Q.Data.Ptr, (long)m * n * UnsafeUtility.SizeOf<double>()); }
             for (int i = 0; i < m; i++)
@@ -194,7 +201,7 @@ namespace LinearAlgebra
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe void lqDecompositionBlockedCore(ref doubleMxN W, ref doubleMxN L, ref doubleMxN Q,
             ref doubleN v, ref doubleN Vpanel, ref doubleN Vt, ref doubleN Tbuf, ref doubleN Y, ref doubleN tcolBuf,
-            double zeroThreshold)
+            double zeroThreshold, bool reconstructQ)
         {
             // Panel width for the blocked (level-3 / compact-WY) factorization path. A method-local
             // const (not a class field) — LQ is a partial class shared by the float/double generated
@@ -274,6 +281,10 @@ namespace LinearAlgebra
                 for (int c = r + 1; c < m; c++)
                     L[r, c] = (double)0;
             }
+
+            // Factor-only path (min-norm solve): reflectors now live in W's rows; skip Q.
+            if (!reconstructQ)
+                return;
 
             // ---- reconstruct Q from the stored reflectors, panels bottom to top ----
             // Q is a SEPARATE buffer from W, so no clean-snapshot copy is needed — W's stashed
@@ -382,7 +393,7 @@ namespace LinearAlgebra
 
             if (m < LQ_BLOCK_MIN_M)
             {
-                lqKernel(ref W, ref L, ref Q, ref v, zeroThreshold);
+                lqKernel(ref W, ref L, ref Q, ref v, zeroThreshold, reconstructQ: true);
             }
             else
             {
@@ -392,7 +403,7 @@ namespace LinearAlgebra
                 var Y = new doubleN(m * LQ_BLOCK, Allocator.Temp, true);
                 var tcolBuf = new doubleN(LQ_BLOCK, Allocator.Temp, true);
 
-                lqDecompositionBlockedCore(ref W, ref L, ref Q, ref v, ref Vpanel, ref Vt, ref Tbuf, ref Y, ref tcolBuf, zeroThreshold);
+                lqDecompositionBlockedCore(ref W, ref L, ref Q, ref v, ref Vpanel, ref Vt, ref Tbuf, ref Y, ref tcolBuf, zeroThreshold, reconstructQ: true);
 
                 tcolBuf.Dispose();
                 Y.Dispose();
@@ -434,9 +445,74 @@ namespace LinearAlgebra
             W.Data.CopyFrom(A.Data);
             double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
 
-            lqKernel(ref W, ref L, ref Q, ref v, zeroThreshold);
+            lqKernel(ref W, ref L, ref Q, ref v, zeroThreshold, reconstructQ: true);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        // Factor a working copy W (already holding a copy of A) into L + stored row-reflectors (left in
+        // W's rows), WITHOUT reconstructing Q — the min-norm solve's fast path. Same size gate and
+        // blocked core as decomp; the blocked scratch is Allocator.Temp (one set per call, negligible
+        // against the O(m²n) factorization). Mirrors decomp's dispatch minus the Q reconstruction.
+        static void lqFactorInPlace(ref doubleMxN W, ref doubleMxN L, ref doubleN v, double zeroThreshold)
+        {
+            const int LQ_BLOCK = 64;
+            const int LQ_BLOCK_MIN_M = 512;
+
+            int m = W.M_Rows;
+            int n = W.N_Cols;
+
+            var Qnull = default(doubleMxN);   // unused when reconstructQ is false
+            if (m < LQ_BLOCK_MIN_M)
+            {
+                lqKernel(ref W, ref L, ref Qnull, ref v, zeroThreshold, reconstructQ: false);
+            }
+            else
+            {
+                var Vpanel = new doubleN(LQ_BLOCK * n, Allocator.Temp, true);
+                var Vt = new doubleN(n * LQ_BLOCK, Allocator.Temp, true);
+                var Tbuf = new doubleN(LQ_BLOCK * LQ_BLOCK, Allocator.Temp, true);
+                var Y = new doubleN(m * LQ_BLOCK, Allocator.Temp, true);
+                var tcolBuf = new doubleN(LQ_BLOCK, Allocator.Temp, true);
+
+                lqDecompositionBlockedCore(ref W, ref L, ref Qnull, ref v, ref Vpanel, ref Vt, ref Tbuf, ref Y, ref tcolBuf, zeroThreshold, reconstructQ: false);
+
+                tcolBuf.Dispose();
+                Y.Dispose();
+                Tbuf.Dispose();
+                Vt.Dispose();
+                Vpanel.Dispose();
+            }
+        }
+
+        // x = Qᵀ y from the stored row-reflectors in W (W[d, d..n-1] = reflector v_d), WITHOUT forming
+        // the dense Q. Q (m×n) = H_{m-1}···H_0 restricted to its first m rows (the G_d are n×n, v_d
+        // supported on cols [d, n)), so x = Qᵀy = H_0···H_{m-1}·[y; 0]: seed x = [y (length m); 0
+        // (length n-m)] and apply the reflectors in the order H_{m-1}, …, H_0 (each G_d = I - v_d v_dᵀ:
+        // x[c] -= v_d[c]·(v_dᵀx) over c in [d, n)). Reproduces the dense dot(y, Q) to rounding while
+        // skipping the O(m·n·m) Q reconstruction — the whole point of the min-norm fast path.
+        static unsafe void applyQtFromReflectors(ref doubleMxN W, ref doubleN y, ref doubleN x)
+        {
+            int m = W.M_Rows;
+            int n = W.N_Cols;
+
+            double* xp = x.Data.Ptr;
+            double* yp = y.Data.Ptr;
+            double* Wp = W.Data.Ptr;
+
+            for (int j = 0; j < m; j++)
+                xp[j] = yp[j];
+            for (int j = m; j < n; j++)
+                xp[j] = (double)0;
+
+            for (int d = m - 1; d >= 0; d--)
+            {
+                double* vd = Wp + (long)d * n + d;   // reflector v_d over cols [d, n)
+                double* xd = xp + d;
+                int len = n - d;
+                double dot = dot4(vd, xd, len);
+                UnsafeOP.axpy(xd, vd, -dot, len);
+            }
         }
 
         // ---- LQ minimum-norm solver ----
@@ -445,12 +521,14 @@ namespace LinearAlgebra
         /// Minimum-2-norm solution to the underdetermined system A x = b (m ≤ n, A full row rank).
         /// Uses LQ: A = L Q, so x = Qᵀ L⁻¹ b.
         /// Steps: (1) forward-solve L y = b for y (m-vector); (2) x = Qᵀ y (n-vector).
-        /// A is not modified. Allocates Allocator.Temp for L, Q, and y.
+        /// Q is NEVER materialized: A is factored into L + row-reflectors, and Qᵀ is applied to y
+        /// straight from those reflectors (see applyQtFromReflectors) — skipping the ~half-of-runtime
+        /// Q reconstruction. A is not modified. Allocates Allocator.Temp for the working copy, L and y.
         /// </summary>
         /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). Not modified.</param>
         /// <param name="b">Right-hand side vector, length m.</param>
         /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true. Solution (min-2-norm), length n. Must not alias b.</param>
-        // Always reports DirectSolveStatus.Success — decomp has no failure mode and this
+        // Always reports DirectSolveStatus.Success — the factorization has no failure mode and this
         // solve does not itself detect rank deficiency in A (PRECONDITION: A has full row rank).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo minNormSolve(ref doubleMxN A, ref doubleN b, ref doubleN x)
@@ -465,22 +543,29 @@ namespace LinearAlgebra
             if (x.N != n)
                 throw new ArgumentException("LQ.minNormSolve: x.N must equal A.N_Cols");
 
-            var L = new doubleMxN(m, m, Allocator.Temp, false);
-            var Q = new doubleMxN(m, n, Allocator.Temp, false);
+            if (m == 0 || n == 0)
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
-            decomp(in A, ref L, ref Q);
+            // Factor a working copy of A into L + stored row-reflectors (in W); Q is NOT reconstructed.
+            var W = new doubleMxN(m, n, Allocator.Temp, false);
+            var L = new doubleMxN(m, m, Allocator.Temp, false);
+            var v = new doubleN(n, Allocator.Temp, false);
+            W.Data.CopyFrom(A.Data);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
+            lqFactorInPlace(ref W, ref L, ref v, zeroThreshold);
 
             // Step 1: forward-solve L y = b.  y starts as a copy of b (triLower is in-place).
             var y = new doubleN(m, Allocator.Temp, false);
             y.Data.CopyFrom(b.Data);
             Solvers.triLower(ref L, ref y);
 
-            // Step 2: x = Qᵀ y.  dot(in y, in Q, ref x) computes yᵀ Q = (Qᵀ y)ᵀ → n-vector.
-            Blas.dot(in y, in Q, ref x);
+            // Step 2: x = Qᵀ y, applied directly from W's reflectors (no dense Q).
+            applyQtFromReflectors(ref W, ref y, ref x);
 
             y.Dispose();
-            Q.Dispose();
+            v.Dispose();
             L.Dispose();
+            W.Dispose();
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
@@ -505,16 +590,24 @@ namespace LinearAlgebra
                 throw new ArgumentException("LQ.minNormSolve: x.N must equal A.N_Cols");
             RequireLQMinNormSolveWorkspace(in ws, m, n);
 
+            if (m == 0 || n == 0)
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
+
+            // Factor A into the cache's working buffer (W) + L, leaving row-reflectors in W; no Q.
+            // Zero-alloc, so this stays on the unblocked kernel (matching the ws decomp contract).
+            var W = ws.LQWs.W;
+            var v = ws.LQWs.v;
             var L = ws.L;
-            var Q = ws.Q;
+            var Qnull = default(doubleMxN);
+            W.Data.CopyFrom(A.Data);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
+            lqKernel(ref W, ref L, ref Qnull, ref v, zeroThreshold, reconstructQ: false);
 
-            decomp(in A, ref L, ref Q, ref ws.LQWs);
-
-            // Same two steps as the allocating overload (forward-solve L y = b, then x = Qᵀ y).
+            // Forward-solve L y = b, then x = Qᵀ y straight from W's reflectors (no dense Q).
             var y = ws.y;
             y.Data.CopyFrom(b.Data);
             Solvers.triLower(ref L, ref y);
-            Blas.dot(in y, in Q, ref x);
+            applyQtFromReflectors(ref W, ref y, ref x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }

@@ -1101,6 +1101,8 @@ public class floatQRTests
             KnownSolutionWide_4x9,
             KnownSolutionWide_8x16,
             ResidualCheck,
+            // Large m (>= LQ_BLOCK_MIN_M): exercises the blocked factor-only path in lqFactorInPlace.
+            ResidualCheckLargeBlocked,
             // Solver API rework (commit 2): uninit-x contract.
             UninitXContract,
         }
@@ -1118,6 +1120,7 @@ public class floatQRTests
                 case TestType.KnownSolutionWide_4x9:  KnownSolutionWide_4x9();  break;
                 case TestType.KnownSolutionWide_8x16: KnownSolutionWide_8x16(); break;
                 case TestType.ResidualCheck:            ResidualCheck();            break;
+                case TestType.ResidualCheckLargeBlocked: ResidualCheckLargeBlocked(); break;
                 case TestType.UninitXContract:          UninitXContract();          break;
             }
         }
@@ -1197,6 +1200,35 @@ public class floatQRTests
                 Fail[3] = residual - (float)1E-4f;
             }
             Assert.IsTrue(residual <= (float)1E-4f);
+            arena.Dispose();
+        }
+
+        // Same residual check but at m >= LQ_BLOCK_MIN_M so lqFactorInPlace takes the blocked
+        // (compact-WY, level-3) factor-only branch instead of the small unblocked kernel. Leading
+        // diagonal is boosted for conditioning so the residual stays tight at float precision.
+        void ResidualCheckLargeBlocked()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int m = 520, n = 640;   // m > 512 = LQ_BLOCK_MIN_M -> blocked path
+            var A = arena.floatRandomMat(m, n, -2f, 2f, 131313);
+            for (int d = 0; d < m; d++)
+                A[d, d] += (float)20f;
+            var b = arena.floatRandomVec(m, -1f, 1f, 141414);
+            var x = arena.floatVec(n);
+            LQ.minNormSolve(ref A, ref b, ref x);
+            var Ax = arena.floatVec(m);
+            Blas.dot(in A, in x, ref Ax);
+            Ax.subInPlace(b);
+            float residual = Analysis.MaxZeroError(Ax);
+            float tol = (float)1E-3f;   // larger system, looser float tolerance
+            if (!(residual <= tol) && Fail[0] == (float)0)
+            {
+                Fail[0] = (float)1;
+                Fail[1] = residual;
+                Fail[2] = tol;
+                Fail[3] = residual - tol;
+            }
+            Assert.IsTrue(residual <= tol);
             arena.Dispose();
         }
 

@@ -212,9 +212,9 @@ public class doubleLQWorkspaceTests
             var solveWs = arena.doubleLQMinNormCache(4, 8);
             Assert.AreEqual(4, solveWs.L.M_Rows);
             Assert.AreEqual(4, solveWs.L.N_Cols);
-            Assert.AreEqual(4, solveWs.Q.M_Rows);
-            Assert.AreEqual(8, solveWs.Q.N_Cols);
             Assert.AreEqual(4, solveWs.y.N);
+            // No dense-Q buffer any more — the fused solve applies Qᵀ from the reflectors in LQWs.W,
+            // which doubles as the factor-only working buffer.
             Assert.AreEqual(4, solveWs.LQWs.W.M_Rows);
             Assert.AreEqual(8, solveWs.LQWs.W.N_Cols);
         }

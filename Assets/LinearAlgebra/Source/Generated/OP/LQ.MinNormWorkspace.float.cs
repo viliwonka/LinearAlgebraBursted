@@ -6,14 +6,13 @@ namespace LinearAlgebra
     {
         /// <summary>
         /// Throws if <paramref name="ws"/> is not sized for an m x n LQ min-norm solve (L m x m,
-        /// Q m x n, y length m, plus the nested LQ-decomposition workspace) — the layout produced
-        /// by Arena.floatLQMinNormCache(m, n).
+        /// y length m, plus the nested LQ workspace whose W doubles as the factor-only working
+        /// buffer) — the layout produced by Arena.floatLQMinNormCache(m, n).
         /// </summary>
         static void RequireLQMinNormSolveWorkspace(in floatLQMinNormCache ws, int m, int n)
         {
             bool ok =
                 ws.L.M_Rows == m && ws.L.N_Cols == m &&
-                ws.Q.M_Rows == m && ws.Q.N_Cols == n &&
                 ws.y.N == m;
 
             if (!ok)
@@ -27,14 +26,16 @@ namespace LinearAlgebra
     /// Arena.floatLQMinNormCache(m, n) and reuse it across many same-shape calls to avoid the
     /// per-call Allocator.Temp allocations minNormSolve's allocating overload makes internally.
     ///
-    /// LQWs is the nested workspace decomp needs (see floatLQCache); L (m x m) / Q (m x n)
-    /// receive the LQ factors; y (length m) is the forward-solve scratch (starts as a copy of b).
+    /// LQWs is the nested LQ workspace (see floatLQCache): its W (m x n) is the factor-only working
+    /// buffer that receives a copy of A and the stored row-reflectors, and its v is the reflector
+    /// scratch. L (m x m) receives the lower-triangular factor; y (length m) is the forward-solve
+    /// scratch (starts as a copy of b). No dense-Q buffer is carried — the fused solve applies Qᵀ
+    /// straight from W's reflectors (see LQ.applyQtFromReflectors).
     /// </summary>
     public struct floatLQMinNormCache
     {
         public floatLQCache LQWs;
         public floatMxN L;
-        public floatMxN Q;
         public floatN y;
     }
 
@@ -50,7 +51,6 @@ namespace LinearAlgebra
             {
                 LQWs = arena.floatLQCache(m, n),
                 L = arena.floatMat(m, m),
-                Q = arena.floatMat(m, n),
                 y = arena.floatVec(m)
             };
         }
