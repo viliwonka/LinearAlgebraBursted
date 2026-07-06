@@ -71,11 +71,12 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 
 | Algorithm | Case | Results |
 |---|---|---|
-| LU solve — `LU.solveInPlace` | 1024×1024, float | 16.7 ms |
-| Cholesky solve — `CHO.solveInPlace` | SPD 1024×1024, float | 12.2 ms |
-| QR solve — `QR.solveInPlace` | 1024×1024, float | 38.4 ms |
-| QR least squares — `QR.solveInPlace` | 2048×512, float | 34.5 ms |
-| QRCP least squares, rank-safe — `QRCP.solveInPlace` | 2048×512, float | 63.9 ms |
+| LU solve — `LU.solveInPlace` | 1024×1024, float | 15.3 ms |
+| Cholesky solve — `CHO.solveInPlace` | SPD 1024×1024, float | 12.1 ms |
+| QR solve — `QR.solveInPlace` | 1024×1024, float | 36.3 ms |
+| QR least squares — `QR.solveInPlace` | 2048×512, float | 31.2 ms |
+| QRCP least squares, rank-safe — `QRCP.solveInPlace` | 2048×512, float | 36.2 ms |
+| LQ minimum-norm solve — `LQ.minNormSolve` | underdetermined 512×1024, float | 12.3 ms |
 | CG, iterative solve — `Solvers.cg` | SPD 1024×1024, double; dense vs. sparse BSR (4×4 blocks, 7% fill), 40 iterations | dense 15.05 ms, sparse 0.37 ms |
 | Symmetric eigendecomposition — `Eigen.symmetric` | 1024×1024, float, values + vectors | 428.6 ms |
 | Eigenvalues only — `Eigen.valuesSymmetric` | 1024×1024, float | 163.0 ms |
