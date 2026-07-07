@@ -52,22 +52,27 @@ This is the level-2 → level-3 jump: each substitution step is a contiguous axp
 right-hand sides, so each factor entry is loaded once and reused across all of them, and `QᵀB` / `UᵀB`
 become GEMMs. Results match the column-by-column vector solve to summation-order rounding.
 
-**End-to-end speedup vs looping the single-RHS solver** (`Benchmarks/MultiRhsSolveBenchmark.cs`,
-whole `AX=B` including the factorization both paths pay, square N=512, float, Ryzen 9 9950X3D
-single-thread Burst). The block's total is `factor + a sliver` almost regardless of `k`; the loop is
-`factor + k·(per-RHS solve)`, so the win grows with the number of right-hand sides:
+**End-to-end speedup, the fused `solveInPlace` path** (`Benchmarks/MultiRhsSolveBenchmark.cs`, whole
+`AX=B`, square N=512, float, Ryzen 9 9950X3D single-thread Burst). `solveInPlace` fuses factor+solve
+into one destructive call, so there is no "factor once then loop" with it — calling it per RHS
+re-factorizes every time. The block adds the k-column solve onto a *single* factorization, so its
+total is nearly flat in `k`, while looping the one-call API is `k · (factor + solve)`:
 
-| solver | factor (ms) | k=16 | k=64 | k=256 |
-|---|---|---|---|---|
-| LU | 2.7 | 1.9× | 5.9× | 15× |
-| Cholesky | 1.8 | 2.2× | 7.7× | 19× |
-| QR | 7.8 | 1.2× | 2.1× | 4.5× |
-| QRCP | 9.9 | 2.2× | 5.9× | 18× |
+| solver | 1-RHS `solveInPlace` (ms) | block, k=16 | block, k=64 | block, k=256 | speedup @ k=256 |
+|---|---|---|---|---|---|
+| LU | 2.9 | 3.96 | 3.55 | 4.95 | 151× |
+| Cholesky | 2.05 | 2.94 | 2.61 | 3.92 | 134× |
+| QR | 4.7 | 5.86 | 5.49 | 7.46 | 160× |
+| QRCP | 7.0 | 8.47 | 8.05 | 10.22 | 175× |
 
-At small `k` the `O(n³)` factorization dominates, so the whole-operation speedup is modest; it grows as
-`k` makes the `O(n²k)` solve a bigger slice. QR gains least because its factorization is the priciest
-(it forms Q) and its per-RHS solve is already an efficient GEMV. (A naïve *re-factor-per-RHS* loop,
-not shown, would instead cost ≈ `k · factor`.)
+One block call for *any* `k` costs about the same as a *single* `solveInPlace`; the speedup ≈ `k`
+because it eliminates the `k`-fold refactorization, not because the block solve itself is faster. The
+fused QR/QRCP block also confirms the no-Q saving: QR's block (~7.5ms) undercuts the form-Q
+`decompInPlace` route because `QᵀB` is streamed during factorization and `Q` is never reconstructed.
+
+If you already hold a factorization and only want the marginal cost of more right-hand sides, use the
+`decompSolve` block overload instead (`B` preserved): that isolates the level-2 → level-3 TRSM gain
+(each factor entry loaded once, reused across all `k` columns) without re-paying the factorization.
 
 ## Diagnostics-struct convention
 
