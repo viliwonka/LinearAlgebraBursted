@@ -367,5 +367,180 @@ namespace LinearAlgebra
         /// <summary>pseudoInverse with default relTol (-1, auto tolerance) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
         public static RankInfo pseudoInverse(ref floatMxN A, ref floatMxN Aplus)
             => pseudoInverse(ref A, ref Aplus, (float)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+
+        // ---- multi-RHS form: minimum-norm least-squares for a whole matrix of right-hand sides ----
+        //
+        // X = A⁺B, each RHS a COLUMN of B (m x nrhs) / X (n x nrhs). One SVD, reused across all
+        // right-hand sides — the O(n³) factorization amortizes; the solve step (X += coeff·M) is
+        // O(n²·nrhs) and is exactly the per-column vector pinvSolve, run for every column.
+
+        /// <summary>
+        /// Minimum-norm least-squares solve for a whole block of right-hand sides:
+        /// X = argmin ‖A X - B‖ (minimum ‖X‖ among minimizers), each RHS a column of B (m x nrhs);
+        /// X is n x nrhs. Any shape/rank. A and B are not modified. relTol &lt; 0 selects the auto
+        /// tolerance (max(m,n)·Consts.floatZeroThreshold). Returns a <see cref="RankInfo"/> — see the
+        /// vector pinvSolve for the identical rank/convergence semantics (X is zeroed on NotConverged).
+        /// </summary>
+        // Caller-provided scratch overload (zero-alloc); scratch layout: see floatSVDCache.
+        public static RankInfo pinvSolve(ref floatMxN A, in floatMxN B, ref floatMxN X,
+                                    float relTol, int maxSweeps,
+                                    ref floatN S, ref floatMxN M, ref floatMxN U, ref floatMxN At)
+        {
+            if (B.M_Rows != A.M_Rows)
+                throw new ArgumentException("pinvSolve: B.M_Rows must equal A.M_Rows");
+
+            if (X.M_Rows != A.N_Cols)
+                throw new ArgumentException("pinvSolve: X.M_Rows must equal A.N_Cols");
+
+            if (X.N_Cols != B.N_Cols)
+                throw new ArgumentException("pinvSolve: X.N_Cols must equal B.N_Cols");
+
+            if (maxSweeps < 1)
+                throw new ArgumentException("pinvSolve: maxSweeps must be >= 1");
+
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            int k = math.min(m, n);
+            int big = math.max(m, n);
+            int nrhs = B.N_Cols;
+
+            if (S.N != k)
+                throw new ArgumentException("pinvSolve: S scratch length must equal min(A.M_Rows, A.N_Cols)");
+
+            if (M.M_Rows != k || M.N_Cols != k)
+                throw new ArgumentException("pinvSolve: M scratch must be k x k, k = min(A.M_Rows, A.N_Cols)");
+
+            if (U.M_Rows != big || U.N_Cols != k)
+                throw new ArgumentException("pinvSolve: U scratch must be max(m,n) x min(m,n)");
+
+            // Zero X (prior contents ignored either way, per the doc comment).
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < nrhs; c++)
+                    X[r, c] = (float)0;
+
+            if (m >= n) {
+                // Tall/square: A = U diag(S) Vᵀ; U receives the left factor, M = V.
+                SVDInfo svdInfo = thin(in A, ref U, ref S, ref M, maxSweeps);
+
+                if (!svdInfo)
+                    return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
+
+                if (relTol < (float)0)
+                    relTol = (float)math.max(m, n) * Consts.floatZeroThreshold;
+
+                if (n == 0 || S[0] == (float)0)
+                    return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
+
+                float tol = relTol * S[0];
+                int rank = 0;
+
+                // X = V diag(1/S_j) Uᵀ B  (only for S[j] > tol)
+                for (int j = 0; j < n; j++) {
+                    if (S[j] <= tol)
+                        continue;
+
+                    float invS = (float)1 / S[j];
+                    for (int c = 0; c < nrhs; c++) {
+                        // coeff = (U[:,j]ᵀ B[:,c]) / S[j]
+                        float dot = (float)0;
+                        for (int i = 0; i < m; i++)
+                            dot += U[i, j] * B[i, c];
+                        float coeff = dot * invS;
+                        for (int r = 0; r < n; r++)
+                            X[r, c] += coeff * M[r, j];
+                    }
+
+                    rank++;
+                }
+
+                return new RankInfo { status = rank == k ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
+            }
+            else {
+                // Wide: decompose Aᵀ (n x m, tall). Right singular vectors of A are columns of U (left
+                // factor of Aᵀ); left singular vectors of A are columns of M (= W).
+                if (At.M_Rows != n || At.N_Cols != m)
+                    throw new ArgumentException("pinvSolve: At scratch must be A.N_Cols x A.M_Rows for the wide (m < n) case");
+
+                Blas.trans(in A, ref At);   // At = Aᵀ (zero-alloc, ref-dest trans)
+
+                SVDInfo svdInfo = thin(in At, ref U, ref S, ref M, maxSweeps);
+
+                if (!svdInfo)
+                    return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
+
+                if (relTol < (float)0)
+                    relTol = (float)math.max(m, n) * Consts.floatZeroThreshold;
+
+                if (m == 0 || S[0] == (float)0)
+                    return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
+
+                float tol = relTol * S[0];
+                int rank = 0;
+
+                // X = U diag(1/S_j) Wᵀ B  (only for S[j] > tol); U columns (length n) are right
+                // singular vectors of A, M (= W) columns (length m) are left singular vectors of A.
+                for (int j = 0; j < m; j++) {
+                    if (S[j] <= tol)
+                        continue;
+
+                    float invS = (float)1 / S[j];
+                    for (int c = 0; c < nrhs; c++) {
+                        float dot = (float)0;
+                        for (int i = 0; i < m; i++)
+                            dot += M[i, j] * B[i, c];
+                        float coeff = dot * invS;
+                        for (int r = 0; r < n; r++)
+                            X[r, c] += coeff * U[r, j];
+                    }
+
+                    rank++;
+                }
+
+                return new RankInfo { status = rank == k ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
+            }
+        }
+
+        /// <summary>pinvSolve (multi-RHS) allocating wrapper: allocates the SVD scratch from A's arena.</summary>
+        public static RankInfo pinvSolve(ref floatMxN A, in floatMxN B, ref floatMxN X,
+                                    float relTol, int maxSweeps)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            int k = math.min(m, n);
+            int big = math.max(m, n);
+
+            floatN S = A.floatTempVec(k);
+            floatMxN M = A.floatTempMat(k, k);
+            floatMxN U = A.floatTempMat(big, k);
+            floatMxN At = default;
+            if (m < n)
+                At = A.floatTempMat(n, m);
+
+            return pinvSolve(ref A, in B, ref X, relTol, maxSweeps, ref S, ref M, ref U, ref At);
+        }
+
+        /// <summary>pinvSolve (multi-RHS) using a reusable workspace (Arena.floatSVDCache(m, n)) — zero-alloc.</summary>
+        public static RankInfo pinvSolve(ref floatMxN A, in floatMxN B, ref floatMxN X,
+                                    ref floatSVDCache ws, float relTol, int maxSweeps)
+            => pinvSolve(ref A, in B, ref X, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
+
+        /// <summary>pinvSolve (multi-RHS, workspace) with default maxSweeps.</summary>
+        public static RankInfo pinvSolve(ref floatMxN A, in floatMxN B, ref floatMxN X,
+                                    ref floatSVDCache ws, float relTol)
+            => pinvSolve(ref A, in B, ref X, ref ws, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+
+        /// <summary>pinvSolve (multi-RHS, workspace) with default relTol (auto) and maxSweeps.</summary>
+        public static RankInfo pinvSolve(ref floatMxN A, in floatMxN B, ref floatMxN X,
+                                    ref floatSVDCache ws)
+            => pinvSolve(ref A, in B, ref X, ref ws, (float)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+
+        /// <summary>pinvSolve (multi-RHS) with default maxSweeps.</summary>
+        public static RankInfo pinvSolve(ref floatMxN A, in floatMxN B, ref floatMxN X,
+                                    float relTol)
+            => pinvSolve(ref A, in B, ref X, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+
+        /// <summary>pinvSolve (multi-RHS) with default relTol (auto) and maxSweeps.</summary>
+        public static RankInfo pinvSolve(ref floatMxN A, in floatMxN B, ref floatMxN X)
+            => pinvSolve(ref A, in B, ref X, (float)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
     }
 }

@@ -613,5 +613,104 @@ namespace LinearAlgebra
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
+
+        // ---- multi-RHS form: minimum-norm solve for a whole matrix of right-hand sides ----
+
+        // X = Qᵀ Y (multi-RHS) from the stored row-reflectors in W, WITHOUT forming the dense Q. Each
+        // right-hand side is a COLUMN of Y (m x k) / X (n x k). Seed X = [Y; 0] (n x k) and apply the
+        // reflectors in the order H_{m-1}, …, H_0, each as two unit-stride axpy passes across the k
+        // columns (acc = v_dᵀX over rows [d,n), then X -= v_d·acc). Reproduces the per-column vector
+        // applyQtFromReflectors to summation-order rounding.
+        static unsafe void applyQtFromReflectors(ref doubleMxN W, ref doubleMxN Y, ref doubleMxN X)
+        {
+            int m = W.M_Rows;
+            int n = W.N_Cols;
+            int k = Y.N_Cols;
+
+            double* Xp = X.Data.Ptr;
+            double* Yp = Y.Data.Ptr;
+            double* Wp = W.Data.Ptr;
+
+            // Seed X = [Y (m rows); 0 (rows m..n-1)].
+            for (int j = 0; j < m; j++)
+            {
+                double* Xr = Xp + (long)j * k;
+                double* Yr = Yp + (long)j * k;
+                for (int c = 0; c < k; c++) Xr[c] = Yr[c];
+            }
+            for (int j = m; j < n; j++)
+            {
+                double* Xr = Xp + (long)j * k;
+                for (int c = 0; c < k; c++) Xr[c] = (double)0;
+            }
+
+            var acc = new doubleN(k, Allocator.Temp, false);
+            double* accp = acc.Data.Ptr;
+
+            for (int d = m - 1; d >= 0; d--)
+            {
+                double* vd = Wp + (long)d * n;   // reflector v_d over cols [d, n): vd[c] = W[d,c]
+
+                UnsafeUtility.MemClear(accp, (long)k * UnsafeUtility.SizeOf<double>());
+                for (int c = d; c < n; c++)
+                    UnsafeOP.axpy(accp, Xp + (long)c * k, vd[c], k);
+                for (int c = d; c < n; c++)
+                    UnsafeOP.axpy(Xp + (long)c * k, accp, -vd[c], k);
+            }
+
+            acc.Dispose();
+        }
+
+        /// <summary>
+        /// Minimum-2-norm solution of the underdetermined system A X = B (m ≤ n, A full row rank) for a
+        /// whole matrix of right-hand sides — each RHS a COLUMN of B (m x k), each solution a column of
+        /// X (n x k). Uses LQ (A = L Q): forward-solve L Y = B (multi-RHS), then X = Qᵀ Y applied
+        /// straight from the stored row-reflectors (no dense Q). A is not modified; X must not alias B.
+        /// Allocates Allocator.Temp scratch internally. Always reports Success (PRECONDITION: full row rank).
+        /// </summary>
+        /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). Not modified.</param>
+        /// <param name="B">Right-hand sides (m x k). Not modified.</param>
+        /// <param name="X">Output only; prior contents ignored. Solution (n x k). Must not alias B.</param>
+        public static DirectSolveInfo minNormSolve(ref doubleMxN A, ref doubleMxN B, ref doubleMxN X)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            int k = B.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQ.minNormSolve: A must be wide or square (M_Rows <= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("LQ.minNormSolve: B.M_Rows must equal A.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("LQ.minNormSolve: X.M_Rows must equal A.N_Cols");
+            if (X.N_Cols != k)
+                throw new ArgumentException("LQ.minNormSolve: X.N_Cols must equal B.N_Cols");
+
+            if (m == 0 || n == 0)
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
+
+            // Factor a working copy of A into L + stored row-reflectors (in W); Q is NOT reconstructed.
+            var W = new doubleMxN(m, n, Allocator.Temp, false);
+            var L = new doubleMxN(m, m, Allocator.Temp, false);
+            var v = new doubleN(n, Allocator.Temp, false);
+            W.Data.CopyFrom(A.Data);
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
+            lqFactorInPlace(ref W, ref L, ref v, zeroThreshold);
+
+            // Step 1: forward-solve L Y = B (Y starts as a copy of B; triLower is in-place).
+            var Y = new doubleMxN(m, k, Allocator.Temp, false);
+            Y.Data.CopyFrom(B.Data);
+            Blas.triLower(ref L, ref Y);
+
+            // Step 2: X = Qᵀ Y, applied directly from W's reflectors (no dense Q).
+            applyQtFromReflectors(ref W, ref Y, ref X);
+
+            Y.Dispose();
+            v.Dispose();
+            L.Dispose();
+            W.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
     }
 }

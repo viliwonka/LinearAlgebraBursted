@@ -493,5 +493,85 @@ namespace LinearAlgebra
             decompSolve(ref A_to_LU, in P, ref b_to_x);
             return info;
         }
+
+        // ---- multi-RHS (TRSM) forms: solve A X = B for a whole matrix of right-hand sides ----
+        // Each right-hand side is a COLUMN of B_to_X (n x k). The pivot is applied to B's ROWS (the
+        // component index), identically across all k columns — Pivot.ApplyInverseRow — then forward/
+        // back substitution runs through the Blas TRSM primitives (axpy across the k columns).
+
+        /// <summary>
+        /// Solve LUx = b for a whole matrix of right-hand sides using the compact in-place LU form with
+        /// pivot; B_to_X (n x k) is overwritten with X. Always reports Success — assumes a valid factor.
+        /// </summary>
+        /// <param name="B_to_X">On entry B (n rows x k cols); on exit the solution X.</param>
+        public static DirectSolveInfo decompSolve(ref doubleMxN LU, in Pivot pivot, ref doubleMxN B_to_X) {
+
+            if (!LU.IsSquare)
+                throw new System.ArgumentException("decompSolve: LU must be square");
+
+            if (B_to_X.M_Rows != LU.M_Rows)
+                throw new System.ArgumentException("decompSolve: B_to_X.M_Rows must equal LU.M_Rows");
+
+            if (pivot.N != B_to_X.M_Rows)
+                throw new System.ArgumentException("decompSolve: pivot.N must equal B_to_X.M_Rows");
+
+            pivot.ApplyInverseRow(ref B_to_X);
+
+            Blas.triLowerLU(ref LU, in pivot, ref B_to_X);
+            Blas.triUpperLU(ref LU, in pivot, ref B_to_X);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// Solve LUx = Pb for a whole matrix of right-hand sides using separate L and U with pivot;
+        /// B_to_X (n x k) is overwritten with X. Always reports Success — assumes a valid factor.
+        /// </summary>
+        /// <param name="B_to_X">On entry B (n rows x k cols); on exit the solution X.</param>
+        public static DirectSolveInfo decompSolve(ref doubleMxN L, ref doubleMxN U, in Pivot pivot, ref doubleMxN B_to_X) {
+
+            if (!U.IsSquare)
+                throw new System.ArgumentException("decompSolve: U must be square");
+
+            if (B_to_X.M_Rows != U.M_Rows)
+                throw new System.ArgumentException("decompSolve: B_to_X.M_Rows must equal U.M_Rows");
+
+            if (pivot.N != B_to_X.M_Rows)
+                throw new System.ArgumentException("decompSolve: pivot.N must equal B_to_X.M_Rows");
+
+            pivot.ApplyInverseRow(ref B_to_X);
+
+            Blas.triLower(ref L, ref B_to_X);
+            Blas.triUpper(ref U, ref B_to_X);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// Factor-and-solve LUx = b in one call (GESV, multi-RHS): factors A in place (compact LU,
+        /// partial pivoting) then solves for every column of B_to_X. Returns Singular WITHOUT solving
+        /// if A is singular. A_to_LU holds the compact LU factorization on return.
+        /// </summary>
+        /// <param name="A_to_LU">On entry A; on exit the compact LU factor.</param>
+        /// <param name="B_to_X">On entry B (n rows x k cols); on exit the solution X.</param>
+        public static DirectSolveInfo solveInPlace(ref doubleMxN A_to_LU, ref Pivot P, ref doubleMxN B_to_X) {
+            if (!A_to_LU.IsSquare)
+                throw new System.ArgumentException("solveInPlace: A_to_LU needs to be square");
+
+            int m = A_to_LU.M_Rows;
+
+            if (P.N != m)
+                throw new System.ArgumentException("pivot size must equal matrix dimension");
+
+            if (B_to_X.M_Rows != m)
+                throw new System.ArgumentException("solveInPlace: B_to_X.M_Rows must equal A_to_LU.M_Rows");
+
+            var info = decompInPlace(ref A_to_LU, ref P);
+            if (!info.Solved)
+                return info;
+
+            decompSolve(ref A_to_LU, in P, ref B_to_X);
+            return info;
+        }
     }
 }

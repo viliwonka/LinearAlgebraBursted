@@ -1031,5 +1031,174 @@ namespace LinearAlgebra
         {
             return solveInPlace(ref A_to_Q, ref b, ref x, (float)(-1));
         }
+
+        // ---- multi-RHS forms: rank-safe least squares for a whole matrix of right-hand sides ----
+        //
+        // NOTE on the contract difference vs the vector solveInPlace: the single-RHS fused path
+        // destroys A and b and never forms Q (its whole point). The multi-RHS path instead runs the
+        // ordinary (non-fused) decompInPlace — so A_to_Q exits as the orthogonal factor Q, and B is
+        // PRESERVED — then a level-3 block solve (QᵀB is one GEMM) over all k right-hand sides. This
+        // deliberately trades the fused kernel's ~⅓-runtime Q-reconstruction saving for a clean
+        // factor-once/solve-many primitive built on the trusted decompInPlace; threading matrix-RHS
+        // through the delicate blocked fused core was judged not worth the risk. See decompSolve.
+
+        /// <summary>
+        /// QRCP rank-safe least-squares for a whole block of right-hand sides, from a precomputed
+        /// column-pivoted factorization (A·P = Q·R, from QRCP.decompInPlace/decomp). Each RHS is a
+        /// COLUMN of B (m x k, preserved); X (n x k) receives the *basic* (truncated) solution, must be
+        /// distinct from B. Numerical rank r is read from R's non-increasing diagonal
+        /// (tol = relTol·|R[0,0]|; relTol &lt; 0 auto-selects max(m,n)·Consts.floatZeroThreshold). Only
+        /// the leading r×r block of R is back-substituted; free variables are zeroed and P un-applied.
+        /// Returns <see cref="RankInfo"/> (Success if r == n, else RankDeficient).
+        /// </summary>
+        /// <param name="Q">Orthogonal factor (m x n) from decompInPlace.</param>
+        /// <param name="R">Upper-triangular factor (n x n) from decompInPlace.</param>
+        /// <param name="P">Column pivot from decompInPlace.</param>
+        /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Solution (n x k).</param>
+        public static unsafe RankInfo decompSolve(ref floatMxN Q, ref floatMxN R, in Pivot P,
+                                                  ref floatMxN B, ref floatMxN X, float relTol)
+        {
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+            int k = B.N_Cols;
+
+            if (X.M_Rows != n)
+                throw new ArgumentException("QRCP.decompSolve: X.M_Rows must equal Q.N_Cols");
+            if (B.M_Rows != m)
+                throw new ArgumentException("QRCP.decompSolve: B.M_Rows must equal Q.M_Rows");
+            if (X.N_Cols != k)
+                throw new ArgumentException("QRCP.decompSolve: X.N_Cols must equal B.N_Cols");
+            if (R.M_Rows != n || R.N_Cols != n)
+                throw new ArgumentException("QRCP.decompSolve: R must be N_Cols x N_Cols");
+            if (P.N != n)
+                throw new ArgumentException("QRCP.decompSolve: P.N must equal Q.N_Cols");
+
+            if (relTol < (float)0)
+                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+
+            if (n == 0)
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            // Numerical rank from R's non-increasing diagonal (see the vector solveInPlaceFinish).
+            float tol = relTol * math.abs(R[0, 0]);
+            int rank = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (math.abs(R[i, i]) > tol) rank++;
+                else break;
+            }
+
+            float* Xp = X.Data.Ptr;
+
+            if (rank == 0)
+            {
+                for (long e = 0; e < (long)n * k; e++) Xp[e] = (float)0;
+                return new RankInfo { status = DirectSolveStatus.RankDeficient, rank = 0 };
+            }
+
+            int r = rank;
+
+            // C = QᵀB into X (level-3 GEMM; ref-dest dot guards X-aliases-input and zeroes X first).
+            Blas.dot(in Q, in B, ref X, transposeA: true);
+
+            // Back-solve the leading r×r block of R for all k columns (axpy across the k RHS). Every
+            // used R[i,i] exceeds tol, so the divide is safe.
+            for (int i = r - 1; i >= 0; i--)
+            {
+                float* Xi = Xp + (long)i * k;
+                for (int j = i + 1; j < r; j++)
+                    UnsafeOP.axpy(Xi, Xp + (long)j * k, -R[i, j], k);
+                float inv = (float)1 / R[i, i];
+                for (int c = 0; c < k; c++) Xi[c] *= inv;
+            }
+            // Zero the free variables (rows r..n-1 in the permuted ordering).
+            for (int i = r; i < n; i++)
+            {
+                float* Xi = Xp + (long)i * k;
+                for (int c = 0; c < k; c++) Xi[c] = (float)0;
+            }
+
+            // Un-permute rows: x_final[P[j], :] = z[j, :]. Scatter through a Temp copy of z (X's rows).
+            var Z = new floatMxN(n, k, Allocator.Temp, false);
+            Z.Data.CopyFrom(X.Data);
+            float* Zp = Z.Data.Ptr;
+            for (int j = 0; j < n; j++)
+            {
+                float* dst = Xp + (long)P[j] * k;
+                float* src = Zp + (long)j * k;
+                for (int c = 0; c < k; c++) dst[c] = src[c];
+            }
+            Z.Dispose();
+
+            return new RankInfo
+            {
+                status = (r < n) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,
+                rank = r
+            };
+        }
+
+        /// <summary>
+        /// Factor-and-solve (multi-RHS): column-pivoted QR of A_to_Q in place (A_to_Q exits as the
+        /// orthogonal factor Q — see the contract note above; B is PRESERVED), then the rank-safe
+        /// truncated least-squares solve for every column of B. Returns <see cref="RankInfo"/>.
+        /// </summary>
+        /// <param name="A_to_Q">On entry A (m x n, m >= n); on exit the orthogonal factor Q.</param>
+        /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Solution (n x k).</param>
+        /// <param name="R">Scratch: n x n (receives R; reusable for a later decompSolve).</param>
+        /// <param name="P">Scratch: column Pivot of size n (reset internally; reusable).</param>
+        /// <param name="u">Scratch: length EXACTLY m.</param>
+        public static RankInfo solveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X,
+                                            ref floatMxN R, ref Pivot P, ref floatN u, float relTol)
+        {
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("QRCP.solveInPlace: A_to_Q must be square or tall (M_Rows >= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("QRCP.solveInPlace: B.M_Rows must equal A_to_Q.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("QRCP.solveInPlace: X.M_Rows must equal A_to_Q.N_Cols");
+            if (X.N_Cols != B.N_Cols)
+                throw new ArgumentException("QRCP.solveInPlace: X.N_Cols must equal B.N_Cols");
+
+            // decompInPlace validates R/P/u sizes; it always reports Success (no failure mode).
+            decompInPlace(ref A_to_Q, ref R, ref P, ref u);
+            return decompSolve(ref A_to_Q, ref R, in P, ref B, ref X, relTol);
+        }
+
+        /// <summary>Allocating multi-RHS convenience: allocates R (n×n), P (n) and u (m) from
+        /// Allocator.Temp. Use the scratch overload in hot loops.</summary>
+        public static RankInfo solveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X, float relTol)
+        {
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("QRCP.solveInPlace: A_to_Q must be square or tall (M_Rows >= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("QRCP.solveInPlace: B.M_Rows must equal A_to_Q.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("QRCP.solveInPlace: X.M_Rows must equal A_to_Q.N_Cols");
+            if (X.N_Cols != B.N_Cols)
+                throw new ArgumentException("QRCP.solveInPlace: X.N_Cols must equal B.N_Cols");
+
+            var R = new floatMxN(n, n, Allocator.Temp, false);
+            var P = new Pivot(n, Allocator.Temp);
+            var u = new floatN(m, Allocator.Temp, false);
+            var info = solveInPlace(ref A_to_Q, ref B, ref X, ref R, ref P, ref u, relTol);
+            u.Dispose();
+            P.Dispose();
+            R.Dispose();
+            return info;
+        }
+
+        /// <summary>Allocating multi-RHS convenience with default tolerance.</summary>
+        public static RankInfo solveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X)
+        {
+            return solveInPlace(ref A_to_Q, ref B, ref X, (float)(-1));
+        }
     }
 }

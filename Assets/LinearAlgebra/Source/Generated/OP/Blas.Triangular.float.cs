@@ -2,6 +2,7 @@
 
 using System;
 using Unity.Mathematics;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -107,6 +108,133 @@ namespace LinearAlgebra
                     sum += U[RP[r], c] * b_to_x[c];
 
                 b_to_x[r] = (b_to_x[r] - sum) / U[RP[r], r];
+            }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        // ---- multi-RHS (TRSM) forms: solve for a whole matrix of right-hand sides at once ----
+        //
+        // Each right-hand side is a COLUMN of B_to_X (n x k, row-major). The substitution runs the
+        // same recurrence as the vector forms, but every scalar update on component r becomes a
+        // unit-stride axpy across the k columns — B_to_X row r is contiguous in memory, so the inner
+        // loop over the k right-hand sides vectorises (UnsafeOP.axpy, the GEMM pointer path). This is
+        // the level-2 (TRSV) -> level-3 (TRSM) jump: each factor entry U[r,c] is loaded once and
+        // reused across all k right-hand sides, and the O(n^2) triangular solve streams the RHS block
+        // instead of one vector. Result differs from looping the vector form column-by-column only by
+        // summation-order rounding (the trailing contributions are subtracted incrementally rather
+        // than accumulated into one sum first — a different, equally-valid order; see the blocked
+        // LU/CHO cores for the same convention).
+
+        // Solve U X = B for X (multi-RHS). U may be tall (only the top N_Cols x N_Cols block is read).
+        // See the vector triUpper for the non-singular-diagonal precondition (unguarded).
+        /// <param name="B_to_X">On entry B (N_Cols rows x k cols); on exit the solution X.</param>
+        public static unsafe DirectSolveInfo triUpper(ref floatMxN U, ref floatMxN B_to_X)
+        {
+            if (U.M_Rows < U.N_Cols)
+                throw new ArgumentException("Blas.triUpper: Matrix must be square or tall (M_Rows >= N_Cols)");
+
+            if (U.N_Cols != B_to_X.M_Rows)
+                throw new ArgumentException("Blas.triUpper: U.N_Cols must equal B_to_X.M_Rows");
+
+            int n = U.N_Cols;
+            int k = B_to_X.N_Cols;
+            float* Xp = B_to_X.Data.Ptr;
+
+            for (int r = n - 1; r >= 0; r--)
+            {
+                float* Xr = Xp + (long)r * k;
+
+                for (int c = r + 1; c < n; c++)
+                    UnsafeOP.axpy(Xr, Xp + (long)c * k, -U[r, c], k);
+
+                float inv = (float)1 / U[r, r];
+                for (int j = 0; j < k; j++)
+                    Xr[j] *= inv;
+            }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        // Solve L X = B for X (multi-RHS). See the vector triLower for the non-singular-diagonal
+        // precondition (unguarded).
+        /// <param name="B_to_X">On entry B (M_Rows rows x k cols); on exit the solution X.</param>
+        public static unsafe DirectSolveInfo triLower(ref floatMxN L, ref floatMxN B_to_X)
+        {
+            if (L.IsSquare == false)
+                throw new ArgumentException("Blas.triLower: Matrix must be square");
+
+            if (L.M_Rows != B_to_X.M_Rows)
+                throw new ArgumentException("Blas.triLower: L.M_Rows must equal B_to_X.M_Rows");
+
+            int n = L.M_Rows;
+            int k = B_to_X.N_Cols;
+            float* Xp = B_to_X.Data.Ptr;
+
+            for (int r = 0; r < n; r++)
+            {
+                float* Xr = Xp + (long)r * k;
+
+                for (int c = 0; c < r; c++)
+                    UnsafeOP.axpy(Xr, Xp + (long)c * k, -L[r, c], k);
+
+                float inv = (float)1 / L[r, r];
+                for (int j = 0; j < k; j++)
+                    Xr[j] *= inv;
+            }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        // Solve L Y = B (unit-lower, row-pivoted), multi-RHS — the compact-LU forward step. B_to_X rows
+        // are logical (X[r,:] is the r-th component of every RHS); only the factor L is pivot-indirected.
+        /// <param name="B_to_X">On entry B; on exit Y (the forward-substitution result).</param>
+        public static unsafe DirectSolveInfo triLowerLU(ref floatMxN L, in Pivot RP, ref floatMxN B_to_X)
+        {
+            if (L.IsSquare == false)
+                throw new ArgumentException("Blas.triLowerLU: Matrix must be square");
+
+            if (L.M_Rows != B_to_X.M_Rows)
+                throw new ArgumentException("Blas.triLowerLU: L.M_Rows must equal B_to_X.M_Rows");
+
+            int n = L.M_Rows;
+            int k = B_to_X.N_Cols;
+            float* Xp = B_to_X.Data.Ptr;
+
+            for (int r = 0; r < n; r++)
+            {
+                float* Xr = Xp + (long)r * k;
+                for (int c = 0; c < r; c++)
+                    UnsafeOP.axpy(Xr, Xp + (long)c * k, -L[RP[r], c], k);
+                // unit diagonal: no scale
+            }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        // Solve U X = Y (row-pivoted), multi-RHS — the compact-LU back step.
+        /// <param name="B_to_X">On entry Y; on exit the solution X.</param>
+        public static unsafe DirectSolveInfo triUpperLU(ref floatMxN U, in Pivot RP, ref floatMxN B_to_X)
+        {
+            if (U.IsSquare == false)
+                throw new ArgumentException("Blas.triUpperLU: Matrix must be square");
+
+            if (U.N_Cols != B_to_X.M_Rows)
+                throw new ArgumentException("Blas.triUpperLU: U.N_Cols must equal B_to_X.M_Rows");
+
+            int n = U.N_Cols;
+            int k = B_to_X.N_Cols;
+            float* Xp = B_to_X.Data.Ptr;
+
+            for (int r = n - 1; r >= 0; r--)
+            {
+                float* Xr = Xp + (long)r * k;
+                for (int c = r + 1; c < n; c++)
+                    UnsafeOP.axpy(Xr, Xp + (long)c * k, -U[RP[r], c], k);
+
+                float inv = (float)1 / U[RP[r], r];
+                for (int j = 0; j < k; j++)
+                    Xr[j] *= inv;
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };

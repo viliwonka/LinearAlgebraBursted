@@ -283,5 +283,67 @@ namespace LinearAlgebra
                 x[r] = (x[r] - sum) / L[r, r];
             }
         }
+
+        // ---- multi-RHS (TRSM) forms: solve A X = B for a whole matrix of right-hand sides ----
+
+        // Lᵀ X = B (multi-RHS), reading L transposed as above; every scalar update becomes a
+        // unit-stride axpy across B's k columns (see Blas triangular TRSM note).
+        static unsafe void SolveUpperTriangularTransposed(ref floatMxN L, ref floatMxN X) {
+            int n = L.M_Rows;
+            int k = X.N_Cols;
+            float* Xp = X.Data.Ptr;
+
+            for (int r = n - 1; r >= 0; r--) {
+                float* Xr = Xp + (long)r * k;
+
+                for (int c = r + 1; c < n; c++)
+                    UnsafeOP.axpy(Xr, Xp + (long)c * k, -L[c, r], k);   // (Lᵀ)[r,c] = L[c,r]
+
+                float inv = (float)1 / L[r, r];
+                for (int j = 0; j < k; j++)
+                    Xr[j] *= inv;
+            }
+        }
+
+        /// <summary>
+        /// Solve A X = B for X (multi-RHS) given the Cholesky factor L (A = L * Lᵀ) from decomp; each
+        /// right-hand side is a COLUMN of B_to_X (n x k, overwritten with X). Solves L Y = B (forward),
+        /// then Lᵀ X = Y (back). See the vector decompSolve for the valid-factor precondition.
+        /// </summary>
+        /// <param name="B_to_X">On entry B (n rows x k cols); on exit the solution X.</param>
+        public static DirectSolveInfo decompSolve(ref floatMxN L, ref floatMxN B_to_X) {
+            if (!L.IsSquare)
+                throw new ArgumentException("decompSolve: L must be square");
+
+            if (B_to_X.M_Rows != L.M_Rows)
+                throw new ArgumentException("decompSolve: B_to_X.M_Rows must equal L.M_Rows");
+
+            Blas.triLower(ref L, ref B_to_X);
+            SolveUpperTriangularTransposed(ref L, ref B_to_X);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// Factor-and-solve A X = B in one call (POSV, multi-RHS): factors A in place (L aliases A's own
+        /// storage) then solves for every column of B_to_X. Returns NotPositiveDefinite (forwarded from
+        /// the factorization) WITHOUT solving if A is not positive-definite. A_to_L holds L on return.
+        /// </summary>
+        /// <param name="A_to_L">On entry A; on exit the lower-triangular factor L.</param>
+        /// <param name="B_to_X">On entry B (n rows x k cols); on exit the solution X.</param>
+        public static DirectSolveInfo solveInPlace(ref floatMxN A_to_L, ref floatMxN B_to_X) {
+            if (!A_to_L.IsSquare)
+                throw new ArgumentException("solveInPlace: A_to_L needs to be square");
+
+            if (B_to_X.M_Rows != A_to_L.M_Rows)
+                throw new ArgumentException("solveInPlace: B_to_X.M_Rows must equal A_to_L.M_Rows");
+
+            var info = decompInPlace(ref A_to_L);
+            if (!info.Solved)
+                return info;
+
+            decompSolve(ref A_to_L, ref B_to_X);
+            return info;
+        }
     }
 }

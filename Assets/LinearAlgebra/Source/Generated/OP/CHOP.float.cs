@@ -430,5 +430,165 @@ namespace LinearAlgebra
             decompSolve(ref A_to_L, in P, decompInfo.rank, ref b_to_x, ref ws);
             return decompInfo;
         }
+
+        // ---- multi-RHS forms: solve A X = B for a whole matrix of right-hand sides ----
+        // Each RHS is a COLUMN of B_to_X (n x k). Mirrors the vector decompSolve exactly, generalised
+        // to k columns: the symmetric permutation is applied to B's ROWS, and every rank-deficient
+        // Gram step (g, z, x = M z) becomes an axpy across the k columns. Allocates Allocator.Temp
+        // scratch internally (the permuted-RHS block plus the r×r Gram buffers).
+
+        /// <summary>
+        /// Solve A X = B (multi-RHS) using a pivoted-Cholesky factor (Pᵀ·A·P = L·Lᵀ) from decomp;
+        /// B_to_X (n x k) is overwritten with X. Full rank: exact solution via permuted forward/back
+        /// substitution. Rank-deficient: the minimum-norm least-squares solution X = A⁺B, formed exactly
+        /// as the vector overload (Gram matrix G = L₁ᵀL₁ factored once, G⁻¹ applied twice), per column.
+        /// Always reports Success — assumes a valid factor + known-good rank.
+        /// </summary>
+        /// <param name="B_to_X">On entry B (n rows x k cols); on exit the solution X.</param>
+        public static unsafe DirectSolveInfo decompSolve(ref floatMxN L, in Pivot P, int rank, ref floatMxN B_to_X) {
+            if (!L.IsSquare)
+                throw new ArgumentException("decompSolve: L must be square");
+
+            int n = L.M_Rows;
+            int k = B_to_X.N_Cols;
+
+            if (B_to_X.M_Rows != n)
+                throw new ArgumentException("decompSolve: B_to_X.M_Rows must equal L.M_Rows");
+
+            if (P.N != n)
+                throw new ArgumentException("decompSolve: P.N must equal L.M_Rows");
+
+            if (rank < 0 || rank > n)
+                throw new ArgumentException("decompSolve: rank must be in [0, n]");
+
+            // X = A⁺B = 0 for the zero matrix.
+            if (rank == 0) {
+                float* Xz = B_to_X.Data.Ptr;
+                for (long e = 0; e < (long)n * k; e++) Xz[e] = (float)0;
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            }
+
+            // B̃[i,:] = B[P[i],:] (apply the symmetric permutation to the RHS rows).
+            var Bt = new floatMxN(n, k, Allocator.Temp, false);
+            {
+                float* Btp = Bt.Data.Ptr;
+                float* Xp = B_to_X.Data.Ptr;
+                for (int i = 0; i < n; i++)
+                {
+                    float* dst = Btp + (long)i * k;
+                    float* src = Xp + (long)P[i] * k;
+                    for (int c = 0; c < k; c++) dst[c] = src[c];
+                }
+            }
+
+            if (rank == n) {
+                // full rank: L Z = B̃ then Lᵀ X̃ = Z (CHO multi-RHS), then scatter X[P[i],:] = X̃[i,:].
+                CHO.decompSolve(ref L, ref Bt);
+                float* Btp = Bt.Data.Ptr;
+                float* Xp = B_to_X.Data.Ptr;
+                for (int i = 0; i < n; i++)
+                {
+                    float* dst = Xp + (long)P[i] * k;
+                    float* src = Btp + (long)i * k;
+                    for (int c = 0; c < k; c++) dst[c] = src[c];
+                }
+                Bt.Dispose();
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            }
+
+            // rank-deficient minimum-norm solution.
+            int r = rank;
+
+            // Grhs = L₁ᵀ B̃  (r x k; L₁[i,c]=0 for i<c so the sum starts at i=c).
+            var Grhs = new floatMxN(r, k, Allocator.Temp, false);
+            {
+                float* Gp = Grhs.Data.Ptr;
+                float* Btp = Bt.Data.Ptr;
+                for (int c = 0; c < r; c++)
+                {
+                    float* Grow = Gp + (long)c * k;
+                    for (int i = c; i < n; i++)
+                        UnsafeOP.axpy(Grow, Btp + (long)i * k, L[i, c], k);
+                }
+            }
+
+            // G = L₁ᵀ L₁  (r x r SPD).
+            var G = new floatMxN(r, r, Allocator.Temp);
+            for (int a = 0; a < r; a++)
+                for (int c = 0; c <= a; c++) {
+                    float s = 0;
+                    for (int i = a; i < n; i++)
+                        s += L[i, a] * L[i, c];
+                    G[a, c] = s;
+                    G[c, a] = s;
+                }
+
+            // Z = G⁻² Grhs : factor G once, apply G⁻¹ twice (both multi-RHS).
+            var GL = new floatMxN(r, r, Allocator.Temp);
+            if (!CHO.decomp(in G, ref GL)) {
+                // borderline-revealed rank can leave G numerically semidefinite — tiny Tikhonov ridge
+                // and retry (see the vector overload).
+                float gScale = 0;
+                for (int a = 0; a < r; a++) {
+                    float gd = math.abs(G[a, a]);
+                    if (gd > gScale) gScale = gd;
+                }
+                float ridge = (float)r * Consts.floatEpsilon * gScale;
+                for (int a = 0; a < r; a++)
+                    G[a, a] += ridge;
+                CHO.decomp(in G, ref GL);
+            }
+            CHO.decompSolve(ref GL, ref Grhs);   // Grhs := G⁻¹ Grhs
+            CHO.decompSolve(ref GL, ref Grhs);   // Grhs := G⁻² Grhs = Z
+
+            // X = M Z : t[i,:] = L₁ Z rows, then scatter X[P[i],:] = t[i,:] (L[i,c]=0 for c>i).
+            {
+                float* Zp = Grhs.Data.Ptr;
+                float* Xp = B_to_X.Data.Ptr;
+                for (int i = 0; i < n; i++)
+                {
+                    float* dst = Xp + (long)P[i] * k;
+                    for (int c = 0; c < k; c++) dst[c] = (float)0;
+                    int kmax = math.min(i + 1, r);
+                    for (int c = 0; c < kmax; c++)
+                        UnsafeOP.axpy(dst, Zp + (long)c * k, L[i, c], k);
+                }
+            }
+
+            GL.Dispose();
+            G.Dispose();
+            Grhs.Dispose();
+            Bt.Dispose();
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// Pivoted-Cholesky factor-and-solve in place (multi-RHS): factors A_to_L IN PLACE
+        /// (rank-revealing) and solves A X = B for every column of B_to_X. Returns Indefinite WITHOUT
+        /// solving if A is indefinite; RankDeficient (with rank) + minimum-norm solution if PSD but
+        /// rank-deficient. A_to_L holds the factorization on return.
+        /// </summary>
+        /// <param name="A_to_L">On entry A; on exit the lower-triangular factor L.</param>
+        /// <param name="B_to_X">On entry B (n rows x k cols); on exit the solution X.</param>
+        public static RankInfo solveInPlace(ref floatMxN A_to_L, ref Pivot P, ref floatMxN B_to_X) {
+            if (!A_to_L.IsSquare)
+                throw new ArgumentException("solveInPlace: A_to_L needs to be square");
+
+            int n = A_to_L.M_Rows;
+
+            if (P.N != n)
+                throw new ArgumentException("solveInPlace: P.N must equal A_to_L dimension");
+
+            if (B_to_X.M_Rows != n)
+                throw new ArgumentException("solveInPlace: B_to_X.M_Rows must equal A_to_L.M_Rows");
+
+            var decompInfo = decomp(in A_to_L, ref A_to_L, ref P);
+            if (!decompInfo.Solved)
+                return decompInfo;
+
+            decompSolve(ref A_to_L, in P, decompInfo.rank, ref B_to_X);
+            return decompInfo;
+        }
     }
 }

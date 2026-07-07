@@ -30,6 +30,29 @@ diagnostics-struct convention shared by every solver in the library.
   rank-deficient/wide systems use `QRCP.solveInPlace` (truncated LS, see
   [least-squares.md](least-squares.md)) or `SVD.pinvSolve` (minimum-norm, see [svd.md](svd.md)).
 
+## Multiple right-hand sides (`AX = B`)
+
+Every direct solve above has a matrix-RHS overload: pass an `M×k` matrix in place of the length-`M`
+vector and each **column** is a separate right-hand side, solved together. Same method names, same
+destructive/preserving contracts — the argument type (`fProxyN` → `fProxyMxN`) picks the overload.
+
+- `Blas.triUpper/triLower/triUpperLU/triLowerLU(ref factor, ref B_to_X)` — the TRSM primitives.
+- `LU.decompSolve` / `LU.solveInPlace`, `CHO.decompSolve` / `CHO.solveInPlace`,
+  `CHOP.decompSolve` / `CHOP.solveInPlace` (full-rank *and* rank-deficient min-norm) — factor once,
+  solve a whole block; the pivot is applied to `B`'s rows.
+- `QR.decompSolve(Q, R, B, X)` (reuses one factorization, `QᵀB` is a single GEMM, `B` preserved) and
+  the fused `QR.solveInPlace(A, B, X)` (destroys `A`/`B`, never forms `Q`).
+- `QRCP.decompSolve(Q, R, P, B, X[, relTol])` and `QRCP.solveInPlace(A, B, X[, relTol])` — rank-safe
+  truncated least squares. The multi-RHS `QRCP.solveInPlace` runs the ordinary (non-fused)
+  factorization, so **`A` exits as `Q` and `B` is preserved** (unlike the single-RHS fused form which
+  destroys both) — it trades the fused kernel's Q-reconstruction saving for a clean factor-once /
+  solve-many block solve.
+- `LQ.minNormSolve(A, B, X)` (underdetermined min-norm) and `SVD.pinvSolve(A, B, X)` (any shape/rank).
+
+This is the level-2 → level-3 jump: each substitution step is a contiguous axpy across the `k`
+right-hand sides, so each factor entry is loaded once and reused across all of them, and `QᵀB` / `UᵀB`
+become GEMMs. Results match the column-by-column vector solve to summation-order rounding.
+
 ## Diagnostics-struct convention
 
 Every solver returns its info struct **by value**, with an implicit `bool` conversion (`info ==

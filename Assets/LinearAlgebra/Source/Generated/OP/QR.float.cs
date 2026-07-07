@@ -704,5 +704,100 @@ namespace LinearAlgebra
             RequireQRWorkspace(in cache, A.M_Rows, A.N_Cols, needBlocked: false);
             return solveInPlace(ref A, ref b, ref x, ref cache.u, ref cache.w);
         }
+
+        // ---- multi-RHS forms: solve A X = B for a whole matrix of right-hand sides ----
+
+        /// <summary>
+        /// Solve QRX = B for X (multi-RHS), with Q,R from a precomputed decomposition — reuse one
+        /// factorization for a whole block of right-hand sides. B (Q.M_Rows x k) is preserved; X
+        /// (Q.N_Cols x k) receives the solution and must be distinct from B (the QᵀB GEMM guards the
+        /// alias). X = R⁻¹ (QᵀB): QᵀB is a single GEMM (level-3), then one triangular solve over k RHS.
+        /// Always reports Success — assumes a valid (non-singular) R.
+        /// </summary>
+        /// <param name="B">Known matrix (Q.M_Rows x k). Preserved (read-only). Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Solution (Q.N_Cols x k).</param>
+        public static DirectSolveInfo decompSolve(ref floatMxN Q, ref floatMxN R, ref floatMxN B, ref floatMxN X) {
+            if (X.M_Rows != Q.N_Cols)
+                throw new ArgumentException("QR.decompSolve: X.M_Rows must equal Q.N_Cols");
+
+            if (B.M_Rows != Q.M_Rows)
+                throw new ArgumentException("QR.decompSolve: B.M_Rows must equal Q.M_Rows");
+
+            if (X.N_Cols != B.N_Cols)
+                throw new ArgumentException("QR.decompSolve: X.N_Cols must equal B.N_Cols");
+
+            // X = QᵀB (level-3 GEMM; ref-dest dot guards X-aliases-input and zeroes X first).
+            Blas.dot(in Q, in B, ref X, transposeA: true);
+            // Solve R X = QᵀB in place (multi-RHS back substitution).
+            return Blas.triUpper(ref R, ref X);
+        }
+
+        // b/B is transformed into Y = QᵀB, then solved for X; A and B are destroyed. Fused kernel:
+        // reflectors are applied to B's k columns as they are generated (two unit-stride axpy passes
+        // per reflector, the same shape as applyReflectorRight) and Q is never formed. PRECONDITION:
+        // A has FULL COLUMN RANK (unguarded divide on a rank-deficient R diagonal — use QRCP for the
+        // rank-revealing route). Allocates u/w/acc scratch from Allocator.Temp.
+        /// <param name="A">Destroyed; contents undefined after return.</param>
+        /// <param name="B">Destroyed; contents undefined after return (becomes QᵀB scratch).</param>
+        /// <param name="X">Output only; prior contents ignored (A.N_Cols x k).</param>
+        public static unsafe DirectSolveInfo solveInPlace(ref floatMxN A, ref floatMxN B, ref floatMxN X) {
+            if (A.M_Rows < A.N_Cols)
+                throw new ArgumentException("QR.solveInPlace: Matrix A must be square or tall (more or equal rows than cols)");
+
+            if (B.M_Rows != A.M_Rows)
+                throw new ArgumentException("QR.solveInPlace: B.M_Rows must equal A.M_Rows");
+
+            if (X.M_Rows != A.N_Cols)
+                throw new ArgumentException("QR.solveInPlace: X.M_Rows must equal A.N_Cols");
+
+            if (X.N_Cols != B.N_Cols)
+                throw new ArgumentException("QR.solveInPlace: X.N_Cols must equal B.N_Cols");
+
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            int k = B.N_Cols;
+
+            var u = new floatN(m, Allocator.Temp, false);
+            var w = new floatN(n, Allocator.Temp, false);
+            var acc = new floatN(k, Allocator.Temp, false);
+
+            // scale-relative zero-column threshold (see genHouseholder); LInf(A) == max |entry|.
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A);
+
+            float* Bp = B.Data.Ptr;
+            float* up = u.Data.Ptr;
+            float* accp = acc.Data.Ptr;
+
+            for (int d = 0; d < n; d++) {
+                genHouseholder(ref A, ref u, d, zeroThreshold);
+
+                // Apply the reflector to the trailing submatrix of A (vectorised, see applyReflectorRight).
+                applyReflectorRight(ref A, ref u, ref w, d);
+
+                // Apply the same reflector to every column of B (rows [d, m)): B -= u·(uᵀB). Two
+                // unit-stride axpy passes across the k columns (acc = uᵀB, then B -= u·acc).
+                UnsafeUtility.MemClear(accp, (long)k * UnsafeUtility.SizeOf<float>());
+                for (int r = d; r < m; r++)
+                    UnsafeOP.axpy(accp, Bp + (long)r * k, up[r], k);
+                for (int r = d; r < m; r++)
+                    UnsafeOP.axpy(Bp + (long)r * k, accp, -up[r], k);
+            }
+
+            // X = leading n rows of B (= QᵀB). B may have more rows than X (m >= n).
+            for (int r = 0; r < n; r++) {
+                float* Xr = X.Data.Ptr + (long)r * k;
+                float* Br = Bp + (long)r * k;
+                for (int j = 0; j < k; j++)
+                    Xr[j] = Br[j];
+            }
+
+            // Solve R X = QᵀB in place (A holds R in its upper triangle).
+            var info = Blas.triUpper(ref A, ref X);
+
+            acc.Dispose();
+            w.Dispose();
+            u.Dispose();
+            return info;
+        }
     }
 }
