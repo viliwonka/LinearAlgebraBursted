@@ -14,6 +14,9 @@ namespace LinearAlgebra
     /// Column-pivoted (rank-revealing) QR — Businger-Golub. Split out of <see cref="QR"/> because
     /// the pivoted family carries its own Pivot/rank contract; shares QR's private Householder
     /// kernels (genHouseholder / applyReflectorRight, marked internal for this reason).
+    /// Two rank-safe least-squares solves: <see cref="solveInPlace(ref floatMxN, ref floatN, ref floatN, ref floatMxN, ref Pivot, ref floatN, float)"/>
+    /// (the BASIC / truncated solution) and <see cref="minNormSolveInPlace(ref floatMxN, ref floatN, ref floatN, ref floatMxN, ref Pivot, ref floatN, float)"/>
+    /// (the MINIMUM-NORM / pseudoinverse solution via complete orthogonal decomposition — xGELSY).
     /// </summary>
     /// <remarks>
     /// Partial column norms are DOWNDATED (LAPACK dgeqp3/dlaqps-style, unsquared, guarded) rather
@@ -799,8 +802,10 @@ namespace LinearAlgebra
         /// used R diagonal exceeds tol); the remaining (n-r) free variables are set to zero in the
         /// permuted ordering, then P is un-applied to recover x. This is the BASIC (truncated)
         /// solution: it minimizes the residual ‖Ax - b‖ but is NOT the minimum-norm solution — use
-        /// SVD.pinvSolve for that. When A has full column rank (r == n) the result is identical to
-        /// ordinary QR least-squares.
+        /// <see cref="minNormSolveInPlace(ref floatMxN, ref floatN, ref floatN, ref floatMxN, ref Pivot, ref floatN, float)"/>
+        /// (complete orthogonal decomposition, direct-factorization cost) or SVD.pinvSolve (iterative)
+        /// for that. When A has full column rank (r == n) the result is identical to ordinary QR
+        /// least-squares (and to minNormSolveInPlace, which then coincides with it).
         ///
         /// DESTRUCTIVE FAST PATH (mirrors QR.solveInPlace): factors A_to_Q's own buffer in place (no
         /// memcpy, no separate Q scratch) and applies Qᵀ to b as the reflectors are generated, so it
@@ -1060,6 +1065,250 @@ namespace LinearAlgebra
         public static RankInfo solveInPlace(ref floatMxN A_to_Q, ref floatN b, ref floatN x)
         {
             return solveInPlace(ref A_to_Q, ref b, ref x, (float)(-1));
+        }
+
+        // ---- COD (complete orthogonal decomposition): MINIMUM-NORM rank-safe least squares ----
+        //
+        // solveInPlace above gives the BASIC (truncated) solution: it zeros the free variables in the
+        // pivoted column ordering. For a rank-deficient A that is NOT the minimum-norm least-squares
+        // solution, because the top-right block R12 couples the free columns back into the leading ones
+        // (min ‖x‖ wants a nonzero free part that R12 can use to shrink the pivoted part — see the
+        // derivation below). minNormSolveInPlace closes that gap: it produces x = A⁺b (the pseudoinverse
+        // / minimum-norm least-squares solution), the SAME answer SVD.pinvSolve gives, but at
+        // direct-factorization cost (one QRCP + one small LQ on the r×n rank-revealed block) instead of
+        // an iterative SVD. This is LAPACK's xGELSY strategy.
+        //
+        // Derivation. QRCP gives A·P = Q·R with R = [R11 R12; 0 ~0] (R11 r×r upper-tri, full rank; the
+        // trailing (n-r) diagonal below tol). Writing x = P·y (P a permutation, so ‖x‖ = ‖y‖) and
+        // c = Qᵀb = [c1; c2], the residual is ‖R y − c‖² = ‖[R11 R12]·y − c1‖² + ‖c2‖². The second term
+        // is fixed, so every least-squares x satisfies M·y = c1 where M = [R11 R12] (r×n, full ROW rank
+        // r); among those, min ‖x‖ = min ‖y‖. LQ-factor the SHORT-WIDE M = L̃·Qz (L̃ r×r lower-tri,
+        // invertible; Qz r×n, orthonormal rows). Then M y = c1 ⇔ Qz y = L̃⁻¹c1 =: w, and the
+        // minimum-norm y with Qz y = w is y = Qzᵀ w (Qz has orthonormal rows). So the whole solve is:
+        //   1. QRCP factor (fused: b ← Qᵀb), read rank r off R's diagonal.
+        //   2. r == n (full column rank): basic IS min-norm — reuse solveInPlaceFinish, no COD.
+        //   3. r <  n: LQ-compress M = R's top r×n block → L̃ + Qz-reflectors; forward-solve L̃ w = c1
+        //      (c1 = b[0..r), already Qᵀb); x = Qzᵀ w straight from the reflectors; un-permute x[P[j]].
+        // Reuses LQ's row-Householder kernels (genHouseholderRow / applyHouseholderRight /
+        // applyQtFromReflectors) rather than a bespoke xTZRZF RZ-factorization — the same no-transpose
+        // reuse LQRP is built on. The LQ compress is O(r²n), negligible against the O(mn²) QRCP.
+        //
+        // LQRP (the transpose-dual, wide side) has the SAME need: there the coupling lives in the
+        // below-diagonal block L21, and its basic solution is minimum-norm only for a CONSISTENT b — an
+        // inconsistent rank-deficient LS needs LQRP.minNormSolveInPlace, which QR-least-squares-solves
+        // the m×r block [L11; L21] (the transpose-dual of the LQ compress here).
+
+        // Fused QRCP factor shared by every minNormSolveInPlace overload: run the (blocked or unblocked)
+        // core in fusedSolve mode so b becomes Qᵀb, A_to_Q is destroyed (reflectors), R and P are filled;
+        // Q is never reconstructed. vn1/vn2 are the norm-downdating scratch. Returns nothing (results are
+        // in the ref args) — the rank read + COD/basic finish follow in the caller.
+        static unsafe void minNormFactor(ref floatMxN A_to_Q, ref floatN b, ref floatMxN R, ref Pivot P,
+                                          ref floatN u, ref floatN vn1, ref floatN vn2)
+        {
+            if (A_to_Q.N_Cols >= Consts.floatQrcpBlockMinN)   // float/double split (see Consts); default 2*QRCP_BLOCK
+                decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, 1, null, true);
+            else
+                decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, 1, null, true);
+        }
+
+        // COD completion for the rank-deficient (r < n) case — see the section header for the full
+        // derivation. On entry: b holds Qᵀb, R holds the upper-triangular factor, P the column pivot, r
+        // the detected numerical rank (0 < r < n). Fills x with the minimum-norm least-squares solution
+        // and returns RankDeficient (r < n is the only path that reaches here). Allocates one set of
+        // Allocator.Temp COD scratch (M/L̃/reflector-vector/reduced-RHS); the LQ compress is O(r²n),
+        // negligible against the QRCP that produced R.
+        static unsafe RankInfo minNormCodFinish(ref floatN b, ref floatN x, ref floatMxN R, ref Pivot P,
+                                                ref floatN u, int r)
+        {
+            int n = R.N_Cols;
+
+            // M = [R11 R12] = R's top r rows (a contiguous r*n block of R's n×n row-major buffer). LQ
+            // reduces it in place to L̃ (lower-tri) plus stored row-reflectors (Qz). L̃'s diagonal is
+            // captured during the sweep; its sub-diagonal survives in M (the reflector store only
+            // overwrites columns >= d of each row) — same layout LQ.lqKernel / LQRP.lqrpKernel use.
+            var M   = new floatMxN(r, n, Allocator.Temp, false);
+            var Lc  = new floatMxN(r, r, Allocator.Temp, false);
+            var vrow = new floatN(n, Allocator.Temp, false);
+            var w   = new floatN(n, Allocator.Temp, false);
+
+            UnsafeUtility.MemCpy(M.Data.Ptr, R.Data.Ptr, (long)r * n * UnsafeUtility.SizeOf<float>());
+
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in M);
+            for (int d = 0; d < r; d++)
+            {
+                LQ.genHouseholderRow(ref M, ref vrow, d, d, zeroThreshold);
+                LQ.applyHouseholderRight(ref M, ref vrow, d, d);
+                Lc[d, d] = M[d, d];                          // capture L̃ diagonal BEFORE the reflector overwrite
+                for (int c = d; c < n; c++)
+                    M[d, c] = vrow[c];                       // stash reflector v_d into M[d, d..n)
+            }
+            // L̃'s below-diagonal (survived in M) + zero the strict upper triangle.
+            for (int i = 0; i < r; i++)
+            {
+                for (int c = 0; c < i; c++)     Lc[i, c] = M[i, c];
+                for (int c = i + 1; c < r; c++) Lc[i, c] = (float)0;
+            }
+
+            // Forward-solve L̃ w = c1, c1 = (Qᵀb)[0..r) = b[0..r). M has full row rank r (R11 is r×r
+            // full rank), so L̃ is invertible and every L̃[i,i] is nonzero (divide-safe by construction,
+            // like the basic solve's R11 block).
+            for (int i = 0; i < r; i++)
+            {
+                float sum = (float)0;
+                for (int j = 0; j < i; j++)
+                    sum += Lc[i, j] * w[j];
+                w[i] = (b[i] - sum) / Lc[i, i];
+            }
+            for (int i = r; i < n; i++)
+                w[i] = (float)0;                            // (applyQtFromReflectors only reads w[0..r), pad is cosmetic)
+
+            // x = Qzᵀ w straight from M's stored reflectors (no dense Qz). x is in the PERMUTED column
+            // ordering; un-permute below.
+            LQ.applyQtFromReflectors(ref M, ref w, ref x);
+
+            // Un-permute columns: x_final[P[j]] = x[j]. Borrow u[0..n) as scatter scratch (u is free
+            // after the factorization), matching solveInPlaceFinish.
+            for (int j = 0; j < n; j++) u[j] = x[j];
+            for (int j = 0; j < n; j++) x[P[j]] = u[j];
+
+            w.Dispose();
+            vrow.Dispose();
+            Lc.Dispose();
+            M.Dispose();
+
+            return new RankInfo { status = DirectSolveStatus.RankDeficient, rank = r };
+        }
+
+        /// <summary>
+        /// QRCP-based MINIMUM-NORM rank-safe least-squares (complete orthogonal decomposition / xGELSY).
+        /// Solves A x ≈ b (m ≥ n) for a possibly rank-deficient A and returns the pseudoinverse solution
+        /// x = A⁺b — the minimum-2-norm vector among all least-squares minimizers — which is the SAME
+        /// result <see cref="SVD.pinvSolve(ref floatMxN, in floatN, ref floatN, float, int)"/> gives,
+        /// but at direct-factorization cost (one QRCP plus one LQ on the r×n rank-revealed block) rather
+        /// than an iterative SVD. When A has full column rank (r == n) this coincides exactly with
+        /// <see cref="solveInPlace(ref floatMxN, ref floatN, ref floatN, ref floatMxN, ref Pivot, ref floatN, float)"/>
+        /// (the basic solution is then already minimum-norm) — the difference appears only when r &lt; n.
+        ///
+        /// DESTRUCTIVE FAST PATH (like solveInPlace): factors A_to_Q's own buffer in place and applies
+        /// Qᵀ to b during factorization, never forming Q. On return A_to_Q is DESTROYED (reflectors +
+        /// partial R) and b is DESTROYED (overwritten with Qᵀb). Numerical rank r is read from R's
+        /// non-increasing diagonal (tol = relTol·|R[0,0]|; negative relTol auto-selects
+        /// max(m,n)·Consts.floatZeroThreshold, matching SVD.pinvSolve / MatrixMetrics.rank).
+        /// </summary>
+        /// <param name="A_to_Q">On entry A (m x n, m ≥ n); DESTROYED on exit (reflectors, NOT Q).</param>
+        /// <param name="b">Right-hand side, length m. DESTROYED (overwritten with Qᵀb). Must not alias x.</param>
+        /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true. Minimum-norm solution, length n.</param>
+        /// <param name="R">Scratch: n x n (receives the upper-triangular factor; consumed).</param>
+        /// <param name="P">Scratch: column Pivot of size n (reset internally).</param>
+        /// <param name="u">Scratch: length EXACTLY m (Householder + un-permute scatter).</param>
+        /// <param name="relTol">Rank threshold ratio; tol = relTol·|R[0,0]|. Negative = auto default.</param>
+        /// <returns>Status Success (r == n) or RankDeficient (r &lt; n, still a usable minimum-norm
+        /// solution); rank = detected r. See <see cref="RankInfo.Solved"/>.</returns>
+        /// <remarks>R must not alias A_to_Q (unchecked) — see decompInPlace.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static RankInfo minNormSolveInPlace(ref floatMxN A_to_Q, ref floatN b, ref floatN x,
+                                                   ref floatMxN R, ref Pivot P, ref floatN u, float relTol)
+        {
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: A_to_Q must be square or tall (M_Rows >= N_Cols)");
+            if (b.N != m)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: b.N must equal A_to_Q.M_Rows");
+            if (x.N != n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: x.N must equal A_to_Q.N_Cols");
+            if (R.M_Rows != n || R.N_Cols != n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: R must be N_Cols x N_Cols");
+            if (P.N != n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: P.N must equal A_to_Q.N_Cols");
+            if (u.N != m)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: u.N must equal A_to_Q.M_Rows");
+
+            if (relTol < (float)0)
+                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+
+            if (n == 0) return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            // Fused QRCP factor: b ← Qᵀb, A destroyed, R/P filled (vn1/vn2 = downdating scratch).
+            unsafe
+            {
+                var vn1 = new floatN(n, Allocator.Temp, false);
+                var vn2 = new floatN(n, Allocator.Temp, false);
+                minNormFactor(ref A_to_Q, ref b, ref R, ref P, ref u, ref vn1, ref vn2);
+                vn2.Dispose();
+                vn1.Dispose();
+            }
+
+            // Numerical rank r from R's non-increasing diagonal (see solveInPlaceFinish for the NaN/zero
+            // edge behaviour — identical here).
+            float tol = relTol * math.abs(R[0, 0]);
+            int r = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (math.abs(R[i, i]) > tol) r++;
+                else break;
+            }
+
+            if (r == 0)
+            {
+                for (int j = 0; j < n; j++) x[j] = (float)0;
+                return new RankInfo { status = DirectSolveStatus.RankDeficient, rank = 0 };
+            }
+
+            // r == n: full column rank ⇒ the basic solution IS minimum-norm. Reuse the basic tail
+            // (b already holds Qᵀb) — no COD needed.
+            if (r == n)
+                return solveInPlaceFinish(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, relTol);
+
+            // r < n: complete the orthogonal decomposition and produce the minimum-norm solution.
+            unsafe { return minNormCodFinish(ref b, ref x, ref R, ref P, ref u, r); }
+        }
+
+        /// <summary>minNormSolveInPlace with the default rank tolerance (max(m,n)·Consts.floatZeroThreshold,
+        /// matching SVD.pinvSolve / MatrixMetrics.rank). See the primitive for full semantics.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static RankInfo minNormSolveInPlace(ref floatMxN A_to_Q, ref floatN b, ref floatN x,
+                                                   ref floatMxN R, ref Pivot P, ref floatN u)
+        {
+            return minNormSolveInPlace(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, (float)(-1));
+        }
+
+        /// <summary>
+        /// Allocating convenience wrapper: allocates R (n×n), P (n-Pivot) and u (m) from Allocator.Temp
+        /// and delegates to the zero-alloc primitive. DESTROYS A_to_Q and b (see the primitive). Use the
+        /// primitive in hot loops to avoid repeated Temp allocs.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static RankInfo minNormSolveInPlace(ref floatMxN A_to_Q, ref floatN b, ref floatN x, float relTol)
+        {
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+
+            // Replicate the primitive's dimension checks BEFORE allocating (validate-before-alloc).
+            if (m < n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: A_to_Q must be square or tall (M_Rows >= N_Cols)");
+            if (b.N != m)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: b.N must equal A_to_Q.M_Rows");
+            if (x.N != n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: x.N must equal A_to_Q.N_Cols");
+
+            var R = new floatMxN(n, n, Allocator.Temp, false);
+            var P = new Pivot(n, Allocator.Temp);
+            var u = new floatN(m, Allocator.Temp, false);
+            var info = minNormSolveInPlace(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, relTol);
+            u.Dispose();
+            P.Dispose();
+            R.Dispose();
+            return info;
+        }
+
+        /// <summary>Allocating convenience wrapper with default tolerance (max(m,n)·Consts.floatZeroThreshold).
+        /// DESTROYS A_to_Q and b.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static RankInfo minNormSolveInPlace(ref floatMxN A_to_Q, ref floatN b, ref floatN x)
+        {
+            return minNormSolveInPlace(ref A_to_Q, ref b, ref x, (float)(-1));
         }
 
         // ---- multi-RHS forms: rank-safe least squares for a whole matrix of right-hand sides ----

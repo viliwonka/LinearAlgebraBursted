@@ -15,9 +15,11 @@ using Unity.Mathematics;
 //  - |L[0,0]| >= |L[1,1]| >= ... — the monotone-diagonal guarantee of row pivoting.
 //  - The first pivot is the row of largest 2-norm (greedy selection rule).
 //  - Numerical row rank is revealed by the count of non-negligible L diagonal entries.
-//  - solveInPlace yields the BASIC solution: satisfies the r independent equations (so A x ≈ b for a
-//    consistent RHS) but is NOT minimum-norm on a rank-deficient A. At full ROW rank it coincides with
-//    LQ.minNormSolve (which IS min-norm) — this pins the basic-vs-min-norm distinction.
+//  - solveInPlace yields the BASIC solution: at full ROW rank it is LQ.minNormSolve (min-norm); on a
+//    rank-deficient A it is min-norm only when b is CONSISTENT. For an INCONSISTENT rank-deficient LS,
+//    the below-diagonal L21 block couples and the basic solution is NOT min-norm — minNormSolveInPlace
+//    (COD, transpose-dual of QRCP's) gives x = A⁺b there. The ConsistentBasicIsMinNorm / MinNorm* cases
+//    pin both against the SVD pseudoinverse oracle.
 public class fProxyLQRPTests
 {
     // Burst-compile smoke test.
@@ -466,11 +468,16 @@ public class fProxyLQRPTests
             FullRowRankMatchesLQ,      // (1) full-row-rank wide: rank==m & x == LQ.minNormSolve (min-norm)
             FullRowRankConsistent,     // (2) full-row-rank, consistent b: A x == b exactly
             RankDeficientConsistent,   // (3) row dependency, consistent b: rank<m & A x ≈ b (basic ok)
-            RankDeficientBasicNotMinNorm, // (4) basic solution norm >= LQ/SVD min-norm cross-check
+            ConsistentBasicIsMinNorm,  // (4) consistent b: basic solveInPlace == SVD pinv (basic IS min-norm)
+            MinNormInconsistent,       // (4b) inconsistent b: minNormSolveInPlace == SVD pinv, basic is NOT
             ZeroMatrix,                // (5) zero matrix: rank 0, x all zeros
             OneByOne,                  // (6) 1x(>1) system
             ExplicitScratchOverload,   // (7) primitive (L/P/v scratch) path
             UninitXContract,           // (8) x is output-only (prior NaN must not survive)
+            MinNormConsistentEqualsBasic, // (9) COD: minNormSolveInPlace == basic solveInPlace on consistent b
+            MinNormScratchEquivalence, // (10) COD: allocating == primitive scratch overload (bit-identical)
+            MinNormZeroMatrix,         // (11) COD: zero matrix -> rank 0, x all zeros
+            MinNormKnownRank1Wide,     // (12) literature: rank-1 wide, closed-form A+ (Wikipedia rank-1 form)
         }
 
         public TestType Type;
@@ -483,11 +490,16 @@ public class fProxyLQRPTests
                 case TestType.FullRowRankMatchesLQ:         FullRowRankMatchesLQ();         break;
                 case TestType.FullRowRankConsistent:        FullRowRankConsistent();        break;
                 case TestType.RankDeficientConsistent:      RankDeficientConsistent();      break;
-                case TestType.RankDeficientBasicNotMinNorm: RankDeficientBasicNotMinNorm(); break;
+                case TestType.ConsistentBasicIsMinNorm:     ConsistentBasicIsMinNorm();     break;
+                case TestType.MinNormInconsistent:          MinNormInconsistent();          break;
                 case TestType.ZeroMatrix:                   ZeroMatrix();                   break;
                 case TestType.OneByOne:                     OneByOne();                     break;
                 case TestType.ExplicitScratchOverload:      ExplicitScratchOverload();      break;
                 case TestType.UninitXContract:              UninitXContract();              break;
+                case TestType.MinNormConsistentEqualsBasic: MinNormConsistentEqualsBasic(); break;
+                case TestType.MinNormScratchEquivalence:    MinNormScratchEquivalence();    break;
+                case TestType.MinNormZeroMatrix:            MinNormZeroMatrix();            break;
+                case TestType.MinNormKnownRank1Wide:        MinNormKnownRank1Wide();        break;
             }
         }
 
@@ -583,37 +595,92 @@ public class fProxyLQRPTests
             arena.Dispose();
         }
 
-        // (4) Basic vs minimum-norm: on a rank-deficient A the LQRP basic solution has norm >= the
-        // SVD.pinvSolve minimum-norm solution (both reproduce a consistent b). Pins the distinction.
-        void RankDeficientBasicNotMinNorm()
+        // (4) CONSISTENT b: the basic solveInPlace IS already the minimum-norm solution — it matches
+        // SVD.pinvSolve on both ‖x‖ and residual. For a consistent rank-deficient system the dropped
+        // (dependent) equations are automatically satisfied, so no COD is needed. Residual is computed
+        // against a PRESERVED copy of A (solveInPlace destroys its input).
+        void ConsistentBasicIsMinNorm()
         {
             var arena = new Arena(Allocator.Persistent);
 
             int m = 4, n = 8;
             var A = arena.fProxyRandomMat(m, n, -3f, 3f, 55123);
             for (int c = 0; c < n; c++)
-                A[m - 1, c] = (fProxy)2f * A[0, c] - A[1, c]; // row dependency -> rank m-1
+                A[m - 1, c] = (fProxy)2f * A[0, c] - A[1, c]; // exact row dependency -> rank m-1
 
             var xTrue = arena.fProxyRandomVec(n, -2f, 2f, 771);
             var b = arena.fProxyVec(m);
-            Blas.dot(in A, in xTrue, ref b);
+            Blas.dot(in A, in xTrue, ref b);                  // consistent RHS
             var b0 = b.Copy();
+            var A0 = A.Copy();
 
             var Albrp = A.Copy();
             var x = arena.fProxyVec(n);
             LQRP.solveInPlace(ref Albrp, ref b, ref x);
             if (Analysis.isAnyNan(in x)) { Fail0(1, 0); return; }
-            fProxy normBasic = VecNorm(in x);
 
-            // min-norm reference
+            var Apinv = A.Copy();
+            var xPinv = arena.fProxyVec(n);
+            SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
+
+            fProxy tol = (fProxy)2E-3f;
+            AssertClose(VecNorm(in x), VecNorm(in xPinv), tol * (VecNorm(in xPinv) + (fProxy)1));
+            AssertClose(ResidualNorm(in A0, in x, in b0), ResidualNorm(in A0, in xPinv, in b0),
+                        tol * (VecNorm(in b0) + (fProxy)1));
+
+            arena.Dispose();
+        }
+
+        // (4b) INCONSISTENT b (genuine least-squares): here the basic solveInPlace is NOT minimum-norm —
+        // the below-diagonal L21 block couples the leading variables into the dropped equations. COD
+        // (minNormSolveInPlace) fixes it: it matches SVD.pinvSolve on both ‖x‖ and residual, while the
+        // basic solution is DISTINGUISHABLY larger in norm. (This is exactly the case an earlier hand-
+        // probe flagged and my first structural argument wrongly dismissed — L's trailing ROWS are not
+        // negligible, only its trailing DIAGONAL is.)
+        void MinNormInconsistent()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 4, n = 8;
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 55123);
+            for (int c = 0; c < n; c++)
+                A[m - 1, c] = (fProxy)2f * A[0, c] - A[1, c]; // exact row dependency -> rank m-1
+
+            // b NOT in range(A): random RHS, almost surely outside the (m-1)-dim range.
+            var b = arena.fProxyRandomVec(m, -3f, 3f, 8899);
+            var b0 = b.Copy();
+            var A0 = A.Copy();
+
+            // COD min-norm
+            var Acod = A.Copy();
+            var xCod = arena.fProxyVec(n);
+            LQRP.minNormSolveInPlace(ref Acod, ref b, ref xCod);
+            if (Analysis.isAnyNan(in xCod)) { Fail0(2, 0); return; }
+            fProxy normCod = VecNorm(in xCod);
+            fProxy resCod = ResidualNorm(in A0, in xCod, in b0);
+
+            // basic solveInPlace (NOT min-norm here)
+            var Abas = A.Copy();
+            var xBas = arena.fProxyVec(n);
+            LQRP.solveInPlace(ref Abas, ref b, ref xBas);
+            fProxy normBas = VecNorm(in xBas);
+
+            // SVD pseudoinverse oracle
             var Apinv = A.Copy();
             var xPinv = arena.fProxyVec(n);
             SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             fProxy normMin = VecNorm(in xPinv);
+            fProxy resMin = ResidualNorm(in A0, in xPinv, in b0);
 
-            // basic norm must be >= min norm (allow a hair of slack for rounding)
-            fProxy slack = (fProxy)1E-4f * (normMin + (fProxy)1);
-            RecordBound(normMin, normBasic + slack);
+            // COD == pinv on norm AND residual.
+            fProxy tol = (fProxy)2E-3f;
+            AssertClose(normCod, normMin, tol * (normMin + (fProxy)1));
+            AssertClose(resCod, resMin, tol * (VecNorm(in b0) + (fProxy)1));
+            // COD is no larger than basic, and here DISTINGUISHABLY smaller (basic is not min-norm).
+            RecordBound(normCod - normBas, (fProxy)1E-4f * (normBas + (fProxy)1));
+            RecordBound((fProxy)1E-3f * (normCod + (fProxy)1), normBas - normCod);
+
+            arena.Dispose();
         }
 
         // (5) Zero matrix: rank 0, x all zeros.
@@ -698,6 +765,113 @@ public class fProxyLQRPTests
 
             LQRP.solveInPlace(ref A, ref b, ref x);
             Assert.IsFalse(Analysis.isAnyNan(in x));
+
+            arena.Dispose();
+        }
+
+        // (9) COD on a CONSISTENT rank-deficient system must reproduce the basic solveInPlace result
+        // (both are min-norm there): the coupled QR-LS on K = [L11; L21] reduces to the exact solve.
+        void MinNormConsistentEqualsBasic()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 11;
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 0x9A9Au);
+            for (int c = 0; c < n; c++)
+            {
+                A[m - 1, c] = A[0, c] + A[1, c];              // 2 dependencies -> rank m-2
+                A[m - 2, c] = A[0, c] - A[2, c];
+            }
+            var xTrue = arena.fProxyRandomVec(n, -2f, 2f, 0x4321u);
+            var b = arena.fProxyVec(m);
+            Blas.dot(in A, in xTrue, ref b);                  // consistent
+
+            var Acod = A.Copy(); var xCod = arena.fProxyVec(n);
+            int rankCod = LQRP.minNormSolveInPlace(ref Acod, ref b, ref xCod).rank;
+
+            var Abas = A.Copy(); var xBas = arena.fProxyVec(n);
+            int rankBas = LQRP.solveInPlace(ref Abas, ref b, ref xBas).rank;
+
+            RecordEq(rankCod, rankBas);
+            RecordEq(rankCod, m - 2);
+            fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)40;
+            for (int k = 0; k < n; k++)
+                AssertClose(xCod[k], xBas[k], tol * (math.abs(xBas[k]) + (fProxy)1));
+
+            arena.Dispose();
+        }
+
+        // (10) COD allocating overload == explicit-scratch primitive (bit-identical) on an inconsistent
+        // rank-deficient system.
+        void MinNormScratchEquivalence()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 10;
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 0x2468u);
+            for (int c = 0; c < n; c++)
+                A[m - 1, c] = (fProxy)2f * A[0, c] - A[1, c]; // rank m-1
+            var b = arena.fProxyRandomVec(m, -3f, 3f, 0x1357u); // inconsistent
+
+            var A1 = A.Copy(); var x1 = arena.fProxyVec(n);
+            RankInfo info1 = LQRP.minNormSolveInPlace(ref A1, ref b, ref x1);   // allocating
+
+            var A2 = A.Copy(); var x2 = arena.fProxyVec(n);
+            var L = arena.fProxyMat(m, m);
+            var P = new Pivot(m, Allocator.Persistent);
+            var v = arena.fProxyVec(n);
+            RankInfo info2 = LQRP.minNormSolveInPlace(ref A2, ref b, ref x2, ref L, ref P, ref v);   // primitive
+
+            RecordEq(info1.rank, info2.rank);
+            for (int k = 0; k < n; k++)
+                RecordExact(x2[k], x1[k]);
+
+            P.Dispose();
+            arena.Dispose();
+        }
+
+        // (11) COD on a zero matrix: rank 0, x all zeros (never enters the QR-LS block).
+        void MinNormZeroMatrix()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 3, n = 6;
+            var A = arena.fProxyMat(m, n);                    // zero-initialised
+            var b = arena.fProxyRandomVec(m, -1f, 1f, 0x000Fu);
+            var x = arena.fProxyVec(n);
+
+            int rank = LQRP.minNormSolveInPlace(ref A, ref b, ref x).rank;
+            RecordEq(rank, 0);
+            for (int j = 0; j < n; j++)
+                RecordExact(x[j], (fProxy)0);
+
+            arena.Dispose();
+        }
+
+        // (12) KNOWN-ANSWER (external ground truth). Rank-1 WIDE A = u vᵀ with u=[1,2], v=[1,0,2]:
+        //   A = [[1,0,2],[2,0,4]] (2x3, rank 1). The rank-1 pseudoinverse is A+ = v uᵀ / (‖u‖²‖v‖²)
+        //   (Wikipedia, "Moore–Penrose inverse"), ‖u‖²=5, ‖v‖²=5, so the min-norm least-squares solution
+        //   of A x ≈ b is x = A+ b = v·(uᵀb)/25. For b=[1,3], uᵀb = 7, so x = [7,0,14]/25 = [0.28,0,0.56].
+        //   (b is not in range(A)=span(u), so this genuinely exercises the inconsistent COD path.)
+        void MinNormKnownRank1Wide()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 2, n = 3;
+            var A = arena.fProxyMat(m, n);
+            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)0; A[0, 2] = (fProxy)2;
+            A[1, 0] = (fProxy)2; A[1, 1] = (fProxy)0; A[1, 2] = (fProxy)4;
+            var b = arena.fProxyVec(m);
+            b[0] = (fProxy)1; b[1] = (fProxy)3;
+
+            var x = arena.fProxyVec(n);
+            int rank = LQRP.minNormSolveInPlace(ref A, ref b, ref x).rank;
+
+            RecordEq(rank, 1);
+            fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)20;
+            AssertClose(x[0], (fProxy)7 / (fProxy)25, tol);    // 0.28
+            AssertClose(x[1], (fProxy)0, tol);
+            AssertClose(x[2], (fProxy)14 / (fProxy)25, tol);   // 0.56
 
             arena.Dispose();
         }

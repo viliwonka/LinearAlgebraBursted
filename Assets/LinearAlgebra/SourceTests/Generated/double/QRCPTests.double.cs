@@ -531,6 +531,14 @@ public class doubleQRCPTests
             NoCopyEquivalenceFullRank,      // (11) commit-2: no-copy solveInPlace == copying-then-solveInPlace
             NoCopyEquivalenceRankDeficient, // (12) same, rank-deficient A
             BlockedFusedSolve,              // (13) large n (>= 2*QRCP_BLOCK): fused blocked solve == QR-LS
+            MinNormRankDeficientTall,       // (14) COD: min-norm == SVD pinv, genuinely below the basic solution
+            MinNormFullRankEqualsBasic,     // (15) full column rank: minNormSolveInPlace == basic solveInPlace (bit-identical)
+            MinNormConsistent,              // (16) rank-deficient consistent b: reconstructs A x ≈ b, min-norm
+            MinNormScratchEquivalence,      // (17) allocating minNormSolveInPlace == primitive scratch overload
+            MinNormBlocked,                 // (18) large n (>= 2*QRCP_BLOCK) rank-deficient: blocked factor + COD == SVD pinv
+            MinNormZeroMatrix,              // (19) zero matrix: rank 0, x all zeros
+            MinNormKnownRank1,              // (20) literature: rank-1 A=[[1,0],[2,0]], closed-form A+ (Wikipedia)
+            MinNormKnownRank2TallInconsistent, // (21) literature matrix (R ginv tutorial), hand-derived min-norm x
         }
 
         public TestType Type;
@@ -555,6 +563,14 @@ public class doubleQRCPTests
                 case TestType.NoCopyEquivalenceFullRank:      NoCopyEquivalenceFullRank();      break;
                 case TestType.NoCopyEquivalenceRankDeficient: NoCopyEquivalenceRankDeficient(); break;
                 case TestType.BlockedFusedSolve:              BlockedFusedSolve();              break;
+                case TestType.MinNormRankDeficientTall:       MinNormRankDeficientTall();       break;
+                case TestType.MinNormFullRankEqualsBasic:     MinNormFullRankEqualsBasic();     break;
+                case TestType.MinNormConsistent:              MinNormConsistent();              break;
+                case TestType.MinNormScratchEquivalence:      MinNormScratchEquivalence();      break;
+                case TestType.MinNormBlocked:                 MinNormBlocked();                 break;
+                case TestType.MinNormZeroMatrix:              MinNormZeroMatrix();              break;
+                case TestType.MinNormKnownRank1:              MinNormKnownRank1();              break;
+                case TestType.MinNormKnownRank2TallInconsistent: MinNormKnownRank2TallInconsistent(); break;
             }
         }
 
@@ -1026,6 +1042,289 @@ public class doubleQRCPTests
             double resQrcp = ResidualNorm(in A_copy, in x, in b0);
             double resQr = ResidualNorm(in A_copy, in xRef, in b0);
             AssertClose(resQrcp, resQr, tol * (resQr + (double)1));
+
+            arena.Dispose();
+        }
+
+        // ---- COD (minNormSolveInPlace): minimum-norm / pseudoinverse least-squares ----
+
+        // (14) The core COD test. Tall, rank-deficient with SEVERAL free variables (m=12, n=8, rank 5:
+        // cols 5,6,7 are combinations of cols 0..4), generic (inconsistent) b. The COD solution must:
+        //   (a) equal the SVD pseudoinverse on BOTH norm and residual (it IS the min-norm LS solution),
+        //   (b) be no larger in norm than the basic solution, and
+        //   (c) be GENUINELY smaller than the basic solution here (proving COD is not a no-op) — this
+        //       construction gives a large basic-vs-min-norm gap (see docs / the benchmark probe).
+        void MinNormRankDeficientTall()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 12, n = 8, r = 5;
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0xC0D1u);
+            for (int row = 0; row < m; row++)
+            {
+                A[row, 5] = A[row, 0] + A[row, 1];               // 3 exact dependencies -> rank 5
+                A[row, 6] = (double)2f * A[row, 2] - A[row, 3];
+                A[row, 7] = A[row, 0] - A[row, 4];
+            }
+            var A0 = A.Copy();
+            var b = arena.doubleRandomVec(m, -3f, 3f, 0xB1Au);
+            var b0 = b.Copy();
+
+            // COD min-norm
+            var Acod = A0.Copy(); var bcod = b0.Copy();
+            var xCod = arena.doubleVec(n);
+            RankInfo codInfo = QRCP.minNormSolveInPlace(ref Acod, ref bcod, ref xCod);
+            RecordEq(codInfo.rank, r);
+            if (Analysis.isAnyNan(in xCod)) { Fail0(14, 0); return; }
+            double normCod = VecNorm(in xCod);
+            double resCod = ResidualNorm(in A0, in xCod, in b0);
+
+            // basic (truncated) solution
+            var Abas = A0.Copy(); var bbas = b0.Copy();
+            var xBas = arena.doubleVec(n);
+            QRCP.solveInPlace(ref Abas, ref bbas, ref xBas);
+            double normBas = VecNorm(in xBas);
+            double resBas = ResidualNorm(in A0, in xBas, in b0);
+
+            // SVD pseudoinverse oracle
+            var Apinv = A0.Copy();
+            var xPinv = arena.doubleVec(n);
+            RankInfo pinvInfo = SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
+            RecordEq(pinvInfo.rank, r);
+            double normPinv = VecNorm(in xPinv);
+            double resPinv = ResidualNorm(in A0, in xPinv, in b0);
+
+            // (a) COD == pinv on norm AND residual (min-norm LS solution is unique).
+            double tol = (double)Consts.doubleSqrtEps * (double)20;
+            AssertClose(normCod, normPinv, tol * (normPinv + (double)1));
+            AssertClose(resCod, resPinv, tol * (resPinv + (double)1));
+            // all three residuals coincide (basic is also LS-optimal on residual — only the NORM differs).
+            AssertClose(resCod, resBas, tol * (resBas + (double)1));
+            // (b) min-norm <= basic (+ slack).
+            RecordBound(normCod - normBas, (double)Consts.doubleSqrtEps * (double)10 * (normBas + (double)1));
+            // (c) COD is not a no-op: the basic solution is DISTINGUISHABLY larger in norm than the
+            // min-norm one (gap well above rounding noise). A COD that mistakenly returned the basic
+            // solution would collapse the gap to ~0 and fail this. (The gap's magnitude varies with b /
+            // precision — the real gap is far bigger on high-deficiency problems, see the benchmark
+            // probe — so this floors only at "clearly nonzero", not a fixed fraction.)
+            RecordBound((double)100 * Consts.doubleSqrtEps * (normCod + (double)1), normBas - normCod);
+
+            arena.Dispose();
+        }
+
+        // (15) Full COLUMN rank tall: there are no free variables, so the min-norm solution IS the basic
+        // solution. minNormSolveInPlace routes r==n through the same fused factor + finish as
+        // solveInPlace, so the two must be BIT-IDENTICAL (not merely close).
+        void MinNormFullRankEqualsBasic()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 5;
+            var A = arena.doubleRandomMat(m, n, -4f, 4f, 0x0F0Fu);
+            for (int d = 0; d < n; d++) A[d, d] += (double)8f;   // full column rank, well-conditioned
+            var A0 = A.Copy();
+            var b = arena.doubleRandomVec(m, -4f, 4f, 0x7A7Au);
+            var b0 = b.Copy();
+
+            var Amin = A0.Copy(); var bmin = b0.Copy();
+            var xMin = arena.doubleVec(n);
+            int rankMin = QRCP.minNormSolveInPlace(ref Amin, ref bmin, ref xMin).rank;
+
+            var Abas = A0.Copy(); var bbas = b0.Copy();
+            var xBas = arena.doubleVec(n);
+            int rankBas = QRCP.solveInPlace(ref Abas, ref bbas, ref xBas).rank;
+
+            RecordEq(rankMin, n);
+            RecordEq(rankBas, n);
+            for (int k = 0; k < n; k++)
+                AssertBitIdentical(xMin[k], xBas[k]);
+
+            arena.Dispose();
+        }
+
+        // (16) Rank-deficient with a CONSISTENT b (b = A·xTrue): the min-norm solution must reconstruct b
+        // (residual ~ 0) and match the SVD pseudoinverse norm.
+        void MinNormConsistent()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 7, n = 5, r = 3;
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0x5A5Au);
+            for (int row = 0; row < m; row++)
+            {
+                A[row, 3] = A[row, 0] + A[row, 1];               // rank 3 (2 dependencies)
+                A[row, 4] = A[row, 0] - A[row, 2];
+            }
+            var A0 = A.Copy();
+            var xTrue = arena.doubleRandomVec(n, -2f, 2f, 0x1234u);
+            var b = Blas.dot(A, xTrue);                          // consistent
+            var b0 = b.Copy();
+
+            var Acod = A0.Copy(); var bcod = b0.Copy();
+            var xCod = arena.doubleVec(n);
+            int rank = QRCP.minNormSolveInPlace(ref Acod, ref bcod, ref xCod).rank;
+            RecordEq(rank, r);
+            if (Analysis.isAnyNan(in xCod)) { Fail0(16, 0); return; }
+
+            // reconstruction: A x ≈ b (consistent -> residual ~ 0)
+            double tol = (double)Consts.doubleSqrtEps * (double)20;
+            double res = ResidualNorm(in A0, in xCod, in b0);
+            RecordBound(res, tol * ((double)1 + VecNorm(in b0)));
+
+            // norm matches the SVD pseudoinverse
+            var Apinv = A0.Copy();
+            var xPinv = arena.doubleVec(n);
+            SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
+            AssertClose(VecNorm(in xCod), VecNorm(in xPinv), tol * (VecNorm(in xPinv) + (double)1));
+
+            arena.Dispose();
+        }
+
+        // (17) The allocating overload and the explicit-scratch primitive must produce bit-identical
+        // results on a rank-deficient system (same factor + COD path; only scratch ownership differs).
+        void MinNormScratchEquivalence()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 9, n = 6;
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0x2468u);
+            for (int row = 0; row < m; row++)
+                A[row, 5] = (double)2f * A[row, 0] - A[row, 1];  // rank 5
+            var A0 = A.Copy();
+            var b = arena.doubleRandomVec(m, -3f, 3f, 0x1357u);
+            var b0 = b.Copy();
+
+            var A1 = A0.Copy(); var b1 = b0.Copy(); var x1 = arena.doubleVec(n);
+            RankInfo info1 = QRCP.minNormSolveInPlace(ref A1, ref b1, ref x1);   // allocating
+
+            var A2 = A0.Copy(); var b2 = b0.Copy(); var x2 = arena.doubleVec(n);
+            var R = arena.doubleMat(n);
+            var P = new Pivot(n, Allocator.Persistent);
+            var u = arena.doubleVec(m);
+            RankInfo info2 = QRCP.minNormSolveInPlace(ref A2, ref b2, ref x2, ref R, ref P, ref u);   // primitive
+
+            RecordEq(info1.rank, info2.rank);
+            for (int k = 0; k < n; k++)
+                AssertBitIdentical(x1[k], x2[k]);
+
+            P.Dispose();
+            arena.Dispose();
+        }
+
+        // (18) Large n (m=180, n=80 >= 2*QRCP_BLOCK) rank-deficient: forces the BLOCKED fused factor
+        // ahead of the COD completion (r=79 < 80). The min-norm solution must still match the SVD
+        // pseudoinverse on norm and residual.
+        void MinNormBlocked()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 180, n = 80;
+            var A = arena.doubleRandomMat(m, n, -2f, 2f, 0xB10Cu);
+            for (int d = 0; d < n; d++) A[d, d] += (double)n;    // well-conditioned...
+            for (int row = 0; row < m; row++)
+                A[row, n - 1] = A[row, 0] + A[row, 1];           // ...except one exact dependency -> rank n-1
+            var A0 = A.Copy();
+            var b = arena.doubleRandomVec(m, -2f, 2f, 0x50C0u);
+            var b0 = b.Copy();
+
+            var Acod = A0.Copy(); var bcod = b0.Copy();
+            var xCod = arena.doubleVec(n);
+            int rank = QRCP.minNormSolveInPlace(ref Acod, ref bcod, ref xCod).rank;
+            RecordEq(rank, n - 1);
+            if (Analysis.isAnyNan(in xCod)) { Fail0(18, 0); return; }
+
+            var Apinv = A0.Copy();
+            var xPinv = arena.doubleVec(n);
+            SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
+
+            double tol = (double)Consts.doubleSqrtEps * (double)40;
+            AssertClose(VecNorm(in xCod), VecNorm(in xPinv), tol * (VecNorm(in xPinv) + (double)1));
+            AssertClose(ResidualNorm(in A0, in xCod, in b0), ResidualNorm(in A0, in xPinv, in b0),
+                        tol * (ResidualNorm(in A0, in xPinv, in b0) + (double)1));
+
+            arena.Dispose();
+        }
+
+        // (19) Zero matrix: rank 0, x all zeros (degenerate COD path — never enters the LQ compress).
+        void MinNormZeroMatrix()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 3;
+            var A = arena.doubleMat(m, n);                       // zero-initialised
+            var b = arena.doubleRandomVec(m, -1f, 1f, 0x000Fu);
+            var x = arena.doubleVec(n);
+
+            int rank = QRCP.minNormSolveInPlace(ref A, ref b, ref x).rank;
+            RecordEq(rank, 0);
+            for (int j = 0; j < n; j++)
+                AssertBitIdentical(x[j], (double)0);
+
+            arena.Dispose();
+        }
+
+        // (20) KNOWN-ANSWER (external ground truth, not our own SVD). Rank-1 A = [[1,0],[2,0]] has the
+        // closed-form pseudoinverse A+ = [[1/5, 2/5],[0, 0]] (Wikipedia, "Moore–Penrose inverse":
+        // denominators 5 = 1²+2²). So the min-norm least-squares solution of A x ≈ b is
+        // x = A+ b = [ (b0 + 2 b1)/5 , 0 ]. For b = [1, 3] that is x = [7/5, 0] = [1.4, 0] exactly.
+        void MinNormKnownRank1()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 2, n = 2;
+            var A = arena.doubleMat(m, n);
+            A[0, 0] = (double)1; A[0, 1] = (double)0;
+            A[1, 0] = (double)2; A[1, 1] = (double)0;
+            var b = arena.doubleVec(m);
+            b[0] = (double)1; b[1] = (double)3;
+
+            var x = arena.doubleVec(n);
+            int rank = QRCP.minNormSolveInPlace(ref A, ref b, ref x).rank;
+
+            RecordEq(rank, 1);
+            double tol = (double)Consts.doubleSqrtEps * (double)20;
+            AssertClose(x[0], (double)7 / (double)5, tol);   // 1.4
+            AssertClose(x[1], (double)0, tol);
+
+            arena.Dispose();
+        }
+
+        // (21) KNOWN-ANSWER, rank-2 TALL and INCONSISTENT. Matrix from the R MASS::ginv tutorial
+        // (r-statistics.co) — A (4x3) with column 3 = column 1 + column 2, so rank 2. For b = [6,5,11,4]
+        // the system is NOT consistent (that tutorial's quoted "residual 0" solution is for a different
+        // setup); the true minimum-norm least-squares solution, derived independently from the rank-2
+        // normal equations + the "x in row space" min-norm condition, is
+        //   (p,q) = ([15 14;14 15]^{-1} [53;54]) = (39/29, 68/29),  x3 = (p+q)/3 = 107/87,
+        //   x = [ 10/87, 97/87, 107/87 ] ≈ [0.114943, 1.114943, 1.229885].
+        void MinNormKnownRank2TallInconsistent()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 4, n = 3;
+            var A = arena.doubleMat(m, n);
+            A[0, 0] = (double)1; A[0, 1] = (double)2; A[0, 2] = (double)3;
+            A[1, 0] = (double)2; A[1, 1] = (double)1; A[1, 2] = (double)3;
+            A[2, 0] = (double)3; A[2, 1] = (double)3; A[2, 2] = (double)6;
+            A[3, 0] = (double)1; A[3, 1] = (double)1; A[3, 2] = (double)2;
+            var b = arena.doubleVec(m);
+            b[0] = (double)6; b[1] = (double)5; b[2] = (double)11; b[3] = (double)4;
+            var A0 = A.Copy(); var b0 = b.Copy();
+
+            var x = arena.doubleVec(n);
+            int rank = QRCP.minNormSolveInPlace(ref A, ref b, ref x).rank;
+
+            RecordEq(rank, 2);
+            double tol = (double)1E-4f;
+            AssertClose(x[0], (double)10 / (double)87, tol);   // 0.114943
+            AssertClose(x[1], (double)97 / (double)87, tol);   // 1.114943
+            AssertClose(x[2], (double)107 / (double)87, tol);  // 1.229885
+
+            // Cross-check it really is the LS optimum: residual equals the SVD pseudoinverse residual.
+            var Apinv = A0.Copy();
+            var xPinv = arena.doubleVec(n);
+            SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
+            AssertClose(ResidualNorm(in A0, in x, in b0), ResidualNorm(in A0, in xPinv, in b0),
+                        (double)Consts.doubleSqrtEps * (double)20);
 
             arena.Dispose();
         }
