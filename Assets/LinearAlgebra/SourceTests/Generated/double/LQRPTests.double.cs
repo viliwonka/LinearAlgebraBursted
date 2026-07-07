@@ -481,6 +481,9 @@ public class doubleLQRPTests
             MultiRHSBasicMatchesSingle,   // (13) block solveInPlace(A,B,X) == per-column single-RHS basic
             MinNormMultiRHSMatchesSingle, // (14) block minNormSolveInPlace == per-column single-RHS COD
             MinNormDecompSolveMatchesFused, // (15) factor-reuse minNormDecompSolve == fused block COD
+            DecompInPlaceMatchesDecomp,      // (16) decompInPlace: A→Q equals decomp's Q; L,P match; A[P]=L·Q
+            BasicDecompSolveMatchesFused,    // (17) factor-reuse basic decompSolve == fused basic solveInPlace
+            SingleRHSFactorReuseMatchesFused, // (18) single-RHS decompSolve/minNormDecompSolve == fused single-RHS
         }
 
         public TestType Type;
@@ -506,6 +509,9 @@ public class doubleLQRPTests
                 case TestType.MultiRHSBasicMatchesSingle:   MultiRHSBasicMatchesSingle();   break;
                 case TestType.MinNormMultiRHSMatchesSingle: MinNormMultiRHSMatchesSingle(); break;
                 case TestType.MinNormDecompSolveMatchesFused: MinNormDecompSolveMatchesFused(); break;
+                case TestType.DecompInPlaceMatchesDecomp:     DecompInPlaceMatchesDecomp();     break;
+                case TestType.BasicDecompSolveMatchesFused:   BasicDecompSolveMatchesFused();   break;
+                case TestType.SingleRHSFactorReuseMatchesFused: SingleRHSFactorReuseMatchesFused(); break;
             }
         }
 
@@ -978,6 +984,123 @@ public class doubleLQRPTests
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < k; j++)
                     AssertClose(Xre[i, j], Xfu[i, j], tol * (math.abs(Xfu[i, j]) + (double)1));
+
+            Pp.Dispose();
+            arena.Dispose();
+        }
+
+        // (16) decompInPlace (A becomes Q) must reproduce decomp's L, Q, P exactly (same kernel), and
+        // satisfy the reconstruction A[P[j], :] == (L·Q)[j, :].
+        void DecompInPlaceMatchesDecomp()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 11;
+            var A = arena.doubleRandomMat(m, n, -4f, 4f, 0x51A1u);
+
+            // reference: A-preserving decomp
+            var Lref = arena.doubleMat(m, m);
+            var Qref = arena.doubleMat(m, n);
+            var Pref = new Pivot(m, Allocator.Persistent);
+            LQRP.decomp(in A, ref Lref, ref Qref, ref Pref);
+
+            // in-place: A becomes Q
+            var Aip = A.Copy();
+            var Lip = arena.doubleMat(m, m);
+            var Pip = new Pivot(m, Allocator.Persistent);
+            LQRP.decompInPlace(ref Aip, ref Lip, ref Pip);
+
+            double tol = (double)Consts.doubleSqrtEps * (double)20;
+            for (int i = 0; i < m; i++)
+            {
+                RecordEq(Pip[i], Pref[i]);
+                for (int c = 0; c < m; c++)
+                    AssertClose(Lip[i, c], Lref[i, c], tol * (math.abs(Lref[i, c]) + (double)1));
+                for (int c = 0; c < n; c++)
+                    AssertClose(Aip[i, c], Qref[i, c], tol * (math.abs(Qref[i, c]) + (double)1));
+            }
+            // reconstruction A[P[j], :] == (L·Q)[j, :] (Q now lives in Aip)
+            for (int j = 0; j < m; j++)
+                for (int c = 0; c < n; c++)
+                {
+                    double acc = (double)0;
+                    for (int t = 0; t < m; t++) acc += Lip[j, t] * Aip[t, c];
+                    AssertClose(acc, A[Pip[j], c], tol * (math.abs(A[Pip[j], c]) + (double)1));
+                }
+
+            Pip.Dispose();
+            Pref.Dispose();
+            arena.Dispose();
+        }
+
+        // (17) Factor-reuse BASIC decompSolve (from a precomputed P·A=L·Q) == the fused basic block
+        // solveInPlace. Consistent B so the basic solution is well-defined.
+        void BasicDecompSolveMatchesFused()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 10, k = 3;
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0x7A7Au);
+            for (int c = 0; c < n; c++)
+                A[m - 1, c] = A[0, c] + A[2, c];                 // rank m-1
+            var A0 = A.Copy();
+            var Xtrue = arena.doubleRandomMat(n, k, -2f, 2f, 0xB0B0u);
+            var B = Blas.dot(A0, Xtrue);                         // consistent m x k
+
+            var Afu = A0.Copy();
+            var Xfu = arena.doubleMat(n, k);
+            LQRP.solveInPlace(ref Afu, ref B, ref Xfu);          // fused basic (B preserved)
+
+            var L = arena.doubleMat(m, m);
+            var Q = arena.doubleMat(m, n);
+            var Pp = new Pivot(m, Allocator.Persistent);
+            LQRP.decomp(in A0, ref L, ref Q, ref Pp);
+            var Xre = arena.doubleMat(n, k);
+            LQRP.decompSolve(ref L, ref Q, in Pp, ref B, ref Xre);
+
+            double tol = (double)Consts.doubleSqrtEps * (double)50;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < k; j++)
+                    AssertClose(Xre[i, j], Xfu[i, j], tol * (math.abs(Xfu[i, j]) + (double)1));
+
+            Pp.Dispose();
+            arena.Dispose();
+        }
+
+        // (18) Single-RHS factor-reuse (basic decompSolve + min-norm minNormDecompSolve) must match the
+        // fused single-RHS solveInPlace / minNormSolveInPlace on the same rank-deficient inconsistent b.
+        void SingleRHSFactorReuseMatchesFused()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 4, n = 9;
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0xC0FFu);
+            for (int c = 0; c < n; c++)
+                A[m - 1, c] = A[0, c] - A[1, c];                 // rank m-1
+            var A0 = A.Copy();
+            var b = arena.doubleRandomVec(m, -3f, 3f, 0xBEEFu);  // inconsistent
+
+            var Ab = A0.Copy(); var xBasFu = arena.doubleVec(n);
+            LQRP.solveInPlace(ref Ab, ref b, ref xBasFu);
+            var Am = A0.Copy(); var xMinFu = arena.doubleVec(n);
+            LQRP.minNormSolveInPlace(ref Am, ref b, ref xMinFu);
+
+            var L = arena.doubleMat(m, m);
+            var Q = arena.doubleMat(m, n);
+            var Pp = new Pivot(m, Allocator.Persistent);
+            LQRP.decomp(in A0, ref L, ref Q, ref Pp);
+
+            var xBasRe = arena.doubleVec(n);
+            LQRP.decompSolve(ref L, ref Q, in Pp, ref b, ref xBasRe);
+            var xMinRe = arena.doubleVec(n);
+            LQRP.minNormDecompSolve(ref L, ref Q, in Pp, ref b, ref xMinRe);
+
+            double tol = (double)Consts.doubleSqrtEps * (double)50;
+            for (int i = 0; i < n; i++)
+            {
+                AssertClose(xBasRe[i], xBasFu[i], tol * (math.abs(xBasFu[i]) + (double)1));
+                AssertClose(xMinRe[i], xMinFu[i], tol * (math.abs(xMinFu[i]) + (double)1));
+            }
 
             Pp.Dispose();
             arena.Dispose();

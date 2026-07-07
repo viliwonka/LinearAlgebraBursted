@@ -330,6 +330,105 @@ namespace LinearAlgebra
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
 
+        // ---- in-place decomposition: A_to_Q becomes Q; produces L, P with P·A = L·Q ----
+
+        /// <summary>
+        /// Row-pivoted (rank-revealing) LQ of A (m × n, m ≤ n), IN PLACE: on exit A_to_Q holds the
+        /// m × n row-orthonormal factor Q (Q Qᵀ = I_m), with L (m × m lower-triangular, non-increasing
+        /// |diagonal|) and the row permutation P returned separately (P·A = L·Q). The transpose-dual of
+        /// <see cref="QRCP.decompInPlace(ref floatMxN, ref floatMxN, ref Pivot, ref floatN)"/>; use it
+        /// to avoid a separate Q buffer (Q reuses A_to_Q's storage). Always reports Success (no failure
+        /// mode; read the numerical rank off L's diagonal, or use a solve overload for a RankInfo).
+        ///
+        /// Unlike QRCP.decompInPlace (allocation-free), this internally allocates one m × n Allocator.Temp
+        /// copy: the wide row-Householder Q reconstruction is not alias-safe against its own reflector
+        /// store, so A is copied to scratch, factored there, and Q written back over A_to_Q. LQRP targets
+        /// small matrices (see the class remarks), where that copy is negligible.
+        /// </summary>
+        /// <param name="A_to_Q">On entry A (m × n, m ≤ n); on exit the row-orthonormal factor Q.</param>
+        /// <param name="L">Output m × m lower-triangular factor (caller-allocated, m × m).</param>
+        /// <param name="P">Output row permutation of size m (reset internally): A[P[j], :] == (L·Q)[j, :].</param>
+        /// <param name="v">Scratch: length EXACTLY n (Householder workspace).</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decompInPlace(ref floatMxN A_to_Q, ref floatMxN L, ref Pivot P, ref floatN v)
+        {
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQRP.decompInPlace: A_to_Q must be wide or square (M_Rows <= N_Cols)");
+            if (L.M_Rows != m || L.N_Cols != m)
+                throw new ArgumentException("LQRP.decompInPlace: L must be m x m");
+            if (P.N != m)
+                throw new ArgumentException("LQRP.decompInPlace: P.N must equal A_to_Q.M_Rows");
+            if (v.N != n)
+                throw new ArgumentException("LQRP.decompInPlace: v.N must equal A_to_Q.N_Cols");
+
+            if (m == 0 || n == 0)
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
+
+            // Compute the scale-relative zero threshold from A (still in A_to_Q) BEFORE the kernel
+            // overwrites A_to_Q with Q. Factor the scratch copy W; reconstruct Q straight into A_to_Q
+            // (a separate buffer from W's reflector store — no aliasing).
+            var W = new floatMxN(m, n, Allocator.Temp, false);
+            W.Data.CopyFrom(A_to_Q.Data);
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A_to_Q);
+
+            lqrpKernel(ref W, ref L, ref A_to_Q, ref P, ref v, zeroThreshold, reconstructQ: true);
+
+            W.Dispose();
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// decompInPlace using a reusable workspace (Arena.floatLQRPCache(m, n)) — the internal scratch
+        /// copy (ws.W) and Householder vector (ws.v) come from the cache (no per-call Allocator.Temp).
+        /// Semantics identical to the explicit-scratch overload; see it for full documentation.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decompInPlace(ref floatMxN A_to_Q, ref floatMxN L, ref Pivot P, ref floatLQRPCache ws)
+        {
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQRP.decompInPlace: A_to_Q must be wide or square (M_Rows <= N_Cols)");
+            if (L.M_Rows != m || L.N_Cols != m)
+                throw new ArgumentException("LQRP.decompInPlace: L must be m x m");
+            if (P.N != m)
+                throw new ArgumentException("LQRP.decompInPlace: P.N must equal A_to_Q.M_Rows");
+            RequireLQRPWorkspace(in ws, m, n);
+
+            if (m == 0 || n == 0)
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
+
+            var W = ws.W;
+            var v = ws.v;
+            W.Data.CopyFrom(A_to_Q.Data);
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in A_to_Q);
+
+            lqrpKernel(ref W, ref L, ref A_to_Q, ref P, ref v, zeroThreshold, reconstructQ: true);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// Allocating decompInPlace convenience: allocates the Householder scratch v (length n) from
+        /// Allocator.Temp (plus the internal m × n copy) and delegates. A_to_Q becomes Q. Use the
+        /// explicit-scratch or cache overload in hot loops.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DirectSolveInfo decompInPlace(ref floatMxN A_to_Q, ref floatMxN L, ref Pivot P)
+        {
+            if (A_to_Q.M_Rows > A_to_Q.N_Cols)
+                throw new ArgumentException("LQRP.decompInPlace: A_to_Q must be wide or square (M_Rows <= N_Cols)");
+
+            var v = new floatN(A_to_Q.N_Cols, Allocator.Temp, false);
+            var info = decompInPlace(ref A_to_Q, ref L, ref P, ref v);
+            v.Dispose();
+            return info;
+        }
+
         // ---- rank-safe basic solve for underdetermined systems ----
 
         /// <summary>
@@ -338,9 +437,9 @@ namespace LinearAlgebra
         /// remarks; for an inconsistent rank-deficient LS use minNormSolveInPlace). Row-pivoted LQ
         /// (P·A = L·Q) exposes the numerical
         /// row rank r: the L diagonal is non-increasing, so r = count of leading entries with
-        /// |L[i,i]| &gt; tol, where tol = relTol · |L[0,0]| and relTol defaults to
+        /// |L[i,i]| &gt; tol, where tol = relativeTolerance · |L[0,0]| and relativeTolerance defaults to
         /// max(m,n) · Consts.floatZeroThreshold (matching SVD.pinvSolve / MatrixMetrics.rank). A
-        /// negative relTol is an "auto" sentinel that selects that same default.
+        /// negative relativeTolerance is an "auto" sentinel that selects that same default.
         ///
         /// The reduced system L w = P·b is forward-solved on its leading r×r block (divide-safe by
         /// construction: every used L diagonal exceeds tol); the remaining (m-r) dependent equations are
@@ -362,12 +461,12 @@ namespace LinearAlgebra
         /// <param name="L">Scratch: m × m (receives the lower-triangular factor; consumed).</param>
         /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
         /// <param name="v">Scratch: length EXACTLY n (Householder + reduced-RHS workspace).</param>
-        /// <param name="relTol">Rank threshold ratio; tol = relTol · |L[0,0]|. Negative = auto default.</param>
+        /// <param name="relativeTolerance">Rank threshold ratio; tol = relativeTolerance · |L[0,0]|. Negative = auto default.</param>
         /// <returns>Status Success (r == m, full row rank) or RankDeficient (r &lt; m, still a usable
         /// basic solution); rank = detected r. See <see cref="RankInfo.Solved"/>.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static RankInfo solveInPlace(ref floatMxN A, ref floatN b, ref floatN x,
-                                            ref floatMxN L, ref Pivot P, ref floatN v, float relTol)
+                                            ref floatMxN L, ref Pivot P, ref floatN v, float relativeTolerance)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -385,10 +484,10 @@ namespace LinearAlgebra
             if (v.N != n)
                 throw new ArgumentException("LQRP.solveInPlace: v.N must equal A.N_Cols");
 
-            // Negative relTol → library-standard rank threshold (same default as SVD.pinvSolve /
+            // Negative relativeTolerance → library-standard rank threshold (same default as SVD.pinvSolve /
             // MatrixMetrics.rank). Also keeps tol >= 0, so a stray negative can't inflate rank.
-            if (relTol < (float)0)
-                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+            if (relativeTolerance < (float)0)
+                relativeTolerance = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
@@ -399,8 +498,8 @@ namespace LinearAlgebra
             var Qnull = default(floatMxN);
             lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
 
-            // --- rank from L's non-increasing |diagonal| (tol = relTol·|L[0,0]|; NaN/zero L[0,0] → 0) ---
-            float tol = relTol * math.abs(L[0, 0]);
+            // --- rank from L's non-increasing |diagonal| (tol = relativeTolerance·|L[0,0]|; NaN/zero L[0,0] → 0) ---
+            float tol = relativeTolerance * math.abs(L[0, 0]);
             int rank = 0;
             for (int i = 0; i < m; i++)
             {
@@ -464,7 +563,7 @@ namespace LinearAlgebra
         /// in hot loops to avoid repeated Temp allocs.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankInfo solveInPlace(ref floatMxN A, ref floatN b, ref floatN x, float relTol)
+        public static RankInfo solveInPlace(ref floatMxN A, ref floatN b, ref floatN x, float relativeTolerance)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -481,7 +580,7 @@ namespace LinearAlgebra
             var L = new floatMxN(m, m, Allocator.Temp, false);
             var P = new Pivot(m, Allocator.Temp);
             var v = new floatN(n, Allocator.Temp, false);
-            var info = solveInPlace(ref A, ref b, ref x, ref L, ref P, ref v, relTol);
+            var info = solveInPlace(ref A, ref b, ref x, ref L, ref P, ref v, relativeTolerance);
             v.Dispose();
             P.Dispose();
             L.Dispose();
@@ -574,7 +673,7 @@ namespace LinearAlgebra
         ///
         /// DESTRUCTIVE FAST PATH (like solveInPlace): factors A's own buffer in place (reflectors, no Q).
         /// On return A is DESTROYED (stored reflectors + L's sub-diagonal); b is NOT modified. Numerical
-        /// rank r is read from L's non-increasing diagonal (tol = relTol·|L[0,0]|; negative relTol
+        /// rank r is read from L's non-increasing diagonal (tol = relativeTolerance·|L[0,0]|; negative relativeTolerance
         /// auto-selects max(m,n)·Consts.floatZeroThreshold, matching SVD.pinvSolve / MatrixMetrics.rank).
         /// </summary>
         /// <param name="A">On entry A (m × n, m ≤ n); DESTROYED on exit (reflectors, NOT a factor — use decomp for L/Q).</param>
@@ -583,12 +682,12 @@ namespace LinearAlgebra
         /// <param name="L">Scratch: m × m (receives the lower-triangular factor; consumed).</param>
         /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
         /// <param name="v">Scratch: length EXACTLY n (Householder workspace).</param>
-        /// <param name="relTol">Rank threshold ratio; tol = relTol·|L[0,0]|. Negative = auto default.</param>
+        /// <param name="relativeTolerance">Rank threshold ratio; tol = relativeTolerance·|L[0,0]|. Negative = auto default.</param>
         /// <returns>Status Success (r == m) or RankDeficient (r &lt; m, still a usable minimum-norm
         /// solution); rank = detected r. See <see cref="RankInfo.Solved"/>.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static RankInfo minNormSolveInPlace(ref floatMxN A, ref floatN b, ref floatN x,
-                                                   ref floatMxN L, ref Pivot P, ref floatN v, float relTol)
+                                                   ref floatMxN L, ref Pivot P, ref floatN v, float relativeTolerance)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -606,8 +705,8 @@ namespace LinearAlgebra
             if (v.N != n)
                 throw new ArgumentException("LQRP.minNormSolveInPlace: v.N must equal A.N_Cols");
 
-            if (relTol < (float)0)
-                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+            if (relativeTolerance < (float)0)
+                relativeTolerance = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
@@ -618,8 +717,8 @@ namespace LinearAlgebra
             var Qnull = default(floatMxN);
             lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
 
-            // Rank from L's non-increasing |diagonal| (tol = relTol·|L[0,0]|; NaN/zero L[0,0] → 0).
-            float tol = relTol * math.abs(L[0, 0]);
+            // Rank from L's non-increasing |diagonal| (tol = relativeTolerance·|L[0,0]|; NaN/zero L[0,0] → 0).
+            float tol = relativeTolerance * math.abs(L[0, 0]);
             int r = 0;
             for (int i = 0; i < m; i++)
             {
@@ -657,7 +756,7 @@ namespace LinearAlgebra
         /// hot loops to avoid repeated Temp allocs.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static RankInfo minNormSolveInPlace(ref floatMxN A, ref floatN b, ref floatN x, float relTol)
+        public static RankInfo minNormSolveInPlace(ref floatMxN A, ref floatN b, ref floatN x, float relativeTolerance)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -673,7 +772,7 @@ namespace LinearAlgebra
             var L = new floatMxN(m, m, Allocator.Temp, false);
             var P = new Pivot(m, Allocator.Temp);
             var v = new floatN(n, Allocator.Temp, false);
-            var info = minNormSolveInPlace(ref A, ref b, ref x, ref L, ref P, ref v, relTol);
+            var info = minNormSolveInPlace(ref A, ref b, ref x, ref L, ref P, ref v, relativeTolerance);
             v.Dispose();
             P.Dispose();
             L.Dispose();
@@ -746,7 +845,7 @@ namespace LinearAlgebra
         /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
         /// <param name="v">Scratch: length EXACTLY n.</param>
         public static unsafe RankInfo solveInPlace(ref floatMxN A, ref floatMxN B, ref floatMxN X,
-                                                   ref floatMxN L, ref Pivot P, ref floatN v, float relTol)
+                                                   ref floatMxN L, ref Pivot P, ref floatN v, float relativeTolerance)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -767,8 +866,8 @@ namespace LinearAlgebra
             if (v.N != n)
                 throw new ArgumentException("LQRP.solveInPlace: v.N must equal A.N_Cols");
 
-            if (relTol < (float)0)
-                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+            if (relativeTolerance < (float)0)
+                relativeTolerance = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
@@ -777,7 +876,7 @@ namespace LinearAlgebra
             var Qnull = default(floatMxN);
             lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
 
-            float tol = relTol * math.abs(L[0, 0]);
+            float tol = relativeTolerance * math.abs(L[0, 0]);
             int r = 0;
             for (int i = 0; i < m; i++)
             {
@@ -824,7 +923,7 @@ namespace LinearAlgebra
 
         /// <summary>Allocating multi-RHS basic convenience: allocates L (m×m), P (m) and v (n) from
         /// Allocator.Temp. DESTROYS A (B preserved). Use the scratch overload in hot loops.</summary>
-        public static RankInfo solveInPlace(ref floatMxN A, ref floatMxN B, ref floatMxN X, float relTol)
+        public static RankInfo solveInPlace(ref floatMxN A, ref floatMxN B, ref floatMxN X, float relativeTolerance)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -841,7 +940,7 @@ namespace LinearAlgebra
             var L = new floatMxN(m, m, Allocator.Temp, false);
             var P = new Pivot(m, Allocator.Temp);
             var v = new floatN(n, Allocator.Temp, false);
-            var info = solveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relTol);
+            var info = solveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relativeTolerance);
             v.Dispose();
             P.Dispose();
             L.Dispose();
@@ -868,7 +967,7 @@ namespace LinearAlgebra
         /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
         /// <param name="v">Scratch: length EXACTLY n.</param>
         public static unsafe RankInfo minNormSolveInPlace(ref floatMxN A, ref floatMxN B, ref floatMxN X,
-                                                          ref floatMxN L, ref Pivot P, ref floatN v, float relTol)
+                                                          ref floatMxN L, ref Pivot P, ref floatN v, float relativeTolerance)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -889,8 +988,8 @@ namespace LinearAlgebra
             if (v.N != n)
                 throw new ArgumentException("LQRP.minNormSolveInPlace: v.N must equal A.N_Cols");
 
-            if (relTol < (float)0)
-                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+            if (relativeTolerance < (float)0)
+                relativeTolerance = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
@@ -899,7 +998,7 @@ namespace LinearAlgebra
             var Qnull = default(floatMxN);
             lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
 
-            float tol = relTol * math.abs(L[0, 0]);
+            float tol = relativeTolerance * math.abs(L[0, 0]);
             int r = 0;
             for (int i = 0; i < m; i++)
             {
@@ -936,7 +1035,7 @@ namespace LinearAlgebra
 
         /// <summary>Allocating multi-RHS min-norm convenience: allocates L (m×m), P (m) and v (n) from
         /// Allocator.Temp. DESTROYS A (B preserved). Use the scratch overload in hot loops.</summary>
-        public static RankInfo minNormSolveInPlace(ref floatMxN A, ref floatMxN B, ref floatMxN X, float relTol)
+        public static RankInfo minNormSolveInPlace(ref floatMxN A, ref floatMxN B, ref floatMxN X, float relativeTolerance)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -953,7 +1052,7 @@ namespace LinearAlgebra
             var L = new floatMxN(m, m, Allocator.Temp, false);
             var P = new Pivot(m, Allocator.Temp);
             var v = new floatN(n, Allocator.Temp, false);
-            var info = minNormSolveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relTol);
+            var info = minNormSolveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relativeTolerance);
             v.Dispose();
             P.Dispose();
             L.Dispose();
@@ -978,7 +1077,7 @@ namespace LinearAlgebra
         /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
         /// <param name="X">Output only; prior contents ignored. Minimum-norm solution (n x k).</param>
         public static unsafe RankInfo minNormDecompSolve(ref floatMxN L, ref floatMxN Q, in Pivot P,
-                                                         ref floatMxN B, ref floatMxN X, float relTol)
+                                                         ref floatMxN B, ref floatMxN X, float relativeTolerance)
         {
             int m = Q.M_Rows;
             int n = Q.N_Cols;
@@ -997,13 +1096,13 @@ namespace LinearAlgebra
             if (P.N != m)
                 throw new ArgumentException("LQRP.minNormDecompSolve: P.N must equal Q.M_Rows");
 
-            if (relTol < (float)0)
-                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+            if (relativeTolerance < (float)0)
+                relativeTolerance = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            float tol = relTol * math.abs(L[0, 0]);
+            float tol = relativeTolerance * math.abs(L[0, 0]);
             int r = 0;
             for (int i = 0; i < m; i++)
             {
@@ -1036,6 +1135,181 @@ namespace LinearAlgebra
                                                   ref floatMxN B, ref floatMxN X)
         {
             return minNormDecompSolve(ref L, ref Q, in P, ref B, ref X, (float)(-1));
+        }
+
+        // ---- BASIC factor-reuse solve (from a precomputed P·A = L·Q) ----
+
+        // Shared reduced-RHS block for the BASIC factor-reuse solve: fills W (m×k) = [L11⁻¹·(P·B)_top ; 0]
+        // — forward-substitution on L's leading r×r block, dependent rows dropped (W[r..m) = 0). The
+        // transpose-dual of QRCP.finishFromQtB's back-solve, and the same inner loop the fused multi-RHS
+        // solveInPlace runs inline. The caller then applies Qᵀ to W (a GEMM against the dense Q).
+        static unsafe void basicReducedBlock(in floatMxN L, in Pivot P, in floatMxN B, int r, ref floatMxN W)
+        {
+            int m = L.M_Rows;      // L is m×m
+            int k = B.N_Cols;
+
+            float* Wp = W.Data.Ptr;
+            for (int i = 0; i < m; i++)
+            {
+                int src = P[i];
+                float* Wi = Wp + (long)i * k;
+                for (int c = 0; c < k; c++) Wi[c] = B[src, c];       // C = P·B
+            }
+            for (int i = 0; i < r; i++)
+            {
+                float* Wi = Wp + (long)i * k;
+                for (int j = 0; j < i; j++)
+                    UnsafeOP.axpy(Wi, Wp + (long)j * k, -L[i, j], k);
+                float inv = (float)1 / L[i, i];
+                for (int c = 0; c < k; c++) Wi[c] *= inv;
+            }
+            for (long e = (long)r * k; e < (long)m * k; e++) Wp[e] = (float)0;
+        }
+
+        /// <summary>
+        /// LQRP BASIC (truncated) least-squares for a whole block of right-hand sides, from a precomputed
+        /// LQRP factorization (P·A = L·Q, from <see cref="decomp(in floatMxN, ref floatMxN, ref floatMxN, ref Pivot)"/>)
+        /// — reuse one factorization across blocks. Each RHS is a COLUMN of B (m x k, preserved); X (n x k)
+        /// receives the basic solution (minimum-norm only when each column of B is consistent — otherwise
+        /// use <see cref="minNormDecompSolve(ref floatMxN, ref floatMxN, in Pivot, ref floatMxN, ref floatMxN, float)"/>).
+        /// Uses the dense Q for the final Qᵀ apply (GEMM). Returns <see cref="RankInfo"/>.
+        /// </summary>
+        /// <param name="L">Lower-triangular factor (m x m) from decomp.</param>
+        /// <param name="Q">Row-orthonormal factor (m x n) from decomp.</param>
+        /// <param name="P">Row pivot from decomp.</param>
+        /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Solution (n x k).</param>
+        public static unsafe RankInfo decompSolve(ref floatMxN L, ref floatMxN Q, in Pivot P,
+                                                  ref floatMxN B, ref floatMxN X, float relativeTolerance)
+        {
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+            int k = B.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQRP.decompSolve: Q must be wide or square (M_Rows <= N_Cols)");
+            if (L.M_Rows != m || L.N_Cols != m)
+                throw new ArgumentException("LQRP.decompSolve: L must be m x m");
+            if (B.M_Rows != m)
+                throw new ArgumentException("LQRP.decompSolve: B.M_Rows must equal Q.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("LQRP.decompSolve: X.M_Rows must equal Q.N_Cols");
+            if (X.N_Cols != k)
+                throw new ArgumentException("LQRP.decompSolve: X.N_Cols must equal B.N_Cols");
+            if (P.N != m)
+                throw new ArgumentException("LQRP.decompSolve: P.N must equal Q.M_Rows");
+
+            if (relativeTolerance < (float)0)
+                relativeTolerance = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+
+            if (n == 0)
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            float tol = relativeTolerance * math.abs(L[0, 0]);
+            int r = 0;
+            for (int i = 0; i < m; i++)
+            {
+                if (math.abs(L[i, i]) > tol) r++;
+                else break;
+            }
+
+            if (r == 0)
+            {
+                float* Xz = X.Data.Ptr;
+                for (long e = 0; e < (long)n * k; e++) Xz[e] = (float)0;
+                return new RankInfo { status = DirectSolveStatus.RankDeficient, rank = 0 };
+            }
+
+            // W = [L11⁻¹·(P·B)_top ; 0]; X = Qᵀ W via a GEMM against the dense Q (Qᵀ is n×m, W is m×k).
+            var W = new floatMxN(m, k, Allocator.Temp, false);
+            basicReducedBlock(in L, in P, in B, r, ref W);
+            Blas.dot(in Q, in W, ref X, transposeA: true);
+            W.Dispose();
+
+            return new RankInfo
+            {
+                status = (r < m) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,
+                rank = r
+            };
+        }
+
+        /// <summary>Multi-RHS basic decompSolve with the default rank tolerance. See the primitive.</summary>
+        public static RankInfo decompSolve(ref floatMxN L, ref floatMxN Q, in Pivot P,
+                                           ref floatMxN B, ref floatMxN X)
+        {
+            return decompSolve(ref L, ref Q, in P, ref B, ref X, (float)(-1));
+        }
+
+        // ---- single-RHS factor-reuse (vector forms of the block decompSolve / minNormDecompSolve) ----
+
+        /// <summary>
+        /// LQRP BASIC (truncated) least-squares from a precomputed factorization (P·A = L·Q), single
+        /// right-hand side — the vector form of the block
+        /// <see cref="decompSolve(ref floatMxN, ref floatMxN, in Pivot, ref floatMxN, ref floatMxN, float)"/>.
+        /// b (length m) is preserved; x (length n) receives the basic solution (minimum-norm only for a
+        /// consistent b — else use minNormDecompSolve). Wraps b/x as single-column blocks and delegates.
+        /// </summary>
+        public static RankInfo decompSolve(ref floatMxN L, ref floatMxN Q, in Pivot P,
+                                           ref floatN b, ref floatN x, float relativeTolerance)
+        {
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+
+            if (b.N != m)
+                throw new ArgumentException("LQRP.decompSolve: b.N must equal Q.M_Rows");
+            if (x.N != n)
+                throw new ArgumentException("LQRP.decompSolve: x.N must equal Q.N_Cols");
+
+            var B = new floatMxN(m, 1, Allocator.Temp, true);
+            var X = new floatMxN(n, 1, Allocator.Temp, true);
+            for (int i = 0; i < m; i++) B[i, 0] = b[i];
+            var info = decompSolve(ref L, ref Q, in P, ref B, ref X, relativeTolerance);
+            for (int j = 0; j < n; j++) x[j] = X[j, 0];
+            X.Dispose();
+            B.Dispose();
+            return info;
+        }
+
+        /// <summary>Single-RHS basic decompSolve (factor-reuse) with the default rank tolerance. See the primitive.</summary>
+        public static RankInfo decompSolve(ref floatMxN L, ref floatMxN Q, in Pivot P,
+                                           ref floatN b, ref floatN x)
+        {
+            return decompSolve(ref L, ref Q, in P, ref b, ref x, (float)(-1));
+        }
+
+        /// <summary>
+        /// LQRP MINIMUM-NORM (pseudoinverse) least-squares from a precomputed factorization (P·A = L·Q),
+        /// single right-hand side — the vector form of the block
+        /// <see cref="minNormDecompSolve(ref floatMxN, ref floatMxN, in Pivot, ref floatMxN, ref floatMxN, float)"/>.
+        /// Returns x = A⁺b (the SAME answer SVD.pinvSolve gives). b (length m) preserved; x (length n) the
+        /// minimum-norm solution. Wraps b/x as single-column blocks and delegates to the block COD solve.
+        /// </summary>
+        public static RankInfo minNormDecompSolve(ref floatMxN L, ref floatMxN Q, in Pivot P,
+                                                  ref floatN b, ref floatN x, float relativeTolerance)
+        {
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+
+            if (b.N != m)
+                throw new ArgumentException("LQRP.minNormDecompSolve: b.N must equal Q.M_Rows");
+            if (x.N != n)
+                throw new ArgumentException("LQRP.minNormDecompSolve: x.N must equal Q.N_Cols");
+
+            var B = new floatMxN(m, 1, Allocator.Temp, true);
+            var X = new floatMxN(n, 1, Allocator.Temp, true);
+            for (int i = 0; i < m; i++) B[i, 0] = b[i];
+            var info = minNormDecompSolve(ref L, ref Q, in P, ref B, ref X, relativeTolerance);
+            for (int j = 0; j < n; j++) x[j] = X[j, 0];
+            X.Dispose();
+            B.Dispose();
+            return info;
+        }
+
+        /// <summary>Single-RHS min-norm decompSolve (factor-reuse) with the default rank tolerance. See the primitive.</summary>
+        public static RankInfo minNormDecompSolve(ref floatMxN L, ref floatMxN Q, in Pivot P,
+                                                  ref floatN b, ref floatN x)
+        {
+            return minNormDecompSolve(ref L, ref Q, in P, ref b, ref x, (float)(-1));
         }
     }
 }

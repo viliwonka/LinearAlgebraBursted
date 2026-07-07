@@ -16,8 +16,8 @@ namespace LinearAlgebra
         /// Works for any shape (m >= n and m &lt; n) and any rank, including rank 0.
         /// A is NOT modified (the Golub-Kahan path takes it as input). b is not modified. x (length
         /// N_Cols): output only; prior contents ignored; safe to allocate with uninit: true.
-        /// relTol &lt; 0 selects auto tolerance: relTol = max(m, n) * Consts.fProxyZeroThreshold.
-        /// Singular values S[j] &lt;= relTol * S[0] are treated as zero.
+        /// relativeTolerance &lt; 0 selects auto tolerance: relativeTolerance = max(m, n) * Consts.fProxyZeroThreshold.
+        /// Singular values S[j] &lt;= relativeTolerance * S[0] are treated as zero.
         /// Allocates temporaries from A's arena via fProxyTempVec/fProxyTempMat (not an InPlace op).
         /// Returns a <see cref="RankInfo"/>: <c>rank</c> is the numerical rank used (0 on a hard
         /// failure); <c>status</c> is <see cref="DirectSolveStatus.Success"/> (full rank),
@@ -29,7 +29,7 @@ namespace LinearAlgebra
         // Caller-provided scratch overload (zero-alloc); scratch layout: see fProxySVDCache. Hoist these
         // out of a hot loop solving many same-shape systems to avoid per-call allocs.
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyN b, ref fProxyN x,
-                                    fProxy relTol, int maxSweeps,
+                                    fProxy relativeTolerance, int maxSweeps,
                                     ref fProxyN S, ref fProxyMxN M, ref fProxyMxN U, ref fProxyMxN At)
         {
             if (b.N != A.M_Rows)
@@ -67,13 +67,13 @@ namespace LinearAlgebra
                     return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
                 // Auto tolerance
-                if (relTol < (fProxy)0)
-                    relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
+                if (relativeTolerance < (fProxy)0)
+                    relativeTolerance = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
 
                 if (n == 0 || S[0] == (fProxy)0)
                     return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
-                fProxy tol = relTol * S[0];
+                fProxy tol = relativeTolerance * S[0];
                 int rank = 0;
 
                 // x = V * diag(1/S_j) * U^T * b  (only for S[j] > tol)
@@ -114,13 +114,13 @@ namespace LinearAlgebra
                     return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
                 // Auto tolerance
-                if (relTol < (fProxy)0)
-                    relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
+                if (relativeTolerance < (fProxy)0)
+                    relativeTolerance = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
 
                 if (m == 0 || S[0] == (fProxy)0)
                     return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
-                fProxy tol = relTol * S[0];
+                fProxy tol = relativeTolerance * S[0];
                 int rank = 0;
 
                 // x = U * diag(1/S_j) * W^T * b  (only for S[j] > tol)
@@ -152,7 +152,7 @@ namespace LinearAlgebra
         /// and A^T for the wide case) from A's arena and delegates to the zero-alloc primitive.
         /// </summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyN b, ref fProxyN x,
-                                    fProxy relTol, int maxSweeps)
+                                    fProxy relativeTolerance, int maxSweeps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -166,7 +166,7 @@ namespace LinearAlgebra
             if (m < n)
                 At = A.fProxyTempMat(n, m);
 
-            return pinvSolve(ref A, in b, ref x, relTol, maxSweeps, ref S, ref M, ref U, ref At);
+            return pinvSolve(ref A, in b, ref x, relativeTolerance, maxSweeps, ref S, ref M, ref U, ref At);
         }
 
         /// <summary>
@@ -175,25 +175,25 @@ namespace LinearAlgebra
         /// the underlying scratch primitive enforce this.
         /// </summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyN b, ref fProxyN x,
-                                    ref fProxySVDCache ws, fProxy relTol, int maxSweeps)
-            => pinvSolve(ref A, in b, ref x, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
+                                    ref fProxySVDCache ws, fProxy relativeTolerance, int maxSweeps)
+            => pinvSolve(ref A, in b, ref x, relativeTolerance, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
 
         /// <summary>pinvSolve (workspace) with default maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyN b, ref fProxyN x,
-                                    ref fProxySVDCache ws, fProxy relTol)
-            => pinvSolve(ref A, in b, ref x, ref ws, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+                                    ref fProxySVDCache ws, fProxy relativeTolerance)
+            => pinvSolve(ref A, in b, ref x, ref ws, relativeTolerance, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pinvSolve (workspace) with default relTol (-1, auto) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        /// <summary>pinvSolve (workspace) with default relativeTolerance (-1, auto) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyN b, ref fProxyN x,
                                     ref fProxySVDCache ws)
             => pinvSolve(ref A, in b, ref x, ref ws, (fProxy)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
         /// <summary>pinvSolve with default maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyN b, ref fProxyN x,
-                                    fProxy relTol)
-            => pinvSolve(ref A, in b, ref x, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+                                    fProxy relativeTolerance)
+            => pinvSolve(ref A, in b, ref x, relativeTolerance, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pinvSolve with default relTol (-1, auto tolerance) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        /// <summary>pinvSolve with default relativeTolerance (-1, auto tolerance) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyN b, ref fProxyN x)
             => pinvSolve(ref A, in b, ref x, (fProxy)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
@@ -208,7 +208,7 @@ namespace LinearAlgebra
         /// </summary>
         // Caller-provided scratch overload (zero-alloc); scratch layout: see fProxySVDCache.
         public static RankInfo pseudoInverse(ref fProxyMxN A, ref fProxyMxN Aplus,
-                                        fProxy relTol, int maxSweeps,
+                                        fProxy relativeTolerance, int maxSweeps,
                                         ref fProxyN S, ref fProxyMxN M, ref fProxyMxN U, ref fProxyMxN At)
         {
             if (Aplus.M_Rows != A.N_Cols)
@@ -248,13 +248,13 @@ namespace LinearAlgebra
                 if (!svdInfo)
                     return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
-                if (relTol < (fProxy)0)
-                    relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
+                if (relativeTolerance < (fProxy)0)
+                    relativeTolerance = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
 
                 if (n == 0 || S[0] == (fProxy)0)
                     return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
-                fProxy tol = relTol * S[0];
+                fProxy tol = relativeTolerance * S[0];
                 int rank = 0;
 
                 // Aplus[r, c] = sum_{j: S[j]>tol} V[r,j] * (1/S[j]) * U[c,j]
@@ -289,13 +289,13 @@ namespace LinearAlgebra
                 if (!svdInfo)
                     return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
-                if (relTol < (fProxy)0)
-                    relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
+                if (relativeTolerance < (fProxy)0)
+                    relativeTolerance = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
 
                 if (m == 0 || S[0] == (fProxy)0)
                     return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
-                fProxy tol = relTol * S[0];
+                fProxy tol = relativeTolerance * S[0];
                 int rank = 0;
 
                 // Aplus[r, c] = sum_{j: S[j]>tol} U[r,j] * (1/S[j]) * W[c,j]
@@ -324,7 +324,7 @@ namespace LinearAlgebra
         /// matrix, and A^T for the wide case) from A's arena and delegates to the zero-alloc primitive.
         /// </summary>
         public static RankInfo pseudoInverse(ref fProxyMxN A, ref fProxyMxN Aplus,
-                                        fProxy relTol, int maxSweeps)
+                                        fProxy relativeTolerance, int maxSweeps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -338,7 +338,7 @@ namespace LinearAlgebra
             if (m < n)
                 At = A.fProxyTempMat(n, m);
 
-            return pseudoInverse(ref A, ref Aplus, relTol, maxSweeps, ref S, ref M, ref U, ref At);
+            return pseudoInverse(ref A, ref Aplus, relativeTolerance, maxSweeps, ref S, ref M, ref U, ref At);
         }
 
         /// <summary>
@@ -346,25 +346,25 @@ namespace LinearAlgebra
         /// The workspace must be sized for A's shape (k = min(A.M_Rows, A.N_Cols)).
         /// </summary>
         public static RankInfo pseudoInverse(ref fProxyMxN A, ref fProxyMxN Aplus,
-                                        ref fProxySVDCache ws, fProxy relTol, int maxSweeps)
-            => pseudoInverse(ref A, ref Aplus, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
+                                        ref fProxySVDCache ws, fProxy relativeTolerance, int maxSweeps)
+            => pseudoInverse(ref A, ref Aplus, relativeTolerance, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
 
         /// <summary>pseudoInverse (workspace) with default maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
         public static RankInfo pseudoInverse(ref fProxyMxN A, ref fProxyMxN Aplus,
-                                        ref fProxySVDCache ws, fProxy relTol)
-            => pseudoInverse(ref A, ref Aplus, ref ws, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+                                        ref fProxySVDCache ws, fProxy relativeTolerance)
+            => pseudoInverse(ref A, ref Aplus, ref ws, relativeTolerance, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pseudoInverse (workspace) with default relTol (-1, auto) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        /// <summary>pseudoInverse (workspace) with default relativeTolerance (-1, auto) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
         public static RankInfo pseudoInverse(ref fProxyMxN A, ref fProxyMxN Aplus,
                                         ref fProxySVDCache ws)
             => pseudoInverse(ref A, ref Aplus, ref ws, (fProxy)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
         /// <summary>pseudoInverse with default maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
         public static RankInfo pseudoInverse(ref fProxyMxN A, ref fProxyMxN Aplus,
-                                        fProxy relTol)
-            => pseudoInverse(ref A, ref Aplus, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+                                        fProxy relativeTolerance)
+            => pseudoInverse(ref A, ref Aplus, relativeTolerance, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pseudoInverse with default relTol (-1, auto tolerance) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
+        /// <summary>pseudoInverse with default relativeTolerance (-1, auto tolerance) and maxSweeps (Consts.sweepBudget(min(A.M_Rows, A.N_Cols))).</summary>
         public static RankInfo pseudoInverse(ref fProxyMxN A, ref fProxyMxN Aplus)
             => pseudoInverse(ref A, ref Aplus, (fProxy)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
@@ -377,13 +377,13 @@ namespace LinearAlgebra
         /// <summary>
         /// Minimum-norm least-squares solve for a whole block of right-hand sides:
         /// X = argmin ‖A X - B‖ (minimum ‖X‖ among minimizers), each RHS a column of B (m x nrhs);
-        /// X is n x nrhs. Any shape/rank. A and B are not modified. relTol &lt; 0 selects the auto
+        /// X is n x nrhs. Any shape/rank. A and B are not modified. relativeTolerance &lt; 0 selects the auto
         /// tolerance (max(m,n)·Consts.fProxyZeroThreshold). Returns a <see cref="RankInfo"/> — see the
         /// vector pinvSolve for the identical rank/convergence semantics (X is zeroed on NotConverged).
         /// </summary>
         // Caller-provided scratch overload (zero-alloc); scratch layout: see fProxySVDCache.
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyMxN B, ref fProxyMxN X,
-                                    fProxy relTol, int maxSweeps,
+                                    fProxy relativeTolerance, int maxSweeps,
                                     ref fProxyN S, ref fProxyMxN M, ref fProxyMxN U, ref fProxyMxN At)
         {
             if (B.M_Rows != A.M_Rows)
@@ -425,13 +425,13 @@ namespace LinearAlgebra
                 if (!svdInfo)
                     return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
-                if (relTol < (fProxy)0)
-                    relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
+                if (relativeTolerance < (fProxy)0)
+                    relativeTolerance = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
 
                 if (n == 0 || S[0] == (fProxy)0)
                     return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
-                fProxy tol = relTol * S[0];
+                fProxy tol = relativeTolerance * S[0];
                 int rank = 0;
 
                 // X = V diag(1/S_j) Uᵀ B  (only for S[j] > tol)
@@ -468,13 +468,13 @@ namespace LinearAlgebra
                 if (!svdInfo)
                     return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
-                if (relTol < (fProxy)0)
-                    relTol = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
+                if (relativeTolerance < (fProxy)0)
+                    relativeTolerance = (fProxy)math.max(m, n) * Consts.fProxyZeroThreshold;
 
                 if (m == 0 || S[0] == (fProxy)0)
                     return new RankInfo { status = k == 0 ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = 0 };
 
-                fProxy tol = relTol * S[0];
+                fProxy tol = relativeTolerance * S[0];
                 int rank = 0;
 
                 // X = U diag(1/S_j) Wᵀ B  (only for S[j] > tol); U columns (length n) are right
@@ -502,7 +502,7 @@ namespace LinearAlgebra
 
         /// <summary>pinvSolve (multi-RHS) allocating wrapper: allocates the SVD scratch from A's arena.</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyMxN B, ref fProxyMxN X,
-                                    fProxy relTol, int maxSweeps)
+                                    fProxy relativeTolerance, int maxSweeps)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -516,30 +516,30 @@ namespace LinearAlgebra
             if (m < n)
                 At = A.fProxyTempMat(n, m);
 
-            return pinvSolve(ref A, in B, ref X, relTol, maxSweeps, ref S, ref M, ref U, ref At);
+            return pinvSolve(ref A, in B, ref X, relativeTolerance, maxSweeps, ref S, ref M, ref U, ref At);
         }
 
         /// <summary>pinvSolve (multi-RHS) using a reusable workspace (Arena.fProxySVDCache(m, n)) — zero-alloc.</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyMxN B, ref fProxyMxN X,
-                                    ref fProxySVDCache ws, fProxy relTol, int maxSweeps)
-            => pinvSolve(ref A, in B, ref X, relTol, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
+                                    ref fProxySVDCache ws, fProxy relativeTolerance, int maxSweeps)
+            => pinvSolve(ref A, in B, ref X, relativeTolerance, maxSweeps, ref ws.S, ref ws.M, ref ws.U, ref ws.At);
 
         /// <summary>pinvSolve (multi-RHS, workspace) with default maxSweeps.</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyMxN B, ref fProxyMxN X,
-                                    ref fProxySVDCache ws, fProxy relTol)
-            => pinvSolve(ref A, in B, ref X, ref ws, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+                                    ref fProxySVDCache ws, fProxy relativeTolerance)
+            => pinvSolve(ref A, in B, ref X, ref ws, relativeTolerance, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pinvSolve (multi-RHS, workspace) with default relTol (auto) and maxSweeps.</summary>
+        /// <summary>pinvSolve (multi-RHS, workspace) with default relativeTolerance (auto) and maxSweeps.</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyMxN B, ref fProxyMxN X,
                                     ref fProxySVDCache ws)
             => pinvSolve(ref A, in B, ref X, ref ws, (fProxy)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
         /// <summary>pinvSolve (multi-RHS) with default maxSweeps.</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyMxN B, ref fProxyMxN X,
-                                    fProxy relTol)
-            => pinvSolve(ref A, in B, ref X, relTol, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
+                                    fProxy relativeTolerance)
+            => pinvSolve(ref A, in B, ref X, relativeTolerance, Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
 
-        /// <summary>pinvSolve (multi-RHS) with default relTol (auto) and maxSweeps.</summary>
+        /// <summary>pinvSolve (multi-RHS) with default relativeTolerance (auto) and maxSweeps.</summary>
         public static RankInfo pinvSolve(ref fProxyMxN A, in fProxyMxN B, ref fProxyMxN X)
             => pinvSolve(ref A, in B, ref X, (fProxy)(-1), Consts.sweepBudget(math.min(A.M_Rows, A.N_Cols)));
     }

@@ -542,6 +542,7 @@ public class floatQRCPTests
             MinNormMultiRHSMatchesSingle,   // (22) block minNormSolveInPlace == per-column single-RHS COD
             MinNormDecompSolveMatchesFused, // (23) factor-reuse minNormDecompSolve == fused block COD
             MinNormPseudoinverseIdentity,   // (24) B=I -> X=A+, verify A A+ A == A (Penrose)
+            SingleRHSFactorReuseMatchesFused, // (25) single-RHS decompSolve/minNormDecompSolve == fused single-RHS
         }
 
         public TestType Type;
@@ -577,6 +578,7 @@ public class floatQRCPTests
                 case TestType.MinNormMultiRHSMatchesSingle:   MinNormMultiRHSMatchesSingle();   break;
                 case TestType.MinNormDecompSolveMatchesFused: MinNormDecompSolveMatchesFused(); break;
                 case TestType.MinNormPseudoinverseIdentity:   MinNormPseudoinverseIdentity();   break;
+                case TestType.SingleRHSFactorReuseMatchesFused: SingleRHSFactorReuseMatchesFused(); break;
             }
         }
 
@@ -1432,6 +1434,47 @@ public class floatQRCPTests
                 for (int j = 0; j < n; j++)
                     AssertClose(AApA[i, j], A0[i, j], tol * (math.abs(A0[i, j]) + (float)1));
 
+            arena.Dispose();
+        }
+
+        // (25) Single-RHS factor-reuse (basic decompSolve + min-norm minNormDecompSolve) must match the
+        // fused single-RHS solveInPlace / minNormSolveInPlace on the same rank-deficient inconsistent b.
+        void SingleRHSFactorReuseMatchesFused()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 9, n = 5;
+            var A = arena.floatRandomMat(m, n, -3f, 3f, 0xD00Du);
+            for (int row = 0; row < m; row++)
+                A[row, 4] = A[row, 0] + A[row, 2];               // rank 4
+            var A0 = A.Copy();
+            var b = arena.floatRandomVec(m, -3f, 3f, 0x0B0Bu);  // inconsistent
+
+            // fused single-RHS references (destroy A and b -> feed copies)
+            var Ab = A0.Copy(); var bb = b.Copy(); var xBasFu = arena.floatVec(n);
+            QRCP.solveInPlace(ref Ab, ref bb, ref xBasFu);
+            var Am = A0.Copy(); var bm = b.Copy(); var xMinFu = arena.floatVec(n);
+            QRCP.minNormSolveInPlace(ref Am, ref bm, ref xMinFu);
+
+            // factor once (A preserved into Q), then the single-RHS factor-reuse solves (b preserved)
+            var Q = arena.floatMat(m, n);
+            var R = arena.floatMat(n, n);
+            var Pp = new Pivot(n, Allocator.Persistent);
+            QRCP.decomp(in A0, ref Q, ref R, ref Pp);
+
+            var xBasRe = arena.floatVec(n);
+            QRCP.decompSolve(ref Q, ref R, in Pp, ref b, ref xBasRe);
+            var xMinRe = arena.floatVec(n);
+            QRCP.minNormDecompSolve(ref Q, ref R, in Pp, ref b, ref xMinRe);
+
+            float tol = (float)Consts.floatSqrtEps * (float)50;
+            for (int i = 0; i < n; i++)
+            {
+                AssertClose(xBasRe[i], xBasFu[i], tol * (math.abs(xBasFu[i]) + (float)1));
+                AssertClose(xMinRe[i], xMinFu[i], tol * (math.abs(xMinFu[i]) + (float)1));
+            }
+
+            Pp.Dispose();
             arena.Dispose();
         }
 
