@@ -52,6 +52,18 @@ This is the level-2 → level-3 jump: each substitution step is a contiguous axp
 right-hand sides, so each factor entry is loaded once and reused across all of them, and `QᵀB` / `UᵀB`
 become GEMMs. Results match the column-by-column vector solve to summation-order rounding.
 
+**Solve-only speedup vs looping the single-RHS solver** (`Benchmarks/MultiRhsSolveBenchmark.cs`,
+factorization shared/untimed, square N=512, float, Ryzen 9 9950X3D single-thread Burst): the block
+solve stays roughly flat (~1 ms) while the per-RHS loop grows linearly with `k`, so the gap widens
+with the number of right-hand sides —
+
+| solver | k=16 | k=64 | k=256 |
+|---|---|---|---|
+| LU | 3.7× | 20× | 32× |
+| Cholesky | 3.9× | 22× | 34× |
+| QR (`QᵀB` already a GEMM) | 3.6× | 12× | 16× |
+| QRCP (also amortizes per-call finish overhead) | 20× | 68× | 84× |
+
 ## Diagnostics-struct convention
 
 Every solver returns its info struct **by value**, with an implicit `bool` conversion (`info ==
