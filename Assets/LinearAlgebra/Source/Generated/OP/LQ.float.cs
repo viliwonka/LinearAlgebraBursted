@@ -18,8 +18,10 @@ namespace LinearAlgebra
         // Build a Householder reflector from ROW `row` of matrix M, columns colStart..N_Cols-1.
         // Stores result in v[colStart..N_Cols-1]; entries v[0..colStart-1] are not accessed.
         // Convention: G = I - v*vᵀ with ||v||² = 2 (same construction as Bidiag.genHouseholderRow).
+        // internal (not private): shared with the row-pivoted LQRP class, exactly as QR shares its
+        // genHouseholder/applyReflectorRight with QRCP.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void genHouseholderRow(ref floatMxN M, ref floatN v, int row, int colStart, float zeroThreshold)
+        internal static void genHouseholderRow(ref floatMxN M, ref floatN v, int row, int colStart, float zeroThreshold)
         {
             int n = M.N_Cols;
             for (int c = colStart; c < n; c++)
@@ -97,8 +99,9 @@ namespace LinearAlgebra
         // Un-restricted form: applies to the full trailing block [rowStart, M_Rows). Used by every
         // path that has not been raised to the blocked (compact-WY) factorization — the zero-alloc
         // decomp overload and the unblocked lqKernel.
+        // internal (not private): shared with the row-pivoted LQRP class (see genHouseholderRow).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe void applyHouseholderRight(ref floatMxN M, ref floatN v, int rowStart, int colStart)
+        internal static unsafe void applyHouseholderRight(ref floatMxN M, ref floatN v, int rowStart, int colStart)
         {
             applyHouseholderRightRows(ref M, ref v, rowStart, M.M_Rows, colStart);
         }
@@ -493,7 +496,8 @@ namespace LinearAlgebra
         // (length n-m)] and apply the reflectors in the order H_{m-1}, …, H_0 (each G_d = I - v_d v_dᵀ:
         // x[c] -= v_d[c]·(v_dᵀx) over c in [d, n)). Reproduces the dense dot(y, Q) to rounding while
         // skipping the O(m·n·m) Q reconstruction — the whole point of the min-norm fast path.
-        static unsafe void applyQtFromReflectors(ref floatMxN W, ref floatN y, ref floatN x)
+        // internal (not private): shared with the row-pivoted LQRP class (see genHouseholderRow).
+        internal static unsafe void applyQtFromReflectors(ref floatMxN W, ref floatN y, ref floatN x)
         {
             int m = W.M_Rows;
             int n = W.N_Cols;

@@ -148,6 +148,73 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() => LQ.minNormSolve(ref A, ref b, ref x);
     }
 
+    // LQRP (row-pivoted, rank-revealing LQ) at the same wide shapes as the LQ jobs above, so the two
+    // sit side by side in the report. LQRP.decomp does the same reflector sweep as LQ.decomp PLUS row
+    // pivoting with downdated partial norms; it runs the UNBLOCKED core at every size, while LQ.decomp
+    // switches to the blocked (level-3) core above Consts.fProxyLqBlockMinM. So the LQRP-vs-LQ gap
+    // below that gate is the pure pivot+downdate overhead, and the widening gap above it is the
+    // headroom a future blocked LQRP core would recover.
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct WideLQRPJobFloat : IJob
+    {
+        public floatMxN A;     // m x n (n >= m); not modified by LQRP.decomp
+        public floatMxN L;     // m x m
+        public floatMxN Q;     // m x n
+        public Pivot P;        // size m
+
+        public void Execute() => LQRP.decomp(in A, ref L, ref Q, ref P);
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct WideLQRPJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN L;
+        public doubleMxN Q;
+        public Pivot P;
+
+        public void Execute() => LQRP.decomp(in A, ref L, ref Q, ref P);
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct WideLQRPSolveJobFloat : IJob
+    {
+        public floatMxN A;     // m x n; DESTROYED by solveInPlace (restored from Src each sample)
+        public floatMxN Src;
+        public floatN b;       // length m; NOT modified by LQRP.solveInPlace (read-only)
+        public floatN x;       // length n, basic solution
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+
+            LQRP.solveInPlace(ref A, ref b, ref x);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct WideLQRPSolveJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN Src;
+        public doubleN b;
+        public doubleN x;
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+
+            LQRP.solveInPlace(ref A, ref b, ref x);
+        }
+    }
+
     public static class TallWideSolveBenchmark
     {
         // Householder QR reflector-sweep leading term for a rows x cols panel (rows >= cols):
@@ -181,6 +248,18 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(Bench.Header());
             foreach (var k in Bench.Sizes) sb.AppendLine(WideMinNormFloat(k));
             foreach (var k in Bench.Sizes) sb.AppendLine(WideMinNormDouble(k));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Wide LQRP row-pivoted factorization (decomp, A is k x 2k; forms L,Q,P; UNBLOCKED); N column = k ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var k in Bench.Sizes) sb.AppendLine(WideLQRPDecompFloat(k));
+            foreach (var k in Bench.Sizes) sb.AppendLine(WideLQRPDecompDouble(k));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Underdetermined rank-safe basic solve (LQRP.solveInPlace, A is k x 2k; no Q); N column = k ===");
+            sb.AppendLine(Bench.Header());
+            foreach (var k in Bench.Sizes) sb.AppendLine(WideLQRPSolveFloat(k));
+            foreach (var k in Bench.Sizes) sb.AppendLine(WideLQRPSolveDouble(k));
             sb.AppendLine();
         }
 
@@ -378,6 +457,110 @@ namespace LinearAlgebra.Benchmarks
                 A[d, d] += m + n;
 
             var job = new WideMinNormJobDouble { A = A, b = b, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("double", k, stat, QrFlops(n, m));
+        }
+
+        // ---- Wide LQRP row-pivoted factorization (k x 2k) ----
+
+        static string WideLQRPDecompFloat(int k)
+        {
+            int m = k, n = 2 * k;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(m, n);
+            var L = arena.floatMat(m, m);
+            var Q = arena.floatMat(m, n);
+            var P = new Pivot(m, Allocator.Persistent);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
+            for (int r = 0; r < m; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = rng.NextFloat(-1f, 1f);
+            for (int d = 0; d < m; d++)
+                A[d, d] += m + n;               // full row rank
+
+            var job = new WideLQRPJobFloat { A = A, L = L, Q = Q, P = P };
+            var stat = Bench.Time(() => job.Run());
+
+            P.Dispose();
+            arena.Dispose();
+            return Bench.Row("float", k, stat, QrFlops(n, m));
+        }
+
+        static string WideLQRPDecompDouble(int k)
+        {
+            int m = k, n = 2 * k;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(m, n);
+            var L = arena.doubleMat(m, m);
+            var Q = arena.doubleMat(m, n);
+            var P = new Pivot(m, Allocator.Persistent);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
+            for (int r = 0; r < m; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = rng.NextDouble(-1.0, 1.0);
+            for (int d = 0; d < m; d++)
+                A[d, d] += m + n;
+
+            var job = new WideLQRPJobDouble { A = A, L = L, Q = Q, P = P };
+            var stat = Bench.Time(() => job.Run());
+
+            P.Dispose();
+            arena.Dispose();
+            return Bench.Row("double", k, stat, QrFlops(n, m));
+        }
+
+        // ---- Underdetermined rank-safe basic solve (k x 2k) ----
+
+        static string WideLQRPSolveFloat(int k)
+        {
+            int m = k, n = 2 * k;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(m, n);
+            var Src = arena.floatMat(m, n);
+            var b = arena.floatVec(m);
+            var x = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
+            for (int r = 0; r < m; r++)
+            {
+                b[r] = rng.NextFloat(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextFloat(-1f, 1f);
+            }
+            for (int d = 0; d < m; d++)
+                Src[d, d] += m + n;
+
+            var job = new WideLQRPSolveJobFloat { A = A, Src = Src, b = b, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("float", k, stat, QrFlops(n, m));
+        }
+
+        static string WideLQRPSolveDouble(int k)
+        {
+            int m = k, n = 2 * k;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(m, n);
+            var Src = arena.doubleMat(m, n);
+            var b = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
+            for (int r = 0; r < m; r++)
+            {
+                b[r] = rng.NextDouble(-1.0, 1.0);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1.0, 1.0);
+            }
+            for (int d = 0; d < m; d++)
+                Src[d, d] += m + n;
+
+            var job = new WideLQRPSolveJobDouble { A = A, Src = Src, b = b, x = x };
             var stat = Bench.Time(() => job.Run());
 
             arena.Dispose();
