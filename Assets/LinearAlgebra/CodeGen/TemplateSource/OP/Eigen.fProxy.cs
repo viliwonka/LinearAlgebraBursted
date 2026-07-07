@@ -1262,18 +1262,16 @@ namespace LinearAlgebra
                     fProxy vtv  = v[m0] * v[m0] + sigma;
                     fProxy beta = (fProxy)2 / vtv;
 
-                    // p = beta * A_sub * v   (A_sub = A[m0:n, m0:n], symmetric). Row dots (contiguous).
+                    // p = beta * A_sub * v   (A_sub = A[m0:n, m0:n], symmetric). Each row dot over the
+                    // active column range [m0,n) goes through the SIMD vecDotRange (row and v never alias).
                     for (int r = m0; r < n; r++)
                     {
                         fProxy* arow = ap + (long)r * n;
-                        fProxy s = 0;
-                        for (int c = m0; c < n; c++) s += arow[c] * v[c];
-                        p[r] = beta * s;
+                        p[r] = beta * UnsafeOP.vecDotRange(arow, v, m0, n);
                     }
 
                     // K = beta * (vᵀp) / 2;  q = p - K v   (overwrite p with q)
-                    fProxy vp = 0;
-                    for (int i = m0; i < n; i++) vp += v[i] * p[i];
+                    fProxy vp = UnsafeOP.vecDotRange(v, p, m0, n);
                     fProxy K = beta * vp / (fProxy)2;
                     for (int i = m0; i < n; i++) p[i] -= K * v[i];
 
@@ -1509,16 +1507,14 @@ namespace LinearAlgebra
                     fProxy vtv  = v[m0] * v[m0] + sigma;
                     fProxy beta = (fProxy)2 / vtv;
 
+                    // p = beta * A_sub * v: each row dot over [m0,n) through the SIMD vecDotRange.
                     for (int r = m0; r < n; r++)
                     {
                         fProxy* arow = ap + (long)r * n;
-                        fProxy s = 0;
-                        for (int c = m0; c < n; c++) s += arow[c] * v[c];
-                        p[r] = beta * s;
+                        p[r] = beta * UnsafeOP.vecDotRange(arow, v, m0, n);
                     }
 
-                    fProxy vp = 0;
-                    for (int i = m0; i < n; i++) vp += v[i] * p[i];
+                    fProxy vp = UnsafeOP.vecDotRange(v, p, m0, n);
                     fProxy K = beta * vp / (fProxy)2;
                     for (int i = m0; i < n; i++) p[i] -= K * v[i];
 
@@ -1535,8 +1531,7 @@ namespace LinearAlgebra
                     for (int r = 0; r < n; r++)
                     {
                         fProxy* qrow = qp + (long)r * n;
-                        fProxy s = 0;
-                        for (int c = m0; c < n; c++) s += qrow[c] * v[c];
+                        fProxy s = UnsafeOP.vecDotRange(qrow, v, m0, n);
                         UnsafeOP.axpy(qrow + m0, v + m0, -(beta * s), len);
                     }
 

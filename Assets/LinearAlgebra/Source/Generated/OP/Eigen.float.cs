@@ -1262,18 +1262,16 @@ namespace LinearAlgebra
                     float vtv  = v[m0] * v[m0] + sigma;
                     float beta = (float)2 / vtv;
 
-                    // p = beta * A_sub * v   (A_sub = A[m0:n, m0:n], symmetric). Row dots (contiguous).
+                    // p = beta * A_sub * v   (A_sub = A[m0:n, m0:n], symmetric). Each row dot over the
+                    // active column range [m0,n) goes through the SIMD vecDotRange (row and v never alias).
                     for (int r = m0; r < n; r++)
                     {
                         float* arow = ap + (long)r * n;
-                        float s = 0;
-                        for (int c = m0; c < n; c++) s += arow[c] * v[c];
-                        p[r] = beta * s;
+                        p[r] = beta * UnsafeOP.vecDotRange(arow, v, m0, n);
                     }
 
                     // K = beta * (vᵀp) / 2;  q = p - K v   (overwrite p with q)
-                    float vp = 0;
-                    for (int i = m0; i < n; i++) vp += v[i] * p[i];
+                    float vp = UnsafeOP.vecDotRange(v, p, m0, n);
                     float K = beta * vp / (float)2;
                     for (int i = m0; i < n; i++) p[i] -= K * v[i];
 
@@ -1509,16 +1507,14 @@ namespace LinearAlgebra
                     float vtv  = v[m0] * v[m0] + sigma;
                     float beta = (float)2 / vtv;
 
+                    // p = beta * A_sub * v: each row dot over [m0,n) through the SIMD vecDotRange.
                     for (int r = m0; r < n; r++)
                     {
                         float* arow = ap + (long)r * n;
-                        float s = 0;
-                        for (int c = m0; c < n; c++) s += arow[c] * v[c];
-                        p[r] = beta * s;
+                        p[r] = beta * UnsafeOP.vecDotRange(arow, v, m0, n);
                     }
 
-                    float vp = 0;
-                    for (int i = m0; i < n; i++) vp += v[i] * p[i];
+                    float vp = UnsafeOP.vecDotRange(v, p, m0, n);
                     float K = beta * vp / (float)2;
                     for (int i = m0; i < n; i++) p[i] -= K * v[i];
 
@@ -1535,8 +1531,7 @@ namespace LinearAlgebra
                     for (int r = 0; r < n; r++)
                     {
                         float* qrow = qp + (long)r * n;
-                        float s = 0;
-                        for (int c = m0; c < n; c++) s += qrow[c] * v[c];
+                        float s = UnsafeOP.vecDotRange(qrow, v, m0, n);
                         UnsafeOP.axpy(qrow + m0, v + m0, -(beta * s), len);
                     }
 
