@@ -10,51 +10,57 @@ using LinearAlgebra;
 
 namespace LinearAlgebra.Benchmarks
 {
-    // Multi-RHS (matrix B/X) block solve vs looping the single-RHS solver. ONE factorization is shared
-    // by both (computed once, UNTIMED, in setup) and the timed region is the SOLVE ONLY — so this
-    // isolates the level-2 (per-vector substitution / GEMV) -> level-3 (block TRSM / GEMM) jump the
-    // matrix overloads buy, independent of the O(n^3) factorization cost. Each right-hand side is a
-    // column of an n x k block; the speedup grows with k as the solve moves from bandwidth-bound
-    // per-vector work to a cache-reused block. float, square N; double is analogous.
+    // Multi-RHS solve, END TO END: given A (n x n) and B (n x k), produce X. The whole operation is
+    // timed, INCLUDING the O(n^3) factorization that dominates the O(n^2 k) solve. Two competent
+    // approaches are compared (both factor ONCE):
+    //   loop  = factor once, then k single-RHS solves.
+    //   block = factor once, then one matrix-RHS solve over all k columns.
+    // The `factor` column is the factorization alone, so you can see how much of each total is just the
+    // shared factorization. speedup = loop / block = the real whole-operation speedup: ~1x when the
+    // factorization dominates (small k), growing as k makes the solve a bigger slice. (A naive
+    // "re-factor per RHS" loop, not shown, would instead cost ~k * factor.) float, N=512.
 
     // ---------------------------------------------------------------- LU
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct LuMrhsFactor : IJob {
-        public floatMxN LU; public floatMxN Src; public Pivot P;
-        public void Execute() { LU.Data.CopyFrom(Src.Data); LinearAlgebra.LU.decompInPlace(ref LU, ref P); }
+    public struct LuE2EFactor : IJob {
+        public floatMxN A; public floatMxN Src; public Pivot P;
+        public void Execute() { A.Data.CopyFrom(Src.Data); LU.decompInPlace(ref A, ref P); }
     }
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct LuMrhsBlock : IJob {
-        public floatMxN LU; public Pivot P; public floatMxN BX; public floatMxN BXsrc;
-        public void Execute() { BX.Data.CopyFrom(BXsrc.Data); LinearAlgebra.LU.decompSolve(ref LU, in P, ref BX); }
-    }
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct LuMrhsLoop : IJob {
-        public floatMxN LU; public Pivot P; public floatMxN BXsrc; public floatN col; public int K;
+    public struct LuE2ELoop : IJob {
+        public floatMxN A; public floatMxN Src; public Pivot P; public floatMxN BXsrc; public floatN col; public int K;
         public void Execute() {
-            int n = LU.M_Rows;
+            A.Data.CopyFrom(Src.Data);
+            LU.decompInPlace(ref A, ref P);
+            int n = A.M_Rows;
             for (int c = 0; c < K; c++) {
                 for (int i = 0; i < n; i++) col[i] = BXsrc[i, c];
-                LinearAlgebra.LU.decompSolve(ref LU, in P, ref col);
+                LU.decompSolve(ref A, in P, ref col);
             }
+        }
+    }
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LuE2EBlock : IJob {
+        public floatMxN A; public floatMxN Src; public Pivot P; public floatMxN BX; public floatMxN BXsrc;
+        public void Execute() {
+            A.Data.CopyFrom(Src.Data);
+            LU.decompInPlace(ref A, ref P);
+            BX.Data.CopyFrom(BXsrc.Data);
+            LU.decompSolve(ref A, in P, ref BX);
         }
     }
 
     // ---------------------------------------------------------------- Cholesky
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct ChoMrhsFactor : IJob {
+    public struct ChoE2EFactor : IJob {
         public floatMxN A; public floatMxN L;
         public void Execute() { CHO.decomp(in A, ref L); }
     }
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct ChoMrhsBlock : IJob {
-        public floatMxN L; public floatMxN BX; public floatMxN BXsrc;
-        public void Execute() { BX.Data.CopyFrom(BXsrc.Data); CHO.decompSolve(ref L, ref BX); }
-    }
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct ChoMrhsLoop : IJob {
-        public floatMxN L; public floatMxN BXsrc; public floatN col; public int K;
+    public struct ChoE2ELoop : IJob {
+        public floatMxN A; public floatMxN L; public floatMxN BXsrc; public floatN col; public int K;
         public void Execute() {
+            CHO.decomp(in A, ref L);
             int n = L.M_Rows;
             for (int c = 0; c < K; c++) {
                 for (int i = 0; i < n; i++) col[i] = BXsrc[i, c];
@@ -62,22 +68,28 @@ namespace LinearAlgebra.Benchmarks
             }
         }
     }
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct ChoE2EBlock : IJob {
+        public floatMxN A; public floatMxN L; public floatMxN BX; public floatMxN BXsrc;
+        public void Execute() {
+            CHO.decomp(in A, ref L);
+            BX.Data.CopyFrom(BXsrc.Data);
+            CHO.decompSolve(ref L, ref BX);
+        }
+    }
 
     // ---------------------------------------------------------------- QR
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct QrMrhsFactor : IJob {
+    public struct QrE2EFactor : IJob {
         public floatMxN Q; public floatMxN Src; public floatMxN R;
         public void Execute() { Q.Data.CopyFrom(Src.Data); QR.decompInPlace(ref Q, ref R); }
     }
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct QrMrhsBlock : IJob {
-        public floatMxN Q; public floatMxN R; public floatMxN B; public floatMxN X;
-        public void Execute() { QR.decompSolve(ref Q, ref R, ref B, ref X); }
-    }
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct QrMrhsLoop : IJob {
-        public floatMxN Q; public floatMxN R; public floatMxN Bsrc; public floatN bcol; public floatN xcol; public int K;
+    public struct QrE2ELoop : IJob {
+        public floatMxN Q; public floatMxN Src; public floatMxN R; public floatMxN Bsrc; public floatN bcol; public floatN xcol; public int K;
         public void Execute() {
+            Q.Data.CopyFrom(Src.Data);
+            QR.decompInPlace(ref Q, ref R);
             int m = Q.M_Rows;
             for (int c = 0; c < K; c++) {
                 for (int i = 0; i < m; i++) bcol[i] = Bsrc[i, c];
@@ -85,27 +97,42 @@ namespace LinearAlgebra.Benchmarks
             }
         }
     }
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QrE2EBlock : IJob {
+        public floatMxN Q; public floatMxN Src; public floatMxN R; public floatMxN B; public floatMxN X;
+        public void Execute() {
+            Q.Data.CopyFrom(Src.Data);
+            QR.decompInPlace(ref Q, ref R);
+            QR.decompSolve(ref Q, ref R, ref B, ref X);
+        }
+    }
 
     // ---------------------------------------------------------------- QRCP
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct QrcpMrhsFactor : IJob {
+    public struct QrcpE2EFactor : IJob {
         public floatMxN Q; public floatMxN Src; public floatMxN R; public Pivot P;
         public void Execute() { Q.Data.CopyFrom(Src.Data); QRCP.decompInPlace(ref Q, ref R, ref P); }
     }
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct QrcpMrhsBlock : IJob {
-        public floatMxN Q; public floatMxN R; public Pivot P; public floatMxN B; public floatMxN X;
-        public void Execute() { QRCP.decompSolve(ref Q, ref R, in P, ref B, ref X, (float)(-1)); }
-    }
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct QrcpMrhsLoop : IJob {
-        public floatMxN Q; public floatMxN R; public Pivot P; public floatMxN Bsrc; public floatMxN b1; public floatMxN x1; public int K;
+    public struct QrcpE2ELoop : IJob {
+        public floatMxN Q; public floatMxN Src; public floatMxN R; public Pivot P; public floatMxN Bsrc; public floatMxN b1; public floatMxN x1; public int K;
         public void Execute() {
+            Q.Data.CopyFrom(Src.Data);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
             int m = Q.M_Rows;
             for (int c = 0; c < K; c++) {
                 for (int i = 0; i < m; i++) b1[i, 0] = Bsrc[i, c];
                 QRCP.decompSolve(ref Q, ref R, in P, ref b1, ref x1, (float)(-1));
             }
+        }
+    }
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QrcpE2EBlock : IJob {
+        public floatMxN Q; public floatMxN Src; public floatMxN R; public Pivot P; public floatMxN B; public floatMxN X;
+        public void Execute() {
+            Q.Data.CopyFrom(Src.Data);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
+            QRCP.decompSolve(ref Q, ref R, in P, ref B, ref X, (float)(-1));
         }
     }
 
@@ -118,9 +145,11 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== Multi-RHS solve, square N=" + N + " (SOLVE ONLY; factorization shared/untimed), float ===");
-            sb.AppendLine("Block = one matrix-RHS decompSolve over k columns; Loop = k single-RHS decompSolve calls.");
-            sb.AppendLine(string.Format("{0,-8} {1,-5} {2,12} {3,12} {4,10}", "solver", "k", "block(ms)", "loop(ms)", "speedup"));
+            sb.AppendLine("=== Multi-RHS solve AX=B, END TO END (factor + solve), square N=" + N + ", float ===");
+            sb.AppendLine("loop = factor once + k single-RHS solves; block = factor once + one k-column solve.");
+            sb.AppendLine("factor = the shared factorization alone (dominates for small k). speedup = loop/block.");
+            sb.AppendLine(string.Format("{0,-8} {1,-5} {2,10} {3,10} {4,10} {5,9}",
+                "solver", "k", "factor(ms)", "loop(ms)", "block(ms)", "speedup"));
 
             foreach (int k in Ks) sb.AppendLine(RunLU(k));
             foreach (int k in Ks) sb.AppendLine(RunCHO(k));
@@ -129,11 +158,12 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine();
         }
 
-        static string Row(string solver, int k, Bench.Stat block, Bench.Stat loop)
+        static string Row(string solver, int k, Bench.Stat factor, Bench.Stat loop, Bench.Stat block)
         {
             double sp = loop.Median / block.Median;
             return string.Format(CultureInfo.InvariantCulture,
-                "{0,-8} {1,-5} {2,12:F4} {3,12:F4} {4,9:F2}x", solver, k, block.Median, loop.Median, sp);
+                "{0,-8} {1,-5} {2,10:F4} {3,10:F4} {4,10:F4} {5,8:F2}x",
+                solver, k, factor.Median, loop.Median, block.Median, sp);
         }
 
         static void FillSpd(floatMxN A, int n, uint seed) {
@@ -157,18 +187,18 @@ namespace LinearAlgebra.Benchmarks
         {
             var arena = new Arena(Allocator.Persistent);
             var Src = arena.floatMat(N, N); FillGen(Src, N, 2654435761u ^ (uint)N);
-            var LU = arena.floatMat(N, N);
+            var A = arena.floatMat(N, N);
             var P = new Pivot(N, Allocator.Persistent);
-            new LuMrhsFactor { LU = LU, Src = Src, P = P }.Run();   // factor once, untimed
-
             var BXsrc = arena.floatMat(N, k); FillRhs(BXsrc, N, k, 40503u ^ (uint)k);
             var BX = arena.floatMat(N, k);
             var col = arena.floatVec(N);
-            var block = Bench.Time(() => new LuMrhsBlock { LU = LU, P = P, BX = BX, BXsrc = BXsrc }.Run());
-            var loop = Bench.Time(() => new LuMrhsLoop { LU = LU, P = P, BXsrc = BXsrc, col = col, K = k }.Run());
+
+            var factor = Bench.Time(() => new LuE2EFactor { A = A, Src = Src, P = P }.Run());
+            var loop = Bench.Time(() => new LuE2ELoop { A = A, Src = Src, P = P, BXsrc = BXsrc, col = col, K = k }.Run());
+            var block = Bench.Time(() => new LuE2EBlock { A = A, Src = Src, P = P, BX = BX, BXsrc = BXsrc }.Run());
 
             P.Dispose(); arena.Dispose();
-            return Row("LU", k, block, loop);
+            return Row("LU", k, factor, loop, block);
         }
 
         static string RunCHO(int k)
@@ -176,16 +206,16 @@ namespace LinearAlgebra.Benchmarks
             var arena = new Arena(Allocator.Persistent);
             var A = arena.floatMat(N, N); FillSpd(A, N, 2654435761u ^ (uint)N);
             var L = arena.floatMat(N, N);
-            new ChoMrhsFactor { A = A, L = L }.Run();
-
             var BXsrc = arena.floatMat(N, k); FillRhs(BXsrc, N, k, 40503u ^ (uint)k);
             var BX = arena.floatMat(N, k);
             var col = arena.floatVec(N);
-            var block = Bench.Time(() => new ChoMrhsBlock { L = L, BX = BX, BXsrc = BXsrc }.Run());
-            var loop = Bench.Time(() => new ChoMrhsLoop { L = L, BXsrc = BXsrc, col = col, K = k }.Run());
+
+            var factor = Bench.Time(() => new ChoE2EFactor { A = A, L = L }.Run());
+            var loop = Bench.Time(() => new ChoE2ELoop { A = A, L = L, BXsrc = BXsrc, col = col, K = k }.Run());
+            var block = Bench.Time(() => new ChoE2EBlock { A = A, L = L, BX = BX, BXsrc = BXsrc }.Run());
 
             arena.Dispose();
-            return Row("Cholesky", k, block, loop);
+            return Row("Cholesky", k, factor, loop, block);
         }
 
         static string RunQR(int k)
@@ -194,17 +224,17 @@ namespace LinearAlgebra.Benchmarks
             var Src = arena.floatMat(N, N); FillGen(Src, N, 2654435761u ^ (uint)N);
             var Q = arena.floatMat(N, N);
             var R = arena.floatMat(N, N);
-            new QrMrhsFactor { Q = Q, Src = Src, R = R }.Run();
-
             var Bsrc = arena.floatMat(N, k); FillRhs(Bsrc, N, k, 40503u ^ (uint)k);
             var X = arena.floatMat(N, k);
             var bcol = arena.floatVec(N);
             var xcol = arena.floatVec(N);
-            var block = Bench.Time(() => new QrMrhsBlock { Q = Q, R = R, B = Bsrc, X = X }.Run());
-            var loop = Bench.Time(() => new QrMrhsLoop { Q = Q, R = R, Bsrc = Bsrc, bcol = bcol, xcol = xcol, K = k }.Run());
+
+            var factor = Bench.Time(() => new QrE2EFactor { Q = Q, Src = Src, R = R }.Run());
+            var loop = Bench.Time(() => new QrE2ELoop { Q = Q, Src = Src, R = R, Bsrc = Bsrc, bcol = bcol, xcol = xcol, K = k }.Run());
+            var block = Bench.Time(() => new QrE2EBlock { Q = Q, Src = Src, R = R, B = Bsrc, X = X }.Run());
 
             arena.Dispose();
-            return Row("QR", k, block, loop);
+            return Row("QR", k, factor, loop, block);
         }
 
         static string RunQRCP(int k)
@@ -214,17 +244,17 @@ namespace LinearAlgebra.Benchmarks
             var Q = arena.floatMat(N, N);
             var R = arena.floatMat(N, N);
             var P = new Pivot(N, Allocator.Persistent);
-            new QrcpMrhsFactor { Q = Q, Src = Src, R = R, P = P }.Run();
-
             var Bsrc = arena.floatMat(N, k); FillRhs(Bsrc, N, k, 40503u ^ (uint)k);
             var X = arena.floatMat(N, k);
             var b1 = arena.floatMat(N, 1);
             var x1 = arena.floatMat(N, 1);
-            var block = Bench.Time(() => new QrcpMrhsBlock { Q = Q, R = R, P = P, B = Bsrc, X = X }.Run());
-            var loop = Bench.Time(() => new QrcpMrhsLoop { Q = Q, R = R, P = P, Bsrc = Bsrc, b1 = b1, x1 = x1, K = k }.Run());
+
+            var factor = Bench.Time(() => new QrcpE2EFactor { Q = Q, Src = Src, R = R, P = P }.Run());
+            var loop = Bench.Time(() => new QrcpE2ELoop { Q = Q, Src = Src, R = R, P = P, Bsrc = Bsrc, b1 = b1, x1 = x1, K = k }.Run());
+            var block = Bench.Time(() => new QrcpE2EBlock { Q = Q, Src = Src, R = R, P = P, B = Bsrc, X = X }.Run());
 
             P.Dispose(); arena.Dispose();
-            return Row("QRCP", k, block, loop);
+            return Row("QRCP", k, factor, loop, block);
         }
     }
 }

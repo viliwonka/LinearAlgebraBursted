@@ -52,17 +52,22 @@ This is the level-2 → level-3 jump: each substitution step is a contiguous axp
 right-hand sides, so each factor entry is loaded once and reused across all of them, and `QᵀB` / `UᵀB`
 become GEMMs. Results match the column-by-column vector solve to summation-order rounding.
 
-**Solve-only speedup vs looping the single-RHS solver** (`Benchmarks/MultiRhsSolveBenchmark.cs`,
-factorization shared/untimed, square N=512, float, Ryzen 9 9950X3D single-thread Burst): the block
-solve stays roughly flat (~1 ms) while the per-RHS loop grows linearly with `k`, so the gap widens
-with the number of right-hand sides —
+**End-to-end speedup vs looping the single-RHS solver** (`Benchmarks/MultiRhsSolveBenchmark.cs`,
+whole `AX=B` including the factorization both paths pay, square N=512, float, Ryzen 9 9950X3D
+single-thread Burst). The block's total is `factor + a sliver` almost regardless of `k`; the loop is
+`factor + k·(per-RHS solve)`, so the win grows with the number of right-hand sides:
 
-| solver | k=16 | k=64 | k=256 |
-|---|---|---|---|
-| LU | 3.7× | 20× | 32× |
-| Cholesky | 3.9× | 22× | 34× |
-| QR (`QᵀB` already a GEMM) | 3.6× | 12× | 16× |
-| QRCP (also amortizes per-call finish overhead) | 20× | 68× | 84× |
+| solver | factor (ms) | k=16 | k=64 | k=256 |
+|---|---|---|---|---|
+| LU | 2.7 | 1.9× | 5.9× | 15× |
+| Cholesky | 1.8 | 2.2× | 7.7× | 19× |
+| QR | 7.8 | 1.2× | 2.1× | 4.5× |
+| QRCP | 9.9 | 2.2× | 5.9× | 18× |
+
+At small `k` the `O(n³)` factorization dominates, so the whole-operation speedup is modest; it grows as
+`k` makes the `O(n²k)` solve a bigger slice. QR gains least because its factorization is the priciest
+(it forms Q) and its per-RHS solve is already an efficient GEMV. (A naïve *re-factor-per-RHS* loop,
+not shown, would instead cost ≈ `k · factor`.)
 
 ## Diagnostics-struct convention
 
