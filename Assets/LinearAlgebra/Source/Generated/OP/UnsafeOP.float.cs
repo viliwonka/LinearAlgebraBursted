@@ -86,14 +86,30 @@ namespace LinearAlgebra.Internal
         {
             // mat = m x n
             // x = n
-            // y = m, needs to be initialized to zero
-            // y = mat * x
+            // y = m, needs to be initialized to zero (this accumulates into y)
+            // y += mat * x
+            //
+            // Each row is a dot product (reduction). A single running accumulator is a serial FP-add
+            // dependency chain that strict-FloatMode Burst cannot split into SIMD lanes (that would be
+            // reassociation). Four EXPLICIT accumulators give four independent chains — one SIMD
+            // register accumulating four lanes — without asking the compiler to reassociate, so the
+            // summation order is fixed by the source and stays deterministic. Same pattern as LQ.dot4.
             for (int r = 0; r < m; r++)
             {
-                for(int c = 0; c < n; c++)
+                int baseIdx = r * n;
+                float s0 = (float)0, s1 = (float)0, s2 = (float)0, s3 = (float)0;
+                int c = 0;
+                for (; c + 4 <= n; c += 4)
                 {
-                    y[r] += mat[r * n + c] * x[c];
+                    s0 += mat[baseIdx + c]     * x[c];
+                    s1 += mat[baseIdx + c + 1] * x[c + 1];
+                    s2 += mat[baseIdx + c + 2] * x[c + 2];
+                    s3 += mat[baseIdx + c + 3] * x[c + 3];
                 }
+                float sum = (s0 + s1) + (s2 + s3);
+                for (; c < n; c++)
+                    sum += mat[baseIdx + c] * x[c];
+                y[r] += sum;
             }
         }
 
