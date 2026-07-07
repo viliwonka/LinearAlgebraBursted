@@ -6,9 +6,8 @@ namespace LinearAlgebra.Gallery
 {
     /// <summary>
     /// Gallery of famous test matrices — eigenvalue / nonsymmetric / structured / rank family,
-    /// plus the number-theoretic / combinatorial / additional-structured set formerly split out
-    /// into its own "Phase 2" file (Cauchy, GCD, Redheffer, Magic, Rosser, Parter, Prolate, Grcar,
-    /// Lotkin — sections 13-21 below; merged here, same partial class, no API change).
+    /// plus the number-theoretic / combinatorial / additional-structured set (Cauchy, GCD, Redheffer,
+    /// Magic, Rosser, Parter, Prolate, Grcar, Lotkin — sections 13-21 below).
     /// Batch B of the Literature Gallery (Batch A: Gallery.SPD.fProxy.cs).
     /// Targets: Eigen.decompInPlace, Eigen.valuesQR, SVD, QR/QRCP, least-squares, FFT cross-check, det.
     /// Opt in via <c>using LinearAlgebra.Gallery;</c> then call e.g. <c>arena.fProxyFrank(n)</c>.

@@ -214,8 +214,7 @@ namespace LinearAlgebra
 
             // Transpose U (m x n) -> Ut (n x m) and V (n x n) -> Vt (n x n) so the bidiagonal QR's
             // plane rotations hit CONTIGUOUS rows (unit-stride, SIMD via UnsafeOP.jacobiRotate)
-            // instead of strided columns — same trick that vectorized Eigen.symmetric (and the
-            // deleted one-sided Jacobi SVD; see git history).
+            // instead of strided columns — the same trick that vectorized Eigen.symmetric.
             bool ok;
             int sweeps, convergedCount;
             {

@@ -15,9 +15,8 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Power iteration with Rayleigh-quotient eigenvalue estimate, generic over any
-        /// <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static dispatch, no
-        /// vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the power-iteration
-        /// loop — the concrete dense (<c>powerIteration(in fProxyMxN, ...)</c>) and BSR
+        /// <see cref="IfProxyLinearOperator"/>. This is the single implementation of the
+        /// power-iteration loop — the concrete dense (<c>powerIteration(in fProxyMxN, ...)</c>) and BSR
         /// (<c>powerIteration(in fProxyBSR, ...)</c>) overloads below are thin forwarders that
         /// wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c> and
         /// call this method (mirrors <see cref="Krylov.cg{TOp}"/>).
@@ -216,9 +215,8 @@ namespace LinearAlgebra
         /// <summary>
         /// Inverse power iteration for the SMALLEST eigenpair (lambda_min, v) of a symmetric
         /// positive-definite (SPD) operator A (A.Rows == A.Cols), generic over any
-        /// <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static dispatch, no
-        /// vtable/managed delegate) -- same shape as <see cref="powerIteration{TOp}"/>. This is
-        /// the SINGLE SOURCE OF TRUTH for the inverse-iteration loop -- the concrete dense
+        /// <see cref="IfProxyLinearOperator"/> -- same shape as <see cref="powerIteration{TOp}"/>.
+        /// This is the single implementation of the inverse-iteration loop -- the concrete dense
         /// (<c>inversePowerIteration(in fProxyMxN, ...)</c>) and BSR
         /// (<c>inversePowerIteration(in fProxyBSR, ...)</c>) overloads below are thin forwarders
         /// that wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c>
@@ -533,9 +531,8 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Lanczos tridiagonalization of a SYMMETRIC operator A (A.Rows == A.Cols), generic over
-        /// any <see cref="IfProxyLinearOperator"/> (Burst-monomorphized static dispatch, no
-        /// vtable/managed delegate) -- same shape as <see cref="powerIteration{TOp}"/> /
-        /// <see cref="inversePowerIteration{TOp}"/>. This is the SINGLE SOURCE OF TRUTH for the
+        /// any <see cref="IfProxyLinearOperator"/> -- same shape as <see cref="powerIteration{TOp}"/> /
+        /// <see cref="inversePowerIteration{TOp}"/>. This is the single implementation of the
         /// Lanczos loop -- the concrete dense (<c>lanczos(in fProxyMxN, ...)</c>) and BSR
         /// (<c>lanczos(in fProxyBSR, ...)</c>) overloads below are thin forwarders that wrap their
         /// matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c> and call this

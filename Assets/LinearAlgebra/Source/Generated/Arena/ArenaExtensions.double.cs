@@ -74,7 +74,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // Legacy name for doubleLinspace(a, b, N); delegates to the guarded Generate.linspace (handles N==1, pins both endpoints exactly).
+        // Alias for doubleLinspace(a, b, N); delegates to the guarded Generate.linspace (handles N==1, pins both endpoints exactly).
         public static doubleN doubleLinVec(this ref Arena arena, int N, double start, double end)
         {
             var vec = arena.doubleVec(N);

@@ -155,6 +155,64 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // QRCP.minNormSolveInPlace: the complete-orthogonal-decomposition (COD / xGELSY) min-norm solve.
+    // Structurally identical to QRCPSolveJob (same scratch, same destroys-A-and-b contract), so timing
+    // one against the other on the SAME rank-deficient input isolates the COD overhead: when rank r < n
+    // it runs a SECOND orthogonal sweep (an LQ-compress of the r x n top block) that basic solveInPlace
+    // skips. At full rank the two coincide (COD short-circuits to the basic finish) — hence the
+    // rank-deficient input in the builder below.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QRCPMinNormJobFloat : IJob
+    {
+        public floatMxN A;
+        public floatMxN Src;
+        public floatN b;
+        public floatN bSrc;
+        public floatN x;
+        public floatMxN R;
+        public floatN u;
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+            for (int i = 0; i < rows; i++)
+                b[i] = bSrc[i];
+
+            var P = new Pivot(A.N_Cols, Allocator.Temp);
+            QRCP.minNormSolveInPlace(ref A, ref b, ref x, ref R, ref P, ref u);
+            P.Dispose();
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QRCPMinNormJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN Src;
+        public doubleN b;
+        public doubleN bSrc;
+        public doubleN x;
+        public doubleMxN R;
+        public doubleN u;
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+            for (int i = 0; i < rows; i++)
+                b[i] = bSrc[i];
+
+            var P = new Pivot(A.N_Cols, Allocator.Temp);
+            QRCP.minNormSolveInPlace(ref A, ref b, ref x, ref R, ref P, ref u);
+            P.Dispose();
+        }
+    }
+
     public static class QRVariantsBenchmark
     {
         // (4/3) N^3 leading term (approximate). QRCP adds an O(N^3) exact pivot-norm recompute on top,
@@ -184,6 +242,16 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Bench.Sizes) sb.AppendLine(QRCPSolveDouble(n));
             sb.AppendLine();
 
+            // COD overhead: each size emits the basic and the COD row adjacently on the SAME rank-deficient
+            // matrix (rank = 3n/4), so the extra second-sweep cost reads straight off the pair. GFLOP/s~
+            // uses the plain (4/3)n^3 for both, so COD's throughput reads low (its compress work isn't in
+            // the count) — compare the ms columns, not GFLOP/s.
+            sb.AppendLine("=== QRCP rank-deficient (n x n, rank = 3n/4): basic solveInPlace vs COD minNormSolveInPlace ===");
+            sb.AppendLine(HeaderKernel());
+            foreach (var n in Bench.Sizes) sb.AppendLine(QRCPRankDefFloat(n));
+            foreach (var n in Bench.Sizes) sb.AppendLine(QRCPRankDefDouble(n));
+            sb.AppendLine();
+
             sb.AppendLine("=== TALL overdetermined least squares (m x n, m > n): QR.solveInPlace vs QRCP.solveInPlace ===");
             sb.AppendLine(HeaderTall());
             foreach (var s in TallSizes) sb.AppendLine(SolveTallFloat(s[0], s[1]));
@@ -209,6 +277,91 @@ namespace LinearAlgebra.Benchmarks
             return string.Format(System.Globalization.CultureInfo.InvariantCulture,
                 "{0,-7} {1,-24} {2,11:F4} {3,11:F4} {4,11:F4} {5,11:F4} {6,12:F2}",
                 dtype, kernel + " " + m + "x" + n, st.Min, st.Median, st.Mean, st.Max, gflops);
+        }
+
+        // Labeled row/header for the rank-deficient basic-vs-COD comparison (adds a kernel column so the
+        // two rows per size are distinguishable; N still varies down the block).
+        static string HeaderKernel()
+        {
+            return string.Format("{0,-7} {1,-24} {2,-6} {3,11} {4,11} {5,11} {6,11} {7,12}",
+                "dtype", "kernel", "N", "min(ms)", "med(ms)", "mean(ms)", "max(ms)", "GFLOP/s~");
+        }
+
+        static string RowKernel(string dtype, string kernel, int n, Bench.Stat st, double flops)
+        {
+            double gflops = flops / (st.Median / 1000.0) / 1e9;
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "{0,-7} {1,-24} {2,-6} {3,11:F4} {4,11:F4} {5,11:F4} {6,11:F4} {7,12:F2}",
+                dtype, kernel, n, st.Min, st.Median, st.Mean, st.Max, gflops);
+        }
+
+        // Rank-deficient n x n input of exact rank r: fill the first r columns at random, then set each
+        // trailing column j>=r to a copy of column j-r. Duplicate columns are a clean, exactly-rank-r
+        // structure the rank detector resolves to r < n, which is what makes COD run its second sweep.
+        static string QRCPRankDefFloat(int n)
+        {
+            int rank = (3 * n) / 4;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(n, n);
+            var Src = arena.floatMat(n, n);
+            var b = arena.floatVec(n);
+            var bSrc = arena.floatVec(n);
+            var x = arena.floatVec(n);
+            var R = arena.floatMat(n, n);
+            var u = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+            {
+                bSrc[r] = rng.NextFloat(-1f, 1f);
+                for (int c = 0; c < rank; c++)
+                    Src[r, c] = rng.NextFloat(-1f, 1f);
+            }
+            for (int r = 0; r < n; r++)
+                for (int c = rank; c < n; c++)
+                    Src[r, c] = Src[r, c - rank];
+
+            var basic = new QRCPSolveJobFloat { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
+            var sB = Bench.Time(() => basic.Run());
+            var cod = new QRCPMinNormJobFloat { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
+            var sC = Bench.Time(() => cod.Run());
+
+            arena.Dispose();
+            return RowKernel("float", "basic solveInPlace", n, sB, Flops(n))
+                 + "\n" + RowKernel("float", "COD minNormSolveInPlace", n, sC, Flops(n));
+        }
+
+        static string QRCPRankDefDouble(int n)
+        {
+            int rank = (3 * n) / 4;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(n, n);
+            var Src = arena.doubleMat(n, n);
+            var b = arena.doubleVec(n);
+            var bSrc = arena.doubleVec(n);
+            var x = arena.doubleVec(n);
+            var R = arena.doubleMat(n, n);
+            var u = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+            {
+                bSrc[r] = rng.NextDouble(-1.0, 1.0);
+                for (int c = 0; c < rank; c++)
+                    Src[r, c] = rng.NextDouble(-1.0, 1.0);
+            }
+            for (int r = 0; r < n; r++)
+                for (int c = rank; c < n; c++)
+                    Src[r, c] = Src[r, c - rank];
+
+            var basic = new QRCPSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
+            var sB = Bench.Time(() => basic.Run());
+            var cod = new QRCPMinNormJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
+            var sC = Bench.Time(() => cod.Run());
+
+            arena.Dispose();
+            return RowKernel("double", "basic solveInPlace", n, sB, Flops(n))
+                 + "\n" + RowKernel("double", "COD minNormSolveInPlace", n, sC, Flops(n));
         }
 
         static string QRCPFloat(int n)

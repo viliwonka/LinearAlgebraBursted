@@ -49,9 +49,8 @@ namespace LinearAlgebra
         // left-multiply's uᵀM (a sum of scaled rows, expressible as pure axpy — see QR/Bidiag's
         // applyReflectorRight/applyHouseholderLeft). A single running-sum reduction can't be
         // auto-vectorized under strict FloatMode (see docs/dev/perf-vectorization-lessons.md); 4
-        // independent accumulator chains restore ILP across the unrolled lanes. Measured: 4 wins
-        // decisively over 8 (register pressure from 8 live accumulators regressed ~1.7x at N=1024
-        // vs 4's ~3x win over the naive single-accumulator form — see benchmark-tallwide.txt history).
+        // independent accumulator chains restore ILP across the unrolled lanes (4 beat both 8, which
+        // regressed under register pressure, and the naive single accumulator).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe fProxy dot4(fProxy* a, fProxy* b, int n)
         {
@@ -357,16 +356,11 @@ namespace LinearAlgebra
         //
         // LQ_BLOCK_MIN_M (Consts.fProxyLqBlockMinM -> float 256 / double 512) is a measured, not
         // derived, crossover — unlike QR's simple ">= 2*QR_BLOCK" gate. LQ's fold step
-        // (UnsafeOP.lqYeqCVt) is reduction-shaped rather than axpy-shaped (see its doc comment), so its
-        // per-panel overhead amortises slowly and is bandwidth-bound; double streams 2x the bytes per
-        // element, so it crosses over LATER than float (measured: k=256 was a ~9% win for float but a
-        // ~20% loss for double; k=512 wins for both). The gate is therefore SPLIT per generated type
-        // (Consts.floatLqBlockMinM / doubleLqBlockMinM) rather than shared, each pinned to its own
-        // break-even. The values are intrinsically CPU-specific (cache size / bandwidth) and err HIGH
-        // on purpose: the sub-gate unblocked path is always correct, so only a too-LOW gate can regress
-        // (on a weaker cache), while a worse CPU crosses over earlier and still captures the win at a
-        // high gate. Measured on TallWideSolveBenchmark (A is k x 2k): float wins from k=256 (~9%),
-        // double from k=512 (~7% at N=512, ~19% at N=1024).
+        // (UnsafeOP.lqYeqCVt) is reduction-shaped rather than axpy-shaped (see its doc comment) and
+        // bandwidth-bound, so double (2x the bytes per element) crosses over later than float; the gate
+        // is therefore SPLIT per generated type (Consts.floatLqBlockMinM / doubleLqBlockMinM). The
+        // values are CPU-specific (cache/bandwidth) and err HIGH on purpose: the sub-gate unblocked
+        // path is always correct, so only a too-LOW gate can regress on a weaker cache.
         // Always reports DirectSolveStatus.Success — this factorization has no failure mode (a
         // zero-norm row is handled via the sign-convention fallback in genHouseholderRow, not
         // rejected).

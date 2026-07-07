@@ -8,11 +8,11 @@ namespace LinearAlgebra
     /// element type (float/double/int/short/long/uint/bool). See Hash.Shared.cs's class doc for the
     /// chosen algorithm (xxHash32) and why.
     ///
-    /// FLAGSHIP USE CASE: deterministic state checksums for lockstep-multiplayer desync detection -
+    /// Main use case: deterministic state checksums for lockstep-multiplayer desync detection -
     /// hash each peer's authoritative simulation state every tick (or every N ticks) and compare the
     /// resulting uint across the network; a mismatch means two peers' simulations have diverged.
     ///
-    /// FLOATING-POINT CAVEATS (float/double only - does not apply to int/short/long/uint/bool):
+    /// Floating-point caveats (float/double only - does not apply to int/short/long/uint/bool):
     /// floats are hashed by their raw BITS (the buffer's actual memory, reinterpreted - free, no
     /// conversion needed), NOT by numeric value. Two consequences:
     /// <list type="bullet">
@@ -42,18 +42,11 @@ namespace LinearAlgebra
             unsafe { return hash((byte*)v.Data.Ptr, v.Data.Length * sizeof(fProxy), seed); }
         }
 
-        // NOTE ON THE INLINE per-generated-type marker used below (wrapping `iProxyN`/`iProxyVec`
-        // just ahead of each dest/return type and shortcut call): the dest of a row/col hash is
-        // always a uint buffer, regardless of A's element type - but the literal text "uintN" is a pure
-        // codegen OUTPUT (produced only by substituting the iProxy token inside its own int-family
-        // rotation) and does not exist as a real type anywhere in TemplateSource's own standalone
-        // compile, so it cannot be hand-written here directly (see docs/dev/naming-style-guide.md's
-        // alsoExpand note). Writing the real placeholder token `iProxyN` as the choose marker's
-        // raw-compile-time filler, then always CHOOSING the literal "uintN" (same value for both
-        // float and double), keeps this file standalone-compilable while still emitting exactly
-        // `uintN`/`uintMxN` in the generated float/double output. Same trick for the `iProxyVec`
-        // shortcut call (fProxyMxN's cross-shortcut to uintVec, widened via
-        // fProxyMxN.Shortcuts.cs's own alsoExpand[uint]).
+        // The row/col hash dest is always a uint buffer regardless of A's element type. "uintN"/
+        // "uintMxN" are codegen outputs (the iProxy token is always chosen as uint here, the same for
+        // both float and double), not types that exist in TemplateSource's own standalone compile, so
+        // they are emitted via the choose marker rather than hand-written. See
+        // docs/dev/naming-style-guide.md's alsoExpand note.
 
         /// <summary>
         /// Writes one xxHash32 value per row of <paramref name="A"/> into <paramref name="dest"/> -

@@ -9,9 +9,8 @@ namespace LinearAlgebra.Sparse
     /// no transpose materialized) or to a cache-friendly FORWARD <see cref="BSR.spMV"/>
     /// over a precomputed transpose AT (two-arg ctor -- see <see cref="Arena.floatBSRTranspose"/>),
     /// depending on which constructor built this operator.
-    /// -- this is the wrapper the Phase-1 SparseOP.float.cs header comment anticipated. Lets the
-    /// generic Krylov solvers (<c>Krylov.cg&lt;TOp&gt;</c>, <c>Krylov.pcg&lt;TOp,TPre&gt;</c>) run
-    /// over a BSR with zero-cost Burst static dispatch, no vtable.
+    /// Lets the generic Krylov solvers (<c>Krylov.cg&lt;TOp&gt;</c>,
+    /// <c>Krylov.pcg&lt;TOp,TPre&gt;</c>) run over a BSR matrix.
     /// Readonly: a value copy of this struct only copies the floatBSR/AT headers (a handful of
     /// UnsafeList headers + ints), not the underlying buffers -- cheap and safe to pass through
     /// `in` parameters in generic constrained calls.

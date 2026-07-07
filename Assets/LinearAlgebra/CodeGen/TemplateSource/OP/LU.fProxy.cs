@@ -115,12 +115,9 @@ namespace LinearAlgebra
             // would collide across them (CS0102; see QR_BLOCK / CHOL_BLOCK).
             const int LU_BLOCK = 32;
 
-            // Size gate: MEASURED crossover, not the naive 4*LU_BLOCK (see docs/dev/level3-blocking-guide.md
-            // "size gate" — Cholesky needed the same kind of margin, CHOL_BLOCK=32 but gate n>=256, i.e.
-            // 8x the block width). Benchmarked: n=128 (4 panels) is a wash/slightly slower for float —
-            // the panel/TRSM/GEMM bookkeeping isn't amortised yet — while n=256 (8 panels) is the first
-            // size that clearly wins for both float and double. Below this, the plain per-column sweep
-            // is used unchanged.
+            // Size gate: measured crossover, not the naive 4*LU_BLOCK — the panel/TRSM/GEMM bookkeeping
+            // isn't amortised until ~8 panels wide (see docs/dev/level3-blocking-guide.md "size gate").
+            // Below this, the plain per-column sweep is used unchanged.
             const int LU_BLOCK_MIN_N = Consts.fProxyLuBlockMinN;   // float/double split (see Consts); default 8*LU_BLOCK
 
             if (m < LU_BLOCK_MIN_N) {
@@ -155,7 +152,7 @@ namespace LinearAlgebra
                     // Calculate L and U. The trailing-row elimination U[j, k+1:] -= Ljk * U[k, k+1:] is
                     // an axpy over two DISTINCT rows (j > k) along the unit-stride column axis; routed
                     // through the vectorising UnsafeOP.axpy ([NoAlias], the GEMM pointer path) so Burst
-                    // SIMD-vectorises this O(n^3) hot loop (float ~2x double). Bitwise identical to the
+                    // SIMD-vectorises this O(n^3) hot loop. Bitwise identical to the
                     // scalar form: each column i is updated independently, and (-Ljk)*U[k,i] added to
                     // U[j,i] equals U[j,i] - Ljk*U[k,i] exactly in IEEE.
                     fProxy Ukk = U[k, k];

@@ -19,7 +19,7 @@ Per-axis, each with a `ref floatN dest` zero-alloc form and an allocating form: 
 
 `covarianceInto(in A, ref C)` / `covariance(in A)` / `correlation(in A)` — computed via the Gram
 formulation (center once into a scratch, then `centeredᵀ · centered` through
-[`Blas`](blas.md)'s `matMatDotTransA`), not the naive O(N²) column-pair loop. Degrades to a zero
+[`Blas`](la-primitives.md)'s `matMatDotTransA`), not the naive O(N²) column-pair loop. Degrades to a zero
 matrix (not NaN) when `M < 2` for the `ref`-dest primitive; the allocating wrappers still throw.
 
 ## Transforms

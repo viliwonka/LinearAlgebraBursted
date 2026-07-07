@@ -8,7 +8,7 @@ destructive) — see [naming-style-guide](../dev/naming-style-guide.md) for the 
 `ref`-workspace overload plus an allocating convenience wrapper; several route their allocating
 overload through a blocked (level-3, compact-WY/SYRK/GETRF-style) core above a measured size
 crossover — see [level3-blocking-guide](../dev/level3-blocking-guide.md) for how that's done and why the
-gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceiling, see [blas.md](blas.md)).
+gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceiling, see [la-primitives.md](la-primitives.md)).
 
 - **`LU.decomp(in A, ref L, ref U, ref Pivot P)`** — partial-pivoting LU, `PA = LU`, A preserved.
   Blocked (GETRF-style: panel factor + TRSM + one GEMM trailing update) above `n ≥ 256`. Also
@@ -55,5 +55,5 @@ gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceili
 
 All dense factorizations are level-3 blocked: compact-WY for QR and LQ, right-looking POTRF/GETRF for
 Cholesky and LU, with trailing-matrix updates routed through the register-tiled GEMM (~70–90 GFLOP/s,
-see [blas.md](blas.md)). Representative solve timings are in [solvers.md](solvers.md) and the
+see [la-primitives.md](la-primitives.md)). Representative solve timings are in [solvers.md](solvers.md) and the
 [README](../../README.md) benchmark table.

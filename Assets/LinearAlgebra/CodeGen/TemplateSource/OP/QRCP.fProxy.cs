@@ -31,8 +31,7 @@ namespace LinearAlgebra
     /// carries only the two n-sized downdating vectors (vn1, vn2); the blocked core's larger working
     /// buffers (F, the flush GEMM scratch, and the reconstruction WY buffers) are Allocator.Temp
     /// allocated per call inside decompInPlaceBlockedCore — one set per factorization, negligible
-    /// against its O(n²m) work — rather than folded into the cache. Promoting them into the cache for
-    /// a fully zero-alloc blocked path (as QR's cache does) is a candidate follow-up, not part of this.
+    /// against its O(n²m) work — rather than folded into the cache.
     /// </remarks>
     public static partial class QRCP {
 
@@ -162,7 +161,7 @@ namespace LinearAlgebra
             int n = A_to_Q.N_Cols;
 
             // Reflector-apply accumulator (length n) — see QR.applyReflectorRight. Allocated once per
-            // call (O(n) « O(n²m)); this is unchanged from before this change (see the class remarks).
+            // call (O(n) « O(n²m)).
             var w = new fProxyN(n, Allocator.Temp, false);
 
             // scale-relative zero-column threshold (see QR.genHouseholder); LInf(Q) == max |entry|.
@@ -427,9 +426,7 @@ namespace LinearAlgebra
         {
             // Factorization panel width. A method-local const (QRCP is a partial class shared by the
             // float/double generated files, so a class-level const of this name would collide, CS0102).
-            // 32 measured the sweep optimum (docs/dev/spec-qrcp-blocked.md OQ-B1: 16 and 64 both lost ~2-10%
-            // at 2048x512 float) — same width QR settled on; the pivoted core's heavier per-step level-2
-            // work doesn't shift the optimum the way the spec speculated it might.
+            // 32 is the measured sweep optimum — the same width QR settled on.
             const int QRCP_BLOCK = 32;
 
             // Q reconstruction runs QR's shared blocked-WY kernel, which is hardwired to a 32-wide

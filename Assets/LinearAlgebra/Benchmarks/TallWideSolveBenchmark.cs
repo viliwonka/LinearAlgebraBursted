@@ -215,6 +215,50 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // LQRP.minNormSolveInPlace: the complete-orthogonal-decomposition (COD) min-norm solve, sharing
+    // WideLQRPSolveJob's shape and destroys-A / b-read-only contract. On a rank-deficient wide system
+    // (r < m) it does strictly more than the basic solve: after the row-pivoted factor it runs a second
+    // orthogonal stage (a least-squares solve against the first-r columns of L, the K-block) so that the
+    // returned x is the true minimum-norm least-squares solution rather than the basic one. At full row
+    // rank the basic solve already IS min-norm, so the builder below uses a rank-deficient input.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct WideLQRPMinNormJobFloat : IJob
+    {
+        public floatMxN A;     // m x n; DESTROYED by minNormSolveInPlace (restored from Src each sample)
+        public floatMxN Src;
+        public floatN b;       // length m; NOT modified (b is preserved)
+        public floatN x;       // length n, min-norm solution
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+
+            LQRP.minNormSolveInPlace(ref A, ref b, ref x);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct WideLQRPMinNormJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN Src;
+        public doubleN b;
+        public doubleN x;
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+
+            LQRP.minNormSolveInPlace(ref A, ref b, ref x);
+        }
+    }
+
     public static class TallWideSolveBenchmark
     {
         // Householder QR reflector-sweep leading term for a rows x cols panel (rows >= cols):
@@ -261,6 +305,94 @@ namespace LinearAlgebra.Benchmarks
             foreach (var k in Bench.Sizes) sb.AppendLine(WideLQRPSolveFloat(k));
             foreach (var k in Bench.Sizes) sb.AppendLine(WideLQRPSolveDouble(k));
             sb.AppendLine();
+
+            // COD overhead on a rank-deficient wide system: each size emits the basic and the COD row
+            // adjacently on the SAME rank-deficient matrix (rank = 3k/4 < k = m), so the extra second-stage
+            // cost reads straight off the pair. Both call the allocating convenience overload, so the only
+            // measured delta is algorithm. GFLOP/s~ uses the plain factor flop count for both, so COD reads
+            // low (its second-stage work isn't in the count) — compare the ms columns, not GFLOP/s.
+            sb.AppendLine("=== LQRP rank-deficient (k x 2k, rank = 3k/4): basic solveInPlace vs COD minNormSolveInPlace; N column = k ===");
+            sb.AppendLine(HeaderKernel());
+            foreach (var k in Bench.Sizes) sb.AppendLine(WideLQRPRankDefFloat(k));
+            foreach (var k in Bench.Sizes) sb.AppendLine(WideLQRPRankDefDouble(k));
+            sb.AppendLine();
+        }
+
+        // Labeled row/header for the rank-deficient basic-vs-COD comparison (kernel column added so the
+        // two rows per size are distinguishable; N = k still varies down the block).
+        static string HeaderKernel()
+        {
+            return string.Format("{0,-7} {1,-24} {2,-6} {3,11} {4,11} {5,11} {6,11} {7,12}",
+                "dtype", "kernel", "N", "min(ms)", "med(ms)", "mean(ms)", "max(ms)", "GFLOP/s~");
+        }
+
+        static string RowKernel(string dtype, string kernel, int n, Bench.Stat st, double flops)
+        {
+            double gflops = flops / (st.Median / 1000.0) / 1e9;
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "{0,-7} {1,-24} {2,-6} {3,11:F4} {4,11:F4} {5,11:F4} {6,11:F4} {7,12:F2}",
+                dtype, kernel, n, st.Min, st.Median, st.Mean, st.Max, gflops);
+        }
+
+        // Rank-deficient k x 2k input of exact rank r: fill the first r rows at random, then set each
+        // trailing row i>=r to a copy of row i-r. Duplicate rows are a clean, exactly-rank-r structure the
+        // row-pivoted rank detector resolves to r < m, which is what makes COD run its second stage.
+        static string WideLQRPRankDefFloat(int k)
+        {
+            int m = k, n = 2 * k, rank = (3 * k) / 4;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(m, n);
+            var Src = arena.floatMat(m, n);
+            var b = arena.floatVec(m);
+            var x = arena.floatVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
+            for (int r = 0; r < rank; r++)
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextFloat(-1f, 1f);
+            for (int r = rank; r < m; r++)
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = Src[r - rank, c];
+            for (int r = 0; r < m; r++)
+                b[r] = rng.NextFloat(-1f, 1f);
+
+            var basic = new WideLQRPSolveJobFloat { A = A, Src = Src, b = b, x = x };
+            var sB = Bench.Time(() => basic.Run());
+            var cod = new WideLQRPMinNormJobFloat { A = A, Src = Src, b = b, x = x };
+            var sC = Bench.Time(() => cod.Run());
+
+            arena.Dispose();
+            return RowKernel("float", "basic solveInPlace", k, sB, QrFlops(n, m))
+                 + "\n" + RowKernel("float", "COD minNormSolveInPlace", k, sC, QrFlops(n, m));
+        }
+
+        static string WideLQRPRankDefDouble(int k)
+        {
+            int m = k, n = 2 * k, rank = (3 * k) / 4;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(m, n);
+            var Src = arena.doubleMat(m, n);
+            var b = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)k);
+            for (int r = 0; r < rank; r++)
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1.0, 1.0);
+            for (int r = rank; r < m; r++)
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = Src[r - rank, c];
+            for (int r = 0; r < m; r++)
+                b[r] = rng.NextDouble(-1.0, 1.0);
+
+            var basic = new WideLQRPSolveJobDouble { A = A, Src = Src, b = b, x = x };
+            var sB = Bench.Time(() => basic.Run());
+            var cod = new WideLQRPMinNormJobDouble { A = A, Src = Src, b = b, x = x };
+            var sC = Bench.Time(() => cod.Run());
+
+            arena.Dispose();
+            return RowKernel("double", "basic solveInPlace", k, sB, QrFlops(n, m))
+                 + "\n" + RowKernel("double", "COD minNormSolveInPlace", k, sC, QrFlops(n, m));
         }
 
         // ---- Tall QR factorization (overdetermined: 2k x k) ----

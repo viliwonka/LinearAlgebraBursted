@@ -20,13 +20,13 @@ namespace LinearAlgebra.ML
     /// Every fit returns/fills a <see cref="doublePCAModel"/> (arena-owned buffers): the caller keeps it
     /// to project new data via <see cref="transform"/> or to read axes/variances for reduction work.
     ///
-    /// THE denominator convention (makes fitCov and fitSvd agree on explainedVariance): both use
+    /// Denominator convention (makes fitCov and fitSvd agree on explainedVariance): both use
     /// the SAMPLE (n-1) convention, NOT StatsOP.standardizeColumns'/colVariance's population (n) one:
     ///   Covariance mode:  explainedVariance[i] = S[i]^2 / (n-1)  (== the covariance-matrix eigenvalues).
     ///   Correlation mode: standardize with SAMPLE std-dev sqrt(Sigma(x-mean)^2/(n-1)); then
     ///                     S[i]^2/(n-1) == the correlation-matrix eigenvalues.
     ///
-    /// THE correlation degenerate-feature trap: fitCov(Correlation) builds its own correlation
+    /// Correlation degenerate-feature trap: fitCov(Correlation) builds its own correlation
     /// matrix R = Cov ./ (sampleStd (x) sampleStd) inline, zeroing the ENTIRE row/column (including the
     /// diagonal) of a zero-variance feature. It deliberately does NOT reuse StatsOP.correlation(), which
     /// puts a spurious 1 on that diagonal -- that would emit a unit eigenvalue the SVD route can't match
@@ -219,8 +219,7 @@ namespace LinearAlgebra.ML
 
             // On !converged the value outputs (explainedVariance, explainedVarianceRatio, components) are
             // left UNDEFINED — matching the wrapped kernels' contract and the model doc; only
-            // mean/scale/k/converged are guaranteed. (Earlier this zeroed ONLY the ratio, which produced a
-            // self-inconsistent state: ratio 0 beside a garbage/NaN variance.)
+            // mean/scale/k/converged are guaranteed.
             if (converged)
             {
                 for (int i = 0; i < k; i++)

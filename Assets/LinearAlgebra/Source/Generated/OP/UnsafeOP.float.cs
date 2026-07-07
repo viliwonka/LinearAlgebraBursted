@@ -131,37 +131,21 @@ namespace LinearAlgebra.Internal
             }
         }
 
-        // Register-tiled GEMM: an MR x NR block of C is held in NAMED SCALAR LOCALS (NOT an array —
-        // arrays don't reliably register-promote) across the WHOLE k-reduction (p = 0..n-1), so each
-        // A value is reused NR times and each B value MR times, and each C element is written ONCE at
-        // the end instead of being read-modified-written every p (the untiled fallback below re-touches
-        // a whole C row per p, AND re-streams the whole of matB once per output row — that double
-        // re-streaming, not the FLOP count, is why the untiled kernel is bandwidth- not compute-bound).
+        // Register-tiled GEMM: an MR x NR block of C is held in named scalar locals across the whole
+        // k-reduction (p = 0..n-1), so each A value is reused NR times and each B value MR times, and
+        // each C element is written once at the end. This keeps the kernel compute-bound; the untiled
+        // fallback below re-streams matB once per output row and is bandwidth-bound.
         //
-        // Determinism (see the matMatDot spec / docs/dev/level3-blocking-guide.md): every C[i,j] is STILL
-        // exactly one running accumulator summing p ascending 0..n-1 with the SAME `c += a*b`
-        // expression as the fallback. Tiling only changes WHICH independent accumulators run
-        // interleaved (ILP across the MR*NR chains) — never how any ONE accumulator sums (no
-        // k-splitting) — so results are bit-identical to the fallback at every tile size and on every
-        // SIMD width (SIMD, if any, runs across the NR/column axis, never across the p-reduction).
+        // Determinism: every C[i,j] is still one running accumulator summing p ascending 0..n-1 with
+        // the same `c += a*b` expression as the fallback. Tiling only interleaves independent
+        // accumulators (ILP across the MR*NR chains) — it never splits an individual element's
+        // k-reduction — so results are bit-identical to the fallback at every tile size and SIMD width.
+        // (This determinism rule is also why there is no cache-level k-panel blocking.)
         //
-        // Tile constants are METHOD-LOCAL (a class-level const collides across the float/double
-        // partial-class generated files -> CS0102). MR/NR are the SAME for float and double: the
-        // //+choose codegen marker only substitutes literal VALUES, not the number of unrolled named
-        // locals, and this template's text is emitted verbatim for both the float and double outputs
-        // — so one tile shape has to serve both.
-        //
-        // Tile-size sweep (float/double, square N, GemmBenchmark): 4x4 -> 4x8 -> 8x8 -> 6x16 -> 8x16.
-        // There is NO cache-level (k-panel) blocking here — the hard determinism rule above forbids
-        // splitting one element's k-reduction into partial sums, which is exactly what k-panel
-        // blocking would do — so B re-streaming is controlled purely by MR (B is re-read m/MR times).
-        // 4x8 won in-cache (N<=256) but REGRESSED 2.2x vs the untiled fallback at N=1024 (69 -> 31
-        // GFLOP/s, float) once that re-streamed strip of B stopped fitting in cache. A bigger MR is
-        // the only lever without adding k-panel blocking: 8x16 (MR=8, NR=16 => 8*ceil(16/8) = 16
-        // AVX2 accumulator vectors — the upper edge before spilling; do not go to 16x16, that's 32) won
-        // at every measured size up to N=2048 for both types (float 1024: 86 vs baseline's 69 GFLOP/s;
-        // float 2048: 71 vs baseline's 54; double tracks the same shape) and is what's left in place —
-        // no size gate needed. See docs/dev/level3-blocking-guide.md for the general blocking background.
+        // Tile constants are method-local: a class-level const would collide across the generated
+        // float/double partial-class files (CS0102). MR=8, NR=16 (16 AVX2 accumulator vectors, the
+        // edge before register spilling) is used for both types and every size, no size gate. See
+        // docs/dev/level3-blocking-guide.md for the blocking background and GemmBenchmark for the sweep.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDot([NoAlias] float* matA, [NoAlias] float* matB, [NoAlias] float* matC, int m, int n, int k)
         {
@@ -419,9 +403,8 @@ namespace LinearAlgebra.Internal
         // be overwritten in place left-to-right. Used by Cholesky's blocked (level-3) factorization
         // to compute the below-panel strip L21 from the already-factored diagonal block L11 (DTRSM):
         // ONE call solves every below-panel row for the whole panel, instead of a rank-1 update per
-        // (row, column) pair — the latter keeps the same O(n^2) NoInlining-call count as the
-        // unblocked sweep it's replacing (just doing less work per call), which was measured to eat
-        // the paired SYRK's savings at mid-range n. [NoAlias] is truthful: L11 (rows [j0,j0+jb)) and
+        // (row, column) pair (which would keep the unblocked sweep's O(n^2) call count).
+        // [NoAlias] is truthful: L11 (rows [j0,j0+jb)) and
         // B (rows [rStart,n), rStart=j0+jb) are disjoint row ranges of the same underlying L matrix.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void trsmLowerPanel([NoAlias] float* L11, int Lld, [NoAlias] float* B, int Bld, int nrows, int jb)
@@ -529,13 +512,9 @@ namespace LinearAlgebra.Internal
         // Vt once per panel. C is a strided sub-block of the matrix being updated (leading dimension
         // Cld). Y is dense contiguous rows×pb (row stride pb).
         //
-        // An alternative that skipped the Vt transpose and instead computed each Y[t,i] as a direct
-        // (4-accumulator) dot product of C's row t against Vpanel's row i was tried and measured ~2x
-        // SLOWER — despite matching "row-major right-multiply is reduction-bound" (see LQ.dot4's doc
-        // comment), the huge (rows*cn) outer trip count of that formulation, each doing only a
-        // pb=32-wide reduction, lost badly to this version's more moderate (rows*cn) outer trip count
-        // whose innermost pass is a long (pb-wide) UNIT-STRIDE accumulation with no reduction
-        // dependency chain — the same axpy-shaped pattern QR's wyVtC already exploits.
+        // The caller pre-transposes V into Vt so the inner pass over pb is a long unit-stride
+        // accumulation (axpy-shaped, no reduction dependency chain — the same pattern QR's wyVtC
+        // exploits), rather than a per-element reduction dot of C's row against V's row.
         //
         // Y[t,i] += Σ_{c=0..cn-1} Cp[t*Cld+c] * Vt[c*pb+i]   (t in [0,rows), i in [0,pb)).
         // Caller must zero Y first. Loop order t (outer) / c (middle) / i (inner): the i loop walks

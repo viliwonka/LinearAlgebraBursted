@@ -74,7 +74,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // Legacy name for floatLinspace(a, b, N); delegates to the guarded Generate.linspace (handles N==1, pins both endpoints exactly).
+        // Alias for floatLinspace(a, b, N); delegates to the guarded Generate.linspace (handles N==1, pins both endpoints exactly).
         public static floatN floatLinVec(this ref Arena arena, int N, float start, float end)
         {
             var vec = arena.floatVec(N);

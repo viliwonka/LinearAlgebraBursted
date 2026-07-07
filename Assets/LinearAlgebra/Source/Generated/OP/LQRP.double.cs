@@ -30,8 +30,7 @@ namespace LinearAlgebra
     /// spent re-summing candidate norms. QRCP's LEVEL-3 machinery — the blocked dlaqps panel core with
     /// its deferred F-matrix trailing update — is deliberately NOT mirrored here yet: it only earns its
     /// bookkeeping at large sizes, and the primary consumer (rank-deficient IK Jacobians) is small
-    /// (task DOF × joint DOF). Growing into a blocked core later mirrors exactly how QRCP itself
-    /// evolved (unblocked+downdated first, then blocked).
+    /// (task DOF × joint DOF). A blocked core could be added later if large wide matrices need it.
     ///
     /// Two rank-safe solves, exactly mirroring <see cref="QRCP"/> on the tall side. solveInPlace gives
     /// the BASIC solution (dependent rows dropped, w[r..] = 0). For a rank-deficient A that is the
@@ -43,8 +42,8 @@ namespace LinearAlgebra
     /// rows of L keep their full norm, only the trailing DIAGONAL is small). minNormSolveInPlace closes
     /// that gap: it returns the pseudoinverse solution x = A⁺b (= SVD.pinvSolve) at direct cost, by
     /// least-squares-solving the coupled m×r block K = [L11; L21] instead of just the top L11. So both
-    /// classes need a COD completion for the inconsistent rank-deficient case (there is no free lunch on
-    /// the wide side after all). At full row rank both solves coincide with LQ.minNormSolve.
+    /// classes need a COD completion for the inconsistent rank-deficient case. At full row rank both
+    /// solves coincide with LQ.minNormSolve.
     /// </remarks>
     public static partial class LQRP {
 

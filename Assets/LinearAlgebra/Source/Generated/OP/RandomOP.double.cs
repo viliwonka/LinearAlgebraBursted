@@ -85,8 +85,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Fills every element of <paramref name="dest"/> by calling <c>s.Next(ref rng)</c>
-        /// (see class summary for the rng-advance contract). Burst monomorphizes this for
-        /// each concrete sampler type.
+        /// (see class summary for the rng-advance contract).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void randomInPlace<S>(ref Random rng, ref doubleN dest, ref S s)

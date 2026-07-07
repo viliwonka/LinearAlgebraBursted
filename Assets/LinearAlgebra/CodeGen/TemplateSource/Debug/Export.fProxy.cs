@@ -6,26 +6,15 @@ namespace LinearAlgebra
 {
     // Managed (allocating, NON-Burst) text / CSV exporters for float/double matrices and vectors.
     //
-    // This used to be hand-authored per type (see git history) because the raw fProxy PROXY struct
-    // -- compiled directly by the TemplateSource-firstpass assembly, see CodeGen/TemplateSource/
-    // proxyStructs.cs -- only exposes a parameterless ToString(); it is float/double's
-    // ToString(string format, IFormatProvider) that gives the round-trip / InvariantCulture
-    // guarantees these exporters need, and the proxy has no such overload. The fix: cast every
-    // value to the ACTUAL generated type via the per-type "choose" codegen marker (see
-    // GenUtils.cs; do NOT write the literal marker token in a comment -- the parser is
-    // content-sensitive and would try to expand it) before formatting -- casts to (float) /
-    // (double) at the proxy-compile
-    // stage (fProxy defines an implicit conversion to float, so the float choice is a direct
-    // identity cast there) and the identity cast after codegen substitution (float -> float /
-    // double -> double). Same trick selects "G9" (float) vs "G17" (double) for ToCsv -- the
-    // minimal digit counts .NET documents as round-tripping each type exactly -- matching the
-    // original hand-written precision choice.
+    // Values are cast to the generated float/double type before formatting (the raw fProxy proxy only
+    // has a parameterless ToString; float/double's ToString(format, IFormatProvider) is what gives the
+    // round-trip and InvariantCulture guarantees). ToCsv uses "G9"/"G17" -- the minimal digit counts
+    // .NET documents as round-tripping float/double exactly; ToText uses "G7" (human preview, not
+    // required to round-trip).
     //
-    // ToText uses "G7" for both types (human preview, not required to round-trip).
-    //
-    // Unlike Print.Log -- which is Burst-callable but capped at a 4 KB FixedString and SILENTLY
-    // TRUNCATES past it -- these build an unbounded System.Text.StringBuilder, so they never
-    // truncate. Call them from managed / editor code only, NEVER from inside a Burst job.
+    // Unlike Print.Log -- which is Burst-callable but capped at a 4 KB FixedString and silently
+    // truncates past it -- these build an unbounded System.Text.StringBuilder, so they never truncate.
+    // Call them from managed / editor code only, never from inside a Burst job.
     public static partial class Print
     {
         public static string ToText(in fProxyMxN m)

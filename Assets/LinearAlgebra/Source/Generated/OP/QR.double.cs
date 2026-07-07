@@ -63,10 +63,8 @@ namespace LinearAlgebra
         // [d, colEnd):
         //     Q[d:, d:colEnd] -= u · (uᵀ · Q[d:, d:colEnd]).
         // Two contiguous-memory passes through the vectorising UnsafeOP.axpy ([NoAlias]) — the same
-        // raw-pointer path GEMM uses, so Burst SIMD-vectorises the inner work (float runs ~2x double).
-        // The previous formulation looped over rows r (stride N_Cols when indexing Q[r, c]), which
-        // Burst cannot vectorise — it vectorises loops, and the unit-stride axis here is the columns,
-        // not r. Walking each row left-to-right instead lets axpy run at GEMM speed.
+        // raw-pointer path GEMM uses. The unit-stride axis here is the columns, so walking each row
+        // left-to-right (rather than down rows r, stride N_Cols) lets axpy vectorise and run at GEMM speed.
         //
         // w is scratch of length >= (colEnd - d); only w[0..L) is used. Bitwise identical to the
         // prior per-column scalar form: pass 1 accumulates each w[i] over rows r = d..M-1 in the SAME

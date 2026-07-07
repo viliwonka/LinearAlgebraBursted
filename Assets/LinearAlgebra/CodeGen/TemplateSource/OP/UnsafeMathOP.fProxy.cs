@@ -207,7 +207,7 @@ namespace LinearAlgebra.Internal
         public static void acosh([NoAlias] fProxy* x, int n)
         {
             // acosh(x) = log(x + sqrt(x^2 - 1)), domain x >= 1.
-            // Unity.Mathematics has no math.acosh; this previously called math.acos by mistake.
+            // Unity.Mathematics has no math.acosh, so it is computed directly.
             for (int i = 0; i < n; i++)
                 x[i] = math.log(x[i] + math.sqrt(x[i] * x[i] - (fProxy)1));
         }
@@ -279,8 +279,7 @@ namespace LinearAlgebra.Internal
         public static void remap([NoAlias] fProxy* x, int n, fProxy oldMin, fProxy oldMax, fProxy newMin, fProxy newMax)
         {
             // Unity.Mathematics' math.remap signature is (srcStart, srcEnd, dstStart, dstEnd, value) -
-            // the VALUE is LAST, not first. (Pre-existing bug inherited from the old mathUnsafe layer:
-            // this previously passed x[i] first, rotating every argument and producing a wrong result.)
+            // the value is LAST, not first.
             for (int i = 0; i < n; i++)
                 x[i] = math.remap(oldMin, oldMax, newMin, newMax, x[i]);
         }

@@ -1,16 +1,15 @@
 namespace LinearAlgebra
 {
     /// <summary>
-    /// A linear operator y = A x, abstracted behind a Burst-friendly generic struct
-    /// constraint (NOT a managed interface dispatch/vtable -- solvers are generic over
-    /// <c>TOp : struct, IfProxyLinearOperator</c>, so Burst monomorphizes each concrete
-    /// operator into its own zero-cost specialization). Lets Krylov solvers (CG, PCG, MINRES,
-    /// BiCGSTAB, CGLS, LSQR -- see <c>Solvers</c>) be written ONCE and reused over both dense
+    /// A linear operator y = A x, abstracted behind a generic struct constraint: solvers are
+    /// generic over <c>TOp : struct, IfProxyLinearOperator</c>, so each Apply compiles to a direct
+    /// call (no virtual dispatch). Lets Krylov solvers (CG, PCG, MINRES, BiCGSTAB, CGLS, LSQR --
+    /// see <c>Solvers</c>) be written ONCE and reused over both dense
     /// (<see cref="fProxyDenseOperator"/>) and block-sparse
     /// (<c>LinearAlgebra.Sparse.fProxyBSROperator</c>) matrices without duplicating the solver
     /// loop.
     /// Implement on a small, ideally-readonly struct holding only blittable fields (a value
-    /// copy of the wrapped matrix/BSR struct) -- same Burst-functor contract as
+    /// copy of the wrapped matrix/BSR struct) -- same struct-functor contract as
     /// <see cref="IfProxyScalarFunction"/> / <see cref="IfProxySampler"/>.
     /// </summary>
     public interface IfProxyLinearOperator
@@ -71,8 +70,8 @@ namespace LinearAlgebra
     /// its UNPRECONDITIONED entry point can forward into the single preconditioned generic
     /// implementation with a one-line call instead of duplicating a large loop body -- the same
     /// role <see cref="fProxyDenseOperator"/> plays for dense callers of a <c>TOp</c>-generic
-    /// solver. Readonly and stateless: a value copy costs nothing, and Burst monomorphizes the
-    /// `M.Apply` call into the plain copy below (no vtable, no branch).
+    /// solver. Readonly and stateless: a value copy costs nothing, and the `M.Apply` call compiles
+    /// straight to the plain copy below.
     /// </summary>
     public readonly struct fProxyIdentityPreconditioner : IfProxyPreconditioner
     {

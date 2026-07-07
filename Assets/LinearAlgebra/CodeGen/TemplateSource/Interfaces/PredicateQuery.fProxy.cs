@@ -4,7 +4,6 @@ namespace LinearAlgebra
     /// Row predicate for struct-functor predicate queries. Reads A[row, 0..N_Cols-1]
     /// directly — zero-alloc, no row extraction. Implement on a blittable struct;
     /// pass by <c>ref</c> to preserve any mutable state across calls.
-    /// Burst monomorphizes via <c>where P : struct, IfProxyRowPredicate</c>.
     /// </summary>
     public interface IfProxyRowPredicate {
         bool Test(in fProxyMxN A, int row);

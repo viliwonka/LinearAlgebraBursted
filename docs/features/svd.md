@@ -8,7 +8,7 @@ below has a zero-alloc workspace overload alongside the allocating one.
   m×n with orthonormal columns, `S` descending, `V` is n×n.
 - **`SVD.values(in A, ref S, ...)`** — values only, skips reconstructing `U`/`V` entirely — the
   cheapest route when you only need singular values (feeds `Analysis.cond`/`rank`/`matrixL2` — see
-  [blas.md](blas.md)).
+  [la-primitives.md](la-primitives.md)).
 - **`SVD.truncated(in A, ref Uk, ref Sk, ref Vk, int k, int oversample, ...)`** — a true top-k
   Golub-Kahan-Lanczos reduction (not full-then-slice): builds only the requested `k` (+ oversample)
   singular triplets directly. `partialReorth` toggles full DGKS reorthogonalization (stable) vs. an

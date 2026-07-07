@@ -10,239 +10,64 @@ namespace LinearAlgebra
     /// <summary>
     /// Blocked Locally Optimal Block Preconditioned Conjugate Gradient (LOBPCG): the k SMALLEST
     /// eigenpairs of a symmetric operator A (A.Rows == A.Cols), generic over any
-    /// <see cref="IfloatLinearOperator"/> / optional <see cref="IfloatPreconditioner"/> --
-    /// same Burst-monomorphized static-dispatch shape as <see cref="Krylov.cg{TOp}"/> /
-    /// <see cref="Krylov.pcg{TOp,TPre}"/>. Reuses the dense
-    /// <see cref="Eigen.symmetric(ref floatMxN, ref floatN, ref floatMxN)"/> solver for the
-    /// small (&lt;= 3k) Rayleigh-Ritz sub-problem and <see cref="CHO.decomp(in floatMxN, ref floatMxN)"/>
-    /// for both orthogonalization and the generalized-to-standard eigenproblem reduction.
+    /// <see cref="IfloatLinearOperator"/> and an optional <see cref="IfloatPreconditioner"/>.
+    /// Reuses the dense <see cref="Eigen.symmetric(ref floatMxN, ref floatN, ref floatMxN)"/>
+    /// solver for the small (&lt;= 3k) Rayleigh-Ritz sub-problem and
+    /// <see cref="CHO.decomp(in floatMxN, ref floatMxN)"/> for orthogonalization and the
+    /// generalized-to-standard reduction.
     ///
-    /// DESIGN NOTES (see the coder's final report for the full write-up; summarized here for
-    /// future maintainers):
+    /// <b>Locking:</b> once a pair's relative residual meets <c>tol</c> it is locked (frozen at its
+    /// converged value, no further matvec/preconditioner/Rayleigh-Ritz) and deflated out of the
+    /// active subspace, so already-found eigenvectors are never re-discovered. Locked pairs stay in
+    /// the output X.
     ///
-    /// <b>Block size / guard vectors:</b> the active block is exactly k (the requested count) --
-    /// no extra guard vectors. Locking (below) already shrinks the active Rayleigh-Ritz problem as
-    /// pairs converge, which is the main lever real implementations use guard vectors for; adding
-    /// k+g guard columns would speed up the slowest-converging pair at the cost of a meaningfully
-    /// larger per-iteration Gram/eigensolve, so this implementation leaves it out (a documented,
-    /// reportable scope decision, not an oversight).
+    /// <b>Robustness:</b> the active W and P blocks are deflated against the locked+active X and
+    /// Cholesky-QR-orthonormalized before the Rayleigh-Ritz step, keeping its Gram matrix
+    /// well-conditioned. The Gram Cholesky has a Tikhonov-ridge retry; if it still fails the
+    /// iteration drops P and retries with just [X, W], and failing that stalls (X/lambda unchanged)
+    /// rather than producing NaN. Selected Ritz values are sanity-checked against the individual
+    /// basis-row Rayleigh quotients and rejected if implausible. A non-finite residual aborts with
+    /// <see cref="IterativeSolveStatus.Breakdown"/>.
     ///
-    /// <b>Locking:</b> deflation-based. Once a pair's relative residual meets <c>tol</c> it is
-    /// LOCKED -- swapped to the back of the k-wide window (frozen, no longer touched: no matvec,
-    /// no preconditioner Apply, no Rayleigh-Ritz) -- and every remaining active W/P direction is
-    /// explicitly projected (deflated) off the FULL locked+active X block, so the active subspace
-    /// never re-discovers an already-found eigenvector. This differs slightly from the most literal
-    /// reading of "soft locking" (which keeps locked columns IN the Rayleigh-Ritz mix so they can
-    /// still drift); deflating them out entirely is simpler, strictly cheaper (zero cost per locked
-    /// pair per iteration, matching the spec's "excluded from W computation" requirement), and
-    /// standard in the literature (Knyazev). Locked pairs stay exposed in the output X (frozen at
-    /// their converged values) exactly as the spec requires.
-    ///
-    /// <b>Orthogonalization (safeguard 1):</b> two stages, both required. First, W is DEFLATED
-    /// (projected, modified-Gram-Schmidt style, TWICE for stability -- mirrors
-    /// <see cref="Eigen.lanczos{TOp}"/>'s own "reorthogonalize twice" folklore) against the full
-    /// locked+active X; P (once formed) is deflated against X and then against the
-    /// already-deflated W. Second, W (then P) is Cholesky-QR-orthonormalized INTERNALLY (see
-    /// <see cref="OrthonormalizeBlock"/>) -- an EARLIER version of this method skipped this second
-    /// stage, reasoning that the Rayleigh-Ritz step's own Cholesky-based generalized-to-standard
-    /// reduction (below) would absorb it "for free"; that was wrong in practice: deflation alone
-    /// leaves W's/P's OWN internal scale arbitrary (active pairs' residuals routinely shrink by very
-    /// different amounts), and feeding that directly into the combined Gram relies on ONE Cholesky
-    /// factorization to absorb both the deflation and that scale spread -- which is exactly the
-    /// ill-conditioned-basis failure mode that manufactures spurious Ritz values (observed: values
-    /// BELOW lambda_min, even negative, for an SPD test operator) instead of tripping the
-    /// rank-deficiency safeguard. Internally orthonormalizing first keeps the combined Gram close to
-    /// the identity, so the final Rayleigh-Ritz Cholesky is well-conditioned by construction and a
-    /// genuine rank deficiency reliably trips safeguard 2 instead. Every orthogonalization step
-    /// mirrors its combination onto A*V using the SAME coefficients (linearity: A(sum_r c_r v_r) =
-    /// sum_r c_r (A v_r)), so AW never needs a fresh matvec -- but see the "AX/AP freshness" note
-    /// below for why X's and P's own A-images do NOT rely purely on this mirroring.
-    ///
-    /// <b>AX/AP freshness (rescue-task fix):</b> an earlier version of this method maintained BOTH
-    /// AX and AP purely via the linearity-mirroring above, across EVERY iteration, with no
-    /// independent recomputation -- i.e. A was never re-applied to X or P once the initial AX seed
-    /// was formed. This is a correctness bug, not just an accuracy nicety: AX/AP are each reformed
-    /// from a NEW linear combination every iteration (chained onto the PREVIOUS iteration's AX/AP),
-    /// so any rounding error introduced by one iteration's Cholesky-QR/Rayleigh-Ritz combination
-    /// compounds into the next. For AX this manifested as slow drift -- the residual would shrink
-    /// geometrically for the first ~15-20 iterations, then stall and creep back up instead of
-    /// continuing to converge (X's OWN combination coefficients are usually well-behaved, so the
-    /// drift is slow). For AP the effect was far more direct and severe: AP feeds straight into
-    /// next iteration's H (the P-columns are dot(*, AP)), so a single iteration's inaccurate AP
-    /// corrupts the NEXT Rayleigh-Ritz problem's energy matrix directly -- this, combined with
-    /// safeguard 2's diag-ratio check being a poor proxy for THIS specific failure (see safeguard 3
-    /// below), is what actually produced Ritz values far below lambda_min, even wildly negative, as
-    /// soon as P entered the mix. The fix: after <see cref="UpdateActiveBlock"/> forms the new
-    /// X/P for this iteration, AX and AP are each recomputed via a FRESH <c>A.Apply</c> (the
-    /// canonical "R = A X - X diag(theta)" formulation), rather than trusted from the combination.
-    /// This costs two extra matvec batches per iteration (over numActive rows) on top of AW's one --
-    /// a small, worthwhile price for AX/AP that stay exact to working precision indefinitely.
-    ///
-    /// <b>Rayleigh-Ritz / rank deficiency (safeguard 2):</b> forms Gram = S^T S and H = S^T A S for
-    /// S = [X_active; W_active(deflated); P_active(deflated)] (m = 3*numActive, or 2*numActive
-    /// before P exists), Cholesky-factors Gram (with one Tikhonov-ridge retry on failure/a tiny
-    /// relative pivot -- mirrors <see cref="CHOP.decompSolve(ref floatMxN, in Pivot, int, ref floatN, ref floatCHOPCache)"/>'s
-    /// own ridge-retry recovery, and the retry attempt is re-checked against the SAME pivot tolerance
-    /// rather than accepted on bare Cholesky success), reduces to the standard eigenproblem Ahat = L^-1 H L^-T,
-    /// solves it with <see cref="Eigen.symmetric(ref floatMxN, ref floatN, ref floatMxN)"/>,
-    /// and recovers the combination coefficients C = L^-T Y. If the 3-block Cholesky fails/is too
-    /// ill-conditioned this iteration DROPS P and retries with just [X_active; W_active] -- "the
-    /// standard fix" the spec calls for. If even THAT fails (after its own ridge retry), this
-    /// iteration is a no-op STALL: X/lambda are left unchanged, P's history is discarded, and the
-    /// loop tries again next iteration -- never NaN, never diverges, just makes no progress that
-    /// one iteration.
-    ///
-    /// <b>Ritz-value plausibility (safeguard 3, rescue-task addition):</b> safeguard 2's Cholesky
-    /// diag-ratio check turned out to be a poor proxy for the ACTUAL failure this class was built
-    /// to prevent -- diagnostic runs found diag ratios of 5.7E-08, 8.1E-04 and 1.25E-03 (all safely
-    /// clear of the sqrt(eps) pivot threshold, i.e. "comfortably well-conditioned" by that check)
-    /// that nonetheless produced Ritz values of -328042.9 and worse. Tightening the pivot threshold
-    /// was tried and rejected: it also rejects benign, already-convergent 2-block [X,W] cases with
-    /// SIMILAR diag ratios that were converging perfectly correctly, so the threshold is not
-    /// discriminating the failure at all -- something else was wrong (the AX/AP freshness bug
-    /// above), and no Cholesky-conditioning threshold can distinguish "well-conditioned reduction of
-    /// a subtly-corrupted problem" from "well-conditioned reduction of a correct one". Instead, this
-    /// safeguard checks the RESULT directly against a cheap, numerically TRUSTWORTHY bound computed
-    /// before the Cholesky reduction: H[i,i]/Gram[i,i] is the exact Rayleigh quotient of one
-    /// individual, already-unit-normalized basis row (a row of X, W, or P) -- a plain dot-product
-    /// ratio, no matrix inversion involved, so it is immune to whatever ill-conditioning may corrupt
-    /// the L^-1 H L^-T transform. Every individual Rayleigh quotient is, by definition, within
-    /// [lambda_min(A), lambda_max(A)] of the FULL operator; a selected Ritz value falling wildly
-    /// outside a generous (1000x) envelope around the range spanned by these quotients is rejected
-    /// (triggering the same drop-P/stall fallback as safeguard 2), rather than locked in as
-    /// numerical garbage.
-    ///
-    /// <b>Guard against tiny/non-finite residuals (safeguard 4):</b> a non-finite (NaN/Inf) residual
-    /// norm aborts the whole solve immediately with <see cref="IterativeSolveStatus.Breakdown"/>
-    /// rather than feeding garbage into the preconditioner/orthogonalization; an exactly-zero (or
-    /// tiny) residual is simply locked immediately (it already satisfies the relative-tolerance
-    /// check for any tol &gt; 0), which is this implementation's reading of "guard before
-    /// normalizing" -- there is no separate per-vector unit-normalization step to guard (Cholesky-QR
-    /// style orthogonalization here operates on the whole active block via its Gram matrix, which
-    /// is scale-covariant), so the guard is folded into the convergence/lock check instead of a
-    /// standalone division.
-    ///
-    /// <b>Zero-alloc scope:</b> every O(n)-scale buffer (X/W/P/AX/AW/AP/R and their "next"
-    /// ping-pong twins, plus the row scratch) lives in <see cref="floatLOBPCGCache"/>, allocated
-    /// once via <c>Arena.floatLOBPCGCache(n, k)</c> and reused across calls -- zero allocation at
-    /// the O(n) scale. The O(k)-scale Rayleigh-Ritz sub-problem's DENSE matrices (Gram/H/L/Atrans/
-    /// Y/C, each up to 3k x 3k) are ALSO cache fields, reused every iteration via a same-buffer,
-    /// smaller-shaped logical view (<see cref="View"/> -- <see cref="floatMxN.M_Rows"/>/
-    /// <see cref="floatMxN.N_Cols"/> are plain mutable fields independent of the backing store, so
-    /// a value-copy with different dims is a free reinterpretation of the SAME buffer, not a new
-    /// allocation). The one exception: <see cref="Eigen.symmetric(ref floatMxN, ref floatN, ref floatMxN)"/>
-    /// itself is not zero-alloc (it allocates three length-m Temp vectors internally, already true
-    /// of every existing caller e.g. <see cref="Eigen.lanczosVectors{TOp}"/>), and this method's own
-    /// small O(m) row/column scratch inside the triangular-solve helpers is likewise a bounded
-    /// <c>Allocator.Temp</c> vector -- consistent with, not a regression from, that established
-    /// precedent.
+    /// <b>Zero-alloc scope:</b> all O(n)-scale buffers live in <see cref="floatLOBPCGCache"/>,
+    /// allocated once via <c>Arena.floatLOBPCGCache(n, k)</c> and reused across calls. The
+    /// O(k)-scale Rayleigh-Ritz dense matrices are also cache fields. The only bounded
+    /// <c>Allocator.Temp</c> allocations are inside
+    /// <see cref="Eigen.symmetric(ref floatMxN, ref floatN, ref floatMxN)"/> and the
+    /// triangular-solve helpers.
     ///
     /// <b>Convergence:</b> per-pair 2-norm relative residual ||A x_i - lambda_i B x_i|| /
-    /// max(|lambda_i|, 1) &lt;= tol (B=I reduces this to the Euclidean ||A x_i - lambda_i x_i||
-    /// used throughout the discussion above -- see "Generalized eigenproblem" below for B != I).
-    /// Returns a <see cref="LOBPCGInfo"/> (reuses <see cref="IterativeSolveStatus"/> --
-    /// Converged/MaxIterations/Breakdown, no new enum).
+    /// max(|lambda_i|, 1) &lt;= tol. Returns a <see cref="LOBPCGInfo"/>
+    /// (Converged/MaxIterations/Breakdown).
     ///
     /// <b>Output order:</b> eigenvalues/eigenvectors are returned ASCENDING (index 0 = smallest) --
-    /// unlike every OTHER Eigen method in this library (which sorts descending), because LOBPCG's
-    /// entire purpose is "the k smallest", so smallest-first is the natural presentation here.
+    /// unlike the other Eigen methods (which sort descending) -- because LOBPCG targets the k
+    /// smallest.
     ///
-    /// <b>Generalized eigenproblem (A x = lambda B x, B SPD):</b> every overload above the
-    /// standard (single-operator) form threads a second operator B through the SAME algorithm --
-    /// B-inner products (u^T B v) replace Euclidean ones (u^T v) everywhere a Gram matrix is
-    /// formed: the basis blocks X/W/P are B-ORTHONORMALIZED (Gram = S^T B S instead of S^T S) and
-    /// Rayleigh-Ritz solves the pencil (S^T A S, S^T B S) -- the SAME Cholesky-based
-    /// generalized-to-standard reduction already used for the standard case's Rayleigh-Ritz step
-    /// (<see cref="TryRayleighRitz"/>) IS the textbook generalized-eigenproblem reduction once its
-    /// Gram argument is S^T B S rather than S^T S; nothing about that reduction itself changed.
-    /// Residuals are r_i = A x_i - theta_i B x_i (theta_i the current Ritz value estimate);
-    /// convergence remains the EUCLIDEAN 2-norm of this residual relative to max(|theta_i|, 1) --
-    /// standard practice (the residual measures how far x_i is from satisfying the pencil, it is
-    /// not itself a B-weighted distance). Requires BX/BW/BP (the B-images of X/W/P, mirroring
-    /// AX/AW/AP) -- see <see cref="floatLOBPCGCache"/>'s BX/BW/BP fields. The safeguard-3
-    /// plausibility envelope generalizes verbatim: each individual quotient becomes
-    /// (s^T A s)/(s^T B s) = H[i,i]/Gram[i,i], where Gram is now the B-Gram -- the SAME immunity
-    /// argument applies (a plain ratio of two already-computed dot products, no matrix inversion,
-    /// so it stays trustworthy regardless of the Cholesky-based reduction's own conditioning).
-    /// Convergence theory: LOBPCG requires only B SPD -- A itself may be INDEFINITE (this is
-    /// exactly the buckling case below) and the method is still guaranteed to converge to the
-    /// algebraically smallest eigenvalues of the pencil; it does NOT require A positive (semi)definite.
+    /// <b>Generalized eigenproblem (A x = lambda B x, B SPD):</b> overloads taking a second operator
+    /// B solve the pencil by replacing Euclidean inner products with B-inner products (Gram = S^T B S)
+    /// and residuals r_i = A x_i - theta_i B x_i; convergence uses the Euclidean 2-norm of that
+    /// residual. Only B must be SPD -- A may be INDEFINITE (the buckling case below) and convergence
+    /// to the algebraically smallest pencil eigenvalues still holds. The standard (single-operator)
+    /// overloads forward into this same core with B = <see cref="floatIdentityOperator"/>, giving a
+    /// bit-identical Euclidean path.
     ///
-    /// <b>B=I strategy (bit-identical standard path):</b> rather than hand-duplicating the whole
-    /// algorithm for the plain (Euclidean, B=I) case, every standard-path overload
-    /// (<see cref="lobpcg{TOp,TPre}"/> and everything built on it) forwards into the SAME
-    /// generalized core with B played by <see cref="floatIdentityOperator"/> (Apply is an exact
-    /// bit-copy, z = r). Every place the generalized algorithm reads a "B-image" in place of a raw
-    /// Euclidean block (BX for X, BW for W, BP for P) is a direct SUBSTITUTION -- no new arithmetic
-    /// operation (no extra division/normalization) was introduced alongside it -- so for B=I, every
-    /// substituted quantity holds BITS IDENTICAL to the block it substitutes, and every downstream
-    /// formula that reads it reproduces the pre-generalization Euclidean formula bit-for-bit (each
-    /// substitution site is documented inline with this reasoning). The ONE intentional exception:
-    /// the bootstrap Rayleigh-quotient seed for lambda (dot(X,AX), computed once before iteration 0)
-    /// deliberately stays the plain Euclidean quotient rather than dividing by dot(X,BX) -- the
-    /// "more correct" generalized quotient -- specifically because that division would cost
-    /// bit-identical-ness for B=I (dot(X,BX) is only extremely close to, not exactly, 1.0 in
-    /// floating point after Cholesky-QR) for zero practical benefit: this seed is immediately
-    /// superseded by the first real Rayleigh-Ritz iteration regardless of its accuracy (unlike e.g.
-    /// Newton's method, LOBPCG's subspace correction does not depend sensitively on a bootstrap
-    /// value's precision). This is the sole documented deviation from "every substitution is a
-    /// bit-identical no-op for B=I" in this file. Verification note: since this replaces the
-    /// prior standard-only implementation rather than living alongside it, "bit-identical" is
-    /// supported by the by-construction argument above plus the unmodified 27-test standard-path
-    /// regression suite continuing to pass -- not by a mechanical byte-diff against a captured
-    /// pre-change baseline (the old code path no longer exists to diff against).
-    ///
-    /// Cost trade-off: the unified implementation pays a real (if small) constant-factor overhead
-    /// on the standard path even when B is the identity -- three extra "B.Apply" batches per
-    /// iteration (BX/BW/BP), each just a buffer copy for the identity case, plus the extra Deflate/
-    /// OrthonormalizeBlockB bookkeeping over BW/BP. This was accepted deliberately in exchange for
-    /// zero code duplication and a strong bit-identical guarantee, matching the spec's explicit
-    /// preference; a hand-specialized Euclidean-only fast path was considered and rejected as the
-    /// higher-risk, higher-maintenance option (two divergent copies of a very safeguard-heavy loop).
-    ///
-    /// <b>Fresh-matvec principle extends to B:</b> exactly like AX/AP (see the "AX/AP freshness"
-    /// note above), BX and BP are recomputed via a FRESH <c>B.Apply</c> at the same points AX/AP
-    /// are -- NEVER maintained by mirroring a linear combination across an iteration boundary. BW,
-    /// like AW, gets exactly ONE fresh <c>B.Apply</c> per iteration (right when W is formed from
-    /// the preconditioned residual) and is then carried through THAT SAME iteration's Deflate/
-    /// OrthonormalizeBlockB calls via linearity (B is linear, so this mirroring is exact up to
-    /// ordinary floating-point rounding of a SINGLE transform -- it does not compound across
-    /// iterations the way the rejected AX/AP-mirroring design did, because it is never carried past
-    /// one iteration's boundary before the next fresh <c>B.Apply</c> supersedes it). The one-time
-    /// initial X seed is a partial exception: its own Euclidean orthonormalization is UNCHANGED
-    /// (deliberately not B-aware -- see <see cref="OrthonormalizeBlock"/>'s call site comment for
-    /// why), so BX's very first value comes from a single fresh <c>B.Apply</c> issued right after
-    /// that seed step, mirroring AX's own initial treatment exactly.
-    ///
-    /// <b>Buckling mapping (K_E phi = -lambda K_G phi convention):</b> the standard linear-buckling
-    /// eigenproblem is K_E*phi + lambda*K_G*phi = 0, i.e. K_E*phi = -lambda*K_G*phi, where K_E is
-    /// the (SPD) elastic stiffness matrix and K_G is the geometric/stress stiffness matrix evaluated
-    /// at some REFERENCE load level (typically INDEFINITE: members in compression contribute
-    /// negative-definite-like terms, tension members positive) -- the same convention used by e.g.
-    /// Nastran SOL 105 / Abaqus *BUCKLE. lambda is the LOAD MULTIPLIER: the critical buckling load
-    /// is lambda_cr times the reference load. Rearranging: K_G*phi = mu*K_E*phi where
-    /// mu = -1/lambda_cr -- a pencil with K_G (indefinite) in the A slot and K_E (SPD) in the B
-    /// slot, exactly this method's required shape (only B needs to be SPD; A indefinite is fine --
-    /// see "Convergence theory" above). The SMALLEST (most negative) mu returned corresponds to the
-    /// SMALLEST positive lambda_cr -- i.e. the FIRST critical load, exactly the quantity a buckling
-    /// analysis wants, and exactly what LOBPCG natively targets with NO extra mode-selection needed:
+    /// <b>Buckling mapping (K_E phi = -lambda K_G phi convention):</b> the linear-buckling problem
+    /// K_E*phi + lambda*K_G*phi = 0 (K_E SPD elastic stiffness, K_G indefinite geometric stiffness at
+    /// a reference load; lambda the load multiplier -- the Nastran SOL 105 / Abaqus *BUCKLE
+    /// convention) rearranges to the pencil K_G*phi = mu*K_E*phi with mu = -1/lambda_cr, i.e. K_G in
+    /// the A slot and K_E (SPD) in the B slot. The smallest (most negative) mu gives the first
+    /// critical load, exactly what LOBPCG targets:
     /// <code>
     ///   // K_E: SPD elastic stiffness. K_G: geometric stiffness at the reference load (indefinite).
     ///   var mu = Eigen.lobpcg(in K_G, in K_E, ref ws, k, tol, maxIter); // A=K_G, B=K_E
-    ///   // mu is ASCENDING; mu[0] is the most negative (first/critical) mode, PROVIDED it is
-    ///   // actually negative -- a mu[i] &gt;= 0 is not a buckling mode under this reference load
-    ///   // direction (no positive critical multiplier exists for that mode) and should be
-    ///   // discarded/flagged, not divided.
+    ///   // mu is ASCENDING; mu[0] is the most negative (first/critical) mode. A mu[i] &gt;= 0 is not
+    ///   // a buckling mode under this reference load direction -- discard/flag it, do not divide.
     ///   for (int i = 0; i &lt; k; i++)
     ///       if (mu[i] &lt; 0) lambdaCritical[i] = -1 / mu[i]; // buckling load multiplier
     /// </code>
-    /// Verified on a small analytic example (see the LOBPCG generalized smoke tests): a
-    /// diagonal-congruent K_G/K_E pair with a KNOWN mixed-sign spectrum reproduces the expected
-    /// mu's, and the recovered lambda_cr matches a direct K_E*phi = -lambda*K_G*phi solve for the
-    /// SAME analytic system. If a different sign convention is used upstream (some texts define
-    /// K_G with the OPPOSITE sign, i.e. K_E*phi = +lambda*K_G*phi), flip the sign in the final
-    /// division (lambda_cr = +1/mu) accordingly -- the pencil construction and "smallest mu"
-    /// targeting are unaffected; only the final scalar's sign flips with the convention.
+    /// For the opposite sign convention (K_E*phi = +lambda*K_G*phi) use lambda_cr = +1/mu; the pencil
+    /// construction and smallest-mu targeting are unchanged.
     /// </summary>
     public static partial class Eigen
     {

@@ -241,9 +241,7 @@ namespace LinearAlgebra
             }
             variance /= x.Data.Length;
 
-            // Quartiles via linear-interpolation percentile (numpy 'linear'). Bounds-safe for all
-            // n >= 2 — the previous index arithmetic read out of bounds for n==2 (q1Index = -1) and
-            // collapsed Q3 onto the median for small odd n.
+            // Quartiles via linear-interpolation percentile (numpy 'linear'). Bounds-safe for all n >= 2.
             double median = Percentile(copy, (double)0.5);
             double q1 = Percentile(copy, (double)0.25);
             double q3 = Percentile(copy, (double)0.75);

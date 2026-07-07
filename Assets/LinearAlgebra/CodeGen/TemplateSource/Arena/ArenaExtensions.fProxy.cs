@@ -74,7 +74,7 @@ namespace LinearAlgebra
             return vec;
         }
 
-        // Legacy name for fProxyLinspace(a, b, N); delegates to the guarded Generate.linspace (handles N==1, pins both endpoints exactly).
+        // Alias for fProxyLinspace(a, b, N); delegates to the guarded Generate.linspace (handles N==1, pins both endpoints exactly).
         public static fProxyN fProxyLinVec(this ref Arena arena, int N, fProxy start, fProxy end)
         {
             var vec = arena.fProxyVec(N);

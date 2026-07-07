@@ -46,8 +46,8 @@ namespace LinearAlgebra
             // immediately subtracts its rank-1 contribution from the trailing LOWER triangle as a set
             // of row-wise axpys: L[i, j+1..i] -= L[i,j] * L[j+1..i, j]. Each row segment is unit-stride
             // (row-major), so they go through the vectorising UnsafeOP.axpy ([NoAlias], the GEMM
-            // pointer path) and run at LU speed (float ~2x double). Only the lower triangle is touched
-            // (i >= column index), so no work is wasted on the symmetric upper half.
+            // pointer path). Only the lower triangle is touched (i >= column index), so no work is
+            // wasted on the symmetric upper half.
             //
             // The active column j is gathered into a contiguous buffer `lj` (one strided pass) so both
             // axpy operands are unit-stride. Results differ from the old left-looking form by rounding
@@ -61,12 +61,8 @@ namespace LinearAlgebra
             // trailing lower triangle is updated ONCE per panel with a triangular SYRK
             // (UnsafeOP.syrkLowerSub, A22 -= L21*L21ᵀ) instead of one rank-1 pass per column — trading
             // O(n) re-streams of the trailing matrix for O(n/CHOL_BLOCK), the memory-bandwidth-bound
-            // part of the algorithm. (An earlier version computed L21 by extending the panel's rank-1
-            // sweep to the below-panel rows with a narrowed column width; it was measurably WORSE at
-            // mid-range n — same O(n^2) small-call count as the unblocked sweep, just doing less work
-            // per call — which is why L21 is a dedicated forward-substitution pass instead.) Below the
-            // threshold the panel/TRSM/SYRK bookkeeping isn't worth it, so the plain per-column sweep is
-            // used unchanged.
+            // part of the algorithm. Below the threshold the panel/TRSM/SYRK bookkeeping isn't worth
+            // it, so the plain per-column sweep is used unchanged.
             unsafe
             {
                 fProxy* lp = L.Data.Ptr;
@@ -88,13 +84,9 @@ namespace LinearAlgebra
                 // the same name would collide across them (CS0102; see QR_BLOCK).
                 const int CHOL_BLOCK = 32;
 
-                // Size gate: MEASURED crossover, not the naive 2*CHOL_BLOCK (see
-                // docs/dev/level3-blocking-guide.md landmine "size gate" — LQ needed the same kind of
-                // margin, LQ_BLOCK=64 but gate m>=512, i.e. 8x the block width). Benchmarked: n=128
-                // (4 panels) is measurably SLOWER than the plain sweep — the panel/TRSM/SYRK
-                // bookkeeping isn't amortised yet — while n=256 (8 panels) is the first size that wins
-                // for both float and double. A shared float/double threshold uses the slower type's
-                // crossover.
+                // Size gate: measured crossover, not the naive 2*CHOL_BLOCK — the panel/TRSM/SYRK
+                // bookkeeping isn't amortised until ~8 panels wide (see docs/dev/level3-blocking-guide.md
+                // "size gate"). A shared float/double threshold uses the slower type's crossover.
                 const int CHOL_BLOCK_MIN_N = Consts.fProxyCholBlockMinN;   // float/double split (see Consts); default 8*CHOL_BLOCK
 
                 if (n < CHOL_BLOCK_MIN_N)
@@ -177,10 +169,8 @@ namespace LinearAlgebra
                         //     L[i, j0:j0+jb) — untouched since the last panel's SYRK, because step (1)
                         //     above never wrote to rows >= panelEnd. ONE call for the whole panel
                         //     (UnsafeOP.trsmLowerPanel) instead of a rank-1 update per (row, column)
-                        //     pair — the earlier per-column-per-row formulation was measured to keep
-                        //     O(n^2) tiny NoInlining calls (same call count as the unblocked sweep,
-                        //     just each doing less work), which ate the SYRK's savings at n up to ~512;
-                        //     this collapses that to O(n/CHOL_BLOCK) calls, one per panel.
+                        //     pair — a per-column-per-row formulation would keep O(n^2) tiny NoInlining
+                        //     calls (same count as the unblocked sweep); this is O(n/CHOL_BLOCK), one per panel.
                         UnsafeOP.trsmLowerPanel(lp + (long)j0 * n + j0, n, lp + (long)rStart * n + j0, n, ntrail, jb);
 
                         // (3) SYRK trailing update: A22 -= L21*L21ᵀ, L21 = L[j0+jb:n, j0:j0+jb]. Touches

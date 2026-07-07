@@ -17,9 +17,8 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Zero-alloc Conjugate Gradient solver for symmetric positive-definite (SPD) systems A x = b,
-        /// generic over any <see cref="IdoubleLinearOperator"/> (Burst-monomorphized static
-        /// dispatch, no vtable/managed delegate). This is the SINGLE SOURCE OF TRUTH for the CG
-        /// loop — the concrete dense (<c>cg(in doubleMxN, ...)</c>) and BSR
+        /// generic over any <see cref="IdoubleLinearOperator"/>. This is the single implementation of
+        /// the CG loop — the concrete dense (<c>cg(in doubleMxN, ...)</c>) and BSR
         /// (<c>cg(in doubleBSR, ...)</c>) overloads below are thin forwarders that
         /// wrap their matrix in <see cref="doubleDenseOperator"/> / <c>doubleBSROperator</c> and
         /// call this method.
@@ -197,8 +196,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Zero-alloc Preconditioned Conjugate Gradient solver for SPD systems A x = b, generic
         /// over both the operator (<see cref="IdoubleLinearOperator"/>) and the preconditioner
-        /// (<see cref="IdoublePreconditioner"/>) — same Burst static-dispatch shape as
-        /// <see cref="cg{TOp}"/>. Standard PCG: p is combined with z = M⁻¹r (not r), and β uses
+        /// (<see cref="IdoublePreconditioner"/>). Standard PCG: p is combined with z = M⁻¹r (not r), and β uses
         /// ⟨r,z⟩ instead of ⟨r,r⟩.
         ///
         /// Caller provides x (initial guess, overwritten with solution — warm-startable) and four
@@ -393,7 +391,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Zero-alloc MINRES (Paige-Saunders) solver for symmetric systems A x = b, generic over
-        /// <see cref="IdoubleLinearOperator"/> (Burst-monomorphized static dispatch, no vtable).
+        /// <see cref="IdoubleLinearOperator"/>.
         /// Unlike <see cref="cg{TOp}"/>, A need NOT be positive definite -- MINRES minimizes the
         /// 2-norm residual ‖b-Ax‖ over the same Krylov subspace via a short Lanczos recurrence
         /// plus an incrementally-updated QR factorization (Givens rotations) of the resulting
