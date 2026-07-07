@@ -145,24 +145,14 @@ namespace LinearAlgebra
             if (!OrthonormalizeBlock(ref ws.X, ref ws.AX, k, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
                 return new LOBPCGInfo { iterations = 0, converged = 0, maxResidual = double.NaN, status = IterativeSolveStatus.Breakdown };
 
-            for (int i = 0; i < k; i++)
-            {
-                for (int c = 0; c < n; c++) ws.rowIn[c] = ws.X[i, c];
-                A.Apply(in ws.rowIn, ref ws.rowOut);
-                for (int c = 0; c < n; c++) ws.AX[i, c] = ws.rowOut[c];
-            }
+            A.ApplyBlock(in ws.X, ref ws.AX, k);
 
             // BX = B.Apply(X), fresh, right after AX -- mirrors AX's own freshness exactly (see the
             // class doc's "fresh-matvec principle extends to B"). For the B=I forwarding path
             // (TBOp == doubleIdentityOperator) this is an exact bit-copy of X, so every later
             // computation reading BX in place of a Euclidean X reproduces the pre-generalization
             // formula bit-for-bit.
-            for (int i = 0; i < k; i++)
-            {
-                for (int c = 0; c < n; c++) ws.rowIn[c] = ws.X[i, c];
-                B.Apply(in ws.rowIn, ref ws.rowOut);
-                for (int c = 0; c < n; c++) ws.BX[i, c] = ws.rowOut[c];
-            }
+            B.ApplyBlock(in ws.X, ref ws.BX, k);
 
             // Bootstrap Rayleigh-quotient seed for lambda -- deliberately the plain EUCLIDEAN
             // quotient dot(X,AX), NOT divided by dot(X,BX) (the "more correct" generalized
@@ -252,22 +242,12 @@ namespace LinearAlgebra
                     M.Apply(in ws.rowIn, ref ws.rowOut);
                     for (int c = 0; c < n; c++) ws.W[i, c] = ws.rowOut[c];
                 }
-                for (int i = 0; i < numActive; i++)
-                {
-                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.W[i, c];
-                    A.Apply(in ws.rowIn, ref ws.rowOut);
-                    for (int c = 0; c < n; c++) ws.AW[i, c] = ws.rowOut[c];
-                }
+                A.ApplyBlock(in ws.W, ref ws.AW, numActive);
                 // BW = B W, fresh -- mirrors AW's own single fresh compute this iteration (see the
                 // class doc's "fresh-matvec principle extends to B"); maintained via linearity
                 // through the Deflate/OrthonormalizeBlockB calls below within THIS iteration only
                 // (bounded, not chained across iterations -- exactly how AW already works).
-                for (int i = 0; i < numActive; i++)
-                {
-                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.W[i, c];
-                    B.Apply(in ws.rowIn, ref ws.rowOut);
-                    for (int c = 0; c < n; c++) ws.BW[i, c] = ws.rowOut[c];
-                }
+                B.ApplyBlock(in ws.W, ref ws.BW, numActive);
 
                 // ---- B-deflate against X, then INTERNALLY B-orthonormalize (safeguard 1) ----
                 // Deflation alone leaves W's OWN Gram an arbitrary SPD matrix (its rows can differ
@@ -335,18 +315,8 @@ namespace LinearAlgebra
                 // fresh-residual formulation (generalized: "- B X diag(theta)"); the extra
                 // matvecs/iteration (over numActive rows only) are a small, worthwhile price for a
                 // residual that stays exact to working precision indefinitely.
-                for (int i = 0; i < numActive; i++)
-                {
-                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.X[i, c];
-                    A.Apply(in ws.rowIn, ref ws.rowOut);
-                    for (int c = 0; c < n; c++) ws.AX[i, c] = ws.rowOut[c];
-                }
-                for (int i = 0; i < numActive; i++)
-                {
-                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.X[i, c];
-                    B.Apply(in ws.rowIn, ref ws.rowOut);
-                    for (int c = 0; c < n; c++) ws.BX[i, c] = ws.rowOut[c];
-                }
+                A.ApplyBlock(in ws.X, ref ws.AX, numActive);
+                B.ApplyBlock(in ws.X, ref ws.BX, numActive);
 
                 // Same fix for AP/BP: P is reformed EVERY iteration from a combination of the
                 // CURRENT W and the OLD P (chained iteration to iteration, just like AX used to
@@ -358,18 +328,8 @@ namespace LinearAlgebra
                 // issue, since the SAME marginal conditioning is completely harmless in the
                 // P-less 2-block path above). BP is refreshed for the SAME reason -- it feeds the
                 // next iteration's B-Gram directly.
-                for (int i = 0; i < numActive; i++)
-                {
-                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.P[i, c];
-                    A.Apply(in ws.rowIn, ref ws.rowOut);
-                    for (int c = 0; c < n; c++) ws.AP[i, c] = ws.rowOut[c];
-                }
-                for (int i = 0; i < numActive; i++)
-                {
-                    for (int c = 0; c < n; c++) ws.rowIn[c] = ws.P[i, c];
-                    B.Apply(in ws.rowIn, ref ws.rowOut);
-                    for (int c = 0; c < n; c++) ws.BP[i, c] = ws.rowOut[c];
-                }
+                A.ApplyBlock(in ws.P, ref ws.AP, numActive);
+                B.ApplyBlock(in ws.P, ref ws.BP, numActive);
 
                 haveP = true;
             }

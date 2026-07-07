@@ -164,6 +164,30 @@ namespace LinearAlgebra
             }
         }
 
+        // Row-limited mat*mat for block operator applies (LOBPCG): C[0:rows,:] = a[0:rows,:] · b,
+        // i.e. only the first `rows` rows of a are read and only the first `rows` rows of c are
+        // written. c's remaining rows [rows, c.M_Rows) are left UNTOUCHED -- callers (e.g. LOBPCG)
+        // keep locked-pair data there that a whole-buffer dot would clobber. c must not alias a or b.
+        // Contract mirrors the non-transposed dot: contracts a.N_Cols against b.M_Rows.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void dotRows(in doubleMxN a, in doubleMxN b, ref doubleMxN c, int rows)
+        {
+            Assume.SameDim(a.N_Cols, b.M_Rows);
+            if (c.N_Cols != b.N_Cols)
+                throw new ArgumentException("dotRows: destination cols must equal b.N_Cols");
+
+            int nn = a.N_Cols, kk = b.N_Cols;
+            unsafe
+            {
+                if (c.Data.Ptr == a.Data.Ptr || c.Data.Ptr == b.Data.Ptr)
+                    throw new ArgumentException("dotRows: destination must not alias an input");
+
+                // matMatDot accumulates (+=), so zero just the rows we are about to write.
+                UnsafeUtility.MemClear(c.Data.Ptr, (long)rows * kk * UnsafeUtility.SizeOf<double>());
+                UnsafeOP.matMatDot(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, rows, nn, kk);
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static doubleMxN dot(doubleMxN a, doubleMxN b, bool transposeA = false)
         {

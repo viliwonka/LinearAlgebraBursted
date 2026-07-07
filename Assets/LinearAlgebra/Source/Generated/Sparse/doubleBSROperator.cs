@@ -67,5 +67,23 @@ namespace LinearAlgebra.Sparse
             else
                 BSR.spMVT(in A, in x, ref y);
         }
+
+        // No block spMV kernel yet: apply per row (each spMV streams A once). Correct for any BSR;
+        // the dense operator is the one that gets LOBPCG's single-GEMM fast path. Two bounded Temp
+        // scratch vectors per call.
+        public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
+        {
+            int cols = Vrows.N_Cols;
+            var rin = new doubleN(cols, Unity.Collections.Allocator.Temp, false);
+            var rout = new doubleN(cols, Unity.Collections.Allocator.Temp, false);
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < cols; c++) rin[c] = Vrows[i, c];
+                Apply(in rin, ref rout);
+                for (int c = 0; c < cols; c++) AVrows[i, c] = rout[c];
+            }
+            rout.Dispose();
+            rin.Dispose();
+        }
     }
 }

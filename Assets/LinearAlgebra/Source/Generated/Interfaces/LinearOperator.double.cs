@@ -22,6 +22,17 @@ namespace LinearAlgebra
 
         /// <summary>y = Aᵀ x. y must be distinct from x. Needed by CGLS/LSQR/BiCGSTAB (Phase 3).</summary>
         void ApplyT(in doubleN x, ref doubleN y);
+
+        /// <summary>
+        /// Applies the operator to a BLOCK of row-vectors at once: for i in [0, rows),
+        /// AVrows[i,:] = A · Vrows[i,:]. Vrows/AVrows are row-major (at least rows × Cols); only the
+        /// first <paramref name="rows"/> rows are read/written, and AVrows must not alias Vrows. Lets
+        /// a caller holding many simultaneous vectors (e.g. LOBPCG's k-wide X/W/P blocks) stream the
+        /// operator's data ONCE instead of once per vector. Intended for SYMMETRIC operators (A = Aᵀ):
+        /// the dense fast path exploits symmetry, and the only caller — the symmetric-eigenproblem
+        /// LOBPCG — always passes symmetric A and B.
+        /// </summary>
+        void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows);
     }
 
     /// <summary>
@@ -62,6 +73,13 @@ namespace LinearAlgebra
 
         // Aᵀx via the existing vector*matrix dot: result[j] = sum_i x[i]*A[i,j] == (Aᵀx)[j].
         public void ApplyT(in doubleN x, ref doubleN y) => Blas.dot(in x, in A, ref y);
+
+        // Block apply: AVrows[i,:] = A · Vrows[i,:] for the first `rows` rows, as ONE matMatDot that
+        // streams A once (vs `rows` separate GEMVs). Blas.dotRows(Vrows, A)[r,j] = Σ_i Vrows[r,i]·A[i,j]
+        // = (A · Vrows[r])[j] when A is symmetric — the invariant every ApplyBlock caller holds. Only
+        // the first `rows` rows of AVrows are written; the rest are preserved (locked-pair data).
+        public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
+            => Blas.dotRows(in Vrows, in A, ref AVrows, rows);
     }
 
     /// <summary>
@@ -103,6 +121,15 @@ namespace LinearAlgebra
 
         public void Apply(in doubleN x, ref doubleN y) => y.Data.CopyFrom(x.Data);
         public void ApplyT(in doubleN x, ref doubleN y) => y.Data.CopyFrom(x.Data);
+
+        // Identity block apply: copy the first `rows` rows (an exact bit-copy, like Apply).
+        public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
+        {
+            int cols = Vrows.N_Cols;
+            for (int i = 0; i < rows; i++)
+                for (int c = 0; c < cols; c++)
+                    AVrows[i, c] = Vrows[i, c];
+        }
     }
 
     /// <summary>
@@ -159,6 +186,23 @@ namespace LinearAlgebra
         {
             Inner.ApplyT(in x, ref y);
             for (int j = 0; j < D.N; j++) y[j] *= D[j];
+        }
+
+        // No block specialization (this wrapper composes over an arbitrary inner operator): apply per
+        // row through the scalar Apply, into two bounded Temp scratch vectors.
+        public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
+        {
+            int cols = Vrows.N_Cols;
+            var rin = new doubleN(cols, Unity.Collections.Allocator.Temp, false);
+            var rout = new doubleN(cols, Unity.Collections.Allocator.Temp, false);
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < cols; c++) rin[c] = Vrows[i, c];
+                Apply(in rin, ref rout);
+                for (int c = 0; c < cols; c++) AVrows[i, c] = rout[c];
+            }
+            rout.Dispose();
+            rin.Dispose();
         }
     }
 }
