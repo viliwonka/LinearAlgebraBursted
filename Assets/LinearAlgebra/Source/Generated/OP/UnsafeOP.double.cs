@@ -6,66 +6,126 @@ using Unity.Burst;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Collections;
 
+
 namespace LinearAlgebra.Internal
 {
     public static unsafe partial class UnsafeOP {
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public static double sum([NoAlias] double* a, int n) {
-
-            double sum = 0f;
-
-            for (int i = 0; i < n; i++)
-                sum += a[i];
-            
-            return sum;
-        }
+        // These Level-1 reductions use TWO width-4 SIMD accumulators (double4 -> float4/double4):
+        // 2x4 = 8 fixed per-lane add-chains -- enough independent chains to keep the FP add ports busy
+        // (one 4-lane accumulator left them ~half idle in-cache; the 2nd accumulator measured ~2x). SIMD
+        // packing is not reassociation, so this is Strict-safe and bit-identical on SSE/AVX/NEON; the
+        // summation TREE (which accumulator/lane sums which elements, then acc0+acc1, then the balanced
+        // (x+y)+(z+w) fold) is fixed by the source == the FROZEN numeric contract -- do not reshuffle it.
+        // See matVecDot for why Burst can't do this itself under FloatMode.Default (reduction
+        // vectorization needs reassociation, which Strict forbids). Reinterpret loads are unaligned
+        // (rows/vectors are element-aligned only) -- Burst emits unaligned loads; an intrinsic rewrite
+        // must too. No FMA under Strict by design.
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double sumAbs([NoAlias] double* a, int n)
         {
-            double sum = 0f;
+            var pa = (double4*)a;
+            int nQ = n >> 2;
+            double4 acc0 = default, acc1 = default;
+            int q = 0;
+            for (; q + 2 <= nQ; q += 2)
+            {
+                acc0 += doubleM.abs(pa[q]);
+                acc1 += doubleM.abs(pa[q + 1]);
+            }
+            if (q < nQ) acc0 += doubleM.abs(pa[q]);
+            double4 acc = acc0 + acc1;
+            double s = (acc.x + acc.y) + (acc.z + acc.w);
+            for (int i = nQ << 2; i < n; i++)
+                s += math.abs(a[i]);
+            return s;
+        }
 
-            for (int i = 0; i < n; i++)
-                sum += math.abs(a[i]);
-            
-            return sum;
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static double sum([NoAlias] double* a, int n)
+        {
+            var pa = (double4*)a;
+            int nQ = n >> 2;
+            double4 acc0 = default, acc1 = default;
+            int q = 0;
+            for (; q + 2 <= nQ; q += 2)
+            {
+                acc0 += pa[q];
+                acc1 += pa[q + 1];
+            }
+            if (q < nQ) acc0 += pa[q];
+            double4 acc = acc0 + acc1;
+            double s = (acc.x + acc.y) + (acc.z + acc.w);
+            for (int i = nQ << 2; i < n; i++)
+                s += a[i];
+            return s;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double maxAbs([NoAlias] double* a, int n)
         {
-            double max = 0f;
-
-            for (int i = 0; i < n; i++)
-                max = math.max(max, math.abs(a[i]));
-
-            return max;
+            // max is exact (no rounding), so accumulator/lane order changes nothing but NaN propagation,
+            // which is still identical on every machine. Accumulators seed at 0 == the old max=0 (abs>=0).
+            var pa = (double4*)a;
+            int nQ = n >> 2;
+            double4 acc0 = default, acc1 = default;
+            int q = 0;
+            for (; q + 2 <= nQ; q += 2)
+            {
+                acc0 = doubleM.max(acc0, doubleM.abs(pa[q]));
+                acc1 = doubleM.max(acc1, doubleM.abs(pa[q + 1]));
+            }
+            if (q < nQ) acc0 = doubleM.max(acc0, doubleM.abs(pa[q]));
+            double4 acc = doubleM.max(acc0, acc1);
+            double m = math.max(math.max(acc.x, acc.y), math.max(acc.z, acc.w));
+            for (int i = nQ << 2; i < n; i++)
+                m = math.max(m, math.abs(a[i]));
+            return m;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double vecDot([NoAlias] double* vA, [NoAlias] double* vB, int n) {
 
-            double sum = 0f;
-
-            for (int i = 0; i < n; i++) {
-                sum += vA[i] * vB[i];
+            var pa = (double4*)vA;
+            var pb = (double4*)vB;
+            int nQ = n >> 2;
+            double4 acc0 = default, acc1 = default;
+            int q = 0;
+            for (; q + 2 <= nQ; q += 2)
+            {
+                acc0 += pa[q]     * pb[q];
+                acc1 += pa[q + 1] * pb[q + 1];
             }
-
-            return sum;
+            if (q < nQ) acc0 += pa[q] * pb[q];
+            double4 acc = acc0 + acc1;
+            double s = (acc.x + acc.y) + (acc.z + acc.w);
+            for (int i = nQ << 2; i < n; i++)
+                s += vA[i] * vB[i];
+            return s;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double vecDotRange([NoAlias] double* vA, [NoAlias] double* vB, int start, int end)
         {
-            double sum = 0f;
-
-            for (int i = start; i < end; i++)
+            // Base the vector pointers at `start` (element-aligned only, fine for unaligned loads).
+            int n = end - start;
+            var pa = (double4*)(vA + start);
+            var pb = (double4*)(vB + start);
+            int nQ = n >> 2;
+            double4 acc0 = default, acc1 = default;
+            int q = 0;
+            for (; q + 2 <= nQ; q += 2)
             {
-                sum += vA[i] * vB[i];
+                acc0 += pa[q]     * pb[q];
+                acc1 += pa[q + 1] * pb[q + 1];
             }
-
-            return sum;
+            if (q < nQ) acc0 += pa[q] * pb[q];
+            double4 acc = acc0 + acc1;
+            double s = (acc.x + acc.y) + (acc.z + acc.w);
+            for (int i = start + (nQ << 2); i < end; i++)
+                s += vA[i] * vB[i];
+            return s;
         }
 
 
@@ -91,23 +151,34 @@ namespace LinearAlgebra.Internal
             //
             // Each row is a dot product (reduction). A single running accumulator is a serial FP-add
             // dependency chain that strict-FloatMode Burst cannot split into SIMD lanes (that would be
-            // reassociation). Four EXPLICIT accumulators give four independent chains — one SIMD
-            // register accumulating four lanes — without asking the compiler to reassociate, so the
-            // summation order is fixed by the source and stays deterministic. Same pattern as LQ.dot4.
+            // reassociation). We give it an EXPLICIT width-4 SIMD accumulator (double4 -> float4/double4):
+            // four independent lane-chains packed into one register, advancing in parallel WITHOUT asking
+            // the compiler to reassociate -- the per-lane summation order is fixed by the source and stays
+            // deterministic. The balanced (x+y)+(z+w) fold matches the old scalar (s0+s1)+(s2+s3) exactly
+            // (same lanes, same order) -> bit-identical result. Scalar multi-accumulator source
+            // (s0..s3) does NOT get Burst to emit this; the vector type + reinterpret load does. (n%4 tail
+            // handled scalar.)
+            // TWO double4 accumulators (8 lane-chains): ~2x over a single 4-lane accumulator in-cache
+            // (4 chains left the FP add ports half idle). 4 accumulators measured NO further gain
+            // (memory/port-bound). Frozen fold: acc0+acc1 then (x+y)+(z+w).
+            var xp = (double4*)x;
+            int nQ = n >> 2;      // number of full width-4 blocks
+            int tail = nQ << 2;   // first index of the scalar n%4 tail
             for (int r = 0; r < m; r++)
             {
                 int baseIdx = r * n;
-                double s0 = (double)0, s1 = (double)0, s2 = (double)0, s3 = (double)0;
-                int c = 0;
-                for (; c + 4 <= n; c += 4)
+                var mp = (double4*)(mat + baseIdx);
+                double4 acc0 = default, acc1 = default;
+                int q = 0;
+                for (; q + 2 <= nQ; q += 2)
                 {
-                    s0 += mat[baseIdx + c]     * x[c];
-                    s1 += mat[baseIdx + c + 1] * x[c + 1];
-                    s2 += mat[baseIdx + c + 2] * x[c + 2];
-                    s3 += mat[baseIdx + c + 3] * x[c + 3];
+                    acc0 += mp[q]     * xp[q];
+                    acc1 += mp[q + 1] * xp[q + 1];
                 }
-                double sum = (s0 + s1) + (s2 + s3);
-                for (; c < n; c++)
+                if (q < nQ) acc0 += mp[q] * xp[q];
+                double4 acc = acc0 + acc1;
+                double sum = (acc.x + acc.y) + (acc.z + acc.w);
+                for (int c = tail; c < n; c++)
                     sum += mat[baseIdx + c] * x[c];
                 y[r] += sum;
             }

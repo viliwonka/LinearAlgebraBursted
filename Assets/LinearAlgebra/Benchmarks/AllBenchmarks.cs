@@ -14,6 +14,7 @@ namespace LinearAlgebra.Benchmarks
         {
             Bench.WriteReport("benchmark-all.txt", sb =>
             {
+                KernelBenchmark.Section(sb);
                 GemmBenchmark.Section(sb);
                 LUBenchmark.Section(sb);
                 CholeskyBenchmark.Section(sb);

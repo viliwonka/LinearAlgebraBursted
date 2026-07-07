@@ -57,12 +57,12 @@ namespace LinearAlgebra.mathProxies
         public float y;
         public float z;
         public float w;
-                                          
+
         unsafe public fProxy this[int index] {
             get {
                 if ((uint)index >= 4)
                     throw new System.ArgumentException("index must be between[0...3]");
-        
+
                 fixed (fProxy4* array = &this) { return ((float*)array)[index]; }
             }
             set {
@@ -72,6 +72,27 @@ namespace LinearAlgebra.mathProxies
                 fixed (float* array = &x) { array[index] = value; }
             }
         }
+
+        // Component-wise + and * so templates can use fProxy4 as a width-4 SIMD accumulator
+        // (fProxy4 acc; acc += load * load; ... acc.x+acc.y+acc.z+acc.w). These exist ONLY to compile
+        // the template -- codegen substitutes fProxy4 -> float4/double4, whose built-in operators (and
+        // real SIMD) are what actually run. See UnsafeOP.matVecDot for the pattern.
+        public static fProxy4 operator +(fProxy4 a, fProxy4 b)
+            => new fProxy4 { x = a.x + b.x, y = a.y + b.y, z = a.z + b.z, w = a.w + b.w };
+        public static fProxy4 operator *(fProxy4 a, fProxy4 b)
+            => new fProxy4 { x = a.x * b.x, y = a.y * b.y, z = a.z * b.z, w = a.w * b.w };
+    }
+
+    // TEMPLATE-ONLY shim so the fProxy kernel templates can call abs/max on the width-4 SIMD
+    // accumulator (fProxy4). Codegen substitutes fProxyM -> floatM/doubleM (the real shims in
+    // Internal/SimdMath.cs, which forward to Unity.Mathematics.math.abs/max on float4/double4);
+    // this manual body only has to COMPILE the template (it never runs). See UnsafeOP.sumAbs/maxAbs.
+    public static class fProxyM
+    {
+        public static fProxy4 abs(fProxy4 v)
+            => new fProxy4 { x = math.abs(v.x), y = math.abs(v.y), z = math.abs(v.z), w = math.abs(v.w) };
+        public static fProxy4 max(fProxy4 a, fProxy4 b)
+            => new fProxy4 { x = math.max(a.x, b.x), y = math.max(a.y, b.y), z = math.max(a.z, b.z), w = math.max(a.w, b.w) };
     }
 
     public struct fProxy2x2 {

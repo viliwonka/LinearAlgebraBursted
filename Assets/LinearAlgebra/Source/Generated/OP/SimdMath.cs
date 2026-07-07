@@ -1,0 +1,26 @@
+using System.Runtime.CompilerServices;
+using Unity.Mathematics;
+
+namespace LinearAlgebra.Internal
+{
+    // Vector-math shims for the width-4 SIMD accumulators used by the reduction kernels
+    // (UnsafeOP.sumAbs/maxAbs). The kernel TEMPLATES call fProxyM.abs/max on the fProxy4 stub;
+    // codegen rewrites fProxyM -> floatM/doubleM, which forward straight to the Unity.Mathematics
+    // math.abs/max overloads for float4/double4. (The template can't call math.abs on its fProxy4
+    // stub type directly -- Unity.Mathematics has no such overload -- hence this thin indirection.)
+    //
+    // NOT templated: this is one hand-written file holding BOTH float and double shims, copied
+    // verbatim into the runtime assembly (it contains no fProxy/long token, so codegen treats it
+    // as a singular file). Determinism is unaffected: these are lane-wise abs/max, no reassociation.
+    public static class floatM
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] public static float4 abs(float4 v) => math.abs(v);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] public static float4 max(float4 a, float4 b) => math.max(a, b);
+    }
+
+    public static class doubleM
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double4 abs(double4 v) => math.abs(v);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] public static double4 max(double4 a, double4 b) => math.max(a, b);
+    }
+}

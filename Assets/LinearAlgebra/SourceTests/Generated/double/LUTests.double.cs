@@ -725,17 +725,29 @@ public class doubleLUTests
             if (Analysis.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
 
-            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
+            // Backward-error (residual) gate -- kappa-free, unlike a forward-error check whose floor is
+            // kappa(A)*u (~1E-3 at float dim=512, a conditioning lottery, not a solver defect and RHS-fold
+            // sensitive). A is intact here, so form the true residual r = A*x_solved - b and normalize by
+            // the induced inf-norm: eta = ||r||inf / (||A||inf*||x||inf + ||b||inf). For backward-stable
+            // LU this is O(n*u) -- ~1E-5 float, ~1E-14 double -- so one 1E-4 ceiling covers both precisions
+            // with margin. The forward error stays only as a loose sanity bound.
+            var resid = Blas.dot(A, x_Solved) - b;
+            double eta = Norms.LInf(in resid)
+                       / (Norms.matrixLInf(in A) * Norms.LInf(in x_Solved) + Norms.LInf(in b));
 
-            // Fail layout: [1]=zeroError, [2]=limit 1E-3, [3]=diff
-            if (!(zeroError < (double)1E-03f) && Fail[0] == (double)0)
+            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
+            double relFwd = zeroError / Norms.LInf(in x_Known);
+
+            // Fail layout: [1]=residual eta, [2]=limit, [3]=diff
+            if (!(eta < (double)1E-04f) && Fail[0] == (double)0)
             {
                 Fail[0] = (double)1;
-                Fail[1] = zeroError;
-                Fail[2] = (double)1E-03f;
-                Fail[3] = zeroError - (double)1E-03f;
+                Fail[1] = eta;
+                Fail[2] = (double)1E-04f;
+                Fail[3] = eta - (double)1E-04f;
             }
-            Assert.IsTrue(zeroError < 1E-03f);
+            Assert.IsTrue(eta < 1E-04f);
+            Assert.IsTrue(relFwd < 1E-02f);
 
             pivot.Dispose();
 
@@ -776,16 +788,25 @@ public class doubleLUTests
             if (Analysis.isAnyNan(in x_Solved))
                 throw new System.Exception("TestJob: NaN detected");
 
-            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
+            // Backward-error (residual) gate; see SolveSystem for the full rationale. A is preserved
+            // (LUmat is a copy), so eta = ||A*x_solved - b||inf / (||A||inf*||x||inf + ||b||inf) is the
+            // kappa-free O(n*u) backward error; forward error kept only as a loose sanity bound.
+            var resid = Blas.dot(A, x_Solved) - b;
+            double eta = Norms.LInf(in resid)
+                       / (Norms.matrixLInf(in A) * Norms.LInf(in x_Solved) + Norms.LInf(in b));
 
-            if (!(zeroError < (double)1E-03f) && Fail[0] == (double)0)
+            var zeroError = Analysis.MaxZeroError(x_Known - x_Solved);
+            double relFwd = zeroError / Norms.LInf(in x_Known);
+
+            if (!(eta < (double)1E-04f) && Fail[0] == (double)0)
             {
                 Fail[0] = (double)1;
-                Fail[1] = zeroError;
-                Fail[2] = (double)1E-03f;
-                Fail[3] = zeroError - (double)1E-03f;
+                Fail[1] = eta;
+                Fail[2] = (double)1E-04f;
+                Fail[3] = eta - (double)1E-04f;
             }
-            Assert.IsTrue(zeroError < 1E-03f);
+            Assert.IsTrue(eta < 1E-04f);
+            Assert.IsTrue(relFwd < 1E-02f);
 
             pivot.Dispose();
 

@@ -19,11 +19,9 @@ namespace LinearAlgebra
             if (x.Data.Length == 1)
                 return x.Data[0];
 
-            double sum = 0f;
-            for (int i = 0; i < x.Data.Length; i++) 
-                sum += x.Data[i];
-            
-            return sum;
+            // The SIMD reduction lives in UnsafeOP.sum (2x width-4 accumulators, frozen fold); Stats just
+            // guards the empty/single-element cases and forwards. See UnsafeOP reductions / matVecDot.
+            unsafe { return Internal.UnsafeOP.sum(x.Data.Ptr, x.Data.Length); }
         }
 
         public static double mean<T>(in T x) where T : unmanaged, IUnsafedoubleArray {
