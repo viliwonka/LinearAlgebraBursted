@@ -3,9 +3,11 @@
   Runs the Burst performance benchmarks headlessly and prints the results table.
 
 .DESCRIPTION
-  Invokes a benchmark entry point via -executeMethod (mirrors regen.ps1). The
-  benchmark runs each kernel inside a [BurstCompile] IJob.Run() so it measures
-  native code, not the Mono interpreter, then writes a results table to
+  First regenerates sources from the templates (regen.ps1) so the benchmark
+  always measures fresh generated code, not a stale build — pass -NoRegen to
+  skip. Then invokes a benchmark entry point via -executeMethod. The benchmark
+  runs each kernel inside a [BurstCompile] IJob.Run() so it measures native code,
+  not the Mono interpreter, then writes a results table to
   TestResults/benchmark-all.txt which this script echoes.
 
   Requires the project to currently compile. Close the Unity Editor first
@@ -26,10 +28,25 @@ param(
   # -NoAffinity to disable pinning entirely. Pinning affects TIMING ONLY -- numeric
   # results are identical on any core.
   [switch]$NoAffinity,
-  [switch]$PinLower
+  [switch]$PinLower,
+  # Skip the template->source codegen step and benchmark whatever is already
+  # generated. Use when iterating on non-templated benchmark harness code.
+  [switch]$NoRegen
 )
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_unity-common.ps1"
+
+# Regenerate sources from templates first (unless -NoRegen), so the benchmark
+# never measures stale generated code after a template edit. Mirrors
+# regen-and-test.ps1; regen.ps1 is headless (no Unity) and fast.
+if (-not $NoRegen) {
+  & "$PSScriptRoot\regen.ps1"
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "`nStopping: codegen failed."
+    exit $LASTEXITCODE
+  }
+  Write-Host "`n=== Codegen OK -> running benchmark ===`n"
+}
 
 $root    = Get-ProjectRoot
 $Log     = Join-Path $root "TestResults\benchmark.log"
