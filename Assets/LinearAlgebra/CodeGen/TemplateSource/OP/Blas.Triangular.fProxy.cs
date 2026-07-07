@@ -22,7 +22,7 @@ namespace LinearAlgebra
         // Always reports DirectSolveStatus.Success — this primitive assumes a valid (non-singular)
         // triangular factor and does not itself detect a bad one.
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static DirectSolveInfo triUpper(ref fProxyMxN U, ref fProxyN b_to_x)
+        public static unsafe DirectSolveInfo triUpper(ref fProxyMxN U, ref fProxyN b_to_x)
         {
             if(U.M_Rows < U.N_Cols)
                 throw new ArgumentException("Blas.triUpper: Matrix must be square or tall (M_Rows >= N_Cols)");
@@ -30,14 +30,18 @@ namespace LinearAlgebra
             if(U.N_Cols != b_to_x.N)
                 throw new ArgumentException("Blas.triUpper: Matrix and vector must have same number of columns");
 
-            for (int r = U.N_Cols - 1; r >= 0; r--)
+            // The trailing sum_{c>r} U[r,c]*x[c] is a dot of row r's tail (contiguous, row-major) with the
+            // already-solved x tail -> route through the SIMD vecDotRange. U and b_to_x never alias.
+            int n = U.N_Cols;
+            int stride = U.N_Cols;
+            fProxy* Up = U.Data.Ptr;
+            fProxy* bp = b_to_x.Data.Ptr;
+
+            for (int r = n - 1; r >= 0; r--)
             {
-                fProxy sum = 0;
-
-                for (int c = r + 1; c < U.N_Cols; c++)
-                    sum += U[r, c] * b_to_x[c];
-
-                b_to_x[r] = (b_to_x[r] - sum) / U[r, r];
+                fProxy* Ur = Up + (long)r * stride;
+                fProxy sum = UnsafeOP.vecDotRange(Ur, bp, r + 1, n);
+                bp[r] = (bp[r] - sum) / Ur[r];
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -48,7 +52,7 @@ namespace LinearAlgebra
         // triUpper; a zero diagonal divides by zero -> Inf/NaN, unguarded).
         // Always reports DirectSolveStatus.Success — see triUpper.
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static DirectSolveInfo triLower(ref fProxyMxN L, ref fProxyN b_to_x)
+        public static unsafe DirectSolveInfo triLower(ref fProxyMxN L, ref fProxyN b_to_x)
         {
             if (L.IsSquare == false)
                 throw new ArgumentException("Blas.triLower: Matrix must be square");
@@ -56,14 +60,17 @@ namespace LinearAlgebra
             if (L.M_Rows != b_to_x.N)
                 throw new ArgumentException("Blas.triLower: Matrix and vector must have same number of rows");
 
-            for (int r = 0; r < L.M_Rows; r++)
+            // Leading sum_{c<r} L[r,c]*x[c] = dot of row r's head with the solved x head -> vecDotRange.
+            int n = L.M_Rows;
+            int stride = L.N_Cols;
+            fProxy* Lp = L.Data.Ptr;
+            fProxy* bp = b_to_x.Data.Ptr;
+
+            for (int r = 0; r < n; r++)
             {
-                fProxy sum = 0;
-
-                for (int c = 0; c < r; c++)
-                    sum += L[r, c] * b_to_x[c];
-
-                b_to_x[r] = (b_to_x[r] - sum) / L[r, r];
+                fProxy* Lr = Lp + (long)r * stride;
+                fProxy sum = UnsafeOP.vecDotRange(Lr, bp, 0, r);
+                bp[r] = (bp[r] - sum) / Lr[r];
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -73,20 +80,24 @@ namespace LinearAlgebra
         // RP = Row Pivot
         // Always reports DirectSolveStatus.Success — see triUpper.
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static DirectSolveInfo triLowerLU(ref fProxyMxN L, in Pivot RP, ref fProxyN b_to_x) {
+        public static unsafe DirectSolveInfo triLowerLU(ref fProxyMxN L, in Pivot RP, ref fProxyN b_to_x) {
             if (L.IsSquare == false)
                 throw new ArgumentException("Blas.triLowerLU: Matrix must be square");
 
             if (L.M_Rows != b_to_x.N)
                 throw new ArgumentException("Blas.triLowerLU: Matrix and vector must have same number of rows");
 
-            for (int r = 0; r < L.M_Rows; r++) {
-                fProxy sum = 0;
+            // Pivot only selects WHICH row (columns stay contiguous), so row RP[r] head is still a
+            // contiguous dot with the solved x head -> vecDotRange. Unit diagonal: no divide.
+            int n = L.M_Rows;
+            int stride = L.N_Cols;
+            fProxy* Lp = L.Data.Ptr;
+            fProxy* bp = b_to_x.Data.Ptr;
 
-                for (int c = 0; c < r; c++)
-                    sum += L[RP[r], c] * b_to_x[c];
-
-                b_to_x[r] = (b_to_x[r] - sum);
+            for (int r = 0; r < n; r++) {
+                fProxy* Lr = Lp + (long)RP[r] * stride;
+                fProxy sum = UnsafeOP.vecDotRange(Lr, bp, 0, r);
+                bp[r] = bp[r] - sum;
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -94,20 +105,24 @@ namespace LinearAlgebra
 
         // Always reports DirectSolveStatus.Success — see triUpper.
         /// <param name="b_to_x">On entry b; on exit the solution x.</param>
-        public static DirectSolveInfo triUpperLU(ref fProxyMxN U, in Pivot RP, ref fProxyN b_to_x) {
+        public static unsafe DirectSolveInfo triUpperLU(ref fProxyMxN U, in Pivot RP, ref fProxyN b_to_x) {
             if(U.IsSquare == false)
                 throw new ArgumentException("Blas.triUpperLU: Matrix must be square");
 
             if (U.N_Cols != b_to_x.N)
                 throw new ArgumentException("Blas.triUpperLU: Matrix and vector must have same number of columns");
 
-            for (int r = U.N_Cols - 1; r >= 0; r--) {
-                fProxy sum = 0;
+            // Row RP[r] tail dotted with the solved x tail (see triLowerLU on the pivot); divide by
+            // the pivoted diagonal U[RP[r],r].
+            int n = U.N_Cols;
+            int stride = U.N_Cols;
+            fProxy* Up = U.Data.Ptr;
+            fProxy* bp = b_to_x.Data.Ptr;
 
-                for (int c = r + 1; c < U.N_Cols; c++)
-                    sum += U[RP[r], c] * b_to_x[c];
-
-                b_to_x[r] = (b_to_x[r] - sum) / U[RP[r], r];
+            for (int r = n - 1; r >= 0; r--) {
+                fProxy* Ur = Up + (long)RP[r] * stride;
+                fProxy sum = UnsafeOP.vecDotRange(Ur, bp, r + 1, n);
+                bp[r] = (bp[r] - sum) / Ur[r];
             }
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };

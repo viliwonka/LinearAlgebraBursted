@@ -44,30 +44,14 @@ namespace LinearAlgebra
             }
         }
 
-        // Row-contraction dot with 4 independent accumulators. A right-multiply reflector update
-        // needs Mv (a per-row reduction) — the awkward direction for row-major storage, unlike a
-        // left-multiply's uᵀM (a sum of scaled rows, expressible as pure axpy — see QR/Bidiag's
-        // applyReflectorRight/applyHouseholderLeft). A single running-sum reduction can't be
-        // auto-vectorized under strict FloatMode (see docs/dev/perf-vectorization-lessons.md); 4
-        // independent accumulator chains restore ILP across the unrolled lanes (4 beat both 8, which
-        // regressed under register pressure, and the naive single accumulator).
+        // Row-contraction dot Mv (a per-row reduction) — the awkward direction for row-major storage,
+        // unlike a left-multiply's uᵀM (a sum of scaled rows, expressible as pure axpy — see QR/Bidiag's
+        // applyReflectorRight/applyHouseholderLeft). Routed through the shared SIMD reduction
+        // UnsafeOP.vecDot (two width-4 float4 accumulators): a running-sum reduction can't auto-vectorize
+        // under strict FloatMode, so it needs explicit SIMD lanes (see docs/dev/perf-vectorization-lessons.md
+        // and the float4 reductions in UnsafeOP). a (matrix row) and b (reflector v) never alias.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe float dot4(float* a, float* b, int n)
-        {
-            float s0 = (float)0, s1 = (float)0, s2 = (float)0, s3 = (float)0;
-            int i = 0;
-            for (; i + 4 <= n; i += 4)
-            {
-                s0 += a[i] * b[i];
-                s1 += a[i + 1] * b[i + 1];
-                s2 += a[i + 2] * b[i + 2];
-                s3 += a[i + 3] * b[i + 3];
-            }
-            float sum = (s0 + s1) + (s2 + s3);
-            for (; i < n; i++)
-                sum += a[i] * b[i];
-            return sum;
-        }
+        private static unsafe float dot4(float* a, float* b, int n) => UnsafeOP.vecDot(a, b, n);
 
         // Apply Householder G = I - v*vᵀ from the RIGHT to M[rowStart:rowEnd, colStart:]:
         //   M[r, colStart:] -= (M[r, colStart:] · v[colStart:]) · v[colStart:]  for rowStart <= r < rowEnd
