@@ -42,11 +42,10 @@ destructive/preserving contracts — the argument type (`fProxyN` → `fProxyMxN
   solve a whole block; the pivot is applied to `B`'s rows.
 - `QR.decompSolve(Q, R, B, X)` (reuses one factorization, `QᵀB` is a single GEMM, `B` preserved) and
   the fused `QR.solveInPlace(A, B, X)` (destroys `A`/`B`, never forms `Q`).
-- `QRCP.decompSolve(Q, R, P, B, X[, relTol])` and `QRCP.solveInPlace(A, B, X[, relTol])` — rank-safe
-  truncated least squares. The multi-RHS `QRCP.solveInPlace` runs the ordinary (non-fused)
-  factorization, so **`A` exits as `Q` and `B` is preserved** (unlike the single-RHS fused form which
-  destroys both) — it trades the fused kernel's Q-reconstruction saving for a clean factor-once /
-  solve-many block solve.
+- `QRCP.decompSolve(Q, R, P, B, X[, relTol])` (from a precomputed factorization, `B` preserved) and
+  `QRCP.solveInPlace(A, B, X[, relTol])` — rank-safe truncated least squares. Like the vector form,
+  the multi-RHS `solveInPlace` is **fused and destructive**: it applies `Qᵀ` to `B`'s columns *during*
+  factorization and never reconstructs `Q` (the ~⅓-runtime saving), so `A` and `B` are both destroyed.
 - `LQ.minNormSolve(A, B, X)` (underdetermined min-norm) and `SVD.pinvSolve(A, B, X)` (any shape/rank).
 
 This is the level-2 → level-3 jump: each substitution step is a contiguous axpy across the `k`

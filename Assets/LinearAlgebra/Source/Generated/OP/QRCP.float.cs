@@ -138,7 +138,7 @@ namespace LinearAlgebra
         static DirectSolveInfo decompInPlaceCore(ref floatMxN A_to_Q, ref floatMxN R, ref Pivot P, ref floatN u,
                                                   ref floatN vn1, ref floatN vn2)
         {
-            unsafe { return decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, null, false); }
+            unsafe { return decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, null, 1, null, false); }
         }
 
         // fusedSolve mirrors the blocked core's (decompInPlaceBlockedCore): when true, apply each
@@ -146,8 +146,12 @@ namespace LinearAlgebra
         // destructive solve at small n. When false (decomp path) bp is ignored (pass null) and Q is
         // reconstructed. Keeps QRCP.solveInPlace's destroys-A-and-b contract uniform across the size
         // gate (the unblocked path would otherwise leave A=Q and b intact, an inconsistent contract).
+        // bp/nrhs/accp carry the fused right-hand side(s): bp is an m x nrhs row-major block (Qᵀ is
+        // applied to all nrhs columns as each reflector is generated), accp a length-nrhs scratch used
+        // only when nrhs > 1. nrhs == 1 keeps the original scalar two-pass apply (byte-identical to the
+        // single-RHS path, no per-row axpy call overhead).
         static unsafe DirectSolveInfo decompInPlaceCore(ref floatMxN A_to_Q, ref floatMxN R, ref Pivot P, ref floatN u,
-                                                  ref floatN vn1, ref floatN vn2, float* bp, bool fusedSolve)
+                                                  ref floatN vn1, ref floatN vn2, float* bp, int nrhs, float* rhsAccp, bool fusedSolve)
         {
             P.Reset();
 
@@ -236,11 +240,24 @@ namespace LinearAlgebra
                 //     Qᵀb as reflectors are generated — no Q ever formed (see decompInPlaceBlockedCore). ---
                 if (fusedSolve)
                 {
-                    float dotb = (float)0;
-                    for (int r = d; r < m; r++)
-                        dotb += u[r] * bp[r];
-                    for (int r = d; r < m; r++)
-                        bp[r] -= u[r] * dotb;
+                    if (nrhs == 1)
+                    {
+                        float dotb = (float)0;
+                        for (int r = d; r < m; r++)
+                            dotb += u[r] * bp[r];
+                        for (int r = d; r < m; r++)
+                            bp[r] -= u[r] * dotb;
+                    }
+                    else
+                    {
+                        // Multi-RHS: acc = uᵀB over rows [d,m), then B -= u·acc (two unit-stride axpy
+                        // passes across the nrhs columns — the same shape as applyReflectorRight).
+                        UnsafeUtility.MemClear(rhsAccp, (long)nrhs * UnsafeUtility.SizeOf<float>());
+                        for (int r = d; r < m; r++)
+                            UnsafeOP.axpy(rhsAccp, bp + (long)r * nrhs, u[r], nrhs);
+                        for (int r = d; r < m; r++)
+                            UnsafeOP.axpy(bp + (long)r * nrhs, rhsAccp, -u[r], nrhs);
+                    }
                 }
 
                 // --- downdate trailing norms for the NEXT step (guarded, see the method doc above) ---
@@ -396,12 +413,14 @@ namespace LinearAlgebra
         static unsafe DirectSolveInfo decompInPlaceBlockedCore(ref floatMxN A_to_Q, ref floatMxN R, ref Pivot P,
                                                                ref floatN u, ref floatN vn1, ref floatN vn2)
         {
-            return decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, null, false);
+            return decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, null, 1, null, false);
         }
 
+        // bp/nrhs/accp: the fused right-hand side(s) — see decompInPlaceCore. nrhs == 1 keeps the
+        // original scalar apply byte-identical; nrhs > 1 applies Qᵀ to all columns via axpy.
         static unsafe DirectSolveInfo decompInPlaceBlockedCore(ref floatMxN A_to_Q, ref floatMxN R, ref Pivot P,
                                                                ref floatN u, ref floatN vn1, ref floatN vn2,
-                                                               float* bp, bool fusedSolve)
+                                                               float* bp, int nrhs, float* rhsAccp, bool fusedSolve)
         {
             // Factorization panel width. A method-local const (QRCP is a partial class shared by the
             // float/double generated files, so a class-level const of this name would collide, CS0102).
@@ -542,11 +561,22 @@ namespace LinearAlgebra
                     //     accumulates Qᵀb as reflectors are generated — no Q ever formed. ---
                     if (fusedSolve)
                     {
-                        float dotb = (float)0;
-                        for (int r = d; r < m; r++)
-                            dotb += up[r] * bp[r];
-                        for (int r = d; r < m; r++)
-                            bp[r] -= up[r] * dotb;
+                        if (nrhs == 1)
+                        {
+                            float dotb = (float)0;
+                            for (int r = d; r < m; r++)
+                                dotb += up[r] * bp[r];
+                            for (int r = d; r < m; r++)
+                                bp[r] -= up[r] * dotb;
+                        }
+                        else
+                        {
+                            UnsafeUtility.MemClear(rhsAccp, (long)nrhs * UnsafeUtility.SizeOf<float>());
+                            for (int r = d; r < m; r++)
+                                UnsafeOP.axpy(rhsAccp, bp + (long)r * nrhs, up[r], nrhs);
+                            for (int r = d; r < m; r++)
+                                UnsafeOP.axpy(bp + (long)r * nrhs, rhsAccp, -up[r], nrhs);
+                        }
                     }
 
                     // --- 5. one combined pass acc[jl] = Σ_{r=rk}^{m-1} u[r]·A[r, p0+jl], jl in [0,width) ---
@@ -902,9 +932,9 @@ namespace LinearAlgebra
             const int QRCP_BLOCK = 32;
 
             if (A_to_Q.N_Cols >= Consts.floatQrcpBlockMinN)   // float/double split (see Consts); default 2*QRCP_BLOCK
-                decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, true);
+                decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, 1, null, true);
             else
-                decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, true);
+                decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, 1, null, true);
 
             // b now holds Qᵀb (both cores fused), consumed directly by the finish.
             return solveInPlaceFinish(ref A_to_Q, ref b, ref x, ref R, ref P, ref u, relTol);
@@ -1034,53 +1064,20 @@ namespace LinearAlgebra
 
         // ---- multi-RHS forms: rank-safe least squares for a whole matrix of right-hand sides ----
         //
-        // NOTE on the contract difference vs the vector solveInPlace: the single-RHS fused path
-        // destroys A and b and never forms Q (its whole point). The multi-RHS path instead runs the
-        // ordinary (non-fused) decompInPlace — so A_to_Q exits as the orthogonal factor Q, and B is
-        // PRESERVED — then a level-3 block solve (QᵀB is one GEMM) over all k right-hand sides. This
-        // deliberately trades the fused kernel's ~⅓-runtime Q-reconstruction saving for a clean
-        // factor-once/solve-many primitive built on the trusted decompInPlace; threading matrix-RHS
-        // through the delicate blocked fused core was judged not worth the risk. See decompSolve.
+        // Two entry points, mirroring the single-RHS pair:
+        //   decompSolve(Q, R, P, B, X)  — from a precomputed factorization; B PRESERVED, QᵀB is one
+        //                                 GEMM, then a truncated block back-solve. Reuse across blocks.
+        //   solveInPlace(A, B, X)       — FUSED and DESTRUCTIVE, exactly like the vector solveInPlace:
+        //                                 Qᵀ is applied to B's columns as reflectors are generated and
+        //                                 Q is NEVER reconstructed (the ~⅓-runtime saving). A_to_Q and
+        //                                 B are DESTROYED (A_to_Q -> reflectors + partial R, B -> QᵀB).
 
-        /// <summary>
-        /// QRCP rank-safe least-squares for a whole block of right-hand sides, from a precomputed
-        /// column-pivoted factorization (A·P = Q·R, from QRCP.decompInPlace/decomp). Each RHS is a
-        /// COLUMN of B (m x k, preserved); X (n x k) receives the *basic* (truncated) solution, must be
-        /// distinct from B. Numerical rank r is read from R's non-increasing diagonal
-        /// (tol = relTol·|R[0,0]|; relTol &lt; 0 auto-selects max(m,n)·Consts.floatZeroThreshold). Only
-        /// the leading r×r block of R is back-substituted; free variables are zeroed and P un-applied.
-        /// Returns <see cref="RankInfo"/> (Success if r == n, else RankDeficient).
-        /// </summary>
-        /// <param name="Q">Orthogonal factor (m x n) from decompInPlace.</param>
-        /// <param name="R">Upper-triangular factor (n x n) from decompInPlace.</param>
-        /// <param name="P">Column pivot from decompInPlace.</param>
-        /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
-        /// <param name="X">Output only; prior contents ignored. Solution (n x k).</param>
-        public static unsafe RankInfo decompSolve(ref floatMxN Q, ref floatMxN R, in Pivot P,
-                                                  ref floatMxN B, ref floatMxN X, float relTol)
+        // Shared tail: X's first n rows hold QᵀB (in the permuted column basis). Detect rank from R's
+        // non-increasing diagonal, back-solve the leading r×r block for all k columns, zero the free
+        // variables, and un-permute the rows. relTol must already be resolved (>= 0). See the vector
+        // solveInPlaceFinish for the single-column derivation.
+        static unsafe RankInfo finishFromQtB(ref floatMxN X, ref floatMxN R, in Pivot P, float relTol, int n, int k)
         {
-            int m = Q.M_Rows;
-            int n = Q.N_Cols;
-            int k = B.N_Cols;
-
-            if (X.M_Rows != n)
-                throw new ArgumentException("QRCP.decompSolve: X.M_Rows must equal Q.N_Cols");
-            if (B.M_Rows != m)
-                throw new ArgumentException("QRCP.decompSolve: B.M_Rows must equal Q.M_Rows");
-            if (X.N_Cols != k)
-                throw new ArgumentException("QRCP.decompSolve: X.N_Cols must equal B.N_Cols");
-            if (R.M_Rows != n || R.N_Cols != n)
-                throw new ArgumentException("QRCP.decompSolve: R must be N_Cols x N_Cols");
-            if (P.N != n)
-                throw new ArgumentException("QRCP.decompSolve: P.N must equal Q.N_Cols");
-
-            if (relTol < (float)0)
-                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
-
-            if (n == 0)
-                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
-
-            // Numerical rank from R's non-increasing diagonal (see the vector solveInPlaceFinish).
             float tol = relTol * math.abs(R[0, 0]);
             int rank = 0;
             for (int i = 0; i < n; i++)
@@ -1098,9 +1095,6 @@ namespace LinearAlgebra
             }
 
             int r = rank;
-
-            // C = QᵀB into X (level-3 GEMM; ref-dest dot guards X-aliases-input and zeroes X first).
-            Blas.dot(in Q, in B, ref X, transposeA: true);
 
             // Back-solve the leading r×r block of R for all k columns (axpy across the k RHS). Every
             // used R[i,i] exceeds tol, so the divide is safe.
@@ -1139,21 +1133,67 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Factor-and-solve (multi-RHS): column-pivoted QR of A_to_Q in place (A_to_Q exits as the
-        /// orthogonal factor Q — see the contract note above; B is PRESERVED), then the rank-safe
-        /// truncated least-squares solve for every column of B. Returns <see cref="RankInfo"/>.
+        /// QRCP rank-safe least-squares for a whole block of right-hand sides, from a precomputed
+        /// column-pivoted factorization (A·P = Q·R, from QRCP.decompInPlace/decomp). Each RHS is a
+        /// COLUMN of B (m x k, preserved); X (n x k) receives the *basic* (truncated) solution, must be
+        /// distinct from B. Numerical rank r is read from R's non-increasing diagonal
+        /// (tol = relTol·|R[0,0]|; relTol &lt; 0 auto-selects max(m,n)·Consts.floatZeroThreshold). Only
+        /// the leading r×r block of R is back-substituted; free variables are zeroed and P un-applied.
+        /// Returns <see cref="RankInfo"/> (Success if r == n, else RankDeficient).
         /// </summary>
-        /// <param name="A_to_Q">On entry A (m x n, m >= n); on exit the orthogonal factor Q.</param>
+        /// <param name="Q">Orthogonal factor (m x n) from decompInPlace.</param>
+        /// <param name="R">Upper-triangular factor (n x n) from decompInPlace.</param>
+        /// <param name="P">Column pivot from decompInPlace.</param>
         /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
         /// <param name="X">Output only; prior contents ignored. Solution (n x k).</param>
-        /// <param name="R">Scratch: n x n (receives R; reusable for a later decompSolve).</param>
-        /// <param name="P">Scratch: column Pivot of size n (reset internally; reusable).</param>
+        public static RankInfo decompSolve(ref floatMxN Q, ref floatMxN R, in Pivot P,
+                                           ref floatMxN B, ref floatMxN X, float relTol)
+        {
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+            int k = B.N_Cols;
+
+            if (X.M_Rows != n)
+                throw new ArgumentException("QRCP.decompSolve: X.M_Rows must equal Q.N_Cols");
+            if (B.M_Rows != m)
+                throw new ArgumentException("QRCP.decompSolve: B.M_Rows must equal Q.M_Rows");
+            if (X.N_Cols != k)
+                throw new ArgumentException("QRCP.decompSolve: X.N_Cols must equal B.N_Cols");
+            if (R.M_Rows != n || R.N_Cols != n)
+                throw new ArgumentException("QRCP.decompSolve: R must be N_Cols x N_Cols");
+            if (P.N != n)
+                throw new ArgumentException("QRCP.decompSolve: P.N must equal Q.N_Cols");
+
+            if (relTol < (float)0)
+                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+
+            if (n == 0)
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            // X = QᵀB (level-3 GEMM; ref-dest dot guards X-aliases-input and zeroes X first).
+            Blas.dot(in Q, in B, ref X, transposeA: true);
+            return finishFromQtB(ref X, ref R, in P, relTol, n, k);
+        }
+
+        /// <summary>
+        /// Factor-and-solve (multi-RHS), FUSED and DESTRUCTIVE — the fast path, mirroring the vector
+        /// solveInPlace: column-pivoted QR of A_to_Q in place, applying Qᵀ to every column of B as the
+        /// reflectors are generated, and NEVER reconstructing Q (the ~⅓-of-runtime saving). On return
+        /// A_to_Q is DESTROYED (reflectors + partial R, NOT the orthogonal factor — use decompInPlace
+        /// for Q) and B is DESTROYED (overwritten with QᵀB). Returns <see cref="RankInfo"/>.
+        /// </summary>
+        /// <param name="A_to_Q">On entry A (m x n, m >= n); DESTROYED on exit.</param>
+        /// <param name="B">Right-hand sides (m x k). DESTROYED (overwritten with QᵀB). Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Solution (n x k).</param>
+        /// <param name="R">Scratch: n x n (receives R).</param>
+        /// <param name="P">Scratch: column Pivot of size n (reset internally).</param>
         /// <param name="u">Scratch: length EXACTLY m.</param>
-        public static RankInfo solveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X,
-                                            ref floatMxN R, ref Pivot P, ref floatN u, float relTol)
+        public static unsafe RankInfo solveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X,
+                                                   ref floatMxN R, ref Pivot P, ref floatN u, float relTol)
         {
             int m = A_to_Q.M_Rows;
             int n = A_to_Q.N_Cols;
+            int k = B.N_Cols;
 
             if (m < n)
                 throw new ArgumentException("QRCP.solveInPlace: A_to_Q must be square or tall (M_Rows >= N_Cols)");
@@ -1161,16 +1201,55 @@ namespace LinearAlgebra
                 throw new ArgumentException("QRCP.solveInPlace: B.M_Rows must equal A_to_Q.M_Rows");
             if (X.M_Rows != n)
                 throw new ArgumentException("QRCP.solveInPlace: X.M_Rows must equal A_to_Q.N_Cols");
-            if (X.N_Cols != B.N_Cols)
+            if (X.N_Cols != k)
                 throw new ArgumentException("QRCP.solveInPlace: X.N_Cols must equal B.N_Cols");
+            if (R.M_Rows != n || R.N_Cols != n)
+                throw new ArgumentException("QRCP.solveInPlace: R must be N_Cols x N_Cols");
+            if (P.N != n)
+                throw new ArgumentException("QRCP.solveInPlace: P.N must equal A_to_Q.N_Cols");
+            if (u.N != m)
+                throw new ArgumentException("QRCP.solveInPlace: u.N must equal A_to_Q.M_Rows");
 
-            // decompInPlace validates R/P/u sizes; it always reports Success (no failure mode).
-            decompInPlace(ref A_to_Q, ref R, ref P, ref u);
-            return decompSolve(ref A_to_Q, ref R, in P, ref B, ref X, relTol);
+            if (relTol < (float)0)
+                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+
+            if (n == 0)
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            // Fused destructive solve: apply Qᵀ to B during the (blocked or unblocked) factorization
+            // and skip Q reconstruction. vn1/vn2 are the norm-downdating scratch; acc is the length-k
+            // reflector-apply accumulator for the multi-RHS fused path.
+            var vn1 = new floatN(n, Allocator.Temp, false);
+            var vn2 = new floatN(n, Allocator.Temp, false);
+            var acc = new floatN(k, Allocator.Temp, false);
+            float* bp = B.Data.Ptr;
+            float* accp = acc.Data.Ptr;
+
+            if (n >= Consts.floatQrcpBlockMinN)   // float/double split (see Consts); default 2*QRCP_BLOCK
+                decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, bp, k, accp, true);
+            else
+                decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, bp, k, accp, true);
+
+            // B now holds QᵀB (m x k). Copy its leading n rows into X, then finish (rank + back-solve
+            // + un-permute) — same tail as decompSolve, just sourcing QᵀB from B instead of a GEMM.
+            float* Xp = X.Data.Ptr;
+            for (int i = 0; i < n; i++)
+            {
+                float* dst = Xp + (long)i * k;
+                float* src = bp + (long)i * k;
+                for (int c = 0; c < k; c++) dst[c] = src[c];
+            }
+
+            var info = finishFromQtB(ref X, ref R, in P, relTol, n, k);
+
+            acc.Dispose();
+            vn2.Dispose();
+            vn1.Dispose();
+            return info;
         }
 
         /// <summary>Allocating multi-RHS convenience: allocates R (n×n), P (n) and u (m) from
-        /// Allocator.Temp. Use the scratch overload in hot loops.</summary>
+        /// Allocator.Temp. DESTROYS A_to_Q and B (see the scratch overload). Use that overload in hot loops.</summary>
         public static RankInfo solveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X, float relTol)
         {
             int m = A_to_Q.M_Rows;
@@ -1195,7 +1274,7 @@ namespace LinearAlgebra
             return info;
         }
 
-        /// <summary>Allocating multi-RHS convenience with default tolerance.</summary>
+        /// <summary>Allocating multi-RHS convenience with default tolerance. DESTROYS A_to_Q and B.</summary>
         public static RankInfo solveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X)
         {
             return solveInPlace(ref A_to_Q, ref B, ref X, (float)(-1));

@@ -31,6 +31,7 @@ public class floatMultiRHSSolveTests
             QRMultiRHSTall,
             QRCPMultiRHS,
             QRCPMultiRHSRankDeficient,
+            QRCPMultiRHSBlocked,
             LQMultiRHSMinNorm,
             CHOPMultiRHSFullRank,
             CHOPMultiRHSRankDeficient,
@@ -54,6 +55,7 @@ public class floatMultiRHSSolveTests
                 case TestType.QRMultiRHSTall:            QRMultiRHSTall();            break;
                 case TestType.QRCPMultiRHS:              QRCPMultiRHS();              break;
                 case TestType.QRCPMultiRHSRankDeficient: QRCPMultiRHSRankDeficient(); break;
+                case TestType.QRCPMultiRHSBlocked:       QRCPMultiRHSBlocked();       break;
                 case TestType.LQMultiRHSMinNorm:         LQMultiRHSMinNorm();         break;
                 case TestType.CHOPMultiRHSFullRank:      CHOPMultiRHSFullRank();      break;
                 case TestType.CHOPMultiRHSRankDeficient: CHOPMultiRHSRankDeficient(); break;
@@ -265,18 +267,20 @@ public class floatMultiRHSSolveTests
             var A = arena.floatLauchli(nc, (float)0.5);   // tall full rank
             int m = A.M_Rows;
             var Xtrue = MakeX(ref arena, nc, k);
-            var B = arena.floatMat(m, k); Blas.dot(in A, in Xtrue, ref B);
+            var B = arena.floatMat(m, k); Blas.dot(in A, in Xtrue, ref B);   // reference, kept
 
+            // Fused solveInPlace DESTROYS A and B (like QR) — use copies.
             var Aq = A.Copy();
+            var Bq = B.Copy();
             var X = arena.floatMat(nc, k);
-            RankInfo info = QRCP.solveInPlace(ref Aq, ref B, ref X);   // A_to_Q -> Q, B preserved
+            RankInfo info = QRCP.solveInPlace(ref Aq, ref Bq, ref X);
             AssertTrue(info.Solved);
             RecordEq(info.rank, nc);
 
             CheckMatClose(in X, in Xtrue, Band(in A, (float)300));
-            CheckResidual(ref arena, in A, in X, in B, (float)300);
+            CheckResidual(ref arena, in A, in X, in B, (float)300);   // original A, B
 
-            // Cross-check vs the vector fused solveInPlace per column (destroys its own copies).
+            // Cross-check vs the vector fused solveInPlace per column (each destroys its own copies).
             for (int c = 0; c < k; c++)
             {
                 var Ac = A.Copy();
@@ -285,6 +289,16 @@ public class floatMultiRHSSolveTests
                 QRCP.solveInPlace(ref Ac, ref bc, ref xc);
                 CheckColClose(in X, c, in xc, Band(in A, (float)300));
             }
+
+            // decompSolve (preserved-B route, from a precomputed factorization) matches the fused result.
+            var Q = A.Copy();
+            var R = arena.floatMat(nc, nc);
+            var P = new Pivot(nc, Allocator.Temp);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
+            var Xd = arena.floatMat(nc, k);
+            QRCP.decompSolve(ref Q, ref R, in P, ref B, ref Xd, (float)(-1));   // B preserved
+            CheckMatClose(in Xd, in X, Band(in A, (float)300));
+            P.Dispose();
 
             arena.Dispose();
         }
@@ -295,11 +309,13 @@ public class floatMultiRHSSolveTests
 
             int n = 4, k = 2;
             var A = arena.floatPei(n, (float)0);   // all-ones, rank 1
-            var B = MakeX(ref arena, n, k);           // arbitrary RHS
+            var B = MakeX(ref arena, n, k);           // arbitrary RHS, kept
 
+            // Fused solveInPlace destroys A and B — use copies.
             var Aq = A.Copy();
+            var Bq = B.Copy();
             var X = arena.floatMat(n, k);
-            RankInfo info = QRCP.solveInPlace(ref Aq, ref B, ref X);
+            RankInfo info = QRCP.solveInPlace(ref Aq, ref Bq, ref X);
             RecordEq(info.rank, 1);
 
             // Cross-check vs the vector path per column — the truncated (basic) solution must agree.
@@ -310,6 +326,40 @@ public class floatMultiRHSSolveTests
                 var xc = arena.floatVec(n);
                 QRCP.solveInPlace(ref Ac, ref bc, ref xc);
                 CheckColClose(in X, c, in xc, Band(in A, (float)300));
+            }
+
+            arena.Dispose();
+        }
+
+        // Large enough (n >= 2·QRCP_BLOCK) to drive the BLOCKED fused core's multi-RHS reflector apply.
+        void QRCPMultiRHSBlocked()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int nc = 80, k = 3;
+            var A = arena.floatLauchli(nc, (float)0.5);   // 81 x 80, tall full rank, blocked path
+            int m = A.M_Rows;
+            var Xtrue = MakeX(ref arena, nc, k);
+            var B = arena.floatMat(m, k); Blas.dot(in A, in Xtrue, ref B);
+
+            var Aq = A.Copy();
+            var Bq = B.Copy();
+            var X = arena.floatMat(nc, k);
+            RankInfo info = QRCP.solveInPlace(ref Aq, ref Bq, ref X);
+            AssertTrue(info.Solved);
+            RecordEq(info.rank, nc);
+
+            CheckMatClose(in X, in Xtrue, Band(in A, (float)2000));
+            CheckResidual(ref arena, in A, in X, in B, (float)2000);
+
+            // Cross-check vs the vector fused solveInPlace (also blocked) per column.
+            for (int c = 0; c < k; c++)
+            {
+                var Ac = A.Copy();
+                var bc = GetCol(ref arena, in B, c);
+                var xc = arena.floatVec(nc);
+                QRCP.solveInPlace(ref Ac, ref bc, ref xc);
+                CheckColClose(in X, c, in xc, Band(in A, (float)2000));
             }
 
             arena.Dispose();
