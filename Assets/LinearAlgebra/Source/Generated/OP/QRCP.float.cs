@@ -1528,5 +1528,259 @@ namespace LinearAlgebra
         {
             return solveInPlace(ref A_to_Q, ref B, ref X, (float)(-1));
         }
+
+        // ---- multi-RHS COD: MINIMUM-NORM least squares for a whole block of right-hand sides ----
+        //
+        // The block form of minNormSolveInPlace / the single-RHS COD (see that section): x = A⁺B, the
+        // minimum-norm least-squares solution for each column of B at once. Two entry points mirroring
+        // the basic multi-RHS pair:
+        //   minNormDecompSolve(Q,R,P,B,X) — from a precomputed factorization; B PRESERVED (QᵀB is one
+        //                                   GEMM), then the block COD finish. Reuse across blocks.
+        //   minNormSolveInPlace(A,B,X)    — FUSED and DESTRUCTIVE: Qᵀ applied to B's columns during
+        //                                   factorization, Q never reconstructed. A_to_Q and B DESTROYED.
+
+        // Shared block COD finish. On entry X's leading n rows hold QᵀB (in the pivoted column basis).
+        // Detect rank r from R's diagonal; if r == n the basic block finish IS min-norm (reuse
+        // finishFromQtB); else complete the orthogonal decomposition on the r×n block M = [R11 R12] (LQ
+        // compress → L̃ + Qz reflectors), block-solve L̃ W1 = C1 (C1 = top r rows of QᵀB), form the
+        // min-norm block Y = Qzᵀ[W1;0], and un-permute the rows into X. relTol must already be resolved
+        // (>= 0). Allocates one set of Allocator.Temp COD scratch; the LQ compress is O(r²n).
+        static unsafe RankInfo minNormFinishFromQtB(ref floatMxN X, ref floatMxN R, in Pivot P, float relTol, int n, int k)
+        {
+            float tol = relTol * math.abs(R[0, 0]);
+            int rank = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (math.abs(R[i, i]) > tol) rank++;
+                else break;
+            }
+
+            if (rank == 0)
+            {
+                float* Xz = X.Data.Ptr;
+                for (long e = 0; e < (long)n * k; e++) Xz[e] = (float)0;
+                return new RankInfo { status = DirectSolveStatus.RankDeficient, rank = 0 };
+            }
+
+            // r == n: full column rank, the basic block finish is already min-norm (no COD).
+            if (rank == n)
+                return finishFromQtB(ref X, ref R, in P, relTol, n, k);
+
+            int r = rank;
+
+            // LQ-compress M = R's top r×n block (contiguous r*n) → L̃ + Qz reflectors (see the single-RHS
+            // minNormCodFinish for the layout).
+            var M   = new floatMxN(r, n, Allocator.Temp, false);
+            var Lc  = new floatMxN(r, r, Allocator.Temp, false);
+            var vrow = new floatN(n, Allocator.Temp, false);
+            UnsafeUtility.MemCpy(M.Data.Ptr, R.Data.Ptr, (long)r * n * UnsafeUtility.SizeOf<float>());
+            float zeroThreshold = Consts.floatZeroThreshold * Norms.LInf(in M);
+            for (int d = 0; d < r; d++)
+            {
+                LQ.genHouseholderRow(ref M, ref vrow, d, d, zeroThreshold);
+                LQ.applyHouseholderRight(ref M, ref vrow, d, d);
+                Lc[d, d] = M[d, d];
+                for (int c = d; c < n; c++) M[d, c] = vrow[c];
+            }
+            for (int i = 0; i < r; i++)
+            {
+                for (int c = 0; c < i; c++)     Lc[i, c] = M[i, c];
+                for (int c = i + 1; c < r; c++) Lc[i, c] = (float)0;
+            }
+
+            // W1 = L̃⁻¹ C1 (block forward-substitution; C1 = top r rows of QᵀB, held in X's first r rows).
+            float* Xp = X.Data.Ptr;
+            var W1 = new floatMxN(r, k, Allocator.Temp, false);
+            float* W1p = W1.Data.Ptr;
+            for (int i = 0; i < r; i++)
+            {
+                float* Wi = W1p + (long)i * k;
+                float* Xi = Xp + (long)i * k;               // C1 row i
+                for (int c = 0; c < k; c++) Wi[c] = Xi[c];
+                for (int j = 0; j < i; j++)
+                    UnsafeOP.axpy(Wi, W1p + (long)j * k, -Lc[i, j], k);
+                float inv = (float)1 / Lc[i, i];
+                for (int c = 0; c < k; c++) Wi[c] *= inv;
+            }
+
+            // Y = Qzᵀ W1 (n×k) straight from M's reflectors, then un-permute rows into X: X[P[j],:] = Y[j,:].
+            var Y = new floatMxN(n, k, Allocator.Temp, false);
+            LQ.applyQtFromReflectors(ref M, ref W1, ref Y);
+            float* Yp = Y.Data.Ptr;
+            for (int j = 0; j < n; j++)
+            {
+                float* dst = Xp + (long)P[j] * k;
+                float* src = Yp + (long)j * k;
+                for (int c = 0; c < k; c++) dst[c] = src[c];
+            }
+
+            Y.Dispose();
+            W1.Dispose();
+            vrow.Dispose();
+            Lc.Dispose();
+            M.Dispose();
+
+            return new RankInfo { status = DirectSolveStatus.RankDeficient, rank = r };
+        }
+
+        /// <summary>
+        /// QRCP MINIMUM-NORM (pseudoinverse) least-squares for a whole block of right-hand sides, from a
+        /// precomputed column-pivoted factorization (A·P = Q·R). Each RHS is a COLUMN of B (m x k,
+        /// preserved); X (n x k) receives x = A⁺B (must be distinct from B). This is the multi-RHS
+        /// factor-reuse form of <see cref="minNormSolveInPlace(ref floatMxN, ref floatN, ref floatN, ref floatMxN, ref Pivot, ref floatN, float)"/>:
+        /// QᵀB is a single GEMM, then a block complete-orthogonal-decomposition finish. Setting B = I
+        /// yields the pseudoinverse A⁺ itself. Returns <see cref="RankInfo"/>.
+        /// </summary>
+        /// <param name="Q">Orthogonal factor (m x n) from decompInPlace.</param>
+        /// <param name="R">Upper-triangular factor (n x n) from decompInPlace.</param>
+        /// <param name="P">Column pivot from decompInPlace.</param>
+        /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Minimum-norm solution (n x k).</param>
+        public static unsafe RankInfo minNormDecompSolve(ref floatMxN Q, ref floatMxN R, in Pivot P,
+                                                         ref floatMxN B, ref floatMxN X, float relTol)
+        {
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+            int k = B.N_Cols;
+
+            if (X.M_Rows != n)
+                throw new ArgumentException("QRCP.minNormDecompSolve: X.M_Rows must equal Q.N_Cols");
+            if (B.M_Rows != m)
+                throw new ArgumentException("QRCP.minNormDecompSolve: B.M_Rows must equal Q.M_Rows");
+            if (X.N_Cols != k)
+                throw new ArgumentException("QRCP.minNormDecompSolve: X.N_Cols must equal B.N_Cols");
+            if (R.M_Rows != n || R.N_Cols != n)
+                throw new ArgumentException("QRCP.minNormDecompSolve: R must be N_Cols x N_Cols");
+            if (P.N != n)
+                throw new ArgumentException("QRCP.minNormDecompSolve: P.N must equal Q.N_Cols");
+
+            if (relTol < (float)0)
+                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+
+            if (n == 0)
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            // X = QᵀB (level-3 GEMM; ref-dest dot guards X-aliases-input and zeroes X first), then the
+            // shared block COD finish (rank-detect + compress + block solve + un-permute).
+            Blas.dot(in Q, in B, ref X, transposeA: true);
+            return minNormFinishFromQtB(ref X, ref R, in P, relTol, n, k);
+        }
+
+        /// <summary>minNormDecompSolve with the default rank tolerance. See the primitive for semantics.</summary>
+        public static RankInfo minNormDecompSolve(ref floatMxN Q, ref floatMxN R, in Pivot P,
+                                                  ref floatMxN B, ref floatMxN X)
+        {
+            return minNormDecompSolve(ref Q, ref R, in P, ref B, ref X, (float)(-1));
+        }
+
+        /// <summary>
+        /// QRCP MINIMUM-NORM least-squares for a whole block of right-hand sides, FUSED and DESTRUCTIVE —
+        /// the block form of the single-RHS <see cref="minNormSolveInPlace(ref floatMxN, ref floatN, ref floatN, ref floatMxN, ref Pivot, ref floatN, float)"/>:
+        /// column-pivoted QR of A_to_Q in place, Qᵀ applied to every column of B as reflectors are
+        /// generated, Q never reconstructed, then a block complete-orthogonal-decomposition finish. On
+        /// return A_to_Q is DESTROYED (reflectors + partial R) and B is DESTROYED (overwritten with QᵀB).
+        /// X (n x k) receives x = A⁺B. Returns <see cref="RankInfo"/>.
+        /// </summary>
+        /// <param name="A_to_Q">On entry A (m x n, m >= n); DESTROYED on exit.</param>
+        /// <param name="B">Right-hand sides (m x k). DESTROYED (overwritten with QᵀB). Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Minimum-norm solution (n x k).</param>
+        /// <param name="R">Scratch: n x n (receives R).</param>
+        /// <param name="P">Scratch: column Pivot of size n (reset internally).</param>
+        /// <param name="u">Scratch: length EXACTLY m.</param>
+        public static unsafe RankInfo minNormSolveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X,
+                                                          ref floatMxN R, ref Pivot P, ref floatN u, float relTol)
+        {
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+            int k = B.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: A_to_Q must be square or tall (M_Rows >= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: B.M_Rows must equal A_to_Q.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: X.M_Rows must equal A_to_Q.N_Cols");
+            if (X.N_Cols != k)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: X.N_Cols must equal B.N_Cols");
+            if (R.M_Rows != n || R.N_Cols != n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: R must be N_Cols x N_Cols");
+            if (P.N != n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: P.N must equal A_to_Q.N_Cols");
+            if (u.N != m)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: u.N must equal A_to_Q.M_Rows");
+
+            if (relTol < (float)0)
+                relTol = (float)(math.max(m, n)) * Consts.floatZeroThreshold;
+
+            if (n == 0)
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            // Fused factor: apply Qᵀ to B's columns during the (blocked or unblocked) factorization.
+            var vn1 = new floatN(n, Allocator.Temp, false);
+            var vn2 = new floatN(n, Allocator.Temp, false);
+            var acc = new floatN(k, Allocator.Temp, false);
+            float* bp = B.Data.Ptr;
+            float* accp = acc.Data.Ptr;
+
+            if (n >= Consts.floatQrcpBlockMinN)   // float/double split (see Consts); default 2*QRCP_BLOCK
+                decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, bp, k, accp, true);
+            else
+                decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, bp, k, accp, true);
+
+            // B now holds QᵀB (m x k). Copy its leading n rows into X, then the shared block COD finish.
+            float* Xp = X.Data.Ptr;
+            for (int i = 0; i < n; i++)
+            {
+                float* dst = Xp + (long)i * k;
+                float* src = bp + (long)i * k;
+                for (int c = 0; c < k; c++) dst[c] = src[c];
+            }
+
+            var info = minNormFinishFromQtB(ref X, ref R, in P, relTol, n, k);
+
+            acc.Dispose();
+            vn2.Dispose();
+            vn1.Dispose();
+            return info;
+        }
+
+        /// <summary>minNormSolveInPlace (multi-RHS) with the default rank tolerance. See the primitive.</summary>
+        public static RankInfo minNormSolveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X,
+                                                   ref floatMxN R, ref Pivot P, ref floatN u)
+        {
+            return minNormSolveInPlace(ref A_to_Q, ref B, ref X, ref R, ref P, ref u, (float)(-1));
+        }
+
+        /// <summary>Allocating multi-RHS min-norm convenience: allocates R (n×n), P (n) and u (m) from
+        /// Allocator.Temp. DESTROYS A_to_Q and B. Use the scratch overload in hot loops.</summary>
+        public static RankInfo minNormSolveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X, float relTol)
+        {
+            int m = A_to_Q.M_Rows;
+            int n = A_to_Q.N_Cols;
+
+            if (m < n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: A_to_Q must be square or tall (M_Rows >= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: B.M_Rows must equal A_to_Q.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: X.M_Rows must equal A_to_Q.N_Cols");
+            if (X.N_Cols != B.N_Cols)
+                throw new ArgumentException("QRCP.minNormSolveInPlace: X.N_Cols must equal B.N_Cols");
+
+            var R = new floatMxN(n, n, Allocator.Temp, false);
+            var P = new Pivot(n, Allocator.Temp);
+            var u = new floatN(m, Allocator.Temp, false);
+            var info = minNormSolveInPlace(ref A_to_Q, ref B, ref X, ref R, ref P, ref u, relTol);
+            u.Dispose();
+            P.Dispose();
+            R.Dispose();
+            return info;
+        }
+
+        /// <summary>Allocating multi-RHS min-norm convenience with default tolerance. DESTROYS A_to_Q and B.</summary>
+        public static RankInfo minNormSolveInPlace(ref floatMxN A_to_Q, ref floatMxN B, ref floatMxN X)
+        {
+            return minNormSolveInPlace(ref A_to_Q, ref B, ref X, (float)(-1));
+        }
     }
 }

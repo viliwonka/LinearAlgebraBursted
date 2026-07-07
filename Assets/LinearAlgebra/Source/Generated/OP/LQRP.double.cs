@@ -687,5 +687,355 @@ namespace LinearAlgebra
         {
             return minNormSolveInPlace(ref A, ref b, ref x, (double)(-1));
         }
+
+        // ---- multi-RHS forms: a whole block of right-hand sides (each RHS a COLUMN of B / X) ----
+        //
+        // Three block solves, mirroring the vector forms + QRCP's block surface:
+        //   solveInPlace(A,B,X)        — BASIC (truncated), FUSED: factor A in place, drop dependent
+        //                                rows, X = Qᵀ[L11⁻¹·(P·B)_top ; 0]. A DESTROYED, B preserved.
+        //   minNormSolveInPlace(A,B,X) — MINIMUM-NORM (x=A⁺B), FUSED: factor A in place, block QR-LS on
+        //                                K=[L11;L21], X = Qᵀ[G1;0]. A DESTROYED, B preserved.
+        //   minNormDecompSolve(L,Q,P,B,X) — MINIMUM-NORM from a precomputed LQRP factorization (reuse
+        //                                one factorization across blocks); B preserved.
+
+        // Shared reduced-RHS block for the min-norm (COD) solves: fills W (m×k) = [G1 ; 0], where
+        // G1 = argmin ‖K·G1 − P·B‖ over the coupled m×r block K = [L11; L21] (= L's first r columns). The
+        // caller then applies Qᵀ to W (via reflectors for the in-place solve, or a GEMM for the factor-
+        // reuse solve). Allocates one set of Allocator.Temp scratch (K/C/G1); QR.solveInPlace DESTROYS
+        // its private K and C copies.
+        static unsafe void minNormReducedBlock(in doubleMxN L, in Pivot P, in doubleMxN B, int r, ref doubleMxN W)
+        {
+            int m = L.M_Rows;      // L is m×m
+            int k = B.N_Cols;
+
+            var K = new doubleMxN(m, r, Allocator.Temp, false);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < r; j++)
+                    K[i, j] = L[i, j];
+            var C = new doubleMxN(m, k, Allocator.Temp, false);
+            for (int i = 0; i < m; i++)
+            {
+                int src = P[i];
+                for (int c = 0; c < k; c++) C[i, c] = B[src, c];
+            }
+
+            var G1 = new doubleMxN(r, k, Allocator.Temp, false);
+            QR.solveInPlace(ref K, ref C, ref G1);
+
+            double* Wp = W.Data.Ptr;
+            double* Gp = G1.Data.Ptr;
+            for (long e = 0; e < (long)r * k; e++) Wp[e] = Gp[e];        // W[0..r) = G1
+            for (long e = (long)r * k; e < (long)m * k; e++) Wp[e] = (double)0;  // W[r..m) = 0
+
+            G1.Dispose();
+            C.Dispose();
+            K.Dispose();
+        }
+
+        /// <summary>
+        /// LQRP BASIC (truncated) solve of A X = B for a whole block of right-hand sides (m ≤ n) — the
+        /// multi-RHS form of the vector <see cref="solveInPlace(ref doubleMxN, ref doubleN, ref doubleN, ref doubleMxN, ref Pivot, ref doubleN, double)"/>.
+        /// Each RHS is a COLUMN of B (m x k); X (n x k) receives the basic solution. For a rank-deficient
+        /// A this is minimum-norm only when each column of B is consistent — otherwise use
+        /// minNormSolveInPlace. DESTROYS A (reflectors); B is read-only.
+        /// </summary>
+        /// <param name="A">On entry A (m × n, m ≤ n); DESTROYED on exit (reflectors).</param>
+        /// <param name="B">Right-hand sides (m x k). Read-only. Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Solution (n x k).</param>
+        /// <param name="L">Scratch: m × m (receives the lower-triangular factor).</param>
+        /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
+        /// <param name="v">Scratch: length EXACTLY n.</param>
+        public static unsafe RankInfo solveInPlace(ref doubleMxN A, ref doubleMxN B, ref doubleMxN X,
+                                                   ref doubleMxN L, ref Pivot P, ref doubleN v, double relTol)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            int k = B.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQRP.solveInPlace: A must be wide or square (M_Rows <= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("LQRP.solveInPlace: B.M_Rows must equal A.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("LQRP.solveInPlace: X.M_Rows must equal A.N_Cols");
+            if (X.N_Cols != k)
+                throw new ArgumentException("LQRP.solveInPlace: X.N_Cols must equal B.N_Cols");
+            if (L.M_Rows != m || L.N_Cols != m)
+                throw new ArgumentException("LQRP.solveInPlace: L must be m x m");
+            if (P.N != m)
+                throw new ArgumentException("LQRP.solveInPlace: P.N must equal A.M_Rows");
+            if (v.N != n)
+                throw new ArgumentException("LQRP.solveInPlace: v.N must equal A.N_Cols");
+
+            if (relTol < (double)0)
+                relTol = (double)(math.max(m, n)) * Consts.doubleZeroThreshold;
+
+            if (n == 0)
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
+            var Qnull = default(doubleMxN);
+            lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
+
+            double tol = relTol * math.abs(L[0, 0]);
+            int r = 0;
+            for (int i = 0; i < m; i++)
+            {
+                if (math.abs(L[i, i]) > tol) r++;
+                else break;
+            }
+
+            // W (m×k): reduced RHS C = P·B, then basic forward-solve of L W = C on the leading r×r block
+            // (dependent rows dropped: W[r..m) = 0). Then X = Qᵀ W.
+            var W = new doubleMxN(m, k, Allocator.Temp, false);
+            double* Wp = W.Data.Ptr;
+            for (int i = 0; i < m; i++)
+            {
+                int src = P[i];
+                double* Wi = Wp + (long)i * k;
+                for (int c = 0; c < k; c++) Wi[c] = B[src, c];       // C = P·B
+            }
+            for (int i = 0; i < r; i++)
+            {
+                double* Wi = Wp + (long)i * k;
+                for (int j = 0; j < i; j++)
+                    UnsafeOP.axpy(Wi, Wp + (long)j * k, -L[i, j], k);
+                double inv = (double)1 / L[i, i];
+                for (int c = 0; c < k; c++) Wi[c] *= inv;
+            }
+            for (long e = (long)r * k; e < (long)m * k; e++) Wp[e] = (double)0;
+
+            LQ.applyQtFromReflectors(ref A, ref W, ref X);
+            W.Dispose();
+
+            return new RankInfo
+            {
+                status = (r < m) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,
+                rank = r
+            };
+        }
+
+        /// <summary>Multi-RHS basic solveInPlace with the default rank tolerance. See the primitive.</summary>
+        public static RankInfo solveInPlace(ref doubleMxN A, ref doubleMxN B, ref doubleMxN X,
+                                            ref doubleMxN L, ref Pivot P, ref doubleN v)
+        {
+            return solveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, (double)(-1));
+        }
+
+        /// <summary>Allocating multi-RHS basic convenience: allocates L (m×m), P (m) and v (n) from
+        /// Allocator.Temp. DESTROYS A (B preserved). Use the scratch overload in hot loops.</summary>
+        public static RankInfo solveInPlace(ref doubleMxN A, ref doubleMxN B, ref doubleMxN X, double relTol)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQRP.solveInPlace: A must be wide or square (M_Rows <= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("LQRP.solveInPlace: B.M_Rows must equal A.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("LQRP.solveInPlace: X.M_Rows must equal A.N_Cols");
+            if (X.N_Cols != B.N_Cols)
+                throw new ArgumentException("LQRP.solveInPlace: X.N_Cols must equal B.N_Cols");
+
+            var L = new doubleMxN(m, m, Allocator.Temp, false);
+            var P = new Pivot(m, Allocator.Temp);
+            var v = new doubleN(n, Allocator.Temp, false);
+            var info = solveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relTol);
+            v.Dispose();
+            P.Dispose();
+            L.Dispose();
+            return info;
+        }
+
+        /// <summary>Allocating multi-RHS basic convenience with default tolerance. DESTROYS A (B preserved).</summary>
+        public static RankInfo solveInPlace(ref doubleMxN A, ref doubleMxN B, ref doubleMxN X)
+        {
+            return solveInPlace(ref A, ref B, ref X, (double)(-1));
+        }
+
+        /// <summary>
+        /// LQRP MINIMUM-NORM (pseudoinverse) least-squares of A X = B for a whole block of right-hand
+        /// sides (m ≤ n) — the multi-RHS form of the vector
+        /// <see cref="minNormSolveInPlace(ref doubleMxN, ref doubleN, ref doubleN, ref doubleMxN, ref Pivot, ref doubleN, double)"/>.
+        /// Each RHS is a COLUMN of B (m x k); X (n x k) receives x = A⁺B. FUSED: factors A in place and
+        /// never forms Q. DESTROYS A (reflectors); B is read-only.
+        /// </summary>
+        /// <param name="A">On entry A (m × n, m ≤ n); DESTROYED on exit (reflectors).</param>
+        /// <param name="B">Right-hand sides (m x k). Read-only. Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Minimum-norm solution (n x k).</param>
+        /// <param name="L">Scratch: m × m (receives the lower-triangular factor).</param>
+        /// <param name="P">Scratch: row Pivot of size m (reset internally).</param>
+        /// <param name="v">Scratch: length EXACTLY n.</param>
+        public static unsafe RankInfo minNormSolveInPlace(ref doubleMxN A, ref doubleMxN B, ref doubleMxN X,
+                                                          ref doubleMxN L, ref Pivot P, ref doubleN v, double relTol)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+            int k = B.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: A must be wide or square (M_Rows <= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: B.M_Rows must equal A.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: X.M_Rows must equal A.N_Cols");
+            if (X.N_Cols != k)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: X.N_Cols must equal B.N_Cols");
+            if (L.M_Rows != m || L.N_Cols != m)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: L must be m x m");
+            if (P.N != m)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: P.N must equal A.M_Rows");
+            if (v.N != n)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: v.N must equal A.N_Cols");
+
+            if (relTol < (double)0)
+                relTol = (double)(math.max(m, n)) * Consts.doubleZeroThreshold;
+
+            if (n == 0)
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            double zeroThreshold = Consts.doubleZeroThreshold * Norms.LInf(in A);
+            var Qnull = default(doubleMxN);
+            lqrpKernel(ref A, ref L, ref Qnull, ref P, ref v, zeroThreshold, reconstructQ: false);
+
+            double tol = relTol * math.abs(L[0, 0]);
+            int r = 0;
+            for (int i = 0; i < m; i++)
+            {
+                if (math.abs(L[i, i]) > tol) r++;
+                else break;
+            }
+
+            if (r == 0)
+            {
+                double* Xz = X.Data.Ptr;
+                for (long e = 0; e < (long)n * k; e++) Xz[e] = (double)0;
+                return new RankInfo { status = DirectSolveStatus.RankDeficient, rank = 0 };
+            }
+
+            // W = [G1 ; 0] (block QR-LS on K = [L11; L21]); X = Qᵀ W straight from A's reflectors.
+            var W = new doubleMxN(m, k, Allocator.Temp, false);
+            minNormReducedBlock(in L, in P, in B, r, ref W);
+            LQ.applyQtFromReflectors(ref A, ref W, ref X);
+            W.Dispose();
+
+            return new RankInfo
+            {
+                status = (r < m) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,
+                rank = r
+            };
+        }
+
+        /// <summary>Multi-RHS min-norm solveInPlace with the default rank tolerance. See the primitive.</summary>
+        public static RankInfo minNormSolveInPlace(ref doubleMxN A, ref doubleMxN B, ref doubleMxN X,
+                                                   ref doubleMxN L, ref Pivot P, ref doubleN v)
+        {
+            return minNormSolveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, (double)(-1));
+        }
+
+        /// <summary>Allocating multi-RHS min-norm convenience: allocates L (m×m), P (m) and v (n) from
+        /// Allocator.Temp. DESTROYS A (B preserved). Use the scratch overload in hot loops.</summary>
+        public static RankInfo minNormSolveInPlace(ref doubleMxN A, ref doubleMxN B, ref doubleMxN X, double relTol)
+        {
+            int m = A.M_Rows;
+            int n = A.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: A must be wide or square (M_Rows <= N_Cols)");
+            if (B.M_Rows != m)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: B.M_Rows must equal A.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: X.M_Rows must equal A.N_Cols");
+            if (X.N_Cols != B.N_Cols)
+                throw new ArgumentException("LQRP.minNormSolveInPlace: X.N_Cols must equal B.N_Cols");
+
+            var L = new doubleMxN(m, m, Allocator.Temp, false);
+            var P = new Pivot(m, Allocator.Temp);
+            var v = new doubleN(n, Allocator.Temp, false);
+            var info = minNormSolveInPlace(ref A, ref B, ref X, ref L, ref P, ref v, relTol);
+            v.Dispose();
+            P.Dispose();
+            L.Dispose();
+            return info;
+        }
+
+        /// <summary>Allocating multi-RHS min-norm convenience with default tolerance. DESTROYS A (B preserved).</summary>
+        public static RankInfo minNormSolveInPlace(ref doubleMxN A, ref doubleMxN B, ref doubleMxN X)
+        {
+            return minNormSolveInPlace(ref A, ref B, ref X, (double)(-1));
+        }
+
+        /// <summary>
+        /// LQRP MINIMUM-NORM least-squares for a whole block of right-hand sides, from a precomputed
+        /// LQRP factorization (P·A = L·Q, from <see cref="decomp(in doubleMxN, ref doubleMxN, ref doubleMxN, ref Pivot)"/>)
+        /// — reuse one factorization across blocks. Each RHS is a COLUMN of B (m x k, preserved); X (n x k)
+        /// receives x = A⁺B. Uses the dense Q for the final Qᵀ apply (GEMM). Returns <see cref="RankInfo"/>.
+        /// </summary>
+        /// <param name="L">Lower-triangular factor (m x m) from decomp.</param>
+        /// <param name="Q">Row-orthonormal factor (m x n) from decomp.</param>
+        /// <param name="P">Row pivot from decomp.</param>
+        /// <param name="B">Right-hand sides (m x k). Preserved. Must not alias X.</param>
+        /// <param name="X">Output only; prior contents ignored. Minimum-norm solution (n x k).</param>
+        public static unsafe RankInfo minNormDecompSolve(ref doubleMxN L, ref doubleMxN Q, in Pivot P,
+                                                         ref doubleMxN B, ref doubleMxN X, double relTol)
+        {
+            int m = Q.M_Rows;
+            int n = Q.N_Cols;
+            int k = B.N_Cols;
+
+            if (m > n)
+                throw new ArgumentException("LQRP.minNormDecompSolve: Q must be wide or square (M_Rows <= N_Cols)");
+            if (L.M_Rows != m || L.N_Cols != m)
+                throw new ArgumentException("LQRP.minNormDecompSolve: L must be m x m");
+            if (B.M_Rows != m)
+                throw new ArgumentException("LQRP.minNormDecompSolve: B.M_Rows must equal Q.M_Rows");
+            if (X.M_Rows != n)
+                throw new ArgumentException("LQRP.minNormDecompSolve: X.M_Rows must equal Q.N_Cols");
+            if (X.N_Cols != k)
+                throw new ArgumentException("LQRP.minNormDecompSolve: X.N_Cols must equal B.N_Cols");
+            if (P.N != m)
+                throw new ArgumentException("LQRP.minNormDecompSolve: P.N must equal Q.M_Rows");
+
+            if (relTol < (double)0)
+                relTol = (double)(math.max(m, n)) * Consts.doubleZeroThreshold;
+
+            if (n == 0)
+                return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
+
+            double tol = relTol * math.abs(L[0, 0]);
+            int r = 0;
+            for (int i = 0; i < m; i++)
+            {
+                if (math.abs(L[i, i]) > tol) r++;
+                else break;
+            }
+
+            if (r == 0)
+            {
+                double* Xz = X.Data.Ptr;
+                for (long e = 0; e < (long)n * k; e++) Xz[e] = (double)0;
+                return new RankInfo { status = DirectSolveStatus.RankDeficient, rank = 0 };
+            }
+
+            // W = [G1 ; 0]; X = Qᵀ W via a GEMM against the dense Q (Qᵀ is n×m, W is m×k → X is n×k).
+            var W = new doubleMxN(m, k, Allocator.Temp, false);
+            minNormReducedBlock(in L, in P, in B, r, ref W);
+            Blas.dot(in Q, in W, ref X, transposeA: true);
+            W.Dispose();
+
+            return new RankInfo
+            {
+                status = (r < m) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,
+                rank = r
+            };
+        }
+
+        /// <summary>minNormDecompSolve with the default rank tolerance. See the primitive.</summary>
+        public static RankInfo minNormDecompSolve(ref doubleMxN L, ref doubleMxN Q, in Pivot P,
+                                                  ref doubleMxN B, ref doubleMxN X)
+        {
+            return minNormDecompSolve(ref L, ref Q, in P, ref B, ref X, (double)(-1));
+        }
     }
 }

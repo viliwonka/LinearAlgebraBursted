@@ -478,6 +478,9 @@ public class fProxyLQRPTests
             MinNormScratchEquivalence, // (10) COD: allocating == primitive scratch overload (bit-identical)
             MinNormZeroMatrix,         // (11) COD: zero matrix -> rank 0, x all zeros
             MinNormKnownRank1Wide,     // (12) literature: rank-1 wide, closed-form A+ (Wikipedia rank-1 form)
+            MultiRHSBasicMatchesSingle,   // (13) block solveInPlace(A,B,X) == per-column single-RHS basic
+            MinNormMultiRHSMatchesSingle, // (14) block minNormSolveInPlace == per-column single-RHS COD
+            MinNormDecompSolveMatchesFused, // (15) factor-reuse minNormDecompSolve == fused block COD
         }
 
         public TestType Type;
@@ -500,6 +503,9 @@ public class fProxyLQRPTests
                 case TestType.MinNormScratchEquivalence:    MinNormScratchEquivalence();    break;
                 case TestType.MinNormZeroMatrix:            MinNormZeroMatrix();            break;
                 case TestType.MinNormKnownRank1Wide:        MinNormKnownRank1Wide();        break;
+                case TestType.MultiRHSBasicMatchesSingle:   MultiRHSBasicMatchesSingle();   break;
+                case TestType.MinNormMultiRHSMatchesSingle: MinNormMultiRHSMatchesSingle(); break;
+                case TestType.MinNormDecompSolveMatchesFused: MinNormDecompSolveMatchesFused(); break;
             }
         }
 
@@ -873,6 +879,107 @@ public class fProxyLQRPTests
             AssertClose(x[1], (fProxy)0, tol);
             AssertClose(x[2], (fProxy)14 / (fProxy)25, tol);   // 0.56
 
+            arena.Dispose();
+        }
+
+        // (13) Multi-RHS BASIC == per-column single-RHS basic (consistent B, so basic is well-defined).
+        void MultiRHSBasicMatchesSingle()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 11, k = 4;
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 0x9A9Au);
+            for (int c = 0; c < n; c++)
+                A[m - 1, c] = A[0, c] + A[1, c];                 // rank m-1
+            var A0 = A.Copy();
+            // consistent B = A * Xtrue
+            var Xtrue = arena.fProxyRandomMat(n, k, -2f, 2f, 0x4321u);
+            var B = Blas.dot(A0, Xtrue);                          // m x k
+
+            var Ablk = A0.Copy();
+            var Xblk = arena.fProxyMat(n, k);
+            int rankBlk = LQRP.solveInPlace(ref Ablk, ref B, ref Xblk).rank;
+            RecordEq(rankBlk, m - 1);
+
+            fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)50;
+            for (int j = 0; j < k; j++)
+            {
+                var Aj = A0.Copy();
+                var bj = arena.fProxyVec(m);
+                for (int i = 0; i < m; i++) bj[i] = B[i, j];
+                var xj = arena.fProxyVec(n);
+                LQRP.solveInPlace(ref Aj, ref bj, ref xj);
+                for (int i = 0; i < n; i++)
+                    AssertClose(Xblk[i, j], xj[i], tol * (math.abs(xj[i]) + (fProxy)1));
+            }
+
+            arena.Dispose();
+        }
+
+        // (14) Multi-RHS COD == per-column single-RHS COD (inconsistent B; single-RHS COD already
+        // validated vs SVD + literature, so this transitively validates the block path).
+        void MinNormMultiRHSMatchesSingle()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 10, k = 4;
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 0x2468u);
+            for (int c = 0; c < n; c++)
+                A[m - 1, c] = (fProxy)2f * A[0, c] - A[1, c];    // rank m-1
+            var A0 = A.Copy();
+            var B = arena.fProxyRandomMat(m, k, -3f, 3f, 0x1357u); // inconsistent
+
+            var Ablk = A0.Copy();
+            var Xblk = arena.fProxyMat(n, k);
+            int rankBlk = LQRP.minNormSolveInPlace(ref Ablk, ref B, ref Xblk).rank;
+            RecordEq(rankBlk, m - 1);
+
+            fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)50;
+            for (int j = 0; j < k; j++)
+            {
+                var Aj = A0.Copy();
+                var bj = arena.fProxyVec(m);
+                for (int i = 0; i < m; i++) bj[i] = B[i, j];
+                var xj = arena.fProxyVec(n);
+                LQRP.minNormSolveInPlace(ref Aj, ref bj, ref xj);
+                for (int i = 0; i < n; i++)
+                    AssertClose(Xblk[i, j], xj[i], tol * (math.abs(xj[i]) + (fProxy)1));
+            }
+
+            arena.Dispose();
+        }
+
+        // (15) Factor-reuse minNormDecompSolve (from a precomputed P·A=L·Q) == the fused block COD.
+        void MinNormDecompSolveMatchesFused()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 5, n = 9, k = 3;
+            var A = arena.fProxyRandomMat(m, n, -3f, 3f, 0x30303u);
+            for (int c = 0; c < n; c++)
+                A[m - 1, c] = A[0, c] - A[2, c];                 // rank m-1
+            var A0 = A.Copy();
+            var B = arena.fProxyRandomMat(m, k, -3f, 3f, 0x40404u); // inconsistent
+
+            // fused block COD (destroys A)
+            var Afu = A0.Copy();
+            var Xfu = arena.fProxyMat(n, k);
+            LQRP.minNormSolveInPlace(ref Afu, ref B, ref Xfu);
+
+            // factor-reuse: decompose once (A preserved), then minNormDecompSolve (B preserved)
+            var L = arena.fProxyMat(m, m);
+            var Q = arena.fProxyMat(m, n);
+            var Pp = new Pivot(m, Allocator.Persistent);
+            LQRP.decomp(in A0, ref L, ref Q, ref Pp);
+            var Xre = arena.fProxyMat(n, k);
+            LQRP.minNormDecompSolve(ref L, ref Q, in Pp, ref B, ref Xre);
+
+            fProxy tol = (fProxy)Consts.fProxySqrtEps * (fProxy)50;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < k; j++)
+                    AssertClose(Xre[i, j], Xfu[i, j], tol * (math.abs(Xfu[i, j]) + (fProxy)1));
+
+            Pp.Dispose();
             arena.Dispose();
         }
 

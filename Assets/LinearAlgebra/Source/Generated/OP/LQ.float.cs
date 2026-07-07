@@ -625,7 +625,9 @@ namespace LinearAlgebra
         // reflectors in the order H_{m-1}, …, H_0, each as two unit-stride axpy passes across the k
         // columns (acc = v_dᵀX over rows [d,n), then X -= v_d·acc). Reproduces the per-column vector
         // applyQtFromReflectors to summation-order rounding.
-        static unsafe void applyQtFromReflectors(ref floatMxN W, ref floatMxN Y, ref floatMxN X)
+        // internal (not private): shared with the row-pivoted LQRP class's multi-RHS solves (see the
+        // single-RHS applyQtFromReflectors above).
+        internal static unsafe void applyQtFromReflectors(ref floatMxN W, ref floatMxN Y, ref floatMxN X)
         {
             int m = W.M_Rows;
             int n = W.N_Cols;

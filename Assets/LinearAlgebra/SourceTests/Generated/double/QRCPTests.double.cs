@@ -539,6 +539,9 @@ public class doubleQRCPTests
             MinNormZeroMatrix,              // (19) zero matrix: rank 0, x all zeros
             MinNormKnownRank1,              // (20) literature: rank-1 A=[[1,0],[2,0]], closed-form A+ (Wikipedia)
             MinNormKnownRank2TallInconsistent, // (21) literature matrix (R ginv tutorial), hand-derived min-norm x
+            MinNormMultiRHSMatchesSingle,   // (22) block minNormSolveInPlace == per-column single-RHS COD
+            MinNormDecompSolveMatchesFused, // (23) factor-reuse minNormDecompSolve == fused block COD
+            MinNormPseudoinverseIdentity,   // (24) B=I -> X=A+, verify A A+ A == A (Penrose)
         }
 
         public TestType Type;
@@ -571,6 +574,9 @@ public class doubleQRCPTests
                 case TestType.MinNormZeroMatrix:              MinNormZeroMatrix();              break;
                 case TestType.MinNormKnownRank1:              MinNormKnownRank1();              break;
                 case TestType.MinNormKnownRank2TallInconsistent: MinNormKnownRank2TallInconsistent(); break;
+                case TestType.MinNormMultiRHSMatchesSingle:   MinNormMultiRHSMatchesSingle();   break;
+                case TestType.MinNormDecompSolveMatchesFused: MinNormDecompSolveMatchesFused(); break;
+                case TestType.MinNormPseudoinverseIdentity:   MinNormPseudoinverseIdentity();   break;
             }
         }
 
@@ -1325,6 +1331,106 @@ public class doubleQRCPTests
             SVD.pinvSolve(ref Apinv, in b0, ref xPinv);
             AssertClose(ResidualNorm(in A0, in x, in b0), ResidualNorm(in A0, in xPinv, in b0),
                         (double)Consts.doubleSqrtEps * (double)20);
+
+            arena.Dispose();
+        }
+
+        // (22) Multi-RHS COD == per-column single-RHS COD. Since single-RHS COD is already validated
+        // against SVD + literature vectors, this transitively validates the block path.
+        void MinNormMultiRHSMatchesSingle()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 10, n = 6, k = 4;
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0xB10Cu);
+            for (int row = 0; row < m; row++)
+            {
+                A[row, 4] = A[row, 0] + A[row, 1];               // rank 4
+                A[row, 5] = A[row, 2] - A[row, 3];
+            }
+            var A0 = A.Copy();
+            var B = arena.doubleRandomMat(m, k, -3f, 3f, 0x5013u);
+
+            var Ablk = A0.Copy(); var Bblk = B.Copy();
+            var Xblk = arena.doubleMat(n, k);
+            int rankBlk = QRCP.minNormSolveInPlace(ref Ablk, ref Bblk, ref Xblk).rank;
+            RecordEq(rankBlk, 4);
+
+            double tol = (double)Consts.doubleSqrtEps * (double)50;
+            for (int j = 0; j < k; j++)
+            {
+                var Aj = A0.Copy();
+                var bj = arena.doubleVec(m);
+                for (int i = 0; i < m; i++) bj[i] = B[i, j];
+                var xj = arena.doubleVec(n);
+                QRCP.minNormSolveInPlace(ref Aj, ref bj, ref xj);
+                for (int i = 0; i < n; i++)
+                    AssertClose(Xblk[i, j], xj[i], tol * (math.abs(xj[i]) + (double)1));
+            }
+
+            arena.Dispose();
+        }
+
+        // (23) Factor-reuse minNormDecompSolve (from a precomputed A·P=Q·R) == the fused block COD.
+        void MinNormDecompSolveMatchesFused()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 9, n = 5, k = 3;
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0x2468u);
+            for (int row = 0; row < m; row++)
+                A[row, 4] = (double)2f * A[row, 0] - A[row, 1];  // rank 4
+            var A0 = A.Copy();
+            var B = arena.doubleRandomMat(m, k, -3f, 3f, 0x1357u);
+
+            // fused block COD (destroys A + B)
+            var Afu = A0.Copy(); var Bfu = B.Copy();
+            var Xfu = arena.doubleMat(n, k);
+            QRCP.minNormSolveInPlace(ref Afu, ref Bfu, ref Xfu);
+
+            // factor-reuse: decompose once (A preserved into Q), then minNormDecompSolve (B preserved)
+            var Q = arena.doubleMat(m, n);
+            var R = arena.doubleMat(n, n);
+            var Pp = new Pivot(n, Allocator.Persistent);
+            QRCP.decomp(in A0, ref Q, ref R, ref Pp);
+            var Xre = arena.doubleMat(n, k);
+            var Bre = B.Copy();
+            QRCP.minNormDecompSolve(ref Q, ref R, in Pp, ref Bre, ref Xre);
+
+            double tol = (double)Consts.doubleSqrtEps * (double)50;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < k; j++)
+                    AssertClose(Xre[i, j], Xfu[i, j], tol * (math.abs(Xfu[i, j]) + (double)1));
+
+            Pp.Dispose();
+            arena.Dispose();
+        }
+
+        // (24) B = I -> X = A+ (the pseudoinverse itself). Verify the Penrose identity A A+ A == A.
+        void MinNormPseudoinverseIdentity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int m = 8, n = 5;
+            var A = arena.doubleRandomMat(m, n, -3f, 3f, 0xF00Du);
+            for (int row = 0; row < m; row++)
+                A[row, 4] = A[row, 0] + A[row, 2];               // rank 4
+            var A0 = A.Copy();
+
+            // B = I_m ; X = A+ (n x m)
+            var B = arena.doubleMat(m, m);
+            for (int i = 0; i < m; i++) B[i, i] = (double)1;
+            var Apinvmat = arena.doubleMat(n, m);
+            int rank = QRCP.minNormSolveInPlace(ref A, ref B, ref Apinvmat).rank;
+            RecordEq(rank, 4);
+
+            // A A+ A == A (Penrose condition 1)
+            var AAp = Blas.dot(A0, Apinvmat);        // m x m
+            var AApA = Blas.dot(AAp, A0);            // m x n
+            double tol = (double)Consts.doubleSqrtEps * (double)50;
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    AssertClose(AApA[i, j], A0[i, j], tol * (math.abs(A0[i, j]) + (double)1));
 
             arena.Dispose();
         }
