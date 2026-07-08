@@ -1,0 +1,94 @@
+using LinearAlgebra;
+using LinearAlgebra.Gallery;
+using LinearAlgebra.Sparse;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Validates the sparse (BSR) gallery generators (fProxyRandomSparseSPD / fProxyRandomSparse) by their
+// defining property, exercised through the solvers that consume them:
+//   - SPD generator: build A, form b = A*x_known, solve with CG -> recovers x_known. CG converges only
+//     for SPD, so success is proof the generator is symmetric positive-definite (not just symmetric).
+//   - Tall generator: build A (m > n), form a CONSISTENT b = A*x_known, solve the least-squares problem
+//     with CGLS -> recovers x_known. That requires full column rank, so success proves it.
+// Runs inside a [BurstCompile] IJob (matches fProxySparseSolverTests); the generators are themselves
+// Burst-compatible (no managed collections -- Unity.Mathematics.Random + arena/builder only).
+public class fProxySparseGalleryTests
+{
+    [BurstCompile(CompileSynchronously = true)]
+    public struct SparseGalleryTestJob : IJob
+    {
+        public enum TestType
+        {
+            RandomSparseSPDRecoversViaCG,
+            RandomSparseTallRecoversViaCgls,
+        }
+
+        public TestType Type;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.RandomSparseSPDRecoversViaCG:     RandomSparseSPDRecoversViaCG();     break;
+                case TestType.RandomSparseTallRecoversViaCgls:  RandomSparseTallRecoversViaCgls();  break;
+            }
+        }
+
+        // Recovery tol = achievable CG/CGLS solution accuracy: the solvers converge on the RESIDUAL to
+        // sqrt(eps), so the SOLUTION error is ~kappa*sqrt(eps) (kappa ~ tens for these diag-dominant
+        // matrices) -- ~1e-3 in float, ~1e-6 in double. (A tighter double bound like 1e-8 would test the
+        // solver's conditioning, not the generator.)
+        static fProxy Tol() => /*+choose[2e-3f|1e-6]*/2e-3f/*-choose*/;
+
+        void RandomSparseSPDRecoversViaCG()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int blockRows = 10, BR = 3;
+            int n = blockRows * BR;
+            var A = arena.fProxyRandomSparseSPD(blockRows, BR, (fProxy)0.5f, 20260708u);
+
+            var xKnown = arena.fProxyRandomVec(n, 1f, 3f, 777);
+            var b = BSR.spMV(in A, in xKnown);
+
+            var x = arena.fProxyVec(n);
+            bool ok = Krylov.cg(in A, in b, ref x, 8 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(ok);                                   // CG converged => A is SPD
+
+            Assert.IsTrue(Analysis.isZero(xKnown - x, Tol()));   // and recovered the exact solution
+
+            arena.Dispose();
+        }
+
+        void RandomSparseTallRecoversViaCgls()
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            int blockRows = 16, blockCols = 8, BR = 2;           // 32 x 16 tall
+            int n = blockCols * BR;
+            var A = arena.fProxyRandomSparse(blockRows, blockCols, BR, (fProxy)0.5f, 4242u);
+
+            var xKnown = arena.fProxyRandomVec(n, 1f, 3f, 99);
+            var b = BSR.spMV(in A, in xKnown);                   // consistent (b in range(A))
+
+            var x = arena.fProxyVec(n);
+            bool ok = Krylov.cgls(in A, in b, ref x, 16 * n, Consts.fProxySqrtEps);
+            Assert.IsTrue(ok);                                   // CGLS converged => full column rank
+
+            Assert.IsTrue(Analysis.isZero(xKnown - x, Tol()));
+
+            arena.Dispose();
+        }
+    }
+
+    [Test]
+    public void RandomSparseSPDRecoversViaCG()
+        => new SparseGalleryTestJob { Type = SparseGalleryTestJob.TestType.RandomSparseSPDRecoversViaCG }.Run();
+
+    [Test]
+    public void RandomSparseTallRecoversViaCgls()
+        => new SparseGalleryTestJob { Type = SparseGalleryTestJob.TestType.RandomSparseTallRecoversViaCgls }.Run();
+}
