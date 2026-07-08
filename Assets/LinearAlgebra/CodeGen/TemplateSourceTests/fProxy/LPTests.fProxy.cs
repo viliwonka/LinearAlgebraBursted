@@ -1,6 +1,7 @@
 using System;
 
 using LinearAlgebra;
+using LinearAlgebra.Sparse;
 
 using NUnit.Framework;
 using Unity.Burst;
@@ -32,6 +33,9 @@ public class fProxyLPTests
             IpLadOutlier,       // interior-point LAD, outlier set           -> (0,1), obj ~8
             WyndorGlass,        // Hillier-Lieberman classic LP              -> (2,6), Z 36
             LadStackloss,       // Brownlee stack-loss LAD (published coeffs)
+            SparseLadExactFit,  // sparse (BSR) matrix-free LAD, exact line  -> (1,2), obj ~0
+            SparseVsDenseLad,   // sparse LAD objective == dense LAD (outlier set)
+            SparseLadStackloss, // sparse LAD objective == dense LAD (stack-loss)
         }
 
         public TestType Type;
@@ -60,6 +64,9 @@ public class fProxyLPTests
                 case TestType.IpLadOutlier: IpLadOutlier(); break;
                 case TestType.WyndorGlass: WyndorGlass(); break;
                 case TestType.LadStackloss: LadStackloss(); break;
+                case TestType.SparseLadExactFit: SparseLadExactFit(); break;
+                case TestType.SparseVsDenseLad: SparseVsDenseLad(); break;
+                case TestType.SparseLadStackloss: SparseLadStackloss(); break;
             }
         }
 
@@ -440,6 +447,83 @@ public class fProxyLPTests
             b[i] = (fProxy)stackloss;
         }
 
+        // ==== sparse (BSR) matrix-free interior-point LAD ====
+
+        // Convert a dense matrix to BSR with 1×1 blocks (nonzeros only) -- exercises the sparse LAD
+        // path (fProxyLadOperator / matrix-free interior point) on data whose dense answer is known.
+        static fProxyBSR BuildBSR1x1(ref Arena arena, in fProxyMxN dense)
+        {
+            int m = dense.M_Rows, n = dense.N_Cols;
+            int nnz = 0;
+            for (int i = 0; i < m; i++) for (int j = 0; j < n; j++) if (dense[i, j] != (fProxy)0) nnz++;
+            var builder = arena.fProxyBSRBuilder(m, n, 1, 1, nnz);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    if (dense[i, j] != (fProxy)0)
+                    {
+                        var blk = arena.fProxyMat(1, 1);
+                        blk[0, 0] = dense[i, j];
+                        builder.AddBlock(i, j, in blk);
+                    }
+            return builder.ToBSR(ref arena);
+        }
+
+        // Sparse LAD on an exactly-collinear set: matrix-free interior point recovers (1,2), residual ~0.
+        void SparseLadExactFit()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildLine(ref arena, out var A, out var b, false);
+            var As = BuildBSR1x1(ref arena, in A);
+            var x = arena.fProxyVec(2);
+
+            var info = LP.lad(in As, in b, ref x, out double obj);
+
+            AssertClose(x[0], (fProxy)1, (fProxy)1e-1);
+            AssertClose(x[1], (fProxy)2, (fProxy)1e-1);
+            AssertCloseD(obj, 0.0, 1e-1);
+
+            arena.Dispose();
+        }
+
+        // The sparse (matrix-free interior-point) LAD must reach the SAME L1 optimum as the exact dense
+        // LP.lad on the identical outlier-laden data -- objective and coefficients agree.
+        void SparseVsDenseLad()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildLine(ref arena, out var A, out var b, true);
+            var As = BuildBSR1x1(ref arena, in A);
+            var xd = arena.fProxyVec(2);
+            var xs = arena.fProxyVec(2);
+
+            var infoD = LP.lad(in A, in b, ref xd, out double objD);     // dense, exact
+            var infoS = LP.lad(in As, in b, ref xs, out double objS);    // sparse, matrix-free IP
+
+            AssertTrue(infoD.status == LPStatus.Optimal);
+            AssertCloseD(objS, objD, 0.08 * (1.0 + objD));
+            AssertClose(xs[0], xd[0], (fProxy)2e-1);
+            AssertClose(xs[1], xd[1], (fProxy)2e-1);
+
+            arena.Dispose();
+        }
+
+        // Sparse LAD on the real stack-loss data must match the dense LAD L1 residual.
+        void SparseLadStackloss()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildStackloss(ref arena, out var A, out var b);
+            var As = BuildBSR1x1(ref arena, in A);
+            var xd = arena.fProxyVec(4);
+            var xs = arena.fProxyVec(4);
+
+            var infoD = LP.lad(in A, in b, ref xd, out double objD);
+            var infoS = LP.lad(in As, in b, ref xs, out double objS);
+
+            AssertTrue(infoD.status == LPStatus.Optimal);
+            AssertCloseD(objS, objD, 0.08 * (1.0 + objD));
+
+            arena.Dispose();
+        }
+
         // ---- diagnostics-recording assert helpers (Burst-legal: Assert.Fail(string) is not) ----
 
         void AssertTrue(bool cond)
@@ -514,6 +598,50 @@ public class fProxyLPTests
 
         Assert.Catch<ArgumentException>(() => LP.lad(in A, in b, ref x, out double obj));
 
+        arena.Dispose();
+    }
+
+    // Diagnostic: the matrix-free normal operator M = Aₛ diag(D) Aₛᵀ (with D = 1) must reproduce the
+    // materialized 2·A·Aᵀ + 2·I column by column (Aₛ = [A|−A|−I|I] ⇒ Aₛ Aₛᵀ = 2 A Aᵀ + 2 I).
+    [Test]
+    public void SparseNormalOperatorMatchesDense()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        int m = 3, n = 2, nv = 2 * n + 2 * m;
+        var Ad = arena.fProxyMat(m, n);
+        Ad[0, 0] = (fProxy)1; Ad[0, 1] = (fProxy)2;
+        Ad[1, 0] = (fProxy)3; Ad[1, 1] = (fProxy)(-1);
+        Ad[2, 0] = (fProxy)0; Ad[2, 1] = (fProxy)4;
+
+        // dense BSR (1×1 blocks, nonzeros only)
+        int nnz = 0;
+        for (int i = 0; i < m; i++) for (int j = 0; j < n; j++) if (Ad[i, j] != (fProxy)0) nnz++;
+        var builder = arena.fProxyBSRBuilder(m, n, 1, 1, nnz);
+        for (int i = 0; i < m; i++)
+            for (int j = 0; j < n; j++)
+                if (Ad[i, j] != (fProxy)0) { var blk = arena.fProxyMat(1, 1); blk[0, 0] = Ad[i, j]; builder.AddBlock(i, j, in blk); }
+        var As = builder.ToBSR(ref arena);
+
+        var ladSp = arena.fProxyVec(n); var ladTm = arena.fProxyVec(m); var ladAtr = arena.fProxyVec(n);
+        var d = arena.fProxyVec(nv); for (int j = 0; j < nv; j++) d[j] = (fProxy)1;
+        var normNV = arena.fProxyVec(nv);
+        var lad = new fProxyLadOperator(in As, in ladSp, in ladTm, in ladAtr);
+        var Mop = new fProxyNormalOperator<fProxyLadOperator>(in lad, in d, in normNV, (fProxy)0);
+
+        var v = arena.fProxyVec(m); var y = arena.fProxyVec(m);
+        for (int i = 0; i < m; i++)
+        {
+            for (int k = 0; k < m; k++) v[k] = (fProxy)0;
+            v[i] = (fProxy)1;
+            Mop.Apply(in v, ref y);
+            for (int k = 0; k < m; k++)
+            {
+                double aat = 0;
+                for (int j = 0; j < n; j++) aat += (double)Ad[k, j] * (double)Ad[i, j];
+                double expected = 2.0 * aat + (k == i ? 2.0 : 0.0);
+                Assert.That((double)y[k], Is.EqualTo(expected).Within(1e-3), $"M[{k},{i}]");
+            }
+        }
         arena.Dispose();
     }
 
