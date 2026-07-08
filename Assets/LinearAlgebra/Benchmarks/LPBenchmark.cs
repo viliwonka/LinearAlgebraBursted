@@ -29,7 +29,7 @@ namespace LinearAlgebra.Benchmarks
         // block-sparse covering LP -- min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction, so it is
         // both feasible (scale x up) and bounded (cost >= 0): no unbounded/infinite-iteration trap. A hard
         // PdlpMaxIter cap bounds wall-clock regardless of convergence.
-        public static readonly int[] PdlpSparseM = { 512 };   // single trusted size until timings are nailed (= n_cols)
+        public static readonly int[] PdlpSparseM = { 512, 2048, 8192 };   // scaling curve (= n_cols); nnz grows as 8*N, so cheap per iter
         public const int PdlpSparseNnzPerRow = 8;
         public const double PdlpEps = 1e-6;
         public const int PdlpMaxIter = 50000;
