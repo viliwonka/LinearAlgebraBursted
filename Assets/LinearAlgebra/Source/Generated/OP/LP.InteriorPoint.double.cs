@@ -15,9 +15,11 @@ namespace LinearAlgebra
         // Converts the canonical primal form (min cᵀx s.t. Ax {≤,=,≥} b, x ≥ 0) to standard form
         // min cᵀz s.t. Aₛ z = b, z ≥ 0 by adding one non-negative slack/surplus per inequality (no
         // artificials -- the interior-point method starts from a strictly interior point, not a basic
-        // feasible vertex). Each iteration forms the normal-equation matrix M = Aₛ D Aₛᵀ (D = Z S⁻¹),
-        // Cholesky-factors it ONCE (reusing the library's CHO), and reuses that factor for both the
-        // affine-scaling predictor solve and the centering-corrector solve. Step lengths keep z, s > 0.
+        // feasible vertex). Each iteration forms the normal-equation matrix M = Aₛ D Aₛᵀ (D = Z S⁻¹)
+        // structure-aware (single-nonzero slack/identity columns only touch M's diagonal -- see
+        // BuildNormalStructured), Cholesky-factors it ONCE (reusing the library's CHO), and reuses that
+        // factor for both the affine-scaling predictor solve and the centering-corrector solve. Step
+        // lengths keep z, s > 0.
         //
         // Detects only Optimal vs MaxIterations: unlike the simplex backend it does not emit exact
         // infeasibility / unboundedness certificates (that needs a homogeneous self-dual embedding).
@@ -50,6 +52,41 @@ namespace LinearAlgebra
             }
             for (int j = 0; j < n; j++) cs[j] = c[j];   // slack costs stay 0
 
+            // --- exploit standard-form structure: a column of Aₛ with a SINGLE nonzero (every slack
+            // column here, and the ±I blocks a LAD caller bakes into A) contributes only v²·d[k] to the
+            // DIAGONAL of M = Aₛ D Aₛᵀ, so the O(m²·nv) BuildNormal never needs to see it. Classify the
+            // columns once (the structure is fixed), compact the multi-nonzero ones into Ad, and add the
+            // single-entry diagonal terms analytically each iteration. For the LAD form [A|−A|−I|I]
+            // (nv = 2n+2m) this cuts normal-matrix formation from O(m³) to O(m²·n). ---
+            var colRow = new NativeArray<int>(nv, Allocator.Temp);      // single-nonzero row, −1 = multi, −2 = empty
+            var colVal = new NativeArray<double>(nv, Allocator.Temp);   // that nonzero's value
+            int nDense = 0;
+            for (int k = 0; k < nv; k++)
+            {
+                int cnt = 0, row = -1; double val = (double)0;
+                for (int i = 0; i < m && cnt < 2; i++)
+                {
+                    double a = As[i, k];
+                    if (a != (double)0) { cnt++; row = i; val = a; }
+                }
+                if (cnt >= 2) { colRow[k] = -1; nDense++; }
+                else if (cnt == 1) { colRow[k] = row; colVal[k] = val; }
+                else colRow[k] = -2;
+            }
+            var denseK = new NativeArray<int>(math.max(nDense, 1), Allocator.Temp);   // dense slot -> original column
+            var Ad = new doubleMxN(m, math.max(nDense, 1), Allocator.Temp);           // compacted multi-nonzero columns
+            var dd = new doubleN(math.max(nDense, 1), Allocator.Temp);                // their d[k] slice
+            {
+                int cc = 0;
+                for (int k = 0; k < nv; k++)
+                {
+                    if (colRow[k] != -1) continue;
+                    denseK[cc] = k;
+                    for (int i = 0; i < m; i++) Ad[i, cc] = As[i, k];
+                    cc++;
+                }
+            }
+
             // --- scratch ---
             var z = new doubleN(nv, Allocator.Temp); var s = new doubleN(nv, Allocator.Temp);
             var y = new doubleN(m, Allocator.Temp);
@@ -66,6 +103,7 @@ namespace LinearAlgebra
             var rhsY = new doubleN(m, Allocator.Temp);
             var M = new doubleMxN(m, m, Allocator.Temp);
             var L = new doubleMxN(m, m, Allocator.Temp);
+            var zBest = new doubleN(nv, Allocator.Temp);
 
             double reg = Consts.doubleZeroThreshold;
             double BIG = (double)1e30;
@@ -79,7 +117,7 @@ namespace LinearAlgebra
 
             // --- Mehrotra starting point: least-norm x̃, dual ỹ from (Aₛ Aₛᵀ)⁻¹, then shift interior ---
             for (int j = 0; j < nv; j++) d[j] = (double)1;
-            BuildNormal(As, d, M, m, nv, reg);
+            BuildNormalStructured(Ad, d, dd, denseK, colRow, colVal, M, m, nv, nDense, reg);
             bool ok = CHO.decomp(in M, ref L);
             if (ok)
             {
@@ -123,6 +161,12 @@ namespace LinearAlgebra
             LPStatus status = LPStatus.MaxIterations;
             int iters = 0;
 
+            // Best-iterate safeguard (mirrors the sparse standardFormInterior): a failed late
+            // factorization or a float blow-up must not poison the answer -- keep the best-scoring
+            // iterate seen and extract x from it, not from whatever z the loop stopped on.
+            for (int j = 0; j < nv; j++) zBest[j] = z[j];
+            double bestScore = double.MaxValue;
+
             while (iters < budget)
             {
                 // residuals & duality measure
@@ -139,13 +183,32 @@ namespace LinearAlgebra
                 for (int j = 0; j < nv; j++) rcN += (double)rc[j] * (double)rc[j];
                 rpN = math.sqrt(rpN); rcN = math.sqrt(rcN);
 
+                double score = rpN / (1.0 + bNorm) + rcN / (1.0 + cNorm) + mu / (1.0 + math.abs(objz));
+                if (!(score < 1e300)) break;                               // NaN/Inf blow-up -> keep zBest
+                if (score < bestScore) { bestScore = score; for (int j = 0; j < nv; j++) zBest[j] = z[j]; }
+
                 if (rpN / (1.0 + bNorm) < tol && rcN / (1.0 + cNorm) < tol && mu / (1.0 + math.abs(objz)) < tol)
                 { status = LPStatus.Optimal; break; }
 
                 // normal matrix M = A D Aᵀ, D = Z S⁻¹, factored once and reused this iteration
                 for (int j = 0; j < nv; j++) d[j] = z[j] / s[j];
-                BuildNormal(As, d, M, m, nv, reg);
-                if (!CHO.decomp(in M, ref L)) { status = LPStatus.MaxIterations; break; }
+                BuildNormalStructured(Ad, d, dd, denseK, colRow, colVal, M, m, nv, nDense, reg);
+                // Near a degenerate optimum M goes numerically indefinite (float especially: reg sits
+                // far below M's scale once d = z/s spreads) long before the iterate stops improving.
+                // Rather than giving up on the first failed Cholesky, bump the diagonal regularization
+                // a few decades and refactor -- the damped step still makes progress; if M is beyond
+                // saving, bail out and return the best iterate.
+                {
+                    bool okM = CHO.decomp(in M, ref L);
+                    double bump = reg;
+                    for (int t = 0; !okM && t < 4; t++)
+                    {
+                        bump *= (double)1e3;
+                        for (int i = 0; i < m; i++) M[i, i] += bump;
+                        okM = CHO.decomp(in M, ref L);
+                    }
+                    if (!okM) break;                                       // status stays MaxIterations
+                }
 
                 // ---- affine predictor:  rhsY = b − A(D rc) ----
                 for (int j = 0; j < nv; j++) tmpNV[j] = d[j] * rc[j];
@@ -184,16 +247,17 @@ namespace LinearAlgebra
                 iters++;
             }
 
-            // extract structural x and objective
-            for (int j = 0; j < n; j++) x[j] = z[j];
+            // extract structural x and objective (from the best-scoring iterate, not the last z)
+            for (int j = 0; j < n; j++) x[j] = zBest[j];
             double obj = 0;
-            for (int j = 0; j < n; j++) obj += (double)c[j] * (double)z[j];
+            for (int j = 0; j < n; j++) obj += (double)c[j] * (double)zBest[j];
             objective = obj;
 
             As.Dispose(); cs.Dispose(); z.Dispose(); s.Dispose(); y.Dispose();
             dz.Dispose(); ds.Dispose(); dzA.Dispose(); dsA.Dispose(); dy.Dispose();
             d.Dispose(); rc.Dispose(); g.Dispose(); tmpNV.Dispose();
             rp.Dispose(); ADrd.Dispose(); tmpM.Dispose(); rhsY.Dispose(); M.Dispose(); L.Dispose();
+            zBest.Dispose(); colRow.Dispose(); colVal.Dispose(); denseK.Dispose(); Ad.Dispose(); dd.Dispose();
 
             return new LPInfo { status = status, iterations = iters, objective = obj };
         }
@@ -234,6 +298,25 @@ namespace LinearAlgebra
                     M[j, i] = acc;
                 }
             }
+        }
+
+        // M = Aₛ diag(d) Aₛᵀ + reg·I exploiting the standard-form structure captured by colRow/colVal:
+        // only the compacted multi-nonzero columns Ad (original indices in denseK) run through the
+        // O(m²·nDense) kernel; each single-nonzero column k (value v in row r) adds (v·d[k])·v straight
+        // to M[r,r]. Accumulation order matches the naive kernel on the [multi | single] column layouts
+        // interiorCore builds (LAD: [A|−A|−I|I]; general LP: [A|slack]), so the result is bit-identical.
+        static void BuildNormalStructured(doubleMxN Ad, doubleN d, doubleN dd, NativeArray<int> denseK,
+                                          NativeArray<int> colRow, NativeArray<double> colVal,
+                                          doubleMxN M, int m, int nv, int nDense, double reg)
+        {
+            for (int c = 0; c < nDense; c++) dd[c] = d[denseK[c]];
+            BuildNormal(Ad, dd, M, m, nDense, (double)0);
+            for (int k = 0; k < nv; k++)
+            {
+                int r = colRow[k];
+                if (r >= 0) M[r, r] += colVal[k] * d[k] * colVal[k];
+            }
+            for (int i = 0; i < m; i++) M[i, i] += reg;
         }
 
         // Largest α ≥ 0 with v + α·dv ≥ 0 (uncapped; BIG if dv has no negative entry). Caller caps at 1.
