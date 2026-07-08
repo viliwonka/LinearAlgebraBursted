@@ -16,6 +16,10 @@
   Optional test name filter. Unity's -testFilter is a regex; this script also
   accepts glob-style '*' (converted to '.*'), so "*Eigen*" and "Eigen" both work.
 
+.PARAMETER NoRegen
+  Skip the template->source codegen step and test whatever is already
+  generated. Use when iterating on non-templated test harness code.
+
 .EXAMPLE
   ./Tools/run-tests.ps1
   ./Tools/run-tests.ps1 -Filter "*Eigen*"
@@ -23,10 +27,23 @@
 param(
   [ValidateSet("EditMode", "PlayMode")]
   [string]$Platform = "EditMode",
-  [string]$Filter
+  [string]$Filter,
+  [switch]$NoRegen
 )
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_unity-common.ps1"
+
+# Regenerate sources from templates first (unless -NoRegen), so the tests
+# never run against stale generated code after a template edit. Mirrors
+# benchmark.ps1 / regen-and-test.ps1; regen.ps1 is headless (no Unity) and fast.
+if (-not $NoRegen) {
+  & "$PSScriptRoot\regen.ps1"
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "`nStopping: codegen failed."
+    exit $LASTEXITCODE
+  }
+  Write-Host "`n=== Codegen OK -> running tests ===`n"
+}
 
 $Out     = Join-Path (Get-ProjectRoot) "TestResults"
 $Results = Join-Path $Out "$Platform.xml"
