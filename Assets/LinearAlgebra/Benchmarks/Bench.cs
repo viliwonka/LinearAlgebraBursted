@@ -24,8 +24,8 @@ namespace LinearAlgebra.Benchmarks
     public static class Bench
     {
         public static readonly int[] Sizes = { 64, 128, 256, 512, 1024 };
-        public const int Warmup = 3;
-        public const int Runs = 9;
+        public const int Warmup = 1;
+        public const int Runs = 4;
 
         public struct Stat { public double Min, Median, Mean, Max; }
 
@@ -51,11 +51,14 @@ namespace LinearAlgebra.Benchmarks
             Array.Sort(s);
             double sum = 0;
             for (int i = 0; i < s.Length; i++) sum += s[i];
+            int n = s.Length;
+            // True median: average of the two central samples for an even count, middle one for odd.
+            double median = (n & 1) == 0 ? 0.5 * (s[n / 2 - 1] + s[n / 2]) : s[n / 2];
             return new Stat
             {
                 Min = s[0],
                 Max = s[s.Length - 1],
-                Median = s[s.Length / 2],
+                Median = median,
                 Mean = sum / s.Length,
             };
         }
