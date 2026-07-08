@@ -38,6 +38,9 @@ public class floatLPTests
             SparseLadStackloss, // sparse LAD objective == dense LAD (stack-loss)
             SparseWyndorGlass,  // sparse (BSR) LP.solve, Wyndor Glass        -> (2,6), Z 36
             SparseVsDenseLp,    // sparse LP.solve == dense LP.solve (mixed <=/>= senses)
+            PdlpWyndor,         // PDLP (first-order PDHG) on Wyndor Glass    -> (2,6), Z 36
+            PdlpSparseWyndor,   // PDLP over a BSR Wyndor Glass               -> (2,6), Z 36
+            PdlpVsDense,        // PDLP(BSR) == PDLP(dense) on a mixed two-sided LP
         }
 
         public TestType Type;
@@ -71,6 +74,9 @@ public class floatLPTests
                 case TestType.SparseLadStackloss: SparseLadStackloss(); break;
                 case TestType.SparseWyndorGlass: SparseWyndorGlass(); break;
                 case TestType.SparseVsDenseLp: SparseVsDenseLp(); break;
+                case TestType.PdlpWyndor: PdlpWyndor(); break;
+                case TestType.PdlpSparseWyndor: PdlpSparseWyndor(); break;
+                case TestType.PdlpVsDense: PdlpVsDense(); break;
             }
         }
 
@@ -581,6 +587,94 @@ public class floatLPTests
             AssertClose(xs[1], xd[1], (float)2e-1);
 
             senses.Dispose(); arena.Dispose();
+        }
+
+        // ==== PDLP (first-order matrix-free PDHG) ====
+
+        // PDLP on Wyndor Glass in two-sided form: max 3x1+5x2 (min -3x1-5x2) s.t. x1<=4, 2x2<=12,
+        // 3x1+2x2<=18, x>=0. Optimum (2,6), Z=36 (obj -36). First-order PDHG (restart + primal weight +
+        // adaptive step + preconditioning), so it converges to a loose tolerance -- give it a generous
+        // budget and check the optimum, not speed.
+        void PdlpWyndor()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            float INF = (float)1e30;
+            var A = arena.floatMat(3, 2);
+            A[0, 0] = (float)1; A[0, 1] = (float)0;
+            A[1, 0] = (float)0; A[1, 1] = (float)2;
+            A[2, 0] = (float)3; A[2, 1] = (float)2;
+            var lc = arena.floatVec(3); lc[0] = -INF; lc[1] = -INF; lc[2] = -INF;
+            var uc = arena.floatVec(3); uc[0] = (float)4; uc[1] = (float)12; uc[2] = (float)18;
+            var lv = arena.floatVec(2); lv[0] = (float)0; lv[1] = (float)0;
+            var uv = arena.floatVec(2); uv[0] = INF; uv[1] = INF;
+            var c = arena.floatVec(2); c[0] = (float)(-3); c[1] = (float)(-5);
+            var x = arena.floatVec(2);
+
+            var info = LP.pdlp(in A, in lc, in uc, in lv, in uv, in c, ref x, out double obj, 200000, 1e-6);
+
+            AssertClose(x[0], (float)2, (float)1.5e-1);
+            AssertClose(x[1], (float)6, (float)1.5e-1);
+            AssertCloseD(obj, -36.0, 0.5);
+
+            arena.Dispose();
+        }
+
+        // Same Wyndor Glass optimum, but the constraint matrix is a BSR (1x1 blocks): exercises the sparse
+        // PDLP path end-to-end -- floatBSROperator's spMV/spMVT, the BSR block-traversal equilibration,
+        // and the shared scaled-solve glue. Must land on the same (2,6) / -36.
+        void PdlpSparseWyndor()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            float INF = (float)1e30;
+            var A = arena.floatMat(3, 2);
+            A[0, 0] = (float)1; A[0, 1] = (float)0;
+            A[1, 0] = (float)0; A[1, 1] = (float)2;
+            A[2, 0] = (float)3; A[2, 1] = (float)2;
+            var As = BuildBSR1x1(ref arena, in A);
+            var lc = arena.floatVec(3); lc[0] = -INF; lc[1] = -INF; lc[2] = -INF;
+            var uc = arena.floatVec(3); uc[0] = (float)4; uc[1] = (float)12; uc[2] = (float)18;
+            var lv = arena.floatVec(2); lv[0] = (float)0; lv[1] = (float)0;
+            var uv = arena.floatVec(2); uv[0] = INF; uv[1] = INF;
+            var c = arena.floatVec(2); c[0] = (float)(-3); c[1] = (float)(-5);
+            var x = arena.floatVec(2);
+
+            var info = LP.pdlp(in As, in lc, in uc, in lv, in uv, in c, ref x, out double obj, 200000, 1e-6);
+
+            AssertClose(x[0], (float)2, (float)1.5e-1);
+            AssertClose(x[1], (float)6, (float)1.5e-1);
+            AssertCloseD(obj, -36.0, 0.5);
+
+            arena.Dispose();
+        }
+
+        // Sparse PDLP must reach the SAME optimum as dense PDLP on an identical two-sided LP with an
+        // equality row and an inequality row: min -x-2y s.t. x+y=4 (ℓ_c=u_c), 0<=y<=3, x,y>=0. Optimum
+        // (1,3), Z -7. Confirms the BSR operator + BSR equilibration agree with the dense path.
+        void PdlpVsDense()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            float INF = (float)1e30;
+            var A = arena.floatMat(2, 2);
+            A[0, 0] = (float)1; A[0, 1] = (float)1;   // x + y = 4
+            A[1, 0] = (float)0; A[1, 1] = (float)1;   // y <= 3
+            var lc = arena.floatVec(2); lc[0] = (float)4; lc[1] = -INF;
+            var uc = arena.floatVec(2); uc[0] = (float)4; uc[1] = (float)3;
+            var lv = arena.floatVec(2); lv[0] = (float)0; lv[1] = (float)0;
+            var uv = arena.floatVec(2); uv[0] = INF; uv[1] = INF;
+            var c = arena.floatVec(2); c[0] = (float)(-1); c[1] = (float)(-2);
+            var As = BuildBSR1x1(ref arena, in A);
+            var xd = arena.floatVec(2);
+            var xs = arena.floatVec(2);
+
+            LP.pdlp(in A,  in lc, in uc, in lv, in uv, in c, ref xd, out double objD, 200000, 1e-6);
+            LP.pdlp(in As, in lc, in uc, in lv, in uv, in c, ref xs, out double objS, 200000, 1e-6);
+
+            AssertCloseD(objD, -7.0, 0.5);
+            AssertCloseD(objS, objD, 0.05 * (1.0 + math.abs(objD)));
+            AssertClose(xs[0], xd[0], (float)2e-1);
+            AssertClose(xs[1], xd[1], (float)2e-1);
+
+            arena.Dispose();
         }
 
         // ---- diagnostics-recording assert helpers (Burst-legal: Assert.Fail(string) is not) ----

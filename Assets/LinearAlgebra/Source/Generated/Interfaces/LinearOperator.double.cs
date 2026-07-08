@@ -205,4 +205,79 @@ namespace LinearAlgebra
             rin.Dispose();
         }
     }
+
+    /// <summary>
+    /// Two-sided diagonal-scaling wrapper: presents the equilibrated operator Â = D_r · A · D_c where
+    /// D_r = diag(dr) scales the OUTPUT (row) space and D_c = diag(dc) scales the INPUT (column) space,
+    /// over any inner <typeparamref name="TInner"/> operator. This is the matrix-free realization of Ruiz /
+    /// Pock–Chambolle equilibration used by <see cref="LP.pdlp(in doubleMxN,in doubleN,in doubleN,in doubleN,in doubleN,in doubleN,ref doubleN,out double,int,double)"/>:
+    /// PDHG lives in the geometry set by ‖Â‖, so flattening the row/column scales up front is what makes
+    /// the first-order iteration converge. Solve on Â (with correspondingly scaled bounds/objective), then
+    /// recover the original variable x = D_c · x̂.
+    ///
+    /// Holds the inner operator, the diagonals <c>Dr</c> (length inner.Rows) and <c>Dc</c> (length
+    /// inner.Cols), and two owned scratch buffers — <c>ScratchN</c> (length inner.Cols) for Apply and
+    /// <c>ScratchM</c> (length inner.Rows) for ApplyT — so the caller's input vector is never mutated.
+    /// Dr/Dc/ScratchN/ScratchM must all be distinct buffers and distinct from any vector the solver passes
+    /// to Apply/ApplyT. Readonly, like <see cref="doubleDenseOperator"/>.
+    /// </summary>
+    public readonly struct doubleRowColScaledOperator<TInner> : IdoubleLinearOperator
+        where TInner : struct, IdoubleLinearOperator
+    {
+        public readonly TInner Inner;
+        public readonly doubleN Dr;        // length Inner.Rows: row (output) scale
+        public readonly doubleN Dc;        // length Inner.Cols: column (input) scale
+        public readonly doubleN ScratchN;  // length Inner.Cols: workspace for Apply (holds dc .* x)
+        public readonly doubleN ScratchM;  // length Inner.Rows: workspace for ApplyT (holds dr .* x)
+
+        public doubleRowColScaledOperator(in TInner inner, in doubleN dr, in doubleN dc,
+                                          in doubleN scratchN, in doubleN scratchM)
+        {
+            if (dr.N != inner.Rows) throw new System.ArgumentException("doubleRowColScaledOperator: dr.N must equal inner.Rows");
+            if (dc.N != inner.Cols) throw new System.ArgumentException("doubleRowColScaledOperator: dc.N must equal inner.Cols");
+            if (scratchN.N != inner.Cols) throw new System.ArgumentException("doubleRowColScaledOperator: scratchN.N must equal inner.Cols");
+            if (scratchM.N != inner.Rows) throw new System.ArgumentException("doubleRowColScaledOperator: scratchM.N must equal inner.Rows");
+
+            Inner = inner;
+            Dr = dr;
+            Dc = dc;
+            ScratchN = scratchN;
+            ScratchM = scratchM;
+        }
+
+        public int Rows => Inner.Rows;
+        public int Cols => Inner.Cols;
+
+        // (Dr A Dc) x = Dr .* (A (Dc .* x)). Scale into ScratchN so the caller's x is untouched.
+        public void Apply(in doubleN x, ref doubleN y)
+        {
+            for (int j = 0; j < Dc.N; j++) ScratchN[j] = Dc[j] * x[j];
+            Inner.Apply(in ScratchN, ref y);
+            for (int i = 0; i < Dr.N; i++) y[i] *= Dr[i];
+        }
+
+        // (Dr A Dc)ᵀ x = Dc .* (Aᵀ (Dr .* x)). Scale into ScratchM, then scale the length-Cols output y.
+        public void ApplyT(in doubleN x, ref doubleN y)
+        {
+            for (int i = 0; i < Dr.N; i++) ScratchM[i] = Dr[i] * x[i];
+            Inner.ApplyT(in ScratchM, ref y);
+            for (int j = 0; j < Dc.N; j++) y[j] *= Dc[j];
+        }
+
+        // No block specialization (composes over an arbitrary inner operator): per-row via scalar Apply.
+        public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
+        {
+            int cols = Vrows.N_Cols;
+            var rin = new doubleN(cols, Unity.Collections.Allocator.Temp, false);
+            var rout = new doubleN(Rows, Unity.Collections.Allocator.Temp, false);
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < cols; c++) rin[c] = Vrows[i, c];
+                Apply(in rin, ref rout);
+                for (int c = 0; c < Rows; c++) AVrows[i, c] = rout[c];
+            }
+            rout.Dispose();
+            rin.Dispose();
+        }
+    }
 }
