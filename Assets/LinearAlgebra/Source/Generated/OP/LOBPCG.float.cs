@@ -169,10 +169,19 @@ namespace LinearAlgebra
             int numActive = k;
             bool haveP = false;
 
+            // Freeze (lock) a pair only at a fraction of tol; convergence is still DECLARED at tol via
+            // allWithinTol below. Locking is destructive -- once a pair is frozen, the remaining active
+            // pairs are confined B-orthogonal to it (W/P are deflated against all X), and the best
+            // residual achievable under that confinement is ~0.87x the frozen pair's lock residual. So
+            // lock with margin (0.087*tol induced floor) instead of at tol, which would leave later
+            // pairs stuck just above tol. See the (d1) re-deflation block below.
+            float lockTol = tol * (float)0.1;
+
             for (int iter = 0; iter < maxIter; iter++)
             {
                 // ---- residual + lock newly converged pairs (scan back-to-front so a swap-in
                 //      from the back is still checked) ----
+                bool allWithinTol = true;
                 for (int i = numActive - 1; i >= 0; i--)
                 {
                     float rn2 = (float)0;
@@ -198,7 +207,11 @@ namespace LinearAlgebra
                     float scale = math.abs(ws.lambda[i]);
                     if (scale < (float)1) scale = (float)1;
 
-                    if (rnorm <= tol * scale)
+                    // Convergence is measured at tol (this drives the honest exit below); a pair need
+                    // not be locked to count as converged.
+                    if (!(rnorm <= tol * scale)) allWithinTol = false;
+
+                    if (rnorm <= lockTol * scale)
                     {
                         int last = numActive - 1;
                         if (i != last)
@@ -225,14 +238,45 @@ namespace LinearAlgebra
                     }
                 }
 
-                if (numActive == 0)
+                // Honest exit: every pair (locked pairs met the stricter lockTol; active pairs checked
+                // just now) is within tol -- converged, whether or not all were frozen. Subsumes the old
+                // numActive==0 case. `iter` (not iter+1): iterations 0..iter-1 each did a full
+                // W/Rayleigh-Ritz work pass; THIS iteration only ran the residual check before finding
+                // everyone converged, so it contributes no additional work -- matches SolveInfo's
+                // "0 when converged before the first step" convention.
+                if (allWithinTol)
                 {
-                    // `iter` (not iter+1): iterations 0..iter-1 each did a full W/Rayleigh-Ritz
-                    // work pass; THIS iteration only ran the residual check before finding
-                    // everyone already converged, so it contributes no additional work -- matches
-                    // SolveInfo's "0 when converged before the first step" convention.
                     SortAscending(ref ws, k);
                     return new LOBPCGInfo { iterations = iter, converged = k, maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.Converged };
+                }
+
+                // (d1) Re-B-orthogonalize the ACTIVE X block against the LOCKED rows [numActive, k).
+                // Deflation of the search directions (W/P below) against ALL X removes locked-row
+                // components from the DIRECTIONS, but the active X rows themselves can retain a fixed
+                // B-component along a just-frozen row that no later direction can then cancel -- a
+                // hard-locking FIXED POINT that freezes the residual at ~|component|*|dLambda|*||B x||
+                // (the buckling smoke test hit exactly this in float). Projecting the active block
+                // B-orthogonal to the locked rows here removes that trapped component; AX/BX ride along
+                // by linearity, and we renormalize in the B-inner-product so the next Rayleigh-Ritz
+                // Gram stays near the identity. No-op until at least one pair has locked (numActive < k).
+                if (numActive < k)
+                {
+                    Deflate(ref ws.X, ref ws.AX, ref ws.BX, numActive, in ws.X, in ws.AX, in ws.BX, numActive, k - numActive, n);
+                    for (int i = 0; i < numActive; i++)
+                    {
+                        float bn2 = (float)0;
+                        for (int c = 0; c < n; c++) bn2 += ws.X[i, c] * ws.BX[i, c];
+                        if (bn2 > (float)0)
+                        {
+                            float inv = (float)1 / math.sqrt(bn2);
+                            for (int c = 0; c < n; c++)
+                            {
+                                ws.X[i, c]  *= inv;
+                                ws.AX[i, c] *= inv;
+                                ws.BX[i, c] *= inv;
+                            }
+                        }
+                    }
                 }
 
                 // ---- W = M^-1 R (active), AW = A W, BW = B W (active) -- ONE matvec batch each/iteration ----
@@ -261,7 +305,7 @@ namespace LinearAlgebra
                 // else -- keeps the combined B-Gram close to the identity, so the final
                 // Rayleigh-Ritz Cholesky is well-conditioned by construction and a genuine rank
                 // deficiency reliably trips the correct safeguard.
-                Deflate(ref ws.W, ref ws.AW, ref ws.BW, numActive, in ws.X, in ws.AX, in ws.BX, k, n);
+                Deflate(ref ws.W, ref ws.AW, ref ws.BW, numActive, in ws.X, in ws.AX, in ws.BX, 0, k, n);
 
                 if (!OrthonormalizeBlockB(ref ws.W, ref ws.AW, ref ws.BW, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut, ref ws.rowAux))
                 {
@@ -275,8 +319,8 @@ namespace LinearAlgebra
                 bool haveP0 = haveP;
                 if (haveP0)
                 {
-                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.X, in ws.AX, in ws.BX, k, n);
-                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.W, in ws.AW, in ws.BW, numActive, n);
+                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.X, in ws.AX, in ws.BX, 0, k, n);
+                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.W, in ws.AW, in ws.BW, 0, numActive, n);
 
                     // If P has become (nearly) linearly dependent on X/W -- e.g. after many
                     // iterations P can drift toward the span already covered -- drop it for just
@@ -852,11 +896,11 @@ namespace LinearAlgebra
         // coeff and every update below reproduce the pre-generalization Euclidean Deflate formula
         // bit-for-bit.
         static void Deflate(ref floatMxN V, ref floatMxN AV, ref floatMxN BV, int activeCount,
-                             in floatMxN Against, in floatMxN AgainstA, in floatMxN AgainstB, int againstCount, int n)
+                             in floatMxN Against, in floatMxN AgainstA, in floatMxN AgainstB, int againstStart, int againstCount, int n)
         {
             for (int pass = 0; pass < 2; pass++)
                 for (int a = 0; a < activeCount; a++)
-                    for (int i = 0; i < againstCount; i++)
+                    for (int i = againstStart; i < againstStart + againstCount; i++)
                     {
                         float coeff = (float)0;
                         for (int c = 0; c < n; c++) coeff += AgainstB[i, c] * V[a, c];
