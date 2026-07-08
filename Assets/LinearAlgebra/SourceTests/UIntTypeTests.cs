@@ -18,7 +18,7 @@ public class UIntTypeTests
 {
     const uint UMAX = uint.MaxValue; // 4294967295 == 0xFFFFFFFF
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public struct TestsJob : IJob
     {
         public enum TestType

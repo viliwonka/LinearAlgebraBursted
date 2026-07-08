@@ -30,7 +30,7 @@ public class ChunkedRecordTableTests
         public int Tag;
     }
 
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true)]
     public unsafe struct TestsJob : IJob
     {
         public enum TestType
