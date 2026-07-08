@@ -33,6 +33,7 @@ namespace LinearAlgebra.Benchmarks
                 LargeSparseBenchmark.Section(sb);
                 KMeansBenchmark.Section(sb);
                 FFTBenchmark.Section(sb);
+                LPBenchmark.Section(sb);
 
                 sb.AppendLine("GFLOP/s~ uses each kernel's leading-term flop count (approximate): GEMM 2N^3, " +
                               "LU (2/3)N^3, Cholesky (1/3)N^3, QR (4/3)N^3, tall/wide QR-LQ 2cols^2(rows-cols/3).");

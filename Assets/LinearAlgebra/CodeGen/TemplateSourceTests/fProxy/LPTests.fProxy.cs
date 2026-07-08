@@ -30,6 +30,8 @@ public class fProxyLPTests
             IpGreaterEqual,     // interior point: >= LP                     -> (3,0), obj 3
             IpLadExactFit,      // interior-point LAD, exact line            -> (1,2), obj ~0
             IpLadOutlier,       // interior-point LAD, outlier set           -> (0,1), obj ~8
+            WyndorGlass,        // Hillier-Lieberman classic LP              -> (2,6), Z 36
+            LadStackloss,       // Brownlee stack-loss LAD (published coeffs)
         }
 
         public TestType Type;
@@ -56,6 +58,8 @@ public class fProxyLPTests
                 case TestType.IpGreaterEqual: IpGreaterEqual(); break;
                 case TestType.IpLadExactFit: IpLadExactFit(); break;
                 case TestType.IpLadOutlier: IpLadOutlier(); break;
+                case TestType.WyndorGlass: WyndorGlass(); break;
+                case TestType.LadStackloss: LadStackloss(); break;
             }
         }
 
@@ -365,6 +369,75 @@ public class fProxyLPTests
             AssertCloseD(obj, 8.0, 1e-1);
 
             arena.Dispose();
+        }
+
+        // ==== literature known-answer vectors ====
+
+        // Wyndor Glass Co. (Hillier & Lieberman, "Introduction to Operations Research"):
+        //   max 3x1 + 5x2  s.t.  x1 <= 4,  2x2 <= 12,  3x1 + 2x2 <= 18,  x >= 0
+        // Optimal vertex (2, 6), Z = 36. Solved as a minimization of -3x1 - 5x2 (obj -36).
+        void WyndorGlass()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(3, 2);
+            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)0;
+            A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)2;
+            A[2, 0] = (fProxy)3; A[2, 1] = (fProxy)2;
+            var b = arena.fProxyVec(3); b[0] = (fProxy)4; b[1] = (fProxy)12; b[2] = (fProxy)18;
+            var c = arena.fProxyVec(2); c[0] = (fProxy)(-3); c[1] = (fProxy)(-5);
+            var x = arena.fProxyVec(2);
+            var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
+
+            var info = LP.solve(in A, in b, in c, in senses, ref x, out double obj);
+
+            AssertTrue(info.status == LPStatus.Optimal);
+            AssertClose(x[0], (fProxy)2, (fProxy)1e-3);
+            AssertClose(x[1], (fProxy)6, (fProxy)1e-3);
+            AssertCloseD(obj, -36.0, 1e-3);
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // Brownlee's stack-loss plant data (R `stackloss`, 21 obs). LAD (L1) regression coefficients,
+        // cross-verified across R's quantreg and ROI: intercept -39.68986, AirFlow 0.83188,
+        // WaterTemp 0.57391, AcidConc -0.06087. The L1 fit interpolates 4 of the 21 points, so the
+        // vertex (hence these coefficients) is exact -- float reaches it comfortably within 5e-2.
+        void LadStackloss()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildStackloss(ref arena, out var A, out var b);
+            var x = arena.fProxyVec(4);
+
+            var info = LP.lad(in A, in b, ref x, out double obj);
+
+            AssertTrue(info.status == LPStatus.Optimal);
+            AssertClose(x[0], (fProxy)(-39.68985507), (fProxy)5e-2);   // intercept
+            AssertClose(x[1], (fProxy)0.83188406, (fProxy)5e-2);       // Air.Flow
+            AssertClose(x[2], (fProxy)0.57391304, (fProxy)5e-2);       // Water.Temp
+            AssertClose(x[3], (fProxy)(-0.06086957), (fProxy)5e-2);    // Acid.Conc.
+
+            arena.Dispose();
+        }
+
+        // A = [1, AirFlow, WaterTemp, AcidConc], b = stack.loss. All 21 rows are integer-valued.
+        static void BuildStackloss(ref Arena arena, out fProxyMxN A, out fProxyN b)
+        {
+            A = arena.fProxyMat(21, 4);
+            b = arena.fProxyVec(21);
+            SetObs(A, b, 0, 80, 27, 89, 42); SetObs(A, b, 1, 80, 27, 88, 37); SetObs(A, b, 2, 75, 25, 90, 37);
+            SetObs(A, b, 3, 62, 24, 87, 28); SetObs(A, b, 4, 62, 22, 87, 18); SetObs(A, b, 5, 62, 23, 87, 18);
+            SetObs(A, b, 6, 62, 24, 93, 19); SetObs(A, b, 7, 62, 24, 93, 20); SetObs(A, b, 8, 58, 23, 87, 15);
+            SetObs(A, b, 9, 58, 18, 80, 14); SetObs(A, b, 10, 58, 18, 89, 14); SetObs(A, b, 11, 58, 17, 88, 13);
+            SetObs(A, b, 12, 58, 18, 82, 11); SetObs(A, b, 13, 58, 19, 93, 12); SetObs(A, b, 14, 50, 18, 89, 8);
+            SetObs(A, b, 15, 50, 18, 86, 7); SetObs(A, b, 16, 50, 19, 72, 8); SetObs(A, b, 17, 50, 19, 79, 8);
+            SetObs(A, b, 18, 50, 20, 80, 9); SetObs(A, b, 19, 56, 20, 82, 15); SetObs(A, b, 20, 70, 20, 91, 15);
+        }
+
+        static void SetObs(fProxyMxN A, fProxyN b, int i, int airflow, int watertemp, int acidconc, int stackloss)
+        {
+            A[i, 0] = (fProxy)1; A[i, 1] = (fProxy)airflow; A[i, 2] = (fProxy)watertemp; A[i, 3] = (fProxy)acidconc;
+            b[i] = (fProxy)stackloss;
         }
 
         // ---- diagnostics-recording assert helpers (Burst-legal: Assert.Fail(string) is not) ----

@@ -212,8 +212,14 @@ namespace LinearAlgebra
                 if (c2b != (fProxy)0) for (int j = 0; j < nCols; j++) cost2[j] -= c2b * T[i, j];
             }
 
-            fProxy pivTol = Consts.fProxyZeroThreshold;
-            double feasTol = math.sqrt((double)Consts.fProxyEpsilon) * (1.0 + bScale);
+            // Simplex needs a tolerance LOOSER than machine precision: near-zero reduced costs and
+            // near-zero pivot elements are noise, not signal. Consts.fProxyZeroThreshold is 1e-6
+            // (float) but 1e-14 (double) -- the latter is machine-tight and makes the double solve
+            // over-sensitive to roundoff on larger, degenerate problems (near-zero pivots amplify,
+            // phase-1 leaves a spurious residual). Floor both tolerances so double stays sane while
+            // float is unchanged (its 1e-6 / sqrt-eps values already dominate the floors).
+            fProxy pivTol = math.max(Consts.fProxyZeroThreshold, (fProxy)1e-9);
+            double feasTol = math.max(math.sqrt((double)Consts.fProxyEpsilon), 1e-7) * (1.0 + bScale);
             int budget = maxIter > 0 ? maxIter : 50 * (m + nCols) + 200;
 
             LPStatus status = LPStatus.Optimal;
