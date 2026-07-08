@@ -342,8 +342,10 @@ namespace LinearAlgebra
 
                 if (!ok)
                 {
-                    // Pathological stall: leave X/lambda untouched this iteration and retry next
-                    // time; discard P's history since it (or even just [X,W]) was implicated.
+                    // Pathological stall: skip this iteration's Ritz update (lambda and the Ritz
+                    // combination of X are untouched) and retry next time; discard P's history since it
+                    // (or even just [X,W]) was implicated. Note X may already carry the (d1) re-deflation
+                    // applied above -- a legitimate improvement, not part of the discarded RR step.
                     haveP = false;
                     continue;
                 }
@@ -379,7 +381,7 @@ namespace LinearAlgebra
             }
 
             SortAscending(ref ws, k);
-            return new LOBPCGInfo { iterations = maxIter, converged = k - numActive, maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
+            return new LOBPCGInfo { iterations = maxIter, converged = ConvergedWithinTol(in ws, k, tol), maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
         }
 
         /// <summary>lobpcg (generalized, preconditioned) with default maxIter (1000).</summary>
@@ -1237,6 +1239,22 @@ namespace LinearAlgebra
                 if (rel > worst) worst = rel;
             }
             return worst;
+        }
+
+        // How many of the k pairs are within the requested tol (NOT the stricter lock margin lockTol).
+        // On a non-converged exit, k - numActive would count only pairs frozen to lockTol (= 0.1*tol) and
+        // undercount pairs that reached tol but were never locked -- so report this instead. residual[] is
+        // populated for all k here (active pairs from the last scan, locked pairs frozen at lock time).
+        static int ConvergedWithinTol(in floatLOBPCGCache ws, int k, float tol)
+        {
+            int c = 0;
+            for (int i = 0; i < k; i++)
+            {
+                float scale = math.abs(ws.lambda[i]);
+                if (scale < (float)1) scale = (float)1;
+                if (ws.residual[i] <= tol * scale) c++;
+            }
+            return c;
         }
     }
 }
