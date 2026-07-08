@@ -18,11 +18,11 @@ namespace LinearAlgebra
         // PDLP.double.cs); only the equilibration reads the sparse blocks directly. See docs/spec-pdlp.md.
         // ============================================================================================
 
-        // Ruiz (ℓ∞) equilibration + a Pock-Chambolle (ℓ1) finishing pass for a BSR matrix, filling Dr
-        // (length m) / Dc (length n) from ONE block traversal per pass (O(nnz)) -- the sparse mirror of
-        // pdlpEquilibrateDense. Symmetric (upper-block-only) storage is skipped: its implicit lower blocks
-        // are not stored, so a single pass would under-count the row/column norms; leaving Dr=Dc=1 is safe
-        // (a positive diagonal similarity never moves the optimum). Scales are clamped to a sane range.
+        // Ruiz (ℓ∞) equilibration for a BSR matrix, filling Dr (length m) / Dc (length n) from ONE block
+        // traversal per sweep (O(nnz)) -- the sparse mirror of pdlpEquilibrateDense (Ruiz only; a
+        // Pock-Chambolle ℓ1 pass on top over-shrinks ‖Â‖→0). Symmetric (upper-block-only) storage is
+        // skipped: its implicit lower blocks are not stored, so a single pass would under-count the
+        // row/column norms; leaving Dr=Dc=1 is safe (a positive diagonal never moves the optimum). Clamped.
         static unsafe void pdlpEquilibrateBSR(in doubleBSR A, ref doubleN Dr, ref doubleN Dc)
         {
             int m = A.M_Rows, n = A.N_Cols;
@@ -85,43 +85,6 @@ namespace LinearAlgebra
                     }
                 for (int j = 0; j < n; j++) { double C = (double)dc[j] * (double)ca[j]; if (C > 1e-30) dc[j] = (double)((double)dc[j] / math.sqrt(C)); }
             }
-
-            // Pock-Chambolle: divide by sqrt(row / column 1-norm of the current Â)
-            UnsafeUtility.MemClear(ra, (long)m * fsz);
-            for (int bi = 0; bi < blockRows; bi++)
-                for (int k = rowPtr[bi]; k < rowPtr[bi + 1]; k++)
-                {
-                    int colBase = colInd[k] * BC;
-                    double* blk = values + (long)k * blockSize;
-                    for (int r = 0; r < BR; r++)
-                    {
-                        int gr = bi * BR + r; if (gr >= m) continue;
-                        for (int c = 0; c < BC; c++)
-                        {
-                            int gc = colBase + c; if (gc >= n) continue;
-                            ra[gr] = (double)((double)ra[gr] + math.abs((double)blk[r * BC + c]) * (double)dc[gc]);
-                        }
-                    }
-                }
-            for (int i = 0; i < m; i++) { double s = (double)dr[i] * (double)ra[i]; if (s > 1e-30) dr[i] = (double)((double)dr[i] / math.sqrt(s)); }
-
-            UnsafeUtility.MemClear(ca, (long)n * fsz);
-            for (int bi = 0; bi < blockRows; bi++)
-                for (int k = rowPtr[bi]; k < rowPtr[bi + 1]; k++)
-                {
-                    int colBase = colInd[k] * BC;
-                    double* blk = values + (long)k * blockSize;
-                    for (int r = 0; r < BR; r++)
-                    {
-                        int gr = bi * BR + r; if (gr >= m) continue;
-                        for (int c = 0; c < BC; c++)
-                        {
-                            int gc = colBase + c; if (gc >= n) continue;
-                            ca[gc] = (double)((double)ca[gc] + math.abs((double)blk[r * BC + c]) * (double)dr[gr]);
-                        }
-                    }
-                }
-            for (int j = 0; j < n; j++) { double s = (double)dc[j] * (double)ca[j]; if (s > 1e-30) dc[j] = (double)((double)dc[j] / math.sqrt(s)); }
 
             for (int i = 0; i < m; i++) dr[i] = (double)math.clamp((double)dr[i], 1e-12, 1e12);
             for (int j = 0; j < n; j++) dc[j] = (double)math.clamp((double)dc[j], 1e-12, 1e12);

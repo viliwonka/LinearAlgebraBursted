@@ -127,8 +127,8 @@ namespace LinearAlgebra
                 }
                 normA = (float)math.sqrt(lam);
             }
-            double omega = 1.0;                                            // primal weight ω (τ=η/ω, σ=η·ω)
             double eta = 0.9 / math.max((double)normA, 1e-30);            // step size η (adapts below)
+            double omega = 1.0;                                            // primal weight ω (τ=η/ω, σ=η·ω)
 
             // scales for relative residuals (ignore the ±inf sentinels)
             double bScale = 0, cScale = 0;
@@ -265,10 +265,11 @@ namespace LinearAlgebra
             return new LPInfo { status = status, iterations = iters, objective = objective };
         }
 
-        // Ruiz (ℓ∞) equilibration + a final Pock-Chambolle (ℓ1, α=1) pass, computed from the DENSE matrix
-        // entries: fills Dr (length m) / Dc (length n) so that Â = Dr·A·Dc has ~unit row/column scales.
-        // Done once, up front. Scales are clamped to a sane range (a positive diagonal can't change the
-        // optimum, so this only ever helps or no-ops convergence). O(mn) per sweep, ~10 sweeps.
+        // Ruiz (ℓ∞) equilibration from the DENSE matrix entries: fills Dr (length m) / Dc (length n) so that
+        // Â = Dr·A·Dc has ~unit row/column inf-norms (‖Â‖≈1 -- the geometry PDHG's step size lives in). Done
+        // once, up front. A positive diagonal can't move the optimum, so this only reshapes convergence.
+        // O(mn) per sweep, ~10 sweeps. (NB: a Pock-Chambolle ℓ1 pass on top of Ruiz over-shrinks -- it
+        // divides by sqrt(row/col 1-norm ~ n) -- driving ‖Â‖→0 and η→∞; Ruiz alone hits the right target.)
         static void pdlpEquilibrateDense(in floatMxN A, ref floatN Dr, ref floatN Dc)
         {
             int m = A.M_Rows, n = A.N_Cols;
@@ -291,19 +292,6 @@ namespace LinearAlgebra
                     double C = (double)Dc[j] * mx;
                     if (C > 1e-30) Dc[j] = (float)((double)Dc[j] / math.sqrt(C));
                 }
-            }
-
-            for (int i = 0; i < m; i++)                           // Pock-Chambolle: 1/sqrt(row 1-norm of Â)
-            {
-                double s = 0;
-                for (int j = 0; j < n; j++) s += math.abs((double)A[i, j]) * (double)Dr[i] * (double)Dc[j];
-                if (s > 1e-30) Dr[i] = (float)((double)Dr[i] / math.sqrt(s));
-            }
-            for (int j = 0; j < n; j++)                           // 1/sqrt(column 1-norm of Â)
-            {
-                double s = 0;
-                for (int i = 0; i < m; i++) s += math.abs((double)A[i, j]) * (double)Dr[i] * (double)Dc[j];
-                if (s > 1e-30) Dc[j] = (float)((double)Dc[j] / math.sqrt(s));
             }
 
             for (int i = 0; i < m; i++) Dr[i] = (float)math.clamp((double)Dr[i], 1e-12, 1e12);
