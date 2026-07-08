@@ -30,6 +30,7 @@ namespace LinearAlgebra.Benchmarks
                 IterativeBenchmark.Section(sb);
                 SparseSolverBenchmark.Section(sb);
                 PCGBenchmark.Section(sb);
+                LargeSparseBenchmark.Section(sb);
                 KMeansBenchmark.Section(sb);
                 FFTBenchmark.Section(sb);
 
