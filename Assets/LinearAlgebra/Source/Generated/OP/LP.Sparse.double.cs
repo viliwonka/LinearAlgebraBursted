@@ -10,19 +10,22 @@ namespace LinearAlgebra
     public static partial class LP
     {
         // ============================================================================================
-        // SPARSE least absolute deviation (L1 regression) over a block-sparse (BSR) design matrix.
+        // SPARSE linear programming & least absolute deviation over a block-sparse (BSR) constraint
+        // matrix, solved by a MATRIX-FREE Mehrotra predictor-corrector interior point.
         //
-        // Same reformulation as the dense LP.lad -- minimize ‖A x − b‖₁ becomes the all-equality LP
-        //   min Σ(uᵢ + vᵢ)  s.t.  A(x⁺−x⁻) − u + v = b,   [x⁺|x⁻|u|v] ≥ 0
-        // -- but solved by a MATRIX-FREE Mehrotra interior point: the per-iteration normal equations
+        // Both entry points reduce to the same standard form  min cᵀz  s.t.  Aₛ z = b,  z ≥ 0, and share
+        // one generic interior-point loop (standardFormInterior). The per-iteration normal equations
         // M Δy = rhs (M = Aₛ D Aₛᵀ, SPD) are solved with the library's Krylov.pcg over a
-        // doubleNormalOperator (M is never formed) preconditioned by a doubleNormalJacobi (diagonal of
-        // M, computed matrix-free). The constraint operator Aₛ = [A|−A|−I|I] is doubleLadOperator, which
-        // only ever calls spMV/spMVT on the sparse A. This is the regime where a dense LP is not an
-        // option -- A stays sparse throughout, nothing scales with a dense N².
+        // doubleNormalOperator (M is never formed) preconditioned by a doubleNormalJacobi (diagonal of M,
+        // computed matrix-free). Only the standard-form constraint operator Aₛ differs:
+        //   * LP.lad  -> doubleLadOperator            Aₛ = [A | −A | −I | I]   (LAD is all-equality)
+        //   * LP.solve -> doubleSlackAugmentedOperator Aₛ = [A | ±slack cols]  (one per inequality row)
+        // Every Aₛ only ever calls spMV/spMVT on the sparse A, so nothing scales with a dense N². This is
+        // the regime where a dense LP is not an option.
         //
         // Interior point reports Optimal / MaxIterations only (no exact infeasibility/unboundedness
-        // certificate). Job-safe: all scratch is Allocator.Temp, disposed before return.
+        // certificate -- that needs a homogeneous self-dual embedding; use the dense simplex for small
+        // problems needing those). Job-safe: all scratch is Allocator.Temp, disposed before return.
         // ============================================================================================
 
         /// <summary>
@@ -40,13 +43,108 @@ namespace LinearAlgebra
 
             int nv = 2 * n + 2 * m;
 
+            var ladSp = new doubleN(n, Allocator.Temp); var ladTm = new doubleN(m, Allocator.Temp);
+            var ladAtr = new doubleN(n, Allocator.Temp);
+            var cvec = new doubleN(nv, Allocator.Temp);
+            var zBest = new doubleN(nv, Allocator.Temp, false);
+            var tmpM = new doubleN(m, Allocator.Temp);
+
+            for (int i = 0; i < 2 * m; i++) cvec[2 * n + i] = (double)1;   // cost 1 on every u, v
+
+            var lad = new doubleLadOperator(in A, in ladSp, in ladTm, in ladAtr);
+            var info = standardFormInterior(in lad, in b, in cvec, ref zBest, maxIter);
+
+            // extract x = x⁺ − x⁻ (from the best-scoring iterate) and report the true L1 residual ‖A x − b‖₁
+            for (int j = 0; j < n; j++) x[j] = zBest[j] - zBest[n + j];
+            BSR.spMV(in A, in x, ref tmpM);
+            double l1 = 0;
+            for (int i = 0; i < m; i++) l1 += math.abs((double)tmpM[i] - (double)b[i]);
+            objective = l1;
+            info.objective = l1;
+
+            ladSp.Dispose(); ladTm.Dispose(); ladAtr.Dispose();
+            cvec.Dispose(); zBest.Dispose(); tmpM.Dispose();
+            return info;
+        }
+
+        /// <summary>
+        /// General sparse linear program: minimize cᵀx s.t. A x {≤,=,≥} b (per-row
+        /// <see cref="ConstraintSense"/>), x ≥ 0, with A a block-sparse <see cref="doubleBSR"/>. Matrix-
+        /// free interior point (see the file header): each inequality row gets one non-negative
+        /// slack/surplus, expressed by a <see cref="Sparse.doubleSlackAugmentedOperator"/> that never
+        /// materializes the slack columns. <paramref name="x"/> (length A.N_Cols) is overwritten with the
+        /// solution; <paramref name="objective"/> returns cᵀx. Interior point only -- no simplex for
+        /// sparse -- so it reports Optimal / MaxIterations only (no infeasibility/unboundedness
+        /// certificate; use the dense <see cref="solve(in doubleMxN, in doubleN, in doubleN, in
+        /// NativeArray{ConstraintSense}, ref doubleN, out double, LPMethod, int)"/> simplex for those).
+        /// </summary>
+        public static LPInfo solve(in doubleBSR A, in doubleN b, in doubleN c,
+                                   in NativeArray<ConstraintSense> senses,
+                                   ref doubleN x, out double objective, int maxIter = 0)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            if (b.N != m) throw new System.ArgumentException("LP.solve(BSR): b.N must equal A.M_Rows");
+            if (c.N != n) throw new System.ArgumentException("LP.solve(BSR): c.N must equal A.N_Cols");
+            if (x.N != n) throw new System.ArgumentException("LP.solve(BSR): x.N must equal A.N_Cols");
+            if (senses.Length != m) throw new System.ArgumentException("LP.solve(BSR): senses.Length must equal A.M_Rows");
+
+            // one slack/surplus column per inequality ( ≤ → +1, ≥ → −1 ); equalities get none
+            int nSlack = 0;
+            for (int i = 0; i < m; i++) if (senses[i] != ConstraintSense.Equal) nSlack++;
+            int nv = n + nSlack;
+
+            var slackRow = new NativeArray<int>(nSlack, Allocator.Temp);
+            var slackSign = new NativeArray<double>(nSlack, Allocator.Temp);
+            {
+                int k = 0;
+                for (int i = 0; i < m; i++)
+                {
+                    if (senses[i] == ConstraintSense.Equal) continue;
+                    slackRow[k] = i;
+                    slackSign[k] = senses[i] == ConstraintSense.LessEqual ? (double)1 : (double)(-1);
+                    k++;
+                }
+            }
+
+            var opSp = new doubleN(n, Allocator.Temp); var opAtr = new doubleN(n, Allocator.Temp);
+            var cvec = new doubleN(nv, Allocator.Temp);
+            var zBest = new doubleN(nv, Allocator.Temp, false);
+            for (int j = 0; j < n; j++) cvec[j] = c[j];   // slack costs stay 0
+
+            var op = new doubleSlackAugmentedOperator(in A, nSlack, in slackRow, in slackSign, in opSp, in opAtr);
+            var info = standardFormInterior(in op, in b, in cvec, ref zBest, maxIter);
+
+            double obj = 0;
+            for (int j = 0; j < n; j++) { x[j] = zBest[j]; obj += (double)c[j] * (double)zBest[j]; }
+            objective = obj;
+            info.objective = obj;
+
+            slackRow.Dispose(); slackSign.Dispose(); opSp.Dispose(); opAtr.Dispose();
+            cvec.Dispose(); zBest.Dispose();
+            return info;
+        }
+
+        // --------------------------------------------------------------------------------------------
+        // Shared matrix-free Mehrotra predictor-corrector on standard form  min cᵀz s.t. Aₛ z = b, z ≥ 0.
+        // Generic over the standard-form constraint operator (the ONLY thing that differs between LAD and
+        // general LP); everything below -- infeasible-start point, normal-equations PCG solve, affine +
+        // centering steps, best-iterate safeguard -- is identical. On return zBest (length Aₛ.Cols) holds
+        // the best-scoring iterate; the caller extracts x and fills LPInfo.objective. reg regularizes the
+        // (near-singular near the optimum) normal matrix M := Aₛ D Aₛᵀ + reg·I.
+        // --------------------------------------------------------------------------------------------
+        static LPInfo standardFormInterior<TOp>(in TOp aS, in doubleN b, in doubleN cvec,
+                                                ref doubleN zBest, int maxIter)
+            where TOp : struct, IdoubleStandardFormOperator
+        {
+            int m = aS.Rows, nv = aS.Cols;
+
             // standard-form scratch (length nv)
             var z = new doubleN(nv, Allocator.Temp); var s = new doubleN(nv, Allocator.Temp);
             var dz = new doubleN(nv, Allocator.Temp); var ds = new doubleN(nv, Allocator.Temp);
             var dzA = new doubleN(nv, Allocator.Temp); var dsA = new doubleN(nv, Allocator.Temp);
             var d = new doubleN(nv, Allocator.Temp); var rc = new doubleN(nv, Allocator.Temp);
             var g = new doubleN(nv, Allocator.Temp); var tmpNV = new doubleN(nv, Allocator.Temp);
-            var cvec = new doubleN(nv, Allocator.Temp); var normNV = new doubleN(nv, Allocator.Temp);
+            var normNV = new doubleN(nv, Allocator.Temp);
             // length-m scratch
             var y = new doubleN(m, Allocator.Temp); var dy = new doubleN(m, Allocator.Temp);
             var rp = new doubleN(m, Allocator.Temp); var rhsY = new doubleN(m, Allocator.Temp);
@@ -55,18 +153,12 @@ namespace LinearAlgebra
             // pcg scratch (length m)
             var pr = new doubleN(m, Allocator.Temp); var pp = new doubleN(m, Allocator.Temp);
             var pAp = new doubleN(m, Allocator.Temp); var pz = new doubleN(m, Allocator.Temp);
-            // LAD operator scratch
-            var ladSp = new doubleN(n, Allocator.Temp); var ladTm = new doubleN(m, Allocator.Temp);
-            var ladAtr = new doubleN(n, Allocator.Temp);
-
-            for (int i = 0; i < 2 * m; i++) cvec[2 * n + i] = (double)1;   // cost 1 on every u, v
 
             // Primal-dual regularization M := Aₛ D Aₛᵀ + reg·I. The normal matrix becomes numerically
-            // singular as the interior point approaches the (degenerate) L1 optimum; without reg the
+            // singular as the interior point approaches the (often degenerate) optimum; without reg the
             // inexact PCG returns a huge Δy that overflows. reg bounds M's smallest eigenvalue.
             double reg = math.max(Consts.doubleZeroThreshold, (double)1e-8);
-            var lad = new doubleLadOperator(in A, in ladSp, in ladTm, in ladAtr);
-            var Mop = new doubleNormalOperator<doubleLadOperator>(in lad, in d, in normNV, reg);
+            var Mop = new doubleNormalOperator<TOp>(in aS, in d, in normNV, reg);
             var Jac = new doubleNormalJacobi(in invDiag);
 
             double BIG = (double)1e30;
@@ -83,20 +175,20 @@ namespace LinearAlgebra
 
             // --- Mehrotra starting point (D = 1): z̃ = Aₛᵀ(Aₛ Aₛᵀ)⁻¹ b, ỹ = (Aₛ Aₛᵀ)⁻¹(Aₛ c) ---
             for (int j = 0; j < nv; j++) d[j] = (double)1;
-            lad.NormalDiagonal(in d, ref diagM);
+            aS.NormalDiagonal(in d, ref diagM);
             for (int i = 0; i < m; i++) invDiag[i] = (double)1 / (diagM[i] + reg);
 
             for (int i = 0; i < m; i++) dy[i] = (double)0;
             Krylov.pcg(in Mop, in Jac, in b, ref dy, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
-            lad.ApplyT(in dy, ref z);                                    // z = z̃
+            aS.ApplyT(in dy, ref z);                                    // z = z̃
 
-            lad.Apply(in cvec, ref tmpM);                               // tmpM = Aₛ c
+            aS.Apply(in cvec, ref tmpM);                               // tmpM = Aₛ c
             for (int i = 0; i < m; i++) y[i] = (double)0;
             Krylov.pcg(in Mop, in Jac, in tmpM, ref y, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
-            lad.ApplyT(in y, ref s);
+            aS.ApplyT(in y, ref s);
             for (int j = 0; j < nv; j++) s[j] = cvec[j] - s[j];         // s̃ = c − Aₛᵀ ỹ
 
-            // shift z, s strictly interior (identical heuristic to the dense interiorCore)
+            // shift z, s strictly interior
             {
                 double minZ = BIG, minS = BIG;
                 for (int j = 0; j < nv; j++) { minZ = math.min(minZ, z[j]); minS = math.min(minS, s[j]); }
@@ -118,17 +210,17 @@ namespace LinearAlgebra
             LPStatus status = LPStatus.MaxIterations;
             int iters = 0;
 
-            // Inexact PCG directions can diverge near the degenerate L1 optimum (M → singular). Keep the
-            // best-scoring iterate seen and recover x from it, so a late blow-up can't poison the result.
-            var bestZ = new doubleN(nv, Allocator.Temp, false);
-            for (int j = 0; j < nv; j++) bestZ[j] = z[j];
+            // Inexact PCG directions can diverge near a degenerate optimum (M → singular). Keep the
+            // best-scoring iterate seen (in the caller's zBest) and recover x from it, so a late blow-up
+            // can't poison the result.
+            for (int j = 0; j < nv; j++) zBest[j] = z[j];
             double bestScore = double.MaxValue;
 
             while (iters < budget)
             {
-                lad.Apply(in z, ref rp);
+                aS.Apply(in z, ref rp);
                 for (int i = 0; i < m; i++) rp[i] -= b[i];                       // rp = Aₛz − b
-                lad.ApplyT(in y, ref rc);
+                aS.ApplyT(in y, ref rc);
                 for (int j = 0; j < nv; j++) rc[j] += s[j] - cvec[j];            // rc = Aₛᵀy + s − c
                 double mu = 0, objz = 0;
                 for (int j = 0; j < nv; j++) { mu += (double)z[j] * (double)s[j]; objz += (double)cvec[j] * (double)z[j]; }
@@ -140,22 +232,22 @@ namespace LinearAlgebra
                 rpN = math.sqrt(rpN); rcN = math.sqrt(rcN);
 
                 double score = rpN / (1.0 + bNorm) + rcN / (1.0 + cNorm) + mu / (1.0 + math.abs(objz));
-                if (!(score < 1e300)) break;                                     // NaN/Inf blow-up -> keep bestZ
-                if (score < bestScore) { bestScore = score; for (int j = 0; j < nv; j++) bestZ[j] = z[j]; }
+                if (!(score < 1e300)) break;                                     // NaN/Inf blow-up -> keep zBest
+                if (score < bestScore) { bestScore = score; for (int j = 0; j < nv; j++) zBest[j] = z[j]; }
 
                 if (rpN / (1.0 + bNorm) < tol && rcN / (1.0 + cNorm) < tol && mu / (1.0 + math.abs(objz)) < tol)
                 { status = LPStatus.Optimal; break; }
 
                 for (int j = 0; j < nv; j++) d[j] = z[j] / s[j];                 // D = Z S⁻¹
-                lad.NormalDiagonal(in d, ref diagM);
+                aS.NormalDiagonal(in d, ref diagM);
                 for (int i = 0; i < m; i++) invDiag[i] = (double)1 / (diagM[i] + reg);
 
                 // ---- affine predictor:  M Δy_aff = b − Aₛ(D rc) ----
                 for (int j = 0; j < nv; j++) tmpNV[j] = d[j] * rc[j];
-                lad.Apply(in tmpNV, ref ADrc);
+                aS.Apply(in tmpNV, ref ADrc);
                 for (int i = 0; i < m; i++) rhsY[i] = b[i] - ADrc[i];
                 Krylov.pcg(in Mop, in Jac, in rhsY, ref dy, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
-                lad.ApplyT(in dy, ref tmpNV);                                    // tmpNV = Aₛᵀ Δy_aff
+                aS.ApplyT(in dy, ref tmpNV);                                    // tmpNV = Aₛᵀ Δy_aff
                 for (int j = 0; j < nv; j++) { dsA[j] = -rc[j] - tmpNV[j]; dzA[j] = -d[j] * dsA[j] - z[j]; }
 
                 double apA = math.min((double)1, MaxStep(z, dzA, nv, BIG));
@@ -167,10 +259,10 @@ namespace LinearAlgebra
 
                 // ---- centering corrector:  g = (σμ − Δz_aff∘Δs_aff)/s,  rhs −= Aₛ g ----
                 for (int j = 0; j < nv; j++) g[j] = (double)((sig * mu - (double)dzA[j] * (double)dsA[j]) / (double)s[j]);
-                lad.Apply(in g, ref tmpM);
+                aS.Apply(in g, ref tmpM);
                 for (int i = 0; i < m; i++) rhsY[i] -= tmpM[i];
                 Krylov.pcg(in Mop, in Jac, in rhsY, ref dy, ref pr, ref pp, ref pAp, ref pz, pcgMaxIter, pcgTol);
-                lad.ApplyT(in dy, ref tmpNV);
+                aS.ApplyT(in dy, ref tmpNV);
                 for (int j = 0; j < nv; j++) { ds[j] = -rc[j] - tmpNV[j]; dz[j] = -d[j] * ds[j] - z[j] + g[j]; }
 
                 double ap = math.min((double)1, eta * MaxStep(z, dz, nv, BIG));
@@ -180,20 +272,12 @@ namespace LinearAlgebra
                 iters++;
             }
 
-            // extract x = x⁺ − x⁻ (from the best-scoring iterate) and report ‖A x − b‖₁
-            for (int j = 0; j < n; j++) x[j] = bestZ[j] - bestZ[n + j];
-            BSR.spMV(in A, in x, ref tmpM);
-            double l1 = 0;
-            for (int i = 0; i < m; i++) l1 += math.abs((double)tmpM[i] - (double)b[i]);
-            objective = l1;
-
             z.Dispose(); s.Dispose(); dz.Dispose(); ds.Dispose(); dzA.Dispose(); dsA.Dispose();
-            d.Dispose(); rc.Dispose(); g.Dispose(); tmpNV.Dispose(); cvec.Dispose(); normNV.Dispose();
+            d.Dispose(); rc.Dispose(); g.Dispose(); tmpNV.Dispose(); normNV.Dispose();
             y.Dispose(); dy.Dispose(); rp.Dispose(); rhsY.Dispose(); ADrc.Dispose(); tmpM.Dispose();
             diagM.Dispose(); invDiag.Dispose(); pr.Dispose(); pp.Dispose(); pAp.Dispose(); pz.Dispose();
-            ladSp.Dispose(); ladTm.Dispose(); ladAtr.Dispose(); bestZ.Dispose();
 
-            return new LPInfo { status = status, iterations = iters, objective = l1 };
+            return new LPInfo { status = status, iterations = iters, objective = 0 };
         }
     }
 }

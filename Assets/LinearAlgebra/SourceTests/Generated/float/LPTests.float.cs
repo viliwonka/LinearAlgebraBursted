@@ -36,6 +36,8 @@ public class floatLPTests
             SparseLadExactFit,  // sparse (BSR) matrix-free LAD, exact line  -> (1,2), obj ~0
             SparseVsDenseLad,   // sparse LAD objective == dense LAD (outlier set)
             SparseLadStackloss, // sparse LAD objective == dense LAD (stack-loss)
+            SparseWyndorGlass,  // sparse (BSR) LP.solve, Wyndor Glass        -> (2,6), Z 36
+            SparseVsDenseLp,    // sparse LP.solve == dense LP.solve (mixed <=/>= senses)
         }
 
         public TestType Type;
@@ -67,6 +69,8 @@ public class floatLPTests
                 case TestType.SparseLadExactFit: SparseLadExactFit(); break;
                 case TestType.SparseVsDenseLad: SparseVsDenseLad(); break;
                 case TestType.SparseLadStackloss: SparseLadStackloss(); break;
+                case TestType.SparseWyndorGlass: SparseWyndorGlass(); break;
+                case TestType.SparseVsDenseLp: SparseVsDenseLp(); break;
             }
         }
 
@@ -522,6 +526,61 @@ public class floatLPTests
             AssertCloseD(objS, objD, 0.08 * (1.0 + objD));
 
             arena.Dispose();
+        }
+
+        // ==== sparse (BSR) matrix-free interior-point general LP.solve (slack-augmented operator) ====
+
+        // Sparse (BSR) LP.solve on the Wyndor Glass problem must reach the same vertex (2,6), Z 36, as the
+        // dense simplex -- exercises the slack-augmented operator (all-≤ inequalities).
+        void SparseWyndorGlass()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(3, 2);
+            A[0, 0] = (float)1; A[0, 1] = (float)0;
+            A[1, 0] = (float)0; A[1, 1] = (float)2;
+            A[2, 0] = (float)3; A[2, 1] = (float)2;
+            var b = arena.floatVec(3); b[0] = (float)4; b[1] = (float)12; b[2] = (float)18;
+            var c = arena.floatVec(2); c[0] = (float)(-3); c[1] = (float)(-5);
+            var As = BuildBSR1x1(ref arena, in A);
+            var x = arena.floatVec(2);
+            var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
+
+            var info = LP.solve(in As, in b, in c, in senses, ref x, out double obj);
+
+            AssertClose(x[0], (float)2, (float)2e-1);
+            AssertClose(x[1], (float)6, (float)2e-1);
+            AssertCloseD(obj, -36.0, 0.05 * (1.0 + 36.0));
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // General sparse LP.solve (matrix-free interior point) must reach the SAME optimum as the dense
+        // LP.solve on an identical LP with MIXED senses (<= and >=): min -x-2y s.t. x+y<=4, x+y>=1, y<=3.
+        void SparseVsDenseLp()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatMat(3, 2);
+            A[0, 0] = (float)1; A[0, 1] = (float)1;   // x + y <= 4
+            A[1, 0] = (float)1; A[1, 1] = (float)1;   // x + y >= 1
+            A[2, 0] = (float)0; A[2, 1] = (float)1;   // y <= 3
+            var b = arena.floatVec(3); b[0] = (float)4; b[1] = (float)1; b[2] = (float)3;
+            var c = arena.floatVec(2); c[0] = (float)(-1); c[1] = (float)(-2);
+            var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.GreaterEqual; senses[2] = ConstraintSense.LessEqual;
+            var As = BuildBSR1x1(ref arena, in A);
+            var xd = arena.floatVec(2);
+            var xs = arena.floatVec(2);
+
+            var infoD = LP.solve(in A, in b, in c, in senses, ref xd, out double objD);   // dense simplex
+            var infoS = LP.solve(in As, in b, in c, in senses, ref xs, out double objS);  // sparse IP
+
+            AssertTrue(infoD.status == LPStatus.Optimal);
+            AssertCloseD(objS, objD, 0.05 * (1.0 + math.abs(objD)));
+            AssertClose(xs[0], xd[0], (float)2e-1);
+            AssertClose(xs[1], xd[1], (float)2e-1);
+
+            senses.Dispose(); arena.Dispose();
         }
 
         // ---- diagnostics-recording assert helpers (Burst-legal: Assert.Fail(string) is not) ----

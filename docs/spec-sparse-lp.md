@@ -163,12 +163,20 @@ float/double; suite green.
 
 ## 8. Phasing
 
-- **Phase A** (this spec's core): `fProxyNormalOperator<TInner>`, `fProxyNormalJacobi` +
-  `BSR.normalDiagonal`, `fProxyLadOperator<TInner>`, the sparse interior-point loop reusing
-  `Krylov.pcg`, sparse `LP.lad` (equality — no slack machinery), tests 1/2/4. This already ships
-  **sparse LAD**, the highest-value piece, because LAD is equality-constrained.
-- **Phase B**: `fProxySlackAugmentedOperator<TInner>` → general sparse `LP.solve` with `≤/≥`; block-
-  Jacobi / Schur preconditioner; primal-dual regularization tuning; tests 3/5 + benchmark.
+- **Phase A** ✅ BUILT (2026-07-08): `fProxyNormalOperator<TInner>`, `fProxyNormalJacobi` +
+  `BSR.rowSquaredWeighted` (the Jacobi-diagonal builder — named `rowSquaredWeighted`, not
+  `normalDiagonal`; each operator exposes its own `NormalDiagonal` that calls it), `fProxyLadOperator`,
+  the sparse interior-point loop reusing `Krylov.pcg`, sparse `LP.lad` (equality — no slack machinery).
+  Ships **sparse LAD**, the highest-value piece, because LAD is equality-constrained.
+- **Phase B** ✅ BUILT (2026-07-08): `fProxySlackAugmentedOperator` (`Aₛ = [A | ±slack columns]`, one
+  per inequality row, via two length-`nSlack` (row, sign) arrays) → general sparse `LP.solve` with
+  `≤/=/≥`. The Phase A interior-point loop was factored into a generic `LP.standardFormInterior<TOp>`
+  core over a new `IfProxyStandardFormOperator` interface (`IfProxyLinearOperator` + `NormalDiagonal`)
+  that both `fProxyLadOperator` and `fProxySlackAugmentedOperator` implement — LAD and general LP now
+  share ONE loop. Primal-dual regularization (`reg`) already lives in the shared core. Tests: sparse
+  Wyndor Glass + sparse-vs-dense mixed-sense LP.
+- **Phase B follow-ups (not built)**: block-Jacobi / Schur preconditioner for problems where diagonal
+  Jacobi stalls; adaptive inner-tolerance / warm-start tuning; larger-scale benchmark (test 5).
 
 ## 9. Non-goals
 

@@ -9,6 +9,22 @@ using LinearAlgebra.Sparse;
 namespace LinearAlgebra
 {
     /// <summary>
+    /// A standard-form LP constraint operator Aₛ (the interior point works on min cᵀz s.t. Aₛ z = b,
+    /// z ≥ 0) that, on top of the usual <see cref="IdoubleLinearOperator"/> Apply/ApplyT, can report the
+    /// diagonal of its interior-point normal matrix diag(Aₛ diag(D) Aₛᵀ) matrix-free. That extra hook is
+    /// all the sparse Mehrotra core (<c>LP.standardFormInterior</c>) needs beyond a plain linear operator
+    /// to build its <see cref="doubleNormalJacobi"/> preconditioner, so a single generic interior-point
+    /// loop serves every standard form -- LAD (<see cref="Sparse.doubleLadOperator"/>) and slack-augmented
+    /// general LP (<see cref="Sparse.doubleSlackAugmentedOperator"/>) alike.
+    /// </summary>
+    public interface IdoubleStandardFormOperator : IdoubleLinearOperator
+    {
+        /// <summary>diag(Aₛ diag(D) Aₛᵀ) written into <paramref name="diag"/> (length Aₛ.Rows), computed
+        /// matrix-free from the sparse entries. D has length Aₛ.Cols.</summary>
+        void NormalDiagonal(in doubleN D, ref doubleN diag);
+    }
+
+    /// <summary>
     /// Symmetric normal-equations operator M = Aₛ · diag(D) · Aₛᵀ, presented matrix-free over any inner
     /// <typeparamref name="TInner"/> operator Aₛ -- never forms M. This is the SPD system an interior-
     /// point LP solves each iteration (D = Z S⁻¹, the primal/dual diagonal, changes every iteration), so
@@ -103,7 +119,7 @@ namespace LinearAlgebra.Sparse
     ///
     /// Also computes the interior-point Jacobi diagonal diag(Aₛ D Aₛᵀ) via <see cref="NormalDiagonal"/>.
     /// </summary>
-    public readonly struct doubleLadOperator : IdoubleLinearOperator
+    public readonly struct doubleLadOperator : IdoubleStandardFormOperator
     {
         public readonly doubleBSR A;
         public readonly int M, N;
@@ -150,6 +166,84 @@ namespace LinearAlgebra.Sparse
             for (int j = 0; j < N; j++) sp[j] = D[j] + D[N + j];   // w = d⁺ + d⁻
             BSR.rowSquaredWeighted(in A, in sp, ref diag);        // diag[i] = Σ_j A[i,j]² w[j]
             for (int i = 0; i < M; i++) diag[i] += D[2 * N + i] + D[2 * N + M + i];
+        }
+
+        public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
+        {
+            var rin = new doubleN(Cols, Allocator.Temp, false);
+            var rout = new doubleN(Rows, Allocator.Temp, false);
+            for (int i = 0; i < rows; i++)
+            {
+                for (int c = 0; c < Cols; c++) rin[c] = Vrows[i, c];
+                Apply(in rin, ref rout);
+                for (int c = 0; c < Rows; c++) AVrows[i, c] = rout[c];
+            }
+            rout.Dispose();
+            rin.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Matrix-free slack-augmented constraint operator for a general sparse LP standard form. Given a
+    /// sparse design matrix A (m×n, BSR) and one non-negative slack/surplus column per inequality row,
+    /// presents Aₛ = [A | S] (m × (n + nSlack)) over z = [x(n) | slack(nSlack)]:
+    ///   Apply(z)  = A x  +  Σ_k sign_k · slack_k  (added to that slack's row)      (length m)
+    ///   ApplyT(r) = [Aᵀr ; sign_k · r[row_k]]                                       (length n+nSlack)
+    /// S has exactly one ±1 entry per column: <c>sign_k = +1</c> for a ≤ row (Ax + slack = b) and
+    /// <c>−1</c> for a ≥ row (Ax − surplus = b); equality rows get no column. This is the matrix-free
+    /// analogue of the dense interior point's materialized <c>[A | ±1 slack columns]</c>, so it never
+    /// builds the awkward mixed BR×BC-block / 1×1-identity BSR. The (row, sign) of each slack column are
+    /// supplied as two length-nSlack arrays. Holds A, those two arrays, and two owned scratch vectors
+    /// (Sp length n for the x slice, Atr length n for Aᵀr).
+    ///
+    /// Also computes the interior-point Jacobi diagonal diag(Aₛ D Aₛᵀ) via <see cref="NormalDiagonal"/>.
+    /// </summary>
+    public readonly struct doubleSlackAugmentedOperator : IdoubleStandardFormOperator
+    {
+        public readonly doubleBSR A;
+        public readonly int M, N, NSlack;
+        public readonly NativeArray<int> SlackRow;      // length NSlack: the row each slack column sits in
+        public readonly NativeArray<double> SlackSign;  // length NSlack: +1 (≤) or −1 (≥)
+        public readonly doubleN Sp;    // length N scratch (x slice)
+        public readonly doubleN Atr;   // length N scratch (Aᵀr)
+
+        public doubleSlackAugmentedOperator(in doubleBSR a, int nSlack, in NativeArray<int> slackRow,
+                                            in NativeArray<double> slackSign, in doubleN sp, in doubleN atr)
+        {
+            A = a; M = a.M_Rows; N = a.N_Cols; NSlack = nSlack;
+            if (slackRow.Length != nSlack) throw new ArgumentException("doubleSlackAugmentedOperator: slackRow.Length must equal nSlack");
+            if (slackSign.Length != nSlack) throw new ArgumentException("doubleSlackAugmentedOperator: slackSign.Length must equal nSlack");
+            if (sp.N != N) throw new ArgumentException("doubleSlackAugmentedOperator: sp.N must equal A.N_Cols");
+            if (atr.N != N) throw new ArgumentException("doubleSlackAugmentedOperator: atr.N must equal A.N_Cols");
+            SlackRow = slackRow; SlackSign = slackSign; Sp = sp; Atr = atr;
+        }
+
+        public int Rows => M;
+        public int Cols => N + NSlack;
+
+        public void Apply(in doubleN z, ref doubleN y)
+        {
+            var sp = Sp;
+            for (int j = 0; j < N; j++) sp[j] = z[j];
+            BSR.spMV(in A, in sp, ref y);                          // y = A x
+            for (int k = 0; k < NSlack; k++) y[SlackRow[k]] += SlackSign[k] * z[N + k];
+        }
+
+        public void ApplyT(in doubleN r, ref doubleN outv)
+        {
+            var atr = Atr;
+            BSR.spMVT(in A, in r, ref atr);                        // atr = Aᵀ r
+            for (int j = 0; j < N; j++) outv[j] = atr[j];
+            for (int k = 0; k < NSlack; k++) outv[N + k] = SlackSign[k] * r[SlackRow[k]];
+        }
+
+        // diag(Aₛ diag(D) Aₛᵀ)_i = Σ_j A[i,j]²·D[j]  +  Σ_{slack k in row i} D[N+k]  (sign² = 1).
+        public void NormalDiagonal(in doubleN D, ref doubleN diag)
+        {
+            var sp = Sp;
+            for (int j = 0; j < N; j++) sp[j] = D[j];
+            BSR.rowSquaredWeighted(in A, in sp, ref diag);        // diag[i] = Σ_j A[i,j]² D[j]
+            for (int k = 0; k < NSlack; k++) diag[SlackRow[k]] += D[N + k];
         }
 
         public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
