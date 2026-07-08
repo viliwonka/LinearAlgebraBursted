@@ -218,5 +218,107 @@ namespace LinearAlgebra
             f.Gradient(in x, ref g);
             return Norms.L2(in g) <= gradTol;
         }
+
+        // ==== least absolute deviation via IRLS =========================================================
+
+        /// <summary>
+        /// Least absolute deviation (L1 regression) by iteratively reweighted least squares -- a FAST,
+        /// APPROXIMATE alternative to the exact <see cref="LP.lad"/>. Minimizes ‖A x − b‖₁ by repeatedly
+        /// solving the weighted normal equations (AᵀW A) x = AᵀW b with per-row weights
+        /// wᵢ = 1 / max(|rᵢ|, <paramref name="delta"/>), rᵢ = (A x − b)ᵢ. Each step is a Cholesky solve
+        /// on the n×n weighted Gram matrix, so this is cheap (O(m n² + n³/3) per iteration) and typically
+        /// converges in a handful of iterations for a well-conditioned overdetermined design.
+        ///
+        /// <paramref name="delta"/> is the residual floor that keeps a near-zero residual from producing
+        /// an unbounded weight (a Huber-like transition width); too small ⇒ oscillation, too large ⇒ the
+        /// fit drifts toward ordinary least squares. Returns an <see cref="LPInfo"/> whose
+        /// <see cref="LPInfo.objective"/> is the final L1 residual ‖A x − b‖₁ (directly comparable to
+        /// <see cref="LP.lad"/>'s). Status is <see cref="LPStatus.Optimal"/> on convergence within
+        /// <paramref name="xTol"/>, else <see cref="LPStatus.MaxIterations"/>.
+        ///
+        /// Caveat: a rank-deficient A makes the weighted normal equations non-positive-definite; the
+        /// Cholesky step then fails and iteration stops early (status MaxIterations). For rank-deficient
+        /// designs use <see cref="LP.lad"/> (exact) or a rank-revealing least-squares solver instead.
+        ///
+        /// Job-safe: allocates its n×n / n scratch from Allocator.Temp and disposes before returning.
+        /// x is BOTH the initial guess (pass a zeroed vector for a from-scratch solve -- the first step
+        /// then reduces to a reweighted ordinary least squares) AND the overwritten output.
+        /// </summary>
+        public static LPInfo ladIRLS(in fProxyMxN A, in fProxyN b, ref fProxyN x,
+                                     fProxy delta, fProxy xTol, int maxIter)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            if (b.N != m) throw new ArgumentException("ladIRLS: b.N must equal A.M_Rows");
+            if (x.N != n) throw new ArgumentException("ladIRLS: x.N must equal A.N_Cols");
+            if (maxIter < 1) throw new ArgumentException("ladIRLS: maxIter must be >= 1");
+
+            var G = new fProxyMxN(n, n, Allocator.Temp);
+            var rhs = new fProxyN(n, Allocator.Temp);
+            var prevx = new fProxyN(n, Allocator.Temp);
+
+            LPStatus status = LPStatus.MaxIterations;
+            int it = 0;
+
+            while (it < maxIter)
+            {
+                for (int a = 0; a < n; a++) { rhs[a] = (fProxy)0; for (int col = 0; col < n; col++) G[a, col] = (fProxy)0; }
+
+                // Accumulate the weighted normal equations (upper triangle of G) in one pass over rows.
+                for (int i = 0; i < m; i++)
+                {
+                    fProxy ri = -b[i];
+                    for (int a = 0; a < n; a++) ri += A[i, a] * x[a];
+                    fProxy wi = (fProxy)1 / math.max(math.abs(ri), delta);
+                    for (int a = 0; a < n; a++)
+                    {
+                        fProxy wa = wi * A[i, a];
+                        rhs[a] += wa * b[i];
+                        for (int col = a; col < n; col++) G[a, col] += wa * A[i, col];
+                    }
+                }
+                for (int a = 0; a < n; a++) for (int col = 0; col < a; col++) G[a, col] = G[col, a];
+
+                for (int a = 0; a < n; a++) prevx[a] = x[a];
+
+                // Cholesky solve destroys G (→ L) and rhs (→ x); a non-PD (rank-deficient) Gram matrix
+                // stops iteration -- x keeps the last accepted iterate.
+                var chol = CHO.solveInPlace(ref G, ref rhs);
+                it++;
+                if (!chol) { status = LPStatus.MaxIterations; break; }
+
+                for (int a = 0; a < n; a++) x[a] = rhs[a];
+
+                double dx = 0, xn = 0;
+                for (int a = 0; a < n; a++)
+                {
+                    double d = (double)x[a] - (double)prevx[a];
+                    dx += d * d;
+                    xn += (double)x[a] * (double)x[a];
+                }
+                if (math.sqrt(dx) <= (double)xTol * (1.0 + math.sqrt(xn))) { status = LPStatus.Optimal; break; }
+            }
+
+            double l1 = 0;
+            for (int i = 0; i < m; i++)
+            {
+                double ri = -(double)b[i];
+                for (int a = 0; a < n; a++) ri += (double)A[i, a] * (double)x[a];
+                l1 += math.abs(ri);
+            }
+
+            G.Dispose(); rhs.Dispose(); prevx.Dispose();
+            return new LPInfo { status = status, iterations = it, objective = l1 };
+        }
+
+        /// <summary>ladIRLS with a default residual floor (1e-3·(1+max|b|)), xTol
+        /// (Consts.fProxyZeroThreshold) and maxIter (50). Pass a zeroed <paramref name="x"/> for a
+        /// from-scratch solve.</summary>
+        public static LPInfo ladIRLS(in fProxyMxN A, in fProxyN b, ref fProxyN x)
+        {
+            fProxy mb = (fProxy)0;
+            for (int i = 0; i < b.N; i++) mb = math.max(mb, math.abs(b[i]));
+            fProxy delta = (fProxy)1e-3 * ((fProxy)1 + mb);
+            return ladIRLS(in A, in b, ref x, delta, Consts.fProxyZeroThreshold, 50);
+        }
     }
 }
