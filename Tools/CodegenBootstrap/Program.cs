@@ -43,6 +43,10 @@ namespace CodegenBootstrap
                     Path.Combine(repoRoot, GenUtils.sourceTestsTemplateFolder),
                     Path.Combine(repoRoot, GenUtils.generatedTestsFolder)
                 ),
+                (
+                    Path.Combine(repoRoot, GenUtils.sourceBenchmarksTemplateFolder),
+                    Path.Combine(repoRoot, GenUtils.generatedBenchmarksFolder)
+                ),
             };
 
             bool anyChanged = false;

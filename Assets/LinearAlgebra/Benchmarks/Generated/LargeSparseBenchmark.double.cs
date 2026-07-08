@@ -1,0 +1,192 @@
+using System.Text;
+
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+using LinearAlgebra;
+using LinearAlgebra.Sparse;
+using LinearAlgebra.Gallery;
+
+namespace LinearAlgebra.Benchmarks
+{
+    // GENERATED per-dtype half of LargeSparseBenchmark (timed IJobs, the LOBPCG report helper, the
+    // residual helper, and the per-family build+measure methods). The dtype-agnostic harness
+    // (constants, table formatters, Run/RunLobpcg/Section) is hand-written in
+    // Assets/LinearAlgebra/Benchmarks/LargeSparseBenchmark.cs; shared formatters live in the public
+    // LargeSparseFmt helper there.
+
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpmvJobDouble : IJob { public doubleBSR A; public doubleN x, y; public int reps;
+        public void Execute() { for (int k = 0; k < reps; k++) { if ((k & 1) == 0) BSR.spMV(in A, in x, ref y); else BSR.spMV(in A, in y, ref x); } } }
+
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpCgJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, p, Ap; public int K;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f); } }
+
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpPcgJobDouble : IJob { public doubleBSR A; public doubleBlockJacobi M; public doubleN b, x, r, p, Ap, z; public int K;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0f); } }
+
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpMinresJobDouble : IJob { public doubleBSR A; public doubleN b, x, y, r1, r2, v, w, w1, w2; public int K;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f); } }
+
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpBicgJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, rHat0, p, v, t; public int K;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f); } }
+
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpCglsJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, s, p, q; public int K;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f); } }
+
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLsqrJobDouble : IJob { public doubleBSR A; public doubleN b, x, u, v, w, tmpM, tmpN; public int K;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f); } }
+
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLsmrJobDouble : IJob { public doubleBSR A; public doubleN b, x, u, v, h, hbar, tmpM, tmpN; public int K;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, K, 0f); } }
+
+    // Eigen job writes [produced, solved, 0] into outInfo (reference-backed, visible after Run).
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLanczosJobDouble : IJob { public doubleBSR A; public doubleLanczosCache ws; public doubleN vals; public int steps; public NativeArray<double> outInfo;
+        public void Execute() { var info = Eigen.lanczos(in A, ref ws, ref vals, steps); outInfo[0] = info.produced; outInfo[1] = info.Solved ? 1 : 0; outInfo[2] = 0; } }
+
+    // LOBPCG smallest-k eigenpairs. outInfo = [status, iterations, converged, maxResidual, orthoErr].
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLobpcgJobDouble : IJob { public doubleBSR A; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
+        public void Execute() { var info = Eigen.lobpcg(in A, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
+
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLobpcgPrecJobDouble : IJob { public doubleBSR A; public doubleBlockJacobi M; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
+        public void Execute() { var info = Eigen.lobpcg(in A, in M, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
+
+    // Output-orthonormality check for the LOBPCG rows. float/double emit WriteFloat/WriteDouble into the
+    // same partial class (they merge in the Benchmarks assembly).
+    static partial class LobpcgReport
+    {
+        public static void WriteDouble(in LOBPCGInfo info, in doubleLOBPCGCache ws, int k, NativeArray<double> o)
+        {
+            double orth = 0;
+            for (int i = 0; i < k; i++)
+                for (int j = i; j < k; j++)
+                {
+                    double d = 0;
+                    for (int c = 0; c < ws.X.N_Cols; c++) d += (double)ws.X[i, c] * (double)ws.X[j, c];
+                    double e = math.abs(d - (i == j ? 1.0 : 0.0));
+                    if (e > orth) orth = e;
+                }
+            o[0] = (int)info.status; o[1] = info.iterations; o[2] = info.converged; o[3] = info.maxResidual; o[4] = orth;
+        }
+    }
+
+    public static partial class LargeSparseBenchmark
+    {
+        static double Res(in doubleBSR A, in doubleN x, in doubleN b)
+        {
+            var Ax = BSR.spMV(in A, in x);
+            double num = 0, den = 0;
+            for (int i = 0; i < b.N; i++) { double d = (double)Ax[i] - (double)b[i]; num += d * d; den += (double)b[i] * (double)b[i]; }
+            return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
+        }
+
+        static void BenchKrylovDouble(StringBuilder sb, int BR, int[] Ns, double density, int K, int spmvReps)
+        {
+            foreach (int N in Ns)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                int nb = N / BR;
+                var A = arena.doubleRandomSparseSPD(nb, BR, density, 0x5A17u);
+                var M = arena.doubleBlockJacobi(in A);
+                var xKnown = arena.doubleRandomVec(N, 0.5f, 1.5f, 0xB0Bu);
+                var b = arena.doubleVec(N); BSR.spMV(in A, in xKnown, ref b);
+                string sz = N.ToString();
+
+                var sx = arena.doubleRandomVec(N, -1f, 1f, 7u); var sy = arena.doubleVec(N);
+                var spmvJob = new SpmvJobDouble { A = A, x = sx, y = sy, reps = spmvReps };
+                sb.AppendLine(LargeSparseFmt.Row("double", sz, "spMV x" + spmvReps, Bench.Time(() => spmvJob.Run()), 0.0));
+
+                var x = arena.doubleVec(N);
+                var cgJob = new SpCgJobDouble { A = A, b = b, x = x, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), K = K };
+                sb.AppendLine(LargeSparseFmt.Row("double", sz, "CG", Bench.Time(() => cgJob.Run()), Res(in A, in x, in b)));
+                var xp = arena.doubleVec(N);
+                var pcgJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xp, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = K };
+                sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-Jacobi", Bench.Time(() => pcgJob.Run()), Res(in A, in xp, in b)));
+                var xm = arena.doubleVec(N);
+                var mrJob = new SpMinresJobDouble { A = A, b = b, x = xm, y = arena.doubleVec(N), r1 = arena.doubleVec(N), r2 = arena.doubleVec(N), v = arena.doubleVec(N), w = arena.doubleVec(N), w1 = arena.doubleVec(N), w2 = arena.doubleVec(N), K = K };
+                sb.AppendLine(LargeSparseFmt.Row("double", sz, "MINRES", Bench.Time(() => mrJob.Run()), Res(in A, in xm, in b)));
+
+                var An = arena.doubleRandomSparse(nb, nb, BR, density, 0x1234u);
+                var bn = arena.doubleVec(N); BSR.spMV(in An, in xKnown, ref bn);
+                var xn = arena.doubleVec(N);
+                var bicgJob = new SpBicgJobDouble { A = An, b = bn, x = xn, r = arena.doubleVec(N), rHat0 = arena.doubleVec(N), p = arena.doubleVec(N), v = arena.doubleVec(N), t = arena.doubleVec(N), K = K };
+                sb.AppendLine(LargeSparseFmt.Row("double", sz, "BiCGStab", Bench.Time(() => bicgJob.Run()), Res(in An, in xn, in bn)));
+
+                int mb = 2 * nb, m = mb * BR;
+                var At = arena.doubleRandomSparse(mb, nb, BR, density, 0xC0DEu);
+                var bt = arena.doubleVec(m); BSR.spMV(in At, in xKnown, ref bt);
+                string rsz = m + "x" + N;
+                var xc = arena.doubleVec(N);
+                var cglsJob = new SpCglsJobDouble { A = At, b = bt, x = xc, r = arena.doubleVec(m), s = arena.doubleVec(N), p = arena.doubleVec(N), q = arena.doubleVec(m), K = K };
+                sb.AppendLine(LargeSparseFmt.Row("double", rsz, "CGLS", Bench.Time(() => cglsJob.Run()), Res(in At, in xc, in bt)));
+                var xl = arena.doubleVec(N);
+                var lsqrJob = new SpLsqrJobDouble { A = At, b = bt, x = xl, u = arena.doubleVec(m), v = arena.doubleVec(N), w = arena.doubleVec(N), tmpM = arena.doubleVec(m), tmpN = arena.doubleVec(N), K = K };
+                sb.AppendLine(LargeSparseFmt.Row("double", rsz, "LSQR", Bench.Time(() => lsqrJob.Run()), Res(in At, in xl, in bt)));
+                var xr = arena.doubleVec(N);
+                var lsmrJob = new SpLsmrJobDouble { A = At, b = bt, x = xr, u = arena.doubleVec(m), v = arena.doubleVec(N), h = arena.doubleVec(N), hbar = arena.doubleVec(N), tmpM = arena.doubleVec(m), tmpN = arena.doubleVec(N), K = K };
+                sb.AppendLine(LargeSparseFmt.Row("double", rsz, "LSMR", Bench.Time(() => lsmrJob.Run()), Res(in At, in xr, in bt)));
+
+                arena.Dispose();
+            }
+        }
+
+        static void BenchEigenDouble(StringBuilder sb, int BR, int[] Ns, double density, int lanczosSteps)
+        {
+            foreach (int N in Ns)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                int nb = N / BR;
+                var A = arena.doubleRandomSparseSPD(nb, BR, density, 0x5A17u);
+                string sz = N.ToString();
+                var outInfo = new NativeArray<double>(3, Allocator.Persistent);
+
+                var lws = arena.doubleLanczosCache(N, lanczosSteps);
+                var lvals = arena.doubleVec(lanczosSteps);
+                var lanJob = new SpLanczosJobDouble { A = A, ws = lws, vals = lvals, steps = lanczosSteps, outInfo = outInfo };
+                var lanStat = Bench.Time(() => lanJob.Run());
+                sb.AppendLine(LargeSparseFmt.EigRow("double", sz, "Lanczos s=" + lanczosSteps, lanStat, new[] { outInfo[0], outInfo[1], outInfo[2] }));
+
+                outInfo.Dispose();
+                arena.Dispose();
+            }
+        }
+
+        static void BenchLobpcgDouble(StringBuilder sb, int[] eigGrids, int lobpcgK, int lobpcgGuard, int lobpcgMaxIter)
+        {
+            foreach (int g in eigGrids)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                int n = g * g;
+                var A = arena.doubleLaplacian2D(g, g);
+                var M = arena.doubleBlockJacobi(in A);
+                string grid = g + "x" + g + "(" + n + ")";
+                var oi = new NativeArray<double>(5, Allocator.Persistent);
+                double tol = Consts.doubleSqrtEps;
+
+                new SpLobpcgJobDouble { A = A, ws = arena.doubleLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi }.Run();
+                LargeSparseFmt.LobRow(sb, "double", grid, "none", 0, LargeSparseFmt.Snap(oi));
+                new SpLobpcgPrecJobDouble { A = A, M = M, ws = arena.doubleLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi }.Run();
+                LargeSparseFmt.LobRow(sb, "double", grid, "blockJac", 0, LargeSparseFmt.Snap(oi));
+                new SpLobpcgJobDouble { A = A, ws = arena.doubleLOBPCGCache(n, lobpcgK + lobpcgGuard), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi }.Run();
+                LargeSparseFmt.LobRow(sb, "double", grid, "none", lobpcgGuard, LargeSparseFmt.Snap(oi));
+                new SpLobpcgPrecJobDouble { A = A, M = M, ws = arena.doubleLOBPCGCache(n, lobpcgK + lobpcgGuard), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi }.Run();
+                LargeSparseFmt.LobRow(sb, "double", grid, "blockJac", lobpcgGuard, LargeSparseFmt.Snap(oi));
+
+                oi.Dispose();
+                arena.Dispose();
+            }
+        }
+    }
+}

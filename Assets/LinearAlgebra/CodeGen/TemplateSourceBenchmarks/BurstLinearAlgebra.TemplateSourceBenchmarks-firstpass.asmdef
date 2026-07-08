@@ -1,0 +1,22 @@
+{
+    "name": "BurstLinearAlgebra.TemplateSourceBenchmarks-firstpass",
+    "rootNamespace": "",
+    "references": [
+        "GUID:c59e8286b27799b4696d08bad97da4c3",
+        "GUID:edc9fa72b609ee7499f80f79e8aba97c",
+        "GUID:d8b63aba1907145bea998dd612889d6b",
+        "GUID:2665a8d13d1b3f18800f46e256720795",
+        "GUID:e0cd26848372d4e5c891c569017e11f1"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

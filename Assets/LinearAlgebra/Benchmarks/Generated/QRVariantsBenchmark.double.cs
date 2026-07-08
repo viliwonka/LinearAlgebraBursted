@@ -1,0 +1,282 @@
+using System.Text;
+
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+using LinearAlgebra;
+
+namespace LinearAlgebra.Benchmarks
+{
+    // GENERATED per-dtype half of QRVariantsBenchmark (timed IJobs + build+measure methods). The
+    // dtype-agnostic harness (Flops/TallFlops, size lists, header formatters, Run, Section) is
+    // hand-written in Assets/LinearAlgebra/Benchmarks/QRVariantsBenchmark.cs; the shared row
+    // formatters live in the public QRVariantsFmt helper there.
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QRCPJobDouble : IJob
+    {
+        public doubleMxN Q;
+        public doubleMxN R;
+        public doubleMxN Src;
+
+        public void Execute()
+        {
+            int rows = Q.M_Rows, cols = Q.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    Q[r, c] = Src[r, c];
+
+            var P = new Pivot(Q.N_Cols, Allocator.Temp);
+            QRCP.decompInPlace(ref Q, ref R, ref P);
+            P.Dispose();
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QRSolveJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN Src;
+        public doubleN b;
+        public doubleN bSrc;
+        public doubleN x;
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+            for (int i = 0; i < rows; i++)
+                b[i] = bSrc[i];
+
+            QR.solveInPlace(ref A, ref b, ref x);
+        }
+    }
+
+    // QRCP.solveInPlace: QRCP-based rank-safe LS solve using the zero-alloc, no-copy primitive — the
+    // fused destructive fast path (applies Qᵀ to b during factorization, never reconstructs Q).
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QRCPSolveJobDouble : IJob
+    {
+        public doubleMxN A;     // n x n scratch; receives Src, destroyed by solveInPlace
+        public doubleMxN Src;   // pristine source, re-copied into A each Execute
+        public doubleN b;       // m, destroyed (becomes Qᵀb); reset from bSrc each Execute
+        public doubleN bSrc;    // pristine RHS
+        public doubleN x;       // n, solution output
+        public doubleMxN R;     // n x n scratch
+        public doubleN u;       // m scratch
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+            for (int i = 0; i < rows; i++)
+                b[i] = bSrc[i];
+
+            var P = new Pivot(A.N_Cols, Allocator.Temp);
+            QRCP.solveInPlace(ref A, ref b, ref x, ref R, ref P, ref u);
+            P.Dispose();
+        }
+    }
+
+    // QRCP.minNormSolveInPlace: the complete-orthogonal-decomposition (COD / xGELSY) min-norm solve.
+    // Structurally identical to QRCPSolveJob; on a rank-deficient input it runs a SECOND orthogonal
+    // sweep basic solveInPlace skips (at full rank the two coincide).
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QRCPMinNormJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN Src;
+        public doubleN b;
+        public doubleN bSrc;
+        public doubleN x;
+        public doubleMxN R;
+        public doubleN u;
+
+        public void Execute()
+        {
+            int rows = A.M_Rows, cols = A.N_Cols;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                    A[r, c] = Src[r, c];
+            for (int i = 0; i < rows; i++)
+                b[i] = bSrc[i];
+
+            var P = new Pivot(A.N_Cols, Allocator.Temp);
+            QRCP.minNormSolveInPlace(ref A, ref b, ref x, ref R, ref P, ref u);
+            P.Dispose();
+        }
+    }
+
+    public static partial class QRVariantsBenchmark
+    {
+        static string QRCPDouble(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var Q = arena.doubleMat(n, n);
+            var R = arena.doubleMat(n, n);
+            var Src = arena.doubleMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1f, 1f);
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new QRCPJobDouble { Q = Q, R = R, Src = Src };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("double", n, stat, flops);
+        }
+
+        static string SolveDouble(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(n, n);
+            var Src = arena.doubleMat(n, n);
+            var b = arena.doubleVec(n);
+            var bSrc = arena.doubleVec(n);
+            var x = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+            {
+                bSrc[r] = rng.NextDouble(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1f, 1f);
+            }
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new QRSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("double", n, stat, flops);
+        }
+
+        static string QRCPSolveDouble(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(n, n);
+            var Src = arena.doubleMat(n, n);
+            var b = arena.doubleVec(n);
+            var bSrc = arena.doubleVec(n);
+            var x = arena.doubleVec(n);
+            var R = arena.doubleMat(n, n);
+            var u = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+            {
+                bSrc[r] = rng.NextDouble(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1f, 1f);
+            }
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new QRCPSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("double", n, stat, flops);
+        }
+
+        // Rank-deficient n x n input of exact rank r: fill the first r columns at random, then set each
+        // trailing column j>=r to a copy of column j-r. Runs basic solveInPlace then COD adjacently.
+        static string QRCPRankDefDouble(int n, double flops)
+        {
+            int rank = (3 * n) / 4;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(n, n);
+            var Src = arena.doubleMat(n, n);
+            var b = arena.doubleVec(n);
+            var bSrc = arena.doubleVec(n);
+            var x = arena.doubleVec(n);
+            var R = arena.doubleMat(n, n);
+            var u = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int r = 0; r < n; r++)
+            {
+                bSrc[r] = rng.NextDouble(-1f, 1f);
+                for (int c = 0; c < rank; c++)
+                    Src[r, c] = rng.NextDouble(-1f, 1f);
+            }
+            for (int r = 0; r < n; r++)
+                for (int c = rank; c < n; c++)
+                    Src[r, c] = Src[r, c - rank];
+
+            var basic = new QRCPSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
+            var sB = Bench.Time(() => basic.Run());
+            var cod = new QRCPMinNormJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
+            var sC = Bench.Time(() => cod.Run());
+
+            arena.Dispose();
+            return QRVariantsFmt.RowKernel("double", "basic solveInPlace", n, sB, flops)
+                 + "\n" + QRVariantsFmt.RowKernel("double", "COD minNormSolveInPlace", n, sC, flops);
+        }
+
+        static string SolveTallDouble(int m, int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(m, n);
+            var Src = arena.doubleMat(m, n);
+            var b = arena.doubleVec(m);
+            var bSrc = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
+            for (int r = 0; r < m; r++)
+            {
+                bSrc[r] = rng.NextDouble(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1f, 1f);
+            }
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new QRSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return QRVariantsFmt.RowTall("double", "QR.solveInPlace", m, n, stat, flops);
+        }
+
+        static string QRCPSolveTallDouble(int m, int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(m, n);
+            var Src = arena.doubleMat(m, n);
+            var b = arena.doubleVec(m);
+            var bSrc = arena.doubleVec(m);
+            var x = arena.doubleVec(n);
+            var R = arena.doubleMat(n, n);
+            var u = arena.doubleVec(m);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)(m * 31 + n));
+            for (int r = 0; r < m; r++)
+            {
+                bSrc[r] = rng.NextDouble(-1f, 1f);
+                for (int c = 0; c < n; c++)
+                    Src[r, c] = rng.NextDouble(-1f, 1f);
+            }
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new QRCPSolveJobDouble { A = A, Src = Src, b = b, bSrc = bSrc, x = x, R = R, u = u };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return QRVariantsFmt.RowTall("double", "QRCP.solveInPlace", m, n, stat, flops);
+        }
+    }
+}

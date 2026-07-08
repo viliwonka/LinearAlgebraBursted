@@ -10,7 +10,7 @@ namespace LinearAlgebra
     // exposed as concrete overloads over the input shape (doubleN vector or doubleMxN whole-matrix,
     // flat row-major) and forwards, inlined, to the core -- so the type-identical
     // `<T> where T:IUnsafedoubleArray` signatures never collide across the merged float/double
-    // partial (CS0111), while Burst still monomorphizes to the same machine code.
+    // partial (CS0111).
     public static partial class Histogram
     {
         // ---- histogramInto (explicit range) ----

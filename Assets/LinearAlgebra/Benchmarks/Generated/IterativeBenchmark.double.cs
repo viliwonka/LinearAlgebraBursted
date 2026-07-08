@@ -1,0 +1,67 @@
+using System.Text;
+
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+using LinearAlgebra;
+
+namespace LinearAlgebra.Benchmarks
+{
+    // GENERATED per-dtype half of IterativeBenchmark (timed IJob + build+measure method). The
+    // dtype-agnostic harness (Run, Section) is hand-written in
+    // Assets/LinearAlgebra/Benchmarks/IterativeBenchmark.cs.
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CGJobDouble : IJob
+    {
+        public doubleMxN A;     // n x n SPD input, NOT modified
+        public doubleN b;       // rhs, NOT modified
+        public doubleN x;       // initial guess (zeroed each Execute) / solution output
+        public doubleN r;
+        public doubleN p;
+        public doubleN Ap;
+
+        public void Execute()
+        {
+            int n = x.N;
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, 100, 0f);
+        }
+    }
+
+    public static partial class IterativeBenchmark
+    {
+        static string BenchDouble(int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var M   = arena.doubleMat(n, n);    // scratch to build MᵀM
+            var A   = arena.doubleMat(n, n);    // SPD A = MᵀM + I
+            var b   = arena.doubleVec(n);
+            var x   = arena.doubleVec(n);
+            var r   = arena.doubleVec(n);
+            var p   = arena.doubleVec(n);
+            var Ap  = arena.doubleVec(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
+            for (int row = 0; row < n; row++)
+                for (int col = 0; col < n; col++)
+                    M[row, col] = rng.NextDouble(-1f, 1f);
+
+            // A = MᵀM (guaranteed positive semi-definite)
+            Blas.dot(in M, in M, ref A, true);
+
+            // Add I: A becomes MᵀM + I (guaranteed SPD with min eigenvalue >= 1)
+            for (int d = 0; d < n; d++) A[d, d] += 1f;
+
+            for (int i = 0; i < n; i++) b[i] = rng.NextDouble(-1f, 1f);
+
+            var job = new CGJobDouble { A = A, b = b, x = x, r = r, p = p, Ap = Ap };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("double", n, stat);
+        }
+    }
+}

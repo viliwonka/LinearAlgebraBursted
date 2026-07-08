@@ -6,8 +6,7 @@ namespace LinearAlgebra
     // any, all, findAll). The public Query surface exposes these as concrete-shape overloads
     // (doubleN / doubleMxN) that forward here -- the array type T is fixed at the call site while
     // the predicate P stays generic. float/double emit distinct floatQueryCore/doubleQueryCore, so
-    // the type-identical `<T,P>(in T, ref P)` signatures never collide (CS0111); Burst monomorphizes
-    // both the forwarder and this body into the same machine code (zero perf downgrade).
+    // the type-identical `<T,P>(in T, ref P)` signatures never collide (CS0111).
     internal static partial class doubleQueryCore
     {
         public static int findFirst<T, P>(in T x, ref P pred)

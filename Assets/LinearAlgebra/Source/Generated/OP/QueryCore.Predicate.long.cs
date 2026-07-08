@@ -5,8 +5,7 @@ namespace LinearAlgebra
     // Internal generic bodies for Query's integer Group-A predicate ops. The public Query surface
     // exposes concrete-shape overloads (longN / longMxN) that forward here with the array type T
     // fixed and the predicate P generic. int/short/long emit distinct intQueryCore/shortQueryCore/
-    // longQueryCore, so the type-identical `<T,P>(in T, ref P)` signatures never collide (CS0111);
-    // Burst monomorphizes forwarder + body into the same machine code (zero perf downgrade).
+    // longQueryCore, so the type-identical `<T,P>(in T, ref P)` signatures never collide (CS0111).
     internal static partial class longQueryCore
     {
         public static int findFirst<T, P>(in T x, ref P pred)

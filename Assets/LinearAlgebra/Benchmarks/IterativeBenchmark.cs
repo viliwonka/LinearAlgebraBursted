@@ -1,11 +1,5 @@
 using System.Text;
 
-using Unity.Burst;
-using Unity.Collections;
-using Unity.Jobs;
-
-using LinearAlgebra;
-
 // NOTE: PCG (preconditioned Conjugate Gradient) is not yet implemented in the library;
 // only plain CG is benchmarked here.
 
@@ -21,44 +15,11 @@ namespace LinearAlgebra.Benchmarks
     //
     // A and b are built once (A is `in` — CG does not modify it). x is zeroed at the start of each
     // Execute so every timed sample begins from the same zero initial guess.
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct CGJobFloat : IJob
-    {
-        public floatMxN A;     // n x n SPD input, NOT modified
-        public floatN b;       // rhs, NOT modified
-        public floatN x;       // initial guess (zeroed each Execute) / solution output
-        public floatN r;
-        public floatN p;
-        public floatN Ap;
-
-        public void Execute()
-        {
-            int n = x.N;
-            for (int i = 0; i < n; i++) x[i] = 0f;
-            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, 100, 0f);
-        }
-    }
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct CGJobDouble : IJob
-    {
-        public doubleMxN A;
-        public doubleN b;
-        public doubleN x;
-        public doubleN r;
-        public doubleN p;
-        public doubleN Ap;
-
-        public void Execute()
-        {
-            int n = x.N;
-            for (int i = 0; i < n; i++) x[i] = 0.0;
-            Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, 100, 0.0);
-        }
-    }
-
-    public static class IterativeBenchmark
+    //
+    // Hand-written harness half. The timed IJob (CGJob{Float,Double}) and build+measure method
+    // (Bench{Float,Double}) are code-generated per dtype from
+    // Assets/LinearAlgebra/CodeGen/TemplateSourceBenchmarks/IterativeBenchmark.fProxy.cs.
+    public static partial class IterativeBenchmark
     {
         public static void Run() => Bench.WriteReport("benchmark-iterative.txt", Section);
 
@@ -71,68 +32,6 @@ namespace LinearAlgebra.Benchmarks
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchFloat(n));
             foreach (var n in Bench.Sizes) sb.AppendLine(BenchDouble(n));
             sb.AppendLine();
-        }
-
-        static string BenchFloat(int n)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var M   = arena.floatMat(n, n);    // scratch to build MᵀM
-            var A   = arena.floatMat(n, n);    // SPD A = MᵀM + I
-            var b   = arena.floatVec(n);
-            var x   = arena.floatVec(n);
-            var r   = arena.floatVec(n);
-            var p   = arena.floatVec(n);
-            var Ap  = arena.floatVec(n);
-
-            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
-            for (int row = 0; row < n; row++)
-                for (int col = 0; col < n; col++)
-                    M[row, col] = rng.NextFloat(-1f, 1f);
-
-            // A = MᵀM (guaranteed positive semi-definite)
-            Blas.dot(in M, in M, ref A, true);
-
-            // Add I: A becomes MᵀM + I (guaranteed SPD with min eigenvalue >= 1)
-            for (int d = 0; d < n; d++) A[d, d] += 1f;
-
-            for (int i = 0; i < n; i++) b[i] = rng.NextFloat(-1f, 1f);
-
-            var job = new CGJobFloat { A = A, b = b, x = x, r = r, p = p, Ap = Ap };
-            var stat = Bench.Time(() => job.Run());
-
-            arena.Dispose();
-            return Bench.RowTime("float", n, stat);
-        }
-
-        static string BenchDouble(int n)
-        {
-            var arena = new Arena(Allocator.Persistent);
-            var M   = arena.doubleMat(n, n);
-            var A   = arena.doubleMat(n, n);
-            var b   = arena.doubleVec(n);
-            var x   = arena.doubleVec(n);
-            var r   = arena.doubleVec(n);
-            var p   = arena.doubleVec(n);
-            var Ap  = arena.doubleVec(n);
-
-            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n);
-            for (int row = 0; row < n; row++)
-                for (int col = 0; col < n; col++)
-                    M[row, col] = rng.NextDouble(-1.0, 1.0);
-
-            // A = MᵀM (guaranteed positive semi-definite)
-            Blas.dot(in M, in M, ref A, true);
-
-            // Add I: A becomes MᵀM + I (guaranteed SPD with min eigenvalue >= 1)
-            for (int d = 0; d < n; d++) A[d, d] += 1.0;
-
-            for (int i = 0; i < n; i++) b[i] = rng.NextDouble(-1.0, 1.0);
-
-            var job = new CGJobDouble { A = A, b = b, x = x, r = r, p = p, Ap = Ap };
-            var stat = Bench.Time(() => job.Run());
-
-            arena.Dispose();
-            return Bench.RowTime("double", n, stat);
         }
     }
 }

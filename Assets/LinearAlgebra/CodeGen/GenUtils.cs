@@ -52,9 +52,11 @@ namespace LinearAlgebra.CodeGen
 
         public const string sourceTemplateFolder = "Assets/LinearAlgebra/CodeGen/TemplateSource/";
         public const string sourceTestsTemplateFolder = "Assets/LinearAlgebra/CodeGen/TemplateSourceTests/";
+        public const string sourceBenchmarksTemplateFolder = "Assets/LinearAlgebra/CodeGen/TemplateSourceBenchmarks/";
 
         public const string generatedFolder = "Assets/LinearAlgebra/Source/Generated/";
         public const string generatedTestsFolder = "Assets/LinearAlgebra/SourceTests/Generated/";
+        public const string generatedBenchmarksFolder = "Assets/LinearAlgebra/Benchmarks/Generated/";
 
         public const string copyMarkerStart = "//+copyReplace";
         public const string copyMarkerEnd   = "//-copyReplace";

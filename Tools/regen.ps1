@@ -86,7 +86,7 @@ if ($Unity) {
 # Report what changed under version control.
 Push-Location $root
 try {
-  $changed = @(git status --porcelain -- "Assets/LinearAlgebra/Source" "Assets/LinearAlgebra/SourceTests" "Assets/LinearAlgebra/CodeGen" 2>$null)
+  $changed = @(git status --porcelain -- "Assets/LinearAlgebra/Source" "Assets/LinearAlgebra/SourceTests" "Assets/LinearAlgebra/CodeGen" "Assets/LinearAlgebra/Benchmarks/Generated" 2>$null)
 } finally { Pop-Location }
 
 if ($changed.Count -eq 0) {

@@ -1,0 +1,277 @@
+using System;
+using System.Globalization;
+using System.Text;
+
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+using LinearAlgebra;
+
+using Random = Unity.Mathematics.Random;
+
+namespace LinearAlgebra.Benchmarks
+{
+    // GENERATED per-dtype half of SvdComparisonBenchmark (setup + timing IJobs, per-size measure
+    // methods, and managed accuracy helpers). The dtype-agnostic harness (sizes, Run, Section, the
+    // dedicated-case orchestration) is hand-written in
+    // Assets/LinearAlgebra/Benchmarks/SvdComparisonBenchmark.cs; shared formatters + KVals + BuildSeed
+    // live in the public SvdCmpFmt helper there.
+
+    // ---- setup job: build A from a known SVD (not timed) ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SvdCmpBuildJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN SigmaTrue;
+        public uint seed;
+
+        public void Execute()
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            var rng = new Random(seed);
+
+            // Sigma[i] = 100 * 0.95^i  (geometric decay; 0.95 keeps Sigma[255] ~ 2e-4,
+            // so kappa ~ 5e5 — realistic and well above both float and double epsilon).
+            double sig = (double)100;
+            for (int i = 0; i < n; i++) { SigmaTrue[i] = sig; sig *= (double)0.95; }
+
+            // U (m x n) via QR of a random Gaussian m x n matrix → orthonormal columns (Stiefel)
+            var G = new doubleMxN(m, n, Allocator.Temp, false);
+            var R = new doubleMxN(n, n, Allocator.Temp, false);
+            var gauss = new doubleGaussian(0f, 1f);
+            Rand.randomInPlace(ref rng, ref G, ref gauss);
+            QR.decompInPlace(ref G, ref R);   // G → Q in-place
+
+            // V (n x n) Haar-uniform orthogonal
+            var V = new doubleMxN(n, n, Allocator.Temp, false);
+            Rand.orthogonalInPlace(ref rng, ref V);
+
+            // A[i,j] = Σ_t  Sigma[t] · G[i,t] · V[j,t]   (double accumulation for accuracy)
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double acc = 0;
+                    for (int t = 0; t < n; t++)
+                        acc += (double)G[i, t] * (double)SigmaTrue[t] * (double)V[j, t];
+                    A[i, j] = (double)acc;
+                }
+
+            G.Dispose(); R.Dispose(); V.Dispose();
+        }
+    }
+
+    // ---- timing job: thin (full Golub-Kahan) ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SvdCmpThinJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN U;
+        public doubleN S;
+        public doubleMxN V;
+        public void Execute() => SVD.thin(in A, ref U, ref S, ref V);
+    }
+
+    // ---- timing job: truncated (GKL Lanczos + full reorthogonalization) ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SvdCmpTruncJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN Uk;
+        public doubleN Sk;
+        public doubleMxN Vk;
+        public int k;
+        public doubleSVDTruncatedCache ws;
+        public void Execute() => SVD.truncated(in A, ref Uk, ref Sk, ref Vk, k, ref ws);
+    }
+
+    // ---- timing job: randomized (Halko-Martinsson-Tropp) ----
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct SvdCmpRandJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleMxN Uk;
+        public doubleN Sk;
+        public doubleMxN Vk;
+        public int k;
+        public doubleSVDRandomizedCache ws;
+        // oversample=10, powerIters=2, seed=0x9E3779B1 (library defaults).
+        public void Execute() => SVD.randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, 75, ref ws);
+    }
+
+    public static partial class SvdComparisonBenchmark
+    {
+        // ---- full k-sweep for one size ----
+        static void BenchSizeDouble(StringBuilder sb, int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A         = arena.doubleMat(m, n);
+            var sigmaTrue = arena.doubleVec(n);
+
+            new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
+            double normA = FNormDouble(A);
+
+            // thin — k = n (full decomposition)
+            {
+                var U = arena.doubleMat(m, n);
+                var S = arena.doubleVec(n);
+                var V = arena.doubleMat(n, n);
+                var job  = new SvdCmpThinJobDouble { A = A, U = U, S = S, V = V };
+                var stat = Bench.Time(() => job.Run());
+                double sigErr   = SigErrDouble(S, sigmaTrue, n);
+                double reconErr = ReconErrDouble(A, U, S, V, n, normA);
+                double eyOpt    = EYOptDouble(sigmaTrue, n, normA);
+                sb.AppendLine(SvdCmpFmt.CmpRow("double", "thin", m, n, n, stat, sigErr, reconErr, eyOpt));
+            }
+
+            foreach (int k in SvdCmpFmt.KVals(n))
+            {
+                var Uk = arena.doubleMat(m, k);
+                var Sk = arena.doubleVec(k);
+                var Vk = arena.doubleMat(n, k);
+
+                // truncated (GKL)
+                {
+                    var ws   = arena.doubleSVDTruncatedCache(m, n, k);
+                    var job  = new SvdCmpTruncJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
+                    var stat = Bench.Time(() => job.Run());
+                    double sigErr   = SigErrDouble(Sk, sigmaTrue, k);
+                    double reconErr = ReconErrDouble(A, Uk, Sk, Vk, k, normA);
+                    double eyOpt    = EYOptDouble(sigmaTrue, k, normA);
+                    sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
+                }
+
+                // randomized (HMT, oversample=10 matches workspace default)
+                {
+                    var ws   = arena.doubleSVDRandomizedCache(m, n, k);
+                    var job  = new SvdCmpRandJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
+                    var stat = Bench.Time(() => job.Run());
+                    double sigErr   = SigErrDouble(Sk, sigmaTrue, k);
+                    double reconErr = ReconErrDouble(A, Uk, Sk, Vk, k, normA);
+                    double eyOpt    = EYOptDouble(sigmaTrue, k, normA);
+                    sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
+                }
+            }
+
+            arena.Dispose();
+        }
+
+        static void BenchThinDedicatedDouble(StringBuilder sb, int m, int n)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A         = arena.doubleMat(m, n);
+            var sigmaTrue = arena.doubleVec(n);
+            new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
+            double normA = FNormDouble(A);
+
+            var U = arena.doubleMat(m, n);
+            var S = arena.doubleVec(n);
+            var V = arena.doubleMat(n, n);
+            var job  = new SvdCmpThinJobDouble { A = A, U = U, S = S, V = V };
+            var stat = Bench.Time(() => job.Run());
+            double sigErr   = SigErrDouble(S, sigmaTrue, n);
+            double reconErr = ReconErrDouble(A, U, S, V, n, normA);
+            double eyOpt    = EYOptDouble(sigmaTrue, n, normA);
+            sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdThin", m, n, n, stat, sigErr, reconErr, eyOpt));
+
+            arena.Dispose();
+        }
+
+        static void BenchRandDedicatedDouble(StringBuilder sb, int m, int n, int k)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A         = arena.doubleMat(m, n);
+            var sigmaTrue = arena.doubleVec(n);
+            new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
+            double normA = FNormDouble(A);
+
+            var Uk = arena.doubleMat(m, k);
+            var Sk = arena.doubleVec(k);
+            var Vk = arena.doubleMat(n, k);
+            var ws   = arena.doubleSVDRandomizedCache(m, n, k);
+            var job  = new SvdCmpRandJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+            double sigErr   = SigErrDouble(Sk, sigmaTrue, k);
+            double reconErr = ReconErrDouble(A, Uk, Sk, Vk, k, normA);
+            double eyOpt    = EYOptDouble(sigmaTrue, k, normA);
+            sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdRand", m, n, k, stat, sigErr, reconErr, eyOpt));
+
+            arena.Dispose();
+        }
+
+        static void BenchTrunc1024Double(StringBuilder sb, int m, int n, int k)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A         = arena.doubleMat(m, n);
+            var sigmaTrue = arena.doubleVec(n);
+            new SvdCmpBuildJobDouble { A = A, SigmaTrue = sigmaTrue, seed = SvdCmpFmt.BuildSeed }.Run();
+            double normA = FNormDouble(A);
+
+            var Uk = arena.doubleMat(m, k);
+            var Sk = arena.doubleVec(k);
+            var Vk = arena.doubleMat(n, k);
+            var ws   = arena.doubleSVDTruncatedCache(m, n, k);
+            var job  = new SvdCmpTruncJobDouble { A = A, Uk = Uk, Sk = Sk, Vk = Vk, k = k, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+            double sigErr   = SigErrDouble(Sk, sigmaTrue, k);
+            double reconErr = ReconErrDouble(A, Uk, Sk, Vk, k, normA);
+            double eyOpt    = EYOptDouble(sigmaTrue, k, normA);
+            sb.AppendLine(SvdCmpFmt.CmpRow("double", "svdTrunc", m, n, k, stat, sigErr, reconErr, eyOpt));
+
+            arena.Dispose();
+        }
+
+        // ---- accuracy helpers (managed, not Burst) ----
+
+        static double FNormDouble(doubleMxN A)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            double s = 0;
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++) { double v = A[i, j]; s += v * v; }
+            return Math.Sqrt(s);
+        }
+
+        // max_{i<k} |S[i] - SigmaTrue[i]| / SigmaTrue[0]
+        static double SigErrDouble(doubleN S, doubleN sigmaTrue, int k)
+        {
+            double maxErr = 0, s0 = sigmaTrue[0];
+            for (int i = 0; i < k; i++)
+            {
+                double err = Math.Abs((double)S[i] - (double)sigmaTrue[i]) / s0;
+                if (err > maxErr) maxErr = err;
+            }
+            return maxErr;
+        }
+
+        // ||A - Uk·diag(Sk)·Vkᵀ||_F / ||A||_F  (uses first k columns of Uk/Vk)
+        static double ReconErrDouble(doubleMxN A, doubleMxN Uk, doubleN Sk, doubleMxN Vk, int k, double normA)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+            double err2 = 0;
+            double[] usk = new double[k]; // u[:,t]*s[t] for current row i
+            for (int i = 0; i < m; i++)
+            {
+                for (int t = 0; t < k; t++) usk[t] = (double)Uk[i, t] * (double)Sk[t];
+                for (int j = 0; j < n; j++)
+                {
+                    double approx = 0;
+                    for (int t = 0; t < k; t++) approx += usk[t] * (double)Vk[j, t];
+                    double diff = (double)A[i, j] - approx;
+                    err2 += diff * diff;
+                }
+            }
+            return (normA > 0) ? Math.Sqrt(err2) / normA : Math.Sqrt(err2);
+        }
+
+        // sqrt(sum_{i>=k} Sigma[i]^2) / ||A||_F  (Eckart-Young optimal truncation error)
+        static double EYOptDouble(doubleN sigmaTrue, int k, double normA)
+        {
+            int n = sigmaTrue.N;
+            double tail2 = 0;
+            for (int i = k; i < n; i++) { double s = sigmaTrue[i]; tail2 += s * s; }
+            return (normA > 0) ? Math.Sqrt(tail2) / normA : Math.Sqrt(tail2);
+        }
+    }
+}
