@@ -523,4 +523,110 @@ public class floatLOBPCGSmokeTests
 
         arena.Dispose();
     }
+
+    // ======================================================================================
+    // GUARD ("ghost") VECTORS + the sparse 2D-grid Laplacian gallery (spread spectrum with exact
+    // multiplicities on a square grid) -- the clustered-bottom case guard vectors exist to handle.
+    // ======================================================================================
+
+    // Analytic eigenvalues of the gridX x gridY 5-point Dirichlet Laplacian (see floatLaplacian2D):
+    // lambda(p,q) = (2-2cos(p*pi/(gridX+1))) + (2-2cos(q*pi/(gridY+1))), sorted ascending, smallest k.
+    static double[] SmallestLaplacian2D(int gridX, int gridY, int k)
+    {
+        var all = new double[gridX * gridY];
+        int idx = 0;
+        for (int p = 1; p <= gridX; p++)
+            for (int q = 1; q <= gridY; q++)
+                all[idx++] = (2.0 - 2.0 * System.Math.Cos(p * System.Math.PI / (gridX + 1)))
+                           + (2.0 - 2.0 * System.Math.Cos(q * System.Math.PI / (gridY + 1)));
+        System.Array.Sort(all);
+        var res = new double[k];
+        for (int i = 0; i < k; i++) res[i] = all[i];
+        return res;
+    }
+
+    // Guarded LOBPCG over the sparse 2D grid Laplacian recovers the k smallest analytic eigenvalues.
+    // k=3 on a square grid captures the COMPLETE bottom cluster {lambda(1,1), lambda(1,2)=lambda(2,1)}
+    // (the boundary falls after the multiplicity-2 pair).
+    [Test]
+    public void Laplacian2DGuardedMatchesAnalyticSmallest()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int g = 6;                     // 6x6 grid -> n=36, block size BR=6
+        var A = arena.floatLaplacian2D(g, g);
+
+        int k = 3;
+        var eig = Eigen.lobpcg(ref arena, in A, k, 4, out var vecs, out var info, Consts.floatSqrtEps, 1000);
+
+        Assert.IsTrue(info.Solved, info.ToString());
+        Assert.AreEqual(k, info.converged);
+
+        var analytic = SmallestLaplacian2D(g, g, k);
+        for (int j = 0; j < k; j++)
+            Assert.AreEqual(analytic[j], (double)eig[j], 1e-2);
+
+        // returned eigenvectors are the leading k rows (k x n) and mutually orthonormal
+        for (int i = 0; i < k; i++)
+            for (int j = i; j < k; j++)
+            {
+                float dot = (float)0;
+                for (int c = 0; c < g * g; c++) dot += vecs[i, c] * vecs[j, c];
+                Assert.AreEqual(i == j ? (double)1 : 0.0, (double)dot, 1e-2);
+            }
+
+        arena.Dispose();
+    }
+
+    // The case guard vectors exist for: k=2 on a SQUARE grid cuts THROUGH the multiplicity-2 pair
+    // lambda(1,2)==lambda(2,1) -- the wanted set asks for exactly ONE of two exactly-equal eigenvalues,
+    // the near-degenerate boundary that slows (or stalls) a guard-free block. With guards the solve
+    // recovers the correct two smallest values.
+    [Test]
+    public void Laplacian2DDegenerateSplitGuardedSolves()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int g = 6;
+        var A = arena.floatLaplacian2D(g, g);
+
+        int k = 2;
+        var eig = Eigen.lobpcg(ref arena, in A, k, 4, out _, out var info, Consts.floatSqrtEps, 2000);
+
+        Assert.IsTrue(info.Solved, info.ToString());
+        Assert.AreEqual(k, info.converged);
+
+        var analytic = SmallestLaplacian2D(g, g, k);
+        for (int j = 0; j < k; j++)
+            Assert.AreEqual(analytic[j], (double)eig[j], 1e-2);
+
+        arena.Dispose();
+    }
+
+    // Structural guarantee: the guarded overload with guard == 0 allocates a cache of exactly k rows
+    // (kWork == k), so the primitive takes the bit-identical no-guard path -- its eigenvalues and
+    // eigenvectors must match the plain overload EXACTLY (same fixed RNG seed, same iteration).
+    [Test]
+    public void GuardZeroMatchesPlainOverloadExactly()
+    {
+        var arena = new Arena(Allocator.Persistent);
+
+        int n = 12, k = 3;
+        var A = arena.floatLaplacian1D(n);
+
+        var eigP = Eigen.lobpcg(ref arena, in A, k, out var vecsP, out var infoP);
+        var eigG = Eigen.lobpcg(ref arena, in A, k, 0, out var vecsG, out var infoG);
+
+        Assert.IsTrue(infoP.Solved, infoP.ToString());
+        Assert.AreEqual(infoP.iterations, infoG.iterations);
+
+        for (int j = 0; j < k; j++)
+        {
+            Assert.AreEqual(eigP[j], eigG[j]);
+            for (int c = 0; c < n; c++)
+                Assert.AreEqual(vecsP[j, c], vecsG[j, c]);
+        }
+
+        arena.Dispose();
+    }
 }

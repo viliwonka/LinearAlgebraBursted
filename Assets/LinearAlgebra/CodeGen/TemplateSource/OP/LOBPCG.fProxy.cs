@@ -29,6 +29,18 @@ namespace LinearAlgebra
     /// basis-row Rayleigh quotients and rejected if implausible. A non-finite residual aborts with
     /// <see cref="IterativeSolveStatus.Breakdown"/>.
     ///
+    /// <b>Guard vectors:</b> the working block size is taken from the cache (<c>ws.X.M_Rows</c>), not
+    /// from <c>k</c>. Allocating <c>Arena.fProxyLOBPCGCache(n, k + guard)</c> and calling with wanted
+    /// count <c>k</c> makes the extra <c>guard</c> rows GUARD ("ghost") vectors: full participants in
+    /// every matvec / orthogonalization / Rayleigh-Ritz step, but only the <c>k</c> smallest pairs gate
+    /// convergence (see the wanted-subset exit) and are returned. Guards give the wanted pairs spectral
+    /// separation room, so a clustered / near-degenerate bottom (e.g. a grid Laplacian, where a square
+    /// grid has exact multiplicities) converges in far fewer iterations -- the standard LOBPCG lever for
+    /// clustered spectra. A cache sized exactly <c>k</c> (<c>guard == 0</c>) has no guard rows and every
+    /// step is bit-identical to the pre-guard implementation. The allocating dense/BSR
+    /// <c>lobpcg(ref arena, A, k, guard, ...)</c> overloads wrap this; the zero-alloc primitive picks it
+    /// up automatically from an oversized cache.
+    ///
     /// <b>Zero-alloc scope:</b> all O(n)-scale buffers live in <see cref="fProxyLOBPCGCache"/>,
     /// allocated once via <c>Arena.fProxyLOBPCGCache(n, k)</c> and reused across calls. The
     /// O(k)-scale Rayleigh-Ritz dense matrices are also cache fields. The only bounded
@@ -93,8 +105,21 @@ namespace LinearAlgebra
             if (B.Rows != n || B.Cols != n)
                 throw new ArgumentException("LOBPCG: B must be n x n, matching A (B must be SPD -- not verified at runtime, the same unchecked contract as A's symmetry)");
 
-            if (k < 1 || k > n)
-                throw new ArgumentException("LOBPCG: k must be in [1, A.Rows]");
+            // The working BLOCK size is taken from the cache (ws.X has kWork rows); the requested number
+            // of wanted pairs is `k`. When kWork > k the extra (kWork - k) rows are GUARD ("ghost")
+            // vectors: full participants in every matvec / orthogonalization / Rayleigh-Ritz step, but
+            // only the k SMALLEST pairs gate convergence and are returned. Guard vectors give the wanted
+            // pairs spectral separation room, which is what accelerates -- and, for a near-degenerate
+            // bottom, rescues -- convergence (see the class doc's "Guard vectors" note). kWork == k (a
+            // cache allocated for exactly k -- every pre-guard call site) is the no-guard degenerate
+            // case, and every step below is then bit-identical to the pre-guard implementation.
+            int kWork = ws.X.M_Rows;
+
+            if (kWork < 1 || kWork > n)
+                throw new ArgumentException("LOBPCG: block size (cache k) must be in [1, A.Rows]");
+
+            if (k < 1 || k > kWork)
+                throw new ArgumentException("LOBPCG: k must be in [1, cache block size] (allocate fProxyLOBPCGCache(n, k + guard) to use guard vectors)");
 
             if (maxIter < 1)
                 throw new ArgumentException("LOBPCG: maxIter must be >= 1");
@@ -102,12 +127,12 @@ namespace LinearAlgebra
             if (tol <= (fProxy)0)
                 throw new ArgumentException("LOBPCG: tol must be > 0");
 
-            RequireLOBPCGWorkspace(in ws, n, k);
+            RequireLOBPCGWorkspace(in ws, n, kWork);
             RequireDistinctBuffers(in ws);
 
             // ---- seed X if all-zero, then orthonormalize unconditionally ----
             bool allZero = true;
-            for (int i = 0; i < k && allZero; i++)
+            for (int i = 0; i < kWork && allZero; i++)
                 for (int c = 0; c < n; c++)
                     if (ws.X[i, c] != (fProxy)0) { allZero = false; break; }
 
@@ -124,7 +149,7 @@ namespace LinearAlgebra
             if (allZero)
             {
                 var seedRng = new Unity.Mathematics.Random(0x9E3779B1u);
-                for (int i = 0; i < k; i++)
+                for (int i = 0; i < kWork; i++)
                     for (int c = 0; c < n; c++)
                         ws.X[i, c] = (fProxy)(seedRng.NextFloat() * 2f - 1f);
             }
@@ -142,31 +167,31 @@ namespace LinearAlgebra
             // bootstrap bit-identical to the pre-generalization implementation -- see
             // <see cref="OrthonormalizeBlockB"/> for the B-aware sibling used by W/P below, which
             // genuinely needs a pre-computed B-image and so cannot reuse this same bootstrap shape.
-            if (!OrthonormalizeBlock(ref ws.X, ref ws.AX, k, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
+            if (!OrthonormalizeBlock(ref ws.X, ref ws.AX, kWork, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
                 return new LOBPCGInfo { iterations = 0, converged = 0, maxResidual = double.NaN, status = IterativeSolveStatus.Breakdown };
 
-            A.ApplyBlock(in ws.X, ref ws.AX, k);
+            A.ApplyBlock(in ws.X, ref ws.AX, kWork);
 
             // BX = B.Apply(X), fresh, right after AX -- mirrors AX's own freshness exactly (see the
             // class doc's "fresh-matvec principle extends to B"). For the B=I forwarding path
             // (TBOp == fProxyIdentityOperator) this is an exact bit-copy of X, so every later
             // computation reading BX in place of a Euclidean X reproduces the pre-generalization
             // formula bit-for-bit.
-            B.ApplyBlock(in ws.X, ref ws.BX, k);
+            B.ApplyBlock(in ws.X, ref ws.BX, kWork);
 
             // Bootstrap Rayleigh-quotient seed for lambda -- deliberately the plain EUCLIDEAN
             // quotient dot(X,AX), NOT divided by dot(X,BX) (the "more correct" generalized
             // quotient): see the class doc's "B=I strategy" note for why (this seed is immediately
             // superseded by the first real Rayleigh-Ritz iteration regardless of its accuracy, so
             // the division would only cost bit-identical-ness for B=I with no practical benefit).
-            for (int i = 0; i < k; i++)
+            for (int i = 0; i < kWork; i++)
             {
                 fProxy d = (fProxy)0;
                 for (int c = 0; c < n; c++) d += ws.X[i, c] * ws.AX[i, c];
                 ws.lambda[i] = d;
             }
 
-            int numActive = k;
+            int numActive = kWork;
             bool haveP = false;
 
             // Freeze (lock) a pair only at a fraction of tol; convergence is still DECLARED at tol via
@@ -198,8 +223,8 @@ namespace LinearAlgebra
 
                     if (!math.isfinite(rnorm))
                     {
-                        SortAscending(ref ws, k);
-                        return new LOBPCGInfo { iterations = iter, converged = k - numActive, maxResidual = double.NaN, status = IterativeSolveStatus.Breakdown };
+                        SortAscending(ref ws, kWork);
+                        return new LOBPCGInfo { iterations = iter, converged = math.min(k, kWork - numActive), maxResidual = double.NaN, status = IterativeSolveStatus.Breakdown };
                     }
 
                     ws.residual[i] = rnorm;
@@ -238,15 +263,19 @@ namespace LinearAlgebra
                     }
                 }
 
-                // Honest exit: every pair (locked pairs met the stricter lockTol; active pairs checked
-                // just now) is within tol -- converged, whether or not all were frozen. Subsumes the old
-                // numActive==0 case. `iter` (not iter+1): iterations 0..iter-1 each did a full
+                // Honest exit: the k WANTED (smallest) pairs are all within tol. With NO guards
+                // (kWork == k) this is exactly allWithinTol -- every pair within tol, computed inline
+                // above -- so the pre-guard path is bit-identical. With guards it ignores the residuals
+                // of the (kWork - k) guard rows, which are not required to converge (see WantedWithinTol);
+                // waiting on them would defeat the purpose (guards typically sit higher in the spectrum
+                // and converge slowest). `iter` (not iter+1): iterations 0..iter-1 each did a full
                 // W/Rayleigh-Ritz work pass; THIS iteration only ran the residual check before finding
                 // everyone converged, so it contributes no additional work -- matches SolveInfo's
                 // "0 when converged before the first step" convention.
-                if (allWithinTol)
+                bool converged = (kWork == k) ? allWithinTol : WantedWithinTol(in ws, kWork, k, tol);
+                if (converged)
                 {
-                    SortAscending(ref ws, k);
+                    SortAscending(ref ws, kWork);
                     return new LOBPCGInfo { iterations = iter, converged = k, maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.Converged };
                 }
 
@@ -259,9 +288,9 @@ namespace LinearAlgebra
                 // B-orthogonal to the locked rows here removes that trapped component; AX/BX ride along
                 // by linearity, and we renormalize in the B-inner-product so the next Rayleigh-Ritz
                 // Gram stays near the identity. No-op until at least one pair has locked (numActive < k).
-                if (numActive < k)
+                if (numActive < kWork)
                 {
-                    Deflate(ref ws.X, ref ws.AX, ref ws.BX, numActive, in ws.X, in ws.AX, in ws.BX, numActive, k - numActive, n);
+                    Deflate(ref ws.X, ref ws.AX, ref ws.BX, numActive, in ws.X, in ws.AX, in ws.BX, numActive, kWork - numActive, n);
                     for (int i = 0; i < numActive; i++)
                     {
                         fProxy bn2 = (fProxy)0;
@@ -305,7 +334,7 @@ namespace LinearAlgebra
                 // else -- keeps the combined B-Gram close to the identity, so the final
                 // Rayleigh-Ritz Cholesky is well-conditioned by construction and a genuine rank
                 // deficiency reliably trips the correct safeguard.
-                Deflate(ref ws.W, ref ws.AW, ref ws.BW, numActive, in ws.X, in ws.AX, in ws.BX, 0, k, n);
+                Deflate(ref ws.W, ref ws.AW, ref ws.BW, numActive, in ws.X, in ws.AX, in ws.BX, 0, kWork, n);
 
                 if (!OrthonormalizeBlockB(ref ws.W, ref ws.AW, ref ws.BW, numActive, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut, ref ws.rowAux))
                 {
@@ -319,7 +348,7 @@ namespace LinearAlgebra
                 bool haveP0 = haveP;
                 if (haveP0)
                 {
-                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.X, in ws.AX, in ws.BX, 0, k, n);
+                    Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.X, in ws.AX, in ws.BX, 0, kWork, n);
                     Deflate(ref ws.P, ref ws.AP, ref ws.BP, numActive, in ws.W, in ws.AW, in ws.BW, 0, numActive, n);
 
                     // If P has become (nearly) linearly dependent on X/W -- e.g. after many
@@ -350,7 +379,7 @@ namespace LinearAlgebra
                     continue;
                 }
 
-                UpdateActiveBlock(ref ws, numActive, usedP, n, k);
+                UpdateActiveBlock(ref ws, numActive, usedP, n, kWork);
 
                 // Recompute AX/BX FRESH via a matvec each -- UpdateActiveBlock deliberately does
                 // NOT also mirror-combine AX/BX (see its own doc comment): propagating AX through
@@ -380,7 +409,7 @@ namespace LinearAlgebra
                 haveP = true;
             }
 
-            SortAscending(ref ws, k);
+            SortAscending(ref ws, kWork);
             return new LOBPCGInfo { iterations = maxIter, converged = ConvergedWithinTol(in ws, k, tol), maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
         }
 
@@ -518,6 +547,32 @@ namespace LinearAlgebra
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
         /// <summary>
+        /// LOBPCG over a dense symmetric matrix with <paramref name="guard"/> GUARD ("ghost") vectors --
+        /// allocating. Iterates on a block of k + guard vectors but converges and RETURNS only the k
+        /// smallest pairs; the guards are full participants in the iteration and give the wanted pairs
+        /// spectral separation room, which accelerates -- and, for a near-degenerate/clustered bottom,
+        /// rescues -- convergence. A typical guard is a small handful (e.g. 3-8); <paramref name="guard"/>
+        /// = 0 reproduces the guard-free overload exactly. <paramref name="eigenvectors"/> is the leading
+        /// k x n block (ascending-sorted); the returned values are a fresh length-k vector.
+        /// </summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, int k, int guard, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
+        {
+            if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
+            var ws = arena.fProxyLOBPCGCache(A.M_Rows, k + guard);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            eigenvectors.M_Rows = k;                       // leading k rows are the k smallest (SortAscending ran)
+            var vals = arena.fProxyVec(k);
+            for (int i = 0; i < k; i++) vals[i] = ws.lambda[i];
+            return vals;
+        }
+
+        /// <summary>lobpcg (allocating, guard vectors) over a dense matrix with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyMxN A, int k, int guard, out fProxyMxN eigenvectors, out LOBPCGInfo info)
+            => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>
         /// LOBPCG over a dense pencil (A, B) -- GENERALIZED eigenproblem, allocating. See the
         /// standard dense overload's doc comment for the buffer-ownership contract.
         /// </summary>
@@ -581,6 +636,30 @@ namespace LinearAlgebra
         /// <summary>lobpcg (allocating) over a BSR matrix with default tol/maxIter.</summary>
         public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, out fProxyMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
+
+        /// <summary>
+        /// LOBPCG over a block-sparse (BSR) matrix with <paramref name="guard"/> GUARD ("ghost") vectors
+        /// -- allocating. See the dense guard overload's doc comment: iterates on k + guard vectors,
+        /// returns the k smallest. This is the recommended entry point for the smallest eigenpairs of a
+        /// large sparse operator whose bottom spectrum is clustered/near-degenerate (e.g. a grid
+        /// Laplacian -- see <c>fProxyGallery.fProxyLaplacian2D</c>).
+        /// </summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, int guard, out fProxyMxN eigenvectors,
+                                      out LOBPCGInfo info, fProxy tol, int maxIter)
+        {
+            if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
+            var ws = arena.fProxyLOBPCGCache(A.M_Rows, k + guard);
+            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            eigenvectors = ws.X;
+            eigenvectors.M_Rows = k;
+            var vals = arena.fProxyVec(k);
+            for (int i = 0; i < k; i++) vals[i] = ws.lambda[i];
+            return vals;
+        }
+
+        /// <summary>lobpcg (allocating, guard vectors) over a BSR matrix with default tol/maxIter.</summary>
+        public static fProxyN lobpcg(ref Arena arena, in fProxyBSR A, int k, int guard, out fProxyMxN eigenvectors, out LOBPCGInfo info)
+            => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.fProxySqrtEps, 1000);
 
         /// <summary>
         /// LOBPCG over a block-sparse pencil (A, B) -- GENERALIZED eigenproblem, allocating. See
@@ -1239,6 +1318,31 @@ namespace LinearAlgebra
                 if (rel > worst) worst = rel;
             }
             return worst;
+        }
+
+        // GUARD-VECTOR convergence gate: true iff the k WANTED pairs -- the k SMALLEST by current Ritz
+        // value among all kWork block rows -- are each within the requested tol. The (kWork - k) guard
+        // rows are ignored. Rank is computed by value with a stable index tie-break so EXACTLY k rows
+        // count as wanted even when Ritz values coincide (the square-grid multiplicity case). residual[]
+        // is current for every row here (active rows from the just-finished scan, locked rows frozen at
+        // their lock-time value <= lockTol < tol), and lambda[] holds every row's current Ritz value, so
+        // no row ordering is assumed. kWork is tiny (<= a few dozen) so the O(kWork^2) rank scan is
+        // negligible. Only ever called when kWork > k; the kWork == k path uses allWithinTol inline and
+        // stays bit-identical to the pre-guard implementation.
+        static bool WantedWithinTol(in fProxyLOBPCGCache ws, int kWork, int k, fProxy tol)
+        {
+            for (int i = 0; i < kWork; i++)
+            {
+                int rank = 0;
+                for (int j = 0; j < kWork; j++)
+                    if (ws.lambda[j] < ws.lambda[i] || (ws.lambda[j] == ws.lambda[i] && j < i)) rank++;
+                if (rank >= k) continue;                 // row i is a guard (not among the k smallest)
+
+                fProxy scale = math.abs(ws.lambda[i]);
+                if (scale < (fProxy)1) scale = (fProxy)1;
+                if (!(ws.residual[i] <= tol * scale)) return false;   // NaN-safe (!(NaN<=x) == true)
+            }
+            return true;
         }
 
         // How many of the k pairs are within the requested tol (NOT the stricter lock margin lockTol).

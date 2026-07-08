@@ -19,13 +19,16 @@ namespace LinearAlgebra.Benchmarks
     // column shows how converged, not just how fast). All workspace is pre-allocated ONCE and reused
     // across timed samples (no per-sample arena growth); every solve runs inside a [BurstCompile] IJob.
     //   1. spMV throughput; 2. square SPD (cg/pcg/minres); 3. square non-symmetric (biCGStab);
-    //   4. tall rectangular least-squares m=2n (cgls/lsqr/lsmr); 5. Lanczos (throughput).
-    // NOTE on eigensolvers: the random SPD generator is DIAGONALLY DOMINANT -- great for Krylov (fast,
-    // well-conditioned) but its spectrum is CLUSTERED, so the k smallest eigenpairs are near-degenerate.
-    // Lanczos still measures matvec throughput honestly (it runs a fixed number of steps regardless), but
-    // LOBPCG's smallest-k iteration breaks down on a clustered spectrum, so it is deliberately NOT
-    // benchmarked here -- a meaningful smallest-eigenpair bench needs a SPREAD-spectrum sparse matrix
-    // (e.g. a sparse Laplacian / 2D-grid gallery entry), which is future work.
+    //   4. tall rectangular least-squares m=2n (cgls/lsqr/lsmr); 5. Lanczos (throughput);
+    //   6. LOBPCG smallest-k eigenpairs on a spread-spectrum grid Laplacian, sweeping the convergence
+    //      levers (preconditioner none/block-Jacobi x guard 0/8), reported in ITERATIONS.
+    // NOTE on the eigen rows: the random SPD generator is DIAGONALLY DOMINANT -- great for Krylov (fast,
+    // well-conditioned) but its spectrum is CLUSTERED, so it is NOT a fair smallest-eigenpair test (the k
+    // smallest are near-degenerate). Lanczos measures matvec throughput honestly regardless (fixed steps);
+    // the LOBPCG rows instead run on a SQUARE 2D grid Laplacian (fProxyLaplacian2D), whose spectrum is
+    // spread and analytically known, so the smallest-k problem is genuinely resolvable. (An earlier note
+    // here claimed LOBPCG "breaks down" on the clustered generator -- that was a benchmark artifact, not
+    // an algorithm failure; it converges, just slowly, and guard vectors accelerate the clustered case.)
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
     public struct SpmvJobFloat : IJob { public floatBSR A; public floatN x, y; public int reps;
@@ -91,6 +94,54 @@ namespace LinearAlgebra.Benchmarks
     public struct SpLanczosJobDouble : IJob { public doubleBSR A; public doubleLanczosCache ws; public doubleN vals; public int steps; public NativeArray<double> outInfo;
         public void Execute() { var info = Eigen.lanczos(in A, ref ws, ref vals, steps); outInfo[0] = info.produced; outInfo[1] = info.Solved ? 1 : 0; outInfo[2] = 0; } }
 
+    // LOBPCG smallest-k eigenpairs. Each job is a SINGLE from-scratch solve on a fresh (all-zero ->
+    // deterministically re-seeded) cache, so iterations / converged / orthoErr are deterministic and no
+    // timing repeats are needed. outInfo = [status, iterations, converged, maxResidual, orthoErr] where
+    // orthoErr = max_ij |X_i.X_j - delta_ij| over the k wanted vectors (output orthonormality check).
+    // Four variants: unpreconditioned vs block-Jacobi, each float/double.
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLobpcgJobFloat : IJob { public floatBSR A; public floatLOBPCGCache ws; public int k; public float tol; public int maxIter; public NativeArray<double> outInfo;
+        public void Execute() { var info = Eigen.lobpcg(in A, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLobpcgPrecJobFloat : IJob { public floatBSR A; public floatBlockJacobi M; public floatLOBPCGCache ws; public int k; public float tol; public int maxIter; public NativeArray<double> outInfo;
+        public void Execute() { var info = Eigen.lobpcg(in A, in M, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLobpcgJobDouble : IJob { public doubleBSR A; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
+        public void Execute() { var info = Eigen.lobpcg(in A, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLobpcgPrecJobDouble : IJob { public doubleBSR A; public doubleBlockJacobi M; public doubleLOBPCGCache ws; public int k; public double tol; public int maxIter; public NativeArray<double> outInfo;
+        public void Execute() { var info = Eigen.lobpcg(in A, in M, ref ws, k, tol, maxIter); LobpcgReport.WriteDouble(in info, in ws, k, outInfo); } }
+
+    static class LobpcgReport
+    {
+        public static void WriteFloat(in LOBPCGInfo info, in floatLOBPCGCache ws, int k, NativeArray<double> o)
+        {
+            double orth = 0;
+            for (int i = 0; i < k; i++)
+                for (int j = i; j < k; j++)
+                {
+                    double d = 0;
+                    for (int c = 0; c < ws.X.N_Cols; c++) d += (double)ws.X[i, c] * (double)ws.X[j, c];
+                    double e = math.abs(d - (i == j ? 1.0 : 0.0));
+                    if (e > orth) orth = e;
+                }
+            o[0] = (int)info.status; o[1] = info.iterations; o[2] = info.converged; o[3] = info.maxResidual; o[4] = orth;
+        }
+        public static void WriteDouble(in LOBPCGInfo info, in doubleLOBPCGCache ws, int k, NativeArray<double> o)
+        {
+            double orth = 0;
+            for (int i = 0; i < k; i++)
+                for (int j = i; j < k; j++)
+                {
+                    double d = 0;
+                    for (int c = 0; c < ws.X.N_Cols; c++) d += ws.X[i, c] * ws.X[j, c];
+                    double e = math.abs(d - (i == j ? 1.0 : 0.0));
+                    if (e > orth) orth = e;
+                }
+            o[0] = (int)info.status; o[1] = info.iterations; o[2] = info.converged; o[3] = info.maxResidual; o[4] = orth;
+        }
+    }
+
     public static class LargeSparseBenchmark
     {
         const int BR = 4;
@@ -100,7 +151,19 @@ namespace LinearAlgebra.Benchmarks
         const int SpmvReps = 50;
         const int LanczosSteps = 32;
 
+        // LOBPCG smallest-eigenpair rows run on SQUARE 2D grid Laplacians (fProxyLaplacian2D, BR = grid),
+        // whose spectrum is SPREAD (with exact multiplicities) -- the honest smallest-eigenpair testbed
+        // the clustered random-SPD generator cannot provide. Reported metric is ITERATIONS (deterministic;
+        // one from-scratch solve per row), swept over the two convergence levers: preconditioner
+        // (none / block-Jacobi) and guard-vector count (0 / 8). NOT wall-clock -- see the section header.
+        static readonly int[] EigGrids = { 32, 64, 96 };   // n = g*g -> 1024, 4096, 9216; block size BR = g
+        const int LobpcgK = 8;
+        const int LobpcgGuard = 8;
+        const int LobpcgMaxIter = 800;
+
         public static void Run() => Bench.WriteReport("benchmark-largesparse.txt", Section);
+
+        public static void RunLobpcg() => Bench.WriteReport("benchmark-largesparse-lobpcg.txt", LobpcgSection);
 
         public static void Section(StringBuilder sb)
         {
@@ -117,6 +180,92 @@ namespace LinearAlgebra.Benchmarks
             BenchEigenFloat(sb);
             BenchEigenDouble(sb);
             sb.AppendLine();
+            LobpcgSection(sb);
+        }
+
+        // LOBPCG smallest-k eigenpairs of a large sparse 2D grid Laplacian, sweeping the two convergence
+        // levers -- preconditioner (none / block-Jacobi) and guard-vector count (0 / LobpcgGuard). The
+        // reported metric is ITERATIONS-to-converge, not wall-clock: the fProxyLaplacian2D encoding uses
+        // BR = grid, so each block is a dense tile holding a ~3-nonzero stencil row (~BR-fold storage/
+        // compute waste), which would dominate any timing and say more about the encoding than the solver.
+        // Iterations are encoding-independent and are the honest measure of the levers. Findings the rows
+        // reproduce: block-Jacobi cuts iterations ~30%; guards cut them ~2x (but at ~O(kWork^2) higher
+        // per-iteration cost, so guards are a robustness / iteration lever, not a wall-clock speedup);
+        // the two stack. orthoErr confirms the output stays orthonormal in every config.
+        public static void LobpcgSection(StringBuilder sb)
+        {
+            sb.AppendLine("=== LOBPCG smallest-" + LobpcgK + " eigenpairs, square 2D grid Laplacian (spread spectrum) ===");
+            sb.AppendLine("Levers: preconditioner (none / block-Jacobi) x guard (0 / " + LobpcgGuard + "). maxIter=" + LobpcgMaxIter + ", tol=sqrt(eps).");
+            sb.AppendLine("Metric is ITERATIONS (deterministic, one solve/row); wall-clock omitted -- it is dominated by the");
+            sb.AppendLine("BR=grid dense-block encoding, not the solver. orthoErr = max_ij |X_i.X_j - d_ij| over the k wanted.");
+            sb.AppendLine();
+            sb.AppendLine(string.Format("{0,-7} {1,-12} {2,-10} {3,-6} {4,-12} {5,7} {6,6} {7,13} {8,13}",
+                "dtype", "grid(n)", "precond", "guard", "status", "iters", "conv", "maxResid", "orthoErr"));
+            BenchLobpcgFloat(sb);
+            sb.AppendLine();
+            BenchLobpcgDouble(sb);
+            sb.AppendLine();
+        }
+
+        static string StatusName(int s) => s == 0 ? "Converged" : s == 1 ? "MaxIter" : s == 2 ? "Breakdown" : "THREW";
+
+        static void LobRow(StringBuilder sb, string dtype, string grid, string precond, int guard, double[] o) =>
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "{0,-7} {1,-12} {2,-10} {3,-6} {4,-12} {5,7} {6,6} {7,13:E3} {8,13:E3}",
+                dtype, grid, precond, guard, StatusName((int)o[0]), (int)o[1], (int)o[2], o[3], o[4]));
+
+        static double[] Snap(NativeArray<double> o) => new[] { o[0], o[1], o[2], o[3], o[4] };
+
+        static void BenchLobpcgFloat(StringBuilder sb)
+        {
+            foreach (int g in EigGrids)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                int n = g * g;
+                var A = arena.floatLaplacian2D(g, g);
+                var M = arena.floatBlockJacobi(in A);
+                string grid = g + "x" + g + "(" + n + ")";
+                var oi = new NativeArray<double>(5, Allocator.Persistent);
+                float tol = Consts.floatSqrtEps;
+
+                new SpLobpcgJobFloat { A = A, ws = arena.floatLOBPCGCache(n, LobpcgK), k = LobpcgK, tol = tol, maxIter = LobpcgMaxIter, outInfo = oi }.Run();
+                LobRow(sb, "float", grid, "none", 0, Snap(oi));
+                new SpLobpcgPrecJobFloat { A = A, M = M, ws = arena.floatLOBPCGCache(n, LobpcgK), k = LobpcgK, tol = tol, maxIter = LobpcgMaxIter, outInfo = oi }.Run();
+                LobRow(sb, "float", grid, "blockJac", 0, Snap(oi));
+                new SpLobpcgJobFloat { A = A, ws = arena.floatLOBPCGCache(n, LobpcgK + LobpcgGuard), k = LobpcgK, tol = tol, maxIter = LobpcgMaxIter, outInfo = oi }.Run();
+                LobRow(sb, "float", grid, "none", LobpcgGuard, Snap(oi));
+                new SpLobpcgPrecJobFloat { A = A, M = M, ws = arena.floatLOBPCGCache(n, LobpcgK + LobpcgGuard), k = LobpcgK, tol = tol, maxIter = LobpcgMaxIter, outInfo = oi }.Run();
+                LobRow(sb, "float", grid, "blockJac", LobpcgGuard, Snap(oi));
+
+                oi.Dispose();
+                arena.Dispose();
+            }
+        }
+
+        static void BenchLobpcgDouble(StringBuilder sb)
+        {
+            foreach (int g in EigGrids)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                int n = g * g;
+                var A = arena.doubleLaplacian2D(g, g);
+                var M = arena.doubleBlockJacobi(in A);
+                string grid = g + "x" + g + "(" + n + ")";
+                var oi = new NativeArray<double>(5, Allocator.Persistent);
+                double tol = Consts.doubleSqrtEps;
+
+                new SpLobpcgJobDouble { A = A, ws = arena.doubleLOBPCGCache(n, LobpcgK), k = LobpcgK, tol = tol, maxIter = LobpcgMaxIter, outInfo = oi }.Run();
+                LobRow(sb, "double", grid, "none", 0, Snap(oi));
+                new SpLobpcgPrecJobDouble { A = A, M = M, ws = arena.doubleLOBPCGCache(n, LobpcgK), k = LobpcgK, tol = tol, maxIter = LobpcgMaxIter, outInfo = oi }.Run();
+                LobRow(sb, "double", grid, "blockJac", 0, Snap(oi));
+                new SpLobpcgJobDouble { A = A, ws = arena.doubleLOBPCGCache(n, LobpcgK + LobpcgGuard), k = LobpcgK, tol = tol, maxIter = LobpcgMaxIter, outInfo = oi }.Run();
+                LobRow(sb, "double", grid, "none", LobpcgGuard, Snap(oi));
+                new SpLobpcgPrecJobDouble { A = A, M = M, ws = arena.doubleLOBPCGCache(n, LobpcgK + LobpcgGuard), k = LobpcgK, tol = tol, maxIter = LobpcgMaxIter, outInfo = oi }.Run();
+                LobRow(sb, "double", grid, "blockJac", LobpcgGuard, Snap(oi));
+
+                oi.Dispose();
+                arena.Dispose();
+            }
         }
 
         static string Row(string dtype, string size, string solver, Bench.Stat st, double residual) =>

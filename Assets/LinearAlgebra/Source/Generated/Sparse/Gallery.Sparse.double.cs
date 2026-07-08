@@ -161,5 +161,59 @@ namespace LinearAlgebra.Gallery
 
             return builder.ToBSR(ref arena);
         }
+
+        /// <summary>
+        /// 2D grid (5-point) Dirichlet Laplacian on a <paramref name="gridX"/>×<paramref name="gridY"/>
+        /// grid, as a block-tridiagonal <see cref="doubleBSR"/> (block size BR = <paramref name="gridX"/>,
+        /// one block-row per grid row, so N = gridX·gridY). SPD, and — unlike the diagonally-dominant
+        /// random SPD generator — its spectrum is SPREAD (and, on a SQUARE grid, has exact symmetry
+        /// MULTIPLICITIES), so it is the honest testbed for smallest-eigenpair solvers (LOBPCG) where the
+        /// random generator's clustered bottom is misleading. The eigenvalues are analytic:
+        /// <code>
+        ///   λ(p,q) = (2 − 2·cos(pπ/(gridX+1))) + (2 − 2·cos(qπ/(gridY+1))),   p=1..gridX, q=1..gridY
+        /// </code>
+        /// The matrix is I⊗Tₓ + T_y⊗I with T = tridiag(−1, 2, −1): every diagonal block is
+        /// tridiag(−1, 4, −1) (x-coupling + degree) and every between-block-row coupling is −I
+        /// (y-coupling). On a square grid (gridX == gridY) λ(p,q) == λ(q,p) gives exact multiplicity-2
+        /// pairs — the near-degenerate case guard vectors exist to handle. O(nnz), no dense form.
+        /// </summary>
+        /// <param name="gridX">Grid extent in x = the BSR block size BR (2–6 hit the unrolled spMV kernels).</param>
+        /// <param name="gridY">Grid extent in y = the number of block rows.</param>
+        public static doubleBSR doubleLaplacian2D(this ref Arena arena, int gridX, int gridY)
+        {
+            if (gridX < 1 || gridY < 1) throw new ArgumentException("doubleLaplacian2D: grid dims must be >= 1");
+
+            int BR = gridX, nb = gridY;
+            int nnzbEstimate = nb + 2 * (nb - 1);
+            if (nnzbEstimate < 1) nnzbEstimate = 1;
+            var builder = arena.doubleBSRBuilder(nb, nb, BR, BR, nnzbEstimate);
+
+            // Diagonal block: tridiag(-1, 4, -1) (x-neighbor coupling + the full 2D degree 4).
+            var D = arena.doubleMat(BR, BR);
+            for (int r = 0; r < BR; r++)
+                for (int c = 0; c < BR; c++)
+                    D[r, c] = (double)0;
+            for (int r = 0; r < BR; r++)
+            {
+                D[r, r] = (double)4;
+                if (r > 0)      D[r, r - 1] = (double)(-1);
+                if (r < BR - 1) D[r, r + 1] = (double)(-1);
+            }
+
+            // Between-block-row coupling: -I (y-neighbor coupling).
+            var C = arena.doubleMat(BR, BR);
+            for (int r = 0; r < BR; r++)
+                for (int c = 0; c < BR; c++)
+                    C[r, c] = (double)(r == c ? -1 : 0);
+
+            for (int i = 0; i < nb; i++)
+            {
+                builder.AddBlock(i, i, in D);
+                if (i > 0)      builder.AddBlock(i, i - 1, in C);
+                if (i < nb - 1) builder.AddBlock(i, i + 1, in C);
+            }
+
+            return builder.ToBSR(ref arena);
+        }
     }
 }
