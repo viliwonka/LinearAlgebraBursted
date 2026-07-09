@@ -9,7 +9,10 @@ using Unity.Mathematics;
 namespace LinearAlgebra
 {
     // Mixed-integer programming: branch & bound over the dual simplex (docs/draft-spec-mip.md).
-    // Stage 2: most-fractional branching, DFS with backtracking, warm-started node LPs.
+    // Stage 3: pseudocost + reliability branching (MIP.Pseudocost.fProxy.cs) picks the branching
+    // variable; search order is best-bound-with-plunging -- dive one child immediately, push the
+    // sibling to a best-bound priority queue, and on reaching a leaf jump to the queue's best node
+    // instead of backtracking to the DFS parent.
     //
     // min cᵀx s.t. Ax {≤,=,≥} b, xl≤x≤xu, x_j integer for integrality[j]!=0.
     //
@@ -23,29 +26,69 @@ namespace LinearAlgebra
     // simplex's dataScale/artificialBound scaling and can silently bound a truly unbounded direction.
     // See MIP.Domain.fProxy.cs.
     //
-    // Warm start: one LPBasis persists across the whole search. The dual simplex's dual-feasibility
-    // repair makes a stale basis (right after backtracking) a correct, not just fast, starting point.
+    // Warm start: one LPBasis persists across the whole search, including strong-branch trials. The
+    // dual simplex's dual-feasibility repair makes a stale basis (right after a plunge dive, an undone
+    // strong-branch trial, or a queue jump) a correct, not just fast, starting point.
     //
-    // dualBound = min(root bound, open DFS-stack frames' parent bounds) -- sound but loose under pure
-    // DFS (no best-bound queue until stage 3).
-    internal struct fProxyMIPNode
+    // Node state: the current plunge's dive steps use the incremental bound-change stack
+    // (MIP.Domain.fProxy.cs's PushBoundChange/UndoToMarker), same as stage 2. A queue jump is not
+    // generally to an ancestor, so it cannot replay/undo that stack -- instead each queued node carries
+    // its own full length-n bound snapshot (fProxyMIPQueueNode) and a jump overwrites the live bound
+    // state wholesale (ApplyNodeBounds) and resets the stack.
+    //
+    // dualBound = min over every still-open node's own parent-LP bound -- the current plunge frontier
+    // plus everything still in the queue (tighter than stage 2's DFS-ancestor approximation).
+    internal struct fProxyMIPQueueNode
     {
-        public int marker;         // bound-change stack length before this frame's own changes
-        public int branchVar;
-        public fProxy floorV;      // down child's new UB
-        public fProxy ceilV;       // up child's new LB
-        public bool downFirst;     // true: explore x_j <= floorV before x_j >= ceilV
-        public byte state;         // 0 = first child in flight, 1 = second child in flight
-        public double parentBound; // this node's own LP bound
+        public fProxyN L;          // full lower-bound snapshot, length n (owned -- Dispose on pop/drain)
+        public fProxyN U;          // full upper-bound snapshot, length n (owned -- Dispose on pop/drain)
+        public double parentBound; // the branching LP's own bound -- a sound lower bound for this node
+        public int branchVar;      // parent's branching variable
+        public fProxy fracValue;   // branchVar's fractional LP value at the parent
+        public fProxy newBound;    // the bound this node applies to branchVar (floor or ceil of fracValue)
+        public bool isUp;          // true: branchVar's LOWER bound was tightened to newBound
     }
 
     public static partial class MIP
     {
+        // Binary min-heap over `heap`, keyed by parentBound (best-bound = smallest, minimization).
+        internal static void HeapPush(ref UnsafeList<fProxyMIPQueueNode> heap, fProxyMIPQueueNode node)
+        {
+            heap.Add(node);
+            int i = heap.Length - 1;
+            while (i > 0)
+            {
+                int parent = (i - 1) / 2;
+                if (heap[parent].parentBound <= heap[i].parentBound) break;
+                fProxyMIPQueueNode tmp = heap[parent]; heap[parent] = heap[i]; heap[i] = tmp;
+                i = parent;
+            }
+        }
+
+        internal static fProxyMIPQueueNode HeapPopMin(ref UnsafeList<fProxyMIPQueueNode> heap)
+        {
+            fProxyMIPQueueNode top = heap[0];
+            int last = heap.Length - 1;
+            heap[0] = heap[last];
+            heap.Length = last;
+            int i = 0;
+            while (true)
+            {
+                int l = 2 * i + 1, r = 2 * i + 2, smallest = i;
+                if (l < heap.Length && heap[l].parentBound < heap[smallest].parentBound) smallest = l;
+                if (r < heap.Length && heap[r].parentBound < heap[smallest].parentBound) smallest = r;
+                if (smallest == i) break;
+                fProxyMIPQueueNode tmp = heap[smallest]; heap[smallest] = heap[i]; heap[i] = tmp;
+                i = smallest;
+            }
+            return top;
+        }
+
         /// <summary>
         /// Solve the mixed-integer program min cᵀx s.t. A x {≤,=,≥} b (per-row <paramref name="senses"/>),
         /// xl ≤ x ≤ xu, x_j ∈ ℤ for every flagged <paramref name="integrality"/>[j]. Branch &amp; bound
-        /// over the dense dual simplex (docs/draft-spec-mip.md stage 2: most-fractional branching, pure
-        /// DFS, no propagation/pseudocost/heuristics).
+        /// over the dense dual simplex (docs/draft-spec-mip.md stage 3: pseudocost + reliability
+        /// branching, best-bound node queue with plunging; still no propagation/heuristics).
         ///
         /// Every INTEGER variable needs a finite <paramref name="xl"/>[j] (throws
         /// <see cref="ArgumentException"/> otherwise). Continuous variables support the full general
@@ -200,22 +243,12 @@ namespace LinearAlgebra
             }
         }
 
-        // Applies one child of `node`'s branch: the first child if isFirstChild (per node.downFirst),
-        // else the other side. Pushes one BoundChange, undo-able back to node.marker.
-        internal static void ApplyChild(ref UnsafeList<fProxyBoundChange> boundStack, fProxyMIPNode node, bool isFirstChild,
-                                        fProxyN curLB, fProxyN curUB, fProxyN xlRoot,
-                                        fProxyMxN Aaug, NativeArray<int> col,
-                                        fProxyN bAug, NativeArray<int> rowLB, NativeArray<int> rowUB)
-        {
-            bool down = isFirstChild ? node.downFirst : !node.downFirst;
-            int j = node.branchVar;
-            if (down)
-                PushBoundChange(ref boundStack, j, true, curUB[j], node.floorV, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
-            else
-                PushBoundChange(ref boundStack, j, false, curLB[j], node.ceilV, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
-        }
-
-        // DFS search: explicit stack, no recursion. `xOut` (length n) gets the best incumbent, or zeros.
+        // Best-bound search with plunging: dive one child immediately (reusing the persistent basis,
+        // still a DFS descent for as long as branching continues), push the other child to the
+        // best-bound heap with its own full bound snapshot. On reaching a leaf (integral incumbent,
+        // pruned, or an infeasible/unbounded/maxiter child), jump to the heap's best node instead of
+        // backtracking to the DFS parent -- discarding any queued node the incumbent has since caught
+        // up to without solving it. `xOut` (length n) gets the best incumbent, or zeros.
         internal static MIPInfo SearchCore(fProxyMxN Aaug, fProxyN bAug, fProxyN costY, NativeArray<ConstraintSense> sensesAug,
                                            fProxyN c, NativeArray<byte> integrality,
                                            NativeArray<byte> kind, NativeArray<int> col,
@@ -228,123 +261,170 @@ namespace LinearAlgebra
         {
             var basis = new LPBasis(nY, mAug, Allocator.Temp);   // job-safe: unpopulated, seeded by first solve
             var y = new fProxyN(nY, Allocator.Temp);
+            var trialY = new fProxyN(nY, Allocator.Temp);
             var xNode = new fProxyN(math.max(n, 1), Allocator.Temp);
+            var trialX = new fProxyN(math.max(n, 1), Allocator.Temp);
             var incumbentX = new fProxyN(math.max(n, 1), Allocator.Temp);
 
             var boundStack = new UnsafeList<fProxyBoundChange>(64, Allocator.Temp);
-            var nodeStack = new UnsafeList<fProxyMIPNode>(64, Allocator.Temp);
+            var heap = new UnsafeList<fProxyMIPQueueNode>(64, Allocator.Temp);
+
+            var pcUpSum = new fProxyN(math.max(n, 1), Allocator.Temp);      // zero-initialized
+            var pcDownSum = new fProxyN(math.max(n, 1), Allocator.Temp);    // zero-initialized
+            var pcUpCount = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
+            var pcDownCount = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
+            double globalPCSum = 0; int globalPCCount = 0;
+
+            int nInt = 0; for (int j = 0; j < n; j++) if (integrality[j] != 0) nInt++;
+            int sbBudget = STRONG_BRANCH_CALLS_PER_INT_VAR * math.max(nInt, 1);
+            int sbCallsUsed = 0;
 
             bool haveIncumbent = false;
             double incumbentObj = double.PositiveInfinity;
-            double rootBound = double.NegativeInfinity;
+            double frontierBound = double.NegativeInfinity;   // current plunge frontier's own LP bound
             int nodes = 0;
             int totalLpIter = 0;
             MIPStatus status = MIPStatus.Optimal;
-            bool solveNode = true;
+
+            // Pending pseudocost attribution for whichever node is about to be solved (its parent's
+            // branch decision), consumed the moment that solve completes.
+            bool havePending = false;
+            int pendingVar = -1; fProxy pendingFrac = (fProxy)0, pendingNewBound = (fProxy)0;
+            bool pendingIsUp = false; double pendingParentBound = 0;
 
             while (true)
             {
-                if (solveNode)
+                LPInfo info = LP.solve(in Aaug, in bAug, in costY, in sensesAug, ref y, out double _, ref basis, 0);
+                nodes++;
+                totalLpIter += info.iterations;
+
+                if (nodes == 1)
                 {
-                    LPInfo info = LP.solve(in Aaug, in bAug, in costY, in sensesAug, ref y, out double _, ref basis, 0);
-                    nodes++;
-                    totalLpIter += info.iterations;
-
-                    if (nodes == 1)
-                    {
-                        if (info.status == LPStatus.Infeasible) { status = MIPStatus.Infeasible; break; }
-                        if (info.status == LPStatus.Unbounded) { status = MIPStatus.Unbounded; break; }
-                        if (info.status == LPStatus.MaxIterations) { status = MIPStatus.MaxIterations; break; }
-                    }
-
-                    bool usable = info.status == LPStatus.Optimal;
-                    double nodeObj = 0;
-                    if (usable)
-                    {
-                        UnshiftToX(y, kind, col, xlRoot, xuRoot, n, xNode);
-                        for (int j = 0; j < n; j++) nodeObj += (double)c[j] * (double)xNode[j];
-                        if (nodes == 1) rootBound = nodeObj;
-                    }
-
-                    if ((maxNodes > 0 && nodes >= maxNodes) || (maxIter > 0 && totalLpIter >= maxIter))
-                    {
-                        status = (maxNodes > 0 && nodes >= maxNodes) ? MIPStatus.NodeLimit : MIPStatus.MaxIterations;
-                        break;
-                    }
-
-                    // Non-root Infeasible/Unbounded/MaxIterations: pruned, unusable bound.
-                    bool prune = !usable || (haveIncumbent && nodeObj >= incumbentObj - ABS_GAP);
-
-                    if (!prune)
-                    {
-                        int branchVar = -1; double bestDist = 0;
-                        for (int j = 0; j < n; j++)
-                        {
-                            if (integrality[j] == 0) continue;
-                            double xd = (double)xNode[j];
-                            double frac = xd - math.floor(xd);
-                            double dist = math.min(frac, 1.0 - frac);
-                            double tol = INTEGRALITY_TOL * math.max(1.0, math.abs(xd));
-                            if (dist > tol && dist > bestDist) { bestDist = dist; branchVar = j; }
-                        }
-
-                        if (branchVar < 0)
-                        {
-                            haveIncumbent = true;
-                            incumbentObj = nodeObj;
-                            for (int j = 0; j < n; j++) incumbentX[j] = xNode[j];
-                        }
-                        else
-                        {
-                            fProxy v = xNode[branchVar];
-                            fProxy floorV = math.floor(v);
-                            fProxy ceilV = math.ceil(v);
-                            bool downFirst = (v - floorV) <= (fProxy)0.5;
-
-                            var node = new fProxyMIPNode
-                            {
-                                marker = boundStack.Length,
-                                branchVar = branchVar,
-                                floorV = floorV,
-                                ceilV = ceilV,
-                                downFirst = downFirst,
-                                state = 0,
-                                parentBound = nodeObj,
-                            };
-                            nodeStack.Add(node);
-                            ApplyChild(ref boundStack, node, true, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
-                            continue;   // descend into the first child
-                        }
-                    }
-
-                    solveNode = false;   // leaf -> backtrack
-                    continue;
+                    if (info.status == LPStatus.Infeasible) { status = MIPStatus.Infeasible; break; }
+                    if (info.status == LPStatus.Unbounded) { status = MIPStatus.Unbounded; break; }
+                    if (info.status == LPStatus.MaxIterations) { status = MIPStatus.MaxIterations; break; }
                 }
-                else
-                {
-                    if (nodeStack.Length == 0) { status = haveIncumbent ? MIPStatus.Optimal : MIPStatus.Infeasible; break; }
 
-                    int topIdx = nodeStack.Length - 1;
-                    fProxyMIPNode top = nodeStack[topIdx];
-                    if (top.state == 0)
+                bool usable = info.status == LPStatus.Optimal;
+                double nodeObj = 0;
+                if (usable)
+                {
+                    UnshiftToX(y, kind, col, xlRoot, xuRoot, n, xNode);
+                    for (int j = 0; j < n; j++) nodeObj += (double)c[j] * (double)xNode[j];
+                    frontierBound = nodeObj;
+
+                    if (havePending)
                     {
-                        UndoToMarker(ref boundStack, top.marker, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
-                        ApplyChild(ref boundStack, top, false, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
-                        top.state = 1;
-                        nodeStack[topIdx] = top;
-                        solveNode = true;
-                        continue;
+                        double delta = (double)pendingNewBound - (double)pendingFrac;
+                        double objDelta = math.max(0.0, nodeObj - pendingParentBound);
+                        AddPseudocostObservation(pendingVar, pendingIsUp, delta, objDelta,
+                                                 pcUpSum, pcUpCount, pcDownSum, pcDownCount, ref globalPCSum, ref globalPCCount);
+                    }
+                }
+                havePending = false;
+
+                if ((maxNodes > 0 && nodes >= maxNodes) || (maxIter > 0 && totalLpIter >= maxIter))
+                {
+                    status = (maxNodes > 0 && nodes >= maxNodes) ? MIPStatus.NodeLimit : MIPStatus.MaxIterations;
+                    break;
+                }
+
+                // Non-root Infeasible/Unbounded/MaxIterations: pruned, unusable bound.
+                bool prune = !usable || (haveIncumbent && nodeObj >= incumbentObj - ABS_GAP);
+
+                if (!prune)
+                {
+                    int branchVar = SelectBranchVariable(xNode, integrality, n, nodeObj,
+                                                         pcUpSum, pcUpCount, pcDownSum, pcDownCount, ref globalPCSum, ref globalPCCount,
+                                                         ref sbCallsUsed, sbBudget, ref boundStack, ref basis,
+                                                         Aaug, bAug, costY, sensesAug, c, kind, col, xlRoot, xuRoot, curLB, curUB,
+                                                         rowLB, rowUB, trialY, trialX, ref totalLpIter);
+
+                    if (branchVar < 0)
+                    {
+                        haveIncumbent = true;
+                        incumbentObj = nodeObj;
+                        for (int j = 0; j < n; j++) incumbentX[j] = xNode[j];
                     }
                     else
                     {
-                        UndoToMarker(ref boundStack, top.marker, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
-                        nodeStack.Length = topIdx;   // pop
-                        continue;
+                        fProxy v = xNode[branchVar];
+                        fProxy floorV = math.floor(v);
+                        fProxy ceilV = math.ceil(v);
+                        bool downFirst = (v - floorV) <= (fProxy)0.5;
+
+                        // Snapshot the sibling (the child NOT dived into) from the live bound state
+                        // before the dive mutates it, and push it to the best-bound queue.
+                        var qL = new fProxyN(math.max(n, 1), Allocator.Temp);
+                        var qU = new fProxyN(math.max(n, 1), Allocator.Temp);
+                        for (int j = 0; j < n; j++) { qL[j] = curLB[j]; qU[j] = curUB[j]; }
+                        if (downFirst) qL[branchVar] = ceilV; else qU[branchVar] = floorV;
+
+                        HeapPush(ref heap, new fProxyMIPQueueNode
+                        {
+                            L = qL,
+                            U = qU,
+                            parentBound = nodeObj,
+                            branchVar = branchVar,
+                            fracValue = v,
+                            newBound = downFirst ? ceilV : floorV,
+                            isUp = downFirst,   // sibling is the OPPOSITE direction from the dive child
+                        });
+
+                        // Dive into the preferred child directly on the live state.
+                        if (downFirst)
+                            PushBoundChange(ref boundStack, branchVar, true, curUB[branchVar], floorV, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                        else
+                            PushBoundChange(ref boundStack, branchVar, false, curLB[branchVar], ceilV, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+
+                        havePending = true;
+                        pendingVar = branchVar; pendingFrac = v;
+                        pendingNewBound = downFirst ? floorV : ceilV;
+                        pendingIsUp = !downFirst; pendingParentBound = nodeObj;
+
+                        continue;   // solve the dive child next
                     }
                 }
+
+                // Leaf: fetch the next work item from the best-bound queue, discarding entries the
+                // incumbent has already caught up to (bound-based pruning without an LP solve).
+                bool advanced = false;
+                while (heap.Length > 0)
+                {
+                    fProxyMIPQueueNode entry = HeapPopMin(ref heap);
+                    if (haveIncumbent && entry.parentBound >= incumbentObj - ABS_GAP)
+                    {
+                        entry.L.Dispose(); entry.U.Dispose();
+                        continue;
+                    }
+
+                    boundStack.Length = 0;   // the jump target may not be an ancestor -- wholesale rewrite
+                    ApplyNodeBounds(entry.L, entry.U, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, integrality, n);
+                    entry.L.Dispose(); entry.U.Dispose();
+
+                    havePending = true;
+                    pendingVar = entry.branchVar; pendingFrac = entry.fracValue; pendingNewBound = entry.newBound;
+                    pendingIsUp = entry.isUp; pendingParentBound = entry.parentBound;
+                    frontierBound = entry.parentBound;
+
+                    advanced = true;
+                    break;
+                }
+
+                if (!advanced) { status = haveIncumbent ? MIPStatus.Optimal : MIPStatus.Infeasible; break; }
             }
 
-            double objective, dualBound, gap;
+            // Drain any remaining queue entries (early stop via a limit) -- disposal, and fold their
+            // bounds into the reported dualBound.
+            double dualBound = frontierBound;
+            while (heap.Length > 0)
+            {
+                fProxyMIPQueueNode entry = HeapPopMin(ref heap);
+                dualBound = math.min(dualBound, entry.parentBound);
+                entry.L.Dispose(); entry.U.Dispose();
+            }
+
+            double objective, gap;
             if (status == MIPStatus.Infeasible || status == MIPStatus.Unbounded)
             {
                 objective = double.NaN; dualBound = double.NaN; gap = double.NaN;
@@ -352,8 +432,6 @@ namespace LinearAlgebra
             }
             else
             {
-                dualBound = rootBound;
-                for (int k = 0; k < nodeStack.Length; k++) dualBound = math.min(dualBound, nodeStack[k].parentBound);
                 if (status == MIPStatus.Optimal) dualBound = incumbentObj;   // fully explored: proven
 
                 if (haveIncumbent)
@@ -370,8 +448,9 @@ namespace LinearAlgebra
                 }
             }
 
-            basis.Dispose(); y.Dispose(); xNode.Dispose(); incumbentX.Dispose();
-            boundStack.Dispose(); nodeStack.Dispose();
+            basis.Dispose(); y.Dispose(); trialY.Dispose(); xNode.Dispose(); trialX.Dispose(); incumbentX.Dispose();
+            boundStack.Dispose(); heap.Dispose();
+            pcUpSum.Dispose(); pcDownSum.Dispose(); pcUpCount.Dispose(); pcDownCount.Dispose();
 
             return new MIPInfo { objective = objective, dualBound = dualBound, gap = gap, nodes = nodes, lpIterations = totalLpIter, status = status };
         }

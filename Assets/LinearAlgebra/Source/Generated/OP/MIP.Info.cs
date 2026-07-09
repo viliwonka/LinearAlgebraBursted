@@ -5,7 +5,8 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Terminal state of a <see cref="MIP.solve"/> branch-and-bound search, carried by
-    /// <see cref="MIPInfo"/>. Stage 2: no propagation/pseudocost/heuristics/gap-limit parameter.
+    /// <see cref="MIPInfo"/>. Stage 3: pseudocost + reliability branching, best-bound node queue with
+    /// plunging. Still no propagation/heuristics/gap-limit parameter (stage 4).
     /// <see cref="GapLimit"/> is defined but UNREACHABLE this stage (no relGap/absGap parameter yet).
     /// </summary>
     public enum MIPStatus
@@ -23,7 +24,7 @@ namespace LinearAlgebra
         /// </summary>
         Unbounded = 2,
 
-        /// <summary>Reserved for a future gap parameter (stage 4). Unreachable in stage 2.</summary>
+        /// <summary>Reserved for a future gap parameter (stage 4). Still unreachable this stage.</summary>
         GapLimit = 3,
 
         /// <summary><c>maxNodes</c> exhausted before the tree was fully explored. Best incumbent found
@@ -72,9 +73,9 @@ namespace LinearAlgebra
         public double objective;
 
         /// <summary>Proven lower bound on the true MIP optimum. Equals <see cref="objective"/> on
-        /// <see cref="MIPStatus.Optimal"/>. On an early stop: <c>min(root LP bound, every still-open
-        /// DFS-stack frame's parent LP bound)</c> -- sound, but looser than a best-bound queue would
-        /// give (stage 3). <c>double.NaN</c> on <see cref="MIPStatus.Infeasible"/>/
+        /// <see cref="MIPStatus.Optimal"/>. On an early stop: <c>min</c> over every still-open node's
+        /// own parent-LP bound -- the currently active plunge frontier plus every node still sitting
+        /// in the best-bound queue. <c>double.NaN</c> on <see cref="MIPStatus.Infeasible"/>/
         /// <see cref="MIPStatus.Unbounded"/>.</summary>
         public double dualBound;
 
@@ -124,5 +125,21 @@ namespace LinearAlgebra
 
         // Integrality tolerance: |x_j - round(x_j)| <= this * max(1, |x_j|). Fixed for both dtypes.
         internal const double INTEGRALITY_TOL = 1e-6;
+
+        // Pseudocost reliability threshold: observations required, per direction, before a variable's
+        // pseudocost is trusted over strong branching (HighsPseudocost::isReliable's minreliable).
+        internal const int RELIABILITY = 8;
+
+        // Score-clamp floor for the product-rule branching score, so a zero estimate on one side does
+        // not zero out the whole product (HighsPseudocost::getScore uses the same floor).
+        internal const double PSEUDOCOST_EPS = 1e-6;
+
+        // Per-call LP-iteration cap for one strong-branching trial solve.
+        internal const int STRONG_BRANCH_ITER_CAP = 100;
+
+        // Total strong-branch trial-solve budget = this many calls per integer variable -- enough for
+        // every variable to reach RELIABILITY observations in both directions (2*RELIABILITY calls),
+        // plus slack for trials that return without a usable observation (non-optimal child).
+        internal const int STRONG_BRANCH_CALLS_PER_INT_VAR = 4 * RELIABILITY;
     }
 }

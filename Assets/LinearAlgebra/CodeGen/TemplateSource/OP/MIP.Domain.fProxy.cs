@@ -3,9 +3,12 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace LinearAlgebra
 {
-    // Bound-change undo stack for MIP's DFS search (MIP.fProxy.cs's SearchCore): push a tightening,
-    // undo back to a marker. Stage 2 pushes one change per branch; stage 4's propagation will push
-    // several per node through the same Push/UndoToMarker pair.
+    // Bound-change undo stack for MIP's search (MIP.fProxy.cs's SearchCore): push a tightening, undo
+    // back to a marker. Stage 3 uses this only for the current plunge's dive step and for throwaway
+    // strong-branch trials (MIP.Pseudocost.fProxy.cs); jumping to a different open node (a best-bound
+    // queue pop) uses ApplyNodeBounds below instead, since the target is not necessarily an ancestor
+    // reachable by undoing this stack. Stage 4's propagation will push several changes per node
+    // through the same Push/UndoToMarker pair.
     //
     // Bounds are recorded in ORIGINAL x-space; Push/UndoToMarker translate to the shifted y-space row
     // rhs internally (see MIP.fProxy.cs's header for the shift).
@@ -99,6 +102,38 @@ namespace LinearAlgebra
                 }
             }
             stack.Length = marker;
+        }
+
+        /// <summary>
+        /// Overwrites every INTEGER variable's live bound state (<paramref name="curLB"/>/
+        /// <paramref name="curUB"/> and each bound row's rhs/coefficient in <paramref name="bAug"/>/
+        /// <paramref name="Aaug"/>) from a queued node's full snapshot <paramref name="L"/>/
+        /// <paramref name="U"/> -- the wholesale counterpart to <see cref="PushBoundChange"/>/
+        /// <see cref="UndoToMarker"/>'s incremental delta, used by the stage-3 best-bound search when
+        /// jumping to a queued node that is not an ancestor of the current plunge (so there is no
+        /// shared marker to replay from). Continuous variables are untouched -- their bound rows, if
+        /// any, never change after the root build. Same UB-row inert/active convention as
+        /// <see cref="PushBoundChange"/>: inert (coefficient 0, rhs 0) exactly when
+        /// <paramref name="U"/>[j] is still the +infinity sentinel.
+        /// </summary>
+        internal static void ApplyNodeBounds(fProxyN L, fProxyN U,
+                                             fProxyN curLB, fProxyN curUB, fProxyN xlRoot,
+                                             fProxyMxN Aaug, NativeArray<int> col,
+                                             fProxyN bAug, NativeArray<int> rowLB, NativeArray<int> rowUB,
+                                             NativeArray<byte> integrality, int n)
+        {
+            for (int j = 0; j < n; j++)
+            {
+                if (integrality[j] == 0) continue;
+
+                curLB[j] = L[j];
+                bAug[rowLB[j]] = L[j] - xlRoot[j];
+
+                curUB[j] = U[j];
+                bool hiFinite = (double)U[j] < 1e29;
+                Aaug[rowUB[j], col[j]] = hiFinite ? (fProxy)1 : (fProxy)0;
+                bAug[rowUB[j]] = hiFinite ? (U[j] - xlRoot[j]) : (fProxy)0;
+            }
         }
     }
 }

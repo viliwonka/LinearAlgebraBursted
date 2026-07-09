@@ -48,6 +48,24 @@ public class fProxyMIPTests
             GeneralIntBounds,   // integer var xl=3,xu=10 (nonzero-xl shift path): min -x s.t. x<=7.5 -> x=7, obj -7
             NodeLimitNoIncumbent, // Gomory with maxNodes=1 -> NodeLimit, nodes==1, obj=+inf, dualBound finite (~-41.25)
             IterLimitNoIncumbent, // Gomory with maxIter=1  -> MaxIterations, nodes==1, obj=+inf, dualBound finite
+
+            // ==== (f) STAGE 3 verification: pseudocost + reliability branching + best-bound queue with
+            //         plunging replaces stage 2's most-fractional/pure-DFS search. The node count on the
+            //         harder instances must NOT increase vs the stage-2 baselines (this IS the feature --
+            //         hard-assert nodes <= baseline). Baselines were measured on both stages directly (by
+            //         reverting to the stage-2 commit, running a throwaway diagnostic, then restoring).
+            //         lpIterations is deliberately NOT asserted: on tiny instances pseudocost never becomes
+            //         "reliable" within the few nodes explored, so it strong-branches nearly every candidate
+            //         and total iterations can RISE even as node count falls -- an expected, documented
+            //         tradeoff. Also: the single-threaded, RNG-free search must be bit-for-bit deterministic
+            //         across repeated calls (determinism story). ====
+            Stage3NodesKnapsack6,    // stage2 = stage3 = 1 node (tie): assert nodes <= 1, both dtypes
+            Stage3NodesGomoryWolsey, // stage2 = stage3 = 7 nodes (lpIter 9 -> 27, NOT asserted): nodes <= 7
+            Stage3NodesBranchy12,    // random n=12/m=6 seed 424242: stage2 267 -> stage3 241 nodes, obj 6
+                                     //   (DOUBLE-ONLY: the stage-2 float baseline for this instance was an
+                                     //   anomalous nodes=0, so there is no valid float baseline to compare)
+            Stage3Determinism,       // two back-to-back GomoryWolsey solves -> identical nodes/iter/obj/bound/x
+            Stage3DeterminismBranchy12, // same determinism check on the big branchy n=12 search (DOUBLE-ONLY)
         }
 
         public TestType Type;
@@ -71,6 +89,11 @@ public class fProxyMIPTests
                 case TestType.GeneralIntBounds: GeneralIntBounds(); break;
                 case TestType.NodeLimitNoIncumbent: NodeLimitNoIncumbent(); break;
                 case TestType.IterLimitNoIncumbent: IterLimitNoIncumbent(); break;
+                case TestType.Stage3NodesKnapsack6: Stage3NodesKnapsack6(); break;
+                case TestType.Stage3NodesGomoryWolsey: Stage3NodesGomoryWolsey(); break;
+                case TestType.Stage3NodesBranchy12: Stage3NodesBranchy12(); break;
+                case TestType.Stage3Determinism: Stage3Determinism(); break;
+                case TestType.Stage3DeterminismBranchy12: Stage3DeterminismBranchy12(); break;
             }
         }
 
@@ -513,6 +536,199 @@ public class fProxyMIPTests
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
 
+        // ==== (f) STAGE 3 node-count regression + determinism ====
+
+        // Knapsack6 (same instance as Knapsack6() above). Stage 2 and stage 3 both solve it at a single
+        // node (the LP relaxation is already integer-optimal here), so this is a tie -- assert nodes <= 1,
+        // identical in both dtypes. Also re-checks the optimum value survives (obj -50).
+        void Stage3NodesKnapsack6()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(1, 6);
+            A[0, 0] = (fProxy)2; A[0, 1] = (fProxy)3; A[0, 2] = (fProxy)4;
+            A[0, 3] = (fProxy)7; A[0, 4] = (fProxy)1; A[0, 5] = (fProxy)3;
+            var b = arena.fProxyVec(1); b[0] = (fProxy)10;
+            var c = arena.fProxyVec(6);
+            c[0] = (fProxy)(-10); c[1] = (fProxy)(-13); c[2] = (fProxy)(-18);
+            c[3] = (fProxy)(-31); c[4] = (fProxy)(-7); c[5] = (fProxy)(-15);
+            var xl = arena.fProxyVec(6);
+            var xu = arena.fProxyVec(6); for (int j = 0; j < 6; j++) xu[j] = (fProxy)1;
+            var x = arena.fProxyVec(6);
+            var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual;
+            var integ = new NativeArray<byte>(6, Allocator.Temp); for (int j = 0; j < 6; j++) integ[j] = 1;
+
+            var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
+
+            AssertTrue(info.status == MIPStatus.Optimal);
+            AssertCloseD(obj, -50.0, 1e-3);
+            AssertNodesLE(info, 1);   // stage-2 baseline = 1 node; stage 3 must not exceed it
+
+            senses.Dispose(); integ.Dispose(); arena.Dispose();
+        }
+
+        // GomoryWolsey (same instance as GomoryWolsey() above). Stage 2 = 7 nodes; stage 3 = 7 nodes with
+        // MORE lp iterations (9 -> 27: reliability-init strong-branching overhead on a 2-variable instance
+        // where pseudocost never becomes reliable in only 7 nodes). Assert nodes <= 7 ONLY -- lpIterations
+        // is expected to rise and is deliberately not asserted. Optimum (obj -40) must survive.
+        void Stage3NodesGomoryWolsey()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(2, 2);
+            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1;
+            A[1, 0] = (fProxy)9; A[1, 1] = (fProxy)5;
+            var b = arena.fProxyVec(2); b[0] = (fProxy)6; b[1] = (fProxy)45;
+            var c = arena.fProxyVec(2); c[0] = (fProxy)(-8); c[1] = (fProxy)(-5);
+            var xl = arena.fProxyVec(2);
+            var xu = arena.fProxyVec(2); xu[0] = (fProxy)10; xu[1] = (fProxy)10;
+            var x = arena.fProxyVec(2);
+            var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
+            var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
+
+            var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
+
+            AssertTrue(info.status == MIPStatus.Optimal);
+            AssertCloseD(obj, -40.0, 1e-3);
+            AssertNodesLE(info, 7);   // stage-2 baseline = 7 nodes; stage 3 must not exceed it
+
+            senses.Dispose(); integ.Dispose(); arena.Dispose();
+        }
+
+        // Random "branchy" MIP on the integer box [0,3]^12, n=12, m=6, seed 424242 -- built with the
+        // EXACT RNG call sequence of RunEnumCase (integer A/b/c around a random feasible integer x*, so
+        // always feasible + bounded). Measured baselines (double): stage 2 = 267 nodes / obj 6; stage 3 =
+        // 241 nodes / obj 6 (same optimum, FEWER nodes -- the pseudocost/reliability payoff, and direct
+        // proof that the branching sequence differs from stage-2 most-fractional, satisfying (a) and (c)).
+        //
+        // DOUBLE-ONLY: the stage-2 FLOAT run on this exact instance returned an anomalous nodes=0 (nodes is
+        // incremented unconditionally before the first LP solve, so 0 is structurally impossible from a
+        // real search -- a pre-existing float robustness quirk, NOT a stage-3 change; stage-3's own float
+        // run was clean at 244 nodes). With no trustworthy stage-2 float baseline, the float case runs 0
+        // iterations (a no-op pass), per this file's "float only on tiny instances" convention.
+        void Stage3NodesBranchy12()
+        {
+            int cases = /*+choose[0|1]*/0/*-choose*/;
+            for (int s = 0; s < cases; s++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                               out var xl, out var xu, out var integ);
+                var x = arena.fProxyVec(12);
+
+                var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
+
+                AssertTrue(info.status == MIPStatus.Optimal);
+                AssertCloseD(info.objective, 6.0, 1e-6);
+                AssertCloseD(obj, 6.0, 1e-6);
+                AssertNodesLE(info, 267);   // stage-2 baseline = 267 nodes; stage 3 measured 241
+
+                senses.Dispose(); integ.Dispose(); arena.Dispose();
+            }
+        }
+
+        // Determinism: two back-to-back MIP.solve calls on the identical GomoryWolsey inputs must produce
+        // bit-for-bit identical nodes / lpIterations / objective / dualBound and identical x. The solve
+        // path is single-threaded with no RNG/parallelism, so this should hold trivially -- the test
+        // exists to VERIFY it rather than assume it. Runs in both dtypes.
+        void Stage3Determinism()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(2, 2);
+            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1;
+            A[1, 0] = (fProxy)9; A[1, 1] = (fProxy)5;
+            var b = arena.fProxyVec(2); b[0] = (fProxy)6; b[1] = (fProxy)45;
+            var c = arena.fProxyVec(2); c[0] = (fProxy)(-8); c[1] = (fProxy)(-5);
+            var xl = arena.fProxyVec(2);
+            var xu = arena.fProxyVec(2); xu[0] = (fProxy)10; xu[1] = (fProxy)10;
+            var x1 = arena.fProxyVec(2);
+            var x2 = arena.fProxyVec(2);
+            var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
+            var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
+
+            var i1 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x1, out double o1);
+            var i2 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x2, out double o2);
+
+            AssertEqInt(i1.nodes, i2.nodes);
+            AssertEqInt(i1.lpIterations, i2.lpIterations);
+            AssertEqExactD(i1.objective, i2.objective);
+            AssertEqExactD(i1.dualBound, i2.dualBound);
+            AssertEqExactD(o1, o2);
+            for (int j = 0; j < 2; j++) AssertClose(x1[j], x2[j], (fProxy)0);   // exact: precision 0
+
+            senses.Dispose(); integ.Dispose(); arena.Dispose();
+        }
+
+        // Determinism on the big branchy n=12 search -- a real many-node plunge + queue-jump sequence, so
+        // it exercises far more of the search path than the 7-node GomoryWolsey case. DOUBLE-ONLY (same
+        // instance/rationale as Stage3NodesBranchy12; float runs 0 iterations, a no-op pass).
+        void Stage3DeterminismBranchy12()
+        {
+            int cases = /*+choose[0|1]*/0/*-choose*/;
+            for (int s = 0; s < cases; s++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                               out var xl, out var xu, out var integ);
+                var x1 = arena.fProxyVec(12);
+                var x2 = arena.fProxyVec(12);
+
+                var i1 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x1, out double o1);
+                var i2 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x2, out double o2);
+
+                AssertEqInt(i1.nodes, i2.nodes);
+                AssertEqInt(i1.lpIterations, i2.lpIterations);
+                AssertEqExactD(i1.objective, i2.objective);
+                AssertEqExactD(i1.dualBound, i2.dualBound);
+                AssertEqExactD(o1, o2);
+                for (int j = 0; j < 12; j++) AssertClose(x1[j], x2[j], (fProxy)0);
+
+                senses.Dispose(); integ.Dispose(); arena.Dispose();
+            }
+        }
+
+        // Builds the branchy n=12/m=6/seed-424242 instance into arena-owned A/b/c/xl/xu (caller disposes
+        // the arena) and Temp-owned senses/integ (caller disposes both). Replicates RunEnumCase's EXACT
+        // RNG draw order (A row-major, then x*, then per-row sense/rhs, then c) so the generated instance
+        // is identical to the one the stage-2/stage-3 baselines were measured on.
+        void BuildBranchy12(in Arena arena, out fProxyMxN A, out fProxyN b, out fProxyN c,
+                            out NativeArray<ConstraintSense> senses, out fProxyN xl, out fProxyN xu,
+                            out NativeArray<byte> integ)
+        {
+            const int n = 12, m = 6;
+            var rng = new Unity.Mathematics.Random(424242u);
+
+            A = arena.fProxyMat(m, n);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = (fProxy)rng.NextInt(-2, 3);
+
+            var xstar = new NativeArray<int>(n, Allocator.Temp);
+            for (int j = 0; j < n; j++) xstar[j] = rng.NextInt(0, 4);
+
+            b = arena.fProxyVec(m);
+            senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++)
+            {
+                int act = 0;
+                for (int j = 0; j < n; j++) act += (int)A[i, j] * xstar[j];
+                int r = rng.NextInt(0, 3);
+                int slack = rng.NextInt(0, 3);
+                if (r == 0) { senses[i] = ConstraintSense.LessEqual; b[i] = (fProxy)(act + slack); }
+                else if (r == 1) { senses[i] = ConstraintSense.GreaterEqual; b[i] = (fProxy)(act - slack); }
+                else { senses[i] = ConstraintSense.Equal; b[i] = (fProxy)act; }
+            }
+
+            c = arena.fProxyVec(n);
+            for (int j = 0; j < n; j++) c[j] = (fProxy)rng.NextInt(-3, 4);
+            xl = arena.fProxyVec(n);
+            xu = arena.fProxyVec(n); for (int j = 0; j < n; j++) xu[j] = (fProxy)3;
+            integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
+
+            xstar.Dispose();
+        }
+
         // ---- diagnostics-recording assert helpers (mirrors LPTests.fProxy.cs) ----
 
         void AssertTrue(bool cond)
@@ -525,6 +741,26 @@ public class fProxyMIPTests
         {
             if (info.nodes != expected && Fail[0] == (fProxy)0) { Fail[0] = (fProxy)1; Fail[1] = (fProxy)info.nodes; Fail[2] = (fProxy)expected; Fail[3] = (fProxy)(info.nodes - expected); }
             Assert.IsTrue(info.nodes == expected);
+        }
+
+        // nodes <= limit (the stage-3 regression assertion): records got=nodes, expected=limit on failure.
+        void AssertNodesLE(MIPInfo info, int limit)
+        {
+            if (!(info.nodes <= limit) && Fail[0] == (fProxy)0) { Fail[0] = (fProxy)1; Fail[1] = (fProxy)info.nodes; Fail[2] = (fProxy)limit; Fail[3] = (fProxy)(info.nodes - limit); }
+            Assert.IsTrue(info.nodes <= limit);
+        }
+
+        void AssertEqInt(int got, int expected)
+        {
+            if (got != expected && Fail[0] == (fProxy)0) { Fail[0] = (fProxy)1; Fail[1] = (fProxy)got; Fail[2] = (fProxy)expected; Fail[3] = (fProxy)(got - expected); }
+            Assert.IsTrue(got == expected);
+        }
+
+        // Exact (bit-for-bit) double equality for the determinism checks -- NOT a tolerance compare.
+        void AssertEqExactD(double got, double expected)
+        {
+            if (!(got == expected) && Fail[0] == (fProxy)0) { Fail[0] = (fProxy)1; Fail[1] = (fProxy)got; Fail[2] = (fProxy)expected; Fail[3] = (fProxy)(got - expected); }
+            Assert.IsTrue(got == expected);
         }
 
         void AssertClose(fProxy a, fProxy b, fProxy precision)
