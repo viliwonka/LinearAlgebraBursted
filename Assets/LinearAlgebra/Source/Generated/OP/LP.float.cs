@@ -80,10 +80,15 @@ namespace LinearAlgebra
         /// <param name="b">Observations, length m.</param>
         /// <param name="x">Output coefficients, length n (overwritten). May be negative.</param>
         /// <param name="objective">Output L1 residual ‖A x − b‖₁.</param>
-        /// <param name="method">LP backend (default Simplex).</param>
+        /// <param name="method">LP backend (default RevisedSimplex -- LAD's standard-form LP is m
+        /// equality constraints over 2n+2m all-nonnegative variables, exactly the shape the bounded-
+        /// variable revised simplex (docs/spec-revised-simplex.md) targets; it reaches the same exact
+        /// vertex as the tableau <see cref="LPMethod.Simplex"/> without the O(m·nCols) per-pivot tableau
+        /// update, so it is a strict speed win here with no accuracy tradeoff. <see cref="solve"/>'s
+        /// default stays <see cref="LPMethod.Simplex"/> -- only this LAD-specific default changed).</param>
         /// <param name="maxIter">Pivot/iteration budget; ≤0 picks a size-based default.</param>
         public static LPInfo lad(in floatMxN A, in floatN b, ref floatN x, out double objective,
-                                 LPMethod method = LPMethod.Simplex, int maxIter = 0)
+                                 LPMethod method = LPMethod.RevisedSimplex, int maxIter = 0)
         {
             int m = A.M_Rows, n = A.N_Cols;
 
