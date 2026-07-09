@@ -26,6 +26,12 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(Bench.HeaderTime());
             sb.AppendLine(LuSolveFloat(N));
             sb.AppendLine(LuSolveDouble(N));
+            // TransA row (LU.decompInPlace + LU.decompSolveTransA, compact form): expected roughly on
+            // par with the forward LU row above -- both triangular passes are axpy-shaped (right-
+            // looking) in their own direction, so neither should out-vectorise the other; the O(n^3)
+            // factorization dominates either way at this N (see the class doc comment).
+            sb.AppendLine(LuSolveTransAFloat(N));
+            sb.AppendLine(LuSolveTransADouble(N));
             sb.AppendLine(CholSolveFloat(N));
             sb.AppendLine(CholSolveDouble(N));
             sb.AppendLine(QrSolveFloat(N));

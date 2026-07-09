@@ -38,12 +38,12 @@ namespace LinearAlgebra
     // recompute).
     //
     // Basis factorization: reuses the library's OWN `LU` class (LU.decompInPlace, the compact in-place
-    // form) and `Blas`'s compact-LU triangular solves (triLowerLU/triUpperLU via LU.decompSolve) for
-    // FTRAN -- no reimplementation of GETRF. BTRAN (solve Bᵀy = v) has no library primitive to reuse
-    // (Blas only ships forward compact-LU solves), so it is a small hand-written transposed forward/back
-    // substitution (SolveTranspose below) over the SAME compact floatMxN + Pivot factor LU.decompInPlace
-    // produces -- not a different algorithm, just the transposed read pattern of the identical factor
-    // (see SolveTranspose's doc comment for the derivation: A = Pᵀ L U ⟹ Aᵀ = Uᵀ Lᵀ P).
+    // form) for both triangular directions -- FTRAN via LU.decompSolve (Blas's compact-LU triangular
+    // solves triLowerLU/triUpperLU) and BTRAN (solve Bᵀy = v) via LU.decompSolveTransA, the getrs
+    // trans='T' counterpart promoted into LU itself (this file used to carry its own hand-written
+    // SolveTranspose; it is now just a call to the library primitive) -- no reimplementation of GETRF.
+    // Both directions run against the SAME compact floatMxN + Pivot factor LU.decompInPlace produces;
+    // only the read pattern (forward vs transposed) differs.
     //
     // Every kernel function below is `internal static` (not buried locals) precisely so
     // LP.DualSimplex.float.cs (stage 2) can call them directly: ordinary partial-class member
@@ -119,37 +119,6 @@ namespace LinearAlgebra
             }
         }
 
-        // Solve (Bᵀ) y = v given B's compact LU factor (A = Pᵀ L U, see LU.decompInPlace's own doc: "row
-        // i lives at physical row P[i]", i.e. the permuted matrix A'[i,:] = A[P[i],:] equals L*U). Then
-        // Aᵀ = Uᵀ Lᵀ P, so y = Pᵀ (L⁻ᵀ (U⁻ᵀ v)): forward through Uᵀ (lower-triangular, reading LU[P[j],k]
-        // for j<=k -- the same physical entries Blas.triUpperLU reads as U[k,c] for c>=k), backward
-        // through Lᵀ (unit-upper, reading LU[P[j],k] for j>k -- the same entries Blas.triLowerLU reads as
-        // L[r,c] for c<r), then scatter by P. No library primitive does this (Blas ships only the
-        // forward compact-LU solves triLowerLU/triUpperLU), so it is hand-written here over the SAME
-        // factor LU.decompInPlace produces -- the transposed read pattern of an existing factor, not a
-        // different algorithm. In place in v.
-        internal static void SolveTranspose(floatMxN LU, in Pivot P, floatN v, int m)
-        {
-            var w = new floatN(m, Allocator.Temp);
-            for (int i = 0; i < m; i++) w[i] = v[i];
-
-            for (int k = 0; k < m; k++)
-            {
-                float sum = (float)0;
-                for (int j = 0; j < k; j++) sum += LU[P[j], k] * w[j];
-                w[k] = (w[k] - sum) / LU[P[k], k];
-            }
-            for (int k = m - 1; k >= 0; k--)
-            {
-                float sum = (float)0;
-                for (int j = k + 1; j < m; j++) sum += LU[P[j], k] * w[j];
-                w[k] -= sum;
-            }
-
-            for (int k = 0; k < m; k++) v[P[k]] = w[k];
-            w.Dispose();
-        }
-
         // Rebuilds the m x m basis matrix B (column k = column basis[k] of M) and LU-factors it in place
         // via the library's own LU.decompInPlace (compact form, partial pivoting -- no reimplementation
         // of GETRF). Returns false on a singular basis.
@@ -176,7 +145,7 @@ namespace LinearAlgebra
         }
 
         // BTRAN: solve (current basis)ᵀ * y = v for y. Eta file applied in REVERSE + transposed FIRST,
-        // then the transposed base solve (SolveTranspose above).
+        // then the transposed base solve against the last refactorization (LU.decompSolveTransA).
         internal static void Btran(floatMxN B, in Pivot P,
                                    floatMxN etaAlpha, NativeArray<int> etaRow, int etaCount,
                                    floatN v, int m)
@@ -184,7 +153,7 @@ namespace LinearAlgebra
             for (int k = etaCount - 1; k >= 0; k--)
                 ApplyEtaTransposed(etaAlpha, etaRow[k], k, v, m);
 
-            SolveTranspose(B, in P, v, m);
+            LU.decompSolveTransA(ref B, in P, ref v);
         }
 
         // Applies eta slot `slot` (leaving row `row`, column alpha_q stored in etaAlpha[slot,:]) via

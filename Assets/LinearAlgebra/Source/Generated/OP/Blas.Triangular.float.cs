@@ -254,5 +254,134 @@ namespace LinearAlgebra
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
         }
+
+        // ---- transposed compact-LU solves: Uᵀw=v then Lᵀw=(that) -- the getrs(trans='T') triangular
+        // steps, called by LU.decompSolveTransA. RIGHT-LOOKING (axpy) formulation, not the row-dot
+        // form triLowerLU/triUpperLU above use: a row of Uᵀ (or Lᵀ) is a COLUMN of the row-major
+        // compact factor, which is strided and does not vectorise. Instead each step finalizes ONE
+        // component then pushes its contribution into the remaining, not-yet-solved components via a
+        // contiguous ROW of the factor -- an axpy, the same shape LU's own factorization elimination
+        // uses. Operates in ROW order (the logical index, not the pivoted one): the caller applies the
+        // pivot once, after both passes (see LU.decompSolveTransA) -- these primitives never touch it.
+
+        // Solve Uᵀw = v in place (forward step). Diagonal is LU[RP[r], r] -- the same physical entry
+        // triUpperLU reads as U[RP[r], r].
+        // Always reports DirectSolveStatus.Success — see triUpper.
+        /// <param name="b_to_x">On entry v; on exit w = U⁻ᵀv, still in ROW order.</param>
+        public static unsafe DirectSolveInfo triUpperLUTransA(ref floatMxN U, in Pivot RP, ref floatN b_to_x)
+        {
+            if (U.IsSquare == false)
+                throw new ArgumentException("Blas.triUpperLUTransA: Matrix must be square");
+
+            if (U.N_Cols != b_to_x.N)
+                throw new ArgumentException("Blas.triUpperLUTransA: Matrix and vector must have same number of columns");
+
+            int n = U.N_Cols;
+            int stride = U.N_Cols;
+            float* Up = U.Data.Ptr;
+            float* bp = b_to_x.Data.Ptr;
+
+            for (int r = 0; r < n; r++)
+            {
+                float* Ur = Up + (long)RP[r] * stride;
+                bp[r] = bp[r] / Ur[r];
+
+                int len = n - (r + 1);
+                if (len > 0)
+                    UnsafeOP.axpy(bp + (r + 1), Ur + (r + 1), -bp[r], len);
+            }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        // Solve Lᵀw = z in place (backward step; unit diagonal, no divide). Same right-looking
+        // rationale as triUpperLUTransA above.
+        // Always reports DirectSolveStatus.Success — see triUpper.
+        /// <param name="b_to_x">On entry z (= U⁻ᵀv); on exit w = L⁻ᵀz, still in ROW order.</param>
+        public static unsafe DirectSolveInfo triLowerLUTransA(ref floatMxN L, in Pivot RP, ref floatN b_to_x)
+        {
+            if (L.IsSquare == false)
+                throw new ArgumentException("Blas.triLowerLUTransA: Matrix must be square");
+
+            if (L.M_Rows != b_to_x.N)
+                throw new ArgumentException("Blas.triLowerLUTransA: Matrix and vector must have same number of rows");
+
+            int n = L.M_Rows;
+            int stride = L.N_Cols;
+            float* Lp = L.Data.Ptr;
+            float* bp = b_to_x.Data.Ptr;
+
+            for (int r = n - 1; r >= 0; r--)
+            {
+                // unit diagonal: no scale
+                if (r > 0)
+                {
+                    float* Lr = Lp + (long)RP[r] * stride;
+                    UnsafeOP.axpy(bp, Lr, -bp[r], r);
+                }
+            }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        // ---- transposed compact-LU solves, multi-RHS (TRSM) forms: same right-looking rationale as
+        // the vector forms above, swept across a whole k-wide row-block per step (one axpy per
+        // contributing row instead of one per contributing scalar) -- the same level-3 shape the
+        // forward triLowerLU/triUpperLU multi-RHS overloads use.
+
+        // Solve Uᵀ W = V in place (forward step, multi-RHS).
+        // Always reports DirectSolveStatus.Success — see triUpper.
+        /// <param name="B_to_X">On entry V (N_Cols rows x k cols); on exit W = U⁻ᵀV, still in ROW order.</param>
+        public static unsafe DirectSolveInfo triUpperLUTransA(ref floatMxN U, in Pivot RP, ref floatMxN B_to_X)
+        {
+            if (U.IsSquare == false)
+                throw new ArgumentException("Blas.triUpperLUTransA: Matrix must be square");
+
+            if (U.N_Cols != B_to_X.M_Rows)
+                throw new ArgumentException("Blas.triUpperLUTransA: U.N_Cols must equal B_to_X.M_Rows");
+
+            int n = U.N_Cols;
+            int k = B_to_X.N_Cols;
+            float* Xp = B_to_X.Data.Ptr;
+
+            for (int r = 0; r < n; r++)
+            {
+                float* Xr = Xp + (long)r * k;
+                float inv = (float)1 / U[RP[r], r];
+                for (int j = 0; j < k; j++)
+                    Xr[j] *= inv;
+
+                for (int c = r + 1; c < n; c++)
+                    UnsafeOP.axpy(Xp + (long)c * k, Xr, -U[RP[r], c], k);
+            }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        // Solve Lᵀ W = Z in place (backward step, multi-RHS; unit diagonal, no scale).
+        // Always reports DirectSolveStatus.Success — see triUpper.
+        /// <param name="B_to_X">On entry Z; on exit W = L⁻ᵀZ, still in ROW order.</param>
+        public static unsafe DirectSolveInfo triLowerLUTransA(ref floatMxN L, in Pivot RP, ref floatMxN B_to_X)
+        {
+            if (L.IsSquare == false)
+                throw new ArgumentException("Blas.triLowerLUTransA: Matrix must be square");
+
+            if (L.M_Rows != B_to_X.M_Rows)
+                throw new ArgumentException("Blas.triLowerLUTransA: L.M_Rows must equal B_to_X.M_Rows");
+
+            int n = L.M_Rows;
+            int k = B_to_X.N_Cols;
+            float* Xp = B_to_X.Data.Ptr;
+
+            for (int r = n - 1; r >= 0; r--)
+            {
+                float* Xr = Xp + (long)r * k;
+                // unit diagonal: no scale
+                for (int c = 0; c < r; c++)
+                    UnsafeOP.axpy(Xp + (long)c * k, Xr, -L[RP[r], c], k);
+            }
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
     }
 }

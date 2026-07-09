@@ -570,5 +570,145 @@ namespace LinearAlgebra
             decompSolve(ref A_to_LU, in P, ref B_to_X);
             return info;
         }
+
+        // ---- transposed-system (Aᵀx=b) forms: reuse the SAME compact LU factor to solve in the
+        // OPPOSITE triangular direction -- the getrs(trans='T') counterpart of decompSolve. One
+        // factorization, two directions: a caller that already holds a compact factor from
+        // decompInPlace (e.g. a basis matrix refactorized once per outer iteration) can solve both
+        // Ax=b and Aᵀx=b against it without a second factorization -- the revised-simplex BTRAN step
+        // is exactly this (FTRAN via decompSolve, BTRAN via decompSolveTransA, same factor).
+        // Derivation, from decompInPlace's own doc ("row i lives at physical row P[i]"): A = Pᵀ L U,
+        // so Aᵀ = Uᵀ Lᵀ P. Solving forward through Uᵀ (lower-triangular) then backward through Lᵀ
+        // (unit-upper), then scattering the result through P, gives x.
+        //
+        // Layering mirrors decompSolve exactly, just with the pivot step moved to the OTHER end and
+        // the two triangular passes swapped for their TransA counterparts: decompSolve pre-permutes b
+        // (pivot.ApplyInverseVec) then runs triLowerLU/triUpperLU; this runs triUpperLUTransA/
+        // triLowerLUTransA first and post-permutes the result (pivot.ApplyVec) — the SAME "gather
+        // before, scatter after" relationship the forward/transposed directions always have. The two
+        // Blas primitives themselves use the axpy (right-looking) formulation, not a column-dot one:
+        // reading a row of Uᵀ/Lᵀ means reading a COLUMN of the row-major compact factor, which is
+        // strided and un-vectorizable, so instead each step finalizes one component and pushes its
+        // contribution forward/backward through a contiguous ROW of the factor via UnsafeOP.axpy —
+        // the same access shape LU's own factorization elimination and the forward triLowerLU/
+        // triUpperLU already use, and it vectorises the same way.
+
+        /// <summary>
+        /// Solve Aᵀx = b using the compact in-place LU form with pivot (the getrs trans='T' case).
+        /// b is overwritten with x. Always reports DirectSolveStatus.Success — this assumes a valid
+        /// factor from a decompInPlace(ref A_to_LU, ref Pivot) that returned Success; it does not
+        /// re-verify it.
+        /// Throws ArgumentException if dimensions are inconsistent.
+        /// </summary>
+        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        public static DirectSolveInfo decompSolveTransA(ref fProxyMxN LU, in Pivot pivot, ref fProxyN b_to_x) {
+
+            if (!LU.IsSquare)
+                throw new System.ArgumentException("decompSolveTransA: LU must be square");
+
+            if (b_to_x.N != LU.M_Rows)
+                throw new System.ArgumentException("decompSolveTransA: b_to_x.N must equal LU.M_Rows");
+
+            if (pivot.N != b_to_x.N)
+                throw new System.ArgumentException("decompSolveTransA: pivot.N must equal b_to_x.N");
+
+            // Solve Uᵀw = b, then Lᵀw = (that result) -- both in place, still in ROW order (no pivot
+            // applied yet; see the section header for why the pivot moves to the end here).
+            Blas.triUpperLUTransA(ref LU, in pivot, ref b_to_x);
+            Blas.triLowerLUTransA(ref LU, in pivot, ref b_to_x);
+
+            // Scatter through the pivot: x lands at its original (unpivoted) row. ApplyVec (not
+            // ApplyInverseVec) is the correct direction here -- see the section header.
+            pivot.ApplyVec(ref b_to_x);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// Solve Aᵀx = b for a whole matrix of right-hand sides using the compact in-place LU form
+        /// with pivot; B_to_X (n x k) is overwritten with X. Always reports Success — assumes a valid
+        /// factor. Same level-3 (TRSM) layering as the multi-RHS decompSolve overload: the two
+        /// triangular passes run once over the whole k-wide block (Blas's row-block TransA kernels,
+        /// not a per-column loop), and the pivot is applied to all k columns in one pass afterward.
+        /// </summary>
+        /// <param name="B_to_X">On entry B (n rows x k cols); on exit the solution X.</param>
+        public static DirectSolveInfo decompSolveTransA(ref fProxyMxN LU, in Pivot pivot, ref fProxyMxN B_to_X) {
+
+            if (!LU.IsSquare)
+                throw new System.ArgumentException("decompSolveTransA: LU must be square");
+
+            if (B_to_X.M_Rows != LU.M_Rows)
+                throw new System.ArgumentException("decompSolveTransA: B_to_X.M_Rows must equal LU.M_Rows");
+
+            if (pivot.N != B_to_X.M_Rows)
+                throw new System.ArgumentException("decompSolveTransA: pivot.N must equal B_to_X.M_Rows");
+
+            Blas.triUpperLUTransA(ref LU, in pivot, ref B_to_X);
+            Blas.triLowerLUTransA(ref LU, in pivot, ref B_to_X);
+
+            pivot.ApplyRow(ref B_to_X);
+
+            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+        }
+
+        /// <summary>
+        /// Factor-and-solve Aᵀx = b in one call (GESV, transposed): factors A in place (compact LU
+        /// form, partial pivoting) then solves the transposed system for x. b is overwritten with x.
+        /// Returns Singular (forwarded from the factorization) WITHOUT solving if A is singular.
+        /// A_to_LU holds the compact LU factorization on return; valid input to decompSolveTransA (or
+        /// decompSolve, for the forward direction) for solving additional right-hand sides without
+        /// refactoring.
+        /// </summary>
+        /// <param name="A_to_LU">On entry A; on exit the compact LU factor (L below the diagonal, U on/above it).</param>
+        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        public static DirectSolveInfo solveInPlaceTransA(ref fProxyMxN A_to_LU, ref Pivot P, ref fProxyN b_to_x) {
+            // Validate everything decompInPlace/decompSolveTransA would check BEFORE either runs, so a
+            // caller error (e.g. a mis-sized b_to_x) cannot destroy A_to_LU first.
+            if (!A_to_LU.IsSquare)
+                throw new System.ArgumentException("solveInPlaceTransA: A_to_LU needs to be square");
+
+            int m = A_to_LU.M_Rows;
+
+            if (P.N != m)
+                throw new System.ArgumentException("pivot size must equal matrix dimension");
+
+            if (b_to_x.N != m)
+                throw new System.ArgumentException("solveInPlaceTransA: b_to_x.N must equal A_to_LU.M_Rows");
+
+            var info = decompInPlace(ref A_to_LU, ref P);
+            if (!info.Solved)
+                return info;
+
+            decompSolveTransA(ref A_to_LU, in P, ref b_to_x);
+            return info;
+        }
+
+        /// <summary>
+        /// Factor-and-solve Aᵀx = b in one call (GESV, transposed, multi-RHS): factors A in place
+        /// (compact LU, partial pivoting) then solves the transposed system for every column of
+        /// B_to_X. Returns Singular WITHOUT solving if A is singular. A_to_LU holds the compact LU
+        /// factorization on return.
+        /// </summary>
+        /// <param name="A_to_LU">On entry A; on exit the compact LU factor.</param>
+        /// <param name="B_to_X">On entry B (n rows x k cols); on exit the solution X.</param>
+        public static DirectSolveInfo solveInPlaceTransA(ref fProxyMxN A_to_LU, ref Pivot P, ref fProxyMxN B_to_X) {
+            if (!A_to_LU.IsSquare)
+                throw new System.ArgumentException("solveInPlaceTransA: A_to_LU needs to be square");
+
+            int m = A_to_LU.M_Rows;
+
+            if (P.N != m)
+                throw new System.ArgumentException("pivot size must equal matrix dimension");
+
+            if (B_to_X.M_Rows != m)
+                throw new System.ArgumentException("solveInPlaceTransA: B_to_X.M_Rows must equal A_to_LU.M_Rows");
+
+            var info = decompInPlace(ref A_to_LU, ref P);
+            if (!info.Solved)
+                return info;
+
+            decompSolveTransA(ref A_to_LU, in P, ref B_to_X);
+            return info;
+        }
     }
 }

@@ -46,7 +46,14 @@ public class fProxyLUTests
             // Commit 2.5 hardening: solveInPlace driver short-circuit purity (singular input leaves
             // b_to_x bit-identical) + blocked-path (dim=256) A-preservation.
             LUSolveInPlaceShortCircuitPurity,
-            LUDecompPreservesABlocked
+            LUDecompPreservesABlocked,
+            // TransA API promotion (LP.RevisedSimplex's BTRAN kernel, promoted to LU.decompSolveTransA
+            // / LU.solveInPlaceTransA): compact-form Aᵀx=b solves against the SAME factor decompInPlace
+            // produces.
+            LUDecompSolveTransA,
+            LUDecompSolveTransAMatrix,
+            LUSolveInPlaceTransAMatchesDecompSolve,
+            LUSolveInPlaceTransASingularParity
         }
 
         public TestType Type;
@@ -123,6 +130,18 @@ public class fProxyLUTests
                     break;
                 case TestType.LUDecompPreservesABlocked:
                     LUDecompPreservesABlocked();
+                    break;
+                case TestType.LUDecompSolveTransA:
+                    LUDecompSolveTransA();
+                    break;
+                case TestType.LUDecompSolveTransAMatrix:
+                    LUDecompSolveTransAMatrix();
+                    break;
+                case TestType.LUSolveInPlaceTransAMatchesDecompSolve:
+                    LUSolveInPlaceTransAMatchesDecompSolve();
+                    break;
+                case TestType.LUSolveInPlaceTransASingularParity:
+                    LUSolveInPlaceTransASingularParity();
                     break;
 
             }
@@ -1101,6 +1120,234 @@ public class fProxyLUTests
             AssertExactEqual(checksumBefore, Checksum(in A));
 
             pivot.Dispose();
+            arena.Dispose();
+        }
+
+        // ================================================================================
+        // TransA API promotion: LU.decompSolveTransA / LU.solveInPlaceTransA solve Aᵀx=b against
+        // the SAME compact factor LU.decompInPlace produces (the getrs trans='T' counterpart of
+        // decompSolve, promoted from LP.RevisedSimplex's former hand-written BTRAN kernel).
+        // ================================================================================
+
+        // (a) Correctness: factor A ONCE (decompInPlace), solve Aᵀx=b via decompSolveTransA, and
+        // check it two independent ways: (i) the backward-error residual ||Aᵀx-b|| is small, and
+        // (ii) it agrees with a reference computed via the ORDINARY (forward) decompInPlace +
+        // decompSolve path run on an EXPLICITLY transposed copy of A -- a completely different code
+        // path (different pivot sequence in general, since pivoting Aᵀ is not the same as pivoting A)
+        // that must land on the same x.
+        void LUDecompSolveTransA()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 12;
+
+            // Non-trivial pivoting (see MakeWellConditionedPivoting's own doc) so decompInPlace on A
+            // really exercises the pivot, not just an identity permutation.
+            var A = MakeWellConditionedPivoting(ref arena, dim, 555001);
+
+            var At = arena.fProxyMat(dim, dim);
+            for (int r = 0; r < dim; r++)
+                for (int c = 0; c < dim; c++)
+                    At[r, c] = A[c, r];
+
+            var xKnown = arena.fProxyRandomVec(dim, 1f, 5f, 777);
+            var b = Blas.dot(At, xKnown);
+
+            // ---- path under test: factor A (not At!), solve the TRANSPOSED system ----
+            var LUmat = A.Copy();
+            var pivot = new Pivot(dim, Allocator.Temp);
+            var info = LU.decompInPlace(ref LUmat, ref pivot);
+            Assert.IsTrue(info.Solved);
+
+            var xSolved = b.Copy();
+            LU.decompSolveTransA(ref LUmat, in pivot, ref xSolved);
+
+            Assert.IsFalse(Analysis.isAnyNan(in xSolved));
+
+            // (i) backward-error residual (same recipe as SolveSystem elsewhere in this file).
+            var resid = Blas.dot(At, xSolved) - b;
+            fProxy eta = Norms.LInf(in resid)
+                       / (Norms.matrixLInf(in At) * Norms.LInf(in xSolved) + Norms.LInf(in b));
+
+            if (!(eta < (fProxy)1E-04f) && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1; Fail[1] = eta; Fail[2] = (fProxy)1E-04f; Fail[3] = eta - (fProxy)1E-04f;
+            }
+            Assert.IsTrue(eta < 1E-04f);
+
+            // (ii) independent reference: ordinary forward decompInPlace + decompSolve on an
+            // EXPLICITLY transposed copy of A.
+            var AtCopy = At.Copy();
+            var pivotRef = new Pivot(dim, Allocator.Temp);
+            var infoRef = LU.decompInPlace(ref AtCopy, ref pivotRef);
+            Assert.IsTrue(infoRef.Solved);
+
+            var xRef = b.Copy();
+            LU.decompSolve(ref AtCopy, in pivotRef, ref xRef);
+
+            AssertVecClose(in xRef, in xSolved, dim, 1E-3f);
+
+            pivot.Dispose();
+            pivotRef.Dispose();
+            arena.Dispose();
+        }
+
+        // (b) Matrix-RHS overload consistency: decompSolveTransA(matrix) against the SAME factor,
+        // compared column-by-column to decompSolveTransA(vector) run on an INDEPENDENT copy of the
+        // same factor. NOT bit-exact: the matrix kernel scales each finalized row by a precomputed
+        // reciprocal (Xr[j] *= 1/diag, k multiplies instead of k divides -- the same convention the
+        // existing forward triUpperLU/triUpper matrix forms already use), while the vector kernel
+        // divides directly (bp[r] /= diag); `x/y` and `x*(1/y)` round to adjacent floats in general,
+        // so this is a tight tolerance (single-ULP-scale), not an exact, comparison.
+        void LUDecompSolveTransAMatrix()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 10;
+            int rhsCount = 4;
+
+            var A = MakeWellConditionedPivoting(ref arena, dim, 4242);
+            var B = arena.fProxyRandomMat(dim, rhsCount, -3f, 3f, 13131);
+
+            // matrix path
+            var LUmatM = A.Copy();
+            var pivotM = new Pivot(dim, Allocator.Temp);
+            var infoM0 = LU.decompInPlace(ref LUmatM, ref pivotM);
+            Assert.IsTrue(infoM0.Solved);
+
+            var Bsolved = B.Copy();
+            LU.decompSolveTransA(ref LUmatM, in pivotM, ref Bsolved);
+
+            // vector path, column-by-column, against an independently-factored copy
+            var LUmatV = A.Copy();
+            var pivotV = new Pivot(dim, Allocator.Temp);
+            var infoV0 = LU.decompInPlace(ref LUmatV, ref pivotV);
+            Assert.IsTrue(infoV0.Solved);
+
+            fProxy tol = IsDouble() ? (fProxy)1E-10 : (fProxy)1E-5f;
+            for (int c = 0; c < rhsCount; c++)
+            {
+                var col = arena.fProxyVec(dim);
+                for (int r = 0; r < dim; r++) col[r] = B[r, c];
+
+                LU.decompSolveTransA(ref LUmatV, in pivotV, ref col);
+
+                for (int r = 0; r < dim; r++)
+                    AssertClose(col[r], Bsolved[r, c], tol);
+            }
+
+            pivotM.Dispose();
+            pivotV.Dispose();
+            arena.Dispose();
+        }
+
+        // (c) solveInPlaceTransA one-shot (GESV-style: factor + solve in one call) must be
+        // bit-identical to the explicit decompInPlace + decompSolveTransA composition, for both the
+        // vector and matrix-RHS overloads.
+        void LUSolveInPlaceTransAMatchesDecompSolve()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 9;
+
+            var A = MakeWellConditionedPivoting(ref arena, dim, 90909);
+
+            // ---- vector ----
+            var b = arena.fProxyRandomVec(dim, -4f, 4f, 13579);
+
+            var Afused = A.Copy();
+            var pivotFused = new Pivot(dim, Allocator.Temp);
+            var xFused = b.Copy();
+            var info = LU.solveInPlaceTransA(ref Afused, ref pivotFused, ref xFused);
+            Assert.IsTrue(info.Solved);
+
+            var Aref = A.Copy();
+            var pivotRef = new Pivot(dim, Allocator.Temp);
+            var infoRef0 = LU.decompInPlace(ref Aref, ref pivotRef);
+            Assert.IsTrue(infoRef0.Solved);
+            var xRef = b.Copy();
+            LU.decompSolveTransA(ref Aref, in pivotRef, ref xRef);
+
+            for (int i = 0; i < dim; i++)
+                AssertExactEqual(xRef[i], xFused[i]);
+
+            // ---- matrix ----
+            int rhsCount = 3;
+            var B = arena.fProxyRandomMat(dim, rhsCount, -4f, 4f, 24680);
+
+            var Afused2 = A.Copy();
+            var pivotFused2 = new Pivot(dim, Allocator.Temp);
+            var Bfused = B.Copy();
+            var infoM = LU.solveInPlaceTransA(ref Afused2, ref pivotFused2, ref Bfused);
+            Assert.IsTrue(infoM.Solved);
+
+            var Aref2 = A.Copy();
+            var pivotRef2 = new Pivot(dim, Allocator.Temp);
+            var infoRefM0 = LU.decompInPlace(ref Aref2, ref pivotRef2);
+            Assert.IsTrue(infoRefM0.Solved);
+            var Bref = B.Copy();
+            LU.decompSolveTransA(ref Aref2, in pivotRef2, ref Bref);
+
+            for (int r = 0; r < dim; r++)
+                for (int c = 0; c < rhsCount; c++)
+                    AssertExactEqual(Bref[r, c], Bfused[r, c]);
+
+            pivotFused.Dispose();
+            pivotRef.Dispose();
+            pivotFused2.Dispose();
+            pivotRef2.Dispose();
+            arena.Dispose();
+        }
+
+        // (d) Singular-matrix handling parity with decompSolve/solveInPlace: solveInPlaceTransA on a
+        // singular matrix must (i) report DirectSolveStatus.Singular without solving, and (ii) leave
+        // b_to_x / B_to_X bit-identical to their pre-call snapshot (the `if (!info.Solved) return
+        // info;` short-circuit, same contract LUSolveInPlaceShortCircuitPurity checks for the forward
+        // direction) -- for both the vector and matrix-RHS overloads.
+        void LUSolveInPlaceTransASingularParity()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 8;
+
+            // ---- vector ----
+            var A = arena.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
+            for (int d = 0; d < dim; d++) A[d, d] += 20f;
+            for (int c = 0; c < dim; c++) A[5, c] = A[2, c];   // exact duplicate row -> singular
+
+            var b = arena.fProxyRandomVec(dim, -3f, 3f, 135791);
+            var bSnapshot = b.Copy();
+
+            var pivot = new Pivot(dim, Allocator.Temp);
+            DirectSolveInfo info = LU.solveInPlaceTransA(ref A, ref pivot, ref b);
+
+            if (info.status != DirectSolveStatus.Singular && Fail[0] == (fProxy)0)
+            {
+                Fail[0] = (fProxy)1; Fail[1] = (fProxy)(int)info.status;
+                Fail[2] = (fProxy)(int)DirectSolveStatus.Singular; Fail[3] = (fProxy)0;
+            }
+            Assert.IsTrue(info.status == DirectSolveStatus.Singular);
+            Assert.IsFalse(info.Solved);
+
+            for (int i = 0; i < dim; i++)
+                AssertExactEqual(bSnapshot[i], b[i]);
+
+            // ---- matrix ----
+            var A2 = arena.fProxyRandomMat(dim, dim, 1f, 10f, 8821);
+            for (int d = 0; d < dim; d++) A2[d, d] += 20f;
+            for (int c = 0; c < dim; c++) A2[5, c] = A2[2, c];
+
+            var B = arena.fProxyRandomMat(dim, 3, -3f, 3f, 246813);
+            var Bsnapshot = B.Copy();
+
+            var pivot2 = new Pivot(dim, Allocator.Temp);
+            DirectSolveInfo infoM = LU.solveInPlaceTransA(ref A2, ref pivot2, ref B);
+
+            Assert.IsTrue(infoM.status == DirectSolveStatus.Singular);
+            Assert.IsFalse(infoM.Solved);
+
+            for (int r = 0; r < dim; r++)
+                for (int c = 0; c < 3; c++)
+                    AssertExactEqual(Bsnapshot[r, c], B[r, c]);
+
+            pivot.Dispose();
+            pivot2.Dispose();
             arena.Dispose();
         }
 

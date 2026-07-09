@@ -34,6 +34,34 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // Compact-form transposed solve: LU.decompInPlace + LU.decompSolveTransA -- the getrs(trans='T')
+    // counterpart of LuSolveJobDouble above (which uses the split L/U form; the compact form is the
+    // one decompSolveTransA is promoted on, see LU.double.cs). Both are axpy-shaped triangular passes
+    // in their own direction, so this should run at roughly the same speed as the forward LU row --
+    // any large gap would mean the right-looking TransA formulation isn't vectorising as intended.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LuSolveTransAJobDouble : IJob
+    {
+        public doubleMxN A;     // receives Src via decompInPlace (compact factor, destructive)
+        public doubleMxN Src;
+        public doubleN b;       // receives bSrc, overwritten with the solution
+        public doubleN bSrc;
+
+        public void Execute()
+        {
+            int n = Src.M_Rows;
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = Src[r, c];
+            for (int i = 0; i < n; i++) b[i] = bSrc[i];
+
+            var P = new Pivot(n, Allocator.Temp);
+            LU.decompInPlace(ref A, ref P);
+            LU.decompSolveTransA(ref A, in P, ref b);
+            P.Dispose();
+        }
+    }
+
     // CHO.decomp + CHO.decompSolve factor-then-solve, as the explicit two-call composition.
     // A and L are distinct buffers so A is NOT destroyed (only b, re-copied from bSrc each Execute).
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
@@ -122,6 +150,29 @@ namespace LinearAlgebra.Benchmarks
 
             arena.Dispose();
             return Bench.RowTime("LU double", N, stat);
+        }
+
+        static string LuSolveTransADouble(int N)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(N, N);
+            var Src = arena.doubleMat(N, N);
+            var b = arena.doubleVec(N);
+            var bSrc = arena.doubleVec(N);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)N);
+            for (int r = 0; r < N; r++)
+                for (int c = 0; c < N; c++)
+                    Src[r, c] = rng.NextDouble(-1f, 1f);
+            for (int d = 0; d < N; d++)
+                Src[d, d] += N;
+            for (int i = 0; i < N; i++) bSrc[i] = rng.NextDouble(-1f, 1f);
+
+            var job = new LuSolveTransAJobDouble { A = A, Src = Src, b = b, bSrc = bSrc };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.RowTime("LU double (TransA)", N, stat);
         }
 
         static string CholSolveDouble(int N)
