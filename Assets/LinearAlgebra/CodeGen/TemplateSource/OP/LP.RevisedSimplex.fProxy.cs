@@ -289,88 +289,146 @@ namespace LinearAlgebra
         // Pass 1 (relaxed by feasTol) finds Theta = min(thetaSelf, best relaxed row limit). Pass 2 keeps
         // rows whose EXACT ratio <= Theta and picks the largest |alpha_i| among them for stability,
         // using ITS exact ratio as the actual step; the self bound-flip wins ties (it needs no pivot).
+        //
+        // FAR-BOUND FALLBACK (bug fix): "travel through to the far bound" assumes the far bound is
+        // FINITE. In this computational form exactly one bound is ever infinite per variable kind
+        // (structurals/LessEqual-logicals: lower=0 finite, upper=+INF; GreaterEqual-logicals: lower=-INF,
+        // upper=0 finite) -- so a row that is CURRENTLY INFEASIBLE and healing toward an INFINITE far
+        // bound contributes NO limit at all (t evaluates to a huge, INF-scale number). That is harmless
+        // when at least one OTHER row still contributes a finite limit (the common case, e.g.
+        // RevisedMixedSense: one infeasible >= row plus two ordinary <= rows). It is NOT harmless when
+        // EVERY simultaneously-infeasible row shares this property, which happens whenever every basic
+        // row is infeasible in the SAME direction with the SAME infinite far bound -- e.g. a dense
+        // covering LP (min cx s.t. Ax>=b, x>=0, A,b,c>0): every >=-row logical starts basic and above its
+        // upper bound (0) with an unreachable lower bound (-INF), for every row simultaneously. Then NO
+        // row ever contributes a finite limit, thetaRelaxed never drops below thetaSelf, and the pass-1
+        // unbounded check (thetaRelaxed >= 1e29) fires -- a false "Unbounded" despite phase 1's composite
+        // objective being bounded below by 0 by construction (it can never truly be an unbounded ray).
+        // Caught by the LP benchmark: RevisedSimplex returned Optimal with 0 iterations / objective 0 on
+        // every dense-covering-LP instance while tableau/interior/dual all agreed on the true optimum --
+        // a silent phase-1 bail (declared unbounded, which the outer driver reports as LPStatus.Unbounded,
+        // extracting x=0 from a basis nothing ever pivoted into) rather than a precision issue. Reproduced
+        // in LPTests.fProxy.cs as RevisedDenseCovering (failed before this fix, passes after).
+        //
+        // Fix: run the SAME two passes twice. The first attempt (useFallback=false) is BYTE-IDENTICAL to
+        // the original algorithm -- if it finds a finite limit from ANY row (the common case), it returns
+        // immediately with UNCHANGED behavior, so every already-passing scenario (RevisedMixedSense
+        // included) pivots exactly as before. Only when the first attempt would report Unbounded does a
+        // second attempt run with the fallback engaged: for a row that is CURRENTLY infeasible (violating
+        // its NEAR bound) and whose FAR bound is not finite (|bound| >= 1e29), use the NEAR (violated)
+        // bound as the target instead -- the step at which THIS row's own violation first reaches zero,
+        // always finite. This is the smallest step that cannot make phase 1's objective worse, matching
+        // the standard bounded-variable composite ratio test's fallback for an unreachable far bound.
+        // hitsUpper is flipped alongside the bound swap so the leaving variable still lands on the bound
+        // it actually reached (the primal core's defensive finite-bound guard at the pivot site is an
+        // independent second safety net for this, not a substitute for getting it right here).
         internal static void HarrisRatioTest(fProxyN alpha, NativeArray<int> basis, fProxyN xB,
                                              fProxyN lower, fProxyN upper, int m, int sigma,
                                              fProxy thetaSelf, fProxy feasTol, fProxy pivTolCol,
                                              out fProxy theta, out int leaveRow, out bool leaveHitsUpper, out bool unbounded)
         {
             fProxy sig = (fProxy)sigma;
-            fProxy thetaRelaxed = thetaSelf;
 
-            for (int i = 0; i < m; i++)
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                fProxy ai = alpha[i];
-                if (math.abs(ai) <= pivTolCol) continue;
-                fProxy d = -sig * ai;
-                int v = basis[i];
-                fProxy lo = lower[v], hi = upper[v], xi = xB[i];
+                bool useFallback = attempt == 1;
+                fProxy thetaRelaxed = thetaSelf;
 
-                fProxy bound; bool limited;
-                if (d > (fProxy)0)
+                for (int i = 0; i < m; i++)
                 {
-                    if (xi > hi + feasTol) { limited = false; bound = (fProxy)0; }
-                    else { limited = true; bound = hi + feasTol; }
+                    fProxy ai = alpha[i];
+                    if (math.abs(ai) <= pivTolCol) continue;
+                    fProxy d = -sig * ai;
+                    int v = basis[i];
+                    fProxy lo = lower[v], hi = upper[v], xi = xB[i];
+
+                    fProxy bound; bool limited;
+                    if (d > (fProxy)0)
+                    {
+                        if (xi > hi + feasTol) { limited = false; bound = (fProxy)0; }
+                        else
+                        {
+                            limited = true; bound = hi + feasTol;
+                            if (useFallback && math.abs(hi) >= (fProxy)1e29 && xi < lo - feasTol) bound = lo;
+                        }
+                    }
+                    else
+                    {
+                        if (xi < lo - feasTol) { limited = false; bound = (fProxy)0; }
+                        else
+                        {
+                            limited = true; bound = lo - feasTol;
+                            if (useFallback && math.abs(lo) >= (fProxy)1e29 && xi > hi + feasTol) bound = hi;
+                        }
+                    }
+                    if (!limited) continue;
+
+                    fProxy t = (bound - xi) / d;
+                    if (t < (fProxy)0) t = (fProxy)0;
+                    if (t < thetaRelaxed) thetaRelaxed = t;
+                }
+
+                if (thetaRelaxed >= (fProxy)1e29)
+                {
+                    if (useFallback) { theta = thetaRelaxed; leaveRow = -1; leaveHitsUpper = false; unbounded = true; return; }
+                    continue;   // retry with the far-bound fallback before declaring unbounded
+                }
+                unbounded = false;
+
+                int winner = -1; fProxy winnerAlphaMag = (fProxy)(-1); fProxy winnerExactT = (fProxy)0; bool winnerHitsUpper = false;
+                for (int i = 0; i < m; i++)
+                {
+                    fProxy ai = alpha[i];
+                    fProxy absA = math.abs(ai);
+                    if (absA <= pivTolCol) continue;
+                    fProxy d = -sig * ai;
+                    int v = basis[i];
+                    fProxy lo = lower[v], hi = upper[v], xi = xB[i];
+
+                    fProxy bound; bool limited; bool hitsUpper;
+                    if (d > (fProxy)0)
+                    {
+                        hitsUpper = true;
+                        if (xi > hi + feasTol) { limited = false; bound = (fProxy)0; }
+                        else
+                        {
+                            limited = true; bound = hi;
+                            if (useFallback && math.abs(hi) >= (fProxy)1e29 && xi < lo - feasTol) { bound = lo; hitsUpper = false; }
+                        }
+                    }
+                    else
+                    {
+                        hitsUpper = false;
+                        if (xi < lo - feasTol) { limited = false; bound = (fProxy)0; }
+                        else
+                        {
+                            limited = true; bound = lo;
+                            if (useFallback && math.abs(lo) >= (fProxy)1e29 && xi > hi + feasTol) { bound = hi; hitsUpper = true; }
+                        }
+                    }
+                    if (!limited) continue;
+
+                    fProxy tExact = (bound - xi) / d;
+                    if (tExact < (fProxy)0) tExact = (fProxy)0;
+                    if (tExact <= thetaRelaxed + feasTol && absA > winnerAlphaMag)
+                    {
+                        winnerAlphaMag = absA; winner = i; winnerExactT = tExact; winnerHitsUpper = hitsUpper;
+                    }
+                }
+
+                if (winner < 0 || thetaSelf <= winnerExactT + (fProxy)1e-12)
+                {
+                    theta = thetaSelf; leaveRow = -1; leaveHitsUpper = false;
                 }
                 else
                 {
-                    if (xi < lo - feasTol) { limited = false; bound = (fProxy)0; }
-                    else { limited = true; bound = lo - feasTol; }
+                    theta = winnerExactT; leaveRow = winner; leaveHitsUpper = winnerHitsUpper;
                 }
-                if (!limited) continue;
-
-                fProxy t = (bound - xi) / d;
-                if (t < (fProxy)0) t = (fProxy)0;
-                if (t < thetaRelaxed) thetaRelaxed = t;
-            }
-
-            if (thetaRelaxed >= (fProxy)1e29)
-            {
-                theta = thetaRelaxed; leaveRow = -1; leaveHitsUpper = false; unbounded = true;
                 return;
             }
-            unbounded = false;
 
-            int winner = -1; fProxy winnerAlphaMag = (fProxy)(-1); fProxy winnerExactT = (fProxy)0; bool winnerHitsUpper = false;
-            for (int i = 0; i < m; i++)
-            {
-                fProxy ai = alpha[i];
-                fProxy absA = math.abs(ai);
-                if (absA <= pivTolCol) continue;
-                fProxy d = -sig * ai;
-                int v = basis[i];
-                fProxy lo = lower[v], hi = upper[v], xi = xB[i];
-
-                fProxy bound; bool limited; bool hitsUpper;
-                if (d > (fProxy)0)
-                {
-                    hitsUpper = true;
-                    if (xi > hi + feasTol) { limited = false; bound = (fProxy)0; }
-                    else { limited = true; bound = hi; }
-                }
-                else
-                {
-                    hitsUpper = false;
-                    if (xi < lo - feasTol) { limited = false; bound = (fProxy)0; }
-                    else { limited = true; bound = lo; }
-                }
-                if (!limited) continue;
-
-                fProxy tExact = (bound - xi) / d;
-                if (tExact < (fProxy)0) tExact = (fProxy)0;
-                if (tExact <= thetaRelaxed + feasTol && absA > winnerAlphaMag)
-                {
-                    winnerAlphaMag = absA; winner = i; winnerExactT = tExact; winnerHitsUpper = hitsUpper;
-                }
-            }
-
-            if (winner < 0 || thetaSelf <= winnerExactT + (fProxy)1e-12)
-            {
-                theta = thetaSelf; leaveRow = -1; leaveHitsUpper = false;
-            }
-            else
-            {
-                theta = winnerExactT; leaveRow = winner; leaveHitsUpper = winnerHitsUpper;
-            }
+            // Unreachable (both loop iterations return), kept only so every path assigns the out params.
+            theta = thetaSelf; leaveRow = -1; leaveHitsUpper = false; unbounded = true;
         }
 
         // Top-level driver: phase 1 (composite objective, driving basic infeasibilities to 0) then

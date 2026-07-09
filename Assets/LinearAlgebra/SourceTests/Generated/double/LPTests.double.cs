@@ -56,6 +56,7 @@ public class doubleLPTests
             DegenerateDuplicatedRows, // duplicated-row LP: revised AND dual simplex reach the right objective
             DualLad,            // dual-simplex LP.lad == tableau-simplex LP.lad (outlier set)
             RevisedAndDualRandomN96, // n=96 (>64 pivots): both revised backends vs tableau, 3 seeds
+            RevisedDenseCovering, // revised simplex, dense covering LP (Ax>=b, x>=0, A,b,c>0) vs tableau
         }
 
         public TestType Type;
@@ -105,6 +106,7 @@ public class doubleLPTests
                 case TestType.DegenerateDuplicatedRows: DegenerateDuplicatedRows(); break;
                 case TestType.DualLad: DualLad(); break;
                 case TestType.RevisedAndDualRandomN96: RevisedAndDualRandomN96(); break;
+                case TestType.RevisedDenseCovering: RevisedDenseCovering(); break;
             }
         }
 
@@ -1043,6 +1045,43 @@ public class doubleLPTests
 
                 senses.Dispose(); arena.Dispose();
             }
+        }
+
+        // Small dense covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>0, n=m=6) -- the SAME shape as the LP
+        // benchmark's Section 6 (dense covering LP, dual-favorable): EVERY row starts primal-infeasible
+        // at the all-logical basis (xB=b>0 but the >= logicals' bounds are (-INF,0]), simultaneously, all
+        // in the SAME direction. Reproduces a bug the benchmark caught: RevisedSimplex returned Optimal
+        // with 0 iterations and objective 0 on every Section-6 instance while tableau/interior/dual all
+        // agreed on the true optimum -- a silent phase-1 bail, not a precision issue. Cross-checks the
+        // objective against LPMethod.Simplex (the trusted baseline) rather than a hand-derived value,
+        // since the random construction doesn't have a closed-form optimum.
+        void RevisedDenseCovering()
+        {
+            int n = 6, m = 6;
+            var arena = new Arena(Allocator.Persistent);
+            var rng = new Unity.Mathematics.Random(2166136261u);
+
+            var A = arena.doubleMat(m, n);
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = (double)0.1 + rng.NextDouble(0f, 1f) * (double)0.9;   // in (0.1, 1]
+            var b = arena.doubleVec(m);
+            for (int i = 0; i < m; i++) b[i] = (double)0.5 + rng.NextDouble(0f, 1f) * (double)0.5;  // in (0.5, 1]
+            var c = arena.doubleVec(n);
+            for (int j = 0; j < n; j++) c[j] = (double)0.5 + rng.NextDouble(0f, 1f) * (double)0.5;  // in (0.5, 1]
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
+
+            var xS = arena.doubleVec(n);
+            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+            var xR = arena.doubleVec(n);
+            var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
+
+            AssertTrue(infoS.status == LPStatus.Optimal);
+            AssertTrue(infoR.status == LPStatus.Optimal);
+            AssertCloseD(objR, objS, 1e-6 * (1.0 + math.abs(objS)));
+
+            senses.Dispose(); arena.Dispose();
         }
 
         // ---- diagnostics-recording assert helpers (Burst-legal: Assert.Fail(string) is not) ----
