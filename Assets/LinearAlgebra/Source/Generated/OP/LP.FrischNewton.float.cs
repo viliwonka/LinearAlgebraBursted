@@ -1,9 +1,13 @@
 #define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
 
 using System;
+using System.Runtime.CompilerServices;
 
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
+
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -242,9 +246,10 @@ namespace LinearAlgebra
 
             while (status != LPStatus.Optimal && iters < budget)
             {
-                // 1. diagonal weights q_i = 1 / (z_i/a_i + w_i/s_i)
-                for (int i = 0; i < m; i++) q[i] = (float)1 / (z[i] / a[i] + w[i] / s[i]);
-                for (int i = 0; i < m; i++) zw[i] = z[i] - w[i];
+                // 1. diagonal weights q_i = 1 / (z_i/a_i + w_i/s_i), and zw_i = z_i - w_i (used
+                // together to build Av = q.*zw a few lines below). Fused into ONE pass over m (was two
+                // separate loops, each re-reading z[i]/w[i]) -- see BuildFNWeights.
+                unsafe { BuildFNWeights(z.Data.Ptr, a.Data.Ptr, w.Data.Ptr, s.Data.Ptr, q.Data.Ptr, zw.Data.Ptr, m); }
 
                 // 2. the kernel: M = AᵀQA (one row-streaming pass over A), pivoted-Cholesky factor.
                 BuildATQA(A, q, M, m, n, reg);
@@ -367,21 +372,31 @@ namespace LinearAlgebra
         // stride, which a column-contracted loop order (fixed column, varying row) would not be -- the
         // same row-streaming rationale as LP.InteriorPoint's BuildNormal, just contracting over the
         // opposite axis (m/rows here vs nv/columns there) to land on this n x n shape.
-        static void BuildATQA(floatMxN A, floatN q, floatMxN M, int m, int n, float reg)
+        //
+        // The inner "M[r,c] += v*A[i,c]" sweep over c in [r,n) is an AXPY (M's row r += v * A's row i,
+        // both read/written unit-stride in this row-major layout) -- routed through UnsafeOP.axpy (the
+        // [NoAlias] vectorising pointer path GEMM/CHO/LU/CHOP already use) instead of the struct-
+        // indexer scalar loop. BIT-IDENTICAL: same operations, same order, just without the aliasing
+        // ambiguity that kept Burst from vectorizing the indexer form. n (the LAD coefficient count) is
+        // typically small, so the per-call SIMD headroom here is modest; the win is mostly the removed
+        // indexer/bounds-adjacent overhead paid once per of the up-to-m outer-loop rows.
+        static unsafe void BuildATQA(floatMxN A, floatN q, floatMxN M, int m, int n, float reg)
         {
             for (int r = 0; r < n; r++)
                 for (int c = r; c < n; c++)
                     M[r, c] = (float)0;
 
+            float* Ap = A.Data.Ptr;
+            float* Mp = M.Data.Ptr;
             for (int i = 0; i < m; i++)
             {
                 float qi = q[i];
+                float* Arow = Ap + (long)i * n;
                 for (int r = 0; r < n; r++)
                 {
-                    float v = qi * A[i, r];
+                    float v = qi * Arow[r];
                     if (v == (float)0) continue;
-                    for (int c = r; c < n; c++)
-                        M[r, c] += v * A[i, c];
+                    UnsafeOP.axpy(Mp + (long)r * n + r, Arow + r, v, n - r);
                 }
             }
 
@@ -390,6 +405,25 @@ namespace LinearAlgebra
                 M[r, r] += reg;
                 for (int c = r + 1; c < n; c++)
                     M[c, r] = M[r, c];
+            }
+        }
+
+        // q[i] = 1/(z[i]/a[i] + w[i]/s[i]);  zw[i] = z[i]-w[i] -- FN's per-iteration IPM barrier weight
+        // and the affine-predictor's z-w term, fused into ONE pass over m instead of the two separate
+        // loops the reference port used (each of which re-read z[i]/w[i] independently). [NoAlias] is
+        // truthful (six genuinely distinct Allocator.Temp buffers), which is what lets Burst vectorize
+        // this elementwise (no-reduction) formula the same way UnsafeOP's own [NoAlias] kernels do (see
+        // docs/dev/perf-vectorization-lessons.md point 2). BIT-IDENTICAL to the two original loops --
+        // same expressions, same per-element values, only the number of passes over z/a/w/s changes.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static unsafe void BuildFNWeights([NoAlias] float* z, [NoAlias] float* a, [NoAlias] float* w, [NoAlias] float* s,
+                                          [NoAlias] float* q, [NoAlias] float* zw, int m)
+        {
+            for (int i = 0; i < m; i++)
+            {
+                float zi = z[i], ai = a[i], wi = w[i], si = s[i];
+                q[i] = (float)1 / (zi / ai + wi / si);
+                zw[i] = zi - wi;
             }
         }
 

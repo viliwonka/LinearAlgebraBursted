@@ -78,6 +78,7 @@ public class floatLPTests
             LadBRVertexProperty,// >= n residuals are EXACTLY ~0 at the BR optimum (the vertex property ladFN cannot certify)
             LadBRDegenerateExactFit, // exact-fit data (b=A*x_true, no noise): finite, Optimal/MaxIter, residual ~0
             LadBRMaxIterOneCase, // maxIter=1 -> MaxIterations with a finite usable partial iterate (no NaN/leak)
+            LadBRLargeMSortPath, // m=1000 (> BR_CAND_SORT_THRESHOLD=256) -> the sort-based ratio-test fast path
         }
 
         public TestType Type;
@@ -137,6 +138,7 @@ public class floatLPTests
                 case TestType.LadBRVertexProperty: LadBRVertexProperty(); break;
                 case TestType.LadBRDegenerateExactFit: LadBRDegenerateExactFit(); break;
                 case TestType.LadBRMaxIterOneCase: LadBRMaxIterOneCase(); break;
+                case TestType.LadBRLargeMSortPath: LadBRLargeMSortPath(); break;
             }
         }
 
@@ -1275,6 +1277,75 @@ public class floatLPTests
             AssertTrue(info.status == LPStatus.MaxIterations);
             AssertTrue(math.isfinite(x[0]) && math.isfinite(x[1]) && math.isfinite(x[2]) && math.isfinite(x[3]));
             AssertTrue(math.isfinite((float)obj));
+
+            arena.Dispose();
+        }
+
+        // Large-m correctness of the SORT-BASED ratio-test fast path (LP.BarrodaleRoberts.float.cs's
+        // nCand > BR_CAND_SORT_THRESHOLD branch, UnsafeOP.sortByKeyAscending). Every other BR test tops
+        // out at m<=192, well UNDER the 256 gate, so they all take the original selection-scan path; this
+        // is the only test that drives m large enough (1000, n=4) that a stage-2 pivot's candidate count
+        // exceeds 256 and the heapsort path fires. Same random + gross-outlier construction as
+        // LadBRvsOracle (and LPBenchmark's SectionLad): A random in [-1,1], b = A*xt + small noise, a +5
+        // outlier every 10th row -> the outlier-dominated L1 optimum is a well-separated vertex.
+        //
+        // The sort-based fast path must give the SAME L1 optimum as before. BR is cross-checked against
+        // the independent interior-point engine LP.ladFN (BR's combinatorial simplex and FN's interior
+        // point fail differently, so agreement is a strong correctness signal), and -- decisively for an
+        // exact-vertex engine -- against the vertex property itself (>= n exactly-interpolated residuals).
+        //
+        // NOTE: this test deliberately does NOT use the LP.lad revised-simplex oracle as a third anchor
+        // (as LadBRvsOracle does at m<=192). At m=1000 the LAD reformulation the revised simplex solves
+        // has ~2(n+m) ~ 2008 variables, and in FLOAT that revised simplex hits its iteration budget and
+        // returns MaxIterations (a pre-existing large-m float limitation of that backend, NOT of BR):
+        // verified via instrumentation -- at m=1000 float, LP.ladBR returns Optimal and LP.ladFN returns
+        // Optimal, only LP.lad(RevisedSimplex) returns MaxIterations. BR (the feature under test) is
+        // correct; anchoring to a backend that itself doesn't converge here would be a false failure.
+        void LadBRLargeMSortPath()
+        {
+            int m = 1000, n = 4;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.floatRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
+            var xt = arena.floatRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+            var Axt = Blas.dot(A, xt);
+            var b = arena.floatVec(m);
+            var rng = new Unity.Mathematics.Random((uint)(m * 1299709 + 19));
+            for (int i = 0; i < m; i++)
+            {
+                float val = Axt[i] + rng.NextFloat(-(float)0.05, (float)0.05);
+                if (i % 10 == 0) val += (float)5;              // gross outlier every 10th observation
+                b[i] = val;
+            }
+
+            var xbr = arena.floatVec(n);
+            var infoBR = LP.ladBR(in A, in b, ref xbr, out double objBR);
+
+            var xf = arena.floatVec(n);                        // interior-point cross-check
+            var infoF = LP.ladFN(in A, in b, ref xf, out double objF);
+
+            AssertTrue(infoBR.status == LPStatus.Optimal);
+            AssertTrue(infoF.status == LPStatus.Optimal);
+
+            // Same 1e-6 rel double / 1e-2 rel float split as the other BR/FN large-instance tests. The
+            // objective here is outlier-dominated (~100 outliers * ~5), so |obj| is large and FN's
+            // interior-point duality-gap floor (absolute, ~sqrtEps*(1+||b||)) is a tiny RELATIVE term --
+            // the comparison holds comfortably (BR is exact-vertex; FN approaches the same vertex).
+            double relTol = 1e-2;
+            AssertCloseD(objBR, objF, relTol * (1.0 + math.abs(objF)));   // BR (sort-path) == ladFN
+
+            // Vertex property on this large instance: at least n residuals are ~0 (BR lands ON the
+            // interpolating vertex). Tight per-dtype band, same as LadBRVertexProperty; x ~ O(1) here (no
+            // intercept-dominated amplification), so the interpolated residuals sit far inside it.
+            double vtol = 1e-2;
+            int zeroCount = 0;
+            for (int i = 0; i < m; i++)
+            {
+                double rowDot = 0;
+                for (int j = 0; j < n; j++) rowDot += (double)A[i, j] * (double)xbr[j];
+                if (math.abs(rowDot - (double)b[i]) <= vtol) zeroCount++;
+            }
+            if (zeroCount < n && Fail[0] == (float)0) { Fail[0] = (float)1; Fail[1] = (float)zeroCount; Fail[2] = (float)n; Fail[3] = (float)0; }
+            Assert.IsTrue(zeroCount >= n);
 
             arena.Dispose();
         }

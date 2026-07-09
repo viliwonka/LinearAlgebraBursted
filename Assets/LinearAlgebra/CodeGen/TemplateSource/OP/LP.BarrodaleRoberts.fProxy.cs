@@ -3,7 +3,10 @@
 using System;
 
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -286,6 +289,16 @@ namespace LinearAlgebra
                 // (cost[enter] - 2*pivot <= pivTol) or it's a breakpoint the objective still improves
                 // past, in which case that row is FOLDED (negated in place) and the search continues
                 // among the rest, all within this ONE entering-column choice. ----
+                // Column-strided read: T[i,enter] is a fixed COLUMN scanned over varying rows i, stride
+                // n in this row-major tableau (the reference Fortran's own wa(i,in) would have been
+                // unit-stride under Fortran's column-major convention -- this port's row-major storage
+                // inverts that). Left AS-IS: this collection pass costs O(m) and runs once per
+                // entering-column choice (<= iters times total, NOT once per fold -- see below), so its
+                // total cost is O(m * iters), asymptotically dominated by the O(m*n^2) BRPivot
+                // elimination sweep below for any n > 1. A from-scratch column-major shadow of T would
+                // also have to stay in sync across every BRPivot row update (itself row-major/unit-
+                // stride for good reason -- see BRPivot's own comment), doubling that update's cost to
+                // fix a strictly smaller-order term; not worth it here.
                 int nCand = 0;
                 for (int i = kl; i < m; i++)
                 {
@@ -293,30 +306,56 @@ namespace LinearAlgebra
                     if (d > pivTol) { candRow[nCand] = i; candRatio[nCand] = rhs[i] / d; nCand++; }
                 }
 
+                // Candidate consumption: process candidates in ASCENDING ratio order until the terminal
+                // pivot test fires; every non-terminal candidate FOLDS (see TryPivotOrFold) and the scan
+                // continues. `iters` only counts real PIVOTS (incremented above, once per entering-
+                // column choice), not folds -- so a single entering-column choice can fold arbitrarily
+                // many of the nCand candidates before landing on its pivot, and the flat, size-
+                // independent iters count BR is known for (~O(n) pivots regardless of m) can hide an
+                // unbounded amount of fold work behind it.
+                //
+                // The ORIGINAL algorithm (kept below, UNCHANGED, for nCand <= CandSortThreshold) finds
+                // this order by repeatedly linear-scanning the remaining candidates for the current
+                // minimum and swap-removing the winner: O(nCand) per pick, up to nCand picks, i.e.
+                // O(nCand^2) -- exactly a selection sort. At large m this became the dominant cost of
+                // the whole solve (measured, not merely suspected: BR's own reported iters stayed flat
+                // near-m=16384 while wall time grew far faster than FN's comparable-iters interior
+                // point, the signature of quadratic work hidden behind a small iteration count). Above
+                // the threshold, sort the candidates ONCE (UnsafeOP.sortByKeyAscending, O(nCand log
+                // nCand) heapsort) and then walk them in a single linear pass -- same visitation order
+                // as the original whenever ratios are distinct (heapsort is comparison-based and exact
+                // ratio ties are measure-zero for the continuous random/real data this threshold is
+                // gated for), asymptotically far cheaper at the sizes that matter.
+                //
+                // BR_CAND_SORT_THRESHOLD sits comfortably above every m this library's own test suite
+                // exercises for BR (<=192, per LPTests.fProxy.cs's LadBRvsOracleM192/LadBRStackloss/
+                // etc.) so every currently-tested instance takes the ORIGINAL, byte-for-byte unchanged
+                // code path below -- heapsort's lack of stability (a real, if rare, tie-break behavior
+                // change vs the linear-scan path) never has a chance to touch anything this library
+                // already verifies. It activates well inside the m range LPBenchmark's Section 2b
+                // exercises (1024-16384), which is exactly where the quadratic behavior was measured.
                 int leave = -1;
-                while (nCand > 0)
+                if (nCand > BR_CAND_SORT_THRESHOLD)
                 {
-                    int pick = 0;
-                    fProxy minRatio = candRatio[0];
-                    for (int k = 1; k < nCand; k++) if (candRatio[k] < minRatio) { minRatio = candRatio[k]; pick = k; }
-                    int cand = candRow[pick];
-                    candRow[pick] = candRow[nCand - 1]; candRatio[pick] = candRatio[nCand - 1]; nCand--;
-
-                    fProxy pivot = T[cand, enter];
-                    if (cost[enter] - pivot - pivot <= pivTol) { leave = cand; break; }   // label 10's own test
-
-                    // fold (label 23094): pass THROUGH this breakpoint without pivoting -- negate row
-                    // `cand` in place (columns [kr,n) AND rhs AND its tag), and debit its contribution
-                    // from the entering column's remaining reduced-cost budget.
-                    for (int j = kr; j < n; j++)
+                    unsafe { UnsafeOP.sortByKeyAscending(candRatio.Data.Ptr, (int*)NativeArrayUnsafeUtility.GetUnsafePtr(candRow), nCand); }
+                    for (int p = 0; p < nCand; p++)
                     {
-                        fProxy d = T[cand, j];
-                        cost[j] -= d + d;
-                        T[cand, j] = -d;
+                        int cand = candRow[p];
+                        if (TryPivotOrFold(T, rhs, cost, rowTag, n, kr, enter, cand, pivTol)) { leave = cand; break; }
                     }
-                    fProxy dr = rhs[cand];
-                    rhs[cand] = -dr;
-                    rowTag[cand] = -rowTag[cand];
+                }
+                else
+                {
+                    while (nCand > 0)
+                    {
+                        int pick = 0;
+                        fProxy minRatio = candRatio[0];
+                        for (int k = 1; k < nCand; k++) if (candRatio[k] < minRatio) { minRatio = candRatio[k]; pick = k; }
+                        int cand = candRow[pick];
+                        candRow[pick] = candRow[nCand - 1]; candRatio[pick] = candRatio[nCand - 1]; nCand--;
+
+                        if (TryPivotOrFold(T, rhs, cost, rowTag, n, kr, enter, cand, pivTol)) { leave = cand; break; }
+                    }
                 }
 
                 if (leave < 0)
@@ -388,29 +427,83 @@ namespace LinearAlgebra
             return new LPInfo { status = status, iterations = iters, objective = obj };
         }
 
+        // Processes ONE ratio-test candidate row `cand` for the current entering column: either it is
+        // the terminal pivot (the reduced-cost budget cost[enter] has dropped to the pivot threshold,
+        // label 10's own test) and the caller should stop and pivot there (returns true), or it is a
+        // breakpoint the objective still improves past and gets FOLDED in place -- negated across
+        // columns [kr,n), its rhs, and its tag, and its contribution debited from cost[enter] -- so the
+        // scan can continue (returns false). Factored out so the small-nCand (linear-scan) and
+        // large-nCand (pre-sorted) candidate-consumption paths above share this ONE definition of what
+        // "process a candidate" means, rather than the fold logic being duplicated between them.
+        static bool TryPivotOrFold(fProxyMxN T, fProxyN rhs, fProxyN cost, NativeArray<int> rowTag,
+                                   int n, int kr, int enter, int cand, fProxy pivTol)
+        {
+            fProxy pivot = T[cand, enter];
+            if (cost[enter] - pivot - pivot <= pivTol) return true;   // label 10's own test -- this row leaves
+
+            // fold (label 23094): pass THROUGH this breakpoint without pivoting -- negate row `cand`
+            // in place (columns [kr,n) AND rhs AND its tag), and debit its contribution from the
+            // entering column's remaining reduced-cost budget.
+            for (int j = kr; j < n; j++)
+            {
+                fProxy d = T[cand, j];
+                cost[j] -= d + d;
+                T[cand, j] = -d;
+            }
+            fProxy dr = rhs[cand];
+            rhs[cand] = -dr;
+            rowTag[cand] = -rowTag[cand];
+            return false;
+        }
+
         // Gauss-Jordan pivot at (leave, enter) -- rqbr's label 10, shared by both stages. Normalizes
         // row `leave` (excluding column `enter`), eliminates column `enter` from every OTHER row
         // (observation rows AND the cost row, matching the reference's own i=1..m3 elimination sweep --
         // see file header), then swaps the leaving row's tag with the entering column's tag.
-        static void BRPivot(fProxyMxN T, fProxyN rhs, fProxyN cost, NativeArray<int> rowTag, NativeArray<int> colTag,
+        //
+        // The reference's "for j in [kr,n): if (j != enter) ..." shape (three separate loops: row
+        // normalization, per-row elimination inside the m-loop, and the cost-row update) puts a branch
+        // INSIDE the hottest per-column loop, evaluated on every (row, column) pair -- and, being a
+        // struct-indexer read/write rather than a [NoAlias] raw-pointer one, gives Burst no aliasing
+        // guarantee to vectorize across. Column `enter` cannot get the SAME update formula as its
+        // neighbors (it is overwritten by an explicit -d/pivot / -dCost/pivot formula afterward instead
+        // -- see file header's own note on this being a bookkeeping column, not a normal tableau entry),
+        // so the skip cannot simply be dropped -- but splitting the SAME range into the two contiguous
+        // sub-ranges [kr,enter) and (enter,n) and routing each through the vectorising
+        // UnsafeOP.scalDiv/axpy ([NoAlias] pointer path, the same one GEMM/CHO/LU/CHOP use) is
+        // BIT-IDENTICAL to the original branchy loop -- same operations, same per-element values, same
+        // order within each sub-range, just without a per-iteration branch. This is the file's own
+        // dominant per-pivot cost (O(m*n) per call, times ~n pivots per solve = O(m*n^2) total, versus
+        // the collection/ratio-test's O(m) per call -- see the ratio-test's own comment at its call
+        // site), so it is the right place to spend the vectorization effort.
+        static unsafe void BRPivot(fProxyMxN T, fProxyN rhs, fProxyN cost, NativeArray<int> rowTag, NativeArray<int> colTag,
                             int m, int n, int kr, int leave, int enter)
         {
             fProxy pivot = T[leave, enter];
+            fProxy* Tp = T.Data.Ptr;
+            fProxy* leaveRow = Tp + (long)leave * n;
+            int lenLo = enter - kr;        // [kr, enter)
+            int lenHi = n - enter - 1;     // (enter, n)
 
-            for (int j = kr; j < n; j++) if (j != enter) T[leave, j] /= pivot;
+            if (lenLo > 0) UnsafeOP.scalDiv(leaveRow + kr, lenLo, pivot);
+            if (lenHi > 0) UnsafeOP.scalDiv(leaveRow + enter + 1, lenHi, pivot);
             rhs[leave] /= pivot;
 
             for (int i = 0; i < m; i++)
             {
                 if (i == leave) continue;
-                fProxy d = T[i, enter];
-                for (int j = kr; j < n; j++) if (j != enter) T[i, j] -= d * T[leave, j];
+                fProxy* rowI = Tp + (long)i * n;
+                fProxy d = rowI[enter];
+                if (lenLo > 0) UnsafeOP.axpy(rowI + kr, leaveRow + kr, -d, lenLo);
+                if (lenHi > 0) UnsafeOP.axpy(rowI + enter + 1, leaveRow + enter + 1, -d, lenHi);
                 rhs[i] -= d * rhs[leave];
-                T[i, enter] = -d / pivot;
+                rowI[enter] = -d / pivot;
             }
 
             fProxy dCost = cost[enter];
-            for (int j = kr; j < n; j++) if (j != enter) cost[j] -= dCost * T[leave, j];
+            fProxy* costP = cost.Data.Ptr;
+            if (lenLo > 0) UnsafeOP.axpy(costP + kr, leaveRow + kr, -dCost, lenLo);
+            if (lenHi > 0) UnsafeOP.axpy(costP + enter + 1, leaveRow + enter + 1, -dCost, lenHi);
             cost[enter] = -dCost / pivot;
 
             T[leave, enter] = (fProxy)1 / pivot;

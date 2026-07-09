@@ -3,7 +3,10 @@
 using System;
 
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -262,26 +265,31 @@ namespace LinearAlgebra
             return new LPInfo { status = status, iterations = iters, objective = obj };
         }
 
-        // out[i] = Σ_k A[i,k] v[k]   (A m×nv, v length nv, out length m)
-        static void Amul(doubleMxN A, doubleN v, doubleN outv, int m, int nv)
+        // out[i] = Σ_k A[i,k] v[k]   (A m×nv, v length nv, out length m). This is a plain row-major GEMV
+        // -- exactly UnsafeOP.matVecDot's shape -- so it is routed through that kernel (two double4
+        // SIMD accumulators, [NoAlias] pointers; see docs/dev/perf-vectorization-lessons.md and the
+        // SIMD reduction campaign in git log) instead of a naive single-accumulator scalar dot per row.
+        // matVecDot ACCUMULATES (y[r] += ...), so outv is zeroed first to preserve this function's own
+        // "assign, not accumulate" contract. On the hot path for both LP.InteriorPoint's interiorCore
+        // (2 calls/iteration) and LP.FrischNewton's ladFrischNewtonCore (2 calls/iteration, dominant
+        // once LP.lad's hybrid default routes large-m LAD to ladFN -- see LAD_HYBRID_THRESHOLD).
+        // REORDERING: matVecDot's two-accumulator width-4 fold sums each row in a different order than
+        // the original strict left-to-right scalar accumulation -- rounding-only (tolerance-safe), not
+        // bitwise-identical, matching every other kernel this campaign has touched.
+        static unsafe void Amul(doubleMxN A, doubleN v, doubleN outv, int m, int nv)
         {
-            for (int i = 0; i < m; i++)
-            {
-                double acc = (double)0;
-                for (int k = 0; k < nv; k++) acc += A[i, k] * v[k];
-                outv[i] = acc;
-            }
+            UnsafeUtility.MemClear(outv.Data.Ptr, (long)m * UnsafeUtility.SizeOf<double>());
+            UnsafeOP.matVecDot(A.Data.Ptr, v.Data.Ptr, outv.Data.Ptr, m, nv);
         }
 
-        // out[j] = Σ_i A[i,j] v[i]   (v length m, out length nv)
-        static void ATmul(doubleMxN A, doubleN v, doubleN outv, int m, int nv)
+        // out[j] = Σ_i A[i,j] v[i]   (v length m, out length nv). This loop was ALREADY exactly
+        // UnsafeOP.vecMatDot's computation (i outer / j inner, outv[j] += A[i,j]*v[i] -- a row-axpy
+        // accumulation, zeroed first) -- routing it through that kernel is BIT-IDENTICAL, not a
+        // reordering, just the vectorising [NoAlias] pointer path (which the struct-indexer form above
+        // gave Burst no aliasing guarantee to vectorize through) instead of the naive loop.
+        static unsafe void ATmul(doubleMxN A, doubleN v, doubleN outv, int m, int nv)
         {
-            for (int j = 0; j < nv; j++) outv[j] = (double)0;
-            for (int i = 0; i < m; i++)
-            {
-                double vi = v[i];
-                for (int j = 0; j < nv; j++) outv[j] += A[i, j] * vi;
-            }
+            UnsafeOP.vecMatDot(v.Data.Ptr, A.Data.Ptr, outv.Data.Ptr, m, nv);
         }
 
         // M = A diag(d) Aᵀ + reg·I  (symmetric, m×m). Upper triangle then mirrored.

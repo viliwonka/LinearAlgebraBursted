@@ -1062,5 +1062,61 @@ namespace LinearAlgebra.Internal
                 target[startB + i * nCols] = temp;
             }
         }
+
+        // In-place ASCENDING heapsort of `val[]`, keyed by `key[]` (parallel arrays -- the same
+        // permutation is applied to both). O(n log n) WORST CASE, unlike a quicksort's O(n^2) worst
+        // case, which matters here because this exists specifically to replace an O(n^2) pattern (see
+        // caller). Used by LP.ladBR's weighted-median ratio-test scan
+        // (LP.BarrodaleRoberts.double.cs): that scan used to repeatedly linear-scan the REMAINING
+        // candidates for the current minimum ratio, removing the winner by swap-with-last each round --
+        // an O(k) scan repeated up to k times is O(k^2), and at large m the candidate count k (bounded
+        // by m) made this the dominant cost of the whole solve even though the reported pivot count
+        // stayed small (each round can "fold" a candidate without registering as a pivot). Sorting once
+        // up front costs O(k log k) and the caller then walks the result in a single linear pass.
+        //
+        // NOT a stable sort (heapsort never is): candidates with EXACTLY EQUAL keys may end up in a
+        // different relative order than the linear-scan-with-swap-removal approach it replaces would
+        // have produced. Callers that need the same tie-break behavior in the presence of exact key
+        // ties (e.g. to stay bit-identical to existing test coverage) should gate this kernel out below
+        // whatever size makes exact ties negligible for their data, and keep the tie-break-preserving
+        // path for everything else -- see LP.BarrodaleRoberts.double.cs's own gate for the rationale.
+        //
+        // [NoAlias]: key and val are genuinely distinct arrays (the caller's parallel ratio/row-index
+        // buffers) -- both are permuted in lockstep by every swap below.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sortByKeyAscending([NoAlias] double* key, [NoAlias] int* val, int n)
+        {
+            // Build a max-heap over [0,n) (by key), then repeatedly swap the max to the tail and
+            // shrink the heap -- the standard textbook heapsort, specialized to carry a parallel
+            // int payload alongside each double key.
+            for (int start = (n >> 1) - 1; start >= 0; start--)
+                SiftDown(key, val, start, n);
+
+            for (int end = n - 1; end > 0; end--)
+            {
+                double tk = key[0]; key[0] = key[end]; key[end] = tk;
+                int tv = val[0]; val[0] = val[end]; val[end] = tv;
+                SiftDown(key, val, 0, end);
+            }
+        }
+
+        // Restores the max-heap property for the subtree rooted at `root`, over the live heap range
+        // [0,heapLen). Standard sift-down: repeatedly swap `root` with its larger child until it is
+        // >= both children (or a leaf).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void SiftDown([NoAlias] double* key, [NoAlias] int* val, int root, int heapLen)
+        {
+            while (true)
+            {
+                int child = 2 * root + 1;
+                if (child >= heapLen) break;
+                if (child + 1 < heapLen && key[child + 1] > key[child]) child++;
+                if (key[root] >= key[child]) break;
+
+                double tk = key[root]; key[root] = key[child]; key[child] = tk;
+                int tv = val[root]; val[root] = val[child]; val[child] = tv;
+                root = child;
+            }
+        }
     }
 }

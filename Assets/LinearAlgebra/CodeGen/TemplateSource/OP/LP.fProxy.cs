@@ -72,11 +72,20 @@ namespace LinearAlgebra
         /// <summary>
         /// Least absolute deviation (L1 regression): minimize ‖A x − b‖₁ over a FREE x ∈ ℝⁿ. Robust to
         /// outliers where ordinary least squares (which minimizes the L2 norm) is not. This overload
-        /// routes to the Frisch–Newton solver (<see cref="ladFN(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/>):
-        /// exact, reformulation-free, and the fastest LAD route at every benchmarked size — an n×n
-        /// weighted normal solve per iteration streamed from the original A, ~10 iterations regardless
-        /// of m. Use the <see cref="LPMethod"/> overload to route through the general LP backends
-        /// instead (the classic split-variable reformulation; exact but far slower — retained mainly as
+        /// is a HYBRID: it picks between this library's two reformulation-free exact engines by problem
+        /// size (m = A.M_Rows) --
+        /// <see cref="ladBR(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/> (Barrodale-
+        /// Roberts specialized simplex) at or below the per-dtype threshold in the dispatch below,
+        /// <see cref="ladFN(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/> (Frisch-Newton
+        /// interior point) above it. BR's weighted-median long step wins at small-to-moderate m (near-
+        /// constant, few-microsecond latency -- the common low-observation-count case); FN's fixed
+        /// ~10-iteration n×n normal solve wins once m grows large enough that BR's per-pivot sweep over
+        /// m rows dominates. The crossover is a measured, re-tunable, PER-DTYPE value (see the comment
+        /// on the dispatch expression below for the benchmark it was set from), not
+        /// a fixed property of either algorithm. Call <see cref="ladBR"/> / <see cref="ladFN"/> directly
+        /// to bypass this routing and force one engine regardless of size. Use the <see cref="LPMethod"/>
+        /// overload to route through the general LP backends instead (the classic split-variable
+        /// reformulation; exact but far slower than either hybrid route -- retained mainly as
         /// independent cross-checks). For the approximate iteratively-reweighted alternative, see
         /// <see cref="Optimize.ladIRLS"/>.
         /// </summary>
@@ -84,10 +93,19 @@ namespace LinearAlgebra
         /// <param name="b">Observations, length m.</param>
         /// <param name="x">Output coefficients, length n (overwritten). May be negative.</param>
         /// <param name="objective">Output L1 residual ‖A x − b‖₁.</param>
-        /// <param name="maxIter">Iteration budget; ≤0 picks the default (50).</param>
+        /// <param name="maxIter">Iteration budget; ≤0 picks the routed engine's own default.</param>
         public static LPInfo lad(in fProxyMxN A, in fProxyN b, ref fProxyN x, out double objective,
                                  int maxIter = 0)
-            => ladFN(in A, in b, ref x, out objective, maxIter);
+            // MEASURED, RE-TUNABLE, PER-DTYPE crossover (LPBenchmark Section 2b, 2026-07-09, AFTER the
+            // BR sort-path + FN SIMD optimization round): double -- BR wins through m=4096 (2.49ms vs
+            // FN 2.71ms) and loses only ~11% at m=16384, so the threshold sits at the last measured
+            // BR-win size, 4096; float -- FN's SIMD gains moved its win boundary down to m=1024
+            // (FN 0.47ms vs BR 0.62ms) while BR still wins at m=384, so 512 splits the measured
+            // bracket. Re-measure Section 2b (and re-tune here) whenever either engine's per-iteration
+            // cost changes; this is benchmark data, not theory.
+            => A.M_Rows <= /*+choose[512|4096]*/512/*-choose*/
+                ? ladBR(in A, in b, ref x, out objective, maxIter)
+                : ladFN(in A, in b, ref x, out objective, maxIter);
 
         /// <summary>
         /// Least absolute deviation via an explicitly chosen general-LP backend: split x = x⁺ − x⁻ and

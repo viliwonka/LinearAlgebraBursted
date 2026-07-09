@@ -179,5 +179,20 @@ namespace LinearAlgebra
         internal const byte STATUS_BASIC = 0;
         internal const byte STATUS_AT_LOWER = 1;
         internal const byte STATUS_AT_UPPER = 2;
+
+        // NOTE: the LAD hybrid-default routing threshold (BR vs FN in LP.lad's method-less overload)
+        // is NOT here -- after the 2026-07-09 optimization round the measured crossover became
+        // per-dtype (float 512 / double 4096), so it lives as an inline /*+choose[..|..]*/ literal on
+        // the dispatch expression in LP.fProxy.cs, where each generated build gets its own value. A
+        // type-agnostic const here cannot express that.
+
+        // LP.ladBR's (LP.BarrodaleRoberts.fProxy.cs) ratio-test candidate-consumption gate: above this
+        // many candidates in a single entering-column's ratio test, sort them once (O(nCand log nCand))
+        // instead of the original repeated-linear-scan-for-minimum (O(nCand^2)) -- see that file's own
+        // comment at the call site for the full rationale. Type-agnostic (plain int), same CS0102
+        // reasoning as REFACTOR_INTERVAL above. Set comfortably above every m this library's test
+        // suite exercises for BR (<=192) so all currently-tested instances are provably unaffected;
+        // comfortably below the sizes (1024-16384) where the quadratic behavior was measured.
+        internal const int BR_CAND_SORT_THRESHOLD = 256;
     }
 }
