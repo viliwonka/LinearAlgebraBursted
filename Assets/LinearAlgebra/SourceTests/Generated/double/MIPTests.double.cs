@@ -8,9 +8,10 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for MIP.solve -- LP-based branch & bound over the dual simplex (docs/draft-spec-mip.md,
-// STAGE 2: most-fractional branching, pure DFS, no propagation/pseudocost/heuristics/gap-limit
-// parameter). Templated (double) so codegen emits a float and a double build; per the draft spec
+// Tests for MIP.solve -- LP-based branch & bound over the dual simplex (docs/draft-spec-mip.md).
+// Grows by stage: (a)-(e) STAGE 2 (most-fractional DFS), (f) STAGE 3 (pseudocost + best-bound queue),
+// (g) STAGE 4 (activity-based propagation, rounding heuristic, absGap/relGap gap limits + MIPLIB
+// stein/p0033 known-answer oracles). Templated (double) so codegen emits a float and a double build; per the draft spec
 // "test float only on tiny instances, double is the serious dtype", the exhaustive-enumeration
 // cross-check (EnumCrossCheck) uses a per-dtype codegen choose-marker to run 2 tiny instances in
 // float and 7 (up to n=5) in double. Every numeric assertion routes through the Fail[0..3] diagnostic
@@ -66,6 +67,32 @@ public class doubleMIPTests
                                      //   anomalous nodes=0, so there is no valid float baseline to compare)
             Stage3Determinism,       // two back-to-back GomoryWolsey solves -> identical nodes/iter/obj/bound/x
             Stage3DeterminismBranchy12, // same determinism check on the big branchy n=12 search (DOUBLE-ONLY)
+
+            // ==== (g) STAGE 4 verification: activity-based domain propagation at every node, a rounding
+            //         heuristic, and absGap/relGap gap limits make MIPStatus.GapLimit reachable
+            //         (docs/draft-spec-mip.md stage 4). ====
+
+            // -- MIPLIB tiny known-answer instances (the "stein/p0033" standard set) --
+            Stein9,   // MIPLIB steiner-triple set-covering: 9 binaries, proven optimum 5 (both dtypes)
+            Stein15,  // 15 binaries, proven optimum 9 (both dtypes; float lands ~8.9999997, within 1e-3)
+            P0033,    // Crowder-Johnson-Padberg 0/1: 33 binaries, proven optimum 3089. DOUBLE-ONLY: float
+                      //   finds the incumbent 3089 quickly but can't PROVE optimality within a sane node
+                      //   budget (large coeff magnitudes up to 2700 vs fixed 1e-6 tolerances), same
+                      //   float-baseline rationale as Stage3NodesBranchy12.
+
+            // -- propagation: node-count drop vs the recorded stage-3 counts, + pre-LP fathom --
+            Stage4NodesGomoryWolsey,     // stage3 7 -> stage4 5 nodes (propagation fathoms 2): assert exactly 5
+            Stage4NodesBranchy12,        // stage3 241 -> stage4 218 nodes (DOUBLE-ONLY, same instance rationale)
+            Stage4PropagationInfeasible, // 2x+2y=3 integer parity: propagation proves the root infeasible with
+                                         //   NO LP solve (status Infeasible, nodes==1, lpIterations==0)
+
+            // -- gap limits (new absGap/relGap parameters) --
+            GapLimitRelGap,        // Branchy12 with relGap: stops at GapLimit before full exploration (DOUBLE-ONLY)
+            GapLimitPassThrough,   // GomoryWolsey with absGap:0/relGap:0 (=off) still reaches Optimal (both dtypes)
+
+            // -- determinism under the new features --
+            Stage4DeterminismStein9,   // rounding-heuristic + propagation path: two solves bit-for-bit identical
+            Stage4DeterminismGapLimit, // two identical GapLimit-triggering solves identical (DOUBLE-ONLY)
         }
 
         public TestType Type;
@@ -94,6 +121,16 @@ public class doubleMIPTests
                 case TestType.Stage3NodesBranchy12: Stage3NodesBranchy12(); break;
                 case TestType.Stage3Determinism: Stage3Determinism(); break;
                 case TestType.Stage3DeterminismBranchy12: Stage3DeterminismBranchy12(); break;
+                case TestType.Stein9: Stein9(); break;
+                case TestType.Stein15: Stein15(); break;
+                case TestType.P0033: P0033(); break;
+                case TestType.Stage4NodesGomoryWolsey: Stage4NodesGomoryWolsey(); break;
+                case TestType.Stage4NodesBranchy12: Stage4NodesBranchy12(); break;
+                case TestType.Stage4PropagationInfeasible: Stage4PropagationInfeasible(); break;
+                case TestType.GapLimitRelGap: GapLimitRelGap(); break;
+                case TestType.GapLimitPassThrough: GapLimitPassThrough(); break;
+                case TestType.Stage4DeterminismStein9: Stage4DeterminismStein9(); break;
+                case TestType.Stage4DeterminismGapLimit: Stage4DeterminismGapLimit(); break;
             }
         }
 
@@ -451,8 +488,12 @@ public class doubleMIPTests
 
         // Integer variable with a nonzero finite lower bound (xl=3, xu=10) -- exercises the shift/split
         // reformulation's anchor-low branch-rhs closed form (rhs = newBound - xl) for xl != 0, not just
-        // the xl=0 binary case. min -x s.t. x <= 7.5 -> the LP relaxation optimum x=7.5 is fractional
-        // (forces a branch); the integer optimum is x=7, obj -7.
+        // the xl=0 binary case. min -x s.t. x <= 7.5; the integer optimum is x=7, obj -7.
+        //
+        // Stage 4: activity-based propagation floors the single-variable row x<=7.5 to the integer bound
+        // x<=7 at the ROOT (x is integer with an already-finite xl=3), so the root LP relaxation is
+        // ALREADY integral (x=7) -- B&B finishes at the root with no branch. This is the textbook simplest
+        // case of activity-based bound tightening; nodes==1 is a hard invariant for this exact instance.
         void GeneralIntBounds()
         {
             var arena = new Arena(Allocator.Persistent);
@@ -471,7 +512,7 @@ public class doubleMIPTests
             AssertTrue(info.status == MIPStatus.Optimal);
             AssertClose(x[0], (double)7, (double)1e-3);
             AssertCloseD(obj, -7.0, 1e-3);
-            AssertTrue(info.nodes >= 2);   // fractional root -> at least one branch happened
+            AssertNodes(info, 1);   // propagation closes the root at 1 node (see method comment)
 
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
@@ -727,6 +768,369 @@ public class doubleMIPTests
             integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
 
             xstar.Dispose();
+        }
+
+        // ==== (g) STAGE 4: MIPLIB known-answer oracles, propagation, gap limits, determinism ====
+
+        // Sets a coefficient-1 covering triple in row r of A (the stein set-covering rows).
+        void SetTriple(doubleMxN A, int r, int i, int j, int k)
+        {
+            A[r, i] = (double)1; A[r, j] = (double)1; A[r, k] = (double)1;
+        }
+
+        // Builds the MIPLIB "stein9" Steiner-triple set-covering instance (Fulkerson, Nemhauser & Trotter,
+        // "Two computationally difficult set covering problems...", Math. Prog. Study 2, 1974; MIPLIB 3 /
+        // miplib.zib.de). 9 binaries, minimize the count sum_j x_j; rows 0-11 are the covering triples
+        // (each >= 1), row 12 is the OB2 "at least 4 of 9" cut (all vars >= 4). Proven optimum 5.
+        void BuildStein9(in Arena arena, out doubleMxN A, out doubleN b, out doubleN c,
+                         out NativeArray<ConstraintSense> senses, out doubleN xl, out doubleN xu,
+                         out NativeArray<byte> integ)
+        {
+            const int n = 9, m = 13;
+            A = arena.doubleMat(m, n);   // zero-initialized
+            SetTriple(A, 0, 1, 2, 3); SetTriple(A, 1, 0, 2, 4); SetTriple(A, 2, 0, 1, 5); SetTriple(A, 3, 4, 5, 6);
+            SetTriple(A, 4, 3, 5, 7); SetTriple(A, 5, 3, 4, 8); SetTriple(A, 6, 0, 7, 8); SetTriple(A, 7, 1, 6, 8);
+            SetTriple(A, 8, 2, 6, 7); SetTriple(A, 9, 0, 3, 6); SetTriple(A, 10, 1, 4, 7); SetTriple(A, 11, 2, 5, 8);
+            for (int j = 0; j < n; j++) A[12, j] = (double)1;   // all 9 vars
+
+            b = arena.doubleVec(m); for (int i = 0; i < 12; i++) b[i] = (double)1; b[12] = (double)4;
+            senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
+            c = arena.doubleVec(n); for (int j = 0; j < n; j++) c[j] = (double)1;
+            xl = arena.doubleVec(n);
+            xu = arena.doubleVec(n); for (int j = 0; j < n; j++) xu[j] = (double)1;
+            integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
+        }
+
+        // stein9 known-answer: proven optimum 5, proven-optimal contract (gap 0). Both dtypes.
+        void Stein9()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildStein9(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+            var x = arena.doubleVec(9);
+
+            var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
+
+            AssertTrue(info.status == MIPStatus.Optimal);
+            AssertCloseD(obj, 5.0, 1e-3);
+            AssertCloseD(info.objective, 5.0, 1e-3);
+            AssertCloseD(info.gap, 0.0, 1e-9);
+
+            senses.Dispose(); integ.Dispose(); arena.Dispose();
+        }
+
+        // MIPLIB "stein15" (same Steiner-triple family/source as stein9). 15 binaries, minimize the count;
+        // rows 0-34 covering triples (>= 1), row 35 the all-vars "at least 7 of 15" cut (>= 7). Proven
+        // optimum 9 (double solves it in 275 nodes / 4307 LP iterations). DOUBLE-ONLY: measured empirically,
+        // the FLOAT search does NOT converge -- it diverges past the node cap (float roundoff at this size
+        // multiplies branching), same float-baseline rationale as P0033/Stage3NodesBranchy12. (The brief
+        // reported float stein15 finishing in ~261 nodes; that did not reproduce on the shipped code.)
+        void Stein15()
+        {
+            int cases = 1;
+            for (int s = 0; s < cases; s++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                const int n = 15, m = 36;
+                var A = arena.doubleMat(m, n);   // zero-initialized
+                SetTriple(A, 0, 2, 3, 5);   SetTriple(A, 1, 3, 4, 6);   SetTriple(A, 2, 0, 4, 7);   SetTriple(A, 3, 0, 1, 8);   SetTriple(A, 4, 1, 2, 9);
+                SetTriple(A, 5, 1, 4, 5);   SetTriple(A, 6, 0, 2, 6);   SetTriple(A, 7, 1, 3, 7);   SetTriple(A, 8, 2, 4, 8);   SetTriple(A, 9, 0, 3, 9);
+                SetTriple(A, 10, 7, 8, 10); SetTriple(A, 11, 8, 9, 11); SetTriple(A, 12, 5, 9, 12); SetTriple(A, 13, 5, 6, 13); SetTriple(A, 14, 6, 7, 14);
+                SetTriple(A, 15, 6, 9, 10); SetTriple(A, 16, 5, 7, 11); SetTriple(A, 17, 6, 8, 12); SetTriple(A, 18, 7, 9, 13); SetTriple(A, 19, 5, 8, 14);
+                SetTriple(A, 20, 0, 12, 13); SetTriple(A, 21, 1, 13, 14); SetTriple(A, 22, 2, 10, 14); SetTriple(A, 23, 3, 10, 11); SetTriple(A, 24, 4, 11, 12);
+                SetTriple(A, 25, 0, 11, 14); SetTriple(A, 26, 1, 10, 12); SetTriple(A, 27, 2, 11, 13); SetTriple(A, 28, 3, 12, 14); SetTriple(A, 29, 4, 10, 13);
+                SetTriple(A, 30, 0, 5, 10); SetTriple(A, 31, 1, 6, 11); SetTriple(A, 32, 2, 7, 12); SetTriple(A, 33, 3, 8, 13); SetTriple(A, 34, 4, 9, 14);
+                for (int j = 0; j < n; j++) A[35, j] = (double)1;
+
+                var b = arena.doubleVec(m); for (int i = 0; i < 35; i++) b[i] = (double)1; b[35] = (double)7;
+                var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
+                var c = arena.doubleVec(n); for (int j = 0; j < n; j++) c[j] = (double)1;
+                var xl = arena.doubleVec(n);
+                var xu = arena.doubleVec(n); for (int j = 0; j < n; j++) xu[j] = (double)1;
+                var integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
+                var x = arena.doubleVec(n);
+
+                var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj, maxNodes: 200000);
+
+                AssertTrue(info.status == MIPStatus.Optimal);
+                AssertCloseD(obj, 9.0, 1e-3);
+                AssertCloseD(info.gap, 0.0, 1e-9);
+
+                senses.Dispose(); integ.Dispose(); arena.Dispose();
+            }
+        }
+
+        // MIPLIB "p0033": Crowder, Johnson & Padberg, "Solving large-scale zero-one linear programming
+        // problems" (Oper. Res. 31, 1983); MIPLIB 3 / miplib.zib.de. 33 binaries, minimize c^T x, 15 LessEqual
+        // rows (the literature's 16th "ZBESTROW" all-zero bookkeeping row is omitted -- mathematically
+        // equivalent). Proven optimum 3089. DOUBLE-ONLY (see enum comment: float finds 3089 but cannot prove
+        // optimality within a sane node budget). Generous maxNodes guards a runaway; Optimal proves the cap
+        // was not the stopping reason (double explores ~447 nodes).
+        void P0033()
+        {
+            int cases = 1;
+            for (int s = 0; s < cases; s++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                const int n = 33, m = 15;
+                var A = arena.doubleMat(m, n);   // zero-initialized
+                var c = arena.doubleVec(n);
+                c[0] = (double)171; c[1] = (double)171; c[2] = (double)171; c[3] = (double)171; c[4] = (double)163;
+                c[5] = (double)162; c[6] = (double)163; c[7] = (double)69; c[8] = (double)69; c[9] = (double)183;
+                c[10] = (double)183; c[11] = (double)183; c[12] = (double)183; c[13] = (double)49; c[14] = (double)183;
+                c[15] = (double)258; c[16] = (double)517; c[17] = (double)250; c[18] = (double)500; c[19] = (double)250;
+                c[20] = (double)500; c[21] = (double)159; c[22] = (double)318; c[23] = (double)159; c[24] = (double)318;
+                c[25] = (double)159; c[26] = (double)318; c[27] = (double)159; c[28] = (double)318; c[29] = (double)114;
+                c[30] = (double)228; c[31] = (double)159; c[32] = (double)318;
+
+                A[0, 0] = (double)1; A[0, 1] = (double)1; A[0, 2] = (double)1; A[0, 3] = (double)1;
+                A[1, 4] = (double)1; A[1, 5] = (double)1; A[1, 6] = (double)1;
+                A[2, 7] = (double)1; A[2, 8] = (double)1;
+                A[3, 9] = (double)1; A[3, 10] = (double)1; A[3, 11] = (double)1; A[3, 12] = (double)1; A[3, 14] = (double)1;
+                A[4, 9] = (double)(-230); A[4, 15] = (double)(-200); A[4, 16] = (double)(-400);
+                A[5, 2] = (double)300; A[5, 3] = (double)300; A[5, 4] = (double)285; A[5, 5] = (double)285;
+                A[5, 7] = (double)265; A[5, 8] = (double)265; A[5, 11] = (double)230; A[5, 12] = (double)230;
+                A[5, 13] = (double)190; A[5, 21] = (double)200; A[5, 22] = (double)400; A[5, 23] = (double)200;
+                A[5, 24] = (double)400; A[5, 25] = (double)200; A[5, 26] = (double)400; A[5, 27] = (double)200;
+                A[5, 28] = (double)400; A[5, 29] = (double)200; A[5, 30] = (double)400;
+                for (int j = 0; j < n; j++) A[6, j] = -A[5, j];   // row 6 = exact negation of row 5
+                A[7, 3] = (double)(-300); A[7, 29] = (double)(-200); A[7, 30] = (double)(-400);
+                A[8, 0] = (double)(-300); A[8, 5] = (double)(-285); A[8, 8] = (double)(-265); A[8, 13] = (double)(-190);
+                A[8, 25] = (double)(-200); A[8, 26] = (double)(-400);
+                A[9, 0] = (double)(-300); A[9, 2] = (double)(-300); A[9, 5] = (double)(-285); A[9, 8] = (double)(-265);
+                A[9, 13] = (double)(-190); A[9, 25] = (double)(-200); A[9, 26] = (double)(-400); A[9, 27] = (double)(-200);
+                A[9, 28] = (double)(-400);
+                A[10, 4] = (double)(-285); A[10, 7] = (double)(-265); A[10, 10] = (double)(-230); A[10, 21] = (double)(-200);
+                A[10, 22] = (double)(-400);
+                A[11, 4] = (double)(-285); A[11, 7] = (double)(-265); A[11, 10] = (double)(-230); A[11, 11] = (double)(-230);
+                A[11, 21] = (double)(-200); A[11, 22] = (double)(-400); A[11, 23] = (double)(-200); A[11, 24] = (double)(-400);
+                A[12, 1] = (double)(-300); A[12, 17] = (double)(-200); A[12, 18] = (double)(-400);
+                A[13, 1] = (double)(-300); A[13, 17] = (double)(-200); A[13, 18] = (double)(-400); A[13, 19] = (double)(-200);
+                A[13, 20] = (double)(-400);
+                A[14, 6] = (double)(-285); A[14, 31] = (double)(-200); A[14, 32] = (double)(-400);
+
+                var b = arena.doubleVec(m);
+                b[0] = (double)1; b[1] = (double)1; b[2] = (double)1; b[3] = (double)1; b[4] = (double)(-5);
+                b[5] = (double)2700; b[6] = (double)(-2600); b[7] = (double)(-100); b[8] = (double)(-900);
+                b[9] = (double)(-1656); b[10] = (double)(-335); b[11] = (double)(-1026); b[12] = (double)(-5);
+                b[13] = (double)(-500); b[14] = (double)(-270);
+                var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+                var xl = arena.doubleVec(n);
+                var xu = arena.doubleVec(n); for (int j = 0; j < n; j++) xu[j] = (double)1;
+                var integ = new NativeArray<byte>(n, Allocator.Temp); for (int j = 0; j < n; j++) integ[j] = 1;
+                var x = arena.doubleVec(n);
+
+                var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj, maxNodes: 200000);
+
+                AssertTrue(info.status == MIPStatus.Optimal);
+                AssertCloseD(obj, 3089.0, 1e-3);
+                AssertCloseD(info.objective, 3089.0, 1e-3);
+                AssertCloseD(info.gap, 0.0, 1e-9);
+
+                senses.Dispose(); integ.Dispose(); arena.Dispose();
+            }
+        }
+
+        // Propagation node-count drop, pinned per dtype: the same GomoryWolsey instance solves at exactly 5
+        // nodes in DOUBLE now (stage 3 measured 7 -> propagation fathoms 2), and 7 nodes in FLOAT (float
+        // roundoff changes the branching sequence, so propagation's fathoms land differently -- still no
+        // increase over the stage-3 baseline of 7). Deterministic single-threaded search -> the exact count
+        // is a hard invariant per dtype. (The brief reported 5 for both; only double reproduced it.)
+        void Stage4NodesGomoryWolsey()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(2, 2);
+            A[0, 0] = (double)1; A[0, 1] = (double)1;
+            A[1, 0] = (double)9; A[1, 1] = (double)5;
+            var b = arena.doubleVec(2); b[0] = (double)6; b[1] = (double)45;
+            var c = arena.doubleVec(2); c[0] = (double)(-8); c[1] = (double)(-5);
+            var xl = arena.doubleVec(2);
+            var xu = arena.doubleVec(2); xu[0] = (double)10; xu[1] = (double)10;
+            var x = arena.doubleVec(2);
+            var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
+            var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
+
+            var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
+
+            AssertTrue(info.status == MIPStatus.Optimal);
+            AssertCloseD(obj, -40.0, 1e-3);
+            AssertNodes(info, 5);   // float 7 (unchanged), double 5 (7 -> 5 drop)
+
+            senses.Dispose(); integ.Dispose(); arena.Dispose();
+        }
+
+        // Propagation node-count drop on the big branchy search: stage 3 = 241 nodes, stage 4 = 218 (same
+        // optimum, strictly fewer nodes). DOUBLE-ONLY (same instance/rationale as Stage3NodesBranchy12).
+        void Stage4NodesBranchy12()
+        {
+            int cases = 1;
+            for (int s = 0; s < cases; s++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                               out var xl, out var xu, out var integ);
+                var x = arena.doubleVec(12);
+
+                var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
+
+                AssertTrue(info.status == MIPStatus.Optimal);
+                AssertCloseD(info.objective, 6.0, 1e-6);
+                AssertNodes(info, 218);   // stage3 = 241 -> stage4 = 218
+
+                senses.Dispose(); integ.Dispose(); arena.Dispose();
+            }
+        }
+
+        // Dedicated pre-LP fathom oracle: 2x + 2y = 3 with x, y integer in [0,2]. The LP relaxation is
+        // feasible (x=y=0.75) but there is NO integer point (2(x+y) is even, 3 is odd), and activity-based
+        // propagation proves it at the ROOT: it floors x,y <= 1 from the row's upper limit, then ceils
+        // x,y >= 1 from the lower limit, leaving x=y=1 whose min activity 4 > 3 -> empty domain. So the
+        // node is fathomed WITHOUT ever solving an LP: status Infeasible, nodes == 1, lpIterations == 0
+        // (an LP-detected root infeasibility, by contrast, would report lpIterations > 0 -- cf.
+        // InfeasibleRootLP). Also re-verifies the Infeasible NaN contract. Both dtypes (exact integer data).
+        void Stage4PropagationInfeasible()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(1, 2); A[0, 0] = (double)2; A[0, 1] = (double)2;
+            var b = arena.doubleVec(1); b[0] = (double)3;
+            var c = arena.doubleVec(2); c[0] = (double)(-1); c[1] = (double)(-1);
+            var xl = arena.doubleVec(2);
+            var xu = arena.doubleVec(2); xu[0] = (double)2; xu[1] = (double)2;
+            var x = arena.doubleVec(2);
+            var senses = new NativeArray<ConstraintSense>(1, Allocator.Temp);
+            senses[0] = ConstraintSense.Equal;
+            var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
+
+            var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj);
+
+            AssertTrue(info.status == MIPStatus.Infeasible);
+            AssertNodes(info, 1);
+            AssertEqInt(info.lpIterations, 0);   // propagation fathomed it pre-LP: no LP ever solved
+            AssertTrue(math.isnan(info.objective));
+            AssertTrue(math.isnan(info.dualBound));
+            AssertTrue(math.isnan(info.gap));
+            AssertClose(x[0], (double)0, (double)0);
+            AssertClose(x[1], (double)0, (double)0);
+
+            senses.Dispose(); integ.Dispose(); arena.Dispose();
+        }
+
+        // Gap limit: the branchy n=12 search stopped early via relGap=0.3 before the tree is fully explored
+        // -> MIPStatus.GapLimit, a feasible non-NaN incumbent, a sound finite dualBound (<= objective for a
+        // minimization), and the reported relative gap within the requested limit. DOUBLE-ONLY (many-node
+        // search gives a reliable early-stop window; same float rationale as the other Branchy12 tests).
+        void GapLimitRelGap()
+        {
+            int cases = 1;
+            for (int s = 0; s < cases; s++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                               out var xl, out var xu, out var integ);
+                var x = arena.doubleVec(12);
+                const double relGap = 0.3;
+
+                var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj,
+                                     maxNodes: 0, maxIter: 0, absGap: 0.0, relGap: relGap);
+
+                AssertTrue(info.status == MIPStatus.GapLimit);
+                AssertTrue(math.isfinite(info.objective));                    // valid incumbent, not +inf/NaN
+                AssertTrue(math.isfinite(info.dualBound));
+                AssertTrue(info.dualBound <= info.objective + 1e-6);          // sound bound (minimization)
+                AssertTrue(info.gap <= relGap + 1e-9);                        // gap within the requested limit
+                AssertTrue(info.nodes < 218);                                 // stopped before the full 218-node tree
+                double nz = 0; for (int j = 0; j < 12; j++) nz += math.abs((double)x[j]);
+                AssertTrue(nz > 0);                                           // incumbent not all-zero (opt 6, x=0 infeasible)
+
+                senses.Dispose(); integ.Dispose(); arena.Dispose();
+            }
+        }
+
+        // Pass-through: calling with absGap:0/relGap:0 (both = "off") must be identical to the default --
+        // GomoryWolsey still solved to proven Optimal, obj -40, gap 0. Guards against the new parameters
+        // perturbing the default path. Both dtypes.
+        void GapLimitPassThrough()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleMat(2, 2);
+            A[0, 0] = (double)1; A[0, 1] = (double)1;
+            A[1, 0] = (double)9; A[1, 1] = (double)5;
+            var b = arena.doubleVec(2); b[0] = (double)6; b[1] = (double)45;
+            var c = arena.doubleVec(2); c[0] = (double)(-8); c[1] = (double)(-5);
+            var xl = arena.doubleVec(2);
+            var xu = arena.doubleVec(2); xu[0] = (double)10; xu[1] = (double)10;
+            var x = arena.doubleVec(2);
+            var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
+            var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
+
+            var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj,
+                                 maxNodes: 0, maxIter: 0, absGap: 0.0, relGap: 0.0);
+
+            AssertTrue(info.status == MIPStatus.Optimal);
+            AssertCloseD(obj, -40.0, 1e-3);
+            AssertCloseD(info.gap, 0.0, 1e-9);
+
+            senses.Dispose(); integ.Dispose(); arena.Dispose();
+        }
+
+        // Determinism with the rounding heuristic AND propagation both active: stein9 installs incumbents
+        // via the rounding heuristic during its search and is propagated at every node, so two back-to-back
+        // identical solves must still be bit-for-bit identical (nodes/iter/obj/bound/x). Both dtypes (cheap).
+        void Stage4DeterminismStein9()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildStein9(in arena, out var A, out var b, out var c, out var senses, out var xl, out var xu, out var integ);
+            var x1 = arena.doubleVec(9);
+            var x2 = arena.doubleVec(9);
+
+            var i1 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x1, out double o1);
+            var i2 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x2, out double o2);
+
+            AssertEqInt(i1.nodes, i2.nodes);
+            AssertEqInt(i1.lpIterations, i2.lpIterations);
+            AssertEqExactD(i1.objective, i2.objective);
+            AssertEqExactD(i1.dualBound, i2.dualBound);
+            AssertEqExactD(o1, o2);
+            for (int j = 0; j < 9; j++) AssertClose(x1[j], x2[j], (double)0);
+
+            senses.Dispose(); integ.Dispose(); arena.Dispose();
+        }
+
+        // Determinism with an active gap limit: two identical relGap-triggering solves must stop at the
+        // identical node/status/gap/incumbent. DOUBLE-ONLY (Branchy12, same rationale as GapLimitRelGap).
+        void Stage4DeterminismGapLimit()
+        {
+            int cases = 1;
+            for (int s = 0; s < cases; s++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                BuildBranchy12(in arena, out var A, out var b, out var c, out var senses,
+                               out var xl, out var xu, out var integ);
+                var x1 = arena.doubleVec(12);
+                var x2 = arena.doubleVec(12);
+                const double relGap = 0.3;
+
+                var i1 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x1, out double o1,
+                                   maxNodes: 0, maxIter: 0, absGap: 0.0, relGap: relGap);
+                var i2 = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x2, out double o2,
+                                   maxNodes: 0, maxIter: 0, absGap: 0.0, relGap: relGap);
+
+                AssertTrue(i1.status == MIPStatus.GapLimit);
+                AssertTrue(i1.status == i2.status);
+                AssertEqInt(i1.nodes, i2.nodes);
+                AssertEqInt(i1.lpIterations, i2.lpIterations);
+                AssertEqExactD(i1.objective, i2.objective);
+                AssertEqExactD(i1.dualBound, i2.dualBound);
+                AssertEqExactD(i1.gap, i2.gap);
+                AssertEqExactD(o1, o2);
+                for (int j = 0; j < 12; j++) AssertClose(x1[j], x2[j], (double)0);
+
+                senses.Dispose(); integ.Dispose(); arena.Dispose();
+            }
         }
 
         // ---- diagnostics-recording assert helpers (mirrors LPTests.double.cs) ----

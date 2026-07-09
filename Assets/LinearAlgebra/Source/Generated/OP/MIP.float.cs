@@ -9,10 +9,13 @@ using Unity.Mathematics;
 namespace LinearAlgebra
 {
     // Mixed-integer programming: branch & bound over the dual simplex (docs/draft-spec-mip.md).
-    // Stage 3: pseudocost + reliability branching (MIP.Pseudocost.float.cs) picks the branching
-    // variable; search order is best-bound-with-plunging -- dive one child immediately, push the
-    // sibling to a best-bound priority queue, and on reaching a leaf jump to the queue's best node
-    // instead of backtracking to the DFS parent.
+    // Pseudocost + reliability branching (MIP.Pseudocost.float.cs) picks the branching variable;
+    // search order is best-bound-with-plunging -- dive one child immediately, push the sibling to a
+    // best-bound priority queue, and on reaching a leaf jump to the queue's best node instead of
+    // backtracking to the DFS parent. Stage 4: every node is domain-propagated to a fixpoint before
+    // its LP solve (MIP.Domain.float.cs's PropagateFixpoint, fathoms empty domains without an LP
+    // solve), a rounding heuristic tries to install an incumbent from each fractional node's LP
+    // solution (TryRoundingHeuristic below), and absGap/relGap make MIPStatus.GapLimit reachable.
     //
     // min cᵀx s.t. Ax {≤,=,≥} b, xl≤x≤xu, x_j integer for integrality[j]!=0.
     //
@@ -87,8 +90,9 @@ namespace LinearAlgebra
         /// <summary>
         /// Solve the mixed-integer program min cᵀx s.t. A x {≤,=,≥} b (per-row <paramref name="senses"/>),
         /// xl ≤ x ≤ xu, x_j ∈ ℤ for every flagged <paramref name="integrality"/>[j]. Branch &amp; bound
-        /// over the dense dual simplex (docs/draft-spec-mip.md stage 3: pseudocost + reliability
-        /// branching, best-bound node queue with plunging; still no propagation/heuristics).
+        /// over the dense dual simplex (docs/draft-spec-mip.md: pseudocost + reliability branching,
+        /// best-bound node queue with plunging, activity-based domain propagation at every node, and a
+        /// rounding heuristic).
         ///
         /// Every INTEGER variable needs a finite <paramref name="xl"/>[j] (throws
         /// <see cref="ArgumentException"/> otherwise). Continuous variables support the full general
@@ -110,12 +114,18 @@ namespace LinearAlgebra
         /// <param name="maxNodes">B&amp;B node budget; &lt;= 0 means unlimited.</param>
         /// <param name="maxIter">Cumulative LP-iteration budget across every node solved so far;
         /// &lt;= 0 means unlimited.</param>
+        /// <param name="absGap">Stop (<see cref="MIPStatus.GapLimit"/>) once <c>objective - dualBound
+        /// &lt;= absGap</c>, given an incumbent. &lt;= 0 means no absolute-gap limit.</param>
+        /// <param name="relGap">Stop (<see cref="MIPStatus.GapLimit"/>) once
+        /// <c>(objective - dualBound) / max(1, |objective|) &lt;= relGap</c>, given an incumbent.
+        /// &lt;= 0 means no relative-gap limit.</param>
         public static MIPInfo solve(in floatMxN A, in floatN b, in floatN c,
                                     in NativeArray<ConstraintSense> senses,
                                     in floatN xl, in floatN xu,
                                     in NativeArray<byte> integrality,
                                     ref floatN x, out double objective,
-                                    int maxNodes = 0, int maxIter = 0)
+                                    int maxNodes = 0, int maxIter = 0,
+                                    double absGap = 0.0, double relGap = 0.0)
         {
             int m0 = A.M_Rows, n = A.N_Cols;
 
@@ -220,7 +230,8 @@ namespace LinearAlgebra
             for (int j = 0; j < n; j++) { curLB[j] = xl[j]; curUB[j] = xu[j]; }
 
             var info = SearchCore(Aaug, bAug, costY, sensesAug, c, integrality, kind, col, xl, xu,
-                                  curLB, curUB, rowLB, rowUB, n, nY, mAug, maxNodes, maxIter, x);
+                                  curLB, curUB, rowLB, rowUB, A, b, senses, m0, n, nY, mAug,
+                                  maxNodes, maxIter, absGap, relGap, x);
 
             objective = info.objective;
 
@@ -255,8 +266,9 @@ namespace LinearAlgebra
                                            floatN xlRoot, floatN xuRoot,
                                            floatN curLB, floatN curUB,
                                            NativeArray<int> rowLB, NativeArray<int> rowUB,
+                                           floatMxN A, floatN b, NativeArray<ConstraintSense> senses, int m0,
                                            int n, int nY, int mAug,
-                                           int maxNodes, int maxIter,
+                                           int maxNodes, int maxIter, double absGap, double relGap,
                                            floatN xOut)
         {
             var basis = new LPBasis(nY, mAug, Allocator.Temp);   // job-safe: unpopulated, seeded by first solve
@@ -265,6 +277,7 @@ namespace LinearAlgebra
             var xNode = new floatN(math.max(n, 1), Allocator.Temp);
             var trialX = new floatN(math.max(n, 1), Allocator.Temp);
             var incumbentX = new floatN(math.max(n, 1), Allocator.Temp);
+            var xRound = new floatN(math.max(n, 1), Allocator.Temp);   // TryRoundingHeuristic scratch
 
             var boundStack = new UnsafeList<floatBoundChange>(64, Allocator.Temp);
             var heap = new UnsafeList<floatMIPQueueNode>(64, Allocator.Temp);
@@ -278,6 +291,34 @@ namespace LinearAlgebra
             int nInt = 0; for (int j = 0; j < n; j++) if (integrality[j] != 0) nInt++;
             int sbBudget = STRONG_BRANCH_CALLS_PER_INT_VAR * math.max(nInt, 1);
             int sbCallsUsed = 0;
+
+            // Up/down locks (TryRoundingHeuristic below), ported from
+            // HighsMipSolverData::runSetup's uplocks/downlocks: static over the ORIGINAL rows, computed
+            // once per search, not per node. A row with a finite lower limit locks j UP when a_ij<0, DOWN
+            // when a_ij>=0; a row with a finite upper limit locks j DOWN when a_ij<0, UP when a_ij>=0.
+            var uplocks = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
+            var downlocks = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
+            for (int j = 0; j < n; j++)
+            {
+                int up = 0, down = 0;
+                for (int i = 0; i < m0; i++)
+                {
+                    double a = (double)A[i, j];
+                    if (a == 0) continue;
+                    ConstraintSense se = senses[i];
+                    bool hasHiL = se != ConstraintSense.GreaterEqual;
+                    bool hasLoL = se != ConstraintSense.LessEqual;
+                    if (hasLoL) { if (a < 0) up++; else down++; }
+                    if (hasHiL) { if (a < 0) down++; else up++; }
+                }
+                uplocks[j] = up; downlocks[j] = down;
+            }
+            // Fixed internal seed (same convention as LOBPCG.float.cs's seedRng): MIP.solve has no
+            // public seed parameter and must stay bit-deterministic across repeated identical calls
+            // (docs/draft-spec-mip.md open question 6), unlike HiGHS's own randomizedRounding which
+            // advances a solver-wide RNG. Draws happen only inside the deterministic search sequence, so
+            // repeated calls on identical inputs draw the identical sequence.
+            var roundRng = new Unity.Mathematics.Random(0x9E3779B1u);
 
             bool haveIncumbent = false;
             double incumbentObj = double.PositiveInfinity;
@@ -294,19 +335,32 @@ namespace LinearAlgebra
 
             while (true)
             {
-                LPInfo info = LP.solve(in Aaug, in bAug, in costY, in sensesAug, ref y, out double _, ref basis, 0);
                 nodes++;
-                totalLpIter += info.iterations;
+
+                // Domain propagation (docs/draft-spec-mip.md stage 4): tighten integer bounds to a
+                // fixpoint from the ORIGINAL rows before this node's LP solve. An emptied domain
+                // fathoms the node without ever calling LP.solve (usable stays false below).
+                bool domainOk = PropagateFixpoint(A, b, senses, m0, n, integrality, nInt,
+                                                  curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref boundStack);
+
+                LPInfo info = default;
+                bool usable = false;
+                double nodeObj = 0;
+
+                if (domainOk)
+                {
+                    info = LP.solve(in Aaug, in bAug, in costY, in sensesAug, ref y, out double _, ref basis, 0);
+                    totalLpIter += info.iterations;
+                    usable = info.status == LPStatus.Optimal;
+                }
 
                 if (nodes == 1)
                 {
-                    if (info.status == LPStatus.Infeasible) { status = MIPStatus.Infeasible; break; }
-                    if (info.status == LPStatus.Unbounded) { status = MIPStatus.Unbounded; break; }
-                    if (info.status == LPStatus.MaxIterations) { status = MIPStatus.MaxIterations; break; }
+                    if (!domainOk || info.status == LPStatus.Infeasible) { status = MIPStatus.Infeasible; break; }
+                    if (domainOk && info.status == LPStatus.Unbounded) { status = MIPStatus.Unbounded; break; }
+                    if (domainOk && info.status == LPStatus.MaxIterations) { status = MIPStatus.MaxIterations; break; }
                 }
 
-                bool usable = info.status == LPStatus.Optimal;
-                double nodeObj = 0;
                 if (usable)
                 {
                     UnshiftToX(y, kind, col, xlRoot, xuRoot, n, xNode);
@@ -329,7 +383,23 @@ namespace LinearAlgebra
                     break;
                 }
 
-                // Non-root Infeasible/Unbounded/MaxIterations: pruned, unusable bound.
+                // Gap limit (docs/draft-spec-mip.md stage 4): dualBound peeked cheaply as min(current
+                // plunge frontier, best-bound heap root) -- same quantity the final drain below folds
+                // into MIPInfo.dualBound, just without popping.
+                if (haveIncumbent && (absGap > 0.0 || relGap > 0.0))
+                {
+                    double dBoundNow = heap.Length > 0 ? math.min(frontierBound, heap[0].parentBound) : frontierBound;
+                    double gapAbsNow = incumbentObj - dBoundNow;
+                    double gapRelNow = gapAbsNow / math.max(1.0, math.abs(incumbentObj));
+                    if ((absGap > 0.0 && gapAbsNow <= absGap) || (relGap > 0.0 && gapRelNow <= relGap))
+                    {
+                        status = MIPStatus.GapLimit;
+                        break;
+                    }
+                }
+
+                // Non-root Infeasible/Unbounded/MaxIterations, or a propagation-emptied domain: pruned,
+                // unusable bound.
                 bool prune = !usable || (haveIncumbent && nodeObj >= incumbentObj - ABS_GAP);
 
                 if (!prune)
@@ -348,6 +418,12 @@ namespace LinearAlgebra
                     }
                     else
                     {
+                        // Rounding heuristic (docs/draft-spec-mip.md stage 4): the LP solution is
+                        // fractional here, so try it -- a cheap, non-branching shot at a better incumbent.
+                        TryRoundingHeuristic(xNode, integrality, n, uplocks, downlocks, ref roundRng,
+                                             A, b, senses, m0, c, xlRoot, xuRoot,
+                                             xRound, ref haveIncumbent, ref incumbentObj, incumbentX);
+
                         float v = xNode[branchVar];
                         float floorV = math.floor(v);
                         float ceilV = math.ceil(v);
@@ -449,10 +525,74 @@ namespace LinearAlgebra
             }
 
             basis.Dispose(); y.Dispose(); trialY.Dispose(); xNode.Dispose(); trialX.Dispose(); incumbentX.Dispose();
+            xRound.Dispose(); uplocks.Dispose(); downlocks.Dispose();
             boundStack.Dispose(); heap.Dispose();
             pcUpSum.Dispose(); pcDownSum.Dispose(); pcUpCount.Dispose(); pcDownCount.Dispose();
 
             return new MIPInfo { objective = objective, dualBound = dualBound, gap = gap, nodes = nodes, lpIterations = totalLpIter, status = status };
+        }
+
+        // Rounding heuristic (docs/draft-spec-mip.md stage 4), ported from
+        // HighsPrimalHeuristics::randomizedRounding's per-variable rounding rule: a variable with no
+        // "up lock" (uplocks[j]==0) is safe to round up unconditionally; failing that, no "down lock"
+        // rounds down; failing both (locked in both directions), floor a randomized point in the
+        // fractional interval -- HiGHS's `floor(relaxationsol[i] + randgen.real(0.1, 0.9))`. Continuous
+        // variables are left at their LP value. Two intentional deviations from tryRoundedPoint/
+        // randomizedRounding, both required by this library's constraints (see the call sites below for
+        // why, not just "simpler"):
+        //  (a) HiGHS re-solves an LP with the rounded integers fixed to repair continuous variables and
+        //      confirm feasibility; we have no such subsystem available here (no per-node LP re-solve
+        //      budget was scoped for this heuristic) and the mini-spec calls for an O(mn) direct
+        //      feasibility check against the original rows instead -- see TryRoundingHeuristic's callers.
+        //  (b) HiGHS's `randgen` is a solver-wide RNG advanced continuously; MIP.solve has no public seed
+        //      parameter and must stay bit-deterministic across repeated identical calls (open question 6
+        //      in the spec), so this uses a fixed internal seed instead (see roundRng in SearchCore).
+        // Installs the point as the new incumbent when feasible and better than the current one (or there
+        // is none yet).
+        internal static void TryRoundingHeuristic(floatN xNode, NativeArray<byte> integrality, int n,
+                                                   NativeArray<int> uplocks, NativeArray<int> downlocks,
+                                                   ref Unity.Mathematics.Random rng,
+                                                   floatMxN A, floatN b, NativeArray<ConstraintSense> senses, int m0,
+                                                   floatN c, floatN xlRoot, floatN xuRoot, floatN xRound,
+                                                   ref bool haveIncumbent, ref double incumbentObj, floatN incumbentX)
+        {
+            for (int j = 0; j < n; j++)
+            {
+                if (integrality[j] == 0) { xRound[j] = xNode[j]; continue; }
+                double v = (double)xNode[j];
+                double r;
+                if (uplocks[j] == 0) r = math.ceil(v - INTEGRALITY_TOL);
+                else if (downlocks[j] == 0) r = math.floor(v + INTEGRALITY_TOL);
+                else r = math.floor(v + (double)rng.NextFloat(0.1f, 0.9f));
+                xRound[j] = (float)r;
+            }
+
+            for (int j = 0; j < n; j++)
+            {
+                double v = (double)xRound[j];
+                if (v < (double)xlRoot[j] - ROUNDING_FEAS_TOL || v > (double)xuRoot[j] + ROUNDING_FEAS_TOL)
+                    return;
+            }
+
+            for (int i = 0; i < m0; i++)
+            {
+                double act = 0;
+                for (int j = 0; j < n; j++) act += (double)A[i, j] * (double)xRound[j];
+                double bi = (double)b[i];
+                double tol = ROUNDING_FEAS_TOL * (1.0 + math.abs(bi));
+                ConstraintSense se = senses[i];
+                if (se == ConstraintSense.LessEqual) { if (act > bi + tol) return; }
+                else if (se == ConstraintSense.GreaterEqual) { if (act < bi - tol) return; }
+                else { if (math.abs(act - bi) > tol) return; }
+            }
+
+            double cand = 0;
+            for (int j = 0; j < n; j++) cand += (double)c[j] * (double)xRound[j];
+            if (haveIncumbent && cand >= incumbentObj - ABS_GAP) return;
+
+            haveIncumbent = true;
+            incumbentObj = cand;
+            for (int j = 0; j < n; j++) incumbentX[j] = xRound[j];
         }
     }
 }

@@ -1,14 +1,15 @@
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
     // Bound-change undo stack for MIP's search (MIP.fProxy.cs's SearchCore): push a tightening, undo
-    // back to a marker. Stage 3 uses this only for the current plunge's dive step and for throwaway
-    // strong-branch trials (MIP.Pseudocost.fProxy.cs); jumping to a different open node (a best-bound
+    // back to a marker. Used for the current plunge's dive step, throwaway strong-branch trials
+    // (MIP.Pseudocost.fProxy.cs), and stage 4's PropagateFixpoint below, which pushes every tightening
+    // it finds through the same Push/UndoToMarker pair. Jumping to a different open node (a best-bound
     // queue pop) uses ApplyNodeBounds below instead, since the target is not necessarily an ancestor
-    // reachable by undoing this stack. Stage 4's propagation will push several changes per node
-    // through the same Push/UndoToMarker pair.
+    // reachable by undoing this stack.
     //
     // Bounds are recorded in ORIGINAL x-space; Push/UndoToMarker translate to the shifted y-space row
     // rhs internally (see MIP.fProxy.cs's header for the shift).
@@ -134,6 +135,197 @@ namespace LinearAlgebra
                 Aaug[rowUB[j], col[j]] = hiFinite ? (fProxy)1 : (fProxy)0;
                 bAug[rowUB[j]] = hiFinite ? (U[j] - xlRoot[j]) : (fProxy)0;
             }
+        }
+
+        /// <summary>
+        /// Activity-based bound tightening (docs/draft-spec-mip.md stage 4), ported from
+        /// mip/HighsDomain.cpp's <c>propagate</c>/<c>propagateRowUpper</c>/<c>propagateRowLower</c>:
+        /// WORKLIST-driven (a row is only (re-)examined when a variable it touches just changed --
+        /// HighsDomain's <c>markPropagate</c>/column-incidence loop -- not a blind repeated sweep of
+        /// every row). For the row at the head of the queue, compute the min/max row activity from the
+        /// current live integer bounds (<paramref name="curLB"/>/<paramref name="curUB"/>; continuous
+        /// variables keep their root bounds, which never change) and derive a tightened bound for every
+        /// INTEGER variable with a nonzero row coefficient. A row with more than one variable whose
+        /// relevant bound is still infinite yields no tightening from that row (HiGHS's <c>ninfmin</c>/
+        /// <c>ninfmax</c> infinite-contributor counts); the closed form used when exactly one (or zero)
+        /// such contributor exists is <c>(rhs - (act - ownContribution)) / a_ij</c> -- HiGHS's
+        /// <c>minresact</c>/<c>maxresact</c>. Tightened integer bounds round inward (floor for an upper
+        /// bound, ceil for a lower bound). Every tightening is applied via <see cref="PushBoundChange"/>
+        /// (same undo-stack entries as a branch decision, same UB-row inert/active handling for a
+        /// variable whose bound was infinite) and re-queues every OTHER row with a nonzero coefficient
+        /// on that variable (dense column scan standing in for HiGHS's sparse column-index list).
+        /// Terminates when the queue drains (the true fixpoint, mirroring HiGHS's
+        /// <c>havePropagationRows</c>) or a total-row-visit cap (<see cref="PROPAGATION_MAX_PASSES"/>
+        /// times the row count -- HiGHS has no such cap because its incremental activity bookkeeping
+        /// makes each visit O(row length) instead of a full recompute; a cap here is a deliberate,
+        /// bounded-cost adaptation for a fixpoint that is not persisted/maintained incrementally across
+        /// the whole B&amp;B tree the way HighsDomain's activity arrays are -- see the file header).
+        /// </summary>
+        /// <returns>False as soon as a row or a variable's own range is proven empty (L &gt; U) --
+        /// caller fathoms the node WITHOUT an LP solve. True otherwise (a fixpoint, possibly a no-op,
+        /// was reached).</returns>
+        internal static bool PropagateFixpoint(fProxyMxN A, fProxyN b, NativeArray<ConstraintSense> senses,
+                                               int m0, int n, NativeArray<byte> integrality, int nInt,
+                                               fProxyN curLB, fProxyN curUB, fProxyN xlRoot,
+                                               fProxyMxN Aaug, NativeArray<int> col, fProxyN bAug,
+                                               NativeArray<int> rowLB, NativeArray<int> rowUB,
+                                               ref UnsafeList<fProxyBoundChange> stack)
+        {
+            if (nInt == 0 || m0 == 0) return true;   // nothing propagation can tighten
+
+            // Worklist of row indices still due for (re-)examination, plus membership flags so a row is
+            // never queued twice at once (HighsDomain's propagateinds_ + an implicit membership test).
+            var inQueue = new NativeArray<bool>(m0, Allocator.Temp);
+            var queue = new UnsafeList<int>(m0, Allocator.Temp);
+            for (int i = 0; i < m0; i++) { queue.Add(i); inQueue[i] = true; }
+
+            bool feasible = true;
+            int qHead = 0;
+            int visits = 0;
+            int maxVisits = PROPAGATION_MAX_PASSES * m0;
+
+            while (feasible && qHead < queue.Length && visits < maxVisits)
+            {
+                int i = queue[qHead]; qHead++;
+                inQueue[i] = false;
+                visits++;
+
+                ConstraintSense se = senses[i];
+                double bi = (double)b[i];
+                bool hasHi = se != ConstraintSense.GreaterEqual;   // row upper limit: <= or =
+                bool hasLo = se != ConstraintSense.LessEqual;      // row lower limit: >= or =
+
+                double minAct = 0, maxAct = 0;
+                int ninfMin = 0, ninfMax = 0;
+                for (int j = 0; j < n; j++)
+                {
+                    double a = (double)A[i, j];
+                    if (a == 0) continue;
+                    double Lj = (double)curLB[j], Uj = (double)curUB[j];
+                    bool loInf = Lj <= -1e29, hiInf = Uj >= 1e29;
+                    if (a > 0)
+                    {
+                        if (loInf) ninfMin++; else minAct += a * Lj;
+                        if (hiInf) ninfMax++; else maxAct += a * Uj;
+                    }
+                    else
+                    {
+                        if (hiInf) ninfMin++; else minAct += a * Uj;
+                        if (loInf) ninfMax++; else maxAct += a * Lj;
+                    }
+                }
+
+                // Row itself already infeasible against every current bound -> empty domain.
+                if (hasHi && ninfMin == 0 && minAct > bi + PROPAGATION_TOL) feasible = false;
+                if (feasible && hasLo && ninfMax == 0 && maxAct < bi - PROPAGATION_TOL) feasible = false;
+
+                for (int j = 0; feasible && j < n; j++)
+                {
+                    if (integrality[j] == 0) continue;
+                    double a = (double)A[i, j];
+                    if (a == 0) continue;
+
+                    double Lj = (double)curLB[j], Uj = (double)curUB[j];
+                    bool loInf = Lj <= -1e29, hiInf = Uj >= 1e29;
+                    bool tightened = false;
+
+                    // From the row's upper limit (uses minAct): tightens U_j when a>0, L_j when a<0.
+                    if (hasHi)
+                    {
+                        bool jInf = (a > 0) ? loInf : hiInf;
+                        if (ninfMin - (jInf ? 1 : 0) == 0)
+                        {
+                            double own = jInf ? 0.0 : (a > 0 ? a * Lj : a * Uj);
+                            double cand = (bi - (minAct - own)) / a;
+                            if (a > 0)
+                            {
+                                double newU = math.floor(cand + PROPAGATION_TOL);
+                                if (newU < Uj - PROPAGATION_TOL)
+                                {
+                                    PushBoundChange(ref stack, j, true, (fProxy)Uj, (fProxy)newU,
+                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                                    tightened = true;
+                                }
+                            }
+                            else
+                            {
+                                double newL = math.ceil(cand - PROPAGATION_TOL);
+                                if (newL > Lj + PROPAGATION_TOL)
+                                {
+                                    PushBoundChange(ref stack, j, false, (fProxy)Lj, (fProxy)newL,
+                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                                    tightened = true;
+                                }
+                            }
+                        }
+                    }
+
+                    // From the row's lower limit (uses maxAct): tightens L_j when a>0, U_j when a<0.
+                    if (hasLo)
+                    {
+                        bool jInf = (a > 0) ? hiInf : loInf;
+                        if (ninfMax - (jInf ? 1 : 0) == 0)
+                        {
+                            double own = jInf ? 0.0 : (a > 0 ? a * Uj : a * Lj);
+                            double cand = (bi - (maxAct - own)) / a;
+                            if (a > 0)
+                            {
+                                double newL = math.ceil(cand - PROPAGATION_TOL);
+                                if (newL > Lj + PROPAGATION_TOL)
+                                {
+                                    PushBoundChange(ref stack, j, false, (fProxy)Lj, (fProxy)newL,
+                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                                    tightened = true;
+                                }
+                            }
+                            else
+                            {
+                                double newU = math.floor(cand + PROPAGATION_TOL);
+                                if (newU < Uj - PROPAGATION_TOL)
+                                {
+                                    PushBoundChange(ref stack, j, true, (fProxy)Uj, (fProxy)newU,
+                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                                    tightened = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if ((double)curLB[j] > (double)curUB[j] + PROPAGATION_TOL) { feasible = false; break; }
+
+                    // Column-to-row incidence (HighsDomain::markPropagate over the column's nonzeros):
+                    // re-queue every row touching j, including this one (a later variable in this same
+                    // row can unlock a stronger bound for j once j itself moved).
+                    if (tightened)
+                    {
+                        for (int i2 = 0; i2 < m0; i2++)
+                        {
+                            if (!inQueue[i2] && (double)A[i2, j] != 0.0)
+                            {
+                                queue.Add(i2);
+                                inQueue[i2] = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            queue.Dispose();
+            inQueue.Dispose();
+
+            // Safety net for a variable with a zero coefficient in every row (so it is never visited
+            // above): HighsDomain::changeBound checks L<=U immediately on every single bound change,
+            // independent of row activity, catching exactly this case; PushBoundChange itself is shared
+            // with the branching/strong-branch call sites (out of this stage's scope to change), so the
+            // same check is done here as one final O(n) sweep instead. A branching-created empty child
+            // with no row coefficients at all is still caught correctly regardless, by the augmented LP's
+            // own bound-row infeasibility on the next solve -- this sweep only saves that one LP solve.
+            if (feasible)
+                for (int j = 0; j < n; j++)
+                    if (integrality[j] != 0 && (double)curLB[j] > (double)curUB[j] + PROPAGATION_TOL)
+                        { feasible = false; break; }
+
+            return feasible;
         }
     }
 }

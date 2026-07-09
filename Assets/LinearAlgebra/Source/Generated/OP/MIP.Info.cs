@@ -5,9 +5,9 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Terminal state of a <see cref="MIP.solve"/> branch-and-bound search, carried by
-    /// <see cref="MIPInfo"/>. Stage 3: pseudocost + reliability branching, best-bound node queue with
-    /// plunging. Still no propagation/heuristics/gap-limit parameter (stage 4).
-    /// <see cref="GapLimit"/> is defined but UNREACHABLE this stage (no relGap/absGap parameter yet).
+    /// <see cref="MIPInfo"/>. Stage 4: activity-based domain propagation at every node, a rounding
+    /// heuristic, and <c>absGap</c>/<c>relGap</c> limit parameters on top of stage 3's pseudocost +
+    /// reliability branching and best-bound node queue with plunging.
     /// </summary>
     public enum MIPStatus
     {
@@ -16,7 +16,8 @@ namespace LinearAlgebra
         /// </summary>
         Optimal = 0,
 
-        /// <summary>Root LP relaxation infeasible, or the tree was exhausted with no integer-feasible
+        /// <summary>Root LP relaxation infeasible (directly, or via domain propagation emptying a
+        /// variable's range before any LP solve), or the tree was exhausted with no integer-feasible
         /// point found. No usable <c>x</c>.</summary>
         Infeasible = 1,
 
@@ -24,7 +25,9 @@ namespace LinearAlgebra
         /// </summary>
         Unbounded = 2,
 
-        /// <summary>Reserved for a future gap parameter (stage 4). Still unreachable this stage.</summary>
+        /// <summary><c>absGap</c>/<c>relGap</c> satisfied before the tree was fully explored: best
+        /// incumbent found so far in <c>x</c>, a sound <see cref="MIPInfo.dualBound"/>, and
+        /// <see cref="MIPInfo.gap"/> &lt;= whichever limit triggered.</summary>
         GapLimit = 3,
 
         /// <summary><c>maxNodes</c> exhausted before the tree was fully explored. Best incumbent found
@@ -141,5 +144,15 @@ namespace LinearAlgebra
         // every variable to reach RELIABILITY observations in both directions (2*RELIABILITY calls),
         // plus slack for trials that return without a usable observation (non-optimal child).
         internal const int STRONG_BRANCH_CALLS_PER_INT_VAR = 4 * RELIABILITY;
+
+        // Domain propagation (MIP.Domain.fProxy.cs's PropagateFixpoint): pass cap for the per-node
+        // fixpoint loop, and the shared tolerance for row-infeasibility detection, bound-tightening
+        // significance, and integer round-inward nudging.
+        internal const int PROPAGATION_MAX_PASSES = 20;
+        internal const double PROPAGATION_TOL = 1e-6;
+
+        // Rounding heuristic (MIP.fProxy.cs's TryRoundingHeuristic): feasibility slack per row, scaled
+        // by the row's own rhs magnitude.
+        internal const double ROUNDING_FEAS_TOL = 1e-6;
     }
 }
