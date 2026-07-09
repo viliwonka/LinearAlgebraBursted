@@ -8,12 +8,28 @@ namespace LinearAlgebra.Benchmarks
     public static class LPBenchmarkFmt
     {
         // LP.solve sizes: n variables, m = n/2 inequality constraints (a wide, interior feasible region).
-        public static readonly int[] SolveVarsN = { 24, 48, 96 };
+        // 384 added alongside the revised/dual backends (docs/spec-revised-simplex.md): tableau simplex
+        // is still practical there (~120ms/solve, double) so it stays in the size list rather than
+        // getting its own cap, unlike the LAD/infeasibility sections below.
+        public static readonly int[] SolveVarsN = { 24, 48, 96, 192, 384 };
 
         // LAD sizes: m observations, NCoef coefficients. LAD-via-LP has m equality constraints, so its
-        // tableau grows with m -- kept modest here precisely to show the scaling gap against IRLS.
-        public static readonly int[] LadRowsM = { 48, 96, 192 };
+        // tableau grows with m -- kept modest here precisely to show the scaling gap against IRLS. 384
+        // added to show the revised/dual backends' win over the tableau at a size where the tableau
+        // itself is no longer practical -- LadSimplexCap stops the tableau-simplex row there (measured
+        // ~101ms already at m=192, double; the O(m*nCols) per-pivot tableau update would make m=384 the
+        // slow tail of this whole benchmark for no informative reason, exactly like SparseLadDenseCap
+        // stops the dense interior-point baseline in Section 3 below).
+        public static readonly int[] LadRowsM = { 48, 96, 192, 384 };
         public const int NCoef = 4;
+        public const int LadSimplexCap = 192;   // tableau-simplex LAD row only up to here
+
+        // Shared by Section 6 (dense covering LP, dual-favorable) and Section 7 (infeasibility
+        // detection): both stay modest relative to SolveVarsN's top end because Section 6's primal phase
+        // 1 (every row starts infeasible under the all-logical basis) and Section 7's degenerate
+        // contradiction can need materially more pivots than Section 1's feasibility-friendly
+        // construction at the same n.
+        public static readonly int[] MidVarsN = { 48, 96, 192 };
 
         // Sparse LAD sizes: m observations over a tall BSR design (~8 nonzeros/row), SparseLadCoef
         // coefficients. m spans past where the dense m x m interior-point normal matrix is practical --
@@ -24,11 +40,17 @@ namespace LinearAlgebra.Benchmarks
         public const int SparseLadCoef = 32;
         public const int SparseLadDenseCap = 512;   // dense interior baseline only up to here
 
-        // PDLP (matrix-free first-order PDHG) knobs. Dense PDLP reuses SolveVarsN (the SAME feasible LPs as
-        // Section 1, so the objective column is a head-to-head correctness check). The sparse benchmark is a
+        // PDLP (matrix-free first-order PDHG) knobs. Dense PDLP has its OWN size list, PdlpDenseVarsN --
+        // it used to reuse SolveVarsN (Section 1's list), which meant extending Section 1 to 192/384 for
+        // the revised/dual backends silently dragged PDLP-dense along too, at up to 16x the per-solve
+        // cost of n=96 while still capped at PdlpMaxIter -- exactly the kind of dependency that produced
+        // the 13+ minute run the coordinator killed. PDLP is a closed chapter (see the FFT-radix4-style
+        // "done" memory entries); it does not need its scaling curve re-measured, so PdlpDenseVarsN stays
+        // pinned at its original sizes regardless of what Section 1 grows to. The sparse benchmark is a
         // block-sparse covering LP -- min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction, so it is
         // both feasible (scale x up) and bounded (cost >= 0): no unbounded/infinite-iteration trap. A hard
         // PdlpMaxIter cap bounds wall-clock regardless of convergence.
+        public static readonly int[] PdlpDenseVarsN = { 24, 48, 96 };   // Section 4's own list -- NOT SolveVarsN
         public static readonly int[] PdlpSparseM = { 512, 2048, 8192 };   // scaling curve (= n_cols); nnz grows as 8*N, so cheap per iter
         public const int PdlpSparseNnzPerRow = 8;
         public const double PdlpEps = 1e-6;
@@ -50,6 +72,28 @@ namespace LinearAlgebra.Benchmarks
         public static string LadRow(string dtype, int m, int n, string method, Bench.Stat st, int iters, double l1) =>
             string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-6} {3,-16} {4,11:F4} {5,11:F4} {6,7} {7,14:E4}",
                 dtype, m, n, method, st.Median, st.Min, iters, l1);
+
+        // Same column layout as SolveHeader/SolveRow but the last column is the terminal status instead
+        // of the objective -- Section 7 (infeasibility detection) needs to show WHICH backends actually
+        // report Infeasible vs exhaust MaxIterations, which an objective number can't communicate
+        // (Infeasible/MaxIterations both leave objective meaningless -- see LPInfo's own doc comment).
+        //
+        // Takes `int status`, not LPStatus: the job (root cause 1's fix) already writes `(int)info.status`
+        // into a NativeArray<int> output -- an enum-to-int cast is Burst-legal -- and the template passes
+        // that raw int straight through. This int IS the cross-assembly bridge: the raw
+        // TemplateSourceBenchmarks firstpass compile has its own LOCAL LPStatus, distinct from this
+        // hand-written assembly's (same reason the OP TemplateSource firstpass needs its own proxy
+        // structs -- see LP.RevisedSimplex.fProxy.cs's file header), so passing the ENUM directly across
+        // that boundary is a CS0012 "add a reference to assembly BurstLinearAlgebra" error; an earlier
+        // version worked around it by formatting the status name to a string inside the template, which
+        // was rejected as the wrong place to do that mapping -- StatusName (this assembly's own real
+        // LPStatus) belongs here instead, one cast away from the raw int.
+        public static string InfeasHeader() => string.Format("{0,-7} {1,-6} {2,-6} {3,-14} {4,11} {5,11} {6,7} {7,14}",
+            "dtype", "n", "m", "method", "med(ms)", "min(ms)", "iters", "status");
+
+        public static string InfeasRow(string dtype, int n, int m, string method, Bench.Stat st, int iters, int status) =>
+            string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-6} {3,-14} {4,11:F4} {5,11:F4} {6,7} {7,14}",
+                dtype, n, m, method, st.Median, st.Min, iters, StatusName((LPStatus)status));
     }
 
     // ================================================================================================
@@ -62,10 +106,28 @@ namespace LinearAlgebra.Benchmarks
     //     column shows all four agree, the iters column is directly comparable pivot-for-pivot.
     //
     //   Section 2 (LAD): random overdetermined regression b = A x_true + noise with periodic gross
-    //     outliers. Exact L1 fit (LP.lad) via simplex vs via interior point vs the fast approximate
-    //     IRLS (Optimize.ladIRLS). The L1-residual column shows all three reach essentially the same
-    //     minimum; the timing shows LAD-via-LP grows with the number of observations (its constraint
-    //     count) while IRLS -- a fixed-size normal-equation solve per iteration -- barely moves.
+    //     outliers. Exact L1 fit (LP.lad) via all FOUR LP.solve backends vs the fast approximate IRLS
+    //     (Optimize.ladIRLS) -- LP.lad's own default backend is RevisedSimplex (not the tableau), since
+    //     LAD's standard form is exactly the bounded-variable shape revised simplex targets. The
+    //     L1-residual column shows all five reach essentially the same minimum; the timing shows
+    //     LAD-via-tableau-simplex grows with the number of observations (its constraint count, capped
+    //     at LadSimplexCap for exactly that reason) while revised/dual/IRLS stay practical much further.
+    //
+    //   Section 6 (dense covering LP): min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction
+    //     (dense analogue of Section 5's sparse covering LP) -- deliberately DUAL-FAVORABLE: every
+    //     nonneg cost column is already dual-feasible at the all-logical start (y=0 -> d_j=c_j>=0), so
+    //     dual simplex needs no phase 1 at all, while every row starts primal-INFEASIBLE (0 doesn't
+    //     satisfy Ax>=b), forcing a real phase 1 on the tableau AND revised primal. The fairness
+    //     counterpoint to Section 1's primal-friendly construction, for the primal-vs-dual-default
+    //     question.
+    //
+    //   Section 7 (infeasibility detection): Section 1's feasible construction plus ONE contradictory
+    //     row (row 0 duplicated as a >= row with rhs b0+10 -- A0.x can never be both <= b0 and >= b0+10,
+    //     infeasible by construction with no subtler failure mode to get wrong). Reports a STATUS column
+    //     instead of an objective: the exact backends (tableau/revised/dual simplex) should all report
+    //     Infeasible; interior point has no exact infeasibility certificate (that needs a homogeneous
+    //     self-dual embedding -- see LP.InteriorPoint.fProxy.cs's own doc comment) and is EXPECTED to
+    //     exhaust MaxIterations instead -- the table reports that honestly rather than masking it.
     //
     // Every solve runs inside a [BurstCompile] IJob; timing is IJob.Run() (native code, not Mono).
     // Hand-written harness half. The timed IJobs and the per-section build+measure methods are code-
@@ -82,16 +144,26 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("Section 1: random dense feasible/bounded LPs, min cx s.t. Ax<=b, x>=0 -- tableau simplex vs");
             sb.AppendLine("interior point vs revised primal simplex vs dual simplex, all on the SAME problem (objective");
             sb.AppendLine("column shows all four agree). Section 2: LAD");
-            sb.AppendLine("(L1) regression with gross outliers -- exact LP.lad (simplex / interior point) vs fast");
-            sb.AppendLine("approximate Optimize.ladIRLS. L1-residual column shows agreement; timing shows LAD-via-");
-            sb.AppendLine("LP scales with observation count (its constraints) while IRLS stays a fixed n x n solve.");
-            sb.AppendLine("Section 3: SPARSE LAD -- the same L1 fit over a tall block-sparse (BSR) design, solved by");
-            sb.AppendLine("the matrix-free interior point (never forms the m x m normal matrix), vs the dense LP.lad");
-            sb.AppendLine("baseline where it still fits. Same core drives sparse LP.solve, so it is representative.");
-            sb.AppendLine("Section 4: PDLP (matrix-free first-order PDHG) vs simplex vs interior point on the SAME");
-            sb.AppendLine("dense feasible LPs as Section 1 -- objective column shows agreement; timing/iters show the");
-            sb.AppendLine("first-order tradeoff. Section 5: sparse PDLP vs the sparse interior point on a block-sparse");
-            sb.AppendLine("covering LP (min cx s.t. Ax>=b, x>=0) -- PDLP's matrix-free home turf (only spMV/spMVT).");
+            sb.AppendLine("(L1) regression with gross outliers -- exact LP.lad (all four LP.solve backends, LAD's own");
+            sb.AppendLine("default is RevisedSimplex) vs fast approximate Optimize.ladIRLS. L1-residual column shows");
+            sb.AppendLine("agreement; timing shows tableau-simplex LAD grows with observation count (capped past");
+            sb.AppendLine("LadSimplexCap) while revised/dual simplex stay practical much further, IRLS staying a fixed");
+            sb.AppendLine("n x n solve throughout. Section 3: SPARSE LAD -- the same L1 fit over a tall block-sparse");
+            sb.AppendLine("(BSR) design, solved by the matrix-free interior point (never forms the m x m normal");
+            sb.AppendLine("matrix), vs the dense LP.lad baseline where it still fits. Same core drives sparse");
+            sb.AppendLine("LP.solve, so it is representative. Section 4: PDLP (matrix-free first-order PDHG) vs");
+            sb.AppendLine("simplex vs interior point on Section 1's SAME dense feasible LP construction, at PDLP's own");
+            sb.AppendLine("(smaller, unchanged) size list PdlpDenseVarsN -- objective column shows agreement; timing/");
+            sb.AppendLine("iters show the first-order tradeoff. Section 5: sparse PDLP vs the");
+            sb.AppendLine("sparse interior point on a block-sparse covering LP (min cx s.t. Ax>=b, x>=0) -- PDLP's");
+            sb.AppendLine("matrix-free home turf (only spMV/spMVT). Section 6: the DENSE analogue of Section 5's");
+            sb.AppendLine("covering LP, all four LP.solve backends -- deliberately dual-favorable (every row starts");
+            sb.AppendLine("primal-infeasible, forcing a real phase 1 on the primal backends, while every column");
+            sb.AppendLine("starts dual-feasible) -- the fairness counterpoint to Section 1 for the primal-vs-dual");
+            sb.AppendLine("default question. Section 7: infeasibility detection -- Section 1's construction plus one");
+            sb.AppendLine("contradictory row, all four backends; a STATUS column (not objective) shows which backends");
+            sb.AppendLine("actually detect Infeasible vs exhaust MaxIterations (interior point has no exact");
+            sb.AppendLine("infeasibility certificate, so MaxIterations there is expected, not a bug).");
             sb.AppendLine();
 
             SectionSolveFloat(sb);
@@ -104,6 +176,10 @@ namespace LinearAlgebra.Benchmarks
             SectionPdlpDenseDouble(sb);
             SectionPdlpSparseFloat(sb);
             SectionPdlpSparseDouble(sb);
+            SectionDenseCoveringFloat(sb);
+            SectionDenseCoveringDouble(sb);
+            SectionInfeasibleFloat(sb);
+            SectionInfeasibleDouble(sb);
         }
     }
 }
