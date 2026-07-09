@@ -38,6 +38,22 @@ namespace LinearAlgebra
         /// <summary>Mehrotra primal-dual interior point. Polynomial, scales to larger/denser LPs,
         /// reuses the Cholesky normal-equation stack; converges to an interior optimum.</summary>
         InteriorPoint = 1,
+
+        /// <summary>Bounded-variable PRIMAL revised simplex over an LU-factored basis (HiGHS-lineage,
+        /// stage 1 of docs/spec-revised-simplex.md): FTRAN/BTRAN + a product-form-of-the-inverse eta
+        /// file replace the tableau's O(mn) per-pivot update. Exact vertex solution like
+        /// <see cref="Simplex"/>, with native bounded variables and periodic refactorization instead of
+        /// tableau error accumulation.</summary>
+        RevisedSimplex = 2,
+
+        /// <summary>Bounded-variable DUAL revised simplex (HiGHS-lineage, stage 2 of
+        /// docs/spec-revised-simplex.md): dual steepest-edge pricing (Forrest-Goldfarb) + a long-step
+        /// (bound-flipping) Harris ratio test drive an initially dual-feasible basis to primal
+        /// feasibility, with artificial-bounds dual phase 1 and HiGHS-style cost perturbation for
+        /// degenerate problems; the terminal basis is handed to <see cref="RevisedSimplex"/>'s primal
+        /// core as a cleanup pass -- the same composition HiGHS itself uses. Exact vertex solution, same
+        /// kernel layer (FTRAN/BTRAN/eta file) as <see cref="RevisedSimplex"/>.</summary>
+        DualSimplex = 3,
     }
 
     /// <summary>
@@ -141,5 +157,27 @@ namespace LinearAlgebra
 
         /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
         public override string ToString() => ToFixedString().ToString();
+    }
+
+    // Shared constants for the revised-simplex kernel layer (LP.RevisedSimplex.fProxy.cs) and the dual
+    // simplex built on it (LP.DualSimplex.fProxy.cs). Type-agnostic (plain int/byte, no fProxy token),
+    // so they live here in this non-templated (singularFile) file -- exactly like ConstraintSense/
+    // LPMethod/LPStatus above -- rather than in either per-dtype template, where an identical
+    // declaration would land in BOTH the float and double generated partials of `partial class LP` and
+    // collide (CS0102: a member can't be declared twice across a partial class's fragments, even from
+    // different source files).
+    public static partial class LP
+    {
+        // Eta-file (product-form-of-the-inverse) refresh cadence: refactorize from scratch after this
+        // many pivots instead of growing the eta chain further (bounds FTRAN/BTRAN's per-solve cost and
+        // resets accumulated floating-point error).
+        internal const int REFACTOR_INTERVAL = 64;
+
+        // Nonbasic-variable status tags (basis[] and status[] together are the revised simplex's whole
+        // state): a BASIC variable's value lives in xB; an AT_LOWER/AT_UPPER nonbasic sits exactly on
+        // that bound (fixed variables, l==u, are always tagged AT_LOWER).
+        internal const byte STATUS_BASIC = 0;
+        internal const byte STATUS_AT_LOWER = 1;
+        internal const byte STATUS_AT_UPPER = 2;
     }
 }

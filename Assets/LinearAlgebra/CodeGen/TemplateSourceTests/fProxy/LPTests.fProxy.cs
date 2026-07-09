@@ -41,6 +41,21 @@ public class fProxyLPTests
             PdlpWyndor,         // PDLP (first-order PDHG) on Wyndor Glass    -> (2,6), Z 36
             PdlpSparseWyndor,   // PDLP over a BSR Wyndor Glass               -> (2,6), Z 36
             PdlpVsDense,        // PDLP(BSR) == PDLP(dense) on a mixed two-sided LP
+            RevisedWyndorGlass, // revised simplex, Wyndor Glass              -> (2,6), Z 36
+            RevisedRandomN24,   // revised vs tableau simplex, random feasible LP n=24
+            RevisedRandomN48,   // revised vs tableau simplex, random feasible LP n=48
+            RevisedMixedSense,  // revised simplex, mixed <=/>=/<= senses (phase 1) -> (1,3), obj -7
+            RevisedLad,         // revised-simplex LP.lad == tableau-simplex LP.lad (outlier set)
+
+            // ==== LPMethod.DualSimplex, stage 2 of docs/spec-revised-simplex.md ====
+            DualWyndorGlass,    // dual simplex, Wyndor Glass                 -> (2,6), Z 36
+            DualRandomN24,      // dual vs tableau simplex, random feasible LP n=24
+            DualRandomN48,      // dual vs tableau simplex, random feasible LP n=48
+            DualMixedSense,     // dual simplex, mixed <=/>=/<= senses (dual phase 1) -> (1,3), obj -7
+            DualBoxedFlips,     // dual simplex, all-negative-cost LP -> artificial bounds + BFRT vs tableau
+            DegenerateDuplicatedRows, // duplicated-row LP: revised AND dual simplex reach the right objective
+            DualLad,            // dual-simplex LP.lad == tableau-simplex LP.lad (outlier set)
+            RevisedAndDualRandomN96, // n=96 (>64 pivots): both revised backends vs tableau, 3 seeds
         }
 
         public TestType Type;
@@ -77,6 +92,19 @@ public class fProxyLPTests
                 case TestType.PdlpWyndor: PdlpWyndor(); break;
                 case TestType.PdlpSparseWyndor: PdlpSparseWyndor(); break;
                 case TestType.PdlpVsDense: PdlpVsDense(); break;
+                case TestType.RevisedWyndorGlass: RevisedWyndorGlass(); break;
+                case TestType.RevisedRandomN24: RevisedVsSimplexRandom(24); break;
+                case TestType.RevisedRandomN48: RevisedVsSimplexRandom(48); break;
+                case TestType.RevisedMixedSense: RevisedMixedSense(); break;
+                case TestType.RevisedLad: RevisedLad(); break;
+                case TestType.DualWyndorGlass: DualWyndorGlass(); break;
+                case TestType.DualRandomN24: DualVsSimplexRandom(24); break;
+                case TestType.DualRandomN48: DualVsSimplexRandom(48); break;
+                case TestType.DualMixedSense: DualMixedSense(); break;
+                case TestType.DualBoxedFlips: DualBoxedFlips(); break;
+                case TestType.DegenerateDuplicatedRows: DegenerateDuplicatedRows(); break;
+                case TestType.DualLad: DualLad(); break;
+                case TestType.RevisedAndDualRandomN96: RevisedAndDualRandomN96(); break;
             }
         }
 
@@ -675,6 +703,346 @@ public class fProxyLPTests
             AssertClose(xs[1], xd[1], (fProxy)2e-1);
 
             arena.Dispose();
+        }
+
+        // ==== LPMethod.RevisedSimplex (bounded-variable primal revised simplex, stage 1 of
+        // docs/spec-revised-simplex.md) -- validated against the tableau simplex baseline ====
+
+        // Wyndor Glass known-answer vertex, via the revised-simplex backend instead of the tableau.
+        void RevisedWyndorGlass()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(3, 2);
+            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)0;
+            A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)2;
+            A[2, 0] = (fProxy)3; A[2, 1] = (fProxy)2;
+            var b = arena.fProxyVec(3); b[0] = (fProxy)4; b[1] = (fProxy)12; b[2] = (fProxy)18;
+            var c = arena.fProxyVec(2); c[0] = (fProxy)(-3); c[1] = (fProxy)(-5);
+            var x = arena.fProxyVec(2);
+            var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
+
+            var info = LP.solve(in A, in b, in c, in senses, ref x, out double obj, LPMethod.RevisedSimplex);
+
+            AssertTrue(info.status == LPStatus.Optimal);
+            AssertClose(x[0], (fProxy)2, (fProxy)1e-3);
+            AssertClose(x[1], (fProxy)6, (fProxy)1e-3);
+            AssertCloseD(obj, -36.0, 1e-3);
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // Section-1-style random feasible LP (see LPBenchmark.fProxy.cs): m = n/2, A in [0,1] (random,
+        // nonneg -> bounded), b = A x0 + slack (x0 random in [0,1], slack in [0.1,1] -> x0 stays
+        // feasible), c random in [-1,1], all rows <=. Revised simplex must match the tableau baseline's
+        // objective within a relative tolerance (looser for float -- roundoff compounds differently
+        // across the two very different pivoting schemes at n=24/48).
+        void RevisedVsSimplexRandom(int n)
+        {
+            int m = n / 2;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var Ax0 = Blas.dot(A, x0);
+            var b = arena.fProxyVec(m);
+            var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
+            for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
+            var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+            var xS = arena.fProxyVec(n);
+            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+            var xR = arena.fProxyVec(n);
+            var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
+
+            AssertTrue(infoS.status == LPStatus.Optimal);
+            AssertTrue(infoR.status == LPStatus.Optimal);
+
+            double relTol = /*+choose[1e-3|1e-6]*/1e-3/*-choose*/;
+            AssertCloseD(objR, objS, relTol * (1.0 + math.abs(objS)));
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // Mixed-sense instance (<=, >=, <=) -- the >= row lacks a natural unit-column basis, forcing
+        // revised simplex's phase 1 (composite-objective) to run. min -x-2y s.t. x+y<=4, x+y>=1 (slack
+        // in the >= direction, non-binding at the optimum), y<=3, x,y>=0 -> maximize x+2y with y's
+        // larger coefficient exhausting its cap first: (x,y)=(1,3), obj -7.
+        void RevisedMixedSense()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(3, 2);
+            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1;   // x + y <= 4
+            A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)1;   // x + y >= 1
+            A[2, 0] = (fProxy)0; A[2, 1] = (fProxy)1;   // y <= 3
+            var b = arena.fProxyVec(3); b[0] = (fProxy)4; b[1] = (fProxy)1; b[2] = (fProxy)3;
+            var c = arena.fProxyVec(2); c[0] = (fProxy)(-1); c[1] = (fProxy)(-2);
+            var x = arena.fProxyVec(2);
+            var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.GreaterEqual; senses[2] = ConstraintSense.LessEqual;
+
+            var info = LP.solve(in A, in b, in c, in senses, ref x, out double obj, LPMethod.RevisedSimplex);
+
+            AssertTrue(info.status == LPStatus.Optimal);
+            AssertClose(x[0], (fProxy)1, (fProxy)1e-3);
+            AssertClose(x[1], (fProxy)3, (fProxy)1e-3);
+            AssertCloseD(obj, -7.0, 1e-3);
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // LP.lad via the revised-simplex backend must reach the SAME L1 residual as the tableau-simplex
+        // backend on the same outlier-laden data (BuildLine's outlier set: 4 collinear points + 1 gross
+        // outlier -> line b=t, L1 residual |10-2| = 8).
+        void RevisedLad()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildLine(ref arena, out var A, out var b, true);
+            var xS = arena.fProxyVec(2);
+            var xR = arena.fProxyVec(2);
+
+            var infoS = LP.lad(in A, in b, ref xS, out double objS, LPMethod.Simplex);
+            var infoR = LP.lad(in A, in b, ref xR, out double objR, LPMethod.RevisedSimplex);
+
+            AssertTrue(infoS.status == LPStatus.Optimal);
+            AssertTrue(infoR.status == LPStatus.Optimal);
+            AssertClose(xR[0], (fProxy)0, (fProxy)1e-2);
+            AssertClose(xR[1], (fProxy)1, (fProxy)1e-2);
+            AssertCloseD(objR, objS, 1e-2);
+
+            arena.Dispose();
+        }
+
+        // ==== LPMethod.DualSimplex (bounded-variable dual revised simplex, stage 2 of
+        // docs/spec-revised-simplex.md) -- dual steepest edge + long-step Harris/BFRT ratio test +
+        // artificial-bounds dual phase 1, validated against the tableau simplex baseline ====
+
+        // Wyndor Glass known-answer vertex, via the dual-simplex backend.
+        void DualWyndorGlass()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(3, 2);
+            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)0;
+            A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)2;
+            A[2, 0] = (fProxy)3; A[2, 1] = (fProxy)2;
+            var b = arena.fProxyVec(3); b[0] = (fProxy)4; b[1] = (fProxy)12; b[2] = (fProxy)18;
+            var c = arena.fProxyVec(2); c[0] = (fProxy)(-3); c[1] = (fProxy)(-5);
+            var x = arena.fProxyVec(2);
+            var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
+
+            var info = LP.solve(in A, in b, in c, in senses, ref x, out double obj, LPMethod.DualSimplex);
+
+            AssertTrue(info.status == LPStatus.Optimal);
+            AssertClose(x[0], (fProxy)2, (fProxy)1e-3);
+            AssertClose(x[1], (fProxy)6, (fProxy)1e-3);
+            AssertCloseD(obj, -36.0, 1e-3);
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // Same Section-1-style random feasible LP family as RevisedVsSimplexRandom -- see that method's
+        // comment for the construction. Every row is <=, and c is random in [-1,1] so roughly half the
+        // structurals start dual-infeasible (negative cost, +INF upper) -> exercises dual phase 1's
+        // artificial-bounds precondition on a good fraction of the columns even here.
+        void DualVsSimplexRandom(int n)
+        {
+            int m = n / 2;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var Ax0 = Blas.dot(A, x0);
+            var b = arena.fProxyVec(m);
+            var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
+            for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
+            var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+            var xS = arena.fProxyVec(n);
+            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+            var xD = arena.fProxyVec(n);
+            var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
+
+            AssertTrue(infoS.status == LPStatus.Optimal);
+            AssertTrue(infoD.status == LPStatus.Optimal);
+
+            double relTol = /*+choose[1e-3|1e-6]*/1e-3/*-choose*/;
+            AssertCloseD(objD, objS, relTol * (1.0 + math.abs(objS)));
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // Mixed-sense instance (<=, >=, <=) -- the >= row's logical has bounds (-INF,0], forcing the
+        // dual ratio test to route through it. Same LP as RevisedMixedSense: min -x-2y s.t. x+y<=4,
+        // x+y>=1, y<=3, x,y>=0 -> (x,y)=(1,3), obj -7.
+        void DualMixedSense()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(3, 2);
+            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1;   // x + y <= 4
+            A[1, 0] = (fProxy)1; A[1, 1] = (fProxy)1;   // x + y >= 1
+            A[2, 0] = (fProxy)0; A[2, 1] = (fProxy)1;   // y <= 3
+            var b = arena.fProxyVec(3); b[0] = (fProxy)4; b[1] = (fProxy)1; b[2] = (fProxy)3;
+            var c = arena.fProxyVec(2); c[0] = (fProxy)(-1); c[1] = (fProxy)(-2);
+            var x = arena.fProxyVec(2);
+            var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.GreaterEqual; senses[2] = ConstraintSense.LessEqual;
+
+            var info = LP.solve(in A, in b, in c, in senses, ref x, out double obj, LPMethod.DualSimplex);
+
+            AssertTrue(info.status == LPStatus.Optimal);
+            AssertClose(x[0], (fProxy)1, (fProxy)1e-3);
+            AssertClose(x[1], (fProxy)3, (fProxy)1e-3);
+            AssertCloseD(obj, -7.0, 1e-3);
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // All-structural-costs-negative LP: every structural has c_j < 0 and (in this computational
+        // form) an unbounded real upper, so EVERY one of them needs dual phase 1's artificial bound
+        // ([0, 1e7]) before dual phase 2 can even start -- the public solve() API has no direct way to
+        // give a STRUCTURAL a finite upper bound, so this artificial-bounds precondition is the only
+        // route in this dense form to a genuinely boxed (finite, nonzero-range) nonbasic column, which
+        // is exactly what the bound-flipping ratio test (BFRT) needs to have something to flip. With 6
+        // simultaneously-boxed candidates competing for 2 rows, the dual ratio test's long-step walk has
+        // to pass several breakpoints per leaving row, so a wrong BFRT accumulation (not just a wrong
+        // single pivot) would very likely surface as a wrong objective here. Correctness is checked
+        // against the tableau simplex baseline (hand-deriving this 6-variable optimum is error-prone;
+        // cross-validation is the established pattern throughout this test suite).
+        void DualBoxedFlips()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(2, 6);
+            for (int j = 0; j < 6; j++) A[0, j] = (fProxy)1;              // sum x_j <= 10
+            A[1, 0] = (fProxy)1; A[1, 2] = (fProxy)1; A[1, 4] = (fProxy)1; // x1+x3+x5 <= 6
+            var b = arena.fProxyVec(2); b[0] = (fProxy)10; b[1] = (fProxy)6;
+            var c = arena.fProxyVec(6);
+            c[0] = (fProxy)(-3); c[1] = (fProxy)(-2); c[2] = (fProxy)(-4);
+            c[3] = (fProxy)(-1); c[4] = (fProxy)(-5); c[5] = (fProxy)(-2);
+            var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
+
+            var xS = arena.fProxyVec(6);
+            var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+            var xD = arena.fProxyVec(6);
+            var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
+
+            AssertTrue(infoS.status == LPStatus.Optimal);
+            AssertTrue(infoD.status == LPStatus.Optimal);
+            AssertCloseD(objD, objS, 1e-2 * (1.0 + math.abs(objS)));
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // Degenerate instance (a duplicated constraint row -- the redundant row makes the basis
+        // degenerate at the optimal vertex): Wyndor Glass with row 2 (2x2<=12) repeated as row 3, row 3
+        // shifted down to row 4 (3x1+2x2<=18). Feasible region and optimum are UNCHANGED by the
+        // redundant duplicate (2,6), Z=36 -- both revised-simplex backends must still terminate (no
+        // cycling) at the right objective. Flagged as a stage-1 test gap in the original spec; closed
+        // here for both RevisedSimplex and DualSimplex in one test.
+        void DegenerateDuplicatedRows()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyMat(4, 2);
+            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)0;
+            A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)2;
+            A[2, 0] = (fProxy)0; A[2, 1] = (fProxy)2;   // duplicate of row 1
+            A[3, 0] = (fProxy)3; A[3, 1] = (fProxy)2;
+            var b = arena.fProxyVec(4); b[0] = (fProxy)4; b[1] = (fProxy)12; b[2] = (fProxy)12; b[3] = (fProxy)18;
+            var c = arena.fProxyVec(2); c[0] = (fProxy)(-3); c[1] = (fProxy)(-5);
+            var senses = new NativeArray<ConstraintSense>(4, Allocator.Temp);
+            senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
+            senses[2] = ConstraintSense.LessEqual; senses[3] = ConstraintSense.LessEqual;
+
+            var xR = arena.fProxyVec(2);
+            var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
+            var xD = arena.fProxyVec(2);
+            var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
+
+            AssertTrue(infoR.status == LPStatus.Optimal);
+            AssertTrue(infoD.status == LPStatus.Optimal);
+            AssertClose(xR[0], (fProxy)2, (fProxy)1e-3);
+            AssertClose(xR[1], (fProxy)6, (fProxy)1e-3);
+            AssertCloseD(objR, -36.0, 1e-3);
+            AssertClose(xD[0], (fProxy)2, (fProxy)1e-3);
+            AssertClose(xD[1], (fProxy)6, (fProxy)1e-3);
+            AssertCloseD(objD, -36.0, 1e-3);
+
+            senses.Dispose(); arena.Dispose();
+        }
+
+        // LP.lad via the dual-simplex backend must reach the SAME L1 residual as the tableau-simplex
+        // backend on the same outlier-laden data (BuildLine's outlier set: 4 collinear points + 1 gross
+        // outlier -> line b=t, L1 residual |10-2| = 8).
+        void DualLad()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildLine(ref arena, out var A, out var b, true);
+            var xS = arena.fProxyVec(2);
+            var xD = arena.fProxyVec(2);
+
+            var infoS = LP.lad(in A, in b, ref xS, out double objS, LPMethod.Simplex);
+            var infoD = LP.lad(in A, in b, ref xD, out double objD, LPMethod.DualSimplex);
+
+            AssertTrue(infoS.status == LPStatus.Optimal);
+            AssertTrue(infoD.status == LPStatus.Optimal);
+            AssertClose(xD[0], (fProxy)0, (fProxy)1e-2);
+            AssertClose(xD[1], (fProxy)1, (fProxy)1e-2);
+            AssertCloseD(objD, objS, 1e-2);
+
+            arena.Dispose();
+        }
+
+        // Section-1-style random feasible LP at n=96 (m=48, N=n+m=144) -- large enough to force MORE
+        // THAN REFACTOR_INTERVAL (64) pivots on a reasonably dense instance, so this is the only test
+        // that actually exercises the eta-file's mid-solve refactorization (Refactorize + RebuildXB
+        // firing while iterating, not just once at the start) for BOTH revised-simplex backends; the
+        // n=24/48 tests never reach 64 pivots. Loops 3 seeds inside this ONE test method (varying every
+        // random draw's seed by `s * a large prime`, same linear-combination style as
+        // RevisedVsSimplexRandom/DualVsSimplexRandom) rather than adding 3 more enum entries -- Fail[]
+        // already only records the FIRST failure across an entire test run, so looping composes with the
+        // existing diagnostics pattern for free.
+        void RevisedAndDualRandomN96()
+        {
+            const int n = 96, m = n / 2;
+            const uint seedStride = 998244353u;   // large prime, keeps seeds well-separated per s
+
+            for (int s = 0; s < 3; s++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11) + (uint)s * seedStride);
+                var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7) + (uint)s * seedStride);
+                var Ax0 = Blas.dot(A, x0);
+                var b = arena.fProxyVec(m);
+                uint rngSeed = (uint)(n * 1299709 + 3) + (uint)s * seedStride;
+                var rng = new Unity.Mathematics.Random(rngSeed == 0u ? 1u : rngSeed);   // Random() rejects seed 0
+                for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
+                var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5) + (uint)s * seedStride);
+                var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+                var xS = arena.fProxyVec(n);
+                var infoS = LP.solve(in A, in b, in c, in senses, ref xS, out double objS, LPMethod.Simplex);
+                var xR = arena.fProxyVec(n);
+                var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
+                var xD = arena.fProxyVec(n);
+                var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
+
+                AssertTrue(infoS.status == LPStatus.Optimal);
+                AssertTrue(infoR.status == LPStatus.Optimal);
+                AssertTrue(infoD.status == LPStatus.Optimal);
+
+                // n=96 compounds roundoff differently across the three very different pivoting schemes
+                // (tableau Gauss-Jordan vs LU-factored revised primal vs LU-factored dual) more than
+                // n=24/48 do; float needed loosening to 1e-2 rel here (double stays at the n=24/48 1e-6).
+                double relTol = /*+choose[1e-2|1e-6]*/1e-2/*-choose*/;
+                AssertCloseD(objR, objS, relTol * (1.0 + math.abs(objS)));
+                AssertCloseD(objD, objS, relTol * (1.0 + math.abs(objS)));
+
+                senses.Dispose(); arena.Dispose();
+            }
         }
 
         // ---- diagnostics-recording assert helpers (Burst-legal: Assert.Fail(string) is not) ----

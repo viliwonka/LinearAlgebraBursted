@@ -58,6 +58,10 @@ namespace LinearAlgebra
 
             if (method == LPMethod.Simplex)
                 return simplexCore(in A, in b, in c, in senses, ref x, out objective, maxIter);
+            if (method == LPMethod.RevisedSimplex)
+                return revisedSimplexCore(in A, in b, in c, in senses, ref x, out objective, maxIter);
+            if (method == LPMethod.DualSimplex)
+                return dualSimplexCore(in A, in b, in c, in senses, ref x, out objective, maxIter);
             return interiorCore(in A, in b, in c, in senses, ref x, out objective, maxIter);
         }
 
@@ -109,9 +113,15 @@ namespace LinearAlgebra
             }
             for (int i = 0; i < 2 * m; i++) clad[2 * n + i] = (float)1;   // cost 1 on every u, v
 
-            LPInfo info = (method == LPMethod.Simplex)
-                ? simplexCore(in Alad, in blad, in clad, in senses, ref xstd, out objective, maxIter)
-                : interiorCore(in Alad, in blad, in clad, in senses, ref xstd, out objective, maxIter);
+            LPInfo info;
+            if (method == LPMethod.Simplex)
+                info = simplexCore(in Alad, in blad, in clad, in senses, ref xstd, out objective, maxIter);
+            else if (method == LPMethod.RevisedSimplex)
+                info = revisedSimplexCore(in Alad, in blad, in clad, in senses, ref xstd, out objective, maxIter);
+            else if (method == LPMethod.DualSimplex)
+                info = dualSimplexCore(in Alad, in blad, in clad, in senses, ref xstd, out objective, maxIter);
+            else
+                info = interiorCore(in Alad, in blad, in clad, in senses, ref xstd, out objective, maxIter);
 
             for (int j = 0; j < n; j++) x[j] = xstd[j] - xstd[n + j];   // x = x⁺ − x⁻
 
