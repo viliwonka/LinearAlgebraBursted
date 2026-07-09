@@ -38,9 +38,6 @@ public class fProxyLPTests
             SparseLadStackloss, // sparse LAD objective == dense LAD (stack-loss)
             SparseWyndorGlass,  // sparse (BSR) LP.solve, Wyndor Glass        -> (2,6), Z 36
             SparseVsDenseLp,    // sparse LP.solve == dense LP.solve (mixed <=/>= senses)
-            PdlpWyndor,         // PDLP (first-order PDHG) on Wyndor Glass    -> (2,6), Z 36
-            PdlpSparseWyndor,   // PDLP over a BSR Wyndor Glass               -> (2,6), Z 36
-            PdlpVsDense,        // PDLP(BSR) == PDLP(dense) on a mixed two-sided LP
             RevisedWyndorGlass, // revised simplex, Wyndor Glass              -> (2,6), Z 36
             RevisedRandomN24,   // revised vs tableau simplex, random feasible LP n=24
             RevisedRandomN48,   // revised vs tableau simplex, random feasible LP n=48
@@ -90,9 +87,6 @@ public class fProxyLPTests
                 case TestType.SparseLadStackloss: SparseLadStackloss(); break;
                 case TestType.SparseWyndorGlass: SparseWyndorGlass(); break;
                 case TestType.SparseVsDenseLp: SparseVsDenseLp(); break;
-                case TestType.PdlpWyndor: PdlpWyndor(); break;
-                case TestType.PdlpSparseWyndor: PdlpSparseWyndor(); break;
-                case TestType.PdlpVsDense: PdlpVsDense(); break;
                 case TestType.RevisedWyndorGlass: RevisedWyndorGlass(); break;
                 case TestType.RevisedRandomN24: RevisedVsSimplexRandom(24); break;
                 case TestType.RevisedRandomN48: RevisedVsSimplexRandom(48); break;
@@ -617,94 +611,6 @@ public class fProxyLPTests
             AssertClose(xs[1], xd[1], (fProxy)2e-1);
 
             senses.Dispose(); arena.Dispose();
-        }
-
-        // ==== PDLP (first-order matrix-free PDHG) ====
-
-        // PDLP on Wyndor Glass in two-sided form: max 3x1+5x2 (min -3x1-5x2) s.t. x1<=4, 2x2<=12,
-        // 3x1+2x2<=18, x>=0. Optimum (2,6), Z=36 (obj -36). First-order PDHG (restart + primal weight +
-        // adaptive step + preconditioning), so it converges to a loose tolerance -- give it a generous
-        // budget and check the optimum, not speed.
-        void PdlpWyndor()
-        {
-            var arena = new Arena(Allocator.Persistent);
-            fProxy INF = (fProxy)1e30;
-            var A = arena.fProxyMat(3, 2);
-            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)0;
-            A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)2;
-            A[2, 0] = (fProxy)3; A[2, 1] = (fProxy)2;
-            var lc = arena.fProxyVec(3); lc[0] = -INF; lc[1] = -INF; lc[2] = -INF;
-            var uc = arena.fProxyVec(3); uc[0] = (fProxy)4; uc[1] = (fProxy)12; uc[2] = (fProxy)18;
-            var lv = arena.fProxyVec(2); lv[0] = (fProxy)0; lv[1] = (fProxy)0;
-            var uv = arena.fProxyVec(2); uv[0] = INF; uv[1] = INF;
-            var c = arena.fProxyVec(2); c[0] = (fProxy)(-3); c[1] = (fProxy)(-5);
-            var x = arena.fProxyVec(2);
-
-            var info = LP.pdlp(in A, in lc, in uc, in lv, in uv, in c, ref x, out double obj, 200000, 1e-6);
-
-            AssertClose(x[0], (fProxy)2, (fProxy)1.5e-1);
-            AssertClose(x[1], (fProxy)6, (fProxy)1.5e-1);
-            AssertCloseD(obj, -36.0, 0.5);
-
-            arena.Dispose();
-        }
-
-        // Same Wyndor Glass optimum, but the constraint matrix is a BSR (1x1 blocks): exercises the sparse
-        // PDLP path end-to-end -- fProxyBSROperator's spMV/spMVT, the BSR block-traversal equilibration,
-        // and the shared scaled-solve glue. Must land on the same (2,6) / -36.
-        void PdlpSparseWyndor()
-        {
-            var arena = new Arena(Allocator.Persistent);
-            fProxy INF = (fProxy)1e30;
-            var A = arena.fProxyMat(3, 2);
-            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)0;
-            A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)2;
-            A[2, 0] = (fProxy)3; A[2, 1] = (fProxy)2;
-            var As = BuildBSR1x1(ref arena, in A);
-            var lc = arena.fProxyVec(3); lc[0] = -INF; lc[1] = -INF; lc[2] = -INF;
-            var uc = arena.fProxyVec(3); uc[0] = (fProxy)4; uc[1] = (fProxy)12; uc[2] = (fProxy)18;
-            var lv = arena.fProxyVec(2); lv[0] = (fProxy)0; lv[1] = (fProxy)0;
-            var uv = arena.fProxyVec(2); uv[0] = INF; uv[1] = INF;
-            var c = arena.fProxyVec(2); c[0] = (fProxy)(-3); c[1] = (fProxy)(-5);
-            var x = arena.fProxyVec(2);
-
-            var info = LP.pdlp(in As, in lc, in uc, in lv, in uv, in c, ref x, out double obj, 200000, 1e-6);
-
-            AssertClose(x[0], (fProxy)2, (fProxy)1.5e-1);
-            AssertClose(x[1], (fProxy)6, (fProxy)1.5e-1);
-            AssertCloseD(obj, -36.0, 0.5);
-
-            arena.Dispose();
-        }
-
-        // Sparse PDLP must reach the SAME optimum as dense PDLP on an identical two-sided LP with an
-        // equality row and an inequality row: min -x-2y s.t. x+y=4 (ℓ_c=u_c), 0<=y<=3, x,y>=0. Optimum
-        // (1,3), Z -7. Confirms the BSR operator + BSR equilibration agree with the dense path.
-        void PdlpVsDense()
-        {
-            var arena = new Arena(Allocator.Persistent);
-            fProxy INF = (fProxy)1e30;
-            var A = arena.fProxyMat(2, 2);
-            A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1;   // x + y = 4
-            A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)1;   // y <= 3
-            var lc = arena.fProxyVec(2); lc[0] = (fProxy)4; lc[1] = -INF;
-            var uc = arena.fProxyVec(2); uc[0] = (fProxy)4; uc[1] = (fProxy)3;
-            var lv = arena.fProxyVec(2); lv[0] = (fProxy)0; lv[1] = (fProxy)0;
-            var uv = arena.fProxyVec(2); uv[0] = INF; uv[1] = INF;
-            var c = arena.fProxyVec(2); c[0] = (fProxy)(-1); c[1] = (fProxy)(-2);
-            var As = BuildBSR1x1(ref arena, in A);
-            var xd = arena.fProxyVec(2);
-            var xs = arena.fProxyVec(2);
-
-            LP.pdlp(in A,  in lc, in uc, in lv, in uv, in c, ref xd, out double objD, 200000, 1e-6);
-            LP.pdlp(in As, in lc, in uc, in lv, in uv, in c, ref xs, out double objS, 200000, 1e-6);
-
-            AssertCloseD(objD, -7.0, 0.5);
-            AssertCloseD(objS, objD, 0.05 * (1.0 + math.abs(objD)));
-            AssertClose(xs[0], xd[0], (fProxy)2e-1);
-            AssertClose(xs[1], xd[1], (fProxy)2e-1);
-
-            arena.Dispose();
         }
 
         // ==== LPMethod.RevisedSimplex (bounded-variable primal revised simplex, stage 1 of

@@ -23,11 +23,11 @@ namespace LinearAlgebra.Benchmarks
     //
     // Every job below carries its OWN reporting outputs (objOut/itersOut/statusOut, length-1 arrays)
     // written from inside Execute(). This is deliberate: the report used to harvest objective/iters/
-    // status via a SEPARATE plain managed call to LP.solve/LP.lad/LP.pdlp before ever timing the Burst
+    // status via a SEPARATE plain managed call to LP.solve/LP.lad before ever timing the Burst
     // job -- i.e. every row solved the SAME problem TWICE, once fully Mono-interpreted. That is fine at
-    // n=24 but catastrophic at n=384 (seconds per solve) and worse for PDLP at its 50000-iter cap
-    // (minutes) -- an extended benchmark run measured 13+ minutes and was killed because of it. Bench.
-    // Time already runs the job once as a warmup before the 4 timed reps, so the outputs are populated
+    // n=24 but catastrophic at n=384 (seconds per solve) -- an extended benchmark run measured minutes
+    // and was killed because of it. Bench.Time already runs the job once as a warmup before the 4 timed
+    // reps, so the outputs are populated
     // as a natural side effect of the SAME Burst-native call the report already needed to time -- no
     // second solve, managed or otherwise. status is written as `(int)info.status` inside Execute (an
     // enum-to-int cast is Burst-legal); LPBenchmarkFmt.InfeasRow casts it back on the harness side (see
@@ -130,61 +130,7 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct LpSolveSparseJobFloat : IJob
-    {
-        public floatBSR A;
-        public floatN b, c, x;
-        public NativeArray<ConstraintSense> senses;
-        public NativeArray<double> objOut;
-        public NativeArray<int> itersOut;
-        public NativeArray<int> statusOut;
-        public void Execute()
-        {
-            var info = LP.solve(in A, in b, in c, in senses, ref x, out double obj);
-            objOut[0] = obj;
-            itersOut[0] = info.iterations;
-            statusOut[0] = (int)info.status;
-        }
-    }
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct PdlpJobFloat : IJob
-    {
-        public floatMxN A;
-        public floatN lc, uc, lv, uv, c, x;
-        public int maxIter;
-        public double eps;
-        public NativeArray<double> objOut;
-        public NativeArray<int> itersOut;
-        public void Execute()
-        {
-            for (int j = 0; j < x.N; j++) x[j] = (float)0;   // cold start each timed rep (x is PDLP's initial iterate)
-            var info = LP.pdlp(in A, in lc, in uc, in lv, in uv, in c, ref x, out double obj, maxIter, eps);
-            objOut[0] = obj;
-            itersOut[0] = info.iterations;
-        }
-    }
-
-    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
-    public struct PdlpSparseJobFloat : IJob
-    {
-        public floatBSR A;
-        public floatN lc, uc, lv, uv, c, x;
-        public int maxIter;
-        public double eps;
-        public NativeArray<double> objOut;
-        public NativeArray<int> itersOut;
-        public void Execute()
-        {
-            for (int j = 0; j < x.N; j++) x[j] = (float)0;
-            var info = LP.pdlp(in A, in lc, in uc, in lv, in uv, in c, ref x, out double obj, maxIter, eps);
-            objOut[0] = obj;
-            itersOut[0] = info.iterations;
-        }
-    }
-
-    // Small Burst-native matvec (Ax) for RHS construction (Sections 1, 4, 7 all build b = A x0 + slack
+    // Small Burst-native matvec (Ax) for RHS construction (Sections 1, 5 both build b = A x0 + slack
     // this way) -- called via .Run() as one-off setup, NOT inside Bench.Time. Moved out of a plain
     // managed Blas.dot(A, x0) call (interpreted Mono, O(mn)) into this job for the same reason the
     // solves themselves moved: at n=384 (m=192), that is 73728 multiply-adds Mono-interpreted on every
@@ -377,147 +323,27 @@ namespace LinearAlgebra.Benchmarks
             }
         }
 
-        // ==== Section 4: PDLP vs simplex vs interior point on the SAME dense feasible LP as Section 1 ====
-        static void SectionPdlpDenseFloat(StringBuilder sb)
-        {
-            sb.AppendLine();
-            sb.AppendLine("--- 4. PDLP (matrix-free first-order PDHG) vs simplex vs interior point on the SAME dense " +
-                          "feasible LP (Section 1's construction; PDLP tol " + LPBenchmarkFmt.PdlpEps.ToString("E0") +
-                          ", cap " + LPBenchmarkFmt.PdlpMaxIter + " iters) [float] ---");
-            sb.AppendLine(LPBenchmarkFmt.SolveHeader());
-
-            float INF = (float)1e30;
-            foreach (var n in LPBenchmarkFmt.PdlpDenseVarsN)
-            {
-                int m = n / 2;
-                var arena = new Arena(Allocator.Persistent);
-                var A = arena.floatRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));       // SAME problem as Section 1
-                var x0 = arena.floatRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
-                var Ax0 = arena.floatVec(m);
-                new LpRhsMatVecJobFloat { A = A, x = x0, result = Ax0 }.Run();                // Burst-native, not Mono
-                var b = arena.floatVec(m);
-                var rng = new Random((uint)(n * 1299709 + 3));
-                for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFloat((float)0.1, (float)1);
-                var c = arena.floatRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
-                var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
-                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
-
-                var objOut = new NativeArray<double>(1, Allocator.Persistent);
-                var itersOut = new NativeArray<int>(1, Allocator.Persistent);
-                var statusOut = new NativeArray<int>(1, Allocator.Persistent);
-
-                var xS = arena.floatVec(n);
-                var jobS = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xS, method = LPMethod.Simplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
-                var statS = Bench.Time(() => jobS.Run());
-                sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "simplex", statS, itersOut[0], objOut[0]));
-
-                var xI = arena.floatVec(n);
-                var jobI = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
-                var statI = Bench.Time(() => jobI.Run());
-                sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "interior-point", statI, itersOut[0], objOut[0]));
-
-                // PDLP on the same LP as two-sided bounds: -inf <= A x <= b, 0 <= x <= +inf
-                var lc = arena.floatVec(m); var uc = arena.floatVec(m);
-                for (int i = 0; i < m; i++) { lc[i] = -INF; uc[i] = b[i]; }
-                var lv = arena.floatVec(n); var uv = arena.floatVec(n);
-                for (int j = 0; j < n; j++) { lv[j] = (float)0; uv[j] = INF; }
-                var xP = arena.floatVec(n);
-                var jobP = new PdlpJobFloat { A = A, lc = lc, uc = uc, lv = lv, uv = uv, c = c, x = xP, maxIter = LPBenchmarkFmt.PdlpMaxIter, eps = LPBenchmarkFmt.PdlpEps, objOut = objOut, itersOut = itersOut };
-                var statP = Bench.Time(() => jobP.Run());
-                sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "pdlp", statP, itersOut[0], objOut[0]));
-
-                objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
-                senses.Dispose();
-                arena.Dispose();
-            }
-        }
-
-        // ==== Section 5: sparse PDLP vs sparse interior point on a block-sparse covering LP ====
-        static void SectionPdlpSparseFloat(StringBuilder sb)
-        {
-            sb.AppendLine();
-            sb.AppendLine("--- 5. Block-sparse covering LP (min cx s.t. A x >= b, x >= 0; A,b,c >= 0, ~" +
-                          LPBenchmarkFmt.PdlpSparseNnzPerRow + " nnz/row): sparse interior point vs matrix-free PDLP " +
-                          "(tol " + LPBenchmarkFmt.PdlpEps.ToString("E0") + ", cap " + LPBenchmarkFmt.PdlpMaxIter + " iters) [float] ---");
-            sb.AppendLine(LPBenchmarkFmt.SolveHeader());
-
-            float INF = (float)1e30;
-            int nnzPer = LPBenchmarkFmt.PdlpSparseNnzPerRow;
-            foreach (var m in LPBenchmarkFmt.PdlpSparseM)
-            {
-                int n = m;                                        // square covering LP
-                var arena = new Arena(Allocator.Persistent);
-
-                // build a nonneg BSR (1x1 blocks): every row gets exactly nnzPer positive entries at
-                // distinct columns (stride coprime-ish to n), so A >= 0 and each row is satisfiable.
-                var builder = arena.floatBSRBuilder(m, n, 1, 1, m * nnzPer);
-                var rng = new Random((uint)(m * 2654435 + 41));
-                for (int i = 0; i < m; i++)
-                {
-                    int baseCol = (int)(rng.NextUInt() % (uint)n);
-                    for (int t = 0; t < nnzPer; t++)
-                    {
-                        int j = (baseCol + t * 97) % n;
-                        var blk = arena.floatMat(1, 1);
-                        blk[0, 0] = (float)0.1 + rng.NextFloat(0f, 1f) * (float)0.9;   // in (0.1, 1]
-                        builder.AddBlock(i, j, in blk);
-                    }
-                }
-                var As = builder.ToBSR(ref arena);
-
-                var b = arena.floatVec(m);
-                for (int i = 0; i < m; i++) b[i] = (float)1 + rng.NextFloat(0f, 1f);      // demand in [1, 2]
-                var c = arena.floatVec(n);
-                for (int j = 0; j < n; j++) c[j] = (float)0.5 + rng.NextFloat(0f, 1f);    // cost in [0.5, 1.5]
-                var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
-                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.GreaterEqual;
-
-                var objOut = new NativeArray<double>(1, Allocator.Persistent);
-                var itersOut = new NativeArray<int>(1, Allocator.Persistent);
-                var statusOut = new NativeArray<int>(1, Allocator.Persistent);
-
-                var xI = arena.floatVec(n);
-                var jobI = new LpSolveSparseJobFloat { A = As, b = b, c = c, senses = senses, x = xI, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
-                var statI = Bench.Time(() => jobI.Run());
-                sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "sparse ip", statI, itersOut[0], objOut[0]));
-
-                // PDLP: b <= A x <= +inf, 0 <= x <= +inf
-                var lc = arena.floatVec(m); var uc = arena.floatVec(m);
-                for (int i = 0; i < m; i++) { lc[i] = b[i]; uc[i] = INF; }
-                var lv = arena.floatVec(n); var uv = arena.floatVec(n);
-                for (int j = 0; j < n; j++) { lv[j] = (float)0; uv[j] = INF; }
-                var xP = arena.floatVec(n);
-                var jobP = new PdlpSparseJobFloat { A = As, lc = lc, uc = uc, lv = lv, uv = uv, c = c, x = xP, maxIter = LPBenchmarkFmt.PdlpMaxIter, eps = LPBenchmarkFmt.PdlpEps, objOut = objOut, itersOut = itersOut };
-                var statP = Bench.Time(() => jobP.Run());
-                sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "sparse pdlp", statP, itersOut[0], objOut[0]));
-
-                objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
-                senses.Dispose();
-                arena.Dispose();
-            }
-        }
-
-        // ==== Section 6: DENSE covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>=0) -- dual-favorable ====
-        // Dense analogue of Section 5's sparse covering LP. Every entry of A, b, c is strictly positive,
-        // so the LP is feasible (scale any x up enough) and bounded (cᵀx >= 0 always). The construction
-        // is deliberately lopsided the OPPOSITE way from Section 1: at the all-logical start every
-        // structural cost is already >= 0, so d_j = c_j >= 0 for every nonbasic -> dual-feasible
-        // immediately, no artificial-bounds phase 1 needed at all -- while every row is a >= constraint
-        // with rhs > 0, so x=0 (the all-logical basis's primal state) violates EVERY row at once,
-        // forcing a real primal phase 1 on the tableau and revised-primal backends. This is the fairness
-        // counterpoint to Section 1 (which is comparatively primal-friendly) for the primal-vs-dual
-        // default question -- objectives must still agree across all four backends on the same instance.
+        // ==== Section 4: DENSE covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>=0) -- dual-favorable ====
+        // Every entry of A, b, c is strictly positive, so the LP is feasible (scale any x up enough) and
+        // bounded (cᵀx >= 0 always). The construction is deliberately lopsided the OPPOSITE way from
+        // Section 1: at the all-logical start every structural cost is already >= 0, so d_j = c_j >= 0
+        // for every nonbasic -> dual-feasible immediately, no artificial-bounds phase 1 needed at all --
+        // while every row is a >= constraint with rhs > 0, so x=0 (the all-logical basis's primal state)
+        // violates EVERY row at once, forcing a real primal phase 1 on the tableau and revised-primal
+        // backends. This is the fairness counterpoint to Section 1 (which is comparatively primal-
+        // friendly) for the primal-vs-dual default question -- objectives must still agree across all
+        // four backends on the same instance.
         static void SectionDenseCoveringFloat(StringBuilder sb)
         {
             sb.AppendLine();
-            sb.AppendLine("--- 6. DENSE covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>=0, m=n) -- dual-favorable " +
+            sb.AppendLine("--- 4. DENSE covering LP (min cx s.t. Ax>=b, x>=0; A,b,c>=0, m=n) -- dual-favorable " +
                           "(dual-feasible at start, primal needs a real phase 1): simplex vs interior point vs " +
                           "revised primal vs dual simplex [float] ---");
             sb.AppendLine(LPBenchmarkFmt.SolveHeader());
 
             foreach (var n in LPBenchmarkFmt.MidVarsN)
             {
-                int m = n;                                        // square covering LP, same as sparse Section 5
+                int m = n;                                        // square covering LP
                 var arena = new Arena(Allocator.Persistent);
                 var rng = new Random((uint)(n * 2654435761u + 43));
 
@@ -562,7 +388,7 @@ namespace LinearAlgebra.Benchmarks
             }
         }
 
-        // ==== Section 7: infeasibility detection -- Section 1's construction + one contradictory row ====
+        // ==== Section 5: infeasibility detection -- Section 1's construction + one contradictory row ====
         // Reuses Section 1's exact feasible construction (A m x n >= 0, b = A x0 + slack, c random), then
         // appends ONE extra row: a duplicate of row 0 with sense >= and rhs b0+10. Row 0 demands
         // A0.x <= b0; the new row demands A0.x >= b0+10 -- those two can never hold simultaneously
@@ -573,7 +399,7 @@ namespace LinearAlgebra.Benchmarks
         static void SectionInfeasibleFloat(StringBuilder sb)
         {
             sb.AppendLine();
-            sb.AppendLine("--- 7. Infeasibility detection: Section-1-style dense LP + one contradictory duplicated " +
+            sb.AppendLine("--- 5. Infeasibility detection: Section-1-style dense LP + one contradictory duplicated " +
                           "row (row 0 as both <= b0 and >= b0+10) -- simplex vs interior point vs revised primal " +
                           "vs dual simplex [float] ---");
             sb.AppendLine(LPBenchmarkFmt.InfeasHeader());

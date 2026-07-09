@@ -24,9 +24,9 @@ namespace LinearAlgebra.Benchmarks
         public const int NCoef = 4;
         public const int LadSimplexCap = 192;   // tableau-simplex LAD row only up to here
 
-        // Shared by Section 6 (dense covering LP, dual-favorable) and Section 7 (infeasibility
-        // detection): both stay modest relative to SolveVarsN's top end because Section 6's primal phase
-        // 1 (every row starts infeasible under the all-logical basis) and Section 7's degenerate
+        // Shared by Section 4 (dense covering LP, dual-favorable) and Section 5 (infeasibility
+        // detection): both stay modest relative to SolveVarsN's top end because Section 4's primal phase
+        // 1 (every row starts infeasible under the all-logical basis) and Section 5's degenerate
         // contradiction can need materially more pivots than Section 1's feasibility-friendly
         // construction at the same n.
         public static readonly int[] MidVarsN = { 48, 96, 192 };
@@ -39,22 +39,6 @@ namespace LinearAlgebra.Benchmarks
         public static readonly int[] SparseLadRowsM = { 512 };   // trimmed to a single trusted size until timings are nailed
         public const int SparseLadCoef = 32;
         public const int SparseLadDenseCap = 512;   // dense interior baseline only up to here
-
-        // PDLP (matrix-free first-order PDHG) knobs. Dense PDLP has its OWN size list, PdlpDenseVarsN --
-        // it used to reuse SolveVarsN (Section 1's list), which meant extending Section 1 to 192/384 for
-        // the revised/dual backends silently dragged PDLP-dense along too, at up to 16x the per-solve
-        // cost of n=96 while still capped at PdlpMaxIter -- exactly the kind of dependency that produced
-        // the 13+ minute run the coordinator killed. PDLP is a closed chapter (see the FFT-radix4-style
-        // "done" memory entries); it does not need its scaling curve re-measured, so PdlpDenseVarsN stays
-        // pinned at its original sizes regardless of what Section 1 grows to. The sparse benchmark is a
-        // block-sparse covering LP -- min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction, so it is
-        // both feasible (scale x up) and bounded (cost >= 0): no unbounded/infinite-iteration trap. A hard
-        // PdlpMaxIter cap bounds wall-clock regardless of convergence.
-        public static readonly int[] PdlpDenseVarsN = { 24, 48, 96 };   // Section 4's own list -- NOT SolveVarsN
-        public static readonly int[] PdlpSparseM = { 512, 2048, 8192 };   // scaling curve (= n_cols); nnz grows as 8*N, so cheap per iter
-        public const int PdlpSparseNnzPerRow = 8;
-        public const double PdlpEps = 1e-6;
-        public const int PdlpMaxIter = 50000;
 
         public static string StatusName(LPStatus s) => s == LPStatus.Optimal ? "Optimal"
             : s == LPStatus.Infeasible ? "Infeasible" : s == LPStatus.Unbounded ? "Unbounded" : "MaxIter";
@@ -74,7 +58,7 @@ namespace LinearAlgebra.Benchmarks
                 dtype, m, n, method, st.Median, st.Min, iters, l1);
 
         // Same column layout as SolveHeader/SolveRow but the last column is the terminal status instead
-        // of the objective -- Section 7 (infeasibility detection) needs to show WHICH backends actually
+        // of the objective -- Section 5 (infeasibility detection) needs to show WHICH backends actually
         // report Infeasible vs exhaust MaxIterations, which an objective number can't communicate
         // (Infeasible/MaxIterations both leave objective meaningless -- see LPInfo's own doc comment).
         //
@@ -113,15 +97,14 @@ namespace LinearAlgebra.Benchmarks
     //     LAD-via-tableau-simplex grows with the number of observations (its constraint count, capped
     //     at LadSimplexCap for exactly that reason) while revised/dual/IRLS stay practical much further.
     //
-    //   Section 6 (dense covering LP): min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction
-    //     (dense analogue of Section 5's sparse covering LP) -- deliberately DUAL-FAVORABLE: every
-    //     nonneg cost column is already dual-feasible at the all-logical start (y=0 -> d_j=c_j>=0), so
-    //     dual simplex needs no phase 1 at all, while every row starts primal-INFEASIBLE (0 doesn't
-    //     satisfy Ax>=b), forcing a real phase 1 on the tableau AND revised primal. The fairness
-    //     counterpoint to Section 1's primal-friendly construction, for the primal-vs-dual-default
-    //     question.
+    //   Section 4 (dense covering LP): min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction --
+    //     deliberately DUAL-FAVORABLE: every nonneg cost column is already dual-feasible at the
+    //     all-logical start (y=0 -> d_j=c_j>=0), so dual simplex needs no phase 1 at all, while every row
+    //     starts primal-INFEASIBLE (0 doesn't satisfy Ax>=b), forcing a real phase 1 on the tableau AND
+    //     revised primal. The fairness counterpoint to Section 1's primal-friendly construction, for the
+    //     primal-vs-dual-default question.
     //
-    //   Section 7 (infeasibility detection): Section 1's feasible construction plus ONE contradictory
+    //   Section 5 (infeasibility detection): Section 1's feasible construction plus ONE contradictory
     //     row (row 0 duplicated as a >= row with rhs b0+10 -- A0.x can never be both <= b0 and >= b0+10,
     //     infeasible by construction with no subtler failure mode to get wrong). Reports a STATUS column
     //     instead of an objective: the exact backends (tableau/revised/dual simplex) should all report
@@ -151,16 +134,11 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("n x n solve throughout. Section 3: SPARSE LAD -- the same L1 fit over a tall block-sparse");
             sb.AppendLine("(BSR) design, solved by the matrix-free interior point (never forms the m x m normal");
             sb.AppendLine("matrix), vs the dense LP.lad baseline where it still fits. Same core drives sparse");
-            sb.AppendLine("LP.solve, so it is representative. Section 4: PDLP (matrix-free first-order PDHG) vs");
-            sb.AppendLine("simplex vs interior point on Section 1's SAME dense feasible LP construction, at PDLP's own");
-            sb.AppendLine("(smaller, unchanged) size list PdlpDenseVarsN -- objective column shows agreement; timing/");
-            sb.AppendLine("iters show the first-order tradeoff. Section 5: sparse PDLP vs the");
-            sb.AppendLine("sparse interior point on a block-sparse covering LP (min cx s.t. Ax>=b, x>=0) -- PDLP's");
-            sb.AppendLine("matrix-free home turf (only spMV/spMVT). Section 6: the DENSE analogue of Section 5's");
-            sb.AppendLine("covering LP, all four LP.solve backends -- deliberately dual-favorable (every row starts");
+            sb.AppendLine("LP.solve, so it is representative. Section 4: the DENSE covering LP (min cx s.t.");
+            sb.AppendLine("Ax>=b, x>=0), all four LP.solve backends -- deliberately dual-favorable (every row starts");
             sb.AppendLine("primal-infeasible, forcing a real phase 1 on the primal backends, while every column");
             sb.AppendLine("starts dual-feasible) -- the fairness counterpoint to Section 1 for the primal-vs-dual");
-            sb.AppendLine("default question. Section 7: infeasibility detection -- Section 1's construction plus one");
+            sb.AppendLine("default question. Section 5: infeasibility detection -- Section 1's construction plus one");
             sb.AppendLine("contradictory row, all four backends; a STATUS column (not objective) shows which backends");
             sb.AppendLine("actually detect Infeasible vs exhaust MaxIterations (interior point has no exact");
             sb.AppendLine("infeasibility certificate, so MaxIterations there is expected, not a bug).");
@@ -172,10 +150,6 @@ namespace LinearAlgebra.Benchmarks
             SectionLadDouble(sb);
             SectionSparseLadFloat(sb);
             SectionSparseLadDouble(sb);
-            SectionPdlpDenseFloat(sb);
-            SectionPdlpDenseDouble(sb);
-            SectionPdlpSparseFloat(sb);
-            SectionPdlpSparseDouble(sb);
             SectionDenseCoveringFloat(sb);
             SectionDenseCoveringDouble(sb);
             SectionInfeasibleFloat(sb);

@@ -25,7 +25,7 @@ min cᵀx s.t. Aᵢ·x {≤,=,≥} bᵢ, x ≥ 0. Internally build the HiGHS com
 
 - N = n + m variables: j < n are structurals (column A[:,j], bounds [0, +INF)), j = n+i is the
   logical of row i (column e_i, bounds by sense: `≤` → [0, +INF); `=` → [0, 0]; `≥` → (−INF, 0]).
-- INF = 1e30 sentinel (same convention as PDLP). No free variables arise in this form.
+- INF = 1e30 sentinel. No free variables arise in this form.
 - State: `basis[m]` (variable index basic in row i), `status[N]` ∈ {Basic, AtLower, AtUpper}.
   Nonbasic variables sit exactly ON a bound. Fixed variables (l==u) count as AtLower.
 - Initial basis: all logicals (B = I), structurals nonbasic at lower bound 0.

@@ -19,7 +19,7 @@ namespace LinearAlgebra
     // Computational form:  min cᵀx   s.t.   A x + s = b,   l <= (x, s) <= u.
     //   N = n + m variables: j < n are structural (column A[:,j], bounds [0, +INF)); j = n+i is the
     //   logical of row i (column e_i; bounds by sense -- LessEqual: [0,+INF), Equal: [0,0],
-    //   GreaterEqual: (-INF,0]). INF = 1e30 (same sentinel PDLP uses). No free variables arise here.
+    //   GreaterEqual: (-INF,0]). INF = 1e30. No free variables arise here.
     //
     // Numerics: everything here -- matrix/vector STORAGE, the basis factorization, FTRAN/BTRAN, the eta
     // file, reduced costs, ratios -- is ordinary double, exactly like every other solver in this library
