@@ -42,12 +42,16 @@ namespace LinearAlgebra
         /// <param name="senses">Per-row constraint sense, length m.</param>
         /// <param name="x">Output solution, length n (overwritten).</param>
         /// <param name="objective">Output cᵀx at the returned x.</param>
-        /// <param name="method">Backend (default Simplex).</param>
+        /// <param name="method">Backend (default RevisedSimplex — fastest exact backend at every
+        /// benchmarked size on cold solves and the fastest infeasibility certifier (1-2 pivots);
+        /// pick <see cref="LPMethod.DualSimplex"/> explicitly for re-solves from a near-dual-feasible
+        /// state, <see cref="LPMethod.InteriorPoint"/> for very ill-conditioned vertices, and
+        /// <see cref="LPMethod.Simplex"/> (dense tableau) as the reference implementation.</param>
         /// <param name="maxIter">Pivot/iteration budget; ≤0 picks a size-based default.</param>
         public static LPInfo solve(in doubleMxN A, in doubleN b, in doubleN c,
                                    in NativeArray<ConstraintSense> senses,
                                    ref doubleN x, out double objective,
-                                   LPMethod method = LPMethod.Simplex, int maxIter = 0)
+                                   LPMethod method = LPMethod.RevisedSimplex, int maxIter = 0)
         {
             int m = A.M_Rows, n = A.N_Cols;
 
