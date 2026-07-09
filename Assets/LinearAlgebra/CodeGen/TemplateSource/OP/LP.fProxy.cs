@@ -67,28 +67,42 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Least absolute deviation (L1 regression): minimize ‖A x − b‖₁ over a FREE x ∈ ℝⁿ. Robust to
-        /// outliers where ordinary least squares (which minimizes the L2 norm) is not. Solved exactly
-        /// by reformulating as a linear program -- split x = x⁺ − x⁻ and each residual rᵢ = uᵢ − vᵢ
-        /// (u, v ≥ 0), then minimize Σ(uᵢ + vᵢ) subject to A(x⁺−x⁻) − u + v = b. At the optimum
-        /// uᵢ + vᵢ = |rᵢ|, so the objective returned in <see cref="LPInfo.objective"/> IS the L1
-        /// residual ‖A x − b‖₁.
-        ///
-        /// For a fast approximate alternative on large overdetermined systems, see
-        /// <see cref="Optimize.ladIRLS"/> (iteratively reweighted least squares).
+        /// outliers where ordinary least squares (which minimizes the L2 norm) is not. This overload
+        /// routes to the Frisch–Newton solver (<see cref="ladFN(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/>):
+        /// exact, reformulation-free, and the fastest LAD route at every benchmarked size — an n×n
+        /// weighted normal solve per iteration streamed from the original A, ~10 iterations regardless
+        /// of m. Use the <see cref="LPMethod"/> overload to route through the general LP backends
+        /// instead (the classic split-variable reformulation; exact but far slower — retained mainly as
+        /// independent cross-checks). For the approximate iteratively-reweighted alternative, see
+        /// <see cref="Optimize.ladIRLS"/>.
         /// </summary>
         /// <param name="A">Design matrix, m×n (m observations, n coefficients). m ≥ n typical.</param>
         /// <param name="b">Observations, length m.</param>
         /// <param name="x">Output coefficients, length n (overwritten). May be negative.</param>
         /// <param name="objective">Output L1 residual ‖A x − b‖₁.</param>
-        /// <param name="method">LP backend (default RevisedSimplex -- LAD's standard-form LP is m
-        /// equality constraints over 2n+2m all-nonnegative variables, exactly the shape the bounded-
-        /// variable revised simplex (docs/spec-revised-simplex.md) targets; it reaches the same exact
-        /// vertex as the tableau <see cref="LPMethod.Simplex"/> without the O(m·nCols) per-pivot tableau
-        /// update, so it is a strict speed win here with no accuracy tradeoff. <see cref="solve"/>'s
-        /// default stays <see cref="LPMethod.Simplex"/> -- only this LAD-specific default changed).</param>
+        /// <param name="maxIter">Iteration budget; ≤0 picks the default (50).</param>
+        public static LPInfo lad(in fProxyMxN A, in fProxyN b, ref fProxyN x, out double objective,
+                                 int maxIter = 0)
+            => ladFN(in A, in b, ref x, out objective, maxIter);
+
+        /// <summary>
+        /// Least absolute deviation via an explicitly chosen general-LP backend: split x = x⁺ − x⁻ and
+        /// each residual rᵢ = uᵢ − vᵢ (u, v ≥ 0), then minimize Σ(uᵢ + vᵢ) subject to
+        /// A(x⁺−x⁻) − u + v = b. At the optimum uᵢ + vᵢ = |rᵢ|, so the objective returned in
+        /// <see cref="LPInfo.objective"/> IS the L1 residual ‖A x − b‖₁. Exact but far slower than the
+        /// default <see cref="lad(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/> overload
+        /// (Frisch–Newton) — the reformulation has m equality rows over 2n+2m variables, so every
+        /// backend pays for m where Frisch–Newton pays for n. Retained as independent exact
+        /// cross-checks and for callers who specifically want a vertex solution.
+        /// </summary>
+        /// <param name="A">Design matrix, m×n (m observations, n coefficients). m ≥ n typical.</param>
+        /// <param name="b">Observations, length m.</param>
+        /// <param name="x">Output coefficients, length n (overwritten). May be negative.</param>
+        /// <param name="objective">Output L1 residual ‖A x − b‖₁.</param>
+        /// <param name="method">LP backend.</param>
         /// <param name="maxIter">Pivot/iteration budget; ≤0 picks a size-based default.</param>
         public static LPInfo lad(in fProxyMxN A, in fProxyN b, ref fProxyN x, out double objective,
-                                 LPMethod method = LPMethod.RevisedSimplex, int maxIter = 0)
+                                 LPMethod method, int maxIter = 0)
         {
             int m = A.M_Rows, n = A.N_Cols;
 

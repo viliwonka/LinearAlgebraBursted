@@ -86,6 +86,31 @@ namespace LinearAlgebra.Benchmarks
     }
 
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LadFNJobDouble : IJob
+    {
+        public doubleMxN A;
+        public doubleN b, x;
+        public NativeArray<double> objOut;
+        public NativeArray<int> itersOut;
+        public NativeArray<int> statusOut;
+        public void Execute()
+        {
+            var info = LP.ladFN(in A, in b, ref x, out double obj, 0);
+            // Same honest recompute as LadJobDouble/IrlsJobDouble -- see that job's comment.
+            double residual = 0;
+            for (int i = 0; i < A.M_Rows; i++)
+            {
+                double rowDot = 0;
+                for (int j = 0; j < A.N_Cols; j++) rowDot += (double)A[i, j] * (double)x[j];
+                residual += math.abs(rowDot - (double)b[i]);
+            }
+            objOut[0] = residual;
+            itersOut[0] = info.iterations;
+            statusOut[0] = (int)info.status;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct IrlsJobDouble : IJob
     {
         public doubleMxN A;
@@ -258,6 +283,11 @@ namespace LinearAlgebra.Benchmarks
                 var jobLd = new LadJobDouble { A = A, b = b, x = xLd, method = LPMethod.DualSimplex, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statLd = Bench.Time(() => jobLd.Run());
                 sb.AppendLine(LPBenchmarkFmt.LadRow("double", m, n, "LP.lad-dual", statLd, itersOut[0], objOut[0]));
+
+                var xLf = arena.doubleVec(n);
+                var jobLf = new LadFNJobDouble { A = A, b = b, x = xLf, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
+                var statLf = Bench.Time(() => jobLf.Run());
+                sb.AppendLine(LPBenchmarkFmt.LadRow("double", m, n, "LP.ladFN", statLf, itersOut[0], objOut[0]));
 
                 var xIr = arena.doubleVec(n);
                 var jobIr = new IrlsJobDouble { A = A, b = b, x = xIr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };

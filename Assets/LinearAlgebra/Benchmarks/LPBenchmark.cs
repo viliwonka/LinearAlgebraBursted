@@ -90,12 +90,16 @@ namespace LinearAlgebra.Benchmarks
     //     column shows all four agree, the iters column is directly comparable pivot-for-pivot.
     //
     //   Section 2 (LAD): random overdetermined regression b = A x_true + noise with periodic gross
-    //     outliers. Exact L1 fit (LP.lad) via all FOUR LP.solve backends vs the fast approximate IRLS
-    //     (Optimize.ladIRLS) -- LP.lad's own default backend is RevisedSimplex (not the tableau), since
-    //     LAD's standard form is exactly the bounded-variable shape revised simplex targets. The
-    //     L1-residual column shows all five reach essentially the same minimum; the timing shows
-    //     LAD-via-tableau-simplex grows with the number of observations (its constraint count, capped
-    //     at LadSimplexCap for exactly that reason) while revised/dual/IRLS stay practical much further.
+    //     outliers. Exact L1 fit via all FOUR LP.lad/LP.solve backends, PLUS LP.ladFN (the matrix-free
+    //     Frisch-Newton dual interior point over the raw m x n design, docs/spec-lad-frisch-newton.md
+    //     -- no LP reformulation, no m x m matrix, an n x n weighted normal solve per Newton step) vs
+    //     the fast approximate IRLS (Optimize.ladIRLS) -- LP.lad's own default backend is RevisedSimplex
+    //     (not the tableau), since LAD's standard form is exactly the bounded-variable shape revised
+    //     simplex targets. The L1-residual column shows all six reach essentially the same minimum;
+    //     the timing shows LAD-via-tableau-simplex grows with the number of observations (its
+    //     constraint count, capped at LadSimplexCap for exactly that reason) while revised/dual/ladFN/
+    //     IRLS stay practical much further -- ladFN's iters column is directly comparable to IRLS's
+    //     (both IRLS-priced per iteration; ladFN is exact, IRLS is approximate).
     //
     //   Section 4 (dense covering LP): min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction --
     //     deliberately DUAL-FAVORABLE: every nonneg cost column is already dual-feasible at the
@@ -128,10 +132,11 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("interior point vs revised primal simplex vs dual simplex, all on the SAME problem (objective");
             sb.AppendLine("column shows all four agree). Section 2: LAD");
             sb.AppendLine("(L1) regression with gross outliers -- exact LP.lad (all four LP.solve backends, LAD's own");
-            sb.AppendLine("default is RevisedSimplex) vs fast approximate Optimize.ladIRLS. L1-residual column shows");
+            sb.AppendLine("default is RevisedSimplex) plus LP.ladFN (matrix-free Frisch-Newton dual interior point,");
+            sb.AppendLine("no LP reformulation) vs fast approximate Optimize.ladIRLS. L1-residual column shows");
             sb.AppendLine("agreement; timing shows tableau-simplex LAD grows with observation count (capped past");
-            sb.AppendLine("LadSimplexCap) while revised/dual simplex stay practical much further, IRLS staying a fixed");
-            sb.AppendLine("n x n solve throughout. Section 3: SPARSE LAD -- the same L1 fit over a tall block-sparse");
+            sb.AppendLine("LadSimplexCap) while revised/dual simplex/ladFN/IRLS stay practical much further, ladFN and");
+            sb.AppendLine("IRLS both staying a fixed n x n solve per iteration throughout. Section 3: SPARSE LAD -- the same L1 fit over a tall block-sparse");
             sb.AppendLine("(BSR) design, solved by the matrix-free interior point (never forms the m x m normal");
             sb.AppendLine("matrix), vs the dense LP.lad baseline where it still fits. Same core drives sparse");
             sb.AppendLine("LP.solve, so it is representative. Section 4: the DENSE covering LP (min cx s.t.");
