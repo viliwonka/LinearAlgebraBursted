@@ -22,6 +22,7 @@ namespace LinearAlgebra.Benchmarks
                 QRVariantsBenchmark.Section(sb);
                 TallWideSolveBenchmark.Section(sb);
                 DirectSolveBenchmark.Section(sb);
+                TriangularSolveBenchmark.Section(sb);
                 MultiRhsSolveBenchmark.Section(sb);
                 SmallSizeBenchmark.Section(sb);
                 EigenSvdBenchmark.Section(sb);

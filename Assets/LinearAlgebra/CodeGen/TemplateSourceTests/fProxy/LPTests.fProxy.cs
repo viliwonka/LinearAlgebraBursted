@@ -66,6 +66,18 @@ public class fProxyLPTests
             // "BurstLinearAlgebra.Tests" assembly, NOT this template's "-firstpass" compile-check
             // assembly, so those live in the hand-written SourceTests/LadFrischNewtonQuantileTests.cs
             // (same convention as QRCPDowndateTests' note / ChunkedRecordTableTests.cs).
+
+            // ==== LP.ladBR / ladBarrodaleRobertsCore, docs/spec-lad-barrodale-roberts.md's Tests
+            // section (6 items). BR is a specialized primal simplex converging to an EXACT VERTEX
+            // (n residuals exactly zero), so its optima match the exact-vertex Lad*/Revised* tolerances,
+            // NOT the interior-point LadFN*/Ip* ones. ====
+            LadBRvsOracleM48,   // BR L1 residual == exact LP.lad oracle (== ladFN too), random+outliers, m=48 n=4
+            LadBRvsOracleM96,   // ...m=96
+            LadBRvsOracleM192,  // ...m=192
+            LadBRStackloss,     // Brownlee stack-loss LAD via BR (published coeffs)
+            LadBRVertexProperty,// >= n residuals are EXACTLY ~0 at the BR optimum (the vertex property ladFN cannot certify)
+            LadBRDegenerateExactFit, // exact-fit data (b=A*x_true, no noise): finite, Optimal/MaxIter, residual ~0
+            LadBRMaxIterOneCase, // maxIter=1 -> MaxIterations with a finite usable partial iterate (no NaN/leak)
         }
 
         public TestType Type;
@@ -118,6 +130,13 @@ public class fProxyLPTests
                 case TestType.LadFNvsOracleM192: LadFNvsOracle(192); break;
                 case TestType.LadFNStackloss: LadFNStackloss(); break;
                 case TestType.LadFNDegenerateExactFit: LadFNDegenerateExactFit(); break;
+                case TestType.LadBRvsOracleM48: LadBRvsOracle(48); break;
+                case TestType.LadBRvsOracleM96: LadBRvsOracle(96); break;
+                case TestType.LadBRvsOracleM192: LadBRvsOracle(192); break;
+                case TestType.LadBRStackloss: LadBRStackloss(); break;
+                case TestType.LadBRVertexProperty: LadBRVertexProperty(); break;
+                case TestType.LadBRDegenerateExactFit: LadBRDegenerateExactFit(); break;
+                case TestType.LadBRMaxIterOneCase: LadBRMaxIterOneCase(); break;
             }
         }
 
@@ -1092,6 +1111,170 @@ public class fProxyLPTests
             AssertClose(x[0], (fProxy)1, (fProxy)5e-2);
             AssertClose(x[1], (fProxy)2, (fProxy)5e-2);
             AssertCloseD(obj, 0.0, 5e-2);
+
+            arena.Dispose();
+        }
+
+        // ==== Barrodale-Roberts exact LAD (LP.ladBR, LP.ladBarrodaleRobertsCore) ====
+        // docs/spec-lad-barrodale-roberts.md's Tests section (6 items). BR is a specialized primal
+        // simplex that lands EXACTLY on the optimal vertex (n residuals exactly zero to roundoff), so it
+        // matches the exact-vertex Lad*/Revised* tolerances -- 1e-6 rel double / 1e-2 rel float -- NOT
+        // the interior-point LadFN*/Ip* ones. It is also an independent second exact engine and a
+        // cross-check oracle for ladFN (BR combinatorial pivoting vs FN interior point fail differently).
+
+        // Item 1. BR L1 residual matches BOTH the exact LP.lad oracle AND ladFN on the SAME random
+        // overdetermined + gross-outlier construction LadFNvsOracle uses (A random in [-1,1],
+        // b = A*xt + small noise, a +5 gross outlier every 10th row; n=4). Anchoring both exact engines
+        // (BR, revised-simplex oracle) and the interior-point one (FN) to the oracle's honest ‖Ax-b‖₁
+        // is the three-way agreement the spec's item 1 asks for -- BR being exact-vertex should match
+        // the oracle even more tightly than FN does. Same 1e-6/1e-2 rel split (per FN-test precedent).
+        void LadBRvsOracle(int m)
+        {
+            int n = 4;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
+            var xt = arena.fProxyRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+            var Axt = Blas.dot(A, xt);
+            var b = arena.fProxyVec(m);
+            var rng = new Unity.Mathematics.Random((uint)(m * 1299709 + 19));
+            for (int i = 0; i < m; i++)
+            {
+                fProxy val = Axt[i] + rng.NextFProxy(-(fProxy)0.05, (fProxy)0.05);
+                if (i % 10 == 0) val += (fProxy)5;              // gross outlier every 10th observation
+                b[i] = val;
+            }
+
+            var xbr = arena.fProxyVec(n);
+            var infoBR = LP.ladBR(in A, in b, ref xbr, out double objBR);
+
+            var xf = arena.fProxyVec(n);                        // interior-point cross-check
+            var infoF = LP.ladFN(in A, in b, ref xf, out double objF);
+
+            var xo = arena.fProxyVec(n);                        // exact oracle: revised-simplex LP.lad
+            var infoO = LP.lad(in A, in b, ref xo, out double objO, LPMethod.RevisedSimplex);
+
+            AssertTrue(infoBR.status == LPStatus.Optimal);
+            AssertTrue(infoO.status == LPStatus.Optimal);
+
+            // double reaches the spec's 1e-6 rel; float loosened to 1e-2 (roundoff compounds differently
+            // across BR's Gauss-Jordan tableau pivots, the oracle's LU-factored revised simplex, and FN's
+            // interior point -- same float-vs-exact-backend loosening rationale as LadFNvsOracle, whose
+            // own FN-vs-oracle bound this reuses verbatim).
+            double relTol = /*+choose[1e-2|1e-6]*/1e-2/*-choose*/;
+            AssertCloseD(objBR, objO, relTol * (1.0 + math.abs(objO)));   // BR (exact) == oracle (exact)
+            AssertCloseD(objF, objO, relTol * (1.0 + math.abs(objO)));    // FN (interior) == oracle
+
+            arena.Dispose();
+        }
+
+        // Item 2. Brownlee stack-loss known-answer (the same literature vector + 5e-2 tolerance as
+        // LadStackloss / LadFNStackloss), solved via the Barrodale-Roberts route. BR being exact-vertex
+        // lands far inside 5e-2 in double; the bound is kept identical to the other two LAD engines'
+        // literature tests for cross-comparability (per the spec's item-2 wording).
+        void LadBRStackloss()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildStackloss(ref arena, out var A, out var b);
+            var x = arena.fProxyVec(4);
+
+            var info = LP.ladBR(in A, in b, ref x, out double obj);
+
+            AssertTrue(info.status == LPStatus.Optimal);
+            AssertClose(x[0], (fProxy)(-39.68985507), (fProxy)5e-2);   // intercept
+            AssertClose(x[1], (fProxy)0.83188406, (fProxy)5e-2);       // Air.Flow
+            AssertClose(x[2], (fProxy)0.57391304, (fProxy)5e-2);       // Water.Temp
+            AssertClose(x[3], (fProxy)(-0.06086957), (fProxy)5e-2);    // Acid.Conc.
+
+            // Item 3 (a SECOND, BR-specific literature vector) is DELIBERATELY SKIPPED: it is conditional
+            // per the spec ("A second literature vector BR-specific IF the fetched source ships a worked
+            // example"), and the fetched Barrodale-Roberts source -- R quantreg's rqbr.f Fortran and its
+            // rq.fit.br R wrapper (see LP.BarrodaleRoberts.fProxy.cs's header) -- ships NO worked numeric
+            // example / test data with the algorithm itself. No other citable, externally-verifiable
+            // LAD/L1 published-coefficient dataset is encoded here rather than fabricate a "known answer";
+            // Stackloss above (cross-verified across R quantreg + ROI) remains the literature anchor, and
+            // item 1's three-way BR/FN/oracle agreement supplies the additional external cross-checks.
+
+            arena.Dispose();
+        }
+
+        // Item 4. Vertex property (BR-specific, non-negotiable): at the BR optimum the fit interpolates
+        // n of the m observations EXACTLY, so at least n residuals are ~0 down to per-dtype roundoff.
+        // Counted here on the stack-loss data (m=21, n=4). This is the certificate the interior-point
+        // engine LP.ladFN CANNOT produce -- its path only APPROACHES the degenerate vertex, so its
+        // residuals cluster near but never hit zero; only an exact-vertex simplex like BR lands on it.
+        void LadBRVertexProperty()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildStackloss(ref arena, out var A, out var b);
+            int m = A.M_Rows, n = A.N_Cols;
+            var x = arena.fProxyVec(n);
+
+            var info = LP.ladBR(in A, in b, ref x, out double obj);
+            AssertTrue(info.status == LPStatus.Optimal);
+
+            // Tight per-dtype "exactly zero" band: 1e-6 in double (the spec-verified value on Stackloss);
+            // 1e-2 in float, since the exact vertex is reached only to float's ~1e-7 relative precision
+            // AMPLIFIED by BR's Gauss-Jordan elimination over an intercept-dominated (|x0|~40) basis, so
+            // the interpolated residuals land at a few 1e-3 -- comfortably inside 1e-2, comfortably above
+            // the free residuals (|r|~1..40 here) so the count is unambiguous either way.
+            double vtol = /*+choose[1e-2|1e-6]*/1e-2/*-choose*/;
+            int zeroCount = 0;
+            for (int i = 0; i < m; i++)
+            {
+                double rowDot = 0;
+                for (int j = 0; j < n; j++) rowDot += (double)A[i, j] * (double)x[j];
+                if (math.abs(rowDot - (double)b[i]) <= vtol) zeroCount++;
+            }
+
+            // record the observed count in the diagnostics slot on failure (>= n is the assertion)
+            if (zeroCount < n && Fail[0] == (fProxy)0) { Fail[0] = (fProxy)1; Fail[1] = (fProxy)zeroCount; Fail[2] = (fProxy)n; Fail[3] = (fProxy)0; }
+            Assert.IsTrue(zeroCount >= n);
+
+            arena.Dispose();
+        }
+
+        // Item 5. Degenerate exact-fit: b = A*x_true EXACTLY (no noise), b = 1 + 2t, coeffs (1,2). A
+        // well-posed exact-fit must terminate cleanly (finite, never Infeasible/Unbounded) and -- unlike
+        // FN's interior point (LadFNDegenerateExactFit, which only loosely reaches it at 5e-2) -- BR lands
+        // ON the exact-fit vertex, so it recovers (1,2) and residual 0 TIGHTLY: verified robustly inside
+        // 1e-3 float / 1e-6 double on this small integer-valued line, far tighter than FN's 5e-2.
+        void LadBRDegenerateExactFit()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildLine(ref arena, out var A, out var b, false);   // b = 1 + 2t exactly, coeffs (1,2)
+            var x = arena.fProxyVec(2);
+
+            var info = LP.ladBR(in A, in b, ref x, out double obj);
+
+            // no NaN/Inf blow-up on the all-residuals-collapse-to-zero degenerate case
+            AssertTrue(math.isfinite(x[0]) && math.isfinite(x[1]) && math.isfinite((fProxy)obj));
+            // a well-posed exact fit is only ever Optimal (or MaxIterations); never Infeasible/Unbounded
+            AssertTrue(info.status == LPStatus.Optimal || info.status == LPStatus.MaxIterations);
+            // exact-vertex recovery -- much tighter than FN's interior-point 5e-2
+            fProxy tol = (fProxy)(/*+choose[1e-3|1e-6]*/1e-3/*-choose*/);
+            AssertClose(x[0], (fProxy)1, tol);
+            AssertClose(x[1], (fProxy)2, tol);
+            AssertCloseD(obj, 0.0, (double)tol);
+
+            arena.Dispose();
+        }
+
+        // Item 6. Failure case -- maxIter=1: the iteration budget is exhausted after a single pivot, so
+        // BR must report MaxIterations and STILL return a usable, finite partial iterate (the resolved
+        // stage-1 rows are extracted; unresolved coefficients keep their zero default) -- never a NaN, a
+        // stale/untouched buffer, an Unbounded/Infeasible misreport, or a leak. Stack-loss (m=21, n=4)
+        // needs many more than 1 iteration, guaranteeing the cutoff fires.
+        void LadBRMaxIterOneCase()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildStackloss(ref arena, out var A, out var b);
+            var x = arena.fProxyVec(4);
+
+            var info = LP.ladBR(in A, in b, ref x, out double obj, maxIter: 1);
+
+            AssertTrue(info.status == LPStatus.MaxIterations);
+            AssertTrue(math.isfinite(x[0]) && math.isfinite(x[1]) && math.isfinite(x[2]) && math.isfinite(x[3]));
+            AssertTrue(math.isfinite((fProxy)obj));
 
             arena.Dispose();
         }
