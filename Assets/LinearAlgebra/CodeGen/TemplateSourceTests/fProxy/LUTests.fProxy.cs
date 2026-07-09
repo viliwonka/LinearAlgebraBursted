@@ -39,6 +39,9 @@ public class fProxyLUTests
             LUBlockedIllConditioned256,
             LUBlockedSingular256,
             LUBlockedSolve300,
+            // decompInPlace's OWN blocked (level-3) path vs decomp's blocked path: full equivalence
+            // (identical pivots + factors aligned through the pivot). Panel-boundary + one-past sizes.
+            LUBlockedDecompInPlaceEquivalence,
             // Solver API rework (commit 2) coverage: safe decomp/decompNoPivot preserve A, and
             // solveInPlace's exit factor is a valid decompSolve input (bit-identical to fresh decomp).
             LUDecompVariantsPreserveA,
@@ -118,6 +121,9 @@ public class fProxyLUTests
                     break;
                 case TestType.LUBlockedSolve300:
                     LUBlockedSolve300();
+                    break;
+                case TestType.LUBlockedDecompInPlaceEquivalence:
+                    LUBlockedDecompInPlaceEquivalence();
                     break;
                 case TestType.LUDecompVariantsPreserveA:
                     LUDecompVariantsPreserveA();
@@ -967,6 +973,46 @@ public class fProxyLUTests
 
             pivot.Dispose();
             arena.Dispose();
+        }
+
+        // (6) decompInPlace's OWN blocked (level-3) path vs decomp's blocked path — FULL EQUIVALENCE.
+        //
+        // After decompInPlace gained its own compact/P-indirected panel/TRSM/GEMM path above
+        // LU_BLOCK_MIN_N (float 256, double 128; LU_BLOCK=32), it must produce the IDENTICAL pivot
+        // sequence to decomp (full-column-height partial pivoting is schedule-independent) and factors
+        // equal within GEMM summation-order rounding. BlockedVsReference is the shared oracle here: it
+        // (a) asserts pB == pR elementwise (EXACT int equality — the strong guard: any pivot flip
+        // trips it, no tolerance to hide behind), (b) compares decomp's physically-permuted row-i
+        // factor against decompInPlace's compact factor READ THROUGH THE PIVOT (LUref[pR[i], j], since
+        // "factor row i lives at physical row P[i]") within an ||A||·n·eps·8 absolute tolerance, and
+        // (c) checks the blocked backward error is not worse than the reference. BOTH sizes below are
+        // above each type's blocked gate, so decomp AND decompInPlace each take their level-3 path.
+        //
+        // The factor tolerance is NOT vacuous: the true blocked-vs-reference factor gap is
+        // O(n·eps·||A||) (~0.02 at float n=288, ||A||~2n), the tolerance is ~8x that (~0.16), and a
+        // genuine mismatch (wrong pivot / mis-indexed row) is O(||A||)~576 — three-plus orders above
+        // the ceiling. The exact-int pivot check is the primary equivalence assertion.
+        public void LUBlockedDecompInPlaceEquivalence()
+        {
+            // Per-type sizes, both above the blocked gate. First is panel-boundary-aligned
+            // (288 = 9*LU_BLOCK float / 160 = 5*LU_BLOCK double, m % 32 == 0); second is one past a
+            // boundary (289 / 161 -> a width-1 trailing-panel remainder), so the non-aligned last
+            // panel is exercised on BOTH the decomp and decompInPlace sides.
+            int sizeBoundary    = /*+choose[288|160]*/288/*-choose*/;
+            int sizePastBoundary = /*+choose[289|161]*/289/*-choose*/;
+
+            for (int s = 0; s < 2; s++)
+            {
+                int dim = (s == 0) ? sizeBoundary : sizePastBoundary;
+
+                var arena = new Arena(Allocator.Persistent);
+                // Well-conditioned but NON-trivially pivoting (row-reversed diagonally-dominant), with
+                // a column-wise gap wide enough that blocked-vs-unblocked summation rounding cannot
+                // flip the argmax -> both paths must pick the SAME pivots (float and double alike).
+                var A = MakeWellConditionedPivoting(ref arena, dim, (uint)(9090711 + s));
+                BlockedVsReference(ref arena, in A);
+                arena.Dispose();
+            }
         }
 
         // ================================================================================

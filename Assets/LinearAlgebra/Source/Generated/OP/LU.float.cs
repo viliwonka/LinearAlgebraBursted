@@ -346,53 +346,217 @@ namespace LinearAlgebra
 
             if (m == 0) return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
-            for (int k = 0; k < m - 1; k++) {
+            // Panel width for the blocked (level-3) path below — same constant as decomp's blocked
+            // path. Method-local const (not class-level): LU is a partial class shared by the
+            // float/double generated files, so a class-level const of the same name would collide
+            // across them (CS0102; see QR_BLOCK / CHOL_BLOCK).
+            const int LU_BLOCK = 32;
 
-                int pivotIndex = k;
-                float pivotValue = math.abs(A_to_LU[P[k], k]);
+            // Size gate — reuse the SAME measured crossover as decomp (see decomp for the "size
+            // gate" rationale). Below this, the plain per-column sweep below is used unchanged.
+            const int LU_BLOCK_MIN_N = Consts.floatLuBlockMinN;
 
-                // Find largest pivot in rows
-                for (int r = k + 1; r < m; r++) {
-                    float absValue = math.abs(A_to_LU[P[r], k]);
-                    if (absValue > pivotValue) {
-                        pivotIndex = r;
-                        pivotValue = absValue;
+            if (m < LU_BLOCK_MIN_N) {
+                // Small matrix: plain right-looking rank-1 sweep with partial pivoting, unchanged.
+                for (int k = 0; k < m - 1; k++) {
+
+                    int pivotIndex = k;
+                    float pivotValue = math.abs(A_to_LU[P[k], k]);
+
+                    // Find largest pivot in rows
+                    for (int r = k + 1; r < m; r++) {
+                        float absValue = math.abs(A_to_LU[P[r], k]);
+                        if (absValue > pivotValue) {
+                            pivotIndex = r;
+                            pivotValue = absValue;
+                        }
+                    }
+
+                    // Check for zero pivot before any division
+                    if (pivotValue == 0)
+                        return new DirectSolveInfo { status = DirectSolveStatus.Singular };
+
+                    // Swap rows
+                    P.Swap(k, pivotIndex);
+
+                    int Pk = P[k];
+
+                    // Calculate L and U. Same vectorised axpy elimination as decomp(in A, ref L, ref U, ...),
+                    // but on the physical (pivot-indirected) rows Pj, Pk — still distinct (Pj != Pk), so
+                    // [NoAlias] holds. Bitwise identical to the scalar form.
+                    float Ukk = A_to_LU[Pk, k];
+                    unsafe
+                    {
+                        float* lup = A_to_LU.Data.Ptr;
+                        float* rowPk = lup + (long)Pk * m;
+                        int len = m - (k + 1);
+                        for (int j = k + 1; j < m; j++) {
+
+                            int Pj = P[j];
+
+                            float Ljk = A_to_LU[Pj, k] / Ukk;
+
+                            float* rowPj = lup + (long)Pj * m;
+                            UnsafeOP.axpy(rowPj + (k + 1), rowPk + (k + 1), -Ljk, len);
+
+                            A_to_LU[Pj, k] = Ljk;
+                        }
                     }
                 }
 
-                // Check for zero pivot before any division
-                if (pivotValue == 0)
+                // Check last diagonal (the k < m-1 loop never inspects it)
+                if (A_to_LU[P[m - 1], m - 1] == 0)
                     return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
-                // Swap rows
-                P.Swap(k, pivotIndex);
-
-                int Pk = P[k];
-
-                // Calculate L and U. Same vectorised axpy elimination as decomp(in A, ref L, ref U, ...),
-                // but on the physical (pivot-indirected) rows Pj, Pk — still distinct (Pj != Pk), so
-                // [NoAlias] holds. Bitwise identical to the scalar form.
-                float Ukk = A_to_LU[Pk, k];
-                unsafe
-                {
-                    float* lup = A_to_LU.Data.Ptr;
-                    float* rowPk = lup + (long)Pk * m;
-                    int len = m - (k + 1);
-                    for (int j = k + 1; j < m; j++) {
-
-                        int Pj = P[j];
-
-                        float Ljk = A_to_LU[Pj, k] / Ukk;
-
-                        float* rowPj = lup + (long)Pj * m;
-                        UnsafeOP.axpy(rowPj + (k + 1), rowPk + (k + 1), -Ljk, len);
-
-                        A_to_LU[Pj, k] = Ljk;
-                    }
-                }
+                return new DirectSolveInfo { status = DirectSolveStatus.Success };
             }
 
-            // Check last diagonal (the k < m-1 loop never inspects it)
+            // ---- blocked (level-3) path — compact/pivot-indirected GETRF ----
+            // Mirrors decomp's blocked path above (same panel/TRSM/GEMM derivation and the "why the
+            // pivot sequence stays identical" argument — see decomp's comments, which apply here
+            // unchanged: at panel step k, column k has already received every earlier panel's full
+            // trailing update plus this panel's own earlier-column eliminations, so the max-|abs|
+            // search sees exactly what the unblocked sweep above would see at the same step).
+            //
+            // The one structural difference is deliberate, not incidental: decomp physically swaps
+            // rows of its separate L/U matrices as it goes (Swap.Rows), so its trailing GEMM update
+            // is one contiguous-memory UnsafeOP.wySubVW call. decompInPlace's entire point is to
+            // AVOID physical row movement — a pivot here is two swapped ints in P, not an O(m) row
+            // copy (see the small-matrix sweep above, and decompInPlace's own doc: "row i lives at
+            // physical row P[i]"). So the panel rows [k0,kMax) and trailing rows [panelEnd,m) are
+            // scattered physical rows reached through P[row], not a contiguous block with a fixed
+            // leading dimension — wySubVW needs that fixed stride between consecutive rows, which
+            // scattered rows don't have. The trailing update below instead inlines wySubVW's own
+            // loop nest (row outer / panel-column middle / UnsafeOP.axpy inner over the trailing
+            // columns) one physical row at a time. The VALUES read and the ORDER they're combined in
+            // are identical either way — floating-point summation doesn't know or care whether a
+            // row's address came from `base + t*stride` or `base + P[t]*stride` — so this computes
+            // the exact same rank-kb update a contiguous wySubVW call would, just addressed per row;
+            // only the memory-access pattern differs, not the arithmetic or its order.
+            //
+            // LAST COLUMN: same handling as decomp — the panel loop caps at kMax = min(panelEnd,
+            // m-1), so column m-1 is only ever eliminated, never pivot-searched; the final
+            // `if (A_to_LU[P[m-1],m-1]==0)` check below matches the unblocked form exactly.
+            unsafe
+            {
+                float* up = A_to_LU.Data.Ptr;
+
+                // Ubuf: contiguous gather of the (scattered) U12 panel rows' trailing segment (kb x
+                // ntrail, row stride ntrail), sized for the worst case (first panel, k0=0: kb=LU_BLOCK,
+                // ntrail<=m) — same sizing as decomp's Ubuf. The per-row GEMM update below needs this
+                // gathered so each trailing row only has to walk it once per panel column, not re-read
+                // scattered panel rows for every trailing row.
+                var Ubuf = new floatN(LU_BLOCK * m, Allocator.Temp, false);
+                float* ubufp = Ubuf.Data.Ptr;
+
+                for (int k0 = 0; k0 < m - 1; k0 += LU_BLOCK) {
+
+                    int kb = math.min(LU_BLOCK, m - k0);
+                    int panelEnd = k0 + kb;
+                    // Never pivot-search/select-as-pivot column m-1 (matches unblocked's k<m-1 bound).
+                    int kMax = math.min(panelEnd, m - 1);
+
+                    // (1) PANEL FACTOR columns [k0, kMax) with partial pivoting over the FULL column
+                    //     height [k,m) — same rank-1 sweep as the small-matrix path above (index-only
+                    //     P.Swap, no physical row movement), just narrowed to this panel's own columns
+                    //     for the elimination width. As in decomp, this loop also computes (but does
+                    //     not yet apply beyond the panel) the L21 multipliers for the trailing rows —
+                    //     they're read back by the TRSM and GEMM steps below.
+                    for (int k = k0; k < kMax; k++) {
+
+                        int pivotIndex = k;
+                        float pivotValue = math.abs(A_to_LU[P[k], k]);
+
+                        for (int r = k + 1; r < m; r++) {
+                            float absValue = math.abs(A_to_LU[P[r], k]);
+                            if (absValue > pivotValue) {
+                                pivotIndex = r;
+                                pivotValue = absValue;
+                            }
+                        }
+
+                        // Check for zero pivot before any division
+                        if (pivotValue == 0) {
+                            Ubuf.Dispose();
+                            return new DirectSolveInfo { status = DirectSolveStatus.Singular };
+                        }
+
+                        // Swap rows (index only — see the section header)
+                        P.Swap(k, pivotIndex);
+
+                        int Pk = P[k];
+                        float Ukk = A_to_LU[Pk, k];
+                        float* rowPk = up + (long)Pk * m;
+                        int len = panelEnd - (k + 1);
+                        for (int j = k + 1; j < m; j++) {
+
+                            int Pj = P[j];
+
+                            float Ljk = A_to_LU[Pj, k] / Ukk;
+
+                            if (len > 0) {
+                                float* rowPj = up + (long)Pj * m;
+                                UnsafeOP.axpy(rowPj + (k + 1), rowPk + (k + 1), -Ljk, len);
+                            }
+
+                            // U is exactly upper-triangular; column k now holds the L multiplier.
+                            A_to_LU[Pj, k] = Ljk;
+                        }
+                    }
+
+                    int rStart = panelEnd;
+                    if (rStart < m) {
+                        int ntrail = m - rStart;
+
+                        // (2) TRSM: U12 = L11^-1 * A12 in place, forward substitution with no divide
+                        //     (L11 is unit-lower, implicit diagonal = 1) — row r of U12 (physical row
+                        //     P[k0+r]) is corrected by the already-solved rows 0..r-1 of U12, scaled by
+                        //     L11's strict-lower entries (already stored at A_to_LU[P[k0+r],k0+p] by
+                        //     the panel loop above).
+                        for (int r = 1; r < kb; r++) {
+                            int Pr = P[k0 + r];
+                            float* uR = up + (long)Pr * m + rStart;
+                            for (int p = 0; p < r; p++) {
+                                float Lrp = A_to_LU[Pr, k0 + p];
+                                int Pp = P[k0 + p];
+                                float* uP = up + (long)Pp * m + rStart;
+                                UnsafeOP.axpy(uR, uP, -Lrp, ntrail);
+                            }
+                        }
+
+                        // (3) copy U12's (scattered) rows into contiguous Ubuf (kb x ntrail, leading
+                        //     dim ntrail) — the gather this per-row-scattered layout needs in place of
+                        //     decomp's plain strided copy.
+                        for (int r = 0; r < kb; r++) {
+                            int Pr = P[k0 + r];
+                            float* uR = up + (long)Pr * m + rStart;
+                            float* bufR = ubufp + (long)r * ntrail;
+                            for (int c = 0; c < ntrail; c++)
+                                bufR[c] = uR[c];
+                        }
+
+                        // (4) GEMM trailing update: A22 -= L21 * U12, one physical trailing row at a
+                        //     time against the gathered Ubuf — see the section header for why this
+                        //     replaces decomp's single wySubVW call, and why it is the same computation.
+                        for (int t = 0; t < ntrail; t++) {
+
+                            int Pt = P[rStart + t];
+                            float* crow = up + (long)Pt * m + rStart;
+
+                            for (int p = 0; p < kb; p++) {
+                                float Lip = A_to_LU[Pt, k0 + p];
+                                float* wp = ubufp + (long)p * ntrail;
+                                UnsafeOP.axpy(crow, wp, -Lip, ntrail);
+                            }
+                        }
+                    }
+                }
+
+                Ubuf.Dispose();
+            }
+
+            // Check last diagonal (mirrors the unblocked form's final check; the blocked k-loop above
+            // never pivot-searches column m-1, matching the unblocked k<m-1 bound).
             if (A_to_LU[P[m - 1], m - 1] == 0)
                 return new DirectSolveInfo { status = DirectSolveStatus.Singular };
 
