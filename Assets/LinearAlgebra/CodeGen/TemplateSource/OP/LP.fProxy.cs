@@ -70,6 +70,93 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Warm-started re-solve: like <see cref="solve(in fProxyMxN, in fProxyN, in fProxyN, in NativeArray{ConstraintSense}, ref fProxyN, out double, LPMethod, int)"/>
+        /// but seeds (and returns) the terminal basis through <paramref name="basis"/> instead of always
+        /// starting from the all-logical vertex -- see <see cref="LPBasis"/>'s own doc comment for the
+        /// re-solve use case and lifecycle contract. Always routes through
+        /// <see cref="LPMethod.DualSimplex"/>: the bound-flip dual-feasibility repair and the cost-
+        /// perturbation degeneracy defence a warm start needs are DUAL-simplex-specific machinery (see
+        /// LP.DualSimplex.fProxy.cs) -- the other backends have no analogous "seed from an arbitrary
+        /// basis" entry point, so this overload does not take an <see cref="LPMethod"/> parameter at all
+        /// rather than accepting one it would ignore or throw on.
+        ///
+        /// <paramref name="basis"/>.<see cref="LPBasis.IsEmpty"/> (never constructed, or constructed but
+        /// not yet <see cref="LPBasis.populated"/>): runs the ordinary cold solve (all-logical start) and
+        /// writes the terminal basis into it -- allocating it first (<c>Allocator.Persistent</c>,
+        /// MANAGED-THREAD ONLY -- a Burst job cannot make this allocation) only if it was not already
+        /// created; a pre-constructed-but-unpopulated <paramref name="basis"/> (e.g.
+        /// <c>new LPBasis(n, m, Allocator.Temp)</c>, job-safe) is seeded into its existing buffers with
+        /// no new allocation at all. See <see cref="LPBasis"/>'s own doc comment for the full three-way
+        /// lifecycle.
+        ///
+        /// Otherwise (already <see cref="LPBasis.populated"/>): <paramref name="basis"/> must be
+        /// <see cref="LPBasis.IsValid"/> for this problem's shape (n = <c>A.N_Cols</c> structural
+        /// variables, m = <c>A.M_Rows</c> constraints) -- a dimension mismatch throws. A dimensionally-
+        /// valid basis is used AS THE STARTING POINT regardless of where it came from (the SAME problem
+        /// after a bound/rhs perturbation -- the intended fast path, few pivots needed -- or,
+        /// degenerately, an unrelated same-shape problem, still CORRECT just not fast): the dual-
+        /// feasibility repair (bound flips, or a temporary artificial bound when the natural one is
+        /// infinite) makes it dual-feasible again before the ordinary dual pivots run, and a singular
+        /// basis matrix at the first refactorization falls back to the all-logical start rather than
+        /// failing outright. Either way the terminal basis is written back into <paramref name="basis"/>
+        /// in place.
+        /// </summary>
+        /// <param name="A">Constraint coefficients, m×n (m constraints, n variables).</param>
+        /// <param name="b">Right-hand sides, length m. Any sign (negative rows are normalized internally).</param>
+        /// <param name="c">Objective coefficients, length n (minimized).</param>
+        /// <param name="senses">Per-row constraint sense, length m.</param>
+        /// <param name="x">Output solution, length n (overwritten).</param>
+        /// <param name="objective">Output cᵀx at the returned x.</param>
+        /// <param name="basis">Warm-start seed in, terminal basis out (see above). Caller-owned.</param>
+        /// <param name="maxIter">Pivot/iteration budget; ≤0 picks a size-based default.</param>
+        public static LPInfo solve(in fProxyMxN A, in fProxyN b, in fProxyN c,
+                                   in NativeArray<ConstraintSense> senses,
+                                   ref fProxyN x, out double objective,
+                                   ref LPBasis basis, int maxIter = 0)
+        {
+            int m = A.M_Rows, n = A.N_Cols, N = n + m;
+
+            if (b.N != m) throw new ArgumentException("LP.solve: b.N must equal A.M_Rows");
+            if (c.N != n) throw new ArgumentException("LP.solve: c.N must equal A.N_Cols");
+            if (senses.Length != m) throw new ArgumentException("LP.solve: senses.Length must equal A.M_Rows");
+            if (x.N != n) throw new ArgumentException("LP.solve: x.N must equal A.N_Cols");
+
+            bool needsSeed = basis.IsEmpty;
+            if (!basis.IsCreated)
+                basis = new LPBasis(n, m, Allocator.Persistent);   // managed-thread only -- see doc comment
+            else if (!basis.IsValid(n, m))
+                throw new ArgumentException("LP.solve: basis dimensions do not match A (expected n+m status entries, m basis entries)");
+
+            if (needsSeed)
+            {
+                for (int i = 0; i < m; i++) { basis.basis[i] = n + i; basis.status[n + i] = STATUS_BASIC; }
+                for (int j = 0; j < n; j++) basis.status[j] = STATUS_AT_LOWER;
+                basis.populated = true;
+            }
+
+            var M = new fProxyMxN(m, N, Allocator.Temp);
+            var lower = new fProxyN(N, Allocator.Temp);
+            var upper = new fProxyN(N, Allocator.Temp);
+            var cost = new fProxyN(N, Allocator.Temp);
+            var rhs = new fProxyN(m, Allocator.Temp);
+
+            BuildComputationalForm(in A, in b, in c, in senses, M, lower, upper, cost, rhs, m, n, N);
+
+            var xFull = new fProxyN(N, Allocator.Temp);
+            var info = DualSimplexCore(M, lower, upper, cost, rhs, m, n, N, maxIter, xFull, basis.basis, basis.status);
+
+            for (int j = 0; j < n; j++) x[j] = xFull[j];
+
+            double obj = 0;
+            for (int j = 0; j < n; j++) obj += (double)c[j] * (double)xFull[j];
+            objective = obj;
+            info.objective = obj;
+
+            M.Dispose(); lower.Dispose(); upper.Dispose(); cost.Dispose(); rhs.Dispose(); xFull.Dispose();
+            return info;
+        }
+
+        /// <summary>
         /// Least absolute deviation (L1 regression): minimize ‖A x − b‖₁ over a FREE x ∈ ℝⁿ. Robust to
         /// outliers where ordinary least squares (which minimizes the L2 norm) is not. This overload
         /// is a HYBRID: it picks between this library's two reformulation-free exact engines by problem

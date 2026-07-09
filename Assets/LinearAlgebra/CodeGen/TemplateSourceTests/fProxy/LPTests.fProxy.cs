@@ -55,6 +55,14 @@ public class fProxyLPTests
             RevisedAndDualRandomN96, // n=96 (>64 pivots): both revised backends vs tableau, 3 seeds
             RevisedDenseCovering, // revised simplex, dense covering LP (Ax>=b, x>=0, A,b,c>0) vs tableau
 
+            // ==== LPBasis warm-start (docs/draft-spec-mip.md stage 1) -- job-safe via the
+            // created-but-unpopulated `new LPBasis(n,m,Allocator.Temp)` cold-seed path (LP.solve seeds the
+            // all-logical start into the already-allocated Temp buffers, no non-Temp allocation). The
+            // dimension-mismatch THROW test stays a managed [Test] at the bottom (Assert.Catch). ====
+            DualWarmVsColdPerturbed,   // (a)+(b) rhs-perturbed warm re-solve: obj == cold, iters < cold
+            DualWarmEmptyBitIdentical, // (c) unpopulated-Temp cold-seed path == LPMethod.DualSimplex, bit-identical
+            DualWarmStaleBasisCorrect, // (e) stale/garbage seed basis still reaches the correct optimum
+
             // ==== LP.ladFN / ladFrischNewtonCore, docs/spec-lad-frisch-newton.md's Tests section ====
             LadFNvsOracleM48,   // FN L1 residual == exact LP.lad oracle, random+outliers, m=48 n=4
             LadFNvsOracleM96,   // ...m=96
@@ -126,6 +134,9 @@ public class fProxyLPTests
                 case TestType.DualLad: DualLad(); break;
                 case TestType.RevisedAndDualRandomN96: RevisedAndDualRandomN96(); break;
                 case TestType.RevisedDenseCovering: RevisedDenseCovering(); break;
+                case TestType.DualWarmVsColdPerturbed: DualWarmVsColdPerturbed(); break;
+                case TestType.DualWarmEmptyBitIdentical: DualWarmEmptyBitIdentical(); break;
+                case TestType.DualWarmStaleBasisCorrect: DualWarmStaleBasisCorrect(); break;
                 case TestType.LadFNvsOracleM48: LadFNvsOracle(48); break;
                 case TestType.LadFNvsOracleM96: LadFNvsOracle(96); break;
                 case TestType.LadFNvsOracleM192: LadFNvsOracle(192); break;
@@ -1028,6 +1039,173 @@ public class fProxyLPTests
             senses.Dispose(); arena.Dispose();
         }
 
+        // ==== LPBasis warm-start (docs/draft-spec-mip.md stage 1) ====
+        // The dual simplex's reduced costs depend ONLY on cost/A (y = B^-T c_B, d_j = cost[j] - A_j.y),
+        // NEVER on b -- so an rhs-only perturbation leaves a previously dual-optimal basis EXACTLY
+        // dual-feasible. The warm re-solve then needs only PRIMAL-feasibility-restoring pivots (few),
+        // while a cold solve rebuilds the whole vertex from the all-logical start (many) -- the textbook-
+        // reliable "warm start wins" oracle (a bound-tightening scheme could disturb dual feasibility;
+        // rhs-only cannot). Construction reuses DualVsSimplexRandom's Section-1 recipe (n=48, m=24, A in
+        // [0,1] -> bounded, b = A x0 + slack, c in [-1,1], all rows <=). All three run inside the Burst
+        // job via the created-but-unpopulated `new LPBasis(n,m,Allocator.Temp)` cold-seed path: LP.solve
+        // seeds the all-logical start into the already-allocated Temp buffers (job-safe, no non-Temp
+        // allocation), so no LP.STATUS_* internal const is needed caller-side.
+
+        // (a) A warm re-solve of an rhs-perturbed LP matches a COLD solve of the SAME perturbed LP in
+        //     objective (an LP's optimum is unique), and (b) the warm iteration count is STRICTLY LESS
+        //     than the cold one -- the actual point of the feature, asserted, not merely "it ran".
+        void DualWarmVsColdPerturbed()
+        {
+            const int n = 48, m = n / 2;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var Ax0 = Blas.dot(A, x0);
+            var b = arena.fProxyVec(m);
+            var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
+            for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
+            var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+            // 1) cold solve of the ORIGINAL LP via the job-safe unpopulated-Temp basis: LP.solve seeds the
+            //    all-logical start in place (no alloc) and populates `basis` with the terminal vertex.
+            var x1 = arena.fProxyVec(n);
+            var basis = new LPBasis(n, m, Allocator.Temp);
+            var info1 = LP.solve(in A, in b, in c, in senses, ref x1, out double obj1, ref basis);
+            AssertTrue(info1.status == LPStatus.Optimal);
+
+            // 2) tighten the rhs of the MOST-slack row (under x1) to just below its current activity -- a
+            //    mild NEW primal violation (x1 infeasible on that row by 0.1) that, being rhs-only, leaves
+            //    `basis` EXACTLY dual-feasible.
+            int istar = 0; double bestSlack = -1;
+            for (int i = 0; i < m; i++)
+            {
+                double rowDot = 0;
+                for (int j = 0; j < n; j++) rowDot += (double)A[i, j] * (double)x1[j];
+                double slack = (double)b[i] - rowDot;
+                if (slack > bestSlack) { bestSlack = slack; istar = i; }
+            }
+            var b2 = arena.fProxyVec(m);
+            for (int i = 0; i < m; i++) b2[i] = b[i];
+            double actIstar = 0;
+            for (int j = 0; j < n; j++) actIstar += (double)A[istar, j] * (double)x1[j];
+            b2[istar] = (fProxy)(actIstar - 0.1);
+
+            // 3) WARM re-solve of the perturbed LP reusing `basis` (populated, dual-feasible seed) --
+            //    terminal basis written back in place (same buffers, no reallocation).
+            var x2 = arena.fProxyVec(n);
+            var info2 = LP.solve(in A, in b2, in c, in senses, ref x2, out double obj2, ref basis);
+            AssertTrue(info2.status == LPStatus.Optimal);
+
+            // 4) COLD solve of the SAME perturbed LP (plain LPMethod.DualSimplex) -- a fair iteration
+            //    baseline, counted the same way (dual pivots + primal cleanup) as the warm call.
+            var xC = arena.fProxyVec(n);
+            var infoC = LP.solve(in A, in b2, in c, in senses, ref xC, out double objC, LPMethod.DualSimplex);
+            AssertTrue(infoC.status == LPStatus.Optimal);
+
+            // (a) same optimal objective within the exact-vertex per-dtype rel tol (1e-3 float / 1e-6
+            //     double, scaled like the sibling Dual*/Revised* cross-checks).
+            double relTol = /*+choose[1e-3|1e-6]*/1e-3/*-choose*/;
+            AssertCloseD(obj2, objC, relTol * (1.0 + math.abs(objC)));
+
+            // (b) the warm start pivots STRICTLY FEWER times than the cold rebuild. Record the observed
+            //     counts (got=warm, limit=cold) in the diagnostics slots on failure. Observed margins are
+            //     wide (2026-07-09): double warm 1 / cold 19, float warm 2 / cold 16.
+            if (!(info2.iterations < infoC.iterations) && Fail[0] == (fProxy)0)
+            { Fail[0] = (fProxy)1; Fail[1] = (fProxy)info2.iterations; Fail[2] = (fProxy)infoC.iterations; Fail[3] = (fProxy)0; }
+            Assert.IsTrue(info2.iterations < infoC.iterations);
+
+            basis.Dispose(); senses.Dispose(); arena.Dispose();
+        }
+
+        // (c) The created-but-unpopulated Temp cold-seed path must be BIT-IDENTICAL to the plain
+        //     LPMethod.DualSimplex cold path: both build the same computational form and forward to the
+        //     same DualSimplexCore with the same all-logical seed, so x, objective, iterations and status
+        //     must match EXACTLY (==, not within-tolerance -- this codebase's bit-identical regression-
+        //     guard idiom). Both calls run in the same Burst job, so the equality is exact in float too.
+        void DualWarmEmptyBitIdentical()
+        {
+            const int n = 24, m = n / 2;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var Ax0 = Blas.dot(A, x0);
+            var b = arena.fProxyVec(m);
+            var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
+            for (int i = 0; i < m; i++) b[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
+            var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+            var xE = arena.fProxyVec(n);
+            var basis = new LPBasis(n, m, Allocator.Temp);   // created-but-unpopulated -> job-safe cold seed
+            var infoE = LP.solve(in A, in b, in c, in senses, ref xE, out double objE, ref basis);
+
+            var xD = arena.fProxyVec(n);
+            var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
+
+            AssertTrue(infoE.status == infoD.status);
+            AssertTrue(infoE.iterations == infoD.iterations);
+            AssertTrue(objE == objD);                              // exact double equality
+            for (int j = 0; j < n; j++) AssertTrue(xE[j] == xD[j]); // exact per-element equality
+
+            basis.Dispose(); senses.Dispose(); arena.Dispose();
+        }
+
+        // (e) Correctness with a GARBAGE/STALE basis: seed the warm solve of LP_B with LP_A's terminal
+        //     basis (dimensions match, contents are nonsense for LP_B). The dual-feasibility repair +
+        //     singular-basis fallback must still reach LP_B's true optimum, regardless of where the basis
+        //     came from. Correctness oracle only -- no iteration-count claim here.
+        void DualWarmStaleBasisCorrect()
+        {
+            const int n = 48, m = n / 2;
+            var arena = new Arena(Allocator.Persistent);
+
+            // LP_A -- the instance whose terminal basis we (mis)use as a seed.
+            var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var xa0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var Axa0 = Blas.dot(A, xa0);
+            var ba = arena.fProxyVec(m);
+            var rngA = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
+            for (int i = 0; i < m; i++) ba[i] = Axa0[i] + rngA.NextFProxy((fProxy)0.1, (fProxy)1);
+            var ca = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+
+            // LP_B -- an UNRELATED same-shape (n, m) instance (every random draw shifted by a large prime).
+            const uint off = 777777773u;
+            var B = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11) + off);
+            var xb0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7) + off);
+            var Axb0 = Blas.dot(B, xb0);
+            var bb = arena.fProxyVec(m);
+            var rngB = new Unity.Mathematics.Random((uint)(n * 1299709 + 3) + off);
+            for (int i = 0; i < m; i++) bb[i] = Axb0[i] + rngB.NextFProxy((fProxy)0.1, (fProxy)1);
+            var cb = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5) + off);
+
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+            // solve LP_A -> populate basisA (job-safe unpopulated-Temp cold-seed path)
+            var xa = arena.fProxyVec(n);
+            var basisA = new LPBasis(n, m, Allocator.Temp);
+            var infoA = LP.solve(in A, in ba, in ca, in senses, ref xa, out double objA, ref basisA);
+            AssertTrue(infoA.status == LPStatus.Optimal);
+
+            // warm-solve LP_B seeded with LP_A's (now populated but stale/meaningless-for-B) basis
+            var xbWarm = arena.fProxyVec(n);
+            var infoBWarm = LP.solve(in B, in bb, in cb, in senses, ref xbWarm, out double objBWarm, ref basisA);
+            AssertTrue(infoBWarm.status == LPStatus.Optimal);
+
+            // oracle: an ordinary cold solve of LP_B
+            var xbCold = arena.fProxyVec(n);
+            var infoBCold = LP.solve(in B, in bb, in cb, in senses, ref xbCold, out double objBCold, LPMethod.DualSimplex);
+            AssertTrue(infoBCold.status == LPStatus.Optimal);
+
+            double relTol = /*+choose[1e-3|1e-6]*/1e-3/*-choose*/;
+            AssertCloseD(objBWarm, objBCold, relTol * (1.0 + math.abs(objBCold)));
+
+            basisA.Dispose(); senses.Dispose(); arena.Dispose();
+        }
+
         // ==== Frisch-Newton exact LAD / quantile regression (LP.ladFN, LP.ladFrischNewtonCore) ====
         // docs/spec-lad-frisch-newton.md's Tests section (4 items). FN is a primal-dual INTERIOR POINT
         // on the LAD dual: it approaches (never lands exactly on) the degenerate optimal vertex, so
@@ -1425,6 +1603,27 @@ public class fProxyLPTests
         Assert.Catch<ArgumentException>(() => LP.lad(in A, in b, ref x, out double obj));
 
         arena.Dispose();
+    }
+
+    // (d) The ref-LPBasis warm-start overload must reject a NON-EMPTY basis whose dimensions do not match
+    // the problem (IsValid(n, m) false) rather than silently misreading its buffers. A 2x2 LP wants a
+    // basis of status[4]/basis[2]; a new LPBasis(3, 5, ...) is created (so !IsEmpty) but mis-sized, so
+    // the overload throws ArgumentException. Same managed-thread [Test] + Assert.Catch pattern as the
+    // Solve/Lad dimension-mismatch tests above.
+    [Test]
+    public void WarmSolveThrowsOnBasisDimensionMismatch()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var A = arena.fProxyMat(2, 2);
+        var b = arena.fProxyVec(2);
+        var c = arena.fProxyVec(2);
+        var x = arena.fProxyVec(2);
+        var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
+        var basis = new LPBasis(3, 5, Allocator.Temp);   // non-empty but !IsValid(2, 2)
+
+        Assert.Catch<ArgumentException>(() => LP.solve(in A, in b, in c, in senses, ref x, out double obj, ref basis));
+
+        basis.Dispose(); senses.Dispose(); arena.Dispose();
     }
 
     // Diagnostic: the matrix-free normal operator M = Aₛ diag(D) Aₛᵀ (with D = 1) must reproduce the

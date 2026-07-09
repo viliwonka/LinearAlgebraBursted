@@ -159,6 +159,129 @@ namespace LinearAlgebra
         public override string ToString() => ToFixedString().ToString();
     }
 
+    /// <summary>
+    /// Captures the revised/dual simplex's COMPLETE basis state -- everything <see cref="LP.solve"/>
+    /// needs to seed a re-solve from an existing vertex instead of the all-logical start, via the
+    /// <c>ref LPBasis</c> overload of <c>LP.solve</c> (LP.fProxy.cs). Type-agnostic (plain byte/int
+    /// buffers, no fProxy field), so it lives here rather than in either per-dtype template -- same
+    /// CS0102 reasoning as <see cref="ConstraintSense"/>/<see cref="LPMethod"/> above.
+    ///
+    /// Computational-form indexing throughout (see LP.RevisedSimplex.fProxy.cs's header): a problem
+    /// with n structural variables and m constraints has N_total = n + m variables (n structural +
+    /// m logical/slack); <see cref="status"/> tags each of the N_total variables one of
+    /// <c>LP.STATUS_BASIC</c> / <c>LP.STATUS_AT_LOWER</c> / <c>LP.STATUS_AT_UPPER</c> (a nonbasic
+    /// variable always rests exactly on the tagged bound), and <see cref="basis"/>[i] is the variable
+    /// index (into that same N_total-wide space) basic in row i.
+    ///
+    /// RE-SOLVE USE CASE: solve an LP, capture its terminal basis, perturb the problem (a tightened
+    /// bound, a changed rhs -- anything that leaves the old basis dual-feasible or close to it), then
+    /// re-solve with the SAME basis via <c>LP.solve(..., ref basis)</c>. The dual simplex only needs
+    /// to repair primal feasibility from there (a handful of pivots) instead of rebuilding a vertex
+    /// from scratch -- the same mechanism that makes the dual simplex branch-and-bound's workhorse (a
+    /// branching bound change keeps the parent basis dual-feasible; see docs/draft-spec-mip.md).
+    ///
+    /// LIFECYCLE: user-allocated, mirroring <see cref="Pivot"/>'s own <c>(size, Allocator)</c> +
+    /// <see cref="Dispose"/> pattern -- no arena requirement, since this needs to persist ACROSS
+    /// separate top-level solve calls, exactly the standalone tier the fProxy matrix/vector types
+    /// already support alongside their arena-backed tier. Three ways to arrive at
+    /// <c>LP.solve(..., ref basis)</c>, in increasing order of caller control:
+    ///   * <c>default(LPBasis)</c> (or any instance that is not <see cref="IsCreated"/>) -- treated
+    ///     as "no warm state": the call runs the ordinary cold solve and ALLOCATES this struct itself
+    ///     (<c>Allocator.Persistent</c> -- the only lifetime that survives past the call) before
+    ///     writing the terminal basis into it. Convenient, but a Burst JOB CANNOT do this allocation
+    ///     (Unity's safety checks only permit a job to create <c>Allocator.Temp</c> containers) -- this
+    ///     path is MANAGED-THREAD ONLY. The caller then owns the result and must call
+    ///     <see cref="Dispose"/> when done reusing it.
+    ///   * <c>new LPBasis(n, m, allocator)</c> constructed explicitly but left otherwise untouched
+    ///     (<see cref="populated"/> stays false, its default) -- job-safe with e.g.
+    ///     <c>Allocator.Temp</c>: no allocation happens inside the solve call, which instead seeds the
+    ///     ALREADY-ALLOCATED buffers with the all-logical start itself (the caller never needs the
+    ///     internal status-tag constants for this -- <c>LP.solve</c> already has them) and marks it
+    ///     <see cref="populated"/>. This is the job-safe way to get a capturable basis out of a cold
+    ///     solve.
+    ///   * A basis that is already <see cref="populated"/> (the result of an earlier
+    ///     <c>LP.solve(..., ref basis)</c> call, cold or warm, on ANY same-shape problem) --
+    ///     dimension-validated then used AS THE STARTING POINT; see that method's doc comment for the
+    ///     dimension check and dual-feasibility repair this triggers.
+    /// </summary>
+    public struct LPBasis
+    {
+        /// <summary>Status tag per variable (length N_total = n structural + m logical), one of
+        /// <c>LP.STATUS_BASIC</c> / <c>LP.STATUS_AT_LOWER</c> / <c>LP.STATUS_AT_UPPER</c>.</summary>
+        public NativeArray<byte> status;
+
+        /// <summary><c>basis[i]</c> = index (into the N_total-wide variable space <see cref="status"/>
+        /// indexes) of the variable basic in row i. Length m.</summary>
+        public NativeArray<int> basis;
+
+        /// <summary>False on a freshly-constructed instance; <c>LP.solve(..., ref basis)</c> sets this
+        /// true once <see cref="status"/>/<see cref="basis"/> hold a real terminal basis (seeded by a
+        /// cold solve, or supplied warm by the caller). Distinguishes "just allocated, buffers are
+        /// zero-filled garbage" from "has real content" independently of <see cref="IsCreated"/>, since
+        /// the job-safe construction path (see the type's own doc comment) allocates well before it has
+        /// anything meaningful to put in the buffers.</summary>
+        public bool populated;
+
+        /// <summary>
+        /// Allocates a basis sized for <paramref name="n"/> structural variables and
+        /// <paramref name="m"/> constraints (N_total = n + m). Contents are zero-initialized and
+        /// <see cref="populated"/> is false -- NOT a valid warm seed on its own; either pass it straight
+        /// to <c>LP.solve(..., ref basis)</c> (which recognizes the unpopulated state and seeds it with
+        /// an ordinary cold solve, job-safe), or fill it from a matching-shape problem's own terminal
+        /// state (and set <see cref="populated"/> = true) before passing it as a warm seed.
+        /// </summary>
+        public LPBasis(int n, int m, Allocator allocator)
+        {
+            status = new NativeArray<byte>(n + m, allocator);
+            basis = new NativeArray<int>(m, allocator);
+            populated = false;
+        }
+
+        /// <summary>True once both buffers are allocated (regardless of content validity).</summary>
+        public bool IsCreated => status.IsCreated && basis.IsCreated;
+
+        /// <summary>True for a never-constructed / already-<see cref="Dispose"/>d instance (e.g.
+        /// <c>default(LPBasis)</c>), OR a constructed-but-not-yet-<see cref="populated"/> one -- either
+        /// way, <c>LP.solve(..., ref basis)</c> treats this as "no warm state, run the cold solve".</summary>
+        public bool IsEmpty => !IsCreated || !populated;
+
+        /// <summary>True iff this basis is allocated AND sized for exactly <paramref name="n"/>
+        /// structural variables / <paramref name="m"/> constraints -- the dimension check
+        /// <c>LP.solve</c>'s <c>ref LPBasis</c> overload runs before trusting a created basis (empty or
+        /// populated) as a seed (a mismatch throws rather than silently misreading the buffers).</summary>
+        public bool IsValid(int n, int m) => IsCreated && basis.Length == m && status.Length == n + m;
+
+        /// <summary>Releases both buffers. Safe to call on an empty/already-disposed instance.</summary>
+        public void Dispose()
+        {
+            if (status.IsCreated) status.Dispose();
+            if (basis.IsCreated) basis.Dispose();
+        }
+
+        /// <summary>Burst-safe compact summary, e.g. <c>LPBasis(n_total=16, m=4, created=true)</c>.
+        /// Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = $"LPBasis(n_total={status.Length}, m={basis.Length}, created=";
+
+            if (IsCreated)
+            {
+                FixedString32Bytes flag = "true)";
+                str.Append(flag);
+            }
+            else
+            {
+                FixedString32Bytes flag = "false)";
+                str.Append(flag);
+            }
+
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+
     // Shared constants for the revised-simplex kernel layer (LP.RevisedSimplex.fProxy.cs) and the dual
     // simplex built on it (LP.DualSimplex.fProxy.cs). Type-agnostic (plain int/byte, no fProxy token),
     // so they live here in this non-templated (singularFile) file -- exactly like ConstraintSense/

@@ -41,6 +41,17 @@ namespace LinearAlgebra
     // `col_DSE = Ftran(row_ep)` i.e. tau = B^-1 rho_r -- exactly the spec's
     // `w_i' = w_i - 2(alpha_qi/alpha_qr)*tau_i + (alpha_qi/alpha_qr)^2*w_r, then w_r' = w_r/alpha_qr^2`.
     // The 1e-4 floor is HiGHS's `kMinDualSteepestEdgeWeight` (highs/simplex/SimplexConst.h).
+    //
+    // WARM-START (docs/draft-spec-mip.md stage 1, LPBasis in LP.Info.cs): DualSimplexCore below is
+    // split fresh-overload-forwards-to-warm-overload, exactly like LP.RevisedSimplex.double.cs's
+    // RevisedPrimalCore. The warm overload's dual-feasibility repair (bound flips / temporary
+    // artificial bounds keyed off a REAL BTRAN-computed reduced cost) is a strict generalization of
+    // the former cold-only precondition -- provably bit-identical at the all-logical basis, since
+    // y = B^-T c_B is then exactly the zero vector (c_B = 0, and BTRAN of an all-zero vector stays
+    // all-zero through every forward/back-substitution step) -- see that overload's own comments for
+    // the full argument. LP.solve's `ref LPBasis` overload (LP.double.cs) is the only entry point;
+    // the ordinary `LP.solve(..., LPMethod.DualSimplex)` call keeps hitting the UNCHANGED fresh
+    // overload.
     // ================================================================================================
     public static partial class LP
     {
@@ -199,9 +210,48 @@ namespace LinearAlgebra
         // throughout, then restore real bounds and hand the terminal basis to stage 1's primal core as
         // a cleanup pass (removes the cost perturbation's effect and fixes any primal infeasibility left
         // by the bound restoration -- the HiGHS composition, see file header).
+        //
+        // Fresh all-logical start: builds that basis/status, forwards to the warm-start overload below
+        // (mirrors LP.RevisedSimplex.double.cs's RevisedPrimalCore split -- the fresh-start case is
+        // exactly the warm-start case's math evaluated at a specific, all-logical starting point, so it
+        // forwards instead of duplicating the pivot loop -- see that overload's comments for why this is
+        // provably behavior-preserving), and owns (disposes) the basis/status it allocated.
         internal static LPInfo DualSimplexCore(doubleMxN M, doubleN lower, doubleN upper,
                                                doubleN cost, doubleN rhs, int m, int n, int N,
                                                int maxIter, doubleN xFull)
+        {
+            var basis = new NativeArray<int>(m, Allocator.Temp);
+            var status = new NativeArray<byte>(N, Allocator.Temp);
+            for (int i = 0; i < m; i++) { basis[i] = n + i; status[n + i] = STATUS_BASIC; }
+            for (int j = 0; j < n; j++) status[j] = STATUS_AT_LOWER;
+
+            var info = DualSimplexCore(M, lower, upper, cost, rhs, m, n, N, maxIter, xFull, basis, status);
+
+            basis.Dispose(); status.Dispose();
+            return info;
+        }
+
+        // Warm-start overload -- added for LP.solve's `ref LPBasis` re-solve entry point (LP.double.cs;
+        // LPBasis in LP.Info.cs captures exactly this (status[], basis[]) pair in this computational-
+        // form indexing). `basis`/`status` (sized m / N) must already describe a VALID assignment --
+        // every nonbasic sitting exactly on one of its (current) bounds -- but need NOT be feasible or
+        // dual-feasible; the caller retains ownership (this method reads/mutates them in place, never
+        // allocates or disposes them), exactly like LP.RevisedSimplex.double.cs's RevisedPrimalCore warm
+        // overload. The fresh-start overload above forwards here with the all-logical basis/status, so
+        // this single body serves both -- the dual-feasibility repair below replaces the FORMER cold-
+        // only precondition with a strict generalization of it, provably bit-identical at that specific
+        // starting point (see the repair's own comment).
+        //
+        // A basis matrix that fails to factor at the very first Refactorize (garbage/stale `basis[]`,
+        // e.g. carried over from an unrelated problem -- see LPBasis's doc comment) falls back to the
+        // all-logical start rather than failing outright -- defensive, and that fallback's own
+        // Refactorize cannot itself fail (the logical columns are exactly the identity, see
+        // BuildComputationalForm), so `resultStatus` only reports MaxIterations here in a genuinely
+        // pathological case (e.g. M containing NaN/Inf).
+        internal static LPInfo DualSimplexCore(doubleMxN M, doubleN lower, doubleN upper,
+                                               doubleN cost, doubleN rhs, int m, int n, int N,
+                                               int maxIter, doubleN xFull,
+                                               NativeArray<int> basis, NativeArray<byte> status)
         {
             // Same per-dtype tolerance expressions as stage 1 (see that file's header for why these are
             // inlined rather than a shared helper method).
@@ -229,14 +279,13 @@ namespace LinearAlgebra
             for (int j = 0; j < n; j++) dataScale = math.max(dataScale, math.abs((double)cost[j]));
             double artificialBound = (double)(100.0 * dataScale);
 
-            var basis = new NativeArray<int>(m, Allocator.Temp);
-            var status = new NativeArray<byte>(N, Allocator.Temp);
             var xB = new doubleN(m, Allocator.Temp);
             var perturbedCost = new doubleN(N, Allocator.Temp);
-            var isArtificial = new NativeArray<bool>(n, Allocator.Temp);
-
-            for (int i = 0; i < m; i++) { basis[i] = n + i; status[n + i] = STATUS_BASIC; }
-            for (int j = 0; j < n; j++) status[j] = STATUS_AT_LOWER;
+            // 0 = untouched, +1 = given a temporary artificial UPPER bound (real upper was +INF),
+            // -1 = given a temporary artificial LOWER bound (real lower was -INF) -- generalizes the
+            // former cold-only `isArtificial` (bool[n], upper-only) to any nonbasic column (structural
+            // OR logical) in either direction; see the repair loop below.
+            var artificialDir = new NativeArray<sbyte>(N, Allocator.Temp);
 
             // HiGHS-style cost perturbation (degeneracy defence, deterministic seed): <= 1e-5*(1+|c_j|).
             // Deterministic per-column pseudo-random unit value in (-1, 1) via a cheap integer hash
@@ -252,32 +301,6 @@ namespace LinearAlgebra
                 h ^= h >> 16;
                 double unit = (double)(h * (1.0 / 4294967295.0) * 2.0 - 1.0);
                 perturbedCost[j] = cost[j] + unit * (double)1e-5 * ((double)1 + math.abs(cost[j]));
-            }
-
-            // Dual-feasibility precondition from the all-logical basis: c_B = 0 here, so y = B^-T c_B =
-            // 0 and d_j = cost[j] for every nonbasic (only structurals are nonbasic at this basis). A
-            // negative d_j needs status AtUpper to be dual-feasible, but structurals' real upper is +INF
-            // -- give it the artificial-bounds dual-phase-1 box instead, which makes the flip possible.
-            // At THIS specific starting basis, "flip to the matching bound" and "artificial-bounds phase
-            // 1" are the same pass (spec: both derive purely from cost sign since y=0), so they are
-            // folded into one loop rather than run as two separate stages.
-            //
-            // Uses the ORIGINAL cost, not perturbedCost: this is a one-time TRUE-dual-feasibility
-            // decision, not part of the iterative pricing the perturbation is meant to stabilize. Using
-            // perturbedCost here was an actual bug -- a column with cost[j] EXACTLY 0 (e.g. every x+/x-
-            // column in LP.lad's reformulation, which has none of its own cost) is dual-feasible as-is
-            // (d_j=0 trivially satisfies d_j>=0), but the perturbation's random sign could nudge it
-            // slightly negative and give it a pointless artificial bound; multiplied across the MANY
-            // exactly-zero-cost columns LP.lad's [x+|x-] block always has, this corrupted the warm-started
-            // basis handed to the primal cleanup badly enough to report a false Unbounded.
-            for (int j = 0; j < n; j++)
-            {
-                if (cost[j] < -dualTol)
-                {
-                    upper[j] = artificialBound;
-                    isArtificial[j] = true;
-                    status[j] = STATUS_AT_UPPER;
-                }
             }
 
             var B = new doubleMxN(m, m, Allocator.Temp);
@@ -296,8 +319,11 @@ namespace LinearAlgebra
             var flipCols = new NativeArray<int>(N, Allocator.Temp);
             var flipRHS = new doubleN(m, Allocator.Temp);
 
-            // DSE weights: w_i = 1 exactly at the all-logical basis (spec), maintained (never reset)
-            // across refactorizations for the rest of this run.
+            // DSE weights: w_i = 1 exactly at the all-logical basis (spec); at an arbitrary warm-started
+            // basis this is an APPROXIMATION (not exact steepest-edge), same as HiGHS's own warm-start
+            // behavior -- affects pricing quality only, never correctness (neither the pivot below nor
+            // DualRatioTest depends on weight VALUES for validity, only for which candidate they prefer).
+            // Maintained (never reset) across refactorizations for the rest of this run either way.
             var weight = new doubleN(m, Allocator.Temp);
             for (int i = 0; i < m; i++) weight[i] = (double)1;
 
@@ -305,8 +331,68 @@ namespace LinearAlgebra
             int iters = 0;
 
             bool ok = Refactorize(M, basis, B, ref P, m, N);
+            if (!ok)
+            {
+                // Supplied basis was singular -- fall back to the standard all-logical start (see this
+                // overload's header comment) rather than reporting failure outright.
+                for (int i = 0; i < m; i++) { basis[i] = n + i; status[n + i] = STATUS_BASIC; }
+                for (int j = 0; j < n; j++) status[j] = STATUS_AT_LOWER;
+                ok = Refactorize(M, basis, B, ref P, m, N);
+            }
+
             if (!ok) resultStatus = LPStatus.MaxIterations;
-            else RebuildXB(M, rhs, status, lower, upper, B, in P, m, N, xB);
+            else
+            {
+                // ---- dual-feasibility repair: bound flips (or, when the natural bound is infinite, a
+                // temporary artificial bound) on every nonbasic column whose ACTUAL reduced cost sign is
+                // wrong for its current status. y = B^-T c_B via BTRAN against the JUST-refactorized
+                // basis (etaCount == 0 here, a clean base solve, no eta corrections yet).
+                //
+                // At the all-logical basis c_B = 0 (cost[n+i] = 0 for every logical, BuildComputational
+                // Form), so y starts as the exact zero vector and BTRAN of an all-zero vector STAYS all-
+                // zero through every forward/back-substitution step (each step is either an assignment of
+                // 0, a multiply-by-0, a subtract-of-0, or a divide-of-0-by-a-nonzero-pivot -- all exact
+                // in IEEE754, no rounding). So d_j collapses to EXACTLY cost[j] for every nonbasic j, and
+                // since logicals are BASIC at that basis (skipped by the STATUS_BASIC check below, same
+                // as the old code's `j < n` loop range did implicitly), this is BIT-IDENTICAL to the
+                // former cold-only precondition it replaces. At an arbitrary warm-started basis y is the
+                // real B^-T c_B, so every nonbasic column -- structural OR logical -- is checked against
+                // its TRUE reduced cost, and EITHER bound is eligible for the artificial-bound trick (a
+                // GreaterEqual row's logical has real lower = -INF, the mirror image of a structural's
+                // real upper = +INF).
+                //
+                // Uses the ORIGINAL cost, not perturbedCost: this is a one-time TRUE-dual-feasibility
+                // decision, not part of the iterative pricing the perturbation is meant to stabilize. Using
+                // perturbedCost here was an actual bug -- a column with cost[j] EXACTLY 0 (e.g. every x+/x-
+                // column in LP.lad's reformulation, which has none of its own cost) is dual-feasible as-is
+                // (d_j=0 trivially satisfies d_j>=0), but the perturbation's random sign could nudge it
+                // slightly negative and give it a pointless artificial bound; multiplied across the MANY
+                // exactly-zero-cost columns LP.lad's [x+|x-] block always has, this corrupted the warm-started
+                // basis handed to the primal cleanup badly enough to report a false Unbounded.
+                for (int i = 0; i < m; i++) y[i] = cost[basis[i]];
+                Btran(B, in P, etaAlpha, etaRow, etaCount, y, m);
+
+                for (int j = 0; j < N; j++)
+                {
+                    if (status[j] == STATUS_BASIC || upper[j] - lower[j] <= (double)1e-13) continue;
+
+                    double d = cost[j];
+                    for (int i = 0; i < m; i++) d -= M[i, j] * y[i];
+
+                    if (status[j] == STATUS_AT_LOWER && d < -dualTol)
+                    {
+                        if (upper[j] < (double)1e29) status[j] = STATUS_AT_UPPER;
+                        else { upper[j] = artificialBound; artificialDir[j] = 1; status[j] = STATUS_AT_UPPER; }
+                    }
+                    else if (status[j] == STATUS_AT_UPPER && d > dualTol)
+                    {
+                        if (lower[j] > (double)(-1e29)) status[j] = STATUS_AT_LOWER;
+                        else { lower[j] = -artificialBound; artificialDir[j] = -1; status[j] = STATUS_AT_LOWER; }
+                    }
+                }
+
+                RebuildXB(M, rhs, status, lower, upper, B, in P, m, N, xB);
+            }
 
             int budget = maxIter > 0 ? maxIter : 50 * (m + N) + 200;
 
@@ -438,15 +524,24 @@ namespace LinearAlgebra
                 iters++;
             }
 
-            // ---- restore real bounds; a nonbasic still sitting at the artificial upper becomes
-            //      primal-infeasible (or simply invalid, since the real bound is now +INF) and is reset
-            //      to AtLower for the primal cleanup below to sort out (spec: "variables stuck at an
-            //      artificial bound become primal-infeasible ... handled by the primal cleanup") ----
-            for (int j = 0; j < n; j++)
+            // ---- restore real bounds; a nonbasic still sitting at an artificial bound becomes primal-
+            //      infeasible (or simply invalid, since the real bound is now infinite again) and is
+            //      reset to the OTHER (now real) status for the primal cleanup below to sort out (spec:
+            //      "variables stuck at an artificial bound become primal-infeasible ... handled by the
+            //      primal cleanup") -- generalized to both directions, see artificialDir above ----
+            for (int j = 0; j < N; j++)
             {
-                if (!isArtificial[j]) continue;
-                upper[j] = realINF;
-                if (status[j] == STATUS_AT_UPPER) status[j] = STATUS_AT_LOWER;
+                if (artificialDir[j] == 0) continue;
+                if (artificialDir[j] > 0)
+                {
+                    upper[j] = realINF;
+                    if (status[j] == STATUS_AT_UPPER) status[j] = STATUS_AT_LOWER;
+                }
+                else
+                {
+                    lower[j] = -realINF;
+                    if (status[j] == STATUS_AT_LOWER) status[j] = STATUS_AT_UPPER;
+                }
             }
 
             LPInfo info;
@@ -465,7 +560,7 @@ namespace LinearAlgebra
                 info = new LPInfo { status = cleanup.status, iterations = iters + cleanup.iterations, objective = 0 };
             }
 
-            basis.Dispose(); status.Dispose(); xB.Dispose(); perturbedCost.Dispose(); isArtificial.Dispose();
+            xB.Dispose(); perturbedCost.Dispose(); artificialDir.Dispose();
             B.Dispose(); P.Dispose(); etaAlpha.Dispose(); etaRow.Dispose();
             y.Dispose(); cB.Dispose(); dj.Dispose(); rho.Dispose(); tau.Dispose();
             alphaRow.Dispose(); alphaCol.Dispose(); flipCols.Dispose(); flipRHS.Dispose(); weight.Dispose();
