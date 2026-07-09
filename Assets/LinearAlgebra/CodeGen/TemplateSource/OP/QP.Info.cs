@@ -1,0 +1,144 @@
+//singularFile//
+using Unity.Collections;
+
+namespace LinearAlgebra
+{
+    /// <summary>
+    /// Terminal state of a <see cref="QP"/> solve, carried by <see cref="QPInfo"/>. Mirrors
+    /// <see cref="LPStatus"/>'s role for <see cref="LP.solve"/> -- same four outcomes, same meaning.
+    /// Type-agnostic (no fProxy) on purpose: it lives in a non-templated file so codegen does not emit
+    /// a duplicate definition into both the float and double partials of <c>partial class QP</c>
+    /// (CS0102), exactly like <see cref="LPStatus"/> / <see cref="ConstraintSense"/>.
+    ///
+    /// STAGE 1 (docs/draft-spec-qp.md) -- the fixed-working-set equality QP kernel (<c>QP.eqpSolve</c>
+    /// / <c>QP.eqpNullSpaceStep</c>) -- only ever produces <see cref="Optimal"/> or
+    /// <see cref="Unbounded"/> (a PSD Q with a fixed, full-row-rank working set cannot be primal
+    /// infeasible -- the working set itself IS the feasible manifold -- and there is no iteration
+    /// budget to exhaust with a single Newton step). <see cref="Infeasible"/> and
+    /// <see cref="MaxIterations"/> are reserved for the stage 2-3 active-set loop (phase 1 / the
+    /// add-drop iteration cap) and the enum is defined complete now so that loop does not need a
+    /// breaking status-enum change later.
+    /// </summary>
+    public enum QPStatus
+    {
+        /// <summary>A finite optimal solution was found; <c>x</c> and <see cref="QPInfo.objective"/>
+        /// describe it, <c>lambda</c> the constraint multipliers.</summary>
+        Optimal = 0,
+
+        /// <summary>The feasible region is empty (stage 2-3: phase 1 could not find a feasible point).
+        /// No usable <c>x</c>. Not reachable by the stage-1 fixed-working-set kernel.</summary>
+        Infeasible = 1,
+
+        /// <summary>The objective decreases without bound (only possible when Q is singular along a
+        /// direction the working set does not restrict AND that direction is a descent direction for
+        /// the linear term -- see <c>QP.eqpNullSpaceStep</c>'s regularized-Cholesky retry). No finite
+        /// optimum; <c>x</c> is the last feasible iterate before the unbounded direction was
+        /// detected.</summary>
+        Unbounded = 2,
+
+        /// <summary>The iteration budget was exhausted before an optimality/unboundedness certificate
+        /// was reached (stage 2-3: the active-set add/drop loop). <c>x</c> is the last iterate
+        /// (feasible, but not proven optimal). Not reachable by the stage-1 fixed-working-set kernel.
+        /// </summary>
+        MaxIterations = 3,
+    }
+
+    /// <summary>
+    /// Burst-safe enum-to-name helper for <see cref="QPStatus"/>, used by
+    /// <see cref="QPInfo.ToFixedString"/>. A manual <c>switch</c> returning a
+    /// <see cref="FixedString32Bytes"/> literal per case -- <c>enum.ToString()</c> is NOT Burst-legal.
+    /// </summary>
+    public static class QPStatusExtensions
+    {
+        public static FixedString32Bytes Name(this QPStatus s)
+        {
+            switch (s)
+            {
+                case QPStatus.Optimal: return "Optimal";
+                case QPStatus.Infeasible: return "Infeasible";
+                case QPStatus.Unbounded: return "Unbounded";
+                case QPStatus.MaxIterations: return "MaxIterations";
+                default: return "Unknown";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Result of a quadratic-program solve (the stage-1 <c>QP.eqpSolve</c> / <c>QP.eqpNullSpaceStep</c>
+    /// kernel now; the future <c>QP.solve</c> facade later). Returned by value; an implicit
+    /// <c>bool</c> conversion (== <see cref="Solved"/>) means the natural success test reads well,
+    /// exactly like <see cref="LPInfo"/>:
+    /// <code>
+    ///   if (QP.eqpSolve(in Q, in c, in A_W, in b_W, ref x, ref lambda)) { ... }   // implicit bool
+    /// </code>
+    ///
+    /// <see cref="objective"/> is reported as <c>double</c> regardless of the solve's precision (a
+    /// float solve widens its float objective), matching <see cref="LPInfo"/> / <see cref="LstsqInfo"/>
+    /// / <see cref="SolveInfo"/> -- diagnostics need not be precision-typed, which is why this is a
+    /// plain, unprefixed struct rather than a float/double-generated one. It is the value
+    /// <c>½xᵀQx + cᵀx</c> at the returned <c>x</c>.
+    ///
+    /// <see cref="stationarityResidual"/> / <see cref="feasibilityResidual"/> are the solver-diag-struct
+    /// convention's "only already-computed/cheap numbers" KKT diagnostics (per the spec's Stage 1
+    /// oracle: compare against a full KKT-system LU solve). Both are ALREADY on hand as a direct
+    /// byproduct of the null-space step (stationarity: the reduced gradient Zᵀg the step just drove to
+    /// ~0; feasibility: one cheap GEMV, A_W x - b_W) -- see <c>QP.eqpNullSpaceStep</c>. There is no
+    /// separate complementarity residual yet because stage 1 has no inequality constraints to be
+    /// complementary about; stage 2-3 will extend this struct's diagnostics, not replace them.
+    ///
+    /// On <see cref="QPStatus.Optimal"/> the outputs are the optimal point and its multipliers. On
+    /// <see cref="QPStatus.Unbounded"/> <c>x</c> is the last feasible iterate (the pre-step point) and
+    /// <c>lambda</c> is not written -- check status first, exactly like <see cref="LPInfo"/>.
+    /// </summary>
+    public struct QPInfo
+    {
+        /// <summary>Objective value <c>½xᵀQx + cᵀx</c> at the returned <c>x</c>. Meaningful on
+        /// <see cref="QPStatus.Optimal"/> / <see cref="QPStatus.MaxIterations"/>.</summary>
+        public double objective;
+
+        /// <summary>Null-space Newton steps (stage 1) / active-set pivots (stage 2-3) actually taken.
+        /// The stage-1 fixed-working-set kernel always reports 1 (one exact Newton step solves an
+        /// equality-constrained quadratic from any feasible start -- see <c>QP.eqpSolve</c>'s doc
+        /// comment) whenever a step was attempted, including on <see cref="QPStatus.Unbounded"/> (the
+        /// attempted, rejected step still counts as the iteration that discovered unboundedness).
+        /// </summary>
+        public int iterations;
+
+        /// <summary>Why the solve stopped -- see <see cref="QPStatus"/>.</summary>
+        public QPStatus status;
+
+        /// <summary>‖Zᵀ(Qx + c)‖∞ at the returned <c>x</c> -- the reduced-gradient (dual feasibility /
+        /// stationarity) KKT residual restricted to the working set's null space. ~0 (factor-solve
+        /// rounding only) whenever <see cref="status"/> is <see cref="QPStatus.Optimal"/>, since the
+        /// null-space Newton step drives it there exactly for a quadratic; 0 (not computed) on any
+        /// other status.</summary>
+        public double stationarityResidual;
+
+        /// <summary>‖A_W x - b_W‖∞ at the returned <c>x</c> -- the primal feasibility KKT residual
+        /// against the working set. ~0 (factor-solve rounding only) by construction: the feasible
+        /// start solves A_W x = b_W exactly and every subsequent step moves within null(A_W).</summary>
+        public double feasibilityResidual;
+
+        /// <summary>True iff a finite optimum was found (<c>status == QPStatus.Optimal</c>). Same
+        /// value as the implicit bool conversion; use whichever reads better.</summary>
+        public bool Solved => status == QPStatus.Optimal;
+
+        /// <summary>Implicit success test, so <c>if (QP.eqpSolve(...))</c> reads as "did it reach an
+        /// optimum".</summary>
+        public static implicit operator bool(QPInfo info) => info.status == QPStatus.Optimal;
+
+        /// <summary>Burst-safe compact summary, e.g. <c>QPInfo(Optimal, iters=1, obj=1.42E+01)</c>.
+        /// Never allocates managed memory.</summary>
+        public FixedString128Bytes ToFixedString()
+        {
+            FixedString128Bytes str = "QPInfo(";
+            str.Append(status.Name());
+            FixedString128Bytes tail = $", iters={iterations}, obj={objective:G4})";
+            str.Append(tail);
+            return str;
+        }
+
+        /// <summary>Managed wrapper -- do not call from inside a [BurstCompile] job.</summary>
+        public override string ToString() => ToFixedString().ToString();
+    }
+}
