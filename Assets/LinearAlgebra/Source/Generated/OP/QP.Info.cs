@@ -64,6 +64,34 @@ namespace LinearAlgebra
     }
 
     /// <summary>
+    /// STAGE 2 (docs/draft-spec-qp.md): per-row state of the active-set working set W maintained by
+    /// <c>QP.qpActiveSetCore</c>, one byte per row of the unified T = m + n row/bound system (general
+    /// constraint rows 0..m-1, then variable-bound rows m..m+n-1 -- see that method's file-header
+    /// comment). Type-agnostic (no fProxy) on purpose, same CS0102 reasoning as <see cref="QPStatus"/>.
+    /// </summary>
+    public enum WorkingSetStatus : byte
+    {
+        /// <summary>Not in the working set -- the row is not currently treated as an equality.
+        /// Default value (zero), so a freshly-allocated <c>NativeArray&lt;byte&gt;</c> starts with
+        /// every row Inactive.</summary>
+        Inactive = 0,
+
+        /// <summary>In the working set, pinned to its LOWER bound L_t (row·x == L_t). Enters A_W
+        /// AS-IS (+row) -- see <c>QP.qpActiveSetCore</c>'s sign-convention comment.</summary>
+        ActiveLower = 1,
+
+        /// <summary>In the working set, pinned to its UPPER bound U_t (row·x == U_t). Enters A_W
+        /// NEGATED (-row) so the whole working set shares one "row·x >= bound" sign convention.
+        /// </summary>
+        ActiveUpper = 2,
+
+        /// <summary>An equality row (L_t == U_t) -- permanently in the working set (draft-spec-qp.md
+        /// requirement 1); never a Dantzig/Bland drop candidate (no sign constraint on its
+        /// multiplier).</summary>
+        Equality = 3,
+    }
+
+    /// <summary>
     /// Result of a quadratic-program solve (the stage-1 <c>QP.eqpSolve</c> / <c>QP.eqpNullSpaceStep</c>
     /// kernel now; the future <c>QP.solve</c> facade later). Returned by value; an implicit
     /// <c>bool</c> conversion (== <see cref="Solved"/>) means the natural success test reads well,

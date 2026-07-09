@@ -457,5 +457,664 @@ namespace LinearAlgebra
 
             return info;
         }
+
+        // ============================================================================================
+        // STAGE 2 (docs/draft-spec-qp.md): the INEQUALITY-constrained active-set LOOP -- algorithm
+        // steps 1-5 minus phase 1. Phase 1 (an LP-powered feasible start) is stage 3; this stage's
+        // entry point, qpActiveSetCore, takes a CALLER-SUPPLIED feasible x0 and validates it rather
+        // than manufacturing one. Built directly on stage 1's constituent kernel functions
+        // (FactorWorkingSetTranspose / ApplyWorkingSetQtForward / FormNullSpaceBasis /
+        // SolveReducedNewtonStep, all still `internal static`, UNCHANGED) instead of through
+        // eqpSolve/eqpNullSpaceStep -- exactly the "compute p, then apply p" split that file's own
+        // header comment anticipated stage 2 would need (the ratio test must see p BEFORE it is
+        // applied, to know how far it is safe to go, and possibly not apply it at all).
+        //
+        // Problem solved:
+        //
+        //     minimize    1/2 xᵀQx + cᵀx
+        //     subject to  A x {<=,=,>=} b     (per-row senses, LP.solve's ConstraintSense)
+        //                 xl <= x <= xu
+        //
+        // ---- Unified row/bound representation ----
+        //
+        // Every constraint -- general row AND variable bound alike -- is one range L_t <= (row t).x
+        // <= U_t over T = m + n rows: t < m is general row t (normal = A's row t; L/U from its
+        // ConstraintSense, see BuildRowBounds); t >= m is variable bound j = t - m (normal = e_j,
+        // L/U = xl[j]/xu[j]). This is HiGHS's own L <= Ax <= U, l <= x <= u form (draft-spec-qp.md
+        // "What HiGHS actually does"), collapsed to one system because the null-space kernel below
+        // does not care whether a working-set row came from A or from a bound -- it only ever sees
+        // "rows of A_W". Each row's WorkingSetStatus (QP.Info.cs) records which side it is pinned to;
+        // ActiveLower/Equality rows enter A_W AS-IS (+row), ActiveUpper rows enter NEGATED (-row), so
+        // the accepted convention across the WHOLE working set is uniformly "row.x >= bound" -- the
+        // Nocedal & Wright sign convention (Numerical Optimization, 2nd ed., eq. 16.1b/16.26a: aTx >= b
+        // for inequalities, sum lambda_i a_i = Gx+d, lambda_i >= 0 required for an active inequality,
+        // section 16.4) that stage 1's multiplier recovery (A_Wᵀlambda = g) already assumes. With that
+        // flip, ONE uniform "lambda >= 0 for every non-equality row in W" test is correct for both
+        // former <= and >= rows and both bound sides -- no ActiveLower/ActiveUpper case split needed
+        // at the sign-check site (see the multiplier loop inside qpActiveSetCore).
+        //
+        // ---- Working-set rank guard ----
+        //
+        // A_W's rows must stay independent (draft-spec-qp.md requirement 1); TryAddToWorkingSet tests
+        // a candidate row by tentatively appending it as the LAST column of a from-scratch QR
+        // (AssembleWorkingSetTranspose's extraT/extraStatus params place it there regardless of its own
+        // row index, so its Householder diagonal R[k,k] is always readable as "this row's component
+        // orthogonal to everything already accepted") and checking |R[k,k]| against a scale-relative
+        // threshold -- exactly stage 1's own FactorWorkingSetTranspose, reused unchanged, called on a
+        // throwaway trial factor. A row found dependent is simply left Inactive: since it is then a
+        // linear combination of rows already in W, its activity gradient (row).p is EXACTLY 0 for any p
+        // in null(A_W) (p in null(A_W) => a_i.p = 0 for every a_i in W => (sum c_i a_i).p = 0), so a
+        // dependent row can never legitimately block a step -- excluding it from A_W costs nothing.
+        // Used both by SeedWorkingSet (equalities first, then x0's tight inequalities) and by the main
+        // loop's blocking-constraint add (with a small bounded retry over the ratio test's next-best
+        // candidate if the naive winner is rejected -- see qpActiveSetCore's "guardAttempts" loop).
+        //
+        // ---- Real Unbounded detection (making stage 1's documented-weak gap real) ----
+        //
+        // Declared exactly when ALL FOUR hold (draft-spec-qp.md requirement 3):
+        //   1. regularized      -- SolveReducedNewtonStep's Cholesky retry fired (H_Z numerically
+        //                          singular; only possible because Q is only PSD, not PD, on Z's span).
+        //   2. zero curvature   -- the Rayleigh quotient pᵀQp / pᵀp <= zeroThreshold (scale-invariant
+        //                          w.r.t. p's arbitrary magnitude, unlike the raw product).
+        //   3. no blocker       -- RatioTest, run with an UNCAPPED self-limit (thetaSelf = INF, not the
+        //                          usual 1), finds no inactive constraint anywhere along p.
+        //   4. descent          -- gᵀp < 0 (scaled by ||p|| for the same scale-invariance as #2); gᵀp is
+        //                          computed as gzᵀy, exactly the reduced gradient dotted with the
+        //                          reduced step (this file's header explains why the null-space
+        //                          transform hands back both halves from one sweep).
+        // Verified against Nocedal & Wright, Numerical Optimization (2nd ed.), section 16.5
+        // ("Active-Set Methods for Indefinite QP") -- fetched and read 2026-07-09: with Z the null-space
+        // basis for the current working set and ZᵀGZ found singular/indefinite along a direction sZ
+        // chosen to be non-ascent (their eq. surrounding "q(x+alpha*Z*sZ) -> -infinity as alpha ->
+        // infinity" and the sign choice "so that Z*sZ is a non-ascent direction for q"), the text states
+        // plainly: "By moving along the direction Z*sZ, we will encounter a constraint that can then be
+        // added to the working set for the next iteration. (If we don't find such a constraint, the
+        // problem is unbounded.)" Our case is the boundary of their construction (Q only PSD, so the
+        // reduced Hessian can go singular/zero-curvature but never strictly negative-definite beyond
+        // that boundary) -- conditions 1-2 detect that boundary, condition 3 is their "we don't find
+        // such a constraint", condition 4 (descent) is their non-ascent sign choice, made an explicit
+        // check here rather than a sign flip because SolveReducedNewtonStep's regularized solve already
+        // mathematically guarantees gᵀp <= 0 whenever it succeeds (gᵀp = gzᵀy = -gzᵀ(H_Z+deltaI)^-1 gz,
+        // and H_Z+deltaI is PD) -- see that function's own descent-guarantee comment; #4 is therefore a
+        // defensive check on that guarantee, not a live sign-flip decision, matching stage 1's own
+        // "should never fire for genuinely PSD Q" framing of the analogous check it already had.
+        // When #1-3 hold but #4 does not (gᵀp ~ 0, a genuinely FLAT direction -- e.g. Q=0 and c=0 along
+        // that direction), moving along p would not improve the objective at all, so the step is simply
+        // not taken and this working set is treated as converged (the multiplier check runs instead) --
+        // NOT declared Unbounded, since the objective does not in fact decrease without bound there.
+        // ============================================================================================
+
+        /// <summary>
+        /// Solve the inequality-constrained convex QP  min 1/2 xᵀQx + cᵀx  s.t. A x {&lt;=,=,&gt;=} b
+        /// (per-row <paramref name="senses"/>), xl &lt;= x &lt;= xu, from a CALLER-SUPPLIED feasible
+        /// starting point (<paramref name="x"/> on entry) -- the primal null-space active-set method,
+        /// HiGHS / Nocedal &amp; Wright ch. 16 lineage (see this file's header comments and
+        /// draft-spec-qp.md). Q must be symmetric PSD (v1 contract, same as stage 1's
+        /// <see cref="eqpSolve"/>).
+        ///
+        /// STAGE 2 of docs/draft-spec-qp.md: the inequality add/drop loop (algorithm steps 1-5 minus
+        /// phase 1). INTERNAL: phase 1 (an LP-powered feasible start, so callers need not supply one
+        /// themselves) is stage 3's public <c>QP.solve</c> facade, which will call this once a feasible
+        /// x0 is in hand.
+        /// </summary>
+        /// <param name="Q">Symmetric PSD Hessian, n x n.</param>
+        /// <param name="c">Linear cost, length n.</param>
+        /// <param name="A">Constraint coefficients, m x n.</param>
+        /// <param name="b">Right-hand sides, length m.</param>
+        /// <param name="senses">Per-row constraint sense, length m.</param>
+        /// <param name="xl">Variable lower bounds, length n. Use a large-magnitude negative sentinel
+        /// (&lt;= -1e29) for a variable unbounded below.</param>
+        /// <param name="xu">Variable upper bounds, length n. Use a large-magnitude positive sentinel
+        /// (&gt;= 1e29) for a variable unbounded above.</param>
+        /// <param name="x">On entry a FEASIBLE point (A x {&lt;=,=,&gt;=} b AND xl &lt;= x &lt;= xu,
+        /// checked up front to <see cref="QPStatus.Infeasible"/> tolerance); on exit the optimum (on
+        /// <see cref="QPStatus.MaxIterations"/>, the last feasible iterate; unchanged from entry on
+        /// <see cref="QPStatus.Infeasible"/> or <see cref="QPStatus.Unbounded"/>).</param>
+        /// <param name="objective">Output 1/2 xᵀQx + cᵀx at the returned x, computed fresh regardless
+        /// of status (matches <see cref="LP.solve"/>'s convention).</param>
+        /// <param name="maxIter">Pivot budget; &lt;= 0 picks a size-based default.</param>
+        internal static QPInfo qpActiveSetCore(in doubleMxN Q, in doubleN c, in doubleMxN A, in doubleN b,
+                                               in NativeArray<ConstraintSense> senses,
+                                               in doubleN xl, in doubleN xu,
+                                               ref doubleN x, out double objective, int maxIter)
+        {
+            int n = Q.M_Rows, m = A.M_Rows, T = m + n;
+
+            if (!Q.IsSquare) throw new ArgumentException("QP.qpActiveSetCore: Q must be square");
+            if (A.N_Cols != n) throw new ArgumentException("QP.qpActiveSetCore: A.N_Cols must equal Q.M_Rows");
+            if (b.N != m) throw new ArgumentException("QP.qpActiveSetCore: b.N must equal A.M_Rows");
+            if (c.N != n) throw new ArgumentException("QP.qpActiveSetCore: c.N must equal Q.M_Rows");
+            if (senses.Length != m) throw new ArgumentException("QP.qpActiveSetCore: senses.Length must equal A.M_Rows");
+            if (xl.N != n) throw new ArgumentException("QP.qpActiveSetCore: xl.N must equal Q.M_Rows");
+            if (xu.N != n) throw new ArgumentException("QP.qpActiveSetCore: xu.N must equal Q.M_Rows");
+            if (x.N != n) throw new ArgumentException("QP.qpActiveSetCore: x.N must equal Q.M_Rows");
+
+            double INF = (double)1e30;
+            double normInfQ = Norms.LInf(in Q);
+            double normInfA = Norms.LInf(in A);
+            // Q-space tolerance (curvature / regularization-delta / descent-direction checks) -- same
+            // scale stage 1's eqpNullSpaceStep already derives for the SAME purposes.
+            double zeroThreshold = Consts.doubleZeroThreshold * math.max(normInfQ, (double)1);
+            // Constraint-space tolerance (the working-set QR rank guard) -- A_W's own natural scale
+            // (bound rows contribute norm 1, general rows contribute normInfA), deliberately SEPARATE
+            // from zeroThreshold above since it factors a different matrix.
+            double zeroThresholdAW = Consts.doubleZeroThreshold * math.max(normInfA, (double)1);
+            double feasTol = (double)(math.max(math.sqrt((double)Consts.doubleEpsilon), 1e-7)) * math.max((double)1, normInfA);
+            double pivTol = math.max(Consts.doubleZeroThreshold, (double)1e-9);
+            double dualTol = feasTol;
+
+            var L = new doubleN(T, Allocator.Temp, true);
+            var U = new doubleN(T, Allocator.Temp, true);
+            BuildRowBounds(in b, in senses, in xl, in xu, m, n, ref L, ref U);
+
+            // ---- validate x0's feasibility up front (draft-spec-qp.md handoff requirement) ----
+            var Ax0 = new doubleN(math.max(m, 1), Allocator.Temp, true);
+            if (m > 0) Blas.dot(in A, in x, ref Ax0);
+            bool feasible = true;
+            double worstViol = 0;
+            for (int t = 0; t < T; t++)
+            {
+                double act = t < m ? (double)Ax0[t] : (double)x[t - m];
+                double lo = (double)L[t] - (double)feasTol, hi = (double)U[t] + (double)feasTol;
+                if (act < lo) { feasible = false; worstViol = math.max(worstViol, lo - act); }
+                else if (act > hi) { feasible = false; worstViol = math.max(worstViol, act - hi); }
+            }
+
+            if (!feasible)
+            {
+                Ax0.Dispose(); L.Dispose(); U.Dispose();
+                var Qxi = new doubleN(n, Allocator.Temp, true);
+                Blas.dot(in Q, in x, ref Qxi);
+                double objInfeas = 0;
+                for (int i = 0; i < n; i++) objInfeas += 0.5 * (double)x[i] * (double)Qxi[i] + (double)c[i] * (double)x[i];
+                Qxi.Dispose();
+                objective = objInfeas;
+                return new QPInfo { status = QPStatus.Infeasible, iterations = 0, objective = objInfeas, stationarityResidual = 0, feasibilityResidual = worstViol };
+            }
+
+            var wstatus = new NativeArray<byte>(T, Allocator.Temp);   // zero-init -> every row Inactive
+            SeedWorkingSet(in A, in L, in U, m, n, T, in x, in Ax0, wstatus, feasTol, zeroThresholdAW);
+            Ax0.Dispose();
+
+            int budget = maxIter > 0 ? maxIter : 50 * T + 200;
+            int degenCap = 3 * math.max(n, 1);
+            int degenCount = 0;
+            // Stage 3 seam (draft-spec-qp.md requirement 4 / step 5): HiGHS-style deterministic bound
+            // perturbation (spec-revised-simplex.md's cost-perturbation precedent) belongs here, ahead
+            // of or alongside Bland's rule, once a degenerate run is detected. v1 ships ONLY the
+            // anti-cycling floor (Bland-style lowest-row-index drop below) -- see the multiplier-check
+            // block's `useBland` branch.
+            bool useBland = false;
+            QPStatus status = QPStatus.Optimal;
+            int iterations = 0;
+
+            while (true)
+            {
+                if (iterations >= budget) { status = QPStatus.MaxIterations; break; }
+
+                // ---- factor the CURRENT working set from scratch (v1 judgment: no incremental
+                // update, see this file's Stage-1 header comment on FactorWorkingSetTranspose) ----
+                var rowOfCol = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
+                int k = AssembleWorkingSetTranspose(in A, in L, in U, m, n, T, wstatus, -1, WorkingSetStatus.Inactive, rowOfCol, out var AWT, out var bW);
+                int nz = n - k;
+
+                var R = new doubleMxN(k, k, Allocator.Temp);
+                var u = new doubleN(n, Allocator.Temp, true);
+                var w = new doubleN(math.max(k, math.max(nz, 1)), Allocator.Temp, true);
+                FactorWorkingSetTranspose(ref AWT, ref R, ref u, ref w, zeroThresholdAW);
+
+                var Qx = new doubleN(n, Allocator.Temp, true);
+                var g = new doubleN(n, Allocator.Temp, true);
+                Blas.dot(in Q, in x, ref Qx);
+                for (int i = 0; i < n; i++) g[i] = Qx[i] + c[i];
+                ApplyWorkingSetQtForward(ref AWT, ref g, ref u, k);
+
+                // ---- compute the null-space Newton step p (draft-spec-qp.md step 2) ----
+                bool haveNullSpace = nz > 0;
+                doubleN gz = default, y = default, p = default;
+                doubleMxN Z = default, QZ = default, Hz = default;
+                bool regularized = false, haveP = false;
+                double pInf = 0, pNormSq = 0, gp = 0;
+                QPStatus? exitStatus = null;
+
+                if (haveNullSpace)
+                {
+                    gz = new doubleN(nz, Allocator.Temp, true);
+                    for (int j = 0; j < nz; j++) gz[j] = g[k + j];
+                    Z = new doubleMxN(n, nz, Allocator.Temp, true);
+                    FormNullSpaceBasis(ref AWT, ref Z, ref u, ref w, k);
+                    QZ = new doubleMxN(n, nz, Allocator.Temp, true);
+                    Hz = new doubleMxN(nz, nz, Allocator.Temp, true);
+                    y = new doubleN(nz, Allocator.Temp, true);
+
+                    var choInfo = SolveReducedNewtonStep(in Q, ref Z, ref QZ, ref Hz, ref gz, ref y, normInfQ, out regularized);
+                    if (!choInfo.Solved)
+                    {
+                        // Stage 1's own hard-failure bail (the regularized retry ITSELF failed --
+                        // "should never happen for genuinely PSD Q", see SolveReducedNewtonStep's doc
+                        // comment): unconditional Unbounded, same as stage 1.
+                        exitStatus = QPStatus.Unbounded;
+                    }
+                    else
+                    {
+                        p = new doubleN(n, Allocator.Temp, true);
+                        haveP = true;
+                        Blas.dot(in Z, in y, ref p);
+                        for (int i = 0; i < n; i++) { double pi = (double)p[i]; pInf = math.max(pInf, math.abs(pi)); pNormSq += pi * pi; }
+                        for (int j = 0; j < nz; j++) gp += (double)gz[j] * (double)y[j];
+                    }
+                }
+
+                bool small = !haveNullSpace || pInf <= (double)feasTol;
+
+                double thetaSelf = (double)1;
+                double pScale = (double)1;
+                double alphaTake = (double)0;
+                int addRow = -1; bool addUpper = false;
+                bool doTakeStep = false;
+                bool doMultiplierCheck = small;
+                doubleN Ax = default, Ap = default;
+                NativeArray<bool> excluded = default;
+                bool haveRatioBufs = false;
+
+                if (exitStatus == null && !small)
+                {
+                    // ---- curvature test + ratio test (draft-spec-qp.md steps 2 & 4) ----
+                    var Qp = new doubleN(n, Allocator.Temp, true);
+                    Blas.dot(in Q, in p, ref Qp);
+                    double curvature = 0;
+                    for (int i = 0; i < n; i++) curvature += (double)p[i] * (double)Qp[i];
+                    Qp.Dispose();
+
+                    bool zeroCurv = regularized && pNormSq > 0 && (curvature / pNormSq) <= (double)zeroThreshold;
+
+                    // Rescale p to unit inf-norm for the ratio test (RatioTest's `pScale` divides d by
+                    // this internally): along the regularized/zero-curvature path p = -Z(H_Z+deltaI)^-1
+                    // gz can be enormous (~1/delta), which would otherwise make alpha come out tiny
+                    // (~delta-scaled) and make feasTol's Harris tie-window (calibrated for an O(1) alpha)
+                    // FAR too coarse relative to the true spacing between distinct blocking points --
+                    // several genuinely different blockers would look "tied" and the wrong (overstepping)
+                    // one could win, corrupting feasibility. Scale-invariant fix: run the ratio test on
+                    // p/pInf (alpha then O(1)-scaled regardless of p's raw magnitude) and convert back
+                    // (alpha_original = alpha_hat / pInf) -- see draft-spec-qp.md Stage 2 handoff, caught
+                    // by the LP-limit oracle (Q=0 forces EVERY step through this exact path, since the
+                    // reduced Hessian is then identically singular every iteration).
+                    pScale = (double)math.max(pInf, 1e-30);
+                    thetaSelf = zeroCurv ? INF : pScale;
+
+                    Ax = new doubleN(math.max(m, 1), Allocator.Temp, true);
+                    Ap = new doubleN(math.max(m, 1), Allocator.Temp, true);
+                    if (m > 0) { Blas.dot(in A, in x, ref Ax); Blas.dot(in A, in p, ref Ap); }
+                    excluded = new NativeArray<bool>(T, Allocator.Temp);   // zero-init -> none excluded
+                    haveRatioBufs = true;
+
+                    RatioTest(in L, in U, m, n, T, wstatus, excluded, in Ax, in Ap, in x, in p, pScale, thetaSelf, feasTol, pivTol, out double alphaHat, out int winnerRow, out bool winnerUpper);
+                    double alpha = alphaHat / pScale;
+
+                    if (zeroCurv && winnerRow < 0)
+                    {
+                        // See this file's header comment for the full 4-conjunct derivation
+                        // (conditions 1-3 all hold here; this is condition 4, descent).
+                        if (gp <= -(double)zeroThreshold * math.sqrt(pNormSq))
+                        {
+                            exitStatus = QPStatus.Unbounded;
+                        }
+                        else
+                        {
+                            // Flat, non-improving direction with no blocker: further movement along p
+                            // cannot help. Converged for this working set -- multiplier check, no step.
+                            doMultiplierCheck = true;
+                        }
+                    }
+                    else
+                    {
+                        doTakeStep = true;
+                        alphaTake = winnerRow >= 0 ? alpha : thetaSelf / pScale;
+                        addRow = winnerRow; addUpper = winnerUpper;
+                    }
+                }
+
+                // ---- act (mutate x / wstatus) BEFORE disposing this iteration's scratch ----
+                if (exitStatus == null && doTakeStep)
+                {
+                    bool degenerate = alphaTake <= pivTol;
+                    degenCount = degenerate ? degenCount + 1 : 0;
+                    useBland = degenCount >= degenCap;
+
+                    for (int i = 0; i < n; i++) x[i] += alphaTake * p[i];
+
+                    if (addRow >= 0)
+                    {
+                        int tryRow = addRow; bool tryUpper = addUpper;
+                        int guardAttempts = 0;
+                        // Bounded rank-guard retry: a naive ratio-test winner that would make A_W
+                        // rank-deficient (degenerate/redundant-constraint instances, draft-spec-qp.md
+                        // requirement 6d) is excluded and the next-best candidate tried instead. Capped
+                        // (not unbounded) -- if every candidate fails, W is simply left unchanged this
+                        // iteration; the degenerate-step counter / iteration budget are the backstop.
+                        while (guardAttempts < 8)
+                        {
+                            var cand = tryUpper ? WorkingSetStatus.ActiveUpper : WorkingSetStatus.ActiveLower;
+                            if (TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, tryRow, cand, zeroThresholdAW))
+                                break;
+                            excluded[tryRow] = true;
+                            guardAttempts++;
+                            RatioTest(in L, in U, m, n, T, wstatus, excluded, in Ax, in Ap, in x, in p, pScale, thetaSelf, feasTol, pivTol, out _, out int nextRow, out bool nextUpper);
+                            if (nextRow < 0) break;
+                            tryRow = nextRow; tryUpper = nextUpper;
+                        }
+                    }
+                    iterations++;
+                }
+                else if (exitStatus == null && doMultiplierCheck)
+                {
+                    // ---- multiplier recovery + sign check (draft-spec-qp.md step 3) ----
+                    var lamBuf = new doubleN(math.max(k, 1), Allocator.Temp, true);
+                    for (int i = 0; i < k; i++) lamBuf[i] = g[i];
+                    if (k > 0) Blas.triUpper(ref R, ref lamBuf);
+
+                    int worstCol = -1; double worstLam = -dualTol; int worstRowForBland = int.MaxValue;
+                    for (int kk = 0; kk < k; kk++)
+                    {
+                        int t = rowOfCol[kk];
+                        var st = (WorkingSetStatus)wstatus[t];
+                        if (st == WorkingSetStatus.Equality) continue;   // no sign constraint -- never a drop candidate
+                        double lam = lamBuf[kk];
+                        if (lam < -dualTol)
+                        {
+                            if (useBland) { if (t < worstRowForBland) { worstRowForBland = t; worstCol = kk; } }
+                            else if (lam < worstLam) { worstLam = lam; worstCol = kk; }
+                        }
+                    }
+
+                    if (worstCol < 0) exitStatus = QPStatus.Optimal;
+                    else { wstatus[rowOfCol[worstCol]] = (byte)WorkingSetStatus.Inactive; iterations++; }
+
+                    lamBuf.Dispose();
+                }
+
+                // ---- dispose this iteration's scratch (every path reaches here) ----
+                if (haveNullSpace)
+                {
+                    if (haveP) p.Dispose();
+                    y.Dispose(); Hz.Dispose(); QZ.Dispose(); Z.Dispose(); gz.Dispose();
+                }
+                g.Dispose(); Qx.Dispose(); w.Dispose(); u.Dispose(); R.Dispose(); AWT.Dispose(); bW.Dispose(); rowOfCol.Dispose();
+                if (haveRatioBufs) { Ax.Dispose(); Ap.Dispose(); excluded.Dispose(); }
+
+                if (exitStatus.HasValue) { status = exitStatus.Value; break; }
+            }
+
+            // ---- final diagnostics (fresh, matching LP.solve's "recompute from original data") ----
+            double stationarity = 0;
+            if (status == QPStatus.Optimal)
+            {
+                var rowOfColF = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
+                int kf = AssembleWorkingSetTranspose(in A, in L, in U, m, n, T, wstatus, -1, WorkingSetStatus.Inactive, rowOfColF, out var AWTf, out var bWf);
+                int nzf = n - kf;
+                var Rf = new doubleMxN(kf, kf, Allocator.Temp);
+                var uf = new doubleN(n, Allocator.Temp, true);
+                var wf = new doubleN(math.max(kf, math.max(nzf, 1)), Allocator.Temp, true);
+                FactorWorkingSetTranspose(ref AWTf, ref Rf, ref uf, ref wf, zeroThresholdAW);
+
+                var Qxf = new doubleN(n, Allocator.Temp, true);
+                var gf = new doubleN(n, Allocator.Temp, true);
+                Blas.dot(in Q, in x, ref Qxf);
+                for (int i = 0; i < n; i++) gf[i] = Qxf[i] + c[i];
+                ApplyWorkingSetQtForward(ref AWTf, ref gf, ref uf, kf);
+                for (int j = kf; j < n; j++) stationarity = math.max(stationarity, math.abs((double)gf[j]));
+
+                gf.Dispose(); Qxf.Dispose(); wf.Dispose(); uf.Dispose(); Rf.Dispose(); AWTf.Dispose(); bWf.Dispose(); rowOfColF.Dispose();
+            }
+
+            double feasibilityResidual = 0;
+            {
+                var Axf = new doubleN(math.max(m, 1), Allocator.Temp, true);
+                if (m > 0) Blas.dot(in A, in x, ref Axf);
+                for (int t = 0; t < T; t++)
+                {
+                    double act = t < m ? (double)Axf[t] : (double)x[t - m];
+                    if (act < (double)L[t]) feasibilityResidual = math.max(feasibilityResidual, (double)L[t] - act);
+                    else if (act > (double)U[t]) feasibilityResidual = math.max(feasibilityResidual, act - (double)U[t]);
+                }
+                Axf.Dispose();
+            }
+
+            wstatus.Dispose(); L.Dispose(); U.Dispose();
+
+            var Qxo = new doubleN(n, Allocator.Temp, true);
+            Blas.dot(in Q, in x, ref Qxo);
+            double obj = 0;
+            for (int i = 0; i < n; i++) obj += 0.5 * (double)x[i] * (double)Qxo[i] + (double)c[i] * (double)x[i];
+            Qxo.Dispose();
+            objective = obj;
+
+            return new QPInfo
+            {
+                status = status,
+                iterations = iterations,
+                objective = obj,
+                stationarityResidual = stationarity,
+                feasibilityResidual = feasibilityResidual,
+            };
+        }
+
+        // Builds L (T) / U (T) row-bound arrays from the problem data: t < m is general row t
+        // (ConstraintSense-derived range), t >= m is variable bound j = t - m (xl[j]/xu[j] directly).
+        // See qpActiveSetCore's file-header comment for the unified-representation rationale.
+        internal static void BuildRowBounds(in doubleN b, in NativeArray<ConstraintSense> senses,
+                                            in doubleN xl, in doubleN xu, int m, int n,
+                                            ref doubleN L, ref doubleN U)
+        {
+            double INF = (double)1e30;
+            for (int i = 0; i < m; i++)
+            {
+                switch (senses[i])
+                {
+                    case ConstraintSense.LessEqual: L[i] = -INF; U[i] = b[i]; break;
+                    case ConstraintSense.Equal: L[i] = b[i]; U[i] = b[i]; break;
+                    default: L[i] = b[i]; U[i] = INF; break;   // GreaterEqual
+                }
+            }
+            for (int j = 0; j < n; j++) { L[m + j] = xl[j]; U[m + j] = xu[j]; }
+        }
+
+        // Seeds the working set from x0's tight constraints (draft-spec-qp.md requirement 1). Pass 1:
+        // every equality row (L_t == U_t -- general Equal-sense rows AND fixed bounds xl[j]==xu[j])
+        // is permanently in W, added via the SAME rank guard as everything else (a redundant/duplicated
+        // equality -- draft-spec-qp.md requirement 6d -- is simply left Inactive; see TryAddToWorkingSet's
+        // doc comment for why that is safe, not a lost constraint). Pass 2: every remaining row tight at
+        // x0 within feasTol (general row or bound) is added as ActiveLower/ActiveUpper, independence-
+        // guarded the same way. wstatus must be caller-allocated, length T; every entry is (re)written.
+        internal static void SeedWorkingSet(in doubleMxN A, in doubleN L, in doubleN U, int m, int n, int T,
+                                            in doubleN x0, in doubleN Ax0, NativeArray<byte> wstatus,
+                                            double feasTol, double zeroThresholdAW)
+        {
+            for (int t = 0; t < T; t++) wstatus[t] = (byte)WorkingSetStatus.Inactive;
+
+            for (int t = 0; t < T; t++)
+                if (L[t] == U[t])
+                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.Equality, zeroThresholdAW);
+
+            for (int t = 0; t < T; t++)
+            {
+                if (wstatus[t] != (byte)WorkingSetStatus.Inactive) continue;
+                double act = t < m ? (double)Ax0[t] : (double)x0[t - m];
+                bool atLower = (double)L[t] > -1e29 && math.abs(act - (double)L[t]) <= (double)feasTol;
+                bool atUpper = (double)U[t] < 1e29 && math.abs(act - (double)U[t]) <= (double)feasTol;
+                if (atLower)
+                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.ActiveLower, zeroThresholdAW);
+                else if (atUpper)
+                    TryAddToWorkingSet(in A, in L, in U, m, n, T, wstatus, t, WorkingSetStatus.ActiveUpper, zeroThresholdAW);
+            }
+        }
+
+        // Assembles A_Wᵀ (AWT, n x k) and b_W (bW, length k) from wstatus, in ascending row-index order
+        // (t = 0..T-1, skipping Inactive rows), sign-oriented per WorkingSetStatus (ActiveLower/Equality:
+        // +row; ActiveUpper: -row -- see qpActiveSetCore's file-header comment). If extraT >= 0, ONE
+        // more column is appended AFTER all of wstatus's active rows for row extraT with status
+        // extraStatus -- WITHOUT reading or writing wstatus[extraT] itself (a pure query: the caller
+        // decides whether to commit it, see TryAddToWorkingSet). rowOfCol (caller-allocated, length >= n)
+        // is filled with the row index t that produced each column (rowOfCol[kk] = t); only the first
+        // (returned) k entries are meaningful. AWT/bW are allocated fresh (Allocator.Temp, uninit) at
+        // EXACTLY the returned k -- no reshape/view capability exists for doubleMxN (see this file's
+        // header comment on why per-iteration re-assembly, not incremental update, is v1's design).
+        internal static int AssembleWorkingSetTranspose(in doubleMxN A, in doubleN L, in doubleN U, int m, int n, int T,
+                                                         NativeArray<byte> wstatus, int extraT, WorkingSetStatus extraStatus,
+                                                         NativeArray<int> rowOfCol, out doubleMxN AWT, out doubleN bW)
+        {
+            int k = 0;
+            for (int t = 0; t < T; t++) if (wstatus[t] != (byte)WorkingSetStatus.Inactive) k++;
+            if (extraT >= 0) k++;
+
+            AWT = new doubleMxN(n, k, Allocator.Temp, true);
+            bW = new doubleN(k, Allocator.Temp, true);
+
+            int kk = 0;
+            for (int t = 0; t < T; t++)
+            {
+                var st = (WorkingSetStatus)wstatus[t];
+                if (st == WorkingSetStatus.Inactive) continue;
+                WriteWorkingSetColumn(in A, in L, in U, m, n, t, st, ref AWT, ref bW, kk);
+                rowOfCol[kk] = t;
+                kk++;
+            }
+            if (extraT >= 0)
+            {
+                WriteWorkingSetColumn(in A, in L, in U, m, n, extraT, extraStatus, ref AWT, ref bW, kk);
+                rowOfCol[kk] = extraT;
+                kk++;
+            }
+            return k;
+        }
+
+        // Writes column `col` of AWT/bW for row t under the given status (sign-oriented, see
+        // AssembleWorkingSetTranspose's doc comment). t < m: A's row t; t >= m: the unit row e_{t-m}.
+        internal static void WriteWorkingSetColumn(in doubleMxN A, in doubleN L, in doubleN U, int m, int n,
+                                                    int t, WorkingSetStatus status,
+                                                    ref doubleMxN AWT, ref doubleN bW, int col)
+        {
+            double sign = status == WorkingSetStatus.ActiveUpper ? (double)(-1) : (double)1;
+            if (t < m)
+                for (int i = 0; i < n; i++) AWT[i, col] = sign * A[t, i];
+            else
+            {
+                int j = t - m;
+                for (int i = 0; i < n; i++) AWT[i, col] = (double)0;
+                AWT[j, col] = sign;
+            }
+            bW[col] = sign > (double)0 ? L[t] : -U[t];
+        }
+
+        // Tests whether adding candidate row t (oriented per candStatus) to the CURRENT wstatus keeps
+        // A_W's rows independent, via a throwaway trial factor (AssembleWorkingSetTranspose's extraT
+        // path places the candidate as the LAST Householder column regardless of its own row index, so
+        // R[k-1,k-1] is exactly its component orthogonal to everything already accepted -- see this
+        // file's header comment). On success, COMMITS (sets wstatus[t] = candStatus) and returns true;
+        // on failure, leaves wstatus untouched and returns false. Used by SeedWorkingSet and by the main
+        // loop's blocking-constraint add.
+        internal static bool TryAddToWorkingSet(in doubleMxN A, in doubleN L, in doubleN U, int m, int n, int T,
+                                                NativeArray<byte> wstatus, int t, WorkingSetStatus candStatus,
+                                                double zeroThresholdAW)
+        {
+            var rowOfCol = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
+            int k = AssembleWorkingSetTranspose(in A, in L, in U, m, n, T, wstatus, t, candStatus, rowOfCol, out var AWT, out var bW);
+
+            var R = new doubleMxN(k, k, Allocator.Temp);
+            var u = new doubleN(n, Allocator.Temp, true);
+            var w = new doubleN(math.max(k, 1), Allocator.Temp, true);
+            FactorWorkingSetTranspose(ref AWT, ref R, ref u, ref w, zeroThresholdAW);
+
+            bool ok = math.abs(R[k - 1, k - 1]) > zeroThresholdAW;
+
+            w.Dispose(); u.Dispose(); R.Dispose(); AWT.Dispose(); bW.Dispose(); rowOfCol.Dispose();
+
+            if (ok) wstatus[t] = (byte)candStatus;
+            return ok;
+        }
+
+        // Harris-shaped two-pass ratio test over INACTIVE rows (draft-spec-qp.md step 4 -- the SHAPE of
+        // LP.RevisedSimplex's HarrisRatioTest, not its code: x is ALREADY feasible for every row here
+        // (not just W), so there is no "healing an infeasible basic variable" case to handle, unlike
+        // that LP phase-1 ratio test -- every inactive row's current activity already sits within
+        // [L_t, U_t] to feasTol). d_t = (row t).p / pScale is the RESCALED rate the row's activity moves
+        // per unit of the returned alpha (Ap[t]/pScale for t < m, p[t-m]/pScale for a bound row) --
+        // pScale (the caller's ||p||_inf, or 1 if the caller already knows p is unit-scale) makes alpha
+        // come out O(1)-scaled regardless of p's own raw magnitude, which matters a lot along the
+        // regularized/zero-curvature path where p can be enormous (~1/delta): WITHOUT this rescaling,
+        // alpha would come out correspondingly tiny and feasTol's Harris tie-window below (calibrated
+        // for an O(1) alpha) would be far too coarse relative to the true spacing between distinct
+        // blocking points, corrupting the winner choice -- see qpActiveSetCore's call site comment
+        // (caught by the LP-limit oracle test, Q=0 forces every step through exactly this path). The
+        // caller un-rescales the returned alpha (alpha_original = alpha / pScale) and thetaSelf must
+        // already be pre-scaled by the SAME pScale (INF is its own rescale, unaffected). Rows with
+        // |d_t| <= pivTol, or whose relevant bound is the +-1e29 unbounded sentinel, can never block and
+        // are skipped. winnerRow is -1 (no block within thetaSelf) or the winning row, tie-broken by
+        // largest |d_t| among candidates within feasTol of the relaxed (pass-1) threshold, matching
+        // HarrisRatioTest's own stability rationale. `excluded` (caller-allocated, length T) lets the
+        // rank-guard retry re-run this test skipping already-rejected rows without mutating wstatus.
+        internal static void RatioTest(in doubleN L, in doubleN U, int m, int n, int T,
+                                       NativeArray<byte> wstatus, NativeArray<bool> excluded,
+                                       in doubleN Ax, in doubleN Ap, in doubleN x, in doubleN p,
+                                       double pScale, double thetaSelf, double feasTol, double pivTol,
+                                       out double alpha, out int winnerRow, out bool winnerUpper)
+        {
+            double thetaRelaxed = thetaSelf;
+
+            for (int t = 0; t < T; t++)
+            {
+                if (wstatus[t] != (byte)WorkingSetStatus.Inactive || excluded[t]) continue;
+                double d = (t < m ? Ap[t] : p[t - m]) / pScale;
+                if (math.abs(d) <= pivTol) continue;
+                double act = t < m ? Ax[t] : x[t - m];
+
+                if (d > (double)0)
+                {
+                    if (U[t] >= (double)1e29) continue;
+                    double tcand = (U[t] + feasTol - act) / d;
+                    if (tcand < (double)0) tcand = (double)0;
+                    if (tcand < thetaRelaxed) thetaRelaxed = tcand;
+                }
+                else
+                {
+                    if (L[t] <= (double)(-1e29)) continue;
+                    double tcand = (L[t] - feasTol - act) / d;
+                    if (tcand < (double)0) tcand = (double)0;
+                    if (tcand < thetaRelaxed) thetaRelaxed = tcand;
+                }
+            }
+
+            if (thetaRelaxed >= thetaSelf)
+            {
+                alpha = thetaSelf; winnerRow = -1; winnerUpper = false; return;
+            }
+
+            int winner = -1; double winnerMag = (double)(-1); double winnerExact = (double)0; bool winnerUp = false;
+            for (int t = 0; t < T; t++)
+            {
+                if (wstatus[t] != (byte)WorkingSetStatus.Inactive || excluded[t]) continue;
+                double d = (t < m ? Ap[t] : p[t - m]) / pScale;
+                double absd = math.abs(d);
+                if (absd <= pivTol) continue;
+                double act = t < m ? Ax[t] : x[t - m];
+                bool isUp = d > (double)0;
+                if (isUp && U[t] >= (double)1e29) continue;
+                if (!isUp && L[t] <= (double)(-1e29)) continue;
+                double bound = isUp ? U[t] : L[t];
+
+                double texact = (bound - act) / d;
+                if (texact < (double)0) texact = (double)0;
+                if (texact <= thetaRelaxed + feasTol && absd > winnerMag)
+                {
+                    winnerMag = absd; winner = t; winnerExact = texact; winnerUp = isUp;
+                }
+            }
+
+            if (winner < 0)
+            {
+                alpha = thetaRelaxed; winnerRow = -1; winnerUpper = false; return;
+            }
+            alpha = winnerExact; winnerRow = winner; winnerUpper = winnerUp;
+        }
     }
 }
