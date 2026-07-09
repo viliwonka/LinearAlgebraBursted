@@ -1,0 +1,153 @@
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
+
+using System.Text;
+
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+using LinearAlgebra;
+
+namespace LinearAlgebra.Benchmarks
+{
+    // GENERATED per-dtype half of QPBenchmark (the timed IJob + the per-section build+measure method).
+    // The dtype-agnostic harness (config sizes, row formatter, Run, Section) is hand-written in
+    // Assets/LinearAlgebra/Benchmarks/QPBenchmark.cs (QPBenchmarkFmt + the partial class).
+    //
+    // The job carries its OWN reporting outputs (objOut/itersOut/statusOut/kktOut, length-1 arrays)
+    // written from inside Execute() -- the same "no second, Mono-interpreted solve just to harvest
+    // diagnostics" discipline LPBenchmark.fProxy.cs's own header comment explains (Bench.Time already
+    // runs the job once as a warmup before the timed reps, so the outputs are a side effect of the SAME
+    // Burst-native call being timed, not an extra solve).
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct QpSolveJobFProxy : IJob
+    {
+        public fProxyMxN Q;
+        public fProxyN c;
+        public fProxyMxN A;
+        public fProxyN b;
+        public NativeArray<ConstraintSense> senses;
+        public fProxyN xl, xu;
+        public fProxyN x;
+        public int maxIter;
+        public NativeArray<double> objOut;
+        public NativeArray<int> itersOut;
+        public NativeArray<int> statusOut;
+        public NativeArray<double> kktOut;
+        public void Execute()
+        {
+            var info = QP.solve(in Q, in c, in A, in b, in senses, in xl, in xu, ref x, out double obj, maxIter);
+            objOut[0] = obj;
+            itersOut[0] = info.iterations;
+            statusOut[0] = (int)info.status;
+
+            // Honest KKT-ish residual, recomputed FRESH from the returned x using only PUBLIC data --
+            // this job cannot reach qpActiveSetCore's internal working-set machinery (InternalsVisibleTo
+            // is granted to the Tests assembly only, not this Benchmarks one) to recover exact
+            // constraint multipliers for active GENERAL rows, so this deliberately combines two
+            // independently-checkable pieces rather than trusting QPInfo's own (already-fresh, but
+            // internal-only-verifiable) residual fields:
+            //   * feasViol -- EXACT, full primal feasibility: max violation of A x {sense} b over every
+            //     general row, and of xl <= x <= xu over every variable.
+            //   * boxStat  -- a box-only projected-gradient stationarity PROXY: with g = Qx+c, a
+            //     variable at an unconstrained-by-any-general-row optimum satisfies
+            //     x_j == clamp(x_j - g_j, xl_j, xu_j); this residual is exactly 0 there, but is only a
+            //     PROXY (not the exact KKT stationarity residual) when a general row is active at x_j's
+            //     optimum, since it has no way to net out that row's multiplier contribution to g_j.
+            // Reported as their max -- see QPBenchmark.cs's Section comment for the same scope note.
+            int n = Q.M_Rows, m = A.M_Rows;
+            double feasViol = 0;
+            if (m > 0)
+            {
+                var Ax = new fProxyN(m, Allocator.Temp, true);
+                Blas.dot(in A, in x, ref Ax);
+                for (int i = 0; i < m; i++)
+                {
+                    double act = (double)Ax[i], rhs = (double)b[i];
+                    if (senses[i] == ConstraintSense.LessEqual) { if (act > rhs) feasViol = math.max(feasViol, act - rhs); }
+                    else if (senses[i] == ConstraintSense.GreaterEqual) { if (act < rhs) feasViol = math.max(feasViol, rhs - act); }
+                    else feasViol = math.max(feasViol, math.abs(act - rhs));
+                }
+                Ax.Dispose();
+            }
+
+            var Qx = new fProxyN(n, Allocator.Temp, true);
+            Blas.dot(in Q, in x, ref Qx);
+            double boxStat = 0;
+            for (int j = 0; j < n; j++)
+            {
+                double xj = (double)x[j], lo = (double)xl[j], hi = (double)xu[j];
+                if (xj < lo) feasViol = math.max(feasViol, lo - xj);
+                if (xj > hi) feasViol = math.max(feasViol, xj - hi);
+                double gj = (double)Qx[j] + (double)c[j];
+                double proj = math.clamp(xj - gj, lo, hi);
+                boxStat = math.max(boxStat, math.abs(xj - proj));
+            }
+            Qx.Dispose();
+
+            kktOut[0] = math.max(feasViol, boxStat);
+        }
+    }
+
+    public static partial class QPBenchmark
+    {
+        // ==== Section 1: QP.solve, random SPD QP -- FULL public facade, no caller-supplied start ====
+        // (m = n/2 LessEqual rows, A >= 0, b = A x0 + slack so x0 is comfortably feasible, box bounds
+        // [0,3], Q symmetric PSD with a modest condition number via Rand.spdInPlace(1,10)). Every row
+        // exercises phase 1 (the LP-powered feasible start) as well as the active-set loop -- see
+        // QPBenchmark.cs's own Section comment.
+        static void SectionSolveFProxy(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine("--- 1. QP.solve: random SPD QP (m = n/2, A>=0, Ax<=b, box [0,3]), public facade, no supplied " +
+                          "start [fProxy] ---");
+            sb.AppendLine(QPBenchmarkFmt.Header());
+
+            foreach (var n in QPBenchmarkFmt.SizesN)
+            {
+                int m = n / 2;
+                var arena = new Arena(Allocator.Persistent);
+                var rng = new Random((uint)(n * 2654435761u + 97));
+
+                var Q = arena.fProxyMat(n, n);
+                Rand.spdInPlace(ref rng, ref Q, (fProxy)1, (fProxy)10);
+                var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+
+                var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+                var x0 = arena.fProxyRandomVec(n, (fProxy)0.2, (fProxy)0.8, (uint)(n * 104729 + 7));
+                // One-off setup matvec (NOT timed) -- n stays <= 192 here (unlike LPBenchmark's n=384
+                // sizes), so a plain managed Blas.dot call is negligible and a dedicated Burst warm-up
+                // job is not worth the extra code.
+                var Ax0 = arena.fProxyVec(m);
+                Blas.dot(in A, in x0, ref Ax0);
+                var b = arena.fProxyVec(m);
+                var slackRng = new Random((uint)(n * 1299709 + 3));
+                for (int i = 0; i < m; i++) b[i] = Ax0[i] + slackRng.NextFProxy((fProxy)0.1, (fProxy)1);
+                var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
+                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+                var xl = arena.fProxyVec(n);                 // 0
+                var xu = arena.fProxyVec(n, (fProxy)3);       // 3
+
+                var objOut = new NativeArray<double>(1, Allocator.Persistent);
+                var itersOut = new NativeArray<int>(1, Allocator.Persistent);
+                var statusOut = new NativeArray<int>(1, Allocator.Persistent);
+                var kktOut = new NativeArray<double>(1, Allocator.Persistent);
+
+                var x = arena.fProxyVec(n);   // entry contents ignored by QP.solve (phase 1 overwrites)
+                var job = new QpSolveJobFProxy
+                {
+                    Q = Q, c = c, A = A, b = b, senses = senses, xl = xl, xu = xu, x = x, maxIter = 0,
+                    objOut = objOut, itersOut = itersOut, statusOut = statusOut, kktOut = kktOut,
+                };
+                var stat = Bench.Time(() => job.Run());
+                sb.AppendLine(QPBenchmarkFmt.Row("fProxy", n, m, stat, itersOut[0], kktOut[0], statusOut[0], objOut[0]));
+
+                objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose(); kktOut.Dispose();
+                senses.Dispose();
+                arena.Dispose();
+            }
+        }
+    }
+}

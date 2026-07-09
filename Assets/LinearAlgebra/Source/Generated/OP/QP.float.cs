@@ -81,6 +81,242 @@ namespace LinearAlgebra
     // ================================================================================================
     public static partial class QP
     {
+        // ============================================================================================
+        // STAGE 3 (docs/draft-spec-qp.md): the PUBLIC FACADE -- QP.solve, mirroring LP.solve's doc
+        // voice, validation style, and layering (validate -> phase 1 -> hand off to the internal core).
+        // Two pieces close the gap between qpActiveSetCore's stage-2 contract ("x on entry already
+        // feasible") and a caller who has no feasible point in hand:
+        //
+        //   * Dimension/shape validation (ArgumentException, matching LP.solve's per-argument style)
+        //     PLUS the v1 CONVEXITY CONTRACT itself (draft-spec-qp.md open question 3, Q symmetric
+        //     PSD) -- this is the one place in the whole QP stack that actually CHECKS symmetry
+        //     (qpActiveSetCore and eqpNullSpaceStep both only ever READ Q via matrix products against
+        //     both triangles, per their own doc comments, and never verify it): a cheap
+        //     max|Q[i,j]-Q[j,i]| scan, scaled the same way every other tolerance in this file is
+        //     (relative to ||Q||_inf). PSD itself is NOT checked (no cheap certificate exists short of
+        //     a full factorization the solver would have to pay for anyway; a non-PSD Q surfaces
+        //     indirectly through spurious Unbounded reports or a CHO retry that never stops
+        //     regularizing -- out of v1 scope, matching HiGHS's own PSD assumption).
+        //
+        //   * Phase 1 (draft-spec-qp.md step 1): PhaseOneFeasibleStart below finds ANY point satisfying
+        //     A x {<=,=,>=} b, xl <= x <= xu via a zero-cost LP over the identical region (LP.solve,
+        //     LPMethod.DualSimplex, per the spec) -- see that function's own doc comment for the
+        //     shift/split reformulation LP.solve's x>=0-only computational form requires. Anything
+        //     other than LPStatus.Optimal from that LP maps straight to QPStatus.Infeasible, matching
+        //     the spec's "LP Infeasible -> QPStatus.Infeasible immediately".
+        //
+        // Neither piece touches qpActiveSetCore's own contract or tolerances -- the facade is purely an
+        // outer layer, exactly like LP.solve is an outer layer over simplexCore/revisedSimplexCore/
+        // dualSimplexCore/interiorCore.
+        // ============================================================================================
+
+        /// <summary>
+        /// Solve the convex quadratic program  min ½xᵀQx + cᵀx  s.t.  A x {≤,=,≥} b (per-row
+        /// <paramref name="senses"/>), xl ≤ x ≤ xu -- the public entry point (docs/draft-spec-qp.md),
+        /// mirroring <see cref="LP.solve"/>'s doc voice and validation style. Q must be symmetric
+        /// (checked here, cheaply -- see this file's Stage 3 header comment) and positive semidefinite
+        /// (the v1 convexity contract, NOT checked -- see the same comment); a genuinely non-PSD Q is
+        /// out of scope (indefinite QP is NP-hard in general, matching HiGHS's own v1 assumption).
+        ///
+        /// Finds its own feasible starting point via a zero-cost LP over the same constraints+bounds
+        /// (see <see cref="PhaseOneFeasibleStart"/>) -- <paramref name="x"/> is OUTPUT ONLY, its entry
+        /// contents are ignored, matching <see cref="LP.solve"/>'s own "x: Output solution" convention
+        /// (there is no warm-start overload in v1; qpActiveSetCore itself, reached via
+        /// InternalsVisibleTo, is the seam a future warm-start entry point would call directly).
+        /// </summary>
+        /// <param name="Q">Symmetric PSD Hessian, n x n.</param>
+        /// <param name="c">Linear cost, length n.</param>
+        /// <param name="A">Constraint coefficients, m x n (m may be 0).</param>
+        /// <param name="b">Right-hand sides, length m.</param>
+        /// <param name="senses">Per-row constraint sense, length m.</param>
+        /// <param name="xl">Variable lower bounds, length n. Use a large-magnitude negative sentinel
+        /// (&lt;= -1e29) for a variable unbounded below -- or use the overload below that fills both
+        /// bound arrays with +-infinity sentinels for you.</param>
+        /// <param name="xu">Variable upper bounds, length n. Use a large-magnitude positive sentinel
+        /// (&gt;= 1e29) for a variable unbounded above.</param>
+        /// <param name="x">Output solution, length n (overwritten; entry contents ignored).</param>
+        /// <param name="objective">Output ½xᵀQx + cᵀx at the returned x. 0 on
+        /// <see cref="QPStatus.Infeasible"/> (no usable x -- matches <see cref="LPInfo"/>'s own
+        /// convention).</param>
+        /// <param name="maxIter">Pivot budget for the active-set loop; &lt;=0 picks a size-based
+        /// default. Phase 1's own feasibility LP always uses its own size-based default, independent
+        /// of this budget.</param>
+        public static QPInfo solve(in floatMxN Q, in floatN c, in floatMxN A, in floatN b,
+                                   in NativeArray<ConstraintSense> senses,
+                                   in floatN xl, in floatN xu,
+                                   ref floatN x, out double objective, int maxIter = 0)
+        {
+            int n = Q.M_Rows, m = A.M_Rows;
+
+            if (!Q.IsSquare) throw new ArgumentException("QP.solve: Q must be square");
+            if (c.N != n) throw new ArgumentException("QP.solve: c.N must equal Q.M_Rows");
+            if (A.N_Cols != n) throw new ArgumentException("QP.solve: A.N_Cols must equal Q.M_Rows");
+            if (b.N != m) throw new ArgumentException("QP.solve: b.N must equal A.M_Rows");
+            if (senses.Length != m) throw new ArgumentException("QP.solve: senses.Length must equal A.M_Rows");
+            if (xl.N != n) throw new ArgumentException("QP.solve: xl.N must equal Q.M_Rows");
+            if (xu.N != n) throw new ArgumentException("QP.solve: xu.N must equal Q.M_Rows");
+            if (x.N != n) throw new ArgumentException("QP.solve: x.N must equal Q.M_Rows");
+
+            for (int j = 0; j < n; j++)
+                if (xl[j] > xu[j]) throw new ArgumentException("QP.solve: xl must be <= xu componentwise");
+
+            float normInfQ = Norms.LInf(in Q);
+            float symTol = Consts.floatZeroThreshold * math.max(normInfQ, (float)1);
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                    if (math.abs(Q[i, j] - Q[j, i]) > symTol)
+                        throw new ArgumentException("QP.solve: Q must be symmetric (v1 contract, draft-spec-qp.md)");
+
+            bool feasible = PhaseOneFeasibleStart(in A, in b, in senses, in xl, in xu, ref x);
+            if (!feasible)
+            {
+                for (int j = 0; j < n; j++) x[j] = (float)0;
+                objective = 0;
+                return new QPInfo { status = QPStatus.Infeasible, iterations = 0, objective = 0, stationarityResidual = 0, feasibilityResidual = 0 };
+            }
+
+            return qpActiveSetCore(in Q, in c, in A, in b, in senses, in xl, in xu, ref x, out objective, maxIter);
+        }
+
+        /// <summary>
+        /// Convenience overload of the bounded <see cref="solve"/> for the common BOX-FREE case --
+        /// every variable unbounded both directions (xl = -infinity, xu = +infinity, the library's
+        /// 1e30 sentinel convention). A separate overload rather than default parameter values for
+        /// <c>xl</c>/<c>xu</c>: <c>floatN</c> is a struct wrapping a native allocation, so there is no
+        /// compile-time-constant default value to give it (the same reason proxy-typed parameters
+        /// elsewhere in this codebase use a forwarding overload instead of a default value).
+        /// </summary>
+        public static QPInfo solve(in floatMxN Q, in floatN c, in floatMxN A, in floatN b,
+                                   in NativeArray<ConstraintSense> senses,
+                                   ref floatN x, out double objective, int maxIter = 0)
+        {
+            int n = Q.M_Rows;
+            float INF = (float)1e30;
+            var xl = new floatN(n, Allocator.Temp, true);
+            var xu = new floatN(n, Allocator.Temp, true);
+            for (int j = 0; j < n; j++) { xl[j] = -INF; xu[j] = INF; }
+
+            var info = solve(in Q, in c, in A, in b, in senses, in xl, in xu, ref x, out objective, maxIter);
+
+            xu.Dispose(); xl.Dispose();
+            return info;
+        }
+
+        // Phase 1 (draft-spec-qp.md step 1, stage 3): find ANY point satisfying A x {<=,=,>=} b AND
+        // xl <= x <= xu via a ZERO-COST LP over the SAME feasible region, reusing LP.solve (LPMethod.
+        // DualSimplex, per the spec) instead of writing a dedicated QP feasibility routine. Two
+        // alternatives were considered and rejected: (1) a single qpActiveSetCore run from a
+        // box-clamped start -- rejected because a box-clamped x is not generally feasible for the
+        // GENERAL-ROW constraints A x {<=,=,>=} b at all (clamping only ever fixes the bound
+        // constraints), so it does not actually solve the hard part of phase 1; (2) a bespoke
+        // big-M-free two-phase construction duplicating LP's own phase-1 machinery -- rejected because
+        // it would be a second, independently-maintained feasibility algorithm for no benefit over
+        // reusing the already-tested, already-anti-cycling-hardened LP.solve.
+        //
+        // LP.solve's computational form is `A x {<=,=,>=} b, x >= 0` ONLY (no general bounds) -- QP's
+        // xl/xu can be negative or +-infinite (the library's 1e30 sentinel convention, matching
+        // qpActiveSetCore's BuildRowBounds), so every variable is re-expressed in a shifted/split
+        // non-negative variable y before handing off:
+        //   * xl[j] finite                 -- anchor low:  x_j = xl[j] + y_j,  y_j >= 0 (native).
+        //   * xl[j] infinite, xu[j] finite -- anchor high: x_j = xu[j] - y_j,  y_j >= 0 (native).
+        //   * both infinite (free)         -- split:       x_j = y_j+ - y_j-, both >= 0 (native).
+        //   * both finite (boxed)          -- anchor low (arbitrary pick) PLUS one extra row
+        //                                      y_j <= xu[j]-xl[j] (LP.solve has no native upper bound
+        //                                      -- "bounded-above adds rows").
+        // Each original row's constant term picked up by a shift substitution moves to that row's RHS;
+        // a split contributes a +/- coefficient pair on the SAME row, no RHS change. Sense is never
+        // flipped (a per-variable linear substitution, not a row-scale). The LP's objective is the zero
+        // vector -- finding ANY vertex of the feasible region is the whole point, not optimizing
+        // anything.
+        //
+        // mprime == 0 (no general rows AND no boxed variable) means every variable is unconstrained in
+        // at least one direction with nothing to intersect against -- trivially feasible at its own
+        // single remaining bound (or 0 if free) with no LP needed at all; handled as an early return
+        // rather than asking LP.solve to factor a zero-row system.
+        //
+        // Returns false (infeasible, x left untouched) or true (x overwritten with a feasible point).
+        // Anything other than LPStatus.Optimal from the phase-1 LP (Infeasible, or the far rarer
+        // MaxIterations/Unbounded -- the latter cannot actually happen for a zero-cost objective, kept
+        // only as a defensive catch-all) is treated as infeasible, matching the spec's "LP Infeasible
+        // -> QPStatus.Infeasible immediately".
+        internal static bool PhaseOneFeasibleStart(in floatMxN A, in floatN b, in NativeArray<ConstraintSense> senses,
+                                                    in floatN xl, in floatN xu, ref floatN x)
+        {
+            int m = A.M_Rows, n = A.N_Cols;
+
+            var kind = new NativeArray<byte>(math.max(n, 1), Allocator.Temp);   // 0=anchor-low, 1=anchor-high, 2=free-split
+            var col = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
+            int nExtraCols = 0, nExtraRows = 0;
+            for (int j = 0; j < n; j++)
+            {
+                bool loFinite = (double)xl[j] > -1e29;
+                bool hiFinite = (double)xu[j] < 1e29;
+                if (loFinite) { kind[j] = 0; if (hiFinite) nExtraRows++; }
+                else if (hiFinite) { kind[j] = 1; }
+                else { kind[j] = 2; nExtraCols++; }
+            }
+            int nprime = n + nExtraCols;
+            int mprime = m + nExtraRows;
+            { int nextCol = 0; for (int j = 0; j < n; j++) { col[j] = nextCol; nextCol += (kind[j] == 2 ? 2 : 1); } }
+
+            if (mprime == 0)
+            {
+                for (int j = 0; j < n; j++)
+                    x[j] = kind[j] == 0 ? xl[j] : (kind[j] == 1 ? xu[j] : (float)0);
+                col.Dispose(); kind.Dispose();
+                return true;
+            }
+
+            var Anew = new floatMxN(mprime, nprime, Allocator.Temp);      // zero-initialized
+            var bnew = new floatN(mprime, Allocator.Temp, true);
+            var sensesNew = new NativeArray<ConstraintSense>(mprime, Allocator.Temp);
+            var cZero = new floatN(nprime, Allocator.Temp);               // zero-initialized
+
+            for (int i = 0; i < m; i++)
+            {
+                float shiftSum = (float)0;
+                for (int j = 0; j < n; j++)
+                {
+                    float a = A[i, j];
+                    if (a == (float)0) continue;
+                    if (kind[j] == 0) { Anew[i, col[j]] = a; shiftSum += a * xl[j]; }
+                    else if (kind[j] == 1) { Anew[i, col[j]] = -a; shiftSum += a * xu[j]; }
+                    else { Anew[i, col[j]] = a; Anew[i, col[j] + 1] = -a; }
+                }
+                bnew[i] = b[i] - shiftSum;
+                sensesNew[i] = senses[i];
+            }
+
+            int rowIdx = m;
+            for (int j = 0; j < n; j++)
+            {
+                if (kind[j] == 0 && (double)xu[j] < 1e29)
+                {
+                    Anew[rowIdx, col[j]] = (float)1;
+                    bnew[rowIdx] = xu[j] - xl[j];
+                    sensesNew[rowIdx] = ConstraintSense.LessEqual;
+                    rowIdx++;
+                }
+            }
+
+            var y = new floatN(nprime, Allocator.Temp, true);
+            var lpInfo = LP.solve(in Anew, in bnew, in cZero, in sensesNew, ref y, out double _, LPMethod.DualSimplex, 0);
+
+            bool feasible = lpInfo;
+            if (feasible)
+            {
+                for (int j = 0; j < n; j++)
+                {
+                    if (kind[j] == 0) x[j] = xl[j] + y[col[j]];
+                    else if (kind[j] == 1) x[j] = xu[j] - y[col[j]];
+                    else x[j] = y[col[j]] - y[col[j] + 1];
+                }
+            }
+
+            y.Dispose(); cZero.Dispose(); sensesNew.Dispose(); bnew.Dispose(); Anew.Dispose(); col.Dispose(); kind.Dispose();
+            return feasible;
+        }
+
         /// <summary>
         /// Solve the EQUALITY-constrained QP  min ½xᵀQx + cᵀx  s.t. A_W x = b_W  EXACTLY, from
         /// scratch: reaches a feasible point via <see cref="LQ.minNormSolve(ref floatMxN, ref floatN, ref floatN)"/>
@@ -639,18 +875,34 @@ namespace LinearAlgebra
             int budget = maxIter > 0 ? maxIter : 50 * T + 200;
             int degenCap = 3 * math.max(n, 1);
             int degenCount = 0;
-            // Stage 3 seam (draft-spec-qp.md requirement 4 / step 5): HiGHS-style deterministic bound
-            // perturbation (spec-revised-simplex.md's cost-perturbation precedent) belongs here, ahead
-            // of or alongside Bland's rule, once a degenerate run is detected. v1 ships ONLY the
-            // anti-cycling floor (Bland-style lowest-row-index drop below) -- see the multiplier-check
-            // block's `useBland` branch.
-            bool useBland = false;
+            // Stage 3 hardening (draft-spec-qp.md requirement 4 / step 5): HiGHS-style deterministic
+            // bound perturbation (the exact pattern -- and lesson -- of LP.DualSimplexCore's own cost
+            // perturbation, see that file's header comment) REPLACES the earlier Bland-style seam.
+            // Once a run of alpha=0 (degenerate) steps reaches degenCap, usePerturbation switches the
+            // ratio test (both call sites below) from the TRUE L/U to a lazily-built, SLIGHTLY WIDENED
+            // pair (BuildPerturbedBounds -- perturbedL <= L <= U <= perturbedU always, so nothing
+            // feasible under the true bounds ever becomes infeasible), which breaks the EXACT ties that
+            // cause a zero-length step in the first place. The multiplier sign check just below (the
+            // draft-spec-qp.md step-3 "optimality decision") never reads L/U at all -- it depends only
+            // on g = Qx+c and the working-set geometry (see this file's "unified row/bound
+            // representation" header note) -- so it is, structurally, already "deciding on ORIGINAL
+            // data" without needing a Bland-style special case. What perturbation CAN leave behind is a
+            // perturbation-sized drift in x itself (it took a step to a slightly-off bound); that is
+            // REMOVED at the end by one more exact null-space Newton step against the TRUE bounds, once
+            // the loop reaches Optimal -- see the cleanup pass right after this loop.
+            bool usePerturbation = false;
+            bool perturbationEverUsed = false;
+            floatN perturbedL = default, perturbedU = default;
+            bool havePerturbedBuffers = false;
             QPStatus status = QPStatus.Optimal;
             int iterations = 0;
 
             while (true)
             {
                 if (iterations >= budget) { status = QPStatus.MaxIterations; break; }
+
+                var curL = usePerturbation ? perturbedL : L;
+                var curU = usePerturbation ? perturbedU : U;
 
                 // ---- factor the CURRENT working set from scratch (v1 judgment: no incremental
                 // update, see this file's Stage-1 header comment on FactorWorkingSetTranspose) ----
@@ -748,7 +1000,7 @@ namespace LinearAlgebra
                     excluded = new NativeArray<bool>(T, Allocator.Temp);   // zero-init -> none excluded
                     haveRatioBufs = true;
 
-                    RatioTest(in L, in U, m, n, T, wstatus, excluded, in Ax, in Ap, in x, in p, pScale, thetaSelf, feasTol, pivTol, out float alphaHat, out int winnerRow, out bool winnerUpper);
+                    RatioTest(in curL, in curU, m, n, T, wstatus, excluded, in Ax, in Ap, in x, in p, pScale, thetaSelf, feasTol, pivTol, out float alphaHat, out int winnerRow, out bool winnerUpper);
                     float alpha = alphaHat / pScale;
 
                     if (zeroCurv && winnerRow < 0)
@@ -779,7 +1031,18 @@ namespace LinearAlgebra
                 {
                     bool degenerate = alphaTake <= pivTol;
                     degenCount = degenerate ? degenCount + 1 : 0;
-                    useBland = degenCount >= degenCap;
+                    usePerturbation = degenCount >= degenCap;
+                    if (usePerturbation)
+                    {
+                        perturbationEverUsed = true;
+                        if (!havePerturbedBuffers)
+                        {
+                            perturbedL = new floatN(T, Allocator.Temp, true);
+                            perturbedU = new floatN(T, Allocator.Temp, true);
+                            BuildPerturbedBounds(in L, in U, T, feasTol, ref perturbedL, ref perturbedU);
+                            havePerturbedBuffers = true;
+                        }
+                    }
 
                     for (int i = 0; i < n; i++) x[i] += alphaTake * p[i];
 
@@ -799,7 +1062,7 @@ namespace LinearAlgebra
                                 break;
                             excluded[tryRow] = true;
                             guardAttempts++;
-                            RatioTest(in L, in U, m, n, T, wstatus, excluded, in Ax, in Ap, in x, in p, pScale, thetaSelf, feasTol, pivTol, out _, out int nextRow, out bool nextUpper);
+                            RatioTest(in curL, in curU, m, n, T, wstatus, excluded, in Ax, in Ap, in x, in p, pScale, thetaSelf, feasTol, pivTol, out _, out int nextRow, out bool nextUpper);
                             if (nextRow < 0) break;
                             tryRow = nextRow; tryUpper = nextUpper;
                         }
@@ -813,18 +1076,19 @@ namespace LinearAlgebra
                     for (int i = 0; i < k; i++) lamBuf[i] = g[i];
                     if (k > 0) Blas.triUpper(ref R, ref lamBuf);
 
-                    int worstCol = -1; float worstLam = -dualTol; int worstRowForBland = int.MaxValue;
+                    // Dantzig pricing (most-negative multiplier) unconditionally -- no Bland-style
+                    // tie-break needed here: this decision never reads L/U at all (see the
+                    // usePerturbation comment above the loop), so bound-perturbation hardening cannot
+                    // corrupt it, and cycling risk lives entirely in the ratio test's degenerate
+                    // zero-length steps, which usePerturbation now addresses directly.
+                    int worstCol = -1; float worstLam = -dualTol;
                     for (int kk = 0; kk < k; kk++)
                     {
                         int t = rowOfCol[kk];
                         var st = (WorkingSetStatus)wstatus[t];
                         if (st == WorkingSetStatus.Equality) continue;   // no sign constraint -- never a drop candidate
                         float lam = lamBuf[kk];
-                        if (lam < -dualTol)
-                        {
-                            if (useBland) { if (t < worstRowForBland) { worstRowForBland = t; worstCol = kk; } }
-                            else if (lam < worstLam) { worstLam = lam; worstCol = kk; }
-                        }
+                        if (lam < -dualTol && lam < worstLam) { worstLam = lam; worstCol = kk; }
                     }
 
                     if (worstCol < 0) exitStatus = QPStatus.Optimal;
@@ -844,6 +1108,43 @@ namespace LinearAlgebra
 
                 if (exitStatus.HasValue) { status = exitStatus.Value; break; }
             }
+
+            // ---- undo any transient drift the degeneracy-breaking bound perturbation left in x
+            // (draft-spec-qp.md step 5 / stage 3 hardening): one more exact null-space Newton step on
+            // the FINAL working set, built from the TRUE (unperturbed) L/U -- exactly
+            // LP.DualSimplexCore's own composition ("hand the terminal basis to the primal core ...
+            // using the REAL cost", see that file's header comment) -- rather than leaving a
+            // perturbation-sized residual in the reported solution. The multiplier check that already
+            // declared Optimal never saw perturbed data (it depends only on g = Qx+c and the
+            // working-set geometry, never on L/U -- see this file's header "unified row/bound
+            // representation" note), so this pass cannot change WHICH working set is optimal, only
+            // where x sits on it: reusing stage 1's own eqpSolve (LQ.minNormSolve to the TRUE b_W, then
+            // one exact Newton step) re-lands EXACTLY on this same working set's true optimum. No-op
+            // (skipped entirely) whenever perturbation was never engaged -- zero cost on the common,
+            // non-degenerate path. ----
+            if (perturbationEverUsed && status == QPStatus.Optimal)
+            {
+                var rowOfColC = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
+                int kC = AssembleWorkingSetTranspose(in A, in L, in U, m, n, T, wstatus, -1, WorkingSetStatus.Inactive, rowOfColC, out var AWTc, out var bWc);
+                if (kC > 0)
+                {
+                    var A_Wc = new floatMxN(kC, n, Allocator.Temp, true);
+                    Blas.trans(in AWTc, ref A_Wc);
+                    var lambdaC = new floatN(kC, Allocator.Temp, true);
+                    // eqpSolve's status is only ever Optimal or Unbounded (see QPInfo/eqpSolve's own
+                    // doc comments); Unbounded here would mean Q lost PSD-ness along a direction the
+                    // multiplier check should already have caught (defensive-only, see this file's own
+                    // "should never fire for genuinely PSD Q" framing elsewhere) -- x is left as the
+                    // perturbed-but-already-near-optimal iterate in that case (eqpSolve does not
+                    // modify x on Unbounded).
+                    var cleanupInfo = eqpSolve(in Q, in c, in A_Wc, in bWc, ref x, ref lambdaC);
+                    if (cleanupInfo.status == QPStatus.Optimal) iterations += 1;
+                    lambdaC.Dispose();
+                    A_Wc.Dispose();
+                }
+                rowOfColC.Dispose(); AWTc.Dispose(); bWc.Dispose();
+            }
+            if (havePerturbedBuffers) { perturbedL.Dispose(); perturbedU.Dispose(); }
 
             // ---- final diagnostics (fresh, matching LP.solve's "recompute from original data") ----
             double stationarity = 0;
@@ -917,6 +1218,36 @@ namespace LinearAlgebra
                 }
             }
             for (int j = 0; j < n; j++) { L[m + j] = xl[j]; U[m + j] = xu[j]; }
+        }
+
+        // HiGHS-style bound perturbation (stage 3 hardening, draft-spec-qp.md step 5 -- see
+        // qpActiveSetCore's usePerturbation comment for when/why this is called): widen L/U SLIGHTLY
+        // (perturbedL <= L <= U <= perturbedU always -- never TIGHTEN, so anything feasible under the
+        // TRUE bounds stays feasible under the perturbed ones) so the ratio test's EXACT ties -- the
+        // root cause of a stalled/cycling run of zero-length steps -- become distinct, letting a
+        // genuine (if tiny) step through. Deterministic per-row pseudo-random unit value via the SAME
+        // cheap integer hash LP.DualSimplexCore uses for its own cost perturbation (MurmurHash3
+        // finalizer mix); magnitude is a SMALL FRACTION of feasTol (0.1x) so it is provably too small
+        // to be mistaken for genuine constraint slack anywhere else in the solver (every other
+        // feasibility decision in this file compares against feasTol itself), yet many orders of
+        // magnitude past a float ULP, so it reliably breaks bit-exact ties. Sentinel (+-1e29) sides are
+        // left untouched -- perturbing an unbounded side is meaningless. perturbedL/perturbedU must be
+        // caller-allocated, length T; every entry is (re)written.
+        internal static void BuildPerturbedBounds(in floatN L, in floatN U, int T, float feasTol,
+                                                   ref floatN perturbedL, ref floatN perturbedU)
+        {
+            float mag = (float)0.1 * feasTol;
+            for (int t = 0; t < T; t++)
+            {
+                uint h = (uint)t * 2654435761u + 0x9E3779B9u;
+                h ^= h >> 15; h *= 0x85EBCA6Bu;
+                h ^= h >> 13; h *= 0xC2B2AE35u;
+                h ^= h >> 16;
+                float widen = mag * (float)(0.5 + 0.5 * (h * (1.0 / 4294967295.0)));
+
+                perturbedL[t] = (double)L[t] > -1e29 ? L[t] - widen : L[t];
+                perturbedU[t] = (double)U[t] < 1e29 ? U[t] + widen : U[t];
+            }
         }
 
         // Seeds the working set from x0's tight constraints (draft-spec-qp.md requirement 1). Pass 1:
