@@ -100,11 +100,17 @@ namespace LinearAlgebra.Benchmarks
 
     public static partial class LPBenchmark
     {
-        // ==== Section 1: LP.solve, random dense feasible LP -- simplex vs interior point ====
+        // ==== Section 1: LP.solve, random dense feasible LP -- all FOUR backends on the SAME problem ====
+        // (tableau simplex, Mehrotra interior point, bounded-variable revised primal simplex, bounded-
+        // variable dual revised simplex -- docs/spec-revised-simplex.md stages 1+2). Same A/b/c/senses
+        // instance for every method each n, so the objective column is a direct four-way agreement check
+        // and the iters column is directly comparable pivot-for-pivot (revised/dual) or iteration-for-
+        // iteration (interior point) against the tableau baseline.
         static void SectionSolveFloat(StringBuilder sb)
         {
             sb.AppendLine();
-            sb.AppendLine("--- 1. LP.solve: random dense feasible LP (m = n/2, A>=0, Ax<=b), simplex vs interior point [float] ---");
+            sb.AppendLine("--- 1. LP.solve: random dense feasible LP (m = n/2, A>=0, Ax<=b), simplex vs interior point " +
+                          "vs revised primal vs dual simplex [float] ---");
             sb.AppendLine(LPBenchmarkFmt.SolveHeader());
 
             foreach (var n in LPBenchmarkFmt.SolveVarsN)
@@ -132,6 +138,18 @@ namespace LinearAlgebra.Benchmarks
                 var jobI = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xI, method = LPMethod.InteriorPoint, maxIter = 0 };
                 var statI = Bench.Time(() => jobI.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "interior-point", statI, infoI.iterations, objI));
+
+                var xR = arena.floatVec(n);
+                var infoR = LP.solve(in A, in b, in c, in senses, ref xR, out double objR, LPMethod.RevisedSimplex);
+                var jobR = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xR, method = LPMethod.RevisedSimplex, maxIter = 0 };
+                var statR = Bench.Time(() => jobR.Run());
+                sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "revised-primal", statR, infoR.iterations, objR));
+
+                var xD = arena.floatVec(n);
+                var infoD = LP.solve(in A, in b, in c, in senses, ref xD, out double objD, LPMethod.DualSimplex);
+                var jobD = new LpSolveJobFloat { A = A, b = b, c = c, senses = senses, x = xD, method = LPMethod.DualSimplex, maxIter = 0 };
+                var statD = Bench.Time(() => jobD.Run());
+                sb.AppendLine(LPBenchmarkFmt.SolveRow("float", n, m, "dual-simplex", statD, infoD.iterations, objD));
 
                 senses.Dispose();
                 arena.Dispose();

@@ -56,8 +56,10 @@ namespace LinearAlgebra.Benchmarks
     // Linear programming + least-absolute-deviation benchmark.
     //
     //   Section 1 (LP.solve): random dense feasible+bounded LPs (min cᵀx s.t. A x <= b, x >= 0, A >= 0,
-    //     b = A x0 + slack so x0 is feasible). Two backends compared head to head -- two-phase simplex
-    //     vs Mehrotra interior point -- on the IDENTICAL problem; the objective column shows they agree.
+    //     b = A x0 + slack so x0 is feasible). FOUR backends compared head to head -- two-phase tableau
+    //     simplex, Mehrotra interior point, and (docs/spec-revised-simplex.md) the bounded-variable
+    //     revised primal simplex and dual revised simplex -- on the IDENTICAL problem; the objective
+    //     column shows all four agree, the iters column is directly comparable pivot-for-pivot.
     //
     //   Section 2 (LAD): random overdetermined regression b = A x_true + noise with periodic gross
     //     outliers. Exact L1 fit (LP.lad) via simplex vs via interior point vs the fast approximate
@@ -76,9 +78,10 @@ namespace LinearAlgebra.Benchmarks
 
         public static void Section(StringBuilder sb)
         {
-            sb.AppendLine("=== Linear programming (simplex vs interior point) + least absolute deviation ===");
-            sb.AppendLine("Section 1: random dense feasible/bounded LPs, min cx s.t. Ax<=b, x>=0 -- simplex vs");
-            sb.AppendLine("interior point on the SAME problem (objective column shows they agree). Section 2: LAD");
+            sb.AppendLine("=== Linear programming (simplex vs interior point vs revised/dual simplex) + least absolute deviation ===");
+            sb.AppendLine("Section 1: random dense feasible/bounded LPs, min cx s.t. Ax<=b, x>=0 -- tableau simplex vs");
+            sb.AppendLine("interior point vs revised primal simplex vs dual simplex, all on the SAME problem (objective");
+            sb.AppendLine("column shows all four agree). Section 2: LAD");
             sb.AppendLine("(L1) regression with gross outliers -- exact LP.lad (simplex / interior point) vs fast");
             sb.AppendLine("approximate Optimize.ladIRLS. L1-residual column shows agreement; timing shows LAD-via-");
             sb.AppendLine("LP scales with observation count (its constraints) while IRLS stays a fixed n x n solve.");
