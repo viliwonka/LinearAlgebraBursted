@@ -327,6 +327,67 @@ namespace LinearAlgebra.Benchmarks
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 arena.Dispose();
             }
+
+            // ==== Section 2b: LAD fast-route-only sweep -- extended m range, ladFN/ladBR/IRLS ONLY ====
+            // The LP-reformulation backends above (simplex/interior/revised/dual, all via LadJobFloat)
+            // build an O(m) tableau or an O(m x m)-scaled normal/basis structure, so they are both far
+            // over budget at m>=1024 and uninteresting at m=8 (too small to show any asymptotic trend).
+            // This second sweep exists purely to bracket the Barrodale-Roberts vs Frisch-Newton
+            // crossover the literature (Portnoy & Koenker 1997) predicts around m in [1e3,1e4] --
+            // LadRowsM above tops out at 384, where ladBR was still winning every row; LadFastRowsM
+            // adds one point below that range (m=8, near NCoef=4) and three points spanning past it
+            // (1024, 4096, 16384).
+            //
+            // Budget estimate: ladFN and ladBR are each ~10-20 iterations (Newton steps / simplex
+            // pivots) of ONE O(m*n) pass over the raw m x n design per iteration; IRLS is ~50
+            // iterations of the same O(m*n) shape (an n x n normal solve built by one O(m*n) streaming
+            // pass). At the top size m=16384, n=4: worst case ~50 * 16384 * 4 ~= 3.3M flops per solve --
+            // sub-millisecond. Times 5 runs (1 warmup + 4 timed) times 3 routes times 5 sizes, the
+            // added section is dominated by job-dispatch/array-alloc overhead rather than FLOPs at
+            // these sizes; total added wall-clock is estimated at well under 10s (most rows sub-ms,
+            // expected sum in the low hundreds of ms).
+            sb.AppendLine();
+            sb.AppendLine("--- 2b. LAD fast routes only (LP.ladFN / LP.ladBR / ladIRLS), extended m range " +
+                          "for the Barrodale-Roberts vs Frisch-Newton crossover [float] ---");
+            sb.AppendLine(LPBenchmarkFmt.LadHeader());
+
+            foreach (var m in LPBenchmarkFmt.LadFastRowsM)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = arena.floatRandomMat(m, n, -1f, 1f, (uint)(m * 7919 + 13));
+                var xt = arena.floatRandomVec(n, -1f, 1f, (uint)(m * 104729 + 17));
+                var Axt = Blas.dot(A, xt);
+                var b = arena.floatVec(m);
+                var rng = new Random((uint)(m * 1299709 + 19));
+                for (int i = 0; i < m; i++)
+                {
+                    float val = Axt[i] + rng.NextFloat(-(float)0.05, (float)0.05);
+                    if (i % 10 == 0) val += (float)5;         // gross outlier every 10th observation
+                    b[i] = val;
+                }
+
+                var objOut = new NativeArray<double>(1, Allocator.Persistent);
+                var itersOut = new NativeArray<int>(1, Allocator.Persistent);
+                var statusOut = new NativeArray<int>(1, Allocator.Persistent);
+
+                var xLf = arena.floatVec(n);
+                var jobLf = new LadFNJobFloat { A = A, b = b, x = xLf, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
+                var statLf = Bench.Time(() => jobLf.Run());
+                sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.ladFN", statLf, itersOut[0], objOut[0]));
+
+                var xBr = arena.floatVec(n);
+                var jobBr = new LadBRJobFloat { A = A, b = b, x = xBr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
+                var statBr = Bench.Time(() => jobBr.Run());
+                sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "LP.ladBR", statBr, itersOut[0], objOut[0]));
+
+                var xIr = arena.floatVec(n);
+                var jobIr = new IrlsJobFloat { A = A, b = b, x = xIr, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
+                var statIr = Bench.Time(() => jobIr.Run());
+                sb.AppendLine(LPBenchmarkFmt.LadRow("float", m, n, "ladIRLS", statIr, itersOut[0], objOut[0]));
+
+                objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
+                arena.Dispose();
+            }
         }
 
         // ==== Section 3: SPARSE LAD -- matrix-free interior point over a tall block-sparse design ====

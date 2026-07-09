@@ -24,6 +24,16 @@ namespace LinearAlgebra.Benchmarks
         public const int NCoef = 4;
         public const int LadSimplexCap = 192;   // tableau-simplex LAD row only up to here
 
+        // Fast-route-only LAD sweep (Section 2b): brackets the literature's Barrodale-Roberts vs
+        // Frisch-Newton crossover (Portnoy & Koenker 1997, "The Gaussian Hare and the Laplacian
+        // Tortoise", crossover cited ~1e3-1e4 observations) with one point below LadRowsM's range
+        // (m=8, near NCoef=4) and three points spanning past it (1024, 4096, 16384). ONLY LP.ladFN /
+        // LP.ladBR / ladIRLS run at these sizes -- the LP-reformulation backends (simplex/interior/
+        // revised/dual, via LadJobFProxy) build an O(m) tableau or an O(m x m)-scaled structure and
+        // are both far over budget at m>=1024 and uninteresting at m=8; see SectionLadFProxy's own
+        // budget comment for the estimate.
+        public static readonly int[] LadFastRowsM = { 8, 16, 1024, 4096, 16384 };
+
         // Shared by Section 4 (dense covering LP, dual-favorable) and Section 5 (infeasibility
         // detection): both stay modest relative to SolveVarsN's top end because Section 4's primal phase
         // 1 (every row starts infeasible under the all-logical basis) and Section 5's degenerate
@@ -103,6 +113,12 @@ namespace LinearAlgebra.Benchmarks
     //     at LadSimplexCap for exactly that reason) while revised/dual/ladFN/ladBR/IRLS stay practical
     //     much further -- ladFN's and ladBR's iters columns are directly comparable to IRLS's (all
     //     three priced per iteration; ladFN/ladBR are exact, IRLS is approximate).
+    //
+    //   Section 2b (LAD, fast routes only): the same construction extended to a wider m range
+    //     (LadFastRowsM: 8, 16, 1024, 4096, 16384) with ONLY ladFN/ladBR/IRLS run -- the LP-
+    //     reformulation backends are far over budget at m>=1024. Exists to bracket the Barrodale-
+    //     Roberts vs Frisch-Newton crossover the literature (Portnoy & Koenker 1997) predicts around
+    //     m in [1e3,1e4].
     //
     //   Section 4 (dense covering LP): min cᵀx s.t. A x >= b, x >= 0 with A,b,c >= 0 by construction --
     //     deliberately DUAL-FAVORABLE: every nonneg cost column is already dual-feasible at the
