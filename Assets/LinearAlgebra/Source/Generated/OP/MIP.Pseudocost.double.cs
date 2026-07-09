@@ -47,11 +47,20 @@ namespace LinearAlgebra
             return dist * unitCost;
         }
 
-        // Product-rule branching score: HighsPseudocost::getScore's costScore ranking, without its
-        // cost_total^2 normalization/sigmoid remap -- those only matter when blending in the
-        // inference/cutoff/conflict terms this stage does not have (no propagation/cuts/conflicts);
-        // dropping them leaves the SAME ranking within one node's candidate set, since cost_total is
-        // one constant shared by every candidate there.
+        // Product-rule branching score, faithfully ported from HighsPseudocost::getScore(col, upcost,
+        // downcost) (mip/HighsPseudocost.h): costScore = max(upcost,minThreshold)*max(downcost,minThreshold)
+        // / max(minThreshold, cost_total^2), then mapScore(x) = 1 - 1/(1+x). upcost/downcost are
+        // PseudocostEstimate above (== HighsPseudocost::getPseudocostUp/Down's 2-arg no-offset overload,
+        // the one selectBranchingCandidate actually scores with: fractional-distance * own mean, falling
+        // back to the running global-average pseudocost when the variable has zero samples of its own).
+        // cost_total is that same running global average (globalPCSum/globalPCCount); minThreshold ==
+        // PSEUDOCOST_EPS (both 1e-6) -- same clamp value AND placement as the source.
+        // OMITTED (fidelity taxonomy -- subsystems this stage does not have): the conflictScore term (no
+        // conflict analysis / no-good learning), the cutoffScore term (no cutoff-bound tracking), the
+        // inferenceScore term (no propagation/inference statistics). OMITTED: degeneracyFactor weighting
+        // (no LP-degeneracy detection) -- HiGHS only sets it > 1 while actively degenerate; fixed at its
+        // non-degenerate default of 1.0, getScore's full expression collapses exactly to mapScore(costScore),
+        // which is what this function returns.
         internal static double PseudocostScore(int j, double v,
                                                doubleN pcUpSum, NativeArray<int> pcUpCount,
                                                doubleN pcDownSum, NativeArray<int> pcDownCount,
@@ -59,7 +68,10 @@ namespace LinearAlgebra
         {
             double up = PseudocostEstimate(j, true, v, pcUpSum, pcUpCount, pcDownSum, pcDownCount, globalPCSum, globalPCCount);
             double down = PseudocostEstimate(j, false, v, pcUpSum, pcUpCount, pcDownSum, pcDownCount, globalPCSum, globalPCCount);
-            return math.max(up, PSEUDOCOST_EPS) * math.max(down, PSEUDOCOST_EPS);
+            double costTotal = globalPCCount > 0 ? globalPCSum / globalPCCount : 0.0;   // HighsPseudocost::cost_total
+            double costScore = math.max(up, PSEUDOCOST_EPS) * math.max(down, PSEUDOCOST_EPS)
+                              / math.max(PSEUDOCOST_EPS, costTotal * costTotal);
+            return 1.0 - 1.0 / (1.0 + costScore);   // HighsPseudocost::getScore's mapScore
         }
 
         // One throwaway strong-branch trial: tightens j's bound (isUp: x_j >= ceil(v), else
