@@ -3,7 +3,10 @@
 using System;
 
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
@@ -119,16 +122,49 @@ namespace LinearAlgebra
             }
         }
 
+        // ---- Shared row-major GEMV kernels (SIMD-routing helpers) ----
+        //
+        // Every "price a reduced cost over nonbasic columns" pass in this file and
+        // LP.DualSimplex.float.cs used to be a per-column loop (j outer, i inner) reading M[i,j] with
+        // stride N between consecutive i -- the worst access pattern for a row-major matrix, and the
+        // dominant O(mN)-per-iteration cost. MTmul reshapes that into UnsafeOP.vecMatDot's row-major
+        // sweep (i outer, j inner unit-stride: outv[j] += v[i]*M[i,j], zeroed first) -- mirrors
+        // LP.InteriorPoint.float.cs's ATmul (kept as an independent copy here rather than reused across
+        // files, so the two solver stages stay independently readable/deletable). REORDERING vs the
+        // original per-column running-subtraction chain (cost[j] - t1 - t2 - ... vs a separate summed
+        // dot product subtracted once): rounding-only, not bitwise-identical -- tolerance-safe, matching
+        // every other kernel this campaign has touched (see docs/perf-vectorization-lessons.md).
+        internal static unsafe void MTmul(floatMxN M, floatN v, floatN outv, int m, int N)
+        {
+            UnsafeOP.vecMatDot(v.Data.Ptr, M.Data.Ptr, outv.Data.Ptr, m, N);
+        }
+
+        // out[i] = Σ_j M[i,j] v[j]  (M m×N, v length N, out length m) -- Mv (Mmul), used by RebuildXB
+        // (adj = rhs − M·valVec, a column-strided scatter in its original per-nonbasic-column form). Routes
+        // through UnsafeOP.matVecDot (two float4 SIMD accumulators per row, [NoAlias] pointers); outv
+        // is zeroed first since matVecDot ACCUMULATES.
+        internal static unsafe void Mmul(floatMxN M, floatN v, floatN outv, int m, int N)
+        {
+            UnsafeUtility.MemClear(outv.Data.Ptr, (long)m * UnsafeUtility.SizeOf<float>());
+            UnsafeOP.matVecDot(M.Data.Ptr, v.Data.Ptr, outv.Data.Ptr, m, N);
+        }
+
         // Rebuilds the m x m basis matrix B (column k = column basis[k] of M) and LU-factors it in place
         // via the library's own LU.decompInPlace (compact form, partial pivoting -- no reimplementation
         // of GETRF). Returns false on a singular basis.
+        //
+        // Loop order is i (outer) / k (inner), not k / i: the natural "one basis column at a time" order
+        // reads M[i,col] with stride N between consecutive i (a column gather from a row-major matrix)
+        // AND writes B[i,k] with stride m between consecutive i (a column-strided write too). Swapping
+        // to i outer / k inner turns the read into m arbitrary-offset reads WITHIN one row of M (which,
+        // unlike striding across N-separated rows, is likely already resident once that row's cache
+        // lines are touched) and the write into a fully contiguous row of B. Pure data movement, no
+        // arithmetic -- bit-identical to the original order, zero drift risk.
         internal static bool Refactorize(floatMxN M, NativeArray<int> basis, floatMxN B, ref Pivot P, int m, int N)
         {
-            for (int k = 0; k < m; k++)
-            {
-                int col = basis[k];
-                for (int i = 0; i < m; i++) B[i, k] = M[i, col];
-            }
+            for (int i = 0; i < m; i++)
+                for (int k = 0; k < m; k++)
+                    B[i, k] = M[i, basis[k]];
             return LU.decompInPlace(ref B, ref P).Solved;
         }
 
@@ -159,33 +195,54 @@ namespace LinearAlgebra
         // Applies eta slot `slot` (leaving row `row`, column alpha_q stored in etaAlpha[slot,:]) via
         // E^-1: v[row] /= alpha[row]; v[i] -= alpha[i]*v[row] for i != row (spec's PFI formula; v[row]'s
         // NEW value is what every other entry subtracts, so it must be updated first).
-        internal static void ApplyEtaForward(floatMxN etaAlpha, int row, int slot, floatN v, int m)
+        //
+        // The i != row exclusion is resolved by running UnsafeOP.axpy (a plain independent-per-lane
+        // update, so this is bit-identical to the branchy scalar loop for every i != row -- no
+        // reduction, no reassociation) over the WHOLE row [0,m) and then restoring v[row] to vr
+        // afterward, rather than branching inside the hot loop: v[row] += (-vr)*etaAlpha[slot,row]
+        // computes a value the code immediately discards, so the branch-free overwrite is exact, not
+        // an approximation.
+        internal static unsafe void ApplyEtaForward(floatMxN etaAlpha, int row, int slot, floatN v, int m)
         {
-            v[row] = v[row] / etaAlpha[slot, row];
+            float* etaRow = etaAlpha.Data.Ptr + (long)slot * etaAlpha.N_Cols;
+            v[row] = v[row] / etaRow[row];
             float vr = v[row];
-            for (int i = 0; i < m; i++)
-                if (i != row) v[i] -= etaAlpha[slot, i] * vr;
+            UnsafeOP.axpy(v.Data.Ptr, etaRow, -vr, m);
+            v[row] = vr;
         }
 
         // Applies (E^-1)^T: y[row] = (v[row] - sum_{i!=row} alpha[i]*v[i]) / alpha[row]; every other
         // entry of v is left untouched (derived in the file header comment).
-        internal static void ApplyEtaTransposed(floatMxN etaAlpha, int row, int slot, floatN v, int m)
+        //
+        // The i != row exclusion: compute the FULL dot (including the row term) via UnsafeOP.vecDot's
+        // 2x width-4 SIMD-accumulator reduction, then subtract the one excluded term back out. This is
+        // a genuine reduction reorder (SIMD lane tree vs strict left-to-right scalar sum) -- rounding-
+        // only, tolerance-safe, same idiom as every other dot product this campaign has touched.
+        internal static unsafe void ApplyEtaTransposed(floatMxN etaAlpha, int row, int slot, floatN v, int m)
         {
-            float t = (float)0;
-            for (int i = 0; i < m; i++)
-                if (i != row) t += etaAlpha[slot, i] * v[i];
-            v[row] = (v[row] - t) / etaAlpha[slot, row];
+            float* etaRow = etaAlpha.Data.Ptr + (long)slot * etaAlpha.N_Cols;
+            float full = UnsafeOP.vecDot(etaRow, v.Data.Ptr, m);
+            float t = full - etaRow[row] * v[row];
+            v[row] = (v[row] - t) / etaRow[row];
         }
 
         // Dantzig (or Bland's-rule, when useBland) pricing over nonbasic columns. d_j = costN[j] -
         // dot(M[:,j], y); AtLower wants d_j < -tol (sigma=+1), AtUpper wants d_j > +tol (sigma=-1).
         // Fixed nonbasics (upper==lower) are never candidates (their self bound-flip step is 0).
+        //
+        // dWork (length N, caller-owned scratch -- see RevisedPrimalCore) holds dot(M[:,j], y) for
+        // EVERY column, filled once via MTmul's row-major sweep instead of the original per-column
+        // loop (see that method's own comment for the reordering note). Computing it for basic/fixed
+        // columns too (which the candidate scan below still skips) is wasted work proportional to m,
+        // negligible next to the O(mN) sweep it replaces.
         internal static int SelectEntering(floatMxN M, floatN y, floatN cost, bool phase1,
                                            NativeArray<byte> status, floatN lower, floatN upper,
-                                           int N, int m, bool useBland, float tol, out int sigma, out float dj)
+                                           int N, int m, bool useBland, float tol, floatN dWork, out int sigma, out float dj)
         {
             sigma = 0; dj = (float)0;
             int best = -1; float bestMag = tol;
+
+            MTmul(M, y, dWork, m, N);
 
             for (int j = 0; j < N; j++)
             {
@@ -193,8 +250,7 @@ namespace LinearAlgebra
                 if (upper[j] - lower[j] <= (float)1e-13) continue;   // fixed: zero-length self-flip, never useful
 
                 float costN = phase1 ? (float)0 : cost[j];
-                float d = costN;
-                for (int i = 0; i < m; i++) d -= M[i, j] * y[i];
+                float d = costN - dWork[j];
 
                 int s = 0;
                 if (status[j] == STATUS_AT_LOWER && d < -tol) s = 1;
@@ -229,24 +285,29 @@ namespace LinearAlgebra
         // Recomputes xB fresh (solve of the adjusted rhs b - N x_N) against the CURRENT (just
         // refactorized, eta-file-empty) factorization -- the accuracy check the spec calls for at
         // refactorization time. Always trusted as authoritative.
+        //
+        // The nonbasic contribution was originally a per-column scatter (outer loop over nonbasic j,
+        // inner loop over i reading M[i,j] with stride N -- a column gather from a row-major matrix).
+        // Reshaped into one dense GEMV: build valVec (the nonbasic value per column, 0 for basic/
+        // AT_LOWER-zero -- computing it for every column rather than skipping zeros is harmless, 0
+        // contributes 0 to the sum either way) then adj = rhs - M*valVec via Mmul's row-major sweep.
+        // Called only at refactorization events (not every iteration), so the two extra Temp
+        // allocations below are inconsequential next to the per-iteration kernels above.
         internal static void RebuildXB(floatMxN M, floatN rhs, NativeArray<byte> status,
                                        floatN lower, floatN upper,
                                        floatMxN B, in Pivot P, int m, int N, floatN xB)
         {
-            var adj = new floatN(m, Allocator.Temp);
-            for (int i = 0; i < m; i++) adj[i] = rhs[i];
-
+            var valVec = new floatN(N, Allocator.Temp);
             for (int j = 0; j < N; j++)
-            {
-                if (status[j] == STATUS_BASIC) continue;
-                float val = status[j] == STATUS_AT_LOWER ? lower[j] : upper[j];
-                if (val == (float)0) continue;
-                for (int i = 0; i < m; i++) adj[i] -= M[i, j] * val;
-            }
+                valVec[j] = status[j] == STATUS_BASIC ? (float)0 : (status[j] == STATUS_AT_LOWER ? lower[j] : upper[j]);
+
+            var adj = new floatN(m, Allocator.Temp);
+            Mmul(M, valVec, adj, m, N);
+            for (int i = 0; i < m; i++) adj[i] = rhs[i] - adj[i];
 
             LU.decompSolve(ref B, in P, ref adj);
             for (int i = 0; i < m; i++) xB[i] = adj[i];
-            adj.Dispose();
+            valVec.Dispose(); adj.Dispose();
         }
 
         // Bounded-variable Harris two-pass ratio test (composite/far-bound rule folded in so it also
@@ -459,6 +520,7 @@ namespace LinearAlgebra
             var y = new floatN(m, Allocator.Temp);
             var cB = new floatN(m, Allocator.Temp);
             var alpha = new floatN(m, Allocator.Temp);
+            var dWork = new floatN(N, Allocator.Temp);   // SelectEntering's per-iteration MTmul scratch
 
             LPStatus resultStatus = LPStatus.Optimal;
             int iters = 0;
@@ -489,7 +551,7 @@ namespace LinearAlgebra
                 for (int i = 0; i < m; i++) y[i] = cB[i];
                 Btran(B, in P, etaAlpha, etaRow, etaCount, y, m);
 
-                int enter = SelectEntering(M, y, cost, phase == 1, status, lower, upper, N, m, useBland, dualTol, out int sigma, out _);
+                int enter = SelectEntering(M, y, cost, phase == 1, status, lower, upper, N, m, useBland, dualTol, dWork, out int sigma, out _);
 
                 if (enter < 0)
                 {
@@ -580,7 +642,7 @@ namespace LinearAlgebra
             xB.Dispose();
             B.Dispose(); P.Dispose();
             etaAlpha.Dispose(); etaRow.Dispose();
-            y.Dispose(); cB.Dispose(); alpha.Dispose();
+            y.Dispose(); cB.Dispose(); alpha.Dispose(); dWork.Dispose();
 
             return new LPInfo { status = resultStatus, iterations = iters, objective = 0 };
         }

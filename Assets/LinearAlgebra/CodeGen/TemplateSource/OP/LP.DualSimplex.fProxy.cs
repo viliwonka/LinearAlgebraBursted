@@ -88,30 +88,31 @@ namespace LinearAlgebra
 
         // Prices alpha_r[j] = dot(M[:,j], rho) over every NONBASIC column j (basic columns left 0,
         // unused) -- the O(mn) PRICE step of the dual iteration's pivot row (rho = B^-T e_r via BTRAN).
+        //
+        // MTmul (LP.RevisedSimplex.fProxy.cs) fills alphaRow for EVERY column via its row-major sweep
+        // (was a per-column loop reading M[i,j] with stride N -- the worst pattern for a row-major
+        // matrix); the basic columns are then zeroed in a cheap second pass, matching the original
+        // contract (basic entries left 0, unused). REORDERING vs the original per-column running sum:
+        // see MTmul's own comment.
         internal static void PriceRow(fProxyMxN M, fProxyN rho, NativeArray<byte> status, int N, int m, fProxyN alphaRow)
         {
+            MTmul(M, rho, alphaRow, m, N);
             for (int j = 0; j < N; j++)
-            {
-                if (status[j] == STATUS_BASIC) { alphaRow[j] = (fProxy)0; continue; }
-                fProxy s = (fProxy)0;
-                for (int i = 0; i < m; i++) s += M[i, j] * rho[i];
-                alphaRow[j] = s;
-            }
+                if (status[j] == STATUS_BASIC) alphaRow[j] = (fProxy)0;
         }
 
         // Prices reduced costs d_j = cost[j] - dot(M[:,j], y) over every nonbasic column j (y = B^-T c_B
         // via BTRAN of the basic costs) -- the dual ratio test's numerator. Mirrors the pricing half of
         // stage 1's SelectEntering but fills the WHOLE array (the ratio test needs every sign-correct
         // candidate's d_j, not just the single best one).
+        //
+        // Same MTmul-then-fixup shape as PriceRow above: dj[j] is first filled with dot(M[:,j], y) for
+        // every column, then combined with cost[j] (0 for basic).
         internal static void PriceReducedCosts(fProxyMxN M, fProxyN y, fProxyN cost, NativeArray<byte> status, int N, int m, fProxyN dj)
         {
+            MTmul(M, y, dj, m, N);
             for (int j = 0; j < N; j++)
-            {
-                if (status[j] == STATUS_BASIC) { dj[j] = (fProxy)0; continue; }
-                fProxy d = cost[j];
-                for (int i = 0; i < m; i++) d -= M[i, j] * y[i];
-                dj[j] = d;
-            }
+                dj[j] = status[j] == STATUS_BASIC ? (fProxy)0 : cost[j] - dj[j];
         }
 
         // Dual ratio test: Harris two-pass + bound-flipping ratio test (BFRT), the dual analogue of
@@ -372,12 +373,18 @@ namespace LinearAlgebra
                 for (int i = 0; i < m; i++) y[i] = cost[basis[i]];
                 Btran(B, in P, etaAlpha, etaRow, etaCount, y, m);
 
+                // dj (declared above, not yet used at this point in the run -- its per-iteration use is
+                // inside the while loop below, via PriceReducedCosts) is reused as scratch here: MTmul
+                // (LP.RevisedSimplex.fProxy.cs) fills it with dot(M[:,j], y) for every column in one
+                // row-major sweep, replacing the original per-column loop (M[i,j] read at stride N). See
+                // MTmul's own comment for the reordering note.
+                MTmul(M, y, dj, m, N);
+
                 for (int j = 0; j < N; j++)
                 {
                     if (status[j] == STATUS_BASIC || upper[j] - lower[j] <= (fProxy)1e-13) continue;
 
-                    fProxy d = cost[j];
-                    for (int i = 0; i < m; i++) d -= M[i, j] * y[i];
+                    fProxy d = cost[j] - dj[j];
 
                     if (status[j] == STATUS_AT_LOWER && d < -dualTol)
                     {
@@ -438,6 +445,14 @@ namespace LinearAlgebra
                 if (!anyCandidate) { resultStatus = LPStatus.Infeasible; break; }
 
                 // ---- apply accumulated bound flips (BFRT) with ONE extra FTRAN of the summed columns ----
+                //
+                // The inner `flipRHS[i] += delta * M[i, j]` read is column-strided too (M[i,j] at stride
+                // N over i, fixed j), but LEFT AS-IS deliberately: flipCount is normally small (a handful
+                // of boxed nonbasics absorbed per iteration, not O(N)), so its cost is O(flipCount * m),
+                // already far below the O(mN) PRICE passes this file's other column-strided loops were.
+                // Routing it through a dense Mmul(M, deltaVec, ..., m, N) GEMV (deltaVec sparse, nonzero
+                // only at flipCols) would touch all N columns unconditionally -- a regression whenever
+                // flipCount << N, the common case -- for a loop that was never the O(mN) bottleneck.
                 if (flipCount > 0)
                 {
                     for (int i = 0; i < m; i++) flipRHS[i] = (fProxy)0;
