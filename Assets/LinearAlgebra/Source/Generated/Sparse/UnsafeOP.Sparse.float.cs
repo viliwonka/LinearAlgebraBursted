@@ -1209,5 +1209,448 @@ namespace LinearAlgebra.Internal
                 zp[rowBase + 5] = dp[blockOff + 30] * r0 + dp[blockOff + 31] * r1 + dp[blockOff + 32] * r2 + dp[blockOff + 33] * r3 + dp[blockOff + 34] * r4 + dp[blockOff + 35] * r5;
             }
         }
+
+        // =====================================================================================
+        // Krylov R3 (docs/draft-spec-krylov-optimization.md, R3): block forward/back substitution
+        // over FULL-storage BSR (Symmetric upper-block-triangle storage is rejected at the
+        // BSR.sweepLower/sweepUpper dispatch -- see floatBSRMirrorToFull for the one-time
+        // mirror-to-full path, Q4 ruling). Sequential across block-rows by construction (that IS
+        // the math of a triangular solve, not a deficiency -- fine single-threaded, matching the
+        // rest of this file). Solves:
+        //   sweepLower: (D/diagScale + L) y = r   -- rows in ASCENDING order, L = stored blocks
+        //     with ColInd < row (strictly lower); relies on the BSR invariant that a row's stored
+        //     blocks are sorted ascending by ColInd to `break` as soon as ColInd >= row.
+        //   sweepUpper: (D/diagScale + U) y = r   -- rows in DESCENDING order, U = stored blocks
+        //     with ColInd > row (strictly upper); `continue`s past the diagonal/lower entries
+        //     (still ascending order, so no break is available at the START of a row).
+        // diagScale=1 is the plain (unscaled) forward/backward Gauss-Seidel triangular solve --
+        // <see cref="LinearAlgebra.Sparse.BSR.sweepLower(in LinearAlgebra.Sparse.floatBSR, in
+        // LinearAlgebra.Sparse.floatBlockJacobi, in floatN, ref floatN)"/>'s 4-arg overload
+        // forwards here with diagScale=1. floatSSOR.Apply drives both with diagScale=Omega (the
+        // (D/omega+L) / (D/omega+U) systems SSOR's derivation needs -- see that struct's own doc
+        // comment for the omega algebra).
+        // DIAGONAL solved via the existing floatBlockJacobi explicit block inverses (dInv, the
+        // SAME buffer <see cref="blockJacobiApplyB1"/>..B6 read) -- no per-row factorization, no
+        // breakdown risk. b in {1,2,3,4,6} dispatches to a fully unrolled b x b kernel (mirrors
+        // bsrMatVec's/blockJacobiApply's unroll shape); any other b falls through to the general
+        // runtime-BR loop (a small `stackalloc` row accumulator so the general loop stays correct
+        // even if y were ever called in place -- see that loop's own comment).
+        // Dispatch lives in BSR.sweepLower / BSR.sweepUpper (SparseOP.float.cs).
+        // =====================================================================================
+
+        // ---- sweepLower: (D/diagScale + L) y = r, square block b ---------------------------
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepLowerB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = 0; i < blockRows; i++)
+            {
+                float acc = r[i];
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j >= i) break;   // ascending ColInd -> no more strictly-lower entries in this row
+                    acc -= values[k] * y[j];
+                }
+                y[i] = diagScale * dInv[i] * acc;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepLowerB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = 0; i < blockRows; i++)
+            {
+                int rowBase = i * 2;
+                float acc0 = r[rowBase + 0];
+                float acc1 = r[rowBase + 1];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j >= i) break;
+                    int yBase = j * 2;
+                    float* block = values + k * 4;
+                    float y0 = y[yBase + 0];
+                    float y1 = y[yBase + 1];
+                    acc0 -= block[0] * y0 + block[1] * y1;
+                    acc1 -= block[2] * y0 + block[3] * y1;
+                }
+
+                int blockOff = i * 4;
+                y[rowBase + 0] = diagScale * (dInv[blockOff + 0] * acc0 + dInv[blockOff + 1] * acc1);
+                y[rowBase + 1] = diagScale * (dInv[blockOff + 2] * acc0 + dInv[blockOff + 3] * acc1);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepLowerB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = 0; i < blockRows; i++)
+            {
+                int rowBase = i * 3;
+                float acc0 = r[rowBase + 0];
+                float acc1 = r[rowBase + 1];
+                float acc2 = r[rowBase + 2];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j >= i) break;
+                    int yBase = j * 3;
+                    float* block = values + k * 9;
+                    float y0 = y[yBase + 0];
+                    float y1 = y[yBase + 1];
+                    float y2 = y[yBase + 2];
+                    acc0 -= block[0] * y0 + block[1] * y1 + block[2] * y2;
+                    acc1 -= block[3] * y0 + block[4] * y1 + block[5] * y2;
+                    acc2 -= block[6] * y0 + block[7] * y1 + block[8] * y2;
+                }
+
+                int blockOff = i * 9;
+                y[rowBase + 0] = diagScale * (dInv[blockOff + 0] * acc0 + dInv[blockOff + 1] * acc1 + dInv[blockOff + 2] * acc2);
+                y[rowBase + 1] = diagScale * (dInv[blockOff + 3] * acc0 + dInv[blockOff + 4] * acc1 + dInv[blockOff + 5] * acc2);
+                y[rowBase + 2] = diagScale * (dInv[blockOff + 6] * acc0 + dInv[blockOff + 7] * acc1 + dInv[blockOff + 8] * acc2);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepLowerB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = 0; i < blockRows; i++)
+            {
+                int rowBase = i * 4;
+                float acc0 = r[rowBase + 0];
+                float acc1 = r[rowBase + 1];
+                float acc2 = r[rowBase + 2];
+                float acc3 = r[rowBase + 3];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j >= i) break;
+                    int yBase = j * 4;
+                    float* block = values + k * 16;
+                    float y0 = y[yBase + 0];
+                    float y1 = y[yBase + 1];
+                    float y2 = y[yBase + 2];
+                    float y3 = y[yBase + 3];
+                    acc0 -= block[0]  * y0 + block[1]  * y1 + block[2]  * y2 + block[3]  * y3;
+                    acc1 -= block[4]  * y0 + block[5]  * y1 + block[6]  * y2 + block[7]  * y3;
+                    acc2 -= block[8]  * y0 + block[9]  * y1 + block[10] * y2 + block[11] * y3;
+                    acc3 -= block[12] * y0 + block[13] * y1 + block[14] * y2 + block[15] * y3;
+                }
+
+                int blockOff = i * 16;
+                y[rowBase + 0] = diagScale * (dInv[blockOff + 0]  * acc0 + dInv[blockOff + 1]  * acc1 + dInv[blockOff + 2]  * acc2 + dInv[blockOff + 3]  * acc3);
+                y[rowBase + 1] = diagScale * (dInv[blockOff + 4]  * acc0 + dInv[blockOff + 5]  * acc1 + dInv[blockOff + 6]  * acc2 + dInv[blockOff + 7]  * acc3);
+                y[rowBase + 2] = diagScale * (dInv[blockOff + 8]  * acc0 + dInv[blockOff + 9]  * acc1 + dInv[blockOff + 10] * acc2 + dInv[blockOff + 11] * acc3);
+                y[rowBase + 3] = diagScale * (dInv[blockOff + 12] * acc0 + dInv[blockOff + 13] * acc1 + dInv[blockOff + 14] * acc2 + dInv[blockOff + 15] * acc3);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepLowerB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = 0; i < blockRows; i++)
+            {
+                int rowBase = i * 6;
+                float acc0 = r[rowBase + 0];
+                float acc1 = r[rowBase + 1];
+                float acc2 = r[rowBase + 2];
+                float acc3 = r[rowBase + 3];
+                float acc4 = r[rowBase + 4];
+                float acc5 = r[rowBase + 5];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j >= i) break;
+                    int yBase = j * 6;
+                    float* block = values + k * 36;
+                    float y0 = y[yBase + 0];
+                    float y1 = y[yBase + 1];
+                    float y2 = y[yBase + 2];
+                    float y3 = y[yBase + 3];
+                    float y4 = y[yBase + 4];
+                    float y5 = y[yBase + 5];
+                    acc0 -= block[0]  * y0 + block[1]  * y1 + block[2]  * y2 + block[3]  * y3 + block[4]  * y4 + block[5]  * y5;
+                    acc1 -= block[6]  * y0 + block[7]  * y1 + block[8]  * y2 + block[9]  * y3 + block[10] * y4 + block[11] * y5;
+                    acc2 -= block[12] * y0 + block[13] * y1 + block[14] * y2 + block[15] * y3 + block[16] * y4 + block[17] * y5;
+                    acc3 -= block[18] * y0 + block[19] * y1 + block[20] * y2 + block[21] * y3 + block[22] * y4 + block[23] * y5;
+                    acc4 -= block[24] * y0 + block[25] * y1 + block[26] * y2 + block[27] * y3 + block[28] * y4 + block[29] * y5;
+                    acc5 -= block[30] * y0 + block[31] * y1 + block[32] * y2 + block[33] * y3 + block[34] * y4 + block[35] * y5;
+                }
+
+                int blockOff = i * 36;
+                y[rowBase + 0] = diagScale * (dInv[blockOff + 0]  * acc0 + dInv[blockOff + 1]  * acc1 + dInv[blockOff + 2]  * acc2 + dInv[blockOff + 3]  * acc3 + dInv[blockOff + 4]  * acc4 + dInv[blockOff + 5]  * acc5);
+                y[rowBase + 1] = diagScale * (dInv[blockOff + 6]  * acc0 + dInv[blockOff + 7]  * acc1 + dInv[blockOff + 8]  * acc2 + dInv[blockOff + 9]  * acc3 + dInv[blockOff + 10] * acc4 + dInv[blockOff + 11] * acc5);
+                y[rowBase + 2] = diagScale * (dInv[blockOff + 12] * acc0 + dInv[blockOff + 13] * acc1 + dInv[blockOff + 14] * acc2 + dInv[blockOff + 15] * acc3 + dInv[blockOff + 16] * acc4 + dInv[blockOff + 17] * acc5);
+                y[rowBase + 3] = diagScale * (dInv[blockOff + 18] * acc0 + dInv[blockOff + 19] * acc1 + dInv[blockOff + 20] * acc2 + dInv[blockOff + 21] * acc3 + dInv[blockOff + 22] * acc4 + dInv[blockOff + 23] * acc5);
+                y[rowBase + 4] = diagScale * (dInv[blockOff + 24] * acc0 + dInv[blockOff + 25] * acc1 + dInv[blockOff + 26] * acc2 + dInv[blockOff + 27] * acc3 + dInv[blockOff + 28] * acc4 + dInv[blockOff + 29] * acc5);
+                y[rowBase + 5] = diagScale * (dInv[blockOff + 30] * acc0 + dInv[blockOff + 31] * acc1 + dInv[blockOff + 32] * acc2 + dInv[blockOff + 33] * acc3 + dInv[blockOff + 34] * acc4 + dInv[blockOff + 35] * acc5);
+            }
+        }
+
+        // General runtime-BR fallback (b not in {1,2,3,4,6}). `acc` is a small per-row scratch
+        // (stackalloc'd ONCE, reused every row) holding the row's off-diagonal-subtracted residual
+        // before the diagonal inverse is applied -- keeps this loop correct even if a future caller
+        // ever passed y aliasing r (it does not read y[rowBase+..] after acc is fully formed).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepLower([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                       float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows, int BR)
+        {
+            int blockLen = BR * BR;
+            float* acc = stackalloc float[BR];
+
+            for (int i = 0; i < blockRows; i++)
+            {
+                int rowBase = i * BR;
+                for (int lr = 0; lr < BR; lr++) acc[lr] = r[rowBase + lr];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j >= i) break;
+                    int yBase = j * BR;
+                    float* block = values + (long)k * blockLen;
+                    for (int lr = 0; lr < BR; lr++)
+                    {
+                        float sum = 0;
+                        for (int lc = 0; lc < BR; lc++)
+                            sum += block[lr * BR + lc] * y[yBase + lc];
+                        acc[lr] -= sum;
+                    }
+                }
+
+                int blockOff = i * blockLen;
+                for (int lr = 0; lr < BR; lr++)
+                {
+                    float sum = 0;
+                    for (int lc = 0; lc < BR; lc++)
+                        sum += dInv[blockOff + lr * BR + lc] * acc[lc];
+                    y[rowBase + lr] = diagScale * sum;
+                }
+            }
+        }
+
+        // ---- sweepUpper: (D/diagScale + U) y = r, square block b ---------------------------
+        // Rows in DESCENDING order; U = stored blocks with ColInd > row. Ascending ColInd storage
+        // means the strictly-upper entries are a SUFFIX of the row, not a prefix -- no `break` at
+        // the row start, so each kernel `continue`s past ColInd <= row instead.
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepUpperB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = blockRows - 1; i >= 0; i--)
+            {
+                float acc = r[i];
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j <= i) continue;
+                    acc -= values[k] * y[j];
+                }
+                y[i] = diagScale * dInv[i] * acc;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepUpperB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = blockRows - 1; i >= 0; i--)
+            {
+                int rowBase = i * 2;
+                float acc0 = r[rowBase + 0];
+                float acc1 = r[rowBase + 1];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j <= i) continue;
+                    int yBase = j * 2;
+                    float* block = values + k * 4;
+                    float y0 = y[yBase + 0];
+                    float y1 = y[yBase + 1];
+                    acc0 -= block[0] * y0 + block[1] * y1;
+                    acc1 -= block[2] * y0 + block[3] * y1;
+                }
+
+                int blockOff = i * 4;
+                y[rowBase + 0] = diagScale * (dInv[blockOff + 0] * acc0 + dInv[blockOff + 1] * acc1);
+                y[rowBase + 1] = diagScale * (dInv[blockOff + 2] * acc0 + dInv[blockOff + 3] * acc1);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepUpperB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = blockRows - 1; i >= 0; i--)
+            {
+                int rowBase = i * 3;
+                float acc0 = r[rowBase + 0];
+                float acc1 = r[rowBase + 1];
+                float acc2 = r[rowBase + 2];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j <= i) continue;
+                    int yBase = j * 3;
+                    float* block = values + k * 9;
+                    float y0 = y[yBase + 0];
+                    float y1 = y[yBase + 1];
+                    float y2 = y[yBase + 2];
+                    acc0 -= block[0] * y0 + block[1] * y1 + block[2] * y2;
+                    acc1 -= block[3] * y0 + block[4] * y1 + block[5] * y2;
+                    acc2 -= block[6] * y0 + block[7] * y1 + block[8] * y2;
+                }
+
+                int blockOff = i * 9;
+                y[rowBase + 0] = diagScale * (dInv[blockOff + 0] * acc0 + dInv[blockOff + 1] * acc1 + dInv[blockOff + 2] * acc2);
+                y[rowBase + 1] = diagScale * (dInv[blockOff + 3] * acc0 + dInv[blockOff + 4] * acc1 + dInv[blockOff + 5] * acc2);
+                y[rowBase + 2] = diagScale * (dInv[blockOff + 6] * acc0 + dInv[blockOff + 7] * acc1 + dInv[blockOff + 8] * acc2);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepUpperB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = blockRows - 1; i >= 0; i--)
+            {
+                int rowBase = i * 4;
+                float acc0 = r[rowBase + 0];
+                float acc1 = r[rowBase + 1];
+                float acc2 = r[rowBase + 2];
+                float acc3 = r[rowBase + 3];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j <= i) continue;
+                    int yBase = j * 4;
+                    float* block = values + k * 16;
+                    float y0 = y[yBase + 0];
+                    float y1 = y[yBase + 1];
+                    float y2 = y[yBase + 2];
+                    float y3 = y[yBase + 3];
+                    acc0 -= block[0]  * y0 + block[1]  * y1 + block[2]  * y2 + block[3]  * y3;
+                    acc1 -= block[4]  * y0 + block[5]  * y1 + block[6]  * y2 + block[7]  * y3;
+                    acc2 -= block[8]  * y0 + block[9]  * y1 + block[10] * y2 + block[11] * y3;
+                    acc3 -= block[12] * y0 + block[13] * y1 + block[14] * y2 + block[15] * y3;
+                }
+
+                int blockOff = i * 16;
+                y[rowBase + 0] = diagScale * (dInv[blockOff + 0]  * acc0 + dInv[blockOff + 1]  * acc1 + dInv[blockOff + 2]  * acc2 + dInv[blockOff + 3]  * acc3);
+                y[rowBase + 1] = diagScale * (dInv[blockOff + 4]  * acc0 + dInv[blockOff + 5]  * acc1 + dInv[blockOff + 6]  * acc2 + dInv[blockOff + 7]  * acc3);
+                y[rowBase + 2] = diagScale * (dInv[blockOff + 8]  * acc0 + dInv[blockOff + 9]  * acc1 + dInv[blockOff + 10] * acc2 + dInv[blockOff + 11] * acc3);
+                y[rowBase + 3] = diagScale * (dInv[blockOff + 12] * acc0 + dInv[blockOff + 13] * acc1 + dInv[blockOff + 14] * acc2 + dInv[blockOff + 15] * acc3);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepUpperB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                         float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows)
+        {
+            for (int i = blockRows - 1; i >= 0; i--)
+            {
+                int rowBase = i * 6;
+                float acc0 = r[rowBase + 0];
+                float acc1 = r[rowBase + 1];
+                float acc2 = r[rowBase + 2];
+                float acc3 = r[rowBase + 3];
+                float acc4 = r[rowBase + 4];
+                float acc5 = r[rowBase + 5];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j <= i) continue;
+                    int yBase = j * 6;
+                    float* block = values + k * 36;
+                    float y0 = y[yBase + 0];
+                    float y1 = y[yBase + 1];
+                    float y2 = y[yBase + 2];
+                    float y3 = y[yBase + 3];
+                    float y4 = y[yBase + 4];
+                    float y5 = y[yBase + 5];
+                    acc0 -= block[0]  * y0 + block[1]  * y1 + block[2]  * y2 + block[3]  * y3 + block[4]  * y4 + block[5]  * y5;
+                    acc1 -= block[6]  * y0 + block[7]  * y1 + block[8]  * y2 + block[9]  * y3 + block[10] * y4 + block[11] * y5;
+                    acc2 -= block[12] * y0 + block[13] * y1 + block[14] * y2 + block[15] * y3 + block[16] * y4 + block[17] * y5;
+                    acc3 -= block[18] * y0 + block[19] * y1 + block[20] * y2 + block[21] * y3 + block[22] * y4 + block[23] * y5;
+                    acc4 -= block[24] * y0 + block[25] * y1 + block[26] * y2 + block[27] * y3 + block[28] * y4 + block[29] * y5;
+                    acc5 -= block[30] * y0 + block[31] * y1 + block[32] * y2 + block[33] * y3 + block[34] * y4 + block[35] * y5;
+                }
+
+                int blockOff = i * 36;
+                y[rowBase + 0] = diagScale * (dInv[blockOff + 0]  * acc0 + dInv[blockOff + 1]  * acc1 + dInv[blockOff + 2]  * acc2 + dInv[blockOff + 3]  * acc3 + dInv[blockOff + 4]  * acc4 + dInv[blockOff + 5]  * acc5);
+                y[rowBase + 1] = diagScale * (dInv[blockOff + 6]  * acc0 + dInv[blockOff + 7]  * acc1 + dInv[blockOff + 8]  * acc2 + dInv[blockOff + 9]  * acc3 + dInv[blockOff + 10] * acc4 + dInv[blockOff + 11] * acc5);
+                y[rowBase + 2] = diagScale * (dInv[blockOff + 12] * acc0 + dInv[blockOff + 13] * acc1 + dInv[blockOff + 14] * acc2 + dInv[blockOff + 15] * acc3 + dInv[blockOff + 16] * acc4 + dInv[blockOff + 17] * acc5);
+                y[rowBase + 3] = diagScale * (dInv[blockOff + 18] * acc0 + dInv[blockOff + 19] * acc1 + dInv[blockOff + 20] * acc2 + dInv[blockOff + 21] * acc3 + dInv[blockOff + 22] * acc4 + dInv[blockOff + 23] * acc5);
+                y[rowBase + 4] = diagScale * (dInv[blockOff + 24] * acc0 + dInv[blockOff + 25] * acc1 + dInv[blockOff + 26] * acc2 + dInv[blockOff + 27] * acc3 + dInv[blockOff + 28] * acc4 + dInv[blockOff + 29] * acc5);
+                y[rowBase + 5] = diagScale * (dInv[blockOff + 30] * acc0 + dInv[blockOff + 31] * acc1 + dInv[blockOff + 32] * acc2 + dInv[blockOff + 33] * acc3 + dInv[blockOff + 34] * acc4 + dInv[blockOff + 35] * acc5);
+            }
+        }
+
+        // General runtime-BR fallback (b not in {1,2,3,4,6}). Same acc-scratch reasoning as
+        // sweepLower's general fallback above.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void sweepUpper([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values, [NoAlias] float* dInv,
+                                       float diagScale, [NoAlias] float* r, [NoAlias] float* y, int blockRows, int BR)
+        {
+            int blockLen = BR * BR;
+            float* acc = stackalloc float[BR];
+
+            for (int i = blockRows - 1; i >= 0; i--)
+            {
+                int rowBase = i * BR;
+                for (int lr = 0; lr < BR; lr++) acc[lr] = r[rowBase + lr];
+
+                int rs = rowPtr[i], re = rowPtr[i + 1];
+                for (int k = rs; k < re; k++)
+                {
+                    int j = colInd[k];
+                    if (j <= i) continue;
+                    int yBase = j * BR;
+                    float* block = values + (long)k * blockLen;
+                    for (int lr = 0; lr < BR; lr++)
+                    {
+                        float sum = 0;
+                        for (int lc = 0; lc < BR; lc++)
+                            sum += block[lr * BR + lc] * y[yBase + lc];
+                        acc[lr] -= sum;
+                    }
+                }
+
+                int blockOff = i * blockLen;
+                for (int lr = 0; lr < BR; lr++)
+                {
+                    float sum = 0;
+                    for (int lc = 0; lc < BR; lc++)
+                        sum += dInv[blockOff + lr * BR + lc] * acc[lc];
+                    y[rowBase + lr] = diagScale * sum;
+                }
+            }
+        }
     }
 }

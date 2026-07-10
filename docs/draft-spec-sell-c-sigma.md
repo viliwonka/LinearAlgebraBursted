@@ -1,4 +1,4 @@
-# Draft spec: SELL-C-σ sparse format (USER-REVIEW DRAFT — not approved, nothing implemented)
+# Draft spec: SELL-C-σ sparse format (USER-RULED 2026-07-10 — approved as POST-v1.0, nothing implemented yet)
 
 Evaluate adding SELL-C-σ (Sliced ELLPACK with σ-window row sorting) as a **second** sparse
 format next to BSR, targeting matrices with **no block structure** — the case where BSR
@@ -280,4 +280,13 @@ Files (templates are source of truth): `TemplateSource/Sparse/fProxySELL.cs`,
 - **Autotuned register blocking (OSKI-style)**: targets block structure — BSR already owns
   that ground with hand-unrolled kernels.
 
-## 11. Decisions (NONE LOCKED — awaiting user review of §0)
+## 11. Decisions (USER-RULED 2026-07-10)
+
+1. **Timing: POST-v1.0** (user accepted the recommendation). Do not start before the release.
+2. **Customer: confirmed in principle** — user independently identified the b=1 case as
+   SELL's domain ("block matrices of size 1 don't make sense, that's why I was thinking of
+   sell-c"); the roadmap's heat/fluids demos are the concrete workloads.
+3. **All §0 defaults accepted**: ApplyT via one-time materialized SELL(Aᵀ) (~2× memory,
+   BSR precedent); C=8 fixed (2×fProxy4), not exposed; strictly opt-in (no auto-selection);
+   names as proposed (fProxySELL / fProxySELLOperator / arena.fProxySELL / BSR.toSELL).
+4. Kill-gate (§7 criterion 2) unchanged and binding when the build starts.

@@ -157,5 +157,75 @@ namespace LinearAlgebra
             Arena self = this;
             return builder.ToBSR(ref self);
         }
+
+        /// <summary>
+        /// One-time mirror of a SYMMETRIC-storage (upper-block-triangle-only) BSR into an
+        /// equivalent FULL-storage BSR: every stored block K at (bi,bj) is kept at (bi,bj), and
+        /// if bi != bj its transpose is ALSO materialized at (bj,bi) -- the implicit lower block
+        /// <see cref="fProxyBSR.ToDense"/> already computes on the fly (see that method's own
+        /// Symmetric branch, which this mirrors exactly). O(nnzb*BR*BC), one-time cost -- the
+        /// preconditioner setup this feeds (<see cref="fProxySSOR"/>) amortizes it over the whole
+        /// solve lifetime, same lifecycle as a factorization (Krylov R3, Q4 ruling: v1
+        /// preconditioners are full-storage BSR only; symmetric-storage input pays this one-time
+        /// copy instead of a bespoke symmetric-sweep kernel family -- MKL/Eigen practice matches).
+        /// If A is already full storage (Symmetric == false), returns A unchanged -- no copy.
+        /// Not itself guarded by the concurrency tripwire, for the same reason
+        /// <see cref="fProxyBSRTranspose"/> is not -- see that method's own doc comment.
+        /// </summary>
+        public unsafe fProxyBSR fProxyBSRMirrorToFull(in fProxyBSR A)
+        {
+            if (!A.Symmetric)
+                return A;
+
+            var builder = fProxyBSRBuilder(A.BlockRows, A.BlockCols, A.BR, A.BC, A.Nnzb * 2);
+
+            int blockLen = A.BR * A.BC;
+            fProxy* blockT = stackalloc fProxy[blockLen];
+
+            for (int bi = 0; bi < A.BlockRows; bi++)
+            {
+                int rowStart = A.RowPtr[bi];
+                int rowEnd = A.RowPtr[bi + 1];
+
+                for (int k = rowStart; k < rowEnd; k++)
+                {
+                    int bj = A.ColInd[k];
+                    fProxy* block = A.Values.Ptr + k * blockLen;
+
+                    builder.AddBlock(bi, bj, block);
+
+                    if (bi != bj)
+                    {
+                        for (int r = 0; r < A.BR; r++)
+                            for (int c = 0; c < A.BC; c++)
+                                blockT[c * A.BR + r] = block[r * A.BC + c];
+                        builder.AddBlock(bj, bi, blockT);
+                    }
+                }
+            }
+
+            Arena self = this;
+            return builder.ToBSR(ref self);
+        }
+
+        /// <summary>
+        /// Builds a symmetric-SOR preconditioner from A (must be square: BlockRows==BlockCols,
+        /// BR==BC), with the given relaxation parameter omega in (0, 2). Setup is A's own
+        /// diagonal-block inverses (<see cref="fProxyBlockJacobi"/>, reused unchanged) plus a
+        /// one-time mirror-to-full pass if A is Symmetric-storage
+        /// (<see cref="fProxyBSRMirrorToFull"/>). Arena-owned: disposed with the arena.
+        /// </summary>
+        public fProxySSOR fProxySSOR(in fProxyBSR A, fProxy omega)
+        {
+            Arena self = this;
+            return new fProxySSOR(in A, omega, ref self);
+        }
+
+        /// <summary>fProxySSOR with omega=1 (symmetric Gauss-Seidel).</summary>
+        public fProxySSOR fProxySSOR(in fProxyBSR A)
+        {
+            Arena self = this;
+            return new fProxySSOR(in A, ref self);
+        }
     }
 }

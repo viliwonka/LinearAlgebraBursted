@@ -56,9 +56,12 @@ namespace LinearAlgebra.Benchmarks
         // size added rows without adding information. Freed budget pays for the new stencil section
         // below (BenchStencilFloat/Double) and the iters+status columns on every Krylov row.
         static readonly int[] Ns = { 5120, 10240 };
+        // Krylov R3 (Q7 budget ruling): the b=1 stencil section runs at N=10240 only (see
+        // StencilSection) -- paid for by dropping this size there, not by an SpmvReps-style knob
+        // (spMV x50's own throughput row was deleted, see BenchKrylovFProxy's comment).
+        static readonly int[] StencilNs = { 10240 };
         const float Density = 0.015f;
         const int K = 40;
-        const int SpmvReps = 50;
         const int LanczosSteps = 32;
 
         // LOBPCG smallest-eigenpair rows run on SQUARE 2D grid Laplacians (fProxyLaplacian2D, BR = grid),
@@ -87,9 +90,9 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("touch only the ~1.5% nonzero blocks, so this scale is exactly where dense is not an option.");
             sb.AppendLine();
             sb.AppendLine(KrylovHeader());
-            BenchKrylovFloat(sb, BR, Ns, Density, K, SpmvReps);
+            BenchKrylovFloat(sb, BR, Ns, Density, K);
             sb.AppendLine();
-            BenchKrylovDouble(sb, BR, Ns, Density, K, SpmvReps);
+            BenchKrylovDouble(sb, BR, Ns, Density, K);
             sb.AppendLine();
             StencilSection(sb);
             sb.AppendLine(string.Format("{0,-7} {1,-12} {2,-12} {3,11} {4,11} {5,8} {6,10} {7,14}", "dtype", "N", "solver", "med(ms)", "min(ms)", "iters", "converged", "maxResid"));
@@ -104,17 +107,18 @@ namespace LinearAlgebra.Benchmarks
         // SCALAR (BR=1) tridiagonal SPD system (diag=4, off-diag=-1, nnz ~= 3N) -- the low-fill regime
         // where vector-op sweeps are the largest fraction of per-iteration traffic (vs BR=4/1.5% fill
         // above, where spMV dominates), so R1's fusion should be most visible here. Only CG/PCG-Jacobi/
-        // MINRES run (SPD-only; BiCGStab/CGLS/LSQR/LSMR need non-symmetric/rectangular operators this
-        // generator does not produce). Reuses Ns (5120/10240) for direct comparison against the BR=4
-        // rows above.
+        // MINRES/PCG-SSOR run (SPD-only; BiCGStab/CGLS/LSQR/LSMR need non-symmetric/rectangular
+        // operators this generator does not produce). N=10240 only (StencilNs, Krylov R3 Q7
+        // budget ruling) -- see StencilNs's own comment; the BR=4 section above still sweeps both
+        // Ns for direct float==double comparison at more than one size.
         static void StencilSection(StringBuilder sb)
         {
             sb.AppendLine("=== b=1 stencil (scalar BSR, fProxyLaplacian2D(1,N): tridiag SPD, nnz~=3N) -- vector-op fusion visibility ===");
             sb.AppendLine();
             sb.AppendLine(KrylovHeader());
-            BenchStencilFloat(sb, Ns, K);
+            BenchStencilFloat(sb, StencilNs, K);
             sb.AppendLine();
-            BenchStencilDouble(sb, Ns, K);
+            BenchStencilDouble(sb, StencilNs, K);
             sb.AppendLine();
         }
 

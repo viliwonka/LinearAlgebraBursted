@@ -225,5 +225,107 @@ namespace LinearAlgebra.Sparse
             spMVT(in A, in x, ref result);
             return result;
         }
+
+        // ---- block triangular sweeps (Krylov R3, docs/draft-spec-krylov-optimization.md) ----
+
+        /// <summary>
+        /// Block forward substitution: solves (D/diagScale + L) y = r, where D is A's block
+        /// diagonal (inverted via <paramref name="Jacobi"/>, reused unchanged -- no separate
+        /// inversion here) and L is A's STRICTLY LOWER stored blocks (ColInd &lt; block-row).
+        /// Rows solved in ascending order; each row's off-diagonal contribution is a b x b matvec
+        /// against already-solved earlier rows, the diagonal solve is Jacobi's explicit block
+        /// inverse (no per-row factorization). FULL-storage BSR only (Q4 ruling) -- throws on
+        /// Symmetric (upper-block-triangle-only) storage; mirror it first via
+        /// <see cref="Arena.doubleBSRMirrorToFull"/>. diagScale=1 is the plain (unscaled)
+        /// Gauss-Seidel forward sweep; <see cref="doubleSSOR"/> drives this with diagScale=Omega.
+        /// y must not alias r (same "read the full row before any row's write" reasoning as
+        /// <see cref="doubleBlockJacobi.Apply"/>).
+        /// </summary>
+        public static void sweepLower(in doubleBSR A, in doubleBlockJacobi Jacobi, double diagScale, in doubleN r, ref doubleN y)
+        {
+            if (A.BlockRows != A.BlockCols || A.BR != A.BC)
+                throw new ArgumentException("sweepLower: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (A.Symmetric)
+                throw new ArgumentException("sweepLower: A must be full-storage BSR (Symmetric upper-block-triangle storage is not supported here -- mirror it first via Arena.doubleBSRMirrorToFull)");
+            if (Jacobi.BlockRows != A.BlockRows || Jacobi.BR != A.BR)
+                throw new ArgumentException("sweepLower: Jacobi must be built from A (BlockRows/BR mismatch)");
+            if (r.N != A.M_Rows)
+                throw new ArgumentException("sweepLower: r.N must equal A.M_Rows");
+            if (y.N != A.M_Rows)
+                throw new ArgumentException("sweepLower: y.N must equal A.M_Rows");
+
+            unsafe
+            {
+                if (y.Data.Ptr == r.Data.Ptr)
+                    throw new ArgumentException("sweepLower: y must not alias r");
+
+                int* rowPtr = A.RowPtr.Ptr;
+                int* colInd = A.ColInd.Ptr;
+                double* values = A.Values.Ptr;
+                double* dInv = Jacobi.DInv.Ptr;
+                double* rPtr = r.Data.Ptr;
+                double* yPtr = y.Data.Ptr;
+
+                switch (A.BR)
+                {
+                    case 1: UnsafeOP.sweepLowerB1(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    case 2: UnsafeOP.sweepLowerB2(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    case 3: UnsafeOP.sweepLowerB3(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    case 4: UnsafeOP.sweepLowerB4(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    case 6: UnsafeOP.sweepLowerB6(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    default: UnsafeOP.sweepLower(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows, A.BR); break;
+                }
+            }
+        }
+
+        /// <summary>sweepLower with diagScale=1 -- the plain (unscaled) Gauss-Seidel forward sweep: solves (D+L) y = r.</summary>
+        public static void sweepLower(in doubleBSR A, in doubleBlockJacobi Jacobi, in doubleN r, ref doubleN y)
+            => sweepLower(in A, in Jacobi, (double)1, in r, ref y);
+
+        /// <summary>
+        /// Block backward substitution: solves (D/diagScale + U) y = r, where U is A's STRICTLY
+        /// UPPER stored blocks (ColInd &gt; block-row). Mirror of <see cref="sweepLower"/> --
+        /// rows solved in DESCENDING order, same diagonal-inverse/full-storage/no-alias contract.
+        /// </summary>
+        public static void sweepUpper(in doubleBSR A, in doubleBlockJacobi Jacobi, double diagScale, in doubleN r, ref doubleN y)
+        {
+            if (A.BlockRows != A.BlockCols || A.BR != A.BC)
+                throw new ArgumentException("sweepUpper: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (A.Symmetric)
+                throw new ArgumentException("sweepUpper: A must be full-storage BSR (Symmetric upper-block-triangle storage is not supported here -- mirror it first via Arena.doubleBSRMirrorToFull)");
+            if (Jacobi.BlockRows != A.BlockRows || Jacobi.BR != A.BR)
+                throw new ArgumentException("sweepUpper: Jacobi must be built from A (BlockRows/BR mismatch)");
+            if (r.N != A.M_Rows)
+                throw new ArgumentException("sweepUpper: r.N must equal A.M_Rows");
+            if (y.N != A.M_Rows)
+                throw new ArgumentException("sweepUpper: y.N must equal A.M_Rows");
+
+            unsafe
+            {
+                if (y.Data.Ptr == r.Data.Ptr)
+                    throw new ArgumentException("sweepUpper: y must not alias r");
+
+                int* rowPtr = A.RowPtr.Ptr;
+                int* colInd = A.ColInd.Ptr;
+                double* values = A.Values.Ptr;
+                double* dInv = Jacobi.DInv.Ptr;
+                double* rPtr = r.Data.Ptr;
+                double* yPtr = y.Data.Ptr;
+
+                switch (A.BR)
+                {
+                    case 1: UnsafeOP.sweepUpperB1(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    case 2: UnsafeOP.sweepUpperB2(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    case 3: UnsafeOP.sweepUpperB3(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    case 4: UnsafeOP.sweepUpperB4(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    case 6: UnsafeOP.sweepUpperB6(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows); break;
+                    default: UnsafeOP.sweepUpper(rowPtr, colInd, values, dInv, diagScale, rPtr, yPtr, A.BlockRows, A.BR); break;
+                }
+            }
+        }
+
+        /// <summary>sweepUpper with diagScale=1 -- the plain (unscaled) Gauss-Seidel backward sweep: solves (D+U) y = r.</summary>
+        public static void sweepUpper(in doubleBSR A, in doubleBlockJacobi Jacobi, in doubleN r, ref doubleN y)
+            => sweepUpper(in A, in Jacobi, (double)1, in r, ref y);
     }
 }

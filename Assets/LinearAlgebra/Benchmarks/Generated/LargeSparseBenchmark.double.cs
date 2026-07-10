@@ -23,17 +23,28 @@ namespace LinearAlgebra.Benchmarks
     // hygiene note in docs/draft-spec-krylov-optimization.md); iters+status makes that visible instead
     // of silently masquerading as speed.
 
+    // Krylov R3 (docs/draft-spec-krylov-optimization.md): SpCgJobDouble/SpPcgJobDouble grew a
+    // `tol` field (replacing the hardcoded `0f` argument) so the SAME job types serve both the
+    // fixed-K/tol=0 throughput rows below (every existing call site omits `tol`, leaving it at
+    // its struct default 0 -- byte-identical behavior to the old hardcoded literal) and the new
+    // iterations-to-CONVERGENCE comparison (BenchPrecondConvergenceDouble), which sets a real
+    // tol/maxIter. No new job type needed for that reuse. SpmvJobDouble (a standalone spMV
+    // throughput row, uninformative once CG/PCG rows already show spMV's ~60-95%-of-cost share)
+    // was DELETED, not left unused, to pay for the new PCG-SSOR row this round adds -- see
+    // BenchKrylovDouble's own comment.
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpmvJobDouble : IJob { public doubleBSR A; public doubleN x, y; public int reps;
-        public void Execute() { for (int k = 0; k < reps; k++) { if ((k & 1) == 0) BSR.spMV(in A, in x, ref y); else BSR.spMV(in A, in y, ref x); } } }
+    public struct SpCgJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, p, Ap; public int K; public double tol; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpCgJobDouble : IJob { public doubleBSR A; public doubleN b, x, r, p, Ap; public int K; public NativeArray<double> outInfo;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
+    public struct SpPcgJobDouble : IJob { public doubleBSR A; public doubleBlockJacobi M; public doubleN b, x, r, p, Ap, z; public int K; public double tol; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
+    // Krylov R3: SSOR twin of SpPcgJobDouble (same reuse for fixed-K throughput and
+    // convergence-comparison rows).
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpPcgJobDouble : IJob { public doubleBSR A; public doubleBlockJacobi M; public doubleN b, x, r, p, Ap, z; public int K; public NativeArray<double> outInfo;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
+    public struct SpPcgSSORJobDouble : IJob { public doubleBSR A; public doubleSSOR M; public doubleN b, x, r, p, Ap, z; public int K; public double tol; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, tol); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
     public struct SpMinresJobDouble : IJob { public doubleBSR A; public doubleN b, x, y, r1, r2, v, w, w1, w2; public int K; public NativeArray<double> outInfo;
@@ -98,7 +109,17 @@ namespace LinearAlgebra.Benchmarks
             return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
         }
 
-        static void BenchKrylovDouble(StringBuilder sb, int BR, int[] Ns, double density, int K, int spmvReps)
+        // Krylov R3 (docs/draft-spec-krylov-optimization.md): the PCG rows grow a preconditioner
+        // axis (none/CG, block-Jacobi, SSOR). "none" is CG itself (algebraically PCG with M=I,
+        // same recurrence) rather than a redundant literal PCG-identity row. The fixed-K/tol=0
+        // rows below measure per-ITERATION wall-clock cost (every solver runs the full K budget,
+        // so iters is uninformative there by design); the SEPARATE "@tol" rows at the end of the
+        // largest N (BenchPrecondConvergenceDouble inline below) run to a REAL tolerance and are
+        // where SSOR's iteration-count win is actually visible -- see that block's own comment.
+        // spMV x50 (a standalone throughput row, uninformative once CG/PCG already show spMV's
+        // ~60-95%-of-cost share -- spec's own number) was DELETED to pay for the new PCG-SSOR row
+        // (Q7 budget ruling: cut redundancy, don't grow the report unboundedly).
+        static void BenchKrylovDouble(StringBuilder sb, int BR, int[] Ns, double density, int K)
         {
             var oi = new NativeArray<double>(2, Allocator.Persistent);
 
@@ -108,13 +129,10 @@ namespace LinearAlgebra.Benchmarks
                 int nb = N / BR;
                 var A = arena.doubleRandomSparseSPD(nb, BR, density, 0x5A17u);
                 var M = arena.doubleBlockJacobi(in A);
+                var ssor = arena.doubleSSOR(in A);
                 var xKnown = arena.doubleRandomVec(N, 0.5f, 1.5f, 0xB0Bu);
                 var b = arena.doubleVec(N); BSR.spMV(in A, in xKnown, ref b);
                 string sz = N.ToString();
-
-                var sx = arena.doubleRandomVec(N, -1f, 1f, 7u); var sy = arena.doubleVec(N);
-                var spmvJob = new SpmvJobDouble { A = A, x = sx, y = sy, reps = spmvReps };
-                sb.AppendLine(LargeSparseFmt.Row("double", sz, "spMV x" + spmvReps, Bench.Time(() => spmvJob.Run()), 0.0, 0, 0));
 
                 var x = arena.doubleVec(N);
                 var cgJob = new SpCgJobDouble { A = A, b = b, x = x, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), K = K, outInfo = oi };
@@ -124,6 +142,36 @@ namespace LinearAlgebra.Benchmarks
                 var pcgJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xp, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = K, outInfo = oi };
                 var pcgStat = Bench.Time(() => pcgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-Jacobi", pcgStat, Res(in A, in xp, in b), (int)oi[1], (int)oi[0]));
+                var xs = arena.doubleVec(N);
+                var ssorJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xs, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = K, outInfo = oi };
+                var ssorStat = Bench.Time(() => ssorJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-SSOR", ssorStat, Res(in A, in xs, in b), (int)oi[1], (int)oi[0]));
+
+                // Iterations-to-CONVERGENCE (real tol, generous maxIter) -- ONE size only
+                // (largest N: the trend is visible at one size; budget discipline). This is the
+                // row set where SSOR's iteration-count win is visible; the fixed-K/tol=0 rows
+                // above cannot show it (every solver there runs the full K by construction).
+                if (N == Ns[Ns.Length - 1])
+                {
+                    double convTol = Consts.doubleSqrtEps;
+                    int convMaxIter = 8 * N;
+
+                    var xc1 = arena.doubleVec(N);
+                    var cgConvJob = new SpCgJobDouble { A = A, b = b, x = xc1, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    var cgConvStat = Bench.Time(() => cgConvJob.Run());
+                    sb.AppendLine(LargeSparseFmt.Row("double", sz, "CG@tol", cgConvStat, Res(in A, in xc1, in b), (int)oi[1], (int)oi[0]));
+
+                    var xc2 = arena.doubleVec(N);
+                    var pcgConvJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xc2, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    var pcgConvStat = Bench.Time(() => pcgConvJob.Run());
+                    sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-Jacobi@tol", pcgConvStat, Res(in A, in xc2, in b), (int)oi[1], (int)oi[0]));
+
+                    var xc3 = arena.doubleVec(N);
+                    var ssorConvJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xc3, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    var ssorConvStat = Bench.Time(() => ssorConvJob.Run());
+                    sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-SSOR@tol", ssorConvStat, Res(in A, in xc3, in b), (int)oi[1], (int)oi[0]));
+                }
+
                 var xm = arena.doubleVec(N);
                 var mrJob = new SpMinresJobDouble { A = A, b = b, x = xm, y = arena.doubleVec(N), r1 = arena.doubleVec(N), r2 = arena.doubleVec(N), v = arena.doubleVec(N), w = arena.doubleVec(N), w1 = arena.doubleVec(N), w2 = arena.doubleVec(N), K = K, outInfo = oi };
                 var mrStat = Bench.Time(() => mrJob.Run());
@@ -164,9 +212,15 @@ namespace LinearAlgebra.Benchmarks
         // (diag=4, off-diag=-1, nnz ~= 3N) -- the low-fill, b=1 regime where R1's vector-op fusion
         // is the largest fraction of per-iteration traffic (spec: BR=4/1.5% fill spMV moves ~6.7MB
         // vs ~0.5MB of vector sweeps per matvec; a scalar/low-fill stencil inverts that ratio).
-        // Only the SPD-compatible solvers run here (CG/PCG-Jacobi/MINRES) -- BiCGStab needs a
-        // non-symmetric operator and CGLS/LSQR/LSMR need a rectangular one, neither of which this
-        // generator produces.
+        // Only the SPD-compatible solvers run here (CG/PCG-Jacobi/PCG-SSOR/MINRES) -- BiCGStab
+        // needs a non-symmetric operator and CGLS/LSQR/LSMR need a rectangular one, neither of
+        // which this generator produces.
+        //
+        // Krylov R3: gained PCG-SSOR (fixed-K row + the "@tol" convergence-comparison rows at the
+        // largest N, same reasoning as BenchKrylovDouble's own comment) -- PAID FOR by dropping
+        // N=5120 from this section's Ns (caller now passes a single-element array): net row count
+        // for the fixed-K table goes from 3 solvers x 2 Ns to 4 solvers x 1 N, i.e. DOWN despite
+        // adding a whole new preconditioner (Q7 budget ruling).
         static void BenchStencilDouble(StringBuilder sb, int[] Ns, int K)
         {
             var oi = new NativeArray<double>(2, Allocator.Persistent);
@@ -176,6 +230,7 @@ namespace LinearAlgebra.Benchmarks
                 var arena = new Arena(Allocator.Persistent);
                 var A = arena.doubleLaplacian2D(1, N);
                 var M = arena.doubleBlockJacobi(in A);
+                var ssor = arena.doubleSSOR(in A);
                 var xKnown = arena.doubleRandomVec(N, 0.5f, 1.5f, 0xB0Bu);
                 var b = arena.doubleVec(N); BSR.spMV(in A, in xKnown, ref b);
                 string sz = N.ToString();
@@ -188,10 +243,35 @@ namespace LinearAlgebra.Benchmarks
                 var pcgJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xp, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = K, outInfo = oi };
                 var pcgStat = Bench.Time(() => pcgJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-Jacobi", pcgStat, Res(in A, in xp, in b), (int)oi[1], (int)oi[0]));
+                var xs = arena.doubleVec(N);
+                var ssorJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xs, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = K, outInfo = oi };
+                var ssorStat = Bench.Time(() => ssorJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-SSOR", ssorStat, Res(in A, in xs, in b), (int)oi[1], (int)oi[0]));
                 var xm = arena.doubleVec(N);
                 var mrJob = new SpMinresJobDouble { A = A, b = b, x = xm, y = arena.doubleVec(N), r1 = arena.doubleVec(N), r2 = arena.doubleVec(N), v = arena.doubleVec(N), w = arena.doubleVec(N), w1 = arena.doubleVec(N), w2 = arena.doubleVec(N), K = K, outInfo = oi };
                 var mrStat = Bench.Time(() => mrJob.Run());
                 sb.AppendLine(LargeSparseFmt.Row("double", sz, "MINRES", mrStat, Res(in A, in xm, in b), (int)oi[1], (int)oi[0]));
+
+                if (N == Ns[Ns.Length - 1])
+                {
+                    double convTol = Consts.doubleSqrtEps;
+                    int convMaxIter = 8 * N;
+
+                    var xc1 = arena.doubleVec(N);
+                    var cgConvJob = new SpCgJobDouble { A = A, b = b, x = xc1, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    var cgConvStat = Bench.Time(() => cgConvJob.Run());
+                    sb.AppendLine(LargeSparseFmt.Row("double", sz, "CG@tol", cgConvStat, Res(in A, in xc1, in b), (int)oi[1], (int)oi[0]));
+
+                    var xc2 = arena.doubleVec(N);
+                    var pcgConvJob = new SpPcgJobDouble { A = A, M = M, b = b, x = xc2, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    var pcgConvStat = Bench.Time(() => pcgConvJob.Run());
+                    sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-Jacobi@tol", pcgConvStat, Res(in A, in xc2, in b), (int)oi[1], (int)oi[0]));
+
+                    var xc3 = arena.doubleVec(N);
+                    var ssorConvJob = new SpPcgSSORJobDouble { A = A, M = ssor, b = b, x = xc3, r = arena.doubleVec(N), p = arena.doubleVec(N), Ap = arena.doubleVec(N), z = arena.doubleVec(N), K = convMaxIter, tol = convTol, outInfo = oi };
+                    var ssorConvStat = Bench.Time(() => ssorConvJob.Run());
+                    sb.AppendLine(LargeSparseFmt.Row("double", sz, "PCG-SSOR@tol", ssorConvStat, Res(in A, in xc3, in b), (int)oi[1], (int)oi[0]));
+                }
 
                 arena.Dispose();
             }

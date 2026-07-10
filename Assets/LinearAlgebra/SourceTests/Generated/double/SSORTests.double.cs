@@ -1,0 +1,498 @@
+using System;
+using LinearAlgebra;
+using LinearAlgebra.Sparse;
+using LinearAlgebra.Gallery;
+using NUnit.Framework;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+// Krylov Round-3 new surfaces (docs/draft-spec-krylov-optimization.md, R3):
+//   (a) BSR.sweepLower/sweepUpper vs a dense LU solve on the EXPANDED (block-diagonal +
+//       strictly-block-triangular, diagonal pre-divided by diagScale) matrix -- b in
+//       {1,2,3,4,6} (unrolled) plus b=5 (general runtime-BR fallback), both diagScale=1 (plain
+//       Gauss-Seidel) and a nontrivial diagScale (the parameter doubleSSOR actually drives).
+//   (b) doubleSSOR is M-SPD: a hand-rolled PCG loop (built from the same public primitives
+//       Krylov.pcg itself uses -- M.Apply/op.ApplyDot/Blas.dot/Blas.updateXR) asserts <r,z> > 0
+//       every iteration and that the solve converges to the true solution -- no new production
+//       API added just to expose this; the test reads what is already public.
+//   (c) doubleSSOR converges in FEWER iterations than doubleBlockJacobi (>=10% margin) on both
+//       doubleLaplacian2D and doubleRandomSparseSPD instances.
+//   (d) SSOR built from a Symmetric-storage BSR equals SSOR built from its full-storage twin
+//       (the one-time mirror path, Arena.doubleBSRMirrorToFull).
+//   (e) doubleSSOR drops into Eigen.lobpcg<TOp,TPre>'s TPre slot with no new overloads.
+//
+// Value cases run inside a [BurstCompile] IJob (matches every other sparse suite). Guard-throw
+// cases (symmetric-storage sweep input, omega out of range) are managed [Test]s with Assert.Throws
+// (Burst cannot surface an assertable managed exception).
+public class doubleSSORTests
+{
+    [BurstCompile(CompileSynchronously = true)]
+    public struct SSORTestJob : IJob
+    {
+        public enum TestType
+        {
+            SweepLowerVsDenseOracle,
+            SweepUpperVsDenseOracle,
+            SSORPositiveDefiniteAndConverges,
+            PcgSSORMatchesLUOracle,
+            SSORBeatsJacobiOnLaplacian,
+            SSORBeatsJacobiOnRandomSparseSPD,
+            SSORSymmetricStorageMatchesFullStorage,
+            LobpcgAcceptsSSORPreconditioner,
+        }
+
+        public TestType Type;
+
+        // sweep block sizes: unrolled {1,2,3,4,6} + general-fallback {5}.
+        static readonly int[] SweepBs = { 1, 2, 3, 4, 5, 6 };
+
+        static double Tol() => 1e-8;
+        static double SolveTol() => 1e-7;
+        static double TightTol() => 1e-10;
+
+        public void Execute()
+        {
+            switch (Type)
+            {
+                case TestType.SweepLowerVsDenseOracle: SweepLowerVsDenseOracle(); break;
+                case TestType.SweepUpperVsDenseOracle: SweepUpperVsDenseOracle(); break;
+                case TestType.SSORPositiveDefiniteAndConverges: SSORPositiveDefiniteAndConverges(); break;
+                case TestType.PcgSSORMatchesLUOracle: PcgSSORMatchesLUOracle(); break;
+                case TestType.SSORBeatsJacobiOnLaplacian: SSORBeatsJacobiOnLaplacian(); break;
+                case TestType.SSORBeatsJacobiOnRandomSparseSPD: SSORBeatsJacobiOnRandomSparseSPD(); break;
+                case TestType.SSORSymmetricStorageMatchesFullStorage: SSORSymmetricStorageMatchesFullStorage(); break;
+                case TestType.LobpcgAcceptsSSORPreconditioner: LobpcgAcceptsSSORPreconditioner(); break;
+            }
+        }
+
+        // ---- helpers ---------------------------------------------------------------------
+
+        static void AssertClose(double got, double expected, double tol)
+            => Assert.IsTrue(math.abs(got - expected) <= tol * ((double)1 + math.abs(expected)));
+
+        static void AssertVecClose(in doubleN got, in doubleN expected, double tol)
+        {
+            Assert.AreEqual(expected.N, got.N);
+            for (int i = 0; i < got.N; i++) AssertClose(got[i], expected[i], tol);
+        }
+
+        // SPD b x b block D = M^T M + b*I: well-conditioned, LU-invertible.
+        static doubleMxN SpdBlock(ref Arena arena, int b, uint seed)
+        {
+            var M = arena.doubleRandomMat(b, b, -1f, 1f, seed);
+            var D = Blas.dot(M, M, true);
+            for (int d = 0; d < b; d++) D[d, d] += (double)b;
+            return D;
+        }
+
+        static doubleMxN BuildDenseSPD(ref Arena arena, int dim, uint seed)
+        {
+            var M = arena.doubleRandomMat(dim, dim, -1f, 1f, seed);
+            var A = Blas.dot(M, M, true);
+            for (int d = 0; d < dim; d++) A[d, d] += dim;
+            return A;
+        }
+
+        static doubleBSR DenseToBSR1x1(ref Arena arena, in doubleMxN A, int nnzHint)
+        {
+            var builder = arena.doubleBSRBuilder(A.M_Rows, A.N_Cols, 1, 1, math.max(nnzHint, 1));
+            for (int r = 0; r < A.M_Rows; r++)
+                for (int c = 0; c < A.N_Cols; c++)
+                    if (A[r, c] != (double)0) builder.AddValue(r, c, A[r, c]);
+            return builder.ToBSR(ref arena);
+        }
+
+        // Full-storage BSR, invertible (SPD) diagonal blocks + a deterministic scatter of small
+        // off-diagonal blocks on BOTH sides of the block diagonal (several per row), so
+        // sweepLower/sweepUpper's early break/continue and multi-block accumulation are exercised.
+        static doubleBSR BuildFullBSR(ref Arena arena, int nb, int b, uint seed)
+        {
+            var builder = arena.doubleBSRBuilder(nb, nb, b, b, nb * nb);
+            for (int i = 0; i < nb; i++)
+                builder.AddBlock(i, i, SpdBlock(ref arena, b, seed + (uint)i + 1u));
+            for (int i = 0; i < nb; i++)
+                for (int j = 0; j < nb; j++)
+                    if (j != i && ((i + j) % 3 == 0))
+                        builder.AddBlock(i, j, arena.doubleRandomMat(b, b, -0.2f, 0.2f, seed + (uint)(1000 + i * 100 + j)));
+            return builder.ToBSR(ref arena);
+        }
+
+        // Dense expansion of (D/diagScale + L): block-diagonal (scaled) + strictly-block-lower,
+        // zero elsewhere -- the "expanded matrix" test point (a) asks for.
+        static doubleMxN BuildLowerExpanded(ref Arena arena, in doubleMxN dense, int nb, int b, double diagScale)
+        {
+            var M = arena.doubleMat(dense.M_Rows, dense.N_Cols);
+            for (int bi = 0; bi < nb; bi++)
+                for (int bj = 0; bj <= bi; bj++)
+                    for (int r = 0; r < b; r++)
+                        for (int c = 0; c < b; c++)
+                        {
+                            double v = dense[bi * b + r, bj * b + c];
+                            if (bi == bj) v /= diagScale;
+                            M[bi * b + r, bj * b + c] = v;
+                        }
+            return M;
+        }
+
+        // Dense expansion of (D/diagScale + U): block-diagonal (scaled) + strictly-block-upper.
+        static doubleMxN BuildUpperExpanded(ref Arena arena, in doubleMxN dense, int nb, int b, double diagScale)
+        {
+            var M = arena.doubleMat(dense.M_Rows, dense.N_Cols);
+            for (int bi = 0; bi < nb; bi++)
+                for (int bj = bi; bj < nb; bj++)
+                    for (int r = 0; r < b; r++)
+                        for (int c = 0; c < b; c++)
+                        {
+                            double v = dense[bi * b + r, bj * b + c];
+                            if (bi == bj) v /= diagScale;
+                            M[bi * b + r, bj * b + c] = v;
+                        }
+            return M;
+        }
+
+        // Independent dense oracle: LU-solve M y = rhs (destructive copies, like every other
+        // LU-oracle test in this repo).
+        static doubleN DenseSolve(in doubleMxN M, in doubleN rhs)
+        {
+            var LUcopy = M.Copy();
+            var pivot = new Pivot(rhs.N, Allocator.Temp);
+            bool ok = LU.decompInPlace(ref LUcopy, ref pivot);
+            Assert.IsTrue(ok);
+            var x = rhs.Copy();
+            LU.decompSolve(ref LUcopy, in pivot, ref x);
+            pivot.Dispose();
+            return x;
+        }
+
+        // ==============================================================================
+        // (a) sweepLower/sweepUpper vs a dense LU oracle on the expanded matrix.
+        // ==============================================================================
+
+        void SweepLowerVsDenseOracle()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            const int nb = 5;
+
+            for (int t = 0; t < SweepBs.Length; t++)
+            {
+                int b = SweepBs[t];
+                var A = BuildFullBSR(ref arena, nb, b, (uint)(101000 + b * 137));
+                var Jacobi = arena.doubleBlockJacobi(in A);
+                var dense = A.ToDense(ref arena);
+                int n = A.M_Rows;
+                var r = arena.doubleRandomVec(n, -1f, 1f, (uint)(102000 + b));
+
+                var yGot1 = arena.doubleVec(n);
+                BSR.sweepLower(in A, in Jacobi, in r, ref yGot1);
+                var yRef1 = DenseSolve(BuildLowerExpanded(ref arena, in dense, nb, b, (double)1), in r);
+                AssertVecClose(in yGot1, in yRef1, Tol());
+
+                double ds = (double)0.7;
+                var yGot2 = arena.doubleVec(n);
+                BSR.sweepLower(in A, in Jacobi, ds, in r, ref yGot2);
+                var yRef2 = DenseSolve(BuildLowerExpanded(ref arena, in dense, nb, b, ds), in r);
+                AssertVecClose(in yGot2, in yRef2, Tol());
+            }
+
+            arena.Dispose();
+        }
+
+        void SweepUpperVsDenseOracle()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            const int nb = 5;
+
+            for (int t = 0; t < SweepBs.Length; t++)
+            {
+                int b = SweepBs[t];
+                var A = BuildFullBSR(ref arena, nb, b, (uint)(103000 + b * 137));
+                var Jacobi = arena.doubleBlockJacobi(in A);
+                var dense = A.ToDense(ref arena);
+                int n = A.M_Rows;
+                var r = arena.doubleRandomVec(n, -1f, 1f, (uint)(104000 + b));
+
+                var yGot1 = arena.doubleVec(n);
+                BSR.sweepUpper(in A, in Jacobi, in r, ref yGot1);
+                var yRef1 = DenseSolve(BuildUpperExpanded(ref arena, in dense, nb, b, (double)1), in r);
+                AssertVecClose(in yGot1, in yRef1, Tol());
+
+                double ds = (double)0.7;
+                var yGot2 = arena.doubleVec(n);
+                BSR.sweepUpper(in A, in Jacobi, ds, in r, ref yGot2);
+                var yRef2 = DenseSolve(BuildUpperExpanded(ref arena, in dense, nb, b, ds), in r);
+                AssertVecClose(in yGot2, in yRef2, Tol());
+            }
+
+            arena.Dispose();
+        }
+
+        // ==============================================================================
+        // (b) doubleSSOR is M-SPD: hand-rolled PCG loop (public primitives only) asserts
+        //     <r,z> > 0 every iteration and convergence to the true solution.
+        // ==============================================================================
+
+        void SSORPositiveDefiniteAndConverges()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            const int nb = 8, b = 3;
+            var A = arena.doubleRandomSparseSPD(nb, b, (double)0.3, 811001u);
+            var M = arena.doubleSSOR(in A);
+            var op = new doubleBSROperator(in A);
+            int n = A.M_Rows;
+
+            var xTrue = arena.doubleRandomVec(n, -1f, 1f, 811002u);
+            var bRhs = arena.doubleVec(n);
+            op.Apply(in xTrue, ref bRhs);
+
+            var x = arena.doubleVec(n);
+            var r = arena.doubleVec(n);
+            var p = arena.doubleVec(n);
+            var Ap = arena.doubleVec(n);
+            var z = arena.doubleVec(n);
+
+            r.CopyFrom(bRhs);           // r = b - A*0
+            M.Apply(in r, ref z);
+            p.CopyFrom(z);
+            double rz = Blas.dot(r, z);
+            Assert.IsTrue(rz > (double)0);
+
+            double bb = Blas.dot(bRhs, bRhs);
+            double tol = Consts.doubleSqrtEps;
+            double threshold = tol * tol * bb;
+
+            int maxIter = 6 * n;
+            bool converged = false;
+
+            for (int k = 0; k < maxIter; k++)
+            {
+                double pAp = op.ApplyDot(in p, ref Ap);
+                Assert.IsTrue(pAp > (double)0);
+
+                double alpha = rz / pAp;
+                double rr = Blas.updateXR(alpha, p, ref x, Ap, ref r);
+                if (rr <= threshold) { converged = true; break; }
+
+                M.Apply(in r, ref z);
+                double rzNew = Blas.dot(r, z);
+                Assert.IsTrue(rzNew > (double)0);   // M-SPD sanity, every iteration
+
+                double beta = rzNew / rz;
+                p.scaleAddInPlace(beta, z);
+                rz = rzNew;
+            }
+
+            Assert.IsTrue(converged);
+            for (int i = 0; i < n; i++) AssertClose(x[i], xTrue[i], SolveTol());
+
+            arena.Dispose();
+        }
+
+        // End-to-end: the production Krylov.pcg(in doubleBSR, in doubleSSOR, ...) three-rung
+        // overload matches a dense LU oracle (mirrors PcgBsrMatchesLUOracle for block-Jacobi).
+        void PcgSSORMatchesLUOracle()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            int dim = 12;
+            var Adense = BuildDenseSPD(ref arena, dim, 96001);
+            var bsm = DenseToBSR1x1(ref arena, in Adense, dim * dim);
+            var M = arena.doubleSSOR(in bsm);
+            var b = arena.doubleRandomVec(dim, -1f, 1f, 96002);
+
+            var xLU = DenseSolve(in Adense, in b);
+
+            var xPcg = arena.doubleVec(dim);
+            bool okPcg = Krylov.pcg(in bsm, in M, in b, ref xPcg, 4 * dim, Consts.doubleSqrtEps);
+            Assert.IsTrue(okPcg);
+            AssertVecClose(in xPcg, in xLU, SolveTol());
+
+            var Ax = BSR.spMV(in bsm, in xPcg);
+            AssertVecClose(in Ax, in b, SolveTol());
+
+            arena.Dispose();
+        }
+
+        // ==============================================================================
+        // (c) doubleSSOR beats doubleBlockJacobi's iteration count (>=10% margin).
+        // ==============================================================================
+
+        void SSORBeatsJacobiOnLaplacian()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleLaplacian2D(4, 16);   // BR=4 (unrolled path), 64 dof, spread spectrum
+            var bJ = arena.doubleBlockJacobi(in A);
+            var ssor = arena.doubleSSOR(in A);
+            int n = A.M_Rows;
+
+            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 821001u);
+            var b = BSR.spMV(in A, in xTrue);
+            double tol = Consts.doubleSqrtEps;
+            int maxIter = 8 * n;
+
+            var xJ = arena.doubleVec(n);
+            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            Assert.IsTrue(infoJ.Solved);
+
+            var xS = arena.doubleVec(n);
+            var infoS = Krylov.pcg(in A, in ssor, in b, ref xS, maxIter, tol);
+            Assert.IsTrue(infoS.Solved);
+
+            Assert.IsTrue((double)infoS.iterations <= (double)infoJ.iterations * 0.9);
+
+            arena.Dispose();
+        }
+
+        void SSORBeatsJacobiOnRandomSparseSPD()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleRandomSparseSPD(30, 3, (double)0.35, 822001u);
+            var bJ = arena.doubleBlockJacobi(in A);
+            var ssor = arena.doubleSSOR(in A);
+            int n = A.M_Rows;
+
+            var xTrue = arena.doubleRandomVec(n, 0.5f, 1.5f, 822002u);
+            var b = BSR.spMV(in A, in xTrue);
+            double tol = Consts.doubleSqrtEps;
+            int maxIter = 8 * n;
+
+            var xJ = arena.doubleVec(n);
+            var infoJ = Krylov.pcg(in A, in bJ, in b, ref xJ, maxIter, tol);
+            Assert.IsTrue(infoJ.Solved);
+
+            var xS = arena.doubleVec(n);
+            var infoS = Krylov.pcg(in A, in ssor, in b, ref xS, maxIter, tol);
+            Assert.IsTrue(infoS.Solved);
+
+            Assert.IsTrue((double)infoS.iterations <= (double)infoJ.iterations * 0.9);
+
+            arena.Dispose();
+        }
+
+        // ==============================================================================
+        // (d) SSOR over symmetric-storage BSR == SSOR over its full-storage twin (mirror path).
+        // ==============================================================================
+
+        void SSORSymmetricStorageMatchesFullStorage()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            const int nb = 4, b = 3;
+
+            var symBuilder = arena.doubleBSRBuilder(nb, nb, b, b, nb * nb);
+            var fullBuilder = arena.doubleBSRBuilder(nb, nb, b, b, nb * nb);
+            for (int i = 0; i < nb; i++)
+            {
+                var d = SpdBlock(ref arena, b, (uint)(930000 + i));
+                symBuilder.AddBlock(i, i, in d);
+                fullBuilder.AddBlock(i, i, in d);
+            }
+            for (int i = 0; i < nb; i++)
+                for (int j = i + 1; j < nb; j++)
+                    if ((i + j) % 2 == 0)
+                    {
+                        var off = arena.doubleRandomMat(b, b, -0.2f, 0.2f, (uint)(931000 + i * 10 + j));
+                        symBuilder.AddBlock(i, j, in off);
+                        fullBuilder.AddBlock(i, j, in off);
+
+                        var offT = arena.doubleMat(b, b);
+                        for (int rr = 0; rr < b; rr++)
+                            for (int cc = 0; cc < b; cc++)
+                                offT[rr, cc] = off[cc, rr];
+                        fullBuilder.AddBlock(j, i, in offT);
+                    }
+
+            var Asym = symBuilder.ToBSRSymmetric(ref arena);
+            var Afull = fullBuilder.ToBSR(ref arena);
+
+            var Msym = arena.doubleSSOR(in Asym);
+            var Mfull = arena.doubleSSOR(in Afull);
+
+            int n = Asym.M_Rows;
+            var r = arena.doubleRandomVec(n, -1f, 1f, 932001u);
+            var zSym = arena.doubleVec(n);
+            var zFull = arena.doubleVec(n);
+            Msym.Apply(in r, ref zSym);
+            Mfull.Apply(in r, ref zFull);
+
+            AssertVecClose(in zSym, in zFull, TightTol());
+
+            arena.Dispose();
+        }
+
+        // ==============================================================================
+        // (e) doubleSSOR drops into Eigen.lobpcg<TOp,TPre>'s TPre slot with no new overloads.
+        // ==============================================================================
+
+        void LobpcgAcceptsSSORPreconditioner()
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.doubleLaplacian2D(4, 8);   // 32 dof
+            var M = arena.doubleSSOR(in A);
+            var op = new doubleBSROperator(in A);
+            int n = A.M_Rows, k = 3;
+
+            var ws = arena.doubleLOBPCGCache(n, k);
+            var info = Eigen.lobpcg(in op, in M, ref ws, k, Consts.doubleSqrtEps, 500);
+
+            Assert.IsTrue(info.Solved);
+            Assert.AreEqual(k, info.converged);
+
+            arena.Dispose();
+        }
+    }
+
+    [Test] public void SweepLowerVsDenseOracleTest()
+        => new SSORTestJob { Type = SSORTestJob.TestType.SweepLowerVsDenseOracle }.Run();
+    [Test] public void SweepUpperVsDenseOracleTest()
+        => new SSORTestJob { Type = SSORTestJob.TestType.SweepUpperVsDenseOracle }.Run();
+    [Test] public void SSORPositiveDefiniteAndConvergesTest()
+        => new SSORTestJob { Type = SSORTestJob.TestType.SSORPositiveDefiniteAndConverges }.Run();
+    [Test] public void PcgSSORMatchesLUOracleTest()
+        => new SSORTestJob { Type = SSORTestJob.TestType.PcgSSORMatchesLUOracle }.Run();
+    [Test] public void SSORBeatsJacobiOnLaplacianTest()
+        => new SSORTestJob { Type = SSORTestJob.TestType.SSORBeatsJacobiOnLaplacian }.Run();
+    [Test] public void SSORBeatsJacobiOnRandomSparseSPDTest()
+        => new SSORTestJob { Type = SSORTestJob.TestType.SSORBeatsJacobiOnRandomSparseSPD }.Run();
+    [Test] public void SSORSymmetricStorageMatchesFullStorageTest()
+        => new SSORTestJob { Type = SSORTestJob.TestType.SSORSymmetricStorageMatchesFullStorage }.Run();
+    [Test] public void LobpcgAcceptsSSORPreconditionerTest()
+        => new SSORTestJob { Type = SSORTestJob.TestType.LobpcgAcceptsSSORPreconditioner }.Run();
+
+    // ---- managed-thread guard-throw tests (Burst cannot surface an assertable managed exception) ----
+
+    [Test]
+    public void SweepLowerThrowsOnSymmetricStorage()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var b = arena.doubleBSRBuilder(3, 3, 2, 2, 3);
+        var d = arena.doubleMat(2, 2);
+        d[0, 0] = (double)2; d[1, 1] = (double)2;
+        b.AddBlock(0, 0, in d); b.AddBlock(1, 1, in d); b.AddBlock(2, 2, in d);
+        var A = b.ToBSRSymmetric(ref arena);
+        var Jacobi = arena.doubleBlockJacobi(in A);
+
+        var r = arena.doubleVec(6);
+        var y = arena.doubleVec(6);
+        Assert.Throws<ArgumentException>(() => BSR.sweepLower(in A, in Jacobi, in r, ref y));
+        Assert.Throws<ArgumentException>(() => BSR.sweepUpper(in A, in Jacobi, in r, ref y));
+
+        arena.Dispose();
+    }
+
+    [Test]
+    public void DoubleSSOROmegaOutOfRangeThrows()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var b = arena.doubleBSRBuilder(2, 2, 2, 2, 2);
+        var d = arena.doubleMat(2, 2);
+        d[0, 0] = (double)2; d[1, 1] = (double)2;
+        b.AddBlock(0, 0, in d); b.AddBlock(1, 1, in d);
+        var A = b.ToBSR(ref arena);
+
+        Assert.Throws<ArgumentException>(() => { var m = arena.doubleSSOR(in A, (double)0); });
+        Assert.Throws<ArgumentException>(() => { var m = arena.doubleSSOR(in A, (double)2); });
+        Assert.Throws<ArgumentException>(() => { var m = arena.doubleSSOR(in A, (double)(-1)); });
+
+        arena.Dispose();
+    }
+}

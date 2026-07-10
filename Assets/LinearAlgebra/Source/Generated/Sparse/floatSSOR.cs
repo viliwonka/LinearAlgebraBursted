@@ -1,0 +1,153 @@
+using System;
+using LinearAlgebra;
+using LinearAlgebra.Internal;
+
+namespace LinearAlgebra.Sparse
+{
+    /// <summary>
+    /// Symmetric-SOR preconditioner over a square BSR (BlockRows==BlockCols, BR==BC):
+    /// z = M⁻¹ r with M = [ω/(2−ω)] · (D/ω+L) · D⁻¹ · (D/ω+Lᵀ), the standard SSOR preconditioner
+    /// (Young; Saad, "Iterative Methods for Sparse Linear Systems" 2nd ed., ch. 10.2; Eisenstat
+    /// 1981) -- L is A's strictly-lower stored blocks, D its block diagonal, ω the relaxation
+    /// parameter (0, 2), default 1 (plain symmetric Gauss-Seidel). SPD whenever A is SPD and
+    /// 0&lt;ω&lt;2 (standard result).
+    ///
+    /// Derivation of Apply (verified independently via "one SSOR relaxation sweep from z=0",
+    /// the constructive definition of the preconditioner -- not just formula inversion): solving
+    /// M z = r factors into
+    ///   v = (D/ω+L)⁻¹ r            (forward sweep, <see cref="BSR.sweepLower"/>, diagScale=ω)
+    ///   u = [(2−ω)/ω] · D · v      (diagonal scale -- needs RAW D, not D⁻¹: M's own middle
+    ///                                factor is D⁻¹, so M⁻¹'s middle factor is D itself)
+    ///   z = (D/ω+Lᵀ)⁻¹ u           (backward sweep, <see cref="BSR.sweepUpper"/>, diagScale=ω)
+    /// "Setup = block-Jacobi's setup" (spec wording) covers the D⁻¹ half (<see cref="Jacobi"/>,
+    /// reused unchanged, both sweeps' diagonal solve); the raw-D half needed only by the middle
+    /// step is a cheap O(nnzb_diag·BR²) extraction (no inversion, no duplicated code) done once
+    /// here and pre-scaled by [(2−ω)/ω] into <see cref="ScaledD"/> so Apply pays for it once, not
+    /// every iteration -- matching the spec's own apply-cost model (each stored OFF-diagonal
+    /// block touched exactly once total, split across the two sweeps: one spMV-equivalent).
+    ///
+    /// FULL-storage BSR only (Krylov R3, Q4 ruling): a Symmetric-storage A pays a one-time
+    /// mirror-to-full copy at construction (<see cref="Arena.floatBSRMirrorToFull"/>) -- the
+    /// sweeps need row-ordered access to BOTH triangles, which upper-only storage cannot give
+    /// without a column-order scatter. Composed entirely of already arena-tracked pieces (A,
+    /// Jacobi, and the ScaledD/scratch vectors below are all floatN/floatBSR/floatBlockJacobi)
+    /// -- no record table of its own, no Dispose(): the arena that built it owns every buffer.
+    /// </summary>
+    public readonly struct floatSSOR : IfloatPreconditioner
+    {
+        public readonly floatBSR A;               // full-storage (mirrored once if the input was symmetric-storage)
+        public readonly floatBlockJacobi Jacobi;   // A's diagonal block INVERSES -- block-Jacobi's own setup, reused unchanged
+        public readonly floatN ScaledD;            // A's diagonal blocks themselves, pre-scaled by (2-omega)/omega at construction
+        public readonly float Omega;
+        public readonly floatN Scratch1;           // length Rows; Apply's forward-sweep result v
+        public readonly floatN Scratch2;           // length Rows; Apply's diagonal-scaled result u
+
+        public int Rows => A.M_Rows;
+
+        /// <summary>
+        /// Builds the preconditioner from A's diagonal blocks and (if A is Symmetric-storage) a
+        /// one-time mirror to full storage. Throws if A is not square, or omega is not in (0, 2).
+        /// </summary>
+        public floatSSOR(in floatBSR a, float omega, ref Arena arena)
+        {
+            if (a.BlockRows != a.BlockCols || a.BR != a.BC)
+                throw new ArgumentException("floatSSOR: A must be square (BlockRows==BlockCols, BR==BC)");
+            if (!(omega > (float)0 && omega < (float)2))
+                throw new ArgumentException("floatSSOR: omega must be in (0, 2) for M to be SPD");
+
+            A = arena.floatBSRMirrorToFull(in a);
+            Jacobi = arena.floatBlockJacobi(in A);
+            Omega = omega;
+
+            int blockLen = A.BR * A.BR;
+            var scaledD = arena.floatVec(A.BlockRows * blockLen);
+            float c = ((float)2 - omega) / omega;
+
+            for (int i = 0; i < A.BlockRows; i++)
+            {
+                // Blocks within a block-row are stored in ascending ColInd (BSR invariant) --
+                // scan forward and stop as soon as we pass column i. Same scan floatBlockJacobi's
+                // own constructor uses to find the diagonal block; NOT an inversion (just a copy),
+                // so this does not duplicate floatBlockJacobi's LU-inversion code.
+                int s = A.RowPtr[i], e = A.RowPtr[i + 1];
+                int found = -1;
+                for (int k = s; k < e; k++)
+                {
+                    int col = A.ColInd[k];
+                    if (col == i) { found = k; break; }
+                    if (col > i) break;
+                }
+                if (found < 0)
+                    throw new ArgumentException("floatSSOR: missing diagonal block in A");
+
+                int srcOff = found * blockLen, dstOff = i * blockLen;
+                for (int t = 0; t < blockLen; t++)
+                    scaledD[dstOff + t] = A.Values[srcOff + t] * c;
+            }
+            ScaledD = scaledD;
+
+            Scratch1 = arena.floatVec(A.M_Rows);
+            Scratch2 = arena.floatVec(A.M_Rows);
+        }
+
+        /// <summary>floatSSOR with omega=1 (symmetric Gauss-Seidel).</summary>
+        public floatSSOR(in floatBSR a, ref Arena arena) : this(in a, (float)1, ref arena) { }
+
+        /// <summary>z = M⁻¹ r -- see the type doc comment for the three-step derivation. z must not alias r.</summary>
+        public unsafe void Apply(in floatN r, ref floatN z)
+        {
+            int n = Rows;
+
+            if (r.N != n)
+                throw new ArgumentException("floatSSOR.Apply: r.N must equal Rows");
+            if (z.N != n)
+                throw new ArgumentException("floatSSOR.Apply: z.N must equal Rows");
+
+            if (z.Data.Ptr == r.Data.Ptr)
+                throw new ArgumentException("floatSSOR.Apply: z must not alias r");
+
+            var v = Scratch1;
+            BSR.sweepLower(in A, in Jacobi, Omega, in r, ref v);   // v = (D/omega+L)^-1 r
+
+            var u = Scratch2;
+            ApplyScaledDiag(in v, ref u);                          // u = [(2-omega)/omega] * D * v
+
+            BSR.sweepUpper(in A, in Jacobi, Omega, in u, ref z);   // z = (D/omega+L^T)^-1 u
+        }
+
+        // b x b block matvec using ScaledD (mirrors floatBlockJacobi.Apply's own unroll
+        // dispatch, reusing the SAME UnsafeOP.blockJacobiApplyB{b} kernels -- they operate on
+        // "any b x b array of the right shape", not specifically DInv, so ScaledD substitutes in
+        // directly with no new kernel needed). vIn/vOut here are always Scratch1/Scratch2 (Apply's
+        // own distinct buffers), never aliased.
+        private unsafe void ApplyScaledDiag(in floatN vIn, ref floatN vOut)
+        {
+            float* dp = ScaledD.Data.Ptr;
+            float* ip = vIn.Data.Ptr;
+            float* op = vOut.Data.Ptr;
+            int blockRows = A.BlockRows;
+
+            switch (A.BR)
+            {
+                case 1: UnsafeOP.blockJacobiApplyB1(dp, ip, op, blockRows); return;
+                case 2: UnsafeOP.blockJacobiApplyB2(dp, ip, op, blockRows); return;
+                case 3: UnsafeOP.blockJacobiApplyB3(dp, ip, op, blockRows); return;
+                case 4: UnsafeOP.blockJacobiApplyB4(dp, ip, op, blockRows); return;
+                case 6: UnsafeOP.blockJacobiApplyB6(dp, ip, op, blockRows); return;
+            }
+
+            int BR = A.BR, blockLen = BR * BR;
+            for (int i = 0; i < blockRows; i++)
+            {
+                int rowBase = i * BR, blockOff = i * blockLen;
+                for (int lr = 0; lr < BR; lr++)
+                {
+                    float sum = 0;
+                    for (int lc = 0; lc < BR; lc++)
+                        sum += dp[blockOff + lr * BR + lc] * ip[rowBase + lc];
+                    op[rowBase + lr] = sum;
+                }
+            }
+        }
+    }
+}

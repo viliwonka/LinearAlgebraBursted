@@ -382,6 +382,42 @@ namespace LinearAlgebra
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
         }
 
+        /// <summary>
+        /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
+        /// matching SSOR preconditioner (Krylov R3, docs/draft-spec-krylov-optimization.md).
+        /// Forwards into <see cref="pcg{TOp,TPre}"/> via <c>doubleBSROperator</c> -- same
+        /// three-rung BSR convenience pattern as the block-Jacobi overloads above.
+        /// </summary>
+        public static SolveInfo pcg(in doubleBSR A, in doubleSSOR M, in doubleN b, ref doubleN x,
+                               ref doubleN r, ref doubleN p, ref doubleN Ap, ref doubleN z,
+                               int maxIterations, double tolerance)
+        {
+            return pcg(new doubleBSROperator(in A), in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// SSOR Preconditioned Conjugate Gradient over a BSR SPD matrix -- allocates four scratch
+        /// vectors from the arena and calls the zero-alloc primitive.
+        /// </summary>
+        public static SolveInfo pcg(in doubleBSR A, in doubleSSOR M, in doubleN b, ref doubleN x,
+                               int maxIterations, double tolerance)
+        {
+            doubleN r  = b.doubleTempVec(A.M_Rows);
+            doubleN p  = b.doubleTempVec(A.M_Rows);
+            doubleN Ap = b.doubleTempVec(A.M_Rows);
+            doubleN z  = b.doubleTempVec(A.M_Rows);
+            return pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, maxIterations, tolerance);
+        }
+
+        /// <summary>
+        /// SSOR Preconditioned Conjugate Gradient over a BSR SPD matrix, with default
+        /// maxIterations (A.M_Rows) and tolerance (Consts.doubleSqrtEps).
+        /// </summary>
+        public static SolveInfo pcg(in doubleBSR A, in doubleSSOR M, in doubleN b, ref doubleN x)
+        {
+            return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.doubleSqrtEps);
+        }
+
         // Phase 3: MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), CGLS/LSQR
         // (rectangular least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/
         // pcg&lt;TOp,TPre&gt; above -- see cg&lt;TOp&gt;'s doc comment for the shared "why an
