@@ -223,7 +223,15 @@ IC(0) in R4):
   `fProxyBlockJacobi` precedent established. Ladder untouched.
 - **Risk**: low (no factorization; oracle = dense triangular solve on expanded matrix).
 
-### R4. Block-IC(0) — **the iteration-count prize for SPD customers**
+### R4. ~~Block-IC(0)~~ — **DROPPED by user 2026-07-10**
+
+User ruling: dropped from the plan ("drop R4"). Rationale from the discussion: the largest
+and fiddliest item (factor storage, Manteuffel shift-retry, float breakdown handling), and
+its natural customer — the implicit-Euler cloth / Poisson demo from the dynamics roadmap —
+does not exist yet, so it would be tuned against synthetic matrices only. Do not revive
+without a user ask; if revived, the trigger is a real per-frame SPD workload (cloth demo)
+underperforming with SSOR. The ILU(0) corollary and the RCM revisit trigger (both tied to
+R4) are dropped with it. Original design kept below for that eventuality.
 
 Incomplete Cholesky on the BSR block pattern (zero fill): factor A ≈ L·Lᵀ keeping only blocks
 present in A's lower/upper pattern; diagonal blocks via the library's own dense `CHO` (b≤6),
@@ -367,7 +375,7 @@ iteration count ≤ block-Jacobi's on the same instance (assert with margin), M-
 (⟨r,z⟩>0 throughout). Bench: PCG section grows a preconditioner axis (none/Jacobi/SSOR),
 metric = iterations AND wall clock.
 
-**Round 4 — R4 block-IC(0).**
+**Round 4 — R4 block-IC(0). DROPPED by user 2026-07-10 (see R4 above); rounds 5+ renumber up.**
 Scope: factorization (upper-pattern factor storage, CHO diagonal blocks, GEMM block updates),
 Manteuffel-shift retry, `fProxyIC0 : IfProxyPreconditioner`, overloads, tests. Oracles: on
 small instances expand L·Lᵀ dense and assert it matches A ON THE PATTERN (the IC(0) defining
