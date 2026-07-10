@@ -72,6 +72,14 @@ public class doubleCHOPTests
             SolveInPlaceExitIsUsableFactor,
             // Commit 2.5 (2a): driver short-circuit purity -- indefinite input leaves b_to_x untouched.
             SolveInPlaceShortCircuitPurity,
+            // ---- blocked (level-3) PSTRF path, exercised at the REAL size gate (Consts.*CholPivotBlockMinN
+            // = 512; CHOLP_BLOCK = 32). Sizes 544 (= 17*32, panel-boundary) and 545 (ragged last panel)
+            // bracket the gate so decomp takes the blocked branch. See the class-level comment block. ----
+            BlockedFullRankSPD,             // (a) full-rank SPD: rank == n, valid permutation, reconstruction
+            BlockedRankDeficientMidBlock,   // (b) rank cut lands MID-block => exercises the rare-path SYRK flush
+            BlockedIndefiniteDeep,          // (c) negative Schur curvature emerging deep in the trailing range
+            BlockedFirstPivotDeep,          // (d) first pivot pulled from far beyond the first panel
+            BlockedVsUnblockedReference,    // secondary: exact pivot sequence + factor match vs a transcribed oracle
         }
 
         public TestType Type;
@@ -97,6 +105,11 @@ public class doubleCHOPTests
                 case TestType.OutOfRangeLeastSquares:           OutOfRangeLeastSquares();           break;
                 case TestType.SolveInPlaceExitIsUsableFactor:   SolveInPlaceExitIsUsableFactor();   break;
                 case TestType.SolveInPlaceShortCircuitPurity:   SolveInPlaceShortCircuitPurity();   break;
+                case TestType.BlockedFullRankSPD:               BlockedFullRankSPD();               break;
+                case TestType.BlockedRankDeficientMidBlock:     BlockedRankDeficientMidBlock();     break;
+                case TestType.BlockedIndefiniteDeep:            BlockedIndefiniteDeep();            break;
+                case TestType.BlockedFirstPivotDeep:            BlockedFirstPivotDeep();            break;
+                case TestType.BlockedVsUnblockedReference:      BlockedVsUnblockedReference();      break;
             }
         }
 
@@ -533,6 +546,321 @@ public class doubleCHOPTests
 
             P.Dispose();
             arena.Dispose();
+        }
+
+        // ================================================================================
+        // Blocked (level-3) PSTRF path -- correctness-by-contract at the REAL size gate (512).
+        // decomp has only ONE blocked implementation (no independent in-place blocked entry point to
+        // diff against, unlike LU), so these assert the CONTRACT directly: PᵀAP == LLᵀ (reconstruction),
+        // the correct numerical rank, and a bona-fide permutation P. Sizes 544 (17*32, panel-aligned)
+        // and 545 (ragged final panel) both exceed the gate, so the blocked branch always runs.
+        // ================================================================================
+
+        // (a) full-rank SPD (Gram + diagonal boost) at both a panel-aligned size and one past a boundary.
+        void BlockedFullRankSPD()
+        {
+            BlockedFullRankSPDCase(544, 700111u); // 17*32: panel-boundary aligned
+            BlockedFullRankSPDCase(545, 700222u); // one past a boundary: ragged trailing panel
+        }
+
+        void BlockedFullRankSPDCase(int n, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+
+            var B = arena.doubleRandomMat(n, n, -1f, 1f, seed);
+            var A = Gram(in arena, in B);
+            for (int d = 0; d < n; d++) A[d, d] += (double)n; // diagonal boost: well-conditioned, smallest eig >= n
+
+            var L = arena.doubleMat(n);
+            var P = new Pivot(n, Allocator.Persistent);
+
+            var info = CHOP.decomp(in A, ref L, ref P);
+            RecordEq(info.Solved ? 1 : 0, 1);
+            RecordEq(info.rank, n);                 // full rank
+
+            AssertValidPermutation(in P, n);        // P is a bona-fide permutation
+            AssertReconstruct(in A, in L, in P, info.rank, ReconstructPrecision(in A));
+
+            // first pivot must be the largest RAW diagonal (dot[]=0 at k=0, so it is the plain argmax).
+            int argmaxDiag = 0; double best = A[0, 0];
+            for (int j = 1; j < n; j++) if (A[j, j] > best) { best = A[j, j]; argmaxDiag = j; }
+            RecordEq(P[0], argmaxDiag);
+
+            P.Dispose();
+            arena.Dispose();
+        }
+
+        // (b) rank-deficient PSD (A = B Bᵀ, r < n) whose numerical rank falls STRICTLY INSIDE a block
+        // (r % CHOLP_BLOCK != 0), so when the pivot search trips the numerical-zero tolerance the block
+        // has already finished columns [j0,r) -- exercising the rare-path partial SYRK flush that brings
+        // W up to date before the off-diagonal rank/indefinite scan. r << n keeps the spectral gap wide
+        // so the rank is revealed crisply (float and double alike).
+        void BlockedRankDeficientMidBlock()
+        {
+            int n = 544, r = 110;   // r=110 lands in block [96,128): fjb = 110-96 = 14 finished columns to flush
+            var arena = new Arena(Allocator.Persistent);
+
+            var B = arena.doubleRandomMat(n, r, -1f, 1f, 701333u);
+            var A = Gram(in arena, in B);           // exact rank r; n-r zero eigenvalues are exactly zero
+
+            var L = arena.doubleMat(n);
+            var P = new Pivot(n, Allocator.Persistent);
+
+            var info = CHOP.decomp(in A, ref L, ref P);
+            RecordEq(info.Solved ? 1 : 0, 1);
+            RecordEq(info.rank, r);                 // rank revealed exactly = r
+            RecordEq((int)info.status, (int)DirectSolveStatus.RankDeficient);
+
+            AssertValidPermutation(in P, n);
+            AssertReconstruct(in A, in L, in P, info.rank, ReconstructPrecision(in A));
+
+            P.Dispose();
+            arena.Dispose();
+        }
+
+        // (c) indefinite matrix whose negative curvature emerges DEEP in the trailing range. A strongly
+        // diagonally-dominant SPD background on indices [0,n-2) (distinct ASCENDING diagonals => a full
+        // reversal pivot order, so real swaps + non-trivial SYRK) plus an ISOLATED indefinite 2x2 block
+        // [[1,2],[2,1]] (eig 3,-1) at the two SMALLEST-diagonal indices n-2,n-1. Those are pivoted LAST;
+        // factoring the first drives its partner's Schur diagonal to 1 - 2² = -3 < -stopTol at k = n-1,
+        // well past the first panel -- the blocked path must report Indefinite via its dot-recurrence
+        // diagonal, not a stale one.
+        void BlockedIndefiniteDeep()
+        {
+            int n = 544;
+            var arena = new Arena(Allocator.Persistent);
+
+            var R = arena.doubleRandomMat(n, n, -1f, 1f, 701444u);
+            var A = arena.doubleMat(n, n); // zero
+
+            // SPD background on [0, n-2): distinct ascending diagonals (base+i) dominate tiny symmetric
+            // off-diagonals -> strictly diagonally dominant (SPD), all Schur diagonals stay positive.
+            for (int i = 0; i < n - 2; i++)
+                A[i, i] = (double)(10 + i);
+            for (int i = 0; i < n - 2; i++)
+                for (int j = i + 1; j < n - 2; j++)
+                {
+                    double off = (double)0.01f * R[i, j];
+                    A[i, j] = off; A[j, i] = off;
+                }
+
+            // isolated indefinite 2x2 at the two smallest diagonals (processed last, decoupled from the rest).
+            int p = n - 2;
+            A[p, p] = (double)1; A[p + 1, p + 1] = (double)1;
+            A[p, p + 1] = (double)2; A[p + 1, p] = (double)2; // eigenvalues 3, -1
+
+            var L = arena.doubleMat(n);
+            var P = new Pivot(n, Allocator.Persistent);
+
+            var info = CHOP.decomp(in A, ref L, ref P);
+            RecordEq((int)info.status, (int)DirectSolveStatus.Indefinite);
+            RecordEq(info.Solved ? 1 : 0, 0);
+
+            P.Dispose();
+            arena.Dispose();
+        }
+
+        // (d) first pivot pulled from FAR beyond the first panel. A well-conditioned SPD (Gram + boost)
+        // with a large extra boost on one late diagonal, so that diagonal is the global maximum and the
+        // very first column must pivot to it (P[0] == deep). This stresses the swap's raw-diagonal / dot
+        // bookkeeping for a winner whose row was never touched by any earlier column's update.
+        void BlockedFirstPivotDeep()
+        {
+            int n = 544, deep = 500; // 500 is well past the first panel [0,32)
+            var arena = new Arena(Allocator.Persistent);
+
+            var B = arena.doubleRandomMat(n, n, -1f, 1f, 701555u);
+            var A = Gram(in arena, in B);
+            for (int d = 0; d < n; d++) A[d, d] += (double)n;   // well-conditioned full-rank SPD
+            A[deep, deep] += (double)10000f;                    // dominant diagonal => forced first pivot
+
+            var L = arena.doubleMat(n);
+            var P = new Pivot(n, Allocator.Persistent);
+
+            var info = CHOP.decomp(in A, ref L, ref P);
+            RecordEq(info.Solved ? 1 : 0, 1);
+            RecordEq(info.rank, n);
+            RecordEq(P[0], deep);                               // first pivot is the boosted late index
+
+            AssertValidPermutation(in P, n);
+            AssertReconstruct(in A, in L, in P, info.rank, ReconstructPrecision(in A));
+
+            P.Dispose();
+            arena.Dispose();
+        }
+
+        // SECONDARY: literal pivot-sequence + factor equivalence between the blocked path and an
+        // independent, self-contained transcription of decomp's ORIGINAL unblocked per-column sweep
+        // (which cannot be reached through the public API at n > gate). Matrix is built so the pivot
+        // order is UNAMBIGUOUS and robust to blocked-vs-unblocked summation rounding: distinct ascending
+        // diagonals (base+i, gap 1) that force a full-reversal permutation, plus tiny (0.01) symmetric
+        // off-diagonals for a non-trivial factor. The pivot arrays must match EXACTLY (int equality --
+        // the strong guard: any mis-indexed swap trips it); the L factors match within an ||A||·n·eps
+        // scaled band (blocked defers its trailing update into a SYRK, so summation order differs).
+        void BlockedVsUnblockedReference()
+        {
+            int n = 545; // ragged last panel, above the gate
+            var arena = new Arena(Allocator.Persistent);
+
+            var R = arena.doubleRandomMat(n, n, -1f, 1f, 701666u);
+            var A = arena.doubleMat(n, n);
+            for (int i = 0; i < n; i++) A[i, i] = (double)(10 + i); // ascending => reversal pivot order
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                {
+                    double off = (double)0.01f * R[i, j];
+                    A[i, j] = off; A[j, i] = off;
+                }
+
+            // blocked path (public API, n > gate)
+            var Lb = arena.doubleMat(n);
+            var Pb = new Pivot(n, Allocator.Persistent);
+            var infoB = CHOP.decomp(in A, ref Lb, ref Pb);
+            RecordEq(infoB.Solved ? 1 : 0, 1);
+            RecordEq(infoB.rank, n);
+
+            // oracle: transcribed unblocked sweep on an independent copy
+            var Lr = arena.doubleMat(n);
+            var Pr = new Pivot(n, Allocator.Persistent);
+            int rankR = ReferenceUnblockedDecomp(ref arena, in A, ref Lr, ref Pr);
+            RecordEq(infoB.rank, rankR);
+
+            // (1) pivot sequences identical -- exact int equality, the primary equivalence assertion.
+            for (int i = 0; i < n; i++)
+                RecordEq(Pb[i], Pr[i]);
+
+            // (2) factors match within an ||A||-, size-, eps-scaled band (loose for float, tight for double).
+            double factorTol = ReconstructPrecision(in A);
+            double maxFactorDiff = 0;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    maxFactorDiff = math.max(maxFactorDiff, math.abs(Lb[i, j] - Lr[i, j]));
+            RecordBound(maxFactorDiff, factorTol);
+
+            Pb.Dispose();
+            Pr.Dispose();
+            arena.Dispose();
+        }
+
+        // Self-contained transcription of CHOP.decomp's ORIGINAL unblocked per-column right-looking
+        // sweep (upper-triangle scratch W = Aᵀ lower, largest-remaining-diagonal pivot, four-segment
+        // symmetric swap, rank-1 Schur update). Returns the numerical rank; fills L (lower) and P.
+        // Deliberately mirrors the template's small-matrix branch shape so it is an INDEPENDENT oracle,
+        // not a call back into the code under test.
+        int ReferenceUnblockedDecomp(ref Arena arena, in doubleMxN A, ref doubleMxN L, ref Pivot P)
+        {
+            int n = A.M_Rows;
+            P.Reset();
+            int rank = n;
+
+            var W = arena.doubleMat(n, n);
+            for (int i = 0; i < n; i++)
+                for (int j = i; j < n; j++)
+                    W[i, j] = A[j, i];
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    L[i, j] = 0;
+
+            double absScale = 0;
+            for (int i = 0; i < n; i++)
+                for (int j = i; j < n; j++)
+                {
+                    double ad = math.abs(W[i, j]);
+                    if (ad > absScale) absScale = ad;
+                }
+            double stopTol = (double)n * Consts.doubleEpsilon * absScale;
+
+            var urow = arena.doubleVec(n);
+
+            for (int k = 0; k < n; k++)
+            {
+                int q = k;
+                double maxDiag = W[k, k];
+                double minDiag = W[k, k];
+                for (int j = k + 1; j < n; j++)
+                {
+                    double d = W[j, j];
+                    if (d > maxDiag) { maxDiag = d; q = j; }
+                    if (d < minDiag) minDiag = d;
+                }
+
+                if (minDiag < -stopTol) { rank = k; return -1; } // indefinite (not expected for this input)
+
+                if (!(maxDiag > stopTol))
+                {
+                    for (int i = k; i < n; i++)
+                        for (int j = i; j < n; j++)
+                            if (math.abs(W[i, j]) > stopTol) { rank = k; return -1; }
+                    rank = k;
+                    break;
+                }
+
+                if (q != k)
+                {
+                    { double t = W[k, k]; W[k, k] = W[q, q]; W[q, q] = t; }
+                    for (int i = 0; i < k; i++)     { double t = W[i, k]; W[i, k] = W[i, q]; W[i, q] = t; }
+                    for (int j = q + 1; j < n; j++) { double t = W[k, j]; W[k, j] = W[q, j]; W[q, j] = t; }
+                    for (int m = k + 1; m < q; m++) { double t = W[k, m]; W[k, m] = W[m, q]; W[m, q] = t; }
+                    Swap.Rows(ref L, k, q, 0, k);
+                    P.Swap(k, q);
+                }
+
+                double Ukk = math.sqrt(W[k, k]);
+                L[k, k] = Ukk;
+                for (int j = k + 1; j < n; j++)
+                {
+                    double u = W[k, j] / Ukk;
+                    urow[j] = u;
+                    L[j, k] = u;
+                }
+
+                for (int i = k + 1; i < n; i++)
+                    for (int j = i; j < n; j++)
+                        W[i, j] -= urow[i] * urow[j];
+            }
+
+            return rank;
+        }
+
+        // A scale-, size-, eps-scaled absolute tolerance for reconstruction / factor comparisons on the
+        // large blocked-path matrices: max row |·| sum (a cheap Gershgorin bound on ‖A‖₂) × n × eps × 8.
+        // Loose enough to absorb float O(n·eps·‖A‖) rounding at n≈544 yet ~2-3 orders below the O(‖A‖)
+        // magnitude a genuine defect would produce; vanishingly tight for double.
+        double ReconstructPrecision(in doubleMxN A)
+        {
+            int n = A.M_Rows;
+            double maxRowSum = 0;
+            for (int i = 0; i < n; i++)
+            {
+                double s = 0;
+                for (int j = 0; j < n; j++)
+                    s += math.abs(A[i, j]);
+                if (s > maxRowSum) maxRowSum = s;
+            }
+            return maxRowSum * (double)n * Consts.doubleEpsilon * (double)8;
+        }
+
+        // P must be a bona-fide permutation of 0..n-1: every index appears exactly once. Nothing else
+        // in this suite asserts this, so a swap-bookkeeping bug that duplicated/dropped an index would
+        // slip past reconstruction (which reads A[P[i],P[j]] and could still ~match for some aliases).
+        void AssertValidPermutation(in Pivot P, int n)
+        {
+            var seen = new NativeArray<int>(n, Allocator.Temp);
+            for (int i = 0; i < n; i++)
+            {
+                int idx = P[i];
+                bool bad = idx < 0 || idx >= n || seen[idx] != 0;
+                if (bad && Fail[0] == (double)0)
+                {
+                    Fail[0] = (double)1;
+                    Fail[1] = (double)idx;
+                    Fail[2] = (double)i;
+                    Fail[3] = (double)1;
+                }
+                Assert.IsFalse(bad);
+                if (idx >= 0 && idx < n) seen[idx] = 1;
+            }
+            seen.Dispose();
         }
 
         void RecordEqExact(double got, double expected)

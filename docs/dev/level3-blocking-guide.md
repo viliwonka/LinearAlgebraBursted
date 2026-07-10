@@ -57,7 +57,16 @@ No reflectors; the trailing update is a rank-1 (Cholesky) or rank-1 (LU) subtrac
    - Cholesky: `A_trail −= L_panel · L_panelᵀ` — a symmetric rank-b update (SYRK) via `matMatDotTransA`.
      Only the lower triangle need be touched; updating the full block is simpler and still correct.
    - LU: `TRSM` to get the panel's U block, then `A_trail −= L_panel · U_panel` — a GEMM (`matMatDot`).
-3. Pivoted Cholesky (xPSTRF) does NOT block cleanly — leave `choleskyDecompositionPivot` unblocked.
+3. Pivoted Cholesky (CHOP, xPSTRF) DOES block, but not via this recipe unchanged: diagonal pivoting
+   needs the largest remaining Schur-complement diagonal over the FULL trailing range at every column,
+   not just the panel, so recipe B's "narrow the panel sweep to its own width" step doesn't work as-is.
+   LAPACK's actual blocked xPSTRF (Lucas/Higham) fixes this with two tiers: a cheap O(1)-per-column
+   running diagonal correction (reset per block) for pivot search across the whole trailing range, plus
+   a one-time full-row correction against the panel's earlier columns for whichever row is chosen
+   (deferred off-diagonal work only gets applied there, not broadcast). The trailing block still gets a
+   single SYRK per panel. See CHOP.decomp's blocked-path comment (CodeGen/TemplateSource/OP/CHOP.fProxy.cs)
+   for the full derivation and the row-major mapping (this codebase's upper-triangle-by-row CHOP
+   storage mirrors LAPACK's column-major UPLO='U' branch, not 'L').
 
 ## Working with strided sub-blocks (row-major)
 The trailing block is a column-subrange of a bigger matrix → row stride = full `N`, not the block width.

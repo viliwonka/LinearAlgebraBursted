@@ -57,6 +57,21 @@ namespace LinearAlgebra {
         public const int floatLuBlockMinN    = 256;    // float loses at 128, wins from 256
         public const int doubleLuBlockMinN   = 128;    // double wins from 128 (GEMM update: crosses earlier)
 
+        // Pivoted Cholesky (CHOP, xPSTRF) blocked-path gate. MEASURED on CholeskyBenchmark's face-off
+        // section (CHO vs CHOP vs LU, all decompInPlace) at N=256/512/1024, both dtypes, 1 warmup + 4
+        // timed runs: N=256 was noise-level (blocked vs unblocked min/max ranges overlapped, no clear
+        // winner for either dtype); N=512 showed a clear, non-overlapping win for both (float ~1.4%,
+        // double ~6.4%); N=1024 widened further (float ~5.4%, double ~10.4%), so the win grows with N
+        // as expected once the level-3 SYRK trailing update dominates. Gate set at the first size with
+        // a clearly-real (not noise-level) win, erring high per the size-gate convention used
+        // elsewhere in this file. The win here is smaller than plain CHO's (~1.3-1.4x): the panel
+        // phase is intrinsically heavier than CHO's -- LAPACK's blocked PSTRF panel step is a
+        // left-looking full-row correction per column (not narrowed to the panel width), needed so
+        // pivot selection can see an up-to-date Schur-complement diagonal for the WHOLE trailing
+        // matrix -- see CHOP.decomp's blocked-path comment.
+        public const int floatCholPivotBlockMinN  = 512;
+        public const int doubleCholPivotBlockMinN = 512;
+
         // Default PER-VALUE sweep/iteration budget for the SVD/Eigen QR-type diagonalizations
         // (bidiagonal QR, tridiagonal QL, Hessenberg QR) -- LAPACK dbdsqr's scaling (MAXITR=6,
         // i.e. an effective 6*n total across n values) rather than a flat constant: a flat cap

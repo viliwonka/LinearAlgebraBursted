@@ -101,82 +101,287 @@ namespace LinearAlgebra
                 }
             fProxy stopTol = (fProxy)n * Consts.fProxyEpsilon * absScale;
 
-            // Freshly-computed factor row U[k, k..n-1] gathered contiguously into urow so the rank-1 Schur
-            // update is a set of unit-stride row-axpys (the vectorising UnsafeOP.axpy path). One O(n) Temp
-            // buffer (« the O(n^3) factor), matching the plain CHO.decomp's `lj`.
-            var urow = new fProxyN(n, Allocator.Temp, false);
-            unsafe {
-                fProxy* wp = W.Data.Ptr;
-                fProxy* urowp = urow.Data.Ptr;
+            // Panel width for the blocked (level-3) path below. Method-local const -- CHOP is a partial
+            // class shared by the float/double generated files, so a class-level const of the same name
+            // would collide across them (CS0102; see CHO's CHOL_BLOCK).
+            const int CHOLP_BLOCK = 32;
 
-                for (int k = 0; k < n; k++) {
+            // Size gate: measured crossover (see docs/dev/level3-blocking-guide.md "size gate" and
+            // Consts.floatCholPivotBlockMinN/doubleCholPivotBlockMinN for the rationale -- higher than
+            // plain CHO's gate, since the panel phase here is heavier; see the blocked path below).
+            const int CHOLP_BLOCK_MIN_N = Consts.fProxyCholPivotBlockMinN;
 
-                    // pick the largest remaining diagonal (the pivot); also track the smallest to detect
-                    // indefiniteness (a PSD Schur complement keeps every diagonal >= 0).
-                    int q = k;
-                    fProxy maxDiag = W[k, k];
-                    fProxy minDiag = W[k, k];
-                    for (int j = k + 1; j < n; j++) {
-                        fProxy d = W[j, j];
-                        if (d > maxDiag) { maxDiag = d; q = j; }
-                        if (d < minDiag) minDiag = d;
+            if (n < CHOLP_BLOCK_MIN_N) {
+                // Small matrix: plain per-column right-looking sweep, unchanged.
+                //
+                // Freshly-computed factor row U[k, k..n-1] gathered contiguously into urow so the rank-1
+                // Schur update is a set of unit-stride row-axpys (the vectorising UnsafeOP.axpy path).
+                // One O(n) Temp buffer (« the O(n^3) factor), matching the plain CHO.decomp's `lj`.
+                var urow = new fProxyN(n, Allocator.Temp, false);
+                unsafe {
+                    fProxy* wp = W.Data.Ptr;
+                    fProxy* urowp = urow.Data.Ptr;
+
+                    for (int k = 0; k < n; k++) {
+
+                        // pick the largest remaining diagonal (the pivot); also track the smallest to detect
+                        // indefiniteness (a PSD Schur complement keeps every diagonal >= 0).
+                        int q = k;
+                        fProxy maxDiag = W[k, k];
+                        fProxy minDiag = W[k, k];
+                        for (int j = k + 1; j < n; j++) {
+                            fProxy d = W[j, j];
+                            if (d > maxDiag) { maxDiag = d; q = j; }
+                            if (d < minDiag) minDiag = d;
+                        }
+
+                        // a clearly-negative remaining diagonal => not PSD.
+                        if (minDiag < -stopTol) {
+                            urow.Dispose();
+                            rank = k;
+                            return new RankInfo { status = DirectSolveStatus.Indefinite, rank = rank };
+                        }
+
+                        // largest remaining diagonal is numerically zero (NaN-safe). For a genuine PSD matrix
+                        // a zero diagonal forces its whole row/column to zero, so the trailing block is now
+                        // all-negligible and rank k is reached. But if any trailing entry is still
+                        // significant the matrix is NOT PSD (e.g. [[0,1],[1,0]], eigenvalues +/-1) => reject
+                        // as indefinite rather than silently returning a bogus low rank.
+                        if (!(maxDiag > stopTol)) {
+                            for (int i = k; i < n; i++)
+                                for (int j = i; j < n; j++)
+                                    if (math.abs(W[i, j]) > stopTol) {
+                                        urow.Dispose();
+                                        rank = k;
+                                        return new RankInfo { status = DirectSolveStatus.Indefinite, rank = rank };
+                                    }
+                            rank = k;
+                            break;
+                        }
+
+                        // symmetric pivot k <-> q (k < q) on the upper-triangle storage: swap the two
+                        // diagonals, the column segments above row k, the row segments right of column q, and
+                        // the transposed "between" segment; the cross entry W[k,q] maps to itself. Reads only
+                        // upper entries (i<=j), so no lower triangle is needed.
+                        if (q != k) {
+                            { fProxy t = W[k, k]; W[k, k] = W[q, q]; W[q, q] = t; }
+                            for (int i = 0; i < k; i++)     { fProxy t = W[i, k]; W[i, k] = W[i, q]; W[i, q] = t; }
+                            for (int j = q + 1; j < n; j++) { fProxy t = W[k, j]; W[k, j] = W[q, j]; W[q, j] = t; }
+                            for (int m = k + 1; m < q; m++) { fProxy t = W[k, m]; W[k, m] = W[m, q]; W[m, q] = t; }
+                            Swap.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
+                            P.Swap(k, q);
+                        }
+
+                        // factor row k: U[k,k] = sqrt(W[k,k]); U[k,j>k] = W[k,j] / U[k,k]. Gather U[k, k+1..]
+                        // contiguously into urow and scatter it into L's column k (L = U^T, strided O(n) write).
+                        fProxy Ukk = math.sqrt(W[k, k]);
+                        L[k, k] = Ukk;
+                        for (int j = k + 1; j < n; j++) {
+                            fProxy u = W[k, j] / Ukk;
+                            urowp[j] = u;
+                            L[j, k] = u;
+                        }
+
+                        // rank-1 Schur update of the trailing UPPER triangle, one unit-stride row-axpy per
+                        // row: W[i, i..n-1] -= urow[i] * urow[i..n-1].
+                        for (int i = k + 1; i < n; i++)
+                            UnsafeOP.axpy(wp + (long)i * n + i, urowp + i, -urowp[i], n - i);
                     }
-
-                    // a clearly-negative remaining diagonal => not PSD.
-                    if (minDiag < -stopTol) {
-                        urow.Dispose();
-                        rank = k;
-                        return new RankInfo { status = DirectSolveStatus.Indefinite, rank = rank };
-                    }
-
-                    // largest remaining diagonal is numerically zero (NaN-safe). For a genuine PSD matrix
-                    // a zero diagonal forces its whole row/column to zero, so the trailing block is now
-                    // all-negligible and rank k is reached. But if any trailing entry is still
-                    // significant the matrix is NOT PSD (e.g. [[0,1],[1,0]], eigenvalues +/-1) => reject
-                    // as indefinite rather than silently returning a bogus low rank.
-                    if (!(maxDiag > stopTol)) {
-                        for (int i = k; i < n; i++)
-                            for (int j = i; j < n; j++)
-                                if (math.abs(W[i, j]) > stopTol) {
-                                    urow.Dispose();
-                                    rank = k;
-                                    return new RankInfo { status = DirectSolveStatus.Indefinite, rank = rank };
-                                }
-                        rank = k;
-                        break;
-                    }
-
-                    // symmetric pivot k <-> q (k < q) on the upper-triangle storage: swap the two
-                    // diagonals, the column segments above row k, the row segments right of column q, and
-                    // the transposed "between" segment; the cross entry W[k,q] maps to itself. Reads only
-                    // upper entries (i<=j), so no lower triangle is needed.
-                    if (q != k) {
-                        { fProxy t = W[k, k]; W[k, k] = W[q, q]; W[q, q] = t; }
-                        for (int i = 0; i < k; i++)     { fProxy t = W[i, k]; W[i, k] = W[i, q]; W[i, q] = t; }
-                        for (int j = q + 1; j < n; j++) { fProxy t = W[k, j]; W[k, j] = W[q, j]; W[q, j] = t; }
-                        for (int m = k + 1; m < q; m++) { fProxy t = W[k, m]; W[k, m] = W[m, q]; W[m, q] = t; }
-                        Swap.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
-                        P.Swap(k, q);
-                    }
-
-                    // factor row k: U[k,k] = sqrt(W[k,k]); U[k,j>k] = W[k,j] / U[k,k]. Gather U[k, k+1..]
-                    // contiguously into urow and scatter it into L's column k (L = U^T, strided O(n) write).
-                    fProxy Ukk = math.sqrt(W[k, k]);
-                    L[k, k] = Ukk;
-                    for (int j = k + 1; j < n; j++) {
-                        fProxy u = W[k, j] / Ukk;
-                        urowp[j] = u;
-                        L[j, k] = u;
-                    }
-
-                    // rank-1 Schur update of the trailing UPPER triangle, one unit-stride row-axpy per
-                    // row: W[i, i..n-1] -= urow[i] * urow[i..n-1].
-                    for (int i = k + 1; i < n; i++)
-                        UnsafeOP.axpy(wp + (long)i * n + i, urowp + i, -urowp[i], n - i);
                 }
+
+                urow.Dispose();
+                return new RankInfo
+                {
+                    status = (rank < n) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,
+                    rank = rank
+                };
             }
 
-            urow.Dispose();
+            // ---- blocked (level-3) path — LAPACK-style right-looking PSTRF ----
+            // Reference: Lucas/Higham "LAPACK-style codes for level 2 and level 3 pivoted Cholesky
+            // factorization" (dpstrf.f, the UPPER-triangular branch: PᵀAP = UᵀU, matching this method's
+            // upper-triangle-by-row W convention -- CHOP's row-major "broadcast a finished ROW" storage
+            // is the row-major analogue of column-major LAPACK's upper-triangle-by-column storage; see
+            // CHO's blocked-path comment for the column<->row mirroring rationale between this codebase
+            // and LAPACK's column-major reference).
+            //
+            // WHY THIS BLOCKS DIFFERENTLY FROM CHO/LU: those factorizations narrow their panel's rank-1
+            // sweep to the panel's OWN width and defer everything else to a single end-of-panel TRSM+
+            // SYRK/GEMM. CHOP cannot: symmetric diagonal pivoting must pick, at EVERY column, the
+            // largest remaining diagonal over the FULL trailing range (both the rest of the panel and
+            // the not-yet-touched block beyond it) -- so pivot selection needs an up-to-date Schur-
+            // complement diagonal for columns this panel hasn't reached yet. Two-tier fix (Lucas/Higham's
+            // actual trick, ported faithfully):
+            //   (a) CHEAP: `dot[i]` accumulates, incrementally and only for THIS block, the sum of
+            //       squares each finished panel row contributes to row i's diagonal (Fortran WORK(1:N),
+            //       reset to 0 per block); `W[i,i] - dot[i]` is then the exact current Schur-complement
+            //       diagonal for row i, O(1) extra work per column, used ONLY for pivot search.
+            //   (b) EXPENSIVE, WINNER-ONLY: once a column is chosen and pivoted into place, its FULL
+            //       remaining row [k+1,n) is corrected against every earlier-in-this-block finished row
+            //       (a GEMV in LAPACK; here a sequence of unit-stride row axpys against W's own already-
+            //       finished rows -- same vectorisable shape this codebase already prefers over a dot/
+            //       reduction form, see CHO's opening comment) and scaled. This is what makes a pivot
+            //       pulled from deep in the trailing block correct: its row was never touched by any
+            //       earlier column's update (that update is deferred to the panel-end SYRK below), so it
+            //       must be brought fully up to date right when it's chosen, not before.
+            // The trailing block itself (rows/cols >= panelEnd) is updated ONCE per panel via
+            // UnsafeOP.syrkUpperSub (W22 -= U12ᵀ·U12, U12 = the panel's own finished rows restricted to
+            // the trailing columns) -- the level-3 SYRK, mirroring CHO/LU's single-call-per-panel update.
+            //
+            // DEVIATIONS from a literal dpstrf.f port (both under the proven-equivalence / missing-
+            // subsystem taxonomy, not invented shortcuts):
+            //   - Ukk is taken directly from the pivot search's `maxDiag` (already exactly the value
+            //     step (b)'s full-row correction would derive for the diagonal too) instead of re-
+            //     deriving it via a diagonal-inclusive correction -- provably the same value, skips
+            //     redundant work. LAPACK's own skip-the-search-at-J=1 micro-optimisation is dropped the
+            //     other way: this port always searches (even at the first column), which is simpler and
+            //     gives the identical answer LAPACK's precomputed initial pivot would.
+            //   - LAPACK's dpstrf.f does not distinguish "rank-deficient PSD" from "indefinite" beyond
+            //     the single diagonal-tolerance check (it just reports INFO=1). This library's unblocked
+            //     CHOP.decomp adds a secondary full off-diagonal scan to make that distinction (part of
+            //     the existing RankInfo contract, predating this change) -- preserving it under blocking
+            //     needs W to be fully accurate before the scan runs, so the rare branch that trips the
+            //     tolerance check first FLUSHES this block's pending contribution (columns [j0,k), via
+            //     the same syrkUpperSub kernel used for the normal panel-end update, just scoped
+            //     narrower) before scanning. This only runs on the rank-deficient/indefinite exit path,
+            //     never on the well-conditioned hot path the size gate is tuned against.
+            unsafe {
+                fProxy* wp = W.Data.Ptr;
+
+                // dot[i]: see (a) above. Reset per block; only entries [j0,n) are read.
+                var dotBuf = new fProxyN(n, Allocator.Temp, false);
+                fProxy* dotp = dotBuf.Data.Ptr;
+
+                // QT: transposed gather of a jb x ntrail panel-rows-at-trailing-columns block into
+                // ntrail x jb contiguous scratch (see UnsafeOP.syrkUpperSub). Sized for the worst case
+                // (first panel, j0=0: jb=CHOLP_BLOCK, ntrail<=n); reused for both the normal panel-end
+                // SYRK and the narrower rare-path flush.
+                var QT = new fProxyN(CHOLP_BLOCK * n, Allocator.Temp, false);
+                fProxy* qtp = QT.Data.Ptr;
+
+                for (int j0 = 0; j0 < n; j0 += CHOLP_BLOCK) {
+
+                    int jb = math.min(CHOLP_BLOCK, n - j0);
+                    int panelEnd = j0 + jb;
+
+                    for (int i = j0; i < n; i++) dotp[i] = 0;
+
+                    for (int k = j0; k < panelEnd; k++) {
+
+                        // (a) cheap diagonal-only update + pivot search over the FULL remaining range.
+                        if (k > j0) {
+                            fProxy* prevRow = wp + (long)(k - 1) * n;
+                            for (int i = k; i < n; i++) dotp[i] += prevRow[i] * prevRow[i];
+                        }
+
+                        int q = k;
+                        fProxy maxDiag = W[k, k] - dotp[k];
+                        fProxy minDiag = maxDiag;
+                        for (int i = k + 1; i < n; i++) {
+                            fProxy d = W[i, i] - dotp[i];
+                            if (d > maxDiag) { maxDiag = d; q = i; }
+                            if (d < minDiag) minDiag = d;
+                        }
+
+                        // a clearly-negative remaining diagonal => not PSD. Diagonal-only, so `dot`
+                        // already gives an exact answer -- no flush needed (mirrors the unblocked path,
+                        // which also skips the off-diagonal scan on this branch).
+                        if (minDiag < -stopTol) {
+                            QT.Dispose(); dotBuf.Dispose();
+                            rank = k;
+                            return new RankInfo { status = DirectSolveStatus.Indefinite, rank = rank };
+                        }
+
+                        // largest remaining diagonal is numerically zero (NaN-safe) -- same rank/indefinite
+                        // split as the unblocked path, but W's off-diagonal entries in [k,n) are only
+                        // accurate up to the LAST completed panel (this block's own columns [j0,k) are
+                        // still deferred), so flush them first via the same SYRK kernel the panel-end
+                        // update below uses, scoped to just the finished prefix.
+                        if (!(maxDiag > stopTol)) {
+                            int fjb = k - j0;
+                            if (fjb > 0) {
+                                int flen = n - k;
+                                for (int p = 0; p < fjb; p++) {
+                                    fProxy* rowp = wp + (long)(j0 + p) * n + k;
+                                    for (int ip = 0; ip < flen; ip++) qtp[(long)ip * fjb + p] = rowp[ip];
+                                }
+                                UnsafeOP.syrkUpperSub(wp, n, k, j0, fjb, qtp);
+                            }
+
+                            for (int i = k; i < n; i++)
+                                for (int j = i; j < n; j++)
+                                    if (math.abs(W[i, j]) > stopTol) {
+                                        QT.Dispose(); dotBuf.Dispose();
+                                        rank = k;
+                                        return new RankInfo { status = DirectSolveStatus.Indefinite, rank = rank };
+                                    }
+
+                            // no early dispose here -- falls through to the shared post-loop Dispose +
+                            // return below (breaking twice, via the `if (rank < n) break;` right after
+                            // this k-loop, to also exit the j0 loop).
+                            rank = k;
+                            break;
+                        }
+
+                        // symmetric pivot k <-> q: same four-segment swap as the unblocked path (still
+                        // full-width -- pivoting permutes the WHOLE matrix, not just the panel), plus the
+                        // raw diagonal + dot bookkeeping the deferred scheme needs (unblocked doesn't,
+                        // since its diagonal is always already exact). W[k,k]'s raw value is about to be
+                        // overwritten by Ukk below regardless, so only the demoted (q-bound) side needs an
+                        // explicit write.
+                        if (q != k) {
+                            fProxy demoted = W[k, k];
+                            for (int i = 0; i < k; i++)     { fProxy t = W[i, k]; W[i, k] = W[i, q]; W[i, q] = t; }
+                            for (int j = q + 1; j < n; j++) { fProxy t = W[k, j]; W[k, j] = W[q, j]; W[q, j] = t; }
+                            for (int m = k + 1; m < q; m++) { fProxy t = W[k, m]; W[k, m] = W[m, q]; W[m, q] = t; }
+                            W[q, q] = demoted;
+                            { fProxy t = dotp[k]; dotp[k] = dotp[q]; dotp[q] = t; }
+                            Swap.Rows(ref L, k, q, 0, k);    // permute the already-computed factor rows
+                            P.Swap(k, q);
+                        }
+
+                        fProxy Ukk = math.sqrt(maxDiag);
+                        L[k, k] = Ukk;
+
+                        // (b) expensive, winner-only: bring row k's FULL remaining width up to date
+                        // against every earlier-in-this-block finished row (unit-stride row axpys, not a
+                        // strided dot -- see the section header), then scale.
+                        if (k < n - 1) {
+                            fProxy* krow = wp + (long)k * n;
+                            for (int c = j0; c < k; c++) {
+                                fProxy Wck = W[c, k];
+                                UnsafeOP.axpy(krow + (k + 1), wp + (long)c * n + (k + 1), -Wck, n - (k + 1));
+                            }
+
+                            fProxy inv = (fProxy)1 / Ukk;
+                            for (int j = k + 1; j < n; j++) {
+                                fProxy u = krow[j] * inv;
+                                krow[j] = u;
+                                L[j, k] = u;
+                            }
+                        }
+                    }
+
+                    if (rank < n) break;   // rank-deficient/indefinite exit inside the panel loop above
+
+                    // level-3 SYRK trailing update: W[panelEnd:n,panelEnd:n) -= U12ᵀ·U12, U12 = this
+                    // panel's finished rows [j0,panelEnd) restricted to the trailing columns -- ONE call
+                    // per panel instead of one rank-1 update per (row,column) pair.
+                    int rStart = panelEnd;
+                    if (rStart < n) {
+                        int ntrail = n - rStart;
+                        for (int p = 0; p < jb; p++) {
+                            fProxy* rowp = wp + (long)(j0 + p) * n + rStart;
+                            for (int ip = 0; ip < ntrail; ip++) qtp[(long)ip * jb + p] = rowp[ip];
+                        }
+                        UnsafeOP.syrkUpperSub(wp, n, rStart, j0, jb, qtp);
+                    }
+                }
+
+                QT.Dispose();
+                dotBuf.Dispose();
+            }
+
             return new RankInfo
             {
                 status = (rank < n) ? DirectSolveStatus.RankDeficient : DirectSolveStatus.Success,

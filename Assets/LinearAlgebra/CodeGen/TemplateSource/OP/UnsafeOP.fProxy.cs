@@ -543,6 +543,39 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // Upper-triangular SYRK subtract into the trailing diagonal block of a row-major n x n
+        // matrix W (only the upper triangle i<=j is ever read/written):
+        //   W[i,j] -= Σ_{p=0..jb-1} Q[i',p] * Q[j',p]   for rStart <= i <= j < n   (i'=i-rStart, j'=j-rStart)
+        // Q = the panel strip W[j0:j0+jb, rStart:n] read in place from W -- each panel row is already
+        // contiguous there (row-major), so no separate build is needed for that side. QT = transpose of
+        // Q, contiguous ntrail x jb (ntrail = n-rStart): QT[i'*jb + p] = Q[p, i'] = W[j0+p, rStart+i'] --
+        // the caller gathers this once (strided) before calling. Inner loop over the write range is
+        // unit-stride in both W's row and the panel row's own storage, and TRIANGULAR (columns [i,n)),
+        // so it costs the SYRK's n^3/6, not a full-rectangular n^3/3 -- do NOT extend it below the
+        // diagonal. Used by pivoted Cholesky's blocked (level-3) factorization for the trailing-block
+        // update W22 -= U12ᵀ*U12 -- the row-major-upper-triangle mirror of CHO's syrkLowerSub (which is
+        // column-major-lower-triangle shaped), matching LAPACK xPSTRF's DSYRK('Upper','Trans',...) call.
+        // [NoAlias] is truthful: QT is a separate Temp buffer; the read rows [j0,j0+jb) and the written
+        // rows [rStart,n) are disjoint row ranges of the same underlying W matrix (rStart >= j0+jb
+        // always, at both call sites).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void syrkUpperSub([NoAlias] fProxy* Wp, int n, int rStart, int j0, int jb, [NoAlias] fProxy* QT)
+        {
+            int ntrail = n - rStart;
+            for (int ip = 0; ip < ntrail; ip++)
+            {
+                int i = rStart + ip;
+                fProxy* Wrow = Wp + (long)i * n;
+                fProxy* Qi = QT + (long)ip * jb;
+                for (int p = 0; p < jb; p++)
+                {
+                    fProxy temp = Qi[p];
+                    fProxy* Up = Wp + (long)(j0 + p) * n + rStart;
+                    UnsafeOP.axpy(Wrow + i, Up + ip, -temp, n - i);
+                }
+            }
+        }
+
         // ---- Compact-WY (block-reflector) helpers, τ≡1 convention (H_i = I - u_i u_iᵀ) ----
         // Used by QR's blocked (level-3) factorization/reconstruction to batch nb reflectors into
         // one GEMM-shaped trailing update  C -= V·(T·(Vᵀ·C))  instead of nb rank-1 passes. V is a

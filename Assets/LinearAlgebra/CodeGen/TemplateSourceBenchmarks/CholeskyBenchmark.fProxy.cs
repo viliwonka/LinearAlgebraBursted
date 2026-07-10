@@ -37,8 +37,150 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+    // ---- face-off: CHO vs CHOP vs LU, all decompInPlace (destructive), SPD input ----
+    // Each Execute() re-copies a pristine Src into the working buffer before the timed destructive
+    // call (Src -> A copy included in the timed sample, same convention as
+    // DirectSolveBenchmark's LuSolveTransAJobFProxy) -- decompInPlace overwrites its argument, so
+    // without the re-copy every run after the first would be re-factoring an already-triangular
+    // matrix instead of the intended SPD input.
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CholInPlaceJobFProxy : IJob
+    {
+        public fProxyMxN A;      // receives Src each Execute; destroyed by decompInPlace
+        public fProxyMxN Src;
+
+        public void Execute()
+        {
+            int n = Src.M_Rows;
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = Src[r, c];
+            CHO.decompInPlace(ref A);
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct CholPivotInPlaceJobFProxy : IJob
+    {
+        public fProxyMxN A;      // receives Src each Execute; destroyed by decomp (L aliases A)
+        public fProxyMxN Src;
+        public fProxyCHOPCache ws;
+
+        public void Execute()
+        {
+            int n = Src.M_Rows;
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = Src[r, c];
+
+            var P = new Pivot(n, Allocator.Temp);
+            // in-place: L aliases A's own storage, same pattern CHOP.solveInPlace uses internally.
+            CHOP.decomp(in A, ref A, ref P, ref ws);
+            P.Dispose();
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LUFaceOffInPlaceJobFProxy : IJob
+    {
+        public fProxyMxN A;      // receives Src each Execute; destroyed by decompInPlace
+        public fProxyMxN Src;
+
+        public void Execute()
+        {
+            int n = Src.M_Rows;
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    A[r, c] = Src[r, c];
+
+            var P = new Pivot(n, Allocator.Temp);
+            LU.decompInPlace(ref A, ref P);
+            P.Dispose();
+        }
+    }
+
     public static partial class CholeskyBenchmark
     {
+        // Face-off SPD build (symmetric random fill + diagonal dominance, same recipe BenchFProxy/
+        // PivotFProxy below already use) is inlined into each of the three methods below rather than
+        // shared via a private helper: a helper returning fProxyMxN would collide across the
+        // generated float.cs/double.cs halves of this partial class (CS0111 -- same name and
+        // parameter types, C# does not overload on return type alone).
+
+        static string FaceOffCholFProxy(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var Src = arena.fProxyMat(n, n);
+            var A = arena.fProxyMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
+            for (int i = 0; i < n; i++)
+                for (int j = i; j < n; j++)
+                {
+                    fProxy v = rng.NextFProxy(-1f, 1f);
+                    Src[i, j] = v;
+                    Src[j, i] = v;
+                }
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new CholInPlaceJobFProxy { A = A, Src = Src };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("fProxy", n, stat, flops);
+        }
+
+        static string FaceOffCholPivotFProxy(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var Src = arena.fProxyMat(n, n);
+            var A = arena.fProxyMat(n, n);
+            var ws = arena.fProxyCHOPCache(n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
+            for (int i = 0; i < n; i++)
+                for (int j = i; j < n; j++)
+                {
+                    fProxy v = rng.NextFProxy(-1f, 1f);
+                    Src[i, j] = v;
+                    Src[j, i] = v;
+                }
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new CholPivotInPlaceJobFProxy { A = A, Src = Src, ws = ws };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("fProxy", n, stat, flops);
+        }
+
+        static string FaceOffLUFProxy(int n, double flops)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            var Src = arena.fProxyMat(n, n);
+            var A = arena.fProxyMat(n, n);
+
+            var rng = new Unity.Mathematics.Random(2654435761u ^ (uint)n ^ 0x9E3779B9u);
+            for (int i = 0; i < n; i++)
+                for (int j = i; j < n; j++)
+                {
+                    fProxy v = rng.NextFProxy(-1f, 1f);
+                    Src[i, j] = v;
+                    Src[j, i] = v;
+                }
+            for (int d = 0; d < n; d++)
+                Src[d, d] += n;
+
+            var job = new LUFaceOffInPlaceJobFProxy { A = A, Src = Src };
+            var stat = Bench.Time(() => job.Run());
+
+            arena.Dispose();
+            return Bench.Row("fProxy", n, stat, flops);
+        }
+
         static string BenchFProxy(int n, double flops)
         {
             var arena = new Arena(Allocator.Persistent);
