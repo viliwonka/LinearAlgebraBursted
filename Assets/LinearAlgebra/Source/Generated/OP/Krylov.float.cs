@@ -10,8 +10,11 @@ namespace LinearAlgebra
     public static partial class Krylov {
 
         // Shared factory for the square-solver diagnostics struct (cg/pcg/minres/biCGStab/cgne).
-        // rnorm is ALWAYS a value the solver already holds -- a tracked residual norm, or a single
-        // dot on its live residual r -- never a fresh A*x, honoring the "free diagnostics" contract.
+        // rnorm is normally a value the solver already holds -- a tracked residual norm, or a
+        // single dot on its live residual r -- never a fresh A*x. EXCEPTION (R6a, docs/draft-spec-
+        // krylov-optimization.md): cg/pcg/cgne verify a claimed Converged exit with one fresh
+        // r = b-Ax before trusting it, so rnorm on that path is the verified value. minres/
+        // biCGStab are outside R6a's scope and unaffected.
         static SolveInfo MakeSolveInfo(IterativeSolveStatus status, int iterations, float rnorm)
             => new SolveInfo { rnorm = rnorm, iterations = iterations, status = status };
 
@@ -113,7 +116,18 @@ namespace LinearAlgebra
                 float rsnew = Blas.updateXR(alpha, p, ref x, Ap, ref r);
 
                 if (rsnew <= threshold)
-                    return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rsnew));
+                {
+                    // R6a verify-at-exit: r is recursively updated, so a claimed convergence can be
+                    // optimistic drift (float). Recompute r = b - Ax fresh (+1 Apply, reusing Ap)
+                    // and retest before trusting it; fall through with the corrected r if it fails.
+                    A.Apply(in x, ref Ap);
+                    r.Data.CopyFrom(b.Data);
+                    r.addScaledInPlace((float)(-1), Ap);
+                    rsnew = Blas.dot(r, r);
+
+                    if (rsnew <= threshold)
+                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rsnew));
+                }
 
                 float beta = rsnew / rsold;
 
@@ -301,7 +315,16 @@ namespace LinearAlgebra
                 // (Blas.updateXR), eliminating the separate Blas.dot(r,r) traversal.
                 rr = Blas.updateXR(alpha, p, ref x, Ap, ref r);
                 if (rr <= threshold)
-                    return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
+                {
+                    // R6a verify-at-exit -- see cg<TOp>'s matching block for the rationale.
+                    A.Apply(in x, ref Ap);
+                    r.Data.CopyFrom(b.Data);
+                    r.addScaledInPlace((float)(-1), Ap);
+                    rr = Blas.dot(r, r);
+
+                    if (rr <= threshold)
+                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
+                }
 
                 M.Apply(in r, ref z);                     // z = M^-1 r
 
@@ -996,7 +1019,21 @@ namespace LinearAlgebra
                 float gammaNew = Blas.dot(s, s);
 
                 if (gammaNew <= threshold)
-                    return CglsInfo(IterativeSolveStatus.Converged, k + 1, gammaNew, in r, in x);
+                {
+                    // R6a verify-at-exit: r itself is recursively updated (r -= alpha q), so its
+                    // ApplyT-derived gamma can drift. Recompute r fresh (+1 Apply) and s = Aᵀr -
+                    // damp²x fresh (+1 ApplyT) from it, then retest -- cgls's own optimality
+                    // residual needs both operators, unlike cg's plain ‖r‖² gate.
+                    A.Apply(in x, ref q);
+                    r.Data.CopyFrom(b.Data);
+                    r.addScaledInPlace((float)(-1), q);
+                    A.ApplyT(in r, ref s);
+                    if (damp != (float)0) s.addScaledInPlace(-(damp * damp), x);
+                    gammaNew = Blas.dot(s, s);
+
+                    if (gammaNew <= threshold)
+                        return CglsInfo(IterativeSolveStatus.Converged, k + 1, gammaNew, in r, in x);
+                }
 
                 float beta = gammaNew / gamma;
 
@@ -2069,7 +2106,16 @@ namespace LinearAlgebra
                 float rrNew = Blas.updateXR(alpha, p, ref x, q, ref r);
 
                 if (rrNew <= threshold)
-                    return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rrNew));
+                {
+                    // R6a verify-at-exit -- see cg<TOp>'s matching block for the rationale.
+                    A.Apply(in x, ref q);
+                    r.Data.CopyFrom(b.Data);
+                    r.addScaledInPlace((float)(-1), q);
+                    rrNew = Blas.dot(r, r);
+
+                    if (rrNew <= threshold)
+                        return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rrNew));
+                }
 
                 float beta = rrNew / rr;
 

@@ -18,7 +18,9 @@ namespace LinearAlgebra
     /// widens its float residual -- diagnostics don't need to be precision-typed, which is why this
     /// is a plain, unprefixed struct rather than a float/double-generated one). They are filled from
     /// values the solver ALREADY tracks (or at most a single dot on a residual it already holds) at
-    /// the point it returns -- never a fresh A*x/Aᵀ*r, so the struct costs nothing beyond the solve:
+    /// the point it returns -- never a fresh A*x/Aᵀ*r, EXCEPT cgls's Converged exit (Krylov R6a,
+    /// docs/draft-spec-krylov-optimization.md): one fresh Apply + ApplyT verifies a claimed
+    /// convergence before trusting it, replacing the drifted r/gamma pair:
     /// <list type="bullet">
     /// <item>cgls -- rnorm from a dot on its live residual r; Arnorm = √gamma (its tracked ‖Aᵀr‖²).</item>
     /// <item>lsqr -- rnorm = phibar, Arnorm = phibar·alpha·|c|, both produced free by the recurrence.</item>
@@ -82,7 +84,9 @@ namespace LinearAlgebra
     /// returned by value, implicit <c>bool</c> == <see cref="Solved"/>, norm reported as <c>double</c>
     /// -- but carries only the residual norm ‖b - A x‖ (no Aᵀr / xnorm: for a square solve the
     /// residual IS the error measure). Filled from each solver's tracked residual (cg/pcg/cgne: a
-    /// live ‖r‖; minres: phibar; biCGStab: its running ‖r‖) -- no extra matvec.
+    /// live ‖r‖; minres: phibar; biCGStab: its running ‖r‖). cg/pcg/cgne verify a claimed Converged
+    /// exit with one fresh r = b-Ax first (Krylov R6a); minres/biCGStab are unaffected (no extra
+    /// matvec on any of their exits).
     ///
     /// On a Converged OR MaxIterations return, x is the last iterate and rnorm is its true residual
     /// ‖b - A x‖ (so on MaxIterations you can inspect how close it got). Only on a Breakdown return

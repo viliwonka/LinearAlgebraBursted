@@ -82,6 +82,75 @@ namespace LinearAlgebra.Sparse
             return result;
         }
 
+        // ---- AV = A * V, block-multivector (SpMM) ----
+
+        // Krylov R5 (docs/draft-spec-krylov-optimization.md): AVrows[rv,:] = A * Vrows[rv,:] for
+        // rv in [0, rows), streaming A's stored blocks ONCE instead of once per row (the old
+        // doubleBSROperator.ApplyBlock looped `rows` scalar spMV calls through two Allocator.Temp
+        // vectors). Same dispatch shape as spMV -- see bsrMatMat*/bsrMatMatSym* (UnsafeOP.Sparse.
+        // double.cs) for the per-kernel bit-identity argument. Guard: y must not alias x -- each
+        // x-row feeds every block-row that stores a block in its column-block (same reason as spMV).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void spMM(in doubleBSR A, in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
+        {
+            if (Vrows.N_Cols != A.N_Cols)
+                throw new ArgumentException("spMM: Vrows.N_Cols must equal A.N_Cols");
+            if (AVrows.N_Cols != A.M_Rows)
+                throw new ArgumentException("spMM: AVrows.N_Cols must equal A.M_Rows");
+
+            unsafe
+            {
+                if (AVrows.Data.Ptr == Vrows.Data.Ptr)
+                    throw new ArgumentException("spMM: AVrows must not alias Vrows");
+
+                // bsrMatMat*/bsrMatMatSym* accumulate (+=), so the first `rows` rows of the
+                // destination must start zeroed -- rows are contiguous from row 0 (row-major), same
+                // convention as Blas.dotRows's ApplyBlock zeroing.
+                UnsafeUtility.MemClear(AVrows.Data.Ptr, (long)rows * AVrows.N_Cols * UnsafeUtility.SizeOf<double>());
+
+                int* rowPtr = A.RowPtr.Ptr;
+                int* colInd = A.ColInd.Ptr;
+                double* values = A.Values.Ptr;
+                double* VPtr = Vrows.Data.Ptr;
+                double* AVPtr = AVrows.Data.Ptr;
+                // V and AV can have DIFFERENT row strides -- Vrows.N_Cols == A.N_Cols (input dim),
+                // AVrows.N_Cols == A.M_Rows (output dim), which differ whenever A is rectangular
+                // (including a non-square BLOCK GRID of square blocks, e.g. BlockRows != BlockCols
+                // with BR==BC -- still dispatches to the B{b} specializations below).
+                int ldV = Vrows.N_Cols;
+                int ldAV = AVrows.N_Cols;
+
+                if (A.Symmetric)
+                {
+                    switch (A.BR)
+                    {
+                        case 1: UnsafeOP.bsrMatMatSymB1(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        case 2: UnsafeOP.bsrMatMatSymB2(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        case 3: UnsafeOP.bsrMatMatSymB3(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        case 4: UnsafeOP.bsrMatMatSymB4(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        case 6: UnsafeOP.bsrMatMatSymB6(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        default: UnsafeOP.bsrMatMatSym(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, A.BR, rows, ldV, ldAV); break;
+                    }
+                }
+                else if (A.BR == A.BC)
+                {
+                    switch (A.BR)
+                    {
+                        case 1: UnsafeOP.bsrMatMatB1(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        case 2: UnsafeOP.bsrMatMatB2(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        case 3: UnsafeOP.bsrMatMatB3(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        case 4: UnsafeOP.bsrMatMatB4(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        case 6: UnsafeOP.bsrMatMatB6(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, rows, ldV, ldAV); break;
+                        default: UnsafeOP.bsrMatMat(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, A.BR, A.BC, rows, ldV, ldAV); break;
+                    }
+                }
+                else
+                {
+                    UnsafeOP.bsrMatMat(rowPtr, colInd, values, VPtr, AVPtr, A.BlockRows, A.BR, A.BC, rows, ldV, ldAV);
+                }
+            }
+        }
+
         // y = A x, PLUS dot(x, y) computed as part of the same call -- Krylov R2's ApplyDot
         // (docs/draft-spec-krylov-optimization.md; see doubleBSROperator.ApplyDot, the sole
         // caller). COMPOSES: a plain spMV, then one Blas.dot(x,y) pass (still the 2x-accumulator

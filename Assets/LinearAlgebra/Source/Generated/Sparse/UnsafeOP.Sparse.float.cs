@@ -1111,6 +1111,855 @@ namespace LinearAlgebra.Internal
             }
         }
 
+        // =====================================================================================
+        // Krylov R5 (docs/draft-spec-krylov-optimization.md, R5): BSR SpMM -- a real block-
+        // multivector kernel for ApplyBlock. AV[rv,:] += A * V[rv,:] for rv in [0,rows), V/AV
+        // row-major with row strides ldV/ldAV (row rv lives at V + rv*ldV / AV + rv*ldAV) -- the
+        // same K-layout convention Blas.dotRows uses for the dense operator's ApplyBlock. ldV/ldAV
+        // differ whenever A is rectangular (Vrows.N_Cols == A.N_Cols, AVrows.N_Cols == A.M_Rows).
+        // Every kernel below is its bsrMatVec{...}/bsrMatVecSym{...} counterpart above with an rv
+        // loop ADDED around the
+        // per-row body (rowStart/rowEnd/kPairEnd/xBaseI hoisted OUTSIDE the rv loop -- rv-
+        // independent, computed once per block-row): for a FIXED rv this is the exact same
+        // left-to-right term order (same pairing where the scalar kernel pairs, same tail, same
+        // per-k scatter order for the Sym off-diagonal part) as calling the scalar kernel `rows`
+        // times -- BIT-IDENTICAL row by row, not just rounding-equivalent. Streams the BSR row
+        // structure ONCE per block-row instead of once per Apply call: no per-call
+        // Allocator.Temp churn (the old ApplyBlock allocated two Temp vectors and re-walked
+        // rowPtr/colInd `rows` times), and each row's stored blocks are immediately reused across
+        // every rv while resident in L1 instead of being evicted by a full separate matrix pass
+        // between calls. Dispatch lives in BSR.spMM (SparseOP.float.cs); sole caller is
+        // floatBSROperator.ApplyBlock.
+        // =====================================================================================
+
+        // ---- bsrMatMat: AV[rv,:] += A * V[rv,:], general BR x BC block, square-block fallback --
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMat([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                      [NoAlias] float* V, [NoAlias] float* AV,
+                                      int blockRows, int BR, int BC, int rows, int ldV, int ldAV)
+        {
+            int blockLen = BR * BC;
+
+            for (int br = 0; br < blockRows; br++)
+            {
+                int rowStart = rowPtr[br];
+                int rowEnd = rowPtr[br + 1];
+                int yBase = br * BR;
+
+                for (int k = rowStart; k < rowEnd; k++)
+                {
+                    int bc = colInd[k];
+                    int xBase = bc * BC;
+                    float* block = values + (long)k * blockLen;
+
+                    for (int rv = 0; rv < rows; rv++)
+                    {
+                        float* x = V + (long)rv * ldV;
+                        float* y = AV + (long)rv * ldAV;
+
+                        for (int r = 0; r < BR; r++)
+                        {
+                            float sum = 0;
+                            int rowOff = r * BC;
+                            for (int c = 0; c < BC; c++)
+                                sum += block[rowOff + c] * x[xBase + c];
+                            y[yBase + r] += sum;
+                        }
+                    }
+                }
+            }
+        }
+
+        // b=1 not paired -- mirrors bsrMatVecB1 (same A/B finding applies: trivial per-block work).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                        [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int br = 0; br < blockRows; br++)
+            {
+                int rowStart = rowPtr[br];
+                int rowEnd = rowPtr[br + 1];
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    for (int k = rowStart; k < rowEnd; k++)
+                        y[br] += values[k] * x[colInd[k]];
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                        [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int br = 0; br < blockRows; br++)
+            {
+                int rowStart = rowPtr[br];
+                int rowEnd = rowPtr[br + 1];
+                int yBase = br * 2;
+                int len = rowEnd - rowStart;
+                int kPairEnd = rowStart + ((len >> 1) << 1);
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    float acc0_0 = default, acc0_1 = default;
+                    float acc1_0 = default, acc1_1 = default;
+
+                    int k = rowStart;
+                    for (; k < kPairEnd; k += 2)
+                    {
+                        int xBase0 = colInd[k] * 2;
+                        float* block0 = values + k * 4;
+                        float x00 = x[xBase0 + 0];
+                        float x01 = x[xBase0 + 1];
+                        acc0_0 += block0[0] * x00 + block0[1] * x01;
+                        acc0_1 += block0[2] * x00 + block0[3] * x01;
+
+                        int xBase1 = colInd[k + 1] * 2;
+                        float* block1 = values + (k + 1) * 4;
+                        float x10 = x[xBase1 + 0];
+                        float x11 = x[xBase1 + 1];
+                        acc1_0 += block1[0] * x10 + block1[1] * x11;
+                        acc1_1 += block1[2] * x10 + block1[3] * x11;
+                    }
+
+                    float s0 = acc0_0 + acc1_0;
+                    float s1 = acc0_1 + acc1_1;
+                    if (k < rowEnd)
+                    {
+                        int xBase = colInd[k] * 2;
+                        float* block = values + k * 4;
+                        float x0 = x[xBase + 0];
+                        float x1 = x[xBase + 1];
+                        s0 += block[0] * x0 + block[1] * x1;
+                        s1 += block[2] * x0 + block[3] * x1;
+                    }
+
+                    y[yBase + 0] += s0;
+                    y[yBase + 1] += s1;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                        [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int br = 0; br < blockRows; br++)
+            {
+                int rowStart = rowPtr[br];
+                int rowEnd = rowPtr[br + 1];
+                int yBase = br * 3;
+                int len = rowEnd - rowStart;
+                int kPairEnd = rowStart + ((len >> 1) << 1);
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    float acc0_0 = default, acc0_1 = default, acc0_2 = default;
+                    float acc1_0 = default, acc1_1 = default, acc1_2 = default;
+
+                    int k = rowStart;
+                    for (; k < kPairEnd; k += 2)
+                    {
+                        int xBase0 = colInd[k] * 3;
+                        float* block0 = values + k * 9;
+                        float x00 = x[xBase0 + 0];
+                        float x01 = x[xBase0 + 1];
+                        float x02 = x[xBase0 + 2];
+                        acc0_0 += block0[0] * x00 + block0[1] * x01 + block0[2] * x02;
+                        acc0_1 += block0[3] * x00 + block0[4] * x01 + block0[5] * x02;
+                        acc0_2 += block0[6] * x00 + block0[7] * x01 + block0[8] * x02;
+
+                        int xBase1 = colInd[k + 1] * 3;
+                        float* block1 = values + (k + 1) * 9;
+                        float x10 = x[xBase1 + 0];
+                        float x11 = x[xBase1 + 1];
+                        float x12 = x[xBase1 + 2];
+                        acc1_0 += block1[0] * x10 + block1[1] * x11 + block1[2] * x12;
+                        acc1_1 += block1[3] * x10 + block1[4] * x11 + block1[5] * x12;
+                        acc1_2 += block1[6] * x10 + block1[7] * x11 + block1[8] * x12;
+                    }
+
+                    float s0 = acc0_0 + acc1_0;
+                    float s1 = acc0_1 + acc1_1;
+                    float s2 = acc0_2 + acc1_2;
+                    if (k < rowEnd)
+                    {
+                        int xBase = colInd[k] * 3;
+                        float* block = values + k * 9;
+                        float x0 = x[xBase + 0];
+                        float x1 = x[xBase + 1];
+                        float x2 = x[xBase + 2];
+                        s0 += block[0] * x0 + block[1] * x1 + block[2] * x2;
+                        s1 += block[3] * x0 + block[4] * x1 + block[5] * x2;
+                        s2 += block[6] * x0 + block[7] * x1 + block[8] * x2;
+                    }
+
+                    y[yBase + 0] += s0;
+                    y[yBase + 1] += s1;
+                    y[yBase + 2] += s2;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                        [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int br = 0; br < blockRows; br++)
+            {
+                int rowStart = rowPtr[br];
+                int rowEnd = rowPtr[br + 1];
+                int yBase = br * 4;
+                int len = rowEnd - rowStart;
+                int kPairEnd = rowStart + ((len >> 1) << 1);
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    float acc0_0 = default, acc0_1 = default, acc0_2 = default, acc0_3 = default;
+                    float acc1_0 = default, acc1_1 = default, acc1_2 = default, acc1_3 = default;
+
+                    int k = rowStart;
+                    for (; k < kPairEnd; k += 2)
+                    {
+                        int xBase0 = colInd[k] * 4;
+                        float* block0 = values + k * 16;
+                        float x00 = x[xBase0 + 0];
+                        float x01 = x[xBase0 + 1];
+                        float x02 = x[xBase0 + 2];
+                        float x03 = x[xBase0 + 3];
+                        acc0_0 += block0[0]  * x00 + block0[1]  * x01 + block0[2]  * x02 + block0[3]  * x03;
+                        acc0_1 += block0[4]  * x00 + block0[5]  * x01 + block0[6]  * x02 + block0[7]  * x03;
+                        acc0_2 += block0[8]  * x00 + block0[9]  * x01 + block0[10] * x02 + block0[11] * x03;
+                        acc0_3 += block0[12] * x00 + block0[13] * x01 + block0[14] * x02 + block0[15] * x03;
+
+                        int xBase1 = colInd[k + 1] * 4;
+                        float* block1 = values + (k + 1) * 16;
+                        float x10 = x[xBase1 + 0];
+                        float x11 = x[xBase1 + 1];
+                        float x12 = x[xBase1 + 2];
+                        float x13 = x[xBase1 + 3];
+                        acc1_0 += block1[0]  * x10 + block1[1]  * x11 + block1[2]  * x12 + block1[3]  * x13;
+                        acc1_1 += block1[4]  * x10 + block1[5]  * x11 + block1[6]  * x12 + block1[7]  * x13;
+                        acc1_2 += block1[8]  * x10 + block1[9]  * x11 + block1[10] * x12 + block1[11] * x13;
+                        acc1_3 += block1[12] * x10 + block1[13] * x11 + block1[14] * x12 + block1[15] * x13;
+                    }
+
+                    float s0 = acc0_0 + acc1_0;
+                    float s1 = acc0_1 + acc1_1;
+                    float s2 = acc0_2 + acc1_2;
+                    float s3 = acc0_3 + acc1_3;
+                    if (k < rowEnd)
+                    {
+                        int xBase = colInd[k] * 4;
+                        float* block = values + k * 16;
+                        float x0 = x[xBase + 0];
+                        float x1 = x[xBase + 1];
+                        float x2 = x[xBase + 2];
+                        float x3 = x[xBase + 3];
+                        s0 += block[0]  * x0 + block[1]  * x1 + block[2]  * x2 + block[3]  * x3;
+                        s1 += block[4]  * x0 + block[5]  * x1 + block[6]  * x2 + block[7]  * x3;
+                        s2 += block[8]  * x0 + block[9]  * x1 + block[10] * x2 + block[11] * x3;
+                        s3 += block[12] * x0 + block[13] * x1 + block[14] * x2 + block[15] * x3;
+                    }
+
+                    y[yBase + 0] += s0;
+                    y[yBase + 1] += s1;
+                    y[yBase + 2] += s2;
+                    y[yBase + 3] += s3;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                        [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int br = 0; br < blockRows; br++)
+            {
+                int rowStart = rowPtr[br];
+                int rowEnd = rowPtr[br + 1];
+                int yBase = br * 6;
+                int len = rowEnd - rowStart;
+                int kPairEnd = rowStart + ((len >> 1) << 1);
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    float acc0_0 = default, acc0_1 = default, acc0_2 = default, acc0_3 = default, acc0_4 = default, acc0_5 = default;
+                    float acc1_0 = default, acc1_1 = default, acc1_2 = default, acc1_3 = default, acc1_4 = default, acc1_5 = default;
+
+                    int k = rowStart;
+                    for (; k < kPairEnd; k += 2)
+                    {
+                        int xBase0 = colInd[k] * 6;
+                        float* block0 = values + k * 36;
+                        float x00 = x[xBase0 + 0];
+                        float x01 = x[xBase0 + 1];
+                        float x02 = x[xBase0 + 2];
+                        float x03 = x[xBase0 + 3];
+                        float x04 = x[xBase0 + 4];
+                        float x05 = x[xBase0 + 5];
+                        acc0_0 += block0[0]  * x00 + block0[1]  * x01 + block0[2]  * x02 + block0[3]  * x03 + block0[4]  * x04 + block0[5]  * x05;
+                        acc0_1 += block0[6]  * x00 + block0[7]  * x01 + block0[8]  * x02 + block0[9]  * x03 + block0[10] * x04 + block0[11] * x05;
+                        acc0_2 += block0[12] * x00 + block0[13] * x01 + block0[14] * x02 + block0[15] * x03 + block0[16] * x04 + block0[17] * x05;
+                        acc0_3 += block0[18] * x00 + block0[19] * x01 + block0[20] * x02 + block0[21] * x03 + block0[22] * x04 + block0[23] * x05;
+                        acc0_4 += block0[24] * x00 + block0[25] * x01 + block0[26] * x02 + block0[27] * x03 + block0[28] * x04 + block0[29] * x05;
+                        acc0_5 += block0[30] * x00 + block0[31] * x01 + block0[32] * x02 + block0[33] * x03 + block0[34] * x04 + block0[35] * x05;
+
+                        int xBase1 = colInd[k + 1] * 6;
+                        float* block1 = values + (k + 1) * 36;
+                        float x10 = x[xBase1 + 0];
+                        float x11 = x[xBase1 + 1];
+                        float x12 = x[xBase1 + 2];
+                        float x13 = x[xBase1 + 3];
+                        float x14 = x[xBase1 + 4];
+                        float x15 = x[xBase1 + 5];
+                        acc1_0 += block1[0]  * x10 + block1[1]  * x11 + block1[2]  * x12 + block1[3]  * x13 + block1[4]  * x14 + block1[5]  * x15;
+                        acc1_1 += block1[6]  * x10 + block1[7]  * x11 + block1[8]  * x12 + block1[9]  * x13 + block1[10] * x14 + block1[11] * x15;
+                        acc1_2 += block1[12] * x10 + block1[13] * x11 + block1[14] * x12 + block1[15] * x13 + block1[16] * x14 + block1[17] * x15;
+                        acc1_3 += block1[18] * x10 + block1[19] * x11 + block1[20] * x12 + block1[21] * x13 + block1[22] * x14 + block1[23] * x15;
+                        acc1_4 += block1[24] * x10 + block1[25] * x11 + block1[26] * x12 + block1[27] * x13 + block1[28] * x14 + block1[29] * x15;
+                        acc1_5 += block1[30] * x10 + block1[31] * x11 + block1[32] * x12 + block1[33] * x13 + block1[34] * x14 + block1[35] * x15;
+                    }
+
+                    float s0 = acc0_0 + acc1_0;
+                    float s1 = acc0_1 + acc1_1;
+                    float s2 = acc0_2 + acc1_2;
+                    float s3 = acc0_3 + acc1_3;
+                    float s4 = acc0_4 + acc1_4;
+                    float s5 = acc0_5 + acc1_5;
+                    if (k < rowEnd)
+                    {
+                        int xBase = colInd[k] * 6;
+                        float* block = values + k * 36;
+                        float x0 = x[xBase + 0];
+                        float x1 = x[xBase + 1];
+                        float x2 = x[xBase + 2];
+                        float x3 = x[xBase + 3];
+                        float x4 = x[xBase + 4];
+                        float x5 = x[xBase + 5];
+                        s0 += block[0]  * x0 + block[1]  * x1 + block[2]  * x2 + block[3]  * x3 + block[4]  * x4 + block[5]  * x5;
+                        s1 += block[6]  * x0 + block[7]  * x1 + block[8]  * x2 + block[9]  * x3 + block[10] * x4 + block[11] * x5;
+                        s2 += block[12] * x0 + block[13] * x1 + block[14] * x2 + block[15] * x3 + block[16] * x4 + block[17] * x5;
+                        s3 += block[18] * x0 + block[19] * x1 + block[20] * x2 + block[21] * x3 + block[22] * x4 + block[23] * x5;
+                        s4 += block[24] * x0 + block[25] * x1 + block[26] * x2 + block[27] * x3 + block[28] * x4 + block[29] * x5;
+                        s5 += block[30] * x0 + block[31] * x1 + block[32] * x2 + block[33] * x3 + block[34] * x4 + block[35] * x5;
+                    }
+
+                    y[yBase + 0] += s0;
+                    y[yBase + 1] += s1;
+                    y[yBase + 2] += s2;
+                    y[yBase + 3] += s3;
+                    y[yBase + 4] += s4;
+                    y[yBase + 5] += s5;
+                }
+            }
+        }
+
+        // ---- bsrMatMatSym: AV[rv,:] += A * V[rv,:], symmetric upper-block-triangle storage -----
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatSym([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                         [NoAlias] float* V, [NoAlias] float* AV,
+                                         int blockRows, int BR, int rows, int ldV, int ldAV)
+        {
+            int blockLen = BR * BR;
+
+            for (int bi = 0; bi < blockRows; bi++)
+            {
+                int rowStart = rowPtr[bi];
+                int rowEnd = rowPtr[bi + 1];
+                int yBaseI = bi * BR;
+                int xBaseI = bi * BR;
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    for (int k = rowStart; k < rowEnd; k++)
+                    {
+                        int bj = colInd[k];
+                        int xBaseJ = bj * BR;
+                        float* block = values + (long)k * blockLen;
+
+                        for (int r = 0; r < BR; r++)
+                        {
+                            float sum = 0;
+                            int rowOff = r * BR;
+                            for (int c = 0; c < BR; c++)
+                                sum += block[rowOff + c] * x[xBaseJ + c];
+                            y[yBaseI + r] += sum;
+                        }
+
+                        if (bi != bj)
+                        {
+                            int yBaseJ = bj * BR;
+                            for (int c = 0; c < BR; c++)
+                            {
+                                float sum = 0;
+                                for (int r = 0; r < BR; r++)
+                                    sum += block[r * BR + c] * x[xBaseI + r];
+                                y[yBaseJ + c] += sum;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // b=1 not paired -- mirrors bsrMatVecSymB1.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatSymB1([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                           [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int bi = 0; bi < blockRows; bi++)
+            {
+                int rowStart = rowPtr[bi];
+                int rowEnd = rowPtr[bi + 1];
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    for (int k = rowStart; k < rowEnd; k++)
+                    {
+                        int bj = colInd[k];
+                        float v = values[k];
+
+                        y[bi] += v * x[bj];
+                        if (bi != bj)
+                            y[bj] += v * x[bi];
+                    }
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatSymB2([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                           [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int bi = 0; bi < blockRows; bi++)
+            {
+                int rowStart = rowPtr[bi];
+                int rowEnd = rowPtr[bi + 1];
+                int yBaseI = bi * 2;
+                int xBaseI = bi * 2;
+                int len = rowEnd - rowStart;
+                int kPairEnd = rowStart + ((len >> 1) << 1);
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    float xi0 = x[xBaseI + 0];
+                    float xi1 = x[xBaseI + 1];
+
+                    float acc0_0 = default, acc0_1 = default;
+                    float acc1_0 = default, acc1_1 = default;
+
+                    int k = rowStart;
+                    for (; k < kPairEnd; k += 2)
+                    {
+                        int bj0 = colInd[k];
+                        int xBaseJ0 = bj0 * 2;
+                        float* block0 = values + k * 4;
+                        float xj00 = x[xBaseJ0 + 0];
+                        float xj01 = x[xBaseJ0 + 1];
+                        acc0_0 += block0[0] * xj00 + block0[1] * xj01;
+                        acc0_1 += block0[2] * xj00 + block0[3] * xj01;
+                        if (bi != bj0)
+                        {
+                            int yBaseJ0 = bj0 * 2;
+                            y[yBaseJ0 + 0] += block0[0] * xi0 + block0[2] * xi1;
+                            y[yBaseJ0 + 1] += block0[1] * xi0 + block0[3] * xi1;
+                        }
+
+                        int bj1 = colInd[k + 1];
+                        int xBaseJ1 = bj1 * 2;
+                        float* block1 = values + (k + 1) * 4;
+                        float xj10 = x[xBaseJ1 + 0];
+                        float xj11 = x[xBaseJ1 + 1];
+                        acc1_0 += block1[0] * xj10 + block1[1] * xj11;
+                        acc1_1 += block1[2] * xj10 + block1[3] * xj11;
+                        if (bi != bj1)
+                        {
+                            int yBaseJ1 = bj1 * 2;
+                            y[yBaseJ1 + 0] += block1[0] * xi0 + block1[2] * xi1;
+                            y[yBaseJ1 + 1] += block1[1] * xi0 + block1[3] * xi1;
+                        }
+                    }
+
+                    float s0 = acc0_0 + acc1_0;
+                    float s1 = acc0_1 + acc1_1;
+                    if (k < rowEnd)
+                    {
+                        int bj = colInd[k];
+                        int xBaseJ = bj * 2;
+                        float* block = values + k * 4;
+                        float xj0 = x[xBaseJ + 0];
+                        float xj1 = x[xBaseJ + 1];
+                        s0 += block[0] * xj0 + block[1] * xj1;
+                        s1 += block[2] * xj0 + block[3] * xj1;
+                        if (bi != bj)
+                        {
+                            int yBaseJ = bj * 2;
+                            y[yBaseJ + 0] += block[0] * xi0 + block[2] * xi1;
+                            y[yBaseJ + 1] += block[1] * xi0 + block[3] * xi1;
+                        }
+                    }
+
+                    y[yBaseI + 0] += s0;
+                    y[yBaseI + 1] += s1;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatSymB3([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                           [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int bi = 0; bi < blockRows; bi++)
+            {
+                int rowStart = rowPtr[bi];
+                int rowEnd = rowPtr[bi + 1];
+                int yBaseI = bi * 3;
+                int xBaseI = bi * 3;
+                int len = rowEnd - rowStart;
+                int kPairEnd = rowStart + ((len >> 1) << 1);
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    float xi0 = x[xBaseI + 0];
+                    float xi1 = x[xBaseI + 1];
+                    float xi2 = x[xBaseI + 2];
+
+                    float acc0_0 = default, acc0_1 = default, acc0_2 = default;
+                    float acc1_0 = default, acc1_1 = default, acc1_2 = default;
+
+                    int k = rowStart;
+                    for (; k < kPairEnd; k += 2)
+                    {
+                        int bj0 = colInd[k];
+                        int xBaseJ0 = bj0 * 3;
+                        float* block0 = values + k * 9;
+                        float xj00 = x[xBaseJ0 + 0];
+                        float xj01 = x[xBaseJ0 + 1];
+                        float xj02 = x[xBaseJ0 + 2];
+                        acc0_0 += block0[0] * xj00 + block0[1] * xj01 + block0[2] * xj02;
+                        acc0_1 += block0[3] * xj00 + block0[4] * xj01 + block0[5] * xj02;
+                        acc0_2 += block0[6] * xj00 + block0[7] * xj01 + block0[8] * xj02;
+                        if (bi != bj0)
+                        {
+                            int yBaseJ0 = bj0 * 3;
+                            y[yBaseJ0 + 0] += block0[0] * xi0 + block0[3] * xi1 + block0[6] * xi2;
+                            y[yBaseJ0 + 1] += block0[1] * xi0 + block0[4] * xi1 + block0[7] * xi2;
+                            y[yBaseJ0 + 2] += block0[2] * xi0 + block0[5] * xi1 + block0[8] * xi2;
+                        }
+
+                        int bj1 = colInd[k + 1];
+                        int xBaseJ1 = bj1 * 3;
+                        float* block1 = values + (k + 1) * 9;
+                        float xj10 = x[xBaseJ1 + 0];
+                        float xj11 = x[xBaseJ1 + 1];
+                        float xj12 = x[xBaseJ1 + 2];
+                        acc1_0 += block1[0] * xj10 + block1[1] * xj11 + block1[2] * xj12;
+                        acc1_1 += block1[3] * xj10 + block1[4] * xj11 + block1[5] * xj12;
+                        acc1_2 += block1[6] * xj10 + block1[7] * xj11 + block1[8] * xj12;
+                        if (bi != bj1)
+                        {
+                            int yBaseJ1 = bj1 * 3;
+                            y[yBaseJ1 + 0] += block1[0] * xi0 + block1[3] * xi1 + block1[6] * xi2;
+                            y[yBaseJ1 + 1] += block1[1] * xi0 + block1[4] * xi1 + block1[7] * xi2;
+                            y[yBaseJ1 + 2] += block1[2] * xi0 + block1[5] * xi1 + block1[8] * xi2;
+                        }
+                    }
+
+                    float s0 = acc0_0 + acc1_0;
+                    float s1 = acc0_1 + acc1_1;
+                    float s2 = acc0_2 + acc1_2;
+                    if (k < rowEnd)
+                    {
+                        int bj = colInd[k];
+                        int xBaseJ = bj * 3;
+                        float* block = values + k * 9;
+                        float xj0 = x[xBaseJ + 0];
+                        float xj1 = x[xBaseJ + 1];
+                        float xj2 = x[xBaseJ + 2];
+                        s0 += block[0] * xj0 + block[1] * xj1 + block[2] * xj2;
+                        s1 += block[3] * xj0 + block[4] * xj1 + block[5] * xj2;
+                        s2 += block[6] * xj0 + block[7] * xj1 + block[8] * xj2;
+                        if (bi != bj)
+                        {
+                            int yBaseJ = bj * 3;
+                            y[yBaseJ + 0] += block[0] * xi0 + block[3] * xi1 + block[6] * xi2;
+                            y[yBaseJ + 1] += block[1] * xi0 + block[4] * xi1 + block[7] * xi2;
+                            y[yBaseJ + 2] += block[2] * xi0 + block[5] * xi1 + block[8] * xi2;
+                        }
+                    }
+
+                    y[yBaseI + 0] += s0;
+                    y[yBaseI + 1] += s1;
+                    y[yBaseI + 2] += s2;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatSymB4([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                           [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int bi = 0; bi < blockRows; bi++)
+            {
+                int rowStart = rowPtr[bi];
+                int rowEnd = rowPtr[bi + 1];
+                int yBaseI = bi * 4;
+                int xBaseI = bi * 4;
+                int len = rowEnd - rowStart;
+                int kPairEnd = rowStart + ((len >> 1) << 1);
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    float xi0 = x[xBaseI + 0];
+                    float xi1 = x[xBaseI + 1];
+                    float xi2 = x[xBaseI + 2];
+                    float xi3 = x[xBaseI + 3];
+
+                    float acc0_0 = default, acc0_1 = default, acc0_2 = default, acc0_3 = default;
+                    float acc1_0 = default, acc1_1 = default, acc1_2 = default, acc1_3 = default;
+
+                    int k = rowStart;
+                    for (; k < kPairEnd; k += 2)
+                    {
+                        int bj0 = colInd[k];
+                        int xBaseJ0 = bj0 * 4;
+                        float* block0 = values + k * 16;
+                        float xj00 = x[xBaseJ0 + 0];
+                        float xj01 = x[xBaseJ0 + 1];
+                        float xj02 = x[xBaseJ0 + 2];
+                        float xj03 = x[xBaseJ0 + 3];
+                        acc0_0 += block0[0]  * xj00 + block0[1]  * xj01 + block0[2]  * xj02 + block0[3]  * xj03;
+                        acc0_1 += block0[4]  * xj00 + block0[5]  * xj01 + block0[6]  * xj02 + block0[7]  * xj03;
+                        acc0_2 += block0[8]  * xj00 + block0[9]  * xj01 + block0[10] * xj02 + block0[11] * xj03;
+                        acc0_3 += block0[12] * xj00 + block0[13] * xj01 + block0[14] * xj02 + block0[15] * xj03;
+                        if (bi != bj0)
+                        {
+                            int yBaseJ0 = bj0 * 4;
+                            y[yBaseJ0 + 0] += block0[0] * xi0 + block0[4]  * xi1 + block0[8]  * xi2 + block0[12] * xi3;
+                            y[yBaseJ0 + 1] += block0[1] * xi0 + block0[5]  * xi1 + block0[9]  * xi2 + block0[13] * xi3;
+                            y[yBaseJ0 + 2] += block0[2] * xi0 + block0[6]  * xi1 + block0[10] * xi2 + block0[14] * xi3;
+                            y[yBaseJ0 + 3] += block0[3] * xi0 + block0[7]  * xi1 + block0[11] * xi2 + block0[15] * xi3;
+                        }
+
+                        int bj1 = colInd[k + 1];
+                        int xBaseJ1 = bj1 * 4;
+                        float* block1 = values + (k + 1) * 16;
+                        float xj10 = x[xBaseJ1 + 0];
+                        float xj11 = x[xBaseJ1 + 1];
+                        float xj12 = x[xBaseJ1 + 2];
+                        float xj13 = x[xBaseJ1 + 3];
+                        acc1_0 += block1[0]  * xj10 + block1[1]  * xj11 + block1[2]  * xj12 + block1[3]  * xj13;
+                        acc1_1 += block1[4]  * xj10 + block1[5]  * xj11 + block1[6]  * xj12 + block1[7]  * xj13;
+                        acc1_2 += block1[8]  * xj10 + block1[9]  * xj11 + block1[10] * xj12 + block1[11] * xj13;
+                        acc1_3 += block1[12] * xj10 + block1[13] * xj11 + block1[14] * xj12 + block1[15] * xj13;
+                        if (bi != bj1)
+                        {
+                            int yBaseJ1 = bj1 * 4;
+                            y[yBaseJ1 + 0] += block1[0] * xi0 + block1[4]  * xi1 + block1[8]  * xi2 + block1[12] * xi3;
+                            y[yBaseJ1 + 1] += block1[1] * xi0 + block1[5]  * xi1 + block1[9]  * xi2 + block1[13] * xi3;
+                            y[yBaseJ1 + 2] += block1[2] * xi0 + block1[6]  * xi1 + block1[10] * xi2 + block1[14] * xi3;
+                            y[yBaseJ1 + 3] += block1[3] * xi0 + block1[7]  * xi1 + block1[11] * xi2 + block1[15] * xi3;
+                        }
+                    }
+
+                    float s0 = acc0_0 + acc1_0;
+                    float s1 = acc0_1 + acc1_1;
+                    float s2 = acc0_2 + acc1_2;
+                    float s3 = acc0_3 + acc1_3;
+                    if (k < rowEnd)
+                    {
+                        int bj = colInd[k];
+                        int xBaseJ = bj * 4;
+                        float* block = values + k * 16;
+                        float xj0 = x[xBaseJ + 0];
+                        float xj1 = x[xBaseJ + 1];
+                        float xj2 = x[xBaseJ + 2];
+                        float xj3 = x[xBaseJ + 3];
+                        s0 += block[0]  * xj0 + block[1]  * xj1 + block[2]  * xj2 + block[3]  * xj3;
+                        s1 += block[4]  * xj0 + block[5]  * xj1 + block[6]  * xj2 + block[7]  * xj3;
+                        s2 += block[8]  * xj0 + block[9]  * xj1 + block[10] * xj2 + block[11] * xj3;
+                        s3 += block[12] * xj0 + block[13] * xj1 + block[14] * xj2 + block[15] * xj3;
+                        if (bi != bj)
+                        {
+                            int yBaseJ = bj * 4;
+                            y[yBaseJ + 0] += block[0] * xi0 + block[4]  * xi1 + block[8]  * xi2 + block[12] * xi3;
+                            y[yBaseJ + 1] += block[1] * xi0 + block[5]  * xi1 + block[9]  * xi2 + block[13] * xi3;
+                            y[yBaseJ + 2] += block[2] * xi0 + block[6]  * xi1 + block[10] * xi2 + block[14] * xi3;
+                            y[yBaseJ + 3] += block[3] * xi0 + block[7]  * xi1 + block[11] * xi2 + block[15] * xi3;
+                        }
+                    }
+
+                    y[yBaseI + 0] += s0;
+                    y[yBaseI + 1] += s1;
+                    y[yBaseI + 2] += s2;
+                    y[yBaseI + 3] += s3;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void bsrMatMatSymB6([NoAlias] int* rowPtr, [NoAlias] int* colInd, [NoAlias] float* values,
+                                           [NoAlias] float* V, [NoAlias] float* AV, int blockRows, int rows, int ldV, int ldAV)
+        {
+            for (int bi = 0; bi < blockRows; bi++)
+            {
+                int rowStart = rowPtr[bi];
+                int rowEnd = rowPtr[bi + 1];
+                int yBaseI = bi * 6;
+                int xBaseI = bi * 6;
+                int len = rowEnd - rowStart;
+                int kPairEnd = rowStart + ((len >> 1) << 1);
+
+                for (int rv = 0; rv < rows; rv++)
+                {
+                    float* x = V + (long)rv * ldV;
+                    float* y = AV + (long)rv * ldAV;
+
+                    float xi0 = x[xBaseI + 0];
+                    float xi1 = x[xBaseI + 1];
+                    float xi2 = x[xBaseI + 2];
+                    float xi3 = x[xBaseI + 3];
+                    float xi4 = x[xBaseI + 4];
+                    float xi5 = x[xBaseI + 5];
+
+                    float acc0_0 = default, acc0_1 = default, acc0_2 = default, acc0_3 = default, acc0_4 = default, acc0_5 = default;
+                    float acc1_0 = default, acc1_1 = default, acc1_2 = default, acc1_3 = default, acc1_4 = default, acc1_5 = default;
+
+                    int k = rowStart;
+                    for (; k < kPairEnd; k += 2)
+                    {
+                        int bj0 = colInd[k];
+                        int xBaseJ0 = bj0 * 6;
+                        float* block0 = values + k * 36;
+                        float xj00 = x[xBaseJ0 + 0];
+                        float xj01 = x[xBaseJ0 + 1];
+                        float xj02 = x[xBaseJ0 + 2];
+                        float xj03 = x[xBaseJ0 + 3];
+                        float xj04 = x[xBaseJ0 + 4];
+                        float xj05 = x[xBaseJ0 + 5];
+                        acc0_0 += block0[0]  * xj00 + block0[1]  * xj01 + block0[2]  * xj02 + block0[3]  * xj03 + block0[4]  * xj04 + block0[5]  * xj05;
+                        acc0_1 += block0[6]  * xj00 + block0[7]  * xj01 + block0[8]  * xj02 + block0[9]  * xj03 + block0[10] * xj04 + block0[11] * xj05;
+                        acc0_2 += block0[12] * xj00 + block0[13] * xj01 + block0[14] * xj02 + block0[15] * xj03 + block0[16] * xj04 + block0[17] * xj05;
+                        acc0_3 += block0[18] * xj00 + block0[19] * xj01 + block0[20] * xj02 + block0[21] * xj03 + block0[22] * xj04 + block0[23] * xj05;
+                        acc0_4 += block0[24] * xj00 + block0[25] * xj01 + block0[26] * xj02 + block0[27] * xj03 + block0[28] * xj04 + block0[29] * xj05;
+                        acc0_5 += block0[30] * xj00 + block0[31] * xj01 + block0[32] * xj02 + block0[33] * xj03 + block0[34] * xj04 + block0[35] * xj05;
+                        if (bi != bj0)
+                        {
+                            int yBaseJ0 = bj0 * 6;
+                            y[yBaseJ0 + 0] += block0[0] * xi0 + block0[6]  * xi1 + block0[12] * xi2 + block0[18] * xi3 + block0[24] * xi4 + block0[30] * xi5;
+                            y[yBaseJ0 + 1] += block0[1] * xi0 + block0[7]  * xi1 + block0[13] * xi2 + block0[19] * xi3 + block0[25] * xi4 + block0[31] * xi5;
+                            y[yBaseJ0 + 2] += block0[2] * xi0 + block0[8]  * xi1 + block0[14] * xi2 + block0[20] * xi3 + block0[26] * xi4 + block0[32] * xi5;
+                            y[yBaseJ0 + 3] += block0[3] * xi0 + block0[9]  * xi1 + block0[15] * xi2 + block0[21] * xi3 + block0[27] * xi4 + block0[33] * xi5;
+                            y[yBaseJ0 + 4] += block0[4] * xi0 + block0[10] * xi1 + block0[16] * xi2 + block0[22] * xi3 + block0[28] * xi4 + block0[34] * xi5;
+                            y[yBaseJ0 + 5] += block0[5] * xi0 + block0[11] * xi1 + block0[17] * xi2 + block0[23] * xi3 + block0[29] * xi4 + block0[35] * xi5;
+                        }
+
+                        int bj1 = colInd[k + 1];
+                        int xBaseJ1 = bj1 * 6;
+                        float* block1 = values + (k + 1) * 36;
+                        float xj10 = x[xBaseJ1 + 0];
+                        float xj11 = x[xBaseJ1 + 1];
+                        float xj12 = x[xBaseJ1 + 2];
+                        float xj13 = x[xBaseJ1 + 3];
+                        float xj14 = x[xBaseJ1 + 4];
+                        float xj15 = x[xBaseJ1 + 5];
+                        acc1_0 += block1[0]  * xj10 + block1[1]  * xj11 + block1[2]  * xj12 + block1[3]  * xj13 + block1[4]  * xj14 + block1[5]  * xj15;
+                        acc1_1 += block1[6]  * xj10 + block1[7]  * xj11 + block1[8]  * xj12 + block1[9]  * xj13 + block1[10] * xj14 + block1[11] * xj15;
+                        acc1_2 += block1[12] * xj10 + block1[13] * xj11 + block1[14] * xj12 + block1[15] * xj13 + block1[16] * xj14 + block1[17] * xj15;
+                        acc1_3 += block1[18] * xj10 + block1[19] * xj11 + block1[20] * xj12 + block1[21] * xj13 + block1[22] * xj14 + block1[23] * xj15;
+                        acc1_4 += block1[24] * xj10 + block1[25] * xj11 + block1[26] * xj12 + block1[27] * xj13 + block1[28] * xj14 + block1[29] * xj15;
+                        acc1_5 += block1[30] * xj10 + block1[31] * xj11 + block1[32] * xj12 + block1[33] * xj13 + block1[34] * xj14 + block1[35] * xj15;
+                        if (bi != bj1)
+                        {
+                            int yBaseJ1 = bj1 * 6;
+                            y[yBaseJ1 + 0] += block1[0] * xi0 + block1[6]  * xi1 + block1[12] * xi2 + block1[18] * xi3 + block1[24] * xi4 + block1[30] * xi5;
+                            y[yBaseJ1 + 1] += block1[1] * xi0 + block1[7]  * xi1 + block1[13] * xi2 + block1[19] * xi3 + block1[25] * xi4 + block1[31] * xi5;
+                            y[yBaseJ1 + 2] += block1[2] * xi0 + block1[8]  * xi1 + block1[14] * xi2 + block1[20] * xi3 + block1[26] * xi4 + block1[32] * xi5;
+                            y[yBaseJ1 + 3] += block1[3] * xi0 + block1[9]  * xi1 + block1[15] * xi2 + block1[21] * xi3 + block1[27] * xi4 + block1[33] * xi5;
+                            y[yBaseJ1 + 4] += block1[4] * xi0 + block1[10] * xi1 + block1[16] * xi2 + block1[22] * xi3 + block1[28] * xi4 + block1[34] * xi5;
+                            y[yBaseJ1 + 5] += block1[5] * xi0 + block1[11] * xi1 + block1[17] * xi2 + block1[23] * xi3 + block1[29] * xi4 + block1[35] * xi5;
+                        }
+                    }
+
+                    float s0 = acc0_0 + acc1_0;
+                    float s1 = acc0_1 + acc1_1;
+                    float s2 = acc0_2 + acc1_2;
+                    float s3 = acc0_3 + acc1_3;
+                    float s4 = acc0_4 + acc1_4;
+                    float s5 = acc0_5 + acc1_5;
+                    if (k < rowEnd)
+                    {
+                        int bj = colInd[k];
+                        int xBaseJ = bj * 6;
+                        float* block = values + k * 36;
+                        float xj0 = x[xBaseJ + 0];
+                        float xj1 = x[xBaseJ + 1];
+                        float xj2 = x[xBaseJ + 2];
+                        float xj3 = x[xBaseJ + 3];
+                        float xj4 = x[xBaseJ + 4];
+                        float xj5 = x[xBaseJ + 5];
+                        s0 += block[0]  * xj0 + block[1]  * xj1 + block[2]  * xj2 + block[3]  * xj3 + block[4]  * xj4 + block[5]  * xj5;
+                        s1 += block[6]  * xj0 + block[7]  * xj1 + block[8]  * xj2 + block[9]  * xj3 + block[10] * xj4 + block[11] * xj5;
+                        s2 += block[12] * xj0 + block[13] * xj1 + block[14] * xj2 + block[15] * xj3 + block[16] * xj4 + block[17] * xj5;
+                        s3 += block[18] * xj0 + block[19] * xj1 + block[20] * xj2 + block[21] * xj3 + block[22] * xj4 + block[23] * xj5;
+                        s4 += block[24] * xj0 + block[25] * xj1 + block[26] * xj2 + block[27] * xj3 + block[28] * xj4 + block[29] * xj5;
+                        s5 += block[30] * xj0 + block[31] * xj1 + block[32] * xj2 + block[33] * xj3 + block[34] * xj4 + block[35] * xj5;
+                        if (bi != bj)
+                        {
+                            int yBaseJ = bj * 6;
+                            y[yBaseJ + 0] += block[0] * xi0 + block[6]  * xi1 + block[12] * xi2 + block[18] * xi3 + block[24] * xi4 + block[30] * xi5;
+                            y[yBaseJ + 1] += block[1] * xi0 + block[7]  * xi1 + block[13] * xi2 + block[19] * xi3 + block[25] * xi4 + block[31] * xi5;
+                            y[yBaseJ + 2] += block[2] * xi0 + block[8]  * xi1 + block[14] * xi2 + block[20] * xi3 + block[26] * xi4 + block[32] * xi5;
+                            y[yBaseJ + 3] += block[3] * xi0 + block[9]  * xi1 + block[15] * xi2 + block[21] * xi3 + block[27] * xi4 + block[33] * xi5;
+                            y[yBaseJ + 4] += block[4] * xi0 + block[10] * xi1 + block[16] * xi2 + block[22] * xi3 + block[28] * xi4 + block[34] * xi5;
+                            y[yBaseJ + 5] += block[5] * xi0 + block[11] * xi1 + block[17] * xi2 + block[23] * xi3 + block[29] * xi4 + block[35] * xi5;
+                        }
+                    }
+
+                    y[yBaseI + 0] += s0;
+                    y[yBaseI + 1] += s1;
+                    y[yBaseI + 2] += s2;
+                    y[yBaseI + 3] += s3;
+                    y[yBaseI + 4] += s4;
+                    y[yBaseI + 5] += s5;
+                }
+            }
+        }
+
         // Krylov R2's ApplyDot (docs/draft-spec-krylov-optimization.md) does NOT have a fused
         // kernel family here. A "Dot" variant (fold dot(x,y) into the same pass as y=A*x, tried
         // for the full-storage square-block kernels above) was A/B'd against simply composing

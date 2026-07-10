@@ -72,22 +72,11 @@ namespace LinearAlgebra.Sparse
         // comment for why a genuinely-fused kernel was tried and measured slower.
         public fProxy ApplyDot(in fProxyN x, ref fProxyN y) => BSR.spMVDot(in A, in x, ref y);
 
-        // No block spMV kernel yet: apply per row (each spMV streams A once). Correct for any BSR;
-        // the dense operator is the one that gets LOBPCG's single-GEMM fast path. Two bounded Temp
-        // scratch vectors per call.
-        public void ApplyBlock(in fProxyMxN Vrows, ref fProxyMxN AVrows, int rows)
-        {
-            int cols = Vrows.N_Cols;
-            var rin = new fProxyN(cols, Unity.Collections.Allocator.Temp, false);
-            var rout = new fProxyN(cols, Unity.Collections.Allocator.Temp, false);
-            for (int i = 0; i < rows; i++)
-            {
-                for (int c = 0; c < cols; c++) rin[c] = Vrows[i, c];
-                Apply(in rin, ref rout);
-                for (int c = 0; c < cols; c++) AVrows[i, c] = rout[c];
-            }
-            rout.Dispose();
-            rin.Dispose();
-        }
+        // Krylov R5 (docs/draft-spec-krylov-optimization.md): a real BSR SpMM kernel -- streams A's
+        // stored blocks ONCE and applies to all `rows` row-vectors together, no Allocator.Temp churn.
+        // See BSR.spMM (SparseOP.fProxy.cs) for the dispatch and bsrMatMat*/bsrMatMatSym* (UnsafeOP.
+        // Sparse.fProxy.cs) for the kernels -- each is bit-identical, row by row, to `rows` separate
+        // Apply calls.
+        public void ApplyBlock(in fProxyMxN Vrows, ref fProxyMxN AVrows, int rows) => BSR.spMM(in A, in Vrows, ref AVrows, rows);
     }
 }
