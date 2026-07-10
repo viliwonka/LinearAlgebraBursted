@@ -308,6 +308,96 @@ gather latency R2's diagnostic exposed. Gains on modern OoO cores are unpredicta
 (0–30%) [judgment] — time-boxed A/B spike after R2, keep only if it clearly wins on both
 dtypes at two fills.
 
+**RESOLVED 2026-07-10 — see the R2/R8 addendum immediately below: pairing REVERTED (no
+reproducible win), prefetch REJECTED (consistently slower).**
+
+---
+
+## 1b. R2/R8 addendum (2026-07-10): pairing measured and REVERTED, prefetch spiked and REJECTED
+
+**Method** [verified, this round]: a SCRATCH microbenchmark (`_ScratchSpmvVariants.cs`, hand-written,
+non-template, NOT part of the shipped suite, deleted after use — see disposition below) with local
+copies of the `bsrMatVecB1`/`bsrMatVecB4` kernel bodies as four variants — paired (R2's shipped
+form at the time), unpaired (pre-R2 original, reconstructed from `git show 02cdc5c:...`),
+paired+prefetch, unpaired+prefetch (b=1 only has unpaired forms, since R2 had already reverted
+pairing there) — run via `Bench.Time` (1 warmup + 4 timed, median) at reps=50 per sample, on the
+SAME two matrices Round 2's own bench section used: `fProxyRandomSparseSPD` BR=4/1.5% fill and
+`fProxyLaplacian2D(1,N)` b=1 stencil, both N=10240, both dtypes. **The prefetch intrinsic required
+a project-wide `UNITY_BURST_EXPERIMENTAL_PREFETCH_INTRINSIC` Scripting Define Symbol, NOT a
+per-file `#define`** — a caller-file `#define` cannot reach into the separate `Unity.Burst`
+assembly where `Common.Prefetch` is itself `#if`-gated, so the existing
+`UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS` per-file-`#define` precedent atop several
+`TemplateSource` files was discovered to be **inert/decorative for this purpose** (confirmed no
+`Loop.ExpectVectorized`/`ExpectNotVectorized` call sites exist anywhere in the codebase either —
+those defines have never actually gated anything). The define was toggled on/off project-wide via
+a temporary Editor script for this spike only and fully reverted afterward (`ProjectSettings.asset`
+verified byte-identical to its committed state via `git diff` after cleanup).
+
+The whole variant set ran 3 TIMES (this machine has shown 15–25% swings run-to-run):
+
+| dtype | variant | Run1 med(ms) | Run2 med(ms) | Run3 med(ms) |
+|---|---|---|---|---|
+| float | B1_Unpaired | 0.8346 | 0.8309 | 0.8983 |
+| double | B1_Unpaired | 0.8643 | 0.9845 | 0.9724 |
+| float | B1_Unpaired_Prefetch | 1.1476 | 1.3004 | 1.2673 |
+| double | B1_Unpaired_Prefetch | 1.0349 | 1.1296 | 1.1273 |
+| float | B4_Paired | 21.0006 | 22.9481 | 23.1283 |
+| double | B4_Paired | 24.0095 | 25.4203 | 24.9590 |
+| float | B4_Unpaired | 23.0065 | 23.2851 | 23.1358 |
+| double | B4_Unpaired | 23.7988 | 25.1325 | 25.0678 |
+| float | B4_Paired_Prefetch | 20.0101 | 25.5371 | 25.3032 |
+| double | B4_Paired_Prefetch | 26.6901 | 27.0152 | 26.7606 |
+| float | B4_Unpaired_Prefetch | 25.4151 | 25.5200 | 24.9880 |
+| double | B4_Unpaired_Prefetch | 27.0207 | 26.9744 | 26.8806 |
+
+Prefetch distance pre-check (time-boxed, B4_Paired_Prefetch/float only, single sample each, per
+the spec's own "try 2–4, don't sweep exhaustively" instruction): dist=2 → 24.97ms, dist=3 →
+25.19ms, dist=4 → 23.81ms. dist=4 used for all rows above.
+
+**Verdict (i) — pairing for b=4 (and by proxy b=2/3/6): NEUTRAL, no reproducible win.** The
+paired-vs-unpaired float delta shrinks run over run (−8.7%, −1.5%, −0.06%) — consistent with
+Run 1 being a warm-up/noise outlier rather than a real effect — and double shows NO consistent
+direction (paired slower in runs 1–2, faster in run 3, all within ±1.2%). Every paired-vs-unpaired
+difference is smaller than the run-to-run swing measured on the SAME kernel across repeats (float
+B4_Paired alone: 21.00/22.95/23.13ms, a ~10% spread with no code change at all) — exactly the
+"BR=4 section too machine-noisy to attribute" caveat R2's own commit message flagged. **Action:
+REVERTED** the 2-accumulator pairing in `bsrMatVecB{2,3,4,6}`, `bsrMatVecTB{2,3,4,6}`,
+`bsrMatVecSymB{2,3,4,6}` back to the single left-to-right accumulator fold (bit-identical to the
+general fallback again, matching b=1's own already-settled non-pairing) in
+`UnsafeOP.Sparse.fProxy.cs`. The R5 SpMM kernels (`bsrMatMatB*`/`bsrMatMatSymB*`) documented
+themselves as bit-identical-per-row to repeated scalar `Apply` calls "with the same pairing where
+the scalar kernel pairs" — reverting the scalar kernels without also reverting these would have
+broken that documented invariant, so `bsrMatMatB{2,3,4,6}`/`bsrMatMatSymB{2,3,4,6}` were reverted
+in lockstep (unpaired, single accumulator, `rv`-loop preserved from R5). Everything else R2/R5
+added is UNCHANGED: `blockJacobiApplyB*` unrolls, `ApplyDot`, the SpMM kernel family and dispatch
+itself, R6a verify-at-exit. Determinism: rounding-only reversion (restores the ORIGINAL
+bit-identical-to-general-fallback form R2 moved away from), same FloatMode conventions.
+
+**Verdict (ii) — prefetch: NO, does not win on either dtype at either fill. REJECTED, not
+shipped.** Consistently and substantially SLOWER — 11 of 12 dtype/fill/pairing comparison cells
+across all 3 runs show a slowdown with prefetch on, the sole exception being the same noisy
+Run-1 float-B4-Paired cell already flagged above as an outlier:
+- b=1 stencil: +37–56% slower (float), +15–20% slower (double), every run, both dtypes — the
+  worst cells. A b=1 row here has only ~3 stored blocks; the bounds-check-and-prefetch-call
+  overhead is pure loss on a row that short.
+- BR=4/1.5% fill: +6–13% slower on 11 of 12 (paired/unpaired × float/double × 3 runs) cells;
+  the only faster cell (float B4_Paired_Prefetch, run 1, −4.7%) is the same run/cell already
+  identified as a warm-up outlier for the non-prefetch comparison above.
+No further distance sweep or kernel change pursued — the direction is unambiguous and time-boxing
+per the spec applies. **Action: NOT added to any real kernel.** No `UNITY_BURST_EXPERIMENTAL_
+PREFETCH_INTRINSIC` code exists anywhere in `TemplateSource` after this round; the temporary
+project-wide define used for the spike was fully reverted (see Method above).
+
+**Disposition**: `_ScratchSpmvVariants.cs`, the temporary `ScratchBurstDefineToggle` editor
+helper, and the temporary project-wide Burst define are all gone — verified via `git status`
+showing no trace after cleanup (same "like it never shipped" treatment as the removed
+`pcgEisenstat`, §3b). Real-kernel diff: `UnsafeOP.Sparse.fProxy.cs` (template) — pairing removed
+from 30 kernels (15 scalar `bsrMatVec{,T,Sym}B{2,3,4,6}` + 15 SpMM `bsrMatMat{,Sym}B{2,3,4,6}`
+mirrors) — plus the regenerated `float`/`double` `Source/Generated` twins. Oracle: full suite,
+unchanged (these kernels are covered by the existing dense-reference spMV tests and the R2/R5
+bit-identity/oracle tests, which assert against the general fallback — a target this reversion
+restores exact equality with, so no test file changes were needed).
+
 ---
 
 ## 2. Explicitly rejected (with reasons — the repo records negative results)
