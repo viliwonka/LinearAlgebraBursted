@@ -18,9 +18,14 @@ namespace LinearAlgebra.Benchmarks
 
         public static double[] Snap(NativeArray<double> o) => new[] { o[0], o[1], o[2], o[3], o[4] };
 
-        public static string Row(string dtype, string size, string solver, Bench.Stat st, double residual) =>
+        // iters/status: the LAST timed sample's SolveInfo/LstsqInfo (fixed K=40, tol=0 -> every
+        // timed sample of the same job is deterministic, so any one of them is representative).
+        // Exposes the benchmark-hygiene case a wall-clock-only column hides: a solver that exits via
+        // a breakdown guard partway through K iterations looks "fast" for having done LESS work, not
+        // more of it -- see docs/draft-spec-krylov-optimization.md's benchmark hygiene note.
+        public static string Row(string dtype, string size, string solver, Bench.Stat st, double residual, int iters, int status) =>
             string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "{0,-7} {1,-12} {2,-12} {3,11:F4} {4,11:F4} {5,14:E3}", dtype, size, solver, st.Median, st.Min, residual);
+                "{0,-7} {1,-12} {2,-12} {3,11:F4} {4,11:F4} {5,14:E3} {6,6} {7,12}", dtype, size, solver, st.Median, st.Min, residual, iters, StatusName(status));
 
         public static string EigRow(string dtype, string size, string solver, Bench.Stat st, double[] info) =>
             string.Format(System.Globalization.CultureInfo.InvariantCulture,
@@ -34,8 +39,11 @@ namespace LinearAlgebra.Benchmarks
     // how converged, not just how fast). All workspace is pre-allocated ONCE and reused across timed
     // samples; every solve runs inside a [BurstCompile] IJob.
     //   1. spMV throughput; 2. square SPD (cg/pcg/minres); 3. square non-symmetric (biCGStab);
-    //   4. tall rectangular least-squares m=2n (cgls/lsqr/lsmr); 5. Lanczos (throughput);
-    //   6. LOBPCG smallest-k eigenpairs on a spread-spectrum grid Laplacian (precond x guard levers).
+    //   4. tall rectangular least-squares m=2n (cgls/lsqr/lsmr); 5. b=1 scalar stencil SPD
+    //   (cg/pcg/minres, low-fill R1-fusion visibility); 6. Lanczos (throughput);
+    //   7. LOBPCG smallest-k eigenpairs on a spread-spectrum grid Laplacian (precond x guard levers).
+    // Every Krylov row also reports the LAST timed sample's iterations+status (fixed K/tol=0 can exit
+    // early via a breakdown guard, which looks "fast" for doing less work -- see StencilSection).
     //
     // Hand-written harness half. The timed IJobs, the LOBPCG report helper, the residual helper, and the
     // per-family build+measure methods are code-generated per dtype from
@@ -43,7 +51,11 @@ namespace LinearAlgebra.Benchmarks
     public static partial class LargeSparseBenchmark
     {
         const int BR = 4;
-        static readonly int[] Ns = { 2048, 5120, 10240 };
+        // N=2048 dropped (Q7 budget ruling): the float==double diagnostic and the BR=4 fill-level
+        // trend are already fully visible at 5120/10240 -- keeping a 3rd, smallest, LEAST informative
+        // size added rows without adding information. Freed budget pays for the new stencil section
+        // below (BenchStencilFloat/Double) and the iters+status columns on every Krylov row.
+        static readonly int[] Ns = { 5120, 10240 };
         const float Density = 0.015f;
         const int K = 40;
         const int SpmvReps = 50;
@@ -61,24 +73,49 @@ namespace LinearAlgebra.Benchmarks
 
         public static void RunLobpcg() => Bench.WriteReport("benchmark-largesparse-lobpcg.txt", LobpcgSection);
 
+        static string KrylovHeader() =>
+            string.Format("{0,-7} {1,-12} {2,-12} {3,11} {4,11} {5,14} {6,6} {7,12}",
+                "dtype", "size", "solver", "med(ms)", "min(ms)", "residual", "iters", "status");
+
         public static void Section(StringBuilder sb)
         {
             sb.AppendLine("=== LARGE sparse solvers (BSR, ~1.5% block fill, b=4), N up to 10240 -- no dense form ===");
             sb.AppendLine("Krylov rows: K=" + K + " fixed iterations, tol=0 (deterministic timing); residual = ||Ax-b||/||b|| after K.");
+            sb.AppendLine("iters/status: the last timed sample's SolveInfo/LstsqInfo -- a fixed-K/tol=0 row that exits via a");
+            sb.AppendLine("breakdown guard did LESS work than one that ran the full K, even though both report the same K budget.");
             sb.AppendLine("At N=10240 a dense matrix is ~420 MB (float) and O(N^3) dense factor/eig is minutes -- these solvers");
             sb.AppendLine("touch only the ~1.5% nonzero blocks, so this scale is exactly where dense is not an option.");
             sb.AppendLine();
-            sb.AppendLine(string.Format("{0,-7} {1,-12} {2,-12} {3,11} {4,11} {5,14}", "dtype", "size", "solver", "med(ms)", "min(ms)", "residual"));
+            sb.AppendLine(KrylovHeader());
             BenchKrylovFloat(sb, BR, Ns, Density, K, SpmvReps);
             sb.AppendLine();
             BenchKrylovDouble(sb, BR, Ns, Density, K, SpmvReps);
             sb.AppendLine();
+            StencilSection(sb);
             sb.AppendLine(string.Format("{0,-7} {1,-12} {2,-12} {3,11} {4,11} {5,8} {6,10} {7,14}", "dtype", "N", "solver", "med(ms)", "min(ms)", "iters", "converged", "maxResid"));
             BenchEigenFloat(sb, BR, Ns, Density, LanczosSteps);
             sb.AppendLine();
             BenchEigenDouble(sb, BR, Ns, Density, LanczosSteps);
             sb.AppendLine();
             LobpcgSection(sb);
+        }
+
+        // b=1 (scalar BSR) stencil section (R1 fusion spec, Q7): fProxyLaplacian2D(1, N) is a genuine
+        // SCALAR (BR=1) tridiagonal SPD system (diag=4, off-diag=-1, nnz ~= 3N) -- the low-fill regime
+        // where vector-op sweeps are the largest fraction of per-iteration traffic (vs BR=4/1.5% fill
+        // above, where spMV dominates), so R1's fusion should be most visible here. Only CG/PCG-Jacobi/
+        // MINRES run (SPD-only; BiCGStab/CGLS/LSQR/LSMR need non-symmetric/rectangular operators this
+        // generator does not produce). Reuses Ns (5120/10240) for direct comparison against the BR=4
+        // rows above.
+        static void StencilSection(StringBuilder sb)
+        {
+            sb.AppendLine("=== b=1 stencil (scalar BSR, fProxyLaplacian2D(1,N): tridiag SPD, nnz~=3N) -- vector-op fusion visibility ===");
+            sb.AppendLine();
+            sb.AppendLine(KrylovHeader());
+            BenchStencilFloat(sb, Ns, K);
+            sb.AppendLine();
+            BenchStencilDouble(sb, Ns, K);
+            sb.AppendLine();
         }
 
         // LOBPCG smallest-k eigenpairs of a large sparse 2D grid Laplacian, sweeping preconditioner

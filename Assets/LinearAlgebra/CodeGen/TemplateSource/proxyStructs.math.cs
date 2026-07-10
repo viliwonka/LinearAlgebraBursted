@@ -81,6 +81,16 @@ namespace LinearAlgebra.mathProxies
             => new fProxy4 { x = a.x + b.x, y = a.y + b.y, z = a.z + b.z, w = a.w + b.w };
         public static fProxy4 operator *(fProxy4 a, fProxy4 b)
             => new fProxy4 { x = a.x * b.x, y = a.y * b.y, z = a.z * b.z, w = a.w * b.w };
+        public static fProxy4 operator -(fProxy4 a, fProxy4 b)
+            => new fProxy4 { x = a.x - b.x, y = a.y - b.y, z = a.z - b.z, w = a.w - b.w };
+
+        // Scalar-broadcast * so templates can write `a * vec4Load` (the Krylov R1 fused-kernel
+        // pattern) -- real float4/double4 already support this natively; the stub just needs to
+        // match it to compile the template. Never runs (see the note above).
+        public static fProxy4 operator *(fProxy a, fProxy4 b)
+            => new fProxy4 { x = a * b.x, y = a * b.y, z = a * b.z, w = a * b.w };
+        public static fProxy4 operator *(fProxy4 a, fProxy b)
+            => new fProxy4 { x = a.x * b, y = a.y * b, z = a.z * b, w = a.w * b };
     }
 
     // TEMPLATE-ONLY shim so the fProxy kernel templates can call abs/max on the width-4 SIMD

@@ -16,38 +16,44 @@ namespace LinearAlgebra.Benchmarks
     // (constants, table formatters, Run/RunLobpcg/Section) is hand-written in
     // Assets/LinearAlgebra/Benchmarks/LargeSparseBenchmark.cs; shared formatters live in the public
     // LargeSparseFmt helper there.
+    //
+    // Every timed Krylov job writes its SolveInfo/LstsqInfo (status, iterations) into `outInfo` so the
+    // report can show iterations-executed alongside wall clock -- a fixed K=40, tol=0 timing can exit
+    // early on a breakdown guard and look "faster" while doing strictly less work (see benchmark
+    // hygiene note in docs/draft-spec-krylov-optimization.md); iters+status makes that visible instead
+    // of silently masquerading as speed.
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
     public struct SpmvJobFloat : IJob { public floatBSR A; public floatN x, y; public int reps;
         public void Execute() { for (int k = 0; k < reps; k++) { if ((k & 1) == 0) BSR.spMV(in A, in x, ref y); else BSR.spMV(in A, in y, ref x); } } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpCgJobFloat : IJob { public floatBSR A; public floatN b, x, r, p, Ap; public int K;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f); } }
+    public struct SpCgJobFloat : IJob { public floatBSR A; public floatN b, x, r, p, Ap; public int K; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cg(in A, in b, ref x, ref r, ref p, ref Ap, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpPcgJobFloat : IJob { public floatBSR A; public floatBlockJacobi M; public floatN b, x, r, p, Ap, z; public int K;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0f); } }
+    public struct SpPcgJobFloat : IJob { public floatBSR A; public floatBlockJacobi M; public floatN b, x, r, p, Ap, z; public int K; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpMinresJobFloat : IJob { public floatBSR A; public floatN b, x, y, r1, r2, v, w, w1, w2; public int K;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f); } }
+    public struct SpMinresJobFloat : IJob { public floatBSR A; public floatN b, x, y, r1, r2, v, w, w1, w2; public int K; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.minres(in A, in b, ref x, ref y, ref r1, ref r2, ref v, ref w, ref w1, ref w2, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpBicgJobFloat : IJob { public floatBSR A; public floatN b, x, r, rHat0, p, v, t; public int K;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f); } }
+    public struct SpBicgJobFloat : IJob { public floatBSR A; public floatN b, x, r, rHat0, p, v, t; public int K; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.biCGStab(in A, in b, ref x, ref r, ref rHat0, ref p, ref v, ref t, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpCglsJobFloat : IJob { public floatBSR A; public floatN b, x, r, s, p, q; public int K;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f); } }
+    public struct SpCglsJobFloat : IJob { public floatBSR A; public floatN b, x, r, s, p, q; public int K; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.cgls(in A, in b, ref x, ref r, ref s, ref p, ref q, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpLsqrJobFloat : IJob { public floatBSR A; public floatN b, x, u, v, w, tmpM, tmpN; public int K;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f); } }
+    public struct SpLsqrJobFloat : IJob { public floatBSR A; public floatN b, x, u, v, w, tmpM, tmpN; public int K; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.lsqr(in A, in b, ref x, ref u, ref v, ref w, ref tmpM, ref tmpN, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
-    public struct SpLsmrJobFloat : IJob { public floatBSR A; public floatN b, x, u, v, h, hbar, tmpM, tmpN; public int K;
-        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, K, 0f); } }
+    public struct SpLsmrJobFloat : IJob { public floatBSR A; public floatN b, x, u, v, h, hbar, tmpM, tmpN; public int K; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < x.N; i++) x[i] = 0f; var info = Krylov.lsmr(in A, in b, ref x, ref u, ref v, ref h, ref hbar, ref tmpM, ref tmpN, K, 0f); outInfo[0] = (int)info.status; outInfo[1] = info.iterations; } }
 
     // Eigen job writes [produced, solved, 0] into outInfo (reference-backed, visible after Run).
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
@@ -94,6 +100,8 @@ namespace LinearAlgebra.Benchmarks
 
         static void BenchKrylovFloat(StringBuilder sb, int BR, int[] Ns, float density, int K, int spmvReps)
         {
+            var oi = new NativeArray<double>(2, Allocator.Persistent);
+
             foreach (int N in Ns)
             {
                 var arena = new Arena(Allocator.Persistent);
@@ -106,40 +114,89 @@ namespace LinearAlgebra.Benchmarks
 
                 var sx = arena.floatRandomVec(N, -1f, 1f, 7u); var sy = arena.floatVec(N);
                 var spmvJob = new SpmvJobFloat { A = A, x = sx, y = sy, reps = spmvReps };
-                sb.AppendLine(LargeSparseFmt.Row("float", sz, "spMV x" + spmvReps, Bench.Time(() => spmvJob.Run()), 0.0));
+                sb.AppendLine(LargeSparseFmt.Row("float", sz, "spMV x" + spmvReps, Bench.Time(() => spmvJob.Run()), 0.0, 0, 0));
 
                 var x = arena.floatVec(N);
-                var cgJob = new SpCgJobFloat { A = A, b = b, x = x, r = arena.floatVec(N), p = arena.floatVec(N), Ap = arena.floatVec(N), K = K };
-                sb.AppendLine(LargeSparseFmt.Row("float", sz, "CG", Bench.Time(() => cgJob.Run()), Res(in A, in x, in b)));
+                var cgJob = new SpCgJobFloat { A = A, b = b, x = x, r = arena.floatVec(N), p = arena.floatVec(N), Ap = arena.floatVec(N), K = K, outInfo = oi };
+                var cgStat = Bench.Time(() => cgJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", sz, "CG", cgStat, Res(in A, in x, in b), (int)oi[1], (int)oi[0]));
                 var xp = arena.floatVec(N);
-                var pcgJob = new SpPcgJobFloat { A = A, M = M, b = b, x = xp, r = arena.floatVec(N), p = arena.floatVec(N), Ap = arena.floatVec(N), z = arena.floatVec(N), K = K };
-                sb.AppendLine(LargeSparseFmt.Row("float", sz, "PCG-Jacobi", Bench.Time(() => pcgJob.Run()), Res(in A, in xp, in b)));
+                var pcgJob = new SpPcgJobFloat { A = A, M = M, b = b, x = xp, r = arena.floatVec(N), p = arena.floatVec(N), Ap = arena.floatVec(N), z = arena.floatVec(N), K = K, outInfo = oi };
+                var pcgStat = Bench.Time(() => pcgJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", sz, "PCG-Jacobi", pcgStat, Res(in A, in xp, in b), (int)oi[1], (int)oi[0]));
                 var xm = arena.floatVec(N);
-                var mrJob = new SpMinresJobFloat { A = A, b = b, x = xm, y = arena.floatVec(N), r1 = arena.floatVec(N), r2 = arena.floatVec(N), v = arena.floatVec(N), w = arena.floatVec(N), w1 = arena.floatVec(N), w2 = arena.floatVec(N), K = K };
-                sb.AppendLine(LargeSparseFmt.Row("float", sz, "MINRES", Bench.Time(() => mrJob.Run()), Res(in A, in xm, in b)));
+                var mrJob = new SpMinresJobFloat { A = A, b = b, x = xm, y = arena.floatVec(N), r1 = arena.floatVec(N), r2 = arena.floatVec(N), v = arena.floatVec(N), w = arena.floatVec(N), w1 = arena.floatVec(N), w2 = arena.floatVec(N), K = K, outInfo = oi };
+                var mrStat = Bench.Time(() => mrJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", sz, "MINRES", mrStat, Res(in A, in xm, in b), (int)oi[1], (int)oi[0]));
 
                 var An = arena.floatRandomSparse(nb, nb, BR, density, 0x1234u);
                 var bn = arena.floatVec(N); BSR.spMV(in An, in xKnown, ref bn);
                 var xn = arena.floatVec(N);
-                var bicgJob = new SpBicgJobFloat { A = An, b = bn, x = xn, r = arena.floatVec(N), rHat0 = arena.floatVec(N), p = arena.floatVec(N), v = arena.floatVec(N), t = arena.floatVec(N), K = K };
-                sb.AppendLine(LargeSparseFmt.Row("float", sz, "BiCGStab", Bench.Time(() => bicgJob.Run()), Res(in An, in xn, in bn)));
+                var bicgJob = new SpBicgJobFloat { A = An, b = bn, x = xn, r = arena.floatVec(N), rHat0 = arena.floatVec(N), p = arena.floatVec(N), v = arena.floatVec(N), t = arena.floatVec(N), K = K, outInfo = oi };
+                var bicgStat = Bench.Time(() => bicgJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", sz, "BiCGStab", bicgStat, Res(in An, in xn, in bn), (int)oi[1], (int)oi[0]));
 
                 int mb = 2 * nb, m = mb * BR;
                 var At = arena.floatRandomSparse(mb, nb, BR, density, 0xC0DEu);
                 var bt = arena.floatVec(m); BSR.spMV(in At, in xKnown, ref bt);
                 string rsz = m + "x" + N;
                 var xc = arena.floatVec(N);
-                var cglsJob = new SpCglsJobFloat { A = At, b = bt, x = xc, r = arena.floatVec(m), s = arena.floatVec(N), p = arena.floatVec(N), q = arena.floatVec(m), K = K };
-                sb.AppendLine(LargeSparseFmt.Row("float", rsz, "CGLS", Bench.Time(() => cglsJob.Run()), Res(in At, in xc, in bt)));
+                var cglsJob = new SpCglsJobFloat { A = At, b = bt, x = xc, r = arena.floatVec(m), s = arena.floatVec(N), p = arena.floatVec(N), q = arena.floatVec(m), K = K, outInfo = oi };
+                var cglsStat = Bench.Time(() => cglsJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", rsz, "CGLS", cglsStat, Res(in At, in xc, in bt), (int)oi[1], (int)oi[0]));
                 var xl = arena.floatVec(N);
-                var lsqrJob = new SpLsqrJobFloat { A = At, b = bt, x = xl, u = arena.floatVec(m), v = arena.floatVec(N), w = arena.floatVec(N), tmpM = arena.floatVec(m), tmpN = arena.floatVec(N), K = K };
-                sb.AppendLine(LargeSparseFmt.Row("float", rsz, "LSQR", Bench.Time(() => lsqrJob.Run()), Res(in At, in xl, in bt)));
+                var lsqrJob = new SpLsqrJobFloat { A = At, b = bt, x = xl, u = arena.floatVec(m), v = arena.floatVec(N), w = arena.floatVec(N), tmpM = arena.floatVec(m), tmpN = arena.floatVec(N), K = K, outInfo = oi };
+                var lsqrStat = Bench.Time(() => lsqrJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", rsz, "LSQR", lsqrStat, Res(in At, in xl, in bt), (int)oi[1], (int)oi[0]));
                 var xr = arena.floatVec(N);
-                var lsmrJob = new SpLsmrJobFloat { A = At, b = bt, x = xr, u = arena.floatVec(m), v = arena.floatVec(N), h = arena.floatVec(N), hbar = arena.floatVec(N), tmpM = arena.floatVec(m), tmpN = arena.floatVec(N), K = K };
-                sb.AppendLine(LargeSparseFmt.Row("float", rsz, "LSMR", Bench.Time(() => lsmrJob.Run()), Res(in At, in xr, in bt)));
+                var lsmrJob = new SpLsmrJobFloat { A = At, b = bt, x = xr, u = arena.floatVec(m), v = arena.floatVec(N), h = arena.floatVec(N), hbar = arena.floatVec(N), tmpM = arena.floatVec(m), tmpN = arena.floatVec(N), K = K, outInfo = oi };
+                var lsmrStat = Bench.Time(() => lsmrJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", rsz, "LSMR", lsmrStat, Res(in At, in xr, in bt), (int)oi[1], (int)oi[0]));
 
                 arena.Dispose();
             }
+
+            oi.Dispose();
+        }
+
+        // b=1 (scalar BSR) stencil section: floatLaplacian2D(1, N) collapses the generator's
+        // x-neighbor coupling (grid width 1), leaving a genuine SCALAR tridiagonal SPD system
+        // (diag=4, off-diag=-1, nnz ~= 3N) -- the low-fill, b=1 regime where R1's vector-op fusion
+        // is the largest fraction of per-iteration traffic (spec: BR=4/1.5% fill spMV moves ~6.7MB
+        // vs ~0.5MB of vector sweeps per matvec; a scalar/low-fill stencil inverts that ratio).
+        // Only the SPD-compatible solvers run here (CG/PCG-Jacobi/MINRES) -- BiCGStab needs a
+        // non-symmetric operator and CGLS/LSQR/LSMR need a rectangular one, neither of which this
+        // generator produces.
+        static void BenchStencilFloat(StringBuilder sb, int[] Ns, int K)
+        {
+            var oi = new NativeArray<double>(2, Allocator.Persistent);
+
+            foreach (int N in Ns)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = arena.floatLaplacian2D(1, N);
+                var M = arena.floatBlockJacobi(in A);
+                var xKnown = arena.floatRandomVec(N, 0.5f, 1.5f, 0xB0Bu);
+                var b = arena.floatVec(N); BSR.spMV(in A, in xKnown, ref b);
+                string sz = N.ToString();
+
+                var x = arena.floatVec(N);
+                var cgJob = new SpCgJobFloat { A = A, b = b, x = x, r = arena.floatVec(N), p = arena.floatVec(N), Ap = arena.floatVec(N), K = K, outInfo = oi };
+                var cgStat = Bench.Time(() => cgJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", sz, "CG", cgStat, Res(in A, in x, in b), (int)oi[1], (int)oi[0]));
+                var xp = arena.floatVec(N);
+                var pcgJob = new SpPcgJobFloat { A = A, M = M, b = b, x = xp, r = arena.floatVec(N), p = arena.floatVec(N), Ap = arena.floatVec(N), z = arena.floatVec(N), K = K, outInfo = oi };
+                var pcgStat = Bench.Time(() => pcgJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", sz, "PCG-Jacobi", pcgStat, Res(in A, in xp, in b), (int)oi[1], (int)oi[0]));
+                var xm = arena.floatVec(N);
+                var mrJob = new SpMinresJobFloat { A = A, b = b, x = xm, y = arena.floatVec(N), r1 = arena.floatVec(N), r2 = arena.floatVec(N), v = arena.floatVec(N), w = arena.floatVec(N), w1 = arena.floatVec(N), w2 = arena.floatVec(N), K = K, outInfo = oi };
+                var mrStat = Bench.Time(() => mrJob.Run());
+                sb.AppendLine(LargeSparseFmt.Row("float", sz, "MINRES", mrStat, Res(in A, in xm, in b), (int)oi[1], (int)oi[0]));
+
+                arena.Dispose();
+            }
+
+            oi.Dispose();
         }
 
         static void BenchEigenFloat(StringBuilder sb, int BR, int[] Ns, float density, int lanczosSteps)

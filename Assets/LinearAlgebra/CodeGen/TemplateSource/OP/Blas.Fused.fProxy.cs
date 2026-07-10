@@ -1,0 +1,74 @@
+#define UNITY_BURST_EXPERIMENTAL_LOOP_INTRINSICS
+
+using System;
+
+using LinearAlgebra.Internal;
+
+namespace LinearAlgebra
+{
+    // Krylov R1 fused vector kernels (see docs/draft-spec-krylov-optimization.md): each wrapper
+    // folds an in-place update with its trailing reduction, or two sibling updates plus a
+    // reduction, into one pass over the underlying UnsafeOP kernel. No aliasing checks beyond what
+    // the underlying axpy/aypx family already tolerates (self-aliasing of an in-place target with
+    // its OWN pointer is fine; every distinct-buffer argument here is [NoAlias] in the kernel and
+    // callers must keep them genuinely distinct, same contract as addScaledInPlace/scaleAddInPlace).
+    public static partial class Blas {
+
+        /// <summary>y += a·x ; returns ‖y‖². Bit-identical to <c>y.addScaledInPlace(a, x)</c> followed
+        /// by <c>Blas.dot(y, y)</c> -- same accumulation order, fused into one pass.</summary>
+        public static fProxy axpyNormSq(fProxy a, in fProxyN x, ref fProxyN y)
+        {
+            if (x.N != y.N)
+                throw new ArgumentException("axpyNormSq: x.N must equal y.N");
+
+            unsafe { return UnsafeOP.axpyNormSq(y.Data.Ptr, x.Data.Ptr, a, y.Data.Length); }
+        }
+
+        /// <summary>y = a·y + x ; returns ‖y‖². Bit-identical to <c>y.scaleAddInPlace(a, x)</c>
+        /// followed by <c>Blas.dot(y, y)</c> -- same accumulation order, fused into one pass.</summary>
+        public static fProxy xpayNormSq(fProxy a, in fProxyN x, ref fProxyN y)
+        {
+            if (x.N != y.N)
+                throw new ArgumentException("xpayNormSq: x.N must equal y.N");
+
+            unsafe { return UnsafeOP.xpayNormSq(y.Data.Ptr, x.Data.Ptr, a, y.Data.Length); }
+        }
+
+        /// <summary>x += a·p ; r -= a·q ; returns ‖r‖². The CG-family twin update (solution + residual)
+        /// plus its convergence dot. x/p and r/q may have DIFFERENT lengths (cgls/cgne are
+        /// rectangular: x/p are length A.Cols, r/q are length A.Rows) -- the r-update folds the
+        /// reduction into its own pass, eliminating a separate <c>Blas.dot(r, r)</c> traversal.
+        /// Bit-identical to <c>x.addScaledInPlace(a, p); r.addScaledInPlace(-a, q); Blas.dot(r, r);</c>.</summary>
+        public static fProxy updateXR(fProxy a, in fProxyN p, ref fProxyN x, in fProxyN q, ref fProxyN r)
+        {
+            if (p.N != x.N)
+                throw new ArgumentException("updateXR: p.N must equal x.N");
+            if (q.N != r.N)
+                throw new ArgumentException("updateXR: q.N must equal r.N");
+
+            unsafe { return UnsafeOP.updateXR(x.Data.Ptr, p.Data.Ptr, x.Data.Length, r.Data.Ptr, q.Data.Ptr, a, r.Data.Length); }
+        }
+
+        /// <summary>y = a·x. Replaces a <c>Data.CopyFrom</c> + <c>divInPlace</c> pair when
+        /// <paramref name="a"/> is a precomputed reciprocal -- rounding-only vs dividing directly
+        /// (reciprocal-multiply, not a division per element).</summary>
+        public static void scaledCopy(fProxy a, in fProxyN x, ref fProxyN y)
+        {
+            if (x.N != y.N)
+                throw new ArgumentException("scaledCopy: x.N must equal y.N");
+
+            unsafe { UnsafeOP.scaledCopy(y.Data.Ptr, x.Data.Ptr, a, y.Data.Length); }
+        }
+
+        /// <summary>w = s·(v + a·w1 + b·w2). Replaces a copy+axpy+axpy+divInPlace chain (MINRES's
+        /// w-update) in one pass -- rounding-only vs the original (that divides by the true scale at
+        /// the end; this multiplies by a precomputed reciprocal s = 1/scale).</summary>
+        public static void combine3(ref fProxyN w, in fProxyN v, fProxy a, in fProxyN w1, fProxy b, in fProxyN w2, fProxy s)
+        {
+            if (v.N != w.N || w1.N != w.N || w2.N != w.N)
+                throw new ArgumentException("combine3: v/w1/w2 must all equal w.N");
+
+            unsafe { UnsafeOP.combine3(w.Data.Ptr, v.Data.Ptr, a, w1.Data.Ptr, b, w2.Data.Ptr, s, w.Data.Length); }
+        }
+    }
+}

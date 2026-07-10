@@ -789,6 +789,123 @@ namespace LinearAlgebra.Internal
                 y[i] = a * y[i] + x[i];
         }
 
+        // ---- Krylov R1 fused kernels: axpy/aypx/dual-axpy folded with their trailing reduction or
+        // paired with a sibling update, one pass instead of two-plus. The reduction half uses the
+        // exact 2x float4 accumulator + fold pattern vecDot uses (same q/q+1 block order, same
+        // acc0+acc1 then (x+y)+(z+w) fold), so the returned norm is bit-identical to calling the
+        // plain update kernel followed by a separate vecDot(y,y,n) -- see call sites for which
+        // fusions are bit-identical vs rounding-only (reciprocal-multiply replacing a division).
+
+        // y += a*x ; return dot(y,y). Bit-identical to axpy(y,x,a,n) then vecDot(y,y,n).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static float axpyNormSq([NoAlias] float* y, [NoAlias] float* x, float a, int n)
+        {
+            var py = (float4*)y;
+            var px = (float4*)x;
+            int nQ = n >> 2;
+            float4 acc0 = default, acc1 = default;
+            int q = 0;
+            for (; q + 2 <= nQ; q += 2)
+            {
+                py[q] += a * px[q];
+                acc0 += py[q] * py[q];
+                py[q + 1] += a * px[q + 1];
+                acc1 += py[q + 1] * py[q + 1];
+            }
+            if (q < nQ) { py[q] += a * px[q]; acc0 += py[q] * py[q]; }
+            float4 acc = acc0 + acc1;
+            float s = (acc.x + acc.y) + (acc.z + acc.w);
+            for (int i = nQ << 2; i < n; i++)
+            {
+                y[i] += a * x[i];
+                s += y[i] * y[i];
+            }
+            return s;
+        }
+
+        // y = a*y + x ; return dot(y,y). Bit-identical to aypx(y,x,a,n) then vecDot(y,y,n).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static float xpayNormSq([NoAlias] float* y, [NoAlias] float* x, float a, int n)
+        {
+            var py = (float4*)y;
+            var px = (float4*)x;
+            int nQ = n >> 2;
+            float4 acc0 = default, acc1 = default;
+            int q = 0;
+            for (; q + 2 <= nQ; q += 2)
+            {
+                py[q] = a * py[q] + px[q];
+                acc0 += py[q] * py[q];
+                py[q + 1] = a * py[q + 1] + px[q + 1];
+                acc1 += py[q + 1] * py[q + 1];
+            }
+            if (q < nQ) { py[q] = a * py[q] + px[q]; acc0 += py[q] * py[q]; }
+            float4 acc = acc0 + acc1;
+            float s = (acc.x + acc.y) + (acc.z + acc.w);
+            for (int i = nQ << 2; i < n; i++)
+            {
+                y[i] = a * y[i] + x[i];
+                s += y[i] * y[i];
+            }
+            return s;
+        }
+
+        // x += a*p (length nx) ; r -= a*q (length nr) ; return dot(r,r). The twin CG-family update
+        // (solution + residual) plus the convergence dot. nx and nr are independent (cgls/cgne are
+        // RECTANGULAR: x/p have length A.Cols, r/q have length A.Rows, which differ in general) --
+        // this is two loops, not one shared-index loop, but the second (r) loop still folds the
+        // trailing reduction into the update pass, eliminating the separate vecDot(r,r) traversal.
+        // Bit-identical to axpy(x,p,a,nx); axpy(r,q,-a,nr); vecDot(r,r,nr).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static float updateXR([NoAlias] float* x, [NoAlias] float* p, int nx, [NoAlias] float* r, [NoAlias] float* q, float a, int nr)
+        {
+            for (int i = 0; i < nx; i++)
+                x[i] += a * p[i];
+
+            var pr = (float4*)r;
+            var pq = (float4*)q;
+            int nQ = nr >> 2;
+            float4 acc0 = default, acc1 = default;
+            int i4 = 0;
+            for (; i4 + 2 <= nQ; i4 += 2)
+            {
+                pr[i4] -= a * pq[i4];
+                acc0 += pr[i4] * pr[i4];
+                pr[i4 + 1] -= a * pq[i4 + 1];
+                acc1 += pr[i4 + 1] * pr[i4 + 1];
+            }
+            if (i4 < nQ) { pr[i4] -= a * pq[i4]; acc0 += pr[i4] * pr[i4]; }
+            float4 acc = acc0 + acc1;
+            float s = (acc.x + acc.y) + (acc.z + acc.w);
+            for (int i = nQ << 2; i < nr; i++)
+            {
+                r[i] -= a * q[i];
+                s += r[i] * r[i];
+            }
+            return s;
+        }
+
+        // y = a*x. Pure map (no reduction), plain scalar loop like axpy/aypx -- Burst auto-vectorizes
+        // this shape. Replaces a CopyFrom+scalDiv pair when a is a precomputed reciprocal (a = 1/s):
+        // rounding-only vs dividing by s directly (reciprocal-multiply vs division).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void scaledCopy([NoAlias] float* y, [NoAlias] float* x, float a, int n) {
+
+            for (int i = 0; i < n; i++)
+                y[i] = a * x[i];
+        }
+
+        // w = s*(v + a*w1 + b*w2). Pure map (no reduction), plain scalar loop. Replaces a
+        // copy+axpy+axpy+scalDiv chain (MINRES's w-update): rounding-only vs the original (the
+        // original divides by the true scale at the end; this multiplies by a precomputed
+        // reciprocal s = 1/scale, so per-element the last op is a multiply instead of a divide).
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void combine3([NoAlias] float* w, [NoAlias] float* v, float a, [NoAlias] float* w1, float b, [NoAlias] float* w2, float s, int n) {
+
+            for (int i = 0; i < n; i++)
+                w[i] = s * (v[i] + a * w1[i] + b * w2[i]);
+        }
+
         // acc[i] += x[i] * x[i]  — accumulate squares. Independent across i (no reduction), so it
         // vectorises; used to build per-column squared norms in a row-major sweep (QRCP pivoting).
         [MethodImpl(MethodImplOptions.NoInlining)]

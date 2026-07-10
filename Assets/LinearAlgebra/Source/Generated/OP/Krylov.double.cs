@@ -107,10 +107,9 @@ namespace LinearAlgebra
 
                 double alpha = rsold / pAp;
 
-                x.addScaledInPlace(alpha, p);               // x += alpha p
-                r.addScaledInPlace(-alpha, Ap);             // r -= alpha Ap
-
-                double rsnew = Blas.dot(r, r);
+                // x += alpha p ; r -= alpha Ap ; rsnew = ||r||^2 folded into the r-update pass
+                // (Blas.updateXR), eliminating the separate Blas.dot(r,r) traversal.
+                double rsnew = Blas.updateXR(alpha, p, ref x, Ap, ref r);
 
                 if (rsnew <= threshold)
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rsnew));
@@ -296,10 +295,9 @@ namespace LinearAlgebra
 
                 double alpha = rzold / pAp;
 
-                x.addScaledInPlace(alpha, p);               // x += alpha p
-                r.addScaledInPlace(-alpha, Ap);             // r -= alpha Ap
-
-                rr = Blas.dot(r, r);
+                // x += alpha p ; r -= alpha Ap ; rr = ||r||^2 folded into the r-update pass
+                // (Blas.updateXR), eliminating the separate Blas.dot(r,r) traversal.
+                rr = Blas.updateXR(alpha, p, ref x, Ap, ref r);
                 if (rr <= threshold)
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
 
@@ -481,8 +479,9 @@ namespace LinearAlgebra
             for (int k = 0; k < maxIterations; k++)
             {
                 // ---- Lanczos step: extend the tridiagonalization by one vector ----
-                v.Data.CopyFrom(r2.Data);
-                v.divInPlace(beta);                          // v = r2 / beta
+                // v = r2 / beta, one pass (Blas.scaledCopy with a = 1/beta) -- rounding-only vs the
+                // original CopyFrom+divInPlace (reciprocal-multiply instead of a per-element divide).
+                Blas.scaledCopy(1 / beta, r2, ref v);
 
                 A.Apply(in v, ref y);                      // y = A v
 
@@ -492,8 +491,11 @@ namespace LinearAlgebra
                 double alfa = Blas.dot(v, y);
                 y.addScaledInPlace(-(alfa / beta), r2);       // y -= (alfa/beta) r2
 
-                r1.Data.CopyFrom(r2.Data);
-                r2.Data.CopyFrom(y.Data);
+                // Buffer rotation (r1,r2,y) -> (r2,y,r1): swap the local doubleN handles instead of
+                // Data.CopyFrom. r1's old buffer is fully consumed above (last read this iteration)
+                // and is recycled as next iteration's y, which A.Apply fully overwrites regardless of
+                // its incoming contents -- contract-clean (see spec's buffer-rotation rationale).
+                { doubleN tmp = r1; r1 = r2; r2 = y; y = tmp; }
 
                 oldb = beta;
                 beta = math.sqrt(Blas.dot(r2, r2));
@@ -514,13 +516,13 @@ namespace LinearAlgebra
                 phibar = sn * phibar;
 
                 // ---- update the 3-term search direction, then the solution ----
-                w1.Data.CopyFrom(w2.Data);
-                w2.Data.CopyFrom(w.Data);
+                // Buffer rotation (w1,w2,w) -> (w2,w,w1), mirroring the r-rotation above.
+                { doubleN tmp = w1; w1 = w2; w2 = w; w = tmp; }
 
-                w.Data.CopyFrom(v.Data);
-                w.addScaledInPlace(-oldeps, w1);
-                w.addScaledInPlace(-delta, w2);
-                w.divInPlace(gamma);                          // w = (v - oldeps*w1 - delta*w2) / gamma
+                // w = (v - oldeps*w1 - delta*w2) / gamma, one pass (Blas.combine3 with s = 1/gamma) --
+                // rounding-only vs the original copy+axpy+axpy+divInPlace chain (reciprocal-multiply
+                // instead of a per-element divide at the end; the (v + a*w1 + b*w2) grouping matches).
+                Blas.combine3(ref w, v, -oldeps, w1, -delta, w2, 1 / gamma);
 
                 x.addScaledInPlace(phi, w);
 
@@ -696,9 +698,8 @@ namespace LinearAlgebra
 
                 alpha = rhoNew / rv;
 
-                r.addScaledInPlace(-alpha, v);                 // r := s = r - alpha v
-
-                double ss = Blas.dot(r, r);
+                // r := s = r - alpha v ; ss = ||s||^2, fused into one pass (Blas.axpyNormSq).
+                double ss = Blas.axpyNormSq(-alpha, v, ref r);
 
                 if (ss <= threshold)
                 {
@@ -727,9 +728,8 @@ namespace LinearAlgebra
                 x.addScaledInPlace(alpha, p);
                 x.addScaledInPlace(omega, r);                  // r still holds s here
 
-                r.addScaledInPlace(-omega, t);                 // r := s - omega t   (new residual)
-
-                rr = Blas.dot(r, r);
+                // r := s - omega t (new residual) ; rr = ||r||^2, fused into one pass (Blas.axpyNormSq).
+                rr = Blas.axpyNormSq(-omega, t, ref r);
 
                 if (rr <= threshold)
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rr));
@@ -944,6 +944,11 @@ namespace LinearAlgebra
 
                 double alpha = gamma / delta;
 
+                // NOTE: x (length A.Cols) and r (length A.Rows) generally differ in size here (cgls is
+                // rectangular), so Blas.updateXR cannot interleave them into a shared-index pass and
+                // cgls does not need updateXR's ||r||^2 byproduct (convergence is tracked via gamma =
+                // ||A^T r||^2). Left as two plain axpy calls -- updateXR would only add a wasted
+                // reduction here, not remove a sweep.
                 x.addScaledInPlace(alpha, p);
                 r.addScaledInPlace(-alpha, q);
 
@@ -1220,14 +1225,14 @@ namespace LinearAlgebra
             for (int k = 0; k < maxIterations; k++)
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
+                // u = A v - alpha u ; beta = ||u||, fused (Blas.xpayNormSq) into one pass over u.
                 A.Apply(in v, ref tmpM);
-                u.scaleAddInPlace(-alpha, tmpM);              // u = -alpha*u + tmpM = A v - alpha u
-                beta = math.sqrt(Blas.dot(u, u));
+                beta = math.sqrt(Blas.xpayNormSq(-alpha, tmpM, ref u));
                 if (beta > (double)0) u.divInPlace(beta);
 
+                // v = A^T u - beta v ; alpha = ||v||, same fusion.
                 A.ApplyT(in u, ref tmpN);
-                v.scaleAddInPlace(-beta, tmpN);                // v = -beta*v + tmpN = A^T u - beta v
-                alpha = math.sqrt(Blas.dot(v, v));
+                alpha = math.sqrt(Blas.xpayNormSq(-beta, tmpN, ref v));
                 if (alpha > (double)0) v.divInPlace(alpha);
 
                 // ---- fold Tikhonov damping into rhobar: rotate (rhobar, damp) -> (rhobar1, 0),
@@ -1567,15 +1572,15 @@ namespace LinearAlgebra
             for (int k = 0; k < maxIterations; k++)
             {
                 // ---- bidiagonalization step (Golub-Kahan) ----
+                // u = A v - alpha u ; beta = ||u||, fused (Blas.xpayNormSq) into one pass over u.
                 A.Apply(in v, ref tmpM);
-                u.scaleAddInPlace(-alpha, tmpM);              // u = A v - alpha u
-                beta = math.sqrt(Blas.dot(u, u));
+                beta = math.sqrt(Blas.xpayNormSq(-alpha, tmpM, ref u));
                 if (beta > (double)0)
                 {
                     u.divInPlace(beta);
+                    // v = A^T u - beta v ; alpha = ||v||, same fusion.
                     A.ApplyT(in u, ref tmpN);
-                    v.scaleAddInPlace(-beta, tmpN);            // v = A^T u - beta v
-                    alpha = math.sqrt(Blas.dot(v, v));
+                    alpha = math.sqrt(Blas.xpayNormSq(-beta, tmpN, ref v));
                     if (alpha > (double)0) v.divInPlace(alpha);
                 }
 
@@ -2018,11 +2023,12 @@ namespace LinearAlgebra
 
                 double alpha = rr / pp;
 
-                x.addScaledInPlace(alpha, p);                  // x += alpha p
+                // A.Apply(p,q) does not read x, so it can run BEFORE the x/r update (reordered from
+                // the original x-then-Apply-then-r sequence) without changing the computed q -- this
+                // lets the r-update fold its reduction in via Blas.updateXR: x += alpha p ; r -= alpha
+                // q ; rrNew = ||r||^2, replacing the separate Blas.dot(r,r) call (one fewer pass over r).
                 A.Apply(in p, ref q);                       // q = A p
-                r.addScaledInPlace(-alpha, q);                 // r -= alpha A p
-
-                double rrNew = Blas.dot(r, r);
+                double rrNew = Blas.updateXR(alpha, p, ref x, q, ref r);
 
                 if (rrNew <= threshold)
                     return MakeSolveInfo(IterativeSolveStatus.Converged, k + 1, math.sqrt(rrNew));
