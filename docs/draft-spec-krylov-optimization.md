@@ -1,7 +1,8 @@
 # Draft spec: Krylov solver optimization + preconditioner roadmap
 
-Status: **DRAFT for user review** (2026-07-09). Research + design only — nothing here is
-implemented. Covers (a) performance optimization of the existing Krylov solvers
+Status: **APPROVED 2026-07-10** (user ruled on all seven open questions — see the RESOLVED
+section below). Execution gate: benchmarks + committed state first (user ruling on Q3) —
+starts after the LPBasis persistence feature lands. Nothing here is implemented yet. Covers (a) performance optimization of the existing Krylov solvers
 (`Krylov.fProxy.cs`: cg/pcg, minres, biCGStab, cgls, lsqr, lsmr, cgne + the *Jacobi
 convenience wrappers) and (b) a preconditioner roadmap beyond the shipped `fProxyBlockJacobi`.
 LP-interior-point-specific preconditioning is deliberately NOT re-litigated here — that ground
@@ -14,37 +15,42 @@ being believed).
 
 ---
 
-## OPEN QUESTIONS FOR USER
+## RESOLVED QUESTIONS (user rulings 2026-07-10)
 
-1. **Convergence-verification matvec.** `cg`'s diagnostics contract says rnorm is always a
-   value the solver already holds — "never a fresh A*x". For float robustness, the highest-value
-   residual-replacement variant spends ONE extra `Apply` at the moment of claimed convergence to
-   verify the recursively-updated residual didn't drift (false-convergence guard), and keeps
-   iterating if the true residual fails the test. Is +1 matvec at exit an acceptable amendment
-   to that contract (opt-in or default)?
-2. **Operator-interface evolution.** Folding `dot(p, Ap)` into the spMV pass needs a new
-   operator hook (`ApplyDot`). Adding a member to the shipped public `IfProxyLinearOperator`
-   breaks user implementations (API is frozen for v1.0). Options: (a) accept the break pre-1.0,
-   (b) a separate optional `IfProxyFusedOperator : IfProxyLinearOperator` that only the concrete
-   BSR/dense overloads route through, (c) skip spMV-dot fusion entirely (the vector-side fusion
-   in R1 needs no interface change). Preference?
-3. **Preconditioner priority.** The two customer groups pull differently: general SPD/BSR
-   (deformables 3×3, Poisson/Laplacian 1×1) want SSOR/IC(0); the sparse LP path has its own
-   ranked plan (adaptive tolerance → Ruiz → LSQR-reformulation) in the LP research doc. Build
-   the SSOR/IC(0) track first (this spec's recommendation), or the LP §7 free wins first?
-4. **Symmetric-storage scope.** Triangular sweeps (SSOR/IC(0)) over upper-only symmetric BSR
-   need transpose-aware column traversal (awkward, scatter-shaped). Proposal: v1 preconditioners
-   support FULL-storage BSR only; symmetric-storage input either throws or pays a one-time
-   mirror-to-full conversion. Acceptable?
-5. **Bit-exactness policy for fused kernels.** Most R1 fusions can be made bit-identical to the
-   current pass sequence (same accumulation pattern, same order). The spMV-dot fold and any
-   reordered reduction are rounding-only. Per the SIMD-campaign precedent, rounding-only changes
-   are OK if declared per-commit — confirm that convention still holds for solver loops.
-6. **Chebyshev eigenvalue bounds.** If polynomial preconditioning is built (R7, optional):
-   caller-provided λmin/λmax, or a built-in power-iteration estimate (~10–20 setup matvecs)?
-7. **Benchmark budget.** The proposed stencil-regime bench section (b=1 `fProxyLaplacian2D`,
-   where vector-op fusion matters most) adds runtime to `LargeSparseBenchmark`. Trim an existing
-   section to stay ≤10 min total, or extend the budget?
+1. **Convergence-verification matvec: APPROVED.** +1 Apply at claimed convergence is an
+   accepted amendment to the "never a fresh A*x" diagnostics contract. R6(a) is a go.
+2. **Operator-interface evolution: (a) — break the interface pre-1.0.** `ApplyDot` goes onto
+   `IfProxyLinearOperator` directly; the API is not final. User note: wants to review how the
+   operator/kernel plumbing works — the implementing round's report must include a plain
+   walkthrough of the interface change and what implementors must add.
+3. **Preconditioner priority: benchmarks + committed state FIRST, then either track.** No
+   preconditioner work on top of uncommitted state, and every round is A/B-benchmarked. The
+   SSOR/IC(0) track proceeds in this spec's R1→R4 order once the gate is met.
+4. **Symmetric-storage scope: v1 preconditioners are FULL-storage BSR only** (advice given to
+   user, accepted direction): no new dedicated symmetric format. Rationale: the sweeps need
+   row-ordered access to BOTH triangles — upper-only storage turns the lower sweep into a
+   column-order scatter, and a purpose-built symmetric-sweep format would mean a third kernel
+   family for one consumer. Symmetric-storage BSR (which exists for spMV) keeps its spMV
+   kernels; a symmetric-storage matrix handed to a preconditioner SETUP pays a one-time
+   mirror-to-full copy of the pattern+values (O(nnzb·b²), amortized over the whole solve
+   lifetime, same lifecycle as the factorization itself). MKL/Eigen practice matches.
+5. **Bit-exactness: NOT required for fused kernels.** Requirement is determinism (same result
+   on every machine/run — deterministic-by-construction, FloatMode conventions unchanged), not
+   bit-identity with the pre-fusion code. Rounding-only changes still declared per-commit.
+   New fused kernels welcome. Kernel placement (user delegated): sparse kernels stay in the
+   existing `UnsafeOP.Sparse.fProxy.cs` home; fused dense vector primitives go in `UnsafeOP`
+   proper next to the axpy family. No new `UnsafeSparseOP` class — the file split already
+   provides the separation.
+6. **Chebyshev bounds (R7, still optional/demand-driven):** user concern "isn't solving for
+   eigenvalues costlier than the solve itself?" — answer recorded: Chebyshev needs only a
+   1–2-digit λmax estimate (~10–20 power-iteration matvecs, trivially cheap vs a full solve;
+   λmin can be taken as λmax/κ_guess with graceful degradation), NOT an eigensolve. Decision
+   deferred with R7 itself; if built, default = built-in cheap power estimate, caller override
+   exposed.
+7. **Benchmark budget: do NOT extend — make it faster.** New stencil + preconditioner-axis
+   sections must displace redundant existing runs (the float==double duplicate cells that
+   already told us what we need), keeping `LargeSparseBenchmark` at or under its current
+   runtime. Treat total benchmark wall time as a budget to REDUCE while adding coverage.
 
 ---
 
