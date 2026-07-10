@@ -287,6 +287,9 @@ namespace LinearAlgebra
             // former cold-only `isArtificial` (bool[n], upper-only) to any nonbasic column (structural
             // OR logical) in either direction; see the repair loop below.
             var artificialDir = new NativeArray<sbyte>(N, Allocator.Temp);
+            // True the moment ANY column gets a temporary artificial bound in the repair below --
+            // gates the zero-pivot fast path near the bottom of this method (see that comment).
+            bool anyArtificial = false;
 
             // HiGHS-style cost perturbation (degeneracy defence, deterministic seed): <= 1e-5*(1+|c_j|).
             // Deterministic per-column pseudo-random unit value in (-1, 1) via a cheap integer hash
@@ -389,12 +392,12 @@ namespace LinearAlgebra
                     if (status[j] == STATUS_AT_LOWER && d < -dualTol)
                     {
                         if (upper[j] < (double)1e29) status[j] = STATUS_AT_UPPER;
-                        else { upper[j] = artificialBound; artificialDir[j] = 1; status[j] = STATUS_AT_UPPER; }
+                        else { upper[j] = artificialBound; artificialDir[j] = 1; status[j] = STATUS_AT_UPPER; anyArtificial = true; }
                     }
                     else if (status[j] == STATUS_AT_UPPER && d > dualTol)
                     {
                         if (lower[j] > (double)(-1e29)) status[j] = STATUS_AT_LOWER;
-                        else { lower[j] = -artificialBound; artificialDir[j] = -1; status[j] = STATUS_AT_LOWER; }
+                        else { lower[j] = -artificialBound; artificialDir[j] = -1; status[j] = STATUS_AT_LOWER; anyArtificial = true; }
                     }
                 }
 
@@ -566,6 +569,30 @@ namespace LinearAlgebra
                     xFull[j] = status[j] == STATUS_BASIC ? (double)0 : (status[j] == STATUS_AT_LOWER ? lower[j] : upper[j]);
                 for (int i = 0; i < m; i++) xFull[basis[i]] = xB[i];
                 info = new LPInfo { status = LPStatus.Infeasible, iterations = iters, objective = 0 };
+            }
+            else if (resultStatus == LPStatus.Optimal && iters == 0 && !anyArtificial)
+            {
+                // Zero-pivot fast path (warm-start payoff): the dual loop broke immediately (r < 0, no
+                // basic bound violation) with NO pivot ever applied and NO temporary artificial bound
+                // ever installed. The repair above already established dual feasibility against the
+                // REAL cost (not perturbedCost -- see its own comment), and the loop's own exit
+                // condition IS primal feasibility against the REAL bounds (no artificial ones are live).
+                // Both hold simultaneously with the basis UNCHANGED since that repair, so this state is
+                // already the true LP optimum -- calling RevisedPrimalCore here would provably perform
+                // its own zero pivots too (SelectEntering finds no wrong-signed nonbasic, since dual
+                // feasibility against the real cost already holds) after paying a SECOND full O(m^3)
+                // Refactorize + O(mN) RebuildXB that can only reproduce state already sitting in
+                // status/basis/xB. Skipping it roughly halves a warm re-solve's fixed per-call cost
+                // whenever it applies (measured ~0.12ms/call -> ~0.06ms/call at mAug~80 on an isolated
+                // warm LP.solve(ref LPBasis) benchmark, MIP perf investigation 2026-07-10) -- a genuine
+                // but MINORITY case for MIP/strong-branch-trial re-solves in practice (most single-bound
+                // tightenings still cost >=1 real pivot to restore primal feasibility, which this path
+                // does not shortcut). Reuses the SAME extraction as the Infeasible branch above, just
+                // with status = Optimal.
+                for (int j = 0; j < N; j++)
+                    xFull[j] = status[j] == STATUS_BASIC ? (double)0 : (status[j] == STATUS_AT_LOWER ? lower[j] : upper[j]);
+                for (int i = 0; i < m; i++) xFull[basis[i]] = xB[i];
+                info = new LPInfo { status = LPStatus.Optimal, iterations = iters, objective = 0 };
             }
             else
             {
