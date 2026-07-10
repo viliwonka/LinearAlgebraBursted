@@ -191,9 +191,10 @@ The HiGHS workhorse. Requires stage 1's kernel layer. Phase 2 first:
   is positive and SIGNED by bound structure (+ for lower-bounded, − for upper-bounded,
   sign(c_j) for boxed; free/fixed columns never perturbed — keeps a dual-feasible d_j
   dual-feasible). Logical (row) columns get only a symmetric ±0.5·1e-12 tie-breaker, ~7 orders
-  smaller. Both bases are written in dualTol units (5·dualTol / 1e-5·dualTol = HiGHS's exact
-  literals in double; float scales with its own tolerance). Deterministic hash r∈[0,1)
-  replaces HiGHS's random vector. Remove the perturbation at the end and clean up any
+  smaller. Both bases use HiGHS's exact literals (5e-7 / 1e-12) for BOTH dtypes — they are
+  representable in float, and a dualTol-scaled float variant (larger perturbations "to match
+  float's tolerance") was benchmark-falsified: it exploded a float B&B tree from 29 nodes to
+  a 20000-node limit. Deterministic hash r∈[0,1) replaces HiGHS's random vector. Remove the perturbation at the end and clean up any
   resulting dual infeasibilities with a few primal iterations (stage 1's primal is the cleanup
   engine — this is exactly how HiGHS composes them). History: the first version applied a
   symmetric ±1e-5·(1+|c_j|) to EVERY column including logicals — two independent fidelity

@@ -300,10 +300,11 @@ namespace LinearAlgebra
             // <1% of variables are boxed), xpert = (1+r)*(|c_j|+1)*base, POSITIVE and signed by bound
             // structure so a dual-feasible d_j stays dual-feasible; free/fixed columns untouched.
             // Logical (row) columns: symmetric +-0.5 * 1e-12 -- exact-tie breaking only, ~7 orders
-            // smaller than the column base. Both bases expressed in dualTol units (5*dualTol and
-            // 1e-5*dualTol = HiGHS's literal 5e-7 / 1e-12 in double exactly; float scales with its own
-            // tolerance). Deterministic per-column hash r in [0,1) replaces HiGHS's random vector
-            // (MurmurHash3 finalizer mix, inlined -- see the tolerance comment above).
+            // smaller than the column base. Bases are HiGHS's own literals for BOTH dtypes (both
+            // representable in float; an earlier dualTol-scaled float variant made float B&B trees
+            // explode -- benchmark-verified). Deterministic per-column hash r in [0,1) replaces
+            // HiGHS's random vector (MurmurHash3 finalizer mix, inlined -- see the tolerance
+            // comment above).
             double maxAbsCost = 0.0;
             for (int j = 0; j < n; j++) maxAbsCost = math.max(maxAbsCost, math.abs((double)cost[j]));
             if (maxAbsCost > 100.0) maxAbsCost = math.sqrt(math.sqrt(maxAbsCost));
@@ -311,8 +312,8 @@ namespace LinearAlgebra
             for (int j = 0; j < N; j++)
                 if ((double)(upper[j] - lower[j]) < 1e30) boxedCount++;
             if (boxedCount < 0.01 * N) maxAbsCost = math.min(maxAbsCost, 1.0);
-            double colPerturbBase = 5.0 * (double)dualTol * maxAbsCost;
-            double rowPerturbBase = 1e-5 * (double)dualTol;
+            double colPerturbBase = 5e-7 * maxAbsCost;
+            double rowPerturbBase = 1e-12;
             for (int j = 0; j < N; j++)
             {
                 uint h = (uint)j * 2654435761u + 0x9E3779B9u;
