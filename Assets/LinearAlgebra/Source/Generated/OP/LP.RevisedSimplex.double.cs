@@ -282,20 +282,27 @@ namespace LinearAlgebra
             return s;
         }
 
-        // Recomputes xB fresh (solve of the adjusted rhs b - N x_N) against the CURRENT (just
-        // refactorized, eta-file-empty) factorization -- the accuracy check the spec calls for at
-        // refactorization time. Always trusted as authoritative.
+        // Recomputes xB fresh (solve of the adjusted rhs b - N x_N) against the CURRENT factorization --
+        // the accuracy check the spec calls for at refactorization time. Always trusted as authoritative.
         //
         // The nonbasic contribution was originally a per-column scatter (outer loop over nonbasic j,
         // inner loop over i reading M[i,j] with stride N -- a column gather from a row-major matrix).
         // Reshaped into one dense GEMV: build valVec (the nonbasic value per column, 0 for basic/
         // AT_LOWER-zero -- computing it for every column rather than skipping zeros is harmless, 0
         // contributes 0 to the sum either way) then adj = rhs - M*valVec via Mmul's row-major sweep.
-        // Called only at refactorization events (not every iteration), so the two extra Temp
-        // allocations below are inconsequential next to the per-iteration kernels above.
+        // Called at refactorization events (not every iteration), so the two extra Temp allocations
+        // below are inconsequential next to the per-iteration kernels above.
+        //
+        // Solves via Ftran (base LU solve + the eta chain), not a bare LU.decompSolve: every EXISTING
+        // call site passes etaCount==0 (always called immediately after a fresh Refactorize), where
+        // Ftran's eta loop is a no-op and this is bit-identical to the prior bare-LU-solve form. The
+        // doubleLPCache warm-resume path (docs/spec-lpbasis-persistence.md, LP.DualSimplex.double.cs) is
+        // the one caller that can arrive here with etaCount > 0 (resuming B/P/eta as-is, skipping
+        // Refactorize) -- correctness there requires applying the eta corrections too.
         internal static void RebuildXB(doubleMxN M, doubleN rhs, NativeArray<byte> status,
                                        doubleN lower, doubleN upper,
-                                       doubleMxN B, in Pivot P, int m, int N, doubleN xB)
+                                       doubleMxN B, in Pivot P, doubleMxN etaAlpha, NativeArray<int> etaRow, int etaCount,
+                                       int m, int N, doubleN xB)
         {
             var valVec = new doubleN(N, Allocator.Temp);
             for (int j = 0; j < N; j++)
@@ -305,7 +312,7 @@ namespace LinearAlgebra
             Mmul(M, valVec, adj, m, N);
             for (int i = 0; i < m; i++) adj[i] = rhs[i] - adj[i];
 
-            LU.decompSolve(ref B, in P, ref adj);
+            Ftran(B, in P, etaAlpha, etaRow, etaCount, adj, m);
             for (int i = 0; i < m; i++) xB[i] = adj[i];
             valVec.Dispose(); adj.Dispose();
         }
@@ -528,7 +535,7 @@ namespace LinearAlgebra
 
             bool ok = Refactorize(M, basis, B, ref P, m, N);
             if (!ok) resultStatus = LPStatus.MaxIterations;
-            else RebuildXB(M, rhs, status, lower, upper, B, in P, m, N, xB);
+            else RebuildXB(M, rhs, status, lower, upper, B, in P, etaAlpha, etaRow, etaCount, m, N, xB);
 
             int budget = maxIter > 0 ? maxIter : 50 * (m + N) + 200;
             int degenCount = 0;
@@ -623,7 +630,7 @@ namespace LinearAlgebra
                         ok = Refactorize(M, basis, B, ref P, m, N);
                         etaCount = 0;
                         if (!ok) { resultStatus = LPStatus.MaxIterations; break; }
-                        RebuildXB(M, rhs, status, lower, upper, B, in P, m, N, xB);
+                        RebuildXB(M, rhs, status, lower, upper, B, in P, etaAlpha, etaRow, etaCount, m, N, xB);
                     }
                     else
                     {

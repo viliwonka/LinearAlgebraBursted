@@ -44,21 +44,24 @@ namespace LinearAlgebra
         /// Tightens variable <paramref name="varIndex"/>'s lower or upper bound to
         /// <paramref name="newBound"/>, records the change on <paramref name="stack"/>, and writes
         /// through to <paramref name="curLB"/>/<paramref name="curUB"/> and the matching bound row's rhs
-        /// in <paramref name="bAug"/>. Activates the UB row's coefficient if it was inert. Caller must
-        /// pass an INTEGER <paramref name="varIndex"/> (the only kind ever branched).
+        /// in <paramref name="bAug"/>. Activates the UB row's coefficient if it was inert -- bumps
+        /// <paramref name="cache"/>.matrixVersion when (and only when) that coefficient write happens
+        /// (docs/spec-lpbasis-persistence.md: rhs-only bound updates, the common case, leave it alone).
+        /// Caller must pass an INTEGER <paramref name="varIndex"/> (the only kind ever branched).
         /// </summary>
         internal static void PushBoundChange(ref UnsafeList<doubleBoundChange> stack, int varIndex, bool isUpper,
                                              double oldBound, double newBound,
                                              doubleN curLB, doubleN curUB, doubleN xlRoot,
                                              doubleMxN Aaug, NativeArray<int> col,
-                                             doubleN bAug, NativeArray<int> rowLB, NativeArray<int> rowUB)
+                                             doubleN bAug, NativeArray<int> rowLB, NativeArray<int> rowUB,
+                                             ref doubleLPCache cache)
         {
             stack.Add(new doubleBoundChange { varIndex = varIndex, isUpper = isUpper, oldBound = oldBound, newBound = newBound });
 
             if (isUpper)
             {
                 curUB[varIndex] = newBound;
-                if ((double)oldBound >= 1e29) Aaug[rowUB[varIndex], col[varIndex]] = (double)1;   // activate
+                if ((double)oldBound >= 1e29) { Aaug[rowUB[varIndex], col[varIndex]] = (double)1; cache.matrixVersion++; }   // activate
                 bAug[rowUB[varIndex]] = newBound - xlRoot[varIndex];
             }
             else
@@ -72,13 +75,15 @@ namespace LinearAlgebra
         /// Undoes every change on <paramref name="stack"/> at or after <paramref name="marker"/>, LIFO,
         /// restoring <paramref name="curLB"/>/<paramref name="curUB"/> and each bound row's rhs in
         /// <paramref name="bAug"/> -- the inverse of <see cref="PushBoundChange"/>. Deactivates a UB
-        /// row's coefficient back to 0 when undoing past its first tightening. Truncates
-        /// <paramref name="stack"/> to <paramref name="marker"/>.
+        /// row's coefficient back to 0 when undoing past its first tightening -- bumps
+        /// <paramref name="cache"/>.matrixVersion exactly then, mirroring <see cref="PushBoundChange"/>.
+        /// Truncates <paramref name="stack"/> to <paramref name="marker"/>.
         /// </summary>
         internal static void UndoToMarker(ref UnsafeList<doubleBoundChange> stack, int marker,
                                           doubleN curLB, doubleN curUB, doubleN xlRoot,
                                           doubleMxN Aaug, NativeArray<int> col,
-                                          doubleN bAug, NativeArray<int> rowLB, NativeArray<int> rowUB)
+                                          doubleN bAug, NativeArray<int> rowLB, NativeArray<int> rowUB,
+                                          ref doubleLPCache cache)
         {
             for (int k = stack.Length - 1; k >= marker; k--)
             {
@@ -90,6 +95,7 @@ namespace LinearAlgebra
                     {
                         Aaug[rowUB[bc.varIndex], col[bc.varIndex]] = (double)0;   // deactivate
                         bAug[rowUB[bc.varIndex]] = (double)0;
+                        cache.matrixVersion++;
                     }
                     else
                     {
@@ -116,13 +122,21 @@ namespace LinearAlgebra
         /// any, never change after the root build. Same UB-row inert/active convention as
         /// <see cref="PushBoundChange"/>: inert (coefficient 0, rhs 0) exactly when
         /// <paramref name="U"/>[j] is still the +infinity sentinel.
+        ///
+        /// Bumps <paramref name="cache"/>.matrixVersion ONCE per call (not once per rewritten
+        /// coefficient): every integer bound row is rewritten wholesale here regardless of whether its
+        /// UB-row activation state actually changed, so a queue jump always forces the next
+        /// <c>LP.solve</c> to rebuild cold -- the expected regime (MIP.double.cs's SearchCore header).
         /// </summary>
         internal static void ApplyNodeBounds(doubleN L, doubleN U,
                                              doubleN curLB, doubleN curUB, doubleN xlRoot,
                                              doubleMxN Aaug, NativeArray<int> col,
                                              doubleN bAug, NativeArray<int> rowLB, NativeArray<int> rowUB,
-                                             NativeArray<byte> integrality, int n)
+                                             NativeArray<byte> integrality, int n,
+                                             ref doubleLPCache cache)
         {
+            cache.matrixVersion++;
+
             for (int j = 0; j < n; j++)
             {
                 if (integrality[j] == 0) continue;
@@ -169,7 +183,7 @@ namespace LinearAlgebra
                                                doubleN curLB, doubleN curUB, doubleN xlRoot,
                                                doubleMxN Aaug, NativeArray<int> col, doubleN bAug,
                                                NativeArray<int> rowLB, NativeArray<int> rowUB,
-                                               ref UnsafeList<doubleBoundChange> stack)
+                                               ref UnsafeList<doubleBoundChange> stack, ref doubleLPCache cache)
         {
             if (nInt == 0 || m0 == 0) return true;   // nothing propagation can tighten
 
@@ -243,7 +257,7 @@ namespace LinearAlgebra
                                 if (newU < Uj - PROPAGATION_TOL)
                                 {
                                     PushBoundChange(ref stack, j, true, (double)Uj, (double)newU,
-                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref cache);
                                     tightened = true;
                                 }
                             }
@@ -253,7 +267,7 @@ namespace LinearAlgebra
                                 if (newL > Lj + PROPAGATION_TOL)
                                 {
                                     PushBoundChange(ref stack, j, false, (double)Lj, (double)newL,
-                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref cache);
                                     tightened = true;
                                 }
                             }
@@ -274,7 +288,7 @@ namespace LinearAlgebra
                                 if (newL > Lj + PROPAGATION_TOL)
                                 {
                                     PushBoundChange(ref stack, j, false, (double)Lj, (double)newL,
-                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref cache);
                                     tightened = true;
                                 }
                             }
@@ -284,7 +298,7 @@ namespace LinearAlgebra
                                 if (newU < Uj - PROPAGATION_TOL)
                                 {
                                     PushBoundChange(ref stack, j, true, (double)Uj, (double)newU,
-                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                                                    curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref cache);
                                     tightened = true;
                                 }
                             }

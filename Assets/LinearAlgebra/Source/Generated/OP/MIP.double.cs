@@ -272,6 +272,12 @@ namespace LinearAlgebra
                                            doubleN xOut)
         {
             var basis = new LPBasis(nY, mAug, Allocator.Temp);   // job-safe: unpopulated, seeded by first solve
+            // Factor/weight persistence cache (docs/spec-lpbasis-persistence.md) -- one per search,
+            // sized for the augmented LP, passed to every node/strong-branch-trial LP.solve alongside
+            // `basis`. matrixVersion is bumped at every Aaug coefficient write (PushBoundChange/
+            // UndoToMarker/ApplyNodeBounds's UB-row activation sites, MIP.Domain.double.cs); rhs-only
+            // bound updates (the common plunge/strong-branch case) leave it alone, so most re-solves hit.
+            var cache = new doubleLPCache(nY, mAug, Allocator.Temp);
             var y = new doubleN(nY, Allocator.Temp);
             var trialY = new doubleN(nY, Allocator.Temp);
             var xNode = new doubleN(math.max(n, 1), Allocator.Temp);
@@ -341,7 +347,7 @@ namespace LinearAlgebra
                 // fixpoint from the ORIGINAL rows before this node's LP solve. An emptied domain
                 // fathoms the node without ever calling LP.solve (usable stays false below).
                 bool domainOk = PropagateFixpoint(A, b, senses, m0, n, integrality, nInt,
-                                                  curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref boundStack);
+                                                  curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref boundStack, ref cache);
 
                 LPInfo info = default;
                 bool usable = false;
@@ -349,7 +355,7 @@ namespace LinearAlgebra
 
                 if (domainOk)
                 {
-                    info = LP.solve(in Aaug, in bAug, in costY, in sensesAug, ref y, out double _, ref basis, 0);
+                    info = LP.solve(in Aaug, in bAug, in costY, in sensesAug, ref y, out double _, ref basis, ref cache, 0);
                     totalLpIter += info.iterations;
                     usable = info.status == LPStatus.Optimal;
                 }
@@ -406,7 +412,7 @@ namespace LinearAlgebra
                 {
                     int branchVar = SelectBranchVariable(xNode, integrality, n, nodeObj,
                                                          pcUpSum, pcUpCount, pcDownSum, pcDownCount, ref globalPCSum, ref globalPCCount,
-                                                         ref sbCallsUsed, sbBudget, ref boundStack, ref basis,
+                                                         ref sbCallsUsed, sbBudget, ref boundStack, ref basis, ref cache,
                                                          Aaug, bAug, costY, sensesAug, c, kind, col, xlRoot, xuRoot, curLB, curUB,
                                                          rowLB, rowUB, trialY, trialX, ref totalLpIter);
 
@@ -449,9 +455,9 @@ namespace LinearAlgebra
 
                         // Dive into the preferred child directly on the live state.
                         if (downFirst)
-                            PushBoundChange(ref boundStack, branchVar, true, curUB[branchVar], floorV, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                            PushBoundChange(ref boundStack, branchVar, true, curUB[branchVar], floorV, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref cache);
                         else
-                            PushBoundChange(ref boundStack, branchVar, false, curLB[branchVar], ceilV, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                            PushBoundChange(ref boundStack, branchVar, false, curLB[branchVar], ceilV, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref cache);
 
                         havePending = true;
                         pendingVar = branchVar; pendingFrac = v;
@@ -475,7 +481,7 @@ namespace LinearAlgebra
                     }
 
                     boundStack.Length = 0;   // the jump target may not be an ancestor -- wholesale rewrite
-                    ApplyNodeBounds(entry.L, entry.U, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, integrality, n);
+                    ApplyNodeBounds(entry.L, entry.U, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, integrality, n, ref cache);
                     entry.L.Dispose(); entry.U.Dispose();
 
                     havePending = true;
@@ -524,7 +530,7 @@ namespace LinearAlgebra
                 }
             }
 
-            basis.Dispose(); y.Dispose(); trialY.Dispose(); xNode.Dispose(); trialX.Dispose(); incumbentX.Dispose();
+            basis.Dispose(); cache.Dispose(); y.Dispose(); trialY.Dispose(); xNode.Dispose(); trialX.Dispose(); incumbentX.Dispose();
             xRound.Dispose(); uplocks.Dispose(); downlocks.Dispose();
             boundStack.Dispose(); heap.Dispose();
             pcUpSum.Dispose(); pcDownSum.Dispose(); pcUpCount.Dispose(); pcDownCount.Dispose();

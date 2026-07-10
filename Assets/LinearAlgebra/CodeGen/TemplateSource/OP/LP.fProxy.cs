@@ -157,6 +157,145 @@ namespace LinearAlgebra
         }
 
         /// <summary>
+        /// Warm-started re-solve with FACTOR/WEIGHT PERSISTENCE (docs/spec-lpbasis-persistence.md): like
+        /// the <see cref="LPBasis"/> overload above, but additionally caches the computational form
+        /// (M/lower/upper/cost/rhs) and the dual simplex's basis factorization (B/P/eta) and DSE weights
+        /// across separate calls via <paramref name="cache"/> -- when structure/cost have not changed
+        /// since the cache was last built (see <see cref="fProxyLPCache"/>'s doc comment for the exact
+        /// invalidation contract), this skips BOTH BuildComputationalForm (O(mN) copy) and Refactorize
+        /// (O(m^3) LU), the two fixed per-call costs a warm re-solve otherwise pays even with zero or
+        /// few pivots.
+        ///
+        /// <paramref name="cache"/> not <see cref="fProxyLPCache.IsCreated"/> (e.g. <c>default</c>):
+        /// behaves BYTE-IDENTICALLY to the plain <see cref="LPBasis"/> overload above (no cache in play).
+        /// Otherwise must be <see cref="fProxyLPCache.IsValid"/> for this problem's shape (mismatch
+        /// throws, same discipline as <paramref name="basis"/>).
+        /// </summary>
+        /// <param name="A">Constraint coefficients, m×n (m constraints, n variables).</param>
+        /// <param name="b">Right-hand sides, length m. Any sign (negative rows are normalized internally).</param>
+        /// <param name="c">Objective coefficients, length n (minimized).</param>
+        /// <param name="senses">Per-row constraint sense, length m.</param>
+        /// <param name="x">Output solution, length n (overwritten).</param>
+        /// <param name="objective">Output cᵀx at the returned x.</param>
+        /// <param name="basis">Warm-start seed in, terminal basis out. Caller-owned.</param>
+        /// <param name="cache">Factor/weight persistence cache. Caller-owned; see
+        /// <see cref="fProxyLPCache"/>'s doc comment for the invalidation contract.</param>
+        /// <param name="maxIter">Pivot/iteration budget; ≤0 picks a size-based default.</param>
+        public static LPInfo solve(in fProxyMxN A, in fProxyN b, in fProxyN c,
+                                   in NativeArray<ConstraintSense> senses,
+                                   ref fProxyN x, out double objective,
+                                   ref LPBasis basis, ref fProxyLPCache cache, int maxIter = 0)
+        {
+            int m = A.M_Rows, n = A.N_Cols, N = n + m;
+
+            if (b.N != m) throw new ArgumentException("LP.solve: b.N must equal A.M_Rows");
+            if (c.N != n) throw new ArgumentException("LP.solve: c.N must equal A.N_Cols");
+            if (senses.Length != m) throw new ArgumentException("LP.solve: senses.Length must equal A.M_Rows");
+            if (x.N != n) throw new ArgumentException("LP.solve: x.N must equal A.N_Cols");
+
+            bool needsSeed = basis.IsEmpty;
+            if (!basis.IsCreated)
+                basis = new LPBasis(n, m, Allocator.Persistent);   // managed-thread only -- see doc comment
+            else if (!basis.IsValid(n, m))
+                throw new ArgumentException("LP.solve: basis dimensions do not match A (expected n+m status entries, m basis entries)");
+
+            if (needsSeed)
+            {
+                for (int i = 0; i < m; i++) { basis.basis[i] = n + i; basis.status[n + i] = STATUS_BASIC; }
+                for (int j = 0; j < n; j++) basis.status[j] = STATUS_AT_LOWER;
+                basis.populated = true;
+            }
+
+            bool useCache = cache.IsCreated;
+            if (useCache && !cache.IsValid(n, m))
+                throw new ArgumentException("LP.solve: cache dimensions do not match A (use new fProxyLPCache(n, m, allocator))");
+
+            var xFull = new fProxyN(N, Allocator.Temp);
+            LPInfo info;
+
+            if (!useCache)
+            {
+                // No cache -- byte-identical to the plain ref-LPBasis overload above.
+                var M = new fProxyMxN(m, N, Allocator.Temp);
+                var lower = new fProxyN(N, Allocator.Temp);
+                var upper = new fProxyN(N, Allocator.Temp);
+                var cost = new fProxyN(N, Allocator.Temp);
+                var rhs = new fProxyN(m, Allocator.Temp);
+
+                BuildComputationalForm(in A, in b, in c, in senses, M, lower, upper, cost, rhs, m, n, N);
+                info = DualSimplexCore(M, lower, upper, cost, rhs, m, n, N, maxIter, xFull, basis.basis, basis.status);
+
+                M.Dispose(); lower.Dispose(); upper.Dispose(); cost.Dispose(); rhs.Dispose();
+            }
+            else
+            {
+                bool cacheHit = cache.factorsValid && cache.builtVersion == cache.matrixVersion;
+
+                if (!cacheHit)
+                {
+                    // Cold rebuild straight into the cache's own buffers (aliased, not copied) --
+                    // matrixVersion was bumped (or this is the cache's first-ever use).
+                    BuildComputationalForm(in A, in b, in c, in senses,
+                                           cache.M, cache.lower, cache.upper, cache.cost, cache.rhs, m, n, N);
+                }
+                else
+                {
+                    for (int i = 0; i < m; i++) cache.rhs[i] = b[i];   // rhs-only patch -- O(m)
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                    VerifyLPCacheHit(in A, in b, in c, in senses, cache, m, n, N);
+#endif
+                }
+
+                info = DualSimplexCore(cache.M, cache.lower, cache.upper, cache.cost, cache.rhs, m, n, N,
+                                       maxIter, xFull, basis.basis, basis.status, ref cache);
+            }
+
+            for (int j = 0; j < n; j++) x[j] = xFull[j];
+
+            double obj = 0;
+            for (int j = 0; j < n; j++) obj += (double)c[j] * (double)xFull[j];
+            objective = obj;
+            info.objective = obj;
+
+            xFull.Dispose();
+            return info;
+        }
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        // Checks-build-only contract verification (docs/spec-lpbasis-persistence.md): on every cache
+        // HIT, rebuild the computational form fresh into scratch and compare entrywise against the
+        // cached M/lower/upper/cost, throwing on any mismatch. Catches a caller that changed A's
+        // coefficients/senses/c without bumping cache.matrixVersion -- a contract violation that would
+        // otherwise silently solve the WRONG problem. Compiled out entirely (costs nothing) in release.
+        static void VerifyLPCacheHit(in fProxyMxN A, in fProxyN b, in fProxyN c,
+                                     in NativeArray<ConstraintSense> senses, fProxyLPCache cache,
+                                     int m, int n, int N)
+        {
+            var M2 = new fProxyMxN(m, N, Allocator.Temp);
+            var lower2 = new fProxyN(N, Allocator.Temp);
+            var upper2 = new fProxyN(N, Allocator.Temp);
+            var cost2 = new fProxyN(N, Allocator.Temp);
+            var rhs2 = new fProxyN(m, Allocator.Temp);
+
+            BuildComputationalForm(in A, in b, in c, in senses, M2, lower2, upper2, cost2, rhs2, m, n, N);
+
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < N; j++)
+                    if (M2[i, j] != cache.M[i, j])
+                        throw new InvalidOperationException(
+                            "LP.solve: fProxyLPCache hit but M differs from a fresh rebuild -- matrixVersion was not bumped after a structural change");
+
+            for (int j = 0; j < N; j++)
+                if (lower2[j] != cache.lower[j] || upper2[j] != cache.upper[j] || cost2[j] != cache.cost[j])
+                    throw new InvalidOperationException(
+                        "LP.solve: fProxyLPCache hit but bounds/cost differ from a fresh rebuild -- matrixVersion was not bumped after a structural change");
+
+            M2.Dispose(); lower2.Dispose(); upper2.Dispose(); cost2.Dispose(); rhs2.Dispose();
+        }
+#endif
+
+        /// <summary>
         /// Least absolute deviation (L1 regression): minimize ‖A x − b‖₁ over a FREE x ∈ ℝⁿ. Robust to
         /// outliers where ordinary least squares (which minimizes the L2 norm) is not. This overload
         /// is a HYBRID: it picks between this library's two reformulation-free exact engines by problem

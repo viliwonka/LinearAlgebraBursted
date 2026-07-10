@@ -63,6 +63,14 @@ public class fProxyLPTests
             DualWarmEmptyBitIdentical, // (c) unpopulated-Temp cold-seed path == LPMethod.DualSimplex, bit-identical
             DualWarmStaleBasisCorrect, // (e) stale/garbage seed basis still reaches the correct optimum
 
+            // ==== fProxyLPCache factor/weight persistence (docs/spec-lpbasis-persistence.md acceptance 3).
+            // The contract-violation THROW case (3b) is a managed [Test] at the bottom (Assert.Catch --
+            // VerifyLPCacheHit throws inside LP.solve under ENABLE_UNITY_COLLECTIONS_CHECKS, unassertable
+            // from a Burst job). ====
+            DualWarmCacheChainEquivalence,      // (3a) cache chain obj/status == cache-less ref chain, every step
+            DualWarmCacheDeterministic,         // (3c) two identical cache chains bit-identical x/obj/iters
+            DualWarmCacheCrossProblemFallback,  // (3d) reused basis+cache on a different same-shape LP (bumped) -> correct
+
             // ==== LP.ladFN / ladFrischNewtonCore, docs/spec-lad-frisch-newton.md's Tests section ====
             LadFNvsOracleM48,   // FN L1 residual == exact LP.lad oracle, random+outliers, m=48 n=4
             LadFNvsOracleM96,   // ...m=96
@@ -137,6 +145,9 @@ public class fProxyLPTests
                 case TestType.DualWarmVsColdPerturbed: DualWarmVsColdPerturbed(); break;
                 case TestType.DualWarmEmptyBitIdentical: DualWarmEmptyBitIdentical(); break;
                 case TestType.DualWarmStaleBasisCorrect: DualWarmStaleBasisCorrect(); break;
+                case TestType.DualWarmCacheChainEquivalence: DualWarmCacheChainEquivalence(); break;
+                case TestType.DualWarmCacheDeterministic: DualWarmCacheDeterministic(); break;
+                case TestType.DualWarmCacheCrossProblemFallback: DualWarmCacheCrossProblemFallback(); break;
                 case TestType.LadFNvsOracleM48: LadFNvsOracle(48); break;
                 case TestType.LadFNvsOracleM96: LadFNvsOracle(96); break;
                 case TestType.LadFNvsOracleM192: LadFNvsOracle(192); break;
@@ -1206,6 +1217,169 @@ public class fProxyLPTests
             basisA.Dispose(); senses.Dispose(); arena.Dispose();
         }
 
+        // ==== fProxyLPCache factor/weight persistence (docs/spec-lpbasis-persistence.md acceptance 3) ====
+        // Same Section-1-style random feasible LP family as DualVsSimplexRandom (m = n/2, A in [0,1] so
+        // bounded, b = A*x0 + slack so x0 feasible, all rows <=, c in [-1,1]). A cache allocated
+        // Allocator.Temp is job-safe (all-Temp buffers) and starts unpopulated (first solve is cold, then
+        // populates it), exactly like the job-safe unpopulated-Temp LPBasis path the Dual* warm tests use.
+
+        // (3a) A cache-threaded warm re-solve CHAIN must reach the SAME status/objective as a cache-LESS
+        //      ref-LPBasis chain at every step. Both start from an identical cold solve of the ORIGINAL
+        //      LP; the rhs is then perturbed several times (rhs-only, so matrixVersion is NOT bumped and
+        //      every warm re-solve is a cache HIT -- whose checks-build VerifyLPCacheHit also re-confirms
+        //      M/bounds/cost are unchanged). The cache persists factors+weights (different trajectory) but
+        //      an LP's optimum is unique, so objective and status must agree throughout.
+        void DualWarmCacheChainEquivalence()
+        {
+            const int n = 48, m = n / 2;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var Ax0 = Blas.dot(A, x0);
+            var b0 = arena.fProxyVec(m);
+            var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
+            for (int i = 0; i < m; i++) b0[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
+            var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+            // cold-seed both chains from the ORIGINAL LP (job-safe unpopulated-Temp basis).
+            var xCache = arena.fProxyVec(n);
+            var basisCache = new LPBasis(n, m, Allocator.Temp);
+            var cache = new fProxyLPCache(n, m, Allocator.Temp);
+            var infoC0 = LP.solve(in A, in b0, in c, in senses, ref xCache, out double objC0, ref basisCache, ref cache);
+            var xRef = arena.fProxyVec(n);
+            var basisRef = new LPBasis(n, m, Allocator.Temp);
+            var infoR0 = LP.solve(in A, in b0, in c, in senses, ref xRef, out double objR0, ref basisRef);
+
+            AssertTrue(infoC0.status == LPStatus.Optimal);
+            AssertTrue(infoR0.status == infoC0.status);
+            double relTol = /*+choose[1e-3|1e-6]*/1e-3/*-choose*/;
+            AssertCloseD(objC0, objR0, relTol * (1.0 + math.abs(objR0)));
+
+            // rhs-only perturbation chain: scale every b entry by a per-step factor in [0.91, 1.15]. b
+            // stays positive -> x=0 feasible, A,x>=0 with Ax<=b keeps it bounded -> Optimal throughout.
+            // matrixVersion is left ALONE (rhs-only), so each warm re-solve is a cache hit.
+            var bk = arena.fProxyVec(m);
+            for (int step = 1; step <= 5; step++)
+            {
+                fProxy factor = (fProxy)(0.85 + 0.06 * step);
+                for (int i = 0; i < m; i++) bk[i] = b0[i] * factor;
+
+                var infoC = LP.solve(in A, in bk, in c, in senses, ref xCache, out double objC, ref basisCache, ref cache);
+                var infoR = LP.solve(in A, in bk, in c, in senses, ref xRef, out double objR, ref basisRef);
+
+                AssertTrue(infoC.status == infoR.status);
+                AssertTrue(infoC.status == LPStatus.Optimal);
+                AssertCloseD(objC, objR, relTol * (1.0 + math.abs(objR)));
+            }
+
+            cache.Dispose(); basisCache.Dispose(); basisRef.Dispose(); senses.Dispose(); arena.Dispose();
+        }
+
+        // (3c) DETERMINISM: two identical cache-threaded re-solve chains, run in the SAME Burst job, must
+        //      produce BIT-IDENTICAL objective, iteration count and x at every step (==, not within-tol).
+        //      Iteration counts under weight+factor persistence are deterministic but path-sensitive, so
+        //      this pins run-to-run reproducibility within one process, NOT any absolute count.
+        void DualWarmCacheDeterministic()
+        {
+            const int n = 24, m = n / 2;
+            var arena = new Arena(Allocator.Persistent);
+            var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var Ax0 = Blas.dot(A, x0);
+            var b0 = arena.fProxyVec(m);
+            var rng = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
+            for (int i = 0; i < m; i++) b0[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
+            var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+            // two independent (basis, cache) pairs, identical inputs -> identical deterministic work.
+            var xA = arena.fProxyVec(n);
+            var basisA = new LPBasis(n, m, Allocator.Temp);
+            var cacheA = new fProxyLPCache(n, m, Allocator.Temp);
+            LP.solve(in A, in b0, in c, in senses, ref xA, out double _, ref basisA, ref cacheA);
+            var xB = arena.fProxyVec(n);
+            var basisB = new LPBasis(n, m, Allocator.Temp);
+            var cacheB = new fProxyLPCache(n, m, Allocator.Temp);
+            LP.solve(in A, in b0, in c, in senses, ref xB, out double _, ref basisB, ref cacheB);
+
+            var bk = arena.fProxyVec(m);
+            for (int step = 1; step <= 5; step++)
+            {
+                fProxy factor = (fProxy)(0.85 + 0.06 * step);
+                for (int i = 0; i < m; i++) bk[i] = b0[i] * factor;
+
+                var iA = LP.solve(in A, in bk, in c, in senses, ref xA, out double oA, ref basisA, ref cacheA);
+                var iB = LP.solve(in A, in bk, in c, in senses, ref xB, out double oB, ref basisB, ref cacheB);
+
+                AssertTrue(iA.status == iB.status);
+                AssertTrue(iA.iterations == iB.iterations);
+                AssertTrue(oA == oB);                                 // exact double equality
+                for (int j = 0; j < n; j++) AssertTrue(xA[j] == xB[j]); // exact per-element equality
+            }
+
+            cacheA.Dispose(); cacheB.Dispose(); basisA.Dispose(); basisB.Dispose(); senses.Dispose(); arena.Dispose();
+        }
+
+        // (3d) CROSS-PROBLEM FALLBACK: a populated (basis, cache) pair from LP_A, reused on a DIFFERENT
+        //      same-shape LP_B with matrixVersion BUMPED (the correct usage on a structural change), must
+        //      fall back to the cold rebuild+refactorize path (cache MISS: builtVersion != matrixVersion)
+        //      and still reach LP_B's true optimum -- oracle is a plain cold DualSimplex solve of LP_B.
+        void DualWarmCacheCrossProblemFallback()
+        {
+            const int n = 48, m = n / 2;
+            var arena = new Arena(Allocator.Persistent);
+
+            // LP_A -- the instance we populate (basis, cache) from.
+            var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+            var xa0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+            var Axa0 = Blas.dot(A, xa0);
+            var ba = arena.fProxyVec(m);
+            var rngA = new Unity.Mathematics.Random((uint)(n * 1299709 + 3));
+            for (int i = 0; i < m; i++) ba[i] = Axa0[i] + rngA.NextFProxy((fProxy)0.1, (fProxy)1);
+            var ca = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+
+            // LP_B -- an UNRELATED same-shape (n, m) instance (every draw shifted by a large prime).
+            const uint off = 777777773u;
+            var B = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11) + off);
+            var xb0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7) + off);
+            var Axb0 = Blas.dot(B, xb0);
+            var bb = arena.fProxyVec(m);
+            var rngB = new Unity.Mathematics.Random((uint)(n * 1299709 + 3) + off);
+            for (int i = 0; i < m; i++) bb[i] = Axb0[i] + rngB.NextFProxy((fProxy)0.1, (fProxy)1);
+            var cb = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5) + off);
+
+            var senses = new NativeArray<ConstraintSense>(m, Allocator.Temp);
+            for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+            // solve LP_A -> populate (basisAB, cache) via the job-safe unpopulated-Temp cold-seed path.
+            var xa = arena.fProxyVec(n);
+            var basisAB = new LPBasis(n, m, Allocator.Temp);
+            var cache = new fProxyLPCache(n, m, Allocator.Temp);
+            var infoA = LP.solve(in A, in ba, in ca, in senses, ref xa, out double _, ref basisAB, ref cache);
+            AssertTrue(infoA.status == LPStatus.Optimal);
+
+            // reuse the SAME (basisAB, cache) on LP_B; bump matrixVersion (structural change) -> cache MISS
+            // -> cold rebuild of M into the cache buffers + refactorize (stale basis handled by the dual
+            // repair / singular-basis fallback, same as DualWarmStaleBasisCorrect).
+            cache.matrixVersion++;
+            var xbWarm = arena.fProxyVec(n);
+            var infoBWarm = LP.solve(in B, in bb, in cb, in senses, ref xbWarm, out double objBWarm, ref basisAB, ref cache);
+            AssertTrue(infoBWarm.status == LPStatus.Optimal);
+
+            // oracle: an ordinary cold solve of LP_B.
+            var xbCold = arena.fProxyVec(n);
+            var infoBCold = LP.solve(in B, in bb, in cb, in senses, ref xbCold, out double objBCold, LPMethod.DualSimplex);
+            AssertTrue(infoBCold.status == LPStatus.Optimal);
+
+            double relTol = /*+choose[1e-3|1e-6]*/1e-3/*-choose*/;
+            AssertCloseD(objBWarm, objBCold, relTol * (1.0 + math.abs(objBCold)));
+
+            cache.Dispose(); basisAB.Dispose(); senses.Dispose(); arena.Dispose();
+        }
+
         // ==== Frisch-Newton exact LAD / quantile regression (LP.ladFN, LP.ladFrischNewtonCore) ====
         // docs/spec-lad-frisch-newton.md's Tests section (4 items). FN is a primal-dual INTERIOR POINT
         // on the LAD dual: it approaches (never lands exactly on) the degenerate optimal vertex, so
@@ -1624,6 +1798,63 @@ public class fProxyLPTests
         Assert.Catch<ArgumentException>(() => LP.solve(in A, in b, in c, in senses, ref x, out double obj, ref basis));
 
         basis.Dispose(); senses.Dispose(); arena.Dispose();
+    }
+
+    // (3b) CONTRACT VIOLATION (docs/spec-lpbasis-persistence.md): mutating an A coefficient WITHOUT
+    // bumping cache.matrixVersion must be caught by the checks-build verification (VerifyLPCacheHit) on
+    // the next cache HIT -- it rebuilds M fresh and compares against the cached M, throwing
+    // InvalidOperationException on the mismatch instead of silently solving the wrong problem. Managed-
+    // thread [Test] + Assert.Catch (same pattern as the dimension-mismatch throw tests): the throw
+    // originates inside LP.solve under ENABLE_UNITY_COLLECTIONS_CHECKS (the suite's config), which a
+    // Burst job cannot surface as an assertable managed exception. The cache-hit precondition
+    // (factorsValid && builtVersion == matrixVersion) is forced true after the populating solve so the
+    // verification runs regardless of the cold solve's factor-usability trajectory. Bumping the version
+    // afterwards takes the cold-rebuild path and solves the MUTATED LP correctly.
+    [Test]
+    public void WarmSolveCacheDetectsUnbumpedCoefficientChange()
+    {
+        var arena = new Arena(Allocator.Persistent);
+        var A = arena.fProxyMat(3, 2);   // Wyndor Glass structure
+        A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)0;
+        A[1, 0] = (fProxy)0; A[1, 1] = (fProxy)2;
+        A[2, 0] = (fProxy)3; A[2, 1] = (fProxy)2;
+        var b = arena.fProxyVec(3); b[0] = (fProxy)4; b[1] = (fProxy)12; b[2] = (fProxy)18;
+        var c = arena.fProxyVec(2); c[0] = (fProxy)(-3); c[1] = (fProxy)(-5);
+        var x = arena.fProxyVec(2);
+        var senses = new NativeArray<ConstraintSense>(3, Allocator.Temp);
+        senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual; senses[2] = ConstraintSense.LessEqual;
+
+        var basis = new LPBasis(2, 3, Allocator.Persistent);
+        var cache = new fProxyLPCache(2, 3, Allocator.Persistent);
+
+        // populate the cache with a cold solve of the (known-answer) Wyndor Glass LP -> obj -36.
+        LP.solve(in A, in b, in c, in senses, ref x, out double obj0, ref basis, ref cache);
+        Assert.That(obj0, Is.EqualTo(-36.0).Within(1e-2));
+
+        // force the cache-HIT precondition so the next solve deterministically runs VerifyLPCacheHit.
+        cache.factorsValid = true;
+        cache.builtVersion = cache.matrixVersion;
+
+        // structural change (A coefficient) WITHOUT the required matrixVersion bump -> contract violation.
+        A[2, 0] = (fProxy)5;
+
+        var x2 = arena.fProxyVec(2);
+        Assert.Catch<InvalidOperationException>(
+            () => LP.solve(in A, in b, in c, in senses, ref x2, out double _, ref basis, ref cache));
+
+        // with the bump, the same re-solve takes the cold rebuild path and solves the MUTATED LP; its
+        // objective matches a plain cold DualSimplex oracle on the mutated data.
+        cache.matrixVersion++;
+        var x3 = arena.fProxyVec(2);
+        var info3 = LP.solve(in A, in b, in c, in senses, ref x3, out double obj3, ref basis, ref cache);
+        Assert.IsTrue(info3.status == LPStatus.Optimal);
+
+        var xo = arena.fProxyVec(2);
+        var infoO = LP.solve(in A, in b, in c, in senses, ref xo, out double objO, LPMethod.DualSimplex);
+        Assert.IsTrue(infoO.status == LPStatus.Optimal);
+        Assert.That(obj3, Is.EqualTo(objO).Within(1e-2 * (1.0 + math.abs(objO))));
+
+        cache.Dispose(); basis.Dispose(); senses.Dispose(); arena.Dispose();
     }
 
     // Diagnostic: the matrix-free normal operator M = Aₛ diag(D) Aₛᵀ (with D = 1) must reproduce the

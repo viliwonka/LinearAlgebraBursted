@@ -969,8 +969,16 @@ public class fProxyMIPTests
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
 
-        // Propagation node-count drop on the big branchy search: stage 3 = 241 nodes, stage 4 = 218 (same
-        // optimum, strictly fewer nodes). DOUBLE-ONLY (same instance/rationale as Stage3NodesBranchy12).
+        // Propagation node-count drop on the big branchy search: stage 3 = 241 nodes, stage 4 = 218,
+        // re-anchored to 199 by docs/spec-lpbasis-persistence.md's fProxyLPCache (same optimum, DIFFERENT
+        // node count -- persisted DSE weights change pricing at a warm-started non-logical basis from the
+        // w=1 approximation to the caller's carried terminal state, which changes which variable a node
+        // picks to branch on; acceptance item 2 explicitly allows this). Verified stable across repeated
+        // runs (not a per-launch nondeterminism artifact -- an earlier coding-in-progress value of 216
+        // traced back to a real bug: weight[] was resumed even when the entry eta-capacity check forced a
+        // fresh Refactorize, letting weight drift across an unbounded refactorization chain instead of
+        // being bounded like the eta chain; fixed in DualSimplexPivotCore via didResumeFactors). DOUBLE-
+        // ONLY (same instance/rationale as Stage3NodesBranchy12).
         void Stage4NodesBranchy12()
         {
             int cases = /*+choose[0|1]*/0/*-choose*/;
@@ -985,7 +993,7 @@ public class fProxyMIPTests
 
                 AssertTrue(info.status == MIPStatus.Optimal);
                 AssertCloseD(info.objective, 6.0, 1e-6);
-                AssertNodes(info, 218);   // stage3 = 241 -> stage4 = 218
+                AssertNodes(info, 199);   // stage3 241 -> stage4(pre-cache) 218 -> stage4(fProxyLPCache) 199
 
                 senses.Dispose(); integ.Dispose(); arena.Dispose();
             }

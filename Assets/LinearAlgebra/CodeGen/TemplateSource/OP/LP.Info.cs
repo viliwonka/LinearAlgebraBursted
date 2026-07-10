@@ -180,6 +180,13 @@ namespace LinearAlgebra
     /// from scratch -- the same mechanism that makes the dual simplex branch-and-bound's workhorse (a
     /// branching bound change keeps the parent basis dual-feasible; see docs/draft-spec-mip.md).
     ///
+    /// FACTOR/WEIGHT PERSISTENCE: this struct stays dtype-agnostic on purpose (see the class doc
+    /// comment above), so the per-call FIXED costs a warm re-solve still pays -- rebuilding the
+    /// computational form and refactorizing the basis from scratch every call -- are NOT captured
+    /// here. <c>LP.solve(..., ref basis, ref fProxyLPCache cache)</c> (LP.fProxy.cs) pairs an
+    /// <c>LPBasis</c> with a per-dtype <c>fProxyLPCache</c> (LP.Cache.fProxy.cs) that persists exactly
+    /// that state -- see that struct's own doc comment for the invalidation contract.
+    ///
     /// LIFECYCLE: user-allocated, mirroring <see cref="Pivot"/>'s own <c>(size, Allocator)</c> +
     /// <see cref="Dispose"/> pattern -- no arena requirement, since this needs to persist ACROSS
     /// separate top-level solve calls, exactly the standalone tier the fProxy matrix/vector types

@@ -52,6 +52,12 @@ namespace LinearAlgebra
     // the full argument. LP.solve's `ref LPBasis` overload (LP.fProxy.cs) is the only entry point;
     // the ordinary `LP.solve(..., LPMethod.DualSimplex)` call keeps hitting the UNCHANGED fresh
     // overload.
+    //
+    // FACTOR/WEIGHT PERSISTENCE (docs/spec-lpbasis-persistence.md, fProxyLPCache in LP.Cache.fProxy.cs):
+    // the warm overload's pivot loop is factored into DualSimplexPivotCore below, shared by a plain
+    // (Allocator.Temp scratch) wrapper and a cache-aware wrapper that resumes B/P/eta/weight from a
+    // caller-persisted fProxyLPCache instead of allocating+Refactorize+w=1 every call. See
+    // DualSimplexPivotCore's own comment for the resume contract.
     // ================================================================================================
     public static partial class LP
     {
@@ -253,10 +259,92 @@ namespace LinearAlgebra
         // Refactorize cannot itself fail (the logical columns are exactly the identity, see
         // BuildComputationalForm), so `resultStatus` only reports MaxIterations here in a genuinely
         // pathological case (e.g. M containing NaN/Inf).
+        //
+        // Thin wrapper: allocates its own B/P/eta/weight scratch (Allocator.Temp, disposed on return)
+        // and calls DualSimplexPivotCore (below) with resumeFactors/resumeWeights false -- bit-identical
+        // to this method's pre-persistence body. The cache-aware overload right after it shares the same
+        // pivot-loop implementation instead of duplicating it.
         internal static LPInfo DualSimplexCore(fProxyMxN M, fProxyN lower, fProxyN upper,
                                                fProxyN cost, fProxyN rhs, int m, int n, int N,
                                                int maxIter, fProxyN xFull,
                                                NativeArray<int> basis, NativeArray<byte> status)
+        {
+            var B = new fProxyMxN(m, m, Allocator.Temp);
+            var P = new Pivot(m, Allocator.Temp);
+            var etaAlpha = new fProxyMxN(REFACTOR_INTERVAL, m, Allocator.Temp);
+            var etaRow = new NativeArray<int>(REFACTOR_INTERVAL, Allocator.Temp);
+            int etaCount = 0;
+            var weight = new fProxyN(m, Allocator.Temp);
+
+            var info = DualSimplexPivotCore(M, lower, upper, cost, rhs, m, n, N, maxIter, xFull, basis, status,
+                                            B, ref P, etaAlpha, etaRow, ref etaCount, weight,
+                                            false, false, out _);
+
+            B.Dispose(); P.Dispose(); etaAlpha.Dispose(); etaRow.Dispose(); weight.Dispose();
+            return info;
+        }
+
+        // Cache-aware warm overload (docs/spec-lpbasis-persistence.md) -- fProxyLPCache
+        // (LP.Cache.fProxy.cs) persists M/lower/upper/cost/rhs and the basis factorization (B/P/eta) and
+        // DSE weight[] across separate top-level solve calls (MIP.SearchCore's per-node/strong-branch-
+        // trial re-solves; MIP.fProxy.cs). `M`/`lower`/`upper`/`cost`/`rhs` here are ALREADY the cache's
+        // own buffers (LP.solve, LP.fProxy.cs, builds or patches them before calling this) -- this
+        // overload only owns the factorization/weight resume-vs-refactorize decision and post-solve
+        // persistence.
+        //
+        // cacheHit: cache.factorsValid AND the caller has not bumped cache.matrixVersion since the
+        // factors were built (fProxyLPCache's own doc comment has the full invalidation contract,
+        // including why basis-unchanged-since-stored is trusted BY CONTRACT rather than re-verified
+        // here). On a hit, B/P/etaAlpha/etaRow/etaCount resume as-is (DualSimplexPivotCore's
+        // resumeFactors skips the entry Refactorize, unless the eta file is already at capacity -- same
+        // interval logic the main loop already applies) and weight[] seeds from the cache instead of the
+        // w=1 approximation, when cache.weightsValid too.
+        //
+        // Every buffer besides basis/status/xFull is the CACHE'S OWN storage, passed straight through
+        // (not copied) -- mutations during this call land directly in cache, so persisting at exit is
+        // just the three bookkeeping writes at the bottom.
+        internal static LPInfo DualSimplexCore(fProxyMxN M, fProxyN lower, fProxyN upper,
+                                               fProxyN cost, fProxyN rhs, int m, int n, int N,
+                                               int maxIter, fProxyN xFull,
+                                               NativeArray<int> basis, NativeArray<byte> status,
+                                               ref fProxyLPCache cache)
+        {
+            bool cacheHit = cache.factorsValid && cache.builtVersion == cache.matrixVersion;
+            bool resumeWeights = cacheHit && cache.weightsValid;
+
+            var info = DualSimplexPivotCore(M, lower, upper, cost, rhs, m, n, N, maxIter, xFull, basis, status,
+                                            cache.B, ref cache.P, cache.etaAlpha, cache.etaRow, ref cache.etaCount, cache.weight,
+                                            cacheHit, resumeWeights, out bool factorsUsable);
+
+            // weightsValid unconditional: weight[] is a pricing heuristic (self-correcting via the DSE
+            // update formula, never a correctness hazard -- fProxyLPCache's doc comment), unlike B/P/eta
+            // which must exactly describe the TERMINAL basis[] to be resumable. factorsUsable is false
+            // whenever the primal cleanup pass (RevisedPrimalCore, inside DualSimplexPivotCore) pivoted
+            // the basis further than this method's own dual-phase loop left it.
+            cache.factorsValid = factorsUsable;
+            cache.weightsValid = true;
+            cache.builtVersion = cache.matrixVersion;
+
+            return info;
+        }
+
+        // Shared pivot-loop body for both DualSimplexCore warm overloads above. B/P/etaAlpha/etaRow/
+        // etaCount/weight are PARAMETERS (not locals): the plain overload passes freshly
+        // Allocator.Temp-allocated ones and disposes them itself; the cache-aware overload passes its
+        // persisted fProxyLPCache buffers directly. This method never allocates or disposes any of the
+        // six. `resumeFactors`: skip the entry Refactorize and resume B/P/etaAlpha/etaRow/etaCount as-is
+        // (unless the eta file is already at REFACTOR_INTERVAL capacity, matching the in-loop interval
+        // logic). `resumeWeights`: skip the w=1 seed, weight[] is already the caller's carried state.
+        // `factorsUsable` (out): true iff B/P/eta still describe the TERMINAL basis[]/status[] on return
+        // -- false whenever the primal cleanup below pivoted past what this method's own dual phase left
+        // (see the exit branch).
+        internal static LPInfo DualSimplexPivotCore(fProxyMxN M, fProxyN lower, fProxyN upper,
+                                                     fProxyN cost, fProxyN rhs, int m, int n, int N,
+                                                     int maxIter, fProxyN xFull,
+                                                     NativeArray<int> basis, NativeArray<byte> status,
+                                                     fProxyMxN B, ref Pivot P, fProxyMxN etaAlpha, NativeArray<int> etaRow,
+                                                     ref int etaCount, fProxyN weight,
+                                                     bool resumeFactors, bool resumeWeights, out bool factorsUsable)
         {
             // Same per-dtype tolerance expressions as stage 1 (see that file's header for why these are
             // inlined rather than a shared helper method).
@@ -337,12 +425,6 @@ namespace LinearAlgebra
                 else perturbedCost[j] = cost[j];                                                 // fixed
             }
 
-            var B = new fProxyMxN(m, m, Allocator.Temp);
-            var P = new Pivot(m, Allocator.Temp);
-            var etaAlpha = new fProxyMxN(REFACTOR_INTERVAL, m, Allocator.Temp);
-            var etaRow = new NativeArray<int>(REFACTOR_INTERVAL, Allocator.Temp);
-            int etaCount = 0;
-
             var y = new fProxyN(m, Allocator.Temp);
             var cB = new fProxyN(m, Allocator.Temp);
             var dj = new fProxyN(N, Allocator.Temp);
@@ -353,27 +435,57 @@ namespace LinearAlgebra
             var flipCols = new NativeArray<int>(N, Allocator.Temp);
             var flipRHS = new fProxyN(m, Allocator.Temp);
 
-            // DSE weights: seeded w_i = 1, exact only at the all-logical basis. HiGHS reuses weights
-            // carried on the HEkk instance and computes EXACT weights (one BTRAN per row) for a
-            // non-logical warm basis; unit seeding at a warm basis is a KNOWN simplification here --
-            // affects pricing quality only, never correctness. The faithful fix (persist weights
-            // alongside LPBasis across calls) belongs to the LPBasis factor-persistence redesign.
-            // Maintained (never reset) across refactorizations for the rest of this run.
-            var weight = new fProxyN(m, Allocator.Temp);
-            for (int i = 0; i < m; i++) weight[i] = (fProxy)1;
-
             LPStatus resultStatus = LPStatus.Optimal;
             int iters = 0;
 
-            bool ok = Refactorize(M, basis, B, ref P, m, N);
-            if (!ok)
+            // Entry factorization: resumeFactors (fProxyLPCache hit) resumes the caller-supplied
+            // B/P/etaAlpha/etaRow/etaCount as-is, skipping Refactorize entirely -- UNLESS the eta file
+            // is already at capacity, matching the in-loop interval logic below. Otherwise (no cache, or
+            // a cache miss) Refactorize fresh, with the same singular-basis all-logical fallback as
+            // before. `didResumeFactors` (distinct from the `resumeFactors` PARAMETER) records whether
+            // B/P/eta were ACTUALLY resumed rather than just requested -- the eta-at-capacity escape
+            // hatch above can still force a fresh Refactorize even when the caller asked to resume; the
+            // weight seed right below keys off the ACTUAL outcome, not the request.
+            bool ok, didResumeFactors;
+            if (resumeFactors && etaCount < REFACTOR_INTERVAL)
             {
-                // Supplied basis was singular -- fall back to the standard all-logical start (see this
-                // overload's header comment) rather than reporting failure outright.
-                for (int i = 0; i < m; i++) { basis[i] = n + i; status[n + i] = STATUS_BASIC; }
-                for (int j = 0; j < n; j++) status[j] = STATUS_AT_LOWER;
-                ok = Refactorize(M, basis, B, ref P, m, N);
+                ok = true;
+                didResumeFactors = true;
             }
+            else
+            {
+                ok = Refactorize(M, basis, B, ref P, m, N);
+                etaCount = 0;
+                if (!ok)
+                {
+                    // Supplied basis was singular -- fall back to the standard all-logical start (see
+                    // this overload's header comment) rather than reporting failure outright.
+                    for (int i = 0; i < m; i++) { basis[i] = n + i; status[n + i] = STATUS_BASIC; }
+                    for (int j = 0; j < n; j++) status[j] = STATUS_AT_LOWER;
+                    ok = Refactorize(M, basis, B, ref P, m, N);
+                    etaCount = 0;
+                }
+                didResumeFactors = false;
+            }
+
+            // DSE weight seeding priority (HiGHS parity, docs/spec-lpbasis-persistence.md; mirrors
+            // HEkkDual.cpp's solve setup): (1) resumeWeights (fProxyLPCache.weightsValid) AND
+            // didResumeFactors -- weight[] is already the caller's carried terminal state for the SAME
+            // factorization it was last updated against, left as-is. (2)/(3) both fall to this w=1 seed:
+            // exact at the all-logical basis (2); a KNOWN simplification otherwise (3 -- HiGHS computes
+            // EXACT weights via one BTRAN per row for a non-logical warm start; measured too expensive at
+            // this library's sizes, taxonomy (a), affects pricing quality only, never correctness).
+            //
+            // Tying the reseed to didResumeFactors (not just resumeWeights) rather than the caller's
+            // ORIGINAL resumeFactors request matters: without it, a cache hit whose eta file happens to
+            // be at capacity still resumes weight[] even though B/P/eta were JUST refreshed -- weight[]
+            // would then drift across an effectively UNBOUNDED chain of refactorizations spanning the
+            // WHOLE search (thousands of pivots) instead of being bounded by REFACTOR_INTERVAL like the
+            // eta chain itself. Benchmark-caught (MIPBenchmark float branchy12: Optimal/216 nodes/10.6ms
+            // regressed to NodeLimit/20000 nodes/122.7ms with the unconditional version; fixed by this
+            // tie-in, confirmed back to Optimal/226 nodes/~9.5ms -- see coder report for the isolation
+            // test). Maintained (never reset) within one refactorization epoch.
+            if (!(resumeWeights && didResumeFactors)) for (int i = 0; i < m; i++) weight[i] = (fProxy)1;
 
             if (!ok) resultStatus = LPStatus.MaxIterations;
             else
@@ -432,7 +544,7 @@ namespace LinearAlgebra
                     }
                 }
 
-                RebuildXB(M, rhs, status, lower, upper, B, in P, m, N, xB);
+                RebuildXB(M, rhs, status, lower, upper, B, in P, etaAlpha, etaRow, etaCount, m, N, xB);
             }
 
             int budget = maxIter > 0 ? maxIter : 50 * (m + N) + 200;
@@ -561,7 +673,7 @@ namespace LinearAlgebra
                     ok = Refactorize(M, basis, B, ref P, m, N);
                     etaCount = 0;
                     if (!ok) { resultStatus = LPStatus.MaxIterations; break; }
-                    RebuildXB(M, rhs, status, lower, upper, B, in P, m, N, xB);
+                    RebuildXB(M, rhs, status, lower, upper, B, in P, etaAlpha, etaRow, etaCount, m, N, xB);
                 }
                 else
                 {
@@ -600,6 +712,8 @@ namespace LinearAlgebra
                     xFull[j] = status[j] == STATUS_BASIC ? (fProxy)0 : (status[j] == STATUS_AT_LOWER ? lower[j] : upper[j]);
                 for (int i = 0; i < m; i++) xFull[basis[i]] = xB[i];
                 info = new LPInfo { status = LPStatus.Infeasible, iterations = iters, objective = 0 };
+                // B/P/eta directly describe this basis -- no cleanup call touched it.
+                factorsUsable = ok;
             }
             else if (resultStatus == LPStatus.Optimal && iters == 0 && !anyArtificial)
             {
@@ -619,11 +733,14 @@ namespace LinearAlgebra
                 // but MINORITY case for MIP/strong-branch-trial re-solves in practice (most single-bound
                 // tightenings still cost >=1 real pivot to restore primal feasibility, which this path
                 // does not shortcut). Reuses the SAME extraction as the Infeasible branch above, just
-                // with status = Optimal.
+                // with status = Optimal. Composes with a resumeFactors cache hit (fProxyLPCache): the
+                // entry Refactorize is already skipped, so this best case is O(m) setup + one O(mN)
+                // pricing pass, no O(m^3) work at all.
                 for (int j = 0; j < N; j++)
                     xFull[j] = status[j] == STATUS_BASIC ? (fProxy)0 : (status[j] == STATUS_AT_LOWER ? lower[j] : upper[j]);
                 for (int i = 0; i < m; i++) xFull[basis[i]] = xB[i];
                 info = new LPInfo { status = LPStatus.Optimal, iterations = iters, objective = 0 };
+                factorsUsable = ok;
             }
             else
             {
@@ -631,12 +748,18 @@ namespace LinearAlgebra
                 // fixes any primal infeasibility left by the bound restoration, using the REAL cost.
                 var cleanup = RevisedPrimalCore(M, lower, upper, cost, rhs, m, n, N, maxIter, xFull, basis, status);
                 info = new LPInfo { status = cleanup.status, iterations = iters + cleanup.iterations, objective = 0 };
+                // This method's own B/P/eta describe the basis BEFORE the cleanup call, which pivots
+                // basis[]/status[] further (in place) whenever it performs >=1 iterations of its own --
+                // stale relative to the ACTUAL terminal basis returned unless it did nothing.
+                factorsUsable = ok && cleanup.iterations == 0;
             }
 
             xB.Dispose(); perturbedCost.Dispose(); artificialDir.Dispose();
-            B.Dispose(); P.Dispose(); etaAlpha.Dispose(); etaRow.Dispose();
             y.Dispose(); cB.Dispose(); dj.Dispose(); rho.Dispose(); tau.Dispose();
-            alphaRow.Dispose(); alphaCol.Dispose(); flipCols.Dispose(); flipRHS.Dispose(); weight.Dispose();
+            alphaRow.Dispose(); alphaCol.Dispose(); flipCols.Dispose(); flipRHS.Dispose();
+            // B/P/etaAlpha/etaRow/weight are NOT disposed here -- caller-owned (see this method's header
+            // comment); the plain-overload wrapper disposes its own Temp-allocated copies after this
+            // returns, the cache-aware wrapper leaves cache's buffers alive for the next call.
 
             return info;
         }

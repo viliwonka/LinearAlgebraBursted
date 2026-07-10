@@ -81,6 +81,7 @@ namespace LinearAlgebra
         // trial (infeasible/unbounded/iteration-capped) contributes no observation.
         internal static void StrongBranchTrial(int j, bool isUp, float v, double parentObj,
                                                ref UnsafeList<floatBoundChange> boundStack, ref LPBasis basis,
+                                               ref floatLPCache cache,
                                                floatMxN Aaug, floatN bAug, floatN costY,
                                                NativeArray<ConstraintSense> sensesAug,
                                                floatN c, NativeArray<byte> kind, NativeArray<int> col,
@@ -95,11 +96,11 @@ namespace LinearAlgebra
             int marker = boundStack.Length;
             float newBound = isUp ? math.ceil(v) : math.floor(v);
             if (isUp)
-                PushBoundChange(ref boundStack, j, false, curLB[j], newBound, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                PushBoundChange(ref boundStack, j, false, curLB[j], newBound, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref cache);
             else
-                PushBoundChange(ref boundStack, j, true, curUB[j], newBound, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+                PushBoundChange(ref boundStack, j, true, curUB[j], newBound, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref cache);
 
-            LPInfo info = LP.solve(in Aaug, in bAug, in costY, in sensesAug, ref trialY, out double _, ref basis, STRONG_BRANCH_ITER_CAP);
+            LPInfo info = LP.solve(in Aaug, in bAug, in costY, in sensesAug, ref trialY, out double _, ref basis, ref cache, STRONG_BRANCH_ITER_CAP);
             totalLpIter += info.iterations;
 
             if (info.status == LPStatus.Optimal)
@@ -112,7 +113,7 @@ namespace LinearAlgebra
                 AddPseudocostObservation(j, isUp, delta, objDelta, pcUpSum, pcUpCount, pcDownSum, pcDownCount, ref globalPCSum, ref globalPCCount);
             }
 
-            UndoToMarker(ref boundStack, marker, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB);
+            UndoToMarker(ref boundStack, marker, curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref cache);
         }
 
         // Picks the branching variable at the current node: most-fractional before any pseudocost
@@ -126,6 +127,7 @@ namespace LinearAlgebra
                                                   ref double globalPCSum, ref int globalPCCount,
                                                   ref int sbCallsUsed, int sbBudget,
                                                   ref UnsafeList<floatBoundChange> boundStack, ref LPBasis basis,
+                                                  ref floatLPCache cache,
                                                   floatMxN Aaug, floatN bAug, floatN costY,
                                                   NativeArray<ConstraintSense> sensesAug,
                                                   floatN c, NativeArray<byte> kind, NativeArray<int> col,
@@ -184,14 +186,14 @@ namespace LinearAlgebra
                 float v = xNode[best];
                 if (pcDownCount[best] < RELIABILITY && sbCallsUsed < sbBudget)
                 {
-                    StrongBranchTrial(best, false, v, nodeObj, ref boundStack, ref basis, Aaug, bAug, costY, sensesAug,
+                    StrongBranchTrial(best, false, v, nodeObj, ref boundStack, ref basis, ref cache, Aaug, bAug, costY, sensesAug,
                                       c, kind, col, xlRoot, xuRoot, curLB, curUB, rowLB, rowUB, n, trialY, trialX,
                                       pcUpSum, pcUpCount, pcDownSum, pcDownCount, ref globalPCSum, ref globalPCCount, ref totalLpIter);
                     sbCallsUsed++;
                 }
                 if (pcUpCount[best] < RELIABILITY && sbCallsUsed < sbBudget)
                 {
-                    StrongBranchTrial(best, true, v, nodeObj, ref boundStack, ref basis, Aaug, bAug, costY, sensesAug,
+                    StrongBranchTrial(best, true, v, nodeObj, ref boundStack, ref basis, ref cache, Aaug, bAug, costY, sensesAug,
                                       c, kind, col, xlRoot, xuRoot, curLB, curUB, rowLB, rowUB, n, trialY, trialX,
                                       pcUpSum, pcUpCount, pcDownSum, pcDownCount, ref globalPCSum, ref globalPCCount, ref totalLpIter);
                     sbCallsUsed++;
