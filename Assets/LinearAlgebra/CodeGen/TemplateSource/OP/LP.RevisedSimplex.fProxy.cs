@@ -446,7 +446,8 @@ namespace LinearAlgebra
                     }
                 }
 
-                if (winner < 0 || thetaSelf <= winnerExactT + (fProxy)1e-12)
+                // Per-dtype near-tie window (a fixed 1e-12 sits below float's rounding noise at O(1) theta).
+                if (winner < 0 || thetaSelf <= winnerExactT + (fProxy)/*+choose[1e-6f|1e-12]*/1e-6f/*-choose*/)
                 {
                     theta = thetaSelf; leaveRow = -1; leaveHitsUpper = false;
                 }

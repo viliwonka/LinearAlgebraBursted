@@ -185,10 +185,20 @@ The HiGHS workhorse. Requires stage 1's kernel layer. Phase 2 first:
   — use the exact Forrest–Goldfarb formulas (w_i' = w_i − 2(α_qi/α_qr)τ_i + (α_qi/α_qr)²w_r,
   then w_r' = w_r/α_qr²); guard with w_i ≥ 1e-4 floor. Verify against a reference before
   trusting: a wrong DSE update silently degrades to ~Dantzig.
-- Cost perturbation (HiGHS-style degeneracy defence): on entry to dual phase 2, perturb each
-  c_j by a small random relative amount (≤ 1e-5·(1+|c_j|), deterministic seed); remove the
-  perturbation at the end and clean up any resulting dual infeasibilities with a few primal
-  iterations (stage 1's primal is the cleanup engine — this is exactly how HiGHS composes them).
+- Cost perturbation (faithful port of `HEkk::initialiseCost`): on entry to dual phase 2,
+  perturb structural columns by xpert = (1+r)·(|c_j|+1)·base with base = 5e-7·max|c| (max|c|
+  dampened by sqrt(sqrt()) above 100 and clamped to 1 when <1% of variables are boxed); xpert
+  is positive and SIGNED by bound structure (+ for lower-bounded, − for upper-bounded,
+  sign(c_j) for boxed; free/fixed columns never perturbed — keeps a dual-feasible d_j
+  dual-feasible). Logical (row) columns get only a symmetric ±0.5·1e-12 tie-breaker, ~7 orders
+  smaller. Both bases are written in dualTol units (5·dualTol / 1e-5·dualTol = HiGHS's exact
+  literals in double; float scales with its own tolerance). Deterministic hash r∈[0,1)
+  replaces HiGHS's random vector. Remove the perturbation at the end and clean up any
+  resulting dual infeasibilities with a few primal iterations (stage 1's primal is the cleanup
+  engine — this is exactly how HiGHS composes them). History: the first version applied a
+  symmetric ±1e-5·(1+|c_j|) to EVERY column including logicals — two independent fidelity
+  reviews flagged that slack columns were getting a perturbation ~100× the dual tolerance
+  (HiGHS's row scale is 1e-12); replaced by this faithful port.
 - Dual phase 1 (only when needed): use the **artificial-bounds** method — give every
   dual-infeasible nonbasic a temporary finite box ([0, artificialBound]), making the basis
   dual-feasible after flips; run dual phase 2; afterwards restore real bounds — variables stuck at

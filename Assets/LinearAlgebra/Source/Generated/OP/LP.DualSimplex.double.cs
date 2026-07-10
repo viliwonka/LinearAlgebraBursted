@@ -171,6 +171,10 @@ namespace LinearAlgebra
 
             if (!anyCandidate) { considered.Dispose(); return; }
 
+            // Near-tie window for the largest-|alphaHat| stability preference below; per-dtype (a fixed
+            // 1e-9 sits below float's own rounding noise at O(1) ratios, disabling the preference).
+            double ratioTieTol = (double)1e-9;
+
             double remaining = infeasR;
             while (true)
             {
@@ -181,8 +185,8 @@ namespace LinearAlgebra
                     double ah = s * alphaRow[j];
                     double djr = math.max(status[j] == STATUS_AT_LOWER ? dj[j] : -dj[j], (double)0);
                     double ratio = djr / math.abs(ah);
-                    if (best < 0 || ratio < bestRatio - (double)1e-9 ||
-                        (ratio <= bestRatio + (double)1e-9 && math.abs(ah) > bestAbsA))
+                    if (best < 0 || ratio < bestRatio - ratioTieTol ||
+                        (ratio <= bestRatio + ratioTieTol && math.abs(ah) > bestAbsA))
                     { best = j; bestRatio = ratio; bestAbsA = math.abs(ah); }
                 }
                 if (best < 0) { anyCandidate = false; break; }   // exhausted: combined capacity insufficient
@@ -291,20 +295,45 @@ namespace LinearAlgebra
             // gates the zero-pivot fast path near the bottom of this method (see that comment).
             bool anyArtificial = false;
 
-            // HiGHS-style cost perturbation (degeneracy defence, deterministic seed): <= 1e-5*(1+|c_j|).
-            // Deterministic per-column pseudo-random unit value in (-1, 1) via a cheap integer hash
-            // (MurmurHash3 finalizer mix) of the column index -- inlined rather than a standalone helper
-            // for the same return-type-collision reason as the tolerances above (an double-returning
-            // helper with only an `int` parameter would differ solely in return type between the float-
-            // and double-generated fragments).
+            // Cost perturbation (degeneracy defence), ported from HEkk::initialiseCost. Structural
+            // columns: base = 5e-7 * max|c| (dampened by sqrt(sqrt()) above 100, clamped to 1 when
+            // <1% of variables are boxed), xpert = (1+r)*(|c_j|+1)*base, POSITIVE and signed by bound
+            // structure so a dual-feasible d_j stays dual-feasible; free/fixed columns untouched.
+            // Logical (row) columns: symmetric +-0.5 * 1e-12 -- exact-tie breaking only, ~7 orders
+            // smaller than the column base. Both bases expressed in dualTol units (5*dualTol and
+            // 1e-5*dualTol = HiGHS's literal 5e-7 / 1e-12 in double exactly; float scales with its own
+            // tolerance). Deterministic per-column hash r in [0,1) replaces HiGHS's random vector
+            // (MurmurHash3 finalizer mix, inlined -- see the tolerance comment above).
+            double maxAbsCost = 0.0;
+            for (int j = 0; j < n; j++) maxAbsCost = math.max(maxAbsCost, math.abs((double)cost[j]));
+            if (maxAbsCost > 100.0) maxAbsCost = math.sqrt(math.sqrt(maxAbsCost));
+            int boxedCount = 0;
+            for (int j = 0; j < N; j++)
+                if ((double)(upper[j] - lower[j]) < 1e30) boxedCount++;
+            if (boxedCount < 0.01 * N) maxAbsCost = math.min(maxAbsCost, 1.0);
+            double colPerturbBase = 5.0 * (double)dualTol * maxAbsCost;
+            double rowPerturbBase = 1e-5 * (double)dualTol;
             for (int j = 0; j < N; j++)
             {
                 uint h = (uint)j * 2654435761u + 0x9E3779B9u;
                 h ^= h >> 15; h *= 0x85EBCA6Bu;
                 h ^= h >> 13; h *= 0xC2B2AE35u;
                 h ^= h >> 16;
-                double unit = (double)(h * (1.0 / 4294967295.0) * 2.0 - 1.0);
-                perturbedCost[j] = cost[j] + unit * (double)1e-5 * ((double)1 + math.abs(cost[j]));
+                double r = h * (1.0 / 4294967296.0);
+                if (j >= n)
+                {
+                    perturbedCost[j] = cost[j] + (double)((0.5 - r) * rowPerturbBase);
+                    continue;
+                }
+                bool loInf = lower[j] <= (double)(-1e29);
+                bool upInf = upper[j] >= (double)1e29;
+                double xpert = (1.0 + r) * (math.abs((double)cost[j]) + 1.0) * colPerturbBase;
+                if (loInf && upInf) perturbedCost[j] = cost[j];                                  // free
+                else if (upInf) perturbedCost[j] = cost[j] + (double)xpert;                      // lower-bounded
+                else if (loInf) perturbedCost[j] = cost[j] - (double)xpert;                      // upper-bounded
+                else if (lower[j] != upper[j])                                                   // boxed
+                    perturbedCost[j] = cost[j] + (cost[j] >= (double)0 ? (double)xpert : (double)(-xpert));
+                else perturbedCost[j] = cost[j];                                                 // fixed
             }
 
             var B = new doubleMxN(m, m, Allocator.Temp);
@@ -323,11 +352,12 @@ namespace LinearAlgebra
             var flipCols = new NativeArray<int>(N, Allocator.Temp);
             var flipRHS = new doubleN(m, Allocator.Temp);
 
-            // DSE weights: w_i = 1 exactly at the all-logical basis (spec); at an arbitrary warm-started
-            // basis this is an APPROXIMATION (not exact steepest-edge), same as HiGHS's own warm-start
-            // behavior -- affects pricing quality only, never correctness (neither the pivot below nor
-            // DualRatioTest depends on weight VALUES for validity, only for which candidate they prefer).
-            // Maintained (never reset) across refactorizations for the rest of this run either way.
+            // DSE weights: seeded w_i = 1, exact only at the all-logical basis. HiGHS reuses weights
+            // carried on the HEkk instance and computes EXACT weights (one BTRAN per row) for a
+            // non-logical warm basis; unit seeding at a warm basis is a KNOWN simplification here --
+            // affects pricing quality only, never correctness. The faithful fix (persist weights
+            // alongside LPBasis across calls) belongs to the LPBasis factor-persistence redesign.
+            // Maintained (never reset) across refactorizations for the rest of this run.
             var weight = new doubleN(m, Allocator.Temp);
             for (int i = 0; i < m; i++) weight[i] = (double)1;
 
