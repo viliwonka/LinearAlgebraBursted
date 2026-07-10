@@ -195,6 +195,57 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() { Blas.dot(in A, in x, ref result); }
     }
 
+    // Warm re-solve chain (Section 6): 1 cold seeding solve + `resolves` rhs-perturbed re-solves,
+    // all inside ONE Execute -- LPBasis.populated / fProxyLPCache validity are plain struct fields,
+    // so warm state cannot survive across IJob.Run copies; the chain must live in a single job.
+    // Every mode regenerates the IDENTICAL deterministic perturbation sequence (seeded per k), so
+    // the three rows solve the same problems. itersOut = TOTAL pivots across the K re-solves
+    // (seed solve excluded); objOut = the LAST re-solve's objective (three-mode agreement check).
+    // Perturbation stays within the slack floor (bBase slack >= 0.1, noise <= 0.04), so every
+    // perturbed instance remains feasible.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LpWarmResolveJobFProxy : IJob
+    {
+        public fProxyMxN A;
+        public fProxyN bBase, b, c, x;
+        public NativeArray<ConstraintSense> senses;
+        public int mode;        // 0 = cold every solve, 1 = ref LPBasis, 2 = ref LPBasis + fProxyLPCache
+        public int resolves;
+        public NativeArray<double> objOut;
+        public NativeArray<int> itersOut;
+        public NativeArray<int> statusOut;
+        public void Execute()
+        {
+            int n = A.N_Cols, m = A.M_Rows;
+            var basis = new LPBasis(n, m, Allocator.Temp);
+            var cache = new fProxyLPCache(n, m, Allocator.Temp);
+
+            for (int i = 0; i < m; i++) b[i] = bBase[i];
+            double obj;
+            LPInfo info;
+            if (mode == 0) info = LP.solve(in A, in b, in c, in senses, ref x, out obj, LPMethod.DualSimplex, 0);
+            else if (mode == 1) info = LP.solve(in A, in b, in c, in senses, ref x, out obj, ref basis, 0);
+            else info = LP.solve(in A, in b, in c, in senses, ref x, out obj, ref basis, ref cache, 0);
+
+            int warmIters = 0;
+            obj = 0;
+            for (int k = 1; k <= resolves; k++)
+            {
+                var rng = new Random((uint)k * 2654435761u + 0x9E3779B9u);
+                for (int i = 0; i < m; i++) b[i] = bBase[i] + rng.NextFProxy((fProxy)(-0.04), (fProxy)0.04);
+                if (mode == 0) info = LP.solve(in A, in b, in c, in senses, ref x, out obj, LPMethod.DualSimplex, 0);
+                else if (mode == 1) info = LP.solve(in A, in b, in c, in senses, ref x, out obj, ref basis, 0);
+                else info = LP.solve(in A, in b, in c, in senses, ref x, out obj, ref basis, ref cache, 0);
+                warmIters += info.iterations;
+            }
+
+            objOut[0] = obj;
+            itersOut[0] = warmIters;
+            statusOut[0] = (int)info.status;
+            basis.Dispose(); cache.Dispose();
+        }
+    }
+
     public static partial class LPBenchmark
     {
         // ==== Section 1: LP.solve, random dense feasible LP -- all FOUR backends on the SAME problem ====
@@ -248,6 +299,56 @@ namespace LinearAlgebra.Benchmarks
                 var jobD = new LpSolveJobFProxy { A = A, b = b, c = c, senses = senses, x = xD, method = LPMethod.DualSimplex, maxIter = 0, objOut = objOut, itersOut = itersOut, statusOut = statusOut };
                 var statD = Bench.Time(() => jobD.Run());
                 sb.AppendLine(LPBenchmarkFmt.SolveRow("fProxy", n, m, "dual-simplex", statD, itersOut[0], objOut[0]));
+
+                objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
+                senses.Dispose();
+                arena.Dispose();
+            }
+        }
+
+        // ==== Section 6: warm re-solve chain -- cold vs LPBasis vs LPBasis+fProxyLPCache ====
+        // (docs/spec-lpbasis-persistence.md acceptance item 5.) Section-1-style instance; see
+        // LpWarmResolveJobFProxy's comment for why the whole chain runs inside one job.
+        static void SectionWarmResolveFProxy(StringBuilder sb)
+        {
+            sb.AppendLine();
+            sb.AppendLine("--- 6. Warm re-solve chain: 1 cold seed + K=16 rhs-perturbed re-solves (Section-1-style " +
+                          "instance; identical perturbation sequence per mode) [fProxy] ---");
+            sb.AppendLine(LPBenchmarkFmt.WarmHeader());
+
+            foreach (var n in LPBenchmarkFmt.WarmVarsN)
+            {
+                int m = n / 2;
+                var arena = new Arena(Allocator.Persistent);
+                var A = arena.fProxyRandomMat(m, n, 0f, 1f, (uint)(n * 7919 + 11));
+                var x0 = arena.fProxyRandomVec(n, 0f, 1f, (uint)(n * 104729 + 7));
+                var Ax0 = arena.fProxyVec(m);
+                new LpRhsMatVecJobFProxy { A = A, x = x0, result = Ax0 }.Run();
+                var bBase = arena.fProxyVec(m);
+                var rng = new Random((uint)(n * 1299709 + 3));
+                for (int i = 0; i < m; i++) bBase[i] = Ax0[i] + rng.NextFProxy((fProxy)0.1, (fProxy)1);
+                var c = arena.fProxyRandomVec(n, -1f, 1f, (uint)(n * 15485863 + 5));
+                var senses = new NativeArray<ConstraintSense>(m, Allocator.Persistent);
+                for (int i = 0; i < m; i++) senses[i] = ConstraintSense.LessEqual;
+
+                var objOut = new NativeArray<double>(1, Allocator.Persistent);
+                var itersOut = new NativeArray<int>(1, Allocator.Persistent);
+                var statusOut = new NativeArray<int>(1, Allocator.Persistent);
+
+                var bScratch = arena.fProxyVec(m);
+                for (int mode = 0; mode <= 2; mode++)
+                {
+                    var xW = arena.fProxyVec(n);
+                    var job = new LpWarmResolveJobFProxy
+                    {
+                        A = A, bBase = bBase, b = bScratch, c = c, senses = senses, x = xW,
+                        mode = mode, resolves = 16,
+                        objOut = objOut, itersOut = itersOut, statusOut = statusOut
+                    };
+                    var stat = Bench.Time(() => job.Run());
+                    string label = mode == 0 ? "cold" : (mode == 1 ? "warm-basis" : "warm+cache");
+                    sb.AppendLine(LPBenchmarkFmt.WarmRow("fProxy", n, m, label, stat, itersOut[0], objOut[0]));
+                }
 
                 objOut.Dispose(); itersOut.Dispose(); statusOut.Dispose();
                 senses.Dispose();

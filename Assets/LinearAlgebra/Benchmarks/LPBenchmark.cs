@@ -88,6 +88,18 @@ namespace LinearAlgebra.Benchmarks
         public static string InfeasRow(string dtype, int n, int m, string method, Bench.Stat st, int iters, int status) =>
             string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-6} {3,-14} {4,11:F4} {5,11:F4} {6,7} {7,14}",
                 dtype, n, m, method, st.Median, st.Min, iters, StatusName((LPStatus)status));
+
+        // Section 6 (warm re-solve chain): iters column = TOTAL dual-simplex pivots across the K
+        // warm re-solves (the seeding cold solve excluded), objective = last re-solve's (three-mode
+        // agreement check on the identical perturbation sequence).
+        public static readonly int[] WarmVarsN = { 96, 192, 384 };
+
+        public static string WarmHeader() => string.Format("{0,-7} {1,-6} {2,-6} {3,-14} {4,11} {5,11} {6,9} {7,14}",
+            "dtype", "n", "m", "mode", "med(ms)", "min(ms)", "warmIters", "objective");
+
+        public static string WarmRow(string dtype, int n, int m, string mode, Bench.Stat st, int iters, double obj) =>
+            string.Format(CultureInfo.InvariantCulture, "{0,-7} {1,-6} {2,-6} {3,-14} {4,11:F4} {5,11:F4} {6,9} {7,14:E4}",
+                dtype, n, m, mode, st.Median, st.Min, iters, obj);
     }
 
     // ================================================================================================
@@ -169,6 +181,10 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine("contradictory row, all four backends; a STATUS column (not objective) shows which backends");
             sb.AppendLine("actually detect Infeasible vs exhaust MaxIterations (interior point has no exact");
             sb.AppendLine("infeasibility certificate, so MaxIterations there is expected, not a bug).");
+            sb.AppendLine("Section 6: warm re-solve chain (docs/spec-lpbasis-persistence.md) -- 1 cold seed +");
+            sb.AppendLine("K=16 rhs-perturbed re-solves on the same instance: cold every time vs ref LPBasis vs");
+            sb.AppendLine("ref LPBasis + fProxyLPCache (factor/weight persistence); identical perturbation");
+            sb.AppendLine("sequence per mode, so warmIters and objective are directly comparable.");
             sb.AppendLine();
 
             SectionSolveFloat(sb);
@@ -181,6 +197,8 @@ namespace LinearAlgebra.Benchmarks
             SectionDenseCoveringDouble(sb);
             SectionInfeasibleFloat(sb);
             SectionInfeasibleDouble(sb);
+            SectionWarmResolveFloat(sb);
+            SectionWarmResolveDouble(sb);
         }
     }
 }
