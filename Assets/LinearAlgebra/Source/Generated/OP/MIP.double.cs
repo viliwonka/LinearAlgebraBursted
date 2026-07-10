@@ -421,7 +421,7 @@ namespace LinearAlgebra
                         // Rounding heuristic (docs/draft-spec-mip.md stage 4): the LP solution is
                         // fractional here, so try it -- a cheap, non-branching shot at a better incumbent.
                         TryRoundingHeuristic(xNode, integrality, n, uplocks, downlocks, ref roundRng,
-                                             A, b, senses, m0, c, xlRoot, xuRoot,
+                                             A, b, senses, m0, c, curLB, curUB,
                                              xRound, ref haveIncumbent, ref incumbentObj, incumbentX);
 
                         double v = xNode[branchVar];
@@ -547,13 +547,15 @@ namespace LinearAlgebra
         //  (b) HiGHS's `randgen` is a solver-wide RNG advanced continuously; MIP.solve has no public seed
         //      parameter and must stay bit-deterministic across repeated identical calls (open question 6
         //      in the spec), so this uses a fixed internal seed instead (see roundRng in SearchCore).
+        // Bound handling follows HiGHS: rounded values are clamped into the CURRENT node's bounds and
+        // feasibility is checked against them (not the root bounds -- third-review finding).
         // Installs the point as the new incumbent when feasible and better than the current one (or there
         // is none yet).
         internal static void TryRoundingHeuristic(doubleN xNode, NativeArray<byte> integrality, int n,
                                                    NativeArray<int> uplocks, NativeArray<int> downlocks,
                                                    ref Unity.Mathematics.Random rng,
                                                    doubleMxN A, doubleN b, NativeArray<ConstraintSense> senses, int m0,
-                                                   doubleN c, doubleN xlRoot, doubleN xuRoot, doubleN xRound,
+                                                   doubleN c, doubleN curLB, doubleN curUB, doubleN xRound,
                                                    ref bool haveIncumbent, ref double incumbentObj, doubleN incumbentX)
         {
             for (int j = 0; j < n; j++)
@@ -564,13 +566,21 @@ namespace LinearAlgebra
                 if (uplocks[j] == 0) r = math.ceil(v - INTEGRALITY_TOL);
                 else if (downlocks[j] == 0) r = math.floor(v + INTEGRALITY_TOL);
                 else r = math.floor(v + (double)rng.NextFloat(0.1f, 0.9f));
+                // Clamp into the node's bounds (HiGHS randomizedRounding clamps to localdom).
+                // Round-inward first: node bounds are integral once branched, but ROOT bounds are the
+                // user's raw values and may be fractional -- clamping to a fractional bound would
+                // install a fractional "integer" incumbent.
+                double lbj = math.ceil((double)curLB[j] - INTEGRALITY_TOL);
+                double ubj = math.floor((double)curUB[j] + INTEGRALITY_TOL);
+                if (r < lbj) r = lbj;
+                if (r > ubj) r = ubj;
                 xRound[j] = (double)r;
             }
 
             for (int j = 0; j < n; j++)
             {
                 double v = (double)xRound[j];
-                if (v < (double)xlRoot[j] - ROUNDING_FEAS_TOL || v > (double)xuRoot[j] + ROUNDING_FEAS_TOL)
+                if (v < (double)curLB[j] - ROUNDING_FEAS_TOL || v > (double)curUB[j] + ROUNDING_FEAS_TOL)
                     return;
             }
 

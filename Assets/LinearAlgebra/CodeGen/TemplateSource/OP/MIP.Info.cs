@@ -126,7 +126,8 @@ namespace LinearAlgebra
         // LP-bound pruning tolerance: prune a node whose LP bound is within this of the incumbent.
         internal const double ABS_GAP = 1e-6;
 
-        // Integrality tolerance: |x_j - round(x_j)| <= this * max(1, |x_j|). Fixed for both dtypes.
+        // Integrality tolerance: |x_j - round(x_j)| <= this, ABSOLUTE (HiGHS
+        // mip_feasibility_tolerance). Fixed for both dtypes.
         internal const double INTEGRALITY_TOL = 1e-6;
 
         // Pseudocost reliability threshold: observations required, per direction, before a variable's

@@ -141,8 +141,10 @@ namespace LinearAlgebra
                 double xd = (double)xNode[j];
                 double f = xd - math.floor(xd);
                 double dist = math.min(f, 1.0 - f);
-                double tol = INTEGRALITY_TOL * math.max(1.0, math.abs(xd));
-                if (dist > tol) frac[nc++] = j;
+                // ABSOLUTE tolerance (HiGHS mip_feasibility_tolerance semantics). A relative form
+                // (tol * max(1,|x|)) exceeds the max possible fractional distance 0.5 once |x| >= 5e5,
+                // silently classifying every large-magnitude fractional value as integral.
+                if (dist > INTEGRALITY_TOL) frac[nc++] = j;
             }
 
             if (nc == 0) { frac.Dispose(); return -1; }

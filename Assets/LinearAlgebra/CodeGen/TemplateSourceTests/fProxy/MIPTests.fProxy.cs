@@ -93,6 +93,12 @@ public class fProxyMIPTests
             // -- determinism under the new features --
             Stage4DeterminismStein9,   // rounding-heuristic + propagation path: two solves bit-for-bit identical
             Stage4DeterminismGapLimit, // two identical GapLimit-triggering solves identical (DOUBLE-ONLY)
+
+            // -- integrality classification at large magnitude (third-review regression) --
+            LargeMagnitudeIntegrality, // LP vertex fractional at ~7.5e5: the former RELATIVE integrality
+                                       //   tol (1e-6*max(1,|x|) > 0.5 past |x|~5e5) declared the fractional
+                                       //   root Optimal; fixed to HiGHS's absolute tolerance.
+                                       //   DOUBLE-ONLY (float LP precision at this data scale).
         }
 
         public TestType Type;
@@ -131,6 +137,7 @@ public class fProxyMIPTests
                 case TestType.GapLimitPassThrough: GapLimitPassThrough(); break;
                 case TestType.Stage4DeterminismStein9: Stage4DeterminismStein9(); break;
                 case TestType.Stage4DeterminismGapLimit: Stage4DeterminismGapLimit(); break;
+                case TestType.LargeMagnitudeIntegrality: LargeMagnitudeIntegrality(); break;
             }
         }
 
@@ -1134,6 +1141,42 @@ public class fProxyMIPTests
         }
 
         // ---- diagnostics-recording assert helpers (mirrors LPTests.fProxy.cs) ----
+
+        // Scaled 2-row instance whose LP relaxation vertex is (749999.375, 450001.125) -- fractional
+        // at a magnitude where the former RELATIVE integrality tolerance (1e-6*|x| = 0.75 > 0.5 >=
+        // any fractional distance) classified BOTH values as integral, so the solver declared the
+        // fractional root Optimal at nodes==1. With the absolute (HiGHS) tolerance the search
+        // branches and proves the true integer optimum (750000, 450000), obj -8250000. Single-row
+        // propagation cannot tighten this away: the fractionality lives in the two-row intersection.
+        // DOUBLE-ONLY: float has ~0.06 absolute LP precision at this magnitude (P0033 rationale).
+        void LargeMagnitudeIntegrality()
+        {
+            int cases = /*+choose[0|1]*/0/*-choose*/;
+            for (int s = 0; s < cases; s++)
+            {
+                var arena = new Arena(Allocator.Persistent);
+                var A = arena.fProxyMat(2, 2);
+                A[0, 0] = (fProxy)1; A[0, 1] = (fProxy)1;
+                A[1, 0] = (fProxy)9; A[1, 1] = (fProxy)5;
+                var b = arena.fProxyVec(2); b[0] = (fProxy)1200000.5; b[1] = (fProxy)9000000;
+                var c = arena.fProxyVec(2); c[0] = (fProxy)(-8); c[1] = (fProxy)(-5);
+                var xl = arena.fProxyVec(2);
+                var xu = arena.fProxyVec(2); xu[0] = (fProxy)1000000; xu[1] = (fProxy)1000000;
+                var x = arena.fProxyVec(2);
+                var senses = new NativeArray<ConstraintSense>(2, Allocator.Temp);
+                senses[0] = ConstraintSense.LessEqual; senses[1] = ConstraintSense.LessEqual;
+                var integ = new NativeArray<byte>(2, Allocator.Temp); integ[0] = 1; integ[1] = 1;
+
+                var info = MIP.solve(in A, in b, in c, in senses, in xl, in xu, in integ, ref x, out double obj, maxNodes: 100);
+
+                AssertTrue(info.status == MIPStatus.Optimal);
+                AssertClose(x[0], (fProxy)750000, (fProxy)1e-3);
+                AssertClose(x[1], (fProxy)450000, (fProxy)1e-3);
+                AssertCloseD(obj, -8250000.0, 1e-3);
+
+                senses.Dispose(); integ.Dispose(); arena.Dispose();
+            }
+        }
 
         void AssertTrue(bool cond)
         {
