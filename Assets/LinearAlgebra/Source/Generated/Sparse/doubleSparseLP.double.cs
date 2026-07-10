@@ -67,6 +67,20 @@ namespace LinearAlgebra
 
         public void ApplyT(in doubleN v, ref doubleN y) => Apply(in v, ref y);   // symmetric
 
+        // Delegates to TWO inner operator Applies already (Aₛᵀ then Aₛ, i.e. two full passes over
+        // the inner operator's own data/kernels) -- there is no single kernel here to fold a third
+        // reduction into, so this COMPOSES: run Apply as normal, then one dot(v,y) pass. M is
+        // always square (Rows==Cols==As.Rows), so this IS cg/pcg's fused-schedule customer (the LP
+        // normal-equations PCG inner solve, standardFormInterior) even though the "fusion" here is
+        // just calling the two pieces back to back rather than a merged kernel -- per Krylov R2's
+        // spec (docs/draft-spec-krylov-optimization.md): "operators that delegate ... compose
+        // sensibly and document".
+        public double ApplyDot(in doubleN v, ref doubleN y)
+        {
+            Apply(in v, ref y);
+            return Blas.dot(v, y);
+        }
+
         // Per-row apply (M is symmetric m×m); never the hot path for LP -- present only to satisfy the
         // interface. Two bounded Temp scratch vectors per call.
         public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
@@ -157,6 +171,15 @@ namespace LinearAlgebra.Sparse
             for (int i = 0; i < M; i++) { outv[2 * N + i] = -r[i]; outv[2 * N + M + i] = r[i]; }
         }
 
+        // Rectangular (Rows = M, Cols = 2N+2M): satisfies the interface, but no solver calls
+        // ApplyDot on this operator directly (only doubleNormalOperator wraps it for PCG, and
+        // that wrapper has its own ApplyDot). Composes: Apply, then a plain dot pass.
+        public double ApplyDot(in doubleN z, ref doubleN y)
+        {
+            Apply(in z, ref y);
+            return Blas.dot(z, y);
+        }
+
         // diag(Aₛ diag(D) Aₛᵀ)_i, with D = [d⁺(n) | d⁻(n) | dᵤ(m) | dᵥ(m)]:
         //   Σ_j A[i,j]²·(d⁺[j] + d⁻[j])  +  dᵤ[i]  +  dᵥ[i]
         // (the −A block contributes (−A[i,j])² = A[i,j]², the ±I blocks each contribute 1²).
@@ -235,6 +258,15 @@ namespace LinearAlgebra.Sparse
             BSR.spMVT(in A, in r, ref atr);                        // atr = Aᵀ r
             for (int j = 0; j < N; j++) outv[j] = atr[j];
             for (int k = 0; k < NSlack; k++) outv[N + k] = SlackSign[k] * r[SlackRow[k]];
+        }
+
+        // Rectangular (Rows = M, Cols = N+NSlack): satisfies the interface, but no solver calls
+        // ApplyDot on this operator directly (only doubleNormalOperator wraps it for PCG, and
+        // that wrapper has its own ApplyDot). Composes: Apply, then a plain dot pass.
+        public double ApplyDot(in doubleN z, ref doubleN y)
+        {
+            Apply(in z, ref y);
+            return Blas.dot(z, y);
         }
 
         // diag(Aₛ diag(D) Aₛᵀ)_i = Σ_j A[i,j]²·D[j]  +  Σ_{slack k in row i} D[N+k]  (sign² = 1).

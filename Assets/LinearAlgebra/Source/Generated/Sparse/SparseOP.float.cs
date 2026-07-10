@@ -82,6 +82,37 @@ namespace LinearAlgebra.Sparse
             return result;
         }
 
+        // y = A x, PLUS dot(x, y) computed as part of the same call -- Krylov R2's ApplyDot
+        // (docs/draft-spec-krylov-optimization.md; see floatBSROperator.ApplyDot, the sole
+        // caller). COMPOSES: a plain spMV, then one Blas.dot(x,y) pass (still the 2x-accumulator
+        // vecDot kernel, just not folded into spMV). Non-square (Rows != Cols) can't pair x[i]
+        // with y[i] at all -- Blas.dot below throws in that case, same as a caller doing Apply
+        // then Blas.dot(x,y) by hand would get.
+        //
+        // MEASURED, not assumed: an earlier version of this method dispatched genuinely-fused
+        // "Dot" kernels (bsrMatVecB1Dot..B6Dot) for full-storage square BSR at a specialized
+        // block size, folding dot(x,y) into the same per-block-row pass that computes y. A/B'd at
+        // the b=1 stencil section of LargeSparseBenchmark (the cleanest-signal section from
+        // Round 1) against this compose form: CG at N=5120/float went from ~0.245ms (this
+        // compose form, matching the pre-ApplyDot baseline) to ~0.359ms with the fused B1Dot
+        // kernel -- a reproducible ~45% REGRESSION, not a win. Root cause: B1Dot's per-row
+        // arithmetic is trivial (the b=1 stencil is a tridiagonal, ~3 stored blocks per row), so
+        // the kernel's cost is dominated by its OUTER cross-row dot fold -- which, lacking a
+        // contiguous 4-wide block to reinterpret as float4 (row results arrive one at a time),
+        // used two alternating SCALAR accumulators instead. That scalar fold is far slower than
+        // simply calling the already-tuned SIMD vecDot separately (2x float4, 8 lane-chains) --
+        // exactly what composing does. Per the spec's own instruction ("try 2 accumulators,
+        // measure, stop... if it doesn't measurably win, keep the original"): reverted to compose
+        // for every case rather than ship a kernel that loses on its own designed-to-be-clearest
+        // benchmark. The fused kernels were deleted, not merely unused, to avoid maintaining
+        // known-worse code.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float spMVDot(in floatBSR A, in floatN x, ref floatN y)
+        {
+            spMV(in A, in x, ref y);
+            return Blas.dot(x, y);
+        }
+
         /// <summary>
         /// Squared L2 norm of each column of the block-sparse A: d2[j] = Σ_i A[i,j]² = diag(AᵀA)[j],
         /// computed directly from the stored blocks in a single pass over the nonzeros (no AᵀA

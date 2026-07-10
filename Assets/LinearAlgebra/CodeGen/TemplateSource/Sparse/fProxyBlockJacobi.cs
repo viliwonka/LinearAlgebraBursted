@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using LinearAlgebra;
+using LinearAlgebra.Internal;
 
 namespace LinearAlgebra.Sparse
 {
@@ -184,7 +185,13 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// z = M⁻¹ r, applied block-wise: z_i = A_ii⁻¹ · r_i. z must not alias r (each z_i read
         /// draws on the full r_i block; overwriting r in place mid-block would corrupt later
-        /// rows of the same block's product).
+        /// rows of the same block's product). Runs every PCG/LOBPCG iteration, so b in
+        /// {1,2,3,4,6} (the same square sizes the spMV kernels specialize) dispatches to a fully
+        /// unrolled dense b x b matvec (<see cref="UnsafeOP.blockJacobiApplyB1"/>..B6, mirroring
+        /// <c>bsrMatVecB{b}</c>'s unroll -- Krylov R2, docs/draft-spec-krylov-optimization.md) --
+        /// bit-identical to the general loop below (same left-to-right term order, just named
+        /// locals instead of a runtime-trip-count inner loop Burst can't unroll). Any other BR
+        /// falls through to the general runtime-BR loop, unchanged.
         /// </summary>
         public unsafe void Apply(in fProxyN r, ref fProxyN z)
         {
@@ -201,6 +208,15 @@ namespace LinearAlgebra.Sparse
             fProxy* rp = r.Data.Ptr;
             fProxy* zp = z.Data.Ptr;
             fProxy* dp = DInv.Ptr;
+
+            switch (BR)
+            {
+                case 1: UnsafeOP.blockJacobiApplyB1(dp, rp, zp, BlockRows); return;
+                case 2: UnsafeOP.blockJacobiApplyB2(dp, rp, zp, BlockRows); return;
+                case 3: UnsafeOP.blockJacobiApplyB3(dp, rp, zp, BlockRows); return;
+                case 4: UnsafeOP.blockJacobiApplyB4(dp, rp, zp, BlockRows); return;
+                case 6: UnsafeOP.blockJacobiApplyB6(dp, rp, zp, BlockRows); return;
+            }
 
             int blockLen = BR * BR;
 

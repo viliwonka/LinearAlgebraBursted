@@ -98,9 +98,10 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
-                A.Apply(in p, ref Ap);                    // Ap = A p
-
-                double pAp = Blas.dot(p, Ap);
+                // Ap = A p ; pAp = dot(p, Ap) -- Krylov R2's ApplyDot: one call site instead of
+                // two (see IdoubleLinearOperator.ApplyDot's doc comment for why every operator
+                // composes rather than fuses -- a fused version was tried and measured slower).
+                double pAp = A.ApplyDot(in p, ref Ap);
 
                 if (!(pAp > (double)0))                  // NaN-safe: also catches breakdown
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rsold));
@@ -286,9 +287,10 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
-                A.Apply(in p, ref Ap);                    // Ap = A p
-
-                double pAp = Blas.dot(p, Ap);
+                // Ap = A p ; pAp = dot(p, Ap) -- Krylov R2's ApplyDot: one call site instead of
+                // two (see IdoubleLinearOperator.ApplyDot's doc comment for why every operator
+                // composes rather than fuses -- a fused version was tried and measured slower).
+                double pAp = A.ApplyDot(in p, ref Ap);
 
                 if (!(pAp > (double)0))                  // NaN-safe: also catches breakdown
                     return MakeSolveInfo(IterativeSolveStatus.Breakdown, k, math.sqrt(rr));

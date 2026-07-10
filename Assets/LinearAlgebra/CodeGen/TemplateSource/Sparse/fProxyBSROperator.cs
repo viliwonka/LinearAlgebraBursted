@@ -68,6 +68,10 @@ namespace LinearAlgebra.Sparse
                 BSR.spMVT(in A, in x, ref y);
         }
 
+        // Forwards to BSR.spMVDot, which composes (spMV then a plain dot) -- see that method's doc
+        // comment for why a genuinely-fused kernel was tried and measured slower.
+        public fProxy ApplyDot(in fProxyN x, ref fProxyN y) => BSR.spMVDot(in A, in x, ref y);
+
         // No block spMV kernel yet: apply per row (each spMV streams A once). Correct for any BSR;
         // the dense operator is the one that gets LOBPCG's single-GEMM fast path. Two bounded Temp
         // scratch vectors per call.

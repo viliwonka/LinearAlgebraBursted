@@ -24,6 +24,24 @@ namespace LinearAlgebra
         void ApplyT(in fProxyN x, ref fProxyN y);
 
         /// <summary>
+        /// y = A x (identical contract to <see cref="Apply"/>), and returns dot(x, y) -- Krylov R2
+        /// (docs/draft-spec-krylov-optimization.md): a single call site for cg/pcg's
+        /// <c>pAp = dot(p, Ap)</c> instead of two. Only meaningful when x and y are the SAME
+        /// length (A square, Rows == Cols) -- always true for cg/pcg's own use (A is square
+        /// SPD/the normal operator there), NOT guaranteed in general (e.g. a rectangular operator
+        /// used by cgls/lsqr). EVERY implementation here composes (Apply, then <c>Blas.dot</c>):
+        /// an earlier version genuinely fused the reduction into the dense/BSR kernels, but that
+        /// was measurably SLOWER (see <see cref="LinearAlgebra.Sparse.BSR.spMVDot"/>'s doc comment
+        /// for the A/B numbers and root cause) -- the fused kernel's cross-row dot fold couldn't
+        /// reuse <c>vecDot</c>'s SIMD accumulator pattern, and lost to just calling vecDot
+        /// separately. So ApplyDot exists for a clean, single call site in cg/pcg (and any future
+        /// solver), not for a "fusion" that doesn't currently pay for itself. Solvers that don't
+        /// need this (cgls, lsqr, lsmr, biCGStab, minres, ...) simply never call it -- ApplyDot is
+        /// opt-in per call site, not a replacement for Apply.
+        /// </summary>
+        fProxy ApplyDot(in fProxyN x, ref fProxyN y);
+
+        /// <summary>
         /// Applies the operator to a BLOCK of row-vectors at once: for i in [0, rows),
         /// AVrows[i,:] = A · Vrows[i,:]. Vrows/AVrows are row-major (at least rows × Cols); only the
         /// first <paramref name="rows"/> rows are read/written, and AVrows must not alias Vrows. Lets
@@ -74,6 +92,11 @@ namespace LinearAlgebra
         // Aᵀx via the existing vector*matrix dot: result[j] = sum_i x[i]*A[i,j] == (Aᵀx)[j].
         public void ApplyT(in fProxyN x, ref fProxyN y) => Blas.dot(in x, in A, ref y);
 
+        // Composes (Apply, then a plain dot pass) via Blas.dotSelf -- see that method's doc
+        // comment and IfProxyLinearOperator.ApplyDot's for why: a genuinely-fused version was
+        // tried and measured slower.
+        public fProxy ApplyDot(in fProxyN x, ref fProxyN y) => Blas.dotSelf(in A, in x, ref y);
+
         // Block apply: AVrows[i,:] = A · Vrows[i,:] for the first `rows` rows, as ONE matMatDot that
         // streams A once (vs `rows` separate GEMVs). Blas.dotRows(Vrows, A)[r,j] = Σ_i Vrows[r,i]·A[i,j]
         // = (A · Vrows[r])[j] when A is symmetric — the invariant every ApplyBlock caller holds. Only
@@ -121,6 +144,15 @@ namespace LinearAlgebra
 
         public void Apply(in fProxyN x, ref fProxyN y) => y.Data.CopyFrom(x.Data);
         public void ApplyT(in fProxyN x, ref fProxyN y) => y.Data.CopyFrom(x.Data);
+
+        // y == x exactly (an exact bit-copy), so dot(x,y) == dot(x,x) == ||x||^2. Nothing to
+        // fuse beyond the copy itself -- this composes (Apply, then Blas.dot), which for the
+        // identity operator is already the cheapest possible ApplyDot.
+        public fProxy ApplyDot(in fProxyN x, ref fProxyN y)
+        {
+            Apply(in x, ref y);
+            return Blas.dot(x, y);
+        }
 
         // Identity block apply: copy the first `rows` rows (an exact bit-copy, like Apply).
         public void ApplyBlock(in fProxyMxN Vrows, ref fProxyMxN AVrows, int rows)
@@ -186,6 +218,16 @@ namespace LinearAlgebra
         {
             Inner.ApplyT(in x, ref y);
             for (int j = 0; j < D.N; j++) y[j] *= D[j];
+        }
+
+        // Composes: Apply, then a separate dot pass. This wrapper is RECTANGULAR in its usual
+        // callers (cgls/lsqr column-preconditioning, x length Cols, y length Rows) -- dot(x,y)
+        // isn't even well-formed there, so ApplyDot exists only to satisfy the interface; no
+        // solver calls it on this operator today (cgls/lsqr don't use ApplyDot).
+        public fProxy ApplyDot(in fProxyN x, ref fProxyN y)
+        {
+            Apply(in x, ref y);
+            return Blas.dot(x, y);
         }
 
         // No block specialization (this wrapper composes over an arbitrary inner operator): apply per
