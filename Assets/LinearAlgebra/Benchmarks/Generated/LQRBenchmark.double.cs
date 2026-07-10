@@ -1,0 +1,175 @@
+using System.Text;
+
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
+
+using LinearAlgebra;
+
+namespace LinearAlgebra.Benchmarks
+{
+    // GENERATED per-dtype half of LQRBenchmark (the timed IJobs + the instance builder + build+measure
+    // methods). The dtype-agnostic harness (sizes/seeds, row formatter, Run, Section) is hand-written in
+    // Assets/LinearAlgebra/Benchmarks/LQRBenchmark.cs.
+    //
+    // Three variants, all through the PUBLIC Control API only (Benchmarks has no InternalsVisibleTo
+    // grant -- same constraint QPBenchmark.double.cs notes for qpActiveSetCore):
+    //   - cold-SDA: the plain Control.lqr(...) overload (structure-preserving doubling).
+    //   - cold-recursion: the warm Control.lqr(..., ref state) overload, but with a FRESH state whose
+    //     S is force-seeded at zero and populated=true (both public fields) -- this makes the warm
+    //     overload take its plain-fixed-point-recursion branch starting cold, the "naive" baseline the
+    //     spec wants SDA/warm compared against, reached without touching Control's internal
+    //     RiccatiIterate directly.
+    //   - warm: an UNTIMED cold solve (managed thread, not inside the timed job) seeds Sprev with the
+    //     converged S, A is perturbed ~1e-3 relative, then the TIMED job re-seeds a fresh state from
+    //     Sprev each Execute and warm-solves the perturbed system -- same re-copy-before-timed-call
+    //     idiom CholeskyBenchmark's face-off section uses for its destructive decompInPlace calls.
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LqrColdSdaJobDouble : IJob
+    {
+        public doubleMxN A, B, Q, R, K;
+        public NativeArray<int> itersOut;
+        public NativeArray<int> statusOut;
+
+        public void Execute()
+        {
+            var info = Control.lqr(in A, in B, in Q, in R, ref K);
+            itersOut[0] = info.iterations;
+            statusOut[0] = (int)info.status;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LqrColdRecursionJobDouble : IJob
+    {
+        public doubleMxN A, B, Q, R, K;
+        public NativeArray<int> itersOut;
+        public NativeArray<int> statusOut;
+
+        public void Execute()
+        {
+            var state = new doubleLQRState(A.M_Rows, Allocator.Temp);   // S starts zero-filled
+            state.populated = true;                                    // forces the plain-recursion branch, cold-started
+            var info = Control.lqr(in A, in B, in Q, in R, ref K, ref state);
+            itersOut[0] = info.iterations;
+            statusOut[0] = (int)info.status;
+            state.Dispose();
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct LqrWarmJobDouble : IJob
+    {
+        public doubleMxN Aperturbed, B, Q, R, K;
+        public doubleMxN Sprev;   // pre-perturbation converged S; re-seeded into a fresh state each Execute
+        public NativeArray<int> itersOut;
+        public NativeArray<int> statusOut;
+
+        public void Execute()
+        {
+            var state = new doubleLQRState(Aperturbed.M_Rows, Allocator.Temp);
+            state.S.Data.CopyFrom(Sprev.Data);
+            state.populated = true;
+            var info = Control.lqr(in Aperturbed, in B, in Q, in R, ref K, ref state);
+            itersOut[0] = info.iterations;
+            statusOut[0] = (int)info.status;
+            state.Dispose();
+        }
+    }
+
+    public static partial class LQRBenchmark
+    {
+        // Trivially stabilizable random instance (already stable, so any n/m/seed combination is a
+        // valid LQR instance without needing a controllability check): diagonal in [0.2,0.4), off-
+        // diagonal in [-0.05,0.05) keeps the Gershgorin bound comfortably under 1 up to n=12. Q=I, R=I.
+        static void BuildInstanceDouble(int n, int m, uint seed, in Arena arena,
+                                        out doubleMxN A, out doubleMxN B, out doubleMxN Q, out doubleMxN R)
+        {
+            var rng = new Unity.Mathematics.Random(seed);
+
+            A = arena.doubleMat(n, n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    A[i, j] = (i == j) ? rng.NextDouble(0.2f, 0.4f) : rng.NextDouble(-0.05f, 0.05f);
+
+            B = arena.doubleMat(n, m);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < m; j++)
+                    B[i, j] = rng.NextDouble(-1f, 1f);
+
+            Q = arena.doubleMat(n, n);
+            for (int i = 0; i < n; i++) Q[i, i] = (double)1;
+
+            R = arena.doubleMat(m, m);
+            for (int i = 0; i < m; i++) R[i, i] = (double)1;
+        }
+
+        static string ColdSdaDouble(int n, int m, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildInstanceDouble(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
+            var K = arena.doubleMat(m, n);
+
+            var itersOut = new NativeArray<int>(1, Allocator.Persistent);
+            var statusOut = new NativeArray<int>(1, Allocator.Persistent);
+            var job = new LqrColdSdaJobDouble { A = A, B = B, Q = Q, R = R, K = K, itersOut = itersOut, statusOut = statusOut };
+            var stat = Bench.Time(() => job.Run());
+            string row = LQRBenchmarkFmt.Row("double", "cold-SDA", n, m, stat, itersOut[0], statusOut[0]);
+
+            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            return row;
+        }
+
+        static string ColdRecursionDouble(int n, int m, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildInstanceDouble(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
+            var K = arena.doubleMat(m, n);
+
+            var itersOut = new NativeArray<int>(1, Allocator.Persistent);
+            var statusOut = new NativeArray<int>(1, Allocator.Persistent);
+            var job = new LqrColdRecursionJobDouble { A = A, B = B, Q = Q, R = R, K = K, itersOut = itersOut, statusOut = statusOut };
+            var stat = Bench.Time(() => job.Run());
+            string row = LQRBenchmarkFmt.Row("double", "cold-recursion", n, m, stat, itersOut[0], statusOut[0]);
+
+            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            return row;
+        }
+
+        static string WarmDouble(int n, int m, uint seed)
+        {
+            var arena = new Arena(Allocator.Persistent);
+            BuildInstanceDouble(n, m, seed, in arena, out var A, out var B, out var Q, out var R);
+            var K = arena.doubleMat(m, n);
+
+            // untimed setup (managed thread -- Control.lqr is plain Burst-compatible code, just not
+            // Burst-JITted here; only the warm re-solve below is measured): cold-solve the unperturbed
+            // system for its converged S, then perturb A by ~1e-3 relative per entry.
+            var coldState = new doubleLQRState(n, Allocator.Persistent);
+            Control.lqr(in A, in B, in Q, in R, ref K, ref coldState);
+            var Sprev = arena.doubleMat(n, n);
+            Sprev.Data.CopyFrom(coldState.S.Data);
+            coldState.Dispose();
+
+            var rng = new Unity.Mathematics.Random(seed ^ 0x9E3779B9u);
+            var Aperturbed = arena.doubleMat(n, n);
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                {
+                    double a = A[i, j];
+                    double scale = (a == (double)0) ? (double)1 : math.abs(a);
+                    Aperturbed[i, j] = a + (double)1e-3 * scale * rng.NextDouble(-1f, 1f);
+                }
+
+            var itersOut = new NativeArray<int>(1, Allocator.Persistent);
+            var statusOut = new NativeArray<int>(1, Allocator.Persistent);
+            var job = new LqrWarmJobDouble { Aperturbed = Aperturbed, B = B, Q = Q, R = R, K = K, Sprev = Sprev, itersOut = itersOut, statusOut = statusOut };
+            var stat = Bench.Time(() => job.Run());
+            string row = LQRBenchmarkFmt.Row("double", "warm(1e-3 pert)", n, m, stat, itersOut[0], statusOut[0]);
+
+            itersOut.Dispose(); statusOut.Dispose(); arena.Dispose();
+            return row;
+        }
+    }
+}
