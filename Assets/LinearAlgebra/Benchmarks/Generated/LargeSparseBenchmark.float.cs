@@ -72,13 +72,33 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() { var info = Eigen.lanczos(in A, ref ws, ref vals, steps); outInfo[0] = info.produced; outInfo[1] = info.Solved ? 1 : 0; outInfo[2] = 0; } }
 
     // LOBPCG smallest-k eigenpairs. outInfo = [status, iterations, converged, maxResidual, orthoErr].
+    // Krylov R3b (docs/draft-spec-krylov-optimization.md §3b): these jobs are now wired through
+    // Bench.Time (1 warmup + 4 timed .Run() calls on the SAME captured `ws`) to add a wall-clock
+    // column to the LOBPCG report -- lobpcg only reseeds ws.X when it is all-zero (its own
+    // warm-start contract), so re-running the SAME ws without resetting X would warm-start every
+    // timed sample from the PREVIOUS sample's converged eigenvectors and measure ~0 iterations
+    // from the 2nd run on. Zeroing X at the top of every Execute() forces the SAME deterministic
+    // reseed (lobpcg's own fixed-seed 0x9E3779B1u fill) on every sample -- a fair, reproducible,
+    // cold-start measurement each time, mirroring the x[i]=0 reset every Krylov job above already does.
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
     public struct SpLobpcgJobFloat : IJob { public floatBSR A; public floatLOBPCGCache ws; public int k; public float tol; public int maxIter; public NativeArray<double> outInfo;
-        public void Execute() { var info = Eigen.lobpcg(in A, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
+        public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (float)0; var info = Eigen.lobpcg(in A, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
     public struct SpLobpcgPrecJobFloat : IJob { public floatBSR A; public floatBlockJacobi M; public floatLOBPCGCache ws; public int k; public float tol; public int maxIter; public NativeArray<double> outInfo;
-        public void Execute() { var info = Eigen.lobpcg(in A, in M, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
+        public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (float)0; var info = Eigen.lobpcg(in A, in M, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
+
+    // Krylov R3b: SSOR preconditioner axis for LOBPCG (floatSSOR drops into TPre unchanged --
+    // R3, verified by the LobpcgAcceptsSSORPreconditioner test). Hypothesis under test (spec
+    // §3b/task brief): LOBPCG's per-iteration cost is dominated by Rayleigh-Ritz work, so SSOR's
+    // iteration cut might win wall-clock even though its OWN apply is 2-4x block-Jacobi's (R3
+    // finding) -- unlike plain PCG, where that apply-cost multiple was decisive. Only
+    // floatBlockJacobi got a dedicated `lobpcg(in floatBSR, in TPre, ...)` overload -- floatSSOR
+    // goes through the generic `lobpcg<TOp,TPre>` core via floatBSROperator, same as the
+    // LobpcgAcceptsSSORPreconditioner test does.
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Default)]
+    public struct SpLobpcgSSORJobFloat : IJob { public floatBSR A; public floatSSOR M; public floatLOBPCGCache ws; public int k; public float tol; public int maxIter; public NativeArray<double> outInfo;
+        public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (float)0; var info = Eigen.lobpcg(new floatBSROperator(in A), in M, ref ws, k, tol, maxIter); LobpcgReport.WriteFloat(in info, in ws, k, outInfo); } }
 
     // Output-orthonormality check for the LOBPCG rows. float/double emit WriteFloat/WriteDouble into the
     // same partial class (they merge in the Benchmarks assembly).
@@ -300,6 +320,13 @@ namespace LinearAlgebra.Benchmarks
             }
         }
 
+        // Krylov R3b budget trade (spec §3b, disclosed): the "none"+guard row is DROPPED here to
+        // pay for the new "SSOR"+guard=0 row -- row count per grid/dtype stays at 4. The dropped
+        // combination isn't lost information: none/guard0 -> blockJac/guard0 -> blockJac/guardG
+        // still shows both levers (precond alone, then precond+guard stacking); "guard alone" (the
+        // dropped point) was never this round's question. Every row now also carries wall-clock
+        // (Bench.Time, 1 warmup + 4 timed) alongside iterations -- see SpLobpcgJobFloat's comment
+        // for why ws.X must be re-zeroed every Execute() for that to be a fair repeated measurement.
         static void BenchLobpcgFloat(StringBuilder sb, int[] eigGrids, int lobpcgK, int lobpcgGuard, int lobpcgMaxIter)
         {
             foreach (int g in eigGrids)
@@ -308,18 +335,26 @@ namespace LinearAlgebra.Benchmarks
                 int n = g * g;
                 var A = arena.floatLaplacian2D(g, g);
                 var M = arena.floatBlockJacobi(in A);
+                var ssor = arena.floatSSOR(in A);
                 string grid = g + "x" + g + "(" + n + ")";
                 var oi = new NativeArray<double>(5, Allocator.Persistent);
                 float tol = Consts.floatSqrtEps;
 
-                new SpLobpcgJobFloat { A = A, ws = arena.floatLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi }.Run();
-                LargeSparseFmt.LobRow(sb, "float", grid, "none", 0, LargeSparseFmt.Snap(oi));
-                new SpLobpcgPrecJobFloat { A = A, M = M, ws = arena.floatLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi }.Run();
-                LargeSparseFmt.LobRow(sb, "float", grid, "blockJac", 0, LargeSparseFmt.Snap(oi));
-                new SpLobpcgJobFloat { A = A, ws = arena.floatLOBPCGCache(n, lobpcgK + lobpcgGuard), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi }.Run();
-                LargeSparseFmt.LobRow(sb, "float", grid, "none", lobpcgGuard, LargeSparseFmt.Snap(oi));
-                new SpLobpcgPrecJobFloat { A = A, M = M, ws = arena.floatLOBPCGCache(n, lobpcgK + lobpcgGuard), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi }.Run();
-                LargeSparseFmt.LobRow(sb, "float", grid, "blockJac", lobpcgGuard, LargeSparseFmt.Snap(oi));
+                var noneJob = new SpLobpcgJobFloat { A = A, ws = arena.floatLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var noneStat = Bench.Time(() => noneJob.Run());
+                LargeSparseFmt.LobRow(sb, "float", grid, "none", 0, noneStat, LargeSparseFmt.Snap(oi));
+
+                var jacJob = new SpLobpcgPrecJobFloat { A = A, M = M, ws = arena.floatLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var jacStat = Bench.Time(() => jacJob.Run());
+                LargeSparseFmt.LobRow(sb, "float", grid, "blockJac", 0, jacStat, LargeSparseFmt.Snap(oi));
+
+                var ssorJob = new SpLobpcgSSORJobFloat { A = A, M = ssor, ws = arena.floatLOBPCGCache(n, lobpcgK), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var ssorStat = Bench.Time(() => ssorJob.Run());
+                LargeSparseFmt.LobRow(sb, "float", grid, "SSOR", 0, ssorStat, LargeSparseFmt.Snap(oi));
+
+                var jacGuardJob = new SpLobpcgPrecJobFloat { A = A, M = M, ws = arena.floatLOBPCGCache(n, lobpcgK + lobpcgGuard), k = lobpcgK, tol = tol, maxIter = lobpcgMaxIter, outInfo = oi };
+                var jacGuardStat = Bench.Time(() => jacGuardJob.Run());
+                LargeSparseFmt.LobRow(sb, "float", grid, "blockJac", lobpcgGuard, jacGuardStat, LargeSparseFmt.Snap(oi));
 
                 oi.Dispose();
                 arena.Dispose();

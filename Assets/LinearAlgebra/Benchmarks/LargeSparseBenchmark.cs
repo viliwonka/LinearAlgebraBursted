@@ -11,10 +11,12 @@ namespace LinearAlgebra.Benchmarks
     {
         public static string StatusName(int s) => s == 0 ? "Converged" : s == 1 ? "MaxIter" : s == 2 ? "Breakdown" : "THREW";
 
-        public static void LobRow(StringBuilder sb, string dtype, string grid, string precond, int guard, double[] o) =>
+        // Krylov R3b: grew a wall-clock column (med(ms), from Bench.Time -- see
+        // SpLobpcgJobFProxy's doc comment for why every sample re-zeroes ws.X first).
+        public static void LobRow(StringBuilder sb, string dtype, string grid, string precond, int guard, Bench.Stat st, double[] o) =>
             sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "{0,-7} {1,-12} {2,-10} {3,-6} {4,-12} {5,7} {6,6} {7,13:E3} {8,13:E3}",
-                dtype, grid, precond, guard, StatusName((int)o[0]), (int)o[1], (int)o[2], o[3], o[4]));
+                "{0,-7} {1,-12} {2,-10} {3,-6} {4,11:F4} {5,-12} {6,7} {7,6} {8,13:E3} {9,13:E3}",
+                dtype, grid, precond, guard, st.Median, StatusName((int)o[0]), (int)o[1], (int)o[2], o[3], o[4]));
 
         public static double[] Snap(NativeArray<double> o) => new[] { o[0], o[1], o[2], o[3], o[4] };
 
@@ -123,20 +125,25 @@ namespace LinearAlgebra.Benchmarks
         }
 
         // LOBPCG smallest-k eigenpairs of a large sparse 2D grid Laplacian, sweeping preconditioner
-        // (none / block-Jacobi) and guard-vector count (0 / LobpcgGuard). Reported metric is ITERATIONS,
-        // not wall-clock (the BR=grid dense-block encoding would dominate any timing and say more about
-        // the encoding than the solver). Findings: block-Jacobi cuts iterations ~30%; guards cut them ~2x
-        // (at higher per-iteration cost, so guards are a robustness/iteration lever, not a wall-clock win);
-        // the two stack. orthoErr confirms the output stays orthonormal in every config.
+        // (none / block-Jacobi / SSOR -- Krylov R3b) and guard-vector count (0, and block-Jacobi
+        // also at LobpcgGuard -- the "none"+guard combination was dropped to pay for the new SSOR
+        // row, see BenchLobpcgFProxy's comment; none/g0 -> blockJac/g0 -> blockJac/gG still shows
+        // both the precond-alone and the precond+guard-stacking stories). Reported metrics are
+        // ITERATIONS (deterministic, same seed every timed sample) AND wall-clock (R3b: added to
+        // test whether SSOR's iteration cut wins wall despite its OWN apply costing 2-4x
+        // block-Jacobi's per R3 -- LOBPCG's per-iteration cost may be dominated by Rayleigh-Ritz
+        // work rather than the preconditioner apply, which the earlier "wall-clock omitted, it's
+        // dominated by the BR=grid dense-block encoding" note undersold). orthoErr = max_ij
+        // |X_i.X_j - d_ij| over the k wanted.
         public static void LobpcgSection(StringBuilder sb)
         {
             sb.AppendLine("=== LOBPCG smallest-" + LobpcgK + " eigenpairs, square 2D grid Laplacian (spread spectrum) ===");
-            sb.AppendLine("Levers: preconditioner (none / block-Jacobi) x guard (0 / " + LobpcgGuard + "). maxIter=" + LobpcgMaxIter + ", tol=sqrt(eps).");
-            sb.AppendLine("Metric is ITERATIONS (deterministic, one solve/row); wall-clock omitted -- it is dominated by the");
-            sb.AppendLine("BR=grid dense-block encoding, not the solver. orthoErr = max_ij |X_i.X_j - d_ij| over the k wanted.");
+            sb.AppendLine("Levers: preconditioner (none / block-Jacobi / SSOR) x guard (0, and block-Jacobi also at " + LobpcgGuard + "). maxIter=" + LobpcgMaxIter + ", tol=sqrt(eps).");
+            sb.AppendLine("Metrics are ITERATIONS (deterministic, one solve/row) AND wall-clock (med(ms), Bench.Time: 1 warmup + 4 timed,");
+            sb.AppendLine("ws.X re-zeroed every sample so each is a fair cold start). orthoErr = max_ij |X_i.X_j - d_ij| over the k wanted.");
             sb.AppendLine();
-            sb.AppendLine(string.Format("{0,-7} {1,-12} {2,-10} {3,-6} {4,-12} {5,7} {6,6} {7,13} {8,13}",
-                "dtype", "grid(n)", "precond", "guard", "status", "iters", "conv", "maxResid", "orthoErr"));
+            sb.AppendLine(string.Format("{0,-7} {1,-12} {2,-10} {3,-6} {4,11} {5,-12} {6,7} {7,6} {8,13} {9,13}",
+                "dtype", "grid(n)", "precond", "guard", "med(ms)", "status", "iters", "conv", "maxResid", "orthoErr"));
             BenchLobpcgFloat(sb, EigGrids, LobpcgK, LobpcgGuard, LobpcgMaxIter);
             sb.AppendLine();
             BenchLobpcgDouble(sb, EigGrids, LobpcgK, LobpcgGuard, LobpcgMaxIter);

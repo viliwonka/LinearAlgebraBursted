@@ -398,12 +398,221 @@ already told us what we need (open question 7).
 
 ---
 
+## 3b. R3b addendum: Eisenstat-SSOR PCG derivation (2026-07-10) — **REMOVED, negative result**
+
+**VERDICT (2026-07-10, benchmark-falsified): `Krylov.pcgEisenstat` was implemented, tested (18
+tests x float/double, all passing — the math and the transformed-variable exit map were
+correct), A/B-benchmarked, and then REMOVED.** It LOSES wall-clock to plain
+`pcg(A, fProxySSOR)` in every `@tol` cell measured, including the two cells where its iteration
+count reached EXACT parity with plain SSOR-PCG — proof the loss is the per-iteration
+arrangement itself (Algorithm 9.3's extra vector copies/adds and its verify-at-convergence
+overhead), not an iteration-count artifact:
+
+| section | dtype | plain SSOR-PCG (med ms / iters) | Eisenstat-PCG (med ms / iters) | iters equal? |
+|---|---|---|---|---|
+| b=1 stencil, N=10240 | float | 0.1700 / 2 | 0.2335 / 2 | yes — pure per-iter arrangement loss |
+| b=1 stencil, N=10240 | double | 0.4211 / 5 | 0.4716 / 5 | yes — pure per-iter arrangement loss |
+| BR=4, N=10240 | float | 2.1993 / 2 | 4.4696 / 6 | no (3x) |
+| BR=4, N=10240 | double | 3.6458 / 3 | 10.3116 / 13 | no (4.3x) |
+
+The BR=4 cells also exposed a real calibration bug en route (fixed before this verdict, kept
+fixed below for the record): the internal transformed-space convergence gate was initially a
+bare `tol²·‖r̂0‖²`, uncalibrated against the true `tol²·‖b‖²` criterion it stands in for; since
+`r = (D̂−E)r̂` scales the two spaces by an uncontrolled operator-norm factor, this measured 2-4x
+MORE iterations than plain SSOR-PCG needed on the BR=4/1.5%-fill instance. Rescaling the gate
+by the r̂0/r0 ratio observed at entry (`thresholdHat = tol²‖b‖² · ‖r̂0‖²/‖r0‖²`, so the gate
+targets the SAME relative reduction the true criterion targets) fully closed the gap on the b=1
+stencil instance (exact iteration parity, both dtypes) but did NOT close it on the BR=4
+instance (still 3-4.3x) — evidence the r̂/r scale ratio isn't constant across the whole solve
+trajectory on that instance (a single entry-point calibration is a first-order fix, not an
+exact one). Per-iteration cost WAS genuinely lower than plain SSOR-PCG's (float BR=4: ~0.74 vs
+~1.10 ms/iter, ~32% cheaper, matching the "2 sweeps vs spMV+2 sweeps" theory) — but that saving
+was smaller than the extra one-time setup/exit/verify overhead (visible in the stencil cells,
+where iteration counts already matched) plus, on BR=4, the residual iteration-count penalty.
+
+**Disposition**: removed in full — `Krylov.pcgEisenstat`, `fProxySSOR.ApplyEisenstat`, its
+tests, and its `@tol` benchmark rows are all gone, "like it never shipped" (same treatment as
+PDLP, `docs/pdlp-feature.md`). The derivation below is KEPT as a historical record — it is
+correct and faithfully ported from Saad — should someone revisit this with a better-calibrated
+or exact stopping criterion (e.g. Section "Avoiding the u-variable" below's per-iteration
+proportionality assumption is the concrete thing to fix next, not the sweep math itself). Do
+not revive without new evidence that the per-iteration/stopping-criterion overhead can be cut
+below plain SSOR-PCG's.
+
+**The round's other half — LOBPCG's SSOR preconditioner axis — is a KEEP**, unaffected by the
+above (LOBPCG uses `fProxySSOR`'s plain `Apply`/TPre slot, not the removed split-preconditioned
+Eisenstat path). Iterations AND wall-clock both improve sharply vs block-Jacobi, confirming the
+round's hypothesis that LOBPCG's per-iteration cost is dominated by Rayleigh-Ritz work, not the
+preconditioner apply — SSOR's larger apply cost (2-4x block-Jacobi, per R3) does not show up as
+a wall-clock loss here the way it did in plain PCG:
+
+| grid | dtype | none (ms/iters) | blockJac (ms/iters) | SSOR (ms/iters) | SSOR vs blockJac wall |
+|---|---|---|---|---|---|
+| 32x32 (1024) | float | 291.6/71 | 204.0/50 | 80.9/18 | 2.5x faster |
+| 64x64 (4096) | float | 2541.5/126 | 1781.2/81 | 688.3/30 | 2.6x faster |
+| 96x96 (9216) | float | 9048.9/178 | 6593.4/123 | 2591.0/38 | 2.5x faster |
+| 32x32 (1024) | double | 580.6/170 | 410.2/115 | 148.7/38 | 2.8x faster |
+| 64x64 (4096) | double | 5267.6/310 | 3678.3/220 | 1340.9/64 | 2.7x faster |
+| 96x96 (9216) | double | 19777.2/464 | 14320.1/333 | 5374.3/96 | 2.7x faster |
+
+SSOR consistently cuts LOBPCG iterations ~55-70% vs block-Jacobi (vs block-Jacobi's own ~30%
+vs none) and wins wall-clock 2.5-2.8x vs block-Jacobi across every grid size and both dtypes —
+the largest, cleanest win either preconditioner has produced in this spec's benchmarking. Kept
+in `LargeSparseBenchmark`'s LOBPCG section (`none`/`blockJac`/`SSOR` x guard levers).
+
+---
+
+R3's own honest finding (`64b4431`): plain SSOR-PCG cuts iterations 33-67% vs block-Jacobi but
+LOSES wall-clock in every `@tol` cell because `fProxySSOR.Apply` measures 2-4x block-Jacobi's
+apply cost (two sequential triangular sweeps cannot pipeline across rows the way spMV can), not
+the ~1 spMV-equivalent originally estimated. This section derives, from a fetched primary
+source, the Eisenstat (1981) rearrangement that collapses SSOR-PCG's per-iteration cost to
+**one forward sweep + one backward sweep total, with no separate `A·p` matvec** — the same
+sweep budget plain SSOR-PCG already pays for `M.Apply` alone, but now it covers the matvec too.
+
+**Source fetched**: Saad, *Iterative Methods for Sparse Linear Systems*, 2nd ed. (free PDF,
+`www-users.cse.umn.edu/~saad/IterMethBook_2ndEd.pdf`), §9.2.2 "Efficient Implementations"
+(Algorithm 9.3, the Eisenstat trick, pp. 280-281) for the core rearrangement, plus §10.2
+"Jacobi, SOR, and SSOR Preconditioners" (p. 299, eq. 10.9/MSSOR) and ch. 4 eq. (4.27) for the
+general-ω SSOR preconditioner form the trick is being fitted to. Cross-checked against the
+existing `fProxySSOR.cs` doc comment's own independently-verified M formula (R3, `64b4431`).
+Text extracted locally via `pdftotext -layout` (ω/η glyphs were dropped by the extractor in a
+few spots — reconstructed from the surrounding equations and cross-checked against the
+already-shipped, tested `fProxySSOR` formula, not reproduced blind).
+
+### 9.2.2's setup (Saad's notation)
+
+For symmetric A = D₀ − E − Eᵀ (−E the strict lower triangle, D₀ the diagonal) and a
+preconditioner of the form M = (D−E)D⁻¹(D−Eᵀ) (eq. 9.6; D a diagonal, not necessarily D₀ —
+SSOR with ω=1 is the D=D₀ special case), Eisenstat's implementation runs Algorithm 9.1
+(standard PCG) on the transformed system
+
+  Â u = (D−E)⁻¹b,  Â ≜ (D−E)⁻¹A(D−Eᵀ)⁻¹,  x = (D−Eᵀ)⁻¹u                     (9.7)-(9.8)
+
+with the *extra* diagonal preconditioning M⁻¹ = D⁻¹ that Algorithm 9.1 must additionally apply
+to reproduce the SAME iterates M=(D−E)D⁻¹(D−Eᵀ) would give directly. Expanding
+Â = (D−E)⁻¹A(D−Eᵀ)⁻¹ using A = D₀−E−Eᵀ = (D₁) + (D−E) + (D−Eᵀ) with D₁ ≜ D₀−2D gives
+Algorithm 9.3 for w = Âv:
+
+  z := (D−Eᵀ)⁻¹v ;  w := (D−E)⁻¹(v + D₁z) ;  w := w + z
+
+— one backward solve, one forward solve, no `A·v` matvec at all. Operation count (Nz = nonzero
+count): Nop = 3n + 2Nz(A) for Eisenstat's scheme vs 4Nz(A) − n straightforward — "always more
+economical when Nz is large enough" (Saad, Example 9.1: 5-point stencil, 23n vs 29n total
+per-iteration ops including the rest of PCG).
+
+### Fitting our ω-parameterized M to Saad's (D−E)D⁻¹(D−Eᵀ) form [this round's derivation]
+
+`fProxySSOR`'s shipped M (R3, verified independently there) is
+M = [ω/(2−ω)]·(D₀/ω+L)·D₀⁻¹·(D₀/ω+Lᵀ), L the strict-lower stored blocks (L = −E in Saad's
+sign convention, Lᵀ = −Eᵀ). Substituting D̂ ≜ D₀/ω (so D₀ = ωD̂):
+
+  M = [ω/(2−ω)]·(D̂−E)·(ωD̂)⁻¹·(D̂−Eᵀ) = [1/(2−ω)]·(D̂−E)·D̂⁻¹·(D̂−Eᵀ)
+
+which is exactly Saad's (D−E)D⁻¹(D−Eᵀ) form with D := D̂ = D₀/ω, up to the scalar 1/(2−ω) —
+and scalar prefactors on M are provably irrelevant to PCG (next paragraph), so they can be
+dropped. This means **every `BSR.sweepLower`/`sweepUpper` call already used by `fProxySSOR`
+with `diagScale=ω` is exactly Saad's (D̂−E)⁻¹ / (D̂−Eᵀ)⁻¹ solve** — no new sweep kernel needed —
+and D₁ = D₀ − 2D̂ = D₀(1 − 2/ω) = −[(2−ω)/ω]D₀ = **−ScaledD**, the diagonal `fProxySSOR`
+already precomputes at construction for the plain `Apply` path. So "v + D₁z" = v − ScaledD·z,
+computable with the existing private `ApplyScaledDiag` helper — Algorithm 9.3 falls out of
+pieces `fProxySSOR` already owns.
+
+**Lemma (PCG is invariant to a positive scalar on M — used twice above)**: replacing M by cM
+(c>0) in Algorithm 9.1 leaves the x_j and r_j sequences bit-for-bit unchanged; only z_j,p_j
+scale by 1/c (induction on the standard PCG recurrence: αⱼ scales by c exactly canceling
+z_j'/p_j' = z_j/c, p_j/c in the x/r updates; βⱼ = ⟨r,z'⟩/⟨r,z'⟩ is scale-free). This is the
+formal version of Saad's own remark (ch. 4, on M_SOR/M_SSOR's leading constants) that "these
+constant coefficients... are unimportant in the preconditioning context." It licenses BOTH
+dropping the 1/(2−ω) prefactor above AND — since M⁻¹=D̂⁻¹=ωD₀⁻¹ is *also* just a positive
+scalar (ω) times D₀⁻¹ — replacing the "extra diagonal preconditioning" Saad calls for with
+**`fProxyBlockJacobi.Apply` unchanged** (D₀⁻¹, not ωD₀⁻¹): same x_j/r_j sequence, zero new
+kernel, direct reuse of `fProxySSOR.Jacobi` (already "block-Jacobi's own setup" per the R3 doc
+comment).
+
+### Avoiding the u-variable, and the convergence-test problem it creates
+
+Per Saad's own earlier remark in §9.1 (deriving Algorithm 9.2 from 9.1): "It is common when
+implementing algorithms which involve a right preconditioner to avoid the use of the u
+variable, since the iteration can be written with the original x variable." Applied here: track
+ũⱼ ≜ uⱼ−u₀ (so ũ₀=0, no need to ever materialize u₀ itself — r̂₀ = (D̂−E)⁻¹r₀ already encodes
+it, since r̂₀ = ĉ−Âu₀ = (D̂−E)⁻¹(b−Ax₀) by (9.7)-(9.8), independent of how u₀ itself is chosen).
+ũ accumulates exactly like Algorithm 9.1's own u-update (ũⱼ₊₁ = ũⱼ+αⱼp̂ⱼ); the map back is
+**one extra sweep AT EXIT**: x = x₀ + (D̂−Eᵀ)⁻¹ũ_final (`BSR.sweepUpper`), not per iteration —
+matching the task brief's framing exactly.
+
+This has one consequence Saad's chapter doesn't dwell on: the loop's own residual r̂ⱼ lives in
+*transformed* space (r̂ⱼ = (D̂−E)⁻¹rⱼ, an exact invariant of the recurrence, provable by the same
+induction as the lemma above), not the TRUE rⱼ = b−Axⱼ this library's other solvers test
+against (`docs/draft-spec-krylov-optimization.md` §0/pcg's own contract: "the TRUE
+(unpreconditioned) residual"). Recovering true rⱼ every iteration would need a triangular
+MATVEC (not solve) by (D̂−E) — a third sweep-equivalent op per iteration, which would erase
+Eisenstat's entire saving. Two facts make a cheap resolution possible:
+
+1. In exact arithmetic the xⱼ sequence produced here is IDENTICAL, iteration for iteration, to
+   plain `pcg(A, fProxySSOR, ...)`'s xⱼ (both run Algorithm 9.1 on the same M, just in
+   different coordinates — this is the same equivalence Saad proves between Algorithms 9.1 and
+   9.2). So any correct stopping rule that fires near where the true criterion would is enough;
+   it does not need to BE the true criterion every step.
+2. R3's `MakeSolveInfo` doc comment already carries an approved escape hatch for exactly this
+   class of problem: "Convergence-verification matvec: APPROVED. +1 Apply at claimed
+   convergence is an accepted amendment to the never-a-fresh-A·x diagnostics contract" (R6a,
+   RESOLVED QUESTIONS §1).
+
+**Design**: the loop's cheap internal gate is the natural Algorithm-9.1-on-(Â,ĉ) criterion,
+‖r̂ⱼ‖² ≤ thresholdHat (mirrors `cg<TOp>`'s own "test against a fixed initial scale" shape, just
+computed on the transformed right-hand side instead of `b` — no new concept, reuses
+`Blas.updateXR` for the fused ũ/r̂ update+norm exactly as plain `cg`/`pcg` already do for x/r).
+thresholdHat is NOT bare `tol²·‖r̂₀‖²` — r̂ and r live in different scales (r = (D̂−E)r̂, an
+uncontrolled operator-norm factor), and an unscaled transformed threshold measured 2-4x MORE
+iterations than plain SSOR-PCG needs on some benchmark instances (a real efficiency bug caught
+by A/B benchmarking, not just a "few extra iterations" — see the R3b benchmark report).
+thresholdHat is instead calibrated by the r̂₀/r₀ ratio actually observed at entry (both already
+computed there): `thresholdHat = threshold · (‖r̂₀‖²/‖r₀‖²)`, so the gate targets the SAME
+relative reduction ‖r̂ⱼ‖²/‖r̂₀‖² ≈ ‖rⱼ‖²/‖r₀‖² the true criterion targets, rather than an
+uncalibrated absolute scale. Re-calibrated the same way after every restart (below), using the
+just-verified true residual as the new reference point. When the gate fires: do the exit sweep
+(map ũ→x), then (R6a) one real `A.Apply` + dot to get
+the TRUE ‖b−Ax‖² and check it against the library-standard tol²·‖b‖². If it passes, return
+Converged with the FRESH true rnorm. If it fails (expected to be rare, given point 1 above):
+treat the just-computed true residual as a fresh restart point — reset ũ:=0, rebuild
+r̂/ẑ/p̂/the gate threshold from it via the same setup the entry path uses, and continue the outer
+loop. This is a bounded, self-correcting design: the OUTPUT contract (`Converged` iff the true
+residual test passes) is identical to plain `pcg`'s, regardless of how well-calibrated the
+internal gate turns out to be; a miscalibrated gate only costs a few wasted real `Apply`s, never
+an incorrect answer. Breakdown/MaxIterations exits still perform the mandatory exit sweep (x
+must never be returned unmapped) but skip the extra real `Apply` (matches the "no fresh matvec
+outside claimed convergence" contract everywhere else — they report the last-verified true
+rnorm, a value the solver already holds, same as `cg`/`pcg`'s own breakdown/max-iterations
+`rnorm` fields).
+
+### Net per-iteration cost
+
+One `fProxySSOR.ApplyEisenstat` call (`sweepUpper` + diagonal scale + `sweepLower` + vector
+adds — exactly Algorithm 9.3, using `Scratch1`/`Scratch2` already on the struct), one
+`Blas.dot` (αⱼ), one `Blas.updateXR` (ũ/r̂ update + ‖r̂‖² fused), one `fProxyBlockJacobi.Apply`
+(ẑ, diagonal-only — O(nnzb_diag), not a full sweep), one `Blas.dot` (βⱼ). Two sweeps total, zero
+separate `A·p`, matching the task brief's target exactly — the same sweep budget plain SSOR-PCG
+already pays for `M.Apply` alone now also covers what used to be a separate spMV.
+
+---
+
 ## 4. References
 
 - Eisenstat, "Efficient implementation of a class of preconditioned conjugate gradient
   methods", SIAM J. Sci. Stat. Comput. 2(1), 1981 — the SSOR trick (R3 follow-up: makes
   SSOR-PCG's per-iteration cost ≈ unpreconditioned CG's; adopt only if R3's plain form
   measures well). [verified via epubs.siam.org/doi/10.1137/0902001]
+- **R3b (2026-07-10) [verified, fetched and read directly, see §3b above for the full
+  derivation]**: Saad, *Iterative Methods for Sparse Linear Systems*, 2nd ed., free PDF at
+  `www-users.cse.umn.edu/~saad/IterMethBook_2ndEd.pdf` — §9.2.2 "Efficient Implementations"
+  (Algorithm 9.3, "Eisenstat's implementation"/"Eisenstat's trick", pp. 280-281, Example 9.1)
+  for the core rearrangement; §9.1 (deriving Algorithm 9.2 from 9.1, the "avoid the u
+  variable" remark used for the exit-map design) pp. 277-279; §10.2 "Jacobi, SOR, and SSOR
+  Preconditioners" p. 299 (eq. 10.9, MSGS=MSSOR(ω=1)) and ch. 4 eq. (4.27) (general-ω MSSOR)
+  for the preconditioner form Eisenstat's trick is fitted to here. Extracted locally via
+  `pdftotext -layout` (poppler-utils) since the WebFetch tool cannot parse this PDF's compressed
+  stream directly.
 - Meijerink & van der Vorst, "An iterative solution method for linear systems of which the
   coefficient matrix is a symmetric M-matrix", Math. Comp. 31, 1977 — IC(0)+CG. [literature]
 - Manteuffel, "An incomplete factorization technique for positive definite linear systems",
