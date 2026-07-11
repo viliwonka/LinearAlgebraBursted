@@ -65,6 +65,17 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe int TripletCount => _state->triBlockRow.Length;
 
+        /// <summary>
+        /// Discards all accumulated triplets but KEEPS the allocated capacity — the reuse path for
+        /// per-frame reassembly: Clear(), re-Add the frame's blocks, then ToBSR / Refill.
+        /// </summary>
+        public unsafe void Clear()
+        {
+            _state->triBlockRow.Clear();
+            _state->triBlockCol.Clear();
+            _state->triValues.Clear();
+        }
+
         // Value handle to the shared ArenaCore, not a raw pointer (see Arena.cs); copies stay live.
         // Unrelated to the _state indirection above.
         private Arena _arena;
@@ -229,20 +240,21 @@ namespace LinearAlgebra.Sparse
             return bsm;
         }
 
-        private unsafe floatBSR ToBSRCore(ref Arena arena, bool symmetric)
+        // Sorts triplet indices by (blockRow, blockCol): counting-sort into per-block-row buckets
+        // (rowStart[i] = bucket boundary, à la CSR-from-COO), then insertion-sort each bucket by
+        // blockCol (row degree is small in practice). Shared by ToBSRCore and BuildAssemblyCache.
+        // Caller disposes both out-arrays.
+        internal unsafe void SortTriplets(out NativeArray<int> order, out NativeArray<int> rowStart)
         {
             int n = TripletCount;
-            int blockLen = BR * BC;
 
-            // 1. Counting-sort triplet indices into per-block-row buckets (rowStart[i] is the
-            //    bucket boundary, à la CSR construction from COO).
-            var rowStart = new NativeArray<int>(BlockRows + 1, Allocator.Temp, NativeArrayOptions.ClearMemory);
+            rowStart = new NativeArray<int>(BlockRows + 1, Allocator.Temp, NativeArrayOptions.ClearMemory);
             for (int t = 0; t < n; t++)
                 rowStart[_state->triBlockRow[t] + 1]++;
             for (int i = 0; i < BlockRows; i++)
                 rowStart[i + 1] += rowStart[i];
 
-            var order = new NativeArray<int>(n, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            order = new NativeArray<int>(n, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
             var cursor = new NativeArray<int>(BlockRows, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
             for (int i = 0; i < BlockRows; i++) cursor[i] = rowStart[i];
             for (int t = 0; t < n; t++)
@@ -253,7 +265,6 @@ namespace LinearAlgebra.Sparse
             }
             cursor.Dispose();
 
-            // 2. Insertion-sort each row bucket by blockCol (row degree is small in practice).
             for (int row = 0; row < BlockRows; row++)
             {
                 int s = rowStart[row];
@@ -271,6 +282,14 @@ namespace LinearAlgebra.Sparse
                     order[j + 1] = cur;
                 }
             }
+        }
+
+        private unsafe floatBSR ToBSRCore(ref Arena arena, bool symmetric)
+        {
+            int n = TripletCount;
+            int blockLen = BR * BC;
+
+            SortTriplets(out var order, out var rowStart);
 
             // 3. Count distinct stored blocks (nnzb) after de-duplication.
             int nnzb = 0;

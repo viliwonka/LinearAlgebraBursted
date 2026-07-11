@@ -1,0 +1,109 @@
+using System;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using LinearAlgebra;
+
+namespace LinearAlgebra.Sparse
+{
+    /// <summary>
+    /// Precomputed triplet-to-slot mapping for per-frame reassembly of a FIXED-topology BSR
+    /// matrix. Build once (after the first ToBSR) via
+    /// <see cref="fProxyBSRBuilder.BuildAssemblyCache"/>; every later frame:
+    /// builder.Clear(), re-Add the SAME blocks in the SAME order with new values, then
+    /// <see cref="fProxyBSRBuilder.Refill"/> — no sorting, no allocation, O(nnz) scatter-add.
+    /// Buffers are arena-owned (disposed with the arena).
+    /// </summary>
+    public struct fProxyBSRAssemblyCache
+    {
+        public Indices slotOfTriplet;   // triplet t -> compressed block slot in the target BSR
+        public Indices tripletRow;      // expected blockRow of triplet t (validated on Refill)
+        public Indices tripletCol;      // expected blockCol of triplet t (validated on Refill)
+        public int nnzb;             // compressed block count the map was built for
+        public int tripletCount;
+    }
+
+    public partial struct fProxyBSRBuilder
+    {
+        /// <summary>
+        /// Builds the triplet-to-slot map for the CURRENT triplet set (same sort + duplicate
+        /// merge as ToBSR). Pair it with the fProxyBSR that the same triplet set produced.
+        /// </summary>
+        public unsafe fProxyBSRAssemblyCache BuildAssemblyCache(ref Arena arena)
+        {
+            int n = TripletCount;
+            if (n == 0)
+                return new fProxyBSRAssemblyCache { nnzb = 0, tripletCount = 0 };
+
+            SortTriplets(out var order, out var rowStart);
+
+            var cache = new fProxyBSRAssemblyCache
+            {
+                slotOfTriplet = arena.Indices(n),
+                tripletRow    = arena.Indices(n),
+                tripletCol    = arena.Indices(n),
+                tripletCount  = n,
+            };
+
+            int slot = -1;
+            for (int row = 0; row < BlockRows; row++)
+            {
+                int s = rowStart[row];
+                int e = rowStart[row + 1];
+                int prevCol = -1;
+                for (int i = s; i < e; i++)
+                {
+                    int t = order[i];
+                    int col = _state->triBlockCol[t];
+                    if (col != prevCol) { slot++; prevCol = col; }
+                    cache.slotOfTriplet[t] = slot;
+                }
+            }
+            cache.nnzb = slot + 1;
+
+            for (int t = 0; t < n; t++)
+            {
+                cache.tripletRow[t] = _state->triBlockRow[t];
+                cache.tripletCol[t] = _state->triBlockCol[t];
+            }
+
+            order.Dispose();
+            rowStart.Dispose();
+            return cache;
+        }
+
+        /// <summary>
+        /// Per-frame refill: writes the CURRENT triplet values into <paramref name="dst"/> through
+        /// the cached map — zeroes dst.Values, then scatter-adds each triplet block into its slot.
+        /// Requires the same topology the cache was built from: same triplet count and each
+        /// triplet at the same (blockRow, blockCol) position (validated; throws on mismatch), and
+        /// dst.Nnzb equal to the cache's. Values may differ freely — that's the point.
+        /// </summary>
+        public unsafe void Refill(in fProxyBSRAssemblyCache cache, in fProxyBSR dst)
+        {
+            int n = TripletCount;
+            if (n != cache.tripletCount)
+                throw new ArgumentException("Refill: triplet count differs from the assembly cache (topology changed — rebuild with ToBSR + BuildAssemblyCache)");
+            if (dst.Nnzb != cache.nnzb)
+                throw new ArgumentException("Refill: dst.Nnzb differs from the assembly cache");
+            if (dst.BlockRows != BlockRows || dst.BlockCols != BlockCols || dst.BR != BR || dst.BC != BC)
+                throw new ArgumentException("Refill: dst block grid differs from this builder");
+
+            for (int t = 0; t < n; t++)
+                if (_state->triBlockRow[t] != cache.tripletRow[t] || _state->triBlockCol[t] != cache.tripletCol[t])
+                    throw new ArgumentException("Refill: triplet positions differ from the assembly cache (topology changed — rebuild with ToBSR + BuildAssemblyCache)");
+
+            int blockLen = BR * BC;
+            var values = dst.Values;
+
+            UnsafeUtility.MemClear(values.Ptr, (long)values.Length * UnsafeUtility.SizeOf<fProxy>());
+
+            for (int t = 0; t < n; t++)
+            {
+                int dstOff = cache.slotOfTriplet[t] * blockLen;
+                int srcOff = t * blockLen;
+                for (int k = 0; k < blockLen; k++)
+                    values[dstOff + k] += _state->triValues[srcOff + k];
+            }
+        }
+    }
+}
