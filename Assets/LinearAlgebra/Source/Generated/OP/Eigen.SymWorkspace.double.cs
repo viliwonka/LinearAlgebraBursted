@@ -11,12 +11,12 @@ namespace LinearAlgebra
         static void RequireEigenSymWorkspace(in doubleEigenSymCache ws, int n)
         {
             if (ws.eVec.N != n || ws.vVec.N != n || ws.pVec.N != n)
-                throw new ArgumentException("Eigen.valuesSymmetric: workspace must be sized for n (use Arena.doubleEigenSymCache(n))");
+                throw new ArgumentException("Eigen.valuesSymmetricInPlace: workspace must be sized for n (use Arena.doubleEigenSymCache(n))");
         }
     }
 
     /// <summary>
-    /// Reusable scratch for Eigen.valuesSymmetric (Householder tridiagonalization + implicit-shift
+    /// Reusable scratch for Eigen.valuesSymmetricInPlace (Householder tridiagonalization + implicit-shift
     /// QL). The op needs three length-n vectors (the off-diagonal e, the Householder vector v, and the
     /// rank-2-update vector p). Allocate ONCE via Arena.doubleEigenSymCache(n) and reuse it across
     /// same-size calls so repeated symmetric eigenvalue solves are zero-alloc.

@@ -13,7 +13,7 @@ namespace LinearAlgebra
     public static partial class doubleComp {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void addInPlace<T>(T place, double s) where T : unmanaged, IUnsafedoubleArray {
+        public static void addInPlace<T>(this T place, double s) where T : unmanaged, IUnsafedoubleArray {
 
             unsafe {
                 UnsafeOP.scalAdd(place.Data.Ptr, place.Data.Length, s);
@@ -21,7 +21,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void mulInPlace<T>(T place, double s) where T : unmanaged, IUnsafedoubleArray
+        public static void mulInPlace<T>(this T place, double s) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
                 UnsafeOP.scalMul(place.Data.Ptr, place.Data.Length, s);

@@ -50,13 +50,13 @@ namespace LinearAlgebra
         /// Arena.floatSVDRandomizedCache(m, n, k, oversample) using the SAME k and oversample.
         /// </summary>
         public static SVDInfo randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                         int k, int oversample, int powerIters, uint seed, int maxIter,
+                                         int k, int oversample, int powerIters, uint seed, int maxIterations,
                                          ref floatSVDRandomizedCache ws)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
-            RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIter);
+            RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIterations);
 
             int l = math.min(k + oversample, n);   // sketch width ℓ (k <= ℓ <= n <= m)
             RequireSvdRandomizedWorkspace(in ws, m, n, l);
@@ -84,7 +84,7 @@ namespace LinearAlgebra
             Blas.dot(in ws.Y, in A, ref ws.B, true);        // B = Qᵀ A
             Blas.trans(in ws.B, ref ws.Bt);                 // Bᵀ (n x ℓ)
 
-            SVDInfo info = thin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIter);
+            SVDInfo info = thin(in ws.Bt, ref ws.Up, ref ws.Sb, ref ws.Vp, maxIterations);
             if (!info)
                 return info;
 
@@ -99,12 +99,12 @@ namespace LinearAlgebra
             return info;
         }
 
-        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIter Consts.sweepBudget(l) (l = min(k+10, A.N_Cols)) and an explicit seed.</summary>
+        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIterations Consts.sweepBudget(l) (l = min(k+10, A.N_Cols)) and an explicit seed.</summary>
         public static SVDInfo randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, uint seed, ref floatSVDRandomizedCache ws)
             => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, Consts.sweepBudget(math.min(k + 10, A.N_Cols)), ref ws);
 
-        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIter Consts.sweepBudget(l) and the default seed.</summary>
+        /// <summary>randomized (ref workspace) with oversample 10, powerIters 2, maxIterations Consts.sweepBudget(l) and the default seed.</summary>
         public static SVDInfo randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, ref floatSVDRandomizedCache ws)
             => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, Consts.sweepBudget(math.min(k + 10, A.N_Cols)), ref ws);
@@ -114,12 +114,12 @@ namespace LinearAlgebra
         /// overload for semantics.
         /// </summary>
         public static SVDInfo randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
-                                         int k, int oversample, int powerIters, uint seed, int maxIter)
+                                         int k, int oversample, int powerIters, uint seed, int maxIterations)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
 
-            RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIter);
+            RequireRandomizedArgs(m, n, k, oversample, powerIters, in Uk, in Sk, in Vk, maxIterations);
 
             int l = math.min(k + oversample, n);
             var ws = new floatSVDRandomizedCache
@@ -137,15 +137,15 @@ namespace LinearAlgebra
                 Vp = A.floatTempMat(l, l),
                 UA = A.floatTempMat(m, l)
             };
-            return randomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, maxIter, ref ws);
+            return randomized(in A, ref Uk, ref Sk, ref Vk, k, oversample, powerIters, seed, maxIterations, ref ws);
         }
 
-        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIter Consts.sweepBudget(l) (l = min(k+10, A.N_Cols)) and an explicit seed.</summary>
+        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIterations Consts.sweepBudget(l) (l = min(k+10, A.N_Cols)) and an explicit seed.</summary>
         public static SVDInfo randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk,
                                          int k, uint seed)
             => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, seed, Consts.sweepBudget(math.min(k + 10, A.N_Cols)));
 
-        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIter Consts.sweepBudget(l) and the default seed.</summary>
+        /// <summary>randomized (allocating) with oversample 10, powerIters 2, maxIterations Consts.sweepBudget(l) and the default seed.</summary>
         public static SVDInfo randomized(in floatMxN A, ref floatMxN Uk, ref floatN Sk, ref floatMxN Vk, int k)
             => randomized(in A, ref Uk, ref Sk, ref Vk, k, 10, 2, 0x9E3779B1u, Consts.sweepBudget(math.min(k + 10, A.N_Cols)));
     }

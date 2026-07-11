@@ -380,7 +380,7 @@ public class fProxySparseEigenTests
             AssertTrue(ok, (fProxy)1);
 
             var eigenvalues = arena.fProxyVec(n);
-            bool okEig = Eigen.valuesSymmetric(ref ARef, ref eigenvalues);
+            bool okEig = Eigen.valuesSymmetricInPlace(ref ARef, ref eigenvalues);
             AssertTrue(okEig, (fProxy)2);
 
             // eigenvaluesSymmetric sorts DESCENDING -> the smallest eigenvalue is the last entry.
@@ -428,7 +428,7 @@ public class fProxySparseEigenTests
 
             // Trusted dense reference spectrum on the independent copy.
             var eigRef = arena.fProxyVec(n);
-            bool okEig = Eigen.valuesSymmetric(ref ARef, ref eigRef);
+            bool okEig = Eigen.valuesSymmetricInPlace(ref ARef, ref eigRef);
             AssertTrue(okEig, (fProxy)5);
 
             for (int i = 0; i < n; i++)
@@ -606,7 +606,7 @@ public class fProxySparseEigenTests
             AssertTrue(lambda < (fProxy)0, (fProxy)2);   // sign branch: dominant eigenvalue is negative
 
             var eigRef = arena.fProxyVec(dim);
-            bool okEig = Eigen.valuesSymmetric(ref ARef, ref eigRef);
+            bool okEig = Eigen.valuesSymmetricInPlace(ref ARef, ref eigRef);
             AssertTrue(okEig, (fProxy)3);
 
             // Descending sort -> the most-negative (largest-magnitude) eigenvalue is at index dim-1.

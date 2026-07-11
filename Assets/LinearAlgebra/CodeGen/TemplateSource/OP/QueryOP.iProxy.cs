@@ -949,11 +949,11 @@ namespace LinearAlgebra
         // ---- nonzero with Indices buffer ---
 
         /// <summary>
-        /// Fills idx[0..count) with flat indices of elements in x with |x[i]| > tol.
+        /// Fills idx[0..count) with flat indices of elements in x with |x[i]| > tolerance.
         /// Returns count. idx must be sized >= x.Data.Length (worst case).
         /// Generic over iProxyN and iProxyMxN.
         /// </summary>
-        public static int nonzero<T>(in T x, iProxy tol, ref Indices idx)
+        public static int nonzero<T>(in T x, iProxy tolerance, ref Indices idx)
             where T : unmanaged, IUnsafeiProxyArray
         {
             if (idx.N < x.Data.Length)
@@ -964,7 +964,7 @@ namespace LinearAlgebra
             {
                 iProxy v = x.Data[i];
                 iProxy av = iAbs(v);
-                if (av > tol) idx[count++] = i;
+                if (av > tolerance) idx[count++] = i;
             }
             return count;
         }
@@ -975,7 +975,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Returns the flat index of the first element in x equal to target
-        /// (within tolerance: |x[i] - target| &lt;= tol). Returns -1 if not found.
+        /// (within tolerance: |x[i] - target| &lt;= tolerance). Returns -1 if not found.
         /// Generic over vec + matrix flat data. (Like Excel MATCH.)
         /// <para>
         /// Overflow note: the difference (x[i] - target) is computed in the proxy type.
@@ -983,24 +983,24 @@ namespace LinearAlgebra
         /// For short, coordinates and differences must each be within ±32767.
         /// </para>
         /// </summary>
-        public static int findValue<T>(in T x, iProxy target, iProxy tol)
+        public static int findValue<T>(in T x, iProxy target, iProxy tolerance)
             where T : unmanaged, IUnsafeiProxyArray
         {
             for (int i = 0; i < x.Data.Length; i++)
             {
                 iProxy d = (iProxy)(x.Data[i] - target);
                 iProxy ad = iAbs(d);
-                if (ad <= tol)
+                if (ad <= tolerance)
                     return i;
             }
             return -1;
         }
 
         /// <summary>
-        /// Returns the count of elements in x with absolute value &gt; tol.
+        /// Returns the count of elements in x with absolute value &gt; tolerance.
         /// Zero-alloc; use with nonzero (ref Indices) for the full index list.
         /// </summary>
-        public static int countNonzero<T>(in T x, iProxy tol)
+        public static int countNonzero<T>(in T x, iProxy tolerance)
             where T : unmanaged, IUnsafeiProxyArray
         {
             int count = 0;
@@ -1008,7 +1008,7 @@ namespace LinearAlgebra
             {
                 iProxy v = x.Data[i];
                 iProxy av = iAbs(v);
-                if (av > tol)
+                if (av > tolerance)
                     count++;
             }
             return count;

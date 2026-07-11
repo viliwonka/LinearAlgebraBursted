@@ -31,7 +31,7 @@ namespace LinearAlgebra
     /// <summary>
     /// Reusable scratch for <see cref="Eigen.lanczos{TOp}"/> (Lanczos tridiagonalization of a
     /// symmetric operator, with full reorthogonalization, followed by
-    /// <see cref="Eigen.valuesSymmetric(ref floatMxN, ref floatN, ref floatEigenSymCache)"/>
+    /// <see cref="Eigen.valuesSymmetricInPlace(ref floatMxN, ref floatN, ref floatEigenSymCache)"/>
     /// on the resulting small tridiagonal). Sized for an n-dimensional operator run for
     /// <c>steps</c> Lanczos iterations. Allocate ONCE via <c>Arena.floatLanczosCache(n, steps)</c>
     /// and reuse it across same-shape calls so repeated Lanczos runs are zero-alloc.
@@ -61,10 +61,10 @@ namespace LinearAlgebra
 
         /// <summary>steps x steps. The symmetric tridiagonal assembled from alpha/beta (padded
         /// with a decoupled junk block when the Lanczos process breaks down before `steps`
-        /// iterations complete), then destroyed in place by valuesSymmetric.</summary>
+        /// iterations complete), then destroyed in place by valuesSymmetricInPlace.</summary>
         public floatMxN T;
 
-        /// <summary>Nested workspace for valuesSymmetric's Householder+QL reduction of T,
+        /// <summary>Nested workspace for valuesSymmetricInPlace's Householder+QL reduction of T,
         /// sized to `steps` (T is always steps x steps regardless of early breakdown).</summary>
         public floatEigenSymCache symWs;
     }

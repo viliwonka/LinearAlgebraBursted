@@ -45,14 +45,14 @@ public class doubleEigenTests
             PowerMaxIterationsInfo,
             InversePowerBreakdownInfo,
             InversePowerConvergedInfo,
-            // Eigen.valuesSymmetric
+            // Eigen.valuesSymmetricInPlace
             EvSymIdentity,
             EvSymDiagonal,
             EvSymKnown2x2,
             EvSymN1,
             EvSymCrossCheckJacobi,
             EvSymLaplacian,
-            // Eigen.symmetric (tred2 + tql2 full decomposition)
+            // Eigen.symmetricInPlace (tred2 + tql2 full decomposition)
             EsymIdentity,
             EsymDiagonal,
             EsymKnown2x2,
@@ -1042,7 +1042,7 @@ public class doubleEigenTests
         }
 
         // ---------------------------------------------------------------------
-        // Eigen.valuesSymmetric tests (Householder tridiagonalization + implicit-shift QL)
+        // Eigen.valuesSymmetricInPlace tests (Householder tridiagonalization + implicit-shift QL)
         // ---------------------------------------------------------------------
 
         // n=5 identity: same oracle as EigenIdentity (eigenvalues == 1); QL variant, A is DESTROYED.
@@ -1055,7 +1055,7 @@ public class doubleEigenTests
             var A = arena.doubleIdentityMat(n);
             var eig = arena.doubleVec(n);
 
-            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1086,7 +1086,7 @@ public class doubleEigenTests
 
             var eig = arena.doubleVec(n);
 
-            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1117,7 +1117,7 @@ public class doubleEigenTests
 
             var eig = arena.doubleVec(n);
 
-            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1142,7 +1142,7 @@ public class doubleEigenTests
 
             var eig = arena.doubleVec(n);
 
-            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
             Assert.IsTrue(ok);
             AssertClose(eig[0], (double)(-3.25), (double)100 * Consts.doubleZeroThreshold);
@@ -1151,7 +1151,7 @@ public class doubleEigenTests
         }
 
         // CROSS-CHECK vs the Jacobi Eigen.decompInPlace: for n=6 and n=8 random SYMMETRIC matrices,
-        // run Eigen.decompInPlace on one copy and Eigen.valuesSymmetric on a SEPARATE copy (both
+        // run Eigen.decompInPlace on one copy and Eigen.valuesSymmetricInPlace on a SEPARATE copy (both
         // DESTROY their input, both sort descending) and require the eigenvalue vectors to agree.
         // Tolerance scaled by (1+|lambda|): entries ~ +-5, so float values land around few*1e-5.
         public void EvSymCrossCheckJacobi()
@@ -1174,7 +1174,7 @@ public class doubleEigenTests
                 }
 
             var Ajac = A.Copy();   // destroyed by Eigen.decompInPlace
-            var Aql = A.Copy();    // destroyed by Eigen.valuesSymmetric
+            var Aql = A.Copy();    // destroyed by Eigen.valuesSymmetricInPlace
 
             var eigJac = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
@@ -1182,7 +1182,7 @@ public class doubleEigenTests
             Assert.IsTrue(jacOk);
 
             var eigQL = arena.doubleVec(n);
-            bool qlOk = Eigen.valuesSymmetric(ref Aql, ref eigQL);
+            bool qlOk = Eigen.valuesSymmetricInPlace(ref Aql, ref eigQL);
             Assert.IsTrue(qlOk);
 
             Assert.IsFalse(Analysis.isAnyNan(in eigQL));
@@ -1230,7 +1230,7 @@ public class doubleEigenTests
 
             var eig = arena.doubleVec(n);
 
-            bool ok = Eigen.valuesSymmetric(ref A, ref eig);
+            bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eig);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1250,7 +1250,7 @@ public class doubleEigenTests
         }
 
         // ---------------------------------------------------------------------
-        // Eigen.symmetric tests (tred2 Householder + tql2 implicit-shift QL)
+        // Eigen.symmetricInPlace tests (tred2 Householder + tql2 implicit-shift QL)
         // ---------------------------------------------------------------------
 
         // n=5 identity: same oracle as EigenIdentity; tred2/tql2 variant, A is DESTROYED.
@@ -1264,7 +1264,7 @@ public class doubleEigenTests
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
 
-            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1301,7 +1301,7 @@ public class doubleEigenTests
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
 
-            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1340,7 +1340,7 @@ public class doubleEigenTests
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
 
-            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
 
@@ -1374,7 +1374,7 @@ public class doubleEigenTests
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
 
-            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1401,7 +1401,7 @@ public class doubleEigenTests
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
 
-            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in V));
@@ -1452,7 +1452,7 @@ public class doubleEigenTests
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
 
-            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1464,7 +1464,7 @@ public class doubleEigenTests
             arena.Dispose();
         }
 
-        // CROSS-CHECK eigenvalues vs the trusted values-only Eigen.valuesSymmetric on the SAME
+        // CROSS-CHECK eigenvalues vs the trusted values-only Eigen.valuesSymmetricInPlace on the SAME
         // random symmetric matrices (n=6, n=8). Both DESTROY their input and sort descending, so
         // run each on a separate copy and compare elementwise.
         public void EsymCrossCheck()
@@ -1479,16 +1479,16 @@ public class doubleEigenTests
 
             var A = MakeRandomSymmetric(ref arena, n, seed);
 
-            var Asym = A.Copy();   // destroyed by Eigen.symmetric
-            var Aval = A.Copy();   // destroyed by Eigen.valuesSymmetric
+            var Asym = A.Copy();   // destroyed by Eigen.symmetricInPlace
+            var Aval = A.Copy();   // destroyed by Eigen.valuesSymmetricInPlace
 
             var eigSym = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
-            bool symOk = Eigen.symmetric(ref Asym, ref eigSym, ref V);
+            bool symOk = Eigen.symmetricInPlace(ref Asym, ref eigSym, ref V);
             Assert.IsTrue(symOk);
 
             var eigVal = arena.doubleVec(n);
-            bool valOk = Eigen.valuesSymmetric(ref Aval, ref eigVal);
+            bool valOk = Eigen.valuesSymmetricInPlace(ref Aval, ref eigVal);
             Assert.IsTrue(valOk);
 
             Assert.IsFalse(Analysis.isAnyNan(in eigSym));
@@ -1536,7 +1536,7 @@ public class doubleEigenTests
             var eig = arena.doubleVec(n);
             var V = arena.doubleMat(n, n);
 
-            bool ok = Eigen.symmetric(ref A, ref eig, ref V);
+            bool ok = Eigen.symmetricInPlace(ref A, ref eig, ref V);
 
             Assert.IsTrue(ok);
             Assert.IsFalse(Analysis.isAnyNan(in eig));
@@ -1830,7 +1830,7 @@ public class doubleEigenTests
 
         var eig = arena.doubleVec(2);
 
-        Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetric(ref A, ref eig));
+        Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetricInPlace(ref A, ref eig));
 
         arena.Dispose();
     }
@@ -1843,7 +1843,7 @@ public class doubleEigenTests
         var A = arena.doubleMat(3, 4);
         var eig = arena.doubleVec(4);
 
-        Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetric(ref A, ref eig));
+        Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetricInPlace(ref A, ref eig));
 
         arena.Dispose();
     }
@@ -1856,7 +1856,7 @@ public class doubleEigenTests
         var A = arena.doubleMat(4, 4);
         var eig = arena.doubleVec(3);
 
-        Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetric(ref A, ref eig));
+        Assert.Catch<ArgumentException>(() => Eigen.valuesSymmetricInPlace(ref A, ref eig));
 
         arena.Dispose();
     }
@@ -1870,7 +1870,7 @@ public class doubleEigenTests
         var eig = arena.doubleVec(4);
         var V = arena.doubleMat(4, 4);
 
-        Assert.Catch<ArgumentException>(() => Eigen.symmetric(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1887,7 +1887,7 @@ public class doubleEigenTests
         var eig = arena.doubleVec(2);
         var V = arena.doubleMat(2, 2);
 
-        Assert.Catch<ArgumentException>(() => Eigen.symmetric(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1901,7 +1901,7 @@ public class doubleEigenTests
         var eig = arena.doubleVec(3);
         var V = arena.doubleMat(4, 4);
 
-        Assert.Catch<ArgumentException>(() => Eigen.symmetric(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
 
         arena.Dispose();
     }
@@ -1915,7 +1915,7 @@ public class doubleEigenTests
         var eig = arena.doubleVec(4);
         var V = arena.doubleMat(3, 3);
 
-        Assert.Catch<ArgumentException>(() => Eigen.symmetric(ref A, ref eig, ref V));
+        Assert.Catch<ArgumentException>(() => Eigen.symmetricInPlace(ref A, ref eig, ref V));
 
         arena.Dispose();
     }

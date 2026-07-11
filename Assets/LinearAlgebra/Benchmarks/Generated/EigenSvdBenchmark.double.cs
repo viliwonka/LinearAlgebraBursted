@@ -35,7 +35,7 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = Src[r, c];
-            Eigen.valuesSymmetric(ref A, ref E);
+            Eigen.valuesSymmetricInPlace(ref A, ref E);
         }
     }
 
@@ -53,7 +53,7 @@ namespace LinearAlgebra.Benchmarks
             for (int r = 0; r < n; r++)
                 for (int c = 0; c < n; c++)
                     A[r, c] = Src[r, c];
-            Eigen.symmetric(ref A, ref E, ref V);
+            Eigen.symmetricInPlace(ref A, ref E, ref V);
         }
     }
 

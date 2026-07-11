@@ -851,11 +851,11 @@ namespace LinearAlgebra
         // ---- nonzero with Indices buffer ---
 
         /// <summary>
-        /// Fills idx[0..count) with flat indices of elements in x with |x[i]| > tol.
+        /// Fills idx[0..count) with flat indices of elements in x with |x[i]| > tolerance.
         /// Returns count. idx must be sized >= x.Data.Length (worst case).
         /// Generic over fProxyN and fProxyMxN.
         /// </summary>
-        public static int nonzero<T>(in T x, fProxy tol, ref Indices idx)
+        public static int nonzero<T>(in T x, fProxy tolerance, ref Indices idx)
             where T : unmanaged, IUnsafefProxyArray
         {
             if (idx.N < x.Data.Length)
@@ -863,7 +863,7 @@ namespace LinearAlgebra
 
             int count = 0;
             for (int i = 0; i < x.Data.Length; i++)
-                if (math.abs(x.Data[i]) > tol) idx[count++] = i;
+                if (math.abs(x.Data[i]) > tolerance) idx[count++] = i;
             return count;
         }
 
@@ -873,31 +873,31 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Returns the flat index of the first element in x equal to target
-        /// (within tolerance: |x[i] - target| &lt;= tol). Returns -1 if not found.
+        /// (within tolerance: |x[i] - target| &lt;= tolerance). Returns -1 if not found.
         /// Generic over vec + matrix flat data. (Like Excel MATCH.)
         /// </summary>
-        public static int findValue<T>(in T x, fProxy target, fProxy tol)
+        public static int findValue<T>(in T x, fProxy target, fProxy tolerance)
             where T : unmanaged, IUnsafefProxyArray
         {
             for (int i = 0; i < x.Data.Length; i++)
             {
-                if (math.abs(x.Data[i] - target) <= tol)
+                if (math.abs(x.Data[i] - target) <= tolerance)
                     return i;
             }
             return -1;
         }
 
         /// <summary>
-        /// Returns the count of elements in x with absolute value &gt; tol.
+        /// Returns the count of elements in x with absolute value &gt; tolerance.
         /// Zero-alloc; use with nonzero (ref Indices) for the full index list.
         /// </summary>
-        public static int countNonzero<T>(in T x, fProxy tol)
+        public static int countNonzero<T>(in T x, fProxy tolerance)
             where T : unmanaged, IUnsafefProxyArray
         {
             int count = 0;
             for (int i = 0; i < x.Data.Length; i++)
             {
-                if (math.abs(x.Data[i]) > tol)
+                if (math.abs(x.Data[i]) > tolerance)
                     count++;
             }
             return count;

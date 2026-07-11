@@ -28,19 +28,19 @@ namespace LinearAlgebra.ML
         /// <paramref name="X"/>          N×D point matrix (one row per point).
         /// <paramref name="k"/>          Number of clusters; clamped to min(k, N) internally.
         /// <paramref name="seed"/>       Deterministic RNG seed; mapped to 1u if 0 (Unity.Mathematics.Random guard).
-        /// <paramref name="maxIter"/>    Max Lloyd iterations; must be >= 1.
+        /// <paramref name="maxIterations"/>    Max Lloyd iterations; must be >= 1.
         /// <paramref name="init"/>       Seeding strategy: KMeansPlusPlus or Uniform.
         /// <paramref name="centroids"/>  k×D output centroids (caller pre-allocated; exactly k×D after clamp).
         /// <paramref name="assignment"/> N output cluster labels in [0, k); always consistent with returned centroids.
         /// <paramref name="inertia"/>    Final total SSE; always consistent with returned centroids and assignment.
-        /// <paramref name="iters"/>      Actual iteration count in [1, maxIter].
+        /// <paramref name="iters"/>      Actual iteration count in [1, maxIterations].
         /// <paramref name="ws"/>         Pre-allocated workspace — Arena.fProxyKMeansCache(N, D, k).
         /// </summary>
         public static void fit(
             in fProxyMxN X,
             int k,
             uint seed,
-            int maxIter,
+            int maxIterations,
             KMeansInit init,
             ref fProxyMxN centroids,
             ref Indices assignment,
@@ -53,8 +53,8 @@ namespace LinearAlgebra.ML
                 throw new InvalidOperationException("KMeans.fit: X is empty");
             if (k <= 0)
                 throw new ArgumentException("KMeans.fit: k must be >= 1");
-            if (maxIter < 1)
-                throw new ArgumentException("KMeans.fit: maxIter must be >= 1");
+            if (maxIterations < 1)
+                throw new ArgumentException("KMeans.fit: maxIterations must be >= 1");
 
             int N = X.M_Rows;
             int D = X.N_Cols;
@@ -127,7 +127,7 @@ namespace LinearAlgebra.ML
             inertia = (fProxy)0; // overwritten in the converged branch below or in the final sync
             bool converged = false;
 
-            for (int iter = 0; iter < maxIter; iter++)
+            for (int iter = 0; iter < maxIterations; iter++)
             {
                 iters = iter + 1;
 
@@ -269,13 +269,13 @@ namespace LinearAlgebra.ML
             in fProxyMxN X,
             int k,
             uint seed,
-            int maxIter,
+            int maxIterations,
             ref fProxyMxN centroids,
             ref Indices assignment,
             out fProxy inertia,
             out int iters,
             ref fProxyKMeansCache ws)
-            => fit(in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
+            => fit(in X, k, seed, maxIterations, KMeansInit.KMeansPlusPlus,
                       ref centroids, ref assignment, out inertia, out iters, ref ws);
 
         // =========================================================================
@@ -296,7 +296,7 @@ namespace LinearAlgebra.ML
             in fProxyMxN X,
             int k,
             uint seed,
-            int maxIter,
+            int maxIterations,
             KMeansInit init,
             out fProxyMxN centroids,
             out Indices assignment,
@@ -308,8 +308,8 @@ namespace LinearAlgebra.ML
                 throw new InvalidOperationException("KMeans.fit: X is empty");
             if (k <= 0)
                 throw new ArgumentException("KMeans.fit: k must be >= 1");
-            if (maxIter < 1)
-                throw new ArgumentException("KMeans.fit: maxIter must be >= 1");
+            if (maxIterations < 1)
+                throw new ArgumentException("KMeans.fit: maxIterations must be >= 1");
 
             int N = X.M_Rows;
             int D = X.N_Cols;
@@ -317,7 +317,7 @@ namespace LinearAlgebra.ML
             centroids  = arena.fProxyMat(kk, D);
             assignment = arena.Indices(N);
             var ws     = arena.fProxyKMeansCache(N, D, kk);
-            fit(in X, k, seed, maxIter, init, ref centroids, ref assignment,
+            fit(in X, k, seed, maxIterations, init, ref centroids, ref assignment,
                    out inertia, out iters, ref ws);
         }
 
@@ -334,12 +334,12 @@ namespace LinearAlgebra.ML
             in fProxyMxN X,
             int k,
             uint seed,
-            int maxIter,
+            int maxIterations,
             out fProxyMxN centroids,
             out Indices assignment,
             out fProxy inertia,
             out int iters)
-            => fit(ref arena, in X, k, seed, maxIter, KMeansInit.KMeansPlusPlus,
+            => fit(ref arena, in X, k, seed, maxIterations, KMeansInit.KMeansPlusPlus,
                       out centroids, out assignment, out inertia, out iters);
 
         // =========================================================================

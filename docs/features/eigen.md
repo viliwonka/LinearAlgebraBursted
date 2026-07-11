@@ -5,9 +5,9 @@
 
 ## Dense
 
-- **`Eigen.symmetric(ref A, ref eigenvalues, ref V, ...)`** — the default: Householder
+- **`Eigen.symmetricInPlace(ref A, ref eigenvalues, ref V, ...)`** — the default: Householder
   tridiagonalization (with orthogonal accumulation) + implicit-shift QL, all eigenpairs, descending
-  order, `A` destroyed. **`Eigen.valuesSymmetric(ref A, ref eigenvalues, ...)`** — values-only, skips
+  order, `A` destroyed. **`Eigen.valuesSymmetricInPlace(ref A, ref eigenvalues, ...)`** — values-only, skips
   the eigenvector accumulation entirely, faster still.
 - `Eigen.decompInPlace` (cyclic two-sided Jacobi) is `[Obsolete]` — Jacobi's column-oriented rotations
   resist SIMD; kept only because it has superior relative accuracy on graded spectra, and as a
@@ -26,13 +26,13 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
 - **`inversePowerIteration<TOp>(in A, ..., out lambda, ...)`** — smallest eigenpair of SPD `A`, via an
   inner `Krylov.cg` solve each outer iteration (no explicit inverse formed).
 - **`lanczos<TOp>(in A, ref ws, ref eigenvalues, int steps, ...)`** — twice-reorthogonalized symmetric
-  Lanczos tridiagonalization + `Eigen.valuesSymmetric` on the result → Ritz **values**.
+  Lanczos tridiagonalization + `Eigen.valuesSymmetricInPlace` on the result → Ritz **values**.
   **`lanczosVectors<TOp>(...)`** — same tridiagonalization, then forms Ritz **vectors** too (not
-  zero-alloc — allocates 3 Temp vectors internally via `Eigen.symmetric`).
-- **`Eigen.lobpcg<TOp[,TPre]>(in A[, in M], ref ws, int k, float tol, int maxIter)`** — blocked
+  zero-alloc — allocates 3 Temp vectors internally via `Eigen.symmetricInPlace`).
+- **`Eigen.lobpcg<TOp[,TPre]>(in A[, in M], ref ws, int k, float tolerance, int maxIterations)`** — blocked
   Locally Optimal Block Preconditioned Conjugate Gradient: the `k` SMALLEST eigenpairs of a symmetric
   operator, via deflation-based locking (a converged pair is frozen and projected out of the active
-  subspace) and a small dense Rayleigh-Ritz sub-problem solved with `Eigen.symmetric` (a 3-block
+  subspace) and a small dense Rayleigh-Ritz sub-problem solved with `Eigen.symmetricInPlace` (a 3-block
   `[X,W,P]` reduction that falls back to 2-block `[X,W]` if the 3-block Cholesky is too
   ill-conditioned). Dense (`floatMxN`), [BSR](sparse-bsr.md), and BSR+`floatBlockJacobi`
   (preconditioned) forwarders all share this one body — the same pattern as the rest of this section.
@@ -44,7 +44,7 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
 
 This is the intended tool for sparse smallest-eigenpair problems (structural-stability / buckling /
 modal-analysis use cases, the Fiedler vector) that `lanczos`/`inversePowerIteration` aren't the best
-fit for; the dense small-scale case is still better served by `Eigen.symmetric`.
+fit for; the dense small-scale case is still better served by `Eigen.symmetricInPlace`.
 
 **Generalized pencil form** — `lobpcg` also solves `A·x = λ·B·x` with B SPD: every overload has a
 `+B` twin (generic operator, dense, BSR, BSR+block-Jacobi) that B-orthonormalizes the basis and
@@ -76,10 +76,10 @@ Ryzen 9 9950X3D, single-thread Burst, median of 9. N=1024 (`Benchmarks/EigenSvdB
 
 | Method | dtype | med(ms) |
 |---|---|---|
-| `Eigen.valuesSymmetric` (values only) | float | 161.86 |
-| `Eigen.valuesSymmetric` | double | 199.36 |
-| `Eigen.symmetric` (values + vectors) | float | 420.25 |
-| `Eigen.symmetric` | double | 542.04 |
+| `Eigen.valuesSymmetricInPlace` (values only) | float | 161.86 |
+| `Eigen.valuesSymmetricInPlace` | double | 199.36 |
+| `Eigen.symmetricInPlace` (values + vectors) | float | 420.25 |
+| `Eigen.symmetricInPlace` | double | 542.04 |
 
 `Eigen.lobpcg` (`Benchmarks/LOBPCGBenchmark.cs`), dense SPD `A = MᵀM + I`, N=512, k=4 smallest,
 maxIter fixed at 50 (deterministic timing; `tol` is set near machine-epsilon so the budget is never
@@ -92,6 +92,6 @@ met early):
 
 (`converged`/`maxResidual` show the fixed 50-iteration budget makes real but incomplete progress on
 this well-conditioned test matrix — the point of this benchmark is the per-iteration cost, not a
-convergence demonstration; a real caller would set a reachable `tol` instead.)
+convergence demonstration; a real caller would set a reachable `tolerance` instead.)
 
 `powerIteration`/`inversePowerIteration`/`lanczos`/`lanczosVectors` — still not benchmarked.

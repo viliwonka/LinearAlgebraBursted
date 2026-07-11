@@ -14,7 +14,7 @@ namespace LinearAlgebra
     public static partial class shortComp {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void addInPlace<T>(T place, short s) where T : unmanaged, IUnsafeshortArray {
+        public static void addInPlace<T>(this T place, short s) where T : unmanaged, IUnsafeshortArray {
 
             unsafe {
                 UnsafeOP.scalAdd(place.Data.Ptr, place.Data.Length, s);
@@ -22,7 +22,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void mulInPlace<T>(T place, short s) where T : unmanaged, IUnsafeshortArray
+        public static void mulInPlace<T>(this T place, short s) where T : unmanaged, IUnsafeshortArray
         {
             unsafe {
                 UnsafeOP.scalMul(place.Data.Ptr, place.Data.Length, s);

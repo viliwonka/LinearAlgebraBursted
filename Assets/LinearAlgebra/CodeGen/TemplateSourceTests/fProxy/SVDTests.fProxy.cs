@@ -377,7 +377,7 @@ public class fProxySVDTests
         // (2b) Independent-algorithm cross-check. The singular values from Golub-Kahan (SVD.values)
         // must satisfy σ_i^2 == λ_i where λ_i are the eigenvalues of the Gram matrix AᵀA obtained
         // from a GENUINELY DIFFERENT algorithm (Householder tridiagonalization + implicit QL in
-        // Eigen.valuesSymmetric) -- so agreement is real, independent validation, not circular.
+        // Eigen.valuesSymmetricInPlace) -- so agreement is real, independent validation, not circular.
         // ALSO checks the Frobenius identity Σσ_i^2 == ‖A‖_F^2 (free, holds for ANY A).
         void CrossCheckEigenRandom(int m, int n, uint seed)
         {
@@ -416,7 +416,7 @@ public class fProxySVDTests
 
             // (3) eigenvalues of AᵀA (DESTROYS AtA; sorted DESCENDING -- same convention as S).
             var lambda = arena.fProxyVec(n);
-            Assert.IsTrue(Eigen.valuesSymmetric(ref AtA, ref lambda));
+            Assert.IsTrue(Eigen.valuesSymmetricInPlace(ref AtA, ref lambda));
 
             // (4) σ_i^2 ≈ λ_i, LOOSE tolerance scaled by σ_0^2 (squaring roughly squares κ, so tiny
             // trailing σ can have large relative error in this comparison -- that's expected). The

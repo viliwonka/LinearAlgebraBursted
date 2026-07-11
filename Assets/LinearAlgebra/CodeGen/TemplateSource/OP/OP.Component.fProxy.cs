@@ -13,7 +13,7 @@ namespace LinearAlgebra
     public static partial class fProxyComp {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void addInPlace<T>(T place, fProxy s) where T : unmanaged, IUnsafefProxyArray {
+        public static void addInPlace<T>(this T place, fProxy s) where T : unmanaged, IUnsafefProxyArray {
 
             unsafe {
                 UnsafeOP.scalAdd(place.Data.Ptr, place.Data.Length, s);
@@ -21,7 +21,7 @@ namespace LinearAlgebra
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void mulInPlace<T>(T place, fProxy s) where T : unmanaged, IUnsafefProxyArray
+        public static void mulInPlace<T>(this T place, fProxy s) where T : unmanaged, IUnsafefProxyArray
         {
             unsafe {
                 UnsafeOP.scalMul(place.Data.Ptr, place.Data.Length, s);

@@ -76,7 +76,7 @@ namespace LinearAlgebra
     /// across same-shape calls so repeated solves are zero-alloc at the O(n) scale (see the
     /// class doc comment on <see cref="LOBPCG"/> for the one exception: the tiny O(k)-sized
     /// Rayleigh-Ritz eigensolve still uses a few small, bounded <c>Allocator.Temp</c> scratch
-    /// vectors internally, exactly like <see cref="Eigen.symmetric(ref floatMxN, ref floatN, ref floatMxN)"/>
+    /// vectors internally, exactly like <see cref="Eigen.symmetricInPlace(ref floatMxN, ref floatN, ref floatMxN)"/>
     /// already does for its own callers).
     /// </summary>
     public struct floatLOBPCGCache

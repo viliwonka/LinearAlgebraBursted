@@ -218,7 +218,7 @@ public class fProxyConvergenceBudgetTests
             var A = BuildSymmetric(ref arena, n, in sigma, 0x5EED0001u + (uint)n);
             var eig = arena.fProxyVec(n);
             int budget = Consts.sweepBudget(n);
-            var info = Eigen.valuesSymmetric(ref A, ref eig, budget, Consts.fProxyZeroThreshold);
+            var info = Eigen.valuesSymmetricInPlace(ref A, ref eig, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
             arena.Dispose();
         }
@@ -232,7 +232,7 @@ public class fProxyConvergenceBudgetTests
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
             int budget = Consts.sweepBudget(n);
-            var info = Eigen.symmetric(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
+            var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
             arena.Dispose();
         }
@@ -261,7 +261,7 @@ public class fProxyConvergenceBudgetTests
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
             int budget = Consts.sweepBudget(n);
-            var info = Eigen.symmetric(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
+            var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
             arena.Dispose();
         }
@@ -290,7 +290,7 @@ public class fProxyConvergenceBudgetTests
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
             int budget = Consts.sweepBudget(n);
-            var info = Eigen.symmetric(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
+            var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
             arena.Dispose();
         }
@@ -319,7 +319,7 @@ public class fProxyConvergenceBudgetTests
             var eig = arena.fProxyVec(n);
             var V = arena.fProxyMat(n, n);
             int budget = Consts.sweepBudget(n);
-            var info = Eigen.symmetric(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
+            var info = Eigen.symmetricInPlace(ref A, ref eig, ref V, budget, Consts.fProxyZeroThreshold);
             Store(in info, budget);
             arena.Dispose();
         }
@@ -362,7 +362,7 @@ public class fProxyConvergenceBudgetTests
     [TestCase(1024u)]
     public void Graded95_ValuesSymmetric(uint n32)
     {
-        RunCase(TestJob.TestType.Graded95ValuesSymmetric, (int)n32, "Graded95/valuesSymmetric");
+        RunCase(TestJob.TestType.Graded95ValuesSymmetric, (int)n32, "Graded95/valuesSymmetricInPlace");
     }
 
     [TestCase(128u)]

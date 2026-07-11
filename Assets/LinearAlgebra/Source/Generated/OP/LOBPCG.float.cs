@@ -11,11 +11,11 @@ namespace LinearAlgebra
     /// Blocked Locally Optimal Block Preconditioned Conjugate Gradient (LOBPCG): the k SMALLEST
     /// eigenpairs of a symmetric operator A (A.Rows == A.Cols), generic over any
     /// <see cref="IfloatLinearOperator"/> and an optional <see cref="IfloatPreconditioner"/>.
-    /// Reuses the dense <see cref="Eigen.symmetric(ref floatMxN, ref floatN, ref floatMxN)"/>
+    /// Reuses the dense <see cref="Eigen.symmetricInPlace(ref floatMxN, ref floatN, ref floatMxN)"/>
     /// solver for the small (&lt;= 3k) Rayleigh-Ritz sub-problem and
     /// <see cref="CHO.decomp(in floatMxN, ref floatMxN)"/> for orthogonalization.
     ///
-    /// <b>Locking:</b> once a pair's relative residual meets <c>tol</c> it is locked (frozen, no
+    /// <b>Locking:</b> once a pair's relative residual meets <c>tolerance</c> it is locked (frozen, no
     /// further matvec/preconditioner/Rayleigh-Ritz) and deflated out of the active subspace. Locked
     /// pairs stay in the output X.
     ///
@@ -35,7 +35,7 @@ namespace LinearAlgebra
     /// allocated once via <c>Arena.floatLOBPCGCache(n, k)</c> and reused across calls.
     ///
     /// <b>Convergence:</b> per-pair 2-norm relative residual ||A x_i - lambda_i B x_i|| /
-    /// max(|lambda_i|, 1) &lt;= tol. Returns a <see cref="LOBPCGInfo"/>
+    /// max(|lambda_i|, 1) &lt;= tolerance. Returns a <see cref="LOBPCGInfo"/>
     /// (Converged/MaxIterations/Breakdown).
     ///
     /// <b>Output order:</b> eigenvalues/eigenvectors are returned ASCENDING (index 0 = smallest) --
@@ -59,7 +59,7 @@ namespace LinearAlgebra
         /// the all-zero block is seeded deterministically first.
         /// </summary>
         public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref floatLOBPCGCache ws,
-                                                          int k, float tol, int maxIter)
+                                                          int k, float tolerance, int maxIterations)
             where TOp : struct, IfloatLinearOperator
             where TBOp : struct, IfloatLinearOperator
             where TPre : struct, IfloatPreconditioner
@@ -88,11 +88,11 @@ namespace LinearAlgebra
             if (k < 1 || k > kWork)
                 throw new ArgumentException("LOBPCG: k must be in [1, cache block size] (allocate floatLOBPCGCache(n, k + guard) to use guard vectors)");
 
-            if (maxIter < 1)
-                throw new ArgumentException("LOBPCG: maxIter must be >= 1");
+            if (maxIterations < 1)
+                throw new ArgumentException("LOBPCG: maxIterations must be >= 1");
 
-            if (tol <= (float)0)
-                throw new ArgumentException("LOBPCG: tol must be > 0");
+            if (tolerance <= (float)0)
+                throw new ArgumentException("LOBPCG: tolerance must be > 0");
 
             RequireLOBPCGWorkspace(in ws, n, kWork);
             RequireDistinctBuffers(in ws);
@@ -146,15 +146,15 @@ namespace LinearAlgebra
             int numActive = kWork;
             bool haveP = false;
 
-            // Freeze (lock) a pair only at a fraction of tol; convergence is still DECLARED at tol via
+            // Freeze (lock) a pair only at a fraction of tolerance; convergence is still DECLARED at tolerance via
             // allWithinTol below. Locking is destructive -- once a pair is frozen, the remaining active
             // pairs are confined B-orthogonal to it (W/P are deflated against all X), and the best
             // residual achievable under that confinement is ~0.87x the frozen pair's lock residual. So
-            // lock with margin (0.087*tol induced floor) instead of at tol, which would leave later
-            // pairs stuck just above tol. See the (d1) re-deflation block below.
-            float lockTol = tol * (float)0.1;
+            // lock with margin (0.087*tolerance induced floor) instead of at tolerance, which would leave later
+            // pairs stuck just above tolerance. See the (d1) re-deflation block below.
+            float lockTol = tolerance * (float)0.1;
 
-            for (int iter = 0; iter < maxIter; iter++)
+            for (int iter = 0; iter < maxIterations; iter++)
             {
                 // ---- residual + lock newly converged pairs (scan back-to-front so a swap-in
                 //      from the back is still checked) ----
@@ -184,9 +184,9 @@ namespace LinearAlgebra
                     float scale = math.abs(ws.lambda[i]);
                     if (scale < (float)1) scale = (float)1;
 
-                    // Convergence is measured at tol (this drives the honest exit below); a pair need
+                    // Convergence is measured at tolerance (this drives the honest exit below); a pair need
                     // not be locked to count as converged.
-                    if (!(rnorm <= tol * scale)) allWithinTol = false;
+                    if (!(rnorm <= tolerance * scale)) allWithinTol = false;
 
                     if (rnorm <= lockTol * scale)
                     {
@@ -215,8 +215,8 @@ namespace LinearAlgebra
                     }
                 }
 
-                // Honest exit: the k WANTED (smallest) pairs are all within tol. With NO guards
-                // (kWork == k) this is exactly allWithinTol -- every pair within tol, computed inline
+                // Honest exit: the k WANTED (smallest) pairs are all within tolerance. With NO guards
+                // (kWork == k) this is exactly allWithinTol -- every pair within tolerance, computed inline
                 // above -- so the pre-guard path is bit-identical. With guards it ignores the residuals
                 // of the (kWork - k) guard rows, which are not required to converge (see WantedWithinTol);
                 // waiting on them would defeat the purpose (guards typically sit higher in the spectrum
@@ -224,7 +224,7 @@ namespace LinearAlgebra
                 // W/Rayleigh-Ritz work pass; THIS iteration only ran the residual check before finding
                 // everyone converged, so it contributes no additional work -- matches SolveInfo's
                 // "0 when converged before the first step" convention.
-                bool converged = (kWork == k) ? allWithinTol : WantedWithinTol(in ws, kWork, k, tol);
+                bool converged = (kWork == k) ? allWithinTol : WantedWithinTol(in ws, kWork, k, tolerance);
                 if (converged)
                 {
                     SortAscending(ref ws, kWork);
@@ -357,17 +357,17 @@ namespace LinearAlgebra
             }
 
             SortAscending(ref ws, kWork);
-            return new LOBPCGInfo { iterations = maxIter, converged = ConvergedWithinTol(in ws, k, tol), maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
+            return new LOBPCGInfo { iterations = maxIterations, converged = ConvergedWithinTol(in ws, k, tolerance), maxResidual = MaxRelResidual(in ws, k), status = IterativeSolveStatus.MaxIterations };
         }
 
-        /// <summary>lobpcg (generalized, preconditioned) with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref floatLOBPCGCache ws, int k, float tol)
+        /// <summary>lobpcg (generalized, preconditioned) with default maxIterations (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref floatLOBPCGCache ws, int k, float tolerance)
             where TOp : struct, IfloatLinearOperator
             where TBOp : struct, IfloatLinearOperator
             where TPre : struct, IfloatPreconditioner
-            => lobpcg(in A, in B, in M, ref ws, k, tol, 1000);
+            => lobpcg(in A, in B, in M, ref ws, k, tolerance, 1000);
 
-        /// <summary>lobpcg (generalized, preconditioned) with default tol (Consts.floatSqrtEps) and maxIter (1000).</summary>
+        /// <summary>lobpcg (generalized, preconditioned) with default tolerance (Consts.floatSqrtEps) and maxIterations (1000).</summary>
         public static LOBPCGInfo lobpcg<TOp, TBOp, TPre>(in TOp A, in TBOp B, in TPre M, ref floatLOBPCGCache ws, int k)
             where TOp : struct, IfloatLinearOperator
             where TBOp : struct, IfloatLinearOperator
@@ -381,18 +381,18 @@ namespace LinearAlgebra
         /// pre-generalization algorithm bit-for-bit (identity's Apply is an exact bit-copy) rather
         /// than requiring a hand-duplicated standard-only implementation.
         /// </summary>
-        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref floatLOBPCGCache ws, int k, float tol, int maxIter)
+        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref floatLOBPCGCache ws, int k, float tolerance, int maxIterations)
             where TOp : struct, IfloatLinearOperator
             where TPre : struct, IfloatPreconditioner
-            => lobpcg(in A, new floatIdentityOperator(A.Rows), in M, ref ws, k, tol, maxIter);
+            => lobpcg(in A, new floatIdentityOperator(A.Rows), in M, ref ws, k, tolerance, maxIterations);
 
-        /// <summary>lobpcg (preconditioned) with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref floatLOBPCGCache ws, int k, float tol)
+        /// <summary>lobpcg (preconditioned) with default maxIterations (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref floatLOBPCGCache ws, int k, float tolerance)
             where TOp : struct, IfloatLinearOperator
             where TPre : struct, IfloatPreconditioner
-            => lobpcg(in A, in M, ref ws, k, tol, 1000);
+            => lobpcg(in A, in M, ref ws, k, tolerance, 1000);
 
-        /// <summary>lobpcg (preconditioned) with default tol (Consts.floatSqrtEps) and maxIter (1000).</summary>
+        /// <summary>lobpcg (preconditioned) with default tolerance (Consts.floatSqrtEps) and maxIterations (1000).</summary>
         public static LOBPCGInfo lobpcg<TOp, TPre>(in TOp A, in TPre M, ref floatLOBPCGCache ws, int k)
             where TOp : struct, IfloatLinearOperator
             where TPre : struct, IfloatPreconditioner
@@ -407,40 +407,40 @@ namespace LinearAlgebra
         /// forwarder" pattern already used everywhere else in this file for dense/BSR wrapping,
         /// just applied one level further).
         /// </summary>
-        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref floatLOBPCGCache ws, int k, float tol, int maxIter)
+        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref floatLOBPCGCache ws, int k, float tolerance, int maxIterations)
             where TOp : struct, IfloatLinearOperator
-            => lobpcg(in A, new floatIdentityPreconditioner(), ref ws, k, tol, maxIter);
+            => lobpcg(in A, new floatIdentityPreconditioner(), ref ws, k, tolerance, maxIterations);
 
-        /// <summary>lobpcg (unpreconditioned) with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref floatLOBPCGCache ws, int k, float tol)
+        /// <summary>lobpcg (unpreconditioned) with default maxIterations (1000).</summary>
+        public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref floatLOBPCGCache ws, int k, float tolerance)
             where TOp : struct, IfloatLinearOperator
-            => lobpcg(in A, ref ws, k, tol, 1000);
+            => lobpcg(in A, ref ws, k, tolerance, 1000);
 
-        /// <summary>lobpcg (unpreconditioned) with default tol (Consts.floatSqrtEps) and maxIter (1000).</summary>
+        /// <summary>lobpcg (unpreconditioned) with default tolerance (Consts.floatSqrtEps) and maxIterations (1000).</summary>
         public static LOBPCGInfo lobpcg<TOp>(in TOp A, ref floatLOBPCGCache ws, int k)
             where TOp : struct, IfloatLinearOperator
             => lobpcg(in A, ref ws, k, Consts.floatSqrtEps, 1000);
 
         // NOTE: there is deliberately NO standalone `lobpcg<TOp,TBOp>(in TOp A, in TBOp B, ref ws,
-        // int k, float tol, int maxIter)` unpreconditioned-generic-generalized convenience overload:
+        // int k, float tolerance, int maxIterations)` unpreconditioned-generic-generalized convenience overload:
         // it would collide (CS0111) with `lobpcg<TOp,TPre>` above, since generic constraints don't
         // participate in overload matching. Callers with custom TOp/TBOp structs call the
         // 3-type-param core directly with an explicit identity preconditioner:
-        // <c>lobpcg(in A, in B, new floatIdentityPreconditioner(), ref ws, k, tol, maxIter)</c>.
+        // <c>lobpcg(in A, in B, new floatIdentityPreconditioner(), ref ws, k, tolerance, maxIterations)</c>.
         // The CONCRETE (dense/BSR) unpreconditioned-generalized overloads below are unaffected.
 
         /// <summary>
         /// LOBPCG over a dense <see cref="floatMxN"/> -- zero-alloc primitive, unpreconditioned.
         /// Forwards into <see cref="lobpcg{TOp}"/> via <see cref="floatDenseOperator"/>.
         /// </summary>
-        public static LOBPCGInfo lobpcg(in floatMxN A, ref floatLOBPCGCache ws, int k, float tol, int maxIter)
-            => lobpcg(new floatDenseOperator(in A), ref ws, k, tol, maxIter);
+        public static LOBPCGInfo lobpcg(in floatMxN A, ref floatLOBPCGCache ws, int k, float tolerance, int maxIterations)
+            => lobpcg(new floatDenseOperator(in A), ref ws, k, tolerance, maxIterations);
 
-        /// <summary>lobpcg over a dense matrix with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in floatMxN A, ref floatLOBPCGCache ws, int k, float tol)
-            => lobpcg(in A, ref ws, k, tol, 1000);
+        /// <summary>lobpcg over a dense matrix with default maxIterations (1000).</summary>
+        public static LOBPCGInfo lobpcg(in floatMxN A, ref floatLOBPCGCache ws, int k, float tolerance)
+            => lobpcg(in A, ref ws, k, tolerance, 1000);
 
-        /// <summary>lobpcg over a dense matrix with default tol (Consts.floatSqrtEps) and maxIter (1000).</summary>
+        /// <summary>lobpcg over a dense matrix with default tolerance (Consts.floatSqrtEps) and maxIterations (1000).</summary>
         public static LOBPCGInfo lobpcg(in floatMxN A, ref floatLOBPCGCache ws, int k)
             => lobpcg(in A, ref ws, k, Consts.floatSqrtEps, 1000);
 
@@ -453,14 +453,14 @@ namespace LinearAlgebra
         /// unaffected). See the class doc comment's "Buckling mapping" note for the canonical
         /// A=K_G/B=K_E truss-buckling usage.
         /// </summary>
-        public static LOBPCGInfo lobpcg(in floatMxN A, in floatMxN B, ref floatLOBPCGCache ws, int k, float tol, int maxIter)
-            => lobpcg(new floatDenseOperator(in A), new floatDenseOperator(in B), new floatIdentityPreconditioner(), ref ws, k, tol, maxIter);
+        public static LOBPCGInfo lobpcg(in floatMxN A, in floatMxN B, ref floatLOBPCGCache ws, int k, float tolerance, int maxIterations)
+            => lobpcg(new floatDenseOperator(in A), new floatDenseOperator(in B), new floatIdentityPreconditioner(), ref ws, k, tolerance, maxIterations);
 
-        /// <summary>lobpcg (generalized) over a dense pencil with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in floatMxN A, in floatMxN B, ref floatLOBPCGCache ws, int k, float tol)
-            => lobpcg(in A, in B, ref ws, k, tol, 1000);
+        /// <summary>lobpcg (generalized) over a dense pencil with default maxIterations (1000).</summary>
+        public static LOBPCGInfo lobpcg(in floatMxN A, in floatMxN B, ref floatLOBPCGCache ws, int k, float tolerance)
+            => lobpcg(in A, in B, ref ws, k, tolerance, 1000);
 
-        /// <summary>lobpcg (generalized) over a dense pencil with default tol (Consts.floatSqrtEps) and maxIter (1000).</summary>
+        /// <summary>lobpcg (generalized) over a dense pencil with default tolerance (Consts.floatSqrtEps) and maxIterations (1000).</summary>
         public static LOBPCGInfo lobpcg(in floatMxN A, in floatMxN B, ref floatLOBPCGCache ws, int k)
             => lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 1000);
 
@@ -473,15 +473,15 @@ namespace LinearAlgebra
         /// arena-convenience wrapper in this library (e.g. <see cref="Eigen.lanczosVectors{TOp}"/>).
         /// </summary>
         public static floatN lobpcg(ref Arena arena, in floatMxN A, int k, out floatMxN eigenvectors,
-                                      out LOBPCGInfo info, float tol, int maxIter)
+                                      out LOBPCGInfo info, float tolerance, int maxIterations)
         {
             var ws = arena.floatLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            info = lobpcg(in A, ref ws, k, tolerance, maxIterations);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating) over a dense matrix with default tol/maxIter.</summary>
+        /// <summary>lobpcg (allocating) over a dense matrix with default tolerance/maxIterations.</summary>
         public static floatN lobpcg(ref Arena arena, in floatMxN A, int k, out floatMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.floatSqrtEps, 1000);
 
@@ -495,11 +495,11 @@ namespace LinearAlgebra
         /// k x n block (ascending-sorted); the returned values are a fresh length-k vector.
         /// </summary>
         public static floatN lobpcg(ref Arena arena, in floatMxN A, int k, int guard, out floatMxN eigenvectors,
-                                      out LOBPCGInfo info, float tol, int maxIter)
+                                      out LOBPCGInfo info, float tolerance, int maxIterations)
         {
             if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
             var ws = arena.floatLOBPCGCache(A.M_Rows, k + guard);
-            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            info = lobpcg(in A, ref ws, k, tolerance, maxIterations);
             eigenvectors = ws.X;
             eigenvectors.M_Rows = k;                       // leading k rows are the k smallest (SortAscending ran)
             var vals = arena.floatVec(k);
@@ -507,7 +507,7 @@ namespace LinearAlgebra
             return vals;
         }
 
-        /// <summary>lobpcg (allocating, guard vectors) over a dense matrix with default tol/maxIter.</summary>
+        /// <summary>lobpcg (allocating, guard vectors) over a dense matrix with default tolerance/maxIterations.</summary>
         public static floatN lobpcg(ref Arena arena, in floatMxN A, int k, int guard, out floatMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.floatSqrtEps, 1000);
 
@@ -516,15 +516,15 @@ namespace LinearAlgebra
         /// standard dense overload's doc comment for the buffer-ownership contract.
         /// </summary>
         public static floatN lobpcg(ref Arena arena, in floatMxN A, in floatMxN B, int k, out floatMxN eigenvectors,
-                                      out LOBPCGInfo info, float tol, int maxIter)
+                                      out LOBPCGInfo info, float tolerance, int maxIterations)
         {
             var ws = arena.floatLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
+            info = lobpcg(in A, in B, ref ws, k, tolerance, maxIterations);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating, generalized) over a dense pencil with default tol/maxIter.</summary>
+        /// <summary>lobpcg (allocating, generalized) over a dense pencil with default tolerance/maxIterations.</summary>
         public static floatN lobpcg(ref Arena arena, in floatMxN A, in floatMxN B, int k, out floatMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.floatSqrtEps, 1000);
 
@@ -532,14 +532,14 @@ namespace LinearAlgebra
         /// LOBPCG over a block-sparse (BSR) matrix -- zero-alloc primitive, unpreconditioned.
         /// Forwards into <see cref="lobpcg{TOp}"/> via <c>floatBSROperator</c>.
         /// </summary>
-        public static LOBPCGInfo lobpcg(in floatBSR A, ref floatLOBPCGCache ws, int k, float tol, int maxIter)
-            => lobpcg(new floatBSROperator(in A), ref ws, k, tol, maxIter);
+        public static LOBPCGInfo lobpcg(in floatBSR A, ref floatLOBPCGCache ws, int k, float tolerance, int maxIterations)
+            => lobpcg(new floatBSROperator(in A), ref ws, k, tolerance, maxIterations);
 
-        /// <summary>lobpcg over a BSR matrix with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in floatBSR A, ref floatLOBPCGCache ws, int k, float tol)
-            => lobpcg(in A, ref ws, k, tol, 1000);
+        /// <summary>lobpcg over a BSR matrix with default maxIterations (1000).</summary>
+        public static LOBPCGInfo lobpcg(in floatBSR A, ref floatLOBPCGCache ws, int k, float tolerance)
+            => lobpcg(in A, ref ws, k, tolerance, 1000);
 
-        /// <summary>lobpcg over a BSR matrix with default tol (Consts.floatSqrtEps) and maxIter (1000).</summary>
+        /// <summary>lobpcg over a BSR matrix with default tolerance (Consts.floatSqrtEps) and maxIterations (1000).</summary>
         public static LOBPCGInfo lobpcg(in floatBSR A, ref floatLOBPCGCache ws, int k)
             => lobpcg(in A, ref ws, k, Consts.floatSqrtEps, 1000);
 
@@ -551,28 +551,28 @@ namespace LinearAlgebra
         /// overload's NOTE for why there is no generic unpreconditioned-generalized rung to route
         /// through here.
         /// </summary>
-        public static LOBPCGInfo lobpcg(in floatBSR A, in floatBSR B, ref floatLOBPCGCache ws, int k, float tol, int maxIter)
-            => lobpcg(new floatBSROperator(in A), new floatBSROperator(in B), new floatIdentityPreconditioner(), ref ws, k, tol, maxIter);
+        public static LOBPCGInfo lobpcg(in floatBSR A, in floatBSR B, ref floatLOBPCGCache ws, int k, float tolerance, int maxIterations)
+            => lobpcg(new floatBSROperator(in A), new floatBSROperator(in B), new floatIdentityPreconditioner(), ref ws, k, tolerance, maxIterations);
 
-        /// <summary>lobpcg (generalized) over a BSR pencil with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in floatBSR A, in floatBSR B, ref floatLOBPCGCache ws, int k, float tol)
-            => lobpcg(in A, in B, ref ws, k, tol, 1000);
+        /// <summary>lobpcg (generalized) over a BSR pencil with default maxIterations (1000).</summary>
+        public static LOBPCGInfo lobpcg(in floatBSR A, in floatBSR B, ref floatLOBPCGCache ws, int k, float tolerance)
+            => lobpcg(in A, in B, ref ws, k, tolerance, 1000);
 
-        /// <summary>lobpcg (generalized) over a BSR pencil with default tol (Consts.floatSqrtEps) and maxIter (1000).</summary>
+        /// <summary>lobpcg (generalized) over a BSR pencil with default tolerance (Consts.floatSqrtEps) and maxIterations (1000).</summary>
         public static LOBPCGInfo lobpcg(in floatBSR A, in floatBSR B, ref floatLOBPCGCache ws, int k)
             => lobpcg(in A, in B, ref ws, k, Consts.floatSqrtEps, 1000);
 
         /// <summary>lobpcg (allocating) over a BSR matrix. See the dense overload's doc comment.</summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, int k, out floatMxN eigenvectors,
-                                      out LOBPCGInfo info, float tol, int maxIter)
+                                      out LOBPCGInfo info, float tolerance, int maxIterations)
         {
             var ws = arena.floatLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            info = lobpcg(in A, ref ws, k, tolerance, maxIterations);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating) over a BSR matrix with default tol/maxIter.</summary>
+        /// <summary>lobpcg (allocating) over a BSR matrix with default tolerance/maxIterations.</summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, int k, out floatMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, out eigenvectors, out info, Consts.floatSqrtEps, 1000);
 
@@ -584,11 +584,11 @@ namespace LinearAlgebra
         /// Laplacian -- see <c>floatGallery.floatLaplacian2D</c>).
         /// </summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, int k, int guard, out floatMxN eigenvectors,
-                                      out LOBPCGInfo info, float tol, int maxIter)
+                                      out LOBPCGInfo info, float tolerance, int maxIterations)
         {
             if (guard < 0) throw new ArgumentException("LOBPCG: guard must be >= 0");
             var ws = arena.floatLOBPCGCache(A.M_Rows, k + guard);
-            info = lobpcg(in A, ref ws, k, tol, maxIter);
+            info = lobpcg(in A, ref ws, k, tolerance, maxIterations);
             eigenvectors = ws.X;
             eigenvectors.M_Rows = k;
             var vals = arena.floatVec(k);
@@ -596,7 +596,7 @@ namespace LinearAlgebra
             return vals;
         }
 
-        /// <summary>lobpcg (allocating, guard vectors) over a BSR matrix with default tol/maxIter.</summary>
+        /// <summary>lobpcg (allocating, guard vectors) over a BSR matrix with default tolerance/maxIterations.</summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, int k, int guard, out floatMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, k, guard, out eigenvectors, out info, Consts.floatSqrtEps, 1000);
 
@@ -605,15 +605,15 @@ namespace LinearAlgebra
         /// the standard BSR overload's doc comment for the buffer-ownership contract.
         /// </summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, in floatBSR B, int k, out floatMxN eigenvectors,
-                                      out LOBPCGInfo info, float tol, int maxIter)
+                                      out LOBPCGInfo info, float tolerance, int maxIterations)
         {
             var ws = arena.floatLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in B, ref ws, k, tol, maxIter);
+            info = lobpcg(in A, in B, ref ws, k, tolerance, maxIterations);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with default tol/maxIter.</summary>
+        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with default tolerance/maxIterations.</summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, in floatBSR B, int k, out floatMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in B, k, out eigenvectors, out info, Consts.floatSqrtEps, 1000);
 
@@ -626,14 +626,14 @@ namespace LinearAlgebra
         /// consumes it).
         /// </summary>
         public static LOBPCGInfo lobpcg(in floatBSR A, in floatBlockJacobi M, ref floatLOBPCGCache ws,
-                                         int k, float tol, int maxIter)
-            => lobpcg(new floatBSROperator(in A), in M, ref ws, k, tol, maxIter);
+                                         int k, float tolerance, int maxIterations)
+            => lobpcg(new floatBSROperator(in A), in M, ref ws, k, tolerance, maxIterations);
 
-        /// <summary>lobpcg (BSR + block-Jacobi) with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in floatBSR A, in floatBlockJacobi M, ref floatLOBPCGCache ws, int k, float tol)
-            => lobpcg(in A, in M, ref ws, k, tol, 1000);
+        /// <summary>lobpcg (BSR + block-Jacobi) with default maxIterations (1000).</summary>
+        public static LOBPCGInfo lobpcg(in floatBSR A, in floatBlockJacobi M, ref floatLOBPCGCache ws, int k, float tolerance)
+            => lobpcg(in A, in M, ref ws, k, tolerance, 1000);
 
-        /// <summary>lobpcg (BSR + block-Jacobi) with default tol (Consts.floatSqrtEps) and maxIter (1000).</summary>
+        /// <summary>lobpcg (BSR + block-Jacobi) with default tolerance (Consts.floatSqrtEps) and maxIterations (1000).</summary>
         public static LOBPCGInfo lobpcg(in floatBSR A, in floatBlockJacobi M, ref floatLOBPCGCache ws, int k)
             => lobpcg(in A, in M, ref ws, k, Consts.floatSqrtEps, 1000);
 
@@ -646,28 +646,28 @@ namespace LinearAlgebra
         /// enter M's construction or Apply.
         /// </summary>
         public static LOBPCGInfo lobpcg(in floatBSR A, in floatBSR B, in floatBlockJacobi M, ref floatLOBPCGCache ws,
-                                         int k, float tol, int maxIter)
-            => lobpcg(new floatBSROperator(in A), new floatBSROperator(in B), in M, ref ws, k, tol, maxIter);
+                                         int k, float tolerance, int maxIterations)
+            => lobpcg(new floatBSROperator(in A), new floatBSROperator(in B), in M, ref ws, k, tolerance, maxIterations);
 
-        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default maxIter (1000).</summary>
-        public static LOBPCGInfo lobpcg(in floatBSR A, in floatBSR B, in floatBlockJacobi M, ref floatLOBPCGCache ws, int k, float tol)
-            => lobpcg(in A, in B, in M, ref ws, k, tol, 1000);
+        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default maxIterations (1000).</summary>
+        public static LOBPCGInfo lobpcg(in floatBSR A, in floatBSR B, in floatBlockJacobi M, ref floatLOBPCGCache ws, int k, float tolerance)
+            => lobpcg(in A, in B, in M, ref ws, k, tolerance, 1000);
 
-        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default tol (Consts.floatSqrtEps) and maxIter (1000).</summary>
+        /// <summary>lobpcg (generalized, BSR + block-Jacobi) with default tolerance (Consts.floatSqrtEps) and maxIterations (1000).</summary>
         public static LOBPCGInfo lobpcg(in floatBSR A, in floatBSR B, in floatBlockJacobi M, ref floatLOBPCGCache ws, int k)
             => lobpcg(in A, in B, in M, ref ws, k, Consts.floatSqrtEps, 1000);
 
         /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi. See the dense overload's doc comment.</summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, in floatBlockJacobi M, int k,
-                                      out floatMxN eigenvectors, out LOBPCGInfo info, float tol, int maxIter)
+                                      out floatMxN eigenvectors, out LOBPCGInfo info, float tolerance, int maxIterations)
         {
             var ws = arena.floatLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in M, ref ws, k, tol, maxIter);
+            info = lobpcg(in A, in M, ref ws, k, tolerance, maxIterations);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi and default tol/maxIter.</summary>
+        /// <summary>lobpcg (allocating) over a BSR matrix with block-Jacobi and default tolerance/maxIterations.</summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, in floatBlockJacobi M, int k,
                                       out floatMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in M, k, out eigenvectors, out info, Consts.floatSqrtEps, 1000);
@@ -677,15 +677,15 @@ namespace LinearAlgebra
         /// allocating. See the standard BSR+block-Jacobi overload's doc comment.
         /// </summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, in floatBSR B, in floatBlockJacobi M, int k,
-                                      out floatMxN eigenvectors, out LOBPCGInfo info, float tol, int maxIter)
+                                      out floatMxN eigenvectors, out LOBPCGInfo info, float tolerance, int maxIterations)
         {
             var ws = arena.floatLOBPCGCache(A.M_Rows, k);
-            info = lobpcg(in A, in B, in M, ref ws, k, tol, maxIter);
+            info = lobpcg(in A, in B, in M, ref ws, k, tolerance, maxIterations);
             eigenvectors = ws.X;
             return ws.lambda;
         }
 
-        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with block-Jacobi and default tol/maxIter.</summary>
+        /// <summary>lobpcg (allocating, generalized) over a BSR pencil with block-Jacobi and default tolerance/maxIterations.</summary>
         public static floatN lobpcg(ref Arena arena, in floatBSR A, in floatBSR B, in floatBlockJacobi M, int k,
                                       out floatMxN eigenvectors, out LOBPCGInfo info)
             => lobpcg(ref arena, in A, in B, in M, k, out eigenvectors, out info, Consts.floatSqrtEps, 1000);
@@ -1058,7 +1058,7 @@ namespace LinearAlgebra
             var Atrans = View(in ws.Atrans, m);
             FormAtrans(ref Hv, ref Lv, ref Atrans, m);
 
-            // Symmetrize (roundoff insurance -- symmetric requires exact-within-eps symmetry;
+            // Symmetrize (roundoff insurance -- symmetric requires exact-within-tolerance symmetry;
             // the two triangular-solve passes above are mathematically symmetric but not bit-exact).
             for (int i = 0; i < m; i++)
                 for (int j = i + 1; j < m; j++)
@@ -1070,7 +1070,7 @@ namespace LinearAlgebra
 
             var Yv = View(in ws.Y, m);
             var eigSmall = new floatN(m, Allocator.Temp);
-            bool eigOk = Eigen.symmetric(ref Atrans, ref eigSmall, ref Yv);
+            bool eigOk = Eigen.symmetricInPlace(ref Atrans, ref eigSmall, ref Yv);
 
             if (eigOk)
             {
@@ -1247,15 +1247,15 @@ namespace LinearAlgebra
         }
 
         // GUARD-VECTOR convergence gate: true iff the k WANTED pairs -- the k SMALLEST by current Ritz
-        // value among all kWork block rows -- are each within the requested tol. The (kWork - k) guard
+        // value among all kWork block rows -- are each within the requested tolerance. The (kWork - k) guard
         // rows are ignored. Rank is computed by value with a stable index tie-break so EXACTLY k rows
         // count as wanted even when Ritz values coincide (the square-grid multiplicity case). residual[]
         // is current for every row here (active rows from the just-finished scan, locked rows frozen at
-        // their lock-time value <= lockTol < tol), and lambda[] holds every row's current Ritz value, so
+        // their lock-time value <= lockTol < tolerance), and lambda[] holds every row's current Ritz value, so
         // no row ordering is assumed. kWork is tiny (<= a few dozen) so the O(kWork^2) rank scan is
         // negligible. Only ever called when kWork > k; the kWork == k path uses allWithinTol inline and
         // stays bit-identical to the pre-guard implementation.
-        static bool WantedWithinTol(in floatLOBPCGCache ws, int kWork, int k, float tol)
+        static bool WantedWithinTol(in floatLOBPCGCache ws, int kWork, int k, float tolerance)
         {
             for (int i = 0; i < kWork; i++)
             {
@@ -1266,23 +1266,23 @@ namespace LinearAlgebra
 
                 float scale = math.abs(ws.lambda[i]);
                 if (scale < (float)1) scale = (float)1;
-                if (!(ws.residual[i] <= tol * scale)) return false;   // NaN-safe (!(NaN<=x) == true)
+                if (!(ws.residual[i] <= tolerance * scale)) return false;   // NaN-safe (!(NaN<=x) == true)
             }
             return true;
         }
 
-        // How many of the k pairs are within the requested tol (NOT the stricter lock margin lockTol).
-        // On a non-converged exit, k - numActive would count only pairs frozen to lockTol (= 0.1*tol) and
-        // undercount pairs that reached tol but were never locked -- so report this instead. residual[] is
+        // How many of the k pairs are within the requested tolerance (NOT the stricter lock margin lockTol).
+        // On a non-converged exit, k - numActive would count only pairs frozen to lockTol (= 0.1*tolerance) and
+        // undercount pairs that reached tolerance but were never locked -- so report this instead. residual[] is
         // populated for all k here (active pairs from the last scan, locked pairs frozen at lock time).
-        static int ConvergedWithinTol(in floatLOBPCGCache ws, int k, float tol)
+        static int ConvergedWithinTol(in floatLOBPCGCache ws, int k, float tolerance)
         {
             int c = 0;
             for (int i = 0; i < k; i++)
             {
                 float scale = math.abs(ws.lambda[i]);
                 if (scale < (float)1) scale = (float)1;
-                if (ws.residual[i] <= tol * scale) c++;
+                if (ws.residual[i] <= tolerance * scale) c++;
             }
             return c;
         }

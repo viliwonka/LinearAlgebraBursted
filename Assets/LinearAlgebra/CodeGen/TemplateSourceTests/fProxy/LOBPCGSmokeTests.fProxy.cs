@@ -225,7 +225,7 @@ public class fProxyLOBPCGSmokeTests
         var Afull = A.Copy();
         var eigAll = arena.fProxyVec(n);
         var Vall = arena.fProxyMat(n, n);
-        Assert.IsTrue(Eigen.symmetric(ref Afull, ref eigAll, ref Vall));
+        Assert.IsTrue(Eigen.symmetricInPlace(ref Afull, ref eigAll, ref Vall));
 
         var eig = Eigen.lobpcg(ref arena, in A, k, out _, out var info);
         Assert.IsTrue(info.Solved, info.ToString());
@@ -329,7 +329,7 @@ public class fProxyLOBPCGSmokeTests
 
         var eigAll = arena.fProxyVec(n);
         var Vall = arena.fProxyMat(n, n);
-        Assert.IsTrue(Eigen.symmetric(ref Ahat, ref eigAll, ref Vall));
+        Assert.IsTrue(Eigen.symmetricInPlace(ref Ahat, ref eigAll, ref Vall));
 
         var ws = arena.fProxyLOBPCGCache(n, k);
         var info = Eigen.lobpcg(in A, in B, ref ws, k, Consts.fProxySqrtEps, 1000);

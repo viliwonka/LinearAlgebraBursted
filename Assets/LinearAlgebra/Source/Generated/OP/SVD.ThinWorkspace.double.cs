@@ -27,7 +27,7 @@ namespace LinearAlgebra
     /// BidiagWs is the nested workspace Bidiag.decomp needs (see doubleBidiagCache); B (n x n) is
     /// the bidiagonal factor; dVec/eVec (length n) are the diagonal/superdiagonal the bidiagonal QR
     /// diagonalizes; Ut (n x m) / Vt (n x n) are the transposed accumulators the QR sweep rotates
-    /// (unit-stride rows, same trick as Eigen.symmetric).
+    /// (unit-stride rows, same trick as Eigen.symmetricInPlace).
     /// </summary>
     public struct doubleSVDThinCache
     {

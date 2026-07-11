@@ -87,8 +87,8 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 | `LQ.minNormSolve` LQ, underdetermined system | 512×1024, float | 12.3 ms |
 | `Krylov.cg` CG, iterative SPD solver, dense | 1024×1024, double; dense BSR (4×4 blocks, 7% fill), 40 iterations | 15.05 ms |
 | `Krylov.cg` CG, iterative SPD solver, sparse | 1024×1024, double; sparse BSR (4×4 blocks, 7% fill), 40 iterations | 0.37 ms |
-| `Eigen.symmetric` Symmetric eigen decomp  | 1024×1024, float, values + vectors | 420.3 ms |
-| `Eigen.valuesSymmetric` Symmetric eigen, values only | 1024×1024, float | 161.9 ms |
+| `Eigen.symmetricInPlace` Symmetric eigen decomp  | 1024×1024, float, values + vectors | 420.3 ms |
+| `Eigen.valuesSymmetricInPlace` Symmetric eigen, values only | 1024×1024, float | 161.9 ms |
 | `Eigen.lobpcg` Smallest eigenpairs, SPD solver | 512×512, k=4, float, 50 iterations | 84.3 ms (1.7 ms/iter) |
 | `SVD.thin` full SVD | 2048×512, float | 186.8 ms |
 | `SVD.truncated` truncated SVD w/ top-k only | 2048×512, k=21, float | 17.6 ms |

@@ -8,14 +8,14 @@ namespace LinearAlgebra
     /// value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>) means the same
     /// success-test call shape used by every other iterative solver in this library compiles:
     /// <code>
-    ///   if (Eigen.lobpcg(in A, ref ws, k, tol, maxIter)) { ... }
+    ///   if (Eigen.lobpcg(in A, ref ws, k, tolerance, maxIterations)) { ... }
     ///   var info = Eigen.lobpcg(in A, in M, ref ws, k);
     ///   if (info.Solved) Debug.Log(info.converged);
     /// </code>
     ///
     /// Reuses <see cref="IterativeSolveStatus"/> (the same enum every other Krylov/eigen solver in
     /// this library uses) rather than a dedicated LOBPCG enum: Converged means all k pairs locked
-    /// within tol; MaxIterations means the iteration budget ran out with some pairs still active;
+    /// within tolerance; MaxIterations means the iteration budget ran out with some pairs still active;
     /// Breakdown means an unrecoverable numerical condition was hit (the initial X seed could not
     /// be orthonormalized -- e.g. k &gt; n -- or a non-finite residual leaked into the loop), in
     /// which case X/lambda are undefined.

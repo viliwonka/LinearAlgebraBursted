@@ -206,7 +206,7 @@ namespace LinearAlgebra.ML
         /// data. model.k is set to p (X.N_Cols). Correlation mode builds its own R matrix inline (a
         /// zero-variance feature zeroes its whole row/column, including the diagonal) rather than
         /// reusing StatsOP.correlation() -- see the implementation comment below for why.
-        /// Returns true iff the underlying <see cref="Eigen.symmetric(ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/>
+        /// Returns true iff the underlying <see cref="Eigen.symmetricInPlace(ref fProxyMxN, ref fProxyN, ref fProxyMxN)"/>
         /// converged; <paramref name="info"/> carries its full <see cref="EigenInfo"/> diagnostics
         /// (discard with <c>out _</c> if unneeded).
         /// </summary>
@@ -270,7 +270,7 @@ namespace LinearAlgebra.ML
                 }
             }
 
-            info = Eigen.symmetric(ref C, ref model.explainedVariance, ref model.components);
+            info = Eigen.symmetricInPlace(ref C, ref model.explainedVariance, ref model.components);
             bool converged = info;
 
             FinalizeModel(ref model, p, totalVariance, converged);

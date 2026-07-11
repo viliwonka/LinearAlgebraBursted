@@ -37,7 +37,7 @@ namespace LinearAlgebra
         /// with Arena.fProxySVDFullCache(m, n).
         /// </summary>
         public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
-                                         fProxy relativeTolerance, int maxIter)
+                                         fProxy relativeTolerance, int maxIterations)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -46,14 +46,14 @@ namespace LinearAlgebra
                 throw new ArgumentException("nullspaceBasis: A must have m >= n (more rows than columns)");
             if (basis.M_Rows != n || basis.N_Cols != n)
                 throw new ArgumentException("nullspaceBasis: basis must be n x n");
-            if (maxIter < 1)
-                throw new ArgumentException("nullspaceBasis: maxIter must be >= 1");
+            if (maxIterations < 1)
+                throw new ArgumentException("nullspaceBasis: maxIterations must be >= 1");
             RequireSvdFullWorkspace(in ws, m, n);
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
+            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIterations);
             if (!svdInfo)
                 return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
@@ -77,12 +77,12 @@ namespace LinearAlgebra
             return new RankInfo { status = rank == n ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
         }
 
-        /// <summary>nullspaceBasis (ref workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>nullspaceBasis (ref workspace) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
                                          fProxy relativeTolerance)
             => nullspaceBasis(in A, ref basis, ref ws, relativeTolerance, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>nullspaceBasis (ref workspace) with auto tolerance (relativeTolerance = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>nullspaceBasis (ref workspace) with auto tolerance (relativeTolerance = -1) and default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws)
             => nullspaceBasis(in A, ref basis, ref ws, (fProxy)(-1), Consts.sweepBudget(A.N_Cols));
 
@@ -91,7 +91,7 @@ namespace LinearAlgebra
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis,
-                                         fProxy relativeTolerance, int maxIter)
+                                         fProxy relativeTolerance, int maxIterations)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -101,14 +101,14 @@ namespace LinearAlgebra
                 S = A.fProxyTempVec(n),
                 V = A.fProxyTempMat(n, n)
             };
-            return nullspaceBasis(in A, ref basis, ref ws, relativeTolerance, maxIter);
+            return nullspaceBasis(in A, ref basis, ref ws, relativeTolerance, maxIterations);
         }
 
-        /// <summary>nullspaceBasis (allocating) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>nullspaceBasis (allocating) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis, fProxy relativeTolerance)
             => nullspaceBasis(in A, ref basis, relativeTolerance, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>nullspaceBasis (allocating) with auto tolerance (relativeTolerance = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>nullspaceBasis (allocating) with auto tolerance (relativeTolerance = -1) and default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo nullspaceBasis(in fProxyMxN A, ref fProxyMxN basis)
             => nullspaceBasis(in A, ref basis, (fProxy)(-1), Consts.sweepBudget(A.N_Cols));
 
@@ -124,7 +124,7 @@ namespace LinearAlgebra
         /// is full-SVD scratch reused across calls; size it with Arena.fProxySVDFullCache(m, n).
         /// </summary>
         public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
-                                     fProxy relativeTolerance, int maxIter)
+                                     fProxy relativeTolerance, int maxIterations)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -133,14 +133,14 @@ namespace LinearAlgebra
                 throw new ArgumentException("rangeBasis: A must have m >= n (more rows than columns)");
             if (basis.M_Rows != m || basis.N_Cols != n)
                 throw new ArgumentException("rangeBasis: basis must be m x n");
-            if (maxIter < 1)
-                throw new ArgumentException("rangeBasis: maxIter must be >= 1");
+            if (maxIterations < 1)
+                throw new ArgumentException("rangeBasis: maxIterations must be >= 1");
             RequireSvdFullWorkspace(in ws, m, n);
 
             if (n == 0)
                 return new RankInfo { status = DirectSolveStatus.Success, rank = 0 };
 
-            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIter);
+            SVDInfo svdInfo = thin(in A, ref ws.U, ref ws.S, ref ws.V, maxIterations);
             if (!svdInfo)
                 return new RankInfo { status = DirectSolveStatus.NotConverged, rank = 0 };
 
@@ -163,12 +163,12 @@ namespace LinearAlgebra
             return new RankInfo { status = rank == n ? DirectSolveStatus.Success : DirectSolveStatus.RankDeficient, rank = rank };
         }
 
-        /// <summary>rangeBasis (ref workspace) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>rangeBasis (ref workspace) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws,
                                      fProxy relativeTolerance)
             => rangeBasis(in A, ref basis, ref ws, relativeTolerance, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>rangeBasis (ref workspace) with auto tolerance (relativeTolerance = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>rangeBasis (ref workspace) with auto tolerance (relativeTolerance = -1) and default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis, ref fProxySVDFullCache ws)
             => rangeBasis(in A, ref basis, ref ws, (fProxy)(-1), Consts.sweepBudget(A.N_Cols));
 
@@ -177,7 +177,7 @@ namespace LinearAlgebra
         /// See the ref-workspace overload for semantics.
         /// </summary>
         public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis,
-                                     fProxy relativeTolerance, int maxIter)
+                                     fProxy relativeTolerance, int maxIterations)
         {
             int m = A.M_Rows;
             int n = A.N_Cols;
@@ -187,14 +187,14 @@ namespace LinearAlgebra
                 S = A.fProxyTempVec(n),
                 V = A.fProxyTempMat(n, n)
             };
-            return rangeBasis(in A, ref basis, ref ws, relativeTolerance, maxIter);
+            return rangeBasis(in A, ref basis, ref ws, relativeTolerance, maxIterations);
         }
 
-        /// <summary>rangeBasis (allocating) with default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>rangeBasis (allocating) with default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis, fProxy relativeTolerance)
             => rangeBasis(in A, ref basis, relativeTolerance, Consts.sweepBudget(A.N_Cols));
 
-        /// <summary>rangeBasis (allocating) with auto tolerance (relativeTolerance = -1) and default maxIter (Consts.sweepBudget(A.N_Cols)).</summary>
+        /// <summary>rangeBasis (allocating) with auto tolerance (relativeTolerance = -1) and default maxIterations (Consts.sweepBudget(A.N_Cols)).</summary>
         public static RankInfo rangeBasis(in fProxyMxN A, ref fProxyMxN basis)
             => rangeBasis(in A, ref basis, (fProxy)(-1), Consts.sweepBudget(A.N_Cols));
     }

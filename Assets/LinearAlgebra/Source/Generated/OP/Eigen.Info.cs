@@ -9,9 +9,9 @@ namespace LinearAlgebra
     /// <c>out fProxy lambda</c>. Implicitly converts to <c>bool</c> (== <see cref="Solved"/>) for use
     /// in <c>if (...)</c>:
     /// <code>
-    ///   if (Eigen.powerIteration(in A, ref v, ref w, out var lambda, tol, maxIter)) { ... }
+    ///   if (Eigen.powerIteration(in A, ref v, ref w, out var lambda, tolerance, maxIterations)) { ... }
     ///   bool ok = Eigen.inversePowerIteration(in A, ref v, out var lambda);
-    ///   var info = Eigen.powerIteration(in A, ref v, ref w, out var lambda, tol, maxIter);
+    ///   var info = Eigen.powerIteration(in A, ref v, ref w, out var lambda, tolerance, maxIterations);
     ///   if (info.Solved) Debug.Log(info.iterations);
     /// </code>
     ///
@@ -41,7 +41,7 @@ namespace LinearAlgebra
         /// <summary>Outer iterations actually performed (a Breakdown return counts only iterations
         /// that ran to completion before the breakdown, so it can be <c>0</c>). Do NOT infer success
         /// from this count alone -- powerIteration's post-loop check can return Converged with
-        /// <c>iterations == maxIter</c> (the same value a MaxIterations return carries); always read
+        /// <c>iterations == maxIterations</c> (the same value a MaxIterations return carries); always read
         /// <see cref="status"/>.</summary>
         public int iterations;
 
@@ -77,13 +77,13 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Result of a dense eigensolve (<c>Eigen.symmetric</c> / <c>Eigen.valuesSymmetric</c> /
+    /// Result of a dense eigensolve (<c>Eigen.symmetricInPlace</c> / <c>Eigen.valuesSymmetricInPlace</c> /
     /// <c>Eigen.valuesQR</c> / <c>Eigen.decompInPlace</c>), returned by value. Implicitly converts to
     /// <c>bool</c> (== <see cref="Solved"/>) for use in <c>if (...)</c>:
     /// <code>
-    ///   if (Eigen.symmetric(ref A, ref eigenvalues, ref V)) { ... }   // implicit bool
-    ///   bool ok = Eigen.valuesSymmetric(ref A, ref eigenvalues);      // same
-    ///   var info = Eigen.symmetric(ref A, ref eigenvalues, ref V);
+    ///   if (Eigen.symmetricInPlace(ref A, ref eigenvalues, ref V)) { ... }   // implicit bool
+    ///   bool ok = Eigen.valuesSymmetricInPlace(ref A, ref eigenvalues);      // same
+    ///   var info = Eigen.symmetricInPlace(ref A, ref eigenvalues, ref V);
     ///   if (info.Solved) Debug.Log(info.sweeps);
     /// </code>
     ///
@@ -125,8 +125,8 @@ namespace LinearAlgebra
         /// whichever reads better.</summary>
         public bool Solved => status == IterativeSolveStatus.Converged;
 
-        /// <summary>Implicit success test, so <c>if (Eigen.symmetric(...))</c> / <c>bool ok =
-        /// Eigen.symmetric(...)</c> keep compiling after the return type changed from bool to this
+        /// <summary>Implicit success test, so <c>if (Eigen.symmetricInPlace(...))</c> / <c>bool ok =
+        /// Eigen.symmetricInPlace(...)</c> keep compiling after the return type changed from bool to this
         /// struct.</summary>
         public static implicit operator bool(EigenInfo i) => i.status == IterativeSolveStatus.Converged;
 
