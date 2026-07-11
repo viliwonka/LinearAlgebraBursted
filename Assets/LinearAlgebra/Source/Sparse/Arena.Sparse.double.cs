@@ -213,5 +213,17 @@ namespace LinearAlgebra
             Arena self = this;
             return new doubleIC0(in A, ref self);
         }
+
+        /// <summary>
+        /// Builds a block incomplete-LU ILU(0) preconditioner from A (square, every diagonal
+        /// block stored) — the nonsymmetric sibling of <see cref="doubleIC0"/>, for
+        /// Krylov.pbiCGStab. See <see cref="doubleILU0"/> for the breakdown/shift contract.
+        /// Arena-owned: disposed with the arena.
+        /// </summary>
+        public doubleILU0 doubleILU0(in doubleBSR A)
+        {
+            Arena self = this;
+            return new doubleILU0(in A, ref self);
+        }
     }
 }

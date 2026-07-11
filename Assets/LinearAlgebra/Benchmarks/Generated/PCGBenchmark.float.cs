@@ -10,6 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra.Benchmarks
@@ -51,8 +52,112 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgSsorTolJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatSSOR M;
+        public floatN b, x, r, p, Ap, z;
+        public int K;
+        public float Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgIC0TolJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatIC0 M;
+        public floatN b, x, r, p, Ap, z;
+        public int K;
+        public float Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgJacobiTolJobFloat : IJob
+    {
+        public floatBSR A;
+        public floatBlockJacobi M;
+        public floatN b, x, r, p, Ap, z;
+        public int K;
+        public float Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
     public static partial class PCGBenchmark
     {
+        // Preconditioner face-off: solve-to-tolerance. Reports wall-clock AND iteration count --
+        // a preconditioner must win TIME, not just iterations, to earn its apply cost. NOTE: the
+        // Laplacian2D gallery is block-TRIDIAGONAL (the 2D stencil lives inside the blocks), a
+        // fill-free pattern where IC(0) is the exact factorization (1 iteration) -- the
+        // random-sparse-SPD rows are the genuinely-incomplete case.
+        static string BenchPrecondFloat(int gridX, int gridY)
+            => BenchPrecondCoreFloat(gridX, gridY, true, 0);
+
+        static string BenchPrecondRandomFloat(int nb, int bs, float density, uint seed)
+            => BenchPrecondCoreFloat(nb, bs, false, density, seed);
+
+        static string BenchPrecondCoreFloat(int p1, int p2, bool laplacian, float density, uint seed = 0)
+        {
+            const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,7} {6,14:E3}";
+            var arena = new Arena(Allocator.Persistent);
+            var A = laplacian ? arena.floatLaplacian2D(p1, p2)
+                              : arena.floatRandomSparseSPD(p1, p2, (float)density, seed);
+            int n = A.M_Rows;
+            var b = arena.floatRandomVec(n, -1f, 1f, 0xC002Du);
+            float tol = Consts.floatSqrtEps;
+            int cap = 8 * n;
+            var iters = arena.Indices(1);
+            var sb = new StringBuilder();
+
+            var x = arena.floatVec(n); var r = arena.floatVec(n); var p = arena.floatVec(n);
+            var Ap = arena.floatVec(n); var z = arena.floatVec(n);
+
+            var mJ = arena.floatBlockJacobi(in A);
+            var jJob = new PcgJacobiTolJobFloat { A = A, M = mJ, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var jStat = Bench.Time(() => jJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "PCG-Jacobi", jStat.Median, jStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            var mS = arena.floatSSOR(in A);
+            var sJob = new PcgSsorTolJobFloat { A = A, M = mS, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var sStat = Bench.Time(() => sJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "PCG-SSOR", sStat.Median, sStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            var mI = arena.floatIC0(in A);
+            var iJob = new PcgIC0TolJobFloat { A = A, M = mI, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var iStat = Bench.Time(() => iJob.Run());
+            sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "float", n, "PCG-IC0", iStat.Median, iStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            arena.Dispose();
+            return sb.ToString();
+        }
+
         static void BuildTridiagBlockSPDFloat(ref Arena arena, int NB, int BR, out floatBSR sparse, out int n)
         {
             n = NB * BR;

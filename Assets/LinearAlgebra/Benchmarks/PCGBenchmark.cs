@@ -32,6 +32,22 @@ namespace LinearAlgebra.Benchmarks
             sb.AppendLine(BenchFloat(BR, NB, K));
             sb.AppendLine(BenchDouble(BR, NB, K));
             sb.AppendLine();
+
+            sb.AppendLine("=== Preconditioner face-off, 2D Laplacian BSR, solve to tol=sqrt(eps) ===");
+            sb.AppendLine(string.Format("{0,-7} {1,-6} {2,-12} {3,11} {4,11} {5,7} {6,14}",
+                "dtype", "N", "solver", "med(ms)", "min(ms)", "iters", "residual"));
+            sb.AppendLine(BenchPrecondFloat(4, 256));
+            sb.AppendLine(BenchPrecondDouble(4, 256));
+            sb.AppendLine(BenchPrecondFloat(4, 1024));
+            sb.AppendLine(BenchPrecondDouble(4, 1024));
+            sb.AppendLine();
+
+            sb.AppendLine("=== Preconditioner face-off, random sparse SPD BSR (genuine fill; IC(0) incomplete), tol=sqrt(eps) ===");
+            sb.AppendLine(string.Format("{0,-7} {1,-6} {2,-12} {3,11} {4,11} {5,7} {6,14}",
+                "dtype", "N", "solver", "med(ms)", "min(ms)", "iters", "residual"));
+            sb.AppendLine(BenchPrecondRandomFloat(120, 3, 0.30f, 0xC003Du));
+            sb.AppendLine(BenchPrecondRandomDouble(120, 3, 0.30f, 0xC003Du));
+            sb.AppendLine();
         }
     }
 }

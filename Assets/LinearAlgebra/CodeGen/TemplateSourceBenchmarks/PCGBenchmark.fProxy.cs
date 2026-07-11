@@ -6,6 +6,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 using LinearAlgebra;
+using LinearAlgebra.Gallery;
 using LinearAlgebra.Sparse;
 
 namespace LinearAlgebra.Benchmarks
@@ -47,8 +48,112 @@ namespace LinearAlgebra.Benchmarks
         }
     }
 
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgSsorTolJobFProxy : IJob
+    {
+        public fProxyBSR A;
+        public fProxySSOR M;
+        public fProxyN b, x, r, p, Ap, z;
+        public int K;
+        public fProxy Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgIC0TolJobFProxy : IJob
+    {
+        public fProxyBSR A;
+        public fProxyIC0 M;
+        public fProxyN b, x, r, p, Ap, z;
+        public int K;
+        public fProxy Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
+    [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
+    public struct PcgJacobiTolJobFProxy : IJob
+    {
+        public fProxyBSR A;
+        public fProxyBlockJacobi M;
+        public fProxyN b, x, r, p, Ap, z;
+        public int K;
+        public fProxy Tol;
+        public Indices Iters;
+
+        public void Execute()
+        {
+            for (int i = 0; i < x.N; i++) x[i] = 0f;
+            var info = Krylov.pcg(in A, in M, in b, ref x, ref r, ref p, ref Ap, ref z, K, Tol);
+            Iters[0] = info.iterations;
+        }
+    }
+
     public static partial class PCGBenchmark
     {
+        // Preconditioner face-off: solve-to-tolerance. Reports wall-clock AND iteration count --
+        // a preconditioner must win TIME, not just iterations, to earn its apply cost. NOTE: the
+        // Laplacian2D gallery is block-TRIDIAGONAL (the 2D stencil lives inside the blocks), a
+        // fill-free pattern where IC(0) is the exact factorization (1 iteration) -- the
+        // random-sparse-SPD rows are the genuinely-incomplete case.
+        static string BenchPrecondFProxy(int gridX, int gridY)
+            => BenchPrecondCoreFProxy(gridX, gridY, true, 0);
+
+        static string BenchPrecondRandomFProxy(int nb, int bs, float density, uint seed)
+            => BenchPrecondCoreFProxy(nb, bs, false, density, seed);
+
+        static string BenchPrecondCoreFProxy(int p1, int p2, bool laplacian, float density, uint seed = 0)
+        {
+            const string fmt = "{0,-7} {1,-6} {2,-12} {3,11:F4} {4,11:F4} {5,7} {6,14:E3}";
+            var arena = new Arena(Allocator.Persistent);
+            var A = laplacian ? arena.fProxyLaplacian2D(p1, p2)
+                              : arena.fProxyRandomSparseSPD(p1, p2, (fProxy)density, seed);
+            int n = A.M_Rows;
+            var b = arena.fProxyRandomVec(n, -1f, 1f, 0xC002Du);
+            fProxy tol = Consts.fProxySqrtEps;
+            int cap = 8 * n;
+            var iters = arena.Indices(1);
+            var sb = new StringBuilder();
+
+            var x = arena.fProxyVec(n); var r = arena.fProxyVec(n); var p = arena.fProxyVec(n);
+            var Ap = arena.fProxyVec(n); var z = arena.fProxyVec(n);
+
+            var mJ = arena.fProxyBlockJacobi(in A);
+            var jJob = new PcgJacobiTolJobFProxy { A = A, M = mJ, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var jStat = Bench.Time(() => jJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "fProxy", n, "PCG-Jacobi", jStat.Median, jStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            var mS = arena.fProxySSOR(in A);
+            var sJob = new PcgSsorTolJobFProxy { A = A, M = mS, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var sStat = Bench.Time(() => sJob.Run());
+            sb.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "fProxy", n, "PCG-SSOR", sStat.Median, sStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            var mI = arena.fProxyIC0(in A);
+            var iJob = new PcgIC0TolJobFProxy { A = A, M = mI, b = b, x = x, r = r, p = p, Ap = Ap, z = z, K = cap, Tol = tol, Iters = iters };
+            var iStat = Bench.Time(() => iJob.Run());
+            sb.Append(string.Format(System.Globalization.CultureInfo.InvariantCulture, fmt,
+                "fProxy", n, "PCG-IC0", iStat.Median, iStat.Min, iters[0], Residual(in A, in x, in b)));
+
+            arena.Dispose();
+            return sb.ToString();
+        }
+
         static void BuildTridiagBlockSPDFProxy(ref Arena arena, int NB, int BR, out fProxyBSR sparse, out int n)
         {
             n = NB * BR;
