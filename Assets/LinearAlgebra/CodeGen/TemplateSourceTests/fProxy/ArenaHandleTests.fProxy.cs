@@ -4,31 +4,14 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Regression suite for failure mode 2 (FM2) of the Arena memory-model fix
-// (docs/dev/rfc-memory-model.md §1 / §2.2 / §4 Option A / §6.0 / §6.1).
-//
-// THE OLD BUG (FM2): Arena used to be a plain struct holding all its mutable tracking state inline,
-// and every math struct captured arena identity by RAW ADDRESS (`Arena* _arenaPtr`, set via
-// `fixed (Arena* p = &arena) _arenaPtr = p;` in the `in Arena` constructors). Arena's allocator
-// methods (e.g. fProxyVec / fProxyMat) are NOT `readonly`, so calling one through an `in Arena`
-// PARAMETER forces the C# compiler to make a defensive copy of the arena first -- and the struct
-// being constructed captured the address of that dead stack temporary. Once the enclosing helper's
-// frame returned, that captured pointer dangled: indexing/Copy()/Dispose() on the returned struct
-// dereferenced freed stack memory, surfacing under Burst as a native crash / "allocator handle is
-// not valid".
-//
-// THE FIX: Arena was split into ArenaCore (heap-Malloc'd once, holds all mutable state, never copied)
-// and Arena (a thin handle wrapping a single `ArenaCore*`). Every math struct now holds an Arena
-// VALUE field. Copying an Arena handle -- including compiler-inserted defensive copies of `in Arena`
-// params -- copies only the ArenaCore* value, so every copy still resolves to the same live core.
-// The dangling-pointer failure mode is now structurally impossible.
-//
-// These tests reproduce the EXACT mechanism: allocation happens through an `in Arena` PARAMETER
-// inside a helper that calls a mutating Arena allocator method (forcing the historical defensive
-// copy), and the returned struct is only USED (indexed, Copy()'d, isPersistent-checked, disposed)
-// AFTER that helper's stack frame has returned. They run inside a [BurstCompile] IJob because that is
-// where the original bug actually manifested as a native crash -- a pure managed-thread test might
-// not reproduce it even with the old bug present.
+// Regression suite for a historical Arena dangling-pointer bug (labeled FM2 in project history, hence
+// the "FM2" tags on individual cases below): Arena used to capture its identity by raw address, so a
+// compiler-inserted defensive copy of an `in Arena` parameter (forced whenever a non-readonly
+// allocator method like fProxyVec/fProxyMat is called through it) could leave the returned struct
+// pointing at a dead stack frame once the helper returned. Fixed by making Arena a
+// thin handle around a heap-allocated ArenaCore*, so every copy resolves to the same live core. These
+// tests reproduce the exact mechanism (allocate via an `in Arena` helper, use the result after the
+// helper's frame has returned) inside a [BurstCompile] IJob, since that's where the crash manifested.
 public class fProxyArenaHandleTests
 {
     [BurstCompile(CompileSynchronously = true)]

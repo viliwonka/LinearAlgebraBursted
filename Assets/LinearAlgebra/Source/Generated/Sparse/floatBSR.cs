@@ -18,17 +18,14 @@ namespace LinearAlgebra.Sparse
     /// Logical scalar dims: M_Rows = BlockRows*BR, N_Cols = BlockCols*BC. Rectangular blocks
     /// (BR != BC) are supported. Set Symmetric=true to opt into upper-block-triangle-only
     /// storage (halves memory and single-threaded matvec FLOPs for symmetric matrices) --
-    /// requires BR==BC and a square block grid (BlockRows==BlockCols). See spec-sparse-bsm.md
-    /// §2.3.
+    /// requires BR==BC and a square block grid (BlockRows==BlockCols).
     ///
     /// Lifecycle: build via floatBSRBuilder.ToBSR(arena). This type is the compressed,
     /// matvec-ready form -- there is no cheap incremental pattern edit after compression; go
     /// back through the builder to add/remove blocks.
     ///
-    /// [StructLayout(Sequential)]: pins field order/packing explicitly instead of leaving it to
-    /// the compiler's default Auto layout -- this is what makes the internal padding hole after
-    /// Symmetric (and therefore _gen's placement in it) a guarantee rather than an implementation
-    /// detail. See _gen's own doc comment for the padding-hole analysis.
+    /// [StructLayout(Sequential)]: pins field order/packing explicitly, which guarantees the
+    /// internal padding hole after Symmetric that _gen occupies (see its own doc comment).
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public partial struct floatBSR : IDisposable
@@ -41,12 +38,7 @@ namespace LinearAlgebra.Sparse
         public bool Symmetric;  // true => only the upper block-triangle (ColInd >= blockRow) is stored
 
         // Generation stamp captured from the record's slot at construction time (0/unused on the
-        // standalone path). Free-riding on real spare bytes, not a size-growing addition: with
-        // [StructLayout(Sequential)] and natural alignment, the four leading ints (16B) + the 1-byte
-        // Symmetric bool leave a 7-byte internal gap before _rec's 8-byte alignment requirement --
-        // this int-sized stamp (naturally 4-aligned at offset 20) fits inside that gap with 3 bytes
-        // to spare, so the struct's total size is unchanged (confirmed by
-        // ArenaLayoutTests.SparseStructsAreExpectedSize staying at 104 with this field present).
+        // standalone path); packed into existing struct padding, so struct size is unchanged.
         // Only meaningful when _rec != null: AssertRecordValid() compares it against the table's
         // CURRENT GetGeneration(SelfIndex) to detect a stale handle into a since-recycled slot.
         private readonly int _gen;
@@ -57,12 +49,10 @@ namespace LinearAlgebra.Sparse
         /// <summary>Number of stored (nonzero) blocks.</summary>
         public int Nnzb => ColInd.Length;
 
-        // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<floatBSRRecord>
-        // (docs/dev/rfc-memory-model.md §4 Option A). null for a standalone (non-arena) matrix, in which
-        // case RowPtr/ColInd/Values resolve to the inline fields below instead -- see those
-        // properties. Replaces the old `Arena _arena` handle field: retiring it keeps this struct's
-        // size unchanged (both are a single pointer-width field), and the record's own `Owner`
-        // back-pointer is where a future Copy()/cross-type shortcut would resolve through instead.
+        // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<floatBSRRecord>.
+        // null for a standalone (non-arena) matrix, in which case RowPtr/ColInd/Values resolve to
+        // the inline fields below instead -- see those properties. The record's own `Owner`
+        // back-pointer is where a future Copy()/cross-type shortcut would resolve through.
         [NativeDisableUnsafePtrRestriction] private unsafe floatBSRRecord* _rec;
 
         // Standalone-path backing store -- the ONLY thing that changes for a non-arena matrix.
@@ -214,13 +204,6 @@ namespace LinearAlgebra.Sparse
 
         public unsafe void Dispose()
         {
-            // LINALG_DEBUG NaN-poison-on-dispose removed (2026-07-05): the symbol was defined
-            // nowhere in the project, so that block was dead code that had never executed.
-            // Superseded by the record table's own unconditional guards below -- a double-dispose
-            // (aliased or not) throws deterministically via Free()'s double-Free check, in every
-            // build config, not just a debug one -- plus the ENABLE_UNITY_COLLECTIONS_CHECKS
-            // generational overlay on RowPtr/ColInd/Values, which catches a stale read (use-after-
-            // dispose/Clear, or a handle into a since-recycled slot) instead of returning garbage.
             if (_rec != null)
             {
                 // Cache the lists BEFORE Free(): Free() marks the slot dead and does not itself

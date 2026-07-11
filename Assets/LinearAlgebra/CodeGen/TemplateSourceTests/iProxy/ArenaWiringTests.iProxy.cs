@@ -10,9 +10,9 @@ using Unity.Jobs;
 //below is a small non-negative integer (i*len+j, cycle*1000+i, 100+j, 200+j), so the exact same
 //assertions hold unchanged for uint as for int/short/long -- no //+skipFor guards needed.
 
-// ARENA-LEVEL wiring tests for the iProxyN/iProxyMxN -> ChunkedRecordTable migration
-// (docs/dev/rfc-memory-model.md §4 Option A). The table's OWN primitives (chunk stability, free-list
-// recycling, generation bumps, double-Free / out-of-range guards) are already covered directly in
+// ARENA-LEVEL wiring tests for the iProxyN/iProxyMxN -> ChunkedRecordTable migration. The table's
+// OWN primitives (chunk stability, free-list recycling, generation bumps, double-Free / out-of-range
+// guards) are already covered directly in
 // ChunkedRecordTableTests.cs -- these tests prove the COMPOSITION: that Arena.iProxyVec/iProxyMat,
 // iProxyN/iProxyMxN.Dispose()/Copy()/TempCopy(), and Arena.Clear()/ClearTemp()/Dispose() drive
 // those tables correctly end to end. Mirrors ArenaWiringTests.fProxy.cs one-for-one.

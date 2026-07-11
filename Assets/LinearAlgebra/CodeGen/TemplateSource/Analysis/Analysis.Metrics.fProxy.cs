@@ -125,14 +125,10 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Log-determinant: returns log|det(A)| with the sign returned separately (the "slogdet"
-        /// form) -- the numerically robust way to get a determinant's magnitude. Unlike
-        /// <see cref="determinant(in fProxyMxN)"/>, the sum Σ log|U[i,i]| stays finite where the raw
-        /// product would over/underflow, so this is the right choice for anything but small matrices
-        /// (and for the log-likelihood terms that need log|det| directly, e.g. a Gaussian's
-        /// −½·log|det(Σ)|). det(A) is recoverable as <c>sign · exp(logAbsDet)</c> when that is in
-        /// range. A must be square; allocates LU scratch in Temp, A is not modified.
-        /// A singular A returns (sign 0, negative infinity).
+        /// Returns log|det(A)| with the sign of det(A) in <paramref name="sign"/> -- use this over
+        /// <see cref="determinant(in fProxyMxN)"/> for anything but small matrices, since the raw
+        /// product over/underflows where the log-sum stays finite. A must be square; allocates LU
+        /// scratch in Temp, A is not modified. A singular A returns (sign 0, negative infinity).
         /// </summary>
         /// <param name="sign">On exit: +1, −1, or 0 (singular) -- the sign of det(A).</param>
         public static fProxy logDeterminant(in fProxyMxN A, out fProxy sign)

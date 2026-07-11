@@ -7,18 +7,10 @@ using Random = Unity.Mathematics.Random;
 namespace LinearAlgebra.ML
 {
     /// <summary>
-    /// Lloyd k-means clustering with GEMM-accelerated assignment and k-means++ seeding.
-    ///
-    /// Distance metric: squared Euclidean only (L2²). The GEMM assignment trick exploits
-    ///   ‖xₙ − cⱼ‖² = ‖xₙ‖² − 2·(xₙ·cⱼ) + ‖cⱼ‖²
-    /// to reduce each assignment step to a single matrix multiply (X·Cᵀ) followed by an
-    /// in-place patch and a row-argmin sweep — O(N·D·k) with cache-friendly access.
-    ///
-    /// Generated for float and double; no integer variant.
-    /// Opt in with <c>using LinearAlgebra.ML;</c>.
-    ///
-    /// Multiple restarts for best inertia: call the workspace overload <c>n_init</c> times,
-    /// compare the returned <c>inertia</c> values, and keep the best assignment + centroids.
+    /// Lloyd k-means clustering (squared Euclidean distance only), with GEMM-accelerated
+    /// assignment (see the assignment step for the ‖x−c‖² expansion this exploits) and
+    /// k-means++/uniform seeding. Generated for float and double; no integer variant. For multiple
+    /// restarts, call the workspace overload <c>n_init</c> times and keep the best inertia.
     /// </summary>
     public static partial class KMeans
     {
@@ -132,14 +124,14 @@ namespace LinearAlgebra.ML
             // iters is set at the top of each iteration so it reflects the count on exit
             // (break or natural loop end). Initial value satisfies C# definite-assignment.
             iters = 0;
-            inertia = (double)0; // overwritten in the converged branch (5.4.6) or in the final sync
+            inertia = (double)0; // overwritten in the converged branch below or in the final sync
             bool converged = false;
 
             for (int iter = 0; iter < maxIter; iter++)
             {
                 iters = iter + 1;
 
-                // 5.4.1  Centroid squared norms
+                // Centroid squared norms
                 for (int j = 0; j < k; j++)
                 {
                     double s = (double)0;
@@ -147,19 +139,19 @@ namespace LinearAlgebra.ML
                     ws.CentNormSq[j] = s;
                 }
 
-                // 5.4.2  Transpose centroids (k×D) -> ws.Ct (D×k)
+                // Transpose centroids (k×D) -> ws.Ct (D×k)
                 Blas.trans(in centroids, ref ws.Ct);
 
-                // 5.4.3  GEMM: ws.Gram = X * ws.Ct  (N×k); dot zero-clears before accumulating.
+                // GEMM: ws.Gram = X * ws.Ct  (N×k); dot zero-clears before accumulating.
                 Blas.dot(in X, in ws.Ct, ref ws.Gram);
 
-                // 5.4.4  Patch Gram in-place: score[n,j] = cn[j] - 2*G[n,j]
+                // Patch Gram in-place: score[n,j] = cn[j] - 2*G[n,j]
                 //   pn[n] omitted (constant over j — no effect on argmin).
                 for (int n = 0; n < N; n++)
                     for (int j = 0; j < k; j++)
                         ws.Gram[n, j] = ws.CentNormSq[j] - (double)2 * ws.Gram[n, j];
 
-                // 5.4.5  Save previous assignment; compute new assignment; count changes.
+                // Save previous assignment; compute new assignment; count changes.
                 for (int n = 0; n < N; n++)
                     ws.PrevAssignment[n] = assignment[n];
 
@@ -169,10 +161,10 @@ namespace LinearAlgebra.ML
                 for (int n = 0; n < N; n++)
                     if (assignment[n] != ws.PrevAssignment[n]) changes++;
 
-                // 5.4.6  Convergence: break before updating centroids so that returned
-                //   centroids are the ones used for this iteration's Gram + assignment.
-                //   Gram is already valid for the current centroids (computed in 5.4.3-5.4.4),
-                //   so inertia can be computed here from the existing Gram — no extra GEMM.
+                // Convergence: break before updating centroids so that returned centroids are
+                //   the ones used for this iteration's Gram + assignment. Gram is already valid
+                //   for the current centroids, so inertia can be computed here from the existing
+                //   Gram — no extra GEMM.
                 if (changes == 0)
                 {
                     double sseCvg = (double)0;
@@ -183,14 +175,14 @@ namespace LinearAlgebra.ML
                     break;
                 }
 
-                // 5.4.7  Zero centroid accumulators and cluster counts
+                // Zero centroid accumulators and cluster counts
                 for (int j = 0; j < k; j++)
                 {
                     for (int f = 0; f < D; f++) ws.NewCentroids[j, f] = (double)0;
                     ws.ClusterCounts[j] = 0;
                 }
 
-                // 5.4.8  Accumulate points into cluster sums
+                // Accumulate points into cluster sums
                 for (int n = 0; n < N; n++)
                 {
                     int j = assignment[n];
@@ -198,7 +190,7 @@ namespace LinearAlgebra.ML
                     for (int f = 0; f < D; f++) ws.NewCentroids[j, f] += X[n, f];
                 }
 
-                // 5.4.9  Empty-cluster reseed.
+                // Empty-cluster reseed.
                 // Reuse ws.D2Weights as a "remaining distance" scratch to prevent
                 // multiple empty clusters from picking the same farthest point. Pre-fill
                 // with squared distances, then set each chosen point's entry to -1 to
@@ -228,7 +220,7 @@ namespace LinearAlgebra.ML
                     ws.D2Weights[farthestPt] = (double)(-1); // exclude from subsequent scans
                 }
 
-                // 5.4.10  Divide accumulators -> new centroids
+                // Divide accumulators -> new centroids
                 for (int j = 0; j < k; j++)
                 {
                     double invN = (double)1 / (double)ws.ClusterCounts[j];
@@ -237,10 +229,10 @@ namespace LinearAlgebra.ML
             }
 
             // Final sync (MaxIter-exhaustion path only, converged == false): centroids were
-            // updated in 5.4.10 of the last iteration but assignment/Gram still reflect the
+            // updated in the last iteration's divide step but assignment/Gram still reflect the
             // pre-update centroids, so recompute them here for consistency. The convergence
-            // path skips this — Gram/inertia are already valid from 5.4.3-5.4.6, avoiding a
-            // redundant O(N·D·k) GEMM + transpose.
+            // path skips this — Gram/inertia are already valid, avoiding a redundant O(N·D·k)
+            // GEMM + transpose.
             if (!converged)
             {
                 for (int j = 0; j < k; j++)

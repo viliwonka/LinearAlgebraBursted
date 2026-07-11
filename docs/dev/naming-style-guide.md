@@ -73,7 +73,10 @@ reviewer agent to check changes against, not just for humans. Terse on purpose. 
   rank-revealing/pivoted variant of an existing algorithm gets its OWN class (`QRCP` split from
   `QR`, `CHOP` split from `CHO`) rather than growing the base class's arity — the pivot/rank contract
   is different enough to earn its own namespace-of-one.
-- **`_WS` suffix** = a reusable zero-alloc workspace struct (`fProxyBidiag_WS`, `fProxySVDThin_WS`).
+- **`Cache` suffix** = a reusable zero-alloc workspace struct (`fProxyBidiagCache`, `fProxySVDThinCache`,
+  `fProxyQRCache`, `fProxyLPCache`, and 15 others across the decomposition/eigen/SVD/LP/ML families —
+  grep `struct fProxy\w*Cache\b` under `TemplateSource/` for the current list). Despite the name, this
+  is the workspace-struct convention, not a memoization cache — see "Workspace-overload pattern" below.
 - **A class name containing `fProxy`/`iProxy`** is SPLIT — codegen generates a *separate* class per
   concrete type (`floatFoo`, `doubleFoo`, ...). A **bare name** (no proxy token) is MERGED — codegen
   emits the *same* class name once per type, and C# partial-class merging combines them into ONE
@@ -128,7 +131,7 @@ A class is safe to merge (drop its prefix) ONLY if **both** hold for every metho
 
 ## Workspace-overload pattern
 Every decomposition/algorithm that allocates scratch should offer BOTH:
-1. A **zero-alloc primitive**: `Method(..., ref fProxyXxx_WS ws)`, validated by a private
+1. A **zero-alloc primitive**: `Method(..., ref fProxyXxxCache ws)`, validated by a private
    `RequireXxxWorkspace(in ws, ...)` helper that throws `ArgumentException` (static message) if any
    field is mis-sized.
 2. An **allocating convenience wrapper**: same name, fewer params, allocates its own
@@ -137,10 +140,10 @@ Every decomposition/algorithm that allocates scratch should offer BOTH:
    historically, then the workspace overload added later without changing the allocating one's
    observable behavior).
 - Workspace structs **nest** other workspace structs when the algorithm internally calls another
-  workspace-capable algorithm (`fProxySVDThin_WS` nests `fProxyBidiag_WS`; `fProxyLQMinNormSolve_WS`
-  nests `fProxyLQ_WS`) — this is how "zero-alloc all the way down" is achieved without duplicating
-  buffers. Always prefer nesting the dependency's own `_WS` type over duplicating its fields.
-- `Arena.fProxyXxx_WS(this ref Arena arena, ...)` factory methods live in `ArenaExtensions`,
+  workspace-capable algorithm (`fProxySVDThinCache` nests `fProxyBidiagCache`; `fProxyLQMinNormCache`
+  nests `fProxyLQCache`) — this is how "zero-alloc all the way down" is achieved without duplicating
+  buffers. Always prefer nesting the dependency's own `Cache` type over duplicating its fields.
+- `Arena.fProxyXxxCache(this ref Arena arena, ...)` factory methods live in `ArenaExtensions`,
   alongside everything else.
 
 ## Exceptions

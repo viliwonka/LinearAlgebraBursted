@@ -11,10 +11,9 @@ namespace LinearAlgebra
 
         // Shared factory for the square-solver diagnostics struct (cg/pcg/minres/biCGStab/cgne).
         // rnorm is normally a value the solver already holds -- a tracked residual norm, or a
-        // single dot on its live residual r -- never a fresh A*x. EXCEPTION (R6a, docs/draft-spec-
-        // krylov-optimization.md): cg/pcg/cgne verify a claimed Converged exit with one fresh
-        // r = b-Ax before trusting it, so rnorm on that path is the verified value. minres/
-        // biCGStab are outside R6a's scope and unaffected.
+        // single dot on its live residual r -- never a fresh A*x. EXCEPTION: cg/pcg/cgne verify a
+        // claimed Converged exit with one fresh r = b-Ax before trusting it, so rnorm on that path
+        // is the verified value. minres/biCGStab do not do this verification.
         static SolveInfo MakeSolveInfo(IterativeSolveStatus status, int iterations, float rnorm)
             => new SolveInfo { rnorm = rnorm, iterations = iterations, status = status };
 
@@ -101,9 +100,7 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
-                // Ap = A p ; pAp = dot(p, Ap) -- Krylov R2's ApplyDot: one call site instead of
-                // two (see IfloatLinearOperator.ApplyDot's doc comment for why every operator
-                // composes rather than fuses -- a fused version was tried and measured slower).
+                // Ap = A p ; pAp = dot(p, Ap) via ApplyDot (see IfloatLinearOperator.ApplyDot).
                 float pAp = A.ApplyDot(in p, ref Ap);
 
                 if (!(pAp > (float)0))                  // NaN-safe: also catches breakdown
@@ -117,7 +114,7 @@ namespace LinearAlgebra
 
                 if (rsnew <= threshold)
                 {
-                    // R6a verify-at-exit: r is recursively updated, so a claimed convergence can be
+                    // Verify-at-exit: r is recursively updated, so a claimed convergence can be
                     // optimistic drift (float). Recompute r = b - Ax fresh (+1 Apply, reusing Ap)
                     // and retest before trusting it; fall through with the corrected r if it fails.
                     A.Apply(in x, ref Ap);
@@ -301,9 +298,7 @@ namespace LinearAlgebra
 
             for (int k = 0; k < maxIterations; k++)
             {
-                // Ap = A p ; pAp = dot(p, Ap) -- Krylov R2's ApplyDot: one call site instead of
-                // two (see IfloatLinearOperator.ApplyDot's doc comment for why every operator
-                // composes rather than fuses -- a fused version was tried and measured slower).
+                // Ap = A p ; pAp = dot(p, Ap) via ApplyDot (see IfloatLinearOperator.ApplyDot).
                 float pAp = A.ApplyDot(in p, ref Ap);
 
                 if (!(pAp > (float)0))                  // NaN-safe: also catches breakdown
@@ -316,7 +311,7 @@ namespace LinearAlgebra
                 rr = Blas.updateXR(alpha, p, ref x, Ap, ref r);
                 if (rr <= threshold)
                 {
-                    // R6a verify-at-exit -- see cg<TOp>'s matching block for the rationale.
+                    // Verify-at-exit -- see cg<TOp>'s matching block for the rationale.
                     A.Apply(in x, ref Ap);
                     r.Data.CopyFrom(b.Data);
                     r.addScaledInPlace((float)(-1), Ap);
@@ -407,9 +402,9 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Preconditioned Conjugate Gradient over a block-sparse (BSR) SPD matrix with its
-        /// matching SSOR preconditioner (Krylov R3, docs/draft-spec-krylov-optimization.md).
-        /// Forwards into <see cref="pcg{TOp,TPre}"/> via <c>floatBSROperator</c> -- same
-        /// three-rung BSR convenience pattern as the block-Jacobi overloads above.
+        /// matching SSOR preconditioner. Forwards into <see cref="pcg{TOp,TPre}"/> via
+        /// <c>floatBSROperator</c> -- same three-rung BSR convenience pattern as the block-Jacobi
+        /// overloads above.
         /// </summary>
         public static SolveInfo pcg(in floatBSR A, in floatSSOR M, in floatN b, ref floatN x,
                                ref floatN r, ref floatN p, ref floatN Ap, ref floatN z,
@@ -441,37 +436,27 @@ namespace LinearAlgebra
             return pcg(in A, in M, in b, ref x, A.M_Rows, Consts.floatSqrtEps);
         }
 
-        // Phase 3: MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), CGLS/LSQR
-        // (rectangular least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/
-        // pcg&lt;TOp,TPre&gt; above -- see cg&lt;TOp&gt;'s doc comment for the shared "why an
-        // up-front aliasing guard" rationale. These four solvers carry more scratch vectors than
-        // cg/pcg (6-9 vs 3-4), so their guards use RequireDistinctBuffers (a small loop-based
-        // helper) instead of a hand-expanded OR chain -- see that helper's doc comment.
+        // MINRES (symmetric indefinite), BiCGSTAB (non-symmetric), CGLS/LSQR (rectangular
+        // least-squares). Same generic-operator pattern as cg&lt;TOp&gt;/pcg&lt;TOp,TPre&gt; above --
+        // see cg&lt;TOp&gt;'s doc comment for the shared "why an up-front aliasing guard" rationale.
+        // These four solvers carry more scratch vectors than cg/pcg (6-9 vs 3-4), so their guards
+        // use RequireDistinctBuffers (a small loop-based helper) instead of a hand-expanded OR chain.
 
         /// <summary>
         /// Zero-alloc MINRES (Paige-Saunders) solver for symmetric systems A x = b, generic over
-        /// <see cref="IfloatLinearOperator"/>.
-        /// Unlike <see cref="cg{TOp}"/>, A need NOT be positive definite -- MINRES minimizes the
-        /// 2-norm residual ‖b-Ax‖ over the same Krylov subspace via a short Lanczos recurrence
-        /// plus an incrementally-updated QR factorization (Givens rotations) of the resulting
-        /// tridiagonal system, so it converges cleanly on symmetric INDEFINITE (and singular/
-        /// semidefinite) systems where CG's p·Ap&gt;0 curvature requirement breaks down. A MUST
-        /// be symmetric -- this is a caller precondition, not verified at runtime (same contract
-        /// as CG's "A must be SPD").
+        /// <see cref="IfloatLinearOperator"/>. Unlike <see cref="cg{TOp}"/>, A need NOT be positive
+        /// definite -- MINRES minimizes the 2-norm residual ‖b-Ax‖ over the Krylov subspace, so it
+        /// converges cleanly on symmetric INDEFINITE (and singular/semidefinite) systems where CG's
+        /// p·Ap&gt;0 curvature requirement breaks down. A MUST be symmetric -- caller precondition,
+        /// not verified at runtime.
         ///
-        /// Caller provides x (initial guess, overwritten with solution -- WARM-STARTABLE) and
-        /// seven scratch vectors (y, r1, r2, v, w, w1, w2, all length A.Rows) matching the
-        /// classic MINRES variable names (Paige &amp; Saunders 1975; Choi/Saunders' minres.m).
-        /// y/r1/r2 carry the 3-term Lanczos recurrence; v is the current normalized Lanczos
-        /// vector; w/w1/w2 carry the 3-term search-direction recurrence driven by the
-        /// Givens-rotated tridiagonal system. A well-known MINRES identity means the true
-        /// residual norm ‖b-Ax‖ falls out of the recurrence for free (the running <c>phibar</c>
-        /// variable) -- no extra dot product or matvec is needed to test convergence.
+        /// Caller provides x (initial guess, overwritten with solution -- WARM-STARTABLE) and seven
+        /// scratch vectors (y, r1, r2, v, w, w1, w2, all length A.Rows), matching the classic MINRES
+        /// variable names (Paige &amp; Saunders 1975).
         ///
-        /// Returns a <see cref="SolveInfo"/> (rnorm = phibar = ‖b-Ax‖) — see that struct for the
+        /// Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct for the
         /// implicit-bool/status/undefined-x contract. Breakdown if the Lanczos recurrence exactly
-        /// exhausts the Krylov subspace short of tolerance (beta==0, an exact-arithmetic
-        /// invariant-subspace breakdown).
+        /// exhausts the Krylov subspace short of tolerance.
         /// </summary>
         public static SolveInfo minres<TOp>(in TOp A, in floatN b, ref floatN x,
                                        ref floatN y, ref floatN r1, ref floatN r2, ref floatN v,
@@ -540,8 +525,8 @@ namespace LinearAlgebra
             for (int k = 0; k < maxIterations; k++)
             {
                 // ---- Lanczos step: extend the tridiagonalization by one vector ----
-                // v = r2 / beta, one pass (Blas.scaledCopy with a = 1/beta) -- rounding-only vs the
-                // original CopyFrom+divInPlace (reciprocal-multiply instead of a per-element divide).
+                // v = r2 / beta, one pass (Blas.scaledCopy with a = 1/beta, i.e. reciprocal-multiply
+                // instead of a per-element divide).
                 Blas.scaledCopy(1 / beta, r2, ref v);
 
                 A.Apply(in v, ref y);                      // y = A v
@@ -555,7 +540,7 @@ namespace LinearAlgebra
                 // Buffer rotation (r1,r2,y) -> (r2,y,r1): swap the local floatN handles instead of
                 // Data.CopyFrom. r1's old buffer is fully consumed above (last read this iteration)
                 // and is recycled as next iteration's y, which A.Apply fully overwrites regardless of
-                // its incoming contents -- contract-clean (see spec's buffer-rotation rationale).
+                // its incoming contents.
                 { floatN tmp = r1; r1 = r2; r2 = y; y = tmp; }
 
                 oldb = beta;
@@ -580,9 +565,8 @@ namespace LinearAlgebra
                 // Buffer rotation (w1,w2,w) -> (w2,w,w1), mirroring the r-rotation above.
                 { floatN tmp = w1; w1 = w2; w2 = w; w = tmp; }
 
-                // w = (v - oldeps*w1 - delta*w2) / gamma, one pass (Blas.combine3 with s = 1/gamma) --
-                // rounding-only vs the original copy+axpy+axpy+divInPlace chain (reciprocal-multiply
-                // instead of a per-element divide at the end; the (v + a*w1 + b*w2) grouping matches).
+                // w = (v - oldeps*w1 - delta*w2) / gamma, one pass (Blas.combine3 with s = 1/gamma,
+                // i.e. reciprocal-multiply instead of a per-element divide at the end).
                 Blas.combine3(ref w, v, -oldeps, w1, -delta, w2, 1 / gamma);
 
                 x.addScaledInPlace(phi, w);
@@ -670,12 +654,9 @@ namespace LinearAlgebra
         /// growing Krylov basis like GMRES) -- the non-symmetric counterpart to CG/MINRES, for
         /// e.g. frictional-LCP or MNA-circuit operators.
         ///
-        /// Caller provides x (initial guess, overwritten with solution -- WARM-STARTABLE) and
-        /// five scratch vectors r, rHat0, p, v, t (all length A.Rows). r doubles as the
-        /// intermediate "s" half-step residual from the classic two-half-step presentation (s = r
-        /// - alpha*v, updated into r in place -- the standard buffer-count reduction); rHat0 is
-        /// the fixed "shadow" residual (rHat0 = r0, chosen once at the start and never mutated
-        /// after).
+        /// Caller provides x (initial guess, overwritten with solution -- WARM-STARTABLE) and five
+        /// scratch vectors r, rHat0, p, v, t (all length A.Rows). rHat0 is the fixed "shadow"
+        /// residual, chosen once at the start and never mutated after.
         ///
         /// Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct for the
         /// implicit-bool/status/undefined-x contract. Breakdown on one of the standard BiCGSTAB
@@ -904,31 +885,23 @@ namespace LinearAlgebra
         /// <summary>
         /// Zero-alloc CGLS solver for RECTANGULAR least-squares systems: minimizes ‖Ax-b‖₂ for
         /// possibly non-square A (over- or under-determined), generic over
-        /// <see cref="IfloatLinearOperator"/>. This is CG applied to the normal equations
-        /// AᵀA x = Aᵀb, but NEVER explicitly forms AᵀA -- every AᵀA-vector product is one
-        /// <see cref="IfloatLinearOperator.Apply"/> plus one
-        /// <see cref="IfloatLinearOperator.ApplyT"/>. The normal-equation residual s = Aᵀr is
-        /// recomputed FRESH from r = b-Ax every iteration (rather than updated incrementally via
-        /// s -= alpha·Aᵀq), the numerically-stable "CGLS" variant (Björck, "Numerical Methods for
-        /// Least Squares Problems", Algorithm 7.17) rather than the classic-but-drift-prone CGNR
-        /// update -- same op count (1 Apply + 1 ApplyT/iteration), just recomputed instead of
-        /// incrementally accumulated.
+        /// <see cref="IfloatLinearOperator"/>. CG applied to the normal equations AᵀA x = Aᵀb, but
+        /// never explicitly forms AᵀA -- every AᵀA-vector product is one Apply plus one ApplyT. Uses
+        /// the numerically-stable "CGLS" variant (Björck, Algorithm 7.17): the normal-equation
+        /// residual s = Aᵀr is recomputed fresh every iteration rather than updated incrementally
+        /// (avoids the classic CGNR update's drift); same op count either way.
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
         /// STARTABLE) and four scratch vectors: r, q (length A.Rows) and s, p (length A.Cols).
-        /// Converges when the normal-equation residual ‖Aᵀr‖ falls within the relative tolerance
-        /// (‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖, a fixed scale reference independent of x0, mirroring cg's
-        /// ‖b‖ reference). For a CONSISTENT system (b in range(A)) this drives r itself to zero
-        /// (exact recovery); for an INCONSISTENT system it converges to the least-squares
-        /// solution with r left orthogonal to range(A) (‖Aᵀr‖≈0, ‖r‖ generally nonzero -- the
-        /// normal-equations optimality condition).
+        /// Converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖. For a CONSISTENT system (b in range(A)) this
+        /// drives r itself to zero; for an INCONSISTENT system it converges to the least-squares
+        /// solution with ‖Aᵀr‖≈0 and ‖r‖ generally nonzero.
         ///
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
-        /// ‖Ax-b‖² + damp²‖x‖², i.e. runs CG on the SHIFTED normal equations (AᵀA + damp²I)x = Aᵀb
-        /// -- the residual becomes s = Aᵀr - damp²x and the curvature ‖Ap‖² + damp²‖p‖², never
-        /// forming AᵀA. damp == 0 is BIT-IDENTICAL to the plain solve. Because s uses the FULL x
-        /// (not the residual), cgls regularizes ‖x‖ for ANY initial x -- warm start included --
-        /// unlike lsqr/lsmr, which regularize ‖x - x₀‖ under a nonzero warm start.
+        /// ‖Ax-b‖² + damp²‖x‖² (damp == 0 is BIT-IDENTICAL to the plain solve). Because the
+        /// regularization term uses the FULL x, not the residual, cgls regularizes ‖x‖ for ANY
+        /// initial x -- warm start included -- unlike lsqr/lsmr, which regularize ‖x - x₀‖ under a
+        /// nonzero warm start.
         ///
         /// Returns an <see cref="LstsqInfo"/> — see that struct for the implicit-bool/status/
         /// undefined-x contract. Breakdown on non-positive curvature ‖Ap‖²&lt;=0 (mirrors cg's
@@ -1020,7 +993,7 @@ namespace LinearAlgebra
 
                 if (gammaNew <= threshold)
                 {
-                    // R6a verify-at-exit: r itself is recursively updated (r -= alpha q), so its
+                    // Verify-at-exit: r itself is recursively updated (r -= alpha q), so its
                     // ApplyT-derived gamma can drift. Recompute r fresh (+1 Apply) and s = Aᵀr -
                     // damp²x fresh (+1 ApplyT) from it, then retest -- cgls's own optimality
                     // residual needs both operators, unlike cg's plain ‖r‖² gate.
@@ -1137,19 +1110,14 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// CGLS over a BSR matrix -- allocates four scratch vectors AND materializes A^T ONCE
-        /// via <c>arena.floatBSRTranspose</c> (same arena as the scratch vectors, taken from
-        /// b), then drives CGLS with the two-arg <see cref="floatBSROperator"/> so every
-        /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
-        /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- this is the fix for the
-        /// rectangular CGLS/LSQR transpose-matvec cache-unfriendliness (the one-time O(nnz)
-        /// transpose build is amortized over every iteration). For a build-free zero-alloc path
-        /// (e.g. many solves reusing the same A), build A^T yourself once (<c>arena.
-        /// floatBSRTranspose(in A)</c>) and call the zero-alloc <see cref="cgls(in floatBSR,
-        /// in floatBSR, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref
-        /// floatN, int, float)"/> overload above with your own scratch vectors, or the generic
-        /// <see cref="cgls{TOp}"/> overload directly with <c>new floatBSROperator(in A, in
-        /// AT)</c>.
+        /// CGLS over a BSR matrix -- allocates four scratch vectors AND materializes A^T ONCE via
+        /// <c>arena.floatBSRTranspose</c>, then drives CGLS with the two-arg
+        /// <see cref="floatBSROperator"/> so every ApplyT call routes through a cache-friendly
+        /// forward spMV(A^T, x) instead of scatter-heavy spMVT(A, x) every iteration -- the one-time
+        /// O(nnz) transpose build is amortized over every iteration. For a build-free zero-alloc path
+        /// (e.g. many solves reusing the same A), build A^T yourself once and call the zero-alloc
+        /// <see cref="cgls(in floatBSR, in floatBSR, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>
+        /// overload above with your own scratch vectors.
         /// </summary>
         public static LstsqInfo cgls(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
@@ -1186,34 +1154,25 @@ namespace LinearAlgebra
         /// Zero-alloc LSQR (Paige-Saunders 1982) solver for RECTANGULAR least-squares systems:
         /// minimizes ‖Ax-b‖₂ for possibly non-square A, generic over
         /// <see cref="IfloatLinearOperator"/>. Builds an implicit bidiagonalization of A via the
-        /// Golub-Kahan process (alternating <see cref="IfloatLinearOperator.Apply"/> /
-        /// <see cref="IfloatLinearOperator.ApplyT"/> calls) and folds it through an incremental
-        /// Givens-rotated QR factorization -- the same "short recurrence + running rotation"
-        /// shape as <see cref="minres{TOp}"/>, generalized to rectangular A. More robust than
-        /// <see cref="cgls{TOp}"/> on ill-conditioned A (the bidiagonalization never squares A's
-        /// condition number the way the normal equations implicitly do), at the same O(n+m)
-        /// memory and per-iteration cost (1 Apply + 1 ApplyT).
+        /// Golub-Kahan process and folds it through an incremental Givens-rotated QR factorization.
+        /// More robust than <see cref="cgls{TOp}"/> on ill-conditioned A (never squares A's condition
+        /// number the way the normal equations implicitly do), at the same O(n+m) memory and
+        /// per-iteration cost (1 Apply + 1 ApplyT).
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
         /// STARTABLE) and five scratch vectors: u, tmpM (length A.Rows) and v, w, tmpN (length
-        /// A.Cols). The normal-equation residual norm ‖Aᵀr‖ (arnorm) falls out of the recurrence
-        /// for free (no extra ApplyT call, a well-known LSQR identity) -- same convergence
-        /// contract as <see cref="cgls{TOp}"/>: converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖.
+        /// A.Cols). Converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖ (same contract as cgls).
         ///
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
-        /// ‖Ax-b‖² + damp²‖x‖² (equivalently solves (AᵀA + damp²I)x = Aᵀb) via one extra rotation
-        /// per step folding damp into the bidiagonal diagonal -- no augmented matrix formed.
-        /// damp == 0 is BIT-IDENTICAL to the plain least-squares solve.
+        /// ‖Ax-b‖² + damp²‖x‖² (damp == 0 is BIT-IDENTICAL to the plain solve).
         ///
-        /// WARM START + DAMPING: like <see cref="lsmr{TOp}"/>, lsqr bidiagonalizes the residual
-        /// b - A·x₀, so a NONZERO initial x₀ makes it minimize ‖Ax-b‖² + damp²‖x - x₀‖² (regularizing
-        /// the CORRECTION), not ‖x‖. Start from x = 0 for the ‖x‖-regularized minimizer. (cgls
-        /// regularizes ‖x‖ for any x₀.)
+        /// WARM START + DAMPING GOTCHA: lsqr bidiagonalizes the residual b - A·x₀, so a NONZERO
+        /// initial x₀ makes it minimize ‖Ax-b‖² + damp²‖x - x₀‖² (regularizing the CORRECTION), not
+        /// ‖x‖. Start from x = 0 for the ‖x‖-regularized minimizer. (cgls regularizes ‖x‖ for any x₀.)
         ///
         /// Returns an <see cref="LstsqInfo"/> — see that struct for the implicit-bool/status/
-        /// undefined-x contract. Breakdown on a total bidiagonalization breakdown (the current
-        /// alpha and beta both collapse to zero in the same step -- the Golub-Kahan recurrence
-        /// exhausted).
+        /// undefined-x contract. Breakdown on a total bidiagonalization breakdown (alpha and beta
+        /// both collapse to zero in the same step).
         /// </summary>
         public static LstsqInfo lsqr<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v, ref floatN w,
@@ -1358,19 +1317,10 @@ namespace LinearAlgebra
         /// ‖Aᵀr‖ scalars, filling xnorm = ‖x‖ with one dot on x. Shared by lsqr/lsmr (cgls uses
         /// <see cref="CglsInfo"/>, which reads ‖r‖ from its live residual instead).
         ///
-        /// <paramref name="resNorm"/> is the residual norm of the system the solver actually
-        /// bidiagonalizes. When <paramref name="dampAug"/> != 0 that is the AUGMENTED residual
-        /// √(‖b-Ax‖² + damp²‖x - x₀‖²) (lsqr/lsmr regularize by bidiagonalizing [A; damp·I] on the
-        /// residual b - A·x₀), so we recover the plain ‖b-Ax‖ = √(resNorm² − damp²‖x‖²) here -- FREE,
-        /// reusing the xnorm we already compute. This gives rnorm = ‖b-Ax‖ consistently across every
-        /// solver for all UNDAMPED solves and for the documented COLD-START (x₀=0) damped usage, where
-        /// ‖x - x₀‖ = ‖x‖. CAVEAT: under the niche combination of a NONZERO warm start AND damping,
-        /// the augmented residual penalizes ‖x - x₀‖ (not ‖x‖), so this recovery (which does not
-        /// retain x₀) does NOT return ‖b-Ax‖ -- start damped solves from x=0, or read ‖b-Ax‖ from
-        /// Krylov.lstsqResidual on the returned x. Call sites whose resNorm is ALREADY the plain
-        /// residual (the pre-loop early exits, where no bidiagonalization/damping rotation has folded
-        /// in yet, so resNorm = beta = ‖b - A·x₀‖) pass dampAug = 0 to skip the recovery. dampAug = 0
-        /// makes this the identity, so the undamped path is unchanged.</summary>
+        /// Recovers the plain ‖b-Ax‖ from the (possibly damping-augmented) tracked residual; exact
+        /// only for damp == 0 or a cold start (x₀ = 0). Under a NONZERO warm start with damping, this
+        /// does NOT return ‖b-Ax‖ -- start damped solves from x=0, or read ‖b-Ax‖ from
+        /// <see cref="lstsqResidual{TOp}"/> on the returned x.</summary>
         static LstsqInfo LstsqInfoTracked(IterativeSolveStatus status, int iterations, float resNorm, float Arnorm, float dampAug, in floatN x)
         {
             float xnorm = math.sqrt(Blas.dot(x, x));
@@ -1472,18 +1422,14 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// LSQR over a BSR matrix -- allocates five scratch vectors AND materializes A^T ONCE
-        /// via <c>arena.floatBSRTranspose</c> (same arena as the scratch vectors, taken from
-        /// b), then drives LSQR with the two-arg <see cref="floatBSROperator"/> so every
-        /// ApplyT call routes through a cache-friendly forward spMV(A^T, x) instead of the
-        /// scatter-heavy on-the-fly spMVT(A, x) every iteration -- same fix and same tradeoff as
-        /// <see cref="cgls(in floatBSR, in floatN, ref floatN, int, float)"/>: for a
-        /// build-free zero-alloc path, build A^T yourself once (<c>arena.floatBSRTranspose(in
-        /// A)</c>) and call the zero-alloc <see cref="lsqr(in floatBSR, in floatBSR, in
-        /// floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref floatN, int,
-        /// float)"/> overload above with your own scratch vectors, or the generic
-        /// <see cref="lsqr{TOp}"/> overload directly with <c>new floatBSROperator(in A, in
-        /// AT)</c>.
+        /// LSQR over a BSR matrix -- allocates five scratch vectors AND materializes A^T ONCE via
+        /// <c>arena.floatBSRTranspose</c>, then drives LSQR with the two-arg
+        /// <see cref="floatBSROperator"/> so every ApplyT call routes through a cache-friendly
+        /// forward spMV(A^T, x) instead of scatter-heavy spMVT(A, x) every iteration -- same
+        /// tradeoff as <see cref="cgls(in floatBSR, in floatN, ref floatN, int, float)"/>. For a
+        /// build-free zero-alloc path, build A^T yourself once and call the zero-alloc
+        /// <see cref="lsqr(in floatBSR, in floatBSR, in floatN, ref floatN, ref floatN, ref floatN, ref floatN, ref floatN, int, float)"/>
+        /// overload above with your own scratch vectors.
         /// </summary>
         public static LstsqInfo lsqr(in floatBSR A, in floatN b, ref floatN x, int maxIterations, float tolerance)
         {
@@ -1521,37 +1467,30 @@ namespace LinearAlgebra
         /// <summary>
         /// Zero-alloc LSMR (Fong-Saunders 2011) solver for RECTANGULAR least-squares systems:
         /// minimizes ‖Ax-b‖₂ for possibly non-square A, generic over
-        /// <see cref="IfloatLinearOperator"/>. Built on the SAME Golub-Kahan bidiagonalization as
-        /// <see cref="lsqr{TOp}"/> (alternating <see cref="IfloatLinearOperator.Apply"/> /
-        /// <see cref="IfloatLinearOperator.ApplyT"/>), but folds it through a rotation sequence
-        /// equivalent to applying MINRES to the normal equations AᵀA x = Aᵀb -- so the
-        /// normal-equation residual ‖Aᵀrₖ‖ decreases MONOTONICALLY (it equals |ζ̄ₖ₊₁|, produced
-        /// for free by the recurrence). That makes LSMR's stopping test cleaner and its early
-        /// termination safer than LSQR's on ill-conditioned least-squares problems, at the same
-        /// O(n+m) memory and per-iteration cost (1 Apply + 1 ApplyT).
+        /// <see cref="IfloatLinearOperator"/>. Built on the same Golub-Kahan bidiagonalization as
+        /// <see cref="lsqr{TOp}"/>, but folds it through a rotation sequence equivalent to applying
+        /// MINRES to the normal equations AᵀA x = Aᵀb, so the normal-equation residual ‖Aᵀrₖ‖
+        /// decreases MONOTONICALLY. That makes LSMR's stopping test cleaner and its early
+        /// termination safer than LSQR's on ill-conditioned problems, at the same O(n+m) memory and
+        /// per-iteration cost (1 Apply + 1 ApplyT).
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten with solution, WARM-
-        /// STARTABLE) and six scratch vectors: u, tmpM (length A.Rows) and v, h, hbar, tmpN
-        /// (length A.Cols). One more A.Cols-length vector than LSQR: LSMR carries both the
-        /// Golub-Kahan search direction h and the MINRES-folded direction hbar. Same convergence
-        /// contract as <see cref="cgls{TOp}"/> / <see cref="lsqr{TOp}"/>: converges when
-        /// ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖.
+        /// STARTABLE) and six scratch vectors: u, tmpM (length A.Rows) and v, h, hbar, tmpN (length
+        /// A.Cols) -- one more than LSQR, since LSMR carries both the Golub-Kahan search direction h
+        /// and the MINRES-folded direction hbar. Converges when ‖Aᵀr‖ &lt;= tolerance*‖Aᵀb‖ (same
+        /// contract as cgls/lsqr).
         ///
         /// <paramref name="damp"/> (&gt;= 0) applies Tikhonov regularization: minimizes
-        /// ‖Ax-b‖² + damp²‖x‖² (equivalently solves (AᵀA + damp²I)x = Aᵀb) via one extra rotation
-        /// per step that folds damp into the bidiagonal diagonal -- no augmented matrix formed.
-        /// damp == 0 is the plain least-squares solve and is BIT-IDENTICAL to the undamped path.
-        /// Damping regularizes rank-deficient / ill-posed / noisy systems and stabilizes the
-        /// underdetermined minimum-norm solution.
+        /// ‖Ax-b‖² + damp²‖x‖² (damp == 0 is BIT-IDENTICAL to the plain solve).
         ///
-        /// WARM START + DAMPING: the damp²‖x‖² penalty is measured against the COLD start (x = 0).
-        /// Because lsmr bidiagonalizes the residual b - A·x₀, a NONZERO initial x₀ makes it minimize
-        /// ‖Ax-b‖² + damp²‖x - x₀‖² (regularizing the CORRECTION), not ‖x‖. Start from x = 0 for the
-        /// ‖x‖-regularized minimizer. (cgls regularizes ‖x‖ for any x₀; lsqr matches lsmr here.)
+        /// WARM START + DAMPING GOTCHA: same as <see cref="lsqr{TOp}"/> -- lsmr bidiagonalizes the
+        /// residual b - A·x₀, so a NONZERO initial x₀ makes it minimize ‖Ax-b‖² + damp²‖x - x₀‖²
+        /// (regularizing the CORRECTION), not ‖x‖. Start from x = 0 for the ‖x‖-regularized
+        /// minimizer. (cgls regularizes ‖x‖ for any x₀.)
         ///
         /// Returns an <see cref="LstsqInfo"/> — see that struct for the implicit-bool/status/
         /// undefined-x contract. Breakdown on a bidiagonalization breakdown (a rotation radius
-        /// collapses to zero -- the Golub-Kahan recurrence exhausted).
+        /// collapses to zero).
         /// </summary>
         public static LstsqInfo lsmr<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN u, ref floatN v, ref floatN h,
@@ -2021,24 +1960,20 @@ namespace LinearAlgebra
         /// Zero-alloc CGNE / Craig's method (Saad Alg. 8.5) for CONSISTENT systems: finds the
         /// MINIMUM-NORM solution of A x = b (requires b in range(A)) for possibly rectangular
         /// (typically UNDER-determined, m &lt; n) A, generic over <see cref="IfloatLinearOperator"/>.
-        /// Mathematically CG applied to A Aᵀ y = b with x = Aᵀ y, but recurred directly on x (no y
-        /// stored): r = b - A x (length A.Rows) is the residual, p (length A.Cols) the search
-        /// direction. Complementary to <see cref="cgls{TOp}"/>: CGLS minimizes ‖Ax-b‖ (OVER-
-        /// determined / inconsistent), CGNE minimizes ‖x‖ subject to A x = b (consistent UNDER-
-        /// determined). One Apply + one ApplyT per iteration, O(n+m) memory.
+        /// Complementary to <see cref="cgls{TOp}"/>: CGLS minimizes ‖Ax-b‖ (over-determined /
+        /// inconsistent), CGNE minimizes ‖x‖ subject to A x = b (consistent under-determined). One
+        /// Apply + one ApplyT per iteration, O(n+m) memory.
         ///
         /// Caller provides x (initial guess, length A.Cols -- overwritten, warm-startable) and four
         /// scratch vectors: r, q (length A.Rows) and p, tmpN (length A.Cols). Converges when
-        /// ‖b - A x‖ &lt;= tolerance*‖b‖ (a fixed scale, mirroring cg's ‖b‖ reference). For an
-        /// INCONSISTENT system (b not in range(A)) the residual cannot reach zero -- CGNE then runs
-        /// to maxIterations and reports MaxIterations; use cgls/lsqr/lsmr for least-squares instead.
+        /// ‖b - A x‖ &lt;= tolerance*‖b‖. For an INCONSISTENT system (b not in range(A)) the residual
+        /// cannot reach zero -- CGNE then runs to maxIterations and reports MaxIterations; use
+        /// cgls/lsqr/lsmr for least-squares instead.
         ///
         /// Returns a <see cref="SolveInfo"/> (rnorm = ‖b-Ax‖) — see that struct for the
-        /// implicit-bool/status/undefined-x contract. Breakdown when ‖p‖² &lt;= 0 (Aᵀr = 0 while r
-        /// is still above tolerance): for a CONSISTENT system r lies in range(A), so Aᵀr = 0 forces
-        /// r = 0 in exact arithmetic -- a breakdown here therefore means the iteration reached the
-        /// exact solution (to floating-point precision) or the system is inconsistent (r has
-        /// stalled orthogonal to range(A) at the least-squares residual).
+        /// implicit-bool/status/undefined-x contract. Breakdown when ‖p‖² &lt;= 0 (Aᵀr = 0 while r is
+        /// still above tolerance) -- either the exact solution was reached, or the system is
+        /// inconsistent.
         /// </summary>
         public static SolveInfo cgne<TOp>(in TOp A, in floatN b, ref floatN x,
                                      ref floatN r, ref floatN p, ref floatN q, ref floatN tmpN,
@@ -2098,16 +2033,16 @@ namespace LinearAlgebra
 
                 float alpha = rr / pp;
 
-                // A.Apply(p,q) does not read x, so it can run BEFORE the x/r update (reordered from
-                // the original x-then-Apply-then-r sequence) without changing the computed q -- this
-                // lets the r-update fold its reduction in via Blas.updateXR: x += alpha p ; r -= alpha
-                // q ; rrNew = ||r||^2, replacing the separate Blas.dot(r,r) call (one fewer pass over r).
+                // A.Apply(p,q) does not read x, so it can run BEFORE the x/r update without changing
+                // the computed q -- this lets the r-update fold its reduction in via Blas.updateXR:
+                // x += alpha p ; r -= alpha q ; rrNew = ||r||^2, replacing the separate Blas.dot(r,r)
+                // call (one fewer pass over r).
                 A.Apply(in p, ref q);                       // q = A p
                 float rrNew = Blas.updateXR(alpha, p, ref x, q, ref r);
 
                 if (rrNew <= threshold)
                 {
-                    // R6a verify-at-exit -- see cg<TOp>'s matching block for the rationale.
+                    // Verify-at-exit -- see cg<TOp>'s matching block for the rationale.
                     A.Apply(in x, ref q);
                     r.Data.CopyFrom(b.Data);
                     r.addScaledInPlace((float)(-1), q);

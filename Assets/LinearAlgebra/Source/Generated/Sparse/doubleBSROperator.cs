@@ -72,11 +72,7 @@ namespace LinearAlgebra.Sparse
         // comment for why a genuinely-fused kernel was tried and measured slower.
         public double ApplyDot(in doubleN x, ref doubleN y) => BSR.spMVDot(in A, in x, ref y);
 
-        // Krylov R5 (docs/draft-spec-krylov-optimization.md): a real BSR SpMM kernel -- streams A's
-        // stored blocks ONCE and applies to all `rows` row-vectors together, no Allocator.Temp churn.
-        // See BSR.spMM (SparseOP.double.cs) for the dispatch and bsrMatMat*/bsrMatMatSym* (UnsafeOP.
-        // Sparse.double.cs) for the kernels -- each is bit-identical, row by row, to `rows` separate
-        // Apply calls.
+        // Forwards to BSR.spMM, which streams A's stored blocks once for all `rows` row-vectors.
         public void ApplyBlock(in doubleMxN Vrows, ref doubleMxN AVrows, int rows) => BSR.spMM(in A, in Vrows, ref AVrows, rows);
     }
 }

@@ -10,9 +10,8 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Tests for the predicate-filtered / score-based QueryOP extension (Query partial class).
-// Spec: docs/dev/spec-predicate-queries.md (Section 6 = T1..T5).
 //
-// Groups under test (mirroring the spec):
+// Groups under test:
 //   A — Flat / scalar predicate ops: findFirst, count, any, all, findAll (vector + matrix flat).
 //   B — Row / column filter: countRows/whichRows + countColumns/whichColumns.
 //   C — Masked nearest / k-nearest: nearestRowWhere, kNearestRowsWhere + column twins;

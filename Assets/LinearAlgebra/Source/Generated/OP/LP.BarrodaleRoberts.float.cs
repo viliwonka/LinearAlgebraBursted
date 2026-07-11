@@ -14,84 +14,28 @@ namespace LinearAlgebra
     {
         // ============================================================================================
         // Barrodale-Roberts specialized-simplex EXACT least-absolute-deviation (L1) / quantile-
-        // regression solver (Barrodale, I. & Roberts, F.D.K. 1973, "An improved algorithm for discrete
-        // l1 linear approximation", SIAM J. Numer. Anal. 10(5), 839-848; also ACM TOMS Algorithm 478).
-        // The second reformulation-free exact LAD engine (LP.ladBR), alongside Frisch-Newton
-        // (LP.ladFN, LP.FrischNewton.float.cs) -- see docs/spec-lad-barrodale-roberts.md.
+        // regression solver. Port of the Koenker-d'Orey Fortran `rqbr` (R `quantreg` package,
+        // src/rqbr.f), itself derived from Barrodale & Roberts 1973 ("An improved algorithm for
+        // discrete l1 linear approximation", SIAM J. Numer. Anal. 10(5), 839-848). The second
+        // reformulation-free exact LAD engine (LP.ladBR), alongside Frisch-Newton (LP.ladFN,
+        // LP.FrischNewton.float.cs).
         //
-        // ---- Source + verification ----
-        // Transcribed line-by-line from the Koenker-d'Orey Fortran port `rqbr` (R `quantreg` package,
-        // src/rqbr.f -- a Ratfor-generated translation/extension of the 1973 algorithm that also does
-        // quantile regression + confidence intervals), fetched from
-        // https://cdn.jsdelivr.net/gh/cran/quantreg@master/src/rqbr.f (the same mirror pattern that
-        // worked for LP.FrischNewton.float.cs's source). Cross-checked against the R wrapper
-        // `rq.fit.br` (R/quantreg.R, same repo) for the `ift`/`flag` status-code semantics (0 =
-        // success, 1 = "Solution may be nonunique", 2 = "Premature end - possible conditioning
-        // problem in x") and the toler/big conventions (reference: toler = machine-eps^(2/3), big =
-        // .Machine$double.xmax -- this port instead reuses this library's own established
-        // ratio/pivot-tolerance convention, see deviation 1 below).
+        // This file implements the core simplex only -- rqbr's confidence-interval machinery and its
+        // tau-path continuation are not ported (unreachable in LP.ladBR's fixed-tau, CIs-off mode).
         //
-        // This file implements the core simplex ONLY -- rqbr's confidence-interval machinery
-        // (lci1/lci2, entered only when the caller requests CIs) and its full tau-PATH continuation
-        // (the outer loop, entered only when the caller passes an out-of-[0,1] tau as a "compute the
-        // whole path" sentinel) are both DELIBERATELY NOT PORTED. Neither is reachable with a fixed
-        // tau in (0,1) and CIs off (lci1=false), the only mode LP.ladBR exposes, so dropping them is a
-        // straight, provable dead-branch elimination (the guards are literal booleans this port fixes
-        // at compile time), not an algorithmic approximation. Every remaining line maps to a specific
-        // rqbr statement label, called out in the comments below.
+        // Deviations from the literal reference: (1) uses this library's own simplex ratio/pivot
+        // tolerance (LP.float.cs's RatioTest) instead of rqbr's tighter toler=eps^(2/3); (2) on
+        // "premature end" (ift=2), extracts the last-vertex structural solution instead of leaving x
+        // untouched, matching LPStatus.Unbounded's own contract; (3) the "solution may be nonunique"
+        // warning (ift=1) is not surfaced, since LPStatus has no such state; (4) diagnostic-only
+        // reference outputs are dropped -- objective is honestly recomputed from the returned x.
         //
-        // ---- Deviations from the literal reference (documented, not incidental) ----
-        // 1. Tolerances: rqbr's own toler = eps^(2/3) (~3.7e-11 double) is tighter than this library's
-        //    established simplex ratio/pivot tolerance. This port uses the SAME pivTol as the tableau
-        //    simplex's own ratio test (LP.float.cs's RatioTest: max(Consts.floatZeroThreshold,
-        //    1e-9)), for consistency with the rest of the LP surface rather than importing a one-off
-        //    literal.
-        // 2. ift=2 ("premature end", label 23047 -- the stage-2 ratio test finds no candidate row):
-        //    the raw Fortran (and R's rq.fit.br) leave x UNTOUCHED at whatever it was before this
-        //    call (all-zero, on a first pass). This library's own status convention is stronger and
-        //    already covers this exact case: LPStatus.Unbounded's own doc comment promises "x is the
-        //    last vertex before the unbounded edge was detected" -- stage 1 has ALWAYS completed by
-        //    the time stage 2's ratio test can fail this way, so a fully-formed structural extraction
-        //    is available, and this port performs it instead of discarding it. Mechanically the
-        //    condition (an entering column with no limiting ratio among the remaining candidates) is
-        //    identical to simplexCore's own Unbounded detection, hence the LPStatus mapping; for LAD
-        //    specifically (objective bounded below by 0) this is a numerical-conditioning signal, not
-        //    a genuine unbounded ray -- matching R's own "possible conditioning problem" wording.
-        // 3. ift=1 ("solution may be nonunique", label 23132's kr==1 degenerate-optimum scan): a
-        //    WARNING the reference emits without altering x. Not surfaced -- LPStatus has no "Optimal
-        //    but nonunique" state, and the returned x/objective are unaffected either way.
-        // 4. Diagnostic-only reference outputs (dsol/sol/h/e -- signed residuals, the tau-path R1
-        //    stat, per-solution dual weights) are dropped entirely; this file's own honest-recomputed
-        //    objective (below) replaces the reference's internal running sum, for the same reason
-        //    ladFN's does (an internal sum can under/over-report against a not-fully-resolved
-        //    iterate).
-        //
-        // ---- Algorithm shape (matches docs/spec-lad-barrodale-roberts.md's summary) ----
-        // Two stages worked directly on an m x n condensed tableau of the ORIGINAL A (rqbr's `wa`,
-        // here split into a plain m x n `T` plus a length-m `rhs` column -- rqbr's own n1/n2 RHS
-        // columns are PROVABLY identical for every row throughout this port, since neither ever
-        // receives the tau-path-only `idxcf` perturbation that would separate them, so they collapse
-        // to one array; rqbr's n3 column is PROVABLY always zero for the same reason and is dropped
-        // outright):
-        //   Stage 1 (kount+kr < n): selects a BASIS OF n OBSERVATIONS -- one structural variable
-        //     pivoted into each of rows [0,n) in turn (row i's tag records WHICH coefficient), so at
-        //     the end of stage 1 the fit interpolates those n points exactly (the vertex property --
-        //     n residuals exactly zero -- that only this engine, not ladFN's interior point, can
-        //     certify). A column with no candidate pivot row degenerates directly into position kr
-        //     (rare; leaves that coefficient at its default 0).
-        //   Stage 2: a full reduced-cost simplex over the DISPLACED observations now occupying columns
-        //     [kr,n), restricted to leaving-row candidates among rows [n,m) (the free residuals). Its
-        //     signature trick (verified against rqbr's own do-loop shape): the ratio test doesn't stop
-        //     at the FIRST candidate row -- it walks every candidate in increasing-ratio order,
-        //     "folding" (negating in place, label 23094) each one whose reduced-cost budget
-        //     (cost[in] - 2*pivot) hasn't yet dropped to the pivot threshold, so ONE entering-column
-        //     choice can cross many residuals' sign changes before landing on the true
-        //     (weighted-median) breakpoint -- the mechanism behind the spec's ~O(n), not O(m),
-        //     iteration count.
-        // x is extracted from whichever rows [0,kl) are resolved at exit (label 80's formula,
-        // generalized to run at ANY exit point -- Optimal, Unbounded, or a maxIter cutoff mid-stage --
-        // so MaxIterations always returns a well-defined, finite partial iterate, never NaN/stale
-        // data).
+        // Algorithm shape: stage 1 pivots one structural variable into each of n rows so the fit
+        // interpolates those n points exactly (a vertex property ladFN's interior point can only
+        // approach); stage 2 runs a reduced-cost simplex that folds many residuals' sign changes into
+        // a single entering-column choice, giving ~O(n) iterations regardless of m. x is extracted
+        // from whatever rows are resolved at exit (Optimal, Unbounded, or a maxIter cutoff), so
+        // MaxIterations always returns a well-defined, finite partial iterate.
         //
         // Job-safe: all scratch is Allocator.Temp, disposed on every return path.
         // ============================================================================================
@@ -103,8 +47,8 @@ namespace LinearAlgebra
         /// <see cref="ladFN(in floatMxN, in floatN, ref floatN, out double, int)"/>: a primal
         /// simplex worked directly on an m x n condensed tableau of the original design (no
         /// 2n+2m-variable LP reformulation), converging to an EXACT VERTEX -- at the optimum, n of
-        /// the m residuals are exactly zero (see docs/spec-lad-barrodale-roberts.md test 4), a
-        /// certificate ladFN's interior-point path only approaches. Iteration count is ~O(n)
+        /// the m residuals are exactly zero, a certificate ladFN's interior-point path only
+        /// approaches. Iteration count is ~O(n)
         /// regardless of m (the weighted-median long step folds many residual sign-changes into a
         /// single entering-column choice) -- BR is competitive with or faster than ladFN at small-to-
         /// moderate m, ladFN wins at large m (Portnoy &amp; Koenker 1997's crossover).
@@ -315,25 +259,10 @@ namespace LinearAlgebra
                 // unbounded amount of fold work behind it.
                 //
                 // The ORIGINAL algorithm (kept below, UNCHANGED, for nCand <= CandSortThreshold) finds
-                // this order by repeatedly linear-scanning the remaining candidates for the current
-                // minimum and swap-removing the winner: O(nCand) per pick, up to nCand picks, i.e.
-                // O(nCand^2) -- exactly a selection sort. At large m this became the dominant cost of
-                // the whole solve (measured, not merely suspected: BR's own reported iters stayed flat
-                // near-m=16384 while wall time grew far faster than FN's comparable-iters interior
-                // point, the signature of quadratic work hidden behind a small iteration count). Above
-                // the threshold, sort the candidates ONCE (UnsafeOP.sortByKeyAscending, O(nCand log
-                // nCand) heapsort) and then walk them in a single linear pass -- same visitation order
-                // as the original whenever ratios are distinct (heapsort is comparison-based and exact
-                // ratio ties are measure-zero for the continuous random/real data this threshold is
-                // gated for), asymptotically far cheaper at the sizes that matter.
-                //
-                // BR_CAND_SORT_THRESHOLD sits comfortably above every m this library's own test suite
-                // exercises for BR (<=192, per LPTests.float.cs's LadBRvsOracleM192/LadBRStackloss/
-                // etc.) so every currently-tested instance takes the ORIGINAL, byte-for-byte unchanged
-                // code path below -- heapsort's lack of stability (a real, if rare, tie-break behavior
-                // change vs the linear-scan path) never has a chance to touch anything this library
-                // already verifies. It activates well inside the m range LPBenchmark's Section 2b
-                // exercises (1024-16384), which is exactly where the quadratic behavior was measured.
+                // this order via an O(nCand^2) selection sort, which becomes the dominant cost at large
+                // m. Above BR_CAND_SORT_THRESHOLD, sort the candidates ONCE (UnsafeOP.sortByKeyAscending,
+                // O(nCand log nCand) heapsort) and walk them in a single linear pass instead -- same
+                // visitation order as the original whenever ratios are distinct.
                 int leave = -1;
                 if (nCand > BR_CAND_SORT_THRESHOLD)
                 {
@@ -458,24 +387,11 @@ namespace LinearAlgebra
 
         // Gauss-Jordan pivot at (leave, enter) -- rqbr's label 10, shared by both stages. Normalizes
         // row `leave` (excluding column `enter`), eliminates column `enter` from every OTHER row
-        // (observation rows AND the cost row, matching the reference's own i=1..m3 elimination sweep --
-        // see file header), then swaps the leaving row's tag with the entering column's tag.
-        //
-        // The reference's "for j in [kr,n): if (j != enter) ..." shape (three separate loops: row
-        // normalization, per-row elimination inside the m-loop, and the cost-row update) puts a branch
-        // INSIDE the hottest per-column loop, evaluated on every (row, column) pair -- and, being a
-        // struct-indexer read/write rather than a [NoAlias] raw-pointer one, gives Burst no aliasing
-        // guarantee to vectorize across. Column `enter` cannot get the SAME update formula as its
-        // neighbors (it is overwritten by an explicit -d/pivot / -dCost/pivot formula afterward instead
-        // -- see file header's own note on this being a bookkeeping column, not a normal tableau entry),
-        // so the skip cannot simply be dropped -- but splitting the SAME range into the two contiguous
-        // sub-ranges [kr,enter) and (enter,n) and routing each through the vectorising
-        // UnsafeOP.scalDiv/axpy ([NoAlias] pointer path, the same one GEMM/CHO/LU/CHOP use) is
-        // BIT-IDENTICAL to the original branchy loop -- same operations, same per-element values, same
-        // order within each sub-range, just without a per-iteration branch. This is the file's own
-        // dominant per-pivot cost (O(m*n) per call, times ~n pivots per solve = O(m*n^2) total, versus
-        // the collection/ratio-test's O(m) per call -- see the ratio-test's own comment at its call
-        // site), so it is the right place to spend the vectorization effort.
+        // (observation rows and the cost row), then swaps the leaving row's tag with the entering
+        // column's tag. Column `enter` is a bookkeeping column with its own -d/pivot formula (not the
+        // neighbor update), so the elimination is split into the exact ranges [kr,enter) and
+        // (enter,n), routed through UnsafeOP.scalDiv/axpy for vectorization -- bit-identical to a
+        // branchy per-column loop.
         static unsafe void BRPivot(floatMxN T, floatN rhs, floatN cost, NativeArray<int> rowTag, NativeArray<int> colTag,
                             int m, int n, int kr, int leave, int enter)
         {

@@ -16,13 +16,12 @@ namespace LinearAlgebra
     //
     // UB-row activation: an integer variable's UB row starts INERT (coefficient 0, rhs 0) when its root
     // xu is infinite, instead of using a 1e30 sentinel rhs directly -- a row's rhs feeds into
-    // DualSimplexCore's dataScale/artificialBound scan (unlike a variable bound, which is excluded), so
-    // a 1e30 rhs inflates artificialBound to ~1e32 and can return a false Infeasible (reproduced on the
-    // Gomory/Wolsey instance: sentinel=1e30 -> false Infeasible after 63 pivots; sentinel<=1e10 ->
-    // correct). It is also a correctness risk, not just numerics: a finite sentinel can silently bound a
-    // genuinely unbounded direction. PushBoundChange activates the row (coefficient -> 1) the first time
-    // a branch tightens it (oldBound still >= 1e29); UndoToMarker deactivates it back (coefficient and
-    // rhs -> 0) when undoing past that point.
+    // DualSimplexCore's dataScale/artificialBound scan (unlike a variable bound, which is excluded), and
+    // a large sentinel rhs can corrupt dual-simplex scaling and return a false Infeasible. It is also a
+    // correctness risk, not just numerics: a finite sentinel can silently bound a genuinely unbounded
+    // direction. PushBoundChange activates the row (coefficient -> 1) the first time a branch tightens
+    // it (oldBound still >= 1e29); UndoToMarker deactivates it back (coefficient and rhs -> 0) when
+    // undoing past that point.
     internal struct floatBoundChange
     {
         /// <summary>Index into the ORIGINAL (length-n) variable space.</summary>
@@ -45,8 +44,8 @@ namespace LinearAlgebra
         /// <paramref name="newBound"/>, records the change on <paramref name="stack"/>, and writes
         /// through to <paramref name="curLB"/>/<paramref name="curUB"/> and the matching bound row's rhs
         /// in <paramref name="bAug"/>. Activates the UB row's coefficient if it was inert -- bumps
-        /// <paramref name="cache"/>.matrixVersion when (and only when) that coefficient write happens
-        /// (docs/spec-lpbasis-persistence.md: rhs-only bound updates, the common case, leave it alone).
+        /// <paramref name="cache"/>.matrixVersion when (and only when) that coefficient write happens; a
+        /// rhs-only bound update (the common case) leaves matrixVersion untouched.
         /// Caller must pass an INTEGER <paramref name="varIndex"/> (the only kind ever branched).
         /// </summary>
         internal static void PushBoundChange(ref UnsafeList<floatBoundChange> stack, int varIndex, bool isUpper,
@@ -115,18 +114,14 @@ namespace LinearAlgebra
         /// Overwrites every INTEGER variable's live bound state (<paramref name="curLB"/>/
         /// <paramref name="curUB"/> and each bound row's rhs/coefficient in <paramref name="bAug"/>/
         /// <paramref name="Aaug"/>) from a queued node's full snapshot <paramref name="L"/>/
-        /// <paramref name="U"/> -- the wholesale counterpart to <see cref="PushBoundChange"/>/
-        /// <see cref="UndoToMarker"/>'s incremental delta, used by the stage-3 best-bound search when
-        /// jumping to a queued node that is not an ancestor of the current plunge (so there is no
-        /// shared marker to replay from). Continuous variables are untouched -- their bound rows, if
-        /// any, never change after the root build. Same UB-row inert/active convention as
-        /// <see cref="PushBoundChange"/>: inert (coefficient 0, rhs 0) exactly when
-        /// <paramref name="U"/>[j] is still the +infinity sentinel.
+        /// <paramref name="U"/> -- used when jumping to a queued node that is not an ancestor of the
+        /// current plunge, so there is no shared marker to replay from. Continuous variables are
+        /// untouched -- their bound rows, if any, never change after the root build. Same UB-row
+        /// inert/active convention as <see cref="PushBoundChange"/>: inert (coefficient 0, rhs 0)
+        /// exactly when <paramref name="U"/>[j] is still the +infinity sentinel.
         ///
-        /// Bumps <paramref name="cache"/>.matrixVersion ONCE per call (not once per rewritten
-        /// coefficient): every integer bound row is rewritten wholesale here regardless of whether its
-        /// UB-row activation state actually changed, so a queue jump always forces the next
-        /// <c>LP.solve</c> to rebuild cold -- the expected regime (MIP.float.cs's SearchCore header).
+        /// Bumps <paramref name="cache"/>.matrixVersion ONCE per call, unconditionally -- a queue jump
+        /// always forces the next <c>LP.solve</c> to rebuild cold.
         /// </summary>
         internal static void ApplyNodeBounds(floatN L, floatN U,
                                              floatN curLB, floatN curUB, floatN xlRoot,
@@ -152,28 +147,18 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Activity-based bound tightening (docs/draft-spec-mip.md stage 4), ported from
-        /// mip/HighsDomain.cpp's <c>propagate</c>/<c>propagateRowUpper</c>/<c>propagateRowLower</c>:
-        /// WORKLIST-driven (a row is only (re-)examined when a variable it touches just changed --
-        /// HighsDomain's <c>markPropagate</c>/column-incidence loop -- not a blind repeated sweep of
-        /// every row). For the row at the head of the queue, compute the min/max row activity from the
+        /// Activity-based bound tightening: worklist-driven constraint propagation (a row is only
+        /// (re-)examined when a variable it touches just changed, not a blind repeated sweep of every
+        /// row). For the row at the head of the queue, computes the min/max row activity from the
         /// current live integer bounds (<paramref name="curLB"/>/<paramref name="curUB"/>; continuous
-        /// variables keep their root bounds, which never change) and derive a tightened bound for every
-        /// INTEGER variable with a nonzero row coefficient. A row with more than one variable whose
-        /// relevant bound is still infinite yields no tightening from that row (HiGHS's <c>ninfmin</c>/
-        /// <c>ninfmax</c> infinite-contributor counts); the closed form used when exactly one (or zero)
-        /// such contributor exists is <c>(rhs - (act - ownContribution)) / a_ij</c> -- HiGHS's
-        /// <c>minresact</c>/<c>maxresact</c>. Tightened integer bounds round inward (floor for an upper
-        /// bound, ceil for a lower bound). Every tightening is applied via <see cref="PushBoundChange"/>
-        /// (same undo-stack entries as a branch decision, same UB-row inert/active handling for a
-        /// variable whose bound was infinite) and re-queues every OTHER row with a nonzero coefficient
-        /// on that variable (dense column scan standing in for HiGHS's sparse column-index list).
-        /// Terminates when the queue drains (the true fixpoint, mirroring HiGHS's
-        /// <c>havePropagationRows</c>) or a total-row-visit cap (<see cref="PROPAGATION_MAX_PASSES"/>
-        /// times the row count -- HiGHS has no such cap because its incremental activity bookkeeping
-        /// makes each visit O(row length) instead of a full recompute; a cap here is a deliberate,
-        /// bounded-cost adaptation for a fixpoint that is not persisted/maintained incrementally across
-        /// the whole B&amp;B tree the way HighsDomain's activity arrays are -- see the file header).
+        /// variables keep their root bounds, which never change) and derives a tightened bound for every
+        /// INTEGER variable with a nonzero row coefficient; a row with more than one variable whose
+        /// relevant bound is still infinite yields no tightening from that row. Tightened integer bounds
+        /// round inward (floor for an upper bound, ceil for a lower bound) and are applied via
+        /// <see cref="PushBoundChange"/> (same undo-stack entries as a branch decision), which re-queues
+        /// every OTHER row with a nonzero coefficient on that variable. Terminates when the queue drains
+        /// (a true fixpoint) or a total-row-visit cap is hit (<see cref="PROPAGATION_MAX_PASSES"/> times
+        /// the row count).
         /// </summary>
         /// <returns>False as soon as a row or a variable's own range is proven empty (L &gt; U) --
         /// caller fathoms the node WITHOUT an LP solve. True otherwise (a fixpoint, possibly a no-op,
@@ -328,12 +313,11 @@ namespace LinearAlgebra
             inQueue.Dispose();
 
             // Safety net for a variable with a zero coefficient in every row (so it is never visited
-            // above): HighsDomain::changeBound checks L<=U immediately on every single bound change,
-            // independent of row activity, catching exactly this case; PushBoundChange itself is shared
-            // with the branching/strong-branch call sites (out of this stage's scope to change), so the
-            // same check is done here as one final O(n) sweep instead. A branching-created empty child
-            // with no row coefficients at all is still caught correctly regardless, by the augmented LP's
-            // own bound-row infeasibility on the next solve -- this sweep only saves that one LP solve.
+            // above and row-activity propagation can't catch an L > U conflict for it): PushBoundChange
+            // is shared with the branching/strong-branch call sites, so the same L <= U check is done
+            // here as one final O(n) sweep instead. A branching-created empty child with no row
+            // coefficients at all is still caught correctly regardless, by the augmented LP's own
+            // bound-row infeasibility on the next solve -- this sweep only saves that one LP solve.
             if (feasible)
                 for (int j = 0; j < n; j++)
                     if (integrality[j] != 0 && (double)curLB[j] > (double)curUB[j] + PROPAGATION_TOL)

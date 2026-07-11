@@ -29,10 +29,8 @@ namespace LinearAlgebra {
         public unsafe doubleMxN doubleTempMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.doubleTempMat(M_rows, N_cols, uninit);
         
 
-        // NOT wrapped in copyReplace: there is no iProxy BSR equivalent, so this only needs to
-        // exist for the float float/double types this file already generates. Forwards to the
-        // arena `b` carries so Krylov.float.cs can materialize A^T once per solve via
-        // `b.floatBSRTranspose(in A)` without direct access to floatN's private _rec field.
+        // Not in copyReplace: no iProxy BSR equivalent. Forwards to the arena's BSR transpose for
+        // solvers needing A^T.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe floatBSR floatBSRTranspose(in floatBSR A) => OwnerArena.floatBSRTranspose(in A);
 

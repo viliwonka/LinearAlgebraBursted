@@ -385,8 +385,8 @@ public class doubleSparseBSRTests
         // Regression for the fixed use-after-free: a builder created with the default
         // capacityHint=8 is grown to 225 triplets (15x15 dense, 1x1 blocks) via AddValue,
         // forcing ~5 UnsafeList reallocations. Pre-fix, arena.Dispose() below double-freed the
-        // stale pre-growth buffer held by the arena's tracked copy (native crash, exit code
-        // -1073741819). Post-fix this must dispose cleanly. Correctness after all those
+        // stale pre-growth buffer held by the arena's tracked copy (native crash, an access
+        // violation). Post-fix this must dispose cleanly. Correctness after all those
         // reallocations is asserted BOTH ways: ToDense == dense reference, and spMV == dense dot.
         void GrowthThenDispose()
         {

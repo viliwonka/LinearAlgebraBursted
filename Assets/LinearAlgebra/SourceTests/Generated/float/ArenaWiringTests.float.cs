@@ -5,9 +5,9 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// ARENA-LEVEL wiring tests for the floatN/floatMxN -> ChunkedRecordTable migration
-// (docs/dev/rfc-memory-model.md §4 Option A). The table's OWN primitives (chunk stability, free-list
-// recycling, generation bumps, double-Free / out-of-range guards) are already covered directly in
+// ARENA-LEVEL wiring tests for the floatN/floatMxN -> ChunkedRecordTable migration. The table's
+// OWN primitives (chunk stability, free-list recycling, generation bumps, double-Free / out-of-range
+// guards) are already covered directly in
 // ChunkedRecordTableTests.cs -- these tests prove the COMPOSITION: that Arena.floatVec/floatMat,
 // floatN/floatMxN.Dispose()/Copy()/TempCopy(), and Arena.Clear()/ClearTemp()/Dispose() drive
 // those tables correctly end to end.

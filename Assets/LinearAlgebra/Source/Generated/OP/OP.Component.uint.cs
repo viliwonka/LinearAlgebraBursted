@@ -51,7 +51,7 @@ namespace LinearAlgebra
         public static void addInPlace<T>(this T place, T from) where T : unmanaged, IUnsafeuintArray
         {
             unsafe {
-                // place += from. (was passing the operands to compAdd reversed → mutated `from`.)
+                // place += from.
                 UnsafeOP.compAdd(place.Data.Ptr, from.Data.Ptr, from.Data.Length);
             }
         }
@@ -110,12 +110,8 @@ namespace LinearAlgebra
             }
         }
 
-        // v - s, via a direct forward-order kernel (UnsafeOP.scalSub(target, n, s)) rather than the
-        // v + (-s) negation trick a scalar-subtract could otherwise reuse from addInPlace: unsigned
-        // types can't negate s, and this is bit-identical to the negation trick for signed types
-        // anyway (v + (-s) == v - s under modular wraparound), so every generated type shares one
-        // implementation. Callers (e.g. the vector/matrix `operator -` overloads) call this same
-        // name either way - see uintN.Operators.cs.
+        // v - s, via a direct kernel; unsigned types can't negate s, so this doesn't reuse addInPlace's
+        // v + (-s) trick.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void subInPlace<T>(this T v, uint s) where T : unmanaged, IUnsafeuintArray
         {
@@ -138,11 +134,7 @@ namespace LinearAlgebra
 
         /// <summary>Clamp every element of <paramref name="x"/> to [<paramref name="lo"/>, <paramref name="hi"/>] in-place.
         /// Delegates to the UnsafeMathOP clamp kernel; no allocation.</summary>
-        /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.
-        /// Takes <paramref name="x"/> by value (<c>this T</c>), matching every other Comp wrapper in this
-        /// file - a generic extension method's receiver cannot use <c>this in T</c> (CS8338: the 'in'
-        /// extension-method form requires a concrete, non-generic value type). Existing callers that
-        /// wrote the old static-style <c>clampInPlace(in v, ...)</c> just drop the now-illegal <c>in</c>.</remarks>
+        /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void clampInPlace<T>(this T x, uint lo, uint hi) where T : unmanaged, IUnsafeuintArray
         {
@@ -245,7 +237,7 @@ namespace LinearAlgebra
             }
         }
 
-        // ---- Componentwise math, forwarding to UnsafeMathOP (mathUnsafe's former home). ----
+        // ---- Componentwise math, forwarding to UnsafeMathOP. ----
 
         
 
@@ -269,12 +261,9 @@ namespace LinearAlgebra
             unsafe { UnsafeMathOP.mad(a.Data.Ptr, b.Data.Ptr, c.Data.Ptr, a.Data.Length); }
         }
 
-        // ---- Bit-manipulation intrinsics, forwarding to UnsafeBitsOP (see UnsafeBitsOP.uint.cs
-        // for the per-type width-correction details, especially short). Every one of these REPLACES
-        // each element in place with the op's own result (e.g. countbitsInPlace turns each element
-        // into its own population count) - the same in-place philosophy as everything else in this
-        // file, just producing a differently-meaning value rather than a transformed one. Sign-
-        // agnostic (they act on the bit pattern, not the numeric value) - no skipFor for uint. ----
+        // ---- Bit-manipulation intrinsics, forwarding to UnsafeBitsOP; each replaces the element with
+        // the op's own result (e.g. countbitsInPlace turns each element into its own population count),
+        // sign-agnostic. ----
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void countbitsInPlace<T>(this T x) where T : unmanaged, IUnsafeuintArray

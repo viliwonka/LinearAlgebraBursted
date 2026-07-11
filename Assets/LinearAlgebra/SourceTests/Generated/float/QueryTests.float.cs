@@ -10,7 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Tests for QueryOP Phase 1 (the float float/double core): search & selection over
-// vectors / matrices treated as sets of vectors. Spec: docs/dev/spec-query.md.
+// vectors / matrices treated as sets of vectors.
 //
 // Coverage groups (mirroring the spec):
 //   1 — Extremes: argMaxAbs/argMinAbs (vec+matrix), decodeIndex, rowArgMin/Max + colArgMin/Max.

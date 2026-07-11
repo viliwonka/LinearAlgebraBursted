@@ -7,6 +7,52 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 While the version is `0.x`, the public API is still being reviewed and may change
 between minor versions.
 
+## [Unreleased]
+
+### Added
+
+- **Linear programming (`LP`)**: dense simplex, a bounded-variable revised simplex (default) and
+  dual simplex over an LU-factored basis, Mehrotra primal-dual interior point, and a matrix-free
+  interior-point variant over a sparse (BSR) constraint matrix.
+- **Least-absolute-deviation / quantile regression (`LP.lad`)**: two reformulation-free exact
+  engines — Barrodale-Roberts specialized simplex and Frisch-Newton interior point — behind a
+  size-routed hybrid default, plus a matrix-free sparse route. Both engines also fit an arbitrary
+  quantile (`tau` overloads), not just the median.
+- **Warm-started LP re-solve**: `LPBasis` persists the terminal basis across re-solves of a
+  perturbed problem; an optional per-dtype cache additionally persists the basis factorization and
+  pricing weights so a re-solve skips the fixed per-call rebuild/refactorization cost.
+- **Quadratic programming (`QP`)**: active-set solver for equality- and inequality-constrained
+  convex QPs, with an LP-powered phase 1 for finding an initial feasible point.
+- **Mixed-integer programming (`MIP`)**: branch-and-bound over the warm-started dual simplex, with
+  pseudocost/reliability branching, domain propagation, and a rounding heuristic.
+- **Control**: discrete-time LQR (`Control.lqr`, structured doubling algorithm) with a warm
+  re-solve state and gain scheduling across a sequence of operating points.
+- Rank-revealing row-pivoted LQ (`LQRP`) and complete-orthogonal-decomposition minimum-norm solves
+  (`minNormSolveInPlace`) on `QRCP` and `LQRP` (pseudoinverse-equivalent least squares for
+  rank-deficient systems).
+- Multiple-right-hand-side (`AX=B`) overloads across the direct solver family (LU, Cholesky,
+  pivoted Cholesky, QR, QRCP, LQ, SVD) — factor once, solve a whole block of right-hand sides.
+- Transposed LU solves (`decompSolveTransA` / `solveInPlaceTransA`).
+- BSR random sparse gallery generators for large-scale sparse benchmarking.
+
+### Changed
+
+- LU gains a blocked level-3 `decompInPlace` path; pivoted Cholesky (`CHOP`) gains a blocked
+  level-3 factorization.
+- QRCP: blocked (dlaqps-style) panel factorization, and a fused destructive `solveInPlace` that
+  skips reconstructing `Q`.
+- `LQ.minNormSolve` gains a fused fast path (factor once, apply `Qᵀ` from the reflectors) — about
+  2× faster.
+- Iterative/sparse solver throughput: SIMD width-4 accumulator reductions across dense GEMV, CG,
+  SVD and eigen kernels; block-Jacobi and BSR block-triangular-sweep (SSOR) preconditioners; block
+  SpMM for block-operator applies; fused Krylov vector kernels — roughly 2-4× depending on kernel.
+- `Eigen.lobpcg`'s block operator applies are ~2.3-2.5× faster; LOBPCG itself was folded into
+  `Eigen` (previously its own class).
+- API: the `Solvers` class was retired, split into `Krylov` (iterative solvers) and `Blas`
+  (triangular solves); `determinant`/`logDeterminant` moved onto `Analysis`.
+- Sparse debug print (`Print.Spy` on a BSR matrix): absent blocks now render as spaces instead of
+  dots, for readability on larger grids.
+
 ## [0.1.0] — 2026-07-03
 
 First public preview. The library is feature-complete for its core scope and heavily

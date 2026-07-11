@@ -90,6 +90,6 @@ defaulted-to, or checked off a TODO until it clears this list.
 
 ## Process wrapper (how a feature moves through the pillars)
 
-spec (`docs/spec-*.md`, with fetched references) → implement (reuse-first) → tests (pillar 3) →
+spec (`docs/dev/spec-*.md`, with fetched references) → implement (reuse-first) → tests (pillar 3) →
 full suite green → benchmark (pillar 4) → optimize if the numbers say so (pillar 5) → adversarial
 review for numerical cores → memory/TODO ledgers updated → atomic commit(s), repo message style.

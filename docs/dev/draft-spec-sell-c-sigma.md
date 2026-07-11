@@ -238,7 +238,7 @@ survives contact with Burst.
 - **Stage 3 — gallery.** `fProxyRandomSparseSkewed` (power-law/Zipf row degrees, seeded,
   O(nnz), SPD and rectangular variants) — the honest test/benchmark matrix class that the
   gallery currently lacks; β assertions (σ=1 low, σ=C² high) as tests.
-- **Stage 4 — benchmark + kill gate.** Per docs/spec-shipped-feature.md harness (IJob.Run,
+- **Stage 4 — benchmark + kill gate.** Per docs/dev/spec-shipped-feature.md harness (IJob.Run,
   1 warmup + 4 timed, median, results via output arrays): SELL vs BSR-b1 vs dense, sizes
   in/out of cache, fills {1%, 7%, 33%}, uniform vs skewed rows, σ∈{1, C², 256}, C∈{4,8}
   once to settle question 4, plus cgls/lsqr end-to-end vs BSR two-arg operator. Apply

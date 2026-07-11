@@ -27,14 +27,14 @@ overload).
 
 PCA fit methods:
 - **`PCA.fitCov`** - eigendecomposes the p×p covariance/correlation matrix. The only route that
-  handles wide data (p > n); loses accuracy covariance matrix construction
+  handles wide data (p > n); loses accuracy building the covariance matrix.
 - **`PCA.fitSvd`** - SVD of the centered data directly (needs n ≥ p); the accurate default.
 - **`PCA.fitSvdTruncated`** - exact top-k via Golub-Kahan-Lanczos (`SVD.truncated`, see
   [svd.md](svd.md)); needs n ≥ p.
 - **`PCA.fitRandomized`** - Halko-Martinsson-Tropp randomized SVD; needs n ≥ p, fastest for large n
   with k ≪ n.
 
-Transform new data info fitted model:
+Transform new data into a fitted model:
 - **`PCA.transform(in X, in model, ref scores)`** - projects new data onto a fitted model.
 
 

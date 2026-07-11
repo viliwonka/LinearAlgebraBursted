@@ -10,7 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Tests for the integer scalar-predicate subset of the QueryOP extension (Query, Group A
-// only). Spec: docs/dev/spec-predicate-queries.md (Section 4b + T1). Groups B/C/D are fProxy-only.
+// only). Groups B/C/D are fProxy-only.
 //
 // One template expands to int / short / long QueryOP, so every literal must be exact AND safe for
 // the tightest type (short): coordinates stay small. Functor struct is NESTED in the outer class

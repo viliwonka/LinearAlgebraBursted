@@ -74,32 +74,25 @@ namespace LinearAlgebra
         /// but seeds (and returns) the terminal basis through <paramref name="basis"/> instead of always
         /// starting from the all-logical vertex -- see <see cref="LPBasis"/>'s own doc comment for the
         /// re-solve use case and lifecycle contract. Always routes through
-        /// <see cref="LPMethod.DualSimplex"/>: the bound-flip dual-feasibility repair and the cost-
-        /// perturbation degeneracy defence a warm start needs are DUAL-simplex-specific machinery (see
-        /// LP.DualSimplex.double.cs) -- the other backends have no analogous "seed from an arbitrary
-        /// basis" entry point, so this overload does not take an <see cref="LPMethod"/> parameter at all
-        /// rather than accepting one it would ignore or throw on.
+        /// <see cref="LPMethod.DualSimplex"/>: the bound-flip dual-feasibility repair and cost-
+        /// perturbation degeneracy defence a warm start needs are dual-simplex-specific machinery, so
+        /// this overload has no <see cref="LPMethod"/> parameter.
         ///
-        /// <paramref name="basis"/>.<see cref="LPBasis.IsEmpty"/> (never constructed, or constructed but
-        /// not yet <see cref="LPBasis.populated"/>): runs the ordinary cold solve (all-logical start) and
-        /// writes the terminal basis into it -- allocating it first (<c>Allocator.Persistent</c>,
-        /// MANAGED-THREAD ONLY -- a Burst job cannot make this allocation) only if it was not already
-        /// created; a pre-constructed-but-unpopulated <paramref name="basis"/> (e.g.
-        /// <c>new LPBasis(n, m, Allocator.Temp)</c>, job-safe) is seeded into its existing buffers with
-        /// no new allocation at all. See <see cref="LPBasis"/>'s own doc comment for the full three-way
-        /// lifecycle.
-        ///
-        /// Otherwise (already <see cref="LPBasis.populated"/>): <paramref name="basis"/> must be
-        /// <see cref="LPBasis.IsValid"/> for this problem's shape (n = <c>A.N_Cols</c> structural
-        /// variables, m = <c>A.M_Rows</c> constraints) -- a dimension mismatch throws. A dimensionally-
-        /// valid basis is used AS THE STARTING POINT regardless of where it came from (the SAME problem
-        /// after a bound/rhs perturbation -- the intended fast path, few pivots needed -- or,
-        /// degenerately, an unrelated same-shape problem, still CORRECT just not fast): the dual-
-        /// feasibility repair (bound flips, or a temporary artificial bound when the natural one is
-        /// infinite) makes it dual-feasible again before the ordinary dual pivots run, and a singular
-        /// basis matrix at the first refactorization falls back to the all-logical start rather than
-        /// failing outright. Either way the terminal basis is written back into <paramref name="basis"/>
-        /// in place.
+        /// Three-way lifecycle for <paramref name="basis"/>:
+        /// <list type="bullet">
+        /// <item>Never constructed: allocated here (<c>Allocator.Persistent</c>, MANAGED-THREAD ONLY --
+        /// a Burst job cannot make this allocation); runs an ordinary cold solve (all-logical start) and
+        /// writes the terminal basis into it.</item>
+        /// <item>Constructed but not yet <see cref="LPBasis.populated"/> (e.g. <c>new LPBasis(n, m,
+        /// Allocator.Temp)</c>, job-safe): seeded into its existing buffers with no new allocation, then
+        /// the same cold solve as above.</item>
+        /// <item>Already <see cref="LPBasis.populated"/>: must be <see cref="LPBasis.IsValid"/> for this
+        /// problem's shape (n = <c>A.N_Cols</c>, m = <c>A.M_Rows</c>; a dimension mismatch throws). Used
+        /// as the starting point regardless of provenance -- the dual-feasibility repair makes it
+        /// dual-feasible again before the ordinary dual pivots run, and a singular basis matrix at the
+        /// first refactorization falls back to the all-logical start. The terminal basis is written
+        /// back in place.</item>
+        /// </list>
         /// </summary>
         /// <param name="A">Constraint coefficients, m×n (m constraints, n variables).</param>
         /// <param name="b">Right-hand sides, length m. Any sign (negative rows are normalized internally).</param>
@@ -157,7 +150,7 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Warm-started re-solve with FACTOR/WEIGHT PERSISTENCE (docs/spec-lpbasis-persistence.md): like
+        /// Warm-started re-solve with FACTOR/WEIGHT PERSISTENCE: like
         /// the <see cref="LPBasis"/> overload above, but additionally caches the computational form
         /// (M/lower/upper/cost/rhs) and the dual simplex's basis factorization (B/P/eta) and DSE weights
         /// across separate calls via <paramref name="cache"/> -- when structure/cost have not changed
@@ -263,7 +256,7 @@ namespace LinearAlgebra
         }
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-        // Checks-build-only contract verification (docs/spec-lpbasis-persistence.md): on every cache
+        // Checks-build-only contract verification: on every cache
         // HIT, rebuild the computational form fresh into scratch and compare entrywise against the
         // cached M/lower/upper/cost, throwing on any mismatch. Catches a caller that changed A's
         // coefficients/senses/c without bumping cache.matrixVersion -- a contract violation that would
@@ -322,13 +315,7 @@ namespace LinearAlgebra
         /// <param name="maxIter">Iteration budget; ≤0 picks the routed engine's own default.</param>
         public static LPInfo lad(in doubleMxN A, in doubleN b, ref doubleN x, out double objective,
                                  int maxIter = 0)
-            // MEASURED, RE-TUNABLE, PER-DTYPE crossover (LPBenchmark Section 2b, 2026-07-09, AFTER the
-            // BR sort-path + FN SIMD optimization round): double -- BR wins through m=4096 (2.49ms vs
-            // FN 2.71ms) and loses only ~11% at m=16384, so the threshold sits at the last measured
-            // BR-win size, 4096; float -- FN's SIMD gains moved its win boundary down to m=1024
-            // (FN 0.47ms vs BR 0.62ms) while BR still wins at m=384, so 512 splits the measured
-            // bracket. Re-measure Section 2b (and re-tune here) whenever either engine's per-iteration
-            // cost changes; this is benchmark data, not theory.
+            // Measured, per-dtype crossover; re-tune if either engine's per-iteration cost changes.
             => A.M_Rows <= 4096
                 ? ladBR(in A, in b, ref x, out objective, maxIter)
                 : ladFN(in A, in b, ref x, out objective, maxIter);

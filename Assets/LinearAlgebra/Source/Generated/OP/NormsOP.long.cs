@@ -5,12 +5,11 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // Public Norms surface for the SIGNED integer family (int/short/long -- uint is
-    // deliberately excluded, see docs/dev/naming-style-guide.md). Merges into the SAME bare partial
-    // class as NormsOP.fProxy.cs's `Norms`, forwarding to the distinct intNormsCore/
-    // shortNormsCore/longNormsCore generic bodies below (kept split for the identical CS0111
-    // reason floatNormsCore/doubleNormsCore stay split -- see docs/dev/naming-style-guide.md's
-    // "Split vs merge safety").
+    // Public Norms surface for the SIGNED integer family (int/short/long; uint is deliberately
+    // excluded). Merges into the SAME bare partial class as NormsOP.fProxy.cs's `Norms`,
+    // forwarding to the distinct intNormsCore/shortNormsCore/longNormsCore generic bodies below
+    // (kept split so per-type generated copies can't collide as duplicate members, CS0111 --
+    // same reason floatNormsCore/doubleNormsCore stay split).
     //
     // RETURN-TYPE WIDENING (locked convention): L1/LInf -> long (a sum/max of |x|, widened so it
     // can't overflow the source integer type); L2 -> double (a Euclidean length is generally

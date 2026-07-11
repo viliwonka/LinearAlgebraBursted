@@ -19,12 +19,11 @@ namespace LinearAlgebra.Benchmarks
     //
     // Every timed Krylov job writes its SolveInfo/LstsqInfo (status, iterations) into `outInfo` so the
     // report can show iterations-executed alongside wall clock -- a fixed K=40, tol=0 timing can exit
-    // early on a breakdown guard and look "faster" while doing strictly less work (see benchmark
-    // hygiene note in docs/draft-spec-krylov-optimization.md); iters+status makes that visible instead
-    // of silently masquerading as speed.
+    // early on a breakdown guard and look "faster" while doing strictly less work; iters+status makes
+    // that visible instead of silently masquerading as speed.
 
-    // Krylov R3 (docs/draft-spec-krylov-optimization.md): SpCgJobFProxy/SpPcgJobFProxy grew a
-    // `tol` field (replacing the hardcoded `0f` argument) so the SAME job types serve both the
+    // Krylov R3: SpCgJobFProxy/SpPcgJobFProxy grew a `tol` field (replacing the hardcoded `0f`
+    // argument) so the SAME job types serve both the
     // fixed-K/tol=0 throughput rows below (every existing call site omits `tol`, leaving it at
     // its struct default 0 -- byte-identical behavior to the old hardcoded literal) and the new
     // iterations-to-CONVERGENCE comparison (BenchPrecondConvergenceFProxy), which sets a real
@@ -72,7 +71,7 @@ namespace LinearAlgebra.Benchmarks
         public void Execute() { var info = Eigen.lanczos(in A, ref ws, ref vals, steps); outInfo[0] = info.produced; outInfo[1] = info.Solved ? 1 : 0; outInfo[2] = 0; } }
 
     // LOBPCG smallest-k eigenpairs. outInfo = [status, iterations, converged, maxResidual, orthoErr].
-    // Krylov R3b (docs/draft-spec-krylov-optimization.md §3b): these jobs are now wired through
+    // Krylov R3b: these jobs are now wired through
     // Bench.Time (1 warmup + 4 timed .Run() calls on the SAME captured `ws`) to add a wall-clock
     // column to the LOBPCG report -- lobpcg only reseeds ws.X when it is all-zero (its own
     // warm-start contract), so re-running the SAME ws without resetting X would warm-start every
@@ -88,11 +87,11 @@ namespace LinearAlgebra.Benchmarks
     public struct SpLobpcgPrecJobFProxy : IJob { public fProxyBSR A; public fProxyBlockJacobi M; public fProxyLOBPCGCache ws; public int k; public fProxy tol; public int maxIter; public NativeArray<double> outInfo;
         public void Execute() { for (int i = 0; i < ws.X.M_Rows; i++) for (int c = 0; c < ws.X.N_Cols; c++) ws.X[i, c] = (fProxy)0; var info = Eigen.lobpcg(in A, in M, ref ws, k, tol, maxIter); LobpcgReport.WriteFProxy(in info, in ws, k, outInfo); } }
 
-    // Krylov R3b: SSOR preconditioner axis for LOBPCG (fProxySSOR drops into TPre unchanged --
-    // R3, verified by the LobpcgAcceptsSSORPreconditioner test). Hypothesis under test (spec
-    // §3b/task brief): LOBPCG's per-iteration cost is dominated by Rayleigh-Ritz work, so SSOR's
-    // iteration cut might win wall-clock even though its OWN apply is 2-4x block-Jacobi's (R3
-    // finding) -- unlike plain PCG, where that apply-cost multiple was decisive. Only
+    // Krylov R3b: SSOR preconditioner axis for LOBPCG (fProxySSOR drops into TPre unchanged,
+    // verified by the LobpcgAcceptsSSORPreconditioner test). Hypothesis under test: LOBPCG's
+    // per-iteration cost is dominated by Rayleigh-Ritz work, so SSOR's iteration cut might win
+    // wall-clock even though its OWN apply is 2-4x block-Jacobi's -- unlike plain PCG, where that
+    // apply-cost multiple was decisive. Only
     // fProxyBlockJacobi got a dedicated `lobpcg(in fProxyBSR, in TPre, ...)` overload -- fProxySSOR
     // goes through the generic `lobpcg<TOp,TPre>` core via fProxyBSROperator, same as the
     // LobpcgAcceptsSSORPreconditioner test does.
@@ -129,7 +128,7 @@ namespace LinearAlgebra.Benchmarks
             return math.sqrt(num) / math.sqrt(math.max(den, 1e-30));
         }
 
-        // Krylov R3 (docs/draft-spec-krylov-optimization.md): the PCG rows grow a preconditioner
+        // Krylov R3: the PCG rows grow a preconditioner
         // axis (none/CG, block-Jacobi, SSOR). "none" is CG itself (algebraically PCG with M=I,
         // same recurrence) rather than a redundant literal PCG-identity row. The fixed-K/tol=0
         // rows below measure per-ITERATION wall-clock cost (every solver runs the full K budget,

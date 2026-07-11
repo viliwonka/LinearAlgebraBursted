@@ -366,7 +366,6 @@ namespace LinearAlgebra
                 else
                 {
                     // ==== partialReorth == false: FULL DGKS double-reorthogonalization ====
-                    // (byte-identical to the pre-change code path)
                     for (int j = 0; j < p; j++)
                     {
                         // ----- uBuf = A * VL[j,:] -----

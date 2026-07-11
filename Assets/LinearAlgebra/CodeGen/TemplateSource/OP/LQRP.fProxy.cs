@@ -21,35 +21,21 @@ namespace LinearAlgebra
     /// </summary>
     /// <remarks>
     /// Built natively on LQ's row-Householder kernels (genHouseholderRow / applyHouseholderRight /
-    /// applyQtFromReflectors, marked internal for this reason), NOT by transposing A and calling QRCP —
-    /// same no-transpose choice LQ itself made over transpose-to-QR (see docs/dev/perf-vectorization-lessons.md).
-    /// An UNBLOCKED per-reflector core, but with the partial ROW norms DOWNDATED (LAPACK
-    /// dgeqp3/dlaqps-style, guarded, transposed to rows — see lqrpKernel) rather than recomputed
-    /// exactly at every step: pivot selection needs the current row NORMS, not the current row DATA,
-    /// so tracking them incrementally removes the second O(m²n) pass the original exact-recompute cut
-    /// spent re-summing candidate norms. QRCP's LEVEL-3 machinery — the blocked dlaqps panel core with
-    /// its deferred F-matrix trailing update — is deliberately NOT mirrored here yet: it only earns its
-    /// bookkeeping at large sizes, and the primary consumer (rank-deficient IK Jacobians) is small
-    /// (task DOF × joint DOF). A blocked core could be added later if large wide matrices need it.
+    /// applyQtFromReflectors, marked internal for this reason), NOT by transposing A and calling QRCP.
+    /// An UNBLOCKED per-reflector core, with the partial ROW norms DOWNDATED (LAPACK dgeqp3/dlaqps-style,
+    /// guarded, transposed to rows — see lqrpKernel) rather than recomputed exactly at every step.
     ///
     /// Two rank-safe solves, exactly mirroring <see cref="QRCP"/> on the tall side. solveInPlace gives
     /// the BASIC solution (dependent rows dropped, w[r..] = 0). For a rank-deficient A that is the
-    /// minimum-norm solution ONLY when b is CONSISTENT (b ∈ range A): then the dropped equations are
-    /// automatically satisfied. For an INCONSISTENT (genuine least-squares) rank-deficient b it is NOT
-    /// minimum-norm — the below-diagonal block L21 couples the independent variables into the dropped
-    /// equations, the transpose-dual of QRCP's R12 coupling (NOTE: it is L21 that couples, NOT a
-    /// top-right block — L's top-right IS zero, but that is not where the coupling lives; the trailing
-    /// rows of L keep their full norm, only the trailing DIAGONAL is small). minNormSolveInPlace closes
-    /// that gap: it returns the pseudoinverse solution x = A⁺b (= SVD.pinvSolve) at direct cost, by
-    /// least-squares-solving the coupled m×r block K = [L11; L21] instead of just the top L11. So both
-    /// classes need a COD completion for the inconsistent rank-deficient case. At full row rank both
-    /// solves coincide with LQ.minNormSolve.
+    /// minimum-norm solution ONLY when b is CONSISTENT (b ∈ range A); for an INCONSISTENT (genuine
+    /// least-squares) rank-deficient b it is NOT minimum-norm. minNormSolveInPlace closes that gap: it
+    /// returns the pseudoinverse solution x = A⁺b (= SVD.pinvSolve) at direct cost. At full row rank
+    /// both solves coincide with LQ.minNormSolve.
     /// </remarks>
     public static partial class LQRP {
 
         // Sum of squares of a matrix row over columns [colStart, n) — row-major, so the segment is
-        // contiguous (unit stride). Four independent accumulators for ILP, mirroring LQ.dot4's rationale
-        // (a single running-sum reduction can't be auto-vectorised under strict FloatMode). Feeds the
+        // contiguous (unit stride). Four accumulators so the loop pipelines. Feeds the
         // one-time norm initialisation and the guard-triggered exact re-sum; pivot selection itself
         // reads the incrementally DOWNDATED vn1 rather than calling this per candidate.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -136,7 +122,7 @@ namespace LinearAlgebra
 
             // Relative tie tolerance for the (now UNSQUARED) row-norm pivot compare — dual of QRCP's
             // (8*m)*eps expressed for unsquared norms (sqrt(1+·)); the row-norm reduction runs over up
-            // to n columns, so the length bound is n here. Hoisted (n is fixed for the whole call).
+            // to n columns, so the length bound is n here. Computed once.
             fProxy pivotRelTol = (fProxy)(8 * n) * Consts.fProxyEpsilon;
             fProxy pivotRelTolRoot = math.sqrt((fProxy)1 + pivotRelTol);
 

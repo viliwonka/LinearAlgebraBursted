@@ -16,28 +16,10 @@ namespace LinearAlgebra.Sparse
     /// Editing the pattern after compression is out of scope for Phase 1 -- go back through the
     /// builder (re-stamping VALUES on a fixed pattern without a rebuild is a later phase).
     ///
-    /// MUTABLE-STATE INDIRECTION (fixes a use-after-free): the arena's fProxyBSRBuilder(...)
-    /// factory (see Arena.Sparse.fProxy.cs) registers a VALUE COPY of this struct in its own
-    /// tracking list so it can dispose it later. AddBlock/AddValue append to the triplet lists
-    /// via UnsafeList.Add, which reallocates the backing buffer once the initial capacityHint is
-    /// exceeded. If the three UnsafeLists were plain struct fields (as they used to be), that
-    /// reallocation would only be visible on the CALLER's copy of the builder -- the arena's
-    /// tracked copy would keep pointing at the freed pre-growth buffer, so arena.Dispose()/
-    /// Clear() would double-free / use-after-free it (reliably reproducible by adding more than
-    /// capacityHint triplets, e.g. via AddValue, then disposing the arena). Fixed by moving the
-    /// growable triplet state behind a single heap-allocated State* that every value-copy of
-    /// fProxyBSRBuilder shares (the pointer VALUE is copied around; there is exactly one
-    /// pointee) -- mirrors the ArenaCore* idiom Arena itself now uses internally (see Arena.cs:
-    /// Arena is a thin handle around a heap-allocated ArenaCore, so copying the handle can never
-    /// diverge from the one shared core), except the pointee here has to be heap-owned by the
-    /// builder itself (Malloc'd once in the constructor, Free'd once in Dispose) rather than
-    /// pointing at an already-stable address owned by someone else: nothing else owns a
-    /// persistent home for this mutable triplet state. A
-    /// NativeReference&lt;State&gt; wrapper would be an equivalent alternative; raw Malloc/Free
-    /// was chosen to avoid pulling in a second allocation-owning collection type for one field,
-    /// and keeps Dispose symmetric with the constructor's Malloc. Public API is unchanged --
-    /// AddBlock/AddValue mutate through _state, so growth is visible to every copy, including
-    /// the arena's.
+    /// The growable triplet state lives behind a single heap-allocated State* shared by every
+    /// value-copy of this struct (Malloc'd once in the constructor, Free'd once in Dispose), so
+    /// UnsafeList growth from AddBlock/AddValue is visible to every copy -- including the arena's
+    /// own tracked copy -- instead of diverging.
     /// </summary>
     public partial struct fProxyBSRBuilder : IDisposable
     {
@@ -79,9 +61,8 @@ namespace LinearAlgebra.Sparse
         /// </summary>
         public unsafe int TripletCount => _state->triBlockRow.Length;
 
-        // Value handle to the shared ArenaCore, not a raw pointer (see Arena.cs); copies stay live (FM2).
-        // Unrelated to the _state indirection above, which fixes failure mode 1 (growable-list
-        // relocation), not FM2.
+        // Value handle to the shared ArenaCore, not a raw pointer (see Arena.cs); copies stay live.
+        // Unrelated to the _state indirection above.
         private Arena _arena;
 
         public unsafe fProxyBSRBuilder(int blockRows, int blockCols, int BR, int BC, Allocator allocator, int capacityHint = 8)
@@ -303,15 +284,11 @@ namespace LinearAlgebra.Sparse
 
             var bsm = arena.fProxyBSR(BlockRows, BlockCols, BR, BC, nnzb, true, symmetric);
 
-            // Cache the three lists into local variables ONCE: RowPtr/ColInd/Values are now
-            // dual-mode PROPERTIES (fProxyBSR.cs, record-table migration), and a property's
-            // return value is not a variable, so `bsm.RowPtr[row] = ...` (an indexer SET chained
-            // off a property GET) no longer compiles (CS1612) -- same restriction that already
-            // applied to any other struct-valued property in C#. A local UnsafeList<T> copy is
-            // addressable and shares the SAME underlying native buffer (UnsafeList<T> is just a
-            // Ptr+length+capacity+allocator handle), so indexing through these locals still
-            // mutates bsm's real storage -- and it's cheaper too (no repeated property dispatch
-            // inside the loop below).
+            // Cache the three lists into local variables ONCE: RowPtr/ColInd/Values are dual-mode
+            // properties (fProxyBSR.cs), and a local UnsafeList<T> copy is addressable and shares
+            // the SAME underlying native buffer, so indexing through these locals still mutates
+            // bsm's real storage -- and it's cheaper too (no repeated property dispatch inside the
+            // loop below).
             var rowPtr = bsm.RowPtr;
             var colInd = bsm.ColInd;
             var values = bsm.Values;
@@ -357,15 +334,9 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Frees the shared triplet state and the State block itself. Safe to call more than
-        /// once on the SAME struct copy -- becomes a no-op after the first call, matching
-        /// UnsafeList's own idempotent Dispose -- which is what guards e.g. arena.Clear()
-        /// followed by arena.Dispose()'s own trailing Clear() pass. This guard is NOT designed
-        /// to protect against two DIFFERENT copies of this struct independently calling Dispose
-        /// on the same shared _state: the arena-owns-everything convention means only the
-        /// arena's own tracked copy ever does that (callers are not expected to dispose the
-        /// value returned by arena.fProxyBSRBuilder(...) themselves, same as fProxyMxN/
-        /// fProxyBSR/etc).
+        /// Frees the shared triplet state and the State block itself. Idempotent on the same
+        /// struct copy. The owning arena disposes builders it created; callers are not expected
+        /// to dispose the value returned by arena.fProxyBSRBuilder(...) themselves.
         /// </summary>
         public unsafe void Dispose()
         {

@@ -131,15 +131,10 @@ namespace LinearAlgebra
         // ---- table-indexed overloads ----
 
         /// <summary>
-        /// In-place forward FFT using a precomputed twiddle table. Auto-dispatches by length:
-        ///   IsPowerOf4(n)     → FftCoreRadix4      (true radix-4, log4(N) passes)
-        ///   else IsPow2(n)    → FftCoreRadix4Mixed (one radix-2 stage + two radix-4 sub-FFTs)
-        /// These two cases cover EVERY power of two, so there is no plain-radix-2 size class here.
-        /// The final else is reached only by a non-power-of-two length (not a valid FFT size)
-        /// and throws — use dft for arbitrary N.
-        /// ws must be sized for re.N (build via Arena.fProxyFFTCache(N)); it must contain the
-        /// full-circle twiddle table required by the radix-4 paths. Both arrays must have the same
-        /// length, which must be a power of two.
+        /// In-place forward FFT for any power-of-two length, using a precomputed twiddle table;
+        /// throws for a non-power-of-two length (use dft for arbitrary N). ws must be sized for re.N
+        /// (build via Arena.fProxyFFTCache(N)); it must contain the full-circle twiddle table required
+        /// by the radix-4 dispatch. Both arrays must have the same length, which must be a power of two.
         /// </summary>
         public static void fft(ref fProxyN re, ref fProxyN im, in fProxyFFTCache ws)
         {
@@ -168,11 +163,8 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// In-place inverse FFT using a precomputed twiddle table. Auto-dispatches by length,
-        /// same as fft: IsPowerOf4(n) → FftCoreRadix4; else IsPow2(n) → FftCoreRadix4Mixed.
-        /// Those two cover every power of two; the final else is the non-power-of-two guard
-        /// (throws — use idft for arbitrary N).
-        /// Divides by N so that ifft(fft(x, ws), ws) == x. ws must be sized for re.N.
+        /// In-place inverse FFT, same dispatch as fft. Divides by N so that ifft(fft(x, ws), ws) == x.
+        /// ws must be sized for re.N.
         /// </summary>
         public static void ifft(ref fProxyN re, ref fProxyN im, in fProxyFFTCache ws)
         {

@@ -70,8 +70,8 @@ exact GKL route beats the randomized sketch:
 The default `maxIter` scales with the problem: `Consts.sweepBudget(n) = max(75, 6·n)`
 (LAPACK dbdsqr's MAXITR=6 per-value heuristic with a small-n backstop). On this
 benchmark's deeply graded spectrum (σᵢ = 100·0.95^i, tail ≈4×10⁻¹² at n=512) even
-double precision converges comfortably inside that default — the convergence battery
-(`ConvergenceBudgetTests`) asserts ≤¼ of the budget is used across graded, clustered,
+double precision converges comfortably inside that default — verified by an internal
+convergence-budget test suite asserting ≤¼ of the budget is used across graded, clustered,
 and random spectra up to n=1024. On non-convergence the returned `SVDInfo`/`EigenInfo`
 reports `MaxIterations` (and SVD-backed solvers report `DirectSolveStatus.NotConverged`)
 instead of silently returning garbage.

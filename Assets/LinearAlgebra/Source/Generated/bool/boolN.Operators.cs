@@ -1,8 +1,6 @@
 namespace LinearAlgebra
 {
 
-    // can optimize scalar bool operations by not computing (like vec & false is always false)
-
     public partial struct boolN {
 
         #region SCALAR OPERATIONS

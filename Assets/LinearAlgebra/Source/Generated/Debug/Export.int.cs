@@ -6,18 +6,10 @@ namespace LinearAlgebra
 {
     // Managed (allocating, NON-Burst) text / CSV exporters for int/short/long matrices and
     // vectors, mirroring Debug/Export.fProxy.cs. Integers have no round-trip precision concerns
-    // (ToString is always exact), so there is no "G9 vs G17"-style per-type format choice needed --
-    // only the cast off the int PROXY struct (which -- like fProxy, see proxyStructs.cs -- only
-    // exposes a parameterless ToString()) is required, via the same per-type "choose" codegen
-    // marker (see GenUtils.cs) used in Export.fProxy.cs: casts to (int) / (short) / (long)
-    // at the proxy-compile stage (int defines an implicit conversion to int, so the int choice
-    // is a direct identity cast there) and an identity cast after codegen substitution.
-    // (Do NOT write the literal choose-marker token in this comment -- the codegen parser is
-    //  content-sensitive and would try to expand it.)
-    //
-    // Unlike Print.Log -- which is Burst-callable but capped at a 4 KB FixedString and SILENTLY
-    // TRUNCATES past it -- these build an unbounded System.Text.StringBuilder, so they never
-    // truncate. Call them from managed / editor code only, NEVER from inside a Burst job.
+    // (ToString is always exact); only the cast off the int proxy struct is required, via the
+    // same per-type "choose" codegen marker used in Export.fProxy.cs. Unbounded StringBuilder --
+    // unlike Print.Log's 4 KB FixedString, these never truncate. Managed / editor code only, never
+    // from inside a Burst job. Codegen internals: see Debug/DEVLOG.md.
     //
         public static partial class Print
     {

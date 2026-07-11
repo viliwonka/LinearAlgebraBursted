@@ -15,64 +15,30 @@ namespace LinearAlgebra
     {
         // ============================================================================================
         // Frisch-Newton exact LAD / quantile-regression solver (Portnoy & Koenker 1997, "The Gaussian
-        // Hare and the Laplacian Tortoise"). A structure-exploiting primal-dual interior point on the
-        // LAD DUAL, working directly on the original m x n design A -- no LP reformulation (no 2n+2m
-        // blow-up like LP.lad's simplex/interior/revised/dual backends), no m x m matrix: every Newton
-        // step is an n x n weighted normal solve built by ONE pass over A.
+        // Hare and the Laplacian Tortoise"). Port of Daniel Morillo & Roger Koenker's `rq_fnm` /
+        // `lp_fnm`. A structure-exploiting primal-dual interior point on the LAD DUAL, working
+        // directly on the original m x n design A -- no LP reformulation, no m x m matrix: every
+        // Newton step is an n x n weighted normal solve built by ONE pass over A.
         //
-        // Ported and verified line-by-line against the canonical reference: Daniel Morillo & Roger
-        // Koenker's `rq_fnm` / `lp_fnm` (originally Ox, translated to MATLAB by Paul Eilers 1999,
-        // modified by Koenker April 2001), fetched from
-        // https://github.com/karenamckinnon/summer-temperature-distributions/blob/master/rq.m
-        // (mirrors the file distributed with R's quantreg package; the same algorithm is also in
-        // quantreg's Fortran rqfnb.f). Every update formula below (predictor, centering parameter,
-        // corrector, step-length ratio test, the 0.9995 factor) is that source's, not reconstructed
-        // from memory -- see the derivation trail in docs/spec-lad-frisch-newton.md's authoring history.
-        //
-        // ---- Problem, dual, and the SIGN CONVENTION (get this wrong and every other formula is moot)
-        // ----
-        // Quantile regression at level tau in (0,1) (tau=0.5 == LAD up to a factor 2):
-        //     min_x  sum_i rho_tau(b_i - A_i.x),   rho_tau(u) = u*(tau - 1[u<0])
-        // Its dual (rq_fnm's construction): max_a b.a  s.t. Aᵀa = (1-tau)Aᵀ1,  a in [0,1]^m -- solved by
-        // lp_fnm as  min c.v  s.t. Ãv = b̃, 0<=v<=1  with Ã=Aᵀ, c=-b, b̃=Aᵀ((1-tau)1), and the LP's own
-        // primal variable v IS this dual weight a (rq_fnm's outer "x"/"a" argument doubles as both the
-        // RHS-defining vector AND v's initial interior point). lp_fnm's OUTPUT variable is literally
-        // named "y" -- the equality multipliers of Ãv=b̃ -- and the caller negates it:
+        // SIGN CONVENTION (get this wrong and every other formula is moot): lp_fnm's OUTPUT variable
+        // is literally named "y" -- the equality multipliers of Ãv=b̃ -- and the caller negates it:
         // `b_coef = -lp_fnm(...)'`. So the regression coefficients returned by this core are `x = -y`,
         // y being this file's own "y" (n-vector). Get this sign backwards and the fit comes out
-        // reflected through zero; verified against LadStackloss's published coefficients in testing.
+        // reflected through zero.
         //
-        // ---- Kernel: reuse, per the standing rule ----
-        // The n x n normal matrix AᵀQA (Q = diag(q), q_i = 1/(z_i/a_i + w_i/s_i)) is built by
-        // BuildATQA below, ONE row-streaming pass over A (unit-stride reads, matching A's row-major
-        // storage -- see the matrix row-major convention note) -- the mirror of LP.InteriorPoint's
-        // BuildNormal, just contracting over the opposite axis (rows/m here vs columns/nv there) to
-        // land on an n x n shape instead of m x m.
+        // Factorization: CHOP (pivoted/rank-revealing Cholesky), NOT plain CHO -- the IPM weights q_i
+        // polarize toward 0/infinity as (a,s) approach the [0,1] boundary near convergence, so AᵀQA
+        // becomes numerically near-semidefinite exactly in the endgame, in float. Plain CHO hard-fails
+        // the instant a pivot goes non-positive; CHOP instead reports a (possibly reduced) numerical
+        // rank and CHOP.decompSolve's rank-deficient branch still returns a well-defined minimum-norm
+        // direction. One CHOP.decomp per iteration, reused for both the affine-predictor and the
+        // centering-corrector solve via CHOP.decompSolve. The one-time least-squares INIT stays on
+        // plain CHO: it runs once, outside the loop, on the UNWEIGHTED normal matrix AᵀA, which has
+        // none of the endgame's polarization problem.
         //
-        // Factorization: CHOP (pivoted/rank-revealing Cholesky), NOT plain CHO, per this feature's
-        // review -- the IPM weights q_i polarize toward 0/infinity as (a,s) approach the [0,1]
-        // boundary near convergence, so AᵀQA becomes numerically near-semidefinite exactly in the
-        // endgame the exact-fit degenerate test (docs/spec-lad-frisch-newton.md test 4) exercises
-        // hardest, in float. Plain CHO hard-fails the instant a pivot goes non-positive; CHOP instead
-        // reports a (possibly reduced) numerical rank and CHOP.decompSolve's rank-deficient branch
-        // still returns a well-defined minimum-norm direction (RankInfo.Solved is true for BOTH
-        // Success and RankDeficient) -- exactly the graceful degradation this endgame needs instead of
-        // a NaN blow-up. Pivoting cost is O(n) selection per column, negligible at LAD's typical
-        // n (a handful to a few dozen coefficients). One CHOP.decomp (with its own bump-retry ladder
-        // on a genuine DirectSolveStatus.Indefinite, mirroring LP.InteriorPoint's CHO bump-retry) per
-        // iteration, reused for BOTH the affine-predictor and the centering-corrector solve via
-        // CHOP.decompSolve -- "two solves, one factor", same contract as every other IPM core in this
-        // library. The one-time least-squares INIT (below) stays on plain CHO: it runs once, outside
-        // the loop, on the UNWEIGHTED (q=1) normal matrix AᵀA, which has none of the endgame's
-        // polarization problem.
-        //
-        // Best-iterate safeguard: mirrors LP.InteriorPoint -- yBest tracks the multiplier vector at the
-        // smallest duality gap seen (a NaN/Inf blow-up or an unrecoverable Indefinite factorization
-        // stops the loop but never corrupts the returned x). Iteration cap default 50 (rq_fnm's own
-        // max_it), duality-gap tolerance derived from Consts.floatSqrtEps (double: ~1.49e-8, matching
-        // the spec's "1e-8 double-equivalent"; float: ~3.45e-4), scaled by (1+||b||) for problem-scale
-        // robustness (the same `* (1.0 + scale)` idiom simplexCore/RevisedSimplex use for their own
-        // tolerances).
+        // Best-iterate safeguard: mirrors LP.InteriorPoint -- yBest tracks the multiplier vector at
+        // the smallest duality gap seen (a NaN/Inf blow-up or an unrecoverable Indefinite
+        // factorization stops the loop but never corrupts the returned x).
         //
         // Job-safe: all scratch is Allocator.Temp, disposed on every return path.
         // ============================================================================================
@@ -84,7 +50,7 @@ namespace LinearAlgebra
         /// original m x n design: every Newton step is an n x n weighted normal solve (pivoted
         /// Cholesky, library CHOP) built by one pass over A -- never a (2n+2m)-variable LP
         /// reformulation like <see cref="lad"/>'s simplex/interior/revised/dual backends, and never an
-        /// m x m matrix. See docs/spec-lad-frisch-newton.md.
+        /// m x m matrix.
         ///
         /// <see cref="objective"/> is the L1 residual ‖A x − b‖₁, recomputed from the returned x
         /// (honest, not the internal duality gap -- an internal gap can under-report the true residual
@@ -247,8 +213,8 @@ namespace LinearAlgebra
             while (status != LPStatus.Optimal && iters < budget)
             {
                 // 1. diagonal weights q_i = 1 / (z_i/a_i + w_i/s_i), and zw_i = z_i - w_i (used
-                // together to build Av = q.*zw a few lines below). Fused into ONE pass over m (was two
-                // separate loops, each re-reading z[i]/w[i]) -- see BuildFNWeights.
+                // together to build Av = q.*zw a few lines below), computed in one pass over m -- see
+                // BuildFNWeights.
                 unsafe { BuildFNWeights(z.Data.Ptr, a.Data.Ptr, w.Data.Ptr, s.Data.Ptr, q.Data.Ptr, zw.Data.Ptr, m); }
 
                 // 2. the kernel: M = AᵀQA (one row-streaming pass over A), pivoted-Cholesky factor.
@@ -374,12 +340,7 @@ namespace LinearAlgebra
         // opposite axis (m/rows here vs nv/columns there) to land on this n x n shape.
         //
         // The inner "M[r,c] += v*A[i,c]" sweep over c in [r,n) is an AXPY (M's row r += v * A's row i,
-        // both read/written unit-stride in this row-major layout) -- routed through UnsafeOP.axpy (the
-        // [NoAlias] vectorising pointer path GEMM/CHO/LU/CHOP already use) instead of the struct-
-        // indexer scalar loop. BIT-IDENTICAL: same operations, same order, just without the aliasing
-        // ambiguity that kept Burst from vectorizing the indexer form. n (the LAD coefficient count) is
-        // typically small, so the per-call SIMD headroom here is modest; the win is mostly the removed
-        // indexer/bounds-adjacent overhead paid once per of the up-to-m outer-loop rows.
+        // both read/written unit-stride in this row-major layout), routed through UnsafeOP.axpy.
         static unsafe void BuildATQA(floatMxN A, floatN q, floatMxN M, int m, int n, float reg)
         {
             for (int r = 0; r < n; r++)
@@ -409,12 +370,9 @@ namespace LinearAlgebra
         }
 
         // q[i] = 1/(z[i]/a[i] + w[i]/s[i]);  zw[i] = z[i]-w[i] -- FN's per-iteration IPM barrier weight
-        // and the affine-predictor's z-w term, fused into ONE pass over m instead of the two separate
-        // loops the reference port used (each of which re-read z[i]/w[i] independently). [NoAlias] is
-        // truthful (six genuinely distinct Allocator.Temp buffers), which is what lets Burst vectorize
-        // this elementwise (no-reduction) formula the same way UnsafeOP's own [NoAlias] kernels do (see
-        // docs/dev/perf-vectorization-lessons.md point 2). BIT-IDENTICAL to the two original loops --
-        // same expressions, same per-element values, only the number of passes over z/a/w/s changes.
+        // and the affine-predictor's z-w term, computed in one pass over m. [NoAlias] is truthful (six
+        // genuinely distinct Allocator.Temp buffers), which is what lets Burst vectorize this
+        // elementwise (no-reduction) formula.
         [MethodImpl(MethodImplOptions.NoInlining)]
         static unsafe void BuildFNWeights([NoAlias] float* z, [NoAlias] float* a, [NoAlias] float* w, [NoAlias] float* s,
                                           [NoAlias] float* q, [NoAlias] float* zw, int m)

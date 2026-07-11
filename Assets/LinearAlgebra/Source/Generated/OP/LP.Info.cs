@@ -39,20 +39,19 @@ namespace LinearAlgebra
         /// reuses the Cholesky normal-equation stack; converges to an interior optimum.</summary>
         InteriorPoint = 1,
 
-        /// <summary>Bounded-variable PRIMAL revised simplex over an LU-factored basis (HiGHS-lineage,
-        /// stage 1 of docs/spec-revised-simplex.md): FTRAN/BTRAN + a product-form-of-the-inverse eta
-        /// file replace the tableau's O(mn) per-pivot update. Exact vertex solution like
-        /// <see cref="Simplex"/>, with native bounded variables and periodic refactorization instead of
-        /// tableau error accumulation.</summary>
+        /// <summary>Bounded-variable PRIMAL revised simplex over an LU-factored basis (HiGHS-lineage):
+        /// FTRAN/BTRAN + a product-form-of-the-inverse eta file replace the tableau's O(mn) per-pivot
+        /// update. Exact vertex solution like <see cref="Simplex"/>, with native bounded variables and
+        /// periodic refactorization instead of tableau error accumulation.</summary>
         RevisedSimplex = 2,
 
-        /// <summary>Bounded-variable DUAL revised simplex (HiGHS-lineage, stage 2 of
-        /// docs/spec-revised-simplex.md): dual steepest-edge pricing (Forrest-Goldfarb) + a long-step
-        /// (bound-flipping) Harris ratio test drive an initially dual-feasible basis to primal
-        /// feasibility, with artificial-bounds dual phase 1 and HiGHS-style cost perturbation for
-        /// degenerate problems; the terminal basis is handed to <see cref="RevisedSimplex"/>'s primal
-        /// core as a cleanup pass -- the same composition HiGHS itself uses. Exact vertex solution, same
-        /// kernel layer (FTRAN/BTRAN/eta file) as <see cref="RevisedSimplex"/>.</summary>
+        /// <summary>Bounded-variable DUAL revised simplex (HiGHS-lineage): dual steepest-edge pricing
+        /// (Forrest-Goldfarb) + a long-step (bound-flipping) Harris ratio test drive an initially
+        /// dual-feasible basis to primal feasibility, with artificial-bounds dual phase 1 and
+        /// HiGHS-style cost perturbation for degenerate problems; the terminal basis is handed to
+        /// <see cref="RevisedSimplex"/>'s primal core as a cleanup pass -- the same composition HiGHS
+        /// itself uses. Exact vertex solution, same kernel layer (FTRAN/BTRAN/eta file) as
+        /// <see cref="RevisedSimplex"/>.</summary>
         DualSimplex = 3,
     }
 
@@ -163,53 +162,34 @@ namespace LinearAlgebra
     /// Captures the revised/dual simplex's COMPLETE basis state -- everything <see cref="LP.solve"/>
     /// needs to seed a re-solve from an existing vertex instead of the all-logical start, via the
     /// <c>ref LPBasis</c> overload of <c>LP.solve</c> (LP.fProxy.cs). Type-agnostic (plain byte/int
-    /// buffers, no fProxy field), so it lives here rather than in either per-dtype template -- same
-    /// CS0102 reasoning as <see cref="ConstraintSense"/>/<see cref="LPMethod"/> above.
+    /// buffers, no fProxy field), so it lives here rather than in either per-dtype template.
     ///
-    /// Computational-form indexing throughout (see LP.RevisedSimplex.fProxy.cs's header): a problem
-    /// with n structural variables and m constraints has N_total = n + m variables (n structural +
-    /// m logical/slack); <see cref="status"/> tags each of the N_total variables one of
-    /// <c>LP.STATUS_BASIC</c> / <c>LP.STATUS_AT_LOWER</c> / <c>LP.STATUS_AT_UPPER</c> (a nonbasic
-    /// variable always rests exactly on the tagged bound), and <see cref="basis"/>[i] is the variable
-    /// index (into that same N_total-wide space) basic in row i.
+    /// Computational-form indexing: a problem with n structural variables and m constraints has
+    /// N_total = n + m variables (n structural + m logical/slack); <see cref="status"/> tags each of
+    /// the N_total variables one of <c>LP.STATUS_BASIC</c> / <c>LP.STATUS_AT_LOWER</c> /
+    /// <c>LP.STATUS_AT_UPPER</c>, and <see cref="basis"/>[i] is the variable index basic in row i.
     ///
     /// RE-SOLVE USE CASE: solve an LP, capture its terminal basis, perturb the problem (a tightened
-    /// bound, a changed rhs -- anything that leaves the old basis dual-feasible or close to it), then
-    /// re-solve with the SAME basis via <c>LP.solve(..., ref basis)</c>. The dual simplex only needs
-    /// to repair primal feasibility from there (a handful of pivots) instead of rebuilding a vertex
-    /// from scratch -- the same mechanism that makes the dual simplex branch-and-bound's workhorse (a
-    /// branching bound change keeps the parent basis dual-feasible; see docs/draft-spec-mip.md).
+    /// bound, a changed rhs), then re-solve with the SAME basis via <c>LP.solve(..., ref basis)</c> --
+    /// the dual simplex only needs to repair primal feasibility from there (a handful of pivots)
+    /// instead of rebuilding a vertex from scratch.
     ///
-    /// FACTOR/WEIGHT PERSISTENCE: this struct stays dtype-agnostic on purpose (see the class doc
-    /// comment above), so the per-call FIXED costs a warm re-solve still pays -- rebuilding the
-    /// computational form and refactorizing the basis from scratch every call -- are NOT captured
-    /// here. <c>LP.solve(..., ref basis, ref fProxyLPCache cache)</c> (LP.fProxy.cs) pairs an
-    /// <c>LPBasis</c> with a per-dtype <c>fProxyLPCache</c> (LP.Cache.fProxy.cs) that persists exactly
-    /// that state -- see that struct's own doc comment for the invalidation contract.
+    /// FACTOR/WEIGHT PERSISTENCE: this struct stays dtype-agnostic, so the per-call fixed costs a
+    /// warm re-solve still pays (rebuilding the computational form, refactorizing the basis) are NOT
+    /// captured here -- pair it with a per-dtype <c>fProxyLPCache</c> (LP.Cache.fProxy.cs) via
+    /// <c>LP.solve(..., ref basis, ref fProxyLPCache cache)</c> for that.
     ///
     /// LIFECYCLE: user-allocated, mirroring <see cref="Pivot"/>'s own <c>(size, Allocator)</c> +
     /// <see cref="Dispose"/> pattern -- no arena requirement, since this needs to persist ACROSS
-    /// separate top-level solve calls, exactly the standalone tier the fProxy matrix/vector types
-    /// already support alongside their arena-backed tier. Three ways to arrive at
-    /// <c>LP.solve(..., ref basis)</c>, in increasing order of caller control:
-    ///   * <c>default(LPBasis)</c> (or any instance that is not <see cref="IsCreated"/>) -- treated
-    ///     as "no warm state": the call runs the ordinary cold solve and ALLOCATES this struct itself
-    ///     (<c>Allocator.Persistent</c> -- the only lifetime that survives past the call) before
-    ///     writing the terminal basis into it. Convenient, but a Burst JOB CANNOT do this allocation
-    ///     (Unity's safety checks only permit a job to create <c>Allocator.Temp</c> containers) -- this
-    ///     path is MANAGED-THREAD ONLY. The caller then owns the result and must call
-    ///     <see cref="Dispose"/> when done reusing it.
-    ///   * <c>new LPBasis(n, m, allocator)</c> constructed explicitly but left otherwise untouched
-    ///     (<see cref="populated"/> stays false, its default) -- job-safe with e.g.
-    ///     <c>Allocator.Temp</c>: no allocation happens inside the solve call, which instead seeds the
-    ///     ALREADY-ALLOCATED buffers with the all-logical start itself (the caller never needs the
-    ///     internal status-tag constants for this -- <c>LP.solve</c> already has them) and marks it
-    ///     <see cref="populated"/>. This is the job-safe way to get a capturable basis out of a cold
-    ///     solve.
-    ///   * A basis that is already <see cref="populated"/> (the result of an earlier
-    ///     <c>LP.solve(..., ref basis)</c> call, cold or warm, on ANY same-shape problem) --
-    ///     dimension-validated then used AS THE STARTING POINT; see that method's doc comment for the
-    ///     dimension check and dual-feasibility repair this triggers.
+    /// separate top-level solve calls. Three ways to arrive at <c>LP.solve(..., ref basis)</c>:
+    ///   * <c>default(LPBasis)</c> (not <see cref="IsCreated"/>): cold solve, ALLOCATES this struct
+    ///     itself (<c>Allocator.Persistent</c>, MANAGED-THREAD ONLY -- a Burst job cannot make this
+    ///     allocation) before writing the terminal basis into it. Caller must <see cref="Dispose"/>.
+    ///   * <c>new LPBasis(n, m, allocator)</c>, otherwise untouched (<see cref="populated"/> false):
+    ///     job-safe (e.g. <c>Allocator.Temp</c>) -- no allocation inside the solve call, which seeds
+    ///     the existing buffers with the all-logical start and marks it <see cref="populated"/>.
+    ///   * Already <see cref="populated"/> (result of an earlier call, cold or warm, on ANY
+    ///     same-shape problem): dimension-validated then used AS THE STARTING POINT.
     /// </summary>
     public struct LPBasis
     {
@@ -311,18 +291,15 @@ namespace LinearAlgebra
         internal const byte STATUS_AT_UPPER = 2;
 
         // NOTE: the LAD hybrid-default routing threshold (BR vs FN in LP.lad's method-less overload)
-        // is NOT here -- after the 2026-07-09 optimization round the measured crossover became
-        // per-dtype (float 512 / double 4096), so it lives as an inline /*+choose[..|..]*/ literal on
-        // the dispatch expression in LP.fProxy.cs, where each generated build gets its own value. A
-        // type-agnostic const here cannot express that.
+        // is NOT here -- the crossover is per-dtype, so it lives as an inline /*+choose[..|..]*/
+        // literal on the dispatch expression in LP.fProxy.cs, where each generated build gets its own
+        // value. A type-agnostic const here cannot express that.
 
         // LP.ladBR's (LP.BarrodaleRoberts.fProxy.cs) ratio-test candidate-consumption gate: above this
         // many candidates in a single entering-column's ratio test, sort them once (O(nCand log nCand))
         // instead of the original repeated-linear-scan-for-minimum (O(nCand^2)) -- see that file's own
         // comment at the call site for the full rationale. Type-agnostic (plain int), same CS0102
-        // reasoning as REFACTOR_INTERVAL above. Set comfortably above every m this library's test
-        // suite exercises for BR (<=192) so all currently-tested instances are provably unaffected;
-        // comfortably below the sizes (1024-16384) where the quadratic behavior was measured.
+        // reasoning as REFACTOR_INTERVAL above.
         internal const int BR_CAND_SORT_THRESHOLD = 256;
     }
 }

@@ -44,7 +44,7 @@ public class floatLPTests
             RevisedMixedSense,  // revised simplex, mixed <=/>=/<= senses (phase 1) -> (1,3), obj -7
             RevisedLad,         // revised-simplex LP.lad == tableau-simplex LP.lad (outlier set)
 
-            // ==== LPMethod.DualSimplex, stage 2 of docs/spec-revised-simplex.md ====
+            // ==== LPMethod.DualSimplex ====
             DualWyndorGlass,    // dual simplex, Wyndor Glass                 -> (2,6), Z 36
             DualRandomN24,      // dual vs tableau simplex, random feasible LP n=24
             DualRandomN48,      // dual vs tableau simplex, random feasible LP n=48
@@ -55,7 +55,7 @@ public class floatLPTests
             RevisedAndDualRandomN96, // n=96 (>64 pivots): both revised backends vs tableau, 3 seeds
             RevisedDenseCovering, // revised simplex, dense covering LP (Ax>=b, x>=0, A,b,c>0) vs tableau
 
-            // ==== LPBasis warm-start (docs/draft-spec-mip.md stage 1) -- job-safe via the
+            // ==== LPBasis warm-start -- job-safe via the
             // created-but-unpopulated `new LPBasis(n,m,Allocator.Temp)` cold-seed path (LP.solve seeds the
             // all-logical start into the already-allocated Temp buffers, no non-Temp allocation). The
             // dimension-mismatch THROW test stays a managed [Test] at the bottom (Assert.Catch). ====
@@ -63,7 +63,7 @@ public class floatLPTests
             DualWarmEmptyBitIdentical, // (c) unpopulated-Temp cold-seed path == LPMethod.DualSimplex, bit-identical
             DualWarmStaleBasisCorrect, // (e) stale/garbage seed basis still reaches the correct optimum
 
-            // ==== floatLPCache factor/weight persistence (docs/spec-lpbasis-persistence.md acceptance 3).
+            // ==== floatLPCache factor/weight persistence.
             // The contract-violation THROW case (3b) is a managed [Test] at the bottom (Assert.Catch --
             // VerifyLPCacheHit throws inside LP.solve under ENABLE_UNITY_COLLECTIONS_CHECKS, unassertable
             // from a Burst job). ====
@@ -71,7 +71,7 @@ public class floatLPTests
             DualWarmCacheDeterministic,         // (3c) two identical cache chains bit-identical x/obj/iters
             DualWarmCacheCrossProblemFallback,  // (3d) reused basis+cache on a different same-shape LP (bumped) -> correct
 
-            // ==== LP.ladFN / ladFrischNewtonCore, docs/spec-lad-frisch-newton.md's Tests section ====
+            // ==== LP.ladFN / ladFrischNewtonCore ====
             LadFNvsOracleM48,   // FN L1 residual == exact LP.lad oracle, random+outliers, m=48 n=4
             LadFNvsOracleM96,   // ...m=96
             LadFNvsOracleM192,  // ...m=192
@@ -83,10 +83,9 @@ public class floatLPTests
             // assembly, so those live in the hand-written SourceTests/LadFrischNewtonQuantileTests.cs
             // (same convention as QRCPDowndateTests' note / ChunkedRecordTableTests.cs).
 
-            // ==== LP.ladBR / ladBarrodaleRobertsCore, docs/spec-lad-barrodale-roberts.md's Tests
-            // section (6 items). BR is a specialized primal simplex converging to an EXACT VERTEX
-            // (n residuals exactly zero), so its optima match the exact-vertex Lad*/Revised* tolerances,
-            // NOT the interior-point LadFN*/Ip* ones. ====
+            // ==== LP.ladBR / ladBarrodaleRobertsCore. BR is a specialized primal simplex converging to
+            // an EXACT VERTEX (n residuals exactly zero), so its optima match the exact-vertex
+            // Lad*/Revised* tolerances, NOT the interior-point LadFN*/Ip* ones. ====
             LadBRvsOracleM48,   // BR L1 residual == exact LP.lad oracle (== ladFN too), random+outliers, m=48 n=4
             LadBRvsOracleM96,   // ...m=96
             LadBRvsOracleM192,  // ...m=192
@@ -673,8 +672,8 @@ public class floatLPTests
             senses.Dispose(); arena.Dispose();
         }
 
-        // ==== LPMethod.RevisedSimplex (bounded-variable primal revised simplex, stage 1 of
-        // docs/spec-revised-simplex.md) -- validated against the tableau simplex baseline ====
+        // ==== LPMethod.RevisedSimplex (bounded-variable primal revised simplex) -- validated against
+        // the tableau simplex baseline ====
 
         // Wyndor Glass known-answer vertex, via the revised-simplex backend instead of the tableau.
         void RevisedWyndorGlass()
@@ -782,9 +781,9 @@ public class floatLPTests
             arena.Dispose();
         }
 
-        // ==== LPMethod.DualSimplex (bounded-variable dual revised simplex, stage 2 of
-        // docs/spec-revised-simplex.md) -- dual steepest edge + long-step Harris/BFRT ratio test +
-        // artificial-bounds dual phase 1, validated against the tableau simplex baseline ====
+        // ==== LPMethod.DualSimplex (bounded-variable dual revised simplex) -- dual steepest edge +
+        // long-step Harris/BFRT ratio test + artificial-bounds dual phase 1, validated against the
+        // tableau simplex baseline ====
 
         // Wyndor Glass known-answer vertex, via the dual-simplex backend.
         void DualWyndorGlass()
@@ -1050,7 +1049,7 @@ public class floatLPTests
             senses.Dispose(); arena.Dispose();
         }
 
-        // ==== LPBasis warm-start (docs/draft-spec-mip.md stage 1) ====
+        // ==== LPBasis warm-start ====
         // The dual simplex's reduced costs depend ONLY on cost/A (y = B^-T c_B, d_j = cost[j] - A_j.y),
         // NEVER on b -- so an rhs-only perturbation leaves a previously dual-optimal basis EXACTLY
         // dual-feasible. The warm re-solve then needs only PRIMAL-feasibility-restoring pivots (few),
@@ -1217,7 +1216,7 @@ public class floatLPTests
             basisA.Dispose(); senses.Dispose(); arena.Dispose();
         }
 
-        // ==== floatLPCache factor/weight persistence (docs/spec-lpbasis-persistence.md acceptance 3) ====
+        // ==== floatLPCache factor/weight persistence ====
         // Same Section-1-style random feasible LP family as DualVsSimplexRandom (m = n/2, A in [0,1] so
         // bounded, b = A*x0 + slack so x0 feasible, all rows <=, c in [-1,1]). A cache allocated
         // Allocator.Temp is job-safe (all-Temp buffers) and starts unpopulated (first solve is cold, then
@@ -1381,11 +1380,11 @@ public class floatLPTests
         }
 
         // ==== Frisch-Newton exact LAD / quantile regression (LP.ladFN, LP.ladFrischNewtonCore) ====
-        // docs/spec-lad-frisch-newton.md's Tests section (4 items). FN is a primal-dual INTERIOR POINT
-        // on the LAD dual: it approaches (never lands exactly on) the degenerate optimal vertex, so
-        // tolerances follow the existing Ip* interior-point tests, not the exact-vertex Lad*/Revised*/
-        // Dual* ones -- EXCEPT item 1 (spec-mandated 1e-6/1e-3 rel L1-residual match) and item 2 (spec
-        // ties it to LadStackloss's own published-coefficient 5e-2).
+        // FN is a primal-dual INTERIOR POINT on the LAD dual: it approaches (never lands exactly on) the
+        // degenerate optimal vertex, so tolerances follow the existing Ip* interior-point tests, not the
+        // exact-vertex Lad*/Revised*/Dual* ones -- EXCEPT the L1-residual match (1e-6 rel double / 1e-3
+        // rel float) and the LadStackloss comparison, which ties to its own published-coefficient 5e-2
+        // tolerance.
 
         // Item 1. FN L1 residual matches the exact LP.lad oracle on random overdetermined instances with
         // gross outliers (the SAME construction LPBenchmark.float.cs's SectionLadFloat uses: A random
@@ -1470,11 +1469,11 @@ public class floatLPTests
         }
 
         // ==== Barrodale-Roberts exact LAD (LP.ladBR, LP.ladBarrodaleRobertsCore) ====
-        // docs/spec-lad-barrodale-roberts.md's Tests section (6 items). BR is a specialized primal
-        // simplex that lands EXACTLY on the optimal vertex (n residuals exactly zero to roundoff), so it
-        // matches the exact-vertex Lad*/Revised* tolerances -- 1e-6 rel double / 1e-2 rel float -- NOT
-        // the interior-point LadFN*/Ip* ones. It is also an independent second exact engine and a
-        // cross-check oracle for ladFN (BR combinatorial pivoting vs FN interior point fail differently).
+        // BR is a specialized primal simplex that lands EXACTLY on the optimal vertex (n residuals
+        // exactly zero to roundoff), so it matches the exact-vertex Lad*/Revised* tolerances -- 1e-6 rel
+        // double / 1e-2 rel float -- NOT the interior-point LadFN*/Ip* ones. It is also an independent
+        // second exact engine and a cross-check oracle for ladFN (BR combinatorial pivoting vs FN
+        // interior point fail differently).
 
         // Item 1. BR L1 residual matches BOTH the exact LP.lad oracle AND ladFN on the SAME random
         // overdetermined + gross-outlier construction LadFNvsOracle uses (A random in [-1,1],
@@ -1800,7 +1799,7 @@ public class floatLPTests
         basis.Dispose(); senses.Dispose(); arena.Dispose();
     }
 
-    // (3b) CONTRACT VIOLATION (docs/spec-lpbasis-persistence.md): mutating an A coefficient WITHOUT
+    // (3b) CONTRACT VIOLATION: mutating an A coefficient WITHOUT
     // bumping cache.matrixVersion must be caught by the checks-build verification (VerifyLPCacheHit) on
     // the next cache HIT -- it rebuilds M fresh and compares against the cached M, throwing
     // InvalidOperationException on the mismatch instead of silently solving the wrong problem. Managed-

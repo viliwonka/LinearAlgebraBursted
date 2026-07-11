@@ -26,7 +26,7 @@ namespace LinearAlgebra
         /// maxSweeps — a HARD failure (<see cref="RankInfo.Solved"/> false); x is zeroed but NOT a
         /// valid solution in that case.
         /// </summary>
-        // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVDCache. Hoist these
+        // Caller-provided scratch overload (zero-alloc); scratch layout: see doubleSVDCache. Move these
         // out of a hot loop solving many same-shape systems to avoid per-call allocs.
         public static RankInfo pinvSolve(ref doubleMxN A, in doubleN b, ref doubleN x,
                                     double relativeTolerance, int maxSweeps,

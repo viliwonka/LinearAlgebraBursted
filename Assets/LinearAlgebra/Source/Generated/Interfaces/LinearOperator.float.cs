@@ -24,20 +24,10 @@ namespace LinearAlgebra
         void ApplyT(in floatN x, ref floatN y);
 
         /// <summary>
-        /// y = A x (identical contract to <see cref="Apply"/>), and returns dot(x, y) -- Krylov R2
-        /// (docs/draft-spec-krylov-optimization.md): a single call site for cg/pcg's
-        /// <c>pAp = dot(p, Ap)</c> instead of two. Only meaningful when x and y are the SAME
-        /// length (A square, Rows == Cols) -- always true for cg/pcg's own use (A is square
-        /// SPD/the normal operator there), NOT guaranteed in general (e.g. a rectangular operator
-        /// used by cgls/lsqr). EVERY implementation here composes (Apply, then <c>Blas.dot</c>):
-        /// an earlier version genuinely fused the reduction into the dense/BSR kernels, but that
-        /// was measurably SLOWER (see <see cref="LinearAlgebra.Sparse.BSR.spMVDot"/>'s doc comment
-        /// for the A/B numbers and root cause) -- the fused kernel's cross-row dot fold couldn't
-        /// reuse <c>vecDot</c>'s SIMD accumulator pattern, and lost to just calling vecDot
-        /// separately. So ApplyDot exists for a clean, single call site in cg/pcg (and any future
-        /// solver), not for a "fusion" that doesn't currently pay for itself. Solvers that don't
-        /// need this (cgls, lsqr, lsmr, biCGStab, minres, ...) simply never call it -- ApplyDot is
-        /// opt-in per call site, not a replacement for Apply.
+        /// y = A x (same contract as <see cref="Apply"/>), and also returns dot(x, y) -- a single
+        /// call site for cg/pcg's <c>pAp = dot(p, Ap)</c>. Only meaningful when x and y are the
+        /// same length (A square, Rows == Cols). Every implementation composes Apply then
+        /// <c>Blas.dot</c>; opt-in per call site, not a replacement for Apply.
         /// </summary>
         float ApplyDot(in floatN x, ref floatN y);
 
@@ -92,9 +82,7 @@ namespace LinearAlgebra
         // Aᵀx via the existing vector*matrix dot: result[j] = sum_i x[i]*A[i,j] == (Aᵀx)[j].
         public void ApplyT(in floatN x, ref floatN y) => Blas.dot(in x, in A, ref y);
 
-        // Composes (Apply, then a plain dot pass) via Blas.dotSelf -- see that method's doc
-        // comment and IfloatLinearOperator.ApplyDot's for why: a genuinely-fused version was
-        // tried and measured slower.
+        // Composes (Apply, then a plain dot pass) via Blas.dotSelf.
         public float ApplyDot(in floatN x, ref floatN y) => Blas.dotSelf(in A, in x, ref y);
 
         // Block apply: AVrows[i,:] = A · Vrows[i,:] for the first `rows` rows, as ONE matMatDot that
@@ -120,15 +108,10 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Identity LINEAR OPERATOR: y = x (an exact bit-copy), Rows == Cols == the size fixed at
-    /// construction. The operator-shaped sibling of <see cref="floatIdentityPreconditioner"/> --
-    /// used e.g. by <see cref="Eigen.lobpcg{TOp,TPre}"/> to forward the STANDARD (B=I) generalized
-    /// eigenproblem entry points into the single generalized <see cref="Eigen.lobpcg{TOp,TBOp,TPre}"/>
-    /// core with B played by this identity, rather than hand-duplicating a Euclidean-only
-    /// implementation. Because Apply/ApplyT are an exact bit-copy (no arithmetic), every downstream
-    /// formula that substitutes a raw block for its "B-image" reproduces the original Euclidean-only
-    /// formula bit-for-bit when B is this operator -- see LOBPCG's class doc comment's "B=I
-    /// strategy" note for the full argument. Readonly and holds only an int: a value copy is free.
+    /// Identity linear operator: y = x (an exact bit-copy), Rows == Cols == the size fixed at
+    /// construction. Lets B=I callers (e.g. <see cref="Eigen.lobpcg{TOp,TPre}"/>) forward the
+    /// standard eigenproblem into the generalized <see cref="Eigen.lobpcg{TOp,TBOp,TPre}"/> core
+    /// with B played by this identity, without duplicating a Euclidean-only implementation.
     /// </summary>
     public readonly struct floatIdentityOperator : IfloatLinearOperator
     {
@@ -165,23 +148,11 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// Right column-scaling wrapper: presents the operator A·D where D = diag(d) is a diagonal
-    /// scaling of the INPUT (column) space, over any inner <typeparamref name="TInner"/> operator.
-    /// Composes with every generic solver with NO solver change (they are already generic over
-    /// <c>TOp</c>), so passing <c>floatColScaledOperator&lt;floatDenseOperator&gt;</c> (or the BSR
-    /// operator) turns cgls/lsqr/lsmr into their column-preconditioned variants: with
-    /// d[j] = 1/‖A_:,j‖₂ (an AᵀA-Jacobi / column-equilibration preconditioner, built via
-    /// <c>Blas.columnNormsSquared</c> + <c>Blas.buildJacobiScale</c>) the scaled operator
-    /// A·D has a unit-diagonal normal matrix, so an ill-conditioned least-squares problem converges
-    /// in fewer iterations. Solve (A·D) y = b for y, then recover x = D·y (x[j] = d[j]·y[j]).
-    ///
-    /// Holds the inner operator, the diagonal <c>d</c> (length inner.Cols), and one owned
-    /// <c>scratch</c> buffer (length inner.Cols) that <see cref="Apply"/> uses to form d.*x without
-    /// touching the caller's x. <c>d</c> and <c>scratch</c> must be distinct from each other and
-    /// from every vector the solver passes to Apply/ApplyT (the arena convenience overloads
-    /// guarantee this by allocating fresh). Readonly, like <see cref="floatDenseOperator"/>. NOTE:
-    /// with Tikhonov damping, damping the SCALED system penalizes ‖y‖ = ‖D⁻¹x‖ (a column-weighted
-    /// ridge on x), NOT ‖x‖ -- a different regularizer; use the composable path if you need that control.
+    /// Wraps <typeparamref name="TInner"/> with a diagonal column scale D = diag(d), presenting the
+    /// operator A·D. <see cref="Apply"/> forms A(d.*x) via an owned scratch buffer; solve (A·D) y = b
+    /// for y, then recover x = D·y (x[j] = d[j]·y[j]). <c>d</c>/<c>scratch</c> must not alias each
+    /// other or any vector passed to Apply/ApplyT. With Tikhonov damping, damping the scaled system
+    /// penalizes ‖y‖ = ‖D⁻¹x‖ (a column-weighted ridge on x), not ‖x‖ -- a different regularizer.
     /// </summary>
     public readonly struct floatColScaledOperator<TInner> : IfloatLinearOperator
         where TInner : struct, IfloatLinearOperator

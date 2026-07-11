@@ -5,73 +5,27 @@ using System.Runtime.InteropServices;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// A pointer-stable, chunked slot table for arena-owned allocation records
-    /// (docs/dev/rfc-memory-model.md §4 Option A / A1, §6.1, §7 step 2). A family-specific record struct
-    /// is carved out of a table like this one and addressed by a raw <c>TRecord*</c> that never moves
-    /// for the record's lifetime -- so a copy of a math struct holding that pointer can never diverge
-    /// from the one source of truth (the RFC's failure modes 1 and 2).
+    /// A pointer-stable, chunked slot table for arena-owned allocation records: a family-specific
+    /// record struct is carved out of a table like this one and addressed by a raw
+    /// <c>TRecord*</c> that never moves for the record's lifetime, so a copy of a math struct
+    /// holding that pointer can never diverge from the one source of truth.
     ///
-    /// <para><b>Live, family-by-family.</b> <c>ArenaCore</c> owns one table per migrated family/pool
-    /// (float/double's <c>fProxyVecRecords</c>/<c>fProxyMatRecords</c>/temp* -- see
-    /// <c>Arena.fProxy.cs</c>, <c>fProxyRecords.fProxy.cs</c>; the int-family and bool
-    /// equivalents live in their own sibling Arena partials; the sparse
-    /// <c>fProxyBSRRecords</c>/<c>fProxyBlockJacobiRecords</c> -- see <c>Arena.Sparse.fProxy.cs</c>,
-    /// <c>fProxyBSRRecords.fProxy.cs</c>): fProxyN/fProxyMxN (and the other migrated types) hold a
-    /// stable <c>fProxyVecRecord*</c>/<c>fProxyMatRecord*</c> into one of these tables instead of
-    /// being tracked by a separate value copy. <c>Arena.Clear()</c>/<c>ClearTemp()</c> walk a table's
-    /// <c>Count</c>/<c>IsAlive</c>/<c>Resolve</c> surface, dispose each alive record's payload, and
-    /// <see cref="Free"/> the slot; <c>fProxyN</c>/<c>fProxyMxN.Dispose()</c> does the same for a
-    /// single record (see those types' Dispose() for the ordering rationale). Not-yet-migrated:
-    /// <c>fProxyBSRBuilder</c> (deliberately -- its own <c>State*</c> indirection already makes a
-    /// value-copy tracking list safe), <c>Pivot</c>/<c>Indices</c> (deliberately out of scope --
-    /// no arena identity, never grow). Both still use the original growable-UnsafeList-of-value-
-    /// copies model and don't touch this table -- see the migration's per-family status in
-    /// <c>ArenaCore</c>'s own class doc (<c>Arena.cs</c>). Exercised both end-to-end
-    /// (<c>ArenaWiringTests.fProxy.cs</c>) and directly against its own primitives
-    /// (<c>ChunkedRecordTableTests</c>).</para>
+    /// <para>Records live in fixed-capacity <c>Chunk</c>s (first chunk 8 slots, each subsequent
+    /// chunk doubling), each a single <c>UnsafeUtility.Malloc</c> block that is never reallocated
+    /// or moved. Only the chunk directory (an <c>UnsafeList&lt;Chunk&gt;</c>) grows, and growing it
+    /// only copies small Chunk headers around, never the chunk memory they point at, so a directory
+    /// reallocation can never invalidate a record address. <see cref="Free"/> pushes the freed
+    /// slot's global index onto a free list that <see cref="Allocate"/> pops from first, keeping
+    /// the table's steady-state chunk count constant across alloc/free churn.</para>
     ///
-    /// <para><b>Storage shape.</b> Records live in fixed-capacity <c>Chunk</c>s, each a single
-    /// <c>UnsafeUtility.Malloc</c> block that is <b>never reallocated or moved</b> -- this is exactly
-    /// what makes a <c>TRecord*</c> handed out by <see cref="Allocate"/> pointer-stable for the
-    /// record's entire lifetime, even while the table keeps growing (the bumpalo "chain of chunks"
-    /// pattern, RFC §3.7 / §4 A1). Only the chunk <b>directory</b> (an <c>UnsafeList&lt;Chunk&gt;</c>)
-    /// grows, and growing it only copies small <c>Chunk</c> headers (a pointer + two ints) around --
-    /// never the chunk memory those headers point at -- so a directory reallocation can never
-    /// invalidate a record address.</para>
-    ///
-    /// <para><b>Chunk sizing.</b> The first chunk holds 8 slots; each subsequent chunk doubles the
-    /// previous chunk's capacity (8, 16, 32, 64, ...). This keeps a small arena (README-demo scale --
-    /// a handful of allocations) down to one tiny 8-slot Malloc, while a large arena still only needs
-    /// a handful of chunks (10 chunks already covers 8*(2^10-1) = 8184 slots) rather than hundreds of
-    /// separately-Malloc'd ones. A fixed 8-slot-per-chunk scheme was considered and rejected: it
-    /// wastes nothing per chunk either, but a large arena would pay proportionally many more Malloc
-    /// calls (one per 8 records) for no benefit, since chunk lookup cost is already independent of
-    /// chunk size (see <see cref="SlotPtr"/>) -- so there is no offsetting win to justify the extra
-    /// allocation churn.</para>
-    ///
-    /// <para><b>Free list.</b> <see cref="Free"/> pushes the freed slot's global index onto a free
-    /// list; <see cref="Allocate"/> pops from it before ever carving a brand-new slot. This keeps the
-    /// table's steady-state size (chunk count) constant across alloc/free churn -- e.g. a per-frame
-    /// <c>ClearTemp</c>-shaped loop reuses the same handful of slots forever instead of growing a new
-    /// chunk on every frame.</para>
-    ///
-    /// <para><b>Bookkeeping.</b> Each slot carries <c>Alive</c> + <c>Generation</c> (bumped on
-    /// <see cref="Free"/>) alongside its <typeparamref name="TRecord"/> payload. <c>Alive</c> is live
-    /// release-code state, consumed via <see cref="IsAlive"/> by <c>Arena.Clear()</c>/<c>ClearTemp()</c>
-    /// (skip an already-Dispose()'d record instead of double-freeing it) and guarded by
-    /// <see cref="Free"/> itself (rejects a double-Free). <c>Generation</c>, read via
-    /// <see cref="GetGeneration"/>, backs the <c>ENABLE_UNITY_COLLECTIONS_CHECKS</c>-only
-    /// generational-validation overlay (RFC §6.2, Option B): fProxyMxN/longMxN/boolMxN/fProxyBSR
-    /// each carry a small stamp of their own (packed into an existing padding hole -- see those
-    /// types' own <c>_gen</c> doc comments) captured at allocation time and compared against this
-    /// table's current generation on every read, to catch a stale handle into a since-recycled
-    /// slot. fProxyN/longN/boolN/fProxyBlockJacobi have no spare bits for a stamp, so they check
-    /// <see cref="IsAlive"/> alone (catches use-after-dispose, not use-after-recycle).</para>
-    ///
-    /// <para><b>Burst.</b> Unmanaged generic (<c>where TRecord : unmanaged</c>), the one raw pointer
-    /// held in a field (<c>Chunk.Slots</c>) is <c>[NativeDisableUnsafePtrRestriction]</c>, no managed
-    /// types anywhere -- fully Burst-compilable (exercised inside a <c>[BurstCompile] IJob</c> by
-    /// <c>ChunkedRecordTableTests</c>).</para>
+    /// <para>Each slot carries <c>Alive</c> + <c>Generation</c> (bumped on <see cref="Free"/>)
+    /// alongside its <typeparamref name="TRecord"/> payload. <see cref="IsAlive"/> lets
+    /// <c>Arena.Clear()</c>/<c>ClearTemp()</c> skip an already-disposed record instead of
+    /// double-freeing it, and <see cref="Free"/> itself rejects a double-Free. <see cref="GetGeneration"/>
+    /// backs the <c>ENABLE_UNITY_COLLECTIONS_CHECKS</c>-only generational-validation overlay: types
+    /// with a spare stamp (fProxyMxN/longMxN/boolMxN/fProxyBSR) compare it against the table's
+    /// current generation on every read to catch a stale handle into a since-recycled slot; types
+    /// without one (fProxyN/longN/boolN/fProxyBlockJacobi) check <see cref="IsAlive"/> alone.</para>
     /// </summary>
     internal unsafe struct ChunkedRecordTable<TRecord> : System.IDisposable where TRecord : unmanaged
     {
@@ -192,16 +146,9 @@ namespace LinearAlgebra
         /// <see cref="Allocate"/>. Bumps the slot's <c>Generation</c> -- read back later via
         /// <see cref="GetGeneration"/>/<see cref="GenerationFast"/> by the
         /// <c>ENABLE_UNITY_COLLECTIONS_CHECKS</c> generational-validation overlay (see this class's
-        /// own doc, "Bookkeeping" paragraph) to detect a stale handle into a since-recycled slot.
+        /// own doc) to detect a stale handle into a since-recycled slot.
         /// </summary>
-        /// <exception cref="System.InvalidOperationException">
-        /// The slot is already dead. Unconditional (not DEBUG-gated): a double-Free would otherwise
-        /// push the same slot index onto the free list twice, so two LATER <see cref="Allocate"/>
-        /// calls would hand out the SAME <typeparamref name="TRecord"/>* to two different callers --
-        /// exactly the aliasing/use-after-free bug this table exists to make impossible. This is one
-        /// branch on a cold path (Free is called once per allocation, never per element), so there is
-        /// no perf case for gating it behind DEBUG.
-        /// </exception>
+        /// <exception cref="System.InvalidOperationException">The slot is already dead.</exception>
         public void Free(int slotIndex)
         {
             EnsureInitialized();
@@ -238,18 +185,10 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Fast O(1) Alive check, bypassing <see cref="EnsureInitialized"/> and <see cref="SlotPtr"/>'s
-        /// chunk scan entirely: <paramref name="rec"/> -- the very <typeparamref name="TRecord"/>*
-        /// a math struct's <c>_rec</c> field already holds -- IS a valid <c>Slot*</c> at the exact
-        /// same address, because <see cref="Slot"/> is <c>[StructLayout(Sequential)]</c> with
-        /// <c>Record</c> as its guaranteed-first field (see that field's own comment). One pointer
-        /// read, no index, no lookup.
-        ///
-        /// <para>Exists for the <c>ENABLE_UNITY_COLLECTIONS_CHECKS</c> generational-overlay guards
-        /// (<c>AssertRecordAlive</c>/<c>AssertRecordValid</c> across fProxyN/fProxyMxN/fProxyBSR/
-        /// etc.), which run on EVERY guarded getter/property read -- i.e. per element, since an
-        /// indexer routes through <c>Data</c>. The index-based <see cref="IsAlive"/> would re-walk
-        /// the chunk directory on every one of those reads; this does not.</para>
+        /// O(1) alive check via the Slot/Record layout invariant: <paramref name="rec"/> IS a valid
+        /// <c>Slot*</c> at the exact same address, because <see cref="Slot"/> is
+        /// <c>[StructLayout(Sequential)]</c> with <c>Record</c> as its guaranteed-first field. One
+        /// pointer read, no index, no chunk-directory lookup.
         /// </summary>
         internal static unsafe bool IsAliveFast(TRecord* rec) => ((Slot*)rec)->Alive;
 
@@ -258,18 +197,9 @@ namespace LinearAlgebra
         internal static unsafe int GenerationFast(TRecord* rec) => ((Slot*)rec)->Generation;
 
         /// <summary>
-        /// Frees every chunk block plus the directory/free-list themselves. Does NOT itself walk or
-        /// dispose individual records' payloads -- <typeparamref name="TRecord"/> has no Dispose
-        /// contract of its own (it's a plain unmanaged struct, e.g. <c>fProxyVecRecord</c>'s
-        /// <c>UnsafeList&lt;fProxy&gt; Data</c>). That is the CALLER's job, done BEFORE this runs:
-        /// <c>ArenaCore.Clear()</c>/<c>ClearTemp()</c> walk <c>Count</c>/<c>IsAlive</c>/<c>Resolve</c>,
-        /// dispose each alive record's payload and <see cref="Free"/> its slot, and only THEN is this
-        /// table itself (now empty of live records) disposed alongside the others in
-        /// <c>ArenaCore.Dispose()</c>.
-        ///
-        /// <para>Idempotent: a second call on an already-disposed (or never-initialized) table is a
-        /// safe no-op rather than a double-free of the directory/free-list, mirroring
-        /// <see cref="Arena"/>'s own Dispose contract.</para>
+        /// Frees every chunk block plus the directory/free-list themselves. Does NOT dispose
+        /// individual records' payloads -- callers must free each alive record first. Idempotent:
+        /// a second call on an already-disposed (or never-initialized) table is a safe no-op.
         /// </summary>
         public void Dispose()
         {
@@ -308,23 +238,14 @@ namespace LinearAlgebra
         }
 
         // Reverse scan: chunks are ordered by ascending StartIndex, so the first chunk (scanning from
-        // the END) whose StartIndex <= idx is guaranteed to be the one containing idx -- idx is
-        // always a previously-issued slot index, so idx < Count <= (that chunk's StartIndex +
-        // Capacity). Chunk counts stay small for the arena sizes this library targets (see the
-        // chunk-sizing doc above), so this is effectively O(1) in practice, and it is not a hot path
-        // regardless -- it resolves once per Allocate/Free/Resolve call, never per element. This
-        // "never per element" claim depends on callers NOT routing the ENABLE_UNITY_COLLECTIONS_
-        // CHECKS generational-overlay guards through IsAlive(int)/GetGeneration(int) (both of which
-        // call this): those guards fire on every guarded getter/property read (i.e. per element),
-        // so they use IsAliveFast/GenerationFast instead -- a direct TRecord*->Slot* cast that
-        // bypasses this scan (and EnsureInitialized) entirely. See those methods' doc comments.
+        // the END) whose StartIndex <= idx is guaranteed to be the one containing idx. Called once
+        // per Allocate/Free/Resolve, never per element (IsAliveFast/GenerationFast bypass this scan
+        // for the per-element guard checks).
         private Slot* SlotPtr(int idx)
         {
             // Single unsigned comparison covers idx < 0 AND idx >= Count in one branch: casting a
-            // negative idx to uint wraps to a huge value, which is always >= (uint)Count. Without
-            // this, idx >= Count used to fall through the loop below silently and return a pointer
-            // into uncarved (or entirely past-the-last-chunk) memory -- a heap-corruption footgun,
-            // not just a logic bug, since the caller would then read/write through a bogus pointer.
+            // negative idx to uint wraps to a huge value, which is always >= (uint)Count. Guards
+            // against returning a pointer into uncarved (or past-the-last-chunk) memory.
             if ((uint)idx >= (uint)Count)
                 throw new System.ArgumentOutOfRangeException(nameof(idx), $"ChunkedRecordTable: slot index {idx} is out of range (valid range is [0, {Count})).");
 

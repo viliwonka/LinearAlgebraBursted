@@ -6,7 +6,7 @@ starts after the LPBasis persistence feature lands. Nothing here is implemented 
 (`Krylov.fProxy.cs`: cg/pcg, minres, biCGStab, cgls, lsqr, lsmr, cgne + the *Jacobi
 convenience wrappers) and (b) a preconditioner roadmap beyond the shipped `fProxyBlockJacobi`.
 LP-interior-point-specific preconditioning is deliberately NOT re-litigated here — that ground
-is owned by `docs/research-lp-preconditioners.md`; this spec covers the general Krylov/BSR
+is owned by `docs/dev/research-lp-preconditioners.md`; this spec covers the general Krylov/BSR
 surface and cross-references where they meet.
 
 Claims are labeled **[verified]** (checked against code, git history, benchmark files, or a
@@ -634,7 +634,7 @@ matching the task brief's framing exactly.
 This has one consequence Saad's chapter doesn't dwell on: the loop's own residual r̂ⱼ lives in
 *transformed* space (r̂ⱼ = (D̂−E)⁻¹rⱼ, an exact invariant of the recurrence, provable by the same
 induction as the lemma above), not the TRUE rⱼ = b−Axⱼ this library's other solvers test
-against (`docs/draft-spec-krylov-optimization.md` §0/pcg's own contract: "the TRUE
+against (`docs/dev/draft-spec-krylov-optimization.md` §0/pcg's own contract: "the TRUE
 (unpreconditioned) residual"). Recovering true rⱼ every iteration would need a triangular
 MATVEC (not solve) by (D̂−E) — a third sweep-equivalent op per iteration, which would erase
 Eisenstat's entire saving. Two facts make a cheap resolution possible:
@@ -716,7 +716,7 @@ already pays for `M.Apply` alone now also covers what used to be a separate spMV
   docs.unity3d.com/Packages/com.unity.burst@1.8/manual/csharp-burst-intrinsics-common.html]
 - Saad, *Iterative Methods for Sparse Linear Systems*, 2nd ed., ch. 10 (preconditioning),
   ch. 12 (polynomial preconditioners). [literature]
-- Internal: `docs/research-lp-preconditioners.md` (LP-IPM preconditioning track — owns §1–§8
+- Internal: `docs/dev/research-lp-preconditioners.md` (LP-IPM preconditioning track — owns §1–§8
   of that problem); `docs/dev/spec-sparse-bsm.md` (BSR design + deferred-preconditioner tier);
   `docs/dev/perf-vectorization-lessons.md` (the float==double diagnostic, accumulator
   sweet-spot, axpy-vs-dot); memory `iterative-solver-overload-ladder` (locked ladder);

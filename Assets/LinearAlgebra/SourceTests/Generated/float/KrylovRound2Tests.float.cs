@@ -7,7 +7,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Krylov Round-2 new surfaces (docs/draft-spec-krylov-optimization.md, R2):
+// Krylov Round-2 new surfaces:
 //   (a) IfloatLinearOperator.ApplyDot on every shipped operator -- each composes (Apply, then
 //       Blas.dot(x,y)), so ApplyDot MUST equal Apply-then-dot BIT-EXACTLY (same matVec/spMV
 //       kernel both times, same 2-arg vecDot fold): asserted with double-cast AreEqual.

@@ -87,9 +87,7 @@ namespace LinearAlgebra
         public floatMxN X;
 
         /// <summary>k x n. A applied to each row of <see cref="X"/>; recomputed via a FRESH
-        /// <c>A.Apply</c> every iteration for the active rows (see the <c>LOBPCG</c> class doc
-        /// comment's "AX/AP freshness" note -- an earlier version maintained this purely via
-        /// linearity, which compounded rounding error into a slow convergence stall).</summary>
+        /// <c>A.Apply</c> every iteration for the active rows.</summary>
         public floatMxN AX;
 
         /// <summary>k x n. Preconditioned residual directions; only rows [0, numActive) are
@@ -118,12 +116,8 @@ namespace LinearAlgebra
         /// destination buffers for the new X/P block computed each iteration (the combination
         /// reads the CURRENT X/W/P, so it cannot safely write in place) -- swapped into
         /// <see cref="X"/>/<see cref="P"/> at the end of every iteration (a cheap struct-handle
-        /// swap, not a buffer copy). <c>AXnext</c>/<c>APnext</c> are allocated but UNUSED: an
-        /// earlier version mirror-combined AX/AP the same way, but that work was always
-        /// immediately discarded (the caller unconditionally recomputes AX/AP via a fresh
-        /// <c>A.Apply</c> right after -- see <see cref="AX"/>/<see cref="AP"/>), so they were
-        /// removed from the hot path; the fields remain (rather than reshaping this struct and
-        /// every codegen'd caller) but are dead weight -- do not rely on their contents.</summary>
+        /// swap, not a buffer copy). <c>AXnext</c>/<c>APnext</c> are allocated but UNUSED; do not
+        /// rely on their contents.</summary>
         public floatMxN Xnext, AXnext, Pnext, APnext;
 
         /// <summary>k x n each. GENERALIZED-eigenproblem B-images of <see cref="X"/>/<see cref="W"/>/

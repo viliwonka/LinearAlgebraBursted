@@ -5,12 +5,8 @@ namespace LinearAlgebra
     // Allocation helper
     public unsafe partial struct Arena {
 
-        // Guarded (docs/features/dense-types.md's threading contract): _core->EnterMutation()/
-        // ExitMutation() bracket every factory body below under
-        // ENABLE_UNITY_COLLECTIONS_CHECKS -- see ArenaCore's _busy field doc (Arena.cs). Each also
-        // starts with an UNCONDITIONAL `_core == null` guard (matching Pivot/Indices) -- without
-        // it, a factory call on a disposed/default handle dereferences a null _core before
-        // EnterMutation() (or the Allocate call, without checks) ever runs.
+        // Guarded under ENABLE_UNITY_COLLECTIONS_CHECKS (_core->EnterMutation()/ExitMutation()
+        // bracket every factory body below); throws on a default/disposed arena.
         #region BOOLVECTOR
         public boolN boolVec(int N, bool uninit = false)
         {

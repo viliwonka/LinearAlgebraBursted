@@ -139,12 +139,12 @@ namespace LinearAlgebra.Internal
         }
 
         // =====================================================================================
-        // Milestone D: block-size-specialized (fully unrolled) square-block kernels, b in
-        // {1,2,3,4,6} (3x3 is the FEM/cloth workhorse). The general kernels above have RUNTIME
-        // trip counts for the inner BR x BC loops (BR/BC are ordinary int fields), which Burst
-        // cannot unroll or register-allocate. These kernels hardcode b as a literal constant in
-        // the method body, so the whole block-multiply is a straight-line sequence of named
-        // scalar locals -- Burst can register-allocate and (auto-)vectorize it.
+        // Block-size-specialized (fully unrolled) square-block kernels, b in {1,2,3,4,6} (3x3 is
+        // the FEM/cloth workhorse). The general kernels above have RUNTIME trip counts for the
+        // inner BR x BC loops (BR/BC are ordinary int fields), which Burst cannot unroll or
+        // register-allocate. These kernels hardcode b as a literal constant in the method body,
+        // so the whole block-multiply is a straight-line sequence of named scalar locals -- Burst
+        // can register-allocate and (auto-)vectorize it.
         //
         // Accumulation order is chosen to be BIT-IDENTICAL to the general kernel: the general
         // kernel computes each output row's dot product as a running accumulator seeded at zero
@@ -152,21 +152,6 @@ namespace LinearAlgebra.Internal
         // `0 + p0 == p0` exactly in IEEE754 for any finite p0, that fold is arithmetically
         // identical to the left-associative expression `p0 + p1 + p2 + ...` used below, and both
         // then do a single `y[...] += sum` per (block, row/col).
-        //
-        // History (docs/draft-spec-krylov-optimization.md, R2/R8): R2 introduced a 2-accumulator
-        // even/odd pairing here for b=2/3/4/6 (b=1 kept single-chain, A/B'd as a no-win exception)
-        // as an ARCHITECTURAL JUDGMENT -- the BR=4 benchmark section was too machine-noisy at the
-        // time to attribute a clean win either way. R8 revisited it with a dedicated, repeated
-        // (3x) clean-room measurement (BR=4/1.5% fill and the b=1 stencil, both dtypes): pairing
-        // showed NO reproducible win for b=4 -- every paired-vs-unpaired difference was smaller
-        // than the run-to-run swing measured on the IDENTICAL kernel across repeats (up to ~10%),
-        // with no consistent direction for double and a shrinking-to-noise edge for float. REVERTED
-        // back to the single left-to-right accumulator fold for b=2/3/4/6, matching b=1's own
-        // already-settled finding -- every kernel in this family is bit-identical to the general
-        // fallback again. See the spec doc's R2/R8 addendum for the full numbers. (R8 also spiked
-        // software prefetch, Common.Prefetch on x[colInd[k+dist]] a few blocks ahead: consistently
-        // SLOWER, 8-56%, on every dtype/fill/pairing combination tried -- not shipped, see the same
-        // addendum.)
         //
         // Dispatch lives in BSR.spMV / spMVT / spMVDot (SparseOP.double.cs).
         // =====================================================================================
@@ -617,26 +602,15 @@ namespace LinearAlgebra.Internal
         }
 
         // =====================================================================================
-        // Krylov R5 (docs/draft-spec-krylov-optimization.md, R5): BSR SpMM -- a real block-
-        // multivector kernel for ApplyBlock. AV[rv,:] += A * V[rv,:] for rv in [0,rows), V/AV
-        // row-major with row strides ldV/ldAV (row rv lives at V + rv*ldV / AV + rv*ldAV) -- the
-        // same K-layout convention Blas.dotRows uses for the dense operator's ApplyBlock. ldV/ldAV
-        // differ whenever A is rectangular (Vrows.N_Cols == A.N_Cols, AVrows.N_Cols == A.M_Rows).
-        // Every kernel below is its bsrMatVec{...}/bsrMatVecSym{...} counterpart above with an rv
-        // loop ADDED around the
-        // per-row body (rowStart/rowEnd/xBaseI hoisted OUTSIDE the rv loop -- rv-
-        // independent, computed once per block-row): for a FIXED rv this is the exact same
-        // left-to-right term order (same tail, same per-k scatter order for the Sym off-diagonal
-        // part) as calling the scalar kernel `rows`
-        // times -- BIT-IDENTICAL row by row, not just rounding-equivalent (R8, docs/draft-spec-
-        // krylov-optimization.md: the scalar kernels' 2-accumulator pairing was reverted for
-        // b=2/3/4/6 -- see that section's own comment -- so these SpMM kernels are unpaired to
-        // match and preserve this invariant). Streams the BSR row
-        // structure ONCE per block-row instead of once per Apply call: no per-call
-        // Allocator.Temp churn (the old ApplyBlock allocated two Temp vectors and re-walked
-        // rowPtr/colInd `rows` times), and each row's stored blocks are immediately reused across
-        // every rv while resident in L1 instead of being evicted by a full separate matrix pass
-        // between calls. Dispatch lives in BSR.spMM (SparseOP.double.cs); sole caller is
+        // BSR SpMM -- a real block-multivector kernel for ApplyBlock. AV[rv,:] += A * V[rv,:] for
+        // rv in [0,rows), V/AV row-major with row strides ldV/ldAV (row rv lives at V + rv*ldV /
+        // AV + rv*ldAV) -- the same layout convention Blas.dotRows uses for the dense operator's
+        // ApplyBlock. ldV/ldAV differ whenever A is rectangular (Vrows.N_Cols == A.N_Cols,
+        // AVrows.N_Cols == A.M_Rows). Every kernel below is its bsrMatVec{...}/bsrMatVecSym{...}
+        // counterpart above with an rv loop added around the per-row body: for a fixed rv this is
+        // the exact same left-to-right term order as calling the scalar kernel `rows` times --
+        // bit-identical row by row. Streams the BSR row structure once per block-row instead of
+        // once per Apply call. Dispatch lives in BSR.spMM (SparseOP.double.cs); sole caller is
         // doubleBSROperator.ApplyBlock.
         // =====================================================================================
 
@@ -1106,26 +1080,18 @@ namespace LinearAlgebra.Internal
             }
         }
 
-        // Krylov R2's ApplyDot (docs/draft-spec-krylov-optimization.md) does NOT have a fused
-        // kernel family here. A "Dot" variant (fold dot(x,y) into the same pass as y=A*x, tried
-        // for the full-storage square-block kernels above) was A/B'd against simply composing
-        // (spMV then Blas.dot(x,y)) at the b=1 stencil section of LargeSparseBenchmark and lost
-        // by a wide, reproducible margin (~45% SLOWER at N=5120/float) -- see BSR.spMVDot's doc
-        // comment (SparseOP.double.cs) for the root cause and the full writeup. Composing wins
-        // because it reuses the already 2x-double4-SIMD-tuned vecDot kernel instead of a bespoke
-        // scalar cross-row fold. Kept out per the spec's own instruction: measure, and if it
-        // doesn't win, don't ship it.
+        // ApplyDot has no fused kernel family here -- a folded "Dot" variant was tried and measured
+        // slower than composing spMV + Blas.dot(x,y); see BSR.spMVDot's doc comment
+        // (SparseOP.double.cs) and the Sparse DEVLOG.
 
         // =====================================================================================
-        // Krylov R2, doubleBlockJacobi.Apply specialization (docs/draft-spec-krylov-optimization.md,
-        // R2): z = DInv * r, one dense b x b matvec per block-row (DInv holds ONE explicit inverse
-        // block per block-row, no stored-block loop like the spMV kernels above -- there is nothing
-        // to accumulator-split here, each output is already a single BR-term sum). Mirrors the
-        // spMV unroll structure (b hardcoded as a literal so Burst can register-allocate the whole
-        // block-multiply) purely for the same reason bsrMatVecB{b} exists: BR is a runtime field in
-        // the general loop, so Burst cannot unroll/vectorize it. Left-to-right term order matches
-        // the general loop's `sum = 0; sum += ...` fold exactly -> BIT-IDENTICAL to the general
-        // fallback, not just rounding-equivalent. Dispatch lives in doubleBlockJacobi.Apply.
+        // doubleBlockJacobi.Apply specialization: z = DInv * r, one dense b x b matvec per
+        // block-row (DInv holds one explicit inverse block per block-row, no stored-block loop
+        // like the spMV kernels above). Mirrors the spMV unroll structure (b hardcoded as a
+        // literal so Burst can register-allocate the whole block-multiply), for the same reason
+        // bsrMatVecB{b} exists. Left-to-right term order matches the general loop's
+        // `sum = 0; sum += ...` fold exactly -> bit-identical to the general fallback. Dispatch
+        // lives in doubleBlockJacobi.Apply.
         // =====================================================================================
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1206,12 +1172,11 @@ namespace LinearAlgebra.Internal
         }
 
         // =====================================================================================
-        // Krylov R3 (docs/draft-spec-krylov-optimization.md, R3): block forward/back substitution
-        // over FULL-storage BSR (Symmetric upper-block-triangle storage is rejected at the
-        // BSR.sweepLower/sweepUpper dispatch -- see doubleBSRMirrorToFull for the one-time
-        // mirror-to-full path, Q4 ruling). Sequential across block-rows by construction (that IS
-        // the math of a triangular solve, not a deficiency -- fine single-threaded, matching the
-        // rest of this file). Solves:
+        // Block forward/back substitution over FULL-storage BSR (Symmetric upper-block-triangle
+        // storage is rejected at the BSR.sweepLower/sweepUpper dispatch -- see
+        // doubleBSRMirrorToFull for the one-time mirror-to-full path). Sequential across
+        // block-rows by construction (that IS the math of a triangular solve, not a deficiency --
+        // fine single-threaded, matching the rest of this file). Solves:
         //   sweepLower: (D/diagScale + L) y = r   -- rows in ASCENDING order, L = stored blocks
         //     with ColInd < row (strictly lower); relies on the BSR invariant that a row's stored
         //     blocks are sorted ascending by ColInd to `break` as soon as ColInd >= row.

@@ -40,29 +40,12 @@ namespace LinearAlgebra
 
             if (n == 0) return new DirectSolveInfo { status = DirectSolveStatus.Success };
 
-            // RIGHT-LOOKING (outer-product) Cholesky. The left-looking form's hot loop is a dot
-            // (reduction over already-computed columns), which stays effectively scalar under strict
-            // FloatMode (loop-carried accumulator). This form instead, once column j is known,
-            // immediately subtracts its rank-1 contribution from the trailing LOWER triangle as a set
-            // of row-wise axpys: L[i, j+1..i] -= L[i,j] * L[j+1..i, j]. Each row segment is unit-stride
-            // (row-major), so they go through the vectorising UnsafeOP.axpy ([NoAlias], the GEMM
-            // pointer path). Only the lower triangle is touched (i >= column index), so no work is
-            // wasted on the symmetric upper half.
-            //
-            // The active column j is gathered into a contiguous buffer `lj` (one strided pass) so both
-            // axpy operands are unit-stride. Results differ from the old left-looking form by rounding
-            // only (a different, equally-valid summation order); A = L*Lᵀ to working precision.
-            //
-            // Above a size threshold this is further raised to LEVEL-3 (blocked, right-looking POTRF;
-            // see docs/dev/level3-blocking-guide.md recipe B), mirroring LAPACK's DPOTRF: a CHOL_BLOCK-wide
-            // diagonal block L11 is factored with the same rank-1 sweep above (narrowed to the panel's
-            // own jb rows/cols — DPOTF2), the below-panel strip L21 is then solved for in one shot by
-            // forward substitution against L11 (UnsafeOP.trsmLowerPanel — DTRSM), and finally the whole
-            // trailing lower triangle is updated ONCE per panel with a triangular SYRK
-            // (UnsafeOP.syrkLowerSub, A22 -= L21*L21ᵀ) instead of one rank-1 pass per column — trading
-            // O(n) re-streams of the trailing matrix for O(n/CHOL_BLOCK), the memory-bandwidth-bound
-            // part of the algorithm. Below the threshold the panel/TRSM/SYRK bookkeeping isn't worth
-            // it, so the plain per-column sweep is used unchanged.
+            // Right-looking (outer-product) Cholesky: once column j is known, its rank-1 contribution
+            // is subtracted from the trailing lower triangle via unit-stride row axpys (UnsafeOP.axpy),
+            // which vectorizes; a left-looking dot-product reduction would stay scalar under strict
+            // FloatMode. Above CHOL_BLOCK_MIN_N this is raised to a blocked (level-3) right-looking
+            // POTRF, mirroring LAPACK's DPOTRF: panel factor (DPOTF2) + TRSM + one SYRK per panel
+            // instead of one rank-1 update per column.
             unsafe
             {
                 double* lp = L.Data.Ptr;
@@ -85,8 +68,8 @@ namespace LinearAlgebra
                 const int CHOL_BLOCK = 32;
 
                 // Size gate: measured crossover, not the naive 2*CHOL_BLOCK — the panel/TRSM/SYRK
-                // bookkeeping isn't amortised until ~8 panels wide (see docs/dev/level3-blocking-guide.md
-                // "size gate"). A shared float/double threshold uses the slower type's crossover.
+                // bookkeeping isn't amortised until ~8 panels wide. A shared float/double threshold
+                // uses the slower type's crossover.
                 const int CHOL_BLOCK_MIN_N = Consts.doubleCholBlockMinN;   // float/double split (see Consts); default 8*CHOL_BLOCK
 
                 if (n < CHOL_BLOCK_MIN_N)
@@ -132,12 +115,8 @@ namespace LinearAlgebra
                     int jb = math.min(CHOL_BLOCK, n - j0);
                     int panelEnd = j0 + jb;
 
-                    // (1) factor the jb x jb diagonal block L11 (DPOTF2-style): EXACTLY the small-n
-                    //     loop above, just with its row/col bound narrowed from n to panelEnd — this
-                    //     factors ONLY the panel's own rows, so it costs O(jb^3), not O(jb*n^2). The
-                    //     below-panel strip is handled separately by the TRSM step (2): it is NOT
-                    //     touched here (unlike a naive column-by-column extension would do), which is
-                    //     what keeps this cheap regardless of panel position.
+                    // (1) factor the jb x jb diagonal block L11 (DPOTF2-style): the small-n loop above,
+                    //     narrowed to the panel's own jb rows/cols, costing O(jb^3) not O(jb*n^2).
                     for (int j = j0; j < panelEnd; j++)
                     {
                         double d = L[j, j];
@@ -164,18 +143,12 @@ namespace LinearAlgebra
                         int ntrail = n - rStart;
 
                         // (2) TRSM: solve L11 * L21[i,:]ᵀ = A21[i,:]ᵀ for every below-panel row i
-                        //     (forward substitution against the just-factored L11), writing L21 in
-                        //     place into L[rStart:n, j0:j0+jb). A21[i,:] is exactly the CURRENT
-                        //     L[i, j0:j0+jb) — untouched since the last panel's SYRK, because step (1)
-                        //     above never wrote to rows >= panelEnd. ONE call for the whole panel
-                        //     (UnsafeOP.trsmLowerPanel) instead of a rank-1 update per (row, column)
-                        //     pair — a per-column-per-row formulation would keep O(n^2) tiny NoInlining
-                        //     calls (same count as the unblocked sweep); this is O(n/CHOL_BLOCK), one per panel.
+                        //     (forward substitution against the just-factored L11), one call for the
+                        //     whole panel, writing L21 in place into L[rStart:n, j0:j0+jb).
                         UnsafeOP.trsmLowerPanel(lp + (long)j0 * n + j0, n, lp + (long)rStart * n + j0, n, ntrail, jb);
 
                         // (3) SYRK trailing update: A22 -= L21*L21ᵀ, L21 = L[j0+jb:n, j0:j0+jb]. Touches
-                        //     ONLY the lower triangle of the trailing block (see syrkLowerSub) — a full
-                        //     rectangular update would double the flops and write past L's diagonal.
+                        //     only the lower triangle of the trailing block.
                         // PT[p*ntrail + kp] = L21[kp, p] = L[rStart+kp, j0+p].
                         for (int kp = 0; kp < ntrail; kp++)
                         {

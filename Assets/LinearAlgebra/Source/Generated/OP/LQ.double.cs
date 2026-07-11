@@ -46,10 +46,8 @@ namespace LinearAlgebra
 
         // Row-contraction dot Mv (a per-row reduction) — the awkward direction for row-major storage,
         // unlike a left-multiply's uᵀM (a sum of scaled rows, expressible as pure axpy — see QR/Bidiag's
-        // applyReflectorRight/applyHouseholderLeft). Routed through the shared SIMD reduction
-        // UnsafeOP.vecDot (two width-4 double4 accumulators): a running-sum reduction can't auto-vectorize
-        // under strict FloatMode, so it needs explicit SIMD lanes (see docs/dev/perf-vectorization-lessons.md
-        // and the double4 reductions in UnsafeOP). a (matrix row) and b (reflector v) never alias.
+        // applyReflectorRight/applyHouseholderLeft). dot4 routes through vecDot. a (matrix row) and b
+        // (reflector v) never alias.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe double dot4(double* a, double* b, int n) => UnsafeOP.vecDot(a, b, n);
 
@@ -323,8 +321,7 @@ namespace LinearAlgebra
         /// LQ decomposition of A (m × n, m ≤ n): A = L · Q where L is m × m lower-triangular
         /// and Q is m × n with orthonormal rows (Q Qᵀ = I_m). Direct row-Householder reduction
         /// (mirrors LAPACK GELQF): m reflectors, each built from a row and applied from the right,
-        /// unit-stride in the column axis (cache-friendly; see dot4's doc comment for why the
-        /// per-row reduction itself only gets ILP, not full SIMD, in this row-major layout).
+        /// unit-stride in the column axis (cache-friendly).
         /// A is not modified. Allocates Allocator.Temp scratch internally.
         /// </summary>
         /// <param name="A">Input m × n matrix (m ≤ n). Not modified.</param>
@@ -505,9 +502,9 @@ namespace LinearAlgebra
         /// Minimum-2-norm solution to the underdetermined system A x = b (m ≤ n, A full row rank).
         /// Uses LQ: A = L Q, so x = Qᵀ L⁻¹ b.
         /// Steps: (1) forward-solve L y = b for y (m-vector); (2) x = Qᵀ y (n-vector).
-        /// Q is NEVER materialized: A is factored into L + row-reflectors, and Qᵀ is applied to y
-        /// straight from those reflectors (see applyQtFromReflectors) — skipping the ~half-of-runtime
-        /// Q reconstruction. A is not modified. Allocates Allocator.Temp for the working copy, L and y.
+        /// Q is never materialized; Qᵀ is applied directly from the stored reflectors (see
+        /// applyQtFromReflectors). A is not modified. Allocates Allocator.Temp for the working copy,
+        /// L and y.
         /// </summary>
         /// <param name="A">m × n coefficient matrix (m ≤ n, full row rank). Not modified.</param>
         /// <param name="b">Right-hand side vector, length m.</param>

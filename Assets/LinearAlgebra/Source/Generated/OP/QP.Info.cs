@@ -10,14 +10,11 @@ namespace LinearAlgebra
     /// a duplicate definition into both the float and double partials of <c>partial class QP</c>
     /// (CS0102), exactly like <see cref="LPStatus"/> / <see cref="ConstraintSense"/>.
     ///
-    /// STAGE 1 (docs/draft-spec-qp.md) -- the fixed-working-set equality QP kernel (<c>QP.eqpSolve</c>
-    /// / <c>QP.eqpNullSpaceStep</c>) -- only ever produces <see cref="Optimal"/> or
-    /// <see cref="Unbounded"/> (a PSD Q with a fixed, full-row-rank working set cannot be primal
-    /// infeasible -- the working set itself IS the feasible manifold -- and there is no iteration
-    /// budget to exhaust with a single Newton step). <see cref="Infeasible"/> and
-    /// <see cref="MaxIterations"/> are reserved for the stage 2-3 active-set loop (phase 1 / the
-    /// add-drop iteration cap) and the enum is defined complete now so that loop does not need a
-    /// breaking status-enum change later.
+    /// The fixed-working-set equality QP kernel (<c>QP.eqpSolve</c> / <c>QP.eqpNullSpaceStep</c>) only
+    /// ever produces <see cref="Optimal"/> or <see cref="Unbounded"/> (a PSD Q with a fixed,
+    /// full-row-rank working set cannot be primal infeasible -- the working set itself IS the feasible
+    /// manifold -- and there is no iteration budget to exhaust with a single Newton step).
+    /// <see cref="Infeasible"/> and <see cref="MaxIterations"/> are reserved for future active-set use.
     /// </summary>
     public enum QPStatus
     {
@@ -64,7 +61,7 @@ namespace LinearAlgebra
     }
 
     /// <summary>
-    /// STAGE 2 (docs/draft-spec-qp.md): per-row state of the active-set working set W maintained by
+    /// Per-row state of the active-set working set W maintained by
     /// <c>QP.qpActiveSetCore</c>, one byte per row of the unified T = m + n row/bound system (general
     /// constraint rows 0..m-1, then variable-bound rows m..m+n-1 -- see that method's file-header
     /// comment). Type-agnostic (no fProxy) on purpose, same CS0102 reasoning as <see cref="QPStatus"/>.
@@ -85,38 +82,20 @@ namespace LinearAlgebra
         /// </summary>
         ActiveUpper = 2,
 
-        /// <summary>An equality row (L_t == U_t) -- permanently in the working set (draft-spec-qp.md
-        /// requirement 1); never a Dantzig/Bland drop candidate (no sign constraint on its
-        /// multiplier).</summary>
+        /// <summary>An equality row (L_t == U_t) -- permanently in the working set; never a
+        /// Dantzig/Bland drop candidate (no sign constraint on its multiplier).</summary>
         Equality = 3,
     }
 
     /// <summary>
-    /// Result of a quadratic-program solve (the stage-1 <c>QP.eqpSolve</c> / <c>QP.eqpNullSpaceStep</c>
-    /// kernel now; the future <c>QP.solve</c> facade later). Returned by value; an implicit
-    /// <c>bool</c> conversion (== <see cref="Solved"/>) means the natural success test reads well,
-    /// exactly like <see cref="LPInfo"/>:
-    /// <code>
-    ///   if (QP.eqpSolve(in Q, in c, in A_W, in b_W, ref x, ref lambda)) { ... }   // implicit bool
-    /// </code>
-    ///
-    /// <see cref="objective"/> is reported as <c>double</c> regardless of the solve's precision (a
-    /// float solve widens its float objective), matching <see cref="LPInfo"/> / <see cref="LstsqInfo"/>
-    /// / <see cref="SolveInfo"/> -- diagnostics need not be precision-typed, which is why this is a
-    /// plain, unprefixed struct rather than a float/double-generated one. It is the value
-    /// <c>½xᵀQx + cᵀx</c> at the returned <c>x</c>.
-    ///
-    /// <see cref="stationarityResidual"/> / <see cref="feasibilityResidual"/> are the solver-diag-struct
-    /// convention's "only already-computed/cheap numbers" KKT diagnostics (per the spec's Stage 1
-    /// oracle: compare against a full KKT-system LU solve). Both are ALREADY on hand as a direct
-    /// byproduct of the null-space step (stationarity: the reduced gradient Zᵀg the step just drove to
-    /// ~0; feasibility: one cheap GEMV, A_W x - b_W) -- see <c>QP.eqpNullSpaceStep</c>. There is no
-    /// separate complementarity residual yet because stage 1 has no inequality constraints to be
-    /// complementary about; stage 2-3 will extend this struct's diagnostics, not replace them.
-    ///
-    /// On <see cref="QPStatus.Optimal"/> the outputs are the optimal point and its multipliers. On
-    /// <see cref="QPStatus.Unbounded"/> <c>x</c> is the last feasible iterate (the pre-step point) and
-    /// <c>lambda</c> is not written -- check status first, exactly like <see cref="LPInfo"/>.
+    /// Result of a quadratic-program solve. Returned by value; an implicit <c>bool</c> conversion
+    /// (== <see cref="Solved"/>) supports <c>if (QP.eqpSolve(...)) { ... }</c>, exactly like
+    /// <see cref="LPInfo"/>. <see cref="objective"/> (<c>½xᵀQx + cᵀx</c> at the returned <c>x</c>) is
+    /// always reported as <c>double</c>, regardless of the solve's precision. <see cref="stationarityResidual"/>
+    /// / <see cref="feasibilityResidual"/> are cheap KKT diagnostics computed as a direct byproduct of
+    /// the solve. On <see cref="QPStatus.Optimal"/> the outputs are the optimal point and its
+    /// multipliers. On <see cref="QPStatus.Unbounded"/> <c>x</c> is the last feasible iterate and
+    /// <c>lambda</c> is not written -- check status first.
     /// </summary>
     public struct QPInfo
     {

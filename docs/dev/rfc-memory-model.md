@@ -637,3 +637,48 @@ mostly mechanical. Generational handles are worth adopting for **detection**, bu
 - Ryan Fleury, "Untangling Lifetimes: The Arena Allocator" — https://www.dgtlgrove.com/p/untangling-lifetimes-the-arena-allocator
 - Chris Wellons, arena allocator — https://nullprogram.com/blog/2023/09/27/
 - Rust `bumpalo` — https://docs.rs/bumpalo/
+
+---
+
+## Appendix: shipped concurrency-guard mechanism (detection, not prevention)
+
+Added 2026-07-11, moved here from `docs/features/dense-types.md` (which now carries only a
+two-line practical summary — this is the mechanism-level rationale the public doc doesn't need).
+Nothing about `Arena`/`ArenaCore` makes concurrent misuse *safe* — the single-threaded contract
+(§1.1) still has to be followed by the caller. What shipped instead is *detection*: under
+`ENABLE_UNITY_COLLECTIONS_CHECKS`, every mutating entry point (the `arena.floatVec`/`floatMat`/...
+factories, `fProxyBSR`/`fProxyBSRBuilder`/`fProxyBlockJacobi`, `Clear`, `ClearTemp`, `Dispose`,
+`Pivot`, `Indices`) is wrapped by two independent mechanisms so a contract violation throws instead
+of corrupting memory silently:
+
+1. **Race tripwire.** An `int` flag inside `ArenaCore` (heap-resident, so it doesn't affect
+   `sizeof(Arena)`) is armed via `Interlocked.CompareExchange` on entry to a guarded body and
+   released via `Interlocked.Exchange` on exit. If a second thread/job enters a guarded body while
+   the flag is already armed, it throws `InvalidOperationException` immediately — this is the
+   mechanism that actually catches two jobs racing the same arena. It is not a mutex: it never
+   blocks, it only detects overlap. Reentrancy (one guarded method legitimately calling another,
+   e.g. `Clear()` internally clearing the temp pool too) is handled structurally, by routing
+   internal calls through unguarded "core" helpers instead of nesting the guard — not by counting,
+   since Burst has no `Thread.CurrentThread` to distinguish legitimate same-thread nesting from a
+   genuine second thread.
+2. **`AtomicSafetyHandle`.** `ArenaCore` also owns an `AtomicSafetyHandle`, created in `Init` and
+   released in `Dispose`, checked at the top of every guarded entry point. This catches a live
+   handle used (from any thread) after `Dispose()` already released it.
+
+**Why not Unity's `[NativeContainer]` job-scheduling protocol** (the mechanism that makes the job
+debugger reject two `IJob`s capturing the same container without a dependency, *at Schedule time*)?
+That protocol requires the `AtomicSafetyHandle` to be a field directly on the struct a job captures
+by value — Unity's own `NativeList<T>`/`NativeReference<T>` carry `m_Safety` inline for exactly this
+reason. The struct a job captures here is `Arena`, which is deliberately pinned to a single
+pointer's width (`ArenaLayoutTests.Arena_IsPointerSized`) so it stays cheap to copy and pass around;
+adding an `AtomicSafetyHandle` field to it would grow `sizeof(Arena)` under
+`ENABLE_UNITY_COLLECTIONS_CHECKS` and break that pin. The handle instead lives inside the
+heap-allocated `ArenaCore` that `Arena` points to, which keeps `Arena` pointer-sized but means there
+is no automatic Schedule-time rejection — only the manual checks above, which fire once the
+conflicting code actually runs, not the moment it's scheduled.
+
+**Known gap:** an individual buffer's own `Dispose()` (e.g. `floatN.Dispose()`) also mutates a
+record table (frees its slot) but is *not* guarded by the tripwire — it sits at a different altitude
+than the Arena/ArenaCore entry points above (every numeric/bool/sparse type's own per-instance
+lifecycle method, closer in spirit to "element access"). Two threads disposing different allocations
+from the same arena concurrently is therefore still a real, undetected race.

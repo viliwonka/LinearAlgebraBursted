@@ -3,8 +3,7 @@
 Dense factorizations. Every family follows the same four-token grid — `decomp` (factor, input
 preserved), `decompInPlace` (factor into the input's own storage, input destroyed), `decompSolve`
 (solve from existing factors, solve-many tier), `solveInPlace` (one-shot fused solve, fastest path,
-destructive) — see [naming-style-guide](../dev/naming-style-guide.md) for the full contract and
-[spec-solver-api-rework](../dev/spec-solver-api-rework.md) for the rationale. Each also has a zero-alloc
+destructive). Each also has a zero-alloc
 `ref`-workspace overload plus an allocating convenience wrapper; several route their allocating
 overload through a blocked (level-3, compact-WY/SYRK/GETRF-style) core above a measured size
 crossover — see [level3-blocking-guide](../dev/level3-blocking-guide.md) for how that's done and why the
@@ -39,8 +38,8 @@ gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceili
     overload only threads `u`/`w` from the cache (it never forms Q, so the blocked-WY buffers are
     dead weight for it) — its win over the allocating overload is purely the eliminated per-call
     `Allocator.Temp` allocation, **not** the blocked kernel; it is fused, not blocked. QRCP shares no
-    cache (OQ-7): its pivot kernel recomputes column norms after every reflector, so it can never be
-    blocked into panels.
+    equivalent panel cache: its pivot kernel recomputes column norms after every reflector, so it can
+    never be blocked into panels.
 - **`LQ.decomp(in A, ref L, ref Q[, ref ws])`** — direct row-Householder (GELQF-style, not
   transpose-to-QR), A preserved (read-only; the safety is free, not bought). The allocating overload
   blocks above `m ≥ 512` (a measured, not derived, crossover — LQ's fold step is reduction-shaped, so

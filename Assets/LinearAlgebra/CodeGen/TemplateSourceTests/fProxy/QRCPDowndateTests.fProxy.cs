@@ -11,7 +11,7 @@ using Unity.Mathematics;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Adversarial acceptance battery for the QRCP norm-DOWNDATING change (LAPACK dgeqp3/dlaqps-style,
-// guarded), per docs/dev/spec-qrcp-downdate.md. The downdated partial norms feed ONLY the pivot CHOICE;
+// guarded). The downdated partial norms feed ONLY the pivot CHOICE;
 // the Householder reflector arithmetic is untouched. This battery pins that contract.
 //
 // TWO comparison tiers (do not blur them):
@@ -338,10 +338,9 @@ public class fProxyQRCPDowndateTests
         //    margin Tier E itself requires to call an input "forced" — back-of-envelope, that error is
         //    bounded by O(k·eps) over k benign (non-tripping) steps, i.e. ~k·1.2e-7 for float, so
         //    closing a ~2.8e-3 gap this way needs k on the order of 10^4, far beyond a "keep runtimes
-        //    sane" problem size. This was checked, not assumed — see the review pipeline notes in
-        //    docs/dev/spec-qrcp-downdate.md's implementation report. The correctness evidence instead rests
-        //    on: (a) an independent numerics review confirming the guard formula is a faithful,
-        //    algebraically-verified LAPACK dlaqps/dgeqp3 transcription (not just "tests pass"), and
+        //    sane" problem size (checked via that bound, not merely assumed). The correctness evidence
+        //    instead rests on: (a) an independent numerics review confirming the guard formula is a
+        //    faithful, algebraically-verified LAPACK dlaqps/dgeqp3 transcription (not just "tests pass"), and
         //    (b) the empirical firing counts above. A bulletproof automated Tier-E regression test for
         //    this ONE mechanism remains a valid, scoped follow-up, not a blocker resolved here.
         void GradualDecay()
@@ -622,8 +621,8 @@ public class fProxyQRCPDowndateTests
         //        production factorization must then pick the SAME pivot sequence as the exact-recompute
         //        oracle, and agree on Q and R to a tight tolerance — NOT bit-identically: blocked forms
         //        trailing values by GEMM accumulation vs the oracle's rank-1 chain, a different summation
-        //        order (docs/dev/spec-qrcp-blocked.md OQ-B2), the same reason the blocked QR path isn't
-        //        bit-identical to its unblocked small-n path.
+        //        order — the same reason the blocked QR path isn't bit-identical to its unblocked
+        //        small-n path.
         //    (b) A rank-1-plus-tiny-noise input at n = 80 (mass cancellation): the norm guard trips
         //        mid-panel on nearly every column, exercising the mark / cut-panel-short / deferred
         //        re-sum branch that the unblocked core does NOT have. Rank must collapse to 1 (auto tol).

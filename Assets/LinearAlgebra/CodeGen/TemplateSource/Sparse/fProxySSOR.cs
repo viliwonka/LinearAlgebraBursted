@@ -12,26 +12,22 @@ namespace LinearAlgebra.Sparse
     /// parameter (0, 2), default 1 (plain symmetric Gauss-Seidel). SPD whenever A is SPD and
     /// 0&lt;ω&lt;2 (standard result).
     ///
-    /// Derivation of Apply (verified independently via "one SSOR relaxation sweep from z=0",
-    /// the constructive definition of the preconditioner -- not just formula inversion): solving
-    /// M z = r factors into
+    /// Solving M z = r factors into
     ///   v = (D/ω+L)⁻¹ r            (forward sweep, <see cref="BSR.sweepLower"/>, diagScale=ω)
     ///   u = [(2−ω)/ω] · D · v      (diagonal scale -- needs RAW D, not D⁻¹: M's own middle
     ///                                factor is D⁻¹, so M⁻¹'s middle factor is D itself)
     ///   z = (D/ω+Lᵀ)⁻¹ u           (backward sweep, <see cref="BSR.sweepUpper"/>, diagScale=ω)
-    /// "Setup = block-Jacobi's setup" (spec wording) covers the D⁻¹ half (<see cref="Jacobi"/>,
-    /// reused unchanged, both sweeps' diagonal solve); the raw-D half needed only by the middle
-    /// step is a cheap O(nnzb_diag·BR²) extraction (no inversion, no duplicated code) done once
-    /// here and pre-scaled by [(2−ω)/ω] into <see cref="ScaledD"/> so Apply pays for it once, not
-    /// every iteration -- matching the spec's own apply-cost model (each stored OFF-diagonal
-    /// block touched exactly once total, split across the two sweeps: one spMV-equivalent).
+    /// Setup reuses block-Jacobi's setup (<see cref="Jacobi"/>, unchanged) for the D⁻¹ half used by
+    /// both sweeps' diagonal solve; the raw-D half needed only by the middle step is a cheap
+    /// O(nnzb_diag·BR²) extraction done once here and pre-scaled by [(2−ω)/ω] into
+    /// <see cref="ScaledD"/> so Apply pays for it once, not every iteration.
     ///
-    /// FULL-storage BSR only (Krylov R3, Q4 ruling): a Symmetric-storage A pays a one-time
-    /// mirror-to-full copy at construction (<see cref="Arena.fProxyBSRMirrorToFull"/>) -- the
-    /// sweeps need row-ordered access to BOTH triangles, which upper-only storage cannot give
-    /// without a column-order scatter. Composed entirely of already arena-tracked pieces (A,
-    /// Jacobi, and the ScaledD/scratch vectors below are all fProxyN/fProxyBSR/fProxyBlockJacobi)
-    /// -- no record table of its own, no Dispose(): the arena that built it owns every buffer.
+    /// FULL-storage BSR only: a Symmetric-storage A pays a one-time mirror-to-full copy at
+    /// construction (<see cref="Arena.fProxyBSRMirrorToFull"/>) -- the sweeps need row-ordered
+    /// access to BOTH triangles, which upper-only storage cannot give without a column-order
+    /// scatter. Composed entirely of already arena-tracked pieces (A, Jacobi, and the
+    /// ScaledD/scratch vectors below are all fProxyN/fProxyBSR/fProxyBlockJacobi) -- no record
+    /// table of its own, no Dispose(): the arena that built it owns every buffer.
     /// </summary>
     public readonly struct fProxySSOR : IfProxyPreconditioner
     {

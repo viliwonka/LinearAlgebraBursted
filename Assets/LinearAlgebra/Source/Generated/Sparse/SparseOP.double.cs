@@ -84,12 +84,10 @@ namespace LinearAlgebra.Sparse
 
         // ---- AV = A * V, block-multivector (SpMM) ----
 
-        // Krylov R5 (docs/draft-spec-krylov-optimization.md): AVrows[rv,:] = A * Vrows[rv,:] for
-        // rv in [0, rows), streaming A's stored blocks ONCE instead of once per row (the old
-        // doubleBSROperator.ApplyBlock looped `rows` scalar spMV calls through two Allocator.Temp
-        // vectors). Same dispatch shape as spMV -- see bsrMatMat*/bsrMatMatSym* (UnsafeOP.Sparse.
-        // double.cs) for the per-kernel bit-identity argument. Guard: y must not alias x -- each
-        // x-row feeds every block-row that stores a block in its column-block (same reason as spMV).
+        // AVrows[rv,:] = A * Vrows[rv,:] for rv in [0, rows), streaming A's stored blocks once
+        // instead of once per row. Same dispatch shape as spMV. Guard: AVrows must not alias
+        // Vrows -- each x-row feeds every block-row that stores a block in its column-block
+        // (same reason as spMV).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void spMM(in doubleBSR A, in doubleMxN Vrows, ref doubleMxN AVrows, int rows)
         {
@@ -151,30 +149,10 @@ namespace LinearAlgebra.Sparse
             }
         }
 
-        // y = A x, PLUS dot(x, y) computed as part of the same call -- Krylov R2's ApplyDot
-        // (docs/draft-spec-krylov-optimization.md; see doubleBSROperator.ApplyDot, the sole
-        // caller). COMPOSES: a plain spMV, then one Blas.dot(x,y) pass (still the 2x-accumulator
-        // vecDot kernel, just not folded into spMV). Non-square (Rows != Cols) can't pair x[i]
-        // with y[i] at all -- Blas.dot below throws in that case, same as a caller doing Apply
-        // then Blas.dot(x,y) by hand would get.
-        //
-        // MEASURED, not assumed: an earlier version of this method dispatched genuinely-fused
-        // "Dot" kernels (bsrMatVecB1Dot..B6Dot) for full-storage square BSR at a specialized
-        // block size, folding dot(x,y) into the same per-block-row pass that computes y. A/B'd at
-        // the b=1 stencil section of LargeSparseBenchmark (the cleanest-signal section from
-        // Round 1) against this compose form: CG at N=5120/float went from ~0.245ms (this
-        // compose form, matching the pre-ApplyDot baseline) to ~0.359ms with the fused B1Dot
-        // kernel -- a reproducible ~45% REGRESSION, not a win. Root cause: B1Dot's per-row
-        // arithmetic is trivial (the b=1 stencil is a tridiagonal, ~3 stored blocks per row), so
-        // the kernel's cost is dominated by its OUTER cross-row dot fold -- which, lacking a
-        // contiguous 4-wide block to reinterpret as double4 (row results arrive one at a time),
-        // used two alternating SCALAR accumulators instead. That scalar fold is far slower than
-        // simply calling the already-tuned SIMD vecDot separately (2x double4, 8 lane-chains) --
-        // exactly what composing does. Per the spec's own instruction ("try 2 accumulators,
-        // measure, stop... if it doesn't measurably win, keep the original"): reverted to compose
-        // for every case rather than ship a kernel that loses on its own designed-to-be-clearest
-        // benchmark. The fused kernels were deleted, not merely unused, to avoid maintaining
-        // known-worse code.
+        // y = A x, plus dot(x, y) computed as part of the same call. Composes a plain spMV, then
+        // one Blas.dot(x,y) pass (a fused kernel was tried and measured slower -- see the Sparse
+        // DEVLOG). Non-square (Rows != Cols) can't pair x[i] with y[i] at all -- Blas.dot below
+        // throws in that case, same as a caller doing Apply then Blas.dot(x,y) by hand would get.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double spMVDot(in doubleBSR A, in doubleN x, ref doubleN y)
         {
@@ -295,7 +273,7 @@ namespace LinearAlgebra.Sparse
             return result;
         }
 
-        // ---- block triangular sweeps (Krylov R3, docs/draft-spec-krylov-optimization.md) ----
+        // ---- block triangular sweeps ----
 
         /// <summary>
         /// Block forward substitution: solves (D/diagScale + L) y = r, where D is A's block

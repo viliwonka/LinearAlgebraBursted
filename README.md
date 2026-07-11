@@ -107,9 +107,13 @@ Benchmarked on a Ryzen 9 9950X3D (pinned to a non-V-Cache core), single-threaded
 - [**SVD**](docs/features/svd.md): thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation
 - [**Eigensolvers**](docs/features/eigen.md): symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG
 - [**Sparse (BSR)**](docs/features/sparse-bsr.md): block-CSR storage, builder assembly, sparse solvers/eigensolvers
+- [**LP / LAD**](docs/features/lp-lad.md): linear programming (simplex/revised/dual/interior-point, sparse), exact L1/quantile regression, warm-started re-solve
+- [**QP / MIP**](docs/features/qp-mip.md): convex quadratic programs (active-set), mixed-integer programs (branch & bound)
+- [**Control**](docs/features/control.md): discrete-time LQR (cold/warm/finite-horizon gain schedule)
 - [**FFT**](docs/features/fft.md): real valued rfft/irfft, complex fft/ifft, dft
 - [**Statistics**](docs/features/stats.md): vector/row/col reductions, covariance/correlation, transforms
 - [**Random**](docs/features/random.md): distribution samplers, weighted pick/shuffle, multivariate normal, structured matrices
+- [**Realtime**](docs/features/realtime.md): fixed-capacity rolling window, moving mean/covariance
 - [**Query**](docs/features/query.md): nearest/k-nearest/radius search, argmax/argmin, predicate-filtered variants
 - [**Select & bit ops**](docs/features/select-bits.md): element-wise select, integer bit intrinsics, bool logic
 - [**Hash**](docs/features/hash.md): vector/matrix, col/row reduction

@@ -12,49 +12,30 @@ namespace LinearAlgebra
 {
     // ================================================================================================
     // Bounded-variable PRIMAL revised simplex -- the LPMethod.RevisedSimplex backend, stage 1 of the
-    // HiGHS-style dense revised-simplex port (docs/spec-revised-simplex.md). Instead of updating a full
-    // m x (n+m) tableau every pivot (simplexCore, LP.fProxy.cs -- left untouched), this keeps the
-    // ORIGINAL constraint matrix and an LU-factored basis, reconstructing whatever a pivot needs via
-    // triangular solves (FTRAN/BTRAN) against a Product-Form-of-the-Inverse (PFI) eta file. Bounded
-    // variables are native (no slack row-doubling for ranges) and periodic refactorization bounds error
-    // growth instead of letting it accumulate in a tableau.
+    // HiGHS-style dense revised-simplex port. Instead of updating a full m x (n+m) tableau every pivot
+    // (simplexCore, LP.fProxy.cs -- left untouched), this keeps the ORIGINAL constraint matrix and an
+    // LU-factored basis, reconstructing whatever a pivot needs via triangular solves (FTRAN/BTRAN)
+    // against a Product-Form-of-the-Inverse (PFI) eta file. Bounded variables are native (no
+    // slack row-doubling for ranges) and periodic refactorization bounds error growth instead of
+    // letting it accumulate in a tableau.
     //
     // Computational form:  min cᵀx   s.t.   A x + s = b,   l <= (x, s) <= u.
     //   N = n + m variables: j < n are structural (column A[:,j], bounds [0, +INF)); j = n+i is the
     //   logical of row i (column e_i; bounds by sense -- LessEqual: [0,+INF), Equal: [0,0],
     //   GreaterEqual: (-INF,0]). INF = 1e30. No free variables arise here.
     //
-    // Numerics: everything here -- matrix/vector STORAGE, the basis factorization, FTRAN/BTRAN, the eta
-    // file, reduced costs, ratios -- is ordinary fProxy, exactly like every other solver in this library
-    // (simplexCore, interiorCore). Tolerances are derived from the SAME per-dtype Consts the tableau
-    // simplex already uses (Consts.fProxyZeroThreshold / fProxyEpsilon), which resolve to the float or
-    // double constant via the usual token substitution -- no separate double-only code path, and no
-    // inline per-type literal marker (see GenUtils.cs) needed for these since Consts already IS
-    // per-dtype. They are computed INLINE at each call site rather than behind a shared helper method:
-    // a helper returning fProxy with no fProxy-typed parameter (e.g. `fProxy Tol()`) differs only in its
-    // RETURN type between the float- and double-generated fragments of this partial class, and C# does
-    // not overload on return type alone -- both copies would collide as duplicate members (CS0111). Any
-    // new shared fProxy-returning helper needs at least one fProxy-typed parameter to stay a genuine
-    // per-type overload; otherwise, inline it. Objective/diagnostic SUMS that are pure locals (never fed
-    // back into array storage) still accumulate in `double` for precision, matching simplexCore's own
-    // convention (its phase-1 infeasibility sum) and this file's fProxy entry point (the final cᵀx
-    // recompute).
+    // Basis factorization reuses the library's own LU class for both triangular directions -- FTRAN
+    // via LU.decompSolve and BTRAN (solve Bᵀy = v) via LU.decompSolveTransA -- no reimplementation of
+    // GETRF; both directions run against the SAME compact factor LU.decompInPlace produces.
     //
-    // Basis factorization: reuses the library's OWN `LU` class (LU.decompInPlace, the compact in-place
-    // form) for both triangular directions -- FTRAN via LU.decompSolve (Blas's compact-LU triangular
-    // solves triLowerLU/triUpperLU) and BTRAN (solve Bᵀy = v) via LU.decompSolveTransA, the getrs
-    // trans='T' counterpart promoted into LU itself (this file used to carry its own hand-written
-    // SolveTranspose; it is now just a call to the library primitive) -- no reimplementation of GETRF.
-    // Both directions run against the SAME compact fProxyMxN + Pivot factor LU.decompInPlace produces;
-    // only the read pattern (forward vs transposed) differs.
+    // Every kernel function below is `internal static` so LP.DualSimplex.fProxy.cs (stage 2) can call
+    // them directly. REFACTOR_INTERVAL and the STATUS_* tags are type-agnostic and therefore declared
+    // once in LP.Info.cs instead of here.
     //
-    // Every kernel function below is `internal static` (not buried locals) precisely so
-    // LP.DualSimplex.fProxy.cs (stage 2) can call them directly: ordinary partial-class member
-    // resolution within the same generated type (float calls float, double calls double), exactly like
-    // interiorCore's Amul/ATmul/BuildNormalStructured already work across this same file. REFACTOR_
-    // INTERVAL and the STATUS_* tags are type-agnostic and therefore declared once in LP.Info.cs
-    // (singularFile) instead of here, where a per-dtype duplicate would collide (CS0102) -- see that
-    // file's comment.
+    // Per-dtype tolerances (pivTol/feasTol/dualTol) are computed inline at each call site rather than
+    // via a shared helper: an fProxy-returning helper with no fProxy-typed parameter would differ only
+    // in return type between the float/double generated fragments, which C# does not overload on, so
+    // it would collide as a duplicate member.
     // ================================================================================================
     public static partial class LP
     {
@@ -125,15 +106,12 @@ namespace LinearAlgebra
         // ---- Shared row-major GEMV kernels (SIMD-routing helpers) ----
         //
         // Every "price a reduced cost over nonbasic columns" pass in this file and
-        // LP.DualSimplex.fProxy.cs used to be a per-column loop (j outer, i inner) reading M[i,j] with
-        // stride N between consecutive i -- the worst access pattern for a row-major matrix, and the
-        // dominant O(mN)-per-iteration cost. MTmul reshapes that into UnsafeOP.vecMatDot's row-major
-        // sweep (i outer, j inner unit-stride: outv[j] += v[i]*M[i,j], zeroed first) -- mirrors
-        // LP.InteriorPoint.fProxy.cs's ATmul (kept as an independent copy here rather than reused across
-        // files, so the two solver stages stay independently readable/deletable). REORDERING vs the
-        // original per-column running-subtraction chain (cost[j] - t1 - t2 - ... vs a separate summed
-        // dot product subtracted once): rounding-only, not bitwise-identical -- tolerance-safe, matching
-        // every other kernel this campaign has touched (see docs/perf-vectorization-lessons.md).
+        // LP.DualSimplex.fProxy.cs routes through MTmul, which reshapes the sweep into
+        // UnsafeOP.vecMatDot's row-major form (i outer, j inner unit-stride: outv[j] += v[i]*M[i,j],
+        // zeroed first) -- mirrors LP.InteriorPoint.fProxy.cs's ATmul (kept as an independent copy
+        // here rather than reused across files, so the two solver stages stay independently
+        // readable/deletable). Rounding-only vs a per-column running-subtraction chain, not
+        // bitwise-identical -- tolerance-safe.
         internal static unsafe void MTmul(fProxyMxN M, fProxyN v, fProxyN outv, int m, int N)
         {
             UnsafeOP.vecMatDot(v.Data.Ptr, M.Data.Ptr, outv.Data.Ptr, m, N);
@@ -153,13 +131,7 @@ namespace LinearAlgebra
         // via the library's own LU.decompInPlace (compact form, partial pivoting -- no reimplementation
         // of GETRF). Returns false on a singular basis.
         //
-        // Loop order is i (outer) / k (inner), not k / i: the natural "one basis column at a time" order
-        // reads M[i,col] with stride N between consecutive i (a column gather from a row-major matrix)
-        // AND writes B[i,k] with stride m between consecutive i (a column-strided write too). Swapping
-        // to i outer / k inner turns the read into m arbitrary-offset reads WITHIN one row of M (which,
-        // unlike striding across N-separated rows, is likely already resident once that row's cache
-        // lines are touched) and the write into a fully contiguous row of B. Pure data movement, no
-        // arithmetic -- bit-identical to the original order, zero drift risk.
+        // Loop order is i (outer) / k (inner): avoids column-strided access into M (row-major).
         internal static bool Refactorize(fProxyMxN M, NativeArray<int> basis, fProxyMxN B, ref Pivot P, int m, int N)
         {
             for (int i = 0; i < m; i++)
@@ -197,8 +169,8 @@ namespace LinearAlgebra
         // NEW value is what every other entry subtracts, so it must be updated first).
         //
         // The i != row exclusion is resolved by running UnsafeOP.axpy (a plain independent-per-lane
-        // update, so this is bit-identical to the branchy scalar loop for every i != row -- no
-        // reduction, no reassociation) over the WHOLE row [0,m) and then restoring v[row] to vr
+        // update, so this matches the scalar loop's result exactly for every i != row) over the
+        // WHOLE row [0,m) and then restoring v[row] to vr
         // afterward, rather than branching inside the hot loop: v[row] += (-vr)*etaAlpha[slot,row]
         // computes a value the code immediately discards, so the branch-free overwrite is exact, not
         // an approximation.
@@ -217,7 +189,7 @@ namespace LinearAlgebra
         // The i != row exclusion: compute the FULL dot (including the row term) via UnsafeOP.vecDot's
         // 2x width-4 SIMD-accumulator reduction, then subtract the one excluded term back out. This is
         // a genuine reduction reorder (SIMD lane tree vs strict left-to-right scalar sum) -- rounding-
-        // only, tolerance-safe, same idiom as every other dot product this campaign has touched.
+        // only, tolerance-safe.
         internal static unsafe void ApplyEtaTransposed(fProxyMxN etaAlpha, int row, int slot, fProxyN v, int m)
         {
             fProxy* etaRow = etaAlpha.Data.Ptr + (long)slot * etaAlpha.N_Cols;
@@ -282,13 +254,11 @@ namespace LinearAlgebra
             return s;
         }
 
-        // Recomputes xB fresh (solve of the adjusted rhs b - N x_N) against the CURRENT factorization --
-        // the accuracy check the spec calls for at refactorization time. Always trusted as authoritative.
+        // Recomputes xB fresh (solve of the adjusted rhs b - N x_N) against the CURRENT factorization.
+        // Always trusted as authoritative.
         //
-        // The nonbasic contribution was originally a per-column scatter (outer loop over nonbasic j,
-        // inner loop over i reading M[i,j] with stride N -- a column gather from a row-major matrix).
-        // Reshaped into one dense GEMV: build valVec (the nonbasic value per column, 0 for basic/
-        // AT_LOWER-zero -- computing it for every column rather than skipping zeros is harmless, 0
+        // The nonbasic contribution is a dense GEMV: build valVec (the nonbasic value per column, 0
+        // for basic -- computing it for every column rather than skipping zeros is harmless, 0
         // contributes 0 to the sum either way) then adj = rhs - M*valVec via Mmul's row-major sweep.
         // Called at refactorization events (not every iteration), so the two extra Temp allocations
         // below are inconsequential next to the per-iteration kernels above.
@@ -296,9 +266,9 @@ namespace LinearAlgebra
         // Solves via Ftran (base LU solve + the eta chain), not a bare LU.decompSolve: every EXISTING
         // call site passes etaCount==0 (always called immediately after a fresh Refactorize), where
         // Ftran's eta loop is a no-op and this is bit-identical to the prior bare-LU-solve form. The
-        // fProxyLPCache warm-resume path (docs/spec-lpbasis-persistence.md, LP.DualSimplex.fProxy.cs) is
-        // the one caller that can arrive here with etaCount > 0 (resuming B/P/eta as-is, skipping
-        // Refactorize) -- correctness there requires applying the eta corrections too.
+        // fProxyLPCache warm-resume path (LP.DualSimplex.fProxy.cs) is the one caller that can arrive
+        // here with etaCount > 0 (resuming B/P/eta as-is, skipping Refactorize) -- correctness there
+        // requires applying the eta corrections too.
         internal static void RebuildXB(fProxyMxN M, fProxyN rhs, NativeArray<byte> status,
                                        fProxyN lower, fProxyN upper,
                                        fProxyMxN B, in Pivot P, fProxyMxN etaAlpha, NativeArray<int> etaRow, int etaCount,
@@ -318,47 +288,26 @@ namespace LinearAlgebra
         }
 
         // Bounded-variable Harris two-pass ratio test (composite/far-bound rule folded in so it also
-        // handles phase 1's "travel through a violated bound to the far one" requirement -- see the
-        // file header/spec: for a row currently WITHIN bounds this reduces to the plain bounded ratio
-        // test; for a row currently infeasible it either targets the far bound (healing direction) or
-        // imposes no limit at all (worsening direction, excluded from the min).
+        // handles phase 1's "travel through a violated bound to the far one" requirement): for a row
+        // currently WITHIN bounds this reduces to the plain bounded ratio test; for a row currently
+        // infeasible it either targets the far bound (healing direction) or imposes no limit at all
+        // (worsening direction, excluded from the min).
         //   d_i = -sigma*alpha_i is the rate xB_i moves per unit step t.
         // Pass 1 (relaxed by feasTol) finds Theta = min(thetaSelf, best relaxed row limit). Pass 2 keeps
         // rows whose EXACT ratio <= Theta and picks the largest |alpha_i| among them for stability,
         // using ITS exact ratio as the actual step; the self bound-flip wins ties (it needs no pivot).
         //
-        // FAR-BOUND FALLBACK (bug fix): "travel through to the far bound" assumes the far bound is
-        // FINITE. In this computational form exactly one bound is ever infinite per variable kind
-        // (structurals/LessEqual-logicals: lower=0 finite, upper=+INF; GreaterEqual-logicals: lower=-INF,
-        // upper=0 finite) -- so a row that is CURRENTLY INFEASIBLE and healing toward an INFINITE far
-        // bound contributes NO limit at all (t evaluates to a huge, INF-scale number). That is harmless
-        // when at least one OTHER row still contributes a finite limit (the common case, e.g.
-        // RevisedMixedSense: one infeasible >= row plus two ordinary <= rows). It is NOT harmless when
-        // EVERY simultaneously-infeasible row shares this property, which happens whenever every basic
-        // row is infeasible in the SAME direction with the SAME infinite far bound -- e.g. a dense
-        // covering LP (min cx s.t. Ax>=b, x>=0, A,b,c>0): every >=-row logical starts basic and above its
-        // upper bound (0) with an unreachable lower bound (-INF), for every row simultaneously. Then NO
-        // row ever contributes a finite limit, thetaRelaxed never drops below thetaSelf, and the pass-1
-        // unbounded check (thetaRelaxed >= 1e29) fires -- a false "Unbounded" despite phase 1's composite
-        // objective being bounded below by 0 by construction (it can never truly be an unbounded ray).
-        // Caught by the LP benchmark: RevisedSimplex returned Optimal with 0 iterations / objective 0 on
-        // every dense-covering-LP instance while tableau/interior/dual all agreed on the true optimum --
-        // a silent phase-1 bail (declared unbounded, which the outer driver reports as LPStatus.Unbounded,
-        // extracting x=0 from a basis nothing ever pivoted into) rather than a precision issue. Reproduced
-        // in LPTests.fProxy.cs as RevisedDenseCovering (failed before this fix, passes after).
-        //
-        // Fix: run the SAME two passes twice. The first attempt (useFallback=false) is BYTE-IDENTICAL to
-        // the original algorithm -- if it finds a finite limit from ANY row (the common case), it returns
-        // immediately with UNCHANGED behavior, so every already-passing scenario (RevisedMixedSense
-        // included) pivots exactly as before. Only when the first attempt would report Unbounded does a
-        // second attempt run with the fallback engaged: for a row that is CURRENTLY infeasible (violating
-        // its NEAR bound) and whose FAR bound is not finite (|bound| >= 1e29), use the NEAR (violated)
-        // bound as the target instead -- the step at which THIS row's own violation first reaches zero,
-        // always finite. This is the smallest step that cannot make phase 1's objective worse, matching
-        // the standard bounded-variable composite ratio test's fallback for an unreachable far bound.
-        // hitsUpper is flipped alongside the bound swap so the leaving variable still lands on the bound
-        // it actually reached (the primal core's defensive finite-bound guard at the pivot site is an
-        // independent second safety net for this, not a substitute for getting it right here).
+        // FAR-BOUND FALLBACK: "travel through to the far bound" assumes the far bound is FINITE, which
+        // is false when EVERY simultaneously-infeasible row shares an infinite far bound in the same
+        // direction (e.g. a dense covering LP, where every >=-row logical starts basic and above its
+        // upper bound with an unreachable lower bound). Fix: run the same two passes twice. The first
+        // attempt (useFallback=false) is byte-identical to the original algorithm and returns
+        // immediately if it finds a finite limit from ANY row. Only when that would report Unbounded
+        // does a second attempt run with the fallback engaged: for a row that is CURRENTLY infeasible
+        // (violating its NEAR bound) and whose FAR bound is not finite, use the NEAR (violated) bound
+        // as the target instead -- the step at which THIS row's own violation first reaches zero,
+        // always finite. hitsUpper is flipped alongside the bound swap so the leaving variable still
+        // lands on the bound it actually reached.
         internal static void HarrisRatioTest(fProxyN alpha, NativeArray<int> basis, fProxyN xB,
                                              fProxyN lower, fProxyN upper, int m, int sigma,
                                              fProxy thetaSelf, fProxy feasTol, fProxy pivTolCol,
@@ -505,14 +454,9 @@ namespace LinearAlgebra
                                                  NativeArray<int> basis, NativeArray<byte> status)
         {
             // Per-dtype tolerances, derived from the SAME Consts the tableau simplex (simplexCore)
-            // already uses -- see file header. pivTol: absolute pivot-rejection floor. feasTol/dualTol:
-            // feasibility/dual tolerance shared by the ratio test and entering-column pricing (mirrors
-            // stage 1's original feasTol/dualTol, which were equal constants). Computed inline (not a
-            // shared named helper) because a helper returning fProxy with no fProxy-typed parameter
-            // would differ ONLY by return type between the float and double generated fragments -- C#
-            // does not overload on return type alone, so float's and double's copies would collide as
-            // duplicate members of the same partial class. Stage 2 (LP.DualSimplex.fProxy.cs) computes
-            // the identical expressions inline for the same reason.
+            // already uses. pivTol: absolute pivot-rejection floor. feasTol/dualTol: feasibility/dual
+            // tolerance shared by the ratio test and entering-column pricing. Computed inline, not via
+            // a shared helper -- see file header.
             fProxy pivTol = math.max(Consts.fProxyZeroThreshold, (fProxy)1e-9);
             fProxy feasTol = (fProxy)math.max(math.sqrt((double)Consts.fProxyEpsilon), 1e-7);
             fProxy dualTol = feasTol;

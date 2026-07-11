@@ -8,35 +8,30 @@ using Unity.Mathematics;
 namespace LinearAlgebra
 {
     // ================================================================================================
-    // Discrete-time LQR (docs/spec-lqr.md). x_{k+1} = A x_k + B u_k, cost Σ(xᵀQx + uᵀRu), optimal
-    // feedback u = -Kx via the discrete algebraic Riccati equation (DARE)
+    // Discrete-time LQR. x_{k+1} = A x_k + B u_k, cost Σ(xᵀQx + uᵀRu), optimal feedback u = -Kx via the
+    // discrete algebraic Riccati equation (DARE)
     //     S = Q + AᵀSA - AᵀSB(R+BᵀSB)⁻¹BᵀSA,   K = (R+BᵀSB)⁻¹BᵀSA.
     //
-    // ONE shared Riccati-step kernel (RiccatiStep below) computes S⁻/K from a given S; it is reused by
+    // One shared Riccati-step kernel (RiccatiStep below) computes S⁻/K from a given S and is reused by
     // every entry point: the finite-horizon schedule (backward recursion from Qf), the warm path (plain
     // fixed-point iteration from a carried S), and the cold path's own finalization (SDA converges S,
-    // then one RiccatiStep call turns it into K). The m x m (R+BᵀSB) solve always uses CHOP (rank-
-    // revealing pivoted Cholesky) -- m is small (<=6), so pivoting cost is irrelevant, and CHOP degrades
-    // gracefully (a still-usable minimum-norm K) on a semidefinite R instead of hard-failing like plain
-    // CHO, exactly the LAD Frisch-Newton precedent (LP.FrischNewton.fProxy.cs).
+    // then one RiccatiStep call turns it into K). The m x m (R+BᵀSB) solve always uses CHOP so a
+    // semidefinite R degrades to a usable minimum-norm K instead of hard-failing like plain CHO.
     //
-    // Cold infinite-horizon solves use SDA (structure-preserving doubling) -- SEE THE ADDENDUM in
-    // docs/spec-lqr.md for the fetched source and the exact recurrences implemented (Chiang-Fan-Lin
-    // Algorithm 2.1, specialized to the no-cross-term / nonsingular-R case: A0=A, G0=BR⁻¹Bᵀ, H0=Q,
-    // A_{k+1}=Ak(I+GkHk)⁻¹Ak, G_{k+1}=Gk+AkGk(I+HkGk)⁻¹Akᵀ, H_{k+1}=Hk+Akᵀ(I+HkGk)⁻¹HkAk, Hk -> S). The
-    // (I+GH)/(I+HG) solves are NONSYMMETRIC n x n -> LU (compact in-place form + multi-RHS decompSolve),
-    // not Cholesky. G0 = BR⁻¹Bᵀ is itself built via CHOP on R (not a bare inverse), so a semidefinite R
-    // degrades gracefully there too.
+    // Cold infinite-horizon solves use SDA (structure-preserving doubling), a port of Chiang-Fan-Lin
+    // Algorithm 2.1 specialized to the no-cross-term / nonsingular-R case. The (I+GH)/(I+HG) solves are
+    // NONSYMMETRIC n x n -> LU, not Cholesky. G0 = BR⁻¹Bᵀ is itself built via CHOP on R (not a bare
+    // inverse), so a semidefinite R degrades gracefully there too.
     //
     // Hygiene (all paths): every updated S/G/H is re-symmetrized ((M+Mᵀ)/2) before its norm/residual is
-    // read; a data-scaled blowup check (Control.BLOWUP_FACTOR x (1+‖Q‖_F+‖R‖_F)) or an inner LU/CHOP
-    // breakdown forces LQRStatus.Diverged -- fail fast, never hang, never hand back an exploded/NaN
-    // buffer (the last KNOWN-GOOD iterate is kept instead). Convergence is the relative Frobenius change
-    // ‖S_new-S_old‖_F / max(1,‖S_new‖_F) <= Consts.fProxySqrtEps.
+    // read; a data-scaled blowup check or an inner LU/CHOP breakdown forces LQRStatus.Diverged -- fail
+    // fast, never hang, never hand back an exploded/NaN buffer (the last KNOWN-GOOD iterate is kept
+    // instead). Convergence is the relative Frobenius change ‖S_new-S_old‖_F / max(1,‖S_new‖_F) <=
+    // Consts.fProxySqrtEps.
     //
-    // fProxy storage throughout; double is used only for local scalar control math (norms, residual
-    // ratios), never stored back into an fProxy buffer -- no double-only kernel. All scratch is
-    // Allocator.Temp (job-safe) except fProxyLQRState's own carried S buffer.
+    // fProxy storage throughout; double is used only for local scalar control math, never stored back
+    // into an fProxy buffer. All scratch is Allocator.Temp (job-safe) except fProxyLQRState's own
+    // carried S buffer.
     // ================================================================================================
     public static partial class Control
     {
@@ -166,12 +161,12 @@ namespace LinearAlgebra
         }
 
         // ---- SDA: cold infinite-horizon DARE via structure-preserving doubling ----
-        // A0=A, G0=BR⁻¹Bᵀ (via CHOP on R -- graceful on semidefinite R), H0=Q; doubling recursion per
-        // the spec addendum. S is ALWAYS overwritten with the terminal Hk (a defined, bounded value --
-        // H0=Q in the worst case), regardless of status, matching the house "last iterate is usable"
-        // convention. rankDeficientControl reflects R's OWN rank at the G0 setup (independent of S/B) --
-        // the only path that can see a semidefinite R directly, since R+BᵀSB is generically full rank
-        // whenever B has full column rank, even for a rank-deficient R (see spec-lqr.md test discussion).
+        // A0=A, G0=BR⁻¹Bᵀ (via CHOP on R -- graceful on semidefinite R), H0=Q. S is ALWAYS overwritten
+        // with the terminal Hk (a defined, bounded value -- H0=Q in the worst case), regardless of
+        // status, matching the house "last iterate is usable" convention. rankDeficientControl reflects
+        // R's OWN rank at the G0 setup (independent of S/B) -- the only path that can see a semidefinite
+        // R directly, since R+BᵀSB is generically full rank whenever B has full column rank, even for a
+        // rank-deficient R.
         internal static LQRInfo SDACore(in fProxyMxN A, in fProxyMxN B, in fProxyMxN Q, in fProxyMxN R,
                                         ref fProxyMxN S, int maxIter)
         {
@@ -280,7 +275,8 @@ namespace LinearAlgebra
         }
 
         // Cold solve: SDA for S, then ONE RiccatiStep call (the shared kernel) at the converged S to
-        // produce K -- shared by the plain cold entry point and entry 2's cold fallback.
+        // produce K -- shared by the plain cold overload (lqr) and the warm-state overload's cold
+        // fallback (lqr with a not-yet-populated fProxyLQRState).
         static LQRInfo SolveCold(in fProxyMxN A, in fProxyMxN B, in fProxyMxN Q, in fProxyMxN R,
                                  ref fProxyMxN K, ref fProxyMxN S, int maxIter)
         {
@@ -302,8 +298,7 @@ namespace LinearAlgebra
         // call at the converged S produces the authoritative K (same "finalize once" shape as
         // SolveCold, so mid-recursion K's -- one step behind their own S -- never leak out).
         // Sresult is written whenever status != Diverged (last-iterate convention); untouched on
-        // Diverged. internal (not private): test-writer's SDA-vs-oracle check calls this directly with
-        // a large maxIter, per docs/spec-lqr.md's Tests section.
+        // Diverged. internal (not private): exposed for direct testing with a large maxIter.
         internal static LQRInfo RiccatiIterate(in fProxyMxN A, in fProxyMxN B, in fProxyMxN Q, in fProxyMxN R,
                                                in fProxyMxN S0, ref fProxyMxN Sresult, ref fProxyMxN K, int maxIter)
         {
@@ -361,9 +356,9 @@ namespace LinearAlgebra
         /// <summary>
         /// Infinite-horizon discrete LQR, cold solve: computes the stabilizing feedback gain K (m x n,
         /// caller-allocated) so u = -Kx minimizes Σ(xᵀQx + uᵀRu) for x_{k+1} = Ax_k + Bu_k, via the
-        /// discrete algebraic Riccati equation solved by SDA (structure-preserving doubling,
-        /// quadratic convergence, ~10-25 steps typically -- see docs/spec-lqr.md's addendum for the
-        /// exact recurrences and source). Use the <c>ref fProxyLQRState</c> overload instead when K
+        /// discrete algebraic Riccati equation solved by SDA (structure-preserving doubling, port of
+        /// Chiang-Fan-Lin Algorithm 2.1; quadratic convergence, ~10-25 steps typically). Use the
+        /// <c>ref fProxyLQRState</c> overload instead when K
         /// will be re-solved repeatedly for a slightly-changing A/B (e.g. per-frame re-linearization).
         /// </summary>
         /// <param name="A">Dynamics, n x n.</param>
@@ -441,8 +436,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Finite-horizon discrete LQR: backward Riccati recursion from the terminal cost
         /// <paramref name="Qf"/> over <paramref name="N"/> steps, using the SAME shared Riccati-step
-        /// kernel as the infinite-horizon paths (this is the recursion's test oracle, and the reason
-        /// it exists as a secondary entry point). <paramref name="Kschedule"/> is (N*m) x n; the gain
+        /// kernel as the infinite-horizon paths. <paramref name="Kschedule"/> is (N*m) x n; the gain
         /// for step k lives in rows [k*m, (k+1)*m). For large N with <c>Qf == Q</c>, row block 0
         /// approaches the infinite-horizon K.
         /// </summary>
@@ -497,14 +491,11 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Buffer-carrying warm-start state for <see cref="Control.lqr(in fProxyMxN, in fProxyMxN, in fProxyMxN, in fProxyMxN, ref fProxyMxN, ref fProxyLQRState, int)"/>:
-    /// carries the n x n Riccati solution S across separate top-level calls, the LPBasis/fProxyLPCache
-    /// warm-start philosophy applied to LQR's per-frame re-linearization use case. LIFECYCLE: explicit
-    /// <c>(n, Allocator)</c> constructor + <see cref="IsCreated"/> + <see cref="Dispose"/>, mirroring
-    /// <see cref="fProxyLPCache"/> -- standalone, user-allocated, no arena requirement (needs to persist
-    /// across separate solve calls). MUST be constructed before being passed to the warm <c>lqr</c>
-    /// overload (unlike <see cref="fProxyLPCache"/>'s optional-cache contract, this struct IS the only
-    /// carrier of warm state for that overload, so an uncreated instance is a caller error, not "no
-    /// cache" -- <c>lqr</c> throws rather than silently falling back).
+    /// carries the n x n Riccati solution S across separate top-level calls, for LQR's per-frame
+    /// re-linearization use case. Standalone, user-allocated (no arena requirement), since it must
+    /// persist across separate solve calls. MUST be constructed via <c>(n, Allocator)</c> before being
+    /// passed to the warm <c>lqr</c> overload -- an uncreated instance is a caller error and <c>lqr</c>
+    /// throws rather than silently falling back to a cold solve.
     /// </summary>
     public struct fProxyLQRState
     {

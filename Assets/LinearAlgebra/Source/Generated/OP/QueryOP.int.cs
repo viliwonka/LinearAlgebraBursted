@@ -7,15 +7,15 @@ using System.Runtime.CompilerServices;
 namespace LinearAlgebra
 {
     // Query: integer-exact search & selection inside integer vectors / matrices.
-    // This is the P2 subset from spec-query.md — only the metrics/norms that are
-    // exact for integer types: Manhattan, Chebyshev, SqEuclidean, Dot (Group 3);
-    // L1 and Linf norms (Group 2). Euclidean, Cosine, and L2 are float-only (need
-    // sqrt/division) and throw ArgumentException if passed to integer methods.
+    // Only the metrics/norms that are exact for integer types are implemented: Manhattan,
+    // Chebyshev, SqEuclidean, Dot (Group 3); L1 and Linf norms (Group 2). Euclidean, Cosine, and
+    // L2 are float-only (need sqrt/division) and throw ArgumentException if passed to integer
+    // methods.
     //
     // decodeIndex is type-agnostic (int→int) and lives in Query — reuse that,
     // do NOT call or duplicate it here.
     //
-    // P3 overflow note: ALL integer metrics require each element AND each element-wise
+    // Overflow note: ALL integer metrics require each element AND each element-wise
     // difference to fit the proxy type. For short: coordinates roughly within ±16383 so
     // differences fit ±32767 — the subtraction A[r,c]-q[c] itself overflows at the boundary.
     // SqEuclidean/Dot additionally require maxAbs²×dimension to fit. Values at MinValue are
@@ -387,14 +387,14 @@ namespace LinearAlgebra
         // ---- Integer metric score kernels ----------------------------------------
         // Internal: Row variant (contiguous elements); Col variant (strided).
         //
-        // P3 overflow: SqEuclidean accumulates (diff*diff) in int; Dot accumulates
+        // Overflow: SqEuclidean accumulates (diff*diff) in int; Dot accumulates
         // (A[r,c]*q[c]) in int. Caller must ensure maxAbsValue² × dimension fits
         // the type (int: ~2.1e9, short: ~32767, long: ~9.2e18). Manhattan/Chebyshev
         // are the recommended overflow-safe integer metrics.
 
         /// <summary>
         /// Score between row r of A and query q under integer-exact metric m.
-        /// Supported: Manhattan, Chebyshev, SqEuclidean, Dot. See the P3 overflow note
+        /// Supported: Manhattan, Chebyshev, SqEuclidean, Dot. See the overflow note
         /// above (and class header): the "overflow-safe" claim for Manhattan/Chebyshev
         /// covers only the abs/max step, NOT the subtraction (A[r,c] - q[c]) itself.
         /// </summary>

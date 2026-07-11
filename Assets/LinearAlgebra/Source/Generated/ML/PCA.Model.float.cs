@@ -11,12 +11,6 @@ namespace LinearAlgebra.ML
     /// <c>Arena.floatPCAModel(p, k)</c> (p = X.N_Cols features, k = number of components) and reuse across
     /// same-shape fits (realtime pattern: fit each frame into the same model, <c>ClearTemp()</c> reclaims the
     /// internal scratch each fit allocates from the arena's temp pool).
-    ///
-    /// This is a buffer-carrying (float-prefixed) struct rather than a plain scalar diagnostics struct
-    /// (like <c>SolveInfo</c>/<c>EigenSolveInfo</c>) because PCA has a downstream <c>transform</c> stage
-    /// that consumes <c>mean</c>/<c>scale</c>/<c>components</c>/<c>k</c> together as a unit — the same
-    /// justification every <c>Cache</c> (<c>floatKMeansCache</c>, <c>floatSVDThinCache</c>) already has for
-    /// bundling arena buffer handles into one struct.
     /// </summary>
     public struct floatPCAModel
     {

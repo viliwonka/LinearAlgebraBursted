@@ -8,60 +8,34 @@ using Unity.Mathematics;
 namespace LinearAlgebra
 {
     // ================================================================================================
-    // Bounded-variable DUAL revised simplex -- the LPMethod.DualSimplex backend, stage 2 of the
-    // HiGHS-style dense revised-simplex port (docs/spec-revised-simplex.md). Builds on stage 1's kernel
-    // layer (LP.RevisedSimplex.double.cs: Refactorize/Ftran/Btran/the eta-apply pair/RebuildXB) instead
-    // of duplicating it -- ordinary partial-class member resolution, same generated type calls same
-    // generated type (float calls float, double calls double), exactly like interiorCore already reuses
-    // Amul/ATmul across this same partial class. Where the primal keeps a primal-feasible basis and
-    // hunts for dual feasibility, the dual simplex keeps a DUAL-feasible basis and hunts for primal
-    // feasibility: choose an infeasible BASIC row (dual steepest edge picks which), price the pivot ROW
-    // (BTRAN + O(mn)), then a ratio test over nonbasic COLUMNS picks the entering variable so dual
-    // feasibility survives the pivot. HiGHS is (again) the reference: dual steepest edge (Forrest-
-    // Goldfarb) pricing, a long-step (bound-flipping) Harris ratio test, artificial-bounds dual phase 1,
-    // cost perturbation, and -- the signature HiGHS composition -- handing the terminal dual basis to
-    // the PRIMAL core (stage 1) as a cleanup pass once real bounds are restored, rather than writing a
-    // second cleanup algorithm.
+    // Bounded-variable DUAL revised simplex -- the LPMethod.DualSimplex backend, the dual half of
+    // the HiGHS-style dense revised-simplex port. Builds on the primal revised simplex's kernel layer
+    // (LP.RevisedSimplex.double.cs: Refactorize/Ftran/Btran/the eta-apply pair/RebuildXB). Where the
+    // primal keeps a primal-feasible basis and hunts for dual feasibility, the dual simplex keeps a
+    // DUAL-feasible basis and hunts for primal feasibility: choose an infeasible BASIC row (dual
+    // steepest edge picks which), price the pivot ROW (BTRAN + O(mn)), then a ratio test over
+    // nonbasic COLUMNS picks the entering variable so dual feasibility survives the pivot. HiGHS is
+    // the reference for dual steepest edge (Forrest-Goldfarb) pricing, a long-step (bound-flipping)
+    // Harris ratio test, artificial-bounds dual phase 1, cost perturbation, and handing the terminal
+    // dual basis to the PRIMAL core (LP.RevisedSimplex.double.cs) as a cleanup pass once real bounds are restored.
     //
-    // Numerics: ordinary double throughout (matrix/vector storage, the ratio test, DSE weights), exactly
-    // like stage 1 -- see that file's header for the full rationale (reuses the library's own LU/Blas;
-    // tolerances derived from Consts.doubleZeroThreshold/doubleEpsilon, the SAME expressions stage 1
-    // uses, computed INLINE in DualSimplexCore rather than via a shared helper method -- an double-
-    // returning helper with no double-typed parameter differs only in return type between the float- and
-    // double-generated fragments of this partial class, which C# does not overload on, so it would
-    // collide as a duplicate member; see stage 1's file header for the same pitfall). The DSE weight
-    // floor (1e-4) is HiGHS's own literal constant (kMinDualSteepestEdgeWeight), not tolerance-derived,
-    // so it stays the same literal for both dtypes -- see below.
+    // Numerics: ordinary double throughout, same as the primal revised simplex (reuses the library's own LU/Blas;
+    // tolerances derived from Consts.doubleZeroThreshold/doubleEpsilon). The DSE weight floor (1e-4)
+    // is HiGHS's own literal constant (kMinDualSteepestEdgeWeight), not tolerance-derived, so it
+    // stays the same literal for both dtypes.
     //
-    // DSE update formula verified line-by-line against HiGHS source (not just the spec's paraphrase):
-    // https://github.com/ERGO-Code/HiGHS  highs/simplex/HEkk.cpp::updateDualSteepestEdgeWeights (the
-    // `dual_edge_weight_[iRow] += aa_iRow*(new_pivotal_edge_weight*aa_iRow + Kai*dse_array_value)` line)
-    // called from highs/simplex/HEkkDual.cpp::updatePrimal with `Kai = -2/alpha_col`,
-    // `new_pivotal_edge_weight = edge_weight[row_out]/alpha_col^2`, and the DSE array itself built as
-    // `col_DSE = Ftran(row_ep)` i.e. tau = B^-1 rho_r -- exactly the spec's
-    // `w_i' = w_i - 2(alpha_qi/alpha_qr)*tau_i + (alpha_qi/alpha_qr)^2*w_r, then w_r' = w_r/alpha_qr^2`.
-    // The 1e-4 floor is HiGHS's `kMinDualSteepestEdgeWeight` (highs/simplex/SimplexConst.h).
+    // WARM-START (LPBasis in LP.Info.cs): DualSimplexCore below is split fresh-overload-forwards-to-
+    // warm-overload, like LP.RevisedSimplex.double.cs's RevisedPrimalCore.
     //
-    // WARM-START (docs/draft-spec-mip.md stage 1, LPBasis in LP.Info.cs): DualSimplexCore below is
-    // split fresh-overload-forwards-to-warm-overload, exactly like LP.RevisedSimplex.double.cs's
-    // RevisedPrimalCore. The warm overload's dual-feasibility repair (bound flips / temporary
-    // artificial bounds keyed off a REAL BTRAN-computed reduced cost) is a strict generalization of
-    // the former cold-only precondition -- provably bit-identical at the all-logical basis, since
-    // y = B^-T c_B is then exactly the zero vector (c_B = 0, and BTRAN of an all-zero vector stays
-    // all-zero through every forward/back-substitution step) -- see that overload's own comments for
-    // the full argument. LP.solve's `ref LPBasis` overload (LP.double.cs) is the only entry point;
-    // the ordinary `LP.solve(..., LPMethod.DualSimplex)` call keeps hitting the UNCHANGED fresh
-    // overload.
-    //
-    // FACTOR/WEIGHT PERSISTENCE (docs/spec-lpbasis-persistence.md, doubleLPCache in LP.Cache.double.cs):
-    // the warm overload's pivot loop is factored into DualSimplexPivotCore below, shared by a plain
-    // (Allocator.Temp scratch) wrapper and a cache-aware wrapper that resumes B/P/eta/weight from a
-    // caller-persisted doubleLPCache instead of allocating+Refactorize+w=1 every call. See
-    // DualSimplexPivotCore's own comment for the resume contract.
+    // FACTOR/WEIGHT PERSISTENCE (doubleLPCache in LP.Cache.double.cs): the warm overload's pivot loop
+    // is factored into DualSimplexPivotCore below, shared by a plain (Allocator.Temp scratch) wrapper
+    // and a cache-aware wrapper that resumes B/P/eta/weight from a caller-persisted doubleLPCache
+    // instead of allocating+Refactorize+w=1 every call. See DualSimplexPivotCore's own comment for
+    // the resume contract.
     // ================================================================================================
     public static partial class LP
     {
-        // ---- double-typed entry point: builds the computational form (reusing stage 1's
+        // ---- double-typed entry point: builds the computational form (reusing the revised simplex's
         // BuildComputationalForm verbatim -- same partial class, same per-dtype fragment), hands off to
         // the dual core, copies the result back. ----
         static LPInfo dualSimplexCore(in doubleMxN A, in doubleN b, in doubleN c,
@@ -95,11 +69,9 @@ namespace LinearAlgebra
         // Prices alpha_r[j] = dot(M[:,j], rho) over every NONBASIC column j (basic columns left 0,
         // unused) -- the O(mn) PRICE step of the dual iteration's pivot row (rho = B^-T e_r via BTRAN).
         //
-        // MTmul (LP.RevisedSimplex.double.cs) fills alphaRow for EVERY column via its row-major sweep
-        // (was a per-column loop reading M[i,j] with stride N -- the worst pattern for a row-major
-        // matrix); the basic columns are then zeroed in a cheap second pass, matching the original
-        // contract (basic entries left 0, unused). REORDERING vs the original per-column running sum:
-        // see MTmul's own comment.
+        // MTmul (LP.RevisedSimplex.double.cs) fills alphaRow for EVERY column via its row-major sweep;
+        // the basic columns are then zeroed in a cheap second pass, matching the original contract
+        // (basic entries left 0, unused).
         internal static void PriceRow(doubleMxN M, doubleN rho, NativeArray<byte> status, int N, int m, doubleN alphaRow)
         {
             MTmul(M, rho, alphaRow, m, N);
@@ -108,8 +80,8 @@ namespace LinearAlgebra
         }
 
         // Prices reduced costs d_j = cost[j] - dot(M[:,j], y) over every nonbasic column j (y = B^-T c_B
-        // via BTRAN of the basic costs) -- the dual ratio test's numerator. Mirrors the pricing half of
-        // stage 1's SelectEntering but fills the WHOLE array (the ratio test needs every sign-correct
+        // via BTRAN of the basic costs) -- the dual ratio test's numerator. Mirrors the pricing half of the primal
+        // SelectEntering but fills the WHOLE array (the ratio test needs every sign-correct
         // candidate's d_j, not just the single best one).
         //
         // Same MTmul-then-fixup shape as PriceRow above: dj[j] is first filled with dot(M[:,j], y) for
@@ -121,41 +93,23 @@ namespace LinearAlgebra
                 dj[j] = status[j] == STATUS_BASIC ? (double)0 : cost[j] - dj[j];
         }
 
-        // Dual ratio test: Harris two-pass + bound-flipping ratio test (BFRT), the dual analogue of
-        // stage 1's HarrisRatioTest. Leaving row r is already chosen; `needIncrease` says which bound
-        // its basic variable is heading for (true: below lower, moving up; false: above upper, moving
-        // down). alphaRow[j] = rho_r . a_j (the PRICE step); dj[j] the reduced cost.
+        // Dual ratio test: Harris two-pass + bound-flipping ratio test (BFRT), the dual analogue of the primal
+        // HarrisRatioTest. Leaving row r is already chosen; `needIncrease` says which bound
+        // its basic variable is heading for. alphaRow[j] = rho_r . a_j (the PRICE step); dj[j] the
+        // reduced cost. alphaHat_j = s*alphaRow[j] (s = -1 if needIncrease else +1) makes the sign
+        // condition uniform: AtLower wants alphaHat_j > pivTol, AtUpper wants alphaHat_j < -pivTol.
         //
-        // alphaHat_j = s*alphaRow[j] (s = -1 if needIncrease else +1) makes the sign condition uniform:
-        // AtLower wants alphaHat_j > pivTol, AtUpper wants alphaHat_j < -pivTol (see derivation in the
-        // spec / this file's accompanying notes). Ratio d_j/|alphaHat_j| >= 0 for every candidate since
-        // dual feasibility is an invariant (up to dualTol noise).
-        //
-        // A REAL pivot happens every time this returns with anyCandidate=true -- BFRT flips are only ever
-        // a PREFIX of the walk, never a substitute for the final pivot (verified against HiGHS's
-        // HEkkDualRow::chooseFinal: it always selects a workPivot and FTRANs its column via updateFtran,
-        // unconditionally; the flip list from updateFlip is an ADDITIONAL, separate side effect applied
-        // alongside that pivot, never instead of one). This matters beyond style: a "flip-only" iteration
-        // would leave the basis (hence y = B^-T c_B, hence every dj) COMPLETELY UNCHANGED, so a column
-        // just flipped from AtLower to AtUpper would still carry its OLD (AtLower-side) reduced cost --
-        // generally the WRONG sign for its new status -- with no future iteration ever positioned to
-        // notice, since dj is only ever re-examined when a column happens to be priced as a candidate for
-        // SOME row again. Only an actual pivot changes cB and therefore y, which is what makes a flipped
-        // column's stale dj become the mathematically CORRECT (fresh-BTRAN-recomputed) value next
-        // iteration. (An earlier version of this method allowed flips to fully resolve a row with no
-        // pivot; it passed every test at n<=24 but produced a false Infeasible on a 48-variable random
-        // instance -- exactly the failure mode this derivation predicts, since the corruption needs
-        // enough iterations/columns to surface.)
-        //
-        // Walks candidates (alphaHat_j = s*alphaRow[j], s=-1 if needIncrease else +1) in ascending
-        // d_j/|alphaHat_j| ratio order (ties broken toward the largest |alphaHat|, mirroring the primal
-        // Harris test's stability rule). A BOXED candidate (finite range) whose full flip would STILL
-        // leave row r's infeasibility positive is flipped (absorbing |alphaHat_j|*(u_j-l_j) of it) and
-        // the walk continues; the first candidate that is either NOT boxed, or boxed but sufficient to
-        // finish absorbing the remaining infeasibility on its own, becomes the actual entering pivot
-        // (never flipped, even if boxed). No sign-correct candidate at all, or the combined capacity of
-        // every candidate still falling short of row r's infeasibility, -> primal Infeasible (dual
-        // unbounded), reported via anyCandidate = false.
+        // Walks candidates in ascending d_j/|alphaHat_j| ratio order (ties broken toward the largest
+        // |alphaHat|, mirroring the primal Harris test's stability rule). A BOXED candidate (finite
+        // range) whose full flip would STILL leave row r's infeasibility positive is flipped (absorbing
+        // |alphaHat_j|*(u_j-l_j) of it) and the walk continues; the first candidate that is either NOT
+        // boxed, or boxed but sufficient to finish absorbing the remaining infeasibility on its own,
+        // becomes the actual entering pivot (never flipped, even if boxed). CONTRACT: a real pivot
+        // happens every time this returns with anyCandidate=true -- BFRT flips are only ever a prefix
+        // of the walk, never a substitute for the final pivot (a flip-only iteration would leave the
+        // basis, and therefore every dj, stale with the wrong sign for the new status). No sign-correct
+        // candidate at all, or the combined capacity of every candidate still falling short of row r's
+        // infeasibility, -> primal Infeasible (dual unbounded), reported via anyCandidate = false.
         internal static void DualRatioTest(doubleN alphaRow, doubleN dj,
                                            NativeArray<byte> status, doubleN lower, doubleN upper,
                                            int N, bool needIncrease, double pivTol, double infeasR, double feasTol,
@@ -218,7 +172,7 @@ namespace LinearAlgebra
         // Top-level driver: dual-feasibility precondition (+ artificial-bounds dual phase 1 folded in,
         // since at the all-logical start y=0 makes both coincide -- see below), dual steepest-edge
         // pricing + long-step Harris ratio test to drive primal feasibility while staying dual feasible
-        // throughout, then restore real bounds and hand the terminal basis to stage 1's primal core as
+        // throughout, then restore real bounds and hand the terminal basis to the primal core as
         // a cleanup pass (removes the cost perturbation's effect and fixes any primal infeasibility left
         // by the bound restoration -- the HiGHS composition, see file header).
         //
@@ -242,28 +196,20 @@ namespace LinearAlgebra
             return info;
         }
 
-        // Warm-start overload -- added for LP.solve's `ref LPBasis` re-solve entry point (LP.double.cs;
-        // LPBasis in LP.Info.cs captures exactly this (status[], basis[]) pair in this computational-
-        // form indexing). `basis`/`status` (sized m / N) must already describe a VALID assignment --
-        // every nonbasic sitting exactly on one of its (current) bounds -- but need NOT be feasible or
-        // dual-feasible; the caller retains ownership (this method reads/mutates them in place, never
-        // allocates or disposes them), exactly like LP.RevisedSimplex.double.cs's RevisedPrimalCore warm
-        // overload. The fresh-start overload above forwards here with the all-logical basis/status, so
-        // this single body serves both -- the dual-feasibility repair below replaces the FORMER cold-
-        // only precondition with a strict generalization of it, provably bit-identical at that specific
-        // starting point (see the repair's own comment).
+        // Warm-start overload -- LP.solve's `ref LPBasis` re-solve entry point (LP.double.cs; LPBasis
+        // in LP.Info.cs captures exactly this (status[], basis[]) pair). `basis`/`status` (sized m / N)
+        // must already describe a VALID assignment -- every nonbasic sitting exactly on one of its
+        // (current) bounds -- but need NOT be feasible or dual-feasible; the caller retains ownership
+        // (this method reads/mutates them in place, never allocates or disposes them). The fresh-start
+        // overload above forwards here with the all-logical basis/status, so this single body serves
+        // both.
         //
-        // A basis matrix that fails to factor at the very first Refactorize (garbage/stale `basis[]`,
-        // e.g. carried over from an unrelated problem -- see LPBasis's doc comment) falls back to the
-        // all-logical start rather than failing outright -- defensive, and that fallback's own
-        // Refactorize cannot itself fail (the logical columns are exactly the identity, see
-        // BuildComputationalForm), so `resultStatus` only reports MaxIterations here in a genuinely
-        // pathological case (e.g. M containing NaN/Inf).
+        // A basis matrix that fails to factor at the very first Refactorize (garbage/stale `basis[]`)
+        // falls back to the all-logical start rather than failing outright.
         //
-        // Thin wrapper: allocates its own B/P/eta/weight scratch (Allocator.Temp, disposed on return)
-        // and calls DualSimplexPivotCore (below) with resumeFactors/resumeWeights false -- bit-identical
-        // to this method's pre-persistence body. The cache-aware overload right after it shares the same
-        // pivot-loop implementation instead of duplicating it.
+        // Thin wrapper: allocates its own B/P/eta/weight scratch and calls DualSimplexPivotCore (below)
+        // with resumeFactors/resumeWeights false. The cache-aware overload right after it shares the
+        // same pivot-loop implementation instead of duplicating it.
         internal static LPInfo DualSimplexCore(doubleMxN M, doubleN lower, doubleN upper,
                                                doubleN cost, doubleN rhs, int m, int n, int N,
                                                int maxIter, doubleN xFull,
@@ -284,21 +230,15 @@ namespace LinearAlgebra
             return info;
         }
 
-        // Cache-aware warm overload (docs/spec-lpbasis-persistence.md) -- doubleLPCache
-        // (LP.Cache.double.cs) persists M/lower/upper/cost/rhs and the basis factorization (B/P/eta) and
-        // DSE weight[] across separate top-level solve calls (MIP.SearchCore's per-node/strong-branch-
-        // trial re-solves; MIP.double.cs). `M`/`lower`/`upper`/`cost`/`rhs` here are ALREADY the cache's
-        // own buffers (LP.solve, LP.double.cs, builds or patches them before calling this) -- this
-        // overload only owns the factorization/weight resume-vs-refactorize decision and post-solve
-        // persistence.
+        // Cache-aware warm overload -- doubleLPCache (LP.Cache.double.cs) persists M/lower/upper/
+        // cost/rhs and the basis factorization (B/P/eta) and DSE weight[] across separate top-level
+        // solve calls (MIP.SearchCore's per-node/strong-branch-trial re-solves). `M`/`lower`/`upper`/
+        // `cost`/`rhs` here are ALREADY the cache's own buffers; this overload only owns the
+        // factorization/weight resume-vs-refactorize decision and post-solve persistence.
         //
         // cacheHit: cache.factorsValid AND the caller has not bumped cache.matrixVersion since the
-        // factors were built (doubleLPCache's own doc comment has the full invalidation contract,
-        // including why basis-unchanged-since-stored is trusted BY CONTRACT rather than re-verified
-        // here). On a hit, B/P/etaAlpha/etaRow/etaCount resume as-is (DualSimplexPivotCore's
-        // resumeFactors skips the entry Refactorize, unless the eta file is already at capacity -- same
-        // interval logic the main loop already applies) and weight[] seeds from the cache instead of the
-        // w=1 approximation, when cache.weightsValid too.
+        // factors were built. On a hit, B/P/etaAlpha/etaRow/etaCount resume as-is and weight[] seeds
+        // from the cache instead of the w=1 approximation, when cache.weightsValid too.
         //
         // Every buffer besides basis/status/xFull is the CACHE'S OWN storage, passed straight through
         // (not copied) -- mutations during this call land directly in cache, so persisting at exit is
@@ -346,7 +286,7 @@ namespace LinearAlgebra
                                                      ref int etaCount, doubleN weight,
                                                      bool resumeFactors, bool resumeWeights, out bool factorsUsable)
         {
-            // Same per-dtype tolerance expressions as stage 1 (see that file's header for why these are
+            // Same per-dtype tolerance expressions as LP.RevisedSimplex.double.cs (see that file's header for why these are
             // inlined rather than a shared helper method).
             double feasTol = (double)math.max(math.sqrt((double)Consts.doubleEpsilon), 1e-7);
             double dualTol = feasTol;
@@ -354,19 +294,12 @@ namespace LinearAlgebra
             double weightFloor = (double)1e-4;
             double realINF = (double)1e30;
 
-            // Artificial-bounds dual phase 1 (spec) uses a FIXED [0, 1e7] box in HiGHS, which is tuned
-            // for HiGHS's own internally-SCALED (equilibrated) problem data. This solver does not scale,
-            // so a literal 1e7 against O(1) problem data is a scale mismatch that is harmless for double
-            // (headroom to spare) but catastrophic for float: RebuildXB's adjusted rhs sums the artificial
-            // bound's contribution over every simultaneously-artificial column (up to ~n/2 of them for a
-            // mixed-sign-cost problem), landing xB around -(artificialBound * n/2 * |A|) -- at 1e7 with
-            // n~48 that is order 1e8, and float's ~1.19e-7 relative precision at that magnitude is an
-            // ABSOLUTE error of order 10, which swamps feasTol (~3.45e-4) outright and was observed to
-            // produce a false Infeasible within the first few dual iterations. Scaling the artificial
-            // bound to the PROBLEM's own data magnitude (matching simplexCore's bScale convention) keeps
-            // it proportionally huge -- 100x the largest |cost|/|rhs| entry, still far beyond where any
-            // genuine optimum would sit for a well-posed LP -- while keeping the induced xB magnitude,
-            // and hence the float rounding it carries, well under feasTol.
+            // Artificial-bounds dual phase 1 uses a box scaled to the PROBLEM's own data magnitude
+            // (matching simplexCore's bScale convention) rather than HiGHS's fixed [0, 1e7] (tuned for
+            // HiGHS's internally-SCALED problem data): a literal 1e7 against O(1) problem data induces
+            // an xB magnitude whose float rounding error can swamp feasTol. 100x the largest |cost|/
+            // |rhs| entry is still far beyond where any genuine optimum would sit for a well-posed LP,
+            // while keeping the induced rounding well under feasTol.
             double dataScale = 1.0;
             for (int i = 0; i < m; i++) dataScale = math.max(dataScale, math.abs((double)rhs[i]));
             for (int j = 0; j < n; j++) dataScale = math.max(dataScale, math.abs((double)cost[j]));
@@ -389,8 +322,7 @@ namespace LinearAlgebra
             // structure so a dual-feasible d_j stays dual-feasible; free/fixed columns untouched.
             // Logical (row) columns: symmetric +-0.5 * 1e-12 -- exact-tie breaking only, ~7 orders
             // smaller than the column base. Bases are HiGHS's own literals for BOTH dtypes (both
-            // representable in float; an earlier dualTol-scaled float variant made float B&B trees
-            // explode -- benchmark-verified). Deterministic per-column hash r in [0,1) replaces
+            // representable in float). Deterministic per-column hash r in [0,1) replaces
             // HiGHS's random vector (MurmurHash3 finalizer mix, inlined -- see the tolerance
             // comment above).
             double maxAbsCost = 0.0;
@@ -468,23 +400,20 @@ namespace LinearAlgebra
                 didResumeFactors = false;
             }
 
-            // DSE weight seeding priority (HiGHS parity, docs/spec-lpbasis-persistence.md; mirrors
-            // HEkkDual.cpp's solve setup): (1) resumeWeights (doubleLPCache.weightsValid) AND
-            // didResumeFactors -- weight[] is already the caller's carried terminal state for the SAME
-            // factorization it was last updated against, left as-is. (2)/(3) both fall to this w=1 seed:
-            // exact at the all-logical basis (2); a KNOWN simplification otherwise (3 -- HiGHS computes
-            // EXACT weights via one BTRAN per row for a non-logical warm start; measured too expensive at
-            // this library's sizes, taxonomy (a), affects pricing quality only, never correctness).
+            // DSE weight seeding priority (HiGHS parity, mirrors HEkkDual.cpp's solve setup): (1)
+            // resumeWeights (doubleLPCache.weightsValid) AND didResumeFactors -- weight[] is already
+            // the caller's carried terminal state for the SAME factorization it was last updated
+            // against, left as-is. (2)/(3) both fall to this w=1 seed: exact at the all-logical basis
+            // (2); a KNOWN simplification otherwise (3 -- HiGHS computes EXACT weights via one BTRAN
+            // per row for a non-logical warm start; too expensive at this library's sizes, affects
+            // pricing quality only, never correctness).
             //
-            // Tying the reseed to didResumeFactors (not just resumeWeights) rather than the caller's
-            // ORIGINAL resumeFactors request matters: without it, a cache hit whose eta file happens to
-            // be at capacity still resumes weight[] even though B/P/eta were JUST refreshed -- weight[]
-            // would then drift across an effectively UNBOUNDED chain of refactorizations spanning the
-            // WHOLE search (thousands of pivots) instead of being bounded by REFACTOR_INTERVAL like the
-            // eta chain itself. Benchmark-caught (MIPBenchmark float branchy12: Optimal/216 nodes/10.6ms
-            // regressed to NodeLimit/20000 nodes/122.7ms with the unconditional version; fixed by this
-            // tie-in, confirmed back to Optimal/226 nodes/~9.5ms -- see coder report for the isolation
-            // test). Maintained (never reset) within one refactorization epoch.
+            // Tied to didResumeFactors (not just resumeWeights) rather than the caller's ORIGINAL
+            // resumeFactors request: without it, a cache hit whose eta file happens to be at capacity
+            // still resumes weight[] even though B/P/eta were JUST refreshed -- weight[] would then
+            // drift across an effectively UNBOUNDED chain of refactorizations spanning the WHOLE
+            // search (thousands of pivots) instead of being bounded by REFACTOR_INTERVAL like the eta
+            // chain itself. Maintained (never reset) within one refactorization epoch.
             if (!(resumeWeights && didResumeFactors)) for (int i = 0; i < m; i++) weight[i] = (double)1;
 
             if (!ok) resultStatus = LPStatus.MaxIterations;
@@ -509,13 +438,10 @@ namespace LinearAlgebra
                 // real upper = +INF).
                 //
                 // Uses the ORIGINAL cost, not perturbedCost: this is a one-time TRUE-dual-feasibility
-                // decision, not part of the iterative pricing the perturbation is meant to stabilize. Using
-                // perturbedCost here was an actual bug -- a column with cost[j] EXACTLY 0 (e.g. every x+/x-
-                // column in LP.lad's reformulation, which has none of its own cost) is dual-feasible as-is
-                // (d_j=0 trivially satisfies d_j>=0), but the perturbation's random sign could nudge it
-                // slightly negative and give it a pointless artificial bound; multiplied across the MANY
-                // exactly-zero-cost columns LP.lad's [x+|x-] block always has, this corrupted the warm-started
-                // basis handed to the primal cleanup badly enough to report a false Unbounded.
+                // decision, not part of the iterative pricing the perturbation is meant to stabilize. A
+                // column with cost[j] EXACTLY 0 is dual-feasible as-is (d_j=0 trivially satisfies
+                // d_j>=0); using perturbedCost here would let the perturbation's random sign nudge it
+                // slightly negative and give it a pointless artificial bound.
                 for (int i = 0; i < m; i++) y[i] = cost[basis[i]];
                 Btran(B, in P, etaAlpha, etaRow, etaCount, y, m);
 
@@ -728,11 +654,10 @@ namespace LinearAlgebra
                 // feasibility against the real cost already holds) after paying a SECOND full O(m^3)
                 // Refactorize + O(mN) RebuildXB that can only reproduce state already sitting in
                 // status/basis/xB. Skipping it roughly halves a warm re-solve's fixed per-call cost
-                // whenever it applies (measured ~0.12ms/call -> ~0.06ms/call at mAug~80 on an isolated
-                // warm LP.solve(ref LPBasis) benchmark, MIP perf investigation 2026-07-10) -- a genuine
-                // but MINORITY case for MIP/strong-branch-trial re-solves in practice (most single-bound
-                // tightenings still cost >=1 real pivot to restore primal feasibility, which this path
-                // does not shortcut). Reuses the SAME extraction as the Infeasible branch above, just
+                // whenever it applies -- a genuine but MINORITY case for MIP/strong-branch-trial
+                // re-solves in practice (most single-bound tightenings still cost >=1 real pivot to
+                // restore primal feasibility, which this path does not shortcut). Reuses the SAME
+                // extraction as the Infeasible branch above, just
                 // with status = Optimal. Composes with a resumeFactors cache hit (doubleLPCache): the
                 // entry Refactorize is already skipped, so this best case is O(m) setup + one O(mN)
                 // pricing pass, no O(m^3) work at all.
@@ -744,7 +669,7 @@ namespace LinearAlgebra
             }
             else
             {
-                // Primal cleanup (stage 1's core, warm-started): removes the perturbation's effect and
+                // Primal cleanup (the primal revised simplex core, warm-started): removes the perturbation's effect and
                 // fixes any primal infeasibility left by the bound restoration, using the REAL cost.
                 var cleanup = RevisedPrimalCore(M, lower, upper, cost, rhs, m, n, N, maxIter, xFull, basis, status);
                 info = new LPInfo { status = cleanup.status, iterations = iters + cleanup.iterations, objective = 0 };

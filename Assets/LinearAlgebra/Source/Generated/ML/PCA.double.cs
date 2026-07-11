@@ -4,49 +4,14 @@ using Unity.Mathematics;
 namespace LinearAlgebra.ML
 {
     /// <summary>
-    /// Principal Component Analysis over a data matrix X (rows = samples n, columns = features p —
-    /// matches StatsOP's orientation). Four fit routes, a 2x2 of fast/accurate x full/partial:
-    ///
-    ///   fitCov           — full, fast. Eigendecomposes the p x p covariance/correlation matrix. The
-    ///                      only route that handles WIDE data (p > n). Squares the condition number
-    ///                      (kappa^2) -- prefer fitSvd for near-degenerate data.
-    ///   fitSvd           — full, accurate. SVD of the centered data directly (no Gram, no kappa^2).
-    ///                      Requires n >= p.
-    ///   fitSvdTruncated  — partial (top-k), EXACT. Golub-Kahan-Lanczos top-k SVD. Requires n >= p
-    ///                      (SVD.truncated itself enforces this -- see the method doc below).
-    ///   fitRandomized    — partial (top-k), fast-approximate (Halko-Martinsson-Tropp). Requires n >= p.
-    ///                      Pays off only when p is large and k &lt;&lt; p.
-    ///
-    /// Every fit returns/fills a <see cref="doublePCAModel"/> (arena-owned buffers): the caller keeps it
-    /// to project new data via <see cref="transform"/> or to read axes/variances for reduction work.
-    ///
-    /// Denominator convention (makes fitCov and fitSvd agree on explainedVariance): both use
-    /// the SAMPLE (n-1) convention, NOT StatsOP.standardizeColumns'/colVariance's population (n) one:
-    ///   Covariance mode:  explainedVariance[i] = S[i]^2 / (n-1)  (== the covariance-matrix eigenvalues).
-    ///   Correlation mode: standardize with SAMPLE std-dev sqrt(Sigma(x-mean)^2/(n-1)); then
-    ///                     S[i]^2/(n-1) == the correlation-matrix eigenvalues.
-    ///
-    /// Correlation degenerate-feature trap: fitCov(Correlation) builds its own correlation
-    /// matrix R = Cov ./ (sampleStd (x) sampleStd) inline, zeroing the ENTIRE row/column (including the
-    /// diagonal) of a zero-variance feature. It deliberately does NOT reuse StatsOP.correlation(), which
-    /// puts a spurious 1 on that diagonal -- that would emit a unit eigenvalue the SVD route can't match
-    /// (its all-zero standardized column emits 0), breaking cross-route agreement.
-    ///
-    /// totalVariance (denominator of explainedVarianceRatio) is always computed directly from the data in
-    /// one pass -- NEVER as the sum of the (possibly truncated) returned explainedVariance.
-    ///
-    /// Sign convention: for each component column, the largest-|entry| (first index wins ties) is made
-    /// positive; applied once after the solve, SKIPPED when the solve did not converge. This does NOT
-    /// resolve degenerate/repeated-eigenvalue rotation ambiguity -- keep cross-route/determinism
-    /// expectations to well-separated spectra.
-    ///
-    /// No doublePCACache: PCA fits once (no per-frame restart loop like k-means), so each method allocates
-    /// its own scratch from X's arena TEMP pool and calls the wrapped kernels' existing non-WS overloads.
-    /// Realtime pattern: allocate the model once via Arena.doublePCAModel(p, k), call the `ref` fit each
-    /// frame, ClearTemp() at end of frame reclaims all internal scratch.
-    ///
-    /// Deterministic by default: fitRandomized / fitSvdTruncated forward the exact default seed
-    /// (0x9E3779B1u) SVD.randomized/SVD.truncated already use, so default calls are bitwise-reproducible.
+    /// Principal Component Analysis over a data matrix X (rows = samples n, columns = features p).
+    /// Four fit routes: <see cref="fitCov"/> (full, fast, handles wide data p&gt;n), <see cref="fitSvd"/>
+    /// (full, accurate, requires n&gt;=p), <see cref="fitSvdTruncated"/> (partial top-k, exact GKL SVD,
+    /// requires n&gt;=p), <see cref="fitRandomized"/> (partial top-k, fast-approximate, requires n&gt;=p) --
+    /// see each method's own doc for its specific contract. Every fit returns/fills a
+    /// <see cref="doublePCAModel"/> (arena-owned buffers) for <see cref="transform"/> or reading
+    /// axes/variances. fitCov and fitSvd agree on explainedVariance via a shared SAMPLE (n-1)
+    /// denominator convention (not StatsOP's population (n) one).
     /// </summary>
     public static partial class PCA
     {
@@ -238,8 +203,9 @@ namespace LinearAlgebra.ML
         /// Full PCA via eigendecomposition of the p x p covariance (or correlation) matrix built from X.
         /// The only route that handles WIDE data (p > n): a p x p eigensolve is cheap regardless of n.
         /// Squares the condition number (kappa^2) relative to fitSvd -- prefer fitSvd for near-degenerate
-        /// data. model.k is set to p (X.N_Cols). Correlation mode builds its own R matrix inline (see
-        /// the type doc's degenerate-feature trap) rather than reusing StatsOP.correlation().
+        /// data. model.k is set to p (X.N_Cols). Correlation mode builds its own R matrix inline (a
+        /// zero-variance feature zeroes its whole row/column, including the diagonal) rather than
+        /// reusing StatsOP.correlation() -- see the implementation comment below for why.
         /// Returns true iff the underlying <see cref="Eigen.symmetric(ref doubleMxN, ref doubleN, ref doubleMxN)"/>
         /// converged; <paramref name="info"/> carries its full <see cref="EigenInfo"/> diagnostics
         /// (discard with <c>out _</c> if unneeded).
@@ -285,7 +251,8 @@ namespace LinearAlgebra.ML
                 // non-degenerate feature is set to EXACTLY 1 (the correlation-matrix property) rather than
                 // C[j,j]/(sj*sj), which is only ~1 now that sampleStd is a direct row-sum, not sqrt(C[j,j]).
                 // A zero-variance feature zeroes its ENTIRE row/column, including the diagonal (NOT
-                // StatsOP.correlation's convention of 1 there — see the type doc's degenerate-feature trap).
+                // StatsOP.correlation's convention of 1 there, which would emit a unit eigenvalue the SVD
+                // route can't match and break cross-route agreement).
                 // Each cell (i,j) is visited exactly once so the in-place overwrite never reads an
                 // already-transformed neighbor. Stays exactly symmetric (C[i,j]==C[j,i], si*sj==sj*si) so
                 // symmetric's symmetry check passes.

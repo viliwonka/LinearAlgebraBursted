@@ -8,8 +8,8 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// FULL test battery for Control.lqr / Control.lqr(warm) / Control.lqrSchedule (docs/spec-lqr.md,
-// "Tests" section items 1-7). The coder's smoke tests live in ControlTests.fProxy.cs; this file is the
+// FULL test battery for Control.lqr / Control.lqr(warm) / Control.lqrSchedule. The coder's smoke
+// tests live in ControlTests.fProxy.cs; this file is the
 // exhaustive battery: published literature gains, SDA-vs-recursion cross-check, S-symmetric-PSD +
 // closed-loop-stability properties, warm-path perturbation reconvergence, general-m schedule vs a
 // hand-computed Riccati step, unstabilizable divergence, semidefinite-R rank flagging, determinism.

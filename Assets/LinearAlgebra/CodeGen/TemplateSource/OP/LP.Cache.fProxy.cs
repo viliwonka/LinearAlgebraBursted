@@ -5,12 +5,11 @@ using Unity.Collections;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Warm-solve factor/weight persistence cache for <see cref="LP.solve(in fProxyMxN, in fProxyN, in fProxyN, in NativeArray{ConstraintSense}, ref fProxyN, out double, ref LPBasis, ref fProxyLPCache, int)"/>
-    /// (docs/spec-lpbasis-persistence.md). Persists the dual simplex's computational form
-    /// (M/lower/upper/cost/rhs) and basis factorization (B/P/eta) AND DSE pricing weights across
-    /// separate top-level solve calls, so a re-solve against an unchanged constraint structure skips
-    /// both BuildComputationalForm (O(mN) copy) and Refactorize (O(m^3) LU) -- the two fixed per-call
-    /// costs a warm dual-simplex re-solve pays even when it needs zero or few pivots.
+    /// Warm-solve factor/weight persistence cache for <see cref="LP.solve(in fProxyMxN, in fProxyN, in fProxyN, in NativeArray{ConstraintSense}, ref fProxyN, out double, ref LPBasis, ref fProxyLPCache, int)"/>.
+    /// Persists the dual simplex's computational form (M/lower/upper/cost/rhs) and basis
+    /// factorization (B/P/eta) AND DSE pricing weights across separate top-level solve calls, so a
+    /// re-solve against an unchanged constraint structure skips both BuildComputationalForm (O(mN)
+    /// copy) and Refactorize (O(m^3) LU).
     ///
     /// LIFECYCLE: standalone, user-allocated -- mirrors <see cref="LPBasis"/> (needs to persist across
     /// separate solve calls, not arena-scoped). <c>new fProxyLPCache(n, m, allocator)</c> +
@@ -23,17 +22,12 @@ namespace LinearAlgebra
     /// objective <c>c</c> -- an rhs/bound-only change does not need a bump. <see cref="builtVersion"/> is
     /// LP.solve-owned: the <see cref="matrixVersion"/> value in effect when <see cref="M"/>/<see cref="B"/>/
     /// <see cref="P"/>/the eta file were last (re)built. A cache HIT requires
-    /// <c>builtVersion == matrixVersion</c> AND <see cref="factorsValid"/>. (Two ints rather than the
-    /// spec sketch's single field: comparing a caller-bumped live counter against a built-at snapshot
-    /// needs both. Documented deviation from the sketch; the CONTRACT -- a coefficient change without a
-    /// bump is a caller bug caught by the checks-build verification below -- is unchanged.)
+    /// <c>builtVersion == matrixVersion</c> AND <see cref="factorsValid"/>.
     ///
-    /// BASIS-UNCHANGED DETECTION: no separate snapshot of <c>LPBasis.basis</c> is kept (spec allows
-    /// "alternative mechanisms if simpler"). <see cref="factorsValid"/>/<see cref="weightsValid"/> are
-    /// trusted BY CONTRACT instead: the SAME (<see cref="LPBasis"/>, cache) pair must be threaded through
-    /// every solve call in sequence -- <see cref="LP.solve"/> is the only code that mutates
-    /// <c>basis.basis</c>/<c>basis.status</c> while a cache is attached (exactly how MIP.SearchCore uses
-    /// this: one basis + one cache, allocated together, passed to every node/trial solve). A caller that
+    /// BASIS-UNCHANGED DETECTION: no separate snapshot of <c>LPBasis.basis</c> is kept.
+    /// <see cref="factorsValid"/>/<see cref="weightsValid"/> are trusted BY CONTRACT instead: the SAME
+    /// (<see cref="LPBasis"/>, cache) pair must be threaded through every solve call in sequence (e.g.
+    /// MIP.SearchCore: one basis + one cache, passed to every node/trial solve). A caller that
     /// hand-edits the basis directly, or interleaves solves against the same basis through a different
     /// cache (or none), must invalidate this one itself (<c>factorsValid = weightsValid = false</c>).
     ///

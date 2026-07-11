@@ -8,7 +8,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // ARENA-LEVEL wiring tests for the SPARSE family (floatBSR / floatBlockJacobi) after the
-// ChunkedRecordTable migration (docs/dev/rfc-memory-model.md §4 Option A). Mirrors the dense house set
+// ChunkedRecordTable migration. Mirrors the dense house set
 // (ArenaWiringTests.float.cs) but adapted to the sparse contract, whose seams differ from the
 // dense types in three load-bearing ways the coder flagged:
 //

@@ -20,10 +20,8 @@ namespace LinearAlgebra {
         public unsafe fProxyMxN fProxyTempMat(int M_rows, int N_cols, bool uninit = false) => OwnerArena.fProxyTempMat(M_rows, N_cols, uninit);
         //-copyReplace
 
-        // NOT wrapped in copyReplace: there is no iProxy BSR equivalent, so this only needs to
-        // exist for the fProxy float/double types this file already generates. Forwards to the
-        // arena `b` carries so Krylov.fProxy.cs can materialize A^T once per solve via
-        // `b.fProxyBSRTranspose(in A)` without direct access to fProxyN's private _rec field.
+        // Not in copyReplace: no iProxy BSR equivalent. Forwards to the arena's BSR transpose for
+        // solvers needing A^T.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe fProxyBSR fProxyBSRTranspose(in fProxyBSR A) => OwnerArena.fProxyBSRTranspose(in A);
 

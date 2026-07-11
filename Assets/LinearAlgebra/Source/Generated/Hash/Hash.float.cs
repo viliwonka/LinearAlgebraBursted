@@ -22,11 +22,6 @@ namespace LinearAlgebra
     /// NaN compares unequal to everything (including itself) under IEEE 754 - hashing does not follow
     /// IEEE equality semantics, it follows raw memory.</description></item>
     /// </list>
-    /// For lockstep desync detection this is usually the RIGHT behavior (it catches divergence a
-    /// value-based comparison would miss - e.g. two peers reaching "the same" result through
-    /// different rounding paths that both happen to land on NaN, or a stray sign-bit flip on zero
-    /// introduced by a non-deterministic code path) but is a real footgun if some other part of the
-    /// same system treats <c>-0.0 == 0.0</c> or expects a single canonical NaN payload.
     /// </summary>
     public static partial class Hash
     {
@@ -45,8 +40,7 @@ namespace LinearAlgebra
         // The row/col hash dest is always a uint buffer regardless of A's element type. "uintN"/
         // "uintMxN" are codegen outputs (the iProxy token is always chosen as uint here, the same for
         // both float and double), not types that exist in TemplateSource's own standalone compile, so
-        // they are emitted via the choose marker rather than hand-written. See
-        // docs/dev/naming-style-guide.md's alsoExpand note.
+        // they are emitted via the choose marker rather than hand-written.
 
         /// <summary>
         /// Writes one xxHash32 value per row of <paramref name="A"/> into <paramref name="dest"/> -

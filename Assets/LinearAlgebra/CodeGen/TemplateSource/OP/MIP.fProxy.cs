@@ -8,39 +8,18 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // Mixed-integer programming: branch & bound over the dual simplex (docs/draft-spec-mip.md).
-    // Pseudocost + reliability branching (MIP.Pseudocost.fProxy.cs) picks the branching variable;
-    // search order is best-bound-with-plunging -- dive one child immediately, push the sibling to a
-    // best-bound priority queue, and on reaching a leaf jump to the queue's best node instead of
-    // backtracking to the DFS parent. Stage 4: every node is domain-propagated to a fixpoint before
-    // its LP solve (MIP.Domain.fProxy.cs's PropagateFixpoint, fathoms empty domains without an LP
-    // solve), a rounding heuristic tries to install an incumbent from each fractional node's LP
-    // solution (TryRoundingHeuristic below), and absGap/relGap make MIPStatus.GapLimit reachable.
+    // Mixed-integer programming: branch & bound over the dense dual simplex. Pseudocost + reliability
+    // branching (MIP.Pseudocost.fProxy.cs) picks the branching variable; search order is best-bound-
+    // with-plunging (dive one child immediately, push the sibling to a best-bound priority queue, and on
+    // reaching a leaf jump to the queue's best node instead of backtracking to the DFS parent). Every
+    // node is domain-propagated to a fixpoint before its LP solve (MIP.Domain.fProxy.cs's
+    // PropagateFixpoint, fathoms empty domains without an LP solve), a rounding heuristic tries to
+    // install an incumbent from each fractional node's LP solution (TryRoundingHeuristic below), and
+    // absGap/relGap make MIPStatus.GapLimit reachable.
     //
-    // min cᵀx s.t. Ax {≤,=,≥} b, xl≤x≤xu, x_j integer for integrality[j]!=0.
-    //
-    // Bounds-as-rows: LP.solve only supports x>=0, so every variable is shifted to a non-negative y
-    // (anchor-low/anchor-high/free-split, same substitution as QP.PhaseOneFeasibleStart). Integer
-    // variables require a finite xl and get two pre-allocated rows (y<=U, y>=L); branching only rewrites
-    // their rhs, keeping the augmented LP's shape fixed so the same LPBasis stays warm-startable.
-    //
-    // An integer variable's UB row starts INERT (coefficient 0) when xu is infinite, and is activated
-    // (coefficient set to 1) on its first branch -- a literal 1e30 sentinel rhs corrupts the dual
-    // simplex's dataScale/artificialBound scaling and can silently bound a truly unbounded direction.
-    // See MIP.Domain.fProxy.cs.
-    //
-    // Warm start: one LPBasis persists across the whole search, including strong-branch trials. The
-    // dual simplex's dual-feasibility repair makes a stale basis (right after a plunge dive, an undone
-    // strong-branch trial, or a queue jump) a correct, not just fast, starting point.
-    //
-    // Node state: the current plunge's dive steps use the incremental bound-change stack
-    // (MIP.Domain.fProxy.cs's PushBoundChange/UndoToMarker), same as stage 2. A queue jump is not
-    // generally to an ancestor, so it cannot replay/undo that stack -- instead each queued node carries
-    // its own full length-n bound snapshot (fProxyMIPQueueNode) and a jump overwrites the live bound
-    // state wholesale (ApplyNodeBounds) and resets the stack.
-    //
-    // dualBound = min over every still-open node's own parent-LP bound -- the current plunge frontier
-    // plus everything still in the queue (tighter than stage 2's DFS-ancestor approximation).
+    // min cᵀx s.t. Ax {≤,=,≥} b, xl≤x≤xu, x_j integer for integrality[j]!=0. Every INTEGER variable
+    // needs a finite xl -- LP.solve only supports x>=0, so variables are shifted internally to a
+    // non-negative y, and an integer variable gets two pre-allocated bound rows in that shifted system.
     internal struct fProxyMIPQueueNode
     {
         public fProxyN L;          // full lower-bound snapshot, length n (owned -- Dispose on pop/drain)
@@ -90,9 +69,9 @@ namespace LinearAlgebra
         /// <summary>
         /// Solve the mixed-integer program min cᵀx s.t. A x {≤,=,≥} b (per-row <paramref name="senses"/>),
         /// xl ≤ x ≤ xu, x_j ∈ ℤ for every flagged <paramref name="integrality"/>[j]. Branch &amp; bound
-        /// over the dense dual simplex (docs/draft-spec-mip.md: pseudocost + reliability branching,
-        /// best-bound node queue with plunging, activity-based domain propagation at every node, and a
-        /// rounding heuristic).
+        /// over the dense dual simplex, using pseudocost + reliability branching, a best-bound node
+        /// queue with plunging, activity-based domain propagation at every node, and a rounding
+        /// heuristic.
         ///
         /// Every INTEGER variable needs a finite <paramref name="xl"/>[j] (throws
         /// <see cref="ArgumentException"/> otherwise). Continuous variables support the full general
@@ -272,11 +251,12 @@ namespace LinearAlgebra
                                            fProxyN xOut)
         {
             var basis = new LPBasis(nY, mAug, Allocator.Temp);   // job-safe: unpopulated, seeded by first solve
-            // Factor/weight persistence cache (docs/spec-lpbasis-persistence.md) -- one per search,
-            // sized for the augmented LP, passed to every node/strong-branch-trial LP.solve alongside
-            // `basis`. matrixVersion is bumped at every Aaug coefficient write (PushBoundChange/
-            // UndoToMarker/ApplyNodeBounds's UB-row activation sites, MIP.Domain.fProxy.cs); rhs-only
-            // bound updates (the common plunge/strong-branch case) leave it alone, so most re-solves hit.
+            // Factor/weight persistence cache, letting LP.solve reuse the previous factorization instead
+            // of rebuilding cold -- one per search, sized for the augmented LP, passed to every
+            // node/strong-branch-trial LP.solve alongside `basis`. matrixVersion is bumped at every Aaug
+            // coefficient write (PushBoundChange/UndoToMarker/ApplyNodeBounds's UB-row activation sites,
+            // MIP.Domain.fProxy.cs); rhs-only bound updates (the common plunge/strong-branch case) leave
+            // it alone, so most re-solves hit.
             var cache = new fProxyLPCache(nY, mAug, Allocator.Temp);
             var y = new fProxyN(nY, Allocator.Temp);
             var trialY = new fProxyN(nY, Allocator.Temp);
@@ -320,10 +300,10 @@ namespace LinearAlgebra
                 uplocks[j] = up; downlocks[j] = down;
             }
             // Fixed internal seed (same convention as LOBPCG.fProxy.cs's seedRng): MIP.solve has no
-            // public seed parameter and must stay bit-deterministic across repeated identical calls
-            // (docs/draft-spec-mip.md open question 6), unlike HiGHS's own randomizedRounding which
-            // advances a solver-wide RNG. Draws happen only inside the deterministic search sequence, so
-            // repeated calls on identical inputs draw the identical sequence.
+            // public seed parameter, so a fixed internal seed keeps solves deterministic across repeated
+            // identical calls, unlike HiGHS's own randomizedRounding which advances a solver-wide RNG.
+            // Draws happen only inside the deterministic search sequence, so repeated calls on identical
+            // inputs draw the identical sequence.
             var roundRng = new Unity.Mathematics.Random(0x9E3779B1u);
 
             bool haveIncumbent = false;
@@ -343,9 +323,9 @@ namespace LinearAlgebra
             {
                 nodes++;
 
-                // Domain propagation (docs/draft-spec-mip.md stage 4): tighten integer bounds to a
-                // fixpoint from the ORIGINAL rows before this node's LP solve. An emptied domain
-                // fathoms the node without ever calling LP.solve (usable stays false below).
+                // Domain propagation: tighten integer bounds to a fixpoint from the ORIGINAL rows
+                // before this node's LP solve. An emptied domain fathoms the node without ever calling
+                // LP.solve (usable stays false below).
                 bool domainOk = PropagateFixpoint(A, b, senses, m0, n, integrality, nInt,
                                                   curLB, curUB, xlRoot, Aaug, col, bAug, rowLB, rowUB, ref boundStack, ref cache);
 
@@ -389,9 +369,9 @@ namespace LinearAlgebra
                     break;
                 }
 
-                // Gap limit (docs/draft-spec-mip.md stage 4): dualBound peeked cheaply as min(current
-                // plunge frontier, best-bound heap root) -- same quantity the final drain below folds
-                // into MIPInfo.dualBound, just without popping.
+                // Gap limit: dualBound peeked cheaply as min(current plunge frontier, best-bound heap
+                // root) -- same quantity the final drain below folds into MIPInfo.dualBound, just
+                // without popping.
                 if (haveIncumbent && (absGap > 0.0 || relGap > 0.0))
                 {
                     double dBoundNow = heap.Length > 0 ? math.min(frontierBound, heap[0].parentBound) : frontierBound;
@@ -424,8 +404,8 @@ namespace LinearAlgebra
                     }
                     else
                     {
-                        // Rounding heuristic (docs/draft-spec-mip.md stage 4): the LP solution is
-                        // fractional here, so try it -- a cheap, non-branching shot at a better incumbent.
+                        // Rounding heuristic: the LP solution is fractional here, so try it -- a
+                        // cheap, non-branching shot at a better incumbent.
                         TryRoundingHeuristic(xNode, integrality, n, uplocks, downlocks, ref roundRng,
                                              A, b, senses, m0, c, curLB, curUB,
                                              xRound, ref haveIncumbent, ref incumbentObj, incumbentX);
@@ -538,25 +518,14 @@ namespace LinearAlgebra
             return new MIPInfo { objective = objective, dualBound = dualBound, gap = gap, nodes = nodes, lpIterations = totalLpIter, status = status };
         }
 
-        // Rounding heuristic (docs/draft-spec-mip.md stage 4), ported from
-        // HighsPrimalHeuristics::randomizedRounding's per-variable rounding rule: a variable with no
-        // "up lock" (uplocks[j]==0) is safe to round up unconditionally; failing that, no "down lock"
-        // rounds down; failing both (locked in both directions), floor a randomized point in the
-        // fractional interval -- HiGHS's `floor(relaxationsol[i] + randgen.real(0.1, 0.9))`. Continuous
-        // variables are left at their LP value. Two intentional deviations from tryRoundedPoint/
-        // randomizedRounding, both required by this library's constraints (see the call sites below for
-        // why, not just "simpler"):
-        //  (a) HiGHS re-solves an LP with the rounded integers fixed to repair continuous variables and
-        //      confirm feasibility; we have no such subsystem available here (no per-node LP re-solve
-        //      budget was scoped for this heuristic) and the mini-spec calls for an O(mn) direct
-        //      feasibility check against the original rows instead -- see TryRoundingHeuristic's callers.
-        //  (b) HiGHS's `randgen` is a solver-wide RNG advanced continuously; MIP.solve has no public seed
-        //      parameter and must stay bit-deterministic across repeated identical calls (open question 6
-        //      in the spec), so this uses a fixed internal seed instead (see roundRng in SearchCore).
-        // Bound handling follows HiGHS: rounded values are clamped into the CURRENT node's bounds and
-        // feasibility is checked against them (not the root bounds -- third-review finding).
-        // Installs the point as the new incumbent when feasible and better than the current one (or there
-        // is none yet).
+        // Rounding heuristic, ported from HighsPrimalHeuristics::randomizedRounding's per-variable
+        // rounding rule: a variable with no "up lock" (uplocks[j]==0) is safe to round up
+        // unconditionally; failing that, no "down lock" rounds down; failing both (locked in both
+        // directions), floor a randomized point in the fractional interval. Continuous variables are
+        // left at their LP value. Feasibility is checked directly against the original rows (no LP
+        // re-solve), and rounded values are clamped into the CURRENT node's bounds (not the root
+        // bounds). Installs the point as the new incumbent when feasible and better than the current one
+        // (or there is none yet).
         internal static void TryRoundingHeuristic(fProxyN xNode, NativeArray<byte> integrality, int n,
                                                    NativeArray<int> uplocks, NativeArray<int> downlocks,
                                                    ref Unity.Mathematics.Random rng,

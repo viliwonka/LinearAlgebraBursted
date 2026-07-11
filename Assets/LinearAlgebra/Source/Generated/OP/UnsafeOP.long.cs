@@ -208,11 +208,8 @@ namespace LinearAlgebra.Internal
                 target[i] = (long)(s - target[i]);
         }
 
-        // target[i] -= s. Forward-order twin of the (s, target, n) overload above. subInPlace<T>(T,
-        // long) (OP.Component.long.cs) uses this uniformly for every generated type - it used
-        // to implement "v - s" as "v + (-s)" for signed types only (bit-identical under modular
-        // wraparound, but unsigned types can't negate s), so unifying on the direct kernel avoids
-        // needing two branches there.
+        // target[i] -= s. Forward-order twin of the (s, target, n) overload above; used uniformly by
+        // subInPlace<T>(T, long) for every generated type.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void scalSub([NoAlias] long* target, int n, long s)
         {

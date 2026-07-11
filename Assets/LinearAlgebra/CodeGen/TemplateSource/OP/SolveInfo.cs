@@ -6,29 +6,12 @@ namespace LinearAlgebra
     /// <summary>
     /// Result of a least-squares Krylov solve (<c>cgls</c> / <c>lsqr</c> / <c>lsmr</c>). Every LS
     /// solver RETURNS this by value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>)
-    /// means the old success-test call shapes still compile unchanged:
-    /// <code>
-    ///   if (Krylov.lsqr(A, b, ref x)) { ... }          // implicit bool -> "did it converge?"
-    ///   bool ok = Krylov.cgls(A, b, ref x);            // same
-    ///   var info = Krylov.lsmr(A, b, ref x);           // keep the struct for diagnostics
-    ///   if (info.Solved) Debug.Log(info.iterations);
-    /// </code>
-    ///
-    /// The norms are reported as <c>double</c> regardless of the solve's precision (a float solve
-    /// widens its float residual -- diagnostics don't need to be precision-typed, which is why this
-    /// is a plain, unprefixed struct rather than a float/double-generated one). They are filled from
-    /// values the solver ALREADY tracks (or at most a single dot on a residual it already holds) at
-    /// the point it returns -- never a fresh A*x/Aᵀ*r, EXCEPT cgls's Converged exit (Krylov R6a,
-    /// docs/draft-spec-krylov-optimization.md): one fresh Apply + ApplyT verifies a claimed
-    /// convergence before trusting it, replacing the drifted r/gamma pair:
-    /// <list type="bullet">
-    /// <item>cgls -- rnorm from a dot on its live residual r; Arnorm = √gamma (its tracked ‖Aᵀr‖²).</item>
-    /// <item>lsqr -- rnorm = phibar, Arnorm = phibar·alpha·|c|, both produced free by the recurrence.</item>
-    /// <item>lsmr -- Arnorm = |ζ̄| (free, monotone); rnorm via the Fong-Saunders ‖r‖ recurrence
-    ///       (O(1) scalars per iteration, no matvec).</item>
-    /// </list>
-    /// For an independently-recomputed, certified-exact residual (one extra Apply + ApplyT) call
-    /// <see cref="Krylov.lstsqResidual{TOp}"/> on the returned x instead.
+    /// lets old success-test call shapes keep compiling, e.g. <c>if (Krylov.lsqr(A, b, ref x))</c>.
+    /// Carries <see cref="rnorm"/> (‖b - A x‖), <see cref="Arnorm"/> (‖Aᵀ(b - A x)‖, or with
+    /// Tikhonov damping ‖Aᵀ(b - A x) - damp²x‖), <see cref="xnorm"/> (‖x‖), <see cref="iterations"/>,
+    /// and <see cref="status"/>. Norms are always <c>double</c> regardless of the solve's precision,
+    /// and are the solver's own running values, not independently recomputed -- for a certified-exact
+    /// residual, call <see cref="Krylov.lstsqResidual{TOp}"/> on the returned x instead.
     ///
     /// On a Converged OR MaxIterations return, x is the last iterate and the norms describe it. Only
     /// on a Breakdown return is x left partially updated / undefined.
@@ -60,7 +43,7 @@ namespace LinearAlgebra
         public bool Solved => status == IterativeSolveStatus.Converged;
 
         /// <summary>Implicit success test, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
-        /// keep compiling after the return type changed from bool to this struct.</summary>
+        /// still reads as a success test.</summary>
         public static implicit operator bool(LstsqInfo info) => info.status == IterativeSolveStatus.Converged;
 
         /// <summary>Burst-safe compact summary, e.g. <c>LstsqInfo(Converged, iters=17, rnorm=1.23E-08,
@@ -85,7 +68,7 @@ namespace LinearAlgebra
     /// -- but carries only the residual norm ‖b - A x‖ (no Aᵀr / xnorm: for a square solve the
     /// residual IS the error measure). Filled from each solver's tracked residual (cg/pcg/cgne: a
     /// live ‖r‖; minres: phibar; biCGStab: its running ‖r‖). cg/pcg/cgne verify a claimed Converged
-    /// exit with one fresh r = b-Ax first (Krylov R6a); minres/biCGStab are unaffected (no extra
+    /// exit with one fresh r = b-Ax first; minres/biCGStab are unaffected (no extra
     /// matvec on any of their exits).
     ///
     /// On a Converged OR MaxIterations return, x is the last iterate and rnorm is its true residual
@@ -156,7 +139,7 @@ namespace LinearAlgebra
         public bool Solved => status == DirectSolveStatus.Success;
 
         /// <summary>Implicit success test, so <c>if (solve(...))</c> / <c>bool ok = solve(...)</c>
-        /// keep compiling after the return type changed from bool/void to this struct.</summary>
+        /// still reads as a success test.</summary>
         public static implicit operator bool(DirectSolveInfo i) => i.status == DirectSolveStatus.Success;
 
         /// <summary>Burst-safe compact summary, e.g. <c>DirectSolveInfo(Success)</c>. Never allocates
@@ -223,8 +206,7 @@ namespace LinearAlgebra
         public bool Solved => status == IterativeSolveStatus.Converged;
 
         /// <summary>Implicit success test, so <c>if (SVD.thin(...))</c> / <c>bool ok =
-        /// SVD.thin(...)</c> keep compiling after the return type changed from bool to this
-        /// struct.</summary>
+        /// SVD.thin(...)</c> still reads as a success test.</summary>
         public static implicit operator bool(SVDInfo i) => i.status == IterativeSolveStatus.Converged;
 
         /// <summary>Burst-safe compact summary, e.g. <c>SVDInfo(Converged, sweeps=4, converged=512)</c>.

@@ -15,39 +15,26 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Power iteration with Rayleigh-quotient eigenvalue estimate, generic over any
-        /// <see cref="IfProxyLinearOperator"/>. This is the single implementation of the
-        /// power-iteration loop — the concrete dense (<c>powerIteration(in fProxyMxN, ...)</c>) and BSR
-        /// (<c>powerIteration(in fProxyBSR, ...)</c>) overloads below are thin forwarders that
-        /// wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c> and
-        /// call this method (mirrors <see cref="Krylov.cg{TOp}"/>).
-        ///
-        /// Finds the dominant eigenpair (lambda, v) of a square operator A (A.Rows == A.Cols).
+        /// <see cref="IfProxyLinearOperator"/>. Finds the dominant eigenpair (lambda, v) of a square
+        /// operator A (A.Rows == A.Cols).
         ///
         /// On input: v (length A.Rows) is the initial guess for the eigenvector; w (length
         /// A.Rows) is caller-provided scratch storage — it is overwritten and must NOT be the
         /// same array as v. On output: v is the unit eigenvector estimate; lambda is the
-        /// Rayleigh quotient estimate (v^T A v).
-        ///
-        /// If the supplied v has zero 2-norm it is seeded deterministically as
-        /// v[i] = 1 + (i &amp; 3), then normalized before iterating.
+        /// Rayleigh quotient estimate (v^T A v). If v has zero 2-norm it is seeded deterministically
+        /// as v[i] = 1 + (i &amp; 3), then normalized before iterating.
         ///
         /// Convergence criterion: the infinity norm of the residual r = A*v - lambda*v
         /// satisfies r &lt;= tol * max(1, |lambda|). Returns an <see cref="EigenSolveInfo"/>
-        /// (implicit-bool == Converged) carrying that residual (widened to double) and the
-        /// iteration count; power iteration has no Breakdown status -- only Converged or
+        /// (implicit-bool == Converged); power iteration has no Breakdown status -- only Converged or
         /// MaxIterations.
         ///
-        /// Notes:
-        ///   - Converges to the dominant eigenpair when |lambda_1| &gt; |lambda_2|;
-        ///     the rate is |lambda_2 / lambda_1| per iteration.
-        ///   - For a negative dominant eigenvalue the eigenvector sign may alternate
-        ///     between iterations, but the residual still converges.
-        ///   - When the dominant eigenvalue is a complex conjugate pair (e.g. rotation
-        ///     matrices) the iteration cannot converge and the method reports MaxIterations
-        ///     after maxIter iterations.
-        ///   - Inputs of extreme magnitude (entries whose squares overflow the type) are
-        ///     not rescaled in this version; keep element magnitudes moderate.
-        ///   - Does not allocate.
+        /// Converges to the dominant eigenpair only when |lambda_1| &gt; |lambda_2| (rate
+        /// |lambda_2/lambda_1| per iteration); for a negative dominant eigenvalue the eigenvector sign
+        /// may alternate between iterations, but the residual still converges. A complex-conjugate
+        /// dominant pair (e.g. rotation matrices) never converges and reports MaxIterations. Inputs of
+        /// extreme magnitude (entries whose squares overflow the type) are not rescaled. Does not
+        /// allocate.
         /// </summary>
         public static EigenSolveInfo powerIteration<TOp>(in TOp A, ref fProxyN v, ref fProxyN w,
                                                out fProxy lambda, fProxy tol, int maxIter)
@@ -215,67 +202,42 @@ namespace LinearAlgebra
         /// <summary>
         /// Inverse power iteration for the SMALLEST eigenpair (lambda_min, v) of a symmetric
         /// positive-definite (SPD) operator A (A.Rows == A.Cols), generic over any
-        /// <see cref="IfProxyLinearOperator"/> -- same shape as <see cref="powerIteration{TOp}"/>.
-        /// This is the single implementation of the inverse-iteration loop -- the concrete dense
-        /// (<c>inversePowerIteration(in fProxyMxN, ...)</c>) and BSR
-        /// (<c>inversePowerIteration(in fProxyBSR, ...)</c>) overloads below are thin forwarders
-        /// that wrap their matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c>
-        /// and call this method (mirrors <see cref="powerIteration{TOp}"/>).
+        /// <see cref="IfProxyLinearOperator"/>. Useful for e.g. the Fiedler vector of a graph
+        /// Laplacian, or the lowest vibration mode of a stiffness matrix.
         ///
-        /// A^-1 amplifies the SMALLEST-magnitude eigencomponent of A, so ordinary power iteration
-        /// on A^-1 converges to the eigenvector of A's smallest eigenvalue -- this is the roadmap's
-        /// lambda_min capability (e.g. the Fiedler vector of a graph Laplacian, or the lowest
-        /// vibration mode of a stiffness matrix). Rather than forming/factoring A^-1, each outer
-        /// iteration solves A y = v with the zero-alloc generic <see cref="Krylov.cg{TOp}"/> (A
-        /// must be SPD and nonsingular for CG to converge -- e.g.
-        /// <c>LinearAlgebra.Gallery.fProxyGallery.fProxyLaplacian1D</c> qualifies), then normalizes
-        /// y into v.
+        /// A^-1 amplifies the SMALLEST-magnitude eigencomponent of A, so ordinary power iteration on
+        /// A^-1 converges to the eigenvector of A's smallest eigenvalue. Rather than forming/factoring
+        /// A^-1, each outer iteration solves A y = v with the zero-alloc generic
+        /// <see cref="Krylov.cg{TOp}"/>, then normalizes y into v.
         ///
-        /// PRECONDITION (caller responsibility, not verified at runtime -- same contract as CG's
-        /// "A must be SPD"): A is symmetric positive-definite and nonsingular (lambda_min &gt; 0).
+        /// PRECONDITION (caller responsibility, not verified at runtime): A is symmetric
+        /// positive-definite and nonsingular (lambda_min &gt; 0).
         ///
-        /// Scratch layout: v (length A.Rows) is the eigenvector estimate, in/out -- WARM-STARTABLE
-        /// and, like <see cref="powerIteration{TOp}"/>, deterministically seeded as
-        /// v[i] = 1 + (i &amp; 3) then normalized if the caller supplies the zero vector. y is the
-        /// inner solve's solution scratch (A y = v). r, p, Ap are <see cref="Krylov.cg{TOp}"/>'s
-        /// own scratch, reused across every outer iteration -- zero-alloc overall. No extra scratch
-        /// vector is needed for the Rayleigh-quotient recompute: once CG returns, r/p/Ap are free,
-        /// so Ap doubles as the A*v scratch for that step.
+        /// Scratch layout: v (length A.Rows) is the eigenvector estimate, in/out -- WARM-STARTABLE,
+        /// deterministically seeded as v[i] = 1 + (i &amp; 3) then normalized if the caller supplies the
+        /// zero vector. y is the inner solve's solution scratch (A y = v). r, p, Ap are
+        /// <see cref="Krylov.cg{TOp}"/>'s own scratch, reused across every outer iteration -- zero-alloc
+        /// overall; Ap doubles as the A*v scratch for the Rayleigh-quotient recompute once CG returns.
         ///
         /// On output: v is the unit eigenvector estimate for A's smallest eigenvalue; lambda is the
-        /// Rayleigh quotient v^T A v / v^T v (recomputed via A.Apply -- not carried over from CG).
+        /// Rayleigh quotient v^T A v / v^T v (recomputed via A.Apply, not carried over from CG).
         ///
         /// Convergence (checked once per outer iteration, OR'd): (1) the eigenvector settles -- the
-        /// infinity norm of v_new - v_old is &lt;= tol, where v_new is sign-aligned against v_old
-        /// first (inverse iteration, like power iteration, can flip the eigenvector's sign between
-        /// iterations); or (2) the Rayleigh quotient stabilizes -- |lambda_new - lambda_old| &lt;=
-        /// tol * max(1, |lambda_new|). Returns an <see cref="EigenSolveInfo"/> (implicit-bool ==
-        /// Converged); Converged within maxIter outer iterations, MaxIterations if it runs out,
-        /// Breakdown if the inner CG solve fails (see below). On Converged/MaxIterations, residual
-        /// is ‖Av-λv‖∞ computed once from the last outer iteration's already-held A*v (no extra
-        /// matvec); on Breakdown, residual is <see cref="double.NaN"/>.
+        /// infinity norm of v_new - v_old is &lt;= tol, sign-aligned against v_old first; or (2) the
+        /// Rayleigh quotient stabilizes -- |lambda_new - lambda_old| &lt;= tol * max(1, |lambda_new|).
+        /// Returns Converged, MaxIterations, or Breakdown if the inner CG solve fails. On
+        /// Converged/MaxIterations, residual is ‖Av-λv‖∞; on Breakdown, residual is
+        /// <see cref="double.NaN"/> and lambda is 0 -- only read v/lambda when Solved.
         ///
-        /// IMPORTANT: pick tol no tighter than (and ideally a small multiple of) cgTol. Every outer
-        /// iteration's v/y comes from a FRESH CG solve accurate only to ~cgTol -- consecutive
-        /// eigenpair estimates stop shrinking once that noise floor is reached (further outer
-        /// iterations do not refine it further, unlike <see cref="powerIteration{TOp}"/>'s pure
-        /// matvecs, which can drive the residual to machine precision). A tol tighter than cgTol's
-        /// noise floor may never be satisfied, spinning to maxIter and reporting MaxIterations even
-        /// though the eigenpair estimate is already as good as this cgTol allows.
+        /// GOTCHA: pick tol no tighter than (and ideally a small multiple of) cgTol. Every outer
+        /// iteration's v/y comes from a FRESH CG solve accurate only to ~cgTol, so consecutive
+        /// eigenpair estimates stop improving once that noise floor is reached; a tighter tol may never
+        /// be satisfied and spins to maxIter reporting MaxIterations even though the estimate is
+        /// already as good as cgTol allows.
         ///
-        /// If the inner CG solve fails to converge within cgMaxIter iterations to cgTol (A not SPD,
-        /// or numerical breakdown -- see <see cref="Krylov.cg{TOp}"/>), this method bails out
-        /// immediately and reports Breakdown; lambda is then set to 0 (undefined) and v holds
-        /// whatever CG last produced (partially updated) -- only read v/lambda when Solved.
-        ///
-        /// SEEDING CAVEAT: when the caller passes the zero vector, v is seeded with the fixed
-        /// deterministic pattern (1,2,3,4,1,2,3,4,...). If the target smallest eigenvector is
-        /// (near-)orthogonal to that pattern -- possible for structured/symmetric matrices -- the
-        /// iteration converges to the next eigenpair and reports Converged with a WRONG lambda (the
-        /// Rayleigh quotient stabilizes on the wrong-but-stable pair). Callers with structured A
-        /// should pass their own nonzero seed rather than relying on the default pattern. Same
-        /// caveat as <see cref="powerIteration{TOp}"/>, but higher risk here: the CG-noise-floor
-        /// convergence branch can accept a wrong pair that pure matvecs would eventually escape.
+        /// SEEDING CAVEAT: if the target smallest eigenvector is (near-)orthogonal to the default seed
+        /// pattern (1,2,3,4,...), the iteration converges to the next eigenpair and reports Converged
+        /// with a WRONG lambda. Callers with structured A should pass their own nonzero seed.
         ///
         /// Does not allocate.
         /// </summary>
@@ -531,12 +493,7 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Lanczos tridiagonalization of a SYMMETRIC operator A (A.Rows == A.Cols), generic over
-        /// any <see cref="IfProxyLinearOperator"/> -- same shape as <see cref="powerIteration{TOp}"/> /
-        /// <see cref="inversePowerIteration{TOp}"/>. This is the single implementation of the
-        /// Lanczos loop -- the concrete dense (<c>lanczos(in fProxyMxN, ...)</c>) and BSR
-        /// (<c>lanczos(in fProxyBSR, ...)</c>) overloads below are thin forwarders that wrap their
-        /// matrix in <see cref="fProxyDenseOperator"/> / <c>fProxyBSROperator</c> and call this
-        /// method.
+        /// any <see cref="IfProxyLinearOperator"/>.
         ///
         /// Builds an orthonormal Krylov basis v_1..v_m (m = <paramref name="steps"/>) via the
         /// classical 3-term Lanczos recurrence and the corresponding symmetric tridiagonal T (diag
@@ -547,51 +504,37 @@ namespace LinearAlgebra
         /// with m == A.Rows and full reorthogonalization, T is orthogonally similar to A and the
         /// Ritz values reproduce A's ENTIRE spectrum.
         ///
-        /// PRECONDITION (caller responsibility, not verified at runtime -- same contract as
-        /// <see cref="Krylov.minres{TOp}"/>'s "A must be symmetric"): A is symmetric. Lanczos is
+        /// PRECONDITION (caller responsibility, not verified at runtime): A is symmetric. Lanczos is
         /// undefined for a non-symmetric operator (the 3-term recurrence assumes it).
         ///
-        /// FULL REORTHOGONALIZATION (against every previously computed v_1..v_j), performed TWICE
-        /// per iteration: bare/naive Lanczos loses orthogonality among the v_j to rounding error
-        /// after relatively few steps, which manufactures spurious "ghost" duplicate eigenvalues in
-        /// T. A single reorthogonalization pass already restores orthogonality to working
-        /// precision; the second pass ("reorthogonalize twice" -- classical folklore, e.g.
-        /// Parlett's "Symmetric Eigenvalue Problem") is cheap insurance (an extra O(m*n) sweep per
-        /// iteration, negligible next to the O(m^2*n) total the first pass already costs) traded
-        /// for extra robustness -- this implementation prioritizes correctness over the last bit of
-        /// speed, per its purpose as a general-purpose extremal eigensolver.
+        /// FULL REORTHOGONALIZATION (against every previously computed v_1..v_j) is performed TWICE
+        /// per iteration to keep the Krylov basis numerically orthogonal and avoid spurious "ghost"
+        /// duplicate eigenvalues in T; the second pass is cheap insurance next to the O(m^2*n) the
+        /// first pass already costs.
         ///
         /// Workspace (see <see cref="fProxyLanczosCache"/>, allocate via
         /// <c>Arena.fProxyLanczosCache(A.Rows, steps)</c>): <c>ws.V</c> (steps x n) accumulates the
         /// Krylov basis (row j = v_(j+1)); <c>ws.vCur</c>/<c>ws.w</c> (length n) are the current
-        /// Krylov vector (copied out of V for A.Apply, which requires distinct in/out buffers) and
-        /// the work vector; <c>ws.alpha</c>/<c>ws.beta</c> (length steps) are T's diagonal/off-
-        /// diagonal; <c>ws.T</c> (steps x steps) and <c>ws.symWs</c> back the
+        /// Krylov vector and the work vector; <c>ws.alpha</c>/<c>ws.beta</c> (length steps) are T's
+        /// diagonal/off-diagonal; <c>ws.T</c> (steps x steps) and <c>ws.symWs</c> back the
         /// valuesSymmetric call. On input, row 0 of <c>ws.V</c> is the seed for v_1: if it has
-        /// zero 2-norm it is seeded deterministically as V[0,i] = 1 + (i &amp; 3) (mirrors
-        /// <see cref="powerIteration{TOp}"/>'s seeding), then normalized either way.
+        /// zero 2-norm it is seeded deterministically as V[0,i] = 1 + (i &amp; 3), then normalized
+        /// either way.
         ///
         /// EARLY BREAKDOWN: if at some iteration j &lt; steps the residual norm beta_(j+1) falls to
-        /// <paramref name="breakdownTol"/> or below, an invariant subspace of A has been found --
-        /// the j Ritz values already computed are EXACT eigenvalues of A (restricted to that
-        /// subspace), and there is no further information to extract, so the process truncates
-        /// there. The returned <see cref="LanczosInfo.produced"/> reports how many of the
+        /// <paramref name="breakdownTol"/> or below, an invariant subspace of A has been found and
+        /// the process truncates there; <see cref="LanczosInfo.produced"/> reports how many of the
         /// m = <paramref name="steps"/> requested vectors were actually produced (produced &lt;=
-        /// steps; produced == steps unless breakdown occurred). To keep the workspace's T/symWs a
-        /// FIXED steps x steps shape across calls (so the same workspace serves every call
-        /// regardless of whether breakdown occurs), the unused steps-produced rows/columns of T are
-        /// padded with a block that is exactly DECOUPLED from the real produced x produced block
-        /// (the connecting off-diagonal entry is left at its zero-initialized value) and whose
-        /// diagonal entries lie strictly below every real Ritz value (offset past a Gershgorin bound
-        /// on the real block), so the padding can never mix into the real spectrum under sorting.
+        /// steps). The unused rows/columns of T are padded (see the padding block in the
+        /// implementation) so the same fixed-shape workspace serves every call regardless of whether
+        /// breakdown occurs.
         ///
         /// On output: <paramref name="eigenvalues"/> (length steps, caller-allocated) holds the
-        /// Ritz values sorted DESCENDING (same convention as valuesSymmetric) in its first
-        /// <c>produced</c> entries -- eigenvalues[0] is the largest Ritz value,
-        /// eigenvalues[produced-1] the smallest. Entries [produced, steps) are the padding
-        /// described above and are MEANINGLESS -- ignore them. The returned
-        /// <see cref="LanczosInfo.status"/> is Converged iff valuesSymmetric's QL iteration
-        /// converged on the (possibly padded) tridiagonal; only trust the eigenvalues when Solved.
+        /// Ritz values sorted DESCENDING in its first <c>produced</c> entries -- eigenvalues[0] is
+        /// the largest, eigenvalues[produced-1] the smallest. Entries [produced, steps) are padding
+        /// and MEANINGLESS -- ignore them. <see cref="LanczosInfo.status"/> is Converged iff
+        /// valuesSymmetric's QL iteration converged on the (possibly padded) tridiagonal; only trust
+        /// the eigenvalues when Solved.
         ///
         /// Does not allocate.
         /// </summary>
@@ -1137,8 +1080,8 @@ namespace LinearAlgebra
         /// this constant is NOT scaled by Consts.sweepBudget like the other Eigen/SVD defaults --
         /// decompInPlace's "sweep" is a FULL-MATRIX Jacobi sweep (O(n^2) rotations each), a
         /// fundamentally different iteration unit from the per-value QR/QL sweeps the LAPACK dbdsqr
-        /// scaling targets (see docs/dev/spec-svd-eigen-convergence.md); classical Jacobi converges in a
-        /// small constant number of sweeps essentially independent of n. Also deprecated/reference-only.</summary>
+        /// scaling targets; classical Jacobi converges in a small constant number of sweeps essentially
+        /// independent of n. Also deprecated/reference-only.</summary>
         [System.Obsolete("Prefer Eigen.symmetric (Householder tridiagonal + QL, ~30x faster) for symmetric eigenpairs, or Eigen.valuesSymmetric for eigenvalues only. This cyclic-Jacobi solver is retained for reference.", false)]
         public static EigenInfo decompInPlace(ref fProxyMxN A, ref fProxyN eigenvalues,
                                               ref fProxyMxN V)

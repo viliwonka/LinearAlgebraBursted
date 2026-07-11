@@ -25,7 +25,6 @@ namespace LinearAlgebra
             }
 
             if (i == j) {
-                // do nothing
                 return;
             }
 
@@ -47,7 +46,6 @@ namespace LinearAlgebra
                 throw new System.ArgumentException("start and end must satisfy 0 <= start <= end <= N_Cols");
 
             if (i == j) {
-                // do nothing
                 return;
             }
 
@@ -70,7 +68,6 @@ namespace LinearAlgebra
                 throw new System.ArgumentException("start and end must satisfy 0 <= start <= end <= M_Rows");
 
             if(i == j) {
-                // do nothing
                 return;
             }
 

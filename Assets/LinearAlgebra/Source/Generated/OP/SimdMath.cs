@@ -11,7 +11,8 @@ namespace LinearAlgebra.Internal
     //
     // NOT templated: this is one hand-written file holding BOTH float and double shims, copied
     // verbatim into the runtime assembly (it contains no fProxy/long token, so codegen treats it
-    // as a singular file). Determinism is unaffected: these are lane-wise abs/max, no reassociation.
+    // as a singular file). Determinism is unaffected: these are simple lane-wise abs/max, with no
+    // reordering of floating-point operations.
     public static class floatM
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)] public static float4 abs(float4 v) => math.abs(v);

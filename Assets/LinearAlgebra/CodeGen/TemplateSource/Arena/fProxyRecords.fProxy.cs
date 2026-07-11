@@ -4,13 +4,11 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Arena-owned, pointer-stable allocation record backing a fProxyN
-    /// (docs/dev/rfc-memory-model.md §4 Option A, §7 step 4). Lives inside one of ArenaCore's
-    /// <see cref="ChunkedRecordTable{TRecord}"/> tables (persistent or temp pool -- see
-    /// <see cref="Table"/>) and is addressed by fProxyN's private <c>fProxyVecRecord*</c> field.
-    /// Never copied by user code: a struct copy of fProxyN just copies the pointer to this SAME
-    /// record, so every copy resolves to the one authoritative <see cref="Data"/> (this is what
-    /// makes both of the RFC's failure modes structurally impossible for this family).
+    /// Arena-owned, pointer-stable allocation record backing a fProxyN. Lives inside one of
+    /// ArenaCore's <see cref="ChunkedRecordTable{TRecord}"/> tables (persistent or temp pool --
+    /// see <see cref="Table"/>) and is addressed by fProxyN's private <c>fProxyVecRecord*</c>
+    /// field. Never copied by user code: a struct copy of fProxyN just copies the pointer to this
+    /// SAME record, so every copy resolves to the one authoritative <see cref="Data"/>.
     /// </summary>
     internal unsafe struct fProxyVecRecord
     {

@@ -10,22 +10,13 @@ namespace LinearAlgebra.Sparse
     /// Block-Jacobi preconditioner for a square BSR (<c>BlockRows==BlockCols</c>, <c>BR==BC</c>):
     /// z = M⁻¹ r where M = blockdiag(A_00, A_11, ..., A_{nb-1,nb-1}), i.e. each diagonal block
     /// inverted independently and applied block-wise. The <c>BR==1</c> case degenerates to
-    /// point-Jacobi (z_i = r_i / A_ii) -- no special-cased code path is needed, the general
-    /// BR x BR inverse-and-multiply reduces to that automatically for BR=1.
+    /// point-Jacobi (z_i = r_i / A_ii) automatically.
     ///
-    /// Built ONCE from a compressed <see cref="fProxyBSR"/> (an O(nb * BR^3) one-time cost via
-    /// LU decomposition on each tiny diagonal block -- reuses <see cref="LU.decompInPlace(ref fProxyMxN, ref Pivot)"/>
-    /// / <see cref="LU.decompSolve(ref fProxyMxN, in Pivot, ref fProxyN)"/>, no new inverse
-    /// primitive), then <see cref="Apply"/> is a zero-alloc block-diagonal matvec every PCG
-    /// iteration.
-    ///
-    /// Readonly: nothing mutates after the constructor fills DInv (it is never grown/resized).
-    /// The two IfProxyLinearOperator wrappers (fProxyBSROperator/fProxyDenseOperator) are
-    /// already readonly structs, so passing them through `in TOp` in the generic solvers makes
-    /// no defensive copy; being non-readonly here would force the compiler to snapshot-copy the
-    /// whole preconditioner (the DInv UnsafeList header, at least) on every `M.Apply(in r, ref
-    /// z)` call inside pcg -- undermining the zero-cost-dispatch claim. See fProxyBSROperator's
-    /// own doc comment for the same reasoning.
+    /// Built ONCE from a compressed <see cref="fProxyBSR"/> via LU decomposition on each diagonal
+    /// block (<see cref="LU.decompInPlace(ref fProxyMxN, ref Pivot)"/> /
+    /// <see cref="LU.decompSolve(ref fProxyMxN, in Pivot, ref fProxyN)"/>); <see cref="Apply"/> is
+    /// then a zero-alloc block-diagonal matvec every PCG iteration. Readonly: nothing mutates
+    /// after the constructor fills DInv.
     /// </summary>
     public readonly partial struct fProxyBlockJacobi : IfProxyPreconditioner, IDisposable
     {
@@ -35,11 +26,10 @@ namespace LinearAlgebra.Sparse
         public int Rows => BlockRows * BR;
 
         // Arena-tracked path: a stable pointer into the arena's
-        // ChunkedRecordTable<fProxyBlockJacobiRecord> (docs/dev/rfc-memory-model.md §4 Option A). null
-        // for a standalone (non-arena) preconditioner, in which case DInv resolves to the inline
-        // field below instead. Replaces the old `Arena _arena` handle field -- same size trade as
-        // fProxyBSR/fProxyN. Readonly (this struct is `readonly partial struct`): assigned once per
-        // constructor, never reassigned afterward -- see Dispose()'s comment for what that costs.
+        // ChunkedRecordTable<fProxyBlockJacobiRecord>. null for a standalone (non-arena)
+        // preconditioner, in which case DInv resolves to the inline field below instead.
+        // Readonly (this struct is `readonly partial struct`): assigned once per constructor,
+        // never reassigned afterward -- see Dispose()'s comment for what that costs.
         [NativeDisableUnsafePtrRestriction] private readonly unsafe fProxyBlockJacobiRecord* _rec;
 
         // Standalone-path backing store -- stays default(UnsafeList<fProxy>) whenever _rec != null.
@@ -66,8 +56,7 @@ namespace LinearAlgebra.Sparse
         // Unity Editor, including every test run, and compiles out of player builds entirely --
         // struct size is identical in both configs either way, since this adds no field).
         // fProxyBlockJacobi has no spare bits to pack a
-        // generation stamp into (40B = 4 BlockRows + 4 BR + 8 _rec + 24 UnsafeList<fProxy>, exactly
-        // -- see docs/dev/rfc-memory-model.md §6.2 and ArenaLayoutTests.SparseStructsAreExpectedSize),
+        // generation stamp into (40B = 4 BlockRows + 4 BR + 8 _rec + 24 UnsafeList<fProxy>, exactly),
         // so this only checks Alive: it catches a read after Dispose() on THIS record, but not a
         // stale handle into a slot that has since been recycled by a fresh Allocate() (that needs a
         // generation stamp, which fProxyBSR itself carries in its own padding hole). Readonly
@@ -185,13 +174,9 @@ namespace LinearAlgebra.Sparse
         /// <summary>
         /// z = M⁻¹ r, applied block-wise: z_i = A_ii⁻¹ · r_i. z must not alias r (each z_i read
         /// draws on the full r_i block; overwriting r in place mid-block would corrupt later
-        /// rows of the same block's product). Runs every PCG/LOBPCG iteration, so b in
-        /// {1,2,3,4,6} (the same square sizes the spMV kernels specialize) dispatches to a fully
-        /// unrolled dense b x b matvec (<see cref="UnsafeOP.blockJacobiApplyB1"/>..B6, mirroring
-        /// <c>bsrMatVecB{b}</c>'s unroll -- Krylov R2, docs/draft-spec-krylov-optimization.md) --
-        /// bit-identical to the general loop below (same left-to-right term order, just named
-        /// locals instead of a runtime-trip-count inner loop Burst can't unroll). Any other BR
-        /// falls through to the general runtime-BR loop, unchanged.
+        /// rows of the same block's product). For BR in {1,2,3,4,6}, dispatches to a fully
+        /// unrolled dense b x b matvec (<see cref="UnsafeOP.blockJacobiApplyB1"/>..B6), bit-identical
+        /// to the general loop below. Any other BR falls through to the general runtime-BR loop.
         /// </summary>
         public unsafe void Apply(in fProxyN r, ref fProxyN z)
         {
@@ -236,26 +221,11 @@ namespace LinearAlgebra.Sparse
         }
 
         /// <summary>
-        /// Disposes the DInv buffer. Note: unlike fProxyN/fProxyBSR's mutable-struct Dispose(),
-        /// this CANNOT null <c>_rec</c> afterward (the struct is `readonly`, so no instance method
-        /// may reassign a field, not even its own). Consequence: an ALIASED double-dispose (a
-        /// different struct copy sharing this SAME record) still throws here, from the table's own
-        /// double-Free guard, exactly like fProxyN/fProxyBSR -- but a SAME-COPY double-dispose
-        /// (calling Dispose() twice on the identical variable) also throws here instead of
-        /// degrading to a safe no-op the second time, since `_rec` is still non-null on the second
-        /// call. This is a strictly-no-worse-than-before tradeoff: the pre-migration Dispose() had
-        /// no double-dispose protection at all (silent double-free UB); the standalone
-        /// (non-arena) path is unchanged either way, for the same readonly-field reason.
+        /// Disposes the DInv buffer. Double-dispose throws (the record table's double-Free guard);
+        /// do not call twice on the same or an aliased copy.
         /// </summary>
         public unsafe void Dispose()
         {
-            // LINALG_DEBUG NaN-poison-on-dispose removed (2026-07-05): the symbol was defined
-            // nowhere in the project, so that block was dead code that had never executed.
-            // Superseded by the record table's own unconditional guard below -- a double-dispose
-            // throws deterministically via Free()'s double-Free check, in every build config, not
-            // just a debug one -- plus the ENABLE_UNITY_COLLECTIONS_CHECKS generational overlay on
-            // DInv, which catches a stale read (use-after-dispose/Clear) instead of returning
-            // garbage.
             if (_rec != null)
             {
                 var dinv = _rec->DInv;

@@ -31,9 +31,8 @@ namespace LinearAlgebra
         }
 
         // NB: the literal 8 below is the truncation budget -- bytes always kept free so a truncation
-        // notice ("...\n") never overflows the buffer. It is inlined (not a const field) because a
-        // type-agnostic const in an fProxy template would emit into BOTH the float and double Print
-        // partials and collide (CS0102).
+        // notice ("...\n") never overflows the buffer. It is inlined (not a const field) to avoid a
+        // duplicate const across the float/double partials.
 
         // Appends the header + block-sparsity grid ('X' stored / '.' absent) into str. One char per
         // block; for Symmetric matrices (only the upper block-triangle is stored, see fProxyBSR.cs)

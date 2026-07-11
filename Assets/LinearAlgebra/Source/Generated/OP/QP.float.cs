@@ -10,100 +10,52 @@ using LinearAlgebra.Internal;
 namespace LinearAlgebra
 {
     // ================================================================================================
-    // Convex quadratic programming (docs/draft-spec-qp.md) -- a HiGHS-style dense primal null-space
-    // active-set method, ported per Nocedal & Wright, Numerical Optimization (2nd ed.), ch. 16
-    // ("Quadratic Programming"), specifically 16.2 "The Null-Space Method" and 16.5 "Active-Set
-    // Methods for Convex QP".
+    // Convex quadratic programming: a HiGHS-style dense primal null-space active-set method, ported per
+    // Nocedal & Wright, Numerical Optimization (2nd ed.), ch. 16 ("Quadratic Programming"), 16.2 "The
+    // Null-Space Method" and 16.5 "Active-Set Methods for Convex QP".
     //
-    // STAGE 1 (this file, current): the EQUALITY-constrained QP core (EQP) -- a FIXED working set,
-    // algorithm steps 2-3 only (the null-space Newton step + multiplier recovery). No add/drop loop,
-    // no ratio test, no phase 1 -- those are stage 2 (inequality loop) and stage 3 (phase 1 +
-    // hardening), layered on top of the SAME kernel functions below without touching them (see each
-    // function's own doc comment for which future stage calls it).
+    // This file: the EQUALITY-constrained QP core (EQP) -- a FIXED working set, the null-space Newton
+    // step + multiplier recovery only (no add/drop loop, no ratio test, no phase 1).
     //
-    // Problem solved by eqpSolve / eqpNullSpaceStep:
+    //     minimize    ½xᵀQx + cᵀx   subject to   A_W x = b_W
+    //     (A_W: k x n, k <= n, rows independent -- "the working set")
     //
-    //     minimize    ½xᵀQx + cᵀx
-    //     subject to  A_W x = b_W        (A_W: k x n, k <= n, rows independent -- "the working set")
+    // Q is symmetric PSD (v1 contract): a singular reduced Hessian is regularized (δ·‖Q‖∞·I retry)
+    // rather than handled via negative-curvature machinery. Indefinite Q is out of scope (NP-hard in
+    // general). One null-space Newton step is exact for this problem (Nocedal & Wright eq.
+    // 16.16-16.19): substituting x = x0 + Zy for an orthonormal null(A_W) basis Z reduces it to an
+    // unconstrained quadratic in y, which Newton's method solves in one step from any start.
     //
-    // Q is symmetric PSD (v1 contract, draft-spec-qp.md open question 3): a singular reduced Hessian
-    // is regularized (δ·‖Q‖∞·I retry) rather than handled via negative-curvature machinery, matching
-    // HiGHS's own v1 scope. Indefinite Q is out of scope (NP-hard in general).
+    // The dense n x k QR factor Q1 is never materialized -- the null-space machinery drives QR's own
+    // per-step primitives directly instead of calling QR.decompInPlace's public API. Z (n x (n-k)) IS
+    // formed explicitly, since the reduced Hessian ZᵀQZ and the step p = Zy need it as a GEMM/GEMV
+    // operand.
     //
-    // ---- Why one null-space Newton step is EXACT for an equality-constrained quadratic ----
-    //
-    // Parameterize every feasible point as x = x0 + Zy, x0 any point with A_W x0 = b_W, Z an
-    // orthonormal basis for null(A_W) (A_W Z = 0, so A_W x = A_W x0 = b_W for ANY y). Substituting,
-    // the equality-constrained problem becomes the UNCONSTRAINED reduced problem
-    //     minimize_y   ½yᵀ(ZᵀQZ)y + (Zᵀg(x0))ᵀy + const,   g(x0) = Qx0 + c,
-    // an ordinary (unconstrained) quadratic in y with Hessian H_Z = ZᵀQZ and gradient
-    // Zᵀg(x0) + H_Z y. For ANY quadratic, Newton's method reaches the exact minimizer in ONE step
-    // regardless of the starting point (the model IS the function), so solving H_Z y = -Zᵀg(x0) and
-    // setting x1 = x0 + Zy lands exactly on the equality-constrained optimum -- no line search, no
-    // iteration (Nocedal & Wright ch. 16.2, eq. 16.16-16.19; the "null-space method").
-    //
-    // ---- Keeping Q (QR's orthogonal factor, not this file's Q the Hessian -- unfortunate letter
-    // clash inherited from the spec/textbook, disambiguated by context below) implicit ----
-    //
-    // QR.decompInPlace's public API FORMS the dense (n x k) "thin" Q1 -- it factors AND reconstructs
-    // in one call, with no split entry point. To avoid ever materializing that n x k matrix (per the
-    // spec's explicit ask), this file bypasses QR.decompInPlace entirely and instead drives QR's own
-    // per-step primitives directly (QR.genHouseholder / QR.applyReflectorRight, both `internal` --
-    // the same functions decompInPlace itself is built from): FactorWorkingSetTranspose below is
-    // exactly decompInPlace's factorization half (store R + stash each Householder vector into A_Wᵀ's
-    // own columns), replicated rather than called through the public API specifically so the
-    // reconstruction half never runs. Two more primitives close the loop without ever forming Q1:
-    //   * ApplyWorkingSetQtForward -- Q_full = H_0 H_1 ... H_{k-1} is an n x n orthogonal matrix (each
-    //     reflector acts on the full ambient n-dimensional space; only k of them exist because A_Wᵀ
-    //     has k columns), so Q_fullᵀ = H_{k-1} ... H_0 and a FORWARD sweep (d = 0..k-1) of the k
-    //     stashed reflectors over any n-vector v computes Q_fullᵀv = (Q1ᵀv ; Zᵀv) in one pass -- top k
-    //     entries and bottom n-k entries. This is the exact trick QR.solveInPlace already uses for its
-    //     `b` argument (computing Qᵀb without ever forming Q), generalized and replayed from STORED
-    //     reflectors instead of freshly-generated ones. It replaces BOTH QR.decompSolve's "Qᵀg, then
-    //     R-solve" (used for the multiplier recovery) AND the reduced gradient Zᵀg -- one sweep gives
-    //     both halves.
-    //   * FormNullSpaceBasis -- Z itself (n x (n-k), needed explicitly because the reduced Hessian
-    //     ZᵀQZ and the step p = Zy are GEMM/GEMV operands) is formed by REVERSE-sweeping (d = k-1..0)
-    //     the same stashed reflectors over the seed [0; I_{n-k}] -- exactly QR.decompInPlace's own
-    //     Q-reconstruction phase, just seeded with the TRAILING identity block instead of the leading
-    //     one and targeting a separate n x (n-k) buffer instead of overwriting A_Wᵀ. Z is smaller than
-    //     the full n x n Q (by construction, only the n-k null-space columns), so this is the
-    //     documented exception to "don't form dense Q" -- forming Z, not Q.
-    //
-    // ---- Structuring for stage 2-3 reuse ----
-    //
-    // Every function below is `internal static` (not a buried local), matching the structuring rule
-    // LP.RevisedSimplex.float.cs set for LP.DualSimplex.float.cs: the stage-2 active-set loop (ratio
-    // test, add/drop, Dantzig pricing) will call eqpNullSpaceStep (or its constituent pieces) once per
-    // iteration, re-factoring A_Wᵀ from scratch after every working-set change -- see
-    // FactorWorkingSetTranspose's own doc comment for that cost and why it is deliberately NOT
-    // incremental (v1 scope decision, draft-spec-qp.md "Judgment").
+    // Every function below is `internal static`, not a buried local, so a future inequality active-set
+    // loop can call eqpNullSpaceStep (or its constituent pieces) once per iteration without
+    // refactoring this file.
     // ================================================================================================
     public static partial class QP
     {
         // ============================================================================================
-        // STAGE 3 (docs/draft-spec-qp.md): the PUBLIC FACADE -- QP.solve, mirroring LP.solve's doc
-        // voice, validation style, and layering (validate -> phase 1 -> hand off to the internal core).
-        // Two pieces close the gap between qpActiveSetCore's stage-2 contract ("x on entry already
-        // feasible") and a caller who has no feasible point in hand:
+        // The PUBLIC FACADE -- QP.solve, mirroring LP.solve's doc voice, validation style, and layering
+        // (validate -> phase 1 -> hand off to the internal core).
         //
         //   * Dimension/shape validation (ArgumentException, matching LP.solve's per-argument style)
-        //     PLUS the v1 CONVEXITY CONTRACT itself (draft-spec-qp.md open question 3, Q symmetric
-        //     PSD) -- this is the one place in the whole QP stack that actually CHECKS symmetry
-        //     (qpActiveSetCore and eqpNullSpaceStep both only ever READ Q via matrix products against
-        //     both triangles, per their own doc comments, and never verify it): a cheap
-        //     max|Q[i,j]-Q[j,i]| scan, scaled the same way every other tolerance in this file is
-        //     (relative to ||Q||_inf). PSD itself is NOT checked (no cheap certificate exists short of
-        //     a full factorization the solver would have to pay for anyway; a non-PSD Q surfaces
-        //     indirectly through spurious Unbounded reports or a CHO retry that never stops
-        //     regularizing -- out of v1 scope, matching HiGHS's own PSD assumption).
+        //     PLUS the v1 CONVEXITY CONTRACT itself (Q symmetric PSD) -- this is the one place in the
+        //     whole QP stack that actually CHECKS symmetry (qpActiveSetCore and eqpNullSpaceStep both
+        //     only ever READ Q via matrix products against both triangles, per their own doc comments,
+        //     and never verify it): a cheap max|Q[i,j]-Q[j,i]| scan, scaled the same way every other
+        //     tolerance in this file is (relative to ||Q||_inf). PSD itself is NOT checked (no cheap
+        //     certificate exists short of a full factorization the solver would have to pay for
+        //     anyway; a non-PSD Q surfaces indirectly through spurious Unbounded reports or a CHO retry
+        //     that never stops regularizing -- out of v1 scope, matching HiGHS's own PSD assumption).
         //
-        //   * Phase 1 (draft-spec-qp.md step 1): PhaseOneFeasibleStart below finds ANY point satisfying
-        //     A x {<=,=,>=} b, xl <= x <= xu via a zero-cost LP over the identical region (LP.solve,
-        //     LPMethod.DualSimplex, per the spec) -- see that function's own doc comment for the
-        //     shift/split reformulation LP.solve's x>=0-only computational form requires. Anything
-        //     other than LPStatus.Optimal from that LP maps straight to QPStatus.Infeasible, matching
-        //     the spec's "LP Infeasible -> QPStatus.Infeasible immediately".
+        //   * Phase 1: PhaseOneFeasibleStart below finds ANY point satisfying A x {<=,=,>=} b,
+        //     xl <= x <= xu via a zero-cost LP over the identical region (LP.solve, LPMethod.
+        //     DualSimplex) -- see that function's own doc comment for the shift/split reformulation
+        //     LP.solve's x>=0-only computational form requires. Anything other than LPStatus.Optimal
+        //     from that LP maps straight to QPStatus.Infeasible.
         //
         // Neither piece touches qpActiveSetCore's own contract or tolerances -- the facade is purely an
         // outer layer, exactly like LP.solve is an outer layer over simplexCore/revisedSimplexCore/
@@ -112,9 +64,9 @@ namespace LinearAlgebra
 
         /// <summary>
         /// Solve the convex quadratic program  min ½xᵀQx + cᵀx  s.t.  A x {≤,=,≥} b (per-row
-        /// <paramref name="senses"/>), xl ≤ x ≤ xu -- the public entry point (docs/draft-spec-qp.md),
-        /// mirroring <see cref="LP.solve"/>'s doc voice and validation style. Q must be symmetric
-        /// (checked here, cheaply -- see this file's Stage 3 header comment) and positive semidefinite
+        /// <paramref name="senses"/>), xl ≤ x ≤ xu -- the public entry point, mirroring
+        /// <see cref="LP.solve"/>'s doc voice and validation style. Q must be symmetric
+        /// (checked here, cheaply -- see the facade header comment above) and positive semidefinite
         /// (the v1 convexity contract, NOT checked -- see the same comment); a genuinely non-PSD Q is
         /// out of scope (indefinite QP is NP-hard in general, matching HiGHS's own v1 assumption).
         ///
@@ -165,7 +117,7 @@ namespace LinearAlgebra
             for (int i = 0; i < n; i++)
                 for (int j = i + 1; j < n; j++)
                     if (math.abs(Q[i, j] - Q[j, i]) > symTol)
-                        throw new ArgumentException("QP.solve: Q must be symmetric (v1 contract, draft-spec-qp.md)");
+                        throw new ArgumentException("QP.solve: Q must be symmetric");
 
             bool feasible = PhaseOneFeasibleStart(in A, in b, in senses, in xl, in xu, ref x);
             if (!feasible)
@@ -202,16 +154,9 @@ namespace LinearAlgebra
             return info;
         }
 
-        // Phase 1 (draft-spec-qp.md step 1, stage 3): find ANY point satisfying A x {<=,=,>=} b AND
-        // xl <= x <= xu via a ZERO-COST LP over the SAME feasible region, reusing LP.solve (LPMethod.
-        // DualSimplex, per the spec) instead of writing a dedicated QP feasibility routine. Two
-        // alternatives were considered and rejected: (1) a single qpActiveSetCore run from a
-        // box-clamped start -- rejected because a box-clamped x is not generally feasible for the
-        // GENERAL-ROW constraints A x {<=,=,>=} b at all (clamping only ever fixes the bound
-        // constraints), so it does not actually solve the hard part of phase 1; (2) a bespoke
-        // big-M-free two-phase construction duplicating LP's own phase-1 machinery -- rejected because
-        // it would be a second, independently-maintained feasibility algorithm for no benefit over
-        // reusing the already-tested, already-anti-cycling-hardened LP.solve.
+        // Phase 1: find ANY point satisfying A x {<=,=,>=} b AND xl <= x <= xu via a ZERO-COST LP over
+        // the SAME feasible region, reusing LP.solve (LPMethod.DualSimplex) instead of writing a
+        // dedicated QP feasibility routine.
         //
         // LP.solve's computational form is `A x {<=,=,>=} b, x >= 0` ONLY (no general bounds) -- QP's
         // xl/xu can be negative or +-infinite (the library's 1e30 sentinel convention, matching
@@ -237,8 +182,7 @@ namespace LinearAlgebra
         // Returns false (infeasible, x left untouched) or true (x overwritten with a feasible point).
         // Anything other than LPStatus.Optimal from the phase-1 LP (Infeasible, or the far rarer
         // MaxIterations/Unbounded -- the latter cannot actually happen for a zero-cost objective, kept
-        // only as a defensive catch-all) is treated as infeasible, matching the spec's "LP Infeasible
-        // -> QPStatus.Infeasible immediately".
+        // only as a defensive catch-all) is treated as infeasible.
         internal static bool PhaseOneFeasibleStart(in floatMxN A, in floatN b, in NativeArray<ConstraintSense> senses,
                                                     in floatN xl, in floatN xu, ref floatN x)
         {
@@ -324,12 +268,11 @@ namespace LinearAlgebra
         /// underdetermined system that targets), then takes ONE exact null-space Newton step -- see
         /// <see cref="eqpNullSpaceStep"/> and this file's header comment for why one step suffices.
         ///
-        /// STAGE 1 of docs/draft-spec-qp.md: a FIXED working set (algorithm steps 2-3 only). INTERNAL:
-        /// the public surface for QP is the future inequality-constrained <c>QP.solve</c> facade
-        /// (stage 2-3); this is the reusable EQP kernel entry it will call once the active set is
-        /// pinned down for a given iteration. Hand-written tests reach this via InternalsVisibleTo
-        /// (BurstLinearAlgebra.Tests, see AssemblyInfo.cs), the same route as
-        /// LP.ladFrischNewtonCore / LadFrischNewtonQuantileTests.cs.
+        /// A FIXED working set (algorithm steps 2-3 only). INTERNAL: the public surface for QP is
+        /// <c>QP.solve</c>; this is the reusable EQP kernel entry a future inequality active-set loop
+        /// would call once the active set is pinned down for a given iteration. Hand-written tests
+        /// reach this via InternalsVisibleTo (BurstLinearAlgebra.Tests, see AssemblyInfo.cs), the same
+        /// route as LP.ladFrischNewtonCore / LadFrischNewtonQuantileTests.cs.
         /// </summary>
         /// <param name="Q">Symmetric PSD Hessian, n x n. Only referenced via matrix products (Qx,
         /// ZᵀQZ) -- not verified to be exactly symmetric in storage (both triangles are read).</param>
@@ -366,16 +309,9 @@ namespace LinearAlgebra
         /// gradient's leading k entries). Updates <paramref name="x"/> and <paramref name="lambda"/> in
         /// place; returns the diagnostics (see <see cref="QPInfo"/>).
         ///
-        /// STAGE 1 (fixed working set): called once by <see cref="eqpSolve"/> and that is the whole
-        /// algorithm (draft-spec-qp.md steps 2-3, no ratio test / add-drop loop -- that is stage 2).
-        /// STAGE 2-3 (future): the active-set loop will call this once PER ITERATION with the CURRENT
-        /// working set (which changes as constraints are added/dropped) -- re-factoring A_Wᵀ from
-        /// scratch every call, matching the spec's v1 judgment that an incremental QR update is not
-        /// worth porting at this library's dense target sizes (see this file's header comment); stage
-        /// 2 will need to intercept BETWEEN computing the step and applying it in full (the ratio test
-        /// may truncate the step to alpha*p, alpha &lt; 1), which this stage-1 version does not do --
-        /// expect that seam to require splitting the "compute p" and "apply p, recover multipliers"
-        /// halves of this function when stage 2 is built.
+        /// Called once by <see cref="eqpSolve"/> and that is the whole algorithm for a fixed working
+        /// set (no ratio test / add-drop loop). Always applies the full computed step and recovers
+        /// multipliers in the same call.
         /// </summary>
         /// <param name="Q">Symmetric PSD Hessian, n x n.</param>
         /// <param name="c">Linear cost, length n.</param>
@@ -407,10 +343,10 @@ namespace LinearAlgebra
                 throw new ArgumentException("QP.eqpNullSpaceStep: x.N must equal Q.M_Rows");
             if (lambda.N != k)
                 throw new ArgumentException("QP.eqpNullSpaceStep: lambda.N must equal A_W.M_Rows");
-            // k == 0 (an empty working set) is deliberately unsupported in stage 1 -- it would need a
-            // separate Z-is-implicitly-identity fast path (no A_Wᵀ to factor at all) that stage 1's
-            // test matrix (draft-spec-qp.md: k in {1, n/4, n/2, n-1}) never exercises; revisit if
-            // stage 2's active-set loop can transiently reach an empty working set.
+            // k == 0 (an empty working set) is deliberately unsupported -- it would need a separate
+            // Z-is-implicitly-identity fast path (no A_Wᵀ to factor at all) that the current test
+            // matrix (k in {1, n/4, n/2, n-1}) never exercises; revisit if a future active-set loop
+            // can transiently reach an empty working set.
             if (k < 1 || k > n)
                 throw new ArgumentException("QP.eqpNullSpaceStep: A_W.M_Rows (k) must be between 1 and Q.M_Rows (n) inclusive");
 
@@ -462,12 +398,11 @@ namespace LinearAlgebra
                 bool unbounded = !choInfo.Solved;
                 if (!unbounded && regularized)
                 {
-                    // Descent-direction check on the REGULARIZED step (draft-spec-qp.md step 2): a
-                    // successful regularized solve mathematically guarantees pᵀg = yᵀgz <= 0 (H_Z+δI
-                    // is PD, so yᵀ(H_Z+δI)y >= 0 => -yᵀgz >= 0), so in exact arithmetic this branch is
-                    // a formality that should never fire for a genuinely PSD Q -- it exists as the
-                    // spec's documented catch-all for "Q singular along an unbounded ray", detectable
-                    // only if roundoff or a not-quite-PSD Q defeats the guarantee above.
+                    // Descent-direction check on the REGULARIZED step: a successful regularized solve
+                    // mathematically guarantees pᵀg = yᵀgz <= 0 (H_Z+δI is PD, so yᵀ(H_Z+δI)y >= 0 =>
+                    // -yᵀgz >= 0), so in exact arithmetic this branch is a formality that should never
+                    // fire for a genuinely PSD Q -- it is a catch-all for "Q singular along an unbounded
+                    // ray", detectable only if roundoff or a not-quite-PSD Q defeats the guarantee above.
                     double pdotg = 0;
                     for (int j = 0; j < nz; j++) pdotg += (double)y[j] * (double)gz[j];
                     if (pdotg > (double)zeroThreshold)
@@ -542,14 +477,10 @@ namespace LinearAlgebra
         // scratch of length >= AWT.N_Cols (= k). Reuses QR's per-step primitives (QR.genHouseholder /
         // QR.applyReflectorRight, both `internal`) -- not a re-derivation of the Householder math.
         //
-        // v1 scope (draft-spec-qp.md "Judgment"): this ALWAYS re-factors A_Wᵀ from scratch. HiGHS
-        // instead maintains an incrementally-updated factorization of the working-set basis across
-        // add/drop changes -- deliberately not ported here (dense v1 target sizes make an O(n²k)
-        // re-factor per change cheap enough, and simple/correct beats incremental/subtle). If stage 2
-        // ever needs it, the QRCP downdating machinery (docs/spec-qrcp-downdate.md's rank-1 column
-        // downdate) is the natural donor -- it already solves the adjacent problem (removing a column
-        // from a QR factor without refactoring) for QRCP; adapting it to A_Wᵀ's row-add/row-drop shape
-        // (an add/drop of a WORKING-SET CONSTRAINT is a column add/drop on A_Wᵀ) would be the v2 path.
+        // Always re-factors A_Wᵀ from scratch (no incremental update) -- dense target sizes make an
+        // O(n²k) re-factor per change cheap enough. If an incremental version is ever needed, the QRCP
+        // downdating machinery is the natural donor (it already removes a column from a QR factor
+        // without refactoring; an add/drop of a working-set constraint is a column add/drop on A_Wᵀ).
         internal static void FactorWorkingSetTranspose(ref floatMxN AWT, ref floatMxN R, ref floatN u, ref floatN w, float zeroThreshold)
         {
             int n = AWT.M_Rows;
@@ -653,7 +584,7 @@ namespace LinearAlgebra
         }
 
         // Solve the reduced-Hessian Newton system H_Z y = -gz for y, H_Z = ZᵀQZ (nz x nz, PSD since Q
-        // is PSD -- two matMatDot-shaped calls via Blas.dot, per draft-spec-qp.md step 2). On a
+        // is PSD -- two matMatDot-shaped calls via Blas.dot). On a
         // Cholesky breakdown (H_Z numerically singular -- possible even though Q is only PSD, not PD:
         // Q's null space can overlap Z's span), retries ONCE with H_Z + delta*normInfQ*I,
         // delta = sqrt(Consts.floatEpsilon) -- a PSD matrix plus a strictly positive multiple of I is
@@ -661,9 +592,8 @@ namespace LinearAlgebra
         // caller-allocated scratch (n x nz / nz x nz respectively, sized by the caller since it also
         // owns Z); y is the caller-allocated destination (length nz). Returns the CHO status from the
         // (possibly regularized) solve and, via <paramref name="regularized"/>, whether the retry
-        // path was taken -- the caller uses that to run the descent-direction / Unbounded check
-        // (draft-spec-qp.md step 2's "declare Unbounded" clause), which needs gz and y regardless of
-        // which path produced them.
+        // path was taken -- the caller uses that to run the descent-direction / Unbounded check, which
+        // needs gz and y regardless of which path produced them.
         internal static DirectSolveInfo SolveReducedNewtonStep(in floatMxN Q, ref floatMxN Z, ref floatMxN QZ, ref floatMxN Hz,
                                                                 ref floatN gz, ref floatN y, float normInfQ, out bool regularized)
         {
@@ -695,15 +625,13 @@ namespace LinearAlgebra
         }
 
         // ============================================================================================
-        // STAGE 2 (docs/draft-spec-qp.md): the INEQUALITY-constrained active-set LOOP -- algorithm
-        // steps 1-5 minus phase 1. Phase 1 (an LP-powered feasible start) is stage 3; this stage's
-        // entry point, qpActiveSetCore, takes a CALLER-SUPPLIED feasible x0 and validates it rather
-        // than manufacturing one. Built directly on stage 1's constituent kernel functions
+        // The INEQUALITY-constrained active-set LOOP -- algorithm steps 1-5 minus phase 1. This
+        // stage's entry point, qpActiveSetCore, takes a CALLER-SUPPLIED feasible x0 and validates it
+        // rather than manufacturing one. Built directly on the constituent kernel functions above
         // (FactorWorkingSetTranspose / ApplyWorkingSetQtForward / FormNullSpaceBasis /
         // SolveReducedNewtonStep, all still `internal static`, UNCHANGED) instead of through
-        // eqpSolve/eqpNullSpaceStep -- exactly the "compute p, then apply p" split that file's own
-        // header comment anticipated stage 2 would need (the ratio test must see p BEFORE it is
-        // applied, to know how far it is safe to go, and possibly not apply it at all).
+        // eqpSolve/eqpNullSpaceStep, since the ratio test must see the step p BEFORE it is applied, to
+        // know how far it is safe to go (and possibly not apply it at all).
         //
         // Problem solved:
         //
@@ -711,87 +639,44 @@ namespace LinearAlgebra
         //     subject to  A x {<=,=,>=} b     (per-row senses, LP.solve's ConstraintSense)
         //                 xl <= x <= xu
         //
-        // ---- Unified row/bound representation ----
+        // Unified row/bound representation: every constraint -- general row AND variable bound alike --
+        // is one range L_t <= (row t).x <= U_t over T = m + n rows (t < m: general row t; t >= m:
+        // variable bound j = t - m, normal e_j, L/U = xl[j]/xu[j]). Each row's WorkingSetStatus
+        // (QP.Info.cs) records which side it is pinned to; ActiveLower/Equality rows enter A_W AS-IS
+        // (+row), ActiveUpper rows enter NEGATED (-row), so the whole working set shares one
+        // "row.x >= bound" sign convention (Nocedal & Wright's convention, matching the multiplier
+        // recovery A_Wᵀlambda = g) -- one uniform "lambda >= 0" test works for every row without an
+        // ActiveLower/ActiveUpper case split.
         //
-        // Every constraint -- general row AND variable bound alike -- is one range L_t <= (row t).x
-        // <= U_t over T = m + n rows: t < m is general row t (normal = A's row t; L/U from its
-        // ConstraintSense, see BuildRowBounds); t >= m is variable bound j = t - m (normal = e_j,
-        // L/U = xl[j]/xu[j]). This is HiGHS's own L <= Ax <= U, l <= x <= u form (draft-spec-qp.md
-        // "What HiGHS actually does"), collapsed to one system because the null-space kernel below
-        // does not care whether a working-set row came from A or from a bound -- it only ever sees
-        // "rows of A_W". Each row's WorkingSetStatus (QP.Info.cs) records which side it is pinned to;
-        // ActiveLower/Equality rows enter A_W AS-IS (+row), ActiveUpper rows enter NEGATED (-row), so
-        // the accepted convention across the WHOLE working set is uniformly "row.x >= bound" -- the
-        // Nocedal & Wright sign convention (Numerical Optimization, 2nd ed., eq. 16.1b/16.26a: aTx >= b
-        // for inequalities, sum lambda_i a_i = Gx+d, lambda_i >= 0 required for an active inequality,
-        // section 16.4) that stage 1's multiplier recovery (A_Wᵀlambda = g) already assumes. With that
-        // flip, ONE uniform "lambda >= 0 for every non-equality row in W" test is correct for both
-        // former <= and >= rows and both bound sides -- no ActiveLower/ActiveUpper case split needed
-        // at the sign-check site (see the multiplier loop inside qpActiveSetCore).
+        // Working-set rank guard: A_W's rows must stay independent. TryAddToWorkingSet tests a
+        // candidate row by tentatively appending it as the last column of a from-scratch QR and
+        // checking |R[k,k]| against a scale-relative threshold. A row found dependent is left Inactive
+        // -- since it is then a linear combination of rows already in W, its activity gradient
+        // (row).p is exactly 0 for any p in null(A_W), so excluding it costs nothing.
         //
-        // ---- Working-set rank guard ----
-        //
-        // A_W's rows must stay independent (draft-spec-qp.md requirement 1); TryAddToWorkingSet tests
-        // a candidate row by tentatively appending it as the LAST column of a from-scratch QR
-        // (AssembleWorkingSetTranspose's extraT/extraStatus params place it there regardless of its own
-        // row index, so its Householder diagonal R[k,k] is always readable as "this row's component
-        // orthogonal to everything already accepted") and checking |R[k,k]| against a scale-relative
-        // threshold -- exactly stage 1's own FactorWorkingSetTranspose, reused unchanged, called on a
-        // throwaway trial factor. A row found dependent is simply left Inactive: since it is then a
-        // linear combination of rows already in W, its activity gradient (row).p is EXACTLY 0 for any p
-        // in null(A_W) (p in null(A_W) => a_i.p = 0 for every a_i in W => (sum c_i a_i).p = 0), so a
-        // dependent row can never legitimately block a step -- excluding it from A_W costs nothing.
-        // Used both by SeedWorkingSet (equalities first, then x0's tight inequalities) and by the main
-        // loop's blocking-constraint add (with a small bounded retry over the ratio test's next-best
-        // candidate if the naive winner is rejected -- see qpActiveSetCore's "guardAttempts" loop).
-        //
-        // ---- Real Unbounded detection (making stage 1's documented-weak gap real) ----
-        //
-        // Declared exactly when ALL FOUR hold (draft-spec-qp.md requirement 3):
+        // Unbounded detection: declared exactly when all four hold:
         //   1. regularized      -- SolveReducedNewtonStep's Cholesky retry fired (H_Z numerically
-        //                          singular; only possible because Q is only PSD, not PD, on Z's span).
-        //   2. zero curvature   -- the Rayleigh quotient pᵀQp / pᵀp <= zeroThreshold (scale-invariant
-        //                          w.r.t. p's arbitrary magnitude, unlike the raw product).
-        //   3. no blocker       -- RatioTest, run with an UNCAPPED self-limit (thetaSelf = INF, not the
-        //                          usual 1), finds no inactive constraint anywhere along p.
-        //   4. descent          -- gᵀp < 0 (scaled by ||p|| for the same scale-invariance as #2); gᵀp is
-        //                          computed as gzᵀy, exactly the reduced gradient dotted with the
-        //                          reduced step (this file's header explains why the null-space
-        //                          transform hands back both halves from one sweep).
-        // Verified against Nocedal & Wright, Numerical Optimization (2nd ed.), section 16.5
-        // ("Active-Set Methods for Indefinite QP") -- fetched and read 2026-07-09: with Z the null-space
-        // basis for the current working set and ZᵀGZ found singular/indefinite along a direction sZ
-        // chosen to be non-ascent (their eq. surrounding "q(x+alpha*Z*sZ) -> -infinity as alpha ->
-        // infinity" and the sign choice "so that Z*sZ is a non-ascent direction for q"), the text states
-        // plainly: "By moving along the direction Z*sZ, we will encounter a constraint that can then be
-        // added to the working set for the next iteration. (If we don't find such a constraint, the
-        // problem is unbounded.)" Our case is the boundary of their construction (Q only PSD, so the
-        // reduced Hessian can go singular/zero-curvature but never strictly negative-definite beyond
-        // that boundary) -- conditions 1-2 detect that boundary, condition 3 is their "we don't find
-        // such a constraint", condition 4 (descent) is their non-ascent sign choice, made an explicit
-        // check here rather than a sign flip because SolveReducedNewtonStep's regularized solve already
-        // mathematically guarantees gᵀp <= 0 whenever it succeeds (gᵀp = gzᵀy = -gzᵀ(H_Z+deltaI)^-1 gz,
-        // and H_Z+deltaI is PD) -- see that function's own descent-guarantee comment; #4 is therefore a
-        // defensive check on that guarantee, not a live sign-flip decision, matching stage 1's own
-        // "should never fire for genuinely PSD Q" framing of the analogous check it already had.
-        // When #1-3 hold but #4 does not (gᵀp ~ 0, a genuinely FLAT direction -- e.g. Q=0 and c=0 along
-        // that direction), moving along p would not improve the objective at all, so the step is simply
-        // not taken and this working set is treated as converged (the multiplier check runs instead) --
-        // NOT declared Unbounded, since the objective does not in fact decrease without bound there.
+        //                          singular).
+        //   2. zero curvature   -- the Rayleigh quotient pᵀQp / pᵀp <= zeroThreshold.
+        //   3. no blocker       -- RatioTest, run with an UNCAPPED self-limit, finds no inactive
+        //                          constraint anywhere along p.
+        //   4. descent          -- gᵀp < 0 (scaled by ||p|| for the same scale-invariance as #2).
+        // When #1-3 hold but #4 does not (a genuinely FLAT direction), the step is simply not taken and
+        // this working set is treated as converged instead -- not Unbounded, since the objective does
+        // not in fact decrease without bound there. Verified against Nocedal & Wright, Numerical
+        // Optimization (2nd ed.), section 16.5 ("Active-Set Methods for Indefinite QP").
         // ============================================================================================
 
         /// <summary>
         /// Solve the inequality-constrained convex QP  min 1/2 xᵀQx + cᵀx  s.t. A x {&lt;=,=,&gt;=} b
         /// (per-row <paramref name="senses"/>), xl &lt;= x &lt;= xu, from a CALLER-SUPPLIED feasible
         /// starting point (<paramref name="x"/> on entry) -- the primal null-space active-set method,
-        /// HiGHS / Nocedal &amp; Wright ch. 16 lineage (see this file's header comments and
-        /// draft-spec-qp.md). Q must be symmetric PSD (v1 contract, same as stage 1's
-        /// <see cref="eqpSolve"/>).
+        /// HiGHS / Nocedal &amp; Wright ch. 16 lineage (see this file's header comments). Q must be
+        /// symmetric PSD (v1 contract, same as <see cref="eqpSolve"/>).
         ///
-        /// STAGE 2 of docs/draft-spec-qp.md: the inequality add/drop loop (algorithm steps 1-5 minus
-        /// phase 1). INTERNAL: phase 1 (an LP-powered feasible start, so callers need not supply one
-        /// themselves) is stage 3's public <c>QP.solve</c> facade, which will call this once a feasible
-        /// x0 is in hand.
+        /// The inequality add/drop loop (algorithm steps 1-5 minus phase 1). INTERNAL: phase 1 (an
+        /// LP-powered feasible start, so callers need not supply one themselves) is the public
+        /// <c>QP.solve</c> facade, which calls this once a feasible x0 is in hand.
         /// </summary>
         /// <param name="Q">Symmetric PSD Hessian, n x n.</param>
         /// <param name="c">Linear cost, length n.</param>
@@ -843,7 +728,7 @@ namespace LinearAlgebra
             var U = new floatN(T, Allocator.Temp, true);
             BuildRowBounds(in b, in senses, in xl, in xu, m, n, ref L, ref U);
 
-            // ---- validate x0's feasibility up front (draft-spec-qp.md handoff requirement) ----
+            // ---- validate x0's feasibility up front ----
             var Ax0 = new floatN(math.max(m, 1), Allocator.Temp, true);
             if (m > 0) Blas.dot(in A, in x, ref Ax0);
             bool feasible = true;
@@ -875,21 +760,21 @@ namespace LinearAlgebra
             int budget = maxIter > 0 ? maxIter : 50 * T + 200;
             int degenCap = 3 * math.max(n, 1);
             int degenCount = 0;
-            // Stage 3 hardening (draft-spec-qp.md requirement 4 / step 5): HiGHS-style deterministic
-            // bound perturbation (the exact pattern -- and lesson -- of LP.DualSimplexCore's own cost
-            // perturbation, see that file's header comment) REPLACES the earlier Bland-style seam.
-            // Once a run of alpha=0 (degenerate) steps reaches degenCap, usePerturbation switches the
-            // ratio test (both call sites below) from the TRUE L/U to a lazily-built, SLIGHTLY WIDENED
-            // pair (BuildPerturbedBounds -- perturbedL <= L <= U <= perturbedU always, so nothing
-            // feasible under the true bounds ever becomes infeasible), which breaks the EXACT ties that
-            // cause a zero-length step in the first place. The multiplier sign check just below (the
-            // draft-spec-qp.md step-3 "optimality decision") never reads L/U at all -- it depends only
-            // on g = Qx+c and the working-set geometry (see this file's "unified row/bound
-            // representation" header note) -- so it is, structurally, already "deciding on ORIGINAL
-            // data" without needing a Bland-style special case. What perturbation CAN leave behind is a
-            // perturbation-sized drift in x itself (it took a step to a slightly-off bound); that is
-            // REMOVED at the end by one more exact null-space Newton step against the TRUE bounds, once
-            // the loop reaches Optimal -- see the cleanup pass right after this loop.
+            // Anti-cycling hardening: HiGHS-style deterministic bound perturbation (the exact pattern --
+            // and lesson -- of LP.DualSimplexCore's own cost perturbation, see that file's header
+            // comment) REPLACES the earlier Bland-style seam. Once a run of alpha=0 (degenerate) steps
+            // reaches degenCap, usePerturbation switches the ratio test (both call sites below) from
+            // the TRUE L/U to a lazily-built, SLIGHTLY WIDENED pair (BuildPerturbedBounds -- perturbedL
+            // <= L <= U <= perturbedU always, so nothing feasible under the true bounds ever becomes
+            // infeasible), which breaks the EXACT ties that cause a zero-length step in the first
+            // place. The multiplier sign check just below (the "optimality decision") never reads L/U
+            // at all -- it depends only on g = Qx+c and the working-set geometry (see this file's
+            // "unified row/bound representation" header note) -- so it is, structurally, already
+            // "deciding on ORIGINAL data" without needing a Bland-style special case. What perturbation
+            // CAN leave behind is a perturbation-sized drift in x itself (it took a step to a
+            // slightly-off bound); that is REMOVED at the end by one more exact null-space Newton step
+            // against the TRUE bounds, once the loop reaches Optimal -- see the cleanup pass right
+            // after this loop.
             bool usePerturbation = false;
             bool perturbationEverUsed = false;
             floatN perturbedL = default, perturbedU = default;
@@ -921,7 +806,7 @@ namespace LinearAlgebra
                 for (int i = 0; i < n; i++) g[i] = Qx[i] + c[i];
                 ApplyWorkingSetQtForward(ref AWT, ref g, ref u, k);
 
-                // ---- compute the null-space Newton step p (draft-spec-qp.md step 2) ----
+                // ---- compute the null-space Newton step p ----
                 bool haveNullSpace = nz > 0;
                 floatN gz = default, y = default, p = default;
                 floatMxN Z = default, QZ = default, Hz = default;
@@ -971,7 +856,7 @@ namespace LinearAlgebra
 
                 if (exitStatus == null && !small)
                 {
-                    // ---- curvature test + ratio test (draft-spec-qp.md steps 2 & 4) ----
+                    // ---- curvature test + ratio test ----
                     var Qp = new floatN(n, Allocator.Temp, true);
                     Blas.dot(in Q, in p, ref Qp);
                     double curvature = 0;
@@ -988,9 +873,9 @@ namespace LinearAlgebra
                     // several genuinely different blockers would look "tied" and the wrong (overstepping)
                     // one could win, corrupting feasibility. Scale-invariant fix: run the ratio test on
                     // p/pInf (alpha then O(1)-scaled regardless of p's raw magnitude) and convert back
-                    // (alpha_original = alpha_hat / pInf) -- see draft-spec-qp.md Stage 2 handoff, caught
-                    // by the LP-limit oracle (Q=0 forces EVERY step through this exact path, since the
-                    // reduced Hessian is then identically singular every iteration).
+                    // (alpha_original = alpha_hat / pInf) -- caught by the LP-limit oracle test (Q=0
+                    // forces EVERY step through this exact path, since the reduced Hessian is then
+                    // identically singular every iteration).
                     pScale = (float)math.max(pInf, 1e-30);
                     thetaSelf = zeroCurv ? INF : pScale;
 
@@ -1051,8 +936,8 @@ namespace LinearAlgebra
                         int tryRow = addRow; bool tryUpper = addUpper;
                         int guardAttempts = 0;
                         // Bounded rank-guard retry: a naive ratio-test winner that would make A_W
-                        // rank-deficient (degenerate/redundant-constraint instances, draft-spec-qp.md
-                        // requirement 6d) is excluded and the next-best candidate tried instead. Capped
+                        // rank-deficient (degenerate/redundant-constraint instances) is excluded and
+                        // the next-best candidate tried instead. Capped
                         // (not unbounded) -- if every candidate fails, W is simply left unchanged this
                         // iteration; the degenerate-step counter / iteration budget are the backstop.
                         while (guardAttempts < 8)
@@ -1071,7 +956,7 @@ namespace LinearAlgebra
                 }
                 else if (exitStatus == null && doMultiplierCheck)
                 {
-                    // ---- multiplier recovery + sign check (draft-spec-qp.md step 3) ----
+                    // ---- multiplier recovery + sign check ----
                     var lamBuf = new floatN(math.max(k, 1), Allocator.Temp, true);
                     for (int i = 0; i < k; i++) lamBuf[i] = g[i];
                     if (k > 0) Blas.triUpper(ref R, ref lamBuf);
@@ -1109,19 +994,9 @@ namespace LinearAlgebra
                 if (exitStatus.HasValue) { status = exitStatus.Value; break; }
             }
 
-            // ---- undo any transient drift the degeneracy-breaking bound perturbation left in x
-            // (draft-spec-qp.md step 5 / stage 3 hardening): one more exact null-space Newton step on
-            // the FINAL working set, built from the TRUE (unperturbed) L/U -- exactly
-            // LP.DualSimplexCore's own composition ("hand the terminal basis to the primal core ...
-            // using the REAL cost", see that file's header comment) -- rather than leaving a
-            // perturbation-sized residual in the reported solution. The multiplier check that already
-            // declared Optimal never saw perturbed data (it depends only on g = Qx+c and the
-            // working-set geometry, never on L/U -- see this file's header "unified row/bound
-            // representation" note), so this pass cannot change WHICH working set is optimal, only
-            // where x sits on it: reusing stage 1's own eqpSolve (LQ.minNormSolve to the TRUE b_W, then
-            // one exact Newton step) re-lands EXACTLY on this same working set's true optimum. No-op
-            // (skipped entirely) whenever perturbation was never engaged -- zero cost on the common,
-            // non-degenerate path. ----
+            // ---- one exact null-space Newton step against the TRUE (unperturbed) bounds removes any
+            // perturbation drift left in x -- no-op (skipped) whenever perturbation was never engaged.
+            // ----
             if (perturbationEverUsed && status == QPStatus.Optimal)
             {
                 var rowOfColC = new NativeArray<int>(math.max(n, 1), Allocator.Temp);
@@ -1220,19 +1095,11 @@ namespace LinearAlgebra
             for (int j = 0; j < n; j++) { L[m + j] = xl[j]; U[m + j] = xu[j]; }
         }
 
-        // HiGHS-style bound perturbation (stage 3 hardening, draft-spec-qp.md step 5 -- see
-        // qpActiveSetCore's usePerturbation comment for when/why this is called): widen L/U SLIGHTLY
-        // (perturbedL <= L <= U <= perturbedU always -- never TIGHTEN, so anything feasible under the
-        // TRUE bounds stays feasible under the perturbed ones) so the ratio test's EXACT ties -- the
-        // root cause of a stalled/cycling run of zero-length steps -- become distinct, letting a
-        // genuine (if tiny) step through. Deterministic per-row pseudo-random unit value via the SAME
-        // cheap integer hash LP.DualSimplexCore uses for its own cost perturbation (MurmurHash3
-        // finalizer mix); magnitude is a SMALL FRACTION of feasTol (0.1x) so it is provably too small
-        // to be mistaken for genuine constraint slack anywhere else in the solver (every other
-        // feasibility decision in this file compares against feasTol itself), yet many orders of
-        // magnitude past a float ULP, so it reliably breaks bit-exact ties. Sentinel (+-1e29) sides are
-        // left untouched -- perturbing an unbounded side is meaningless. perturbedL/perturbedU must be
-        // caller-allocated, length T; every entry is (re)written.
+        // Widens L/U deterministically to break ratio-test ties (perturbedL <= L <= U <= perturbedU
+        // always -- never TIGHTEN, so anything feasible under the TRUE bounds stays feasible under the
+        // perturbed ones); see qpActiveSetCore's usePerturbation comment for when/why this is called.
+        // Sentinel (+-1e29) sides are left untouched. perturbedL/perturbedU must be caller-allocated,
+        // length T; every entry is (re)written.
         internal static void BuildPerturbedBounds(in floatN L, in floatN U, int T, float feasTol,
                                                    ref floatN perturbedL, ref floatN perturbedU)
         {
@@ -1250,11 +1117,11 @@ namespace LinearAlgebra
             }
         }
 
-        // Seeds the working set from x0's tight constraints (draft-spec-qp.md requirement 1). Pass 1:
-        // every equality row (L_t == U_t -- general Equal-sense rows AND fixed bounds xl[j]==xu[j])
-        // is permanently in W, added via the SAME rank guard as everything else (a redundant/duplicated
-        // equality -- draft-spec-qp.md requirement 6d -- is simply left Inactive; see TryAddToWorkingSet's
-        // doc comment for why that is safe, not a lost constraint). Pass 2: every remaining row tight at
+        // Seeds the working set from x0's tight constraints. Pass 1: every equality row (L_t == U_t --
+        // general Equal-sense rows AND fixed bounds xl[j]==xu[j]) is permanently in W, added via the
+        // SAME rank guard as everything else (a redundant/duplicated equality is simply left Inactive;
+        // see TryAddToWorkingSet's doc comment for why that is safe, not a lost constraint). Pass 2:
+        // every remaining row tight at
         // x0 within feasTol (general row or bound) is added as ActiveLower/ActiveUpper, independence-
         // guarded the same way. wstatus must be caller-allocated, length T; every entry is (re)written.
         internal static void SeedWorkingSet(in floatMxN A, in floatN L, in floatN U, int m, int n, int T,
@@ -1364,8 +1231,8 @@ namespace LinearAlgebra
             return ok;
         }
 
-        // Harris-shaped two-pass ratio test over INACTIVE rows (draft-spec-qp.md step 4 -- the SHAPE of
-        // LP.RevisedSimplex's HarrisRatioTest, not its code: x is ALREADY feasible for every row here
+        // Harris-shaped two-pass ratio test over INACTIVE rows (the SHAPE of LP.RevisedSimplex's
+        // HarrisRatioTest, not its code: x is ALREADY feasible for every row here
         // (not just W), so there is no "healing an infeasible basic variable" case to handle, unlike
         // that LP phase-1 ratio test -- every inactive row's current activity already sits within
         // [L_t, U_t] to feasTol). d_t = (row t).p / pScale is the RESCALED rate the row's activity moves

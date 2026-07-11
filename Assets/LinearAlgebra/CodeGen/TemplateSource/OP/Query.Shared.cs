@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace LinearAlgebra
 {
-    // Type-agnostic Query helper hoisted out of the per-type QueryOP templates. decodeIndex takes
+    // Type-agnostic Query helper shared by the per-type QueryOP templates. decodeIndex takes
     // only ints, so the merged float+double `Query` partial cannot hold it twice -- it lives in this
     // single non-templated file and emits exactly once (same mechanism as OpHelpers.Shared.cs).
     public static partial class Query

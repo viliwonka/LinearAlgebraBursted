@@ -116,8 +116,8 @@ namespace LinearAlgebra
             const int LU_BLOCK = 32;
 
             // Size gate: measured crossover, not the naive 4*LU_BLOCK — the panel/TRSM/GEMM bookkeeping
-            // isn't amortised until ~8 panels wide (see docs/dev/level3-blocking-guide.md "size gate").
-            // Below this, the plain per-column sweep is used unchanged.
+            // isn't amortised until ~8 panels wide. Below this, the plain per-column sweep is used
+            // unchanged.
             const int LU_BLOCK_MIN_N = Consts.doubleLuBlockMinN;   // float/double split (see Consts); default 8*LU_BLOCK
 
             if (m < LU_BLOCK_MIN_N) {
@@ -185,30 +185,18 @@ namespace LinearAlgebra
 
             // ---- blocked (level-3) path — LAPACK-style right-looking GETRF ----
             // Each LU_BLOCK-wide panel is factored with the SAME rank-1 sweep as the small-matrix
-            // path above (partial pivoting over the FULL remaining column height, so the pivot
-            // sequence is bit-identical to the unblocked form — see "why the pivot sequence stays
-            // identical" below, and docs/dev/level3-blocking-guide.md recipe B), but its elimination axpy
-            // is narrowed to the panel's own columns (DGETF2-style). The panel's contribution to the
-            // columns to its right is then applied ONCE per panel as a level-3 TRSM (U12 = L11^-1 *
-            // A12, unit-lower forward substitution) followed by a single GEMM trailing update
-            // (A22 -= L21*U12, via UnsafeOP.wySubVW) instead of one rank-1 update per panel column —
-            // trading O(n) re-streams of the trailing matrix for O(n/LU_BLOCK), the memory-bandwidth-
-            // bound part of the algorithm.
+            // path above (partial pivoting over the FULL remaining column height), narrowed to the
+            // panel's own columns (DGETF2-style). The panel's contribution to the columns to its
+            // right is then applied ONCE per panel as a level-3 TRSM (U12 = L11^-1 * A12) followed by
+            // a single GEMM trailing update (A22 -= L21*U12, via UnsafeOP.wySubVW) instead of one
+            // rank-1 update per panel column.
             //
-            // WHY THE PIVOT SEQUENCE STAYS IDENTICAL: at panel step k, column k has already been
-            // fully updated by (a) every earlier panel's trailing GEMM, which updates the WHOLE
-            // trailing block (all columns from that panel's right edge through m, not just the next
-            // panel) and (b) the within-panel eliminations for this panel's own earlier columns. So
-            // the max-|abs| search over rows [k,m) sees exactly the values the unblocked algorithm
-            // would see at the same step -> identical pivot, identical P. L and U differ from the
-            // unblocked result only by GEMM summation-order rounding.
-            //
-            // LAST COLUMN: the unblocked sweep above never pivots column m-1 (its k loop stops at
-            // m-2) and only diagonal-checks it at the end. The panel loop below reproduces this by
-            // capping its own k-loop at min(panelEnd, m-1) — column m-1 is only ever ELIMINATED (via
-            // within-panel axpy, when a panel's own width reaches exactly to m, or via an earlier
-            // panel's TRSM+GEMM trailing update otherwise), never pivot-SEARCHED. The final
-            // `if (U[m-1,m-1]==0)` check after the loop matches the unblocked form exactly.
+            // Pivot sequence is bit-identical to the unblocked form: at panel step k, column k has
+            // already been fully updated by every earlier panel's trailing GEMM and this panel's own
+            // earlier within-panel eliminations, so the max-|abs| pivot search sees exactly the values
+            // the unblocked algorithm would. L and U differ from the unblocked result only by GEMM
+            // summation-order rounding. Column m-1 is only ever eliminated, never pivot-searched,
+            // matching the unblocked sweep's `k < m-1` bound.
             unsafe
             {
                 double* up = U.Data.Ptr;
@@ -412,31 +400,17 @@ namespace LinearAlgebra
             }
 
             // ---- blocked (level-3) path — compact/pivot-indirected GETRF ----
-            // Mirrors decomp's blocked path above (same panel/TRSM/GEMM derivation and the "why the
-            // pivot sequence stays identical" argument — see decomp's comments, which apply here
-            // unchanged: at panel step k, column k has already received every earlier panel's full
-            // trailing update plus this panel's own earlier-column eliminations, so the max-|abs|
-            // search sees exactly what the unblocked sweep above would see at the same step).
-            //
-            // The one structural difference is deliberate, not incidental: decomp physically swaps
-            // rows of its separate L/U matrices as it goes (Swap.Rows), so its trailing GEMM update
-            // is one contiguous-memory UnsafeOP.wySubVW call. decompInPlace's entire point is to
-            // AVOID physical row movement — a pivot here is two swapped ints in P, not an O(m) row
-            // copy (see the small-matrix sweep above, and decompInPlace's own doc: "row i lives at
-            // physical row P[i]"). So the panel rows [k0,kMax) and trailing rows [panelEnd,m) are
+            // Mirrors decomp's blocked path above (same panel/TRSM/GEMM derivation and pivot-identity
+            // argument). The one structural difference: decompInPlace never physically moves rows (a
+            // pivot is two swapped ints in P, not an O(m) row copy), so the panel and trailing rows are
             // scattered physical rows reached through P[row], not a contiguous block with a fixed
-            // leading dimension — wySubVW needs that fixed stride between consecutive rows, which
-            // scattered rows don't have. The trailing update below instead inlines wySubVW's own
-            // loop nest (row outer / panel-column middle / UnsafeOP.axpy inner over the trailing
-            // columns) one physical row at a time. The VALUES read and the ORDER they're combined in
-            // are identical either way — floating-point summation doesn't know or care whether a
-            // row's address came from `base + t*stride` or `base + P[t]*stride` — so this computes
-            // the exact same rank-kb update a contiguous wySubVW call would, just addressed per row;
-            // only the memory-access pattern differs, not the arithmetic or its order.
+            // leading dimension -- wySubVW needs that fixed stride, which scattered rows don't have.
+            // The trailing update below instead inlines wySubVW's own loop nest one physical row at a
+            // time; the values and order combined are identical either way, only the memory-access
+            // pattern differs.
             //
-            // LAST COLUMN: same handling as decomp — the panel loop caps at kMax = min(panelEnd,
-            // m-1), so column m-1 is only ever eliminated, never pivot-searched; the final
-            // `if (A_to_LU[P[m-1],m-1]==0)` check below matches the unblocked form exactly.
+            // LAST COLUMN: same handling as decomp -- column m-1 is only ever eliminated, never
+            // pivot-searched.
             unsafe
             {
                 double* up = A_to_LU.Data.Ptr;
@@ -736,26 +710,16 @@ namespace LinearAlgebra
         }
 
         // ---- transposed-system (Aᵀx=b) forms: reuse the SAME compact LU factor to solve in the
-        // OPPOSITE triangular direction -- the getrs(trans='T') counterpart of decompSolve. One
-        // factorization, two directions: a caller that already holds a compact factor from
-        // decompInPlace (e.g. a basis matrix refactorized once per outer iteration) can solve both
-        // Ax=b and Aᵀx=b against it without a second factorization -- the revised-simplex BTRAN step
-        // is exactly this (FTRAN via decompSolve, BTRAN via decompSolveTransA, same factor).
+        // OPPOSITE triangular direction -- the getrs(trans='T') counterpart of decompSolve.
         // Derivation, from decompInPlace's own doc ("row i lives at physical row P[i]"): A = Pᵀ L U,
         // so Aᵀ = Uᵀ Lᵀ P. Solving forward through Uᵀ (lower-triangular) then backward through Lᵀ
         // (unit-upper), then scattering the result through P, gives x.
         //
         // Layering mirrors decompSolve exactly, just with the pivot step moved to the OTHER end and
         // the two triangular passes swapped for their TransA counterparts: decompSolve pre-permutes b
-        // (pivot.ApplyInverseVec) then runs triLowerLU/triUpperLU; this runs triUpperLUTransA/
-        // triLowerLUTransA first and post-permutes the result (pivot.ApplyVec) — the SAME "gather
-        // before, scatter after" relationship the forward/transposed directions always have. The two
-        // Blas primitives themselves use the axpy (right-looking) formulation, not a column-dot one:
-        // reading a row of Uᵀ/Lᵀ means reading a COLUMN of the row-major compact factor, which is
-        // strided and un-vectorizable, so instead each step finalizes one component and pushes its
-        // contribution forward/backward through a contiguous ROW of the factor via UnsafeOP.axpy —
-        // the same access shape LU's own factorization elimination and the forward triLowerLU/
-        // triUpperLU already use, and it vectorises the same way.
+        // then runs triLowerLU/triUpperLU; this runs triUpperLUTransA/triLowerLUTransA first and
+        // post-permutes the result -- the same "gather before, scatter after" relationship the
+        // forward/transposed directions always have.
 
         /// <summary>
         /// Solve Aᵀx = b using the compact in-place LU form with pivot (the getrs trans='T' case).

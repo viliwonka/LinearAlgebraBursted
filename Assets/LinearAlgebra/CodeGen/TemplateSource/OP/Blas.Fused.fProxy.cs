@@ -6,7 +6,7 @@ using LinearAlgebra.Internal;
 
 namespace LinearAlgebra
 {
-    // Krylov R1 fused vector kernels (see docs/draft-spec-krylov-optimization.md): each wrapper
+    // Fused vector kernels for Krylov solvers: each wrapper
     // folds an in-place update with its trailing reduction, or two sibling updates plus a
     // reduction, into one pass over the underlying UnsafeOP kernel. No aliasing checks beyond what
     // the underlying axpy/aypx family already tolerates (self-aliasing of an in-place target with

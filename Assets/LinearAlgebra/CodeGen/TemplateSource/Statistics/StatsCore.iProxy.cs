@@ -13,9 +13,7 @@ namespace LinearAlgebra
     // longStatsCore -- one distinct type per generated type) because every method here is
     // generic over T with only a CONSTRAINT (IUnsafeiProxyArray) distinguishing int/short/long --
     // C# overload resolution ignores generic constraints, so merging this class directly would
-    // collide as CS0111 (see docs/dev/naming-style-guide.md's "Split vs merge safety" and
-    // docs/dev/codegen-refactor-lessons.md). Mirrors floatStatsCore/doubleStatsCore's split for the
-    // exact same reason.
+    // collide as CS0111. Mirrors floatStatsCore/doubleStatsCore's split for the exact same reason.
     internal static partial class iProxyStatsCore
     {
         // sum: widened `long` accumulator -- correctly represents e.g. the sum of many

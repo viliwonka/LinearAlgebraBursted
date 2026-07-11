@@ -54,8 +54,6 @@ namespace LinearAlgebra
             }
             else {
                 // max < min: pass the smaller bound first so NextInt gets a valid [lo, hi) range.
-                // Previously passed (min, max) here, where min > max — Unity.Mathematics NextInt
-                // then computed (max - min) as a negative span and returned garbage.
                 for (int i = N - 1; i >= 0; i--)
                     vec[i] = (int)random.NextInt((int)max, (int)min);
             }
@@ -166,8 +164,7 @@ namespace LinearAlgebra
                     matrix[i, i] = (int)rand.NextInt((int)min, (int)max);
             }
             else {
-                // max < min: pass the smaller bound first so NextInt gets a valid [lo, hi) range
-                // (previously passed the inverted (min, max), yielding garbage).
+                // max < min: pass the smaller bound first so NextInt gets a valid [lo, hi) range.
                 for (int i = N - 1; i >= 0; i--)
                     matrix[i, i] = (int)rand.NextInt((int)max, (int)min);
             }

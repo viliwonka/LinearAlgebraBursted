@@ -2,7 +2,7 @@
 
 Goal: the classical specialized-simplex LAD solver as `LP.ladBR` — the second reformulation-free
 exact engine beside Frisch–Newton (`ladFN`), the small-m champion, and an independent oracle for
-FN's tests. Definition of done: `docs/spec-shipped-feature.md`.
+FN's tests. Definition of done: `docs/dev/spec-shipped-feature.md`.
 
 ## Why a second exact engine
 

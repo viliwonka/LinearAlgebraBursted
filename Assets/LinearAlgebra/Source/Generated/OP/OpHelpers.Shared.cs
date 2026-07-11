@@ -3,7 +3,7 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // Type-agnostic helpers hoisted out of the per-type FFT / Resample templates. A merged
+    // Type-agnostic helpers shared by the FFT / Resample templates. A merged
     // partial class (float+double emit the same `FFT`/`Resample`) cannot hold the same int-only
     // signature twice, so these live in this single non-templated file and emit exactly once.
     public static partial class FFT

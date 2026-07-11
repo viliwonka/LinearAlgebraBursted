@@ -11,11 +11,11 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 // Direct kernel tests for UnsafeOP.sortByKeyAscending (in-place ASCENDING heapsort of parallel
-// key/value arrays -- LinearAlgebra.Internal.UnsafeOP, UnsafeOP.double.cs). Added per
-// docs/spec-shipped-feature.md pillar 3 ("New Blas/UnsafeOP kernels get DIRECT tests against a plain
-// scalar reference implementation, not just indirect coverage through callers"). This kernel powers
-// LP.ladBR's large-candidate fast path (LP.BarrodaleRoberts.double.cs, gated by
-// BR_CAND_SORT_THRESHOLD = 256), so before this file the kernel had ZERO direct coverage.
+// key/value arrays -- LinearAlgebra.Internal.UnsafeOP, UnsafeOP.double.cs). New Blas/UnsafeOP kernels
+// get DIRECT tests against a plain scalar reference implementation, not just indirect coverage
+// through callers. This kernel powers LP.ladBR's large-candidate fast path
+// (LP.BarrodaleRoberts.double.cs, gated by BR_CAND_SORT_THRESHOLD = 256), so before this file the
+// kernel had ZERO direct coverage.
 //
 // TEMPLATE (not hand-written) test: UnsafeOP and sortByKeyAscending are both `public` (the class only
 // lives in the LinearAlgebra.Internal namespace), and template tests already reach it directly with

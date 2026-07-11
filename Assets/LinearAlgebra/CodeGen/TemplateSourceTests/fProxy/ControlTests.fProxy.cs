@@ -8,8 +8,8 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// BASIC smoke tests for Control.lqr / Control.lqrSchedule (docs/spec-lqr.md) -- written by the coder
-// agent alongside the implementation, per that spec's binding rules. The FULL test battery (literature
+// BASIC smoke tests for Control.lqr / Control.lqrSchedule -- written by the coder agent alongside the
+// implementation. The FULL test battery (literature
 // vectors, SDA-vs-oracle cross-check, property-based stability/PSD checks, warm-path perturbation
 // convergence, redundant-actuator rank flagging, determinism) is the test-writer agent's job; this file
 // only checks that a known tiny instance solves, statuses fire (Converged/Diverged), and throws throw.

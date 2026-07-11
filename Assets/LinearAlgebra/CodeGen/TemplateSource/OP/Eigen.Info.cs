@@ -5,9 +5,9 @@ namespace LinearAlgebra
 {
     /// <summary>
     /// Result of an iterative dominant/extremal-eigenpair solve (<c>Eigen.powerIteration</c> /
-    /// <c>Eigen.inversePowerIteration</c>). Every converted eigensolver RETURNS this by value
-    /// (alongside its existing <c>out fProxy lambda</c>); an implicit <c>bool</c> conversion
-    /// (== <see cref="Solved"/>) means the old success-test call shapes still compile unchanged:
+    /// <c>Eigen.inversePowerIteration</c>), returned by value alongside the existing
+    /// <c>out fProxy lambda</c>. Implicitly converts to <c>bool</c> (== <see cref="Solved"/>) for use
+    /// in <c>if (...)</c>:
     /// <code>
     ///   if (Eigen.powerIteration(in A, ref v, ref w, out var lambda, tol, maxIter)) { ... }
     ///   bool ok = Eigen.inversePowerIteration(in A, ref v, out var lambda);
@@ -78,9 +78,8 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Result of a dense eigensolve (<c>Eigen.symmetric</c> / <c>Eigen.valuesSymmetric</c> /
-    /// <c>Eigen.valuesQR</c> / <c>Eigen.decompInPlace</c>). Every converted entry point RETURNS
-    /// this by value; an implicit <c>bool</c> conversion (== <see cref="Solved"/>) means the old
-    /// success-test call shapes still compile unchanged:
+    /// <c>Eigen.valuesQR</c> / <c>Eigen.decompInPlace</c>), returned by value. Implicitly converts to
+    /// <c>bool</c> (== <see cref="Solved"/>) for use in <c>if (...)</c>:
     /// <code>
     ///   if (Eigen.symmetric(ref A, ref eigenvalues, ref V)) { ... }   // implicit bool
     ///   bool ok = Eigen.valuesSymmetric(ref A, ref eigenvalues);      // same
@@ -94,15 +93,12 @@ namespace LinearAlgebra
     /// (MaxIterations) -- there is no breakdown mode of its own.
     ///
     /// <see cref="sweeps"/> and <see cref="converged"/> are filled from counters the QL/QR/Jacobi
-    /// iteration already tracks while it runs -- never a separate pass. NO residual field (that is
-    /// what the test oracles are for, not this struct).
+    /// iteration already tracks while it runs -- never a separate pass. There is no residual field.
     ///
     /// On a MaxIterations return the outputs are NOT usable: eigenvalues/eigenvectors are
     /// unwritten or partial -- always check the returned status before reading them.
     ///
-    /// Twin of <see cref="SVDInfo"/> (same shape, DELIBERATELY a separate type per its own place --
-    /// house pattern for this file is one Info struct per family; see <c>SolveInfo.cs</c> for
-    /// SVDInfo's own doc comment, which explains the shared shape once).
+    /// Twin of <see cref="SVDInfo"/> (same shape, deliberately a separate type).
     /// </summary>
     public struct EigenInfo
     {
@@ -151,10 +147,9 @@ namespace LinearAlgebra
 
     /// <summary>
     /// Result of a symmetric Lanczos tridiagonalization (<c>Eigen.lanczos</c> /
-    /// <c>Eigen.lanczosVectors</c>). Every converted overload RETURNS this by value (the
-    /// value-returning "allocating" overloads carry it as an <c>out</c> parameter alongside their
-    /// <c>fProxyN</c>/<c>fProxyMxN</c> outputs); an implicit <c>bool</c> conversion
-    /// (== <see cref="Solved"/>) means the old success-test call shapes still compile unchanged:
+    /// <c>Eigen.lanczosVectors</c>), returned by value (the value-returning "allocating" overloads
+    /// carry it as an <c>out</c> parameter alongside their <c>fProxyN</c>/<c>fProxyMxN</c> outputs).
+    /// Implicitly converts to <c>bool</c> (== <see cref="Solved"/>) for use in <c>if (...)</c>:
     /// <code>
     ///   if (Eigen.lanczos(in A, ref ws, ref eigenvalues, steps)) { ... }
     ///   var eig = Eigen.lanczos(ref arena, in A, steps, out LanczosInfo info);

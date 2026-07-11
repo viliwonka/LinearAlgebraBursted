@@ -8,7 +8,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Tests for MIP.solve -- LP-based branch & bound over the dual simplex (docs/draft-spec-mip.md).
+// Tests for MIP.solve -- LP-based branch & bound over the dual simplex.
 // Grows by stage: (a)-(e) STAGE 2 (most-fractional DFS), (f) STAGE 3 (pseudocost + best-bound queue),
 // (g) STAGE 4 (activity-based propagation, rounding heuristic, absGap/relGap gap limits + MIPLIB
 // stein/p0033 known-answer oracles). Templated (double) so codegen emits a float and a double build; per the draft spec
@@ -69,8 +69,7 @@ public class doubleMIPTests
             Stage3DeterminismBranchy12, // same determinism check on the big branchy n=12 search (DOUBLE-ONLY)
 
             // ==== (g) STAGE 4 verification: activity-based domain propagation at every node, a rounding
-            //         heuristic, and absGap/relGap gap limits make MIPStatus.GapLimit reachable
-            //         (docs/draft-spec-mip.md stage 4). ====
+            //         heuristic, and absGap/relGap gap limits make MIPStatus.GapLimit reachable. ====
 
             // -- MIPLIB tiny known-answer instances (the "stein/p0033" standard set) --
             Stein9,   // MIPLIB steiner-triple set-covering: 9 binaries, proven optimum 5 (both dtypes)
@@ -969,16 +968,12 @@ public class doubleMIPTests
             senses.Dispose(); integ.Dispose(); arena.Dispose();
         }
 
-        // Propagation node-count drop on the big branchy search: stage 3 = 241 nodes, stage 4 = 218,
-        // re-anchored to 199 by docs/spec-lpbasis-persistence.md's doubleLPCache (same optimum, DIFFERENT
-        // node count -- persisted DSE weights change pricing at a warm-started non-logical basis from the
-        // w=1 approximation to the caller's carried terminal state, which changes which variable a node
-        // picks to branch on; acceptance item 2 explicitly allows this). Verified stable across repeated
-        // runs (not a per-launch nondeterminism artifact -- an earlier coding-in-progress value of 216
-        // traced back to a real bug: weight[] was resumed even when the entry eta-capacity check forced a
-        // fresh Refactorize, letting weight drift across an unbounded refactorization chain instead of
-        // being bounded like the eta chain; fixed in DualSimplexPivotCore via didResumeFactors). DOUBLE-
-        // ONLY (same instance/rationale as Stage3NodesBranchy12).
+        // Propagation node-count drop on the big branchy search: stage 3 = 241 nodes, stage 4 = 218, and
+        // with doubleLPCache's persisted DSE weights (same optimum, but pricing at a warm-started
+        // non-logical basis now uses the caller's carried terminal weights instead of the w=1
+        // approximation, changing which variable a node picks to branch on) it is 199. Verified stable
+        // across repeated runs, not a per-launch nondeterminism artifact. DOUBLE-ONLY (same
+        // instance/rationale as Stage3NodesBranchy12).
         void Stage4NodesBranchy12()
         {
             int cases = 1;

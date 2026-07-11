@@ -67,14 +67,7 @@ namespace LinearAlgebra
 
         public void ApplyT(in fProxyN v, ref fProxyN y) => Apply(in v, ref y);   // symmetric
 
-        // Delegates to TWO inner operator Applies already (Aₛᵀ then Aₛ, i.e. two full passes over
-        // the inner operator's own data/kernels) -- there is no single kernel here to fold a third
-        // reduction into, so this COMPOSES: run Apply as normal, then one dot(v,y) pass. M is
-        // always square (Rows==Cols==As.Rows), so this IS cg/pcg's fused-schedule customer (the LP
-        // normal-equations PCG inner solve, standardFormInterior) even though the "fusion" here is
-        // just calling the two pieces back to back rather than a merged kernel -- per Krylov R2's
-        // spec (docs/draft-spec-krylov-optimization.md): "operators that delegate ... compose
-        // sensibly and document".
+        // Composes Apply + dot; no fused kernel here.
         public fProxy ApplyDot(in fProxyN v, ref fProxyN y)
         {
             Apply(in v, ref y);

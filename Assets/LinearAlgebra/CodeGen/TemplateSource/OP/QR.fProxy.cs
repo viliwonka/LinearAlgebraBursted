@@ -109,7 +109,7 @@ namespace LinearAlgebra
 
         // Caller-provided scratch overload — LEVEL-2 (unblocked) zero-alloc tier: u is a workspace
         // vector of length EXACTLY Q.M_Rows; w is a workspace vector of length >= Q.N_Cols (the
-        // reflector-apply accumulator). Hoist both out of a hot loop to skip the per-call
+        // reflector-apply accumulator). Move both out of the hot loop to skip the per-call
         // Allocator.Temp allocs. This is the minimal-scratch path (cheapest for small N); for a
         // zero-alloc path that ALSO gains the level-3 blocked kernel at large N, use the
         // ref fProxyQRCache overload instead. See the scratch-contract note at the top of this class.
@@ -281,9 +281,7 @@ namespace LinearAlgebra
 
                 // (4) trailing block update on cols [p0+pb, n): C -= V*(Tᵀ*(Vᵀ*C)). One untiled
                 //     GEMM call per panel — UnsafeOP.wyVtC/wySubVW already reach full GEMM
-                //     throughput (~70 GFLOP/s, matched matMatDot) at this width without tiling;
-                //     column-tiling was tried and measured SLOWER (added MemClear/call overhead
-                //     for no cache-locality benefit), so it is deliberately not done here.
+                //     throughput (~70 GFLOP/s, matched matMatDot) at this width without tiling.
                 int cStart = p0 + pb;
                 int cw = n - cStart;
                 if (cw > 0)
@@ -602,7 +600,7 @@ namespace LinearAlgebra
         // instead: QRCP.decompInPlace / QRCP.solveInPlace, SVD.pinvSolve, or CHOP.solveInPlace.
         // Caller-provided scratch overload — LEVEL-2 zero-alloc tier: u is a workspace vector of
         // length EXACTLY A.M_Rows; w is a workspace vector of length >= A.N_Cols (the reflector-apply
-        // accumulator). Hoist both out of a hot loop to skip the per-call Allocator.Temp allocs. This
+        // accumulator). Move both out of the hot loop to skip the per-call Allocator.Temp allocs. This
         // is the minimal-scratch path; for a zero-alloc path via a reusable cache struct, use the
         // ref fProxyQRCache overload instead (this fused kernel never forms Q, so that overload does
         // NOT gain the level-3 blocked kernel — see the scratch-contract note at the top of this class).

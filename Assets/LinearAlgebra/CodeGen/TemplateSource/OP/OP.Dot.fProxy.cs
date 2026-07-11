@@ -92,19 +92,8 @@ namespace LinearAlgebra
             return result;
         }
 
-        // y = A x, PLUS dot(x, y) computed as part of the same call -- Krylov R2's ApplyDot
-        // (docs/draft-spec-krylov-optimization.md; see fProxyDenseOperator.ApplyDot, the sole
-        // caller). COMPOSES: a plain matVecDot pass, then one Blas.dot(x,y) pass (still the
-        // 2x-accumulator vecDot kernel). An earlier version of this method dispatched a
-        // genuinely-fused single-pass kernel (matVecDotSelf) for square A -- folding dot(x,y)
-        // into the GEMV row-loop via two alternating SCALAR accumulators (the row-loop itself
-        // already uses vecDot's fProxy4 SIMD pattern; there was nothing left to widen the OUTER
-        // cross-row fold into, since row results arrive one at a time, not as an aligned block of
-        // 4). MEASURED WORSE on the BSR analogue of the same pattern (bsrMatVecB1Dot -- see
-        // BSR.spMVDot's comment and the round's report): the scalar alternating fold lost to
-        // simply calling the already-SIMD-tuned vecDot separately, by a wide and reproducible
-        // margin at the block=1 stencil benchmark. Reverted here too on the same architectural
-        // basis (not separately re-measured for dense -- see the round's report).
+        // y = A x, PLUS dot(x, y) computed as part of the same call. Composes a plain matVecDot pass
+        // with a separate vecDot pass rather than a single fused kernel.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static fProxy dotSelf(in fProxyMxN A, in fProxyN x, ref fProxyN y)
         {
@@ -275,7 +264,7 @@ namespace LinearAlgebra
             if(u.N < maxDim)
                 throw new ArgumentException("Blas.householderInPlace: Vector must be at least as long as the largest dimension of the matrix");
 
-            fProxy vTv = dot(u, u); // Inline dot product calculation
+            fProxy vTv = dot(u, u);
 
             // Degenerate (zero / near-zero) reflector -> identity transform; leave matrix unchanged.
             // NaN-safe (!(vTv > t) is true for NaN); avoids 2/0 = Inf poisoning the matrix.
@@ -289,7 +278,7 @@ namespace LinearAlgebra
                 for (int j = 0; j < matrix.N_Cols; j++)
                 {
                     fProxy vvT_element = scaleFactor * u[i] * u[j];
-                    matrix[i, j] -= vvT_element; // Apply directly to matrix
+                    matrix[i, j] -= vvT_element;
                 }
             }
         }

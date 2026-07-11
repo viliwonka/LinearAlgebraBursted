@@ -4,7 +4,7 @@ using Unity.Mathematics;
 
 namespace LinearAlgebra
 {
-    // Pseudocost + reliability branching (docs/draft-spec-mip.md stage 3), cross-checked against
+    // Pseudocost + reliability branching, cross-checked against
     // HiGHS's mip/HighsPseudocost.h and mip/HighsSearch.cpp (selectBranchingCandidate /
     // evalUnreliableBranchCands). Each integer variable tracks a running mean objective-degradation-
     // per-unit-fractionality for its up/down branch direction; a variable is trusted once both
@@ -47,20 +47,8 @@ namespace LinearAlgebra
             return dist * unitCost;
         }
 
-        // Product-rule branching score, faithfully ported from HighsPseudocost::getScore(col, upcost,
-        // downcost) (mip/HighsPseudocost.h): costScore = max(upcost,minThreshold)*max(downcost,minThreshold)
-        // / max(minThreshold, cost_total^2), then mapScore(x) = 1 - 1/(1+x). upcost/downcost are
-        // PseudocostEstimate above (== HighsPseudocost::getPseudocostUp/Down's 2-arg no-offset overload,
-        // the one selectBranchingCandidate actually scores with: fractional-distance * own mean, falling
-        // back to the running global-average pseudocost when the variable has zero samples of its own).
-        // cost_total is that same running global average (globalPCSum/globalPCCount); minThreshold ==
-        // PSEUDOCOST_EPS (both 1e-6) -- same clamp value AND placement as the source.
-        // OMITTED (fidelity taxonomy -- subsystems this stage does not have): the conflictScore term (no
-        // conflict analysis / no-good learning), the cutoffScore term (no cutoff-bound tracking), the
-        // inferenceScore term (no propagation/inference statistics). OMITTED: degeneracyFactor weighting
-        // (no LP-degeneracy detection) -- HiGHS only sets it > 1 while actively degenerate; fixed at its
-        // non-degenerate default of 1.0, getScore's full expression collapses exactly to mapScore(costScore),
-        // which is what this function returns.
+        // Product-rule branching score (port of HiGHS's HighsPseudocost::getScore); some HiGHS terms
+        // are not implemented.
         internal static double PseudocostScore(int j, double v,
                                                doubleN pcUpSum, NativeArray<int> pcUpCount,
                                                doubleN pcDownSum, NativeArray<int> pcDownCount,

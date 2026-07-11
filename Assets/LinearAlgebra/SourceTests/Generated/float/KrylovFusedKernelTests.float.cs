@@ -5,7 +5,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-// Round-1 Krylov fusion kernels (docs/draft-spec-krylov-optimization.md, R1): each fused primitive
+// Round-1 Krylov fusion kernels: each fused primitive
 // (Blas.axpyNormSq/xpayNormSq/updateXR/scaledCopy/combine3) is checked against the EXACT unfused
 // sequence it replaces in Krylov.float.cs, on random vectors, at sizes that exercise both the
 // width-4 SIMD block path and the scalar tail (n not a multiple of 4). axpyNormSq/xpayNormSq/

@@ -5,8 +5,8 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// ARENA-LEVEL wiring tests for the boolN/boolMxN -> ChunkedRecordTable migration
-// (docs/dev/rfc-memory-model.md §4 Option A). Mirrors the floatN/intN wiring tests
+// ARENA-LEVEL wiring tests for the boolN/boolMxN -> ChunkedRecordTable migration. Mirrors the
+// floatN/intN wiring tests
 // (ArenaWiringTests.float.cs / ArenaWiringTests.int.cs) but adapted to bool's narrower API:
 //
 //   * bool has NO scalar-fill factory (arena.boolVec(N, s) means "leave uninitialized", not

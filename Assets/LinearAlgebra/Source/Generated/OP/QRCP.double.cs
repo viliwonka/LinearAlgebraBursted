@@ -19,19 +19,8 @@ namespace LinearAlgebra
     /// (the MINIMUM-NORM / pseudoinverse solution via complete orthogonal decomposition — xGELSY).
     /// </summary>
     /// <remarks>
-    /// Partial column norms are DOWNDATED (LAPACK dgeqp3/dlaqps-style, unsquared, guarded) rather
-    /// than recomputed exactly at every step — see <see cref="doubleQRCPCache"/> and
-    /// decompInPlaceCore. That downdating is what unlocks a level-3 path: pivot selection needs the
-    /// current column NORMS, not the current column DATA, so once N_Cols >= 2*QRCP_BLOCK the
-    /// factorization runs the LAPACK dlaqps-style partially-blocked panel core
-    /// (decompInPlaceBlockedCore) — a whole panel of reflectors is factored against a deferred
-    /// F-matrix and its trailing update flushed once as a rank-kb GEMM, and Q is reconstructed by the
-    /// same blocked-WY kernel QR uses (QR.reconstructQBlocked). Below that gate the unblocked
-    /// per-reflector core runs (decompCoreDispatch chooses). <see cref="doubleQRCPCache"/> still
-    /// carries only the two n-sized downdating vectors (vn1, vn2); the blocked core's larger working
-    /// buffers (F, the flush GEMM scratch, and the reconstruction WY buffers) are Allocator.Temp
-    /// allocated per call inside decompInPlaceBlockedCore — one set per factorization, negligible
-    /// against its O(n²m) work — rather than folded into the cache.
+    /// Column norms are downdated LAPACK dgeqp3-style rather than recomputed exactly at every step;
+    /// wide matrices (N_Cols >= 2*QRCP_BLOCK) use a blocked level-3 panel core.
     /// </remarks>
     public static partial class QRCP {
 
@@ -111,31 +100,20 @@ namespace LinearAlgebra
 
         // ---- shared core: every decompInPlace/decomp/solveInPlace overload routes through this ----
 
-        // Guarded LAPACK dgeqp3/dlaqps-style norm downdating (transcribed unsquared, per
-        // docs/dev/spec-qrcp-downdate.md). Householder reflectors preserve a column's norm over rows
-        // d..m-1 exactly (orthogonal transform restricted to that row range), so the norm over rows
-        // d+1..m-1 differs from the PREVIOUS step's tracked norm only by the row-d entry the
-        // reflector apply just wrote:
+        // Guarded LAPACK dgeqp3/dlaqps-style norm downdating (transcribed unsquared). Householder
+        // reflectors preserve a column's norm over rows d..m-1 exactly (orthogonal transform
+        // restricted to that row range), so the norm over rows d+1..m-1 differs from the PREVIOUS
+        // step's tracked norm only by the row-d entry the reflector apply just wrote:
         //     ‖col_j‖²(d+1..) = vn1[j]² (rows d.., BEFORE this step) − A_to_Q[d,j]² (AFTER this step).
         // Per column, vn1 tracks the current estimate and vn2 the norm at the last EXACT computation;
         // once the cumulative decay since that last exact value collapses below tol3z = sqrt(eps) —
         // checked via vn2, not just this step's own ratio, since gradual decay over many benign-looking
         // steps is the failure LAPACK's guard exists for — an exact re-sum forces both back in sync.
-        // tol3z is Consts.doubleSqrtEps directly: Consts.cs already defines it as the precise,
-        // type-correct sqrt(Consts.doubleEpsilon) (see its own comment), and every other caller in
-        // this codebase (Eigen/LOBPCG/Krylov/SVD.LowRank) references it the same way rather than
-        // recomputing math.sqrt(Consts.doubleEpsilon) at runtime.
         //
-        // Guard-triggered exact re-sum recomputes EVERY trailing column (not just the one that
-        // failed) via the same row-major addSquares sweep as the one-time init below, writing
-        // straight into vn1 (no separate colNorm2 buffer is needed — the old exact-recompute-every-
-        // step buffer is fully retired). This is a deliberate widening from LAPACK's own per-column
-        // selective recompute: this codebase is row-major, so a single column's exact norm is a
-        // strided reduction (the same shape the ORIGINAL always-exact QRCP avoided by summing all
-        // trailing columns per row instead of one column at a time) — reusing that same batched sweep
-        // when ANY column trips the guard is simpler, no more expensive (the sweep touches every
-        // trailing column per row regardless of how many needed it), and strictly more accurate for
-        // the columns that didn't strictly need re-summing.
+        // Guard trip re-sums all trailing columns in one batched row-major sweep (the same sweep as
+        // the one-time init below), writing straight into vn1 -- simpler and no more expensive than a
+        // per-column selective recompute in this row-major layout, and strictly more accurate for
+        // columns that didn't strictly need re-summing.
         // Form-Q entry (decomp path): factor + reconstruct Q, never touch b.
         static DirectSolveInfo decompInPlaceCore(ref doubleMxN A_to_Q, ref doubleMxN R, ref Pivot P, ref doubleN u,
                                                   ref doubleN vn1, ref doubleN vn2)
@@ -185,12 +163,11 @@ namespace LinearAlgebra
                 vn2[j] = nrm;
             }
 
-            // Same relative tie tolerance the exact-recompute kernel used, expressed for UNSQUARED
-            // norms: the old test compared squared norms via maxNorm2 > diagNorm2*(1+pivotRelTol);
-            // sqrt(1+pivotRelTol) is the equivalent unsquared-domain multiplier, so pivot selection
-            // is unchanged whenever vn1 holds exact norms (true at d=0, and after any guard-triggered
-            // re-sum) and separation-preserving otherwise — see docs/dev/spec-qrcp-downdate.md OQ-D1.
-            // m is fixed for the whole call, so this is hoisted out of the per-step loop.
+            // Relative tie tolerance for pivot selection, expressed for UNSQUARED norms (pivotRelTol is
+            // the squared-domain tolerance; sqrt(1+pivotRelTol) is the equivalent unsquared-domain
+            // multiplier) -- ties within this tolerance are left in place rather than forcing a pivot
+            // swap, since either choice is numerically equivalent at that separation. Computed once
+            // before the loop (m is fixed for the whole call).
             double pivotRelTol = (double)(8 * m) * Consts.doubleEpsilon;
             double pivotRelTolRoot = math.sqrt((double)1 + pivotRelTol);
 
@@ -376,40 +353,28 @@ namespace LinearAlgebra
 
         // ---- blocked (LAPACK dgeqp3/dlaqps-style) partially-blocked panel core ----
         //
-        // Raises QRCP from level-2 (each reflector's trailing update applied immediately as two
-        // memory-bound passes) to level-3: the trailing update of a whole panel of up to QRCP_BLOCK
-        // reflectors is DEFERRED and applied once, as a single rank-kb GEMM (UnsafeOP.wySubVW), per
-        // panel. The enabler is norm DOWNDATING (see decompInPlaceCore): pivot selection needs the
-        // current column norms, not the current column DATA, so vn1 lets us choose pivots while the
-        // trailing matrix stays stale between flushes. Full derivation + range table:
-        // docs/dev/spec-qrcp-blocked.md. The reflectors are stored exactly as QR's (τ≡1 Householder
-        // vectors in the lower triangle), so Q is reconstructed by the SAME blocked-WY kernel QR uses
+        // Raises QRCP from level-2 (each reflector's trailing update applied immediately) to level-3:
+        // the trailing update of a whole panel of up to QRCP_BLOCK reflectors is DEFERRED and applied
+        // once, as a single rank-kb GEMM (UnsafeOP.wySubVW), per panel. The enabler is norm DOWNDATING
+        // (see decompInPlaceCore): pivot selection needs the current column norms, not the current
+        // column DATA, so vn1 lets us choose pivots while the trailing matrix stays stale between
+        // flushes. The reflectors are stored exactly as QR's (τ≡1 Householder vectors in the lower
+        // triangle), so Q is reconstructed by the SAME blocked-WY kernel QR uses
         // (QR.reconstructQBlocked) — only pivoting differs, and that is confined to the factorization.
         //
-        // F is the (width x kb) accumulator with the invariant A_true = A_stale − V·Fᵀ over the panel's
-        // not-yet-flushed rows; V is the panel's stored reflectors. Per panel step k (panel-local, the
-        // pivot lands on global column/row d = rk = p0+k):
-        //   1. pivot by max vn1 over trailing columns; the full-column swap in A carries each column's
-        //      already-written R prefix with it (R is extracted from A's upper triangle at the end),
-        //      so no separate R swap is needed — only vn1/vn2/P and the k filled F rows are swapped.
-        //   2. bring ONLY the pivot column up to date wrt the k prior reflectors (A[:,d] −= V·F[k,·]ᵀ).
-        //   3. generate the Householder reflector; 4. take R[d,d] from it and store the reflector.
-        //   5. ONE combined pass acc = uᵀ·A over the panel width: acc's reflector-column entries are
-        //      the compact-WY aux (uₖᵀuᵢ), its trailing entries are the direct term of F's new column.
-        //   6. F's new column = direct − F·aux (correction).  7. bring row rk of the trailing part up
-        //      to date (it becomes R and feeds the norm downdate).  8. downdate vn1 with the same
-        //      guarded formula as the unblocked core BUT, because the trailing matrix is stale
-        //      mid-panel, a tripped column is MARKED (its vn1 left stale) rather than re-summed on the
-        //      spot; the first trip cuts the panel short (kb = k+1) — dlaqps returns KB for this reason.
-        // Panel end: one GEMM flush of the deferred trailing update, THEN an exact re-sum of the marked
-        // columns over the now-updated trailing matrix.
+        // Invariant: A_true = A_stale − V·Fᵀ over the panel's not-yet-flushed rows, where F is the
+        // (width x kb) deferred-update accumulator and V is the panel's stored reflectors. Because the
+        // trailing matrix is stale mid-panel, a guard-tripped column is MARKED (its vn1 left stale)
+        // rather than re-summed on the spot; the first trip cuts the panel short (kb = k+1). Panel end:
+        // one GEMM flush of the deferred trailing update, then an exact re-sum of the marked columns
+        // over the now-updated trailing matrix.
         //
         // fusedSolve toggles the destructive fast-solve path: when true, each reflector is also applied
         // to bp (a length-m right-hand side) as it is generated — building Qᵀb in place in the reflector
         // generation order (== Qᵀ order) — and Q reconstruction is SKIPPED entirely (A_to_Q is left
         // destroyed: reflectors + partial R, not the orthogonal factor). This mirrors QR.solveInPlace's
-        // fused kernel and lets QRCP.solveInPlace avoid the ~⅓-of-runtime Q reconstruction. When false
-        // (the decomp path) bp is ignored (pass null) and Q is reconstructed as usual.
+        // fused kernel and lets QRCP.solveInPlace avoid the Q reconstruction entirely. When false (the
+        // decomp path) bp is ignored (pass null) and Q is reconstructed as usual.
 
         // Form-Q entry (decomp path): factor + reconstruct Q, never touch b.
         static unsafe DirectSolveInfo decompInPlaceBlockedCore(ref doubleMxN A_to_Q, ref doubleMxN R, ref Pivot P,
@@ -426,7 +391,7 @@ namespace LinearAlgebra
         {
             // Factorization panel width. A method-local const (QRCP is a partial class shared by the
             // float/double generated files, so a class-level const of this name would collide, CS0102).
-            // 32 is the measured sweep optimum — the same width QR settled on.
+            // Panel width 32 (matches QR).
             const int QRCP_BLOCK = 32;
 
             // Q reconstruction runs QR's shared blocked-WY kernel, which is hardwired to a 32-wide
@@ -806,8 +771,7 @@ namespace LinearAlgebra
         ///
         /// DESTRUCTIVE FAST PATH (mirrors QR.solveInPlace): factors A_to_Q's own buffer in place (no
         /// memcpy, no separate Q scratch) and applies Qᵀ to b as the reflectors are generated, so it
-        /// never forms or reconstructs Q — the whole point, since reconstruction is ~⅓ of the runtime.
-        /// On return A_to_Q is DESTROYED (stored reflectors + partial R, contents undefined) and b is
+        /// never forms or reconstructs Q. On return A_to_Q is DESTROYED (stored reflectors + partial R, contents undefined) and b is
         /// DESTROYED (overwritten with Qᵀb). Need the orthogonal factor Q? Use QRCP.decompInPlace /
         /// QRCP.decomp instead, which reconstruct it.
         /// </summary>
@@ -922,8 +886,8 @@ namespace LinearAlgebra
 
         // Destructive fused-solve dispatch: the fast path for QRCP.solveInPlace. Once N_Cols is wide
         // enough to block (>= 2*QRCP_BLOCK), it applies Qᵀ to b DURING the blocked factorization and
-        // skips Q reconstruction (decompInPlaceBlockedCore's fusedSolve mode) — saving the ~⅓ of
-        // runtime that reconstruction costs — then finishes straight from Qᵀb. Below the gate it uses
+        // skips Q reconstruction entirely (decompInPlaceBlockedCore's fusedSolve mode), then finishes
+        // straight from Qᵀb. Below the gate it uses
         // the unblocked core (which forms Q cheaply at small n) plus the dot-based finish, unchanged.
         // BOTH A_to_Q and b are destroyed. Callers supply vn1/vn2 (cache) or Temp-allocate them.
         static unsafe RankInfo solveInPlaceFusedDispatch(ref doubleMxN A_to_Q, ref doubleN b, ref doubleN x,
@@ -1066,34 +1030,15 @@ namespace LinearAlgebra
 
         // ---- COD (complete orthogonal decomposition): MINIMUM-NORM rank-safe least squares ----
         //
-        // solveInPlace above gives the BASIC (truncated) solution: it zeros the free variables in the
-        // pivoted column ordering. For a rank-deficient A that is NOT the minimum-norm least-squares
-        // solution, because the top-right block R12 couples the free columns back into the leading ones
-        // (min ‖x‖ wants a nonzero free part that R12 can use to shrink the pivoted part — see the
-        // derivation below). minNormSolveInPlace closes that gap: it produces x = A⁺b (the pseudoinverse
+        // solveInPlace above gives the BASIC (truncated) solution, which is NOT minimum-norm for a
+        // rank-deficient A. minNormSolveInPlace closes that gap: it produces x = A⁺b (the pseudoinverse
         // / minimum-norm least-squares solution), the SAME answer SVD.pinvSolve gives, but at
-        // direct-factorization cost (one QRCP + one small LQ on the r×n rank-revealed block) instead of
-        // an iterative SVD. This is LAPACK's xGELSY strategy.
+        // direct-factorization cost (one QRCP + one small LQ on the top r×n block of R) instead of an
+        // iterative SVD. This is LAPACK's xGELSY strategy.
         //
-        // Derivation. QRCP gives A·P = Q·R with R = [R11 R12; 0 ~0] (R11 r×r upper-tri, full rank; the
-        // trailing (n-r) diagonal below tol). Writing x = P·y (P a permutation, so ‖x‖ = ‖y‖) and
-        // c = Qᵀb = [c1; c2], the residual is ‖R y − c‖² = ‖[R11 R12]·y − c1‖² + ‖c2‖². The second term
-        // is fixed, so every least-squares x satisfies M·y = c1 where M = [R11 R12] (r×n, full ROW rank
-        // r); among those, min ‖x‖ = min ‖y‖. LQ-factor the SHORT-WIDE M = L̃·Qz (L̃ r×r lower-tri,
-        // invertible; Qz r×n, orthonormal rows). Then M y = c1 ⇔ Qz y = L̃⁻¹c1 =: w, and the
-        // minimum-norm y with Qz y = w is y = Qzᵀ w (Qz has orthonormal rows). So the whole solve is:
-        //   1. QRCP factor (fused: b ← Qᵀb), read rank r off R's diagonal.
-        //   2. r == n (full column rank): basic IS min-norm — reuse solveInPlaceFinish, no COD.
-        //   3. r <  n: LQ-compress M = R's top r×n block → L̃ + Qz-reflectors; forward-solve L̃ w = c1
-        //      (c1 = b[0..r), already Qᵀb); x = Qzᵀ w straight from the reflectors; un-permute x[P[j]].
         // Reuses LQ's row-Householder kernels (genHouseholderRow / applyHouseholderRight /
         // applyQtFromReflectors) rather than a bespoke xTZRZF RZ-factorization — the same no-transpose
         // reuse LQRP is built on. The LQ compress is O(r²n), negligible against the O(mn²) QRCP.
-        //
-        // LQRP (the transpose-dual, wide side) has the SAME need: there the coupling lives in the
-        // below-diagonal block L21, and its basic solution is minimum-norm only for a CONSISTENT b — an
-        // inconsistent rank-deficient LS needs LQRP.minNormSolveInPlace, which QR-least-squares-solves
-        // the m×r block [L11; L21] (the transpose-dual of the LQ compress here).
 
         // Fused QRCP factor shared by every minNormSolveInPlace overload: run the (blocked or unblocked)
         // core in fusedSolve mode so b becomes Qᵀb, A_to_Q is destroyed (reflectors), R and P are filled;
@@ -1108,8 +1053,8 @@ namespace LinearAlgebra
                 decompInPlaceCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, 1, null, true);
         }
 
-        // COD completion for the rank-deficient (r < n) case — see the section header for the full
-        // derivation. On entry: b holds Qᵀb, R holds the upper-triangular factor, P the column pivot, r
+        // COD completion for the rank-deficient (r < n) case (see the section header above). On entry:
+        // b holds Qᵀb, R holds the upper-triangular factor, P the column pivot, r
         // the detected numerical rank (0 < r < n). Fills x with the minimum-norm least-squares solution
         // and returns RankDeficient (r < n is the only path that reaches here). Allocates one set of
         // Allocator.Temp COD scratch (M/L̃/reflector-vector/reduced-RHS); the LQ compress is O(r²n),
@@ -1315,7 +1260,7 @@ namespace LinearAlgebra
         //                                 GEMM, then a truncated block back-solve. Reuse across blocks.
         //   solveInPlace(A, B, X)       — FUSED and DESTRUCTIVE, exactly like the vector solveInPlace:
         //                                 Qᵀ is applied to B's columns as reflectors are generated and
-        //                                 Q is NEVER reconstructed (the ~⅓-runtime saving). A_to_Q and
+        //                                 Q is NEVER reconstructed. A_to_Q and
         //                                 B are DESTROYED (A_to_Q -> reflectors + partial R, B -> QᵀB).
 
         // Shared tail: X's first n rows hold QᵀB (in the permuted column basis). Detect rank from R's
@@ -1475,7 +1420,7 @@ namespace LinearAlgebra
         /// <summary>
         /// Factor-and-solve (multi-RHS), FUSED and DESTRUCTIVE — the fast path, mirroring the vector
         /// solveInPlace: column-pivoted QR of A_to_Q in place, applying Qᵀ to every column of B as the
-        /// reflectors are generated, and NEVER reconstructing Q (the ~⅓-of-runtime saving). On return
+        /// reflectors are generated, and NEVER reconstructing Q. On return
         /// A_to_Q is DESTROYED (reflectors + partial R, NOT the orthogonal factor — use decompInPlace
         /// for Q) and B is DESTROYED (overwritten with QᵀB). Returns <see cref="RankInfo"/>.
         /// </summary>

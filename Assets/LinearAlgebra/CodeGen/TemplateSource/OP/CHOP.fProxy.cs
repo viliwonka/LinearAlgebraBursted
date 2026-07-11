@@ -68,8 +68,8 @@ namespace LinearAlgebra
             // Factor as A = U^T U with U upper-triangular: the right-looking sweep broadcasts the freshly
             // computed factor ROW U[k, k..] (contiguous in row-major) and subtracts its rank-1 contribution
             // from each trailing row W[i, i..] (also contiguous) — a unit-stride axpy with NO symmetric
-            // mirror (the lower triangle is never stored, so there is nothing to strided-copy; that mirror
-            // was the cache cliff). The returned factor L is LOWER-triangular (P^T A P = L L^T, L = U^T);
+            // mirror (the lower triangle is never stored, so there is nothing to strided-copy). The
+            // returned factor L is LOWER-triangular (P^T A P = L L^T, L = U^T);
             // each finished U row is scattered into L's column k (an O(n) strided write, « the O(n^3)
             // factor). Only A's lower triangle is read (A is assumed symmetric): W[i,j] := A[j,i], j>=i.
             //
@@ -106,9 +106,8 @@ namespace LinearAlgebra
             // would collide across them (CS0102; see CHO's CHOL_BLOCK).
             const int CHOLP_BLOCK = 32;
 
-            // Size gate: measured crossover (see docs/dev/level3-blocking-guide.md "size gate" and
-            // Consts.floatCholPivotBlockMinN/doubleCholPivotBlockMinN for the rationale -- higher than
-            // plain CHO's gate, since the panel phase here is heavier; see the blocked path below).
+            // Size gate: measured crossover, higher than plain CHO's gate since the panel phase here
+            // is heavier (see the blocked path below).
             const int CHOLP_BLOCK_MIN_N = Consts.fProxyCholPivotBlockMinN;
 
             if (n < CHOLP_BLOCK_MIN_N) {
@@ -198,53 +197,24 @@ namespace LinearAlgebra
             }
 
             // ---- blocked (level-3) path — LAPACK-style right-looking PSTRF ----
-            // Reference: Lucas/Higham "LAPACK-style codes for level 2 and level 3 pivoted Cholesky
-            // factorization" (dpstrf.f, the UPPER-triangular branch: PᵀAP = UᵀU, matching this method's
-            // upper-triangle-by-row W convention -- CHOP's row-major "broadcast a finished ROW" storage
-            // is the row-major analogue of column-major LAPACK's upper-triangle-by-column storage; see
-            // CHO's blocked-path comment for the column<->row mirroring rationale between this codebase
-            // and LAPACK's column-major reference).
+            // Port of Lucas/Higham dpstrf.f (upper-triangular branch). Unlike CHO/LU, pivot selection
+            // needs the largest remaining diagonal over the FULL trailing range at every column, not
+            // just the panel, so the panel can't defer everything to one end-of-panel update:
+            //   (a) CHEAP: `dot[i]` accumulates, per block, each finished panel row's contribution to
+            //       row i's diagonal; `W[i,i] - dot[i]` gives the exact Schur-complement diagonal, used
+            //       only for pivot search.
+            //   (b) WINNER-ONLY: once a column is chosen, its full remaining row is corrected against
+            //       every earlier-in-block finished row (unit-stride axpys) before use, since a pivot
+            //       from deep in the trailing block was never touched by earlier updates.
+            // The trailing block is updated once per panel via UnsafeOP.syrkUpperSub.
             //
-            // WHY THIS BLOCKS DIFFERENTLY FROM CHO/LU: those factorizations narrow their panel's rank-1
-            // sweep to the panel's OWN width and defer everything else to a single end-of-panel TRSM+
-            // SYRK/GEMM. CHOP cannot: symmetric diagonal pivoting must pick, at EVERY column, the
-            // largest remaining diagonal over the FULL trailing range (both the rest of the panel and
-            // the not-yet-touched block beyond it) -- so pivot selection needs an up-to-date Schur-
-            // complement diagonal for columns this panel hasn't reached yet. Two-tier fix (Lucas/Higham's
-            // actual trick, ported faithfully):
-            //   (a) CHEAP: `dot[i]` accumulates, incrementally and only for THIS block, the sum of
-            //       squares each finished panel row contributes to row i's diagonal (Fortran WORK(1:N),
-            //       reset to 0 per block); `W[i,i] - dot[i]` is then the exact current Schur-complement
-            //       diagonal for row i, O(1) extra work per column, used ONLY for pivot search.
-            //   (b) EXPENSIVE, WINNER-ONLY: once a column is chosen and pivoted into place, its FULL
-            //       remaining row [k+1,n) is corrected against every earlier-in-this-block finished row
-            //       (a GEMV in LAPACK; here a sequence of unit-stride row axpys against W's own already-
-            //       finished rows -- same vectorisable shape this codebase already prefers over a dot/
-            //       reduction form, see CHO's opening comment) and scaled. This is what makes a pivot
-            //       pulled from deep in the trailing block correct: its row was never touched by any
-            //       earlier column's update (that update is deferred to the panel-end SYRK below), so it
-            //       must be brought fully up to date right when it's chosen, not before.
-            // The trailing block itself (rows/cols >= panelEnd) is updated ONCE per panel via
-            // UnsafeOP.syrkUpperSub (W22 -= U12ᵀ·U12, U12 = the panel's own finished rows restricted to
-            // the trailing columns) -- the level-3 SYRK, mirroring CHO/LU's single-call-per-panel update.
-            //
-            // DEVIATIONS from a literal dpstrf.f port (both under the proven-equivalence / missing-
-            // subsystem taxonomy, not invented shortcuts):
-            //   - Ukk is taken directly from the pivot search's `maxDiag` (already exactly the value
-            //     step (b)'s full-row correction would derive for the diagonal too) instead of re-
-            //     deriving it via a diagonal-inclusive correction -- provably the same value, skips
-            //     redundant work. LAPACK's own skip-the-search-at-J=1 micro-optimisation is dropped the
-            //     other way: this port always searches (even at the first column), which is simpler and
-            //     gives the identical answer LAPACK's precomputed initial pivot would.
-            //   - LAPACK's dpstrf.f does not distinguish "rank-deficient PSD" from "indefinite" beyond
-            //     the single diagonal-tolerance check (it just reports INFO=1). This library's unblocked
-            //     CHOP.decomp adds a secondary full off-diagonal scan to make that distinction (part of
-            //     the existing RankInfo contract, predating this change) -- preserving it under blocking
-            //     needs W to be fully accurate before the scan runs, so the rare branch that trips the
-            //     tolerance check first FLUSHES this block's pending contribution (columns [j0,k), via
-            //     the same syrkUpperSub kernel used for the normal panel-end update, just scoped
-            //     narrower) before scanning. This only runs on the rank-deficient/indefinite exit path,
-            //     never on the well-conditioned hot path the size gate is tuned against.
+            // Two deviations from a literal port: Ukk is read straight from the pivot search's maxDiag
+            // (provably identical to re-deriving it, skips redundant work), and this port always
+            // searches for a pivot rather than reusing LAPACK's precomputed first-column pivot. Also,
+            // distinguishing rank-deficient from indefinite (this library's RankInfo, beyond LAPACK's
+            // single INFO=1) requires W accurate before the off-diagonal scan, so the rare branch that
+            // trips the tolerance check first flushes this block's pending columns [j0,k) via the same
+            // syrkUpperSub kernel, scoped narrower.
             unsafe {
                 fProxy* wp = W.Data.Ptr;
 

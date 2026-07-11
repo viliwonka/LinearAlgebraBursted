@@ -222,27 +222,21 @@ namespace LinearAlgebra
         // ==== least absolute deviation via IRLS =========================================================
 
         /// <summary>
-        /// Least absolute deviation (L1 regression) by iteratively reweighted least squares -- a FAST,
-        /// APPROXIMATE alternative to the exact <see cref="LP.lad"/>. Minimizes ‖A x − b‖₁ by repeatedly
-        /// solving the weighted normal equations (AᵀW A) x = AᵀW b with per-row weights
-        /// wᵢ = 1 / max(|rᵢ|, <paramref name="delta"/>), rᵢ = (A x − b)ᵢ. Each step is a Cholesky solve
-        /// on the n×n weighted Gram matrix, so this is cheap (O(m n² + n³/3) per iteration) and typically
-        /// converges in a handful of iterations for a well-conditioned overdetermined design.
+        /// Least absolute deviation (L1 regression) via iteratively reweighted least squares -- a FAST,
+        /// APPROXIMATE alternative to the exact <see cref="LP.lad"/>. Each iteration is a Cholesky solve
+        /// on the n×n weighted Gram matrix (O(m n² + n³/3)). <paramref name="delta"/> is the residual
+        /// floor that keeps a near-zero residual from producing an unbounded weight.
         ///
-        /// <paramref name="delta"/> is the residual floor that keeps a near-zero residual from producing
-        /// an unbounded weight (a Huber-like transition width); too small ⇒ oscillation, too large ⇒ the
-        /// fit drifts toward ordinary least squares. Returns an <see cref="LPInfo"/> whose
-        /// <see cref="LPInfo.objective"/> is the final L1 residual ‖A x − b‖₁ (directly comparable to
-        /// <see cref="LP.lad"/>'s). Status is <see cref="LPStatus.Optimal"/> on convergence within
+        /// Returns an <see cref="LPInfo"/> whose <see cref="LPInfo.objective"/> is the final L1 residual
+        /// ‖A x − b‖₁. Status is <see cref="LPStatus.Optimal"/> on convergence within
         /// <paramref name="xTol"/>, else <see cref="LPStatus.MaxIterations"/>.
         ///
-        /// Caveat: a rank-deficient A makes the weighted normal equations non-positive-definite; the
-        /// Cholesky step then fails and iteration stops early (status MaxIterations). For rank-deficient
-        /// designs use <see cref="LP.lad"/> (exact) or a rank-revealing least-squares solver instead.
+        /// Caveat: a rank-deficient A makes the weighted normal equations non-positive-definite, so the
+        /// Cholesky step fails and iteration stops early (status MaxIterations) -- use
+        /// <see cref="LP.lad"/> (exact) or a rank-revealing least-squares solver instead.
         ///
-        /// Job-safe: allocates its n×n / n scratch from Allocator.Temp and disposes before returning.
-        /// x is BOTH the initial guess (pass a zeroed vector for a from-scratch solve -- the first step
-        /// then reduces to a reweighted ordinary least squares) AND the overwritten output.
+        /// Job-safe (Allocator.Temp scratch, disposed before returning). <paramref name="x"/> is both the
+        /// initial guess (zeroed = from-scratch solve) and the overwritten output.
         /// </summary>
         public static LPInfo ladIRLS(in floatMxN A, in floatN b, ref floatN x,
                                      float delta, float xTol, int maxIter)

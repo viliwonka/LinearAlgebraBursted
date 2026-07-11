@@ -13,40 +13,26 @@ namespace LinearAlgebra
     /// <see cref="IfloatLinearOperator"/> and an optional <see cref="IfloatPreconditioner"/>.
     /// Reuses the dense <see cref="Eigen.symmetric(ref floatMxN, ref floatN, ref floatMxN)"/>
     /// solver for the small (&lt;= 3k) Rayleigh-Ritz sub-problem and
-    /// <see cref="CHO.decomp(in floatMxN, ref floatMxN)"/> for orthogonalization and the
-    /// generalized-to-standard reduction.
+    /// <see cref="CHO.decomp(in floatMxN, ref floatMxN)"/> for orthogonalization.
     ///
-    /// <b>Locking:</b> once a pair's relative residual meets <c>tol</c> it is locked (frozen at its
-    /// converged value, no further matvec/preconditioner/Rayleigh-Ritz) and deflated out of the
-    /// active subspace, so already-found eigenvectors are never re-discovered. Locked pairs stay in
-    /// the output X.
+    /// <b>Locking:</b> once a pair's relative residual meets <c>tol</c> it is locked (frozen, no
+    /// further matvec/preconditioner/Rayleigh-Ritz) and deflated out of the active subspace. Locked
+    /// pairs stay in the output X.
     ///
-    /// <b>Robustness:</b> the active W and P blocks are deflated against the locked+active X and
-    /// Cholesky-QR-orthonormalized before the Rayleigh-Ritz step, keeping its Gram matrix
-    /// well-conditioned. The Gram Cholesky has a Tikhonov-ridge retry; if it still fails the
+    /// <b>Robustness:</b> the Gram Cholesky has a Tikhonov-ridge retry; if it still fails the
     /// iteration drops P and retries with just [X, W], and failing that stalls (X/lambda unchanged)
-    /// rather than producing NaN. Selected Ritz values are sanity-checked against the individual
-    /// basis-row Rayleigh quotients and rejected if implausible. A non-finite residual aborts with
+    /// rather than producing NaN. A non-finite residual aborts with
     /// <see cref="IterativeSolveStatus.Breakdown"/>.
     ///
-    /// <b>Guard vectors:</b> the working block size is taken from the cache (<c>ws.X.M_Rows</c>), not
+    /// <b>Guard vectors:</b> the working block size comes from the cache (<c>ws.X.M_Rows</c>), not
     /// from <c>k</c>. Allocating <c>Arena.floatLOBPCGCache(n, k + guard)</c> and calling with wanted
-    /// count <c>k</c> makes the extra <c>guard</c> rows GUARD ("ghost") vectors: full participants in
-    /// every matvec / orthogonalization / Rayleigh-Ritz step, but only the <c>k</c> smallest pairs gate
-    /// convergence (see the wanted-subset exit) and are returned. Guards give the wanted pairs spectral
-    /// separation room, so a clustered / near-degenerate bottom (e.g. a grid Laplacian, where a square
-    /// grid has exact multiplicities) converges in far fewer iterations -- the standard LOBPCG lever for
-    /// clustered spectra. A cache sized exactly <c>k</c> (<c>guard == 0</c>) has no guard rows and every
-    /// step is bit-identical to the pre-guard implementation. The allocating dense/BSR
-    /// <c>lobpcg(ref arena, A, k, guard, ...)</c> overloads wrap this; the zero-alloc primitive picks it
-    /// up automatically from an oversized cache.
+    /// count <c>k</c> makes the extra <c>guard</c> rows full participants in every step, but only the
+    /// <c>k</c> smallest pairs gate convergence and are returned -- gives the wanted pairs spectral
+    /// separation room for clustered/near-degenerate spectra (e.g. a grid Laplacian's exact
+    /// multiplicities). A cache sized exactly <c>k</c> has no guard rows.
     ///
     /// <b>Zero-alloc scope:</b> all O(n)-scale buffers live in <see cref="floatLOBPCGCache"/>,
-    /// allocated once via <c>Arena.floatLOBPCGCache(n, k)</c> and reused across calls. The
-    /// O(k)-scale Rayleigh-Ritz dense matrices are also cache fields. The only bounded
-    /// <c>Allocator.Temp</c> allocations are inside
-    /// <see cref="Eigen.symmetric(ref floatMxN, ref floatN, ref floatMxN)"/> and the
-    /// triangular-solve helpers.
+    /// allocated once via <c>Arena.floatLOBPCGCache(n, k)</c> and reused across calls.
     ///
     /// <b>Convergence:</b> per-pair 2-norm relative residual ||A x_i - lambda_i B x_i|| /
     /// max(|lambda_i|, 1) &lt;= tol. Returns a <see cref="LOBPCGInfo"/>
@@ -57,29 +43,10 @@ namespace LinearAlgebra
     /// smallest.
     ///
     /// <b>Generalized eigenproblem (A x = lambda B x, B SPD):</b> overloads taking a second operator
-    /// B solve the pencil by replacing Euclidean inner products with B-inner products (Gram = S^T B S)
-    /// and residuals r_i = A x_i - theta_i B x_i; convergence uses the Euclidean 2-norm of that
-    /// residual. Only B must be SPD -- A may be INDEFINITE (the buckling case below) and convergence
-    /// to the algebraically smallest pencil eigenvalues still holds. The standard (single-operator)
-    /// overloads forward into this same core with B = <see cref="floatIdentityOperator"/>, giving a
-    /// bit-identical Euclidean path.
-    ///
-    /// <b>Buckling mapping (K_E phi = -lambda K_G phi convention):</b> the linear-buckling problem
-    /// K_E*phi + lambda*K_G*phi = 0 (K_E SPD elastic stiffness, K_G indefinite geometric stiffness at
-    /// a reference load; lambda the load multiplier -- the Nastran SOL 105 / Abaqus *BUCKLE
-    /// convention) rearranges to the pencil K_G*phi = mu*K_E*phi with mu = -1/lambda_cr, i.e. K_G in
-    /// the A slot and K_E (SPD) in the B slot. The smallest (most negative) mu gives the first
-    /// critical load, exactly what LOBPCG targets:
-    /// <code>
-    ///   // K_E: SPD elastic stiffness. K_G: geometric stiffness at the reference load (indefinite).
-    ///   var mu = Eigen.lobpcg(in K_G, in K_E, ref ws, k, tol, maxIter); // A=K_G, B=K_E
-    ///   // mu is ASCENDING; mu[0] is the most negative (first/critical) mode. A mu[i] &gt;= 0 is not
-    ///   // a buckling mode under this reference load direction -- discard/flag it, do not divide.
-    ///   for (int i = 0; i &lt; k; i++)
-    ///       if (mu[i] &lt; 0) lambdaCritical[i] = -1 / mu[i]; // buckling load multiplier
-    /// </code>
-    /// For the opposite sign convention (K_E*phi = +lambda*K_G*phi) use lambda_cr = +1/mu; the pencil
-    /// construction and smallest-mu targeting are unchanged.
+    /// B solve the pencil via B-inner products. Only B must be SPD -- A may be INDEFINITE (e.g. a
+    /// linear-buckling pencil) and convergence to the algebraically smallest pencil eigenvalues still
+    /// holds. The standard (single-operator) overloads forward into this same core with
+    /// B = <see cref="floatIdentityOperator"/>.
     /// </summary>
     public static partial class Eigen
     {
@@ -137,15 +104,8 @@ namespace LinearAlgebra
                     if (ws.X[i, c] != (float)0) { allZero = false; break; }
 
             // Deterministic pseudo-random fill (fixed seed -- same inputs always produce the same
-            // result), NOT a periodic formula: an earlier version used `(i + c*3 + 1) & 3`, which
-            // repeats with period 4 in BOTH i and c, so the seeded X has AT MOST 4 distinct rows --
-            // EXACTLY rank-deficient for any k > 4. That degeneracy is silently absorbed by
-            // FactorGram's ridge retry (see safeguard 2), so the solver would iterate correctly
-            // within only a 4-dimensional subspace instead of the full R^n, never converging to
-            // eigenpairs 5+ (or converging to duplicates/garbage for them). A fixed-seed
-            // Unity.Mathematics.Random fill (mirrors the same deterministic-seed pattern used by
-            // SVD.LowRank/SVD.Randomized's own `rng.NextFloat() * 2f - 1f` seed vectors) has
-            // effectively zero chance of landing in any low-dimensional subspace for realistic n/k.
+            // result); fixed-seed Random fill avoids periodic degeneracy (mirrors the same
+            // deterministic-seed pattern used by SVD.LowRank/SVD.Randomized's own seed vectors).
             if (allZero)
             {
                 var seedRng = new Unity.Mathematics.Random(0x9E3779B1u);
@@ -154,19 +114,11 @@ namespace LinearAlgebra
                         ws.X[i, c] = (float)(seedRng.NextFloat() * 2f - 1f);
             }
 
-            // ws.AX is not yet meaningful here (freshly recomputed via A.Apply right below) --
-            // passed through purely so the SAME combination applied to X is mirrored onto it too
-            // (harmless busywork on not-yet-meaningful data), letting the initial seed reuse the
-            // exact same helper every OTHER block orthonormalization in this file uses. This
-            // initial orthonormalization is DELIBERATELY EUCLIDEAN ONLY (V^T V, not the
-            // B-inner-product V^T B V): it only needs to leave X non-degenerate/well-conditioned
-            // before the first real Rayleigh-Ritz iteration, which correctly forms and reduces the
-            // ACTUAL Gram = X^T B X of whatever X turns out to be (Cholesky/ridge-retry are already
-            // robust to an arbitrary SPD Gram, not just an identity one). Keeping this call
-            // UNCHANGED (same helper, same arguments) is what makes the standard (B=I) path's
-            // bootstrap bit-identical to the pre-generalization implementation -- see
-            // <see cref="OrthonormalizeBlockB"/> for the B-aware sibling used by W/P below, which
-            // genuinely needs a pre-computed B-image and so cannot reuse this same bootstrap shape.
+            // ws.AX is not yet meaningful here (freshly recomputed via A.Apply right below), so this
+            // orthonormalization is DELIBERATELY EUCLIDEAN ONLY (V^T V, not the B-inner-product
+            // V^T B V): it only needs to leave X non-degenerate before the first real Rayleigh-Ritz
+            // iteration, which correctly forms and reduces the actual Gram = X^T B X regardless.
+            // See <see cref="OrthonormalizeBlockB"/> for the B-aware sibling used by W/P below.
             if (!OrthonormalizeBlock(ref ws.X, ref ws.AX, kWork, n, ref ws.Gram, ref ws.L, ref ws.rowIn, ref ws.rowOut))
                 return new LOBPCGInfo { iterations = 0, converged = 0, maxResidual = double.NaN, status = IterativeSolveStatus.Breakdown };
 
@@ -283,9 +235,9 @@ namespace LinearAlgebra
                 // Deflation of the search directions (W/P below) against ALL X removes locked-row
                 // components from the DIRECTIONS, but the active X rows themselves can retain a fixed
                 // B-component along a just-frozen row that no later direction can then cancel -- a
-                // hard-locking FIXED POINT that freezes the residual at ~|component|*|dLambda|*||B x||
-                // (the buckling smoke test hit exactly this in float). Projecting the active block
-                // B-orthogonal to the locked rows here removes that trapped component; AX/BX ride along
+                // hard-locking FIXED POINT that freezes the residual at ~|component|*|dLambda|*||B x||.
+                // Projecting the active block B-orthogonal to the locked rows here removes that
+                // trapped component; AX/BX ride along
                 // by linearity, and we renormalize in the B-inner-product so the next Rayleigh-Ritz
                 // Gram stays near the identity. No-op until at least one pair has locked (numActive < k).
                 if (numActive < kWork)
@@ -384,12 +336,11 @@ namespace LinearAlgebra
                 // Recompute AX/BX FRESH via a matvec each -- UpdateActiveBlock deliberately does
                 // NOT also mirror-combine AX/BX (see its own doc comment): propagating AX through
                 // many iterations of Cholesky-QR/Rayleigh-Ritz combinations (never re-touching A)
-                // accumulates rounding error that compounds -- exactly the observed failure mode
-                // (residual shrinks nicely for ~15-20 iterations, then stalls and creeps back up
-                // instead of continuing to converge). This is the canonical "R = A X - X diag(theta)"
-                // fresh-residual formulation (generalized: "- B X diag(theta)"); the extra
-                // matvecs/iteration (over numActive rows only) are a small, worthwhile price for a
-                // residual that stays exact to working precision indefinitely.
+                // accumulates rounding error that compounds. This is the canonical
+                // "R = A X - X diag(theta)" fresh-residual formulation (generalized:
+                // "- B X diag(theta)"); the extra matvecs/iteration (over numActive rows only) are a
+                // small, worthwhile price for a residual that stays exact to working precision
+                // indefinitely.
                 A.ApplyBlock(in ws.X, ref ws.AX, numActive);
                 B.ApplyBlock(in ws.X, ref ws.BX, numActive);
 
@@ -397,12 +348,8 @@ namespace LinearAlgebra
                 // CURRENT W and the OLD P (chained iteration to iteration, just like AX used to
                 // be), and -- unlike AX, which only feeds the residual/convergence check -- an
                 // inaccurate AP corrupts next iteration's [X,W,P] Gram/H directly (H's P-columns
-                // are dot(*, AP)), which is a much more direct route to visibly wrong Ritz values
-                // (this is what actually produced Ritz values below lambda_min, even wildly
-                // negative, as soon as P entered the mix -- not merely a conditioning threshold
-                // issue, since the SAME marginal conditioning is completely harmless in the
-                // P-less 2-block path above). BP is refreshed for the SAME reason -- it feeds the
-                // next iteration's B-Gram directly.
+                // are dot(*, AP)), a much more direct route to visibly wrong Ritz values. BP is
+                // refreshed for the SAME reason -- it feeds the next iteration's B-Gram directly.
                 A.ApplyBlock(in ws.P, ref ws.AP, numActive);
                 B.ApplyBlock(in ws.P, ref ws.BP, numActive);
 
@@ -475,20 +422,12 @@ namespace LinearAlgebra
             => lobpcg(in A, ref ws, k, Consts.floatSqrtEps, 1000);
 
         // NOTE: there is deliberately NO standalone `lobpcg<TOp,TBOp>(in TOp A, in TBOp B, ref ws,
-        // int k, float tol, int maxIter)` unpreconditioned-generic-generalized convenience overload
-        // mirroring `lobpcg<TOp>` above: with 2 open type parameters and the same positional value-
-        // argument shape (T, T, ref cache, int, float, int), it would be IDENTICAL, at the C#
-        // signature level, to the existing `lobpcg<TOp,TPre>(in TOp A, in TPre M, ref ws, int k,
-        // float tol, int maxIter)` above -- generic constraints (IfloatLinearOperator vs
-        // IfloatPreconditioner) do NOT participate in overload/signature matching, so declaring
-        // both would be a compile error (CS0111, "already defines a member with the same parameter
-        // types"), not merely an ambiguous call. Callers who have their own custom TOp/TBOp operator
-        // structs and want an unpreconditioned generalized solve call the 3-type-param core directly
-        // with an explicit identity preconditioner: <c>lobpcg(in A, in B, new
-        // floatIdentityPreconditioner(), ref ws, k, tol, maxIter)</c>. The CONCRETE (dense/BSR)
-        // unpreconditioned-generalized overloads below are unaffected (they forward straight into
-        // the 3-type-param core with an inline identity preconditioner) since concrete parameter
-        // types never collide the way two same-shaped open generic signatures do.
+        // int k, float tol, int maxIter)` unpreconditioned-generic-generalized convenience overload:
+        // it would collide (CS0111) with `lobpcg<TOp,TPre>` above, since generic constraints don't
+        // participate in overload matching. Callers with custom TOp/TBOp structs call the
+        // 3-type-param core directly with an explicit identity preconditioner:
+        // <c>lobpcg(in A, in B, new floatIdentityPreconditioner(), ref ws, k, tol, maxIter)</c>.
+        // The CONCRETE (dense/BSR) unpreconditioned-generalized overloads below are unaffected.
 
         /// <summary>
         /// LOBPCG over a dense <see cref="floatMxN"/> -- zero-alloc primitive, unpreconditioned.
@@ -876,19 +815,11 @@ namespace LinearAlgebra
         }
 
         // GENERALIZED (B-inner-product) sibling of OrthonormalizeBlock: Cholesky-QR-orthonormalizes
-        // the first `rows` rows of V IN PLACE w.r.t. the B-inner-product (Gram = V^T B V instead of
-        // V^T V), carrying AV *and* BV along via the SAME combination (linearity applies to BOTH A
-        // and B: A(sum c_r v_r) = sum c_r (A v_r), likewise for B). Requires BV to already hold a
-        // VALID B-image of V on entry (this routine only ever WRITES BV via the same row-combination
-        // used for V/AV, it never independently recomputes it -- see the class doc's "fresh-matvec
-        // principle extends to B": the caller is responsible for BV's freshness, this helper just
-        // mirrors whatever transform it applies to V onto BV too). Used for the per-iteration W/P
-        // blocks (never for the initial X seed, which stays Euclidean-only -- see
-        // <see cref="OrthonormalizeBlock"/>'s own call site comment for why). `rowTmp`/`rowTmp2`/
-        // `rowTmp3` (length n each) are caller-provided scratch for V/AV/BV respectively. Returns
-        // false if V's rows cannot be B-orthonormalized at all (rank-deficient even after
-        // FactorGram's ridge retry); callers stall or drop P accordingly, exactly like
-        // OrthonormalizeBlock's own failure contract.
+        // V in place w.r.t. Gram = V^T B V, carrying AV and BV along via the same row combination.
+        // Requires BV to already hold a valid B-image of V on entry. Used for the per-iteration W/P
+        // blocks (never the initial X seed, which stays Euclidean-only). Returns false if V's rows
+        // cannot be B-orthonormalized (rank-deficient even after FactorGram's ridge retry); callers
+        // stall or drop P accordingly.
         static bool OrthonormalizeBlockB(ref floatMxN V, ref floatMxN AV, ref floatMxN BV, int rows, int n,
                                           ref floatMxN Gram, ref floatMxN L, ref floatN rowTmp, ref floatN rowTmp2, ref floatN rowTmp3)
         {
@@ -1039,7 +970,7 @@ namespace LinearAlgebra
         {
             // Relative-pivot tolerance for the "tiny diagonal" rank-deficiency check. A method-
             // local value (not a class-level const): Cholesky/QR/etc. in this codebase already
-            // hoist their tuning constants into method scope for the same reason -- a class-level
+            // declare their tuning constants in method scope for the same reason -- a class-level
             // const of the same name would collide across the float/double generated partials
             // (CS0102; see CHO.float.cs's CHOL_BLOCK comment).
             float pivotRelTol = Consts.floatSqrtEps;
@@ -1099,11 +1030,11 @@ namespace LinearAlgebra
             // the pencil (A, B) -- the SAME immunity argument as the standard (B=I) case, which is
             // just this formula's Gram[i,i]==1 special case. If the Ritz values symmetric
             // returns fall wildly outside the range spanned by these trustworthy individual
-            // quotients, that is conclusive evidence the transform corrupted the problem -- observed: Ritz values far below
-            // lambda_min, even wildly negative (down to -1E13 and beyond), while the Cholesky
-            // diag-ratio check (FactorGram's pivotRelTol) reported a perfectly comfortable pivot;
-            // diagRatio alone is a poor proxy for THIS failure mode. Reject the whole attempt (so
-            // the caller falls back to dropping P, or stalls) instead of locking in garbage.
+            // quotients, that is conclusive evidence the transform corrupted the problem, even when
+            // the Cholesky diag-ratio check (FactorGram's pivotRelTol) reported a perfectly
+            // comfortable pivot; diagRatio alone is a poor proxy for THIS failure mode. Reject the
+            // whole attempt (so the caller falls back to dropping P, or stalls) instead of locking
+            // in garbage.
             float qMin = float.MaxValue, qMax = -float.MaxValue;
             for (int i = 0; i < m; i++)
             {
@@ -1116,8 +1047,7 @@ namespace LinearAlgebra
             // Generous margin: a genuine Ritz value from superposing these rows can exceed their
             // individual quotient range somewhat, but never by orders of magnitude -- 1000x the
             // observed span (plus a small additive floor for the degenerate span==0 case)
-            // comfortably separates that from actual numerical garbage (observed magnitudes
-            // exceeded this envelope by 1E5-1E30x).
+            // comfortably separates that from actual numerical garbage.
             float margin = (float)1000 * (qMax - qMin + (float)1);
             float envMin = qMin - margin;
             float envMax = qMax + margin;
@@ -1230,13 +1160,9 @@ namespace LinearAlgebra
         // then swapped in; the frozen locked rows [numActive, k) are carried forward first since
         // Xnext is about to become the new X wholesale.
         //
-        // Deliberately does NOT also mirror-combine AX/AP (or BX/BP) the same way (an earlier
-        // version did, for AX/AP): the caller ALWAYS immediately recomputes AX/BX/AP/BP via a fresh
-        // A.Apply/B.Apply right after this call returns (see the "AX/AP freshness" / "fresh-matvec
-        // principle extends to B" class doc notes), which unconditionally overwrites whatever this
-        // method would have written -- so computing axv/bxv/apv/bpv here was pure wasted work (an
-        // extra O(3k) multiply-adds per element, i.e. O(3k^2 n) per iteration, doubled again for the
-        // B-images) with the result immediately discarded.
+        // Deliberately does NOT also mirror-combine AX/AP (or BX/BP) the same way: the caller ALWAYS
+        // immediately recomputes AX/BX/AP/BP via a fresh A.Apply/B.Apply right after this call
+        // returns, which unconditionally overwrites whatever this method would have written.
         static void UpdateActiveBlock(ref floatLOBPCGCache ws, int numActive, bool useP, int n, int k)
         {
             int m = useP ? 3 * numActive : 2 * numActive;

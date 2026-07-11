@@ -349,6 +349,6 @@ genuinely new numeric code is in rounds 2–3.
    weight structs; `LAD.fitIRLS` becomes the forwarder; Huber/Tukey surfaces decided then.
    Likewise the small-dim orthogonal-fit helpers (plane/axis) consume `LS.tls`/PCA later.
 
-Definition of done per `docs/spec-shipped-feature.md` (naming approval = this spec's open
+Definition of done per `docs/dev/spec-shipped-feature.md` (naming approval = this spec's open
 questions; literature vectors cited; Burst-executed tests both dtypes; benchmark budget stated;
 no managed allocations).

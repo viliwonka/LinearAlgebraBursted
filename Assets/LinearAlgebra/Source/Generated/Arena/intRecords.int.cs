@@ -5,13 +5,13 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace LinearAlgebra
 {
     /// <summary>
-    /// Arena-owned, pointer-stable allocation record backing an intN (docs/dev/rfc-memory-model.md
-    /// §4 Option A, §7 step 4 -- mirrors fProxyVecRecord, see fProxyRecords.fProxy.cs for the full
-    /// rationale). Lives inside one of ArenaCore's <see cref="ChunkedRecordTable{TRecord}"/> tables
-    /// (persistent or temp pool -- see <see cref="Table"/>, declared on Arena.int.cs's ArenaCore
-    /// partial) and is addressed by intN's private <c>intVecRecord*</c> field. Never copied by
-    /// user code: a struct copy of intN just copies the pointer to this SAME record, so every
-    /// copy resolves to the one authoritative <see cref="Data"/>.
+    /// Arena-owned, pointer-stable allocation record backing an intN (mirrors fProxyVecRecord,
+    /// see fProxyRecords.fProxy.cs). Lives inside one of ArenaCore's
+    /// <see cref="ChunkedRecordTable{TRecord}"/> tables (persistent or temp pool -- see
+    /// <see cref="Table"/>, declared on Arena.int.cs's ArenaCore partial) and is addressed by
+    /// intN's private <c>intVecRecord*</c> field. Never copied by user code: a struct copy
+    /// of intN just copies the pointer to this SAME record, so every copy resolves to the one
+    /// authoritative <see cref="Data"/>.
     /// </summary>
     internal unsafe struct intVecRecord
     {

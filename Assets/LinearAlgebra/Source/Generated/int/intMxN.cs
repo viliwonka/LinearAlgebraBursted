@@ -11,21 +11,16 @@ namespace LinearAlgebra
     // m = rows
     // n = cols
     //
-    // [StructLayout(Sequential)]: pins field order/packing explicitly (matches intN's existing
-    // attribute) instead of leaving it to the compiler's default Auto layout. This is what makes
-    // the trailing padding hole below -- and therefore _gen's placement in it -- a guarantee rather
-    // than an implementation detail: Auto layout is free to reorder/repack fields, so relying on
-    // "the compiler currently happens to leave 4 bytes at the end" without Sequential would be
-    // fragile. See _gen's own doc comment for the padding-hole analysis.
+    // Sequential layout pins the trailing padding hole `_gen` (below) relies on.
     [StructLayout(LayoutKind.Sequential)]
     public partial struct intMxN : IDisposable, IUnsafeintArray {
 
         public int M_Rows;
         public int N_Cols;
 
-        // Arena-tracked path -- see intN.cs's `_rec` doc comment for the full rationale (same
-        // Option A record-pointer design, mirrored here for the matrix family). null for a
-        // standalone (non-arena) matrix, in which case Data resolves to _inlineData instead.
+        // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<intMatRecord>.
+        // null for a standalone (non-arena) matrix, in which case Data resolves to _inlineData
+        // instead -- see the Data property.
         [NativeDisableUnsafePtrRestriction] private unsafe intMatRecord* _rec;
 
         // Standalone-path backing store. Stays default(UnsafeList<int>) whenever _rec != null.
@@ -43,24 +38,17 @@ namespace LinearAlgebra
             private set { if (_rec != null) _rec->Data = value; else _inlineData = value; }
         }
 
-        // Reconstructs a live Arena handle from this record's owner core -- used by Copy()/
-        // TempCopy() and the cross-type allocation shortcuts (intMxN.Shortcuts.cs) that used to
-        // read a private `_arena` field directly. Only meaningful when _rec != null.
+        // Reconstructs a live Arena handle from this record's owner core; used by Copy()/
+        // TempCopy() and the cross-type allocation shortcuts. Only meaningful when _rec != null --
+        // callers must only call this on an arena-backed instance.
         private unsafe Arena OwnerArena => new Arena(_rec->Owner);
 
         public readonly int Length;
 
-        // Generation stamp captured from the record's slot at construction time (0/unused on the
-        // standalone path). Free-riding on real spare bytes, not a size-growing addition: with
-        // [StructLayout(Sequential)] and natural alignment, M_Rows(4)+N_Cols(4)+_rec(8)+
-        // _inlineData(24)+Length(4) = 44 bytes, and this struct's 8-byte alignment (forced by the
-        // pointer/UnsafeList fields) rounds that up to 48 regardless -- there were already 4 unused
-        // trailing bytes here (docs/dev/rfc-memory-model.md §6.2's "padding analysis", confirmed by
-        // ArenaLayoutTests.MatrixStructsAreExpectedSize staying at 48 with this field present). Only
-        // meaningful when _rec != null: AssertRecordValid() compares it against the table's CURRENT
-        // GetGeneration(SelfIndex) to detect a stale handle into a since-recycled slot (Alive alone,
-        // intN's option, cannot tell "still the same allocation" from "a new one that reused this
-        // slot number").
+        // Generation stamp (packed into existing struct padding) for detecting a stale handle into
+        // a since-recycled slot; 0/unused on the standalone path. AssertRecordValid() compares it
+        // against the table's current GetGeneration(SelfIndex) -- Alive alone cannot tell "still
+        // the same allocation" from "a new one that reused this slot number".
         private readonly int _gen;
 
         public bool IsSquare => M_Rows == N_Cols;
@@ -106,7 +94,7 @@ namespace LinearAlgebra
             _inlineData = default;
             _gen = 0; // standalone (non-arena): never read (AssertRecordValid short-circuits on _rec == null)
 
-            // guard a standalone (null-record) source — was dereferencing null for the default allocator
+            // guard a standalone (null-record) source: fall back to Temp if no allocator is given
             if (allocator == Allocator.Invalid)
                 allocator = orig._rec != null ? orig._rec->Owner->Allocator : Allocator.Temp;
 
@@ -136,22 +124,12 @@ namespace LinearAlgebra
         }
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-        // Editor/test-only guard (ENABLE_UNITY_COLLECTIONS_CHECKS is defined automatically by the
-        // Unity Editor, including every test run, and compiles out of player builds entirely --
-        // struct size is identical in both configs either way, since _gen occupies a byte range
-        // that was already-wasted alignment padding, not a size-growing addition -- see _gen's own
-        // doc comment). Unlike intN (Alive-only), intMxN also has
-        // a free generation stamp (_gen, see its doc comment) to check, so this catches BOTH bug
-        // classes: a read after Dispose()/Clear()/ClearTemp() on THIS record (Alive fails), and a
-        // stale handle into a slot that was freed and later recycled by a fresh Allocate() for a
-        // DIFFERENT allocation (Alive is true again, but the generation moved on).
-        //
-        // Uses ChunkedRecordTable's IsAliveFast/GenerationFast(TRecord*) -- direct pointer casts,
-        // no index, no chunk-scan lookup -- rather than the index-based IsAlive(int)/
-        // GetGeneration(int) (i.e. NOT _rec->Table->IsAlive(_rec->SelfIndex) etc.): this getter
-        // runs on EVERY read (i.e. per element, since an indexer routes through Data), so the
-        // index-based path's chunk scan would be a real per-element cost. See IsAliveFast's own
-        // doc comment (ChunkedRecordTable.cs) for the container-of rationale.
+        // Debug-only liveness+generation check (compiles out of player builds). Throws on a read
+        // after Dispose()/Clear()/ClearTemp() on this record, and also on a stale handle into a
+        // slot that was freed and later recycled by a fresh Allocate() for a different allocation
+        // (Alive is true again, but the generation moved on). Uses the direct pointer-cast
+        // IsAliveFast/GenerationFast to avoid a per-element chunk-scan cost, since this getter runs
+        // on every read.
         private unsafe void AssertRecordValid()
         {
             if (_rec != null && (!ChunkedRecordTable<intMatRecord>.IsAliveFast(_rec) || ChunkedRecordTable<intMatRecord>.GenerationFast(_rec) != _gen))
@@ -179,18 +157,12 @@ namespace LinearAlgebra
 
             if (_rec != null)
             {
-                // Cache Data BEFORE Free(): Free() marks the slot dead and (per
-                // ChunkedRecordTable's own documented contract) does NOT poison/clear the record's
-                // payload today -- but Dispose() must not rely on that as an implicit invariant, so
-                // read Data into a local first rather than reading _rec->Data again after the slot
-                // is already dead. Free() still runs BEFORE the native Dispose() call: an ALIASED
-                // double-dispose (a different struct copy sharing this SAME record) throws HERE,
-                // from the table's own double-Free guard, before any native memory would be touched
-                // a second time. (Disposing the SAME variable twice is a separate, safe no-op: this
-                // call nulls _rec below, so a second call on that variable takes the standalone
-                // branch instead of reaching here at all.) See also Arena.cs's Clear()/ClearTemp(),
-                // which use the opposite order (dispose-then-Free) safely for a different reason --
-                // see the comment there.
+                // Cache Data before Free(): Free() marks the slot dead without clearing the
+                // payload. Free() runs before the native Dispose() call, so an aliased
+                // double-dispose (a different struct copy sharing this record) throws here, via
+                // the table's double-Free guard, before any native memory is touched a second
+                // time. Disposing the SAME variable twice is a safe no-op: this call nulls _rec,
+                // so a second call takes the standalone branch instead.
                 var data = _rec->Data;
                 _rec->Table->Free(_rec->SelfIndex);
                 data.Dispose();

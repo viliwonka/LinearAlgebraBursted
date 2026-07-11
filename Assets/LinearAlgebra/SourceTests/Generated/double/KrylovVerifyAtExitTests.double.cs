@@ -5,7 +5,7 @@ using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 
-// Krylov R6a verify-at-exit (docs/draft-spec-krylov-optimization.md): cg/pcg/cgls/cgne recursively
+// Krylov verify-at-exit: cg/pcg/cgls/cgne recursively
 // track their residual; in float that tracked value can drift from the true b-Ax and claim
 // convergence early. When the tracked residual FIRST claims convergence, the guarded solver now
 // recomputes the true residual fresh (+1 Apply, +1 ApplyT for cgls) and retests, continuing if it

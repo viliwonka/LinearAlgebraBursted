@@ -15,7 +15,7 @@ using Unity.Mathematics;
 // enum, a Fail NativeArray diagnostic channel, and a [TestCaseSource] driver; the managed-throw
 // guard paths run as plain [Test]s on the main thread (throws need no Burst context).
 //
-// Acceptance-criterion coverage (spec docs/dev/spec-pca.md "Tests" + task extras):
+// Acceptance-criterion coverage:
 //   CrossRouteCovariance / CrossRouteCorrelation  — #1 the cross-route oracle: pcaCovariance ==
 //        pcaSVD on explainedVariance (tight) + components (up to sign) for BOTH scalings. Proves the
 //        (n-1) denominator convention and the inline correlation handling.

@@ -6,7 +6,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-// Krylov R5 (docs/draft-spec-krylov-optimization.md): BSR SpMM -- BSR.spMM / floatBSROperator.
+// BSR SpMM -- BSR.spMM / floatBSROperator.
 // ApplyBlock now streams the matrix once and applies to k row-vectors together instead of looping
 // k scalar BSR.spMV calls through two Allocator.Temp vectors.
 //
@@ -190,9 +190,9 @@ public class floatSparseSpMMTests
     // (b) LOBPCG results unchanged by the SpMM kernel swap.
     // ==============================================================================
 
-    // Krylov R5's "before" oracle: the exact scalar per-row loop floatBSROperator.ApplyBlock used
-    // before BSR.spMM replaced it (docs/draft-spec-krylov-optimization.md) -- kept ONLY as an
-    // independent "pre-change" reference for the A/B test below, not for production use.
+    // The "before" oracle: the exact scalar per-row loop floatBSROperator.ApplyBlock used before
+    // BSR.spMM replaced it -- kept ONLY as an independent "pre-change" reference for the A/B test
+    // below, not for production use.
     readonly struct OldStyleBSROperatorFloat : IfloatLinearOperator
     {
         public readonly floatBSR A;

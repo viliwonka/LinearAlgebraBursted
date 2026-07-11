@@ -4,9 +4,9 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace LinearAlgebra.Sparse
 {
     /// <summary>
-    /// Arena-owned, pointer-stable allocation record backing a floatBSR (docs/dev/rfc-memory-model.md
-    /// §4 Option A, §7 step 4 -- mirrors floatVecRecord/floatMatRecord, see
-    /// Arena/floatRecords.float.cs). Lives inside ArenaCore's <see cref="ChunkedRecordTable{TRecord}"/>
+    /// Arena-owned, pointer-stable allocation record backing a floatBSR (mirrors
+    /// floatVecRecord/floatMatRecord, see Arena/floatRecords.float.cs). Lives inside
+    /// ArenaCore's <see cref="ChunkedRecordTable{TRecord}"/>
     /// (ArenaCore.floatBSRRecords, see Arena.Sparse.float.cs) and is addressed by floatBSR's
     /// private <c>floatBSRRecord*</c> field. Unlike floatVecRecord/floatMatRecord (a single
     /// UnsafeList payload), this carries the whole CSR-of-blocks triple (RowPtr/ColInd/Values) --

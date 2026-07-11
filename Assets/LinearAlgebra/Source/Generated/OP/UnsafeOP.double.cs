@@ -12,15 +12,14 @@ namespace LinearAlgebra.Internal
     public static unsafe partial class UnsafeOP {
 
         // These Level-1 reductions use TWO width-4 SIMD accumulators (double4 -> float4/double4):
-        // 2x4 = 8 fixed per-lane add-chains -- enough independent chains to keep the FP add ports busy
-        // (one 4-lane accumulator left them ~half idle in-cache; the 2nd accumulator measured ~2x). SIMD
-        // packing is not reassociation, so this is Strict-safe and bit-identical on SSE/AVX/NEON; the
-        // summation TREE (which accumulator/lane sums which elements, then acc0+acc1, then the balanced
-        // (x+y)+(z+w) fold) is fixed by the source == the FROZEN numeric contract -- do not reshuffle it.
-        // See matVecDot for why Burst can't do this itself under FloatMode.Default (reduction
-        // vectorization needs reassociation, which Strict forbids). Reinterpret loads are unaligned
-        // (rows/vectors are element-aligned only) -- Burst emits unaligned loads; an intrinsic rewrite
-        // must too. No FMA under Strict by design.
+        // 2x4 = 8 fixed per-lane add-chains, independent of each other so the FP add ports stay busy.
+        // SIMD packing does not reorder the summation, so this is Strict-safe and bit-identical on
+        // SSE/AVX/NEON; the summation TREE (which accumulator/lane sums which elements, then
+        // acc0+acc1, then the balanced (x+y)+(z+w) fold) is fixed by the source == the FROZEN numeric
+        // contract -- do not reshuffle it. See matVecDot for why Burst can't do this itself under
+        // FloatMode.Default (reduction vectorization needs to reorder floating-point operations, which
+        // Strict forbids). Reinterpret loads are unaligned (rows/vectors are element-aligned only) --
+        // Burst emits unaligned loads; an intrinsic rewrite must too. No FMA under Strict by design.
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double sumAbs([NoAlias] double* a, int n)
@@ -150,17 +149,14 @@ namespace LinearAlgebra.Internal
             // y += mat * x
             //
             // Each row is a dot product (reduction). A single running accumulator is a serial FP-add
-            // dependency chain that strict-FloatMode Burst cannot split into SIMD lanes (that would be
-            // reassociation). We give it an EXPLICIT width-4 SIMD accumulator (double4 -> float4/double4):
-            // four independent lane-chains packed into one register, advancing in parallel WITHOUT asking
-            // the compiler to reassociate -- the per-lane summation order is fixed by the source and stays
-            // deterministic. The balanced (x+y)+(z+w) fold matches the old scalar (s0+s1)+(s2+s3) exactly
-            // (same lanes, same order) -> bit-identical result. Scalar multi-accumulator source
-            // (s0..s3) does NOT get Burst to emit this; the vector type + reinterpret load does. (n%4 tail
-            // handled scalar.)
-            // TWO double4 accumulators (8 lane-chains): ~2x over a single 4-lane accumulator in-cache
-            // (4 chains left the FP add ports half idle). 4 accumulators measured NO further gain
-            // (memory/port-bound). Frozen fold: acc0+acc1 then (x+y)+(z+w).
+            // dependency chain that strict-FloatMode Burst cannot split into SIMD lanes on its own, so
+            // this kernel uses two explicit, independent width-4 SIMD accumulators (double4 ->
+            // float4/double4: eight lane-chains advancing in parallel). The per-lane summation order
+            // is fixed by the source, so results stay deterministic: the balanced (x+y)+(z+w) fold
+            // matches the old scalar (s0+s1)+(s2+s3) exactly (same lanes, same order) -> bit-identical
+            // result. Scalar multi-accumulator source (s0..s3) does NOT get Burst to emit this; the
+            // vector type + reinterpret load does. (n%4 tail handled scalar.) Frozen fold: acc0+acc1
+            // then (x+y)+(z+w).
             var xp = (double4*)x;
             int nQ = n >> 2;      // number of full width-4 blocks
             int tail = nQ << 2;   // first index of the scalar n%4 tail
@@ -225,14 +221,13 @@ namespace LinearAlgebra.Internal
         //
         // Determinism: every C[i,j] is still one running accumulator summing p ascending 0..n-1 with
         // the same `c += a*b` expression as the fallback. Tiling only interleaves independent
-        // accumulators (ILP across the MR*NR chains) — it never splits an individual element's
+        // accumulator chains across the MR*NR block — it never splits an individual element's
         // k-reduction — so results are bit-identical to the fallback at every tile size and SIMD width.
         // (This determinism rule is also why there is no cache-level k-panel blocking.)
         //
         // Tile constants are method-local: a class-level const would collide across the generated
         // float/double partial-class files (CS0102). MR=8, NR=16 (16 AVX2 accumulator vectors, the
-        // edge before register spilling) is used for both types and every size, no size gate. See
-        // docs/dev/level3-blocking-guide.md for the blocking background and GemmBenchmark for the sweep.
+        // edge before register spilling) is used for both types and every size, no size gate.
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void matMatDot([NoAlias] double* matA, [NoAlias] double* matB, [NoAlias] double* matC, int m, int n, int k)
         {
@@ -789,7 +784,7 @@ namespace LinearAlgebra.Internal
                 y[i] = a * y[i] + x[i];
         }
 
-        // ---- Krylov R1 fused kernels: axpy/aypx/dual-axpy folded with their trailing reduction or
+        // ---- Fused Krylov kernels: axpy/aypx/dual-axpy folded with their trailing reduction or
         // paired with a sibling update, one pass instead of two-plus. The reduction half uses the
         // exact 2x double4 accumulator + fold pattern vecDot uses (same q/q+1 block order, same
         // acc0+acc1 then (x+y)+(z+w) fold), so the returned norm is bit-identical to calling the
@@ -1214,22 +1209,16 @@ namespace LinearAlgebra.Internal
         }
 
         // In-place ASCENDING heapsort of `val[]`, keyed by `key[]` (parallel arrays -- the same
-        // permutation is applied to both). O(n log n) WORST CASE, unlike a quicksort's O(n^2) worst
-        // case, which matters here because this exists specifically to replace an O(n^2) pattern (see
-        // caller). Used by LP.ladBR's weighted-median ratio-test scan
-        // (LP.BarrodaleRoberts.double.cs): that scan used to repeatedly linear-scan the REMAINING
-        // candidates for the current minimum ratio, removing the winner by swap-with-last each round --
-        // an O(k) scan repeated up to k times is O(k^2), and at large m the candidate count k (bounded
-        // by m) made this the dominant cost of the whole solve even though the reported pivot count
-        // stayed small (each round can "fold" a candidate without registering as a pivot). Sorting once
-        // up front costs O(k log k) and the caller then walks the result in a single linear pass.
+        // permutation is applied to both). O(n log n) worst case. Used by LP.ladBR's weighted-median
+        // ratio-test scan (LP.BarrodaleRoberts.double.cs), which sorts once up front (O(k log k)) and
+        // then walks the result in a single linear pass.
         //
         // NOT a stable sort (heapsort never is): candidates with EXACTLY EQUAL keys may end up in a
-        // different relative order than the linear-scan-with-swap-removal approach it replaces would
-        // have produced. Callers that need the same tie-break behavior in the presence of exact key
-        // ties (e.g. to stay bit-identical to existing test coverage) should gate this kernel out below
-        // whatever size makes exact ties negligible for their data, and keep the tie-break-preserving
-        // path for everything else -- see LP.BarrodaleRoberts.double.cs's own gate for the rationale.
+        // different relative order than a stable sort would produce. Callers that need the same
+        // tie-break behavior in the presence of exact key ties (e.g. to stay bit-identical to
+        // existing test coverage) should gate this kernel out below whatever size makes exact ties
+        // negligible for their data, and keep a tie-break-preserving path for everything else -- see
+        // LP.BarrodaleRoberts.double.cs's own gate for the rationale.
         //
         // [NoAlias]: key and val are genuinely distinct arrays (the caller's parallel ratio/row-index
         // buffers) -- both are permuted in lockstep by every swap below.

@@ -6,10 +6,9 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        // Pointer-stable allocation-record tables (docs/dev/rfc-memory-model.md §4 Option A) -- replace
-        // the old value-copy-tracking UnsafeList<longN>/UnsafeList<longMxN> lists. longN/
-        // longMxN now hold a stable longVecRecord*/longMatRecord* pointing INTO one of these
-        // tables instead of storing their Data inline + being tracked by a separate value copy.
+        // Pointer-stable allocation-record tables: longN/longMxN hold a stable
+        // longVecRecord*/longMatRecord* pointing INTO one of these tables (records never move
+        // when a table grows), rather than storing their Data inline.
         internal ChunkedRecordTable<longVecRecord> longVecRecords;
         internal ChunkedRecordTable<longMatRecord> longMatRecords;
         internal ChunkedRecordTable<longVecRecord> longTempVecRecords;
@@ -20,13 +19,9 @@ namespace LinearAlgebra
 
         #region VECTOR
 
-        // Guarded (docs/features/dense-types.md's threading contract): _core->EnterMutation()/
-        // ExitMutation() bracket every TERMINAL factory body below (the ones that actually touch
-        // a record table's Allocate) under ENABLE_UNITY_COLLECTIONS_CHECKS -- see ArenaCore's
-        // _busy field doc (Arena.cs) for why this is safe against reentrancy without a counter.
-        // Each also starts with an UNCONDITIONAL `_core == null` guard (matching Pivot/Indices
-        // above) -- without it, calling a factory on a disposed/default handle dereferences a null
-        // _core before EnterMutation() (or the Allocate call, without checks) ever runs.
+        // Guarded under ENABLE_UNITY_COLLECTIONS_CHECKS (_core->EnterMutation()/ExitMutation()
+        // bracket every terminal factory body below that touches a record table's Allocate);
+        // throws on a default/disposed arena.
         public longN longVec(int N, bool uninit = false) {
             if (_core == null)
                 throw new System.InvalidOperationException("Arena.longVec/longMat: arena is not initialized (default or disposed).");
@@ -83,7 +78,7 @@ namespace LinearAlgebra
                 rec->Owner = _core;
                 rec->Table = &_core->longVecRecords;
                 rec->SelfIndex = slot;
-                return new longN(in orig, rec, Allocator);   // persistent (backs Copy()); was wrongly the temp list
+                return new longN(in orig, rec, Allocator);   // persistent (backs Copy())
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             }
             finally { _core->ExitMutation(); }

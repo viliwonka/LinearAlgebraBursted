@@ -8,12 +8,9 @@ namespace LinearAlgebra
     [StructLayout(LayoutKind.Sequential)]
     public partial struct floatN : IDisposable, IUnsafefloatArray {
 
-        // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<floatVecRecord>
-        // (docs/dev/rfc-memory-model.md §4 Option A). null for a standalone (non-arena) vector, in which
-        // case Data resolves to the inline _inlineData field below instead -- see the Data property.
-        // Replaces the old `Arena _arena` handle field: retiring it keeps this struct's size
-        // unchanged (both are a single pointer-width field), and the record's own `Owner`
-        // back-pointer is what Copy()/TempCopy()/the cross-type shortcuts resolve through instead.
+        // Arena-tracked path: a stable pointer into the arena's ChunkedRecordTable<floatVecRecord>.
+        // null for a standalone (non-arena) vector, in which case Data resolves to the inline
+        // _inlineData field below instead -- see the Data property.
         [NativeDisableUnsafePtrRestriction] private unsafe floatVecRecord* _rec;
 
         // Standalone-path backing store -- the ONLY thing that changes for a non-arena vector.
@@ -35,22 +32,11 @@ namespace LinearAlgebra
         }
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-        // Editor/test-only guard (ENABLE_UNITY_COLLECTIONS_CHECKS is defined automatically by the
-        // Unity Editor, including every test run, and compiles out of player builds entirely --
-        // struct size is identical in both configs either way, since this adds no field). floatN
-        // has no spare bits to pack a generation
-        // stamp into (32B = 8 _rec + 24 UnsafeList<float>, exactly -- see docs/dev/rfc-memory-model.md
-        // §6.2 and ArenaLayoutTests.VectorStructsAreExpectedSize), so this only checks Alive: it
-        // catches a read after Dispose()/Clear()/ClearTemp() on THIS record, but not a stale handle
-        // into a slot that has since been recycled by a fresh Allocate() (that needs a generation
-        // stamp, which floatMxN/floatBSR carry in their own padding hole -- see those types).
-        //
-        // Uses ChunkedRecordTable's IsAliveFast(TRecord*) -- a direct pointer cast, no index, no
-        // chunk-scan lookup -- rather than the index-based IsAlive(int) (i.e. NOT _rec->Table->
-        // IsAlive(_rec->SelfIndex)): this getter runs on EVERY read (i.e. per element, since an
-        // indexer routes through Data), so the index-based path's chunk scan would be a real
-        // per-element cost. See IsAliveFast's own doc comment (ChunkedRecordTable.cs) for the
-        // container-of rationale.
+        // Debug-only liveness check (compiles out of player builds). Throws on a read after
+        // Dispose()/Clear()/ClearTemp() on this record. Does not catch a stale handle into a
+        // since-recycled slot -- this struct has no generation stamp to check that (see the MxN
+        // family's AssertRecordValid, which does). Uses the direct pointer-cast IsAliveFast to
+        // avoid a per-element chunk-scan cost, since this getter runs on every read.
         private unsafe void AssertRecordAlive()
         {
             if (_rec != null && !ChunkedRecordTable<floatVecRecord>.IsAliveFast(_rec))
@@ -58,11 +44,9 @@ namespace LinearAlgebra
         }
 #endif
 
-        // Reconstructs a live Arena handle from this record's owner core -- used by Copy()/
-        // TempCopy() and the cross-type allocation shortcuts (floatN.Shortcuts.cs) that used to
-        // read a private `_arena` field directly. Only meaningful when _rec != null; callers guard
-        // (Copy()/TempCopy()) or otherwise only call this on an arena-backed instance, exactly as
-        // the old `_arena` field required.
+        // Reconstructs a live Arena handle from this record's owner core; used by Copy()/
+        // TempCopy() and the cross-type allocation shortcuts. Only meaningful when _rec != null --
+        // callers must only call this on an arena-backed instance.
         private unsafe Arena OwnerArena => new Arena(_rec->Owner);
 
         /// <summary>
@@ -93,7 +77,7 @@ namespace LinearAlgebra
             _rec = null;
             _inlineData = default;
 
-            // guard a standalone (null-record) source — was dereferencing null for the default allocator
+            // guard a standalone (null-record) source: fall back to Temp if no allocator is given
             if(allocator == Allocator.Invalid)
                 allocator = orig._rec != null ? orig._rec->Owner->Allocator : Allocator.Temp;
 
@@ -146,7 +130,7 @@ namespace LinearAlgebra
             if (_rec == null)
                 throw new System.InvalidOperationException("Copy()/TempCopy() require an arena-backed matrix/vector; use new <T>(in this, allocator) for a standalone copy.");
 
-            return OwnerArena.floatTempVec(in this);   // temp pool (was wrongly the persistent Copy path)
+            return OwnerArena.floatTempVec(in this);   // temp pool
         }
 
         public void CopyTo(in floatN vec)
@@ -166,28 +150,14 @@ namespace LinearAlgebra
         }
 
         public unsafe void Dispose() {
-            // LINALG_DEBUG NaN-poison-on-dispose removed (2026-07-05): the symbol was defined
-            // nowhere in the project, so that block was dead code that had never executed.
-            // Superseded by the record table's own unconditional guards below -- a double-dispose
-            // (aliased or not) throws deterministically via Free()'s double-Free check, in every
-            // build config, not just a debug one -- plus the ENABLE_UNITY_COLLECTIONS_CHECKS
-            // generational overlay on the Data getter, which catches a stale read (use-after-
-            // dispose/Clear, or a handle into a since-recycled slot) instead of returning garbage.
             if (_rec != null)
             {
-                // Cache Data BEFORE Free(): Free() marks the slot dead and (per
-                // ChunkedRecordTable's own documented contract) does NOT poison/clear the record's
-                // payload today -- but Dispose() must not rely on that as an implicit invariant, so
-                // read Data into a local first rather than reading _rec->Data again after the slot
-                // is already dead. Free() still runs BEFORE the native Dispose() call: an ALIASED
-                // double-dispose (a different struct copy sharing this SAME record) throws HERE,
-                // from the table's own double-Free guard, before any native memory would be touched
-                // a second time -- instead of the old silent double-free through a stale value-copy
-                // in the arena's tracking list. (Disposing the SAME variable twice is a separate,
-                // safe no-op: this call nulls _rec below, so a second call on that variable takes
-                // the standalone branch instead of reaching here at all.) See also Arena.cs's
-                // Clear()/ClearTemp(), which use the opposite order (dispose-then-Free) safely for a
-                // different reason -- see the comment there.
+                // Cache Data before Free(): Free() marks the slot dead without clearing the
+                // payload. Free() runs before the native Dispose() call, so an aliased
+                // double-dispose (a different struct copy sharing this record) throws here, via
+                // the table's double-Free guard, before any native memory is touched a second
+                // time. Disposing the SAME variable twice is a safe no-op: this call nulls _rec,
+                // so a second call takes the standalone branch instead.
                 var data = _rec->Data;
                 _rec->Table->Free(_rec->SelfIndex);
                 data.Dispose();

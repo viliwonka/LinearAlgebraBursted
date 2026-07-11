@@ -6,17 +6,13 @@ namespace LinearAlgebra
 {
     internal partial struct ArenaCore
     {
-        // Pointer-stable allocation-record tables (docs/dev/rfc-memory-model.md §4 Option A), same
-        // design as fProxyVecRecords/fProxyMatRecords (see Arena/fProxyRecords.fProxy.cs,
-        // Arena/Arena.fProxy.cs) -- fProxyBSR/fProxyBlockJacobi now hold a stable
-        // fProxyBSRRecord*/fProxyBlockJacobiRecord* into one of these instead of being tracked by
-        // a separate value copy. No temp-pool counterpart (BSR has no isTemp/fProxyTempBSR
-        // analogue). fProxyBSRBuilders stays on the OLD growable-list-of-value-copies model
-        // DELIBERATELY: a builder's only mutable-relevant field is its heap-Malloc'd `State*`
-        // (see fProxyBSRBuilder.cs), which is already pointer-stable and shared identically by
-        // every value-copy -- there is no divergence risk (RFC failure mode 1) left to fix by
-        // wrapping it in a second layer of record-table indirection, so migrating it would add
-        // surface without closing a real bug.
+        // Pointer-stable allocation-record tables, same design as fProxyVecRecords/fProxyMatRecords
+        // (see Arena/fProxyRecords.fProxy.cs, Arena/Arena.fProxy.cs) -- fProxyBSR/fProxyBlockJacobi
+        // hold a stable fProxyBSRRecord*/fProxyBlockJacobiRecord* into one of these instead of being
+        // tracked by a separate value copy. No temp-pool counterpart (BSR has no isTemp/fProxyTempBSR
+        // analogue). fProxyBSRBuilders stays on the growable-list-of-value-copies model: a builder's
+        // only mutable-relevant field is its heap-Malloc'd `State*` (see fProxyBSRBuilder.cs), which
+        // is already pointer-stable and shared identically by every value-copy.
         internal ChunkedRecordTable<fProxyBSRRecord> fProxyBSRRecords;
         internal UnsafeList<fProxyBSRBuilder> fProxyBSRBuilders;
         internal ChunkedRecordTable<fProxyBlockJacobiRecord> fProxyBlockJacobiRecords;
@@ -100,29 +96,10 @@ namespace LinearAlgebra
         }
 
         /// <summary>
-        /// Materializes A^T as its own compressed BSR: every stored block at (blockRow,
-        /// blockCol) becomes a block at (blockCol, blockRow), transposed in place (BR x BC ->
-        /// BC x BR), then re-compressed via <see cref="fProxyBSRBuilder"/> (the same
-        /// triplet-sort/compress path as ToBSR). One-time O(nnz) cost -- the payoff is a
-        /// cache-friendly FORWARD <see cref="BSR.spMV(in fProxyBSR, in fProxyN, ref fProxyN)"/>
-        /// over A^T in place of the scatter-heavy on-the-fly <see cref="BSR.spMVT"/>
-        /// traversal on every Krylov iteration -- see <see cref="fProxyBSROperator"/>'s two-arg
-        /// constructor and the cgls/lsqr allocating <see cref="fProxyBSR"/> overloads in
-        /// Krylov.fProxy.cs, which build A^T once per solve and reuse it every iteration.
-        ///
-        /// If A.Symmetric (implies square, and A == A^T by construction -- see
-        /// fProxyBSR.Symmetric), returns A itself unchanged: transposing symmetric upper-block
-        /// storage is a no-op, and materializing a redundant copy would only double memory for
-        /// zero benefit. This is safe to feed straight into fProxyBSROperator's two-arg ctor:
-        /// BSR.spMV already special-cases Symmetric internally, exactly matching what
-        /// spMVT itself does for a symmetric A (forwards straight to spMV).
-        ///
-        /// NOT itself guarded by the concurrency tripwire (docs/features/dense-types.md):
-        /// this is a COMPOSITION of two already-guarded factory calls
-        /// (<see cref="fProxyBSRBuilder(int,int,int,int,int)"/>, then
-        /// <c>fProxyBSR</c> via <c>builder.ToBSR</c>) run sequentially, each fully entering and
-        /// exiting its own guard before the next starts -- wrapping this method too would nest
-        /// EnterMutation() on the same thread and trip the tripwire on ourselves.
+        /// Materializes A^T as its own compressed BSR (O(nnz)): every stored block at (blockRow,
+        /// blockCol) becomes a block at (blockCol, blockRow), transposed in place, then
+        /// re-compressed via <see cref="fProxyBSRBuilder"/>. If A.Symmetric, returns A itself
+        /// unchanged (transposing symmetric upper-block storage is a no-op).
         /// </summary>
         public unsafe fProxyBSR fProxyBSRTranspose(in fProxyBSR A)
         {
@@ -162,15 +139,8 @@ namespace LinearAlgebra
         /// One-time mirror of a SYMMETRIC-storage (upper-block-triangle-only) BSR into an
         /// equivalent FULL-storage BSR: every stored block K at (bi,bj) is kept at (bi,bj), and
         /// if bi != bj its transpose is ALSO materialized at (bj,bi) -- the implicit lower block
-        /// <see cref="fProxyBSR.ToDense"/> already computes on the fly (see that method's own
-        /// Symmetric branch, which this mirrors exactly). O(nnzb*BR*BC), one-time cost -- the
-        /// preconditioner setup this feeds (<see cref="fProxySSOR"/>) amortizes it over the whole
-        /// solve lifetime, same lifecycle as a factorization (Krylov R3, Q4 ruling: v1
-        /// preconditioners are full-storage BSR only; symmetric-storage input pays this one-time
-        /// copy instead of a bespoke symmetric-sweep kernel family -- MKL/Eigen practice matches).
-        /// If A is already full storage (Symmetric == false), returns A unchanged -- no copy.
-        /// Not itself guarded by the concurrency tripwire, for the same reason
-        /// <see cref="fProxyBSRTranspose"/> is not -- see that method's own doc comment.
+        /// <see cref="fProxyBSR.ToDense"/> already computes on the fly. O(nnzb*BR*BC), one-time
+        /// copy. If A is already full storage (Symmetric == false), returns A unchanged -- no copy.
         /// </summary>
         public unsafe fProxyBSR fProxyBSRMirrorToFull(in fProxyBSR A)
         {

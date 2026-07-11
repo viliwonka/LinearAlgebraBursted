@@ -141,21 +141,6 @@ namespace LinearAlgebra
         /// <summary>
         /// Fills the square matrix <paramref name="dest"/> (n×n) with a Haar-uniform random
         /// orthogonal matrix using the Householder-QR method of Mezzadri (2007) / Stewart (1980).
-        ///
-        /// Algorithm:
-        /// <list type="number">
-        ///   <item>Fill an n×n scratch matrix G with i.i.d. N(0,1) entries.</item>
-        ///   <item>QR-decompose G = Q·R (Householder).</item>
-        ///   <item><b>Haar sign fix</b>: multiply column i of Q by <c>sign(R[i,i])</c>
-        ///         (<c>sign(0)=+1</c>, no flip). Without this step Householder QR's Q is NOT
-        ///         uniformly distributed over O(n) — the sign of each R diagonal is not equally
-        ///         likely to be ±1, introducing a measurable bias. The sign flip corrects this
-        ///         and yields the true Haar measure.</item>
-        ///   <item>Copy the corrected Q into <paramref name="dest"/>.</item>
-        /// </list>
-        ///
-        /// Temp scratch: G (n×n) and R (n×n) — both disposed before return. The QR step
-        /// allocates an additional n-element Temp vector internally (disposed inside decompInPlace).
         /// Throws <see cref="ArgumentException"/> if dest is not square.
         /// </summary>
         public static void orthogonalInPlace(ref Random rng, ref fProxyMxN dest)
@@ -176,7 +161,9 @@ namespace LinearAlgebra
             // Step 2: QR decomposition — G is overwritten with Q, R holds upper-triangular factor
             QR.decompInPlace(ref G, ref R);
 
-            // Step 3: Haar sign fix (Mezzadri 2007) — see algorithm doc above for the WHY.
+            // Step 3: Haar sign fix (Mezzadri 2007) -- without it, Householder QR's Q is not
+            // uniformly distributed over O(n) (the sign of each R diagonal is not equally likely to
+            // be ±1); this corrects that bias and yields the true Haar measure.
             for (int i = 0; i < n; i++)
             {
                 if (R[i, i] < (fProxy)0)

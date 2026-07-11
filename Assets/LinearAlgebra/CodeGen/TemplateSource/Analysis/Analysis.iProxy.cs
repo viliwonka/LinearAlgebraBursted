@@ -3,19 +3,10 @@
 namespace LinearAlgebra
 {
     // Structural predicates for the SIGNED integer family (int/short/long -- uint is
-    // deliberately excluded from this surface, see docs/dev/naming-style-guide.md). Merges into the
-    // SAME bare partial class as Analysis.fProxy.cs's `Analysis` (safe: every method here takes
-    // a concrete iProxyN/iProxyMxN parameter, never a bare generic <T>, so this follows the same
-    // merge rule that already lets float and double coexist in one Analysis -- see
-    // docs/dev/naming-style-guide.md's "Split vs merge safety").
-    //
-    // DELIBERATELY NO EPSILON/TOLERANCE PARAMETER: integer arithmetic is exact (no rounding
-    // error to tolerate), so every predicate here is an exact-equality check. float/double
-    // Analysis offers both a bare (exact) and an epsilon-taking overload for isIdentity/
-    // isSymmetric/isDiagonal/isUpperTriangular/isLowerTriangular; the integer surface
-    // intentionally has ONLY the bare form -- an epsilon-taking sibling would just mask real
-    // off-by-one bugs instead of tolerating legitimate floating-point roundoff, which doesn't
-    // exist for integers.
+    // deliberately excluded from this surface). Exact-equality integer predicates: integer
+    // arithmetic has no rounding error, so there is no epsilon-taking overload here (unlike
+    // float/double Analysis's isIdentity/isSymmetric/isDiagonal/isUpperTriangular/
+    // isLowerTriangular, which offer both a bare and an epsilon-taking form).
     public static partial class Analysis
     {
         public static bool isZero(in iProxyN a)

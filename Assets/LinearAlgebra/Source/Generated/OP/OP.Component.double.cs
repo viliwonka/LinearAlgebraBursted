@@ -50,7 +50,7 @@ namespace LinearAlgebra
         public static void addInPlace<T>(this T place, T from) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe {
-                // place += from. (compAdd is (target, from) — a prior reversed call mutated `from` instead.)
+                // place += from.
                 UnsafeOP.compAdd(place.Data.Ptr, from.Data.Ptr, from.Data.Length);
             }
         }
@@ -151,11 +151,7 @@ namespace LinearAlgebra
 
         /// <summary>Clamp every element of <paramref name="x"/> to [<paramref name="lo"/>, <paramref name="hi"/>] in-place.
         /// Delegates to the UnsafeMathOP clamp kernel; no allocation.</summary>
-        /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.
-        /// Takes <paramref name="x"/> by value (<c>this T</c>), matching every other Comp wrapper in this
-        /// file - a generic extension method's receiver cannot use <c>this in T</c> (CS8338: the 'in'
-        /// extension-method form requires a concrete, non-generic value type). Existing callers that
-        /// wrote the old static-style <c>clampInPlace(in v, ...)</c> just drop the now-illegal <c>in</c>.</remarks>
+        /// <remarks>Throws <c>ArgumentException</c> if <paramref name="lo"/> is greater than <paramref name="hi"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void clampInPlace<T>(this T x, double lo, double hi) where T : unmanaged, IUnsafedoubleArray
         {
@@ -167,9 +163,9 @@ namespace LinearAlgebra
             }
         }
 
-        // ---- Componentwise math, forwarding to UnsafeMathOP (mathUnsafe's former home). Every
-        // wrapper here is a thin, non-loop passthrough - [AggressiveInlining] is load-bearing (the
-        // loop itself lives in the UnsafeMathOP kernel, which is [MethodImpl(NoInlining)]). ----
+        // ---- Componentwise math, forwarding to UnsafeMathOP. Every wrapper here is a thin, non-loop
+        // passthrough - [AggressiveInlining] is load-bearing (the loop itself lives in the UnsafeMathOP
+        // kernel, which is [MethodImpl(NoInlining)]). ----
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void absInPlace<T>(this T x) where T : unmanaged, IUnsafedoubleArray
@@ -303,17 +299,14 @@ namespace LinearAlgebra
             unsafe { UnsafeMathOP.log10(x.Data.Ptr, x.Data.Length); }
         }
 
-        /// <summary>acosh(x) = log(x + sqrt(x^2 - 1)), domain x &gt;= 1. Not in the original exposure
-        /// list but componentwise like every other kernel here, so exposed for consistency.</summary>
+        /// <summary>acosh(x) = log(x + sqrt(x^2 - 1)), domain x &gt;= 1.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void acoshInPlace<T>(this T x) where T : unmanaged, IUnsafedoubleArray
         {
             unsafe { UnsafeMathOP.acosh(x.Data.Ptr, x.Data.Length); }
         }
 
-        /// <summary>x[i] = max(0, x[i]). Not in the original exposure list, but iProxyComp's analogous
-        /// reluInPlace was explicitly requested and the float kernel is equally componentwise, so
-        /// exposed here too for parity.</summary>
+        /// <summary>x[i] = max(0, x[i]).</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void reluInPlace<T>(this T x) where T : unmanaged, IUnsafedoubleArray
         {
@@ -419,10 +412,6 @@ namespace LinearAlgebra
             unsafe { UnsafeMathOP.atan2(y.Data.Ptr, x.Data.Ptr, y.Data.Length); }
         }
 
-        // Not in the original exposure list (which only spelled out clamp/lerp/smoothstep/step among
-        // two-buffer ops) but componentwise like everything else here and excluded by none of the
-        // stated exclusion rules (not a reduction, not whole-vector geometry, not arena plumbing, not
-        // dot) - exposed for consistency with iProxyComp's analogous minInPlace/maxInPlace.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void minInPlace<T>(this T x, T y) where T : unmanaged, IUnsafedoubleArray
         {

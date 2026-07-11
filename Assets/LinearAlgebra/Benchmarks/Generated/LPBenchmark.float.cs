@@ -22,17 +22,10 @@ namespace LinearAlgebra.Benchmarks
     // bounds (-1f/0f/1f) stay literal.
     //
     // Every job below carries its OWN reporting outputs (objOut/itersOut/statusOut, length-1 arrays)
-    // written from inside Execute(). This is deliberate: the report used to harvest objective/iters/
-    // status via a SEPARATE plain managed call to LP.solve/LP.lad before ever timing the Burst
-    // job -- i.e. every row solved the SAME problem TWICE, once fully Mono-interpreted. That is fine at
-    // n=24 but catastrophic at n=384 (seconds per solve) -- an extended benchmark run measured minutes
-    // and was killed because of it. Bench.Time already runs the job once as a warmup before the 4 timed
-    // reps, so the outputs are populated
-    // as a natural side effect of the SAME Burst-native call the report already needed to time -- no
-    // second solve, managed or otherwise. status is written as `(int)info.status` inside Execute (an
-    // enum-to-int cast is Burst-legal); LPBenchmarkFmt.InfeasRow casts it back on the harness side (see
-    // that method's doc comment for why the raw int, not the enum, crosses the template/harness
-    // assembly boundary).
+    // written from inside Execute(), so objective/iters/status come out of the SAME Burst-native call
+    // the report already times, with no second solve. status crosses as `(int)info.status` (Burst-legal
+    // enum-to-int cast); LPBenchmarkFmt.InfeasRow casts it back on the harness side (see that method's
+    // doc comment for why the raw int, not the enum, crosses the template/harness assembly boundary).
     [BurstCompile(CompileSynchronously = true, FloatPrecision = FloatPrecision.High, FloatMode = FloatMode.Default)]
     public struct LpSolveJobFloat : IJob
     {
@@ -250,8 +243,8 @@ namespace LinearAlgebra.Benchmarks
     {
         // ==== Section 1: LP.solve, random dense feasible LP -- all FOUR backends on the SAME problem ====
         // (tableau simplex, Mehrotra interior point, bounded-variable revised primal simplex, bounded-
-        // variable dual revised simplex -- docs/spec-revised-simplex.md stages 1+2). Same A/b/c/senses
-        // instance for every method each n, so the objective column is a direct four-way agreement check
+        // variable dual revised simplex). Same A/b/c/senses instance for every method each n, so the
+        // objective column is a direct four-way agreement check
         // and the iters column is directly comparable pivot-for-pivot (revised/dual) or iteration-for-
         // iteration (interior point) against the tableau baseline.
         static void SectionSolveFloat(StringBuilder sb)
@@ -307,8 +300,8 @@ namespace LinearAlgebra.Benchmarks
         }
 
         // ==== Section 6: warm re-solve chain -- cold vs LPBasis vs LPBasis+floatLPCache ====
-        // (docs/spec-lpbasis-persistence.md acceptance item 5.) Section-1-style instance; see
-        // LpWarmResolveJobFloat's comment for why the whole chain runs inside one job.
+        // Section-1-style instance; see LpWarmResolveJobFloat's comment for why the whole chain runs
+        // inside one job.
         static void SectionWarmResolveFloat(StringBuilder sb)
         {
             sb.AppendLine();
